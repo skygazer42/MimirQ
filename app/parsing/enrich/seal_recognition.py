@@ -1,4 +1,3 @@
-
 import json
 import math
 from dataclasses import dataclass
@@ -17,7 +16,9 @@ from app.core.config import settings
 _DEFAULT_ENGINE = "trocr_seal_onnx"
 _DEFAULT_THRESHOLD = 0.88
 _DEFAULT_MAX_LEN = 50
-_DEFAULT_MODEL_DIR = Path(__file__).resolve().parents[2] / "deepdoc" / "resources" / "models" / "seal" / "trocr_seal_384"
+_DEFAULT_MODEL_DIR = (
+    Path(__file__).resolve().parents[2] / "deepdoc" / "resources" / "models" / "seal" / "trocr_seal_384"
+)
 
 
 @dataclass(frozen=True)
@@ -62,7 +63,9 @@ def _load_vocab(vocab_path: Path) -> tuple[dict[str, int], dict[int, str]]:
 
 
 class OnnxSealRecognizer:
-    def __init__(self, model_dir: Path, *, threshold: float = _DEFAULT_THRESHOLD, max_len: int = _DEFAULT_MAX_LEN) -> None:
+    def __init__(
+        self, model_dir: Path, *, threshold: float = _DEFAULT_THRESHOLD, max_len: int = _DEFAULT_MAX_LEN
+    ) -> None:
         self._model_dir = model_dir
         self._threshold = float(threshold)
         self._max_len = max(1, int(max_len))
@@ -141,7 +144,9 @@ def _resolve_model_dir(model_dir: str | None = None) -> Path | None:
     return _DEFAULT_MODEL_DIR if _has_required_model_files(_DEFAULT_MODEL_DIR) else None
 
 
-def _expand_bbox(bbox: tuple[int, int, int, int], *, width: int, height: int, margin_ratio: float = 0.12) -> tuple[int, int, int, int]:
+def _expand_bbox(
+    bbox: tuple[int, int, int, int], *, width: int, height: int, margin_ratio: float = 0.12
+) -> tuple[int, int, int, int]:
     x0, y0, x1, y1 = bbox
     bw = max(1, x1 - x0)
     bh = max(1, y1 - y0)
@@ -253,7 +258,10 @@ def detect_seal_regions(image: PILImage.Image, *, max_regions: int | None = None
         crop = image.crop(bbox)
         regions.append(SealRegion(bbox=bbox, crop=crop, detection_score=float(detection_score)))
 
-    regions.sort(key=lambda item: (item.detection_score, (item.bbox[2] - item.bbox[0]) * (item.bbox[3] - item.bbox[1])), reverse=True)
+    regions.sort(
+        key=lambda item: (item.detection_score, (item.bbox[2] - item.bbox[0]) * (item.bbox[3] - item.bbox[1])),
+        reverse=True,
+    )
     limit = max(1, int(max_regions or getattr(settings, "SEAL_RECOGNITION_MAX_REGIONS_PER_PAGE", 3) or 3))
     return regions[:limit]
 
@@ -268,7 +276,11 @@ def _detect_and_recognize_seal_candidates(
     if resolved_model_dir is None:
         return [], 0
 
-    threshold_value = float(threshold if threshold is not None else getattr(settings, "SEAL_RECOGNITION_THRESHOLD", _DEFAULT_THRESHOLD) or _DEFAULT_THRESHOLD)
+    threshold_value = float(
+        threshold
+        if threshold is not None
+        else getattr(settings, "SEAL_RECOGNITION_THRESHOLD", _DEFAULT_THRESHOLD) or _DEFAULT_THRESHOLD
+    )
     regions = detect_seal_regions(image)
     region_count = len(regions)
     if not regions:

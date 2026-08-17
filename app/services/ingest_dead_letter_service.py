@@ -1,4 +1,3 @@
-
 import re
 from datetime import UTC, datetime
 from typing import Any
@@ -117,8 +116,18 @@ def record_ingest_dead_letter(
 
     payload = dict(original_payload or {})
     payload.setdefault("document_id", str(document_id) if document_id is not None else None)
-    payload.setdefault("task_id", (getattr(document, "doc_metadata", None) or {}).get("task_id") if isinstance(getattr(document, "doc_metadata", None), dict) else None)
-    payload.setdefault("pipeline_hash", (getattr(document, "doc_metadata", None) or {}).get("pipeline_hash") if isinstance(getattr(document, "doc_metadata", None), dict) else None)
+    payload.setdefault(
+        "task_id",
+        (getattr(document, "doc_metadata", None) or {}).get("task_id")
+        if isinstance(getattr(document, "doc_metadata", None), dict)
+        else None,
+    )
+    payload.setdefault(
+        "pipeline_hash",
+        (getattr(document, "doc_metadata", None) or {}).get("pipeline_hash")
+        if isinstance(getattr(document, "doc_metadata", None), dict)
+        else None,
+    )
 
     if existing is None:
         letter = IngestDeadLetter(
@@ -129,7 +138,10 @@ def record_ingest_dead_letter(
             failed_stage=stage,
             error_code=code,
             error_message=message,
-            source_ref=_safe_str(getattr(document, "filename", None) or getattr(document, "file_path", None), max_len=1000) or None,
+            source_ref=_safe_str(
+                getattr(document, "filename", None) or getattr(document, "file_path", None), max_len=1000
+            )
+            or None,
             original_payload=payload,
             retry_count=0,
             producer_service=_safe_str(producer_service, max_len=80) or "document_processor",
@@ -144,7 +156,9 @@ def record_ingest_dead_letter(
         letter.failed_stage = stage
         letter.error_code = code
         letter.error_message = message
-        letter.source_ref = _safe_str(getattr(document, "filename", None) or getattr(document, "file_path", None), max_len=1000) or None
+        letter.source_ref = (
+            _safe_str(getattr(document, "filename", None) or getattr(document, "file_path", None), max_len=1000) or None
+        )
         letter.original_payload = payload
         letter.retry_count = max(0, int(getattr(letter, "retry_count", 0) or 0)) + 1
         letter.last_attempt_at = now

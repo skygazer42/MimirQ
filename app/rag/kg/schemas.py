@@ -200,10 +200,14 @@ class KGManualImportRequest(BaseModel):
     dataset_id: UUID | None = None
     dataset_name: str | None = Field(default=None, max_length=255)
     pipeline_hash: str | None = Field(default=None, max_length=200)
-    replace_existing: bool = Field(default=False, description="Replace an existing manual import with the same import_id")
+    replace_existing: bool = Field(
+        default=False, description="Replace an existing manual import with the same import_id"
+    )
     upsert_entities: bool = Field(default=True, description="Reuse existing same tenant/type/normalized-name entities")
     allow_label_truncation: bool = Field(default=True, description="Compact labels longer than KG schema limits")
-    index_vectors: bool = Field(default=True, description="Embed and index imported KG events/entities for vector recall")
+    index_vectors: bool = Field(
+        default=True, description="Embed and index imported KG events/entities for vector recall"
+    )
     entities: list[KGManualEntityInput] = Field(default_factory=list)
     relations: list[KGManualRelationInput] = Field(default_factory=list)
 

@@ -2,7 +2,6 @@
 # ruff: noqa: E402, I001
 """Run a mixed-backend parser contention probe against a live API."""
 
-
 import argparse
 import json
 import math
@@ -248,7 +247,9 @@ def main() -> int:
     per_backend = []
     for backend in backends:
         backend_results = [item for item in results if str(item.get("backend_requested")) == backend]
-        per_backend.append({**summarize_backend_stats(backend=backend, results=backend_results), "results": backend_results})
+        per_backend.append(
+            {**summarize_backend_stats(backend=backend, results=backend_results), "results": backend_results}
+        )
 
     report = {
         "ok": all(bool(item.get("ok")) for item in results),
@@ -265,11 +266,19 @@ def main() -> int:
         "rounds": int(args.rounds),
         "elapsed_sec": round(float(elapsed), 3),
         "throughput_rps": round((float(len(results)) / float(elapsed)) if elapsed > 0 else 0.0, 3),
-        "results": sorted(results, key=lambda item: (str(item.get("backend_requested") or ""), int(item.get("round") or 0))),
+        "results": sorted(
+            results, key=lambda item: (str(item.get("backend_requested") or ""), int(item.get("round") or 0))
+        ),
         "per_backend": per_backend,
     }
     (artifact_dir / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(json.dumps({k: report[k] for k in ("ok", "artifact_dir", "backends", "rounds", "elapsed_sec", "throughput_rps")}, ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {k: report[k] for k in ("ok", "artifact_dir", "backends", "rounds", "elapsed_sec", "throughput_rps")},
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
     return 0 if report["ok"] else 1
 
 

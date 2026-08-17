@@ -121,7 +121,11 @@ def resolve_channel_budget_policy_overrides(
         return {}, meta
 
     overrides = _channel_budget_policy_overrides(policy, selected=selected, budgets=budgets)
-    meta.update(_channel_budget_policy_applied_meta(policy, selected_key=selected_key, mode_norm=mode_norm, profile_norm=profile_norm, budgets=budgets))
+    meta.update(
+        _channel_budget_policy_applied_meta(
+            policy, selected_key=selected_key, mode_norm=mode_norm, profile_norm=profile_norm, budgets=budgets
+        )
+    )
     return overrides, meta
 
 
@@ -157,11 +161,15 @@ def _channel_budget_policy_selected(
 ) -> tuple[str, dict[str, Any], dict[str, Any] | None]:
     selected_key = _select_channel_budget_profile(profiles, profile_norm=profile_norm, mode_norm=mode_norm)
     if not selected_key:
-        return "", {}, {
-            "reason": "profile_not_found",
-            "retrieval_mode": mode_norm,
-            "retrieval_profile": profile_norm or None,
-        }
+        return (
+            "",
+            {},
+            {
+                "reason": "profile_not_found",
+                "retrieval_mode": mode_norm,
+                "retrieval_profile": profile_norm or None,
+            },
+        )
     selected = profiles.get(selected_key) if isinstance(profiles.get(selected_key), dict) else {}
     return selected_key, selected, None
 
@@ -172,9 +180,10 @@ def _channel_budget_policy_overrides(
     selected: dict[str, Any],
     budgets: dict[str, int],
 ) -> dict[str, Any]:
-    fusion_strategy = str(
-        (selected or {}).get("fusion_strategy") or policy.get("fusion_strategy") or "budgeted_rrf"
-    ).strip().lower() or "budgeted_rrf"
+    fusion_strategy = (
+        str((selected or {}).get("fusion_strategy") or policy.get("fusion_strategy") or "budgeted_rrf").strip().lower()
+        or "budgeted_rrf"
+    )
     overrides: dict[str, Any] = {
         "fusion_strategy": fusion_strategy,
         "fusion_budgets": budgets,

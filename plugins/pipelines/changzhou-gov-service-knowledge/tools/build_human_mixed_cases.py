@@ -7,7 +7,6 @@ evidence clauses unchanged; only the user-facing question/query text and case
 sampling mix are adjusted.
 """
 
-
 import argparse
 import copy
 import hashlib
@@ -175,7 +174,11 @@ def _list_dicts(value: Any) -> list[dict[str, Any]]:
 
 
 def _subquestion_ids(case: dict[str, Any]) -> list[str]:
-    return [_text(item.get("id") or item.get("name")) for item in _list_dicts(case.get("subquestions")) if _text(item.get("id") or item.get("name"))]
+    return [
+        _text(item.get("id") or item.get("name"))
+        for item in _list_dicts(case.get("subquestions"))
+        if _text(item.get("id") or item.get("name"))
+    ]
 
 
 def _title_from_evidence(case: dict[str, Any]) -> str:
@@ -215,7 +218,12 @@ def _identity_text(value: str) -> str:
 
 
 def _case_title(case: dict[str, Any]) -> str:
-    for value in (case.get("source_record_title"), case.get("title"), _title_from_evidence(case), _title_from_question(case)):
+    for value in (
+        case.get("source_record_title"),
+        case.get("title"),
+        _title_from_evidence(case),
+        _title_from_question(case),
+    ):
         title = _clean_title(_text(value))
         if title:
             return title
@@ -374,7 +382,9 @@ def _build_dimension_case(
     question = templates[_template_index(case, variant_index) % len(templates)].format(title=title)
     out["question"] = question
     out["query"] = question
-    out["subquestions"] = [{"id": name, "required_clause_ids": [f"{name}-{index}"]} for index, name in enumerate(names, 1)]
+    out["subquestions"] = [
+        {"id": name, "required_clause_ids": [f"{name}-{index}"]} for index, name in enumerate(names, 1)
+    ]
     out["evidence_clauses"] = [
         {
             "id": f"{name}-{index}",
@@ -506,7 +516,9 @@ def _variant_case(case: dict[str, Any], *, variant_index: int) -> dict[str, Any]
     return out
 
 
-def _primary_case(case: dict[str, Any], *, case_index: int, used_global_dimensions: set[str] | None = None) -> dict[str, Any]:
+def _primary_case(
+    case: dict[str, Any], *, case_index: int, used_global_dimensions: set[str] | None = None
+) -> dict[str, Any]:
     profiles = _available_dimension_profiles(case)
     if not profiles:
         return humanize_case(case)
@@ -635,7 +647,9 @@ def build_payload(
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Build human-like Changzhou mixed RAG eval cases.")
-    parser.add_argument("--cases", required=True, help="Source cases JSON: list or mimirq.mixed_rag_eval_cases.v1 object.")
+    parser.add_argument(
+        "--cases", required=True, help="Source cases JSON: list or mimirq.mixed_rag_eval_cases.v1 object."
+    )
     parser.add_argument("--out", required=True, help="Output cases JSON path.")
     parser.add_argument("--total", type=int, default=100, help="Target number of output cases.")
     parser.add_argument("--max-qa-ratio", type=float, default=0.10, help="Maximum FAQ/QA-derived case ratio.")

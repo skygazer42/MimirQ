@@ -3,7 +3,6 @@
 Build a deterministic reparse candidate plan from dataset report parse-risk summary.
 """
 
-
 import argparse
 import json
 import sys
@@ -76,7 +75,9 @@ def run(
         rows.append((doc_id, score))
         specialty_meta[doc_id] = {
             "reason": str(item.get("reason") or "").strip() or "parse_quality_below_threshold",
-            "specialty_signals": dict(item.get("specialty_signals") or {}) if isinstance(item.get("specialty_signals"), dict) else {},
+            "specialty_signals": dict(item.get("specialty_signals") or {})
+            if isinstance(item.get("specialty_signals"), dict)
+            else {},
         }
 
     rows.sort(key=lambda x: (x[1], x[0]))

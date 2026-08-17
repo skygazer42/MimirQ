@@ -1,4 +1,3 @@
-
 import uuid
 from types import SimpleNamespace
 from uuid import UUID
@@ -175,7 +174,9 @@ def test_embedding_quota_gate_can_fail_closed_on_quota_backend_errors(monkeypatc
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("quota backend unavailable")),
         raising=True,
     )
-    monkeypatch.setattr(indexer_mod, "_persist_ingest_gate_outcome_best_effort", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(
+        indexer_mod, "_persist_ingest_gate_outcome_best_effort", lambda *_args, **_kwargs: None, raising=True
+    )
     monkeypatch.setattr(indexer_mod, "_audit_ingest_gate_event", lambda *_args, **_kwargs: None, raising=True)
 
     with pytest.raises(quota_service.TenantQuotaExceededError) as exc_info:
@@ -331,7 +332,9 @@ def test_index_events_tracks_event_and_entity_vector_channels(monkeypatch: pytes
         raising=True,
     )
     monkeypatch.setattr(indexer_mod.Indexer, "_index_event_vectors", lambda *_args, **_kwargs: [], raising=True)
-    monkeypatch.setattr(indexer_mod.Indexer, "_index_entity_vectors", lambda *_args, **_kwargs: ["entity-1"], raising=True)
+    monkeypatch.setattr(
+        indexer_mod.Indexer, "_index_entity_vectors", lambda *_args, **_kwargs: ["entity-1"], raising=True
+    )
 
     indexer = indexer_mod.Indexer(_FakeSession())  # type: ignore[arg-type]
     indexer.index_events(
@@ -343,13 +346,13 @@ def test_index_events_tracks_event_and_entity_vector_channels(monkeypatch: pytes
                 content="c",
                 document_id=UUID(int=2),
                 chunk_id=uuid.uuid4(),
-                    references={"pipeline_hash": "pipe-1"},
-                    vector=[0.1],
-                    entities=[
-                        EventEntityInput(
-                            name="entity",
-                            normalized_name="entity",
-                            type="concept",
+                references={"pipeline_hash": "pipe-1"},
+                vector=[0.1],
+                entities=[
+                    EventEntityInput(
+                        name="entity",
+                        normalized_name="entity",
+                        type="concept",
                         vector=[0.2],
                     )
                 ],

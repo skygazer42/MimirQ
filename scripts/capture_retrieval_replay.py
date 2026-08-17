@@ -11,7 +11,6 @@ Intended use:
   2) Run scripts/replay_retrieval_replay.py to verify determinism across builds.
 """
 
-
 import argparse
 import json
 import sys
@@ -88,9 +87,16 @@ def main(argv: list[str] | None = None) -> int:
 
     # rag_config overrides
     p.add_argument("--top-k", type=int, default=50, help="Evidence API rag_config.top_k (default: %(default)s)")
-    p.add_argument("--score-threshold", type=float, default=0.0, help="Evidence API rag_config.score_threshold (default: %(default)s)")
+    p.add_argument(
+        "--score-threshold",
+        type=float,
+        default=0.0,
+        help="Evidence API rag_config.score_threshold (default: %(default)s)",
+    )
     p.add_argument("--retrieval-mode", default="hybrid", help="hybrid|vector|keyword|mmr (default: %(default)s)")
-    p.add_argument("--retrieval-profile", default="recall50", help="recall20|recall50|coverage80 (default: %(default)s)")
+    p.add_argument(
+        "--retrieval-profile", default="recall50", help="recall20|recall50|coverage80 (default: %(default)s)"
+    )
     p.add_argument("--alpha", type=float, default=0.6, help="Fusion alpha (default: %(default)s)")
     p.add_argument("--enable-weight-rerank", action="store_true", help="Enable heuristic weight rerank (default: off)")
     p.add_argument("--enable-reranker", action="store_true", help="Enable reranker (default: off)")
@@ -99,7 +105,9 @@ def main(argv: list[str] | None = None) -> int:
 
     p.add_argument("--seed", type=int, default=42, help="Replay seed (default: %(default)s)")
     p.add_argument("--max-cases", type=int, default=0, help="Limit cases processed (default: all)")
-    p.add_argument("--max-citations", type=int, default=80, help="Capture at most N citations per case (default: %(default)s)")
+    p.add_argument(
+        "--max-citations", type=int, default=80, help="Capture at most N citations per case (default: %(default)s)"
+    )
     args = p.parse_args(argv)
 
     cases_path = Path(args.cases)
@@ -193,4 +201,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

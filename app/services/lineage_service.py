@@ -1,4 +1,3 @@
-
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -383,7 +382,9 @@ def summarize_chunk_retrieval_usage_from_records(
     }
 
 
-def _extract_pipeline_version(meta: Mapping[str, Any] | None, *, active_pipeline_hash: str | None) -> dict[str, Any] | None:
+def _extract_pipeline_version(
+    meta: Mapping[str, Any] | None, *, active_pipeline_hash: str | None
+) -> dict[str, Any] | None:
     meta_map = dict(meta or {})
     versions = meta_map.get("pipeline_provenance_versions")
     if not isinstance(versions, dict) or not versions:
@@ -436,7 +437,9 @@ def build_chunk_lineage_payload(
         "document": {
             "document_id": str(getattr(document, "id", "")),
             "tenant_id": str(getattr(document, "tenant_id", "")),
-            "dataset_id": (str(getattr(document, "dataset_id", "")) if getattr(document, "dataset_id", None) is not None else None),
+            "dataset_id": (
+                str(getattr(document, "dataset_id", "")) if getattr(document, "dataset_id", None) is not None else None
+            ),
             "filename": _safe_str(getattr(document, "filename", None), max_len=500),
             "file_type": _safe_str(getattr(document, "file_type", None), max_len=32),
             "status": _safe_str(getattr(document, "status", None), max_len=80),
@@ -513,7 +516,9 @@ def build_answer_lineage_payload(
                 "hit_type": _safe_str(citation.get("hit_type"), max_len=40),
                 "retrieval_score": citation.get("retrieval_score"),
                 "rerank_score": citation.get("rerank_score"),
-                "chunk_role": _safe_str(_safe_dict(getattr(chunk_obj, "doc_metadata", None)).get("chunk_role"), max_len=80),
+                "chunk_role": _safe_str(
+                    _safe_dict(getattr(chunk_obj, "doc_metadata", None)).get("chunk_role"), max_len=80
+                ),
             }
         )
 
@@ -584,7 +589,9 @@ def get_chunk_lineage(
     }
 
     if bool(getattr(settings, "ENABLE_METRICS_LOG", False)):
-        path = Path(str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl"))
+        path = Path(
+            str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl")
+        )
         if path.exists():
             records = _read_jsonl_tail(path, max_bytes=max_bytes)
             usage = summarize_chunk_retrieval_usage_from_records(

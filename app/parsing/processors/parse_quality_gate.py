@@ -1,4 +1,3 @@
-
 from collections.abc import Mapping
 from typing import Any
 
@@ -154,13 +153,23 @@ def evaluate_parse_quality_gate(
         source.get("table_structure_confidence_avg"),
     )
 
-    watermark_removed = max(0, int(_first_int(watermark.get("removed_count"), source.get("watermark_removed_count")) or 0))
-    watermark_input = max(0, int(_first_int(watermark.get("input_count"), watermark.get("total_count"), source.get("watermark_input_count")) or 0))
+    watermark_removed = max(
+        0, int(_first_int(watermark.get("removed_count"), source.get("watermark_removed_count")) or 0)
+    )
+    watermark_input = max(
+        0,
+        int(
+            _first_int(watermark.get("input_count"), watermark.get("total_count"), source.get("watermark_input_count"))
+            or 0
+        ),
+    )
     watermark_ratio = (float(watermark_removed) / float(watermark_input)) if watermark_input > 0 else None
 
     reading_changed = bool(_coerce_bool(reading_order.get("changed")) is True)
     reading_items = max(0, int(_first_int(reading_order.get("items"), source.get("reading_order_items")) or 0))
-    reading_column_pages = max(0, int(_first_int(reading_order.get("column_pages"), source.get("reading_order_column_pages")) or 0))
+    reading_column_pages = max(
+        0, int(_first_int(reading_order.get("column_pages"), source.get("reading_order_column_pages")) or 0)
+    )
 
     low_confidence_spans = _low_confidence_span_count(source)
     large_tables = _large_tables(

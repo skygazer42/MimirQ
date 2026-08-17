@@ -1,4 +1,3 @@
-
 import asyncio
 import contextlib
 import threading
@@ -142,7 +141,9 @@ async def _semaphore_refresh(redis: Any, *, key: str, token: str, ttl_sec: int) 
         return None
 
 
-async def _run_semaphore_heartbeat(redis: Any, *, lease: str, key: str, token: str, ttl_sec: int, stop_event: asyncio.Event) -> None:
+async def _run_semaphore_heartbeat(
+    redis: Any, *, lease: str, key: str, token: str, ttl_sec: int, stop_event: asyncio.Event
+) -> None:
     interval_sec = _semaphore_heartbeat_interval_sec(ttl_sec)
     try:
         while True:

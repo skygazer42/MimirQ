@@ -29,7 +29,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--sample-n", type=int, default=200, help="Max chunks to sample (default: 200)")
     p.add_argument("--threshold", type=float, default=0.05, help="Drift threshold (default: 0.05)")
     p.add_argument("--max-ids-per-query", type=int, default=128, help="Max Milvus ids per query batch (default: 128)")
-    p.add_argument("--max-content-chars", type=int, default=8000, help="Max chars per chunk to re-embed (default: 8000)")
+    p.add_argument(
+        "--max-content-chars", type=int, default=8000, help="Max chars per chunk to re-embed (default: 8000)"
+    )
     default_out = str(Path("runs") / "diagnostics" / f"embedding-drift-{_utc_compact_timestamp()}.json")
     p.add_argument("--out", default=default_out, help="Output JSON path (default: runs/diagnostics/...).")
     args = p.parse_args(argv)
@@ -59,4 +61,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -1,4 +1,3 @@
-
 import json
 from pathlib import Path
 from typing import Any
@@ -81,7 +80,9 @@ def promote_hard_negatives_to_jsonl(
         "candidate_records": int(len(records)),
         "written_records": 0 if dry_run else int(len(records)),
         "hard_negatives": int(hard_negative_total),
-        "source_feedback_ids": sorted({fid for record in records for fid in _clean_str_list(record.get("source_feedback_ids"))}),
+        "source_feedback_ids": sorted(
+            {fid for record in records for fid in _clean_str_list(record.get("source_feedback_ids"))}
+        ),
         "dataset_ids": sorted({str(record.get("dataset_id")) for record in records if record.get("dataset_id")}),
     }
 

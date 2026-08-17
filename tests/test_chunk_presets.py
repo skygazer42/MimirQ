@@ -1,4 +1,3 @@
-
 import uuid
 
 from fastapi import FastAPI
@@ -90,11 +89,7 @@ def test_chunk_presets_crud(monkeypatch):  # noqa: ANN001
         _assert_dataset_writable,
         raising=True,
     )
-    _DummyDB.readable_dataset_ids = [
-        uuid.UUID(key)
-        for key, acl in dataset_access.items()
-        if acl["readable"]
-    ]
+    _DummyDB.readable_dataset_ids = [uuid.UUID(key) for key, acl in dataset_access.items() if acl["readable"]]
 
     store: dict[str, object] = {}
 
@@ -148,7 +143,9 @@ def test_chunk_presets_crud(monkeypatch):  # noqa: ANN001
         payload: dict,
     ):  # noqa: ANN001
         pid = str(uuid.uuid4())
-        row = _Row(id=pid, tenant_id=tenant_id, dataset_id=dataset_id, name=name, description=description, payload=payload)
+        row = _Row(
+            id=pid, tenant_id=tenant_id, dataset_id=dataset_id, name=name, description=description, payload=payload
+        )
         store[pid] = row
         return row
 

@@ -110,7 +110,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.out:
         out_path = Path(args.out)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text("\n".join(json.dumps(row, ensure_ascii=False) for row in payload) + ("\n" if payload else ""), encoding="utf-8")
+        out_path.write_text(
+            "\n".join(json.dumps(row, ensure_ascii=False) for row in payload) + ("\n" if payload else ""),
+            encoding="utf-8",
+        )
     else:
         for row in payload:
             print(json.dumps(row, ensure_ascii=False))

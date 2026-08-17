@@ -5,7 +5,6 @@ Provides collection-to-collection similarity matrix endpoints used by the
 frontend heatmap page (Kumi-style).
 """
 
-
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -49,7 +48,9 @@ class SimilarityCollectionsResponse(BaseModel):
     count: int = 0
 
 
-@router.get("/similarity/collections", response_model=SimilarityCollectionsResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/similarity/collections", response_model=SimilarityCollectionsResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def get_similarity_collections(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -88,7 +89,9 @@ class SimilarityCalculateResponse(BaseModel):
     y_collection: str | None = None
 
 
-@router.post("/similarity/calculate", response_model=SimilarityCalculateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/similarity/calculate", response_model=SimilarityCalculateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def similarity_calculate(
     request: SimilarityRequest,
     *,

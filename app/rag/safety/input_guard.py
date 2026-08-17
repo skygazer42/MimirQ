@@ -1,4 +1,3 @@
-
 import asyncio
 import base64
 from dataclasses import dataclass
@@ -138,7 +137,9 @@ class InputGuard:
 
         if result.action == "block":
             if bool(getattr(settings, "INPUT_GUARD_LOG_BLOCKED", True)):
-                logger.warning("Input guard blocked query hash=%s rules=%s score=%.3f", query_hash, matched_rules, result.score)
+                logger.warning(
+                    "Input guard blocked query hash=%s rules=%s score=%.3f", query_hash, matched_rules, result.score
+                )
             return
         logger.warning("Input guard warning query hash=%s rules=%s score=%.3f", query_hash, matched_rules, result.score)
 

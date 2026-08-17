@@ -368,7 +368,9 @@ class GovernanceProcessor:
 
             pii_hits: dict[str, int] = {}
             if pii_anonymize:
-                pii = anonymize_pii(text, enabled=True, mode=str(pii_mode or "mask"), mask=str(pii_mask or "[REDACTED]"))  # type: ignore[arg-type]
+                pii = anonymize_pii(
+                    text, enabled=True, mode=str(pii_mode or "mask"), mask=str(pii_mask or "[REDACTED]")
+                )  # type: ignore[arg-type]
                 text = pii.text
                 pii_hits = dict(pii.hits or {})
                 changed_any = changed_any or bool(pii.changed)
@@ -377,7 +379,9 @@ class GovernanceProcessor:
 
             secrets_hits: dict[str, int] = {}
             if secrets_redact:
-                sec = redact_secrets(text, enabled=True, mode=str(secrets_mode or "mask"), mask=str(secrets_mask or "[SECRET]"))  # type: ignore[arg-type]
+                sec = redact_secrets(
+                    text, enabled=True, mode=str(secrets_mode or "mask"), mask=str(secrets_mask or "[SECRET]")
+                )  # type: ignore[arg-type]
                 text = sec.text
                 secrets_hits = dict(sec.hits or {})
                 changed_any = changed_any or bool(sec.changed)
@@ -564,10 +568,12 @@ class GovernanceProcessor:
                 logger.debug(_MARKDOWN_GOVERNANCE_FALLBACK_LOG_MESSAGE, exc)
             cleaned.append(Document(page_content=text, metadata=meta, id=getattr(doc, "id", None)))
 
-        # Compliance gates (PII/Secrets): if enabled (>=0), quarantine/drop the entire document when total hits exceed the threshold.
+        # Compliance gates (PII/Secrets): if enabled (>=0), quarantine/drop the entire
+        # document when total hits exceed the threshold.
         #
-        # This is intentionally applied at the aggregate level (across all parsed pages/items) to avoid partially indexing
-        # a sensitive document. The ingestion pipeline can route dropped docs to quarantine via governance_quarantine_on_drop.
+        # This is intentionally applied at the aggregate level (across all parsed pages/items)
+        # to avoid partially indexing a sensitive document. The ingestion pipeline can route
+        # dropped docs to quarantine via governance_quarantine_on_drop.
         pii_gate = int(pii_max_hits) if isinstance(pii_max_hits, (int, float)) else -1
         secrets_gate = int(secrets_max_hits) if isinstance(secrets_max_hits, (int, float)) else -1
 

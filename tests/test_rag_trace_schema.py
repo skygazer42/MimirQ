@@ -1,4 +1,3 @@
-
 import json
 import time
 import uuid
@@ -52,7 +51,12 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
                             "overfetch_enabled": True,
                             "channels": {
                                 "timing": {"vector_ms": 12.3, "colbert_ms": 8.7, "bm25_ms": 4.5, "fusion_ms": 1.2},
-                                "counts": {"vector_candidates": 10, "colbert_candidates": 4, "bm25_candidates": 8, "sparse_candidates": 6},
+                                "counts": {
+                                    "vector_candidates": 10,
+                                    "colbert_candidates": 4,
+                                    "bm25_candidates": 8,
+                                    "sparse_candidates": 6,
+                                },
                                 "retrieval_mode": "hybrid",
                                 "fusion_strategy": "rrf",
                                 "rrf_k": 60,
@@ -68,7 +72,12 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
                                     "docs_n": 1200,
                                     "max_docs": 1000,
                                 },
-                                "bm25": {"enabled": True, "candidates": 8, "index_enabled": True, "filter_applied": True},
+                                "bm25": {
+                                    "enabled": True,
+                                    "candidates": 8,
+                                    "index_enabled": True,
+                                    "filter_applied": True,
+                                },
                                 "lexical_db": {
                                     "enabled": False,
                                     "candidates": 0,

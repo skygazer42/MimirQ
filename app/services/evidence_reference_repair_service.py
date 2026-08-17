@@ -9,7 +9,6 @@ PII safety:
 - Never emit chunk content or raw quotes. Only ids + counters + bounded metadata.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -383,25 +382,24 @@ def repair_evidence_suite_reference_sources_with_dataset(
                     needle = _select_quote_needle(quote)
                     if needle and len(needle) >= 12 and doc is not None:
                         doc_meta = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
-                        active_hash = str(doc_meta.get("active_pipeline_hash") or doc_meta.get("pipeline_hash") or "").strip()
+                        active_hash = str(
+                            doc_meta.get("active_pipeline_hash") or doc_meta.get("pipeline_hash") or ""
+                        ).strip()
                         active_key = f"{doc_uuid}:{active_hash}" if active_hash else ""
                         pattern = f"%{_escape_like(needle)}%"
-                        q2 = (
-                            db.query(
-                                DocumentChunk.id,
-                                DocumentChunk.document_id,
-                                DocumentChunk.chunk_index,
-                                DocumentChunk.doc_metadata,
-                                DocumentChunk.page_number,
-                                DocumentChunk.start_char,
-                                DocumentChunk.end_char,
-                            )
-                            .filter(
-                                DocumentChunk.tenant_id == tenant_id,
-                                DocumentChunk.document_id == doc_uuid,
-                                DocumentChunk.disabled_at.is_(None),
-                                DocumentChunk.content.ilike(pattern, escape="\\"),
-                            )
+                        q2 = db.query(
+                            DocumentChunk.id,
+                            DocumentChunk.document_id,
+                            DocumentChunk.chunk_index,
+                            DocumentChunk.doc_metadata,
+                            DocumentChunk.page_number,
+                            DocumentChunk.start_char,
+                            DocumentChunk.end_char,
+                        ).filter(
+                            DocumentChunk.tenant_id == tenant_id,
+                            DocumentChunk.document_id == doc_uuid,
+                            DocumentChunk.disabled_at.is_(None),
+                            DocumentChunk.content.ilike(pattern, escape="\\"),
                         )
                         if active_key:
                             try:

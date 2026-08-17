@@ -25,7 +25,9 @@ def run(*, baseline_path: Path, current_path: Path, out: Path | None, out_md: Pa
         "baseline_path": str(Path(baseline_path).resolve()),
         "current_path": str(Path(current_path).resolve()),
         "metric_deltas": {
-            "hit_at_k_mean_delta": round(float(current.get("hit_at_k_mean") or 0.0) - float(baseline.get("hit_at_k_mean") or 0.0), 6),
+            "hit_at_k_mean_delta": round(
+                float(current.get("hit_at_k_mean") or 0.0) - float(baseline.get("hit_at_k_mean") or 0.0), 6
+            ),
             "mrr_mean_delta": round(float(current.get("mrr_mean") or 0.0) - float(baseline.get("mrr_mean") or 0.0), 6),
         },
         "failed_case_drift": {

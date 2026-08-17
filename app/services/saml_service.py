@@ -1,4 +1,3 @@
-
 import json
 import math
 import uuid
@@ -140,7 +139,9 @@ def build_saml_sp_metadata_xml(*, provider_id: str | None = None) -> str:
 
     if sign_metadata:
         if not sp_cert_pem or not sp_key_pem:
-            raise HTTPException(status_code=500, detail="SAML SP metadata signing requires SAML_SP_CERT_PEM and SAML_SP_PRIVATE_KEY_PEM")
+            raise HTTPException(
+                status_code=500, detail="SAML SP metadata signing requires SAML_SP_CERT_PEM and SAML_SP_PRIVATE_KEY_PEM"
+            )
         root = XMLSigner(
             method=methods.enveloped,
             signature_algorithm="rsa-sha256",
@@ -291,7 +292,10 @@ def _validate_issuer_destination_and_status(
         raise HTTPException(status_code=401, detail="Invalid SAML destination")
 
     status_code = root.find("./samlp:Status/samlp:StatusCode", namespaces=_NS)
-    if status_code is None or str(status_code.get("Value") or "").strip() != "urn:oasis:names:tc:SAML:2.0:status:Success":
+    if (
+        status_code is None
+        or str(status_code.get("Value") or "").strip() != "urn:oasis:names:tc:SAML:2.0:status:Success"
+    ):
         raise HTTPException(status_code=401, detail="SAML response not successful")
 
 
@@ -332,7 +336,9 @@ def _validate_subject_confirmation(
     now: datetime,
     skew: int,
 ) -> datetime | None:
-    subject_confirmation = assertion.find("./saml:Subject/saml:SubjectConfirmation/saml:SubjectConfirmationData", namespaces=_NS)
+    subject_confirmation = assertion.find(
+        "./saml:Subject/saml:SubjectConfirmation/saml:SubjectConfirmationData", namespaces=_NS
+    )
     if subject_confirmation is None:
         raise HTTPException(status_code=401, detail="Missing SAML subject confirmation")
 
@@ -440,7 +446,9 @@ def exchange_saml_response(
     extra_claims: dict[str, Any] = {}
     normalized_groups = [group for group in groups if group]
     if normalized_groups:
-        extra_claims[str(getattr(settings, "JWT_GROUPS_CLAIM", "groups") or "groups").strip() or "groups"] = normalized_groups
+        extra_claims[str(getattr(settings, "JWT_GROUPS_CLAIM", "groups") or "groups").strip() or "groups"] = (
+            normalized_groups
+        )
 
     token, expires_in = create_access_token(
         str(user.id),

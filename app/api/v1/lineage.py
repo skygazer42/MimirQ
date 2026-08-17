@@ -1,4 +1,3 @@
-
 from pathlib import Path
 from typing import Annotated, Any
 from uuid import UUID
@@ -75,7 +74,9 @@ def _load_chunk_lineage_dependencies(
         "hits": [],
     }
     if bool(getattr(settings, "ENABLE_METRICS_LOG", False)):
-        path = Path(str(getattr(settings, "METRICS_LOG_PATH", _DEFAULT_RAG_METRICS_LOG_PATH) or _DEFAULT_RAG_METRICS_LOG_PATH))
+        path = Path(
+            str(getattr(settings, "METRICS_LOG_PATH", _DEFAULT_RAG_METRICS_LOG_PATH) or _DEFAULT_RAG_METRICS_LOG_PATH)
+        )
         if path.exists():
             from app.services.lineage_service import _read_jsonl_tail  # noqa: WPS433
 

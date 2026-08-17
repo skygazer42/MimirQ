@@ -13,7 +13,9 @@ class ChunkerCapability:
 CHUNKER_CAPABILITIES = (
     ChunkerCapability("auto", "app.rag.chunking.strategies.auto", "AutoChunker"),
     ChunkerCapability("manuscript", "app.rag.chunking.strategies.manuscript", "ManuscriptChunker"),
-    ChunkerCapability("agentic_chunker", "app.rag.chunking.strategies.agentic_chunker", "AgenticChunker", experimental=True),
+    ChunkerCapability(
+        "agentic_chunker", "app.rag.chunking.strategies.agentic_chunker", "AgenticChunker", experimental=True
+    ),
     ChunkerCapability("langchain_recursive", "app.rag.chunking.strategies.recursive", "LangChainRecursiveChunker"),
     ChunkerCapability("langchain_token", "app.rag.chunking.strategies.token", "LangChainTokenChunker"),
     ChunkerCapability("pdf_layout", "app.rag.chunking.strategies.pdf_layout", "PDFLayoutChunker"),
@@ -36,7 +38,9 @@ CHUNKER_CAPABILITIES = (
     ChunkerCapability("markdown_header", "app.rag.chunking.strategies.markdown", "MarkdownHeaderChunker"),
     ChunkerCapability("markdown_outline", "app.rag.chunking.strategies.markdown_outline", "MarkdownOutlineChunker"),
     ChunkerCapability("markdown_aware", "app.rag.chunking.strategies.markdown", "MarkdownAwareChunker"),
-    ChunkerCapability("markdown_hierarchy", "app.rag.chunking.strategies.markdown_hierarchy", "MarkdownHierarchyChunker"),
+    ChunkerCapability(
+        "markdown_hierarchy", "app.rag.chunking.strategies.markdown_hierarchy", "MarkdownHierarchyChunker"
+    ),
     ChunkerCapability("markdown", "app.rag.chunking.strategies.markdown", "MarkdownHeaderChunker"),
     ChunkerCapability("text_hierarchy", "app.rag.chunking.strategies.text_hierarchy", "TextHierarchyChunker"),
     ChunkerCapability("json", "app.rag.chunking.strategies.json_code", "JSONChunker"),
@@ -46,7 +50,9 @@ CHUNKER_CAPABILITIES = (
     ChunkerCapability("transcript", "app.rag.chunking.strategies.transcript", "TranscriptChunker"),
     ChunkerCapability("qa_pairs", "app.rag.chunking.strategies.qa_pairs", "QAPairsChunker"),
     ChunkerCapability("raptor", "app.rag.chunking.strategies.raptor", "RaptorChunker", experimental=True),
-    ChunkerCapability("proposition", "app.rag.chunking.strategies.proposition", "PropositionChunker", experimental=True),
+    ChunkerCapability(
+        "proposition", "app.rag.chunking.strategies.proposition", "PropositionChunker", experimental=True
+    ),
     ChunkerCapability("paper", "app.rag.chunking.strategies.paper", "PaperChunker"),
     ChunkerCapability("book_structured", "app.rag.chunking.strategies.book_structured", "BookStructuredChunker"),
     ChunkerCapability("laws_structured", "app.rag.chunking.strategies.laws_structured", "LawsStructuredChunker"),
@@ -78,7 +84,9 @@ CHUNKER_CAPABILITIES = (
     ChunkerCapability("api_reference", "app.rag.chunking.strategies.api_reference", "APIReferenceChunker"),
     ChunkerCapability("diff_patch", "app.rag.chunking.strategies.diff_patch", "DiffPatchChunker"),
     ChunkerCapability("kv_config", "app.rag.chunking.strategies.kv_config", "KVConfigChunker"),
-    ChunkerCapability("late_chunking", "app.rag.chunking.strategies.late_chunking", "LateChunkingChunker", experimental=True),
+    ChunkerCapability(
+        "late_chunking", "app.rag.chunking.strategies.late_chunking", "LateChunkingChunker", experimental=True
+    ),
     ChunkerCapability(
         "late_chunking_jina",
         "app.rag.chunking.strategies.late_chunking_jina",
@@ -349,9 +357,7 @@ CHUNKER_STRATEGY_ALIASES = {
 OPTIONAL_DEPENDENCY_STRATEGIES = frozenset(
     item.strategy_name for item in CHUNKER_CAPABILITIES if item.optional_dependency
 )
-EXPERIMENTAL_STRATEGIES = frozenset(
-    item.strategy_name for item in CHUNKER_CAPABILITIES if item.experimental
-)
+EXPERIMENTAL_STRATEGIES = frozenset(item.strategy_name for item in CHUNKER_CAPABILITIES if item.experimental)
 
 _CLASS_EXPORTS_UNORDERED: dict[str, tuple[str, str]] = {}
 for item in CHUNKER_CAPABILITIES:
@@ -442,9 +448,7 @@ _CLASS_EXPORT_ORDER = [
     "TerraformPlanChunker",
 ]
 
-CHUNKER_CLASS_EXPORTS = {
-    class_name: _CLASS_EXPORTS_UNORDERED[class_name] for class_name in _CLASS_EXPORT_ORDER
-}
+CHUNKER_CLASS_EXPORTS = {class_name: _CLASS_EXPORTS_UNORDERED[class_name] for class_name in _CLASS_EXPORT_ORDER}
 
 __all__ = [
     "CHUNKER_CAPABILITIES",

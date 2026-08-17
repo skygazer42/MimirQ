@@ -1,4 +1,3 @@
-
 from typing import Any, Callable, Mapping, Sequence
 
 from app.rag.core.logging import get_logger
@@ -64,7 +63,9 @@ def verify_out_of_scope_query(
     l3_hyde_query = _safe_str(hyde_generate(query)) if enable_hyde else None
     hyde_hits = list(vector_search(l3_hyde_query or "")) if enable_hyde and l3_hyde_query else []
     hyde_top1 = _best_score(hyde_hits) if enable_hyde and l3_hyde_query else None
-    l3_hyde_hit = None if not enable_hyde else bool(hyde_top1 is not None and hyde_top1 >= float(hyde_similarity_threshold))
+    l3_hyde_hit = (
+        None if not enable_hyde else bool(hyde_top1 is not None and hyde_top1 >= float(hyde_similarity_threshold))
+    )
 
     verdict = "out_of_scope"
     if l1_keyword_hit:

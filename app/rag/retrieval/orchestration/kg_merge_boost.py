@@ -104,7 +104,9 @@ def _merge_kg_metadata_into_main(main_doc: Document, kg_doc: Document) -> Docume
     _merge_optional_int(main_meta, kg_meta, key="kg_shared_events", reducer=max)
 
     if "kg_evidence_anchored" in kg_meta:
-        main_meta["kg_evidence_anchored"] = bool(main_meta.get("kg_evidence_anchored") or kg_meta.get("kg_evidence_anchored"))
+        main_meta["kg_evidence_anchored"] = bool(
+            main_meta.get("kg_evidence_anchored") or kg_meta.get("kg_evidence_anchored")
+        )
 
     main_meta["kg_duplicate_candidate"] = True
     return Document(
@@ -213,7 +215,7 @@ def _fetch_document_chunks_for_kg_injection(
             .all()
         )
     except Exception as exc:
-        _log_orchestrator_fallback('_fetch_document_chunks_for_kg_injection', exc)
+        _log_orchestrator_fallback("_fetch_document_chunks_for_kg_injection", exc)
         return []
 
 
@@ -228,7 +230,9 @@ def _kg_chunk_boost_meta(*, enabled: bool, weight: float, max_promoted: int) -> 
     }
 
 
-def _kg_chunk_boost_disabled_reason(*, enabled: bool, docs: list[Document], weight: float, max_promoted: int) -> str | None:
+def _kg_chunk_boost_disabled_reason(
+    *, enabled: bool, docs: list[Document], weight: float, max_promoted: int
+) -> str | None:
     if enabled and docs and weight > 0.0 and max_promoted > 0:
         return None
     if not enabled:

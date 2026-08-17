@@ -46,7 +46,9 @@ def test_document_index_channels_migration_applies_table_and_indexes(monkeypatch
         lambda name, **kwargs: operations.append(("drop_index", name, [])),
         raising=False,
     )
-    monkeypatch.setattr(migration.op, "drop_table", lambda name: operations.append(("drop_table", name, [])), raising=False)
+    monkeypatch.setattr(
+        migration.op, "drop_table", lambda name: operations.append(("drop_table", name, [])), raising=False
+    )
 
     migration.upgrade()
     migration.downgrade()

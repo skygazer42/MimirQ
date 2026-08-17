@@ -2,6 +2,7 @@
 Global HTTP client pool (sync + async).
 Provides unified httpx client configs for external API calls.
 """
+
 import asyncio
 import contextlib
 import logging
@@ -326,7 +327,9 @@ class HTTPClientPool:
         client = await (self.get_external_client() if use_external_client else self.get_client())
         last_exception = None
 
-        max_retries = int(max_retries if max_retries is not None else getattr(settings, "HTTP_CLIENT_RETRY_MAX_RETRIES", 3))
+        max_retries = int(
+            max_retries if max_retries is not None else getattr(settings, "HTTP_CLIENT_RETRY_MAX_RETRIES", 3)
+        )
         retry_delay = float(
             retry_delay if retry_delay is not None else getattr(settings, "HTTP_CLIENT_RETRY_INITIAL_DELAY_SEC", 1.0)
         )

@@ -1,4 +1,3 @@
-
 import uuid
 from typing import Annotated, Any
 from uuid import UUID
@@ -88,7 +87,9 @@ def _sanitize_timeline_value(value: Any, *, depth: int) -> Any:
     return _TIMELINE_VALUE_SKIPPED
 
 
-@router.get("/{document_id}/timeline", response_model=DocumentTimelineResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/{document_id}/timeline", response_model=DocumentTimelineResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def get_document_timeline(
     document_id: uuid.UUID,
     limit: Annotated[int, Query(ge=1, le=200)] = 200,
@@ -100,11 +101,7 @@ def get_document_timeline(
     """User-facing document timeline (audit logs + synthetic document state events)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    document = (
-        db.query(DBDocument)
-        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-        .first()
-    )
+    document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
         raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 

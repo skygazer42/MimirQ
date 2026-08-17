@@ -1,4 +1,3 @@
-
 from typing import Any
 
 _SCHEMA = "mimirq.poc.latency_decomposer.v1"
@@ -67,7 +66,9 @@ def decompose_latency_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
     total = max(1, len(out_rows))
     summary = {
         "avg_wait_in_queue_ms": round(sum(row["wait_in_queue_ms"] for row in out_rows) / total, 2) if out_rows else 0.0,
-        "avg_active_inference_ms": round(sum(row["active_inference_ms"] for row in out_rows) / total, 2) if out_rows else 0.0,
+        "avg_active_inference_ms": round(sum(row["active_inference_ms"] for row in out_rows) / total, 2)
+        if out_rows
+        else 0.0,
         "concurrency_issue_count": sum(1 for row in out_rows if row["bottleneck"] == "concurrency_issue"),
         "hardware_or_model_issue_count": sum(1 for row in out_rows if row["bottleneck"] == "hardware_or_model_issue"),
         "balanced_count": sum(1 for row in out_rows if row["bottleneck"] == "balanced"),

@@ -12,7 +12,6 @@ Security posture:
 - Best-effort fail-open: cache failures never break retrieval.
 """
 
-
 import hashlib
 import json
 import time
@@ -72,7 +71,10 @@ def _get_adapter():  # noqa: ANN202
     global _adapter
     if _adapter is not None:
         return _adapter
-    name = str(getattr(settings, "SEMANTIC_CACHE_COLLECTION_NAME", "semantic_cache") or "semantic_cache").strip() or "semantic_cache"
+    name = (
+        str(getattr(settings, "SEMANTIC_CACHE_COLLECTION_NAME", "semantic_cache") or "semantic_cache").strip()
+        or "semantic_cache"
+    )
     _adapter = get_milvus_adapter(resolve_collection_name(name))
     return _adapter
 
@@ -218,7 +220,9 @@ def _semantic_cache_embedding_or_skip(meta: dict[str, Any], *, query: str) -> li
         return None
 
 
-def _semantic_cache_search_results_or_skip(meta: dict[str, Any], *, tenant_id: str, vector: list[float], top_k: int) -> tuple[Any, list[dict[str, Any]]] | None:
+def _semantic_cache_search_results_or_skip(
+    meta: dict[str, Any], *, tenant_id: str, vector: list[float], top_k: int
+) -> tuple[Any, list[dict[str, Any]]] | None:
     try:
         started_at = time.perf_counter()
         adapter = _get_adapter()
@@ -538,7 +542,9 @@ def set_cached_semantic_payload(
         return False
 
 
-def _semantic_cache_retention_limits(*, max_delete: int, max_scan: int | None, now_epoch: int | None) -> tuple[int, int, int]:
+def _semantic_cache_retention_limits(
+    *, max_delete: int, max_scan: int | None, now_epoch: int | None
+) -> tuple[int, int, int]:
     now_epoch_i = int(now_epoch or time.time())
     try:
         max_delete_i = max(1, int(max_delete or 0))
@@ -551,7 +557,9 @@ def _semantic_cache_retention_limits(*, max_delete: int, max_scan: int | None, n
     return now_epoch_i, max_delete_i, max_scan_i
 
 
-def _semantic_cache_retention_summary(*, tenant_id: str | None, dry_run: bool, max_delete: int, max_scan: int, now_epoch: int) -> dict[str, Any]:
+def _semantic_cache_retention_summary(
+    *, tenant_id: str | None, dry_run: bool, max_delete: int, max_scan: int, now_epoch: int
+) -> dict[str, Any]:
     return {
         "job": "semantic-cache",
         "tenant_id": tenant_id,
@@ -719,7 +727,9 @@ def run_semantic_cache_retention(
         summary["errors"].append(str(exc)[:200])
 
     summary["exhausted"] = bool(exhausted)
-    summary["scan_limit_reached"] = bool((not exhausted) and summary["scanned"] >= max_scan_i and len(delete_ids) < max_delete_i)
+    summary["scan_limit_reached"] = bool(
+        (not exhausted) and summary["scanned"] >= max_scan_i and len(delete_ids) < max_delete_i
+    )
     summary["eligible"] = len(delete_ids)
     if (not dry_run) and delete_ids and (not summary["failed"]):
         try:

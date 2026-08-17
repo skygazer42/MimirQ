@@ -10,7 +10,6 @@ This is intentionally "overlay-first":
   can treat them as a tree (similar to KohakuRAG's online behavior).
 """
 
-
 from dataclasses import dataclass
 
 from langchain_core.documents import Document
@@ -87,7 +86,9 @@ def _header_path_resolver(text: str):
     return resolve
 
 
-def _paragraph_metadata(base_meta: dict, paragraph: dict, *, start: int, end: int, header_path: str | None, chunk_index: int) -> dict:
+def _paragraph_metadata(
+    base_meta: dict, paragraph: dict, *, start: int, end: int, header_path: str | None, chunk_index: int
+) -> dict:
     meta = dict(base_meta)
     meta.update(
         {

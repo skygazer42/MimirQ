@@ -29,10 +29,10 @@ class MarkItDownParser:
                 )
                 credential_cls = getattr(credentials_mod, "AzureKeyCredential", None)
                 if credential_cls is None:
-                    raise RuntimeError("azure.core.credentials.AzureKeyCredential missing (unsupported azure-core version)")
-                converter_kwargs["docintel_credential"] = credential_cls(
-                    settings.MARKITDOWN_DOCINTEL_KEY
-                )
+                    raise RuntimeError(
+                        "azure.core.credentials.AzureKeyCredential missing (unsupported azure-core version)"
+                    )
+                converter_kwargs["docintel_credential"] = credential_cls(settings.MARKITDOWN_DOCINTEL_KEY)
 
         self._converter = MarkItDown(**converter_kwargs)
 

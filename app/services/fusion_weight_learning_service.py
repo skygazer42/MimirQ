@@ -1,4 +1,3 @@
-
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -31,7 +30,9 @@ def _extract_trace_payload(row: Mapping[str, Any]) -> tuple[dict[str, Any] | Non
     return None, ""
 
 
-def _iter_filtered_traces(rows: Sequence[Mapping[str, Any]], *, tenant_id: str | None) -> list[tuple[dict[str, Any], Mapping[str, Any], str]]:
+def _iter_filtered_traces(
+    rows: Sequence[Mapping[str, Any]], *, tenant_id: str | None
+) -> list[tuple[dict[str, Any], Mapping[str, Any], str]]:
     out: list[tuple[dict[str, Any], Mapping[str, Any], str]] = []
     tenant_norm = _normalize_tenant_id(tenant_id)
     for row in rows or []:

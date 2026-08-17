@@ -2,7 +2,6 @@
 # ruff: noqa: E402, I001
 """Verify keyword-mode BM25 fallback on xlsx corpora against a live API."""
 
-
 import argparse
 import json
 import shutil
@@ -66,8 +65,14 @@ def evaluate_keyword_case(
     chat_ids = citation_document_ids(chat_body)
     retrieve_debug = keyword_metrics(retrieve_body)
     channels = retrieve_debug.get("channels") if isinstance(retrieve_debug.get("channels"), dict) else {}
-    vector_box = channels.get("vector") if isinstance(channels, dict) and isinstance(channels.get("vector"), dict) else {}
-    lexical_box = channels.get("lexical_db") if isinstance(channels, dict) and isinstance(channels.get("lexical_db"), dict) else {}
+    vector_box = (
+        channels.get("vector") if isinstance(channels, dict) and isinstance(channels.get("vector"), dict) else {}
+    )
+    lexical_box = (
+        channels.get("lexical_db")
+        if isinstance(channels, dict) and isinstance(channels.get("lexical_db"), dict)
+        else {}
+    )
     keyword_strategy = (
         channels.get("keyword_strategy")
         if isinstance(channels, dict) and isinstance(channels.get("keyword_strategy"), dict)
@@ -90,9 +95,7 @@ def evaluate_keyword_case(
     if bool(keyword_strategy.get("bm25_used")) is not True:
         failures.append(f"{name}: bm25_used expected=true actual={keyword_strategy.get('bm25_used')!r}")
     if bool(keyword_strategy.get("lexical_db_used")) is not False:
-        failures.append(
-            f"{name}: lexical_db_used expected=false actual={keyword_strategy.get('lexical_db_used')!r}"
-        )
+        failures.append(f"{name}: lexical_db_used expected=false actual={keyword_strategy.get('lexical_db_used')!r}")
     if int(lexical_box.get("candidates") or 0) != 0:
         failures.append(f"{name}: lexical_candidates expected=0 actual={int(lexical_box.get('candidates') or 0)}")
 
@@ -266,7 +269,11 @@ def main() -> int:
             retrieve_resp = api.json(
                 "POST",
                 "/api/v1/rag/retrieve-preview",
-                payload={"query": "In the Excel budget sheet, what status belongs to APAC?", "dataset_id": dataset_id, "rag_config": rag_config},
+                payload={
+                    "query": "In the Excel budget sheet, what status belongs to APAC?",
+                    "dataset_id": dataset_id,
+                    "rag_config": rag_config,
+                },
             )
             record_step(steps, f"retrieve:{scenario['name']}", retrieve_resp)
             ensure_success(f"retrieve:{scenario['name']}", retrieve_resp)

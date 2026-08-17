@@ -11,7 +11,6 @@ be used by:
 - retention job runners (cron / Kubernetes CronJob)
 """
 
-
 from datetime import datetime
 from uuid import UUID
 
@@ -86,7 +85,8 @@ def purge_regression_run_rows(
     max_delete_i = min(max_delete_i, 5000)
 
     run_ids: list[UUID] = [
-        row[0] for row in _base_query(db, tenant_id=tenant_id, cutoff=cutoff, dataset_id=dataset_id).limit(max_delete_i).all()
+        row[0]
+        for row in _base_query(db, tenant_id=tenant_id, cutoff=cutoff, dataset_id=dataset_id).limit(max_delete_i).all()
         if row and row[0] is not None
     ]
     if not run_ids:

@@ -41,7 +41,11 @@ def main() -> int:
     }
     (out_dir / "report.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     (out_dir / "report.md").write_text(_to_markdown(results), encoding="utf-8")
-    print(json.dumps({"output_dir": str(out_dir.resolve()), "failures": payload["failures"]}, ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {"output_dir": str(out_dir.resolve()), "failures": payload["failures"]}, ensure_ascii=False, indent=2
+        )
+    )
     return 0 if not payload["failures"] else 1
 
 

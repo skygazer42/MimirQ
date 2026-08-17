@@ -1,4 +1,3 @@
-
 from typing import Any
 
 
@@ -10,7 +9,9 @@ def evaluate_retrieval_metrics(
     recall_k: int,
 ) -> dict[str, Any]:
     gold = [str(item).strip() for item in gold_chunk_ids or [] if str(item or "").strip()]
-    retrieved = [str(item).strip() for item in retrieved_chunk_ids or [] if str(item or "").strip()][: max(1, int(recall_k or 1))]
+    retrieved = [str(item).strip() for item in retrieved_chunk_ids or [] if str(item or "").strip()][
+        : max(1, int(recall_k or 1))
+    ]
     cited = [str(item).strip() for item in cited_chunk_ids or [] if str(item or "").strip()]
 
     if not gold:

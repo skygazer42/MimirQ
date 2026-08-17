@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Run or print the repeatable RAG pipeline quality/performance gate suite."""
 
-
 import argparse
 import json
 import subprocess
@@ -285,7 +284,11 @@ def build_phases(args: argparse.Namespace) -> list[Phase]:
                     str(args.deepdoc_concurrency),
                     "--out",
                     str(out_dir / "deepdoc-quality-gate.json"),
-                    *(["--thresholds", str(args.deepdoc_thresholds)] if str(args.deepdoc_thresholds or "").strip() else []),
+                    *(
+                        ["--thresholds", str(args.deepdoc_thresholds)]
+                        if str(args.deepdoc_thresholds or "").strip()
+                        else []
+                    ),
                 ],
             )
         )
@@ -364,7 +367,9 @@ def run_phases(phases: list[Phase], *, out_dir: Path) -> int:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run", action="store_true", help="Actually run phases. Without this flag the suite prints JSON only.")
+    parser.add_argument(
+        "--run", action="store_true", help="Actually run phases. Without this flag the suite prints JSON only."
+    )
     parser.add_argument("--profile", choices=["smoke", "server", "full"], default="smoke")
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
@@ -400,7 +405,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     phases = build_phases(args)
     if not args.run:
-        print(json.dumps({"schema": "mimirq.rag_pipeline_quality_suite.plan.v1", "phases": [_phase_to_dict(p) for p in phases]}, ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                {"schema": "mimirq.rag_pipeline_quality_suite.plan.v1", "phases": [_phase_to_dict(p) for p in phases]},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         return 0
     return run_phases(phases, out_dir=Path(str(args.output_dir)))
 

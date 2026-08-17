@@ -125,8 +125,14 @@ def main(argv: list[str] | None = None) -> int:
         "hard_negatives_sha256": (_sha256_file(hard_neg_jsonl) if hard_neg_jsonl.exists() else None),
     }
 
-    candidate_model_path = Path(str(args.candidate_model)).expanduser().resolve() if str(args.candidate_model or "").strip() else None
-    candidate_manifest_path = Path(str(args.candidate_manifest)).expanduser().resolve() if str(args.candidate_manifest or "").strip() else None
+    candidate_model_path = (
+        Path(str(args.candidate_model)).expanduser().resolve() if str(args.candidate_model or "").strip() else None
+    )
+    candidate_manifest_path = (
+        Path(str(args.candidate_manifest)).expanduser().resolve()
+        if str(args.candidate_manifest or "").strip()
+        else None
+    )
     if candidate_model_path is not None and candidate_model_path.exists():
         lineage["candidate_model_sha256"] = _sha256_file(candidate_model_path)
         lineage["candidate_model_path"] = str(candidate_model_path)

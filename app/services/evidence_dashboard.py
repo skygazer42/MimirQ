@@ -1,4 +1,3 @@
-
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -177,11 +176,7 @@ def _top_n_buckets(
     """
     buckets: {bucket_key: (item_ids, ref_count)}
     """
-    items = [
-        (k, len(v[0]), int(v[1]))
-        for k, v in (buckets or {}).items()
-        if k is not None
-    ]
+    items = [(k, len(v[0]), int(v[1])) for k, v in (buckets or {}).items() if k is not None]
     items.sort(key=lambda x: (-x[2], -x[1], str(x[0])))
 
     out: list[CoverageBucket] = []
@@ -221,7 +216,9 @@ def _coverage_dimensions(
     file_type = _norm_bucket(document.get("file_type") or "unknown")
     metadata = document.get("metadata") if isinstance(document.get("metadata"), dict) else {}
     language = _norm_bucket(extract_language_bucket(metadata) or "unknown")
-    quality_bucket = _norm_bucket(quality_bucket_from_governance_quality(metadata.get("governance_quality")) or "unknown")
+    quality_bucket = _norm_bucket(
+        quality_bucket_from_governance_quality(metadata.get("governance_quality")) or "unknown"
+    )
     channel = hit_by_chunk.get(chunk_id) or "unknown"
     return file_type, language, quality_bucket, channel
 
@@ -335,12 +332,22 @@ def compute_suite_coverage(
             )
 
     out: dict[str, Any] = {
-        "language": [{"key": b.key, "items": b.items, "references": b.references} for b in _top_n_buckets(buckets["language"], top_n=top_n)],
-        "file_type": [{"key": b.key, "items": b.items, "references": b.references} for b in _top_n_buckets(buckets["file_type"], top_n=top_n)],
-        "quality_bucket": [
-            {"key": b.key, "items": b.items, "references": b.references} for b in _top_n_buckets(buckets["quality_bucket"], top_n=top_n)
+        "language": [
+            {"key": b.key, "items": b.items, "references": b.references}
+            for b in _top_n_buckets(buckets["language"], top_n=top_n)
         ],
-        "channel": [{"key": b.key, "items": b.items, "references": b.references} for b in _top_n_buckets(buckets["channel"], top_n=top_n)],
+        "file_type": [
+            {"key": b.key, "items": b.items, "references": b.references}
+            for b in _top_n_buckets(buckets["file_type"], top_n=top_n)
+        ],
+        "quality_bucket": [
+            {"key": b.key, "items": b.items, "references": b.references}
+            for b in _top_n_buckets(buckets["quality_bucket"], top_n=top_n)
+        ],
+        "channel": [
+            {"key": b.key, "items": b.items, "references": b.references}
+            for b in _top_n_buckets(buckets["channel"], top_n=top_n)
+        ],
     }
 
     # Heatmap: pick top-N langs and file types by ref volume to keep payload bounded.
@@ -356,9 +363,7 @@ def compute_suite_coverage(
             row.append(int(len(cell_items.get((ly, fx), set()))))
         z.append(row)
 
-    out["heatmaps"] = {
-        "language_x_file_type": {"x": x, "y": y, "z": z, "metric": "items"}
-    }
+    out["heatmaps"] = {"language_x_file_type": {"x": x, "y": y, "z": z, "metric": "items"}}
     return out
 
 

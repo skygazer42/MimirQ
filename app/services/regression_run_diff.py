@@ -4,7 +4,6 @@ Regression run diff helpers (pure-ish functions).
 Goal: compare two RAGAS regression run summaries and return objective deltas for sharing.
 """
 
-
 import math
 from datetime import UTC, datetime
 from typing import Any
@@ -226,7 +225,12 @@ def diff_regression_run_summaries(
             )
 
         # Sort by bucket size, then key.
-        rows.sort(key=lambda r: (-max(int(r.get("items_before") or 0), int(r.get("items_after") or 0)), str(r.get("key") or "")))
+        rows.sort(
+            key=lambda r: (
+                -max(int(r.get("items_before") or 0), int(r.get("items_after") or 0)),
+                str(r.get("key") or ""),
+            )
+        )
         if max_slice_buckets > 0 and len(rows) > max_slice_buckets:
             rows = rows[:max_slice_buckets]
 

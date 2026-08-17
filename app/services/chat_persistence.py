@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -161,7 +160,9 @@ def _online_eval_retrieval_mode(metrics: dict[str, Any], retrieval_mode_default:
     return str(metrics.get("retrieval_mode") or retrieval_mode_default or "") or None
 
 
-def _resolve_singleflight_payload(options: ChatResponseFinalizationInput, metrics_out: dict[str, Any]) -> dict[str, Any]:
+def _resolve_singleflight_payload(
+    options: ChatResponseFinalizationInput, metrics_out: dict[str, Any]
+) -> dict[str, Any]:
     return {
         "content": options.full_response,
         "citations": options.citations,
@@ -170,7 +171,9 @@ def _resolve_singleflight_payload(options: ChatResponseFinalizationInput, metric
     }
 
 
-def _chat_turn_persist_input(options: ChatResponseFinalizationInput, metrics_out: dict[str, Any]) -> ChatTurnPersistInput:
+def _chat_turn_persist_input(
+    options: ChatResponseFinalizationInput, metrics_out: dict[str, Any]
+) -> ChatTurnPersistInput:
     return ChatTurnPersistInput(
         tenant_id=options.tenant_id,
         conversation_id=options.conversation_id,
@@ -222,9 +225,7 @@ def _log_extractive_fallback_rag_trace(
     if not _is_extractive_fallback_trace(metrics):
         return
 
-    retrieval_mode_used = str(
-        metrics.get("retrieval_mode") or retrieval_mode_default or ""
-    ).strip()
+    retrieval_mode_used = str(metrics.get("retrieval_mode") or retrieval_mode_default or "").strip()
     retrieval_elapsed_sec = _retrieval_elapsed_seconds(metrics)
     errors = _compact_retrieval_errors(metrics)
 

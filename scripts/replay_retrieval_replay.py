@@ -11,7 +11,6 @@ Outputs:
 - Optional JSON report for CI artifacts
 """
 
-
 import argparse
 import json
 import sys
@@ -204,7 +203,13 @@ def main(argv: list[str] | None = None) -> int:
             mismatches.append(mismatch)
 
     elapsed = round(float(time.monotonic() - t0), 3)
-    report = {"schema": "mimirq.retrieval_replay_report.v1", "dataset_id": str(dataset_id), "totals": totals, "elapsed_sec": elapsed, "mismatches": mismatches[:50]}
+    report = {
+        "schema": "mimirq.retrieval_replay_report.v1",
+        "dataset_id": str(dataset_id),
+        "totals": totals,
+        "elapsed_sec": elapsed,
+        "mismatches": mismatches[:50],
+    }
 
     if args.out_json:
         Path(args.out_json).write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -228,4 +233,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

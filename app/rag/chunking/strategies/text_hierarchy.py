@@ -13,7 +13,6 @@ This is designed to work with the retrieval-time hierarchy overlay:
 It intentionally does NOT attempt to build a full offline tree index.
 """
 
-
 from typing import Any
 
 from langchain_core.documents import Document
@@ -46,7 +45,9 @@ def _group_sentences_by_parent(sentences: list[dict[str, Any]]) -> dict[str, lis
     return grouped
 
 
-def _build_paragraph_document(base_meta: dict[str, Any], paragraph: dict[str, Any], chunk_index: int) -> Document | None:
+def _build_paragraph_document(
+    base_meta: dict[str, Any], paragraph: dict[str, Any], chunk_index: int
+) -> Document | None:
     paragraph_text = str(paragraph.get("text") or "")
     if not paragraph_text.strip():
         return None

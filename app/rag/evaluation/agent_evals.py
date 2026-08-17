@@ -18,7 +18,6 @@ Usage:
     )
 """
 
-
 import asyncio
 import json
 from abc import ABC, abstractmethod
@@ -39,6 +38,7 @@ AGENT_EVALS_ENABLED = getattr(settings, "AGENT_EVALS_ENABLED", False)
 
 class MetricType(str, Enum):
     """Types of evaluation metrics."""
+
     FAITHFULNESS = "faithfulness"
     RELEVANCE = "relevance"
     CONTEXT_PRECISION = "context_precision"
@@ -52,6 +52,7 @@ class MetricType(str, Enum):
 @dataclass
 class EvaluationScore:
     """Score for a single metric."""
+
     metric: MetricType
     score: float  # 0.0 to 1.0
     explanation: str = ""
@@ -66,6 +67,7 @@ class EvaluationScore:
 @dataclass
 class EvaluationResult:
     """Complete evaluation result."""
+
     question: str
     answer: str
     scores: list[EvaluationScore] = field(default_factory=list)
@@ -286,7 +288,26 @@ class RelevanceEvaluator(BaseEvaluator):
         a_words = set(answer.lower().split())
 
         # Remove common words
-        common = {"the", "a", "an", "is", "are", "was", "were", "what", "how", "why", "when", "where", "who", "的", "是", "在", "有", "和"}
+        common = {
+            "the",
+            "a",
+            "an",
+            "is",
+            "are",
+            "was",
+            "were",
+            "what",
+            "how",
+            "why",
+            "when",
+            "where",
+            "who",
+            "的",
+            "是",
+            "在",
+            "有",
+            "和",
+        }
         q_words -= common
         a_words -= common
 
@@ -498,6 +519,7 @@ Respond with JSON: {{"score": <float>, "explanation": "<string>"}}
 @dataclass
 class TrajectoryStep:
     """A step in an agent trajectory."""
+
     action: str
     observation: str
     timestamp: str = ""
@@ -539,7 +561,10 @@ class TrajectoryEvaluator(BaseEvaluator):
         return EvaluationScore(
             metric=self.metric,
             score=overall,
-            explanation=f"Efficiency: {efficiency_score:.2f}, Coherence: {coherence_score:.2f}, Completeness: {completeness_score:.2f}",
+            explanation=(
+                f"Efficiency: {efficiency_score:.2f}, Coherence: {coherence_score:.2f}, "
+                f"Completeness: {completeness_score:.2f}"
+            ),
             details={
                 "efficiency": efficiency_score,
                 "coherence": coherence_score,
@@ -586,7 +611,7 @@ class TrajectoryEvaluator(BaseEvaluator):
         addressed = set()
         for step in trajectory:
             step_words = set((step.action + " " + step.observation).lower().split())
-            addressed |= (q_words & step_words)
+            addressed |= q_words & step_words
 
         return len(addressed) / len(q_words) if q_words else 0
 

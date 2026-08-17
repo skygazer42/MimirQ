@@ -1,4 +1,3 @@
-
 import argparse
 import json
 from collections import Counter
@@ -91,7 +90,9 @@ def export_diagnostics(*, metrics_rows: list[dict[str, Any]], feedback_rows: lis
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Export a redacted diagnostics summary from metrics and feedback artifacts.")
+    parser = argparse.ArgumentParser(
+        description="Export a redacted diagnostics summary from metrics and feedback artifacts."
+    )
     parser.add_argument("--metrics-jsonl", required=True, help="Path to metrics JSONL file.")
     parser.add_argument("--feedback-json", required=True, help="Path to feedback JSON or JSONL file.")
     parser.add_argument("--out", required=True, help="Output JSON path.")

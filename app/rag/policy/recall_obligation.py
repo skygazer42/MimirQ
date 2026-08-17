@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from app.rag.policy.must_recall import normalize_source_keys
@@ -93,8 +92,12 @@ def build_recall_obligation_ledger(
         0,
         _to_int((anchor_eval or {}).get("missing_any"), default=0) if isinstance(anchor_eval, dict) else 0,
     )
-    anchor_considered = _to_int((anchor_eval or {}).get("considered_citations"), default=0) if isinstance(anchor_eval, dict) else 0
-    anchor_skipped = _to_int((anchor_eval or {}).get("skipped_citations"), default=0) if isinstance(anchor_eval, dict) else 0
+    anchor_considered = (
+        _to_int((anchor_eval or {}).get("considered_citations"), default=0) if isinstance(anchor_eval, dict) else 0
+    )
+    anchor_skipped = (
+        _to_int((anchor_eval or {}).get("skipped_citations"), default=0) if isinstance(anchor_eval, dict) else 0
+    )
     anchor_skipped_by_role = (
         dict((anchor_eval or {}).get("skipped_by_role") or {})
         if isinstance(anchor_eval, dict) and isinstance((anchor_eval or {}).get("skipped_by_role"), dict)
@@ -184,11 +187,9 @@ def build_must_recall_proof(
         "required_source_keys": required_source_keys_norm,
         "matched_source_keys": matched_source_keys,
         "matched_by_required_source_key": dict(matched_by_required),
-        "missing_source_keys": [
-            str(v)
-            for v in (source_eval_obj.get("missing_source_keys") or [])
-            if str(v).strip()
-        ][:100],
+        "missing_source_keys": [str(v) for v in (source_eval_obj.get("missing_source_keys") or []) if str(v).strip()][
+            :100
+        ],
         "required_anchor_fields": normalize_source_keys(list(required_anchor_fields or [])),
         "anchor_missing_any": max(0, _to_int(anchor_eval_obj.get("missing_any"), default=0)),
         "anchor_missing_counts": (

@@ -87,7 +87,9 @@ def _descriptor_payload(descriptor: PipelinePluginDescriptor) -> dict[str, Any]:
 def _summarize_stage_report(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         return {"passed": False, "input_count": 0, "output_count": 0, "output_chars": 0, "validation_ok": False}
-    validation = raw.get("kg_validation") if isinstance(raw.get("kg_validation"), dict) else raw.get("metadata_validation")
+    validation = (
+        raw.get("kg_validation") if isinstance(raw.get("kg_validation"), dict) else raw.get("metadata_validation")
+    )
     return {
         "passed": raw.get("passed") is True,
         "input_count": int(raw.get("input_count") or 0),
@@ -128,7 +130,10 @@ def _chunk_readiness_details(chunk_summary: dict[str, Any]) -> dict[str, Any]:
     failed = [
         str(check.get("name"))
         for check in checks
-        if isinstance(check, dict) and check.get("required") is not False and check.get("passed") is not True and check.get("name")
+        if isinstance(check, dict)
+        and check.get("required") is not False
+        and check.get("passed") is not True
+        and check.get("name")
     ]
     errors: list[dict[str, str]] = []
     for check in checks:
@@ -299,8 +304,12 @@ def build_plugin_release_gate_report(
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run a generic MimirQ pipeline plugin release gate.")
-    parser.add_argument("--plugin-dir", required=True, help="Plugin package directory containing mimirq-plugin.json/yaml.")
-    parser.add_argument("--sample", required=True, dest="sample_path", help="JSON sample input: array or {documents:[...]}.")
+    parser.add_argument(
+        "--plugin-dir", required=True, help="Plugin package directory containing mimirq-plugin.json/yaml."
+    )
+    parser.add_argument(
+        "--sample", required=True, dest="sample_path", help="JSON sample input: array or {documents:[...]}."
+    )
     parser.add_argument(
         "--stage",
         action="append",

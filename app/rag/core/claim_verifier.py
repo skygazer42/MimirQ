@@ -1,4 +1,3 @@
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -6,7 +5,8 @@ from typing import Any
 _CLAIM_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]+|[\u4e00-\u9fff]{2,}|\d+(?:\.\d+)?")
 _NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
 _UNCERTAINTY_RE = re.compile(
-    r"(unable to answer|cannot determine|can't determine|insufficient evidence|not enough (?:info|information)|unknown|unsure|not sure|"
+    r"(unable to answer|cannot determine|can't determine|insufficient evidence|"
+    r"not enough (?:info|information)|unknown|unsure|not sure|"
     r"证据不足|材料不足|无法(确定|判断|回答)|不确定|未知)",
     flags=re.IGNORECASE,
 )

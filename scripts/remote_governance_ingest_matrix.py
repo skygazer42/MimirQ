@@ -9,7 +9,6 @@ This script validates governance behavior on real document ingestion paths:
 - quarantine behavior for low-signal documents
 """
 
-
 import argparse
 import json
 import sys
@@ -171,12 +170,7 @@ CASES: list[dict[str, Any]] = [
         "filename": "outline-only.md",
         "parser_backend": "basic",
         "chunk_strategy": "langchain_recursive",
-        "content": (
-            "# Executive Summary\n\n"
-            "## Agenda\n\n"
-            "## Risks\n\n"
-            "## Next Steps\n"
-        ),
+        "content": ("# Executive Summary\n\n## Agenda\n\n## Risks\n\n## Next Steps\n"),
         "pipeline": {
             "chunk_vector_enabled": False,
             "bm25_index_enabled": False,
@@ -267,11 +261,11 @@ def evaluate_case_expectations(
         if not metadata_has_nonempty_value(metadata, str(key)):
             failures.append(f"metadata missing non-empty {key}")
 
-    required_rule_packs = [str(item).strip().lower() for item in (case.get("required_rule_packs") or []) if str(item).strip()]
+    required_rule_packs = [
+        str(item).strip().lower() for item in (case.get("required_rule_packs") or []) if str(item).strip()
+    ]
     actual_rule_packs = {
-        str(item).strip().lower()
-        for item in (metadata.get("governance_rule_packs") or [])
-        if str(item).strip()
+        str(item).strip().lower() for item in (metadata.get("governance_rule_packs") or []) if str(item).strip()
     }
     for pack in required_rule_packs:
         if pack not in actual_rule_packs:
@@ -279,14 +273,20 @@ def evaluate_case_expectations(
 
     allowed_drop_reasons = [str(item).strip() for item in (case.get("allowed_drop_reasons") or []) if str(item).strip()]
     if allowed_drop_reasons:
-        actual_drop_reasons = metadata.get("governance_drop_reasons") if isinstance(metadata.get("governance_drop_reasons"), dict) else {}
+        actual_drop_reasons = (
+            metadata.get("governance_drop_reasons") if isinstance(metadata.get("governance_drop_reasons"), dict) else {}
+        )
         if not any(str(reason) in actual_drop_reasons for reason in allowed_drop_reasons):
             failures.append(f"drop_reasons missing one of {allowed_drop_reasons}")
 
     checks: list[tuple[str, str, list[str]]] = [
         ("parsed", normalize_search_text(parsed_text), [str(item) for item in (case.get("present_in_parsed") or [])]),
         ("chunks", normalize_search_text(chunk_text), [str(item) for item in (case.get("present_in_chunks") or [])]),
-        ("citations", normalize_search_text(citation_text), [str(item) for item in (case.get("present_in_citations") or [])]),
+        (
+            "citations",
+            normalize_search_text(citation_text),
+            [str(item) for item in (case.get("present_in_citations") or [])],
+        ),
     ]
     for label, haystack, needles in checks:
         for needle in needles:
@@ -296,7 +296,11 @@ def evaluate_case_expectations(
     anti_checks: list[tuple[str, str, list[str]]] = [
         ("parsed", normalize_search_text(parsed_text), [str(item) for item in (case.get("absent_in_parsed") or [])]),
         ("chunks", normalize_search_text(chunk_text), [str(item) for item in (case.get("absent_in_chunks") or [])]),
-        ("citations", normalize_search_text(citation_text), [str(item) for item in (case.get("absent_in_citations") or [])]),
+        (
+            "citations",
+            normalize_search_text(citation_text),
+            [str(item) for item in (case.get("absent_in_citations") or [])],
+        ),
     ]
     for label, haystack, needles in anti_checks:
         for needle in needles:

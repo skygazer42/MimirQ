@@ -1,4 +1,3 @@
-
 import json
 from dataclasses import replace
 from typing import Any, AsyncIterator, Callable, cast
@@ -592,9 +591,12 @@ async def stream_chat_sse_events(
     enable_structured_memory = bool(getattr(request, "enable_structured_memory", False))
 
     yield ": keepalive\n\n"
-    yield (
-        f"data: {json.dumps({'request_id': str(request_id), 'type': 'event', 'data': {'message': '开始处理…'}}, ensure_ascii=False)}\n\n"
-    )
+    start_event = {
+        "request_id": str(request_id),
+        "type": "event",
+        "data": {"message": "开始处理…"},
+    }
+    yield f"data: {json.dumps(start_event, ensure_ascii=False)}\n\n"
 
     stream_runtime = await prepare_stream_chat_runtime(
         db=db,

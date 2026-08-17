@@ -8,7 +8,6 @@ Targets documents where each event starts with a date (optionally time), e.g.:
 The chunker keeps whole events together and uses event-level overlap.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -168,7 +167,11 @@ class TimelineEventsChunker(BaseChunker):
             start_idx = 0
             while start_idx < len(events):
                 end_idx = _window_end_index(events=events, start_idx=start_idx, chunk_size=self.chunk_size)
-                out.append(_event_chunk_document(text=text, base_meta=base_meta, events=events, start_idx=start_idx, end_idx=end_idx))
+                out.append(
+                    _event_chunk_document(
+                        text=text, base_meta=base_meta, events=events, start_idx=start_idx, end_idx=end_idx
+                    )
+                )
                 start_idx = _next_window_start(
                     events=events,
                     start_idx=start_idx,

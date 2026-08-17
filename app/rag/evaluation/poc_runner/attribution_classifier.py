@@ -1,4 +1,3 @@
-
 from datetime import UTC, datetime
 from typing import Any, Callable
 
@@ -79,7 +78,9 @@ def heuristic_classify_feedback_record(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _build_llm_prompt(row: dict[str, Any]) -> str:
-    filenames = ", ".join(str(name or "").strip() for name in (row.get("final_context_filenames") or []) if str(name or "").strip())
+    filenames = ", ".join(
+        str(name or "").strip() for name in (row.get("final_context_filenames") or []) if str(name or "").strip()
+    )
     return (
         "Classify the root cause of this negative feedback into one of: "
         "retrieval_miss, generation_error, out_of_scope.\n"

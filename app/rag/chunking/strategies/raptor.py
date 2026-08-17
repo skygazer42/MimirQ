@@ -8,7 +8,6 @@ collapsed tree:
 - summary parent chunks (layer 1)
 """
 
-
 import re
 
 from langchain_core.documents import Document
@@ -132,14 +131,16 @@ class RaptorChunker(BaseChunker):
                 continue
 
             family_key = stable_hash(
-                f"raptor:{stable_hash(doc.page_content or '', length=None)}:{stable_hash(str(doc.metadata or {}), length=None)}",
+                f"raptor:{stable_hash(doc.page_content or '', length=None)}:"
+                f"{stable_hash(str(doc.metadata or {}), length=None)}",
                 length=24,
             )
             normalized_leafs: list[Document] = []
             for idx, leaf in enumerate(leafs):
                 meta = dict(leaf.metadata or {})
                 leaf_id = stable_hash(
-                    f"{family_key}:leaf:{idx}:{meta.get('start_char')}:{meta.get('end_char')}:{stable_hash(leaf.page_content or '', length=None)}",
+                    f"{family_key}:leaf:{idx}:{meta.get('start_char')}:{meta.get('end_char')}:"
+                    f"{stable_hash(leaf.page_content or '', length=None)}",
                     length=24,
                 )
                 meta.update(
@@ -167,10 +168,10 @@ class RaptorChunker(BaseChunker):
             for start, cluster in enumerate(clustered_leafs):
                 if not cluster:
                     continue
-                summary_id = stable_hash(
-                    f"{family_key}:summary:{start}:{','.join(str((item.metadata or {}).get('hierarchy_node_key') or '') for item in cluster)}",
-                    length=24,
+                cluster_node_keys = ",".join(
+                    str((item.metadata or {}).get("hierarchy_node_key") or "") for item in cluster
                 )
+                summary_id = stable_hash(f"{family_key}:summary:{start}:{cluster_node_keys}", length=24)
                 for leaf in cluster:
                     leaf_meta = dict(leaf.metadata or {})
                     leaf_meta["raptor_parent_id"] = summary_id
@@ -191,15 +192,21 @@ class RaptorChunker(BaseChunker):
                         "raptor_layer": 1,
                         "raptor_tree_mode": "collapsed",
                         "raptor_cluster_strategy": self.cluster_strategy,
-                        "raptor_child_ids": [str((item.metadata or {}).get("hierarchy_node_key") or "") for item in cluster],
+                        "raptor_child_ids": [
+                            str((item.metadata or {}).get("hierarchy_node_key") or "") for item in cluster
+                        ],
                         "start_char": first_meta.get("start_char"),
                         "end_char": last_meta.get("end_char"),
                     }
                 )
                 summaries.append(Document(page_content=self._summarize_cluster(cluster), metadata=summary_meta))
 
-            apply_sibling_hierarchy_links([d.metadata for d in normalized_leafs if isinstance(d.metadata, dict)], overwrite=True)
-            apply_sibling_hierarchy_links([d.metadata for d in summaries if isinstance(d.metadata, dict)], overwrite=True)
+            apply_sibling_hierarchy_links(
+                [d.metadata for d in normalized_leafs if isinstance(d.metadata, dict)], overwrite=True
+            )
+            apply_sibling_hierarchy_links(
+                [d.metadata for d in summaries if isinstance(d.metadata, dict)], overwrite=True
+            )
             out.extend(normalized_leafs)
             out.extend(summaries)
         return out

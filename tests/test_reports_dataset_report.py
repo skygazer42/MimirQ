@@ -1,4 +1,3 @@
-
 import uuid
 
 from fastapi import FastAPI
@@ -141,7 +140,10 @@ def test_dataset_retrieval_audit_summary_categorizes_regression_failures() -> No
     assert audit.gates
     assert audit.gates[0].name == "latest_regression_run"
     assert "raw_context" not in audit.gates[0].metrics
-    assert audit.recommended_next_action == "Fix metadata scope, chunking, ranking, and KG noise before enabling production retrieval."
+    assert (
+        audit.recommended_next_action
+        == "Fix metadata scope, chunking, ranking, and KG noise before enabling production retrieval."
+    )
 
 
 def test_dataset_retrieval_audit_summary_uses_dataset_metadata_snapshot_without_regression_run() -> None:
@@ -218,7 +220,7 @@ def test_dataset_retrieval_audit_summary_categorizes_adapter_binding_failure() -
                             "probe_errors": 0,
                         },
                         "failed_conditions": ["endpoint_host_is_loopback"],
-                    }
+                    },
                 ],
             }
         },

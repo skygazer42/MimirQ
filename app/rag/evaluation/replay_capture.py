@@ -7,7 +7,6 @@ Wave7(B) goals:
 - Provide deterministic fingerprints for candidate lists (for CI gating / diffs).
 """
 
-
 import json
 from typing import Any
 
@@ -57,9 +56,7 @@ _CAPTURE_CITATION_KEYS = frozenset(
 
 def _sanitize_capture_citation(citation: dict[str, Any]) -> dict[str, Any]:
     safe = {
-        key: citation.get(key)
-        for key in _CAPTURE_CITATION_KEYS
-        if key in citation and citation.get(key) is not None
+        key: citation.get(key) for key in _CAPTURE_CITATION_KEYS if key in citation and citation.get(key) is not None
     }
     if "chunk_id" not in safe:
         chunk_id = citation.get("chunk_id")
@@ -150,7 +147,9 @@ def build_retrieval_replay_capture_record(
     metrics = evidence_payload.get("metrics") if isinstance(evidence_payload.get("metrics"), dict) else {}
     retrieval_cfg_hash = str(metrics.get("retrieval_config_hash") or "").strip() or None
 
-    citations_safe = sanitize_citations_for_capture(evidence_payload.get("citations"), max_items=int(max_citations or 0))
+    citations_safe = sanitize_citations_for_capture(
+        evidence_payload.get("citations"), max_items=int(max_citations or 0)
+    )
 
     rec: dict[str, Any] = {
         "schema": RETRIEVAL_REPLAY_CAPTURE_SCHEMA_V1,

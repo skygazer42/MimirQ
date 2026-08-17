@@ -1,4 +1,3 @@
-
 import re
 from typing import Any
 
@@ -9,7 +8,12 @@ from app.rag.workflows.base import BaseWorkflow, WorkflowMode, WorkflowResult
 _STYLE_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("prescriptive_language", re.compile(r"\bmust\b|必须|务必|应当", flags=re.IGNORECASE)),
     ("urgent_language", re.compile(r"\bimmediately\b|\basap\b|\bright away\b|立即|马上", flags=re.IGNORECASE)),
-    ("absolute_language", re.compile(r"\balways\b|\bnever\b|\bdefinitely\b|\bcertainly\b|\bguaranteed\b|总是|绝不|一定", flags=re.IGNORECASE)),
+    (
+        "absolute_language",
+        re.compile(
+            r"\balways\b|\bnever\b|\bdefinitely\b|\bcertainly\b|\bguaranteed\b|总是|绝不|一定", flags=re.IGNORECASE
+        ),
+    ),
 )
 
 

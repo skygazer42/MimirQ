@@ -1,4 +1,3 @@
-
 from typing import Any
 
 import httpx
@@ -83,7 +82,9 @@ async def _run_tavily_search(
         payload["search_lang"] = str(lang)
     if region:
         payload["region"] = str(region)
-    async with httpx.AsyncClient(trust_env=httpx_trust_env(), timeout=float(getattr(settings, "WEB_SEARCH_TIMEOUT_SEC", 8.0) or 8.0)) as client:
+    async with httpx.AsyncClient(
+        trust_env=httpx_trust_env(), timeout=float(getattr(settings, "WEB_SEARCH_TIMEOUT_SEC", 8.0) or 8.0)
+    ) as client:
         resp = await client.post(
             "https://api.tavily.com/search",
             headers={"Authorization": f"Bearer {api_key}"},
@@ -133,7 +134,9 @@ async def _run_serper_search(
         payload["hl"] = str(lang)
     if region:
         payload["gl"] = str(region)
-    async with httpx.AsyncClient(trust_env=httpx_trust_env(), timeout=float(getattr(settings, "WEB_SEARCH_TIMEOUT_SEC", 8.0) or 8.0)) as client:
+    async with httpx.AsyncClient(
+        trust_env=httpx_trust_env(), timeout=float(getattr(settings, "WEB_SEARCH_TIMEOUT_SEC", 8.0) or 8.0)
+    ) as client:
         resp = await client.post(
             "https://google.serper.dev/search",
             headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
@@ -179,7 +182,9 @@ async def _run_brave_search(
         params["search_lang"] = str(lang)
     if region:
         params["country"] = str(region)
-    async with httpx.AsyncClient(trust_env=httpx_trust_env(), timeout=float(getattr(settings, "WEB_SEARCH_TIMEOUT_SEC", 8.0) or 8.0)) as client:
+    async with httpx.AsyncClient(
+        trust_env=httpx_trust_env(), timeout=float(getattr(settings, "WEB_SEARCH_TIMEOUT_SEC", 8.0) or 8.0)
+    ) as client:
         resp = await client.get(
             "https://api.search.brave.com/res/v1/web/search",
             headers={"X-Subscription-Token": api_key},

@@ -11,7 +11,6 @@ Design constraints:
 - Lazy-loading for optional model-backed providers.
 """
 
-
 import gzip
 import hashlib
 import json
@@ -535,7 +534,10 @@ class SparseIndexStore:
             "corpus_fingerprint": str(corpus_fingerprint or ""),
             "version_token": str(version_token or "").strip(),
             "doc_count": int(len(vectors or {})),
-            "vectors": {k: (v.weights if isinstance(v, SparseVector) else _coerce_sparse_vector(v).weights) for k, v in (vectors or {}).items()},
+            "vectors": {
+                k: (v.weights if isinstance(v, SparseVector) else _coerce_sparse_vector(v).weights)
+                for k, v in (vectors or {}).items()
+            },
         }
         try:
             data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")

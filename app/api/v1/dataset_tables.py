@@ -5,7 +5,6 @@ This provides a safe, SQL-first interface for structured table assets
 that were ingested into the per-document table store.
 """
 
-
 import hashlib
 from typing import Annotated, Any
 from uuid import UUID
@@ -230,7 +229,7 @@ def _table_columns_payload(table_meta: dict[str, Any], *, include_columns: bool)
     if not include_columns:
         return []
     cols_payload: list[TableColumnOut] = []
-    for column in (table_meta.get("columns") or []):
+    for column in table_meta.get("columns") or []:
         if not isinstance(column, dict):
             continue
         name = str(column.get("name") or "").strip()
@@ -278,7 +277,9 @@ def _table_asset_from_metadata(
         truncated=bool(table_meta.get("truncated") or False),
         columns=columns,
         sample_rows=sample_rows,
-        row_source_table=(str(table_meta.get("row_source_table"))[:300] if table_meta.get("row_source_table") is not None else None),
+        row_source_table=(
+            str(table_meta.get("row_source_table"))[:300] if table_meta.get("row_source_table") is not None else None
+        ),
         row_source_sync_token=(
             str(table_meta.get("row_source_sync_token"))[:300]
             if table_meta.get("row_source_sync_token") is not None
@@ -388,7 +389,9 @@ def _load_table_document_or_404(
     return doc
 
 
-def _table_schema_for_table_id(doc: DBDocument, *, table_id: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str | None]:
+def _table_schema_for_table_id(
+    doc: DBDocument, *, table_id: str
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str | None]:
     meta = getattr(doc, "doc_metadata", None) or {}
     store = meta.get("table_store") if isinstance(meta, dict) else None
     tables = store.get("tables") if isinstance(store, dict) else None
@@ -498,11 +501,14 @@ def _generate_table_ask_sql_bundle(
         joins = sql_meta.get("join_provenance")
         if isinstance(joins, list):
             join_provenance = [join for join in joins if isinstance(join, dict)][:10]
-        sql_fingerprint = str(
-            sql_meta.get("sql_fingerprint")
-            or (planner_diagnostics.get("sql_fingerprint") if isinstance(planner_diagnostics, dict) else None)
-            or ""
-        ).strip() or None
+        sql_fingerprint = (
+            str(
+                sql_meta.get("sql_fingerprint")
+                or (planner_diagnostics.get("sql_fingerprint") if isinstance(planner_diagnostics, dict) else None)
+                or ""
+            ).strip()
+            or None
+        )
     if not sql_fingerprint:
         sql_fingerprint = fingerprint_sql(sql, length=16) or None
     return (
@@ -630,8 +636,15 @@ def _lotus_filtered_response(
         if index >= output_rows:
             truncated = True
             break
-        rows.append([value if value is None or isinstance(value, (str, int, float, bool)) else str(value) for value in (row or ())])
-    payload = _maybe_redact_query_rows({"sql": f"LOTUS sem_filter({sql_table})", "columns": cols, "rows": rows}, redact_rows=redact_rows)
+        rows.append(
+            [
+                value if value is None or isinstance(value, (str, int, float, bool)) else str(value)
+                for value in (row or ())
+            ]
+        )
+    payload = _maybe_redact_query_rows(
+        {"sql": f"LOTUS sem_filter({sql_table})", "columns": cols, "rows": rows}, redact_rows=redact_rows
+    )
     payload = _mask_table_query_rows(
         payload,
         fls_policy=fls_policy,
@@ -642,7 +655,9 @@ def _lotus_filtered_response(
         dataset_id=dataset_id,
         table_id=table_id,
     )
-    return TableQueryResponse(sql=str(payload["sql"]), columns=list(payload["columns"]), rows=list(payload["rows"]), truncated=truncated)
+    return TableQueryResponse(
+        sql=str(payload["sql"]), columns=list(payload["columns"]), rows=list(payload["rows"]), truncated=truncated
+    )
 
 
 def _lotus_fallback_query_response(
@@ -661,7 +676,9 @@ def _lotus_fallback_query_response(
     avail_reason: str | None,
 ) -> TableQueryResponse:
     if not tag_enabled():
-        raise HTTPException(status_code=400, detail=f"LOTUS unavailable: {avail_reason or 'unknown'} (and TABLE_NL2SQL_ENABLED=false)")
+        raise HTTPException(
+            status_code=400, detail=f"LOTUS unavailable: {avail_reason or 'unknown'} (and TABLE_NL2SQL_ENABLED=false)"
+        )
     prompt_q = f"Filter rows that match: {str(body.user_instruction or '').strip()}. Return the matching rows."
     try:
         sql = generate_sql_for_table(
@@ -747,10 +764,10 @@ def _extract_table_assets(
 )
 def list_dataset_tables(
     dataset_id: UUID,
-    skip: Annotated[int, Query(ge=0, description='Document-level offset (not table-level)')] = 0,
-    limit: Annotated[int, Query(ge=1, le=500, description='Document-level limit (not table-level)')] = 100,
-    include_columns: Annotated[bool, Query(description='Include column schema in each item')] = False,
-    include_sample_rows: Annotated[bool, Query(description='Include sample rows in each item')] = False,
+    skip: Annotated[int, Query(ge=0, description="Document-level offset (not table-level)")] = 0,
+    limit: Annotated[int, Query(ge=1, le=500, description="Document-level limit (not table-level)")] = 100,
+    include_columns: Annotated[bool, Query(description="Include column schema in each item")] = False,
+    include_sample_rows: Annotated[bool, Query(description="Include sample rows in each item")] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -978,7 +995,7 @@ def query_dataset_table(
     dataset_id: UUID,
     table_id: str,
     body: TableQueryRequest,
-    include_sql: Annotated[bool, Query(description='Include redacted SQL for owner/admin/auditor')] = False,
+    include_sql: Annotated[bool, Query(description="Include redacted SQL for owner/admin/auditor")] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1060,7 +1077,7 @@ def ask_dataset_table(
     dataset_id: UUID,
     table_id: str,
     body: TableAskRequest,
-    include_sql: Annotated[bool, Query(description='Include redacted SQL for owner/admin/auditor')] = False,
+    include_sql: Annotated[bool, Query(description="Include redacted SQL for owner/admin/auditor")] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1126,9 +1143,7 @@ def ask_dataset_table(
         expected_sql_fingerprint=sql_fingerprint,
     )
     planner_execution_mismatch = (
-        result.get("planner_execution_mismatch")
-        if isinstance(result.get("planner_execution_mismatch"), dict)
-        else None
+        result.get("planner_execution_mismatch") if isinstance(result.get("planner_execution_mismatch"), dict) else None
     )
     if (
         bool(getattr(settings, "TABLE_TAG_PLANNER_MISMATCH_STRICT", False))

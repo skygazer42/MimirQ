@@ -10,7 +10,6 @@ This complements `qa_pairs` which focuses on plain "Q: ... / A: ..." lines.
 The chunker keeps each Q/A pair together and uses pair-level overlap.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -24,13 +23,13 @@ _Q_PREFIX = r"(?:Q(?:uestion)?|问(?:题)?|问题)"
 _A_PREFIX = r"(?:A(?:nswer)?|答(?:案)?|答案)"
 
 _QA_TAG_LINE_RE = re.compile(
-    rf"(?m)^\s*(?:[-*+]\s*|\d+\.\s*)?(?:#{1,6}\s*)?(?:\*\*|__)?"
+    rf"(?m)^\s*(?:[-*+]\s*|\d+\.\s*)?(?:#{1, 6}\s*)?(?:\*\*|__)?"
     rf"(?P<prefix>{_Q_PREFIX}|{_A_PREFIX})(?:\*\*|__)?(?:\s*\d{{0,3}})?\s*[:：]\s*(?P<rest>.*)$",
     flags=re.IGNORECASE,
 )
 
 _Q_STRIP_RE = re.compile(
-    rf"(?i)^\s*(?:[-*+]\s*|\d+\.\s*)?(?:#{1,6}\s*)?(?:\*\*|__)?{_Q_PREFIX}(?:\*\*|__)?(?:\s*\d{{0,3}})?\s*[:：]\s*"
+    rf"(?i)^\s*(?:[-*+]\s*|\d+\.\s*)?(?:#{1, 6}\s*)?(?:\*\*|__)?{_Q_PREFIX}(?:\*\*|__)?(?:\s*\d{{0,3}})?\s*[:：]\s*"
 )
 
 
@@ -217,7 +216,11 @@ class QAMarkdownChunker(BaseChunker):
             start_idx = 0
             while start_idx < len(pairs):
                 end_idx = _window_end_index(pairs=pairs, start_idx=start_idx, chunk_size=self.chunk_size)
-                out.append(_qa_chunk_document(text=text, base_meta=base_meta, pairs=pairs, start_idx=start_idx, end_idx=end_idx))
+                out.append(
+                    _qa_chunk_document(
+                        text=text, base_meta=base_meta, pairs=pairs, start_idx=start_idx, end_idx=end_idx
+                    )
+                )
                 start_idx = _next_window_start(
                     pairs=pairs,
                     start_idx=start_idx,

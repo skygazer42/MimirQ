@@ -1,4 +1,3 @@
-
 import hashlib
 import json
 import os
@@ -242,7 +241,9 @@ def build_pipeline_version_snapshot(
         "pipeline_hash": ph,
         "governance_version": governance_version,
         "rule_packs": governance_rule_packs,
-        "effective": {k: pipeline_effective.get(k) for k in sorted(pipeline_effective.keys()) if str(k).startswith("governance_")},
+        "effective": {
+            k: pipeline_effective.get(k) for k in sorted(pipeline_effective.keys()) if str(k).startswith("governance_")
+        },
         # Include any declared pipeline.governance metadata (e.g. custom regex rules) when present.
         "pipeline": (pipeline_meta.get("governance") if isinstance(pipeline_meta.get("governance"), dict) else {}),
     }
@@ -257,7 +258,9 @@ def build_pipeline_version_snapshot(
         "chunk_size": pipeline_effective.get("chunk_size"),
         "chunk_overlap": pipeline_effective.get("chunk_overlap"),
         "chunk_merge_small_min_chars": pipeline_effective.get("chunk_merge_small_min_chars"),
-        "chunk_strategy_params": pipeline_effective.get("chunk_strategy_params") if isinstance(pipeline_effective.get("chunk_strategy_params"), dict) else {},
+        "chunk_strategy_params": pipeline_effective.get("chunk_strategy_params")
+        if isinstance(pipeline_effective.get("chunk_strategy_params"), dict)
+        else {},
     }
     chunk_hash = canonical_json_sha256(chunk_obj)
 
@@ -307,7 +310,12 @@ def build_pipeline_version_snapshot(
         "parser_backend": parser_backend,
         "chunk_strategy": chunk_strategy,
         "transforms": {
-            "preprocess": {"version": "1", "hash": preprocess_hash, "steps": preprocess_steps, "result": preprocess_result},
+            "preprocess": {
+                "version": "1",
+                "hash": preprocess_hash,
+                "steps": preprocess_steps,
+                "result": preprocess_result,
+            },
             "parse": {"version": "1", "hash": parse_hash, "parser_backend": parser_backend},
             "governance": {
                 "version": "1",

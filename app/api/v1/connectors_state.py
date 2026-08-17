@@ -1,4 +1,3 @@
-
 import contextlib
 from datetime import datetime
 from typing import Any
@@ -49,11 +48,7 @@ def _unknown_tenant_groups(
     if not ids:
         return []
 
-    rows = (
-        db.query(TenantGroup.id)
-        .filter(TenantGroup.tenant_id == tenant_id, TenantGroup.id.in_(ids))
-        .all()
-    )
+    rows = db.query(TenantGroup.id).filter(TenantGroup.tenant_id == tenant_id, TenantGroup.id.in_(ids)).all()
     found = {row[0] for row in rows if row and row[0]}
     return [str(gid) for gid in ids if gid not in found]
 
@@ -257,7 +252,9 @@ def _config_out(cfg: ConnectorConfig) -> ConnectorConfigOut:
         connector_id=connector_id,
         name=str(cfg.name or ""),
         enabled=bool(cfg.enabled),
-        schedule_cron=(str(cfg.schedule_cron).strip() if isinstance(cfg.schedule_cron, str) and cfg.schedule_cron.strip() else None),
+        schedule_cron=(
+            str(cfg.schedule_cron).strip() if isinstance(cfg.schedule_cron, str) and cfg.schedule_cron.strip() else None
+        ),
         config=config,
         state=dict(cfg.state or {}),
         last_run_at=(cfg.last_run_at or None),
@@ -344,11 +341,7 @@ def _sync_connector_config_from_run(db: Session, *, run: ConnectorRun) -> None:
         return
 
     raw_cfg_id = stats.get("config_id")
-    cfg_id_str = (
-        str(raw_cfg_id or "").strip()
-        if isinstance(raw_cfg_id, (str, UUID))
-        else ""
-    )
+    cfg_id_str = str(raw_cfg_id or "").strip() if isinstance(raw_cfg_id, (str, UUID)) else ""
     if not cfg_id_str:
         return
     try:
@@ -368,12 +361,10 @@ def _sync_connector_config_from_run(db: Session, *, run: ConnectorRun) -> None:
         return
 
     status = str(getattr(run, "status", "") or "").lower()
-    cfg.last_error = None if status == "completed" else (str(getattr(run, "error_message", "") or status)[:200] or status)  # type: ignore[assignment]
-    cfg.last_run_at = (
-        getattr(run, "started_at", None)
-        or getattr(run, "finished_at", None)
-        or _now()
+    cfg.last_error = (
+        None if status == "completed" else (str(getattr(run, "error_message", "") or status)[:200] or status)
     )  # type: ignore[assignment]
+    cfg.last_run_at = getattr(run, "started_at", None) or getattr(run, "finished_at", None) or _now()  # type: ignore[assignment]
 
     connector_id = str(getattr(run, "connector_id", "") or "").strip()
     cfg.state = build_saved_state_snapshot(  # type: ignore[assignment]
@@ -382,22 +373,14 @@ def _sync_connector_config_from_run(db: Session, *, run: ConnectorRun) -> None:
         stats=stats,
         run_id=run.id,
         run_status=status,
-        recorded_at=(
-            getattr(run, "finished_at", None)
-            or getattr(run, "started_at", None)
-            or _now()
-        ),
+        recorded_at=(getattr(run, "finished_at", None) or getattr(run, "started_at", None) or _now()),
     )
 
     with contextlib.suppress(Exception):
         from app.services.audit_log_service import audit_log_event
 
         state = dict(getattr(cfg, "state", None) or {})
-        state_audit = (
-            state.get("state_audit")
-            if isinstance(state.get("state_audit"), dict)
-            else {}
-        )
+        state_audit = state.get("state_audit") if isinstance(state.get("state_audit"), dict) else {}
         audit_log_event(
             db,
             tenant_id=cfg.tenant_id,

@@ -1,4 +1,3 @@
-
 import argparse
 import os
 import sys
@@ -57,12 +56,18 @@ def _pick_body(result: dict[str, Any]) -> dict[str, Any] | None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Download a PII-safe incident bundle zip for a request_id.")
-    parser.add_argument("--base-url", default="", help="Backend base URL (default: NEXT_PUBLIC_API_URL or http://localhost:8000)")
+    parser.add_argument(
+        "--base-url", default="", help="Backend base URL (default: NEXT_PUBLIC_API_URL or http://localhost:8000)"
+    )
     parser.add_argument("--tenant-id", default="", help="Tenant UUID (default: NEXT_PUBLIC_TENANT_ID or all-zero)")
     parser.add_argument("--token", default="", help="Bearer token for admin-only endpoints (optional)")
     parser.add_argument("--request-id", required=True, help="X-Request-ID to fetch incident artifacts for")
-    parser.add_argument("--window-minutes", type=int, default=24 * 60, help="Trace bundle window in minutes (default: 1440)")
-    parser.add_argument("--max-bytes", type=int, default=5_000_000, help="Max bytes to read from metrics tail (default: 5MB)")
+    parser.add_argument(
+        "--window-minutes", type=int, default=24 * 60, help="Trace bundle window in minutes (default: 1440)"
+    )
+    parser.add_argument(
+        "--max-bytes", type=int, default=5_000_000, help="Max bytes to read from metrics tail (default: 5MB)"
+    )
     parser.add_argument("--timeout-sec", type=float, default=30.0, help="HTTP timeout (seconds)")
     parser.add_argument("--out", default="", help="Output zip path (default: runs/incident-<request_id>-<ts>.zip)")
     args = parser.parse_args(argv)

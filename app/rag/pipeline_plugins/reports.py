@@ -1,4 +1,3 @@
-
 from collections import Counter, defaultdict
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
@@ -384,7 +383,8 @@ def _build_section_reports(
         }
         if record_type_metadata_key:
             record_types = Counter(
-                _text(_metadata_value(doc.metadata or {}, record_type_metadata_key)) or "unknown" for doc in section_records
+                _text(_metadata_value(doc.metadata or {}, record_type_metadata_key)) or "unknown"
+                for doc in section_records
             )
             section_report["record_type_counts"] = _as_count_dict(record_types)
         sections.append(section_report)

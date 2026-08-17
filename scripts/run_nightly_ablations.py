@@ -24,7 +24,6 @@ Examples:
   python scripts/run_nightly_ablations.py --all-datasets --execute --max-datasets 10
 """
 
-
 import argparse
 import json
 import sys
@@ -35,6 +34,7 @@ from uuid import UUID
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 
 def _parse_uuid(value: str) -> UUID:
     try:
@@ -115,11 +115,7 @@ def _resolve_case_ids_from_questions(
         return []
 
     want = set(questions)
-    rows = (
-        db.query(case_model)
-        .filter(case_model.tenant_id == tenant_id, case_model.dataset_id == dataset_id)
-        .all()
-    )
+    rows = db.query(case_model).filter(case_model.tenant_id == tenant_id, case_model.dataset_id == dataset_id).all()
 
     by_question: dict[str, UUID] = {}
     duplicates: list[str] = []
@@ -199,8 +195,12 @@ def _default_ablations(*, reranker_top_n: int = 20) -> list[dict]:
     return [
         _ablation("baseline"),
         _ablation("topk50", {"top_k": 50}),
-        _ablation("keyword_only", {"top_k": 50, "retrieval_mode": "keyword", "vector_weight": 0.0, "keyword_weight": 1.0}),
-        _ablation("vector_only", {"top_k": 50, "retrieval_mode": "vector", "vector_weight": 1.0, "keyword_weight": 0.0}),
+        _ablation(
+            "keyword_only", {"top_k": 50, "retrieval_mode": "keyword", "vector_weight": 0.0, "keyword_weight": 1.0}
+        ),
+        _ablation(
+            "vector_only", {"top_k": 50, "retrieval_mode": "vector", "vector_weight": 1.0, "keyword_weight": 0.0}
+        ),
         # Retrieval profile ablation: exercises apply_retrieval_profile_overrides (non-LLM).
         _ablation("profile_recall50", {"retrieval_profile": "recall50"}),
         # Fusion strategy ablations (non-LLM).
@@ -239,7 +239,9 @@ def _default_ablations(*, reranker_top_n: int = 20) -> list[dict]:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Run nightly retrieval ablations (create regression runs + execute).")
-    p.add_argument("--tenant-id", type=_parse_uuid, default=None, help="Tenant UUID (default: settings.DEFAULT_TENANT_ID)")
+    p.add_argument(
+        "--tenant-id", type=_parse_uuid, default=None, help="Tenant UUID (default: settings.DEFAULT_TENANT_ID)"
+    )
 
     scope = p.add_mutually_exclusive_group(required=True)
     scope.add_argument("--dataset-id", type=_parse_uuid, default=None, help="Dataset UUID to run")
@@ -346,14 +348,23 @@ def main(argv: list[str] | None = None) -> int:
             ds = db.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.id == ds_id).first()
             if ds is None:
                 if cases_path is not None:
-                    print(json.dumps({"ok": False, "error": "dataset_not_found", "dataset_id": str(ds_id)}, ensure_ascii=False))
+                    print(
+                        json.dumps(
+                            {"ok": False, "error": "dataset_not_found", "dataset_id": str(ds_id)}, ensure_ascii=False
+                        )
+                    )
                     return 2
                 planned.append({"dataset_id": str(ds_id), "skipped": True, "reason": "dataset_not_found"})
                 continue
             owner_id = str(getattr(ds, "owner_id", "") or "").strip()
             if not owner_id:
                 if cases_path is not None:
-                    print(json.dumps({"ok": False, "error": "dataset_missing_owner_id", "dataset_id": str(ds_id)}, ensure_ascii=False))
+                    print(
+                        json.dumps(
+                            {"ok": False, "error": "dataset_missing_owner_id", "dataset_id": str(ds_id)},
+                            ensure_ascii=False,
+                        )
+                    )
                     return 2
                 planned.append({"dataset_id": str(ds_id), "skipped": True, "reason": "dataset_missing_owner_id"})
                 continue
@@ -372,7 +383,12 @@ def main(argv: list[str] | None = None) -> int:
                 except Exception as exc:  # noqa: BLE001
                     print(
                         json.dumps(
-                            {"ok": False, "error": f"cases_resolve_failed: {exc}", "dataset_id": str(ds_id), "cases_file": str(cases_path)},
+                            {
+                                "ok": False,
+                                "error": f"cases_resolve_failed: {exc}",
+                                "dataset_id": str(ds_id),
+                                "cases_file": str(cases_path),
+                            },
                             ensure_ascii=False,
                         )
                     )
@@ -399,7 +415,12 @@ def main(argv: list[str] | None = None) -> int:
                 if not explicit_case_ids:
                     print(
                         json.dumps(
-                            {"ok": False, "error": "cases bundle resolved to empty case_ids", "dataset_id": str(ds_id), "cases_file": str(cases_path)},
+                            {
+                                "ok": False,
+                                "error": "cases bundle resolved to empty case_ids",
+                                "dataset_id": str(ds_id),
+                                "cases_file": str(cases_path),
+                            },
                             ensure_ascii=False,
                         )
                     )

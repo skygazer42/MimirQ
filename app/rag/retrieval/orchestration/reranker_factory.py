@@ -12,7 +12,9 @@ class _IdentityReranker:
         self.model_name = None
 
     def rerank(self, query: str, candidates: list[RerankCandidate], **kwargs: Any) -> RerankResult:  # noqa: ARG002
-        ordered_ids = [str(getattr(c, "id", "") or "").strip() for c in candidates if str(getattr(c, "id", "") or "").strip()]
+        ordered_ids = [
+            str(getattr(c, "id", "") or "").strip() for c in candidates if str(getattr(c, "id", "") or "").strip()
+        ]
         score_map: dict[str, float] = {}
         for candidate in candidates:
             cid = str(getattr(candidate, "id", "") or "").strip()

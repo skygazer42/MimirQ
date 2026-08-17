@@ -3,6 +3,7 @@ Vector store router: supports multiple backends.
 Milvus is implemented today; other backends are placeholders for extension.
 Switch via VECTOR_BACKEND to keep the retrieval path centralized.
 """
+
 import json
 import math
 import os
@@ -46,8 +47,7 @@ def _get_faiss_cls():
         return _FAISS_CLS
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError(
-            "FAISS vector backend requires optional dependencies. "
-            "Install `faiss-cpu` and `langchain-community`."
+            "FAISS vector backend requires optional dependencies. Install `faiss-cpu` and `langchain-community`."
         ) from exc
 
 
@@ -314,7 +314,9 @@ class MilvusVectorStore(BaseVectorStore):
         tenant_id: UUID | None,
         metadata_filter: dict[str, Any],
     ) -> None:
-        milvus_store.delete_by_document_id_and_filter(document_id=document_id, tenant_id=tenant_id, metadata_filter=metadata_filter)
+        milvus_store.delete_by_document_id_and_filter(
+            document_id=document_id, tenant_id=tenant_id, metadata_filter=metadata_filter
+        )
 
     def get_embedding_client(self):  # noqa: ANN201
         return milvus_store.get_embedding_model()
@@ -497,9 +499,7 @@ class FAISSVectorStore(BaseVectorStore):
         )
         self.store_by_tenant: dict[str, Any] = {}
         self.persist_path = settings.FAISS_STORE_PATH
-        self.allow_dangerous_deserialization = bool(
-            getattr(settings, "FAISS_ALLOW_DANGEROUS_DESERIALIZATION", False)
-        )
+        self.allow_dangerous_deserialization = bool(getattr(settings, "FAISS_ALLOW_DANGEROUS_DESERIALIZATION", False))
         self._warned_dangerous_deserialization = False
         self._tenant_locks_guard = threading.Lock()
         self._tenant_locks: dict[str, threading.RLock] = {}

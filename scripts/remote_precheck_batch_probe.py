@@ -2,7 +2,6 @@
 # ruff: noqa: E402, I001
 """Verify upload-batch precheck flow against a live API."""
 
-
 import argparse
 import json
 import sys
@@ -45,10 +44,10 @@ def evaluate_precheck_summary(summary_body: Any, samples_body: Any) -> list[str]
     findings = summary.get("findings")
     short_text_count = None
     if isinstance(findings, list):
-      for item in findings:
-          if isinstance(item, dict) and str(item.get("key") or "") == "short_text":
-              short_text_count = int(item.get("count") or 0)
-              break
+        for item in findings:
+            if isinstance(item, dict) and str(item.get("key") or "") == "short_text":
+                short_text_count = int(item.get("count") or 0)
+                break
     if short_text_count is None or short_text_count < 1:
         failures.append(f"short_text finding expected>=1 actual={short_text_count!r}")
 
@@ -136,8 +135,7 @@ def main() -> int:
         with tempfile.TemporaryDirectory(prefix="precheck-batch-") as td:
             doc_path = Path(td) / "sample.md"
             doc_path.write_text(
-                "# Precheck Batch\n\n"
-                "Token PRECHECK-BATCH belongs only to this file.\n",
+                "# Precheck Batch\n\nToken PRECHECK-BATCH belongs only to this file.\n",
                 encoding="utf-8",
             )
 
@@ -164,7 +162,9 @@ def main() -> int:
                 upload_body = response.json()
             except Exception:
                 upload_body = response.text
-            upload_resp = type("UploadResp", (), {"status": int(response.status_code), "body": upload_body, "elapsed_sec": 0.0})()
+            upload_resp = type(
+                "UploadResp", (), {"status": int(response.status_code), "body": upload_body, "elapsed_sec": 0.0}
+            )()
             record_step(steps, "upload_batch_precheck", upload_resp)  # type: ignore[arg-type]
             if not (200 <= response.status_code < 300):
                 raise RuntimeError(f"upload_batch_precheck failed: {response.status_code}: {upload_body}")
@@ -191,7 +191,9 @@ def main() -> int:
                 raise RuntimeError(f"scan run did not complete: {latest_run_body}")
 
             summary_resp = api.json("GET", f"/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/summary")
-            samples_resp = api.json("GET", f"/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/samples?size=20")
+            samples_resp = api.json(
+                "GET", f"/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/samples?size=20"
+            )
             record_step(steps, "summary", summary_resp)
             record_step(steps, "samples", samples_resp)
             ensure_success("summary", summary_resp)

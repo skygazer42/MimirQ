@@ -6,7 +6,6 @@ Goal:
 - avoid leaking scope/query/internal request fields
 """
 
-
 import json
 from typing import Any
 
@@ -64,9 +63,7 @@ def _public_profile_definition(name: str, *, baseline: dict[str, Any]) -> dict[s
         reranker_provider=str(baseline.get("reranker_provider") or ""),
         reranker_top_n=int(baseline.get("reranker_top_n") or 0),
         enable_weight_rerank=bool(baseline.get("enable_weight_rerank", True)),
-        retrieval_contract_mode=(
-            str(baseline.get("retrieval_contract_mode") or "").strip().lower() or None
-        ),
+        retrieval_contract_mode=(str(baseline.get("retrieval_contract_mode") or "").strip().lower() or None),
         visible_evidence_only=bool(baseline.get("visible_evidence_only", False)),
     )
     return {
@@ -75,26 +72,22 @@ def _public_profile_definition(name: str, *, baseline: dict[str, Any]) -> dict[s
         "retrieval_mode": str(applied.get("retrieval_mode") or baseline.get("retrieval_mode") or "hybrid"),
         "top_k": int(applied.get("top_k") or 0),
         "score_threshold": float(applied.get("score_threshold") or 0.0),
-        "enable_reranker": bool(applied.get("enable_reranker") if applied.get("enable_reranker") is not None else False),
+        "enable_reranker": bool(
+            applied.get("enable_reranker") if applied.get("enable_reranker") is not None else False
+        ),
         "reranker_provider": (
-            str(applied.get("reranker_provider") or "")
-            if bool(applied.get("enable_reranker"))
-            else None
+            str(applied.get("reranker_provider") or "") if bool(applied.get("enable_reranker")) else None
         ),
-        "reranker_top_n": (
-            int(applied.get("reranker_top_n") or 0)
-            if bool(applied.get("enable_reranker"))
-            else 0
-        ),
+        "reranker_top_n": (int(applied.get("reranker_top_n") or 0) if bool(applied.get("enable_reranker")) else 0),
         "enable_weight_rerank": bool(applied.get("enable_weight_rerank", True)),
-        "sparse_retrieval_enabled": bool(applied.get("sparse_retrieval_enabled", baseline.get("sparse_retrieval_enabled", False))),
+        "sparse_retrieval_enabled": bool(
+            applied.get("sparse_retrieval_enabled", baseline.get("sparse_retrieval_enabled", False))
+        ),
         "sparse_retrieval_provider": (
             str(applied.get("sparse_retrieval_provider") or baseline.get("sparse_retrieval_provider") or "").strip()
             or None
         ),
-        "retrieval_contract_mode": (
-            str(applied.get("retrieval_contract_mode") or "").strip().lower() or None
-        ),
+        "retrieval_contract_mode": (str(applied.get("retrieval_contract_mode") or "").strip().lower() or None),
         "visible_evidence_only": bool(applied.get("visible_evidence_only", False)),
     }
 
@@ -112,9 +105,7 @@ def get_retrieval_profiles() -> dict[str, Any]:
         reranker_provider=str(baseline.get("reranker_provider") or ""),
         reranker_top_n=int(baseline.get("reranker_top_n") or 0),
         enable_weight_rerank=bool(baseline.get("enable_weight_rerank", True)),
-        retrieval_contract_mode=(
-            str(baseline.get("retrieval_contract_mode") or "").strip().lower() or None
-        ),
+        retrieval_contract_mode=(str(baseline.get("retrieval_contract_mode") or "").strip().lower() or None),
         visible_evidence_only=bool(baseline.get("visible_evidence_only", False)),
     )
     chat_default_effective = apply_retrieval_profile_overrides(
@@ -126,9 +117,7 @@ def get_retrieval_profiles() -> dict[str, Any]:
         reranker_provider=str(baseline.get("reranker_provider") or ""),
         reranker_top_n=int(baseline.get("reranker_top_n") or 0),
         enable_weight_rerank=bool(baseline.get("enable_weight_rerank", True)),
-        retrieval_contract_mode=(
-            str(baseline.get("retrieval_contract_mode") or "").strip().lower() or None
-        ),
+        retrieval_contract_mode=(str(baseline.get("retrieval_contract_mode") or "").strip().lower() or None),
         visible_evidence_only=bool(baseline.get("visible_evidence_only", False)),
     )
     production_effective = apply_retrieval_profile_overrides(
@@ -140,9 +129,7 @@ def get_retrieval_profiles() -> dict[str, Any]:
         reranker_provider=str(baseline.get("reranker_provider") or ""),
         reranker_top_n=int(baseline.get("reranker_top_n") or 0),
         enable_weight_rerank=bool(baseline.get("enable_weight_rerank", True)),
-        retrieval_contract_mode=(
-            str(baseline.get("retrieval_contract_mode") or "").strip().lower() or None
-        ),
+        retrieval_contract_mode=(str(baseline.get("retrieval_contract_mode") or "").strip().lower() or None),
         visible_evidence_only=bool(baseline.get("visible_evidence_only", False)),
     )
 

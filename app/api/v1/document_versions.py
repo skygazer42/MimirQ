@@ -1,4 +1,3 @@
-
 import contextlib
 import uuid
 from typing import Annotated
@@ -38,11 +37,7 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 def _get_version_document_or_404(*, db: Session, tenant_id: UUID, document_id: UUID):
-    document = (
-        db.query(DBDocument)
-        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-        .first()
-    )
+    document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
         raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
     return document
@@ -98,9 +93,15 @@ def _load_version_signatures(
     return out
 
 
-def _version_provenance_pair(document, *, from_hash: str, to_hash: str) -> tuple[dict[str, object] | None, dict[str, object] | None]:
+def _version_provenance_pair(
+    document, *, from_hash: str, to_hash: str
+) -> tuple[dict[str, object] | None, dict[str, object] | None]:
     doc_meta = dict(document.doc_metadata or {})
-    prov_versions = doc_meta.get("pipeline_provenance_versions") if isinstance(doc_meta.get("pipeline_provenance_versions"), dict) else {}
+    prov_versions = (
+        doc_meta.get("pipeline_provenance_versions")
+        if isinstance(doc_meta.get("pipeline_provenance_versions"), dict)
+        else {}
+    )
     from_prov = prov_versions.get(from_hash) if isinstance(prov_versions, dict) else None
     to_prov = prov_versions.get(to_hash) if isinstance(prov_versions, dict) else None
     return (from_prov if isinstance(from_prov, dict) else None), (to_prov if isinstance(to_prov, dict) else None)
@@ -150,7 +151,8 @@ def _load_version_chunk_ids(
         return [
             chunk_id
             for chunk_id, chunk_meta in rows
-            if str((chunk_meta if isinstance(chunk_meta, dict) else {}).get("doc_pipeline_key") or "").strip() == target_key
+            if str((chunk_meta if isinstance(chunk_meta, dict) else {}).get("doc_pipeline_key") or "").strip()
+            == target_key
         ]
 
 
@@ -171,11 +173,7 @@ def list_document_versions(
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    document = (
-        db.query(DBDocument)
-        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-        .first()
-    )
+    document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
         raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
@@ -276,7 +274,9 @@ def list_document_versions(
     }
 
 
-@router.get("/{document_id}/versions/diff", response_model=DocumentVersionDiff, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/{document_id}/versions/diff", response_model=DocumentVersionDiff, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def diff_document_versions(
     document_id: uuid.UUID,
     from_pipeline_hash: Annotated[
@@ -377,11 +377,7 @@ def activate_document_version(
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    document = (
-        db.query(DBDocument)
-        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-        .first()
-    )
+    document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
         raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
@@ -509,7 +505,9 @@ def delete_document_version(
 
     active_hash = str(meta.get("active_pipeline_hash") or meta.get("pipeline_hash") or "").strip()
     if active_hash and pipeline_hash_norm == active_hash:
-        raise HTTPException(status_code=409, detail="Cannot delete the active pipeline version (activate another first)")
+        raise HTTPException(
+            status_code=409, detail="Cannot delete the active pipeline version (activate another first)"
+        )
 
     target_key = f"{document_id}:{pipeline_hash_norm}"
     chunk_ids = _load_version_chunk_ids(

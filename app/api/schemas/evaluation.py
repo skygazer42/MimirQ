@@ -23,7 +23,9 @@ class RagasRunCreateRequest(BaseModel):
     )
     max_turns: int = Field(default=20, ge=1, le=200, description="Max recent N turns to evaluate")
     skip_empty_contexts: bool = Field(default=True, description="Skip turns without citations/contexts")
-    include_contexts_in_response: bool = Field(default=False, description="Include contexts in detail response (may be large)")
+    include_contexts_in_response: bool = Field(
+        default=False, description="Include contexts in detail response (may be large)"
+    )
 
 
 class RagasRunSchema(OrmModel):
@@ -100,7 +102,9 @@ class TestGenFromDocsRequest(BaseModel):
     """Request to generate test questions from documents."""
 
     dataset_id: UUID | None = Field(default=None, description="Dataset ID (optional)")
-    document_ids: list[UUID] = Field(default_factory=list, description="Document ID list (takes priority over dataset_id)")
+    document_ids: list[UUID] = Field(
+        default_factory=list, description="Document ID list (takes priority over dataset_id)"
+    )
     num_questions: int = Field(default=10, ge=1, le=50, description="Number of questions to generate")
     question_types: list[str] = Field(
         default_factory=lambda: ["factual", "multi_hop", "comparison"],
@@ -110,9 +114,15 @@ class TestGenFromDocsRequest(BaseModel):
         ),
     )
     auto_save_as_cases: bool = Field(default=True, description="Auto-save as regression test cases")
-    prompt_template_id: UUID | None = Field(default=None, description="Optional prompt template id for document test generation")
-    prompt_template_key: str | None = Field(default=None, description="Optional prompt template key for latest active version")
-    prompt_ab_experiment_key: str | None = Field(default=None, description="Optional A/B experiment key for prompt selection")
+    prompt_template_id: UUID | None = Field(
+        default=None, description="Optional prompt template id for document test generation"
+    )
+    prompt_template_key: str | None = Field(
+        default=None, description="Optional prompt template key for latest active version"
+    )
+    prompt_ab_experiment_key: str | None = Field(
+        default=None, description="Optional A/B experiment key for prompt selection"
+    )
 
 
 class TestGenFromConversationsRequest(BaseModel):

@@ -1,4 +1,3 @@
-
 import importlib
 from datetime import UTC, datetime
 from typing import Annotated
@@ -32,7 +31,9 @@ def _documents_module():
     return importlib.import_module("app.api.v1.documents")
 
 
-@router.post("/batch/disable", response_model=DocumentBatchLifecycleResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/batch/disable", response_model=DocumentBatchLifecycleResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def batch_disable_documents(
     payload: DocumentBatchLifecycleRequest,
     *,
@@ -87,7 +88,9 @@ def batch_disable_documents(
     return {"updated": updated, "not_found": not_found, "denied": denied, "conflicts": conflicts}
 
 
-@router.post("/batch/enable", response_model=DocumentBatchLifecycleResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/batch/enable", response_model=DocumentBatchLifecycleResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def batch_enable_documents(
     payload: DocumentBatchLifecycleRequest,
     *,
@@ -140,7 +143,9 @@ def batch_enable_documents(
     return {"updated": updated, "not_found": not_found, "denied": denied, "conflicts": conflicts}
 
 
-@router.post("/batch/archive", response_model=DocumentBatchLifecycleResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/batch/archive", response_model=DocumentBatchLifecycleResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def batch_archive_documents(
     payload: DocumentBatchLifecycleRequest,
     *,
@@ -195,7 +200,9 @@ def batch_archive_documents(
     return {"updated": updated, "not_found": not_found, "denied": denied, "conflicts": conflicts}
 
 
-@router.post("/batch/unarchive", response_model=DocumentBatchLifecycleResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/batch/unarchive", response_model=DocumentBatchLifecycleResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def batch_unarchive_documents(
     payload: DocumentBatchLifecycleRequest,
     *,

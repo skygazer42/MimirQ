@@ -84,7 +84,11 @@ def _build_group_summaries(
     summaries: list[dict[str, Any]] = []
     for group_name in sorted(grouped):
         rows = grouped[group_name]
-        failed_case_ids = [str(item.get("id") or "").strip() for item in rows if _coerce_float(item.get("hit_at_k")) < 1.0 or _coerce_float(item.get("mrr")) < 1.0]
+        failed_case_ids = [
+            str(item.get("id") or "").strip()
+            for item in rows
+            if _coerce_float(item.get("hit_at_k")) < 1.0 or _coerce_float(item.get("mrr")) < 1.0
+        ]
         summaries.append(
             {
                 "name": group_name,
@@ -127,23 +131,15 @@ def _build_rollout_summary(rollout_payload: Any) -> dict[str, Any] | None:
         promotion_key = "warn_to_fail"
 
     promotion_requirements_obj = (
-        payload.get("promotion_requirements")
-        if isinstance(payload.get("promotion_requirements"), dict)
-        else {}
+        payload.get("promotion_requirements") if isinstance(payload.get("promotion_requirements"), dict) else {}
     )
     promotion_requirements = []
     if promotion_key is not None:
         promotion_requirements = [
-            str(value).strip()
-            for value in (promotion_requirements_obj.get(promotion_key) or [])
-            if str(value).strip()
+            str(value).strip() for value in (promotion_requirements_obj.get(promotion_key) or []) if str(value).strip()
         ]
 
-    owner_roles = [
-        str(value).strip()
-        for value in (payload.get("owner_roles") or [])
-        if str(value).strip()
-    ]
+    owner_roles = [str(value).strip() for value in (payload.get("owner_roles") or []) if str(value).strip()]
     return {
         "schema": str(payload.get("schema") or "").strip(),
         "current_stage": current_stage,
@@ -223,8 +219,12 @@ def build_parsing_proof_report(
         "failed_case_ids": list(payload.get("failed_case_ids") or []),
         "query_count_total": int(payload.get("query_count_total") or 0),
         "sample_composition": {
-            "case_family_counts": _normalize_count_map((payload.get("sample_composition") or {}).get("case_family_counts")),
-            "case_category_counts": _normalize_count_map((payload.get("sample_composition") or {}).get("case_category_counts")),
+            "case_family_counts": _normalize_count_map(
+                (payload.get("sample_composition") or {}).get("case_family_counts")
+            ),
+            "case_category_counts": _normalize_count_map(
+                (payload.get("sample_composition") or {}).get("case_category_counts")
+            ),
         },
         "category_summaries": list(payload.get("category_summaries") or []),
         "slice_summaries": list(payload.get("slice_summaries") or []),
@@ -237,7 +237,9 @@ def build_parsing_proof_report(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Build deterministic parsing-proof summary/report artifacts from a batch proof report.")
+    parser = argparse.ArgumentParser(
+        description="Build deterministic parsing-proof summary/report artifacts from a batch proof report."
+    )
     parser.add_argument("--batch-report", required=True, help="Input parsing proof batch report JSON path.")
     parser.add_argument("--summary-out", required=True, help="Output parsing proof summary JSON path.")
     parser.add_argument("--report-out", required=True, help="Output parsing proof report JSON path.")

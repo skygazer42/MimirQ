@@ -21,7 +21,6 @@ Examples:
   python scripts/run_db_maintenance_jobs.py --audit-logs --regression-runs --all-tenants --execute
 """
 
-
 import argparse
 import json
 import sys
@@ -108,7 +107,9 @@ def main(argv: list[str] | None = None) -> int:
             results.append(res)
             ok = ok and bool(res.get("ok") is True)
         except Exception as exc:  # noqa: BLE001
-            results.append({"job": "postgres_maintenance", "ok": False, "error": str(type(exc).__name__), "detail": str(exc)[:200]})
+            results.append(
+                {"job": "postgres_maintenance", "ok": False, "error": str(type(exc).__name__), "detail": str(exc)[:200]}
+            )
             ok = False
 
     # 2) Retention jobs (per-tenant)
@@ -120,7 +121,9 @@ def main(argv: list[str] | None = None) -> int:
                 rows = db.query(Tenant.id).all()
                 tenant_ids = [r[0] for r in rows if isinstance(r, tuple) and r and isinstance(r[0], UUID)]
             except Exception as exc:  # noqa: BLE001
-                results.append({"job": "tenant_list", "ok": False, "error": str(type(exc).__name__), "detail": str(exc)[:200]})
+                results.append(
+                    {"job": "tenant_list", "ok": False, "error": str(type(exc).__name__), "detail": str(exc)[:200]}
+                )
                 ok = False
                 tenant_ids = []
             finally:

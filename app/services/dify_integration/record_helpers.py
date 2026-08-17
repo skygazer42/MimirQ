@@ -1,4 +1,3 @@
-
 from collections.abc import Callable
 from typing import Any
 
@@ -118,9 +117,7 @@ def _fast_compaction_lines(
     seen: set[str] = set()
     always_labels = set(fast_response_always_labels_for_policy_refs(policy_plugin_refs))
     requested_labels = [
-        label
-        for label in labels
-        if label not in always_labels and label not in {"问题", "答案"} and fields.get(label)
+        label for label in labels if label not in always_labels and label not in {"问题", "答案"} and fields.get(label)
     ]
     for prefix in requested_label_prefixes_for_policy_refs(policy_plugin_refs):
         value = metadata_fields.get(prefix)
@@ -467,9 +464,13 @@ def compact_records_for_response(
     response_compaction_for_records: Callable[[list[dict[str, Any]], tuple[str, ...]], dict[str, Any]],
     record_has_strong_question_anchor: Callable[[dict[str, Any], str, tuple[str, ...]], bool],
     compact_by_strong_question_anchor: Callable[[list[dict[str, Any]], str, tuple[str, ...]], list[dict[str, Any]]],
-    filter_records_by_retrieval_policy_alignment: Callable[[list[dict[str, Any]], str, tuple[str, ...]], list[dict[str, Any]]],
+    filter_records_by_retrieval_policy_alignment: Callable[
+        [list[dict[str, Any]], str, tuple[str, ...]], list[dict[str, Any]]
+    ],
     record_rank_score: Callable[[dict[str, Any], str, tuple[str, ...]], float],
-    compact_high_confidence_items: Callable[[list[dict[str, Any]], list[float], int, bool, float, float, int], list[dict[str, Any]]],
+    compact_high_confidence_items: Callable[
+        [list[dict[str, Any]], list[float], int, bool, float, float, int], list[dict[str, Any]]
+    ],
     default_min_top_score: float,
     default_relative_score_floor: float,
     default_min_items: int,

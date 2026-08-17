@@ -24,7 +24,6 @@ Example (execute):
     --execute
 """
 
-
 import argparse
 import json
 import re
@@ -34,7 +33,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-_RESOURCE_RE = re.compile(r"^(deployment|statefulset|daemonset|replicaset|job|cronjob)/[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
+_RESOURCE_RE = re.compile(
+    r"^(deployment|statefulset|daemonset|replicaset|job|cronjob)/[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+)
 
 
 def _utc_now_iso() -> str:
@@ -89,7 +90,9 @@ def main(argv: list[str] | None = None) -> int:
         default=[],
         help="Target resource in kind/name form (repeatable), e.g. deployment/redis or statefulset/milvus.",
     )
-    p.add_argument("--down-seconds", type=int, default=120, help="How long to keep resources at 0 replicas (default: 120).")
+    p.add_argument(
+        "--down-seconds", type=int, default=120, help="How long to keep resources at 0 replicas (default: 120)."
+    )
     p.add_argument("--execute", action="store_true", help="Actually run kubectl scale (default: dry-run).")
 
     args = p.parse_args(argv)
@@ -157,7 +160,13 @@ def main(argv: list[str] | None = None) -> int:
     for r, kind, name, _replicas in originals:
         res = _scale(namespace=namespace, kind=kind, name=name, replicas=0)
         report.setdefault("scale_down", []).append(
-            {"resource": r, "cmd": res.cmd, "exit_code": res.exit_code, "stdout": (res.stdout or "").strip()[:200], "stderr": (res.stderr or "").strip()[:200]}
+            {
+                "resource": r,
+                "cmd": res.cmd,
+                "exit_code": res.exit_code,
+                "stdout": (res.stdout or "").strip()[:200],
+                "stderr": (res.stderr or "").strip()[:200],
+            }
         )
         if res.exit_code != 0:
             report["ok"] = False
@@ -176,7 +185,13 @@ def main(argv: list[str] | None = None) -> int:
     for r, kind, name, replicas in originals:
         res = _scale(namespace=namespace, kind=kind, name=name, replicas=replicas)
         report.setdefault("scale_up", []).append(
-            {"resource": r, "cmd": res.cmd, "exit_code": res.exit_code, "stdout": (res.stdout or "").strip()[:200], "stderr": (res.stderr or "").strip()[:200]}
+            {
+                "resource": r,
+                "cmd": res.cmd,
+                "exit_code": res.exit_code,
+                "stdout": (res.stdout or "").strip()[:200],
+                "stderr": (res.stderr or "").strip()[:200],
+            }
         )
         if res.exit_code != 0:
             report["ok"] = False

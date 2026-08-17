@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Build shareable evidence from a raw plugin corpus closed-loop smoke report."""
 
-
 import argparse
 import json
 import sys
@@ -241,7 +240,9 @@ def _markdown_table(headers: list[str], rows: list[list[str]]) -> list[str]:
         "| " + " | ".join(headers) + " |",
         "| " + " | ".join("---" for _header in headers) + " |",
     ]
-    lines.extend("| " + " | ".join(_text(cell).replace("\n", " ").replace("|", "\\|") for cell in row) + " |" for row in rows)
+    lines.extend(
+        "| " + " | ".join(_text(cell).replace("\n", " ").replace("|", "\\|") for cell in row) + " |" for row in rows
+    )
     return lines
 
 
@@ -355,7 +356,9 @@ def _write_text(path: str | Path, text: str) -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Build shareable evidence from a raw plugin corpus closed-loop smoke report.")
+    parser = argparse.ArgumentParser(
+        description="Build shareable evidence from a raw plugin corpus closed-loop smoke report."
+    )
     parser.add_argument("--input", default=DEFAULT_INPUT)
     parser.add_argument("--json-out", default=DEFAULT_JSON_OUT)
     parser.add_argument("--markdown-out", default=DEFAULT_MARKDOWN_OUT)

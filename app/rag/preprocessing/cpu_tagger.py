@@ -1,4 +1,3 @@
-
 import re
 from typing import Literal
 
@@ -35,9 +34,13 @@ _DOMAIN_TERMS = (
     "切块策略",
     "RAG",
 )
-_ACTION_RE = re.compile(r"[^。！？!?；;\n]{0,50}(?:建议|需要|应当|必须|后续|下一步|待|TODO|完善|优化|修复)[^。！？!?；;\n]{2,100}")
+_ACTION_RE = re.compile(
+    r"[^。！？!?；;\n]{0,50}(?:建议|需要|应当|必须|后续|下一步|待|TODO|完善|优化|修复)[^。！？!?；;\n]{2,100}"
+)
 _ACTION_MARKER_RE = re.compile(r"(建议|需要|应当|必须|后续|下一步|待|TODO|完善|优化|修复)")
-_RISK_RE = re.compile(r"[^。！？!?；;\n]{0,50}(?:风险|异常|失败|阻断|漏洞|敏感|脱敏|隔离|告警|质量问题)[^。！？!?；;\n]{2,100}")
+_RISK_RE = re.compile(
+    r"[^。！？!?；;\n]{0,50}(?:风险|异常|失败|阻断|漏洞|敏感|脱敏|隔离|告警|质量问题)[^。！？!?；;\n]{2,100}"
+)
 _NOISE_KEYWORDS = {
     "联系人",
     "手机号",
@@ -182,7 +185,9 @@ def _apply_sensitivity_tags(
 ) -> set[str]:
     pii_hits = find_pii_matches(source, max_matches=5)
     secret_hits = find_secret_matches(source, max_matches=5)
-    sensitive_texts = {str(match.text or "").casefold() for match in [*pii_hits, *secret_hits] if str(match.text or "").strip()}
+    sensitive_texts = {
+        str(match.text or "").casefold() for match in [*pii_hits, *secret_hits] if str(match.text or "").strip()
+    }
     if pii_hits or secret_hits:
         _append_doc_tag(document_tags, tag_type="sensitivity", value="restricted", confidence=0.92)
         _append_doc_tag(document_tags, tag_type="quality", value="含敏感信息，建议人工复核", confidence=0.9)

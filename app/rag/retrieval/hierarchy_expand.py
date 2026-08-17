@@ -10,7 +10,6 @@ Use-cases:
   metadata-only hierarchy overlay (hierarchy_node_key, hierarchy_parent_key, prev/next keys).
 """
 
-
 import hashlib
 from collections.abc import Callable, Iterable
 from typing import Any
@@ -47,7 +46,11 @@ def _node_key(meta: dict[str, Any]) -> str:
 
 def _parent_key(meta: dict[str, Any]) -> str:
     # Respect explicit hierarchy_parent_key=None; fall back only when field absent.
-    raw = meta.get("hierarchy_parent_key") if "hierarchy_parent_key" in meta else (meta.get("parent_id") or meta.get("parent_node_id"))
+    raw = (
+        meta.get("hierarchy_parent_key")
+        if "hierarchy_parent_key" in meta
+        else (meta.get("parent_id") or meta.get("parent_node_id"))
+    )
     return _sig(raw)
 
 

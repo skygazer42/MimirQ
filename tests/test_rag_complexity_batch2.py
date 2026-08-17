@@ -60,8 +60,11 @@ def test_build_governance_rules_expands_unique_packs_and_sanitizes_extra_rules()
     )
 
     assert rules[: len(DEFAULT_MARKDOWN_RULES)] == DEFAULT_MARKDOWN_RULES
-    assert rules[len(DEFAULT_MARKDOWN_RULES) : len(DEFAULT_MARKDOWN_RULES) + len(GOVERNANCE_RULE_PACKS["web_cookie_banners"])] == (
-        GOVERNANCE_RULE_PACKS["web_cookie_banners"]
+    assert (
+        rules[
+            len(DEFAULT_MARKDOWN_RULES) : len(DEFAULT_MARKDOWN_RULES) + len(GOVERNANCE_RULE_PACKS["web_cookie_banners"])
+        ]
+        == (GOVERNANCE_RULE_PACKS["web_cookie_banners"])
     )
     assert rules[-2:] == [
         RegexRule(pattern="alpha", repl="", flags=2),

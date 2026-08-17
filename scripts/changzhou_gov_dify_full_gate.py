@@ -6,7 +6,6 @@ case-input preflight, Dify generated-answer collection, direct MimirQ golden
 evaluation, and Dify workflow trace validation.
 """
 
-
 import argparse
 import json
 import os
@@ -377,7 +376,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dify-api-key", default=os.getenv("DIFY_APP_API_KEY") or "")
     parser.add_argument("--dify-api-key-file", default=DEFAULT_API_KEY_FILE)
     parser.add_argument("--app-id", required=True)
-    parser.add_argument("--console-base-url", default=os.getenv("DIFY_CONSOLE_API_BASE_URL") or DEFAULT_CONSOLE_BASE_URL)
+    parser.add_argument(
+        "--console-base-url", default=os.getenv("DIFY_CONSOLE_API_BASE_URL") or DEFAULT_CONSOLE_BASE_URL
+    )
     parser.add_argument("--console-token", default=os.getenv("DIFY_CONSOLE_TOKEN") or "")
     parser.add_argument("--storage-state", default=DEFAULT_STORAGE_STATE)
     parser.add_argument("--mimirq-base-url", default=os.getenv("MIMIRQ_API_BASE_URL") or "http://127.0.0.1:8000")

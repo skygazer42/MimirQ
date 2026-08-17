@@ -108,7 +108,9 @@ def test_document_questions_generation_is_opt_in_and_writes_metadata() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_post_completion_kg_marks_ready_and_skipped_channels_when_no_events(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_run_post_completion_kg_marks_ready_and_skipped_channels_when_no_events(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     document = type(
         "_Doc",
         (),
@@ -247,7 +249,9 @@ def test_document_questions_generation_is_zero_cost_by_default(monkeypatch: pyte
 
 
 @pytest.mark.asyncio
-async def test_process_document_resumes_from_indexed_checkpoint_without_reindex(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:  # noqa: ANN001
+async def test_process_document_resumes_from_indexed_checkpoint_without_reindex(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:  # noqa: ANN001
     from app.parsing.processors import processor
 
     tenant_id = uuid.uuid4()
@@ -333,7 +337,12 @@ async def test_process_document_resumes_from_indexed_checkpoint_without_reindex(
     monkeypatch.setattr(service, "_apply_pending_retry_cleanup", lambda *_args, **_kwargs: "applied", raising=True)
     monkeypatch.setattr(service, "_update_status", _update_status, raising=True)
     monkeypatch.setattr(service, "_record_pipeline_effective", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(processor, "resolve_pipeline_effective", lambda **_kwargs: type("_Cfg", (), {"kg_enabled": False})(), raising=True)
+    monkeypatch.setattr(
+        processor,
+        "resolve_pipeline_effective",
+        lambda **_kwargs: type("_Cfg", (), {"kg_enabled": False})(),
+        raising=True,
+    )
     monkeypatch.setattr(processor, "build_indexing_options", lambda _cfg: object(), raising=True)
     monkeypatch.setattr(processor, "run_post_completion_kg", _run_post_completion_kg, raising=True)
 
@@ -351,7 +360,9 @@ async def test_process_document_resumes_from_indexed_checkpoint_without_reindex(
 
 
 @pytest.mark.asyncio
-async def test_update_status_persists_retry_boundary_when_required_ingestion_run_sync_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_update_status_persists_retry_boundary_when_required_ingestion_run_sync_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from app.parsing.processors import processor
 
     tenant_id = uuid.uuid4()
@@ -423,7 +434,9 @@ async def test_update_status_persists_retry_boundary_when_required_ingestion_run
     assert db_document.doc_metadata["ingest_resume_required"]["reason"] == "ingestion_run_status_update_failed"
 
 
-@pytest.mark.parametrize(("document_status", "expected_force"), [("failed", False), ("quarantined", False), ("completed", True)])
+@pytest.mark.parametrize(
+    ("document_status", "expected_force"), [("failed", False), ("quarantined", False), ("completed", True)]
+)
 def test_dead_letter_replay_only_forces_completed_documents(
     monkeypatch: pytest.MonkeyPatch,
     document_status: str,

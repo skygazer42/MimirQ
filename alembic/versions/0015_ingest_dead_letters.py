@@ -1,6 +1,5 @@
 """Add ingest dead letters and structured document failure fields."""
 
-
 from alembic import op
 
 revision = "0015_ingest_dead_letters"

@@ -1,4 +1,3 @@
-
 import hashlib
 import json
 import time
@@ -134,7 +133,9 @@ def test_observability_trace_bundle_404(monkeypatch, tmp_path):  # noqa: ANN001
 
     tenant_id = uuid.uuid4()
     metrics_path = tmp_path / "rag_metrics.jsonl"
-    metrics_path.write_text(json.dumps({"event": "rag_trace", "tenant_id": str(tenant_id), "request_id": "x"}), encoding="utf-8")
+    metrics_path.write_text(
+        json.dumps({"event": "rag_trace", "tenant_id": str(tenant_id), "request_id": "x"}), encoding="utf-8"
+    )
 
     monkeypatch.setattr(settings, "ENABLE_METRICS_LOG", True, raising=False)
     monkeypatch.setattr(settings, "METRICS_LOG_PATH", str(metrics_path), raising=False)
@@ -152,5 +153,7 @@ def test_observability_trace_bundle_404(monkeypatch, tmp_path):  # noqa: ANN001
     app.get("/api/v1/observability/rag-metrics/trace-bundle")(get_rag_trace_bundle)
     client = TestClient(app)
 
-    res = client.get("/api/v1/observability/rag-metrics/trace-bundle?request_id=missing&window_minutes=60&max_bytes=5000000")
+    res = client.get(
+        "/api/v1/observability/rag-metrics/trace-bundle?request_id=missing&window_minutes=60&max_bytes=5000000"
+    )
     assert res.status_code == 404

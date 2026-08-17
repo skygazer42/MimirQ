@@ -7,7 +7,6 @@ Key goals:
 - Return a compact, provenance-friendly payload to be persisted in `kg_relations`.
 """
 
-
 import math
 import re
 from collections.abc import Sequence
@@ -236,11 +235,12 @@ class RelationProcessor:
             "Constraints:\n"
             "- subject_id and object_id MUST be chosen from the candidate list ids.\n"
             "- Prefer using an allowed predicate when possible; do not invent new predicates.\n"
-            "- If unsure about predicate, use \"unknown\".\n"
+            '- If unsure about predicate, use "unknown".\n'
             "- Prefer concise, ontology-friendly predicate keys (snake_case).\n"
-            "- If the text explicitly defines an alias/abbreviation/synonym (e.g. \"X (Y)\", \"aka\", \"简称\"), "
-            "use predicate \"alias_of\".\n"
-            "- For each relation, include evidence_quote: an exact substring from the text that supports the relation.\n"
+            '- If the text explicitly defines an alias/abbreviation/synonym (e.g. "X (Y)", "aka", "简称"), '
+            'use predicate "alias_of".\n'
+            "- For each relation, include evidence_quote: an exact substring from the text that "
+            "supports the relation.\n"
             "- evidence_quote MUST be copied verbatim from the Text section (no paraphrase).\n"
             "- evidence_quote SHOULD include both the subject and object surface forms.\n"
             "- Keep evidence_quote short (prefer a single sentence/phrase, <= 240 chars).\n"

@@ -32,7 +32,9 @@ def test_check_redis_reports_chat_retrieval_and_semantic_usage() -> None:
         },
     )()
 
-    redis_status, ok, should_reset = check_redis(settings, get_client=lambda: type("Client", (), {"ping": lambda self: True})())
+    redis_status, ok, should_reset = check_redis(
+        settings, get_client=lambda: type("Client", (), {"ping": lambda self: True})()
+    )
 
     assert ok is True
     assert should_reset is False
@@ -50,13 +52,17 @@ def test_check_redis_reports_chat_retrieval_and_semantic_usage() -> None:
 
 def test_probe_redis_reports_usage_flags(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("app.services.deps_diagnostics_service.settings.SECRET_KEY", "x" * 32, raising=False)
-    monkeypatch.setattr("app.services.deps_diagnostics_service.settings.CHAT_RESPONSE_CACHE_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        "app.services.deps_diagnostics_service.settings.CHAT_RESPONSE_CACHE_ENABLED", True, raising=False
+    )
     monkeypatch.setattr(
         "app.services.deps_diagnostics_service.settings.RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED",
         True,
         raising=False,
     )
-    monkeypatch.setattr("app.services.deps_diagnostics_service.settings.RETRIEVAL_CANDIDATE_CACHE_ENABLED", False, raising=False)
+    monkeypatch.setattr(
+        "app.services.deps_diagnostics_service.settings.RETRIEVAL_CANDIDATE_CACHE_ENABLED", False, raising=False
+    )
     monkeypatch.setattr("app.services.deps_diagnostics_service.settings.SEMANTIC_CACHE_ENABLED", True, raising=False)
     monkeypatch.setattr("app.services.deps_diagnostics_service.settings.EMBEDDING_CACHE_ENABLED", False, raising=False)
     monkeypatch.setattr("app.services.deps_diagnostics_service.settings.TASK_QUEUE_ENABLED", False, raising=False)

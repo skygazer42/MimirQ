@@ -1,4 +1,3 @@
-
 import argparse
 import json
 import sys
@@ -50,7 +49,9 @@ def validate_governance(payload: dict[str, Any]) -> dict[str, Any]:
             raise ValueError(f"workflow_not_found:{path_text}")
 
     promotion_requirements = payload.get("promotion_requirements")
-    if not isinstance(promotion_requirements, list) or not [str(v).strip() for v in promotion_requirements if str(v).strip()]:
+    if not isinstance(promotion_requirements, list) or not [
+        str(v).strip() for v in promotion_requirements if str(v).strip()
+    ]:
         raise ValueError("promotion_requirements_required")
 
     return {

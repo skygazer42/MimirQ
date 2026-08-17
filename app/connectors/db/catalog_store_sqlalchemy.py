@@ -5,7 +5,6 @@ This store persists DB catalog metadata into the application's primary database.
 It intentionally does not commit; callers manage transaction boundaries.
 """
 
-
 from collections.abc import Sequence
 from datetime import datetime
 from uuid import UUID
@@ -62,10 +61,10 @@ class SqlAlchemyCatalogStore(CatalogStore):
             row.connector_config_id = connector_config_id
         row.engine = str(table.engine or "")[:32]
         row.db_name = str(table.db_name or "")[:255]
-        row.schema_name = (str(table.schema_name)[:255] if table.schema_name is not None else None)
+        row.schema_name = str(table.schema_name)[:255] if table.schema_name is not None else None
         row.table_name = str(table.table_name or "")[:255]
         row.table_type = str(table.table_type or "table")[:32]
-        row.comment = (str(table.comment) if table.comment is not None else None)
+        row.comment = str(table.comment) if table.comment is not None else None
         row.last_seen_at = seen_at
         self._db.flush()
         return UUID(str(row.id))
@@ -85,7 +84,9 @@ class SqlAlchemyCatalogStore(CatalogStore):
                 table_id=table_id,
                 ordinal=int(ordinal),
                 name=name[:255],
-                data_type=(str(getattr(c, "data_type", "") or "")[:255] if getattr(c, "data_type", None) is not None else None),
+                data_type=(
+                    str(getattr(c, "data_type", "") or "")[:255] if getattr(c, "data_type", None) is not None else None
+                ),
                 nullable=(bool(c.nullable) if getattr(c, "nullable", None) is not None else None),
                 comment=(str(c.comment) if getattr(c, "comment", None) is not None else None),
             )

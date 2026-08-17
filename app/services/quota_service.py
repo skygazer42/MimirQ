@@ -4,7 +4,6 @@ Quota helpers (best-effort).
 Currently supports a rolling per-tenant assistant-token quota for chat.
 """
 
-
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -53,8 +52,21 @@ def check_chat_assistant_token_quota(
         used = int(used_raw or 0)
     except Exception:
         # Fail open.
-        return {"enabled": False, "limit": limit, "used": 0, "window_hours": window_hours, "exceeded": False, "mode": mode}
+        return {
+            "enabled": False,
+            "limit": limit,
+            "used": 0,
+            "window_hours": window_hours,
+            "exceeded": False,
+            "mode": mode,
+        }
 
     exceeded = used >= limit
-    return {"enabled": True, "limit": limit, "used": used, "window_hours": window_hours, "exceeded": exceeded, "mode": mode}
-
+    return {
+        "enabled": True,
+        "limit": limit,
+        "used": used,
+        "window_hours": window_hours,
+        "exceeded": exceeded,
+        "mode": mode,
+    }

@@ -11,7 +11,6 @@ Notes:
   replacement is a callable (match-type differences across engines).
 """
 
-
 import re
 from typing import Any
 
@@ -66,7 +65,9 @@ def safe_subn(
         out, n = _regex.subn(pattern, str(repl), text, flags=int(flags or 0), timeout=float(timeout) / 1000.0)
         return out, int(n or 0)
     except TimeoutError as exc:
-        raise RegexSubstitutionTimeoutError(rule_index=int(rule_index), pattern=str(pattern or ""), timeout_ms=int(timeout)) from exc
+        raise RegexSubstitutionTimeoutError(
+            rule_index=int(rule_index), pattern=str(pattern or ""), timeout_ms=int(timeout)
+        ) from exc
 
 
 __all__ = [

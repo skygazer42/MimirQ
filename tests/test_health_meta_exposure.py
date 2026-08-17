@@ -55,7 +55,9 @@ def test_public_health_endpoints_expose_only_minimal_status_fields(monkeypatch):
     app, _main_module, health_module, _meta_module = _build_app()
     _reset_caches(health_module)
 
-    monkeypatch.setattr(health_module, "check_database", lambda *_args, **_kwargs: ({"status": "ok"}, True), raising=True)
+    monkeypatch.setattr(
+        health_module, "check_database", lambda *_args, **_kwargs: ({"status": "ok"}, True), raising=True
+    )
     monkeypatch.setattr(
         health_module,
         "check_vector",
@@ -99,7 +101,9 @@ def test_public_ready_endpoint_preserves_probe_status_without_detail_leak(monkey
     app, _main_module, health_module, _meta_module = _build_app()
     _reset_caches(health_module)
 
-    monkeypatch.setattr(health_module, "check_database", lambda *_args, **_kwargs: ({"status": "down"}, False), raising=True)
+    monkeypatch.setattr(
+        health_module, "check_database", lambda *_args, **_kwargs: ({"status": "down"}, False), raising=True
+    )
     monkeypatch.setattr(
         health_module,
         "check_vector",
@@ -145,7 +149,9 @@ def test_health_details_are_admin_gated_and_expose_dependency_details(monkeypatc
     assert unauthenticated.status_code == 401
 
     monkeypatch.setattr(health_module, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(health_module, "check_database", lambda *_args, **_kwargs: ({"status": "ok"}, True), raising=True)
+    monkeypatch.setattr(
+        health_module, "check_database", lambda *_args, **_kwargs: ({"status": "ok"}, True), raising=True
+    )
     monkeypatch.setattr(
         health_module,
         "check_vector",
@@ -196,7 +202,9 @@ def test_public_ready_endpoint_honors_runtime_warmup_requirement_without_detail_
     app, _main_module, health_module, _meta_module = _build_app()
     _reset_caches(health_module)
 
-    monkeypatch.setattr(health_module, "check_database", lambda *_args, **_kwargs: ({"status": "ok"}, True), raising=True)
+    monkeypatch.setattr(
+        health_module, "check_database", lambda *_args, **_kwargs: ({"status": "ok"}, True), raising=True
+    )
     monkeypatch.setattr(
         health_module,
         "check_vector",
@@ -314,7 +322,9 @@ def test_ready_probe_uses_minio_when_assets_need_it_even_without_document_store(
             return {"enabled": True, "status": "connected", "provider": "minio"}
 
     monkeypatch.setattr(health_module, "minio_service", _Probe(), raising=True)
-    monkeypatch.setattr(health_module, "check_database", lambda *_args, **_kwargs: ({"status": "ok"}, True), raising=True)
+    monkeypatch.setattr(
+        health_module, "check_database", lambda *_args, **_kwargs: ({"status": "ok"}, True), raising=True
+    )
     monkeypatch.setattr(
         health_module,
         "check_vector",

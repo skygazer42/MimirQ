@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Refresh a Dify console storage_state file without printing secrets."""
 
-
 import argparse
 import base64
 import binascii
@@ -233,14 +232,18 @@ def refresh_storage_state(
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Refresh a Dify console Playwright storage_state file.")
-    parser.add_argument("--console-base-url", default=os.getenv("DIFY_CONSOLE_API_BASE_URL") or DEFAULT_CONSOLE_BASE_URL)
+    parser.add_argument(
+        "--console-base-url", default=os.getenv("DIFY_CONSOLE_API_BASE_URL") or DEFAULT_CONSOLE_BASE_URL
+    )
     parser.add_argument("--console-origin", default=os.getenv("DIFY_CONSOLE_ORIGIN") or DEFAULT_CONSOLE_ORIGIN)
     parser.add_argument("--email", default=os.getenv("DIFY_CONSOLE_EMAIL") or "")
     parser.add_argument("--password", default=os.getenv("DIFY_CONSOLE_PASSWORD") or "")
     parser.add_argument("--password-file", default=os.getenv("DIFY_CONSOLE_PASSWORD_FILE") or "")
     parser.add_argument("--storage-state", default=DEFAULT_STORAGE_STATE)
     parser.add_argument("--timeout", type=float, default=30.0)
-    parser.add_argument("--check", action="store_true", help="Validate the existing storage_state token without logging in.")
+    parser.add_argument(
+        "--check", action="store_true", help="Validate the existing storage_state token without logging in."
+    )
     parser.add_argument("--min-ttl-seconds", type=int, default=900)
     parser.add_argument("--out", default="", help="Optional JSON report path.")
     return parser

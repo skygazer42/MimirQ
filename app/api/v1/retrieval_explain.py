@@ -5,7 +5,6 @@ Returns a deterministic retrieval-only explain payload so contributors can
 diagnose recall/rerank behavior without running the full chat flow.
 """
 
-
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -213,10 +212,16 @@ async def explain_retrieval(
     channels = query_debug.get("channels") if isinstance(query_debug.get("channels"), dict) else {}
     channel_health = out.get("channel_health") if isinstance(out.get("channel_health"), dict) else {}
     if not channel_health:
-        channel_health = metrics.get("retrieval_channel_health") if isinstance(metrics.get("retrieval_channel_health"), dict) else {}
-    hierarchy_recall = query_debug.get("hierarchy_recall") if isinstance(query_debug.get("hierarchy_recall"), dict) else {}
+        channel_health = (
+            metrics.get("retrieval_channel_health") if isinstance(metrics.get("retrieval_channel_health"), dict) else {}
+        )
+    hierarchy_recall = (
+        query_debug.get("hierarchy_recall") if isinstance(query_debug.get("hierarchy_recall"), dict) else {}
+    )
     if not hierarchy_recall:
-        hierarchy_recall = retrieval_trace.get("hierarchy_recall") if isinstance(retrieval_trace.get("hierarchy_recall"), dict) else {}
+        hierarchy_recall = (
+            retrieval_trace.get("hierarchy_recall") if isinstance(retrieval_trace.get("hierarchy_recall"), dict) else {}
+        )
     query_count = int(metrics.get("retrieval_query_count") or len(metrics.get("retrieval_per_query") or []))
     top_limit = max(1, int(body.top_citations_limit or 1))
 

@@ -1,4 +1,3 @@
-
 from itertools import islice
 from typing import Any
 
@@ -15,7 +14,10 @@ def event_document_id(event: Any) -> str:
 
 
 def event_search_text(event: Any) -> str:
-    return f"{getattr(event, 'title', '') or ''} {getattr(event, 'summary', '') or ''} {getattr(event, 'content', '') or ''}"
+    return (
+        f"{getattr(event, 'title', '') or ''} {getattr(event, 'summary', '') or ''} "
+        f"{getattr(event, 'content', '') or ''}"
+    )
 
 
 def phrase_score(query: str, text: str) -> float:

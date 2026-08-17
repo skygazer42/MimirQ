@@ -332,7 +332,9 @@ def test_patch_evidence_item_only_updates_selected_fields_and_finalizes_refs(
     import app.api.v1.evaluations as evaluations_api
 
     finalized_refs = [{"chunk_id": "new", "document_id": str(uuid.uuid4())}]
-    monkeypatch.setattr(evaluations_api, "_finalize_reference_sources", lambda *_args, **_kwargs: finalized_refs, raising=True)
+    monkeypatch.setattr(
+        evaluations_api, "_finalize_reference_sources", lambda *_args, **_kwargs: finalized_refs, raising=True
+    )
 
     payload = evidence_api.EvidenceItemPatchRequest(
         query="after",

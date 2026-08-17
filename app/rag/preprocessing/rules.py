@@ -1,4 +1,3 @@
-
 from app.rag.preprocessing.cleaning import RegexRule
 from app.rag.preprocessing.rule_packs import GOVERNANCE_RULE_PACKS
 
@@ -10,7 +9,9 @@ DEFAULT_MARKDOWN_RULES: list[RegexRule] = [
     RegexRule(pattern=r"(?m)^[ \t]*第[ \t]*\d+[ \t]*页[ \t]*/[ \t]*共[ \t]*\d+[ \t]*页[ \t]*$", repl="", flags=0),
     RegexRule(pattern=r"(?m)^[ \t]*\d+[ \t]*/[ \t]*\d+[ \t]*$", repl="", flags=0),
     # Page number wrapped by dashes (common in PDF exports): "— 12 —" / "- 3 -".
-    RegexRule(pattern=r"(?m)^[ \t]*[-\u2013\u2014]{1,6}[ \t]*\d{1,4}[ \t]*[-\u2013\u2014]{1,6}[ \t]*$", repl="", flags=0),
+    RegexRule(
+        pattern=r"(?m)^[ \t]*[-\u2013\u2014]{1,6}[ \t]*\d{1,4}[ \t]*[-\u2013\u2014]{1,6}[ \t]*$", repl="", flags=0
+    ),
     # Remove excessive horizontal separators from some exporters.
     RegexRule(pattern=r"(?m)^[ \t]*[-=_]{8,}[ \t]*$", repl="", flags=0),
     RegexRule(pattern=r"(?m)^[ \t]*[.\u00b7]{6,}[ \t]*$", repl="", flags=0),
@@ -76,7 +77,7 @@ def build_governance_rules(
     """
     out = list(DEFAULT_MARKDOWN_RULES)
     _extend_rule_packs(out, rule_packs)
-    for item in (extra_rules or []):
+    for item in extra_rules or []:
         rule = _coerce_extra_rule(item)
         if rule is not None:
             out.append(rule)

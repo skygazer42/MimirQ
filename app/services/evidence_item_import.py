@@ -1,4 +1,3 @@
-
 import csv
 import io
 import json
@@ -119,7 +118,18 @@ def _build_item(payload: dict[str, Any]) -> dict[str, Any]:
             source_meta.update(_parse_source_metadata(payload.get(key)))
             break
 
-    reserved = {k.lower() for k in (*_QUERY_KEYS, *_EXPECTED_ANSWER_KEYS, *_TAGS_KEYS, "source_metadata", "source_meta", "metadata", "source")}
+    reserved = {
+        k.lower()
+        for k in (
+            *_QUERY_KEYS,
+            *_EXPECTED_ANSWER_KEYS,
+            *_TAGS_KEYS,
+            "source_metadata",
+            "source_meta",
+            "metadata",
+            "source",
+        )
+    }
     for k, v in (payload or {}).items():
         kk = str(k or "").strip()
         if not kk:

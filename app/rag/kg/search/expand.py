@@ -1,6 +1,7 @@
 """
 Expand stage: multi-hop entity -> event expansion.
 """
+
 import asyncio
 from dataclasses import dataclass
 from typing import Any
@@ -27,8 +28,7 @@ class ExpandResult:
 
 
 class ExpandSearcher:
-    def __init__(self):
-        ...
+    def __init__(self): ...
 
     async def expand(self, config: SearchConfig, recall_result: RecallResult) -> ExpandResult:
         return await asyncio.to_thread(self._expand_sync, config, recall_result)
@@ -182,7 +182,8 @@ class ExpandSearcher:
                                     )
                                     if evidence_source == "mention":
                                         mention_mult = float(
-                                            getattr(settings, "KG_SEARCH_RELATION_MENTION_EVIDENCE_MULTIPLIER", 0.7) or 0.7
+                                            getattr(settings, "KG_SEARCH_RELATION_MENTION_EVIDENCE_MULTIPLIER", 0.7)
+                                            or 0.7
                                         )
                                         evidence_mult = max(0.0, min(1.0, float(mention_mult)))
                                 except Exception:
@@ -202,7 +203,7 @@ class ExpandSearcher:
                                 bucket = confidence_bucket(conf, low_max=bucket_low, mid_max=bucket_mid)
 
                                 tracker.add_clue(
-                                    stage=f"expand-hop-{hop+1}",
+                                    stage=f"expand-hop-{hop + 1}",
                                     from_node=Tracker.build_entity_node(
                                         {"entity_id": from_id, "name": "", "type": "unknown", "hop": hop + 1}
                                     ),
@@ -222,7 +223,7 @@ class ExpandSearcher:
                                         "relation_document_id": str(getattr(rel, "document_id", "") or "") or None,
                                         "relation_chunk_id": str(getattr(rel, "chunk_id", "") or "") or None,
                                         "relation_event_id": str(getattr(rel, "event_id", "") or "") or None,
-                                        "step": f"hop-{hop+1}",
+                                        "step": f"hop-{hop + 1}",
                                     },
                                 )
 
@@ -233,7 +234,11 @@ class ExpandSearcher:
                                 try:
                                     neighbor_ids = [eid for eid, _w in sorted_neighbors]
                                     objs = entity_repo.get_entities_by_ids(neighbor_ids, tenant_id=tenant_id)
-                                    non_skill = {str(o.id) for o in (objs or []) if str(getattr(o, "type", "") or "") not in skill_types}
+                                    non_skill = {
+                                        str(o.id)
+                                        for o in (objs or [])
+                                        if str(getattr(o, "type", "") or "") not in skill_types
+                                    }
                                     sorted_neighbors = [(eid, w) for eid, w in sorted_neighbors if eid in non_skill]
                                 except Exception as exc:
                                     # Best-effort: if filtering fails, keep original neighbors.
@@ -274,9 +279,7 @@ class ExpandSearcher:
                 for ev in events:
                     ev_id = str(ev.id)
                     base = recall_result.event_scores.get(ev_id, 0.0)
-                    boost = sum(
-                        entity_weights.get(str(ent.id), 0.0) for ent in assoc_map.get(ev_id, [])
-                    )
+                    boost = sum(entity_weights.get(str(ent.id), 0.0) for ent in assoc_map.get(ev_id, []))
                     recall_result.event_scores[ev_id] = base * 0.5 + boost * 0.5
 
                 # collect new entities from these events
@@ -292,10 +295,10 @@ class ExpandSearcher:
                         weight = recall_result.event_scores.get(ev_id, 0.0)
                         new_entities[ent_id] = new_entities.get(ent_id, 0.0) + weight
                         tracker.add_clue(
-                            stage=f"expand-hop-{hop+1}",
+                            stage=f"expand-hop-{hop + 1}",
                             from_node=Tracker.build_event_node(
                                 events_by_id.get(ev_id) or {"id": ev_id},
-                                stage=f"expand-hop-{hop+1}",
+                                stage=f"expand-hop-{hop + 1}",
                                 hop=hop + 1,
                             ),
                             to_node=Tracker.build_entity_node(
@@ -303,7 +306,7 @@ class ExpandSearcher:
                             ),
                             confidence=0.3,
                             relation="event->entity",
-                            metadata={"step": f"hop-{hop+1}"},
+                            metadata={"step": f"hop-{hop + 1}"},
                         )
 
                 sorted_new = sorted(new_entities.items(), key=lambda x: x[1], reverse=True)

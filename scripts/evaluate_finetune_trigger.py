@@ -1,4 +1,3 @@
-
 import argparse
 import json
 from pathlib import Path
@@ -49,11 +48,15 @@ def evaluate_finetune_trigger(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Evaluate whether feedback volume is high enough to trigger finetune evaluation.")
+    parser = argparse.ArgumentParser(
+        description="Evaluate whether feedback volume is high enough to trigger finetune evaluation."
+    )
     parser.add_argument("--feedback-json", required=True, help="Path to feedback JSON list.")
     parser.add_argument("--out", required=True, help="Output JSON path.")
     parser.add_argument("--min-feedback", type=int, default=200, help="Minimum total feedback rows required.")
-    parser.add_argument("--min-negative-feedback", type=int, default=50, help="Minimum negative feedback rows required.")
+    parser.add_argument(
+        "--min-negative-feedback", type=int, default=50, help="Minimum negative feedback rows required."
+    )
     args = parser.parse_args(argv)
 
     payload = evaluate_finetune_trigger(

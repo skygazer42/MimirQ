@@ -9,7 +9,6 @@ Notes:
 - This module intentionally avoids reading/storing chunk content; it operates on ids + metadata only.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -161,7 +160,9 @@ def classify_reference_source_drift(
     if doc_id is not None and observed_chunk_doc_id is not None and observed_chunk_doc_id != doc_id:
         return False, DRIFT_REASON_CHUNK_DOCUMENT_MISMATCH, expected, observed
 
-    drift = _chunk_index_drift(reference_source=reference_source, chunk_row=chunk_row, expected=expected, observed=observed)
+    drift = _chunk_index_drift(
+        reference_source=reference_source, chunk_row=chunk_row, expected=expected, observed=observed
+    )
     if drift is not None:
         return drift
 

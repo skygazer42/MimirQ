@@ -1,4 +1,3 @@
-
 from pathlib import Path
 from typing import Any
 
@@ -188,7 +187,9 @@ def build_parse_failure_diagnostics(
         pdf_is_scanned = bool(pdf_sample.get("is_scanned")) if isinstance(pdf_sample, dict) else None
         diag["pdf_sample"] = pdf_sample
 
-    diag["suggested_backends"] = suggest_parser_backends(ext, parser_factory=parser_factory, pdf_is_scanned=pdf_is_scanned)
+    diag["suggested_backends"] = suggest_parser_backends(
+        ext, parser_factory=parser_factory, pdf_is_scanned=pdf_is_scanned
+    )
     return diag
 
 

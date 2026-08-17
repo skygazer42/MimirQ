@@ -1,9 +1,10 @@
-
 import math
 import re
 from typing import Any
 
-_REFUSAL_RE = re.compile(r"(无法|没有相关|未找到|不能确认|无法确认|无相关资料|not enough|cannot answer)", flags=re.IGNORECASE)
+_REFUSAL_RE = re.compile(
+    r"(无法|没有相关|未找到|不能确认|无法确认|无相关资料|not enough|cannot answer)", flags=re.IGNORECASE
+)
 
 
 def _normalize(text: Any) -> str:
@@ -38,7 +39,9 @@ def evaluate_answer_deterministic(
     refusal = bool(_REFUSAL_RE.search(norm_answer))
     refusal_correct = refusal if is_unanswerable else None
     zero_f1 = math.isclose(answer_f1, 0.0, abs_tol=1e-12)
-    obvious_hallucination = bool(not is_unanswerable and norm_gold and norm_answer and norm_answer != norm_gold and zero_f1)
+    obvious_hallucination = bool(
+        not is_unanswerable and norm_gold and norm_answer and norm_answer != norm_gold and zero_f1
+    )
 
     return {
         "question": str(question or ""),

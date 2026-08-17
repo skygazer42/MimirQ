@@ -1,4 +1,3 @@
-
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -23,7 +22,9 @@ class _StubReranker(BaseReranker):
         if self.expected_candidates is not None:
             assert ids == self.expected_candidates
         score_map = {cid: float(len(self.ordered) - i) for i, cid in enumerate(self.ordered)}
-        return RerankResult(ordered_ids=list(self.ordered), score_map=score_map, provider=self.provider_id, model_used="stub")
+        return RerankResult(
+            ordered_ids=list(self.ordered), score_map=score_map, provider=self.provider_id, model_used="stub"
+        )
 
 
 class _FakeRetriever:
@@ -102,4 +103,3 @@ def test_orchestrator_evidence_post_rerank_pipeline_applies_stages(monkeypatch: 
     citations = out.get("citations") or []
     assert [c.get("chunk_id") for c in citations] == ["a", "b", "c"]
     assert citations[0].get("reranker_provider") in {"stage2", "pipeline"}
-

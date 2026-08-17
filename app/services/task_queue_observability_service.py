@@ -11,7 +11,6 @@ Design goals:
 - Low cardinality: do not emit per-worker label series in Prometheus.
 """
 
-
 import asyncio
 import contextlib
 import json
@@ -337,7 +336,9 @@ async def refresh_task_queue_observability_snapshot(*, source: str) -> TaskQueue
 
     if enabled:
         redis = await _get_arq_redis()
-        broker_up, depth, workers_active, recent_job_outcomes, err = await _refresh_from_redis(redis=redis, queue_name=q)
+        broker_up, depth, workers_active, recent_job_outcomes, err = await _refresh_from_redis(
+            redis=redis, queue_name=q
+        )
     else:
         broker_up, depth, workers_active, recent_job_outcomes, err = False, 0, 0, [], None
 

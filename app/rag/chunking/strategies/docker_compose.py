@@ -6,7 +6,6 @@ service blocks, then applies a fallback splitter inside each block while
 preserving character offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -79,7 +78,9 @@ def _build_service_blocks(text: str) -> list[_ServiceBlock]:
             anchor_idx = i
             break
 
-    candidates, services_end = _collect_service_candidates(lines, anchor_idx=anchor_idx, base_indent=base_indent, text_length=len(text))
+    candidates, services_end = _collect_service_candidates(
+        lines, anchor_idx=anchor_idx, base_indent=base_indent, text_length=len(text)
+    )
     if not candidates:
         return []
 
@@ -147,7 +148,9 @@ def looks_like_docker_compose(text: str) -> bool:
     return len(blocks) >= 1
 
 
-def _compose_base_meta(base_meta: dict[str, Any], *, start_char: int, end_char: int, version: str | None) -> dict[str, Any]:
+def _compose_base_meta(
+    base_meta: dict[str, Any], *, start_char: int, end_char: int, version: str | None
+) -> dict[str, Any]:
     meta: dict[str, Any] = dict(base_meta)
     meta["chunk_strategy"] = "docker_compose"
     meta["start_char"] = start_char

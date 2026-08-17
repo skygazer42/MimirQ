@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass
 
 
@@ -27,7 +26,10 @@ CONNECTOR_REGISTRY: dict[str, ConnectorDefinition] = {
     "web_crawl": ConnectorDefinition(
         connector_id="web_crawl",
         name="网站抓取（站点级）",
-        description="从站点种子 URL 开始抓取链接并批量入库（支持 Cookie/Bearer/Basic 登录态；配置中的密钥会被加密存储并在响应中脱敏）",
+        description=(
+            "从站点种子 URL 开始抓取链接并批量入库（支持 Cookie/Bearer/Basic 登录态；"
+            "配置中的密钥会被加密存储并在响应中脱敏）"
+        ),
         supports_incremental=True,
         supports_resume=True,
         supports_full_reconcile=True,
@@ -37,7 +39,10 @@ CONNECTOR_REGISTRY: dict[str, ConnectorDefinition] = {
     "github_repo": ConnectorDefinition(
         connector_id="github_repo",
         name="GitHub Repo 导入",
-        description="从 GitHub 仓库列出文件并通过 raw.githubusercontent.com 拉取入库（可选 Bearer token；用于私有仓库/更高 API 限额）",
+        description=(
+            "从 GitHub 仓库列出文件并通过 raw.githubusercontent.com 拉取入库（可选 Bearer token；"
+            "用于私有仓库/更高 API 限额）"
+        ),
         supports_incremental=True,
         supports_resume=True,
         supports_full_reconcile=True,
@@ -57,7 +62,10 @@ CONNECTOR_REGISTRY: dict[str, ConnectorDefinition] = {
     "minio_bucket": ConnectorDefinition(
         connector_id="minio_bucket",
         name="MinIO/S3 Bucket 导入",
-        description="列出 MinIO bucket 对象并用 presigned URL 拉取入库（需要 MINIO_ENABLED=true；URL_INGEST 需允许访问 MinIO 端点）",
+        description=(
+            "列出 MinIO bucket 对象并用 presigned URL 拉取入库（需要 MINIO_ENABLED=true；"
+            "URL_INGEST 需允许访问 MinIO 端点）"
+        ),
         supports_incremental=True,
         supports_resume=True,
         supports_full_reconcile=True,
@@ -67,7 +75,10 @@ CONNECTOR_REGISTRY: dict[str, ConnectorDefinition] = {
     "confluence_space": ConnectorDefinition(
         connector_id="confluence_space",
         name="Confluence Space 导入",
-        description="从 Confluence Space 列出页面并入库（支持增量 cursor；配置中的 Cookie/Token/Password 会被加密存储并在响应中脱敏）",
+        description=(
+            "从 Confluence Space 列出页面并入库（支持增量 cursor；"
+            "配置中的 Cookie/Token/Password 会被加密存储并在响应中脱敏）"
+        ),
         supports_incremental=True,
         supports_full_reconcile=True,
         sync_cursor_kind="timestamp",
@@ -76,7 +87,10 @@ CONNECTOR_REGISTRY: dict[str, ConnectorDefinition] = {
     "jira_project": ConnectorDefinition(
         connector_id="jira_project",
         name="Jira Project 导入",
-        description="从 Jira Cloud 项目拉取 issue 并入库（支持增量 updated cursor；配置中的 Token/Password 会被加密存储并在响应中脱敏）",
+        description=(
+            "从 Jira Cloud 项目拉取 issue 并入库（支持增量 updated cursor；"
+            "配置中的 Token/Password 会被加密存储并在响应中脱敏）"
+        ),
         supports_incremental=True,
         supports_full_reconcile=True,
         sync_cursor_kind="timestamp",

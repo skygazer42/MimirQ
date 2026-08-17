@@ -48,9 +48,7 @@ class SqliteSaver(BaseCheckpointSaver[str]):
         super().__init__(serde=serde)
         # Validate table_prefix to prevent SQL injection
         if not re.match(r"^[A-Za-z_]\w*$", table_prefix, flags=re.ASCII):
-            raise ValueError(
-                f"Invalid table_prefix '{table_prefix}': must be alphanumeric with underscores only"
-            )
+            raise ValueError(f"Invalid table_prefix '{table_prefix}': must be alphanumeric with underscores only")
         self.db_path = db_path or getattr(settings, "CHECKPOINT_SQLITE_PATH", "./data/checkpoints.db")
         self.table_prefix = table_prefix
         self._local = threading.local()
@@ -239,7 +237,8 @@ class SqliteSaver(BaseCheckpointSaver[str]):
         if checkpoint_id:
             row = conn.execute(
                 (
-                    "SELECT checkpoint_type, checkpoint_blob, metadata_type, metadata_blob, parent_checkpoint_id "  # noqa: S608 - table_prefix is validated at initialization.
+                    "SELECT checkpoint_type, checkpoint_blob, metadata_type, metadata_blob, "  # noqa: S608 - table_prefix is validated at initialization.
+                    "parent_checkpoint_id "
                     f"FROM {self._checkpoints_table} "
                     "WHERE thread_id = ? AND checkpoint_ns = ? AND checkpoint_id = ?"
                 ),
@@ -248,7 +247,8 @@ class SqliteSaver(BaseCheckpointSaver[str]):
         else:
             row = conn.execute(
                 (
-                    "SELECT checkpoint_id, checkpoint_type, checkpoint_blob, metadata_type, metadata_blob, parent_checkpoint_id "  # noqa: S608 - table_prefix is validated at initialization.
+                    "SELECT checkpoint_id, checkpoint_type, checkpoint_blob, metadata_type, "  # noqa: S608 - table_prefix is validated at initialization.
+                    "metadata_blob, parent_checkpoint_id "
                     f"FROM {self._checkpoints_table} "
                     "WHERE thread_id = ? AND checkpoint_ns = ? "
                     "ORDER BY checkpoint_id DESC "
@@ -311,7 +311,8 @@ class SqliteSaver(BaseCheckpointSaver[str]):
 
                 rows = conn.execute(
                     (
-                        "SELECT checkpoint_id, checkpoint_type, checkpoint_blob, metadata_type, metadata_blob, parent_checkpoint_id "  # noqa: S608 - table_prefix is validated at initialization.
+                        "SELECT checkpoint_id, checkpoint_type, checkpoint_blob, metadata_type, "  # noqa: S608 - table_prefix is validated at initialization.
+                        "metadata_blob, parent_checkpoint_id "
                         f"FROM {self._checkpoints_table} "
                         "WHERE thread_id = ? AND checkpoint_ns = ? "
                         "ORDER BY checkpoint_id DESC"
@@ -377,7 +378,8 @@ class SqliteSaver(BaseCheckpointSaver[str]):
         conn.execute(
             f"""
             INSERT OR REPLACE INTO {self._checkpoints_table}
-            (thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, checkpoint_type, checkpoint_blob, metadata_type, metadata_blob)
+            (thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id,
+             checkpoint_type, checkpoint_blob, metadata_type, metadata_blob)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
@@ -419,13 +421,15 @@ class SqliteSaver(BaseCheckpointSaver[str]):
             if write_idx >= 0:
                 sql = (
                     f"INSERT OR IGNORE INTO {self._writes_table} "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
-                    "(thread_id, checkpoint_ns, checkpoint_id, task_id, write_idx, channel, value_type, value_blob, task_path) "
+                    "(thread_id, checkpoint_ns, checkpoint_id, task_id, write_idx, channel, "
+                    "value_type, value_blob, task_path) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 )
             else:
                 sql = (
                     f"INSERT OR REPLACE INTO {self._writes_table} "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
-                    "(thread_id, checkpoint_ns, checkpoint_id, task_id, write_idx, channel, value_type, value_blob, task_path) "
+                    "(thread_id, checkpoint_ns, checkpoint_id, task_id, write_idx, channel, "
+                    "value_type, value_blob, task_path) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 )
 

@@ -216,11 +216,7 @@ class Bm25IndexMixin:
             normalized_document_ids = sorted({str(document_id) for document_id in document_ids})
             document_scope = ",".join(normalized_document_ids)
             return f"{tenant_key}:documents:{len(normalized_document_ids)}:{stable_hash(document_scope, length=24)}"
-        scope_dataset_ids = self._normalize_dataset_scope_ids(
-            [dataset_id]
-            if dataset_id is not None
-            else dataset_ids
-        )
+        scope_dataset_ids = self._normalize_dataset_scope_ids([dataset_id] if dataset_id is not None else dataset_ids)
         if len(scope_dataset_ids) == 1:
             return f"{tenant_key}:dataset:{scope_dataset_ids[0]}"
         if scope_dataset_ids:
@@ -290,13 +286,14 @@ class Bm25IndexMixin:
                 .all()
             )
             updated_by_id = {str(dataset_id): updated_at for dataset_id, updated_at in rows}
-            signature = "|".join(
-                f"{dataset_id}:{updated_by_id[str(dataset_id)].isoformat() if updated_by_id.get(str(dataset_id)) else ''}"
-                for dataset_id in dataset_ids
-            )
+            signature_parts: list[str] = []
+            for dataset_id in dataset_ids:
+                updated_at = updated_by_id.get(str(dataset_id))
+                signature_parts.append(f"{dataset_id}:{updated_at.isoformat() if updated_at else ''}")
+            signature = "|".join(signature_parts)
             return stable_hash(signature, length=None)
         except Exception as exc:
-            _log_retriever_fallback('_bm25_dataset_cache_version', exc)
+            _log_retriever_fallback("_bm25_dataset_cache_version", exc)
             return ""
         finally:
             try:
@@ -877,7 +874,9 @@ class Bm25IndexMixin:
                 meta["page"] = page_number
             meta.setdefault("image_id", meta.get("image_id"))
             meta.setdefault("image_url", meta.get("image_url"))
-            docs.append(self._prepare_retrieval_document(Document(page_content=content or "", id=str(chunk_id), metadata=meta)))
+            docs.append(
+                self._prepare_retrieval_document(Document(page_content=content or "", id=str(chunk_id), metadata=meta))
+            )
         return docs
 
     def rebuild_persisted_retrieval_indexes(
@@ -1224,11 +1223,7 @@ class Bm25IndexMixin:
                     continue
 
                 before_ids = {str(d.id) for d in existing if d is not None and d.id is not None}
-                filtered = [
-                    d
-                    for d in existing
-                    if not self._match_metadata_filter((d.metadata or {}), metadata_filter)
-                ]
+                filtered = [d for d in existing if not self._match_metadata_filter((d.metadata or {}), metadata_filter)]
                 after_ids = {str(d.id) for d in filtered if d is not None and d.id is not None}
 
                 removed = int(len(existing) - len(filtered))
@@ -1343,10 +1338,14 @@ class Bm25IndexMixin:
         with self._bm25_cache_lock:
             retriever = self._bm25_retrievers.get(cache_key)
             docs = self._bm25_docs.get(cache_key)
-        if retriever is not None and docs is not None and self._bm25_scope_cache_ready(
-            cache_key=cache_key,
-            existing_docs=docs,
-            document_ids=document_ids,
+        if (
+            retriever is not None
+            and docs is not None
+            and self._bm25_scope_cache_ready(
+                cache_key=cache_key,
+                existing_docs=docs,
+                document_ids=document_ids,
+            )
         ):
             self._last_bm25_status.update(
                 {

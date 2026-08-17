@@ -33,7 +33,9 @@ def _summarize_chunks(chunker, text: str) -> list[tuple[str, dict]]:
     ]
 
 
-def test_read_text_file_characterizes_bom_and_candidate_scoring(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_read_text_file_characterizes_bom_and_candidate_scoring(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     utf16_path = tmp_path / "utf16.txt"
     utf16_path.write_bytes("hello世界".encode("utf-16"))
     assert text_utils.read_text_file(utf16_path) == text_utils.DecodedText(
@@ -339,7 +341,9 @@ def test_run_plugin_stages_characterizes_success_and_invocation_failure(monkeypa
         raising=True,
     )
     monkeypatch.setattr(local_runner, "_coerce_documents", lambda result, stage, plugin_ref: list(result), raising=True)
-    monkeypatch.setattr(local_runner, "validate_no_reserved_platform_metadata_views", lambda metadata, field_label: None, raising=True)
+    monkeypatch.setattr(
+        local_runner, "validate_no_reserved_platform_metadata_views", lambda metadata, field_label: None, raising=True
+    )
     monkeypatch.setattr(
         local_runner,
         "validate_documents_metadata",
@@ -363,7 +367,9 @@ def test_run_plugin_stages_characterizes_success_and_invocation_failure(monkeypa
         ],
         raising=True,
     )
-    monkeypatch.setattr(local_runner, "_coerce_kg_events", lambda result, documents, plugin_ref: list(result), raising=True)
+    monkeypatch.setattr(
+        local_runner, "_coerce_kg_events", lambda result, documents, plugin_ref: list(result), raising=True
+    )
     monkeypatch.setattr(
         local_runner,
         "validate_kg_events_metadata",
@@ -377,7 +383,9 @@ def test_run_plugin_stages_characterizes_success_and_invocation_failure(monkeypa
         stages=["chunk", "kg"],
     )
 
-    assert docs == [Document(page_content="chunk:body|retrieval", metadata={"stage": "chunk", "applied_stage": "chunk"})]
+    assert docs == [
+        Document(page_content="chunk:body|retrieval", metadata={"stage": "chunk", "applied_stage": "chunk"})
+    ]
     assert reports == {
         "chunk": {
             "passed": True,
@@ -459,7 +467,13 @@ def test_extract_cpu_tags_characterizes_sensitivity_topics_and_quality_spans() -
             {"type": "category", "value": "质量评估", "label": "分类", "confidence": 0.68, "source": "cpu"},
             {"type": "doc_type", "value": "治理方案", "label": "文档类型", "confidence": 0.78, "source": "cpu"},
             {"type": "sensitivity", "value": "restricted", "label": "敏感度", "confidence": 0.92, "source": "cpu"},
-            {"type": "quality", "value": "含敏感信息，建议人工复核", "label": "质量线索", "confidence": 0.9, "source": "cpu"},
+            {
+                "type": "quality",
+                "value": "含敏感信息，建议人工复核",
+                "label": "质量线索",
+                "confidence": 0.9,
+                "source": "cpu",
+            },
             {"type": "topic", "value": "知识库检索", "label": "主题", "confidence": 0.78, "source": "cpu"},
             {"type": "topic", "value": "知识库检索方案", "label": "主题", "confidence": 0.68, "source": "cpu"},
             {"type": "quality", "value": "需要人工复核", "label": "质量线索", "confidence": 0.74, "source": "cpu"},

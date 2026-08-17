@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Persist a sanitized retrieval_audit snapshot into dataset metadata."""
 
-
 import argparse
 import json
 import os
@@ -183,7 +182,9 @@ def verify_report_consumed_retrieval_audit(
         expected=_gate_names(expected.get("gates")),
         actual=_gate_names(audit.get("gates")),
     )
-    expected_categories = expected.get("failure_categories") if isinstance(expected.get("failure_categories"), dict) else {}
+    expected_categories = (
+        expected.get("failure_categories") if isinstance(expected.get("failure_categories"), dict) else {}
+    )
     actual_categories = audit.get("failure_categories") if isinstance(audit.get("failure_categories"), dict) else {}
     _verify_failure_categories(expected_categories, actual_categories)
     return audit
@@ -253,7 +254,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--user-id", default=os.getenv("MIMIRQ_USER_ID") or "demo")
     parser.add_argument("--bearer", default=os.getenv("MIMIRQ_API_TOKEN") or os.getenv("AUTH_TOKEN") or "")
     parser.add_argument("--timeout", type=float, default=float(os.getenv("MIMIRQ_API_TIMEOUT") or "60"))
-    parser.add_argument("--verify-report", action="store_true", help="GET the dataset report after writeback and verify it consumed the audit.")
+    parser.add_argument(
+        "--verify-report",
+        action="store_true",
+        help="GET the dataset report after writeback and verify it consumed the audit.",
+    )
     parser.add_argument("--out", default="", help="Optional path to write the sanitized API response JSON.")
     args = parser.parse_args(argv)
 

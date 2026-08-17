@@ -1,4 +1,3 @@
-
 import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -145,9 +144,8 @@ def _cas_task(client: Any, task_id: str, current_raw: bytes, next_task: dict[str
 
 
 def _scope_matches(task: dict[str, Any], *, tenant_id: str, dataset_id: str) -> bool:
-    return (
-        str(task.get("tenant_id") or "") == str(tenant_id or "")
-        and str(task.get("dataset_id") or "") == str(dataset_id or "")
+    return str(task.get("tenant_id") or "") == str(tenant_id or "") and str(task.get("dataset_id") or "") == str(
+        dataset_id or ""
     )
 
 
@@ -159,7 +157,10 @@ def _task_account_id(task: dict[str, Any]) -> str:
 
 
 def _read_scope_matches(task: dict[str, Any], *, tenant_id: str, dataset_id: str, account_id: str) -> bool:
-    return _scope_matches(task, tenant_id=tenant_id, dataset_id=dataset_id) and _task_account_id(task) == str(account_id or "").strip()
+    return (
+        _scope_matches(task, tenant_id=tenant_id, dataset_id=dataset_id)
+        and _task_account_id(task) == str(account_id or "").strip()
+    )
 
 
 def _parse_iso_datetime(value: Any) -> datetime | None:
@@ -307,7 +308,9 @@ def complete_png_export_task(
         current_raw, current = _read_task(client, task_id)
         if not _scope_matches(current, tenant_id=tenant_id, dataset_id=dataset_id):
             raise KeyError(task_id)
-        if str(current.get("status") or "") != "running" or str(current.get("owner_token") or "") != str(owner_token or ""):
+        if str(current.get("status") or "") != "running" or str(current.get("owner_token") or "") != str(
+            owner_token or ""
+        ):
             return _public_task(current)
 
         try:

@@ -1,4 +1,3 @@
-
 import re
 from collections.abc import Iterable
 from typing import Any, Callable, Mapping, MutableMapping, Protocol, TypeVar, cast
@@ -7,6 +6,8 @@ from langchain_core.documents import Document
 
 _NUMBERED_LIST_RE = re.compile(r"^\s*(\d+)[.)]\s+")
 _BULLET_LIST_RE = re.compile(r"^\s*([-*+])\s+")
+
+
 def _page_number(meta: dict[str, Any]) -> int:
     raw = meta.get("page")
     if raw is None:
@@ -108,7 +109,9 @@ def _can_merge_tables(prev: Document, cur: Document, *, max_page_gap: int) -> bo
     if prev_cols and cur_cols and prev_cols != cur_cols:
         return False
     if not prev_cols and not cur_cols:
-        prev_pipes = (prev.page_content or "").splitlines()[0].count("|") if (prev.page_content or "").splitlines() else 0
+        prev_pipes = (
+            (prev.page_content or "").splitlines()[0].count("|") if (prev.page_content or "").splitlines() else 0
+        )
         cur_pipes = (cur.page_content or "").splitlines()[0].count("|") if (cur.page_content or "").splitlines() else 0
         if prev_pipes > 0 and cur_pipes > 0 and prev_pipes != cur_pipes:
             return False
@@ -480,7 +483,11 @@ def merge_cross_page_markdown_pages(pages: list[str]) -> tuple[list[str], dict[s
             pages_changed.add(i)
             pages_changed.add(i + 1)
 
-    return out, {"tables_merged": int(tables_merged), "lists_merged": int(lists_merged), "pages_changed": int(len(pages_changed))}
+    return out, {
+        "tables_merged": int(tables_merged),
+        "lists_merged": int(lists_merged),
+        "pages_changed": int(len(pages_changed)),
+    }
 
 
 class _PageLike(Protocol):
@@ -518,6 +525,7 @@ def merge_cross_page_items(items: list[TPage]) -> tuple[list[TPage], dict[str, i
         for it, text in zip(items, merged, strict=False):
             _set_text(it, text)
     return items, stats
+
 
 __all__ = [
     "merge_cross_page_documents",

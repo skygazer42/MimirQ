@@ -338,9 +338,7 @@ def update_conversation(
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     conversation = (
-        db.query(Conversation)
-        .filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id)
-        .first()
+        db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id).first()
     )
     if not conversation:
         raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND_DETAIL)
@@ -470,9 +468,7 @@ def export_conversation(
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     conversation = (
-        db.query(Conversation)
-        .filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id)
-        .first()
+        db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id).first()
     )
     if not conversation:
         raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND_DETAIL)
@@ -537,7 +533,8 @@ def export_conversation(
                         if len(snippet) > 260:
                             snippet = snippet[:260] + "..."
                         parts.append(
-                            f"- {doc_name or 'Document'} (doc_id={doc_id}, chunk_index={chunk_index}, page={page}): {snippet}"
+                            f"- {doc_name or 'Document'} (doc_id={doc_id}, "
+                            f"chunk_index={chunk_index}, page={page}): {snippet}"
                         )
                     parts.append("")
 

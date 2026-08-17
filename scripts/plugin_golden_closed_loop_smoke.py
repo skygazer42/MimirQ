@@ -6,7 +6,6 @@ remote hosts and inside minimal containers without installing test-only
 dependencies.
 """
 
-
 import argparse
 import json
 import os
@@ -166,7 +165,9 @@ def select_plugin_ref(plugin_list: dict[str, Any]) -> str:
     if not candidates:
         errors = plugin_list.get("errors") if isinstance(plugin_list, dict) else None
         error_hint = f"; registry errors={_snippet(errors)}" if errors else ""
-        raise RuntimeError(f"no executable pipeline plugin with enabled Golden contract and chunk ref found{error_hint}")
+        raise RuntimeError(
+            f"no executable pipeline plugin with enabled Golden contract and chunk ref found{error_hint}"
+        )
 
     candidates.sort(key=lambda entry: entry[0], reverse=True)
     return candidates[0][1]
@@ -235,7 +236,9 @@ def _plugin_source_from_import_response(import_response: dict[str, Any]) -> dict
     if isinstance(items, list):
         for item in items:
             extra = item.get("extra") if isinstance(item, dict) else None
-            package_hash = str((extra or {}).get("plugin_package_hash") or "").strip() if isinstance(extra, dict) else ""
+            package_hash = (
+                str((extra or {}).get("plugin_package_hash") or "").strip() if isinstance(extra, dict) else ""
+            )
             if package_hash:
                 out["plugin_package_hash"] = package_hash
                 break
@@ -424,7 +427,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Backend base URL; may be root or /api/v1 (default: env MIMIRQ_API_BASE_URL/BACKEND_BASE_URL or http://127.0.0.1:8000)",
     )
     parser.add_argument("--dataset-id", required=True, help="Dataset UUID to import plugin Golden cases into.")
-    parser.add_argument("--plugin-ref", default="", help="Optional plugin ref. If omitted, auto-select an executable Golden chunk plugin.")
+    parser.add_argument(
+        "--plugin-ref",
+        default="",
+        help="Optional plugin ref. If omitted, auto-select an executable Golden chunk plugin.",
+    )
     parser.add_argument("--tenant-id", default=os.getenv("MIMIRQ_TENANT_ID") or DEFAULT_TENANT_ID)
     parser.add_argument("--account-id", default=os.getenv("MIMIRQ_ACCOUNT_ID") or "demo")
     parser.add_argument("--user-id", default=os.getenv("MIMIRQ_USER_ID") or "demo")

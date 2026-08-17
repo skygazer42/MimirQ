@@ -1,4 +1,3 @@
-
 import argparse
 import json
 import sys
@@ -26,7 +25,9 @@ def validate_rollout(payload: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("invalid_current_stage")
 
     allowed = payload.get("allowed_stages")
-    if not isinstance(allowed, list) or [str(v).strip().lower() for v in allowed if str(v).strip().lower() in _ALLOWED] != ["informational", "warn", "fail"]:
+    if not isinstance(allowed, list) or [
+        str(v).strip().lower() for v in allowed if str(v).strip().lower() in _ALLOWED
+    ] != ["informational", "warn", "fail"]:
         raise ValueError("allowed_stages_invalid")
 
     owner_roles = payload.get("owner_roles")
@@ -46,7 +47,9 @@ def validate_rollout(payload: dict[str, Any]) -> dict[str, Any]:
         "current_stage": current_stage,
         "allowed_stages": ["informational", "warn", "fail"],
         "promotion_requirements": {
-            "informational_to_warn": [str(v).strip() for v in (requirements.get("informational_to_warn") or []) if str(v).strip()],
+            "informational_to_warn": [
+                str(v).strip() for v in (requirements.get("informational_to_warn") or []) if str(v).strip()
+            ],
             "warn_to_fail": [str(v).strip() for v in (requirements.get("warn_to_fail") or []) if str(v).strip()],
         },
         "owner_roles": [str(v).strip() for v in owner_roles if str(v).strip()],

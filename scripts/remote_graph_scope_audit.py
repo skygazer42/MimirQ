@@ -2,7 +2,6 @@
 # ruff: noqa: E402, I001
 """Audit dataset-scoped vs document-scoped KG graph responses on a live API."""
 
-
 import argparse
 import json
 import sys

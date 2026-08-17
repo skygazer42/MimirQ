@@ -148,10 +148,7 @@ def test_dataset_scoped_vector_write_batches_embeddings_and_preserves_id_order(
     monkeypatch.setattr(indexer_module, "_vector_write_batch_size", lambda: 2)
     monkeypatch.setattr(indexer_module.time, "sleep", lambda _seconds: None)
 
-    docs = [
-        {"content": f"chunk-{index}", "metadata": {"chunk_id": f"chunk-{index}"}}
-        for index in range(5)
-    ]
+    docs = [{"content": f"chunk-{index}", "metadata": {"chunk_id": f"chunk-{index}"}} for index in range(5)]
 
     result = indexer_module.Indexer.__new__(indexer_module.Indexer)._write_dataset_scoped_chunk_vectors(
         docs,
@@ -203,10 +200,7 @@ def test_dataset_scoped_vector_write_cleans_completed_batches_after_later_embedd
     monkeypatch.setattr(indexer_module, "get_milvus_adapter", lambda _name: adapter)
     monkeypatch.setattr(indexer_module, "_vector_write_batch_size", lambda: 2)
 
-    docs = [
-        {"content": f"chunk-{index}", "metadata": {"chunk_id": f"chunk-{index}"}}
-        for index in range(4)
-    ]
+    docs = [{"content": f"chunk-{index}", "metadata": {"chunk_id": f"chunk-{index}"}} for index in range(4)]
 
     with pytest.raises(RuntimeError, match="later embedding batch failed"):
         indexer_module.Indexer.__new__(indexer_module.Indexer)._write_dataset_scoped_chunk_vectors(
@@ -429,9 +423,7 @@ def test_retriever_embedding_runtime_propagates_invalid_dataset_scoped_config(
     monkeypatch.setattr(retriever_module, "SessionLocal", lambda: _Session(), raising=True)
 
     with pytest.raises(ValueError, match="VECTOR_BACKEND=milvus"):
-        HybridRetriever(tenant_id=tenant_id, dataset_ids=[dataset_id])._resolve_embedding_runtime(
-            tenant_id=tenant_id
-        )
+        HybridRetriever(tenant_id=tenant_id, dataset_ids=[dataset_id])._resolve_embedding_runtime(tenant_id=tenant_id)
 
 
 @pytest.mark.parametrize("retrieval_mode", ["vector", "keyword"])
@@ -592,9 +584,7 @@ def test_multi_runtime_dataset_scope_fans_out_vector_search_and_keeps_exact_cach
     calls_by_collection = {str(call["collection"]): call for call in search_calls}
     assert set(calls_by_collection) == {runtime_a.collection_name, runtime_b.collection_name}
     expected_document_filter = (
-        {"document_id": {"$in": [str(document_b), str(document_a)]}}
-        if scope_kind == "document_ids"
-        else {}
+        {"document_id": {"$in": [str(document_b), str(document_a)]}} if scope_kind == "document_ids" else {}
     )
     assert calls_by_collection[runtime_a.collection_name]["metadata_filter"] == {
         "tenant_id": str(tenant_id),
@@ -614,9 +604,7 @@ def test_multi_runtime_dataset_scope_fans_out_vector_search_and_keeps_exact_cach
     assert retriever._last_channel_metrics["cache"]["semantic"]["skip_reason"] == "multi_runtime_scope"
     assert retriever._last_channel_metrics["retrieval_degraded"] is True
     assert retriever._last_channel_metrics["all_retrieval_channels_failed"] is False
-    assert {"channel": "vector", "error_type": "RuntimeError"} in retriever._last_channel_metrics[
-        "degraded_reasons"
-    ]
+    assert {"channel": "vector", "error_type": "RuntimeError"} in retriever._last_channel_metrics["degraded_reasons"]
     successful_channels = retriever._last_channel_metrics["successful_channels"]
     assert "vector" in successful_channels
     assert "bm25" in successful_channels
@@ -679,13 +667,18 @@ def test_sparse_search_uses_metadata_scope_for_bm25_corpus(
 
     def record_scope_docs(self, **kwargs):  # noqa: ANN001,ANN003
         captured["scope_kwargs"] = dict(kwargs)
-        return tenant_id, (dataset_id,), "scope-key", [
-            Document(
-                page_content="scoped corpus",
-                id=str(uuid.uuid4()),
-                metadata={"document_id": str(uuid.uuid4()), "dataset_id": str(dataset_id)},
-            )
-        ]
+        return (
+            tenant_id,
+            (dataset_id,),
+            "scope-key",
+            [
+                Document(
+                    page_content="scoped corpus",
+                    id=str(uuid.uuid4()),
+                    metadata={"document_id": str(uuid.uuid4()), "dataset_id": str(dataset_id)},
+                )
+            ],
+        )
 
     def record_sparse_docs(self, **kwargs):  # noqa: ANN001,ANN003
         captured["search_kwargs"] = dict(kwargs)
@@ -725,13 +718,18 @@ def test_colbert_search_uses_metadata_scope_for_bm25_corpus(
 
     def record_scope_docs(self, **kwargs):  # noqa: ANN001,ANN003
         captured["scope_kwargs"] = dict(kwargs)
-        return tenant_id, (dataset_id,), "scope-key", [
-            Document(
-                page_content="scoped corpus",
-                id=str(uuid.uuid4()),
-                metadata={"document_id": str(uuid.uuid4()), "dataset_id": str(dataset_id)},
-            )
-        ]
+        return (
+            tenant_id,
+            (dataset_id,),
+            "scope-key",
+            [
+                Document(
+                    page_content="scoped corpus",
+                    id=str(uuid.uuid4()),
+                    metadata={"document_id": str(uuid.uuid4()), "dataset_id": str(dataset_id)},
+                )
+            ],
+        )
 
     monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_ENABLED", True, raising=False)
     monkeypatch.setattr(HybridRetriever, "_bm25_scope_docs", record_scope_docs)
@@ -844,9 +842,7 @@ def test_unresolved_document_scope_does_not_fall_back_to_partial_channels(
         )
 
     assert fallback_calls == []
-    assert retriever._last_channel_metrics["degraded_reasons"] == [
-        {"channel": "scope", "error_type": "LookupError"}
-    ]
+    assert retriever._last_channel_metrics["degraded_reasons"] == [{"channel": "scope", "error_type": "LookupError"}]
     assert retriever._last_channel_metrics["all_retrieval_channels_failed"] is True
 
 
@@ -1299,7 +1295,9 @@ def test_hybrid_search_wrapper_rejects_current_inflight_on_impl_error(
         assert leader is True
         raise RuntimeError("leader failed")
 
-    monkeypatch.setattr(retriever_module, "reject_current_inflight_retrieval_candidates", lambda exc: calls.append(str(exc)))
+    monkeypatch.setattr(
+        retriever_module, "reject_current_inflight_retrieval_candidates", lambda exc: calls.append(str(exc))
+    )
     monkeypatch.setattr(HybridRetriever, "_hybrid_search_impl", fail_impl)
 
     clear_inflight_retrieval_candidates()
@@ -1479,10 +1477,13 @@ def test_bm25_multi_dataset_scope_stays_bounded_and_invalidates(
     assert scope_tenant == tenant_id
     assert dataset_scope_ids == tuple(sorted((dataset_a, dataset_b), key=str))
     assert cache_key != str(tenant_id)
-    assert cache_key == HybridRetriever(dataset_ids=[dataset_a, dataset_b])._bm25_search_scope(
-        tenant_id=tenant_id,
-        document_ids=None,
-    )[2]
+    assert (
+        cache_key
+        == HybridRetriever(dataset_ids=[dataset_a, dataset_b])._bm25_search_scope(
+            tenant_id=tenant_id,
+            document_ids=None,
+        )[2]
+    )
 
     monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "BM25_LAZY_BUILD_ENABLED", True, raising=False)
@@ -1539,11 +1540,14 @@ def test_bm25_multi_dataset_scope_stays_bounded_and_invalidates(
 
     monkeypatch.setattr(HybridRetriever, "_bm25_dataset_cache_version", dataset_version)
 
-    assert retriever._refresh_bm25_dataset_cache_version(
-        cache_key=cache_key,
-        tenant_uuid=tenant_id,
-        dataset_scope_ids=dataset_scope_ids,
-    ) == "new-version"
+    assert (
+        retriever._refresh_bm25_dataset_cache_version(
+            cache_key=cache_key,
+            tenant_uuid=tenant_id,
+            dataset_scope_ids=dataset_scope_ids,
+        )
+        == "new-version"
+    )
     assert captured["version_dataset_ids"] == dataset_scope_ids
     assert cache_key not in retriever._bm25_retrievers
     assert cache_key not in retriever._bm25_docs
@@ -1662,12 +1666,15 @@ def test_bm25_document_scope_cache_version_invalidates_stale_index(
         lambda self, **kwargs: "new-version",
     )
 
-    assert retriever._refresh_bm25_dataset_cache_version(
-        cache_key=scope_key,
-        tenant_uuid=tenant_id,
-        dataset_scope_ids=(),
-        document_ids=[document_id],
-    ) == "new-version"
+    assert (
+        retriever._refresh_bm25_dataset_cache_version(
+            cache_key=scope_key,
+            tenant_uuid=tenant_id,
+            dataset_scope_ids=(),
+            document_ids=[document_id],
+        )
+        == "new-version"
+    )
     assert scope_key not in retriever._bm25_retrievers
     assert scope_key not in retriever._bm25_docs
 
@@ -1703,14 +1710,20 @@ def test_candidate_corpus_token_reuses_short_lived_lookup_and_invalidates_on_ups
     document_id = uuid.uuid4()
     retriever = HybridRetriever(tenant_id=tenant_id)
 
-    assert retriever._resolve_candidate_cache_corpus_token(
-        tenant_id=tenant_id,
-        document_ids=[document_id],
-    ) == "version-1"
-    assert retriever._resolve_candidate_cache_corpus_token(
-        tenant_id=tenant_id,
-        document_ids=[document_id],
-    ) == "version-1"
+    assert (
+        retriever._resolve_candidate_cache_corpus_token(
+            tenant_id=tenant_id,
+            document_ids=[document_id],
+        )
+        == "version-1"
+    )
+    assert (
+        retriever._resolve_candidate_cache_corpus_token(
+            tenant_id=tenant_id,
+            document_ids=[document_id],
+        )
+        == "version-1"
+    )
 
     retriever.upsert_bm25_documents(
         [
@@ -1723,15 +1736,21 @@ def test_candidate_corpus_token_reuses_short_lived_lookup_and_invalidates_on_ups
         tenant_id=tenant_id,
     )
 
-    assert retriever._resolve_candidate_cache_corpus_token(
-        tenant_id=tenant_id,
-        document_ids=[document_id],
-    ) == "version-2"
+    assert (
+        retriever._resolve_candidate_cache_corpus_token(
+            tenant_id=tenant_id,
+            document_ids=[document_id],
+        )
+        == "version-2"
+    )
     clock[0] = 2.0
-    assert retriever._resolve_candidate_cache_corpus_token(
-        tenant_id=tenant_id,
-        document_ids=[document_id],
-    ) == "version-3"
+    assert (
+        retriever._resolve_candidate_cache_corpus_token(
+            tenant_id=tenant_id,
+            document_ids=[document_id],
+        )
+        == "version-3"
+    )
     assert calls == 3
 
 
@@ -1757,7 +1776,9 @@ def test_candidate_corpus_token_resolves_multi_dataset_scope_without_document_id
     monkeypatch.setattr(retriever_module, "SessionLocal", lambda: _Session(), raising=True)
     monkeypatch.setattr(retriever_module, "resolve_corpus_cache_token", resolve_token, raising=True)
 
-    token = HybridRetriever(tenant_id=tenant_id, dataset_ids=[dataset_b, dataset_a, dataset_b])._resolve_candidate_cache_corpus_token(
+    token = HybridRetriever(
+        tenant_id=tenant_id, dataset_ids=[dataset_b, dataset_a, dataset_b]
+    )._resolve_candidate_cache_corpus_token(
         tenant_id=tenant_id,
         document_ids=None,
     )
@@ -1826,12 +1847,15 @@ def test_bm25_unversioned_existing_scope_is_rebuilt(
         lambda self, **kwargs: "current-version",
     )
 
-    assert retriever._refresh_bm25_dataset_cache_version(
-        cache_key=scope_key,
-        tenant_uuid=tenant_id,
-        dataset_scope_ids=(),
-        document_ids=[document_id],
-    ) == "current-version"
+    assert (
+        retriever._refresh_bm25_dataset_cache_version(
+            cache_key=scope_key,
+            tenant_uuid=tenant_id,
+            dataset_scope_ids=(),
+            document_ids=[document_id],
+        )
+        == "current-version"
+    )
     assert scope_key not in retriever._bm25_retrievers
     assert scope_key not in retriever._bm25_docs
     assert scope_key not in retriever._bm25_cache_versions
@@ -2134,13 +2158,18 @@ def test_bm25_deferred_scope_version_invalidation_clears_marker(
     retriever._bm25_deferred_scopes.add(scope_key)
     retriever._bm25_cache_versions[scope_key] = "old-version"
 
-    monkeypatch.setattr(HybridRetriever, "_bm25_dataset_cache_version", lambda self, *, _tenant_id, _dataset_ids: "new-version")
+    monkeypatch.setattr(
+        HybridRetriever, "_bm25_dataset_cache_version", lambda self, *, _tenant_id, _dataset_ids: "new-version"
+    )
 
-    assert retriever._refresh_bm25_dataset_cache_version(
-        cache_key=scope_key,
-        tenant_uuid=tenant_id,
-        dataset_scope_ids=(dataset_id,),
-    ) == "new-version"
+    assert (
+        retriever._refresh_bm25_dataset_cache_version(
+            cache_key=scope_key,
+            tenant_uuid=tenant_id,
+            dataset_scope_ids=(dataset_id,),
+        )
+        == "new-version"
+    )
     assert scope_key not in retriever._bm25_deferred_scopes
 
 
@@ -2442,15 +2471,17 @@ def test_mixed_default_and_dataset_scoped_runtime_shards_use_native_search_paths
     adapter_calls: list[dict[str, object]] = []
 
     vector_store = SimpleNamespace(
-        search=lambda **kwargs: global_calls.append(dict(kwargs))
-        or [
-            {
-                "chunk_id": "global-hit",
-                "content": "global hit",
-                "score": 0.8,
-                "metadata": {"dataset_id": str(dataset_a), "embedding_space_hash": "space-default"},
-            }
-        ]
+        search=lambda **kwargs: (
+            global_calls.append(dict(kwargs))
+            or [
+                {
+                    "chunk_id": "global-hit",
+                    "content": "global hit",
+                    "score": 0.8,
+                    "metadata": {"dataset_id": str(dataset_a), "embedding_space_hash": "space-default"},
+                }
+            ]
+        )
     )
     monkeypatch.setattr(
         HybridRetriever,
@@ -2472,15 +2503,17 @@ def test_mixed_default_and_dataset_scoped_runtime_shards_use_native_search_paths
         retriever_module,
         "get_milvus_adapter",
         lambda name: SimpleNamespace(
-            search=lambda **kwargs: adapter_calls.append({"collection": name, **dict(kwargs)})
-            or [
-                {
-                    "chunk_id": "custom-hit",
-                    "content": "custom hit",
-                    "score": 0.7,
-                    "metadata": {"dataset_id": str(dataset_b), "embedding_space_hash": "space-custom"},
-                }
-            ]
+            search=lambda **kwargs: (
+                adapter_calls.append({"collection": name, **dict(kwargs)})
+                or [
+                    {
+                        "chunk_id": "custom-hit",
+                        "content": "custom hit",
+                        "score": 0.7,
+                        "metadata": {"dataset_id": str(dataset_b), "embedding_space_hash": "space-custom"},
+                    }
+                ]
+            )
         ),
     )
     monkeypatch.setattr(HybridRetriever, "_search_bm25", lambda self, **kwargs: [])  # noqa: ANN001
@@ -2511,6 +2544,7 @@ def test_mixed_default_and_dataset_scoped_runtime_shards_use_native_search_paths
         "dataset_id": str(dataset_b),
         "embedding_space_hash": {"$in": ["space-custom", ""]},
     }
+
 
 def test_bm25_lru_eviction_keeps_cache_maps_aligned(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.core.config import settings

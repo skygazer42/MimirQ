@@ -1,6 +1,5 @@
 """DB catalog connector implementations registered in ConnectorRegistry."""
 
-
 import asyncio
 import contextlib
 import time
@@ -125,7 +124,9 @@ class MySQLCatalogConnector(_BaseCatalogConnector):
                         warnings.append(
                             {
                                 "code": "db_write_privileges_detected",
-                                "message": "DB user appears to have write privileges; consider using a read-only account.",
+                                "message": (
+                                    "DB user appears to have write privileges; consider using a read-only account."
+                                ),
                             }
                         )
                 except Exception as exc:  # noqa: BLE001
@@ -203,7 +204,9 @@ class SQLServerCatalogConnector(_BaseCatalogConnector):
                         warnings.append(
                             {
                                 "code": "db_write_privileges_detected",
-                                "message": "DB user appears to have write privileges; consider using a read-only account.",
+                                "message": (
+                                    "DB user appears to have write privileges; consider using a read-only account."
+                                ),
                             }
                         )
                 except Exception as exc:  # noqa: BLE001

@@ -6,6 +6,7 @@ Provides the following capabilities:
 - Replay execution from a specific checkpoint
 - Fork execution with modified state
 """
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -86,8 +87,7 @@ class TimeTravel:
 
         if graph.checkpointer is None:
             raise ValueError(
-                "Graph must have a checkpointer to use time travel. "
-                "Compile with: graph.compile(checkpointer=...)"
+                "Graph must have a checkpointer to use time travel. Compile with: graph.compile(checkpointer=...)"
             )
 
     def get_history(
@@ -120,7 +120,9 @@ class TimeTravel:
 
             for state in states:
                 checkpoint_id = state.config.get("configurable", {}).get("checkpoint_id")
-                parent_id = state.parent_config.get("configurable", {}).get("checkpoint_id") if state.parent_config else None
+                parent_id = (
+                    state.parent_config.get("configurable", {}).get("checkpoint_id") if state.parent_config else None
+                )
 
                 # Extract timestamp from metadata if available
                 created_at = None
@@ -173,7 +175,9 @@ class TimeTravel:
             if state is None:
                 return None
 
-            parent_id = state.parent_config.get("configurable", {}).get("checkpoint_id") if state.parent_config else None
+            parent_id = (
+                state.parent_config.get("configurable", {}).get("checkpoint_id") if state.parent_config else None
+            )
 
             created_at = None
             if state.metadata and "created_at" in state.metadata:
@@ -224,10 +228,7 @@ class TimeTravel:
             }
         }
 
-        logger.info(
-            "Replaying from checkpoint %s on thread %s",
-            checkpoint_id, thread_id
-        )
+        logger.info("Replaying from checkpoint %s on thread %s", checkpoint_id, thread_id)
 
         if stream_mode:
             result = None
@@ -270,10 +271,7 @@ class TimeTravel:
             }
         }
 
-        logger.info(
-            "Forking from checkpoint %s with updates: %s",
-            checkpoint_id, list(updates.keys())
-        )
+        logger.info("Forking from checkpoint %s with updates: %s", checkpoint_id, list(updates.keys()))
 
         # Create new checkpoint with updated state
         new_config = self.graph.update_state(original_config, values=updates)

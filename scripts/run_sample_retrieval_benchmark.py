@@ -1,4 +1,3 @@
-
 import argparse
 import json
 import math
@@ -121,8 +120,8 @@ def _build_documents(
     docs = fixture.get("documents") or []
     for i, row in enumerate(docs):
         item = row if isinstance(row, dict) else {}
-        chunk_id = str(item.get("chunk_id") or f"chunk-{i+1}").strip()
-        document_id = str(item.get("document_id") or f"doc-{i+1}").strip()
+        chunk_id = str(item.get("chunk_id") or f"chunk-{i + 1}").strip()
+        document_id = str(item.get("document_id") or f"doc-{i + 1}").strip()
         text = str(item.get("text") or "")
 
         meta_raw = item.get("metadata")
@@ -247,7 +246,9 @@ def _evaluate_query(
         top_doc_share = max(ranked_docs.count(d) for d in set(ranked_docs)) / float(len(ranked_docs))
     top_family_share = 0.0
     if ranked_families_k:
-        top_family_share = max(ranked_families_k.count(f) for f in set(ranked_families_k)) / float(len(ranked_families_k))
+        top_family_share = max(ranked_families_k.count(f) for f in set(ranked_families_k)) / float(
+            len(ranked_families_k)
+        )
     return {
         "question": question,
         "expected_chunk_ids": expected_chunk_ids,
@@ -296,13 +297,15 @@ def run_benchmark(
     effective_top_k = max(1, int(top_k if top_k is not None else default_top_k))
     effective_mode = str(retrieval_mode or default_mode).strip().lower() or "keyword"
     default_colbert_enabled = bool((defaults or {}).get("colbert_retrieval_enabled"))
-    default_colbert_provider = str((defaults or {}).get("colbert_retrieval_provider") or "deterministic").strip().lower()
-    effective_colbert_enabled = (
-        bool(colbert_retrieval_enabled)
-        if colbert_retrieval_enabled is not None
-        else default_colbert_enabled
+    default_colbert_provider = (
+        str((defaults or {}).get("colbert_retrieval_provider") or "deterministic").strip().lower()
     )
-    effective_colbert_provider = str(colbert_retrieval_provider or default_colbert_provider or "deterministic").strip().lower()
+    effective_colbert_enabled = (
+        bool(colbert_retrieval_enabled) if colbert_retrieval_enabled is not None else default_colbert_enabled
+    )
+    effective_colbert_provider = (
+        str(colbert_retrieval_provider or default_colbert_provider or "deterministic").strip().lower()
+    )
     if effective_colbert_provider not in {"deterministic", "hf"}:
         effective_colbert_provider = "deterministic"
 
@@ -369,7 +372,7 @@ def run_benchmark(
         q_rows = fixture_obj.get("queries") or []
         for i, row in enumerate(q_rows):
             item = row if isinstance(row, dict) else {}
-            qid = str(item.get("id") or f"q-{i+1}").strip()
+            qid = str(item.get("id") or f"q-{i + 1}").strip()
             question = str(item.get("question") or "").strip()
             expected = _normalize_expected_ids(item.get("expected_chunk_ids"))
             expected_families = _normalize_expected_ids([chunk_family_keys.get(cid) or cid for cid in expected])

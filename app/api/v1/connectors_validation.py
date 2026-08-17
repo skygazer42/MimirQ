@@ -1,4 +1,3 @@
-
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -185,7 +184,9 @@ def _jira_project_connectivity_check(cfg: Any) -> dict[str, Any]:
     }
 
 
-async def _best_effort_connectivity_checks(*, connector_id: str, cfg: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+async def _best_effort_connectivity_checks(
+    *, connector_id: str, cfg: Any
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """
     Run bounded, best-effort connectivity checks.
 
@@ -214,7 +215,9 @@ async def _best_effort_connectivity_checks(*, connector_id: str, cfg: Any) -> tu
     return {}, []
 
 
-async def _check_db_connectivity_best_effort(*, connector_id: str, cfg: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+async def _check_db_connectivity_best_effort(
+    *, connector_id: str, cfg: Any
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """
     Patchable DB connectivity check helper for validate endpoint.
 

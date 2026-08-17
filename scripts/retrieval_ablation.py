@@ -11,7 +11,6 @@ This script is intentionally deterministic and CI-friendly:
 - no interactive prompts
 """
 
-
 import argparse
 import itertools
 import json
@@ -114,6 +113,68 @@ def safe_artifact_name(label: str) -> str:
     return s or "variant"
 
 
+def _normalize_base_variant(matrix: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    base_raw = matrix.get("base") if isinstance(matrix.get("base"), dict) else {}
+    base_label = str(base_raw.get("label") or "").strip() or "base"
+    base_params = base_raw.get("rag_params") if isinstance(base_raw.get("rag_params"), dict) else {}
+    return {"label": base_label, "rag_params": dict(base_params)}, dict(base_params)
+
+
+def _unique_variant_label(variants: list[dict[str, Any]], label: str) -> str:
+    variant_label = str(label or "").strip() or "variant"
+    if not any(variant.get("label") == variant_label for variant in variants):
+        return variant_label
+    suffix = 2
+    while True:
+        candidate = f"{variant_label}__{suffix}"
+        if not any(variant.get("label") == candidate for variant in variants):
+            return candidate
+        suffix += 1
+
+
+def _append_variant(
+    variants: list[dict[str, Any]],
+    *,
+    base_params: dict[str, Any],
+    label: str,
+    override: dict[str, Any],
+) -> None:
+    effective = {**dict(base_params), **dict(override or {})}
+    if effective == dict(base_params):
+        return
+    variants.append(
+        {
+            "label": _unique_variant_label(variants, label),
+            "rag_params": effective,
+        }
+    )
+
+
+def _explicit_variant_specs(matrix: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    raw_variants = matrix.get("variants")
+    if not isinstance(raw_variants, list):
+        return []
+
+    specs: list[tuple[str, dict[str, Any]]] = []
+    for variant in raw_variants:
+        if not isinstance(variant, dict):
+            continue
+        override = variant.get("rag_params") if isinstance(variant.get("rag_params"), dict) else {}
+        label = str(variant.get("label") or "").strip() or variant_label_from_params(override)
+        specs.append((label, override))
+    return specs
+
+
+def _grid_variant_specs(matrix: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    raw_grid = matrix.get("grid")
+    if not isinstance(raw_grid, dict):
+        return []
+
+    grid = {str(key): list(values or []) for key, values in raw_grid.items() if isinstance(values, list)}
+    combos = expand_param_grid(grid)
+    return [(variant_label_from_params(combo), combo) for combo in combos]
+
+
 def build_variant_plan(matrix: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """
     Build a deterministic plan from a matrix config.
@@ -132,47 +193,27 @@ def build_variant_plan(matrix: dict[str, Any]) -> tuple[dict[str, Any], list[dic
     - Variants identical to base are skipped.
     - Explicit variants are emitted first (in order), then grid-generated variants.
     """
-    m = matrix if isinstance(matrix, dict) else {}
-    base_raw = m.get("base") if isinstance(m.get("base"), dict) else {}
-    base_label = str(base_raw.get("label") or "").strip() or "base"
-    base_params = base_raw.get("rag_params") if isinstance(base_raw.get("rag_params"), dict) else {}
-    base = {"label": base_label, "rag_params": dict(base_params)}
+    normalized_matrix = matrix if isinstance(matrix, dict) else {}
+    base, base_params = _normalize_base_variant(normalized_matrix)
+    variants: list[dict[str, Any]] = []
 
-    out: list[dict[str, Any]] = []
+    for label, override in _explicit_variant_specs(normalized_matrix):
+        _append_variant(
+            variants,
+            base_params=base_params,
+            label=label,
+            override=override,
+        )
 
-    def _unique_label(label: str) -> str:
-        lab = str(label or "").strip() or "variant"
-        if not any(v.get("label") == lab for v in out):
-            return lab
-        i = 2
-        while True:
-            cand = f"{lab}__{i}"
-            if not any(v.get("label") == cand for v in out):
-                return cand
-            i += 1
+    for label, override in _grid_variant_specs(normalized_matrix):
+        _append_variant(
+            variants,
+            base_params=base_params,
+            label=label,
+            override=override,
+        )
 
-    def _add_variant(*, label: str, override: dict[str, Any]) -> None:
-        effective = {**dict(base_params), **dict(override or {})}
-        if effective == dict(base_params):
-            return
-        out.append({"label": _unique_label(label), "rag_params": effective})
-
-    raw_variants = m.get("variants")
-    if isinstance(raw_variants, list):
-        for v in raw_variants:
-            if not isinstance(v, dict):
-                continue
-            override = v.get("rag_params") if isinstance(v.get("rag_params"), dict) else {}
-            label = str(v.get("label") or "").strip() or variant_label_from_params(override)
-            _add_variant(label=label, override=override)
-
-    raw_grid = m.get("grid")
-    if isinstance(raw_grid, dict):
-        combos = expand_param_grid({str(k): list(v or []) for k, v in raw_grid.items() if isinstance(v, list)})
-        for combo in combos:
-            _add_variant(label=variant_label_from_params(combo), override=combo)
-
-    return base, out
+    return base, variants
 
 
 def coerce_case_bundle(obj: Any) -> tuple[str, list[dict[str, Any]]]:
@@ -260,6 +301,128 @@ def _select_run_params(rag_params: dict[str, Any]) -> tuple[dict[str, Any], list
     return selected, ignored
 
 
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Run a retrieval-only ablation matrix for regression cases.")
+    parser.add_argument(
+        "--base-url",
+        default="http://localhost:8000/api/v1",
+        help="API base url (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--tenant-id",
+        default="",
+        help="X-Tenant-ID header (optional in non-prod)",
+    )
+    parser.add_argument(
+        "--user-id",
+        default="",
+        help="X-User-ID header (AUTH_MODE=header)",
+    )
+    parser.add_argument(
+        "--bearer",
+        default="",
+        help="Bearer token (AUTH_MODE=jwt)",
+    )
+    parser.add_argument(
+        "--cases",
+        type=str,
+        required=True,
+        help="Path to regression cases JSON (bundle or legacy array)",
+    )
+    parser.add_argument(
+        "--skip-import",
+        action="store_true",
+        help="Skip importing the cases file",
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help=("Overwrite existing cases matched by (question + dataset_id)"),
+    )
+    parser.add_argument(
+        "--matrix",
+        type=str,
+        required=True,
+        help=("Ablation matrix JSON: {base:{...}, variants:[...]} or {grid:{...}}"),
+    )
+    parser.add_argument(
+        "--out-dir",
+        type=str,
+        default="ablation_out",
+        help="Output directory (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--poll-sec",
+        type=float,
+        default=2.0,
+        help="Polling interval seconds (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--timeout-sec",
+        type=float,
+        default=1800.0,
+        help="Timeout seconds (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--max-cases",
+        type=int,
+        default=500,
+        help="Max cases per run (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--no-html",
+        action="store_true",
+        help="Skip downloading HTML diff artifacts",
+    )
+    parser.add_argument(
+        "--continue-on-failure",
+        action="store_true",
+        help="Continue running variants even if one fails",
+    )
+    return parser
+
+
+def _load_inputs(
+    args: argparse.Namespace,
+) -> tuple[Path, str, list[dict[str, Any]], dict[str, Any], list[dict[str, Any]]]:
+    cases_path = Path(args.cases)
+    _require(cases_path.exists(), f"cases file not found: {cases_path}")
+
+    matrix_path = Path(args.matrix)
+    _require(matrix_path.exists(), f"matrix file not found: {matrix_path}")
+
+    dataset_id, items = coerce_case_bundle(_load_json(cases_path))
+    _require(len(items) > 0, "cases file contains no items")
+
+    matrix_raw = _load_json(matrix_path)
+    _require(isinstance(matrix_raw, dict), "matrix file must be a JSON object")
+
+    base_variant, variants = build_variant_plan(matrix_raw)
+    _require(
+        len(variants) > 0,
+        "matrix produced zero variants (add variants or grid)",
+    )
+    return cases_path, dataset_id, items, base_variant, variants
+
+
+def _persist_plan(
+    out_dir: Path,
+    *,
+    dataset_id: str,
+    base_variant: dict[str, Any],
+    variants: list[dict[str, Any]],
+) -> None:
+    _write_json(
+        out_dir / "plan.resolved.json",
+        {
+            "dataset_id": dataset_id,
+            "base": base_variant,
+            "variants": variants,
+            "run_param_fields": list(_RUN_PARAM_FIELDS),
+        },
+    )
+
+
 def _poll_run(
     *,
     client: httpx.Client,
@@ -324,55 +487,370 @@ def _resolve_case_ids(
     return matched
 
 
+def _import_cases(
+    *,
+    client: httpx.Client,
+    base_url: str,
+    dataset_id: str,
+    items: list[dict[str, Any]],
+    overwrite: bool,
+) -> None:
+    response = client.post(
+        f"{base_url}/evaluations/ragas/regression/cases/import",
+        json={
+            "dataset_id": dataset_id,
+            "overwrite": overwrite,
+            "max_items": min(2000, len(items)),
+            "items": items,
+        },
+    )
+    response.raise_for_status()
+    payload = response.json() or {}
+    print(
+        "[retrieval_ablation] import: "
+        f"created={payload.get('created')} "
+        f"updated={payload.get('updated')} "
+        f"skipped={payload.get('skipped')}"
+    )
+    if payload.get("errors"):
+        print(f"[retrieval_ablation] import warnings: {len(payload.get('errors') or [])} errors")
+
+
+def _run_payload(
+    *,
+    case_ids: list[str],
+    dataset_id: str,
+    max_cases: int,
+    run_params: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "case_ids": case_ids,
+        "dataset_id": dataset_id,
+        "metrics": [],
+        "skip_empty_contexts": True,
+        "max_cases": max_cases,
+        **run_params,
+    }
+
+
+def _create_run(
+    *,
+    client: httpx.Client,
+    base_url: str,
+    payload: dict[str, Any],
+) -> str:
+    response = client.post(
+        f"{base_url}/evaluations/ragas/regression/runs",
+        json=payload,
+    )
+    response.raise_for_status()
+    run = response.json() or {}
+    return str(run.get("id") or "").strip()
+
+
+def _write_run_artifact(
+    out_dir: Path,
+    *,
+    artifact_name: str,
+    label: str,
+    run_id: str,
+    rag_params: dict[str, Any],
+    summary: dict[str, Any],
+) -> None:
+    _write_json(
+        out_dir / "runs" / f"{artifact_name}.{run_id[:8]}.run.json",
+        {
+            "label": label,
+            "run_id": run_id,
+            "rag_params": rag_params,
+            "summary": summary,
+        },
+    )
+
+
+def _run_variant(
+    *,
+    client: httpx.Client,
+    base_url: str,
+    case_ids: list[str],
+    dataset_id: str,
+    max_cases: int,
+    poll_sec: float,
+    timeout_sec: float,
+    label: str,
+    rag_params: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    run_params, ignored = _select_run_params(rag_params)
+    if ignored:
+        print(f"[retrieval_ablation] {label} ignored rag_params keys: {', '.join(ignored)}")
+    run_id = _create_run(
+        client=client,
+        base_url=base_url,
+        payload=_run_payload(
+            case_ids=case_ids,
+            dataset_id=dataset_id,
+            max_cases=max_cases,
+            run_params=run_params,
+        ),
+    )
+    _require(bool(run_id), f"failed to create run for {label} (missing run.id)")
+    print(f"[retrieval_ablation] variant started: {label} id={run_id}")
+    detail = _poll_run(
+        client=client,
+        base=base_url,
+        run_id=run_id,
+        poll_sec=poll_sec,
+        timeout_sec=timeout_sec,
+    )
+    return run_id, dict((detail.get("run") or {}).get("summary") or {})
+
+
+def _fetch_diff_json(
+    *,
+    client: httpx.Client,
+    base_url: str,
+    base_run_id: str,
+    run_id: str,
+    label: str,
+    artifact_name: str,
+    out_dir: Path,
+) -> dict[str, Any]:
+    try:
+        response = client.get(
+            f"{base_url}/evaluations/ragas/regression/runs/{run_id}/diff",
+            params={"base_run_id": base_run_id},
+        )
+        response.raise_for_status()
+        diff_json = response.json() or {}
+        _write_json(
+            out_dir / "diffs" / f"{artifact_name}.{run_id[:8]}.diff.json",
+            diff_json,
+        )
+        return diff_json
+    except Exception as exc:  # noqa: BLE001
+        print(f"[retrieval_ablation] WARN: failed to fetch diff JSON for {label}: {type(exc).__name__}: {exc}")
+        return {}
+
+
+def _fetch_diff_html(
+    *,
+    client: httpx.Client,
+    base_url: str,
+    base_run_id: str,
+    run_id: str,
+    label: str,
+    artifact_name: str,
+    out_dir: Path,
+) -> None:
+    try:
+        response = client.get(
+            f"{base_url}/evaluations/ragas/regression/runs/{run_id}/diff/export-html",
+            params={"base_run_id": base_run_id, "redact": True},
+        )
+        response.raise_for_status()
+        (out_dir / "diffs").mkdir(parents=True, exist_ok=True)
+        (out_dir / "diffs" / f"{artifact_name}.{run_id[:8]}.diff.html").write_text(
+            response.text,
+            encoding="utf-8",
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[retrieval_ablation] WARN: failed to fetch diff HTML for {label}: {type(exc).__name__}: {exc}")
+
+
+def _run_variants(
+    *,
+    client: httpx.Client,
+    base_url: str,
+    variants: list[dict[str, Any]],
+    case_ids: list[str],
+    dataset_id: str,
+    max_cases: int,
+    poll_sec: float,
+    timeout_sec: float,
+    base_run_id: str,
+    out_dir: Path,
+    continue_on_failure: bool,
+    no_html: bool,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    rows: list[dict[str, Any]] = []
+    failures: list[str] = []
+
+    for variant in variants:
+        label = str(variant.get("label") or "").strip() or "variant"
+        artifact_name = safe_artifact_name(label)
+        rag_params = variant.get("rag_params") if isinstance(variant.get("rag_params"), dict) else {}
+        try:
+            run_id, summary = _run_variant(
+                client=client,
+                base_url=base_url,
+                case_ids=case_ids,
+                dataset_id=dataset_id,
+                max_cases=max_cases,
+                poll_sec=poll_sec,
+                timeout_sec=timeout_sec,
+                label=label,
+                rag_params=rag_params,
+            )
+            _write_run_artifact(
+                out_dir,
+                artifact_name=artifact_name,
+                label=label,
+                run_id=run_id,
+                rag_params=rag_params,
+                summary=summary,
+            )
+            diff_json = _fetch_diff_json(
+                client=client,
+                base_url=base_url,
+                base_run_id=base_run_id,
+                run_id=run_id,
+                label=label,
+                artifact_name=artifact_name,
+                out_dir=out_dir,
+            )
+            if not no_html:
+                _fetch_diff_html(
+                    client=client,
+                    base_url=base_url,
+                    base_run_id=base_run_id,
+                    run_id=run_id,
+                    label=label,
+                    artifact_name=artifact_name,
+                    out_dir=out_dir,
+                )
+            rows.append(
+                {
+                    "label": label,
+                    "run_id": run_id,
+                    "rag_params": rag_params,
+                    "summary": summary,
+                    "diff": diff_json,
+                }
+            )
+        except Exception as exc:  # noqa: BLE001
+            message = f"{label}: {type(exc).__name__}: {exc}"
+            failures.append(message)
+            print(f"[retrieval_ablation] ERROR: {message}", file=sys.stderr)
+            if not continue_on_failure:
+                break
+
+    return rows, failures
+
+
+def _metric(summary: dict[str, Any], key: str) -> float | None:
+    try:
+        value = float(summary.get(key))
+    except Exception:
+        return None
+    if value != value:
+        return None
+    return value
+
+
+def _leaderboard_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    leaderboard: list[dict[str, Any]] = []
+    for row in rows:
+        summary = row.get("summary") if isinstance(row.get("summary"), dict) else {}
+        leaderboard.append(
+            {
+                "label": row.get("label"),
+                "run_id": row.get("run_id"),
+                "retrieval_recall": _metric(summary, "retrieval_recall"),
+                "retrieval_hit_at_20": _metric(summary, "retrieval_hit_at_20"),
+                "retrieval_mrr": _metric(summary, "retrieval_mrr"),
+                "retrieval_ndcg_at_20": _metric(
+                    summary,
+                    "retrieval_ndcg_at_20",
+                ),
+                "abstain_rate": _metric(summary, "abstain_rate"),
+                "items": summary.get("items"),
+                "rag_params": row.get("rag_params"),
+            }
+        )
+    leaderboard.sort(
+        key=lambda row: (
+            -(float(row.get("retrieval_recall") or -1.0)),
+            -(float(row.get("retrieval_mrr") or -1.0)),
+            -(float(row.get("retrieval_ndcg_at_20") or -1.0)),
+            float(row.get("abstain_rate") or 1.0),
+            str(row.get("label") or ""),
+        )
+    )
+    return leaderboard
+
+
+def _format_metric_value(value: Any) -> str:
+    if isinstance(value, (int, float)):
+        return f"{value:.4f}"
+    return ""
+
+
+def _leaderboard_markdown(leaderboard: list[dict[str, Any]]) -> str:
+    lines = [
+        "| label | recall | hit@20 | mrr | ndcg@20 | abstain | run_id |",
+        "|---|---:|---:|---:|---:|---:|---|",
+    ]
+    for row in leaderboard:
+        lines.append(
+            ("| {label} | {recall} | {hit20} | {mrr} | {ndcg20} | {abstain} | {run_id} |").format(
+                label=str(row.get("label") or ""),
+                recall=_format_metric_value(row.get("retrieval_recall")),
+                hit20=_format_metric_value(row.get("retrieval_hit_at_20")),
+                mrr=_format_metric_value(row.get("retrieval_mrr")),
+                ndcg20=_format_metric_value(row.get("retrieval_ndcg_at_20")),
+                abstain=_format_metric_value(row.get("abstain_rate")),
+                run_id=str(row.get("run_id") or ""),
+            )
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _write_leaderboard(
+    out_dir: Path,
+    *,
+    dataset_id: str,
+    base_variant: dict[str, Any],
+    base_run_id: str,
+    rows: list[dict[str, Any]],
+    failures: list[str],
+) -> None:
+    leaderboard = _leaderboard_rows(rows)
+    _write_json(
+        out_dir / "leaderboard.json",
+        {
+            "dataset_id": dataset_id,
+            "base": {
+                "label": base_variant.get("label"),
+                "run_id": base_run_id,
+            },
+            "rows": leaderboard,
+            "failures": failures,
+        },
+    )
+    (out_dir / "leaderboard.md").write_text(
+        _leaderboard_markdown(leaderboard),
+        encoding="utf-8",
+    )
+
+
 def main() -> int:
-    p = argparse.ArgumentParser(description="Run a retrieval-only ablation matrix for regression cases.")
-    p.add_argument("--base-url", default="http://localhost:8000/api/v1", help="API base url (default: %(default)s)")
-    p.add_argument("--tenant-id", default="", help="X-Tenant-ID header (optional in non-prod)")
-    p.add_argument("--user-id", default="", help="X-User-ID header (AUTH_MODE=header)")
-    p.add_argument("--bearer", default="", help="Bearer token (AUTH_MODE=jwt)")
-    p.add_argument("--cases", type=str, required=True, help="Path to regression cases JSON (bundle or legacy array)")
-    p.add_argument("--skip-import", action="store_true", help="Skip importing the cases file")
-    p.add_argument("--overwrite", action="store_true", help="Overwrite existing cases matched by (question + dataset_id)")
-
-    p.add_argument("--matrix", type=str, required=True, help="Ablation matrix JSON: {base:{...}, variants:[...]} or {grid:{...}}")
-    p.add_argument("--out-dir", type=str, default="ablation_out", help="Output directory (default: %(default)s)")
-
-    p.add_argument("--poll-sec", type=float, default=2.0, help="Polling interval seconds (default: %(default)s)")
-    p.add_argument("--timeout-sec", type=float, default=1800.0, help="Timeout seconds (default: %(default)s)")
-    p.add_argument("--max-cases", type=int, default=500, help="Max cases per run (default: %(default)s)")
-    p.add_argument("--no-html", action="store_true", help="Skip downloading HTML diff artifacts")
-    p.add_argument("--continue-on-failure", action="store_true", help="Continue running variants even if one fails")
-
-    args = p.parse_args()
+    args = _build_parser().parse_args()
 
     headers = _headers(args)
-    _require(bool(headers.get("X-User-ID") or headers.get("Authorization")), "missing auth headers (use --user-id or --bearer)")
-
-    cases_path = Path(args.cases)
-    _require(cases_path.exists(), f"cases file not found: {cases_path}")
-    matrix_path = Path(args.matrix)
-    _require(matrix_path.exists(), f"matrix file not found: {matrix_path}")
+    _require(
+        bool(headers.get("X-User-ID") or headers.get("Authorization")),
+        "missing auth headers (use --user-id or --bearer)",
+    )
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    dataset_id, items = coerce_case_bundle(_load_json(cases_path))
-    _require(len(items) > 0, "cases file contains no items")
-
-    matrix_raw = _load_json(matrix_path)
-    _require(isinstance(matrix_raw, dict), "matrix file must be a JSON object")
-    base_variant, variants = build_variant_plan(matrix_raw)
-    _require(len(variants) > 0, "matrix produced zero variants (add variants or grid)")
-
-    # Persist the resolved plan for reproducibility.
-    _write_json(
-        out_dir / "plan.resolved.json",
-        {
-            "dataset_id": dataset_id,
-            "base": base_variant,
-            "variants": variants,
-            "run_param_fields": list(_RUN_PARAM_FIELDS),
-        },
+    _, dataset_id, items, base_variant, variants = _load_inputs(args)
+    _persist_plan(
+        out_dir,
+        dataset_id=dataset_id,
+        base_variant=base_variant,
+        variants=variants,
     )
 
     base_url = str(args.base_url).rstrip("/")
@@ -380,51 +858,44 @@ def main() -> int:
 
     with httpx.Client(headers=headers, timeout=timeout) as client:
         if not args.skip_import:
-            r = client.post(
-                f"{base_url}/evaluations/ragas/regression/cases/import",
-                json={
-                    "dataset_id": dataset_id,
-                    "overwrite": bool(args.overwrite),
-                    "max_items": min(2000, len(items)),
-                    "items": items,
-                },
+            _import_cases(
+                client=client,
+                base_url=base_url,
+                dataset_id=dataset_id,
+                items=items,
+                overwrite=bool(args.overwrite),
             )
-            r.raise_for_status()
-            imp = r.json() or {}
-            print(
-                f"[retrieval_ablation] import: created={imp.get('created')} updated={imp.get('updated')} skipped={imp.get('skipped')}"
-            )
-            if imp.get("errors"):
-                print(f"[retrieval_ablation] import warnings: {len(imp.get('errors') or [])} errors")
 
-        case_ids = _resolve_case_ids(client=client, base=base_url, dataset_id=dataset_id, items=items)
+        case_ids = _resolve_case_ids(
+            client=client,
+            base=base_url,
+            dataset_id=dataset_id,
+            items=items,
+        )
         _require(len(case_ids) > 0, "no matching cases found after import/list")
         print(f"[retrieval_ablation] matched cases: {len(case_ids)}")
 
         max_cases = min(int(args.max_cases or 0), len(case_ids))
         max_cases = max(1, max_cases)
 
-        # ---- Base run ----
-        base_params, ignored = _select_run_params(base_variant.get("rag_params") or {})
+        base_label = str(base_variant.get("label") or "base")
+        base_rag_params = base_variant.get("rag_params") if isinstance(base_variant.get("rag_params"), dict) else {}
+        base_params, ignored = _select_run_params(base_rag_params)
         if ignored:
             print(f"[retrieval_ablation] base ignored rag_params keys: {', '.join(ignored)}")
-        r = client.post(
-            f"{base_url}/evaluations/ragas/regression/runs",
-            json={
-                "case_ids": case_ids,
-                "dataset_id": dataset_id,
-                "metrics": [],  # retrieval-only
-                "skip_empty_contexts": True,
-                "max_cases": max_cases,
-                **base_params,
-            },
-        )
-        r.raise_for_status()
-        base_run = r.json() or {}
-        base_run_id = str(base_run.get("id") or "").strip()
-        _require(bool(base_run_id), "failed to create base run (missing run.id)")
-        print(f"[retrieval_ablation] base run started: {base_variant.get('label')} id={base_run_id}")
 
+        base_run_id = _create_run(
+            client=client,
+            base_url=base_url,
+            payload=_run_payload(
+                case_ids=case_ids,
+                dataset_id=dataset_id,
+                max_cases=max_cases,
+                run_params=base_params,
+            ),
+        )
+        _require(bool(base_run_id), "failed to create base run (missing run.id)")
+        print(f"[retrieval_ablation] base run started: {base_label} id={base_run_id}")
         base_detail = _poll_run(
             client=client,
             base=base_url,
@@ -433,165 +904,43 @@ def main() -> int:
             timeout_sec=float(args.timeout_sec),
         )
         base_summary = dict((base_detail.get("run") or {}).get("summary") or {})
-        base_art = safe_artifact_name(str(base_variant.get("label") or "base"))
-        _write_json(
-            out_dir / "runs" / f"{base_art}.{base_run_id[:8]}.run.json",
-            {"label": base_variant.get("label"), "run_id": base_run_id, "rag_params": base_variant.get("rag_params"), "summary": base_summary},
+        _write_run_artifact(
+            out_dir,
+            artifact_name=safe_artifact_name(base_label),
+            label=base_label,
+            run_id=base_run_id,
+            rag_params=base_rag_params,
+            summary=base_summary,
         )
 
-        # ---- Variant runs ----
-        rows: list[dict[str, Any]] = []
-        failures: list[str] = []
-        for v in variants:
-            label = str(v.get("label") or "").strip() or "variant"
-            art = safe_artifact_name(label)
-            rag_params = v.get("rag_params") if isinstance(v.get("rag_params"), dict) else {}
-            run_params, ignored = _select_run_params(rag_params)
-            if ignored:
-                print(f"[retrieval_ablation] {label} ignored rag_params keys: {', '.join(ignored)}")
-
-            try:
-                r = client.post(
-                    f"{base_url}/evaluations/ragas/regression/runs",
-                    json={
-                        "case_ids": case_ids,
-                        "dataset_id": dataset_id,
-                        "metrics": [],  # retrieval-only
-                        "skip_empty_contexts": True,
-                        "max_cases": max_cases,
-                        **run_params,
-                    },
-                )
-                r.raise_for_status()
-                run = r.json() or {}
-                run_id = str(run.get("id") or "").strip()
-                _require(bool(run_id), f"failed to create run for {label} (missing run.id)")
-                print(f"[retrieval_ablation] variant started: {label} id={run_id}")
-
-                detail = _poll_run(
-                    client=client,
-                    base=base_url,
-                    run_id=run_id,
-                    poll_sec=float(args.poll_sec),
-                    timeout_sec=float(args.timeout_sec),
-                )
-                summary = dict((detail.get("run") or {}).get("summary") or {})
-                _write_json(
-                    out_dir / "runs" / f"{art}.{run_id[:8]}.run.json",
-                    {"label": label, "run_id": run_id, "rag_params": rag_params, "summary": summary},
-                )
-
-                diff_json: dict[str, Any] = {}
-                try:
-                    r = client.get(
-                        f"{base_url}/evaluations/ragas/regression/runs/{run_id}/diff",
-                        params={"base_run_id": base_run_id},
-                    )
-                    r.raise_for_status()
-                    diff_json = r.json() or {}
-                    _write_json(out_dir / "diffs" / f"{art}.{run_id[:8]}.diff.json", diff_json)
-                except Exception as exc:  # noqa: BLE001
-                    print(f"[retrieval_ablation] WARN: failed to fetch diff JSON for {label}: {type(exc).__name__}: {exc}")
-
-                if not bool(args.no_html):
-                    try:
-                        r = client.get(
-                            f"{base_url}/evaluations/ragas/regression/runs/{run_id}/diff/export-html",
-                            params={"base_run_id": base_run_id, "redact": True},
-                        )
-                        r.raise_for_status()
-                        (out_dir / "diffs").mkdir(parents=True, exist_ok=True)
-                        (out_dir / "diffs" / f"{art}.{run_id[:8]}.diff.html").write_text(r.text, encoding="utf-8")
-                    except Exception as exc:  # noqa: BLE001
-                        print(
-                            f"[retrieval_ablation] WARN: failed to fetch diff HTML for {label}: {type(exc).__name__}: {exc}"
-                        )
-
-                rows.append(
-                    {
-                        "label": label,
-                        "run_id": run_id,
-                        "rag_params": rag_params,
-                        "summary": summary,
-                        "diff": diff_json,
-                    }
-                )
-
-            except Exception as exc:  # noqa: BLE001
-                msg = f"{label}: {type(exc).__name__}: {exc}"
-                failures.append(msg)
-                print(f"[retrieval_ablation] ERROR: {msg}", file=sys.stderr)
-                if not bool(args.continue_on_failure):
-                    break
-
-        # ---- Leaderboard ----
-        def _metric(summary: dict[str, Any], key: str) -> float | None:
-            try:
-                v = float(summary.get(key))
-            except Exception:
-                return None
-            if v != v:
-                return None
-            return v
-
-        leaderboard: list[dict[str, Any]] = []
-        for row in rows:
-            s = row.get("summary") if isinstance(row.get("summary"), dict) else {}
-            leaderboard.append(
-                {
-                    "label": row.get("label"),
-                    "run_id": row.get("run_id"),
-                    "retrieval_recall": _metric(s, "retrieval_recall"),
-                    "retrieval_hit_at_20": _metric(s, "retrieval_hit_at_20"),
-                    "retrieval_mrr": _metric(s, "retrieval_mrr"),
-                    "retrieval_ndcg_at_20": _metric(s, "retrieval_ndcg_at_20"),
-                    "abstain_rate": _metric(s, "abstain_rate"),
-                    "items": s.get("items"),
-                    "rag_params": row.get("rag_params"),
-                }
-            )
-
-        leaderboard.sort(
-            key=lambda r: (
-                -(float(r.get("retrieval_recall") or -1.0)),
-                -(float(r.get("retrieval_mrr") or -1.0)),
-                -(float(r.get("retrieval_ndcg_at_20") or -1.0)),
-                float(r.get("abstain_rate") or 1.0),
-                str(r.get("label") or ""),
-            )
+        rows, failures = _run_variants(
+            client=client,
+            base_url=base_url,
+            variants=variants,
+            case_ids=case_ids,
+            dataset_id=dataset_id,
+            max_cases=max_cases,
+            poll_sec=float(args.poll_sec),
+            timeout_sec=float(args.timeout_sec),
+            base_run_id=base_run_id,
+            out_dir=out_dir,
+            continue_on_failure=bool(args.continue_on_failure),
+            no_html=bool(args.no_html),
         )
-
-        _write_json(
-            out_dir / "leaderboard.json",
-            {
-                "dataset_id": dataset_id,
-                "base": {"label": base_variant.get("label"), "run_id": base_run_id},
-                "rows": leaderboard,
-                "failures": failures,
-            },
+        _write_leaderboard(
+            out_dir,
+            dataset_id=dataset_id,
+            base_variant=base_variant,
+            base_run_id=base_run_id,
+            rows=rows,
+            failures=failures,
         )
-
-        # Also emit a quick markdown table for human scanning in PR artifacts.
-        md_lines = [
-            "| label | recall | hit@20 | mrr | ndcg@20 | abstain | run_id |",
-            "|---|---:|---:|---:|---:|---:|---|",
-        ]
-        for r in leaderboard:
-            md_lines.append(
-                "| {label} | {recall} | {hit20} | {mrr} | {ndcg20} | {abstain} | {run_id} |".format(
-                    label=str(r.get("label") or ""),
-                    recall=f"{r.get('retrieval_recall'):.4f}" if isinstance(r.get("retrieval_recall"), (int, float)) else "",
-                    hit20=f"{r.get('retrieval_hit_at_20'):.4f}" if isinstance(r.get("retrieval_hit_at_20"), (int, float)) else "",
-                    mrr=f"{r.get('retrieval_mrr'):.4f}" if isinstance(r.get("retrieval_mrr"), (int, float)) else "",
-                    ndcg20=f"{r.get('retrieval_ndcg_at_20'):.4f}" if isinstance(r.get("retrieval_ndcg_at_20"), (int, float)) else "",
-                    abstain=f"{r.get('abstain_rate'):.4f}" if isinstance(r.get("abstain_rate"), (int, float)) else "",
-                    run_id=str(r.get("run_id") or ""),
-                )
-            )
-        (out_dir / "leaderboard.md").write_text("\n".join(md_lines) + "\n", encoding="utf-8")
 
         if failures:
-            print(f"[retrieval_ablation] completed with failures: {len(failures)}", file=sys.stderr)
+            print(
+                f"[retrieval_ablation] completed with failures: {len(failures)}",
+                file=sys.stderr,
+            )
             return 1
         print(f"[retrieval_ablation] done. variants={len(rows)} out_dir={out_dir}")
         return 0

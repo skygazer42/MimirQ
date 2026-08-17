@@ -1,4 +1,3 @@
-
 import io
 import json
 import uuid
@@ -31,10 +30,7 @@ def _override_get_current_account_id() -> str:
 
 def _zip_text_entries(payload: bytes) -> dict[str, str]:
     with zipfile.ZipFile(io.BytesIO(payload)) as zf:
-        return {
-            name: zf.read(name).decode("utf-8")
-            for name in zf.namelist()
-        }
+        return {name: zf.read(name).decode("utf-8") for name in zf.namelist()}
 
 
 def test_dataset_report_export_bundle_zip(monkeypatch):  # noqa: ANN001
@@ -141,7 +137,9 @@ def test_dataset_report_export_bundle_redacts_filename_and_manifest(monkeypatch)
             error_message="private chunk text leaked here",
         ),
     )
-    monkeypatch.setattr(reports_module.ReportService, "build_dataset_report", lambda *_a, **_k: dummy_report, raising=True)
+    monkeypatch.setattr(
+        reports_module.ReportService, "build_dataset_report", lambda *_a, **_k: dummy_report, raising=True
+    )
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db
     app.dependency_overrides[get_tenant_id] = _override_get_tenant_id

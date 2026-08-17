@@ -1,4 +1,3 @@
-
 import math
 from typing import Any
 from uuid import UUID
@@ -99,7 +98,10 @@ class QdrantVectorStore:
         self.storage = [
             (vec, meta)
             for vec, meta in self.storage
-            if not (str(meta.get("document_id") or "") == doc_id and (tenant is None or str(meta.get("tenant_id") or "") == tenant))
+            if not (
+                str(meta.get("document_id") or "") == doc_id
+                and (tenant is None or str(meta.get("tenant_id") or "") == tenant)
+            )
         ]
 
     def delete_by_document_id_and_filter(

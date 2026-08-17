@@ -11,7 +11,6 @@ small decoder that:
 - Always returns a string (worst-case with replacement)
 """
 
-
 from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import lru_cache
@@ -287,5 +286,7 @@ def read_text_file(path: Path, *, default_encoding: str = "utf-8") -> DecodedTex
             had_bom=had_bom,
         )
 
-    confidence = float(detected_confidence or 0.0) if _normalize_encoding(detected_encoding or "") == best_encoding else 0.0
+    confidence = (
+        float(detected_confidence or 0.0) if _normalize_encoding(detected_encoding or "") == best_encoding else 0.0
+    )
     return DecodedText(text=best_text, encoding=str(best_encoding), confidence=confidence, had_bom=had_bom)

@@ -72,7 +72,9 @@ def _provider_version_signature(provider: str | None) -> dict[str, Any]:
     if normalized == "colbert":
         sig.update(
             {
-                "colbert_provider": str(getattr(settings, "COLBERT_RERANK_PROVIDER", "deterministic") or "deterministic")
+                "colbert_provider": str(
+                    getattr(settings, "COLBERT_RERANK_PROVIDER", "deterministic") or "deterministic"
+                )
                 .strip()
                 .lower(),
                 "colbert_model_name": str(getattr(settings, "COLBERT_RERANK_MODEL_NAME", "") or ""),

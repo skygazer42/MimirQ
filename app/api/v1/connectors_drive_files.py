@@ -1,4 +1,3 @@
-
 import contextlib
 import sys
 from typing import Any
@@ -534,7 +533,9 @@ def _reconcile_removed_drive_sources(
                     connector_config_id=connector_config_id,
                 )
         except Exception as exc:  # noqa: BLE001
-            stats = _resolve_connectors_helper("_append_connector_error")(dict(run.stats or {}), url=source_ref, exc=exc)
+            stats = _resolve_connectors_helper("_append_connector_error")(
+                dict(run.stats or {}), url=source_ref, exc=exc
+            )
             run.stats = _resolve_connectors_helper("_finalize_connector_stats")(stats)
             db.commit()
             continue
@@ -625,11 +626,7 @@ def _finalize_drive_files_run_success(
 
 def _mark_drive_files_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, exc: Exception) -> None:
     with contextlib.suppress(Exception):
-        run = (
-            db.query(ConnectorRun)
-            .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
-            .first()
-        )
+        run = db.query(ConnectorRun).filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id).first()
         if run is not None:
             run.status = "failed"
             run.finished_at = _resolve_connectors_helper("_now")()

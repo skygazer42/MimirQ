@@ -11,7 +11,6 @@ This module exposes:
 - a stable strategy_hash derived from the strategy definition (prompt template, etc)
 """
 
-
 import json
 from functools import lru_cache
 
@@ -23,7 +22,8 @@ QUERY_REWRITE_STRATEGY_SPEC_SCHEMA_V1 = "mimirq.query_rewrite_strategy_spec.v1"
 DEFAULT_QUERY_REWRITE_STRATEGY_ID = "kb_followup.v1"
 
 
-_KB_FOLLOWUP_V1_TEMPLATE = """You are a knowledge base retrieval assistant. Please rewrite the "Current Question" into a standalone, clear, retrieval-friendly query.
+_KB_FOLLOWUP_V1_TEMPLATE = """You are a knowledge base retrieval assistant. Please rewrite the \
+"Current Question" into a standalone, clear, retrieval-friendly query.
 Requirements:
 1) Resolve pronouns by incorporating conversation history (e.g., "it/this/mentioned above")
 2) Retain key entities, time references, scope, and constraints
@@ -37,7 +37,8 @@ Requirements:
 
 [Rewritten Retrieval Query]"""
 
-_KB_FOLLOWUP_V2_TEMPLATE = """You are a knowledge base retrieval assistant. Rewrite the "Current Question" into a standalone, retrieval-friendly query.
+_KB_FOLLOWUP_V2_TEMPLATE = """You are a knowledge base retrieval assistant. Rewrite the \
+"Current Question" into a standalone, retrieval-friendly query.
 Requirements:
 1) Resolve pronouns and missing context using the conversation history
 2) Keep key entities, time references, scope, and constraints
@@ -130,4 +131,3 @@ __all__ = [
     "get_query_rewrite_prompt_template",
     "resolve_query_rewrite_strategy_id",
 ]
-

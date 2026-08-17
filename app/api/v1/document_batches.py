@@ -1,4 +1,3 @@
-
 import importlib
 from typing import Annotated
 from uuid import UUID
@@ -89,7 +88,11 @@ def _move_document_conflicts(*, documents_module, doc: DBDocument) -> bool:
     return isinstance(img_ids, list) and any(isinstance(value, str) and value.strip() for value in img_ids)
 
 
-@router.post("/batch/metadata", response_model=DocumentBatchUserMetadataPatchResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/batch/metadata",
+    response_model=DocumentBatchUserMetadataPatchResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def batch_patch_document_user_metadata(
     payload: DocumentBatchUserMetadataPatchRequest,
     *,
@@ -109,11 +112,7 @@ def batch_patch_document_user_metadata(
     if not ids:
         return {"updated": 0, "not_found": [], "denied": []}
 
-    documents = (
-        db.query(DBDocument)
-        .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(ids))
-        .all()
-    )
+    documents = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(ids)).all()
     found_map = {document.id: document for document in documents}
     not_found = [document_id for document_id in ids if document_id not in found_map]
 
@@ -135,7 +134,9 @@ def batch_patch_document_user_metadata(
 
         meta = dict(document.doc_metadata or {})
         current_user = meta.get("user") if isinstance(meta.get("user"), dict) else {}
-        next_user = documents_module._apply_user_metadata_patch(current=current_user, patch=patch, replace=payload.replace)
+        next_user = documents_module._apply_user_metadata_patch(
+            current=current_user, patch=patch, replace=payload.replace
+        )
         meta["user"] = next_user
         document.doc_metadata = meta
         updated += 1
@@ -261,7 +262,11 @@ async def batch_reingest_documents(
                 account_id=account_id,
                 db=db,
             )
-            if bool(payload.force) and bool(payload.skip_if_unchanged) and str((out or {}).get("status") or "").lower() == "completed":
+            if (
+                bool(payload.force)
+                and bool(payload.skip_if_unchanged)
+                and str((out or {}).get("status") or "").lower() == "completed"
+            ):
                 skipped += 1
             else:
                 queued += 1
@@ -285,7 +290,9 @@ async def batch_reingest_documents(
     }
 
 
-@router.post("/batch/access", response_model=DocumentBatchAccessUpdateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/batch/access", response_model=DocumentBatchAccessUpdateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 async def batch_update_document_access(
     payload: DocumentBatchAccessUpdateRequest,
     *,
@@ -354,11 +361,7 @@ def batch_move_documents(
     conflicts: list[UUID] = []
 
     for document_id in payload.document_ids:
-        doc = (
-            db.query(DBDocument)
-            .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-            .first()
-        )
+        doc = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
         if not doc:
             not_found.append(document_id)
             continue

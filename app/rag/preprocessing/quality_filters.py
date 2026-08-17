@@ -5,7 +5,6 @@ These heuristics are optional and meant to guard against indexing low-value
 documents (e.g., outline-only exports, garbled/noisy OCR output).
 """
 
-
 import re
 from dataclasses import dataclass
 
@@ -44,7 +43,7 @@ def _is_outline_line(line: str) -> bool:
     if len(stripped) <= 60 and _ALLCAPS_RE.match(stripped):
         return True
     # Short title-like lines ending with ":" often indicate outline headings.
-    if len(stripped) <= 50 and stripped.endswith((":","\uff1a")) and not _SENT_PUNCT_RE.search(stripped[:-1]):
+    if len(stripped) <= 50 and stripped.endswith((":", "\uff1a")) and not _SENT_PUNCT_RE.search(stripped[:-1]):
         return True
     return False
 
@@ -145,22 +144,22 @@ def drop_if_high_perplexity_proxy(
     """
     raw = text or ""
     if not raw.strip():
-        return QualityDecision(dropped=True, reason="empty_document", metrics={"perplexity_proxy": 0.0, "token_count": 0})
+        return QualityDecision(
+            dropped=True, reason="empty_document", metrics={"perplexity_proxy": 0.0, "token_count": 0}
+        )
 
     tokens = [str(tok or "").strip().casefold() for tok in _TOKEN_RE.findall(raw) if str(tok or "").strip()]
     token_count = len(tokens)
     unique_ratio = (len(set(tokens)) / max(1, token_count)) if token_count else 0.0
     stopword_ratio = (sum(1 for tok in tokens if tok in STOPWORDS) / max(1, token_count)) if token_count else 0.0
     long_token_ratio = (sum(1 for tok in tokens if len(tok) >= 12) / max(1, token_count)) if token_count else 0.0
-    digit_token_ratio = (sum(1 for tok in tokens if any(ch.isdigit() for ch in tok)) / max(1, token_count)) if token_count else 0.0
+    digit_token_ratio = (
+        (sum(1 for tok in tokens if any(ch.isdigit() for ch in tok)) / max(1, token_count)) if token_count else 0.0
+    )
 
     ascii_alpha_tokens = [tok for tok in tokens if tok.isascii() and any(ch.isalpha() for ch in tok)]
     ascii_letters = "".join(ch for tok in ascii_alpha_tokens for ch in tok if ch.isalpha())
-    vowel_ratio = (
-        len(_VOWEL_RE.findall(ascii_letters)) / max(1, len(ascii_letters))
-        if ascii_letters
-        else 0.0
-    )
+    vowel_ratio = len(_VOWEL_RE.findall(ascii_letters)) / max(1, len(ascii_letters)) if ascii_letters else 0.0
 
     proxy = 0.0
     proxy += max(0.0, unique_ratio - 0.72) * 1.6

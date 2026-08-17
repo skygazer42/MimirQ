@@ -1,4 +1,3 @@
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -31,7 +30,9 @@ def _split_markdown_row(line: str) -> list[str]:
 
 
 def profile_markdown_table(text: str) -> MarkdownTableProfile | None:
-    lines = [str(line or "").strip() for line in str(text or "").splitlines() if str(line or "").strip().startswith("|")]
+    lines = [
+        str(line or "").strip() for line in str(text or "").splitlines() if str(line or "").strip().startswith("|")
+    ]
     if len(lines) < 2:
         return None
 
@@ -57,7 +58,9 @@ def extract_markdown_table(
     bbox: dict[str, Any] | None = None,
     source_element_id: str | None = None,
 ) -> TableExtraction | None:
-    lines = [str(line or "").strip() for line in str(text or "").splitlines() if str(line or "").strip().startswith("|")]
+    lines = [
+        str(line or "").strip() for line in str(text or "").splitlines() if str(line or "").strip().startswith("|")
+    ]
     if len(lines) < 2:
         return None
     header = _split_markdown_row(lines[0])

@@ -10,7 +10,6 @@ Example endpoint:
   http://localhost:10001/v1/etl4llm/predict
 """
 
-
 import base64
 import hashlib
 import re
@@ -321,12 +320,20 @@ class Etl4LlmParser:
             has_any_images = int(extracted_images or 0) > 0
             lowered = (merged_text or "").lower()
             has_refs = ("![" in lowered) or ("<img" in lowered)
-            if not (fallback_enabled and self._extract_images and file_path.suffix.lower() == ".pdf" and (not has_any_images) and (not has_refs)):
+            if not (
+                fallback_enabled
+                and self._extract_images
+                and file_path.suffix.lower() == ".pdf"
+                and (not has_any_images)
+                and (not has_refs)
+            ):
                 return
 
             dpi = int(getattr(settings, "ETL4LLM_PAGE_IMAGE_DPI", 150) or 150)
             max_pages = max(0, int(settings.ETL4LLM_PAGE_IMAGE_MAX_PAGES))
-            page_refs = self._render_page_image_refs(file_path=file_path, images_dir=images_dir, dpi=dpi, max_pages=max_pages)
+            page_refs = self._render_page_image_refs(
+                file_path=file_path, images_dir=images_dir, dpi=dpi, max_pages=max_pages
+            )
             if not page_refs:
                 return
 

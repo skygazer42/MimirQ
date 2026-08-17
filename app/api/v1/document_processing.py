@@ -1,4 +1,3 @@
-
 import asyncio
 import contextlib
 import importlib
@@ -59,11 +58,7 @@ def get_document_status(
     """
     documents_module = _documents_module()
     documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
-    document = (
-        db.query(DBDocument)
-        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-        .first()
-    )
+    document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
 
     if not document:
         raise HTTPException(status_code=404, detail=documents_module.DOC_NOT_FOUND_DETAIL)
@@ -96,11 +91,7 @@ async def cancel_document_processing(
     documents_module = _documents_module()
     documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
 
-    document = (
-        db.query(DBDocument)
-        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-        .first()
-    )
+    document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
         raise HTTPException(status_code=404, detail=documents_module.DOC_NOT_FOUND_DETAIL)
 
@@ -179,11 +170,7 @@ async def retry_document_processing(
     documents_module = _documents_module()
     documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
 
-    document = (
-        db.query(DBDocument)
-        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-        .first()
-    )
+    document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
         raise HTTPException(status_code=404, detail=documents_module.DOC_NOT_FOUND_DETAIL)
 
@@ -196,8 +183,7 @@ async def retry_document_processing(
 
     current_status = str(document.status or "").lower()
     if current_status == "processing" or (
-        current_status == "pending"
-        and not documents_module._is_reprocessable_pending_document(document)
+        current_status == "pending" and not documents_module._is_reprocessable_pending_document(document)
     ):
         raise HTTPException(status_code=409, detail=f"Cannot retry a {current_status} document")
     if current_status == "completed" and not force:
@@ -302,7 +288,9 @@ async def retry_document_processing(
             raise HTTPException(status_code=503, detail="Object storage is disabled") from exc
         except ValueError as exc:
             if str(exc) in {"object_bucket_denied", "object_key_denied"}:
-                raise HTTPException(status_code=403, detail=documents_module.DOCUMENT_FILE_ACCESS_DENIED_DETAIL) from exc
+                raise HTTPException(
+                    status_code=403, detail=documents_module.DOCUMENT_FILE_ACCESS_DENIED_DETAIL
+                ) from exc
             raise HTTPException(status_code=404, detail=documents_module.DOCUMENT_FILE_NOT_FOUND_DETAIL) from exc
         try:
             store.stat_object(object_name=ref.object_name)

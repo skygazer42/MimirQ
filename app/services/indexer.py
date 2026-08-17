@@ -3,6 +3,7 @@ Indexing service implementation.
 
 Provides a unified interface for document chunk and event indexing.
 """
+
 import hashlib
 import logging
 import time
@@ -75,7 +76,9 @@ class DatasetScopedEmbeddingRuntimeResolutionError(RuntimeError):
     """Raised when a dataset-scoped document cannot safely resolve its embedding runtime."""
 
 
-def _dataset_scoped_runtime_unavailable(*, document_id: UUID, tenant_id: UUID) -> DatasetScopedEmbeddingRuntimeResolutionError:
+def _dataset_scoped_runtime_unavailable(
+    *, document_id: UUID, tenant_id: UUID
+) -> DatasetScopedEmbeddingRuntimeResolutionError:
     return DatasetScopedEmbeddingRuntimeResolutionError(
         "dataset-scoped embedding runtime unavailable during indexing "
         f"(tenant_id={tenant_id}, document_id={document_id})"
@@ -365,9 +368,7 @@ def _persist_ingest_gate_outcome_best_effort(
 ) -> None:
     try:
         db_document = (
-            db.query(DBDocument)
-            .filter(DBDocument.tenant_id == tenant_id, DBDocument.id == document_id)
-            .first()
+            db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id, DBDocument.id == document_id).first()
         )
         if db_document is not None:
             db_document.doc_metadata = _record_ingest_gate_outcome(
@@ -1056,7 +1057,9 @@ def _document_chunk_metadata(
 
 def _chunk_position_values(chunk: ChunkInput, meta: dict[str, Any]) -> tuple[int | None, int | None, int | None]:
     page_number = (
-        _safe_int(chunk.page_number) if chunk.page_number is not None else _safe_int(meta.get("page") or meta.get("page_number"))
+        _safe_int(chunk.page_number)
+        if chunk.page_number is not None
+        else _safe_int(meta.get("page") or meta.get("page_number"))
     )
     start_char = _safe_int(chunk.start_char) if chunk.start_char is not None else _safe_int(meta.get("start_char"))
     end_char = _safe_int(chunk.end_char) if chunk.end_char is not None else _safe_int(meta.get("end_char"))
@@ -1307,16 +1310,13 @@ class Indexer:
                 "embedding_space_hash"
             )
             dataset_scoped_column = DocumentChunk.doc_metadata["dataset_scoped"].astext.label("dataset_scoped")
-            rows = (
-                self._db.query(
-                    collection_name_column,
-                    embedding_space_column,
-                    dataset_scoped_column,
-                )
-                .filter(
-                    DocumentChunk.tenant_id == tenant_id,
-                    DocumentChunk.document_id == document_id,
-                )
+            rows = self._db.query(
+                collection_name_column,
+                embedding_space_column,
+                dataset_scoped_column,
+            ).filter(
+                DocumentChunk.tenant_id == tenant_id,
+                DocumentChunk.document_id == document_id,
             )
         except Exception:
             return []
@@ -1449,8 +1449,7 @@ class Indexer:
         chunk_id = meta.get("chunk_id")
         pipeline_hash = str(meta.get("pipeline_hash") or "")[:64]
         doc_pipeline_key = str(
-            meta.get("doc_pipeline_key")
-            or (f"{document_id}:{pipeline_hash}" if pipeline_hash else str(document_id))
+            meta.get("doc_pipeline_key") or (f"{document_id}:{pipeline_hash}" if pipeline_hash else str(document_id))
         )[:256]
         img_id = meta.get("img_id") or meta.get("image_id") or ""
         image_id = meta.get("image_id") or meta.get("img_id") or ""
@@ -1616,9 +1615,15 @@ class Indexer:
 
     def _chunk_index_option_flags(self, options: IndexingOptions | None) -> dict[str, bool]:
         return {
-            "embedding_prefix_enabled": bool(getattr(options, "embedding_context_prefix_enabled", False)) if options else False,
-            "contextual_retrieval_enabled": bool(getattr(options, "embedding_contextual_retrieval_enabled", False)) if options else False,
-            "contextual_retrieval_lazy_mode": bool(getattr(options, "embedding_contextual_retrieval_lazy_mode", False)) if options else False,
+            "embedding_prefix_enabled": bool(getattr(options, "embedding_context_prefix_enabled", False))
+            if options
+            else False,
+            "contextual_retrieval_enabled": bool(getattr(options, "embedding_contextual_retrieval_enabled", False))
+            if options
+            else False,
+            "contextual_retrieval_lazy_mode": bool(getattr(options, "embedding_contextual_retrieval_lazy_mode", False))
+            if options
+            else False,
             "field_aware_enabled": bool(getattr(options, "embedding_field_aware_enabled", False)) if options else False,
         }
 
@@ -1711,7 +1716,9 @@ class Indexer:
             embed_text = _build_embedding_text(embed_text, meta)
         return normalize_query(embed_text).normalized_text
 
-    def _chunk_extra_vector_docs(self, *, meta: dict[str, Any], chunk_id: UUID, field_aware_enabled: bool) -> list[dict[str, Any]]:
+    def _chunk_extra_vector_docs(
+        self, *, meta: dict[str, Any], chunk_id: UUID, field_aware_enabled: bool
+    ) -> list[dict[str, Any]]:
         if not field_aware_enabled or not _should_prefix_embedding(meta):
             return []
         out: list[dict[str, Any]] = []
@@ -2445,10 +2452,7 @@ class Indexer:
         return [
             row[0]
             for row in (
-                self._db.query(KgEventEntity.entity_id)
-                .filter(KgEventEntity.event_id.in_(event_ids))
-                .distinct()
-                .all()
+                self._db.query(KgEventEntity.entity_id).filter(KgEventEntity.event_id.in_(event_ids)).distinct().all()
             )
             if row and row[0]
         ]
@@ -2471,9 +2475,7 @@ class Indexer:
                 if strict:
                     raise
             batch_deleted = int(
-                self._db.query(KgSourceEvent)
-                .filter(KgSourceEvent.id.in_(event_ids))
-                .delete(synchronize_session=False)
+                self._db.query(KgSourceEvent).filter(KgSourceEvent.id.in_(event_ids)).delete(synchronize_session=False)
                 or 0
             )
             if commit or candidate_entity_ids:
@@ -2574,20 +2576,13 @@ class Indexer:
             return
 
         entity_id_rows = (
-            self._db.query(KgEventEntity.entity_id)
-            .filter(KgEventEntity.event_id.in_(event_ids))
-            .distinct()
-            .all()
+            self._db.query(KgEventEntity.entity_id).filter(KgEventEntity.event_id.in_(event_ids)).distinct().all()
         )
         entity_ids = [row[0] for row in entity_id_rows if row and row[0]]
         if not entity_ids:
             return
 
-        entities = (
-            self._db.query(KgEntity)
-            .filter(KgEntity.tenant_id == tenant_id, KgEntity.id.in_(entity_ids))
-            .all()
-        )
+        entities = self._db.query(KgEntity).filter(KgEntity.tenant_id == tenant_id, KgEntity.id.in_(entity_ids)).all()
         if entities and bool(getattr(settings, "ENTITY_VECTOR_ENABLED", True)):
             self._index_entity_vectors(entities)
 
@@ -2600,9 +2595,7 @@ class Indexer:
     ) -> None:
         now = datetime.now(UTC)
         document = (
-            self._db.query(DBDocument)
-            .filter(DBDocument.tenant_id == tenant_id, DBDocument.id == document_id)
-            .first()
+            self._db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id, DBDocument.id == document_id).first()
         )
         resolved_dataset_id = dataset_id
         if document is not None:
@@ -2621,7 +2614,9 @@ class Indexer:
 
     def _record_to_chunk_input(self, record: IndexRecord) -> ChunkInput:
         meta = dict(record.metadata or {})
-        page_number = record.page_number if record.page_number is not None else meta.get("page") or meta.get("page_number")
+        page_number = (
+            record.page_number if record.page_number is not None else meta.get("page") or meta.get("page_number")
+        )
         start_char = record.start_char if record.start_char is not None else meta.get("start_char")
         end_char = record.end_char if record.end_char is not None else meta.get("end_char")
         return ChunkInput(

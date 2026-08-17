@@ -6,7 +6,6 @@ data (datasets/documents/regression cases) so the frontend can compute
 collection-collection similarity heatmaps similar to Kumi.
 """
 
-
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -147,7 +146,9 @@ def list_similarity_collections(db: Session, tenant_id: UUID, account_id: str) -
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     datasets = db.query(Dataset).filter(Dataset.tenant_id == tenant_id).order_by(Dataset.created_at.desc()).all()
-    partial_ids = [ds.id for ds in datasets if ds.permission == DatasetPermissionEnum.PARTIAL_MEMBERS and ds.owner_id != account_id]
+    partial_ids = [
+        ds.id for ds in datasets if ds.permission == DatasetPermissionEnum.PARTIAL_MEMBERS and ds.owner_id != account_id
+    ]
 
     allowed_partial_ids: set[UUID] = set()
     if partial_ids:
@@ -162,7 +163,9 @@ def list_similarity_collections(db: Session, tenant_id: UUID, account_id: str) -
         )
         allowed_partial_ids = {row[0] for row in rows}
 
-    readable_datasets = [ds for ds in datasets if _is_dataset_readable(ds, account_id, allowed_partial_ids=allowed_partial_ids)]
+    readable_datasets = [
+        ds for ds in datasets if _is_dataset_readable(ds, account_id, allowed_partial_ids=allowed_partial_ids)
+    ]
     if not readable_datasets:
         return []
 
@@ -362,7 +365,9 @@ def _regression_questions_items(
                 "text": str(row.question or ""),
                 "expected_answer": row.expected_answer,
                 "tags": row.tags or [],
-                "source_document_id": (row.document_ids[0] if isinstance(row.document_ids, list) and row.document_ids else ""),
+                "source_document_id": (
+                    row.document_ids[0] if isinstance(row.document_ids, list) and row.document_ids else ""
+                ),
                 "chunk_id": chunk_id,
             }
         )

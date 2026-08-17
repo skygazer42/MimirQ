@@ -141,10 +141,7 @@ def _decorator_target(decorator: ast.expr) -> ast.expr:
 def _is_fastapi_route(function: ast.AsyncFunctionDef) -> bool:
     for decorator in function.decorator_list:
         target = _decorator_target(decorator)
-        if (
-            isinstance(target, ast.Attribute)
-            and target.attr in _FASTAPI_ROUTE_DECORATOR_NAMES
-        ):
+        if isinstance(target, ast.Attribute) and target.attr in _FASTAPI_ROUTE_DECORATOR_NAMES:
             return True
     return False
 
@@ -243,10 +240,7 @@ def test_time_context_helpers_do_not_use_naive_datetime_now() -> None:
 
 
 def test_fastapi_sync_db_routes_do_not_run_on_event_loop() -> None:
-    offenders = [
-        f"{rel_path}:{lineno}:{name}"
-        for rel_path, lineno, name in _iter_fake_async_sync_db_routes()
-    ]
+    offenders = [f"{rel_path}:{lineno}:{name}" for rel_path, lineno, name in _iter_fake_async_sync_db_routes()]
     assert offenders == [], offenders
 
 
@@ -485,8 +479,7 @@ def test_docker_cleanup_targets_are_project_scoped_and_explicitly_destructive() 
     assert f"COMPOSE_CLI := {compose_prefix}" in makefile
     assert (
         "COMPOSE_ALL := $(COMPOSE_CLI) -f docker/docker-compose.yml "
-        "-f docker/docker-compose.web.yml -f docker/docker-compose.parsers.yml"
-        in makefile
+        "-f docker/docker-compose.web.yml -f docker/docker-compose.parsers.yml" in makefile
     )
     for variable in (
         "COMPOSE",
@@ -537,7 +530,7 @@ def test_docker_cleanup_targets_are_project_scoped_and_explicitly_destructive() 
 
     for document in (deployment_guide, deployment_site):
         assert "docker compose ls" in document
-        assert 'label=com.docker.compose.project=mimirq' in document
+        assert "label=com.docker.compose.project=mimirq" in document
         assert "Running N/N" in document
         assert "docker system prune" in document
         assert "PowerShell" in document
@@ -605,9 +598,7 @@ def test_full_project_user_guide_is_discoverable_and_covers_the_closed_loop() ->
 def test_retrieval_handbook_uses_the_live_knowledge_tab_route() -> None:
     retrieval_doc = _read("docs-site/docs/frontend/more/retrieval.md")
     knowledge_page = _read("web/components/knowledge/knowledge-page.tsx")
-    knowledge_query_state = _read(
-        "web/components/knowledge/use-knowledge-query-state.ts"
-    )
+    knowledge_query_state = _read("web/components/knowledge/use-knowledge-query-state.ts")
 
     assert "/knowledge/retrieval" not in retrieval_doc
     assert "`/knowledge`" in retrieval_doc
@@ -687,7 +678,10 @@ def test_helm_runtime_validation_has_fail_fast_guards_for_multi_instance_risks()
     assert "Distributed MimirQ deployments require DB_CREATE_ALL_ON_STARTUP=false." in template
     assert "Distributed MimirQ deployments require DB_RUNTIME_MIGRATIONS_ENABLED=false." in template
     assert "Distributed MimirQ deployments cannot use VECTOR_BACKEND=faiss or VECTOR_BACKEND=chroma." in template
-    assert "Distributed MimirQ deployments with local document storage require persistence.uploads.accessModes to include ReadWriteMany." in template
+    assert (
+        "Distributed MimirQ deployments with local document storage require "
+        "persistence.uploads.accessModes to include ReadWriteMany." in template
+    )
     assert "migrations.enabled=true requires existingSecretName" in template
     assert template.count('"env" .Values.worker.extraEnv') >= 6
     assert "$workerDbCreateAllOnStartup" in template
@@ -716,7 +710,7 @@ def test_helm_migration_job_is_a_pre_install_upgrade_hook_backed_by_existing_sec
     values = yaml.safe_load(_read("deploy/helm/mimirq/values.yaml"))
     assert '"helm.sh/hook": pre-install,pre-upgrade' in template
     assert '"helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded' in template
-    assert 'secretRef:' in template
+    assert "secretRef:" in template
     assert 'name: {{ include "mimirq.secretName" . }}' in template
     assert "{{- toYaml .Values.migrations.command | nindent 12 }}" in template
     assert values["migrations"]["command"][:2] == ["python", "scripts/alembic_cli.py"]
@@ -748,9 +742,7 @@ def test_runtime_scripts_bundled_for_helm_jobs_do_not_depend_on_other_local_scri
                 imported_modules.add(str(node.module or ""))
 
         script_deps = sorted(
-            module
-            for module in imported_modules
-            if module == "scripts" or module.startswith("scripts.")
+            module for module in imported_modules if module == "scripts" or module.startswith("scripts.")
         )
         assert script_deps == [], f"{script_path} unexpectedly depends on local scripts modules: {script_deps}"
 

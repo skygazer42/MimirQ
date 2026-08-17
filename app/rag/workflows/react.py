@@ -7,7 +7,6 @@ Alternates between thinking about the problem and taking actions.
 Pattern: Think -> Act -> Observe -> Think -> ... -> Answer
 """
 
-
 import asyncio
 import json
 from collections.abc import Awaitable, Callable
@@ -126,7 +125,9 @@ class ReActWorkflow(BaseWorkflow):
             return str(result)
 
         self.add_tool("keyword_search", _keyword, "Keyword-first retrieval for exact terms, IDs, and entity names.")
-        self.add_tool("semantic_search", _semantic, "Semantic retrieval for natural language questions over the dataset.")
+        self.add_tool(
+            "semantic_search", _semantic, "Semantic retrieval for natural language questions over the dataset."
+        )
         self.add_tool("chunk_read", _chunk, "Read the full document/chunk content for a selected document id.")
         return self
 
@@ -219,7 +220,8 @@ class ReActWorkflow(BaseWorkflow):
 
         history_text = "\n".join(trace) if trace else "None yet."
 
-        prompt = f"""You are a reasoning agent. Your goal is to answer the question by thinking step by step and using tools when needed.
+        prompt = f"""You are a reasoning agent. Your goal is to answer the question by thinking \
+step by step and using tools when needed.
 
 {tools_prompt}
 
@@ -242,7 +244,7 @@ Answer: [your final answer to the question]
 Your response:"""
 
         response = await self._llm.ainvoke(prompt)
-        content = response.content if hasattr(response, 'content') else str(response)
+        content = response.content if hasattr(response, "content") else str(response)
 
         # Parse response
         result = {"thought": "", "action": "", "action_input": "", "answer": ""}
@@ -419,6 +421,7 @@ def create_search_tool(
     search_func: Callable[[str], Awaitable[list[dict[str, Any]]]],
 ) -> Tool:
     """Create a search tool wrapper."""
+
     async def search_wrapper(query: str) -> str:
         results = await search_func(query)
         if not results:

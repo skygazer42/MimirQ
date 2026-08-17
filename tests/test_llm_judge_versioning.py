@@ -16,7 +16,8 @@ class _Judge:
             '{"score": '
             + str(score)
             + ', "reason": "scored", "evidence_quotes": ["quote"], '
-            + '"atomic_facts": [{"fact": "Revenue was 100.", "verdict": "supported", "evidence_quote": "Revenue: 100"}]}'
+            + '"atomic_facts": [{"fact": "Revenue was 100.", '
+            + '"verdict": "supported", "evidence_quote": "Revenue: 100"}]}'
         )
 
 

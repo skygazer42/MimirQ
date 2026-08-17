@@ -7,7 +7,6 @@ Design constraints:
 - Best-effort: failures must not crash ingest/preview.
 """
 
-
 import re
 import time
 from dataclasses import dataclass
@@ -249,14 +248,18 @@ def _invalid_vlm_result(
     *,
     error: str | None,
 ) -> tuple[str, int, VLMImageCaptionAudit]:
-    return raw, 0, VLMImageCaptionAudit(
-        applied=False,
-        captions_added=0,
-        images_attempted=0,
-        images_succeeded=0,
-        elapsed_ms=0,
-        backend="vlm_http",
-        error=error,
+    return (
+        raw,
+        0,
+        VLMImageCaptionAudit(
+            applied=False,
+            captions_added=0,
+            images_attempted=0,
+            images_succeeded=0,
+            elapsed_ms=0,
+            backend="vlm_http",
+            error=error,
+        ),
     )
 
 
@@ -392,7 +395,9 @@ def add_vlm_image_captions(
         return _invalid_vlm_result(raw, error="max_images_zero")
 
     max_bytes = int(
-        max_image_bytes if isinstance(max_image_bytes, int) and max_image_bytes > 0 else int(getattr(settings, "MAX_INLINE_IMAGE_BYTES", 10_000_000) or 10_000_000)
+        max_image_bytes
+        if isinstance(max_image_bytes, int) and max_image_bytes > 0
+        else int(getattr(settings, "MAX_INLINE_IMAGE_BYTES", 10_000_000) or 10_000_000)
     )
     max_bytes = max(100_000, max_bytes)
 

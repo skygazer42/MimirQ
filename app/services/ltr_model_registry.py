@@ -8,7 +8,6 @@ Design goals:
 - Fail-closed for activation/validation; fail-open for reads/listing.
 """
 
-
 import hashlib
 import json
 import os
@@ -258,7 +257,10 @@ def _validate_manifest_obj(*, manifest: dict[str, Any], model_sha256: str) -> tu
 
     # Optional run lineage (PII-safe by construction: hashes + low-cardinality config).
     lineage_raw = manifest.get("lineage")
-    if isinstance(lineage_raw, dict) and _safe_str(lineage_raw.get("schema"), max_len=80) == "mimirq.ltr_run_lineage.v1":
+    if (
+        isinstance(lineage_raw, dict)
+        and _safe_str(lineage_raw.get("schema"), max_len=80) == "mimirq.ltr_run_lineage.v1"
+    ):
         lineage_out: dict[str, Any] = {"schema": "mimirq.ltr_run_lineage.v1"}
         kind = _safe_str(lineage_raw.get("kind"), max_len=16)
         if kind:
@@ -288,7 +290,11 @@ def _validate_manifest_obj(*, manifest: dict[str, Any], model_sha256: str) -> tu
         retrieval_cfg_out: dict[str, Any] | None = None
         if isinstance(retrieval_cfg_raw, dict):
             # Accept either a full fingerprint or a bare config; normalize via the canonical helper.
-            cfg_obj = retrieval_cfg_raw.get("config") if isinstance(retrieval_cfg_raw.get("config"), dict) else retrieval_cfg_raw
+            cfg_obj = (
+                retrieval_cfg_raw.get("config")
+                if isinstance(retrieval_cfg_raw.get("config"), dict)
+                else retrieval_cfg_raw
+            )
             if isinstance(cfg_obj, dict):
                 retrieval_cfg_out = build_retrieval_config_fingerprint(config=cfg_obj)
         if retrieval_cfg_out:
@@ -595,10 +601,7 @@ def evaluate_online_rollback_trigger(
     if len(rows) < required:
         reasons.append(f"insufficient windows: have={len(rows)} need={required}")
     if trailing_consecutive < required:
-        reasons.append(
-            "consecutive degradation below threshold not met: "
-            f"have={trailing_consecutive} need={required}"
-        )
+        reasons.append(f"consecutive degradation below threshold not met: have={trailing_consecutive} need={required}")
 
     triggered = len(rows) >= required and trailing_consecutive >= required
     return {

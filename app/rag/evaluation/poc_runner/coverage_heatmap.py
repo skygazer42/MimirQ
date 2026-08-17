@@ -1,4 +1,3 @@
-
 from collections import Counter
 from typing import Any
 
@@ -10,7 +9,9 @@ def build_document_heatmap(rows: list[dict[str, Any]]) -> dict[str, Any]:
     for row in rows or []:
         if not isinstance(row, dict):
             continue
-        filenames = [str(name or "").strip() for name in (row.get("final_context_filenames") or []) if str(name or "").strip()]
+        filenames = [
+            str(name or "").strip() for name in (row.get("final_context_filenames") or []) if str(name or "").strip()
+        ]
         is_negative = str(row.get("feedback_polarity") or "").strip().lower() == "negative"
         for filename in filenames:
             retrieval_counts[filename] += 1

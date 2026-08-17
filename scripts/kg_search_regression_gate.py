@@ -11,7 +11,6 @@ Expected CI env:
 - KG_SEARCH_VECTOR_RECALL_ENABLED=false (so Milvus/embeddings are not required)
 """
 
-
 import argparse
 import json
 import sys
@@ -190,7 +189,10 @@ def main() -> int:
         _require(False, f"thresholds dataset_id mismatch (expected {dataset_id}, got {th_ds})")
 
     headers = _headers(args)
-    _require(bool(headers.get("X-User-ID") or headers.get("Authorization")), "missing auth headers (use --user-id or --bearer)")
+    _require(
+        bool(headers.get("X-User-ID") or headers.get("Authorization")),
+        "missing auth headers (use --user-id or --bearer)",
+    )
 
     base = str(args.base_url).rstrip("/")
     timeout = httpx.Timeout(30.0)
@@ -276,7 +278,10 @@ def main() -> int:
             print("[kg_search_regression_gate] FAIL", file=sys.stderr)
             for f in failures:
                 print(f"  - {f}", file=sys.stderr)
-            print(f"[kg_search_regression_gate] summary={json.dumps(summary, ensure_ascii=False, sort_keys=True)}", file=sys.stderr)
+            print(
+                f"[kg_search_regression_gate] summary={json.dumps(summary, ensure_ascii=False, sort_keys=True)}",
+                file=sys.stderr,
+            )
             return 1
 
         print("[kg_search_regression_gate] PASS")
@@ -286,4 +291,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

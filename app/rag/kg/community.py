@@ -15,7 +15,6 @@ for a query) instead of running community detection over the entire dataset grap
 latency bounded and avoids ACL/versioning pitfalls.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -96,9 +95,7 @@ def _edge_counts(event_entities: dict[str, list[str]], *, max_entities_per_event
 
 def _community_edges_from_counts(counts: dict[tuple[str, str], float], *, min_weight: float) -> list[CommunityEdge]:
     edges = [
-        CommunityEdge(a=a, b=b, w=float(weight))
-        for (a, b), weight in counts.items()
-        if float(weight) >= min_weight
+        CommunityEdge(a=a, b=b, w=float(weight)) for (a, b), weight in counts.items() if float(weight) >= min_weight
     ]
     edges.sort(key=lambda edge: (-float(edge.w), _stable_sig(edge.a), _stable_sig(edge.b), edge.a, edge.b))
     return edges
@@ -395,15 +392,16 @@ def _ranked_community_labels(
     return labels[:max_communities] if max_communities > 0 else labels
 
 
-def _top_entities(entity_ids: list[str], ent_info: dict[str, dict[str, Any]], *, max_entities: int) -> list[dict[str, Any]]:
+def _top_entities(
+    entity_ids: list[str], ent_info: dict[str, dict[str, Any]], *, max_entities: int
+) -> list[dict[str, Any]]:
     limit = max(0, int(max_entities or 0)) or len(entity_ids)
     return [ent_info.get(entity_id) or {"entity_id": entity_id} for entity_id in entity_ids[:limit]]
 
 
 def _scored_events(event_ids: list[str], ev_info: dict[str, dict[str, Any]]) -> list[tuple[float, str]]:
     scored = [
-        (_safe_float((ev_info.get(event_id) or {}).get("score"), default=0.0), event_id)
-        for event_id in event_ids
+        (_safe_float((ev_info.get(event_id) or {}).get("score"), default=0.0), event_id) for event_id in event_ids
     ]
     return sorted(scored, key=lambda item: (-float(item[0]), _stable_sig(item[1]), item[1]))
 
@@ -534,7 +532,9 @@ def build_community_reports(
     if not ent_to_label:
         return [], ""
 
-    event_to_label = assign_events_to_communities(event_entities=ev_map, entity_to_label=ent_to_label, entity_weights=ent_weights)
+    event_to_label = assign_events_to_communities(
+        event_entities=ev_map, entity_to_label=ent_to_label, entity_weights=ent_weights
+    )
     ev_info = _index_events(events)
     comm_entities = _community_entity_map(ent_to_label, ent_weights)
     comm_events = _community_event_map(event_to_label)

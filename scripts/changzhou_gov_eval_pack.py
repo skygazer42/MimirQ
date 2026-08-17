@@ -8,7 +8,6 @@ Outputs:
 - optional regression import + retrieval-only run against the local backend
 """
 
-
 import argparse
 import hashlib
 import json
@@ -187,15 +186,15 @@ def _sentence_segments(text: str, *, limit: int = 3) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for segment in segments:
-      s = _normalize_question(segment)
-      if len(s) < 4:
-          continue
-      if s in seen:
-          continue
-      seen.add(s)
-      out.append(s)
-      if len(out) >= limit:
-          break
+        s = _normalize_question(segment)
+        if len(s) < 4:
+            continue
+        if s in seen:
+            continue
+        seen.add(s)
+        out.append(s)
+        if len(out) >= limit:
+            break
     return out
 
 
@@ -340,7 +339,7 @@ def parse_one_thing_file(path: Path) -> list[SourceRecord]:
         answer_parts = [part for part in (guide, materials, channel) if part]
         records.append(
             SourceRecord(
-                record_id=f"onething-{_slug(str(path)+title, prefix='ot')}",
+                record_id=f"onething-{_slug(str(path) + title, prefix='ot')}",
                 source_kind="one_thing",
                 source_file=str(path),
                 source_section=_source_section(path),
@@ -350,11 +349,7 @@ def parse_one_thing_file(path: Path) -> list[SourceRecord]:
                 question=f"{title}怎么办？",
                 answer="；".join(answer_parts),
                 similar_questions=[],
-                fields={
-                    key: _text(" ".join(values))
-                    for key, values in sections.items()
-                    if _text(" ".join(values))
-                },
+                fields={key: _text(" ".join(values)) for key, values in sections.items() if _text(" ".join(values))},
             )
         )
         title = ""
@@ -506,6 +501,7 @@ def _build_service_case(
             }
         )
         subquestions.append({"id": field, "required_clause_ids": [clause_id]})
+    expected_answer = "；".join(f"{field}：{value}" for field in fields if (value := _text(record.fields.get(field))))
 
     return {
         "id": _slug(f"{case_type}:{record.record_id}:{question}", prefix="case"),
@@ -527,7 +523,7 @@ def _build_service_case(
         "case_generation": GENERATION_NAME,
         "qa_like_source": False,
         "answer_term_aliases": _field_aliases_for(fields),
-        "expected_answer": "；".join(f"{field}：{_text(record.fields.get(field))}" for field in fields if _text(record.fields.get(field))),
+        "expected_answer": expected_answer,
         "source_case_id": record.record_id,
         "generation_reason": variant_reason,
     }
@@ -593,6 +589,7 @@ def _build_qa_case(
     variant_reason: str,
 ) -> dict[str, Any]:
     clauses, subquestions = _build_answer_clauses(record.answer)
+    fallback_terms = _clause_terms_from_segment(record.answer[:72]) or [record.answer[:72]]
     return {
         "id": _slug(f"{case_type}:{record.record_id}:{question}", prefix="case"),
         "knowledge_id": record.knowledge_id,
@@ -603,8 +600,8 @@ def _build_qa_case(
         "source_file": record.source_file,
         "source_section": record.source_section,
         "source_record_title": record.title,
-        "subquestions": subquestions or [{"id": "回答", "required_terms": _clause_terms_from_segment(record.answer[:72]) or [record.answer[:72]]}],
-        "evidence_clauses": clauses or [{"id": "answer-1", "required_terms": _clause_terms_from_segment(record.answer[:72]) or [record.answer[:72]]}],
+        "subquestions": subquestions or [{"id": "回答", "required_terms": fallback_terms}],
+        "evidence_clauses": clauses or [{"id": "answer-1", "required_terms": fallback_terms}],
         "min_evidence_coverage": 0.5,
         "min_subquestion_coverage": 0.5,
         "max_wrong_evidence_rate": 0.8,
@@ -639,18 +636,13 @@ def _build_one_thing_case(record: SourceRecord, rng: random.Random) -> dict[str,
     )
 
 
-def build_case_payload(
+def _effective_case_counts(
     *,
-    records: dict[str, list[SourceRecord]],
     qa_count: int,
     service_count: int,
     user_count: int,
     target_total: int,
-    seed: int,
-) -> dict[str, Any]:
-    rng = random.Random(seed)
-    cases: list[dict[str, Any]] = []
-    seen_questions: set[str] = set()
+) -> tuple[int, int, int]:
     effective_qa_count = max(0, int(qa_count))
     effective_service_count = max(0, int(service_count))
     effective_user_count = max(0, int(user_count))
@@ -659,57 +651,81 @@ def build_case_payload(
             0,
             int(target_total) - effective_qa_count - effective_service_count,
         )
+    return effective_qa_count, effective_service_count, effective_user_count
 
-    def push(case: dict[str, Any]) -> bool:
-        question = _normalize_question(case.get("question"))
-        if not question or question in seen_questions:
-            return False
-        seen_questions.add(question)
-        cases.append(case)
-        return True
 
-    qa_records = [record for record in records["qa_records"] if _text(record.question) and _text(record.answer)]
-    service_records = [record for record in records["service_records"] if _available_service_profiles(record)]
-    one_thing_records = [record for record in records["one_thing_records"] if record.fields]
-    rng.shuffle(qa_records)
-    rng.shuffle(service_records)
-    rng.shuffle(one_thing_records)
+def _push_unique_case(
+    cases: list[dict[str, Any]],
+    seen_questions: set[str],
+    case: dict[str, Any],
+) -> bool:
+    question = _normalize_question(case.get("question"))
+    if not question or question in seen_questions:
+        return False
+    seen_questions.add(question)
+    cases.append(case)
+    return True
 
-    # 1) exact QA bucket
+
+def _append_qa_cases(
+    cases: list[dict[str, Any]],
+    seen_questions: set[str],
+    qa_records: list[SourceRecord],
+    *,
+    limit: int,
+) -> None:
     qa_bucket = 0
     for record in qa_records:
-        if qa_bucket >= effective_qa_count:
+        if qa_bucket >= limit:
             break
-        if push(_build_qa_case(record, case_type="qa_exact", question=record.question, variant_reason="source_question")):
+        case = _build_qa_case(
+            record,
+            case_type="qa_exact",
+            question=record.question,
+            variant_reason="source_question",
+        )
+        if _push_unique_case(cases, seen_questions, case):
             qa_bucket += 1
 
-    # 2) service-item direct bucket
+
+def _append_service_cases(
+    cases: list[dict[str, Any]],
+    seen_questions: set[str],
+    service_records: list[SourceRecord],
+    *,
+    limit: int,
+    rng: random.Random,
+) -> None:
     service_bucket = 0
     service_profile_index = 0
-    while service_bucket < effective_service_count and service_records:
+    while service_bucket < limit and service_records:
         record = service_records[service_bucket % len(service_records)]
         profiles = _available_service_profiles(record)
         if not profiles:
-            service_bucket += 0
             continue
         profile = profiles[service_profile_index % len(profiles)]
         question = rng.choice(profile[2]).format(title=record.title)
-        if push(
-            _build_service_case(
-                record,
-                case_type="service_direct",
-                question=question,
-                fields=list(profile[1]),
-                variant_reason=f"service_profile:{profile[0]}",
-            )
-        ):
+        case = _build_service_case(
+            record,
+            case_type="service_direct",
+            question=question,
+            fields=list(profile[1]),
+            variant_reason=f"service_profile:{profile[0]}",
+        )
+        if _push_unique_case(cases, seen_questions, case):
             service_bucket += 1
         service_profile_index += 1
         if service_profile_index > len(service_records) * 8:
             break
 
-    # 3) realistic user bucket: first use natural QA/similar questions, then service/one-thing oralized questions.
-    user_bucket = 0
+
+def _build_user_candidates(
+    qa_records: list[SourceRecord],
+    one_thing_records: list[SourceRecord],
+    service_records: list[SourceRecord],
+    *,
+    rng: random.Random,
+) -> list[dict[str, Any]]:
     user_candidates: list[dict[str, Any]] = []
     for record in qa_records:
         variants = [record.question, *record.similar_questions]
@@ -743,13 +759,73 @@ def build_case_payload(
                 variant_reason=f"service_colloquial:{profile[0]}",
             )
         )
+    return user_candidates
 
+
+def _append_user_cases(
+    cases: list[dict[str, Any]],
+    seen_questions: set[str],
+    user_candidates: list[dict[str, Any]],
+    *,
+    limit: int,
+    rng: random.Random,
+) -> None:
+    user_bucket = 0
     rng.shuffle(user_candidates)
     for case in user_candidates:
-        if user_bucket >= effective_user_count:
+        if user_bucket >= limit:
             break
-        if push(case):
+        if _push_unique_case(cases, seen_questions, case):
             user_bucket += 1
+
+
+def build_case_payload(
+    *,
+    records: dict[str, list[SourceRecord]],
+    qa_count: int,
+    service_count: int,
+    user_count: int,
+    target_total: int,
+    seed: int,
+) -> dict[str, Any]:
+    rng = random.Random(seed)
+    cases: list[dict[str, Any]] = []
+    seen_questions: set[str] = set()
+    effective_qa_count, effective_service_count, effective_user_count = _effective_case_counts(
+        qa_count=qa_count,
+        service_count=service_count,
+        user_count=user_count,
+        target_total=target_total,
+    )
+
+    qa_records = [record for record in records["qa_records"] if _text(record.question) and _text(record.answer)]
+    service_records = [record for record in records["service_records"] if _available_service_profiles(record)]
+    one_thing_records = [record for record in records["one_thing_records"] if record.fields]
+    rng.shuffle(qa_records)
+    rng.shuffle(service_records)
+    rng.shuffle(one_thing_records)
+
+    _append_qa_cases(cases, seen_questions, qa_records, limit=effective_qa_count)
+    _append_service_cases(
+        cases,
+        seen_questions,
+        service_records,
+        limit=effective_service_count,
+        rng=rng,
+    )
+    user_candidates = _build_user_candidates(
+        qa_records,
+        one_thing_records,
+        service_records,
+        rng=rng,
+    )
+    _append_user_cases(
+        cases,
+        seen_questions,
+        user_candidates,
+        limit=effective_user_count,
+        rng=rng,
+    )
 
     payload = {
         "schema": CASES_SCHEMA,
@@ -826,18 +902,18 @@ def load_regression_bundle(path: str | Path) -> dict[str, Any]:
     items = payload.get("items")
     if not isinstance(items, list) or not items:
         raise ValueError("regression bundle items[] is empty")
-    return {"schema": payload.get("schema"), "dataset_id": payload.get("dataset_id"), "items": [dict(item) for item in items if isinstance(item, dict)]}
+    return {
+        "schema": payload.get("schema"),
+        "dataset_id": payload.get("dataset_id"),
+        "items": [dict(item) for item in items if isinstance(item, dict)],
+    }
 
 
 def _detect_local_dataset_id(corpus_root: Path, *, tenant_id: UUID) -> str:
     corpus_filenames = {path.name for path in corpus_root.rglob("*") if path.is_file()}
     db = SessionLocal()
     try:
-        docs = (
-            db.query(Document)
-            .filter(Document.tenant_id == tenant_id, Document.disabled_at.is_(None))
-            .all()
-        )
+        docs = db.query(Document).filter(Document.tenant_id == tenant_id, Document.disabled_at.is_(None)).all()
         counts: Counter[str] = Counter()
         for doc in docs:
             if _text(doc.filename) in corpus_filenames and doc.dataset_id:
@@ -911,6 +987,142 @@ def _iter_search_terms(case: dict[str, Any]) -> list[str]:
     return [*plan.anchor_terms, *plan.fallback_terms]
 
 
+def _search_reference_matches(
+    *,
+    db: Any,
+    dataset_uuid: UUID,
+    tenant_uuid: UUID,
+    term_cache: dict[tuple[str, str], list[dict[str, Any]]],
+    term: str,
+    source_filename: str = "",
+) -> list[dict[str, Any]]:
+    cache_key = (term, source_filename)
+    if cache_key not in term_cache:
+        query = (
+            db.query(DocumentChunk, Document.filename)
+            .join(
+                Document,
+                and_(
+                    Document.id == DocumentChunk.document_id,
+                    Document.tenant_id == DocumentChunk.tenant_id,
+                ),
+            )
+            .filter(
+                DocumentChunk.tenant_id == tenant_uuid,
+                Document.dataset_id == dataset_uuid,
+                DocumentChunk.disabled_at.is_(None),
+                DocumentChunk.content.ilike(f"%{term}%"),
+            )
+        )
+        if source_filename:
+            query = query.filter(Document.filename == source_filename)
+        rows = query.order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc()).limit(10).all()
+        term_cache[cache_key] = [
+            {
+                "document_id": str(chunk.document_id),
+                "chunk_id": str(chunk.id),
+                "chunk_index": int(chunk.chunk_index or 0),
+                "page_number": int(chunk.page_number) if chunk.page_number is not None else None,
+                "start_char": int(chunk.start_char) if chunk.start_char is not None else None,
+                "end_char": int(chunk.end_char) if chunk.end_char is not None else None,
+                "quote": _text(chunk.content)[:400],
+                "label": f"term:{term[:32]}",
+                "document_name": _text(filename),
+            }
+            for chunk, filename in rows
+        ]
+    return term_cache.get(cache_key, [])
+
+
+def _add_reference_matches(
+    refs: list[dict[str, Any]],
+    *,
+    db: Any,
+    dataset_uuid: UUID,
+    tenant_uuid: UUID,
+    term_cache: dict[tuple[str, str], list[dict[str, Any]]],
+    terms: list[str],
+    max_refs_per_case: int,
+    source_filename: str = "",
+) -> None:
+    for term in terms:
+        matches = _search_reference_matches(
+            db=db,
+            dataset_uuid=dataset_uuid,
+            tenant_uuid=tenant_uuid,
+            term_cache=term_cache,
+            term=term,
+            source_filename=source_filename,
+        )
+        for item in matches:
+            if any(existing["chunk_id"] == item["chunk_id"] for existing in refs):
+                continue
+            refs.append({k: v for k, v in item.items() if k != "document_name"})
+            if len(refs) >= max_refs_per_case:
+                return
+
+
+def _resolve_case_reference_sources(
+    case: dict[str, Any],
+    *,
+    db: Any,
+    dataset_uuid: UUID,
+    tenant_uuid: UUID,
+    term_cache: dict[tuple[str, str], list[dict[str, Any]]],
+    max_refs_per_case: int,
+) -> list[dict[str, Any]]:
+    plan = _reference_search_plan(case)
+    refs: list[dict[str, Any]] = []
+    search_attempts = (
+        (plan.anchor_terms, plan.source_filename),
+        (plan.anchor_terms, ""),
+        (plan.fallback_terms, plan.source_filename),
+        (plan.fallback_terms, ""),
+    )
+    for terms, source_filename in search_attempts:
+        if refs:
+            break
+        _add_reference_matches(
+            refs,
+            db=db,
+            dataset_uuid=dataset_uuid,
+            tenant_uuid=tenant_uuid,
+            term_cache=term_cache,
+            terms=terms,
+            max_refs_per_case=max_refs_per_case,
+            source_filename=source_filename,
+        )
+    return refs
+
+
+def _build_reference_target(case: dict[str, Any], refs: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "question": _text(case.get("question")),
+        "expected_answer": _text(case.get("expected_answer")) or None,
+        "reference_sources": refs,
+        "tags": [
+            _text(case.get("case_type")),
+            _text(case.get("source_section")),
+            _text(case.get("knowledge_id")),
+        ],
+        "extra": {
+            "source_file": _text(case.get("source_file")),
+            "source_record_title": _text(case.get("source_record_title")),
+            "case_generation": _text(case.get("case_generation")),
+            "dimension_fields": list(case.get("dimension_fields") or []),
+        },
+    }
+
+
+def _build_unresolved_item(case: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "case_id": _text(case.get("id")),
+        "question": _text(case.get("question")),
+        "source_file": _text(case.get("source_file")),
+        "search_terms": _iter_search_terms(case),
+    }
+
+
 def resolve_reference_sources(
     cases: list[dict[str, Any]],
     *,
@@ -918,103 +1130,27 @@ def resolve_reference_sources(
     tenant_id: str,
     max_refs_per_case: int = 3,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    db = SessionLocal()
     dataset_uuid = UUID(str(dataset_id))
     tenant_uuid = UUID(str(tenant_id))
+    db = SessionLocal()
     resolved_items: list[dict[str, Any]] = []
     unresolved_items: list[dict[str, Any]] = []
     term_cache: dict[tuple[str, str], list[dict[str, Any]]] = {}
     try:
-      for case in cases:
-        refs: list[dict[str, Any]] = []
-        plan = _reference_search_plan(case)
-
-        def search(term: str, source_filename: str = "") -> list[dict[str, Any]]:
-            cache_key = (term, source_filename)
-            if cache_key not in term_cache:
-                query = (
-                    db.query(DocumentChunk, Document.filename)
-                    .join(
-                        Document,
-                        and_(
-                            Document.id == DocumentChunk.document_id,
-                            Document.tenant_id == DocumentChunk.tenant_id,
-                        ),
-                    )
-                    .filter(
-                        DocumentChunk.tenant_id == tenant_uuid,
-                        Document.dataset_id == dataset_uuid,
-                        DocumentChunk.disabled_at.is_(None),
-                        DocumentChunk.content.ilike(f"%{term}%"),
-                    )
-                )
-                if source_filename:
-                    query = query.filter(Document.filename == source_filename)
-                rows = (
-                    query.order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
-                    .limit(10)
-                    .all()
-                )
-                term_cache[cache_key] = [
-                    {
-                        "document_id": str(chunk.document_id),
-                        "chunk_id": str(chunk.id),
-                        "chunk_index": int(chunk.chunk_index or 0),
-                        "page_number": int(chunk.page_number) if chunk.page_number is not None else None,
-                        "start_char": int(chunk.start_char) if chunk.start_char is not None else None,
-                        "end_char": int(chunk.end_char) if chunk.end_char is not None else None,
-                        "quote": _text(chunk.content)[:400],
-                        "label": f"term:{term[:32]}",
-                        "document_name": _text(filename),
-                    }
-                    for chunk, filename in rows
-                ]
-            return term_cache.get(cache_key, [])
-
-        def add_matches(terms: list[str], source_filename: str = "") -> None:
-            for term in terms:
-                for item in search(term, source_filename):
-                    if any(existing["chunk_id"] == item["chunk_id"] for existing in refs):
-                        continue
-                    refs.append({k: v for k, v in item.items() if k != "document_name"})
-                    if len(refs) >= max_refs_per_case:
-                        return
-
-        add_matches(plan.anchor_terms, plan.source_filename)
-        if not refs:
-            add_matches(plan.anchor_terms)
-        if not refs:
-            add_matches(plan.fallback_terms, plan.source_filename)
-        if not refs:
-            add_matches(plan.fallback_terms)
-
-        target = {
-            "question": _text(case.get("question")),
-            "expected_answer": _text(case.get("expected_answer")) or None,
-            "reference_sources": refs,
-            "tags": [
-                _text(case.get("case_type")),
-                _text(case.get("source_section")),
-                _text(case.get("knowledge_id")),
-            ],
-            "extra": {
-                "source_file": _text(case.get("source_file")),
-                "source_record_title": _text(case.get("source_record_title")),
-                "case_generation": _text(case.get("case_generation")),
-                "dimension_fields": list(case.get("dimension_fields") or []),
-            },
-        }
-        if refs:
-            resolved_items.append(target)
-        else:
-            unresolved_items.append(
-                {
-                    "case_id": _text(case.get("id")),
-                    "question": _text(case.get("question")),
-                    "source_file": _text(case.get("source_file")),
-                    "search_terms": _iter_search_terms(case),
-                }
+        for case in cases:
+            refs = _resolve_case_reference_sources(
+                case,
+                db=db,
+                dataset_uuid=dataset_uuid,
+                tenant_uuid=tenant_uuid,
+                term_cache=term_cache,
+                max_refs_per_case=max_refs_per_case,
             )
+            target = _build_reference_target(case, refs)
+            if refs:
+                resolved_items.append(target)
+            else:
+                unresolved_items.append(_build_unresolved_item(case))
     finally:
         db.close()
 
@@ -1170,18 +1306,38 @@ def create_retrieval_only_sharded_runs(
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Build Changzhou evaluation benchmark + regression bundles from raw corpus.")
+    parser = argparse.ArgumentParser(
+        description="Build Changzhou evaluation benchmark + regression bundles from raw corpus."
+    )
     parser.add_argument("--corpus-root", default=DEFAULT_CORPUS_ROOT)
     parser.add_argument("--out-dir", default=DEFAULT_OUT_DIR)
     parser.add_argument("--qa-count", type=int, default=100)
     parser.add_argument("--service-count", type=int, default=200)
     parser.add_argument("--user-count", type=int, default=800)
-    parser.add_argument("--target-total", type=int, default=0, help="Optional exact total cap. When set, qa_count/service_count are preserved and user_count is trimmed to fit.")
+    parser.add_argument(
+        "--target-total",
+        type=int,
+        default=0,
+        help=(
+            "Optional exact total cap. When set, qa_count/service_count are preserved and user_count is trimmed to fit."
+        ),
+    )
     parser.add_argument("--seed", type=int, default=20260709)
     parser.add_argument("--tenant-id", default=DEFAULT_TENANT_ID)
     parser.add_argument("--user-id", default=DEFAULT_USER_ID)
-    parser.add_argument("--dataset-id", default="", help="Existing MimirQ dataset id for live reference resolution/import.")
-    parser.add_argument("--resume-bundle", default="", help="Existing regression bundle JSON. When set, skip corpus parsing/live reference resolution and continue from this bundle.")
+    parser.add_argument(
+        "--dataset-id",
+        default="",
+        help="Existing MimirQ dataset id for live reference resolution/import.",
+    )
+    parser.add_argument(
+        "--resume-bundle",
+        default="",
+        help=(
+            "Existing regression bundle JSON. When set, skip corpus parsing/live "
+            "reference resolution and continue from this bundle."
+        ),
+    )
     parser.add_argument("--resolve-live-refs", action="store_true")
     parser.add_argument("--import-regression", action="store_true")
     parser.add_argument("--overwrite", action="store_true")
@@ -1240,7 +1396,10 @@ def main(argv: list[str] | None = None) -> int:
     run_result = None
     if args.resolve_live_refs or args.import_regression or args.create_retrieval_run or _text(args.resume_bundle):
         if not dataset_id:
-            print("[changzhou-gov-eval-pack] ERROR: could not auto-detect dataset_id; pass --dataset-id explicitly", file=sys.stderr)
+            print(
+                "[changzhou-gov-eval-pack] ERROR: could not auto-detect dataset_id; pass --dataset-id explicitly",
+                file=sys.stderr,
+            )
             return 2
         if resolved_bundle is None:
             resolved_bundle, resolve_report = resolve_reference_sources(
@@ -1280,7 +1439,10 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.create_retrieval_run:
             if not import_result:
-                print("[changzhou-gov-eval-pack] ERROR: --create-retrieval-run requires --import-regression", file=sys.stderr)
+                print(
+                    "[changzhou-gov-eval-pack] ERROR: --create-retrieval-run requires --import-regression",
+                    file=sys.stderr,
+                )
                 return 2
             case_ids = [
                 *[str(x) for x in import_result.get("created_case_ids") or []],
@@ -1305,9 +1467,9 @@ def main(argv: list[str] | None = None) -> int:
     summary = {
         "cases_total": len(cases) if cases else len((resolved_bundle or {}).get("items") or []),
         "case_type_counts": (payload or {}).get("generation_policy", {}).get("summary", {}).get("case_types", {}),
-        "service_records": len(records["service_records"]) if 'records' in locals() else None,
-        "qa_records": len(records["qa_records"]) if 'records' in locals() else None,
-        "one_thing_records": len(records["one_thing_records"]) if 'records' in locals() else None,
+        "service_records": len(records["service_records"]) if "records" in locals() else None,
+        "qa_records": len(records["qa_records"]) if "records" in locals() else None,
+        "one_thing_records": len(records["one_thing_records"]) if "records" in locals() else None,
         "dataset_id": dataset_id or None,
         "resolved_bundle_items": len((resolved_bundle or {}).get("items") or []) if resolved_bundle else 0,
         "imported_created": (import_result or {}).get("created") if import_result else None,

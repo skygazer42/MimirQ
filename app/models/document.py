@@ -3,6 +3,7 @@ Document-related database models (multi-tenant support)
 
 Defines document and document chunk table structures.
 """
+
 import uuid
 
 from sqlalchemy import (
@@ -29,6 +30,7 @@ DELETE_ORPHAN_CASCADE = "all, delete-orphan"
 
 class Document(Base):
     """Document table"""
+
     __tablename__ = "documents"
     __table_args__ = (
         # Enforce that dataset_id, when present, references a dataset within the same tenant.
@@ -78,10 +80,14 @@ class Document(Base):
 
     # Publication/approval workflow state (governance).
     # Keep separate from processing `status` below.
-    publication_status = Column(String(20), nullable=False, default="published", index=True)  # draft|published|deprecated
+    publication_status = Column(
+        String(20), nullable=False, default="published", index=True
+    )  # draft|published|deprecated
 
     # Processing status
-    status = Column(String(20), nullable=False, default="pending")  # pending|processing|completed|failed|quarantined|cancelled|deleting
+    status = Column(
+        String(20), nullable=False, default="pending"
+    )  # pending|processing|completed|failed|quarantined|cancelled|deleting
     processing_progress = Column(Integer, default=0)  # 0-100
     current_stage = Column(String(50), nullable=True)  # parsing | chunking | embedding | vector_write | completed
     failed_stage = Column(String(50), nullable=True)
@@ -124,9 +130,7 @@ class DocumentPermission(Base):
     """Document partial member permissions (document-level ACL allowlist)."""
 
     __tablename__ = "document_permissions"
-    __table_args__ = (
-        UniqueConstraint("document_id", "account_id", name="uq_document_permission_member"),
-    )
+    __table_args__ = (UniqueConstraint("document_id", "account_id", name="uq_document_permission_member"),)
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
@@ -139,11 +143,12 @@ class DocumentPermission(Base):
 
 class DocumentChunk(Base):
     """Document chunk table"""
+
     __tablename__ = "document_chunks"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    document_id = Column(UUID(as_uuid=True), ForeignKey('documents.id', ondelete='CASCADE'), nullable=False)
+    document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
 
     chunk_index = Column(Integer, nullable=False)
     content = Column(Text, nullable=False)
@@ -179,7 +184,9 @@ class DocumentParsedContent(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    document_id = Column(
+        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
+    )
 
     markdown_content = Column(Text, nullable=False, default="")
     original_markdown_content = Column(Text, nullable=False, default="")

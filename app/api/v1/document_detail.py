@@ -1,4 +1,3 @@
-
 import uuid
 from typing import Annotated
 from uuid import UUID
@@ -36,7 +35,10 @@ def get_document(
     include_chunks: bool = False,
     pipeline_hash: Annotated[
         str | None,
-        Query(max_length=64, description="Optional: filter chunks by a specific pipeline_hash version (when include_chunks=true)"),
+        Query(
+            max_length=64,
+            description="Optional: filter chunks by a specific pipeline_hash version (when include_chunks=true)",
+        ),
     ] = None,
     all_versions: Annotated[
         bool,

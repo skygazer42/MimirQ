@@ -12,7 +12,6 @@ This module is intentionally light-weight so it can be used by both API and
 pipeline services without pulling in FastAPI-specific code.
 """
 
-
 from collections.abc import Callable
 from dataclasses import dataclass
 from uuid import UUID
@@ -88,7 +87,7 @@ def _merge_profile_payload(chain: list[GovernanceProfileOut]) -> GovernanceProfi
     processing_scripts: list = []
 
     for profile in chain:
-        for fmt in (getattr(profile.payload, "input_formats", None) or []):
+        for fmt in getattr(profile.payload, "input_formats", None) or []:
             value = str(fmt or "").strip().lower()
             if value in {"markdown", "html"} and value not in input_formats:
                 input_formats.append(value)
@@ -97,7 +96,7 @@ def _merge_profile_payload(chain: list[GovernanceProfileOut]) -> GovernanceProfi
         if isinstance(patch, dict):
             pipeline_patch.update(dict(patch))
 
-        for rule in (getattr(profile.payload, "regex_rules", None) or []):
+        for rule in getattr(profile.payload, "regex_rules", None) or []:
             if isinstance(rule, RegexRuleModel):
                 regex_rules.append(rule)
             elif isinstance(rule, dict):
@@ -162,7 +161,11 @@ def _load_governance_profile_ref(
         ref_uuid = None
 
     q = db.query(DBGovernanceProfile).filter(DBGovernanceProfile.tenant_id == tenant_id)
-    row = q.filter(DBGovernanceProfile.id == ref_uuid).first() if ref_uuid else q.filter(DBGovernanceProfile.key == ref).first()
+    row = (
+        q.filter(DBGovernanceProfile.id == ref_uuid).first()
+        if ref_uuid
+        else q.filter(DBGovernanceProfile.key == ref).first()
+    )
     if row is None:
         raise ValueError("governance profile not found")
 

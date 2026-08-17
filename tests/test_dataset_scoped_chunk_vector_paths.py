@@ -159,11 +159,20 @@ def test_manual_chunk_mutations_route_vector_ops_through_indexer_helpers(
     )
     monkeypatch.setattr(chunk_routes.documents_module, "Indexer", _FakeIndexer, raising=False)
     monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(documents_module, "_assert_document_writable_for_chunk_ops", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(
+        documents_module, "_assert_document_writable_for_chunk_ops", lambda *_a, **_k: None, raising=True
+    )
     monkeypatch.setattr(chunk_routes.documents_module, "audit_log_event", lambda *_a, **_k: None, raising=False)
-    monkeypatch.setattr(documents_module, "_normalize_index_consistency_strictness", lambda **_k: "best_effort", raising=True)
+    monkeypatch.setattr(
+        documents_module, "_normalize_index_consistency_strictness", lambda **_k: "best_effort", raising=True
+    )
     monkeypatch.setattr(documents_module, "_build_index_channel_result", lambda **kwargs: kwargs, raising=True)
-    monkeypatch.setattr(documents_module, "_build_chunk_index_operation_result", lambda **kwargs: {"success": True, **kwargs}, raising=True)
+    monkeypatch.setattr(
+        documents_module,
+        "_build_chunk_index_operation_result",
+        lambda **kwargs: {"success": True, **kwargs},
+        raising=True,
+    )
     monkeypatch.setattr(documents_module, "_persist_chunk_index_operation_result", lambda **_kwargs: None, raising=True)
     monkeypatch.setattr(documents_module, "_record_chunk_index_drift", _noop_drift, raising=True)
     monkeypatch.setattr(
@@ -358,7 +367,9 @@ def test_delete_document_version_routes_vector_cleanup_through_indexer_helper(
     )
     monkeypatch.setattr(document_versions, "Indexer", _FakeIndexer, raising=True)
     monkeypatch.setattr(document_versions.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(document_versions, "assert_document_writable_for_lifecycle", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(
+        document_versions, "assert_document_writable_for_lifecycle", lambda *_a, **_k: None, raising=True
+    )
     monkeypatch.setattr(document_versions, "audit_log_event", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
         retriever_module.hybrid_retriever,

@@ -1,4 +1,3 @@
-
 import re
 from dataclasses import dataclass
 
@@ -38,7 +37,8 @@ SYSTEM_PROMPT_PROBE_RULES: tuple[GuardRule, ...] = (
     GuardRule(
         name="system_prompt_probe",
         pattern=re.compile(
-            r"\b(?:reveal|repeat|show|print|dump|expose)\b.{0,40}\b(?:system prompt|hidden instructions?|developer message)\b",
+            r"\b(?:reveal|repeat|show|print|dump|expose)\b.{0,40}\b"
+            r"(?:system prompt|hidden instructions?|developer message)\b",
             re.IGNORECASE | re.DOTALL,
         ),
         score=0.85,

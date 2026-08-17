@@ -1,4 +1,3 @@
-
 import argparse
 import json
 import os
@@ -89,7 +88,9 @@ def _request_json(
                 parsed = json.loads(raw.decode("utf-8")) if raw else None
             else:
                 parsed = raw.decode("utf-8", errors="replace") if raw else None
-            return HttpResult(status_code=int(getattr(resp, "status", 0) or 0), elapsed_ms=elapsed_ms, data=parsed, error=None)
+            return HttpResult(
+                status_code=int(getattr(resp, "status", 0) or 0), elapsed_ms=elapsed_ms, data=parsed, error=None
+            )
     except HTTPError as exc:
         elapsed_ms = int((time.perf_counter() - start) * 1000)
         raw = exc.read() if hasattr(exc, "read") else b""
@@ -99,7 +100,12 @@ def _request_json(
                 parsed = json.loads(raw.decode("utf-8"))
             except Exception:
                 parsed = raw.decode("utf-8", errors="replace")
-        return HttpResult(status_code=int(getattr(exc, "code", 0) or 0) or None, elapsed_ms=elapsed_ms, data=parsed, error=f"HTTPError: {getattr(exc, 'code', 'unknown')}")
+        return HttpResult(
+            status_code=int(getattr(exc, "code", 0) or 0) or None,
+            elapsed_ms=elapsed_ms,
+            data=parsed,
+            error=f"HTTPError: {getattr(exc, 'code', 'unknown')}",
+        )
     except URLError as exc:
         elapsed_ms = int((time.perf_counter() - start) * 1000)
         return HttpResult(status_code=None, elapsed_ms=elapsed_ms, data=None, error=f"URLError: {exc}")
@@ -322,7 +328,9 @@ def main() -> int:
         data = res.data if isinstance(res.data, dict) else {}
         queued_total += int(data.get("queued") or 0)
         skipped_total += int(data.get("skipped") or 0)
-        print(f"[backfill] batch_retry: queued={data.get('queued')} skipped={data.get('skipped')} conflicts={len(data.get('conflicts') or [])}")
+        print(
+            f"[backfill] batch_retry: queued={data.get('queued')} skipped={data.get('skipped')} conflicts={len(data.get('conflicts') or [])}"
+        )
 
     print(f"[backfill] Done: queued={queued_total} skipped={skipped_total}")
     return 0

@@ -1,4 +1,3 @@
-
 import argparse
 import sys
 from pathlib import Path
@@ -62,7 +61,9 @@ def run_sample_parsing_retrieval_proof(
     if resolved_rollout_path is not None and resolved_rollout_path.exists():
         rollout_raw = json.loads(resolved_rollout_path.read_text(encoding="utf-8"))
         rollout_payload = validate_rollout(rollout_raw if isinstance(rollout_raw, dict) else {})
-        rollout_artifact_path.write_text(json.dumps(rollout_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        rollout_artifact_path.write_text(
+            json.dumps(rollout_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
 
     summary_payload = build_parsing_proof_summary(report)
     report_payload = build_parsing_proof_report(
@@ -170,7 +171,9 @@ def main(argv: list[str] | None = None) -> int:
         case_queries_path=Path(str(args.case_queries_json)),
         out_dir=Path(str(args.out_dir)),
         thresholds_path=Path(str(args.thresholds_json)) if str(args.thresholds_json or "").strip() else None,
-        baseline_summary_path=Path(str(args.baseline_summary_json)) if str(args.baseline_summary_json or "").strip() else None,
+        baseline_summary_path=Path(str(args.baseline_summary_json))
+        if str(args.baseline_summary_json or "").strip()
+        else None,
         rollout_path=Path(str(args.rollout_json)) if str(args.rollout_json or "").strip() else None,
     )
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}

@@ -46,11 +46,7 @@ def test_gitlab_ci_chunker_preserves_preamble_and_block_metadata() -> None:
 
 
 def test_policy_manual_structured_chunker_emits_parent_and_child_chunks() -> None:
-    text = (
-        "第一章 总则\n"
-        "第一条 【适用范围】本政策适用于全体员工。\n"
-        "第二条 员工应遵守信息安全要求。\n"
-    )
+    text = "第一章 总则\n第一条 【适用范围】本政策适用于全体员工。\n第二条 员工应遵守信息安全要求。\n"
     chunker = PolicyManualStructuredChunker(chunk_size=10_000, chunk_overlap=0)
 
     chunks = chunker.split_documents([Document(page_content=text, metadata={"document_id": "policy-1"})])
@@ -67,10 +63,10 @@ def test_terraform_hcl_chunker_falls_back_when_no_blocks_match() -> None:
     text = (
         "# terraform config\n"
         'resource "aws_instance" "web" {\n'
-        "  ami = \"ami-1\"\n"
+        '  ami = "ami-1"\n'
         "}\n"
         '\nmodule "network" {\n'
-        "  source = \"./network\"\n"
+        '  source = "./network"\n'
         "}\n"
     )
     chunker = TerraformHCLChunker(chunk_size=10_000, chunk_overlap=0)
@@ -88,9 +84,9 @@ def test_terraform_plan_chunker_preserves_preamble_and_change_metadata() -> None
     text = (
         "Terraform will perform the following actions:\n\n"
         "# aws_instance.web will be created\n"
-        "+ resource \"aws_instance\" \"web\" {}\n\n"
+        '+ resource "aws_instance" "web" {}\n\n'
         "# aws_s3_bucket.logs will be updated in-place\n"
-        "~ resource \"aws_s3_bucket\" \"logs\" {}\n"
+        '~ resource "aws_s3_bucket" "logs" {}\n'
     )
     chunker = TerraformPlanChunker(chunk_size=10_000, chunk_overlap=0)
 
@@ -244,7 +240,9 @@ def test_tool_call_logging_middleware_async_records_error_metrics(
     with pytest.raises(RuntimeError, match="boom"):
         asyncio.run(middleware(wrapped)({"tool_name": "lookup", "arguments": {}}))
 
-    assert metrics == [{"event": "tool_call_error", "tool": "lookup", "elapsed_ms": metrics[0]["elapsed_ms"], "error": "boom"}]
+    assert metrics == [
+        {"event": "tool_call_error", "tool": "lookup", "elapsed_ms": metrics[0]["elapsed_ms"], "error": "boom"}
+    ]
 
 
 def test_build_pipeline_plugin_chunk_report_groups_sections_and_readiness(
@@ -262,19 +260,30 @@ def test_build_pipeline_plugin_chunk_report_groups_sections_and_readiness(
         Document(page_content="two", metadata={"source": "02-beta/file.md", "title": "Beta"}),
     ]
     governed = [
-        Document(page_content="one", metadata={"source": "01-alpha/file.md", "title": "Alpha", "record_type": "policy"}),
+        Document(
+            page_content="one", metadata={"source": "01-alpha/file.md", "title": "Alpha", "record_type": "policy"}
+        ),
         Document(page_content="two", metadata={"source": "02-beta/file.md", "title": "Beta", "record_type": "guide"}),
     ]
     chunks = [
-        Document(page_content="chunk one", metadata={"source": "01-alpha/file.md", "title": "Alpha", "chunk_kind": "parent"}),
-        Document(page_content="chunk two", metadata={"source": "02-beta/file.md", "title": "Beta", "chunk_kind": "child"}),
+        Document(
+            page_content="chunk one", metadata={"source": "01-alpha/file.md", "title": "Alpha", "chunk_kind": "parent"}
+        ),
+        Document(
+            page_content="chunk two", metadata={"source": "02-beta/file.md", "title": "Beta", "chunk_kind": "child"}
+        ),
     ]
 
     monkeypatch.setattr(report_mod, "describe_plugin_dir", lambda *_args, **_kwargs: descriptor, raising=True)
     monkeypatch.setattr(report_mod, "load_plugin_test_input", lambda *_args, **_kwargs: input_documents, raising=True)
     monkeypatch.setattr(report_mod, "apply_governance_python_plugin", lambda *args, **kwargs: governed, raising=True)
     monkeypatch.setattr(report_mod, "apply_chunk_python_plugin", lambda *args, **kwargs: chunks, raising=True)
-    monkeypatch.setattr(report_mod, "validate_documents_metadata", lambda docs, **kwargs: {"ok": True, "checked": len(docs), "errors": []}, raising=True)  # noqa: ARG005,E501
+    monkeypatch.setattr(
+        report_mod,
+        "validate_documents_metadata",
+        lambda docs, **kwargs: {"ok": True, "checked": len(docs), "errors": []},
+        raising=True,
+    )  # noqa: ARG005,E501
 
     report = report_mod.build_pipeline_plugin_chunk_report(
         "plugins/demo",

@@ -2,6 +2,7 @@
 Prompt template schemas.
 Defines data models for prompt template creation, update, and query endpoints.
 """
+
 from datetime import datetime
 from uuid import UUID
 
@@ -51,10 +52,7 @@ class PromptTemplateBase(BaseModel):
         description="Tags for searchability and filtering",
         json_schema_extra={"examples": [["expert", "formal", "detailed"]]},
     )
-    is_active: bool = Field(
-        True,
-        description="Whether this template is currently enabled"
-    )
+    is_active: bool = Field(True, description="Whether this template is currently enabled")
     version: int | None = Field(
         default=1,
         ge=1,
@@ -66,7 +64,9 @@ class PromptTemplateBase(BaseModel):
         max_length=100,
         description="A/B experiment identifier (optional), e.g.: exp_2025w50",
     )
-    ab_variant: str | None = Field(default=None, max_length=50, description="A/B variant identifier (optional), e.g.: A/B")
+    ab_variant: str | None = Field(
+        default=None, max_length=50, description="A/B variant identifier (optional), e.g.: A/B"
+    )
     ab_weight: float | None = Field(default=1.0, ge=0.0, description="A/B traffic weight (optional, default 1.0)")
 
 

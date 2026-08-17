@@ -270,13 +270,18 @@ def build_abstain_followup(
     if r == "citations_lt_min":
         return {
             "type": "refine_query",
-            "question": "No sufficient evidence was retrieved. Please refine the question or provide more relevant documents.",
+            "question": (
+                "No sufficient evidence was retrieved. Please refine the question or provide more relevant documents."
+            ),
             "options": [],
         }
     if r == "out_of_scope":
         return {
             "type": "refine_query",
-            "question": "This question appears to be outside the current knowledge base. Please add relevant materials or narrow the scope.",
+            "question": (
+                "This question appears to be outside the current knowledge base. Please add relevant "
+                "materials or narrow the scope."
+            ),
             "options": [],
         }
     return {

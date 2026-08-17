@@ -47,15 +47,21 @@ def vision_llm_figure_describe_ch_prompt() -> str:
 
 def vision_llm_figure_describe_prompt() -> str:
     prompt = """
-You are an expert visual data analyst. Analyze the image and provide a comprehensive description of its content. Focus on identifying the type of visual data representation (e.g., bar chart, pie chart, line graph, table, flowchart), its structure, and any text captions or labels included in the image.
+You are an expert visual data analyst. Analyze the image and provide a comprehensive description of its content. \
+Focus on identifying the type of visual data representation (e.g., bar chart, pie chart, line graph, table, \
+flowchart), its structure, and any text captions or labels included in the image.
 
 Tasks:
-1. Describe the overall structure of the visual representation. Specify if it is a chart, graph, table, or diagram.
-2. Identify and extract any axes, legends, titles, or labels present in the image. Provide the exact text where available.
-3. Extract the data points from the visual elements (e.g., bar heights, line graph coordinates, pie chart segments, table rows and columns).
+1. Describe the overall structure of the visual representation. Specify if it is a chart, graph, table, or \
+diagram.
+2. Identify and extract any axes, legends, titles, or labels present in the image. Provide the exact text \
+where available.
+3. Extract the data points from the visual elements (e.g., bar heights, line graph coordinates, pie chart \
+segments, table rows and columns).
 4. Analyze and explain any trends, comparisons, or patterns shown in the data.
 5. Capture any annotations, captions, or footnotes, and explain their relevance to the image.
-6. Only include details that are explicitly present in the image. If an element (e.g., axis, legend, or caption) does not exist or is not visible, do not mention it.
+6. Only include details that are explicitly present in the image. If an element (e.g., axis, legend, or \
+caption) does not exist or is not visible, do not mention it.
 
 Output format (include only sections relevant to the image content):
 - Visual Type: [Type]
@@ -65,7 +71,8 @@ Output format (include only sections relevant to the image content):
 - Trends / Insights: [Analysis and interpretation]
 - Captions / Annotations: [Text and relevance, if available]
 
-Ensure high accuracy, clarity, and completeness in your analysis, and includes only the information present in the image. Avoid unnecessary statements about missing elements.
+Ensure high accuracy, clarity, and completeness in your analysis, and includes only the information present \
+in the image. Avoid unnecessary statements about missing elements.
 """
     return prompt
 
@@ -73,7 +80,7 @@ Ensure high accuracy, clarity, and completeness in your analysis, and includes o
 def clean_markdown_block(text):
     stripped = text.strip()
     if stripped.lower().startswith("```markdown"):
-        stripped = stripped[len("```markdown"):].lstrip()
+        stripped = stripped[len("```markdown") :].lstrip()
     elif stripped.startswith("```"):
         stripped = stripped[3:].lstrip()
     if stripped.endswith("```"):
@@ -95,7 +102,7 @@ def picture_vision_llm_chunk(binary, vision_model, prompt=None, callback=None):
 
     try:
         img_binary = io.BytesIO()
-        img.save(img_binary, format='JPEG')
+        img.save(img_binary, format="JPEG")
         img_binary.seek(0)
 
         ans = clean_markdown_block(vision_model.describe_with_prompt(img_binary.read(), prompt))
@@ -111,10 +118,11 @@ def picture_vision_llm_chunk(binary, vision_model, prompt=None, callback=None):
 
 
 def vision_figure_parser_figure_data_wraper(figures_data_without_positions):
-    return [(
-        (figure_data[1], [figure_data[0]]),
-        [(0, 0, 0, 0, 0)]
-    ) for figure_data in figures_data_without_positions if isinstance(figure_data[1], Image.Image)]
+    return [
+        ((figure_data[1], [figure_data[0]]), [(0, 0, 0, 0, 0)])
+        for figure_data in figures_data_without_positions
+        if isinstance(figure_data[1], Image.Image)
+    ]
 
 
 class VisionFigureParser:
@@ -133,15 +141,15 @@ class VisionFigureParser:
 
         for item in figures_data:
             # position
-            if len(item) == 2 and isinstance(item[1], list) and len(item[1]) == 1 and isinstance(item[1][0],
-                                                                                                 tuple) and len(
-                item[1][0]) == 5:
+            if (
+                len(item) == 2
+                and isinstance(item[1], list)
+                and len(item[1]) == 1
+                and isinstance(item[1][0], tuple)
+                and len(item[1][0]) == 5
+            ):
                 img_desc = item[0]
-                if not (
-                    len(img_desc) == 2
-                    and isinstance(img_desc[0], Image.Image)
-                    and isinstance(img_desc[1], list)
-                ):
+                if not (len(img_desc) == 2 and isinstance(img_desc[0], Image.Image) and isinstance(img_desc[1], list)):
                     raise ValueError("Should be (figure, [description])")
                 self.figures.append(img_desc[0])
                 self.descriptions.append(img_desc[1])

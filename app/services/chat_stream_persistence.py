@@ -1,4 +1,3 @@
-
 import asyncio
 import contextlib
 from datetime import UTC, datetime
@@ -191,7 +190,9 @@ async def persist_chat_stream_turn_background(
                             max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
                         )
                     except Exception as exc:
-                        logger.debug("Ignoring structured memory extraction failure for background streamed chat turn: %s", exc)
+                        logger.debug(
+                            "Ignoring structured memory extraction failure for background streamed chat turn: %s", exc
+                        )
 
                 assistant_message = Message(
                     id=assistant_message_id,

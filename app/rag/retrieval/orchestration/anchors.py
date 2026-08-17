@@ -250,7 +250,9 @@ def _annotate_anchor_docs(
                 if key in result:
                     doc_meta[key] = result.get(key)
             if "score" in result:
-                old_score = _float_or_default(doc.metadata.get("score") if isinstance(doc.metadata, dict) else None, 0.0)
+                old_score = _float_or_default(
+                    doc.metadata.get("score") if isinstance(doc.metadata, dict) else None, 0.0
+                )
                 new_score = _float_or_default(result.get("score"), 0.0)
                 if new_score > old_score:
                     promoted += 1

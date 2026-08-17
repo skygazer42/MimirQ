@@ -394,7 +394,9 @@ async def test_upload_batch_closes_intake_after_attaching_successes_in_both_bran
         lambda *_args, file_sha256=None, **_kwargs: duplicate if file_sha256 == "sha-dup.txt" else None,
         raising=True,
     )
-    monkeypatch.setattr(documents_module.IngestionRunService, "create_run", lambda *args, **kwargs: ingestion_run, raising=True)
+    monkeypatch.setattr(
+        documents_module.IngestionRunService, "create_run", lambda *args, **kwargs: ingestion_run, raising=True
+    )
 
     def _add_document(*_args, **kwargs) -> None:  # noqa: ANN003
         events.append(f"add:{kwargs['document_id']}")
@@ -406,7 +408,9 @@ async def test_upload_batch_closes_intake_after_attaching_successes_in_both_bran
     monkeypatch.setattr(documents_module.IngestionRunService, "add_document", _add_document, raising=True)
     monkeypatch.setattr(documents_module.IngestionRunService, "close_intake", _close_intake, raising=True)
     monkeypatch.setattr(documents_module, "run_dataset_precheck_scan", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(documents_module, "apply_ingestion_policy_suggestion", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(
+        documents_module, "apply_ingestion_policy_suggestion", lambda *_args, **_kwargs: None, raising=True
+    )
 
     def _new_item_session() -> _FakeItemSession:
         session = _FakeItemSession(name=f"item-{len(item_sessions) + 1}")
@@ -1367,7 +1371,9 @@ async def test_batch_pending_duplicate_respects_pipeline_identity(
         raising=True,
     )
     monkeypatch.setattr(documents_module, "run_dataset_precheck_scan", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(documents_module, "apply_ingestion_policy_suggestion", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(
+        documents_module, "apply_ingestion_policy_suggestion", lambda *_args, **_kwargs: None, raising=True
+    )
 
     result = await document_upload.upload_documents_batch(
         background_tasks=BackgroundTasks(),
@@ -1486,7 +1492,9 @@ async def test_single_upload_returns_existing_document_after_dedup_constraint_co
 
 
 @pytest.mark.asyncio
-async def test_precheck_staged_batch_hands_retry_ingest_lock_to_worker(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+async def test_precheck_staged_batch_hands_retry_ingest_lock_to_worker(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     dataset_id = uuid.uuid4()
     duplicate = SimpleNamespace(
         id=uuid.uuid4(),
@@ -1525,7 +1533,9 @@ async def test_precheck_staged_batch_hands_retry_ingest_lock_to_worker(monkeypat
         raising=True,
     )
     monkeypatch.setattr(documents_module, "run_dataset_precheck_scan", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(documents_module, "apply_ingestion_policy_suggestion", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(
+        documents_module, "apply_ingestion_policy_suggestion", lambda *_args, **_kwargs: None, raising=True
+    )
 
     async def _queue() -> object:
         return object()

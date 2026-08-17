@@ -10,7 +10,6 @@ Design goals:
 - Conservative (no new facts; queries are just rephrasings / alias pressure)
 """
 
-
 import re
 from collections.abc import Iterable, Sequence
 from typing import Any
@@ -113,7 +112,9 @@ def _alias_direction(a: str, b: str) -> tuple[str, str]:
     return b_s, a_s
 
 
-def _generate_alias_hardcases(*, question: str, alias_pairs: Sequence[tuple[str, str]], max_items: int) -> list[Hardcase]:
+def _generate_alias_hardcases(
+    *, question: str, alias_pairs: Sequence[tuple[str, str]], max_items: int
+) -> list[Hardcase]:
     lim = max(0, int(max_items or 0))
     if lim <= 0:
         return []
@@ -143,11 +144,15 @@ def _generate_alias_hardcases(*, question: str, alias_pairs: Sequence[tuple[str,
         else:
             swapped2 = _replace_surface(q, src=b_s, dst=a_s)
             if swapped2:
-                out.append(Hardcase(kind="knowledge_pressure", question=swapped2, rationale=f"alias swap: {b_s} -> {a_s}"))
+                out.append(
+                    Hardcase(kind="knowledge_pressure", question=swapped2, rationale=f"alias swap: {b_s} -> {a_s}")
+                )
             else:
                 alias, canon = _alias_direction(a_s, b_s)
                 tmpl = f"{alias} 是什么？" if is_zh else f"What is {alias}?"
-                out.append(Hardcase(kind="knowledge_pressure", question=tmpl, rationale=f"alias_of: {alias} <-> {canon}"))
+                out.append(
+                    Hardcase(kind="knowledge_pressure", question=tmpl, rationale=f"alias_of: {alias} <-> {canon}")
+                )
 
         if len(out) >= lim:
             break
@@ -255,4 +260,3 @@ def generate_hardcases_deterministic(
 
 
 __all__ = ["generate_hardcases_deterministic"]
-

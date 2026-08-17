@@ -1,4 +1,3 @@
-
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -334,7 +333,10 @@ def build_pipeline_plugin_golden_draft_from_sample(
     max_items: int = 500,
 ) -> dict[str, Any]:
     descriptor = describe_plugin_dir(Path(plugin_dir), require_test_report=False)
-    if not isinstance(descriptor.golden_rules, dict) or descriptor.golden_rules.get("schema") != "mimirq.golden_rules.v1":
+    if (
+        not isinstance(descriptor.golden_rules, dict)
+        or descriptor.golden_rules.get("schema") != "mimirq.golden_rules.v1"
+    ):
         raise PipelinePluginRegistryError("plugin has no mimirq.golden_rules.v1 golden rules")
     selected_stages = list(stages or [stage for stage in ("governance", "chunk") if stage in descriptor.entries])
     if "chunk" not in selected_stages:
@@ -346,7 +348,9 @@ def build_pipeline_plugin_golden_draft_from_sample(
         params=params,
     )
     if not stages_passed:
-        failed = [stage for stage, info in stage_reports.items() if isinstance(info, dict) and info.get("passed") is not True]
+        failed = [
+            stage for stage, info in stage_reports.items() if isinstance(info, dict) and info.get("passed") is not True
+        ]
         raise PipelinePluginRegistryError(f"plugin stage validation failed: {', '.join(failed) or 'unknown'}")
     bundle = build_golden_draft_bundle_from_chunks(
         dataset_id=dataset_id,

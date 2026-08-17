@@ -1,6 +1,7 @@
 """
 Reciprocal Rank Fusion reranker combining recall score and query similarity.
 """
+
 from typing import Any
 
 from app.core.config import settings
@@ -50,7 +51,9 @@ def _rank_order(scores: dict[str, float], input_order: dict[str, int], fallback_
 
 
 def _similarity_scores(events: list[Any], query_vec: list[float]) -> dict[str, float]:
-    return {event_id(event): cosine_similarity(query_vec, getattr(event, "content_vector", None) or []) for event in events}
+    return {
+        event_id(event): cosine_similarity(query_vec, getattr(event, "content_vector", None) or []) for event in events
+    }
 
 
 def _rrf_phrase_boost(
@@ -94,7 +97,9 @@ def _fused_scores(
     return fused
 
 
-def _safe_assoc_map(repo: EventRepository, event_ids: list[str], tenant_id: Any, key_entity_ids: set[str]) -> dict[str, list[Any]]:
+def _safe_assoc_map(
+    repo: EventRepository, event_ids: list[str], tenant_id: Any, key_entity_ids: set[str]
+) -> dict[str, list[Any]]:
     if not key_entity_ids:
         return {}
     try:
@@ -174,9 +179,13 @@ class RerankRRFSearcher:
             if not events:
                 return {"events": [], "clues": [], "stats": {}}
 
-            query_vec = query_vector if query_vector is not None else await self.processor.generate_embedding(config.query)
+            query_vec = (
+                query_vector if query_vector is not None else await self.processor.generate_embedding(config.query)
+            )
             input_order = {str(item_id): idx for idx, item_id in enumerate(event_ids)}
-            recall_scores = {str(item_id): float(event_scores.get(str(item_id), 0.0) or 0.0) for item_id in event_ids if item_id}
+            recall_scores = {
+                str(item_id): float(event_scores.get(str(item_id), 0.0) or 0.0) for item_id in event_ids if item_id
+            }
             recall_order = _rank_order(recall_scores, input_order, len(event_ids))
             sim_order = _rank_order(_similarity_scores(events, query_vec), input_order, len(event_ids))
             phrase_boost_weight = max(0.0, float(getattr(settings, "KG_SEARCH_EXACT_PHRASE_RERANK_BOOST", 0.25) or 0.0))

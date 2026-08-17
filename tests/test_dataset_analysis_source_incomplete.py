@@ -64,8 +64,12 @@ def _build_client(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, str]:
         lambda *_a, **_k: SimpleNamespace(id=dataset_id, name="Dataset A"),
         raising=True,
     )
-    monkeypatch.setattr(dataset_analysis_api.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(dataset_analysis_api.DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(
+        dataset_analysis_api.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True
+    )
+    monkeypatch.setattr(
+        dataset_analysis_api.DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True
+    )
     return TestClient(app), dataset_id
 
 

@@ -114,7 +114,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Deterministic gate for broader parsing proof summary artifacts.")
     parser.add_argument("--input", required=True, help="Input JSON containing parsing proof summary metrics.")
     parser.add_argument("--thresholds", required=True, help="Thresholds JSON path.")
-    parser.add_argument("--out", default="artifacts/parsing_proof_broader_sample/gate.json", help="Output gate report JSON path.")
+    parser.add_argument(
+        "--out", default="artifacts/parsing_proof_broader_sample/gate.json", help="Output gate report JSON path."
+    )
     args = parser.parse_args(argv)
 
     input_path = Path(str(args.input)).expanduser().resolve()

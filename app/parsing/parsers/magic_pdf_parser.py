@@ -7,7 +7,6 @@ its CLI entrypoint (`magic-pdf`) so the backend can treat it as a pluggable
 parser backend.
 """
 
-
 import json
 import os
 import re
@@ -44,7 +43,9 @@ MAGIC_PDF_SERVICE_HOSTNAMES = {"mimirq-magicpdf"}
 
 
 def magicpdf_service_configured(configured_url: str | None = None) -> bool:
-    return bool((configured_url if configured_url is not None else getattr(settings, "MAGIC_PDF_API_URL", "") or "").strip())
+    return bool(
+        (configured_url if configured_url is not None else getattr(settings, "MAGIC_PDF_API_URL", "") or "").strip()
+    )
 
 
 def _has_required_magicpdf_models(models_dir: Path) -> bool:
@@ -92,25 +93,13 @@ def resolve_magicpdf_models_dir(configured: str | None = None) -> Path | None:
 
     repo_root = Path(__file__).resolve().parents[3]
     candidates.append(
-        repo_root
-        / "app"
-        / "deepdoc"
-        / "resources"
-        / "models"
-        / "magicpdf"
-        / "PDF-Extract-Kit-1.0"
-        / "models"
+        repo_root / "app" / "deepdoc" / "resources" / "models" / "magicpdf" / "PDF-Extract-Kit-1.0" / "models"
     )
 
     home = Path.home()
     candidates.append(home / ".cache" / "magicpdf" / "models")
     candidates.append(
-        home
-        / ".cache"
-        / "huggingface"
-        / "hub"
-        / "models--opendatalab--PDF-Extract-Kit-1.0"
-        / "snapshots"
+        home / ".cache" / "huggingface" / "hub" / "models--opendatalab--PDF-Extract-Kit-1.0" / "snapshots"
     )
     for root in MAGIC_PDF_MODEL_ROOT_CANDIDATES:
         candidates.append(Path(root))

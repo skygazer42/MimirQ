@@ -1,4 +1,3 @@
-
 import argparse
 import json
 import sys
@@ -185,11 +184,7 @@ def main(argv: list[str] | None = None) -> int:
         sparse_retrieval_provider=str(args.sparse_retrieval_provider or "deterministic"),
         colbert_retrieval_enabled=args.enable_colbert_retrieval,
         colbert_retrieval_provider=args.colbert_retrieval_provider,
-        governance_rule_packs=[
-            str(item).strip()
-            for item in (args.governance_rule_pack or [])
-            if str(item).strip()
-        ],
+        governance_rule_packs=[str(item).strip() for item in (args.governance_rule_pack or []) if str(item).strip()],
     )
     summary = report.get("summary") if isinstance(report, dict) and isinstance(report.get("summary"), dict) else {}
     print(

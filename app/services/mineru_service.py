@@ -5,6 +5,7 @@ Supports two modes:
 2. MinerU local service: returns ZIP (Markdown + images)
 Both modes support advanced PDF parsing (tables, images, formulas, etc.)
 """
+
 import asyncio
 import io
 import re
@@ -194,7 +195,9 @@ def _normalize_batch_state_counters(extract_result: list[Any]) -> tuple[int, int
     return completed_files, failed_files, running_files, first_error
 
 
-def _normalized_batch_status(*, total_files: int, completed_files: int, failed_files: int, running_files: int) -> tuple[str, int]:
+def _normalized_batch_status(
+    *, total_files: int, completed_files: int, failed_files: int, running_files: int
+) -> tuple[str, int]:
     done_files = completed_files + failed_files
     if total_files <= 0:
         return "pending", 0
@@ -206,7 +209,9 @@ def _normalized_batch_status(*, total_files: int, completed_files: int, failed_f
     return "pending", progress
 
 
-def _matching_extract_item(extract_result: list[dict[str, Any]], *, field_name: str, value: str | None) -> dict[str, Any] | None:
+def _matching_extract_item(
+    extract_result: list[dict[str, Any]], *, field_name: str, value: str | None
+) -> dict[str, Any] | None:
     if not value:
         return None
     expected = str(value)
@@ -344,7 +349,9 @@ class MinerUService:
         - If the token looks like a JWT and is expired, treat online mode as disabled
           (best-effort) to avoid repeated 401 failures.
         """
-        self.api_base = (getattr(settings, "MINERU_API_BASE", "") or "").strip().rstrip("/") or "https://mineru.net/api/v4"
+        self.api_base = (getattr(settings, "MINERU_API_BASE", "") or "").strip().rstrip(
+            "/"
+        ) or "https://mineru.net/api/v4"
         self.api_token = (getattr(settings, "MINERU_API_TOKEN", "") or "").strip()
         self.model_version = (getattr(settings, "MINERU_MODEL_VERSION", "") or "").strip() or "vlm"
         self.local_backend = _normalize_local_backend(getattr(settings, "MINERU_BACKEND", "pipeline"))
@@ -382,8 +389,14 @@ class MinerUService:
         if exp is not None:
             now = int(time.time())
             if int(exp) <= now:
-                return f"MinerU API unauthorized (HTTP {status_code}): MINERU_API_TOKEN expired at {format_unix_ts_utc(int(exp))}"
-            return f"MinerU API unauthorized (HTTP {status_code}): invalid MINERU_API_TOKEN (exp={format_unix_ts_utc(int(exp))})"
+                return (
+                    f"MinerU API unauthorized (HTTP {status_code}): MINERU_API_TOKEN expired at "
+                    f"{format_unix_ts_utc(int(exp))}"
+                )
+            return (
+                f"MinerU API unauthorized (HTTP {status_code}): invalid MINERU_API_TOKEN "
+                f"(exp={format_unix_ts_utc(int(exp))})"
+            )
         return f"MinerU API unauthorized (HTTP {status_code}): invalid MINERU_API_TOKEN"
 
     def _ensure_online_enabled(self) -> None:
@@ -401,18 +414,18 @@ class MinerUService:
     def _raise_batch_results_error(message: Any) -> None:
         detail = str(message or UNKNOWN_ERROR).strip() or UNKNOWN_ERROR
         normalized = detail.lower()
-        if "task not found" in normalized or "not found or expire" in normalized or "not found or expired" in normalized:
+        if (
+            "task not found" in normalized
+            or "not found or expire" in normalized
+            or "not found or expired" in normalized
+        ):
             raise LookupError(detail)
         raise RuntimeError(f"Get batch results failed: {detail}")
 
     def _get_headers(self) -> dict[str, str]:
         """Get request headers."""
         self._ensure_online_enabled()
-        return {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_token}",
-            "Accept": "*/*"
-        }
+        return {"Content-Type": "application/json", "Authorization": f"Bearer {self.api_token}", "Accept": "*/*"}
 
     async def _arequest_json(
         self,
@@ -491,10 +504,7 @@ class MinerUService:
             return {"batch_id": result["data"]["batch_id"], "file_urls": result["data"]["file_urls"], "files": files}
         raise RuntimeError(f"Apply batch upload URLs failed: {result.get('msg', 'Unknown error')}")
 
-    def apply_batch_upload_urls(
-        self,
-        files: list[dict[str, str]]
-    ) -> dict[str, Any]:
+    def apply_batch_upload_urls(self, files: list[dict[str, str]]) -> dict[str, Any]:
         """
         Request batch upload URLs.
 
@@ -722,9 +732,7 @@ class MinerUService:
             except TimeoutError as exc:
                 raise TimeoutError(f"Task {batch_id} timeout after {timeout} seconds") from exc
 
-        return _run_coroutine_sync(
-            _run_with_timeout
-        )
+        return _run_coroutine_sync(_run_with_timeout)
 
     async def adownload_result(self, result_url: str) -> str:
         """Download parse result (Markdown, async)."""
@@ -1094,7 +1102,7 @@ class MinerUService:
         document_id: str | None = None,
         tenant_id: str | None = None,
         account_id: str | None = None,
-        params: dict[str, Any] | None = None
+        params: dict[str, Any] | None = None,
     ) -> list[Document]:
         """
         Parse with local MinerU (returns ZIP with Markdown + images).

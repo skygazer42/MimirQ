@@ -152,7 +152,9 @@ def test_search_similar_by_content_dataset_scope_pushes_allowed_document_batches
             [
                 _event_hit(event_id=filtered_event_id, document_id=document_ids[500], score=0.99, tenant_id=tenant_id),
                 _event_hit(event_id=duplicate_event_id, document_id=document_ids[500], score=0.95, tenant_id=tenant_id),
-                _event_hit(event_id=keep_second_event_id, document_id=document_ids[500], score=0.89, tenant_id=tenant_id),
+                _event_hit(
+                    event_id=keep_second_event_id, document_id=document_ids[500], score=0.89, tenant_id=tenant_id
+                ),
             ],
         ],
     )
@@ -266,7 +268,9 @@ def test_search_similar_by_content_dataset_scope_over_cap_uses_single_tenant_ann
         monkeypatch,
         responses=[
             [
-                _event_hit(event_id=filtered_event_id, document_id=filtered_document_id, score=0.96, tenant_id=tenant_id),
+                _event_hit(
+                    event_id=filtered_event_id, document_id=filtered_document_id, score=0.96, tenant_id=tenant_id
+                ),
                 _event_hit(event_id=event_id, document_id=kept_document_id, score=0.91, tenant_id=tenant_id),
             ],
         ],
@@ -341,7 +345,9 @@ def test_search_similar_by_content_batches_large_document_scope_and_filters_afte
             [
                 _event_hit(event_id=filtered_event_id, document_id=document_ids[500], score=0.99, tenant_id=tenant_id),
                 _event_hit(event_id=duplicate_event_id, document_id=document_ids[500], score=0.95, tenant_id=tenant_id),
-                _event_hit(event_id=keep_second_event_id, document_id=document_ids[500], score=0.89, tenant_id=tenant_id),
+                _event_hit(
+                    event_id=keep_second_event_id, document_id=document_ids[500], score=0.89, tenant_id=tenant_id
+                ),
             ],
         ],
     )
@@ -447,8 +453,7 @@ def test_alias_redirect_resolution_keeps_each_cycle_node_self_mapped(size: int) 
 
     entities = [uuid4() for _ in range(size)]
     redirect_rows = [
-        SimpleNamespace(from_entity_id=entities[idx], to_entity_id=entities[(idx + 1) % size])
-        for idx in range(size)
+        SimpleNamespace(from_entity_id=entities[idx], to_entity_id=entities[(idx + 1) % size]) for idx in range(size)
     ]
     repo = AliasRepository(_FakeAliasSession(redirect_rows))
 

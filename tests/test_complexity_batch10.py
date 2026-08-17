@@ -151,7 +151,9 @@ def test_prepare_chat_request_runtime_preserves_scope_on_dataset_failure_and_ord
         enable_structured_memory=True,
     )
 
-    monkeypatch.setattr(runtime, "load_dataset_metadata", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(
+        runtime, "load_dataset_metadata", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("boom"))
+    )
     monkeypatch.setattr(
         runtime,
         "merge_prompt_defaults_with_dataset",
@@ -370,7 +372,10 @@ async def test_stream_langchain_chat_session_events_persists_done_payload(monkey
         ),
     )
 
-    events = [payload async for payload in stream_module.stream_langchain_chat_session_events(engine=object(), options=options)]
+    events = [
+        payload
+        async for payload in stream_module.stream_langchain_chat_session_events(engine=object(), options=options)
+    ]
 
     assert len(events) == 3
     assert '"request_id": "req-stream"' in events[0]
@@ -383,14 +388,14 @@ async def test_stream_langchain_chat_session_events_persists_done_payload(monkey
             "cache_key": "cache-key",
             "content": "Hello",
             "citations": [{"id": "c1"}],
-                "metrics": {
-                    "latency_ms": 12,
-                    "cache": {"enabled": True, "hit": False, "skip_reason": "miss"},
-                    "context_applied": True,
-                },
-                "structured_data": {"answer": "ok"},
-            }
-        ]
+            "metrics": {
+                "latency_ms": 12,
+                "cache": {"enabled": True, "hit": False, "skip_reason": "miss"},
+                "context_applied": True,
+            },
+            "structured_data": {"answer": "ok"},
+        }
+    ]
     assert len(persisted_payloads) == 1
     assert persisted_payloads[0].content == "Hello"
     assert persisted_payloads[0].citations == [{"id": "c1"}]
@@ -473,7 +478,10 @@ async def test_stream_langchain_chat_session_events_skips_finalize_after_disconn
         ),
     )
 
-    events = [payload async for payload in stream_module.stream_langchain_chat_session_events(engine=object(), options=options)]
+    events = [
+        payload
+        async for payload in stream_module.stream_langchain_chat_session_events(engine=object(), options=options)
+    ]
 
     assert events == []
     assert persisted == []

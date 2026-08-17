@@ -9,7 +9,6 @@ Splits the document into these sections first, then applies a fallback splitter
 while preserving character offsets.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -48,7 +47,18 @@ class _Section:
 
 
 _SECTION_SYNONYMS: dict[str, list[str]] = {
-    "summary": ["summary", "overview", "incident summary", "postmortem", "rca", "摘要", "总结", "概述", "事件概述", "复盘"],
+    "summary": [
+        "summary",
+        "overview",
+        "incident summary",
+        "postmortem",
+        "rca",
+        "摘要",
+        "总结",
+        "概述",
+        "事件概述",
+        "复盘",
+    ],
     "impact": ["impact", "customer impact", "影响", "影响范围", "用户影响"],
     "timeline": ["timeline", "chronology", "时间线", "时间轴", "事件时间线", "事件记录"],
     "root_cause": ["root cause", "root causes", "cause", "根因", "原因分析", "根本原因"],

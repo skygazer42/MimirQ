@@ -31,7 +31,6 @@ Examples:
   python scripts/run_retention_jobs.py --audit-logs --all-tenants --execute
 """
 
-
 import argparse
 import asyncio
 import json
@@ -84,7 +83,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--audit-logs", action="store_true", help="Run audit log retention")
     p.add_argument("--regression-runs", action="store_true", help="Run regression run retention")
     p.add_argument("--knowledge-assets", action="store_true", help="Run archived/disabled knowledge asset retention")
-    p.add_argument("--dataset-retention", action="store_true", help="Run dataset-level document retention sweeps (Gap9)")
+    p.add_argument(
+        "--dataset-retention", action="store_true", help="Run dataset-level document retention sweeps (Gap9)"
+    )
     p.add_argument("--semantic-cache", action="store_true", help="Run semantic cache retention")
 
     scope = p.add_mutually_exclusive_group()
@@ -97,15 +98,21 @@ def main(argv: list[str] | None = None) -> int:
 
     p.add_argument("--retention-days", type=int, default=90, help="Retention window in days (default: 90)")
     p.add_argument("--max-delete", type=int, default=100_000, help="Max rows to delete per tenant (default: 100000)")
-    p.add_argument("--max-scan", type=int, default=1000, help="Max semantic-cache rows to scan per tenant (default: 1000)")
-    p.add_argument("--dataset-id", type=_parse_uuid, default=None, help="Optional dataset UUID filter for dataset/knowledge assets")
+    p.add_argument(
+        "--max-scan", type=int, default=1000, help="Max semantic-cache rows to scan per tenant (default: 1000)"
+    )
+    p.add_argument(
+        "--dataset-id", type=_parse_uuid, default=None, help="Optional dataset UUID filter for dataset/knowledge assets"
+    )
     p.add_argument(
         "--lifecycle-state",
         choices=["archived", "disabled", "either"],
         default="either",
         help="Lifecycle state to purge for knowledge assets (default: either)",
     )
-    p.add_argument("--max-documents", type=int, default=200, help="Max documents to process per dataset sweep (default: 200)")
+    p.add_argument(
+        "--max-documents", type=int, default=200, help="Max documents to process per dataset sweep (default: 200)"
+    )
     p.add_argument(
         "--max-versions-pruned",
         type=int,
@@ -169,7 +176,12 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
 
-        if not (bool(args.audit_logs) or bool(args.regression_runs) or bool(args.knowledge_assets) or bool(args.dataset_retention)):
+        if not (
+            bool(args.audit_logs)
+            or bool(args.regression_runs)
+            or bool(args.knowledge_assets)
+            or bool(args.dataset_retention)
+        ):
             continue
 
         db = deps.SessionLocal()
@@ -212,7 +224,9 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 results.append(res)
             if bool(args.dataset_retention):
-                ds_query = db.query(deps.Dataset.id, deps.Dataset.dataset_metadata).filter(deps.Dataset.tenant_id == tid)
+                ds_query = db.query(deps.Dataset.id, deps.Dataset.dataset_metadata).filter(
+                    deps.Dataset.tenant_id == tid
+                )
                 if args.dataset_id is not None:
                     ds_query = ds_query.filter(deps.Dataset.id == args.dataset_id)
                 ds_rows = ds_query.order_by(deps.Dataset.created_at.asc()).all()

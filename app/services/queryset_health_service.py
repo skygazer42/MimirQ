@@ -7,7 +7,6 @@ Goal:
 - maintain a bounded history for cron/nightly jobs
 """
 
-
 import json
 import math
 from collections.abc import Mapping, Sequence
@@ -157,7 +156,7 @@ def _normalize_benchmark_cases(benchmark_report: Mapping[str, Any]) -> list[dict
     for i, row in enumerate(rows_raw):
         if not isinstance(row, Mapping):
             continue
-        qid = str(row.get("id") or f"case-{i+1}").strip() or f"case-{i+1}"
+        qid = str(row.get("id") or f"case-{i + 1}").strip() or f"case-{i + 1}"
         out.append(
             {
                 "id": qid,
@@ -250,7 +249,9 @@ def build_queryset_health_snapshot(
     policy_source_norm = str(policy_source or "").strip() or "default"
     policy_hash = _policy_hash(resolved_policy)
     summary = benchmark_report.get("summary") if isinstance(benchmark_report.get("summary"), Mapping) else {}
-    prev_metrics = previous_snapshot.get("metrics") if isinstance((previous_snapshot or {}).get("metrics"), Mapping) else {}
+    prev_metrics = (
+        previous_snapshot.get("metrics") if isinstance((previous_snapshot or {}).get("metrics"), Mapping) else {}
+    )
     prev_risk = previous_snapshot.get("risk") if isinstance((previous_snapshot or {}).get("risk"), Mapping) else {}
     prev_policy_hash = str((previous_snapshot or {}).get("policy_hash") or "").strip()
 
@@ -269,7 +270,9 @@ def build_queryset_health_snapshot(
         "hit_at_k_delta": _metric_delta(hit_at_k, _as_float(prev_metrics.get("hit_at_k"), hit_at_k), 6),
         "mrr_delta": _metric_delta(mrr, _as_float(prev_metrics.get("mrr"), mrr), 6),
         "ndcg_at_k_delta": _metric_delta(ndcg_at_k, _as_float(prev_metrics.get("ndcg_at_k"), ndcg_at_k), 6),
-        "p95_latency_ms_delta": _metric_delta(p95_latency_ms, _as_float(prev_metrics.get("p95_latency_ms"), p95_latency_ms), 3),
+        "p95_latency_ms_delta": _metric_delta(
+            p95_latency_ms, _as_float(prev_metrics.get("p95_latency_ms"), p95_latency_ms), 3
+        ),
         "miss_rate_delta": _metric_delta(
             _as_float(risk.get("miss_rate"), 0.0),
             _as_float(prev_risk.get("miss_rate"), _as_float(risk.get("miss_rate"), 0.0)),

@@ -10,7 +10,6 @@ Key components (per project guidance):
 - profile_version
 """
 
-
 import time
 from typing import Any
 
@@ -26,7 +25,10 @@ def build_db_profile_cache_key(
     table_fingerprint: str,
     profile_version: int,
 ) -> str:
-    return f"db_profile:v{int(profile_version)}:{str(tenant_id)}:{str(dataset_id)}:{str(entitlement_hash)}:{str(table_fingerprint)}"
+    return (
+        f"db_profile:v{int(profile_version)}:{str(tenant_id)}:{str(dataset_id)}:"
+        f"{str(entitlement_hash)}:{str(table_fingerprint)}"
+    )
 
 
 def get_cached_db_profile(key: str, *, ttl_sec: float) -> dict[str, Any] | None:
@@ -50,4 +52,3 @@ def set_cached_db_profile(key: str, payload: dict[str, Any]) -> None:
     if len(_cache) > _CACHE_MAX_ENTRIES:
         _cache.clear()
     _cache[str(key)] = (time.monotonic(), dict(payload or {}))
-

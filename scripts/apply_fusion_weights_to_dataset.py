@@ -20,7 +20,6 @@ Examples:
   python scripts/apply_fusion_weights_to_dataset.py --dataset-id <uuid> --clear --execute
 """
 
-
 import argparse
 import json
 import sys
@@ -86,7 +85,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--dataset-id", type=_parse_uuid, required=True, help="Dataset UUID")
     p.add_argument("--tenant-id", type=_parse_uuid, default=None, help="Tenant UUID (defaults to DEFAULT_TENANT_ID)")
     p.add_argument("--weights", default="", help="Path to weights JSON (ignored when --clear)")
-    p.add_argument("--clear", action="store_true", help="Remove dataset fusion_weights override (and weighted strategy if present)")
+    p.add_argument(
+        "--clear", action="store_true", help="Remove dataset fusion_weights override (and weighted strategy if present)"
+    )
     p.add_argument(
         "--keep-strategy",
         action="store_true",
@@ -170,4 +171,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

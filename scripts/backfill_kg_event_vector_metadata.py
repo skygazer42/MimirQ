@@ -25,7 +25,6 @@ Examples:
   python scripts/backfill_kg_event_vector_metadata.py --tenant-id <uuid> --document-id <uuid> --document-id <uuid> --execute
 """
 
-
 import argparse
 import sys
 import time
@@ -110,9 +109,13 @@ def _iter_event_batches(
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="Backfill KG event vector metadata in Milvus (pipeline_hash/doc_pipeline_key).")
+    p = argparse.ArgumentParser(
+        description="Backfill KG event vector metadata in Milvus (pipeline_hash/doc_pipeline_key)."
+    )
     p.add_argument("--tenant-id", type=_parse_uuid, default=None, help="Tenant UUID (defaults to DEFAULT_TENANT_ID)")
-    p.add_argument("--dataset-id", type=_parse_uuid, default=None, help="Optional dataset scope (derives tenant if omitted)")
+    p.add_argument(
+        "--dataset-id", type=_parse_uuid, default=None, help="Optional dataset scope (derives tenant if omitted)"
+    )
     p.add_argument(
         "--document-id",
         type=_parse_uuid,
@@ -126,7 +129,9 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--execute", action="store_true", help="Execute Milvus upserts.")
 
     p.add_argument("--batch-size", type=int, default=1000, help="Events per upsert batch (default: 1000)")
-    p.add_argument("--max-events", type=int, default=1_000_000_000, help="Hard cap on total events processed (default: no cap)")
+    p.add_argument(
+        "--max-events", type=int, default=1_000_000_000, help="Hard cap on total events processed (default: no cap)"
+    )
 
     args = p.parse_args(argv)
 
@@ -197,4 +202,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

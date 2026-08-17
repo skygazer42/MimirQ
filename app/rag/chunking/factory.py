@@ -223,15 +223,14 @@ class ChunkerFactory:
 
         if normalized not in self.SUPPORTED_STRATEGIES:
             all_strategies = sorted(self.SUPPORTED_STRATEGIES) + sorted(self.INTEGRATED_PIPELINE_STRATEGIES)
-            raise ValueError(
-                f"Unsupported chunk strategy '{strategy}'. "
-                f"Supported strategies: {all_strategies}"
-            )
+            raise ValueError(f"Unsupported chunk strategy '{strategy}'. Supported strategies: {all_strategies}")
 
-        if normalized in OPTIONAL_DEPENDENCY_STRATEGIES and normalized.startswith("llama_index") and not settings.LLAMA_INDEX_ENABLED:
-            raise ValueError(
-                "LlamaIndex chunker is disabled. Set LLAMA_INDEX_ENABLED=True to use it."
-            )
+        if (
+            normalized in OPTIONAL_DEPENDENCY_STRATEGIES
+            and normalized.startswith("llama_index")
+            and not settings.LLAMA_INDEX_ENABLED
+        ):
+            raise ValueError("LlamaIndex chunker is disabled. Set LLAMA_INDEX_ENABLED=True to use it.")
 
         return normalized
 

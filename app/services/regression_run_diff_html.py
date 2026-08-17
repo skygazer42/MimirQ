@@ -4,7 +4,6 @@ Regression run diff HTML exporter.
 Goal: produce a shareable, offline-friendly HTML artifact for before/after comparisons.
 """
 
-
 import json
 from datetime import datetime
 from html import escape
@@ -54,9 +53,8 @@ def _render_diff_score_section(diff_score: dict[str, Any]) -> str:
         return ""
     used_keys = diff_score.get("used_metric_keys") if isinstance(diff_score.get("used_metric_keys"), list) else []
     used_keys_str = ", ".join([str(key) for key in used_keys if str(key).strip()][:10])
-    subtitle = (
-        f'version: <span style="font-family:var(--mono)">{escape(score_version)}</span>'
-        + (f' · metrics: <span style="font-family:var(--mono)">{escape(used_keys_str)}</span>' if used_keys_str else "")
+    subtitle = f'version: <span style="font-family:var(--mono)">{escape(score_version)}</span>' + (
+        f' · metrics: <span style="font-family:var(--mono)">{escape(used_keys_str)}</span>' if used_keys_str else ""
     )
     return (
         '<div class="section">'
@@ -175,28 +173,37 @@ def render_regression_run_diff_html(
       --muted: rgba(255,255,255,.65);
       --text: rgba(255,255,255,.92);
       --border: rgba(255,255,255,.10);
-      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", \
+"Courier New", monospace;
       --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
     }}
-    body {{ margin: 0; background: radial-gradient(1200px 800px at 10% 10%, rgba(56,189,248,.16), transparent), var(--bg); color: var(--text); font-family: var(--sans); }}
+    body {{ margin: 0; background: radial-gradient(1200px 800px at 10% 10%, rgba(56,189,248,.16), \
+transparent), var(--bg); color: var(--text); font-family: var(--sans); }}
     .wrap {{ max-width: 1100px; margin: 0 auto; padding: 28px 18px 40px; }}
     .title {{ font-size: 22px; font-weight: 800; letter-spacing: .2px; }}
     .sub {{ margin-top: 6px; color: var(--muted); font-size: 13px; }}
-    .section {{ margin-top: 16px; border: 1px solid var(--border); border-radius: 14px; background: rgba(0,0,0,.12); padding: 14px 14px; }}
+    .section {{ margin-top: 16px; border: 1px solid var(--border); border-radius: 14px; \
+background: rgba(0,0,0,.12); padding: 14px 14px; }}
     .section h2 {{ margin: 0 0 10px; font-size: 14px; letter-spacing: .2px; }}
     .empty {{ color: var(--muted); font-size: 13px; padding: 18px 0; text-align: center; }}
     table.bars {{ width: 100%; border-collapse: collapse; }}
-    table.bars th {{ text-align: left; font-size: 12px; color: var(--muted); font-family: var(--mono); padding: 8px 6px; border-bottom: 1px solid var(--border); }}
+    table.bars th {{ text-align: left; font-size: 12px; color: var(--muted); \
+font-family: var(--mono); padding: 8px 6px; border-bottom: 1px solid var(--border); }}
     table.bars td {{ padding: 7px 6px; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: middle; }}
-    table.bars td.k {{ font-family: var(--mono); font-size: 12px; color: var(--text); max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+    table.bars td.k {{ font-family: var(--mono); font-size: 12px; color: var(--text); \
+max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
     table.bars td.v {{ font-family: var(--mono); font-size: 12px; color: var(--muted); }}
-    pre {{ white-space: pre-wrap; word-break: break-word; background: rgba(0,0,0,.22); padding: 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; font-family: var(--mono); font-size: 12px; color: var(--text); }}
+    pre {{ white-space: pre-wrap; word-break: break-word; background: rgba(0,0,0,.22); \
+padding: 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; \
+font-family: var(--mono); font-size: 12px; color: var(--text); }}
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="title">{escape(title)}</div>
-    <div class="sub">base: <span style="font-family:var(--mono)">{escape(safe_base)}</span> · target: <span style="font-family:var(--mono)">{escape(safe_target)}</span> · generated_at: <span style="font-family:var(--mono)">{escape(ts)}</span></div>
+    <div class="sub">base: <span style="font-family:var(--mono)">{escape(safe_base)}</span> · \
+target: <span style="font-family:var(--mono)">{escape(safe_target)}</span> · generated_at: \
+<span style="font-family:var(--mono)">{escape(ts)}</span></div>
 
     {score_section}
 

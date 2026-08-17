@@ -1,4 +1,3 @@
-
 import uuid
 from uuid import UUID
 
@@ -342,7 +341,9 @@ def test_ragas_regression_gate_summary_includes_must_recall_and_provenance() -> 
             "hit_type": "keyword",
         }
     ]
-    item_meta = compute_retrieval_item_meta(case=case, citations=citations, retrieval_metrics={"retrieval_mode": "keyword"})
+    item_meta = compute_retrieval_item_meta(
+        case=case, citations=citations, retrieval_metrics={"retrieval_mode": "keyword"}
+    )
 
     summary = _build_regression_gate_summary([{"item_meta": item_meta}])
 

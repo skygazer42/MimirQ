@@ -275,7 +275,9 @@ def _wrapped_json_array(data: dict[str, Any], *, method: str) -> tuple[Any | Non
     return None, None
 
 
-def _accept_json_candidate(data: Any, *, expected: Literal["any", "array", "object"], method: str) -> tuple[Any | None, dict[str, Any] | None, str | None]:
+def _accept_json_candidate(
+    data: Any, *, expected: Literal["any", "array", "object"], method: str
+) -> tuple[Any | None, dict[str, Any] | None, str | None]:
     if expected == "any":
         return data, {"ok": True, "method": method, "error": None}, None
     if expected == "object":
@@ -522,7 +524,8 @@ def normalize_retrieval_mode(mode: str | None) -> str:
 
 _CLAIM_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]+|[\u4e00-\u9fff]{2,}|\d+(?:\.\d+)?")
 _CLAIM_UNCERTAINTY_RE = re.compile(
-    r"(unable to answer|cannot determine|can't determine|insufficient evidence|not enough (?:info|information)|unknown|unsure|not sure|"
+    r"(unable to answer|cannot determine|can't determine|insufficient evidence|"
+    r"not enough (?:info|information)|unknown|unsure|not sure|"
     r"证据不足|材料不足|无法(确定|判断|回答)|不确定|未知)",
     flags=re.IGNORECASE,
 )
@@ -851,11 +854,15 @@ def _walk_visible_evidence_dict(obj: dict[Any, Any], state: dict[str, Any], *, d
     out: dict[Any, Any] = {}
     for key, value in obj.items():
         key_str = str(key)
-        out[key] = value if key_str in skip_keys else _walk_visible_evidence(value, state, depth=depth - 1, parent_key=key_str)
+        out[key] = (
+            value if key_str in skip_keys else _walk_visible_evidence(value, state, depth=depth - 1, parent_key=key_str)
+        )
     return out
 
 
-def _walk_visible_evidence_list(obj: list[Any], state: dict[str, Any], *, depth: int, parent_key: str | None) -> list[Any]:
+def _walk_visible_evidence_list(
+    obj: list[Any], state: dict[str, Any], *, depth: int, parent_key: str | None
+) -> list[Any]:
     out: list[Any] = []
     for item in obj:
         value = _walk_visible_evidence(item, state, depth=depth - 1, parent_key=parent_key)
@@ -1004,13 +1011,18 @@ def build_abstain_followup(
     if r == "citations_lt_min":
         return {
             "type": "refine_query",
-            "question": "No sufficient evidence was retrieved. Please refine the question or provide more relevant documents.",
+            "question": (
+                "No sufficient evidence was retrieved. Please refine the question or provide more relevant documents."
+            ),
             "options": [],
         }
     if r == "out_of_scope":
         return {
             "type": "refine_query",
-            "question": "This question appears to be outside the current knowledge base. Please add relevant materials or narrow the scope.",
+            "question": (
+                "This question appears to be outside the current knowledge base. Please add relevant "
+                "materials or narrow the scope."
+            ),
             "options": [],
         }
 
@@ -1088,7 +1100,7 @@ def _extract_followup_tags(raw: str, *, max_items: int) -> tuple[list[str], list
 
         found_tag = True
         cleaned_parts.append(raw[cursor:start])
-        question = " ".join(raw[start + len(open_tag):end].split())
+        question = " ".join(raw[start + len(open_tag) : end].split())
         key = question.casefold()
         if question and key not in seen and (not limit or len(questions) < limit):
             seen.add(key)

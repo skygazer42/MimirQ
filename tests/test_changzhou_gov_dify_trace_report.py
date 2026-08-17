@@ -1,4 +1,3 @@
-
 import importlib.util
 import json
 import sys
@@ -62,21 +61,22 @@ def test_request_json_retries_transient_url_errors(monkeypatch) -> None:
 
     monkeypatch.setattr(mod, "urlopen", fake_urlopen)
 
-    assert (
-        mod._request_json(
-            console_base_url="https://dify.test/console/api",
-            console_token="secret-console-token",
-            path="/apps/app-1/messages/msg-1",
-            timeout=12.0,
-        )
-        == {"ok": True}
-    )
+    assert mod._request_json(
+        console_base_url="https://dify.test/console/api",
+        console_token="secret-console-token",
+        path="/apps/app-1/messages/msg-1",
+        timeout=12.0,
+    ) == {"ok": True}
     assert calls == 2
 
 
 def test_collect_trace_report_fetches_message_and_node_executions_without_leaking_token() -> None:
     mod = _load_module()
     calls: list[str] = []
+    fallback_answer = (
+        "您好，“小畅”只能答复常州市政务服务领域的相关知识，"
+        "例如事项或业务办理，超出领域的问题小畅暂时无法回答，您可以尝试更改描述！"
+    )
 
     def fake_request_json(*, console_base_url: str, console_token: str, path: str, timeout: float) -> dict:
         calls.append(path)
@@ -86,7 +86,7 @@ def test_collect_trace_report_fetches_message_and_node_executions_without_leakin
         if path.endswith("/messages/msg-1"):
             return {
                 "workflow_run_id": "run-1",
-                "answer": "您好，“小畅”只能答复常州市政务服务领域的相关知识，例如事项或业务办理，超出领域的问题小畅暂时无法回答，您可以尝试更改描述！",
+                "answer": fallback_answer,
             }
         if path.endswith("/workflow-runs/run-1/node-executions"):
             return {
@@ -95,7 +95,9 @@ def test_collect_trace_report_fetches_message_and_node_executions_without_leakin
                         "index": 3,
                         "title": "兜底回复",
                         "node_type": "answer",
-                        "outputs": {"answer": "您好，“小畅”只能答复常州市政务服务领域的相关知识，例如事项或业务办理，超出领域的问题小畅暂时无法回答，您可以尝试更改描述！"},
+                        "outputs": {
+                            "answer": fallback_answer,
+                        },
                     },
                     {
                         "index": 2,
@@ -126,7 +128,7 @@ def test_collect_trace_report_fetches_message_and_node_executions_without_leakin
                 "id": "case-1",
                 "query": "新北区社保卡补卡在哪里办理",
                 "message_id": "msg-1",
-                "answer": "您好，“小畅”只能答复常州市政务服务领域的相关知识，例如事项或业务办理，超出领域的问题小畅暂时无法回答，您可以尝试更改描述！",
+                "answer": fallback_answer,
             }
         ],
         app_id="app-1",
@@ -160,7 +162,12 @@ def test_collect_trace_report_fetches_message_and_node_executions_without_leakin
         }
     ]
     assert report["cases"][0]["retrievals"] == [
-        {"title": "新北区政务服务知识检索", "query": "新北区社保卡补卡在哪里办理", "count": 0, "result_titles": []}
+        {
+            "title": "新北区政务服务知识检索",
+            "query": "新北区社保卡补卡在哪里办理",
+            "count": 0,
+            "result_titles": [],
+        }
     ]
 
 
@@ -218,7 +225,7 @@ def test_collect_trace_report_counts_mimirq_http_conversion_code_results() -> No
                     {
                         "title": "MimirQ结果转换 - 新北区政务服务",
                         "node_type": "code",
-                        "inputs": {"body": "{\"records\": []}", "status_code": 200},
+                        "inputs": {"body": '{"records": []}', "status_code": 200},
                         "outputs": {
                             "result": [
                                 {
@@ -332,7 +339,9 @@ def test_collect_trace_report_preserves_area_extractor_failure_reason() -> None:
                         "node_type": "parameter-extractor",
                         "outputs": {
                             "__is_success": 0,
-                            "__reason": "Failed to extract result from function call or text response, using empty result.",
+                            "__reason": (
+                                "Failed to extract result from function call or text response, using empty result."
+                            ),
                             "area": "",
                         },
                     }
@@ -468,7 +477,9 @@ def test_collect_trace_report_classifies_console_auth_errors() -> None:
     assert report["summary"]["trace_errors"] == 1
     assert report["summary"]["console_auth_errors"] == 1
     assert report["cases"][0]["error_kind"] == "dify_console_auth"
-    assert report["cases"][0]["error"] == 'HTTP 401: {"code":"unauthorized","message":"Token has expired.","status":401}'
+    assert (
+        report["cases"][0]["error"] == 'HTTP 401: {"code":"unauthorized","message":"Token has expired.","status":401}'
+    )
 
 
 def test_collect_trace_report_preserves_upstream_missing_variable_error() -> None:
@@ -479,7 +490,10 @@ def test_collect_trace_report_preserves_upstream_missing_variable_error() -> Non
             {
                 "id": "case-1",
                 "query": "经开区社保卡补卡在哪里办理",
-                "error": 'HTTP 400: {"code": "invalid_param", "message": "Run failed: Variable #1711528914102.areaName# not found"}',
+                "error": (
+                    'HTTP 400: {"code": "invalid_param", "message": '
+                    '"Run failed: Variable #1711528914102.areaName# not found"}'
+                ),
                 "error_kind": "missing_start_variable",
                 "http_status": 400,
                 "dify_error_code": "invalid_param",

@@ -8,7 +8,6 @@ This script is intentionally local-first:
 - writes both reports plus a compact comparison summary
 """
 
-
 import argparse
 import json
 import sys
@@ -50,7 +49,9 @@ def _get_settings(*, base_url: str, tenant_id: str, user_id: str) -> dict[str, A
         return response.json()
 
 
-def _set_kg_enabled(*, base_url: str, tenant_id: str, user_id: str, settings_payload: dict[str, Any], enabled: bool) -> dict[str, Any]:
+def _set_kg_enabled(
+    *, base_url: str, tenant_id: str, user_id: str, settings_payload: dict[str, Any], enabled: bool
+) -> dict[str, Any]:
     feature_flags = dict(settings_payload.get("feature_flags") or {})
     feature_flags["kg_enabled"] = bool(enabled)
     payload = {"feature_flags": feature_flags}
@@ -162,7 +163,9 @@ def main(argv: list[str] | None = None) -> int:
         limit=int(args.limit or 0),
         sample_per_type=int(args.sample_per_type or 0),
     )
-    current_settings = _get_settings(base_url=str(args.base_url), tenant_id=str(args.tenant_id), user_id=str(args.user_id))
+    current_settings = _get_settings(
+        base_url=str(args.base_url), tenant_id=str(args.tenant_id), user_id=str(args.user_id)
+    )
     original_kg_enabled = bool((current_settings.get("feature_flags") or {}).get("kg_enabled"))
 
     reports: dict[str, dict[str, Any]] = {}

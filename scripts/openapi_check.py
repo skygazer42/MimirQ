@@ -1,4 +1,3 @@
-
 import json
 import subprocess
 from pathlib import Path
@@ -95,7 +94,9 @@ def main() -> int:
 
     if empty_object_paths:
         empty_object_paths.sort()
-        print(f"[openapi-check] FAIL: found {len(empty_object_paths)} empty object schemas (missing additionalProperties)")
+        print(
+            f"[openapi-check] FAIL: found {len(empty_object_paths)} empty object schemas (missing additionalProperties)"
+        )
         for p in empty_object_paths[:200]:
             print(f"  - {p}")
         if len(empty_object_paths) > 200:

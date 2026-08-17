@@ -1,4 +1,3 @@
-
 import argparse
 import json
 from pathlib import Path
@@ -27,7 +26,9 @@ def _serialize_documents(items: list[Any] | None) -> list[dict[str, Any]]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Build a deterministic retrieval fixture directly from a parser-readable input file.")
+    parser = argparse.ArgumentParser(
+        description="Build a deterministic retrieval fixture directly from a parser-readable input file."
+    )
     parser.add_argument("--input-file", required=True, help="Source file to parse into retrieval documents.")
     parser.add_argument("--queries-json", required=True, help="Path to query specs JSON.")
     parser.add_argument("--out", required=True, help="Output fixture JSON path.")

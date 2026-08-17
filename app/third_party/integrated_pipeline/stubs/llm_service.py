@@ -13,7 +13,6 @@ When not configured, this class raises NotImplementedError so callers can
 fail-soft and fall back to plaintext parsing (see `integrated/chunkers/naive.py`).
 """
 
-
 import base64
 from typing import Any
 
@@ -69,9 +68,7 @@ class LLMBundle:
         self.kwargs = dict(kwargs or {})
 
         if str(llm_type) != str(LLMType.IMAGE2TEXT):
-            raise NotImplementedError(
-                f"LLMBundle only supports {LLMType.IMAGE2TEXT} in this project; got: {llm_type}"
-            )
+            raise NotImplementedError(f"LLMBundle only supports {LLMType.IMAGE2TEXT} in this project; got: {llm_type}")
 
         if not bool(getattr(settings, "VISION_LLM_ENABLED", False)):
             raise NotImplementedError(
@@ -158,7 +155,9 @@ class LLMBundle:
 
         if int(getattr(resp, "status_code", 0) or 0) != 200:
             body = getattr(resp, "text", "") or ""
-            logger.warning("Integrated pipeline vision API error %s: %s", getattr(resp, "status_code", None), body[:500])
+            logger.warning(
+                "Integrated pipeline vision API error %s: %s", getattr(resp, "status_code", None), body[:500]
+            )
             raise RuntimeError(f"Integrated pipeline vision API error {resp.status_code}: {body[:500]}")
 
         data = resp.json()

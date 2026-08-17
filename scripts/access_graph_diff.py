@@ -16,7 +16,6 @@ Examples:
   python scripts/access_graph_diff.py --a a.json.gz --b b.json.gz --compact > diff.json
 """
 
-
 import argparse
 import gzip
 import json
@@ -116,8 +115,12 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="PII-safe diff of two access-graph exports.")
     p.add_argument("--a", required=True, help="Access-graph export A (ndjson/json, optionally .gz)")
     p.add_argument("--b", required=True, help="Access-graph export B (ndjson/json, optionally .gz)")
-    p.add_argument("--max-records", type=int, default=200_000, help="Max records to read from each input (default: 200000)")
-    p.add_argument("--max-examples", type=int, default=20, help="Max example items to include per category (default: 20)")
+    p.add_argument(
+        "--max-records", type=int, default=200_000, help="Max records to read from each input (default: 200000)"
+    )
+    p.add_argument(
+        "--max-examples", type=int, default=20, help="Max example items to include per category (default: 20)"
+    )
     p.add_argument("--compact", action="store_true", help="Print compact one-line JSON.")
     args = p.parse_args(argv)
 
@@ -153,4 +156,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

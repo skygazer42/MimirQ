@@ -11,7 +11,6 @@ The chunker tries to keep each Q/A pair together and uses pair-level overlap
 when possible.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -219,7 +218,11 @@ class QAPairsChunker(BaseChunker):
             start_idx = 0
             while start_idx < len(pairs):
                 end_idx = _window_end_index(pairs=pairs, start_idx=start_idx, chunk_size=self.chunk_size)
-                out.append(_qa_chunk_document(text=text, base_meta=base_meta, pairs=pairs, start_idx=start_idx, end_idx=end_idx))
+                out.append(
+                    _qa_chunk_document(
+                        text=text, base_meta=base_meta, pairs=pairs, start_idx=start_idx, end_idx=end_idx
+                    )
+                )
                 start_idx = _next_window_start(
                     pairs=pairs,
                     start_idx=start_idx,

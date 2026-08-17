@@ -11,7 +11,6 @@ The chunker tries to keep whole messages together and uses message-level
 overlap when possible.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -227,7 +226,9 @@ def looks_like_email_thread(text: str) -> bool:
     return bool(has_sep and has_headers)
 
 
-def _split_email_fallback_docs(splitter: RecursiveCharacterTextSplitter, text: str, base_meta: dict[str, Any]) -> list[Document]:
+def _split_email_fallback_docs(
+    splitter: RecursiveCharacterTextSplitter, text: str, base_meta: dict[str, Any]
+) -> list[Document]:
     split_docs = splitter.create_documents(texts=[text], metadatas=[base_meta])
     chunks: list[Document] = []
     for split_doc in split_docs:
@@ -268,7 +269,9 @@ def _window_email_subjects(msgs: list[_Message], start_idx: int, end_idx: int) -
     return subjects[:3], froms[:3]
 
 
-def _build_email_chunk(msgs: list[_Message], start_idx: int, end_idx: int, base_meta: dict[str, Any], text: str) -> Document:
+def _build_email_chunk(
+    msgs: list[_Message], start_idx: int, end_idx: int, base_meta: dict[str, Any], text: str
+) -> Document:
     chunk_start = msgs[start_idx].start
     chunk_end = msgs[end_idx - 1].end
     content = text[chunk_start:chunk_end]

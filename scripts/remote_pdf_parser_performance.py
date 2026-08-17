@@ -7,7 +7,6 @@ signals. Standard-library only so it can run on a deployment host without
 installing benchmark dependencies.
 """
 
-
 import argparse
 import json
 import time
@@ -128,7 +127,9 @@ def classify_result(status: int, summary: dict[str, Any], requested_backend: str
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
-    artifact_dir = Path(args.artifact_dir or f"artifacts/pdf-performance/remote-{time.strftime('%Y%m%d-%H%M%S')}").resolve()
+    artifact_dir = Path(
+        args.artifact_dir or f"artifacts/pdf-performance/remote-{time.strftime('%Y%m%d-%H%M%S')}"
+    ).resolve()
     artifact_dir.mkdir(parents=True, exist_ok=True)
     pdf_path = Path(args.pdf_path).resolve() if args.pdf_path else artifact_dir / args.filename
     source: dict[str, Any] = {"path": str(pdf_path)}
@@ -156,7 +157,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if not ok:
             result["error"] = json.dumps(body, ensure_ascii=False, default=str)[:1000]
         results.append(result)
-        (artifact_dir / "progress.json").write_text(json.dumps({"source": source, "results": results}, ensure_ascii=False, indent=2), encoding="utf-8")
+        (artifact_dir / "progress.json").write_text(
+            json.dumps({"source": source, "results": results}, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
 
     report = {
         "ok": all(item["ok"] for item in results),
@@ -204,7 +207,13 @@ def main() -> int:
     parser.add_argument("--min-markdown-chars", type=int, default=5000)
     args = parser.parse_args()
     report = run(args)
-    print(json.dumps({key: report.get(key) for key in ("ok", "artifact_dir", "source", "pdf_bytes")}, ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {key: report.get(key) for key in ("ok", "artifact_dir", "source", "pdf_bytes")},
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
     return 0 if report["ok"] else 1
 
 

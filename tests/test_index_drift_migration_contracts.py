@@ -47,7 +47,9 @@ def test_index_drift_items_migration_applies_table_and_indexes(monkeypatch) -> N
         lambda name, **kwargs: operations.append(("drop_index", name, [])),
         raising=False,
     )
-    monkeypatch.setattr(migration.op, "drop_table", lambda name: operations.append(("drop_table", name, [])), raising=False)
+    monkeypatch.setattr(
+        migration.op, "drop_table", lambda name: operations.append(("drop_table", name, [])), raising=False
+    )
 
     migration.upgrade()
     migration.downgrade()

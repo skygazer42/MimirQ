@@ -10,7 +10,6 @@ Design constraints:
 - Never include raw question/query/chunk snippets.
 """
 
-
 from collections import Counter
 from typing import Any
 
@@ -74,7 +73,7 @@ def diff_rag_traces(a: RagTrace, b: RagTrace) -> dict[str, Any]:
     role_a: Counter[str] = Counter()
     role_b: Counter[str] = Counter()
 
-    for c in (ta.citations or []):
+    for c in ta.citations or []:
         ht = str(getattr(c, "hit_type", None) or "").strip() or ""
         rr = str(getattr(c, "retrieval_role", None) or "").strip() or ""
         if ht:
@@ -82,7 +81,7 @@ def diff_rag_traces(a: RagTrace, b: RagTrace) -> dict[str, Any]:
         if rr:
             role_a[rr] += 1
 
-    for c in (tb.citations or []):
+    for c in tb.citations or []:
         ht = str(getattr(c, "hit_type", None) or "").strip() or ""
         rr = str(getattr(c, "retrieval_role", None) or "").strip() or ""
         if ht:
@@ -98,8 +97,12 @@ def diff_rag_traces(a: RagTrace, b: RagTrace) -> dict[str, Any]:
         "retrieval_config_hash_b": getattr(getattr(tb, "retrieval", None), "retrieval_config_hash", None),
         "delta": {
             "citations_count": _to_int(tb.citations_count) - _to_int(ta.citations_count),
-            "retrieval_elapsed_sec": _delta_float(getattr(ta.retrieval, "elapsed_sec", None), getattr(tb.retrieval, "elapsed_sec", None)),
-            "rerank_elapsed_sec": _delta_float(getattr(ta.rerank, "elapsed_sec", None), getattr(tb.rerank, "elapsed_sec", None)),
+            "retrieval_elapsed_sec": _delta_float(
+                getattr(ta.retrieval, "elapsed_sec", None), getattr(tb.retrieval, "elapsed_sec", None)
+            ),
+            "rerank_elapsed_sec": _delta_float(
+                getattr(ta.rerank, "elapsed_sec", None), getattr(tb.rerank, "elapsed_sec", None)
+            ),
         },
         # Field-level comparisons (stable key set; values may be null).
         "fields": {
@@ -133,4 +136,3 @@ def diff_rag_traces(a: RagTrace, b: RagTrace) -> dict[str, Any]:
 
 
 __all__ = ["RAG_TRACE_DIFF_SCHEMA_V1", "diff_rag_traces"]
-

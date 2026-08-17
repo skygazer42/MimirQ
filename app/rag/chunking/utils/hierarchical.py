@@ -8,7 +8,6 @@ Two-level chunking:
 Returns chunk data with positions for frontend highlighting.
 """
 
-
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -82,7 +81,9 @@ def apply_sequence_hierarchy_metadata(
         except Exception:
             chunk_index_int = int(idx)
 
-        node_key = str(meta.get("hierarchy_node_key") or meta.get("chunk_key") or f"{document_id}:{chunk_index_int}").strip()
+        node_key = str(
+            meta.get("hierarchy_node_key") or meta.get("chunk_key") or f"{document_id}:{chunk_index_int}"
+        ).strip()
         parent_key = str(meta.get("hierarchy_parent_key") or meta.get("parent_id") or "").strip() or None
 
         meta.setdefault("hierarchy_basis", str(basis or "chunk_sequence"))

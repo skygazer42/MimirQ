@@ -185,7 +185,9 @@ def _plugin_test_summary(plugin_test_report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _readiness_audit_summary(readiness_audit: dict[str, Any], *, artifact_exists: bool, required: bool) -> dict[str, Any]:
+def _readiness_audit_summary(
+    readiness_audit: dict[str, Any], *, artifact_exists: bool, required: bool
+) -> dict[str, Any]:
     report_audit = (
         readiness_audit.get("report_retrieval_audit")
         if isinstance(readiness_audit.get("report_retrieval_audit"), dict)
@@ -333,7 +335,9 @@ def _markdown_table(headers: list[str], rows: list[list[str]]) -> list[str]:
         "| " + " | ".join(headers) + " |",
         "| " + " | ".join("---" for _header in headers) + " |",
     ]
-    lines.extend("| " + " | ".join(_text(cell).replace("\n", " ").replace("|", "\\|") for cell in row) + " |" for row in rows)
+    lines.extend(
+        "| " + " | ".join(_text(cell).replace("\n", " ").replace("|", "\\|") for cell in row) + " |" for row in rows
+    )
     return lines
 
 
@@ -420,8 +424,12 @@ def format_markdown_pack(pack: dict[str, Any]) -> str:
                     _text(section.get("chunks")),
                     _text(section.get("kg_events")),
                     _count_line(section.get("chunk_kinds") if isinstance(section.get("chunk_kinds"), dict) else {}),
-                    _join_inline(section.get("metadata_fields") if isinstance(section.get("metadata_fields"), list) else []),
-                    _join_inline(section.get("kg_entity_types") if isinstance(section.get("kg_entity_types"), list) else []),
+                    _join_inline(
+                        section.get("metadata_fields") if isinstance(section.get("metadata_fields"), list) else []
+                    ),
+                    _join_inline(
+                        section.get("kg_entity_types") if isinstance(section.get("kg_entity_types"), list) else []
+                    ),
                 ]
                 for section in (plugin.get("sections") if isinstance(plugin.get("sections"), list) else [])
                 if isinstance(section, dict)
@@ -522,7 +530,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--require-readiness-audit-persisted", action="store_true")
     parser.add_argument("--max-readiness-age-minutes", type=int, default=30)
     parser.add_argument("--json-out", default=DEFAULT_JSON_OUT, help="Write JSON pack to this path, or '-' for stdout.")
-    parser.add_argument("--markdown-out", default=DEFAULT_MARKDOWN_OUT, help="Write Markdown pack to this path. Empty disables it.")
+    parser.add_argument(
+        "--markdown-out", default=DEFAULT_MARKDOWN_OUT, help="Write Markdown pack to this path. Empty disables it."
+    )
     return parser
 
 

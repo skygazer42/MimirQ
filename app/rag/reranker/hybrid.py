@@ -103,7 +103,9 @@ class WeightedReranker(DocumentReranker):
 
         # Fuse scores.
         rerank_documents = []
-        for document, query_score, query_vector_score in zip(documents, query_scores, query_vector_scores, strict=False):
+        for document, query_score, query_vector_score in zip(
+            documents, query_scores, query_vector_scores, strict=False
+        ):
             score = (
                 self.weights.vector_setting.vector_weight * query_vector_score
                 + self.weights.keyword_setting.keyword_weight * query_score
@@ -136,8 +138,7 @@ class WeightedReranker(DocumentReranker):
         keyword_idf = self._keyword_idf(documents_keywords, total_documents=total_documents)
         query_tfidf = self._tfidf_vector(query_keyword_counts, keyword_idf)
         documents_tfidf = [
-            self._tfidf_vector(Counter(document_keywords), keyword_idf)
-            for document_keywords in documents_keywords
+            self._tfidf_vector(Counter(document_keywords), keyword_idf) for document_keywords in documents_keywords
         ]
         return [self._cosine_similarity(query_tfidf, document_tfidf) for document_tfidf in documents_tfidf]
 
@@ -155,10 +156,7 @@ class WeightedReranker(DocumentReranker):
 
     @staticmethod
     def _tfidf_vector(keyword_counts: Counter[str], keyword_idf: dict[str, float]) -> dict[str, float]:
-        return {
-            keyword: count * keyword_idf.get(keyword, 0)
-            for keyword, count in keyword_counts.items()
-        }
+        return {keyword: count * keyword_idf.get(keyword, 0) for keyword, count in keyword_counts.items()}
 
     @staticmethod
     def _cosine_similarity(vec1: dict[str, float], vec2: dict[str, float]) -> float:
@@ -171,9 +169,7 @@ class WeightedReranker(DocumentReranker):
             return 0.0
         return float(numerator) / denominator
 
-    def _calculate_cosine(
-        self, query: str, documents: list[Document], vector_setting: VectorSetting
-    ) -> list[float]:
+    def _calculate_cosine(self, query: str, documents: list[Document], vector_setting: VectorSetting) -> list[float]:
         """Compute cosine similarity scores using embeddings."""
         _ = vector_setting
         query_vector_scores = []

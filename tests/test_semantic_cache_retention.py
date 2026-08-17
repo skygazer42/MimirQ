@@ -262,9 +262,9 @@ def test_semantic_cache_sweep_deletes_expired_and_legacy_orphans(
     )
     redis_client = _FakeRedis(
         {
-            semantic_cache._redis_payload_key(tenant_id=tenant_id, vector_id="legacy-live"): json.dumps([{"id": 1}]).encode(
-                "utf-8"
-            )
+            semantic_cache._redis_payload_key(tenant_id=tenant_id, vector_id="legacy-live"): json.dumps(
+                [{"id": 1}]
+            ).encode("utf-8")
         }
     )
     monkeypatch.setattr(semantic_cache, "_get_adapter", lambda: adapter, raising=True)

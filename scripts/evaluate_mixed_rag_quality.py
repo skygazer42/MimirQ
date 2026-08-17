@@ -8,7 +8,6 @@ term/metadata matching so reviewers can inspect exactly which evidence was
 missed.
 """
 
-
 import argparse
 import itertools
 import json
@@ -329,7 +328,9 @@ def _score_subquestion(
     }
 
 
-def _record_supports_any(record: dict[str, Any], clauses: list[dict[str, Any]], subquestions: list[dict[str, Any]]) -> bool:
+def _record_supports_any(
+    record: dict[str, Any], clauses: list[dict[str, Any]], subquestions: list[dict[str, Any]]
+) -> bool:
     text = _record_text(record)
     for clause in clauses:
         terms = list(clause.get("required_terms") or [])
@@ -397,7 +398,9 @@ def evaluate_item(case: dict[str, Any], run: dict[str, Any], item: dict[str, Any
         for subquestion in subquestions
     ]
     forbidden_terms = _list_texts(case.get("forbidden_terms"))
-    forbidden_hits = [term for term in forbidden_terms if _term_in_text(term, records_text) or _term_in_text(term, answer)]
+    forbidden_hits = [
+        term for term in forbidden_terms if _term_in_text(term, records_text) or _term_in_text(term, answer)
+    ]
     effective_records = sum(1 for record in records if _record_supports_any(record, clauses, subquestions))
     evaluated_records = len(records)
 
@@ -441,9 +444,7 @@ def evaluate_item(case: dict[str, Any], run: dict[str, Any], item: dict[str, Any
         "subquestion_coverage": _round_float(subquestion_coverage),
         "missing_subquestion_ids": [row["id"] for row in subquestion_rows if not row["evidence_matched"]],
         "answer_clause_coverage": _round_float(_ratio(answer_clause_matched, evidence_total, empty=1.0)),
-        "answer_subquestion_coverage": _round_float(
-            _ratio(answer_subquestion_matched, subquestion_total, empty=1.0)
-        ),
+        "answer_subquestion_coverage": _round_float(_ratio(answer_subquestion_matched, subquestion_total, empty=1.0)),
         "answer_supported_clause_rate": _round_float(answer_supported_clause_rate),
         "unsupported_answered_clause_ids": unsupported_answered_clause_ids,
         "effective_records": effective_records,
@@ -481,7 +482,9 @@ def _summarize_system(system: str, items: list[dict[str, Any]]) -> dict[str, Any
     return {
         "system": system,
         "cases": cases,
-        "retrieval_pass_rate": _round_float(_ratio(sum(1 for item in items if item["passed_retrieval"]), cases, empty=0.0)),
+        "retrieval_pass_rate": _round_float(
+            _ratio(sum(1 for item in items if item["passed_retrieval"]), cases, empty=0.0)
+        ),
         "mean_evidence_coverage": _round_float(_mean([item.get("evidence_coverage") for item in items])),
         "mean_subquestion_coverage": _round_float(_mean([item.get("subquestion_coverage") for item in items])),
         "mean_answer_clause_coverage": _round_float(_mean([item.get("answer_clause_coverage") for item in items])),
@@ -513,11 +516,7 @@ def _pairwise(systems: list[dict[str, Any]], items: list[dict[str, Any]]) -> lis
     out: list[dict[str, Any]] = []
     for left, right in itertools.combinations([row["system"] for row in systems], 2):
         shared_case_ids = sorted(
-            {
-                case_id
-                for system, case_id in by_system_case
-                if system == left and (right, case_id) in by_system_case
-            }
+            {case_id for system, case_id in by_system_case if system == left and (right, case_id) in by_system_case}
         )
         left_wins = right_wins = ties = 0
         deltas: list[dict[str, Any]] = []
@@ -578,8 +577,7 @@ def evaluate_mixed_rag_quality(*, cases: list[dict[str, Any]], runs: list[dict[s
         grouped.setdefault(item["system"], []).append(item)
     systems = [_summarize_system(system, grouped[system]) for system in sorted(grouped)]
     leaderboard = [
-        {"rank": index, **row}
-        for index, row in enumerate(sorted(systems, key=_leaderboard_key, reverse=True), start=1)
+        {"rank": index, **row} for index, row in enumerate(sorted(systems, key=_leaderboard_key, reverse=True), start=1)
     ]
     return {
         "schema": SCHEMA,
@@ -706,7 +704,9 @@ def build_markdown_report(report: dict[str, Any]) -> str:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Evaluate complex mixed RAG cases using deterministic evidence rubrics.")
+    parser = argparse.ArgumentParser(
+        description="Evaluate complex mixed RAG cases using deterministic evidence rubrics."
+    )
     parser.add_argument("--cases", required=True, help="Cases JSON: list or mimirq.mixed_rag_eval_cases.v1 object.")
     parser.add_argument(
         "--run",
@@ -728,7 +728,9 @@ def main(argv: list[str] | None = None) -> int:
         if not args.run:
             print("--run is required at least once", file=sys.stderr)
             return 2
-        report = evaluate_mixed_rag_quality(cases=load_cases(str(args.cases)), runs=[_load_run_arg(value) for value in args.run])
+        report = evaluate_mixed_rag_quality(
+            cases=load_cases(str(args.cases)), runs=[_load_run_arg(value) for value in args.run]
+        )
         report["gate"] = _evaluate_gate(report, args)
     except Exception as exc:  # noqa: BLE001
         print(f"[mixed-rag-quality] ERR: {exc}", file=sys.stderr)

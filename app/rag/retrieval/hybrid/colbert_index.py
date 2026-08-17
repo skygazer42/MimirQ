@@ -112,7 +112,9 @@ class ColbertIndexMixin:
             return
 
         try:
-            store = store_cls(base_dir=str(getattr(settings, "COLBERT_RETRIEVAL_INDEX_DIR", COLBERT_INDEX_DIR_FALLBACK) or ""))
+            store = store_cls(
+                base_dir=str(getattr(settings, "COLBERT_RETRIEVAL_INDEX_DIR", COLBERT_INDEX_DIR_FALLBACK) or "")
+            )
             store.save(
                 cache_key=cache_key,
                 provider_config=provider_config,
@@ -244,7 +246,7 @@ class ColbertIndexMixin:
             vectors = np.stack([vec_by_id[cid] for cid in doc_ids], axis=0).astype(np.float32, copy=False)
             return doc_ids, vectors
         except Exception as exc:
-            _log_retriever_fallback('_upsert_colbert_index_incremental', exc)
+            _log_retriever_fallback("_upsert_colbert_index_incremental", exc)
             return None
 
     def _upsert_colbert_index_incremental(
@@ -402,7 +404,9 @@ class ColbertIndexMixin:
         except Exception as exc:
             logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
 
-    def _resolve_colbert_readiness(self, resolve_provider_capability: Any, *, docs: list[Document]) -> tuple[int, dict[str, Any]]:
+    def _resolve_colbert_readiness(
+        self, resolve_provider_capability: Any, *, docs: list[Document]
+    ) -> tuple[int, dict[str, Any]]:
         max_docs = self._resolve_colbert_max_docs()
         readiness = resolve_provider_capability(
             colbert_enabled=bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)),
@@ -457,13 +461,15 @@ class ColbertIndexMixin:
         if not bool(getattr(settings, "COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
             return None
         try:
-            store = store_cls(base_dir=str(getattr(settings, "COLBERT_RETRIEVAL_INDEX_DIR", COLBERT_INDEX_DIR_FALLBACK) or ""))
+            store = store_cls(
+                base_dir=str(getattr(settings, "COLBERT_RETRIEVAL_INDEX_DIR", COLBERT_INDEX_DIR_FALLBACK) or "")
+            )
             loaded = store.load(cache_key=cache_key, provider_config=provider_config, expected_fingerprint=expected_fp)
             if loaded is not None:
                 self._colbert_index_cache[cache_key] = loaded
             return loaded
         except Exception as exc:
-            _log_retriever_fallback('_search_colbert_ann', exc)
+            _log_retriever_fallback("_search_colbert_ann", exc)
             return None
 
     def _ensure_colbert_search_index(
@@ -498,7 +504,7 @@ class ColbertIndexMixin:
                 if self._colbert_index_matches(index, expected_fp=expected_fp, provider_config=provider_config):
                     return index
         except Exception as exc:
-            _log_retriever_fallback('_search_colbert_ann', exc)
+            _log_retriever_fallback("_search_colbert_ann", exc)
         return None
 
     @staticmethod

@@ -60,10 +60,16 @@ def _selected_extraction_pipeline_hash(document: DBDocument, options: KGExtracti
     return explicit or _doc_pipeline_hash(getattr(document, "doc_metadata", None) or {})
 
 
-def _scope_chunks_to_pipeline(chunks: list[DocumentChunk], *, document_id: UUID, pipeline_hash: str | None) -> list[DocumentChunk]:
+def _scope_chunks_to_pipeline(
+    chunks: list[DocumentChunk], *, document_id: UUID, pipeline_hash: str | None
+) -> list[DocumentChunk]:
     if not pipeline_hash:
         return chunks
-    scoped = [chunk for chunk in chunks if _chunk_matches_pipeline(chunk, document_id=document_id, pipeline_hash=pipeline_hash)]
+    scoped = [
+        chunk
+        for chunk in chunks
+        if _chunk_matches_pipeline(chunk, document_id=document_id, pipeline_hash=pipeline_hash)
+    ]
     if not scoped:
         raise HTTPException(status_code=409, detail=KG_PIPELINE_CHUNKS_NOT_FOUND_DETAIL)
     return scoped
@@ -91,7 +97,9 @@ def _document_kg_python_plugin(document: DBDocument) -> tuple[str | None, dict[s
     return (kg_ref or None), dict(params)
 
 
-def _effective_kg_extraction_options(document: DBDocument, options: KGExtractionOptions) -> KGExtractionEffectiveOptions:
+def _effective_kg_extraction_options(
+    document: DBDocument, options: KGExtractionOptions
+) -> KGExtractionEffectiveOptions:
     kg_python_plugin, kg_python_params = _document_kg_python_plugin(document)
     return KGExtractionEffectiveOptions(
         pipeline_hash=_selected_extraction_pipeline_hash(document, options),
@@ -118,7 +126,9 @@ def _effective_kg_extraction_options(document: DBDocument, options: KGExtraction
         ),
         extract_relations=options.extract_relations if isinstance(options.extract_relations, bool) else None,
         extract_skills=options.extract_skills if isinstance(options.extract_skills, bool) else None,
-        extraction_backend=(str(options.extraction_backend).strip() if isinstance(options.extraction_backend, str) else None),
+        extraction_backend=(
+            str(options.extraction_backend).strip() if isinstance(options.extraction_backend, str) else None
+        ),
     )
 
 
@@ -212,9 +222,7 @@ async def _enqueue_kg_extraction_response(
             prompt_template_key=effective.prompt_template_key,
             prompt_ab_experiment_key=effective.prompt_ab_experiment_key,
             extraction_backend=(
-                effective.extraction_backend
-                or (getattr(settings, "KG_EXTRACTION_BACKEND", "") or "").strip()
-                or None
+                effective.extraction_backend or (getattr(settings, "KG_EXTRACTION_BACKEND", "") or "").strip() or None
             ),
             kg_python_plugin=effective.kg_python_plugin,
             kg_python_params=effective.kg_python_params,

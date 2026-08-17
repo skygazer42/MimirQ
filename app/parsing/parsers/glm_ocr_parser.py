@@ -12,7 +12,6 @@ Expected service behaviors (best-effort):
   - text/*: markdown directly
 """
 
-
 import re
 import zipfile
 from pathlib import Path
@@ -127,7 +126,9 @@ class GlmOCRParser:
         extra_meta: dict[str, Any] = {}
         if self._looks_like_zip(resp):
             artifact_root = self._build_artifact_root(file_path, document_id)
-            markdown_text, extra_meta = self._parse_zip_payload(artifact_root=artifact_root, zip_bytes=resp.content or b"")
+            markdown_text, extra_meta = self._parse_zip_payload(
+                artifact_root=artifact_root, zip_bytes=resp.content or b""
+            )
         else:
             ctype = str(resp.headers.get("content-type") or "").lower()
             if "application/json" in ctype:
@@ -157,4 +158,3 @@ class GlmOCRParser:
         metadata.update(extra_meta)
 
         return [Document(page_content=markdown_text, metadata=metadata)]
-

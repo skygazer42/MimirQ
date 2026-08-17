@@ -34,13 +34,15 @@ def test_delete_document_minio_images_streams_chunk_img_ids_and_batches_cleanup(
             return self
 
         def __iter__(self):
-            return iter([
-                ("img-2",),
-                ("img-1",),
-                ("img-2",),
-                (None,),
-                (" ",),
-            ])
+            return iter(
+                [
+                    ("img-2",),
+                    ("img-1",),
+                    ("img-2",),
+                    (None,),
+                    (" ",),
+                ]
+            )
 
         def all(self):
             raise AssertionError("chunk image cleanup should stream instead of materializing all rows")
@@ -129,7 +131,13 @@ def test_minio_delete_images_uses_batch_remove_objects_and_surfaces_aggregated_f
     ]
     assert metric_calls[0][:3] == ("delete", True, "images/tenant/dataset/doc/img-1.jpg")
     assert metric_calls[1][:3] == ("delete", True, "images/tenant/dataset/doc/img-2.jpg")
-    assert metric_calls[2] == ("delete", False, "images/tenant/dataset/doc/img-3.jpg", "DeleteError(code='InternalError', message='boom', name='images/tenant/dataset/doc/img-3.jpg', version_id=None)")
+    assert metric_calls[2] == (
+        "delete",
+        False,
+        "images/tenant/dataset/doc/img-3.jpg",
+        "DeleteError(code='InternalError', message='boom', "
+        "name='images/tenant/dataset/doc/img-3.jpg', version_id=None)",
+    )
 
 
 def test_dataset_scoped_vector_collections_stream_chunk_metadata_fields(

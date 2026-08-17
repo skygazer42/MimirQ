@@ -1,4 +1,3 @@
-
 from collections import Counter
 from typing import Any
 
@@ -27,7 +26,9 @@ def _safe_query(row: dict[str, Any]) -> str:
     return str(row.get("original_query") or "").strip()
 
 
-def _build_glossary_suggestions(rows: list[dict[str, Any]], *, ruleset: IndustryRuleset | None, top_k: int) -> list[dict[str, Any]]:
+def _build_glossary_suggestions(
+    rows: list[dict[str, Any]], *, ruleset: IndustryRuleset | None, top_k: int
+) -> list[dict[str, Any]]:
     pattern_summary = mine_query_patterns(rows, abbreviation_min_frequency=1, top_k_keywords=max(1, int(top_k or 1)))
     existing = set((ruleset.glossary or {}).keys()) if ruleset is not None else set()
     out: list[dict[str, Any]] = []
@@ -44,7 +45,9 @@ def _build_glossary_suggestions(rows: list[dict[str, Any]], *, ruleset: Industry
 def _build_pattern_suggestions(rows: list[dict[str, Any]], *, top_k: int) -> list[dict[str, Any]]:
     suggestions: list[dict[str, Any]] = []
     for pattern_key, spec in _PATTERN_LIBRARY.items():
-        matches = [query for row in rows if (query := _safe_query(row)) and any(marker in query for marker in spec["markers"])]
+        matches = [
+            query for row in rows if (query := _safe_query(row)) and any(marker in query for marker in spec["markers"])
+        ]
         if not matches:
             continue
         suggestions.append(

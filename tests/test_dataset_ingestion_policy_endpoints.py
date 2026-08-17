@@ -1,4 +1,3 @@
-
 import json
 import uuid
 
@@ -52,8 +51,12 @@ def test_dataset_ingestion_policy_put_get_and_import_export(monkeypatch):  # noq
     ds = _Dataset()
 
     monkeypatch.setattr(DatasetService, "get_dataset", lambda _db, _tenant_id, _did: ds, raising=True)
-    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda _db, _dataset, _account_id: None, raising=True)
-    monkeypatch.setattr(DatasetService, "assert_dataset_writable", lambda _db, _dataset, _account_id: None, raising=True)
+    monkeypatch.setattr(
+        DatasetService, "assert_dataset_readable", lambda _db, _dataset, _account_id: None, raising=True
+    )
+    monkeypatch.setattr(
+        DatasetService, "assert_dataset_writable", lambda _db, _dataset, _account_id: None, raising=True
+    )
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db
@@ -131,7 +134,9 @@ def test_dataset_ingestion_policy_import_replace_false_conflict(monkeypatch):  #
     ds = _Dataset()
 
     monkeypatch.setattr(DatasetService, "get_dataset", lambda _db, _tenant_id, _did: ds, raising=True)
-    monkeypatch.setattr(DatasetService, "assert_dataset_writable", lambda _db, _dataset, _account_id: None, raising=True)
+    monkeypatch.setattr(
+        DatasetService, "assert_dataset_writable", lambda _db, _dataset, _account_id: None, raising=True
+    )
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db
@@ -187,7 +192,9 @@ def test_dataset_ingestion_policy_get_exposes_table_routing_policy_audit(monkeyp
     ds = _Dataset()
 
     monkeypatch.setattr(DatasetService, "get_dataset", lambda _db, _tenant_id, _did: ds, raising=True)
-    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda _db, _dataset, _account_id: None, raising=True)
+    monkeypatch.setattr(
+        DatasetService, "assert_dataset_readable", lambda _db, _dataset, _account_id: None, raising=True
+    )
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db

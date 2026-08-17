@@ -1,4 +1,3 @@
-
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -256,7 +255,7 @@ def _extract_blocks(markdown: str) -> tuple[list[_Block], int]:
 
     for match in POSITION_TAG_RE.finditer(markdown):
         tag = _parse_tag(match)
-        cursor_text = markdown[cursor:match.start()]
+        cursor_text = markdown[cursor : match.start()]
         has_text = bool(cursor_text.strip())
         if has_text or not has_last_block:
             blocks_tags.append([])
@@ -491,7 +490,9 @@ def _score_reading_order_markdown(markdown: str, *, max_blocks: int = 600, min_b
     }
 
 
-def score_reading_order(subject: str | Sequence[Any] | None, *, max_blocks: int = 600, min_blocks: int = 6) -> dict[str, Any]:
+def score_reading_order(
+    subject: str | Sequence[Any] | None, *, max_blocks: int = 600, min_blocks: int = 6
+) -> dict[str, Any]:
     if isinstance(subject, str):
         return _score_reading_order_markdown(subject, max_blocks=max_blocks, min_blocks=min_blocks)
     return _score_reading_order_items(subject)

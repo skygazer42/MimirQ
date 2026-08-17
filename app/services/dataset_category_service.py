@@ -7,7 +7,6 @@ Provides:
 - Pure helpers for building trees (unit-testable)
 """
 
-
 from collections.abc import Iterable
 from typing import Any
 from uuid import UUID
@@ -249,7 +248,9 @@ class DatasetCategoryService:
             .filter(DatasetCategory.tenant_id == tenant_id)
             .all()
         }
-        if would_create_cycle(category_id=row.id, new_parent_id=parent.id if parent else None, parent_by_id=parent_by_id):
+        if would_create_cycle(
+            category_id=row.id, new_parent_id=parent.id if parent else None, parent_by_id=parent_by_id
+        ):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid parent: cycle detected")
 
         row.parent_id = parent.id if parent is not None else None
@@ -318,7 +319,9 @@ class DatasetCategoryService:
             found = {r[0] for r in rows}
             missing = [str(cid) for cid in normalized if cid not in found]
             if missing:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown category id(s): {', '.join(missing)}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown category id(s): {', '.join(missing)}"
+                )
 
         # Replace assignment.
         db.query(DatasetCategoryMembership).filter(

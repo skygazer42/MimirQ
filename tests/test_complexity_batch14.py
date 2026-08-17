@@ -239,7 +239,13 @@ def test_access_graph_diff_preserves_changed_fields_and_top_churn() -> None:
     records_b = [
         {"kind": "group", "id": "group-1", "name": "Admins", "external_id": "ext-2"},
         {"kind": "dataset", "id": "dataset-1", "permission": "write", "owner_id": "owner-1", "name": "Alpha 2"},
-        {"kind": "document", "id": "doc-1", "dataset_id": "dataset-2", "access_mode": "explicit", "owner_id": "owner-2"},
+        {
+            "kind": "document",
+            "id": "doc-1",
+            "dataset_id": "dataset-2",
+            "access_mode": "explicit",
+            "owner_id": "owner-2",
+        },
         {"kind": "group_member", "group_id": "group-1", "user_id_hash": "user-hash-2"},
         {"kind": "dataset_member_permission", "dataset_id": "dataset-1", "account_id": "acct-1"},
     ]
@@ -252,9 +258,7 @@ def test_access_graph_diff_preserves_changed_fields_and_top_churn() -> None:
     assert diff["summary"]["kinds"]["group_member"]["added"] == 1
     assert diff["summary"]["kinds"]["group_member"]["removed"] == 1
     assert diff["examples"]["group_changed"] == [{"id": "group-1", "changed_fields": ["external_id_hash"]}]
-    assert diff["examples"]["dataset_changed"] == [
-        {"id": "dataset-1", "changed_fields": ["permission", "name_hash"]}
-    ]
+    assert diff["examples"]["dataset_changed"] == [{"id": "dataset-1", "changed_fields": ["permission", "name_hash"]}]
     assert diff["examples"]["document_changed"] == [
         {"id": "doc-1", "changed_fields": ["dataset_id", "access_mode", "owner_id_hash"]}
     ]
@@ -315,7 +319,10 @@ async def test_stream_graph_chat_events_preserve_event_order_and_result_contract
     )
 
     result_holder: dict[str, object] = {}
-    events = [event async for event in chat_stream_graph.stream_graph_chat_events(context=context, result_holder=result_holder)]
+    events = [
+        event
+        async for event in chat_stream_graph.stream_graph_chat_events(context=context, result_holder=result_holder)
+    ]
 
     assert [event["type"] for event in events] == ["event", "graph", "citations", "token"]
     assert events[0]["data"]["message"] == "尝试表格查询（TAG）…"

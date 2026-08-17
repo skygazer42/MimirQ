@@ -1,4 +1,3 @@
-
 from datetime import UTC, datetime
 from typing import Any
 
@@ -165,12 +164,12 @@ def build_poc_interaction_row(source: dict[str, Any]) -> dict[str, Any]:
         if assistant_meta.get("completion_tokens") is not None
         else assistant_meta.get("cost_llm_completion_tokens")
     )
-    answer_tokens = _coerce_int(assistant_meta.get("answer_tokens") or completion_tokens or assistant_message.get("token_count"))
+    answer_tokens = _coerce_int(
+        assistant_meta.get("answer_tokens") or completion_tokens or assistant_message.get("token_count")
+    )
 
     request_id = _safe_str(
-        trace.get("request_id")
-        or assistant_meta.get("request_id")
-        or feedback_extra.get("retrieval_trace_request_id"),
+        trace.get("request_id") or assistant_meta.get("request_id") or feedback_extra.get("retrieval_trace_request_id"),
         max_len=255,
     )
     conversation_id = _safe_str(
@@ -233,7 +232,9 @@ def build_poc_interaction_row(source: dict[str, Any]) -> dict[str, Any]:
         ),
         "latency_total_sec": round(float(total_elapsed_sec), 4) if total_elapsed_sec is not None else None,
         "retrieval_elapsed_sec": round(float(retrieval_elapsed_sec), 4) if retrieval_elapsed_sec is not None else None,
-        "generation_elapsed_sec": round(float(generation_elapsed_sec), 4) if generation_elapsed_sec is not None else None,
+        "generation_elapsed_sec": round(float(generation_elapsed_sec), 4)
+        if generation_elapsed_sec is not None
+        else None,
         "rewrite_elapsed_sec": round(float(rewrite_elapsed_sec), 4) if rewrite_elapsed_sec is not None else None,
         "hyde_elapsed_sec": round(float(hyde_elapsed_sec), 4) if hyde_elapsed_sec is not None else None,
         "decompose_elapsed_sec": round(float(decompose_elapsed_sec), 4) if decompose_elapsed_sec is not None else None,

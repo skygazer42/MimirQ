@@ -10,7 +10,6 @@ Defaults:
 - uses app.parsing.utils.text.read_text_file() for best-effort decoding
 """
 
-
 import argparse
 import os
 import shutil
@@ -42,7 +41,9 @@ def _is_under(path: Path, root: Path) -> bool:
         return False
 
 
-def convert_encoding(*, source_dir: Path, target_dir: Path, extensions: set[str], clean_target: bool, dry_run: bool) -> int:
+def convert_encoding(
+    *, source_dir: Path, target_dir: Path, extensions: set[str], clean_target: bool, dry_run: bool
+) -> int:
     source_dir = source_dir.resolve()
     target_dir = target_dir.resolve()
 
@@ -109,4 +110,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

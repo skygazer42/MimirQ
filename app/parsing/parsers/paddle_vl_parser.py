@@ -9,7 +9,6 @@ Config via env/.env:
 - PADDLE_VL_API_URL=http://localhost:9030/convert  (your service endpoint)
 """
 
-
 import json
 import re
 import shutil
@@ -150,7 +149,9 @@ class PaddleVLParser:
             logger.warning("[paddle_vl] invalid page directory: %s", page_dir.name)
             return None
 
-    def _move_page_images(self, *, page_dir: Path, standard_image_dir: Path, image_counter: int) -> tuple[int, dict[str, str]]:
+    def _move_page_images(
+        self, *, page_dir: Path, standard_image_dir: Path, image_counter: int
+    ) -> tuple[int, dict[str, str]]:
         imgs_dir = page_dir / "imgs"
         if not imgs_dir.exists():
             return image_counter, {}
@@ -175,7 +176,9 @@ class PaddleVLParser:
             pass
         return image_counter, page_mapping
 
-    def _collect_image_mapping(self, *, output_dir: Path, standard_image_dir: Path) -> tuple[dict[int, dict[str, str]], int, list[Path]]:
+    def _collect_image_mapping(
+        self, *, output_dir: Path, standard_image_dir: Path
+    ) -> tuple[dict[int, dict[str, str]], int, list[Path]]:
         image_mapping: dict[int, dict[str, str]] = {}
         image_counter = 1
         page_dirs = self._page_dirs(output_dir)
@@ -214,7 +217,9 @@ class PaddleVLParser:
                     block["img_path"] = f"{self.STANDARD_IMAGE_DIR}/{new_img_name}"
                     break
 
-    def _merge_page_jsons(self, *, page_dirs: list[Path], image_mapping: dict[int, dict[str, str]]) -> list[dict[str, Any]]:
+    def _merge_page_jsons(
+        self, *, page_dirs: list[Path], image_mapping: dict[int, dict[str, str]]
+    ) -> list[dict[str, Any]]:
         all_pages_data: list[dict[str, Any]] = []
         for page_dir in page_dirs:
             json_files = list(page_dir.glob("*_res.json"))

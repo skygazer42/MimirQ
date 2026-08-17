@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Build a node-level Dify workflow trace report from collected golden answers."""
 
-
 import argparse
 import json
 import os
@@ -139,7 +138,9 @@ def _result_titles(outputs: Any) -> list[str]:
         if not isinstance(item, dict):
             continue
         metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
-        title = _text(item.get("title") or item.get("document_name") or metadata.get("document_name") or metadata.get("title"))
+        title = _text(
+            item.get("title") or item.get("document_name") or metadata.get("document_name") or metadata.get("title")
+        )
         if title:
             titles.append(title)
     return titles
@@ -396,9 +397,7 @@ def collect_trace_report(
         if item.get("retrievals") and all((entry.get("count") or 0) == 0 for entry in item.get("retrievals") or [])
     ]
     nonempty_retrieval_cases = [
-        item
-        for item in retrieval_cases
-        if any((entry.get("count") or 0) > 0 for entry in item.get("retrievals") or [])
+        item for item in retrieval_cases if any((entry.get("count") or 0) > 0 for entry in item.get("retrievals") or [])
     ]
     summary: dict[str, Any] = {
         "cases": len(cases),
@@ -411,7 +410,9 @@ def collect_trace_report(
     expected_area_cases = sum(1 for item in traced_cases if _text(item.get("expected_area")))
     if expected_area_cases:
         summary["expected_area_cases"] = expected_area_cases
-        summary["node_route_mismatch_cases"] = sum(1 for item in traced_cases if item.get("node_route_matched") is False)
+        summary["node_route_mismatch_cases"] = sum(
+            1 for item in traced_cases if item.get("node_route_matched") is False
+        )
         summary["route_compensated_cases"] = sum(1 for item in traced_cases if item.get("route_compensated") is True)
         summary["route_mismatch_cases"] = sum(1 for item in traced_cases if item.get("route_matched") is False)
         summary["region_mismatch_cases"] = sum(1 for item in traced_cases if item.get("region_matched") is False)
@@ -441,7 +442,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Build a Dify node-execution trace report for golden answers.")
     parser.add_argument("--answers", required=True)
     parser.add_argument("--app-id", required=True)
-    parser.add_argument("--console-base-url", default=os.getenv("DIFY_CONSOLE_API_BASE_URL") or DEFAULT_CONSOLE_BASE_URL)
+    parser.add_argument(
+        "--console-base-url", default=os.getenv("DIFY_CONSOLE_API_BASE_URL") or DEFAULT_CONSOLE_BASE_URL
+    )
     parser.add_argument("--console-token", default=os.getenv("DIFY_CONSOLE_TOKEN") or "")
     parser.add_argument("--storage-state", default=DEFAULT_STORAGE_STATE)
     parser.add_argument("--timeout", type=float, default=30.0)

@@ -1,4 +1,3 @@
-
 import math
 from typing import Any
 
@@ -88,7 +87,9 @@ def _resolve_retrieved_ids(*, query_id: str, model_run: dict[str, Any], top_k: i
         return _normalize_ids(direct)[: max(1, int(top_k or 1))]
 
     query_embeddings = model_run.get("query_embeddings") if isinstance(model_run.get("query_embeddings"), dict) else {}
-    corpus_embeddings = model_run.get("corpus_embeddings") if isinstance(model_run.get("corpus_embeddings"), dict) else {}
+    corpus_embeddings = (
+        model_run.get("corpus_embeddings") if isinstance(model_run.get("corpus_embeddings"), dict) else {}
+    )
     query_embedding = query_embeddings.get(query_id)
     if isinstance(query_embedding, list) and corpus_embeddings:
         return rank_corpus_by_cosine(

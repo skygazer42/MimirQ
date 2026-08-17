@@ -1,4 +1,5 @@
 """Chunk post-processing helpers: truncation, sampling, offset rebasing, small-chunk merging."""
+
 from typing import Any
 
 from langchain_core.documents import Document
@@ -71,9 +72,7 @@ def _truncate_head_chunks(
 ) -> tuple[list[Document], dict[str, Any]]:
     kept_chunks = chunks[:max_chunks]
     asset_kept = sum(
-        1
-        for c in kept_chunks
-        if _chunk_has_asset(c.metadata if isinstance(getattr(c, "metadata", None), dict) else {})
+        1 for c in kept_chunks if _chunk_has_asset(c.metadata if isinstance(getattr(c, "metadata", None), dict) else {})
     )
     return kept_chunks, {
         "strategy": "head",
@@ -344,8 +343,12 @@ def _refresh_merged_chunk_content_metadata(
     for key in _MERGED_CHUNK_STALE_CONTENT_METADATA_KEYS:
         meta.pop(key, None)
 
-    first_has_retrieval = isinstance(first_meta.get("_retrieval_text"), str) and bool(str(first_meta["_retrieval_text"]).strip())
-    second_has_retrieval = isinstance(second_meta.get("_retrieval_text"), str) and bool(str(second_meta["_retrieval_text"]).strip())
+    first_has_retrieval = isinstance(first_meta.get("_retrieval_text"), str) and bool(
+        str(first_meta["_retrieval_text"]).strip()
+    )
+    second_has_retrieval = isinstance(second_meta.get("_retrieval_text"), str) and bool(
+        str(second_meta["_retrieval_text"]).strip()
+    )
     if first_has_retrieval or second_has_retrieval:
         pieces = [
             text

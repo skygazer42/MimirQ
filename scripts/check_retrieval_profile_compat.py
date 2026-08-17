@@ -1,4 +1,3 @@
-
 import argparse
 import json
 import sys
@@ -31,7 +30,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--retrieval-profile", type=str, default="recall50")
     p.add_argument("--top-k", type=int, default=int(getattr(settings, "RETRIEVAL_TOP_K", 10) or 10))
-    p.add_argument("--score-threshold", type=float, default=float(getattr(settings, "SIMILARITY_THRESHOLD", 0.0) or 0.0))
+    p.add_argument(
+        "--score-threshold", type=float, default=float(getattr(settings, "SIMILARITY_THRESHOLD", 0.0) or 0.0)
+    )
     p.add_argument("--retrieval-mode", type=str, default=str(getattr(settings, "RETRIEVAL_MODE", "hybrid") or "hybrid"))
     p.add_argument("--enable-reranker", type=_parse_bool, default=bool(getattr(settings, "ENABLE_RERANKER", False)))
     p.add_argument("--reranker-provider", type=str, default=str(getattr(settings, "RERANKER_PROVIDER", "llm") or "llm"))

@@ -22,7 +22,9 @@ def test_chat_cache_key_differs_across_dataset_scopes(monkeypatch) -> None:
         pytest.skip("build_chat_cache_key missing dataset_id parameter")
 
     # Keep pipeline stable for this test; scope changes should still affect key.
-    monkeypatch.setattr("app.services.chat_response_cache.current_embedding_space_hash", lambda: "embspace-a", raising=False)
+    monkeypatch.setattr(
+        "app.services.chat_response_cache.current_embedding_space_hash", lambda: "embspace-a", raising=False
+    )
 
     base = {
         "tenant_id": "t1",
@@ -58,10 +60,14 @@ def test_chat_cache_key_differs_across_embedding_space(monkeypatch) -> None:
         "use_graph": False,
     }
 
-    monkeypatch.setattr("app.services.chat_response_cache.current_embedding_space_hash", lambda: "embspace-a", raising=False)
+    monkeypatch.setattr(
+        "app.services.chat_response_cache.current_embedding_space_hash", lambda: "embspace-a", raising=False
+    )
     key_a = build_chat_cache_key(**base)
 
-    monkeypatch.setattr("app.services.chat_response_cache.current_embedding_space_hash", lambda: "embspace-b", raising=False)
+    monkeypatch.setattr(
+        "app.services.chat_response_cache.current_embedding_space_hash", lambda: "embspace-b", raising=False
+    )
     key_b = build_chat_cache_key(**base)
 
     assert key_a != key_b
@@ -71,7 +77,9 @@ def test_chat_cache_key_differs_across_corpus_cache_token(monkeypatch) -> None:
     if not _supports_dataset_id_param():
         pytest.skip("build_chat_cache_key missing dataset_id parameter")
 
-    monkeypatch.setattr("app.services.chat_response_cache.current_embedding_space_hash", lambda: "embspace-a", raising=False)
+    monkeypatch.setattr(
+        "app.services.chat_response_cache.current_embedding_space_hash", lambda: "embspace-a", raising=False
+    )
 
     base = {
         "tenant_id": "t1",

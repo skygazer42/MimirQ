@@ -4,7 +4,6 @@ Governance helper endpoints.
 This is primarily used by the UI for rule-pack discovery and profile editors.
 """
 
-
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 from uuid import UUID
@@ -80,17 +79,25 @@ class StaleDocumentsByDatasetResponse(BaseModel):
     items: list[StaleDocumentItem] = Field(default_factory=list)
 
 
-@router.get("/datasets/{dataset_id}/stale-documents", response_model=StaleDocumentsByDatasetResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/datasets/{dataset_id}/stale-documents",
+    response_model=StaleDocumentsByDatasetResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def list_stale_documents_by_dataset(
     dataset_id: UUID,
     mode: Annotated[Literal["overdue", "due_soon", "all"], Query()] = "all",
-    due_within_days: Annotated[int, Query(ge=0, le=365, description='Used for mode=due_soon/all when due_before is not set')] = 7,
-    due_before: Annotated[datetime | None, Query(description='Optional explicit upper bound for review_due_at')] = None,
-    as_of: Annotated[datetime | None, Query(description='Optional reference time (defaults to now, UTC)')] = None,
-    include_inactive: Annotated[bool, Query(description='Include archived/disabled documents')] = False,
+    due_within_days: Annotated[
+        int, Query(ge=0, le=365, description="Used for mode=due_soon/all when due_before is not set")
+    ] = 7,
+    due_before: Annotated[datetime | None, Query(description="Optional explicit upper bound for review_due_at")] = None,
+    as_of: Annotated[datetime | None, Query(description="Optional reference time (defaults to now, UTC)")] = None,
+    include_inactive: Annotated[bool, Query(description="Include archived/disabled documents")] = False,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    order_by: Annotated[Literal["review_due_at", "authority_level", "updated_at", "created_at", "filename"], Query()] = "review_due_at",
+    order_by: Annotated[
+        Literal["review_due_at", "authority_level", "updated_at", "created_at", "filename"], Query()
+    ] = "review_due_at",
     order_dir: Annotated[Literal["asc", "desc"], Query()] = "asc",
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],

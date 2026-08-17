@@ -10,7 +10,6 @@ This module is intentionally dependency-light so it can be used from API handler
 scripts, and unit tests without pulling in heavy service graphs.
 """
 
-
 import json
 from collections import defaultdict
 from collections.abc import Mapping, MutableMapping, Sequence
@@ -195,7 +194,8 @@ def build_rag_trace_index_from_records(
         retrieval = r.get("retrieval") if isinstance(r.get("retrieval"), Mapping) else {}
         question_hash = _safe_str(r.get("question_hash") or r.get("query_hash"), max_len=64)
         retrieval_config_hash = _safe_str(
-            (retrieval.get("retrieval_config_hash") if isinstance(retrieval, Mapping) else None) or r.get("retrieval_config_hash"),
+            (retrieval.get("retrieval_config_hash") if isinstance(retrieval, Mapping) else None)
+            or r.get("retrieval_config_hash"),
             max_len=128,
         )
 
@@ -381,7 +381,9 @@ def plan_feedback_hardcase_candidates(
         feedback_id, request_id, question_hash, trace = cluster_identity
         cluster = clusters.get(question_hash)
         if cluster is None:
-            cluster = _new_feedback_cluster(question_hash=question_hash, trace=trace, in_suite=question_hash in existing_qh)
+            cluster = _new_feedback_cluster(
+                question_hash=question_hash, trace=trace, in_suite=question_hash in existing_qh
+            )
             clusters[question_hash] = cluster
         _update_feedback_cluster(cluster, feedback_id=feedback_id, request_id=request_id, trace=trace)
 

@@ -3,7 +3,6 @@ Document processing pipeline schemas.
 Defines data models for document parsing, chunking, and other pipeline operations.
 """
 
-
 import re
 from typing import Any, Literal
 from uuid import UUID
@@ -35,6 +34,7 @@ class PDFQualityScore(BaseModel):
     - format_consistency_score (30%): Format consistency
     - table_quality_score (20%): Table completeness
     """
+
     score: float = Field(..., description="Overall score 0-1, higher is cleaner")
     text_quality_score: float = Field(..., description="Text extraction quality (0-1)")
     format_consistency_score: float = Field(..., description="Format consistency (0-1)")
@@ -295,13 +295,17 @@ class AutoAnnotationRequest(BaseModel):
         default="document_focus",
         description="document_focus extracts important document spans; compliance exposes PII/secret/entity detectors.",
     )
-    providers: list[Literal["cpu", "llm", "gliner", "keyword", "entity", "regex", "pii", "secret", "sensitive"]] | None = Field(
+    providers: (
+        list[Literal["cpu", "llm", "gliner", "keyword", "entity", "regex", "pii", "secret", "sensitive"]] | None
+    ) = Field(
         default=None,
         description="Optional explicit provider list. When omitted, legacy enable_* switches decide providers.",
         max_length=20,
     )
     enable_llm: bool = Field(default=False, description="Use configured LLM first for document_focus mode.")
-    enable_llm_topics: bool = Field(default=False, description="Return LLM document-level semantic tags when available.")
+    enable_llm_topics: bool = Field(
+        default=False, description="Return LLM document-level semantic tags when available."
+    )
     llm_model: str | None = Field(default=None, max_length=120)
     enable_keywords: bool = True
     enable_entities: bool = True
@@ -726,8 +730,12 @@ class PipelinePluginGoldenDraftImportResult(BaseModel):
     errors: list[dict[str, Any]] = Field(default_factory=list)
     created_case_ids: list[UUID] = Field(default_factory=list)
     updated_case_ids: list[UUID] = Field(default_factory=list)
-    skipped_case_ids: list[UUID] = Field(default_factory=list, description="Existing ids skipped because overwrite=false.")
-    case_ids: list[UUID] = Field(default_factory=list, description="Created ids followed by updated and skipped-existing ids.")
+    skipped_case_ids: list[UUID] = Field(
+        default_factory=list, description="Existing ids skipped because overwrite=false."
+    )
+    case_ids: list[UUID] = Field(
+        default_factory=list, description="Created ids followed by updated and skipped-existing ids."
+    )
 
 
 class PipelinePluginGoldenDraftResponse(BaseModel):

@@ -1,6 +1,7 @@
 """
 MimirQ API unified exception handling module
 """
+
 import traceback
 from typing import Any
 
@@ -21,11 +22,19 @@ from app.rag.core.logging import get_logger
 logger = get_logger("core.exceptions")
 
 _HINT_BY_KEY: dict[str, str] = {
-    "timeout": "Parsing timed out. Try a smaller file, choose a faster parser backend, or increase TASK_JOB_TIMEOUT_SEC.",
-    "payload_too_large": "Request payload is too large. Try a smaller file, or increase MAX_FILE_SIZE / REQUEST_MAX_BODY_BYTES.",
-    "result_too_large": "Parsing output is too large. Try a smaller file or reduce extracted content (e.g., fewer pages).",
+    "timeout": (
+        "Parsing timed out. Try a smaller file, choose a faster parser backend, or increase TASK_JOB_TIMEOUT_SEC."
+    ),
+    "payload_too_large": (
+        "Request payload is too large. Try a smaller file, or increase MAX_FILE_SIZE / REQUEST_MAX_BODY_BYTES."
+    ),
+    "result_too_large": (
+        "Parsing output is too large. Try a smaller file or reduce extracted content (e.g., fewer pages)."
+    ),
     "parse_failed": "Parsing failed. Try a different parser backend; for scanned PDFs you may need OCR.",
-    "preprocess_failed": "Preprocessing failed. Disable file preprocess steps in the ingestion policy or adjust the preprocess config.",
+    "preprocess_failed": (
+        "Preprocessing failed. Disable file preprocess steps in the ingestion policy or adjust the preprocess config."
+    ),
     "rate_limited": "You are being rate limited. Retry later, or reduce concurrent requests / embedding concurrency.",
 }
 
@@ -188,6 +197,7 @@ class LLMError(MimirQError):
 # to avoid circular imports.
 # =============================================================================
 
+
 class ExtractError(Exception):
     """Extraction failure."""
 
@@ -206,6 +216,7 @@ class ConfigError(Exception):
 
 class LLMTimeoutError(LLMError):
     """LLM timeout error."""
+
     def __init__(self, message: str = "LLM request timed out", provider: str | None = None):
         super().__init__(message=message, provider=provider)
 

@@ -111,7 +111,9 @@ def test_rebuild_persisted_retrieval_indexes_builds_under_cap(
 
     monkeypatch.setattr("app.rag.retriever.settings.RETRIEVAL_REBUILD_MAX_CHUNKS", 2, raising=False)
     monkeypatch.setattr(HybridRetriever, "_count_retrieval_docs_in_db", lambda self, db, **kwargs: 2, raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_load_retrieval_docs_from_db", lambda self, db, **kwargs: list(docs), raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever, "_load_retrieval_docs_from_db", lambda self, db, **kwargs: list(docs), raising=True
+    )  # noqa: ANN001,ARG005
     monkeypatch.setattr(
         HybridRetriever,
         "_build_bm25_index_from_documents",

@@ -1,4 +1,3 @@
-
 import json
 import logging
 import os
@@ -103,7 +102,9 @@ def _candidate_model_roots(model_type: str) -> list[Path]:
 
 def _required_files_ready(model_type: str) -> bool:
     required = PIPELINE_REQUIRED_FILES if model_type == "pipeline" else VLM_REQUIRED_FILES
-    return any(root.exists() and all((root / rel).exists() for rel in required) for root in _candidate_model_roots(model_type))
+    return any(
+        root.exists() and all((root / rel).exists() for rel in required) for root in _candidate_model_roots(model_type)
+    )
 
 
 def _env_bool(name: str, default: bool) -> bool:

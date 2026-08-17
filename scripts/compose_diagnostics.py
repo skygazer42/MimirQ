@@ -1,4 +1,3 @@
-
 import argparse
 import ipaddress
 import json
@@ -178,9 +177,7 @@ def _check_backend_ready(*, url: str, timeout_sec: float) -> dict[str, Any]:
         except ValueError:
             is_loopback = host == "localhost"
         open_url = (
-            urllib.request.build_opener(urllib.request.ProxyHandler({})).open
-            if is_loopback
-            else urllib.request.urlopen
+            urllib.request.build_opener(urllib.request.ProxyHandler({})).open if is_loopback else urllib.request.urlopen
         )
         with open_url(req, timeout=timeout_sec) as res:  # noqa: S310
             body = res.read()
@@ -259,7 +256,9 @@ def main(argv: list[str] | None = None) -> int:
         env = _read_env_file(repo_root / ".env")
         backend_port = _coerce_int(env.get("BACKEND_PORT"), default=8000)
         base_url = str(args.base_url).strip() or f"http://localhost:{backend_port}"
-        report["health"] = _check_backend_ready(url=f"{base_url}/api/v1/health/ready", timeout_sec=float(args.timeout_sec))
+        report["health"] = _check_backend_ready(
+            url=f"{base_url}/api/v1/health/ready", timeout_sec=float(args.timeout_sec)
+        )
 
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0

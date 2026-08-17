@@ -73,7 +73,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-delta-mrr", type=float, default=None, help="Override threshold for delta.mrr")
     parser.add_argument("--min-delta-recall", type=float, default=None, help="Override threshold for delta.recall")
     parser.add_argument("--min-delta-ndcg", type=float, default=None, help="Override threshold for delta.ndcg")
-    parser.add_argument("--min-cases-used", type=float, default=None, help="Override threshold for candidate.cases_used")
+    parser.add_argument(
+        "--min-cases-used", type=float, default=None, help="Override threshold for candidate.cases_used"
+    )
     parser.add_argument(
         "--canary-on-pass",
         action="store_true",
@@ -133,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
         f" failed={gate.get('summary', {}).get('failed')}"
     )
     if gate.get("reasons"):
-        for reason in (gate.get("reasons") or []):
+        for reason in gate.get("reasons") or []:
             print(f"[ltr_rollout_gate] reason: {reason}")
     if isinstance(gate_out.get("activation"), dict):
         activation = gate_out.get("activation") or {}

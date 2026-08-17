@@ -8,7 +8,6 @@ Goal:
 This is intentionally lightweight and "best-effort" (enterprise observability).
 """
 
-
 import uuid
 
 from sqlalchemy import Column, DateTime, ForeignKey, ForeignKeyConstraint, String, Text, UniqueConstraint
@@ -75,7 +74,9 @@ class IngestionRunDocument(Base):
     document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
 
     source_ref = Column(String(1000), nullable=True)  # filename / URL / key
-    status = Column(String(32), nullable=False, default="created")  # created|pending|processing|completed|failed|quarantined|cancelled
+    status = Column(
+        String(32), nullable=False, default="created"
+    )  # created|pending|processing|completed|failed|quarantined|cancelled
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

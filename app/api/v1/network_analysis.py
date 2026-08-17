@@ -1,4 +1,3 @@
-
 from collections import defaultdict, deque
 from typing import Literal
 
@@ -94,7 +93,9 @@ def _shortest_path(graph: dict[str, dict[str, float]], *, start_id: str, target_
     return []
 
 
-def _all_paths_between(graph: dict[str, dict[str, float]], *, start_id: str, target_id: str, max_hops: int) -> list[list[str]]:
+def _all_paths_between(
+    graph: dict[str, dict[str, float]], *, start_id: str, target_id: str, max_hops: int
+) -> list[list[str]]:
     out: list[list[str]] = []
 
     def _dfs(path: list[str]) -> None:
@@ -119,7 +120,9 @@ def _degree_centrality(graph: dict[str, dict[str, float]]) -> list[dict[str, flo
     return rows
 
 
-def _pagerank(graph: dict[str, dict[str, float]], *, damping: float = 0.85, max_iter: int = 40) -> list[dict[str, float | str]]:
+def _pagerank(
+    graph: dict[str, dict[str, float]], *, damping: float = 0.85, max_iter: int = 40
+) -> list[dict[str, float | str]]:
     nodes = sorted(graph.keys())
     if not nodes:
         return []

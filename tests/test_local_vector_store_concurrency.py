@@ -402,13 +402,17 @@ def test_chroma_same_collection_serializes_initialization_and_adds(monkeypatch: 
     errors: list[BaseException] = []
 
     class _FakeChroma:
-        def __init__(self, *, collection_name: str, embedding_function: object, persist_directory: str | None = None) -> None:
+        def __init__(
+            self, *, collection_name: str, embedding_function: object, persist_directory: str | None = None
+        ) -> None:
             del embedding_function, persist_directory
             nonlocal init_calls
             with guard:
                 init_calls += 1
             self.collection_name = collection_name
-            self._collection = SimpleNamespace(delete=lambda **_kwargs: None, get=lambda **_kwargs: {"ids": [], "metadatas": []})
+            self._collection = SimpleNamespace(
+                delete=lambda **_kwargs: None, get=lambda **_kwargs: {"ids": [], "metadatas": []}
+            )
             self._first_add = True
             init_started.set()
             assert release_first.wait(timeout=3.0)
@@ -456,7 +460,9 @@ def test_chroma_add_documents_coerces_nested_metadata(monkeypatch: pytest.Monkey
     captured: list[dict[str, Any]] = []
 
     class _FakeChroma:
-        def __init__(self, *, collection_name: str, embedding_function: object, persist_directory: str | None = None) -> None:
+        def __init__(
+            self, *, collection_name: str, embedding_function: object, persist_directory: str | None = None
+        ) -> None:
             del collection_name, embedding_function, persist_directory
 
         def add_texts(self, texts: list[str], metadatas: list[dict[str, Any]], ids: list[str]) -> None:
@@ -530,7 +536,9 @@ def test_chroma_search_expands_candidate_window_until_filtered_hits_found(monkey
             return len(ranked_results)
 
     class _FakeChroma:
-        def __init__(self, *, collection_name: str, embedding_function: object, persist_directory: str | None = None) -> None:
+        def __init__(
+            self, *, collection_name: str, embedding_function: object, persist_directory: str | None = None
+        ) -> None:
             del collection_name, embedding_function, persist_directory
             self._collection = _FakeCollection()
 
@@ -604,7 +612,9 @@ def test_chroma_search_releases_tenant_lock_between_refill_rounds(monkeypatch: p
             return len(ranked_results)
 
     class _FakeChroma:
-        def __init__(self, *, collection_name: str, embedding_function: object, persist_directory: str | None = None) -> None:
+        def __init__(
+            self, *, collection_name: str, embedding_function: object, persist_directory: str | None = None
+        ) -> None:
             del collection_name, embedding_function, persist_directory
             self._collection = _FakeCollection()
 

@@ -1,4 +1,3 @@
-
 from io import BytesIO
 from typing import Any
 
@@ -18,12 +17,24 @@ def _draw_metric_section(draw: ImageDraw.ImageDraw, report: dict[str, Any], *, y
     for idx, card in enumerate(metric_cards[:5]):
         x0 = card_x + (idx % 3) * (card_width + gap)
         y0 = card_y + (idx // 3) * (card_height + gap)
-        draw.rounded_rectangle((x0, y0, x0 + card_width, y0 + card_height), radius=12, outline=(203, 213, 225), width=2, fill=(248, 250, 252))
+        draw.rounded_rectangle(
+            (x0, y0, x0 + card_width, y0 + card_height),
+            radius=12,
+            outline=(203, 213, 225),
+            width=2,
+            fill=(248, 250, 252),
+        )
         draw.text((x0 + 12, y0 + 10), str(card.get("key") or ""), fill=(71, 85, 105))
         draw.text((x0 + 12, y0 + 36), str(card.get("value")), fill=(15, 23, 42))
     if feedback_card:
         fy = card_y + 2 * (card_height + gap)
-        draw.rounded_rectangle((card_x, fy, card_x + card_width * 2 + gap, fy + 60), radius=12, outline=(191, 219, 254), width=2, fill=(239, 246, 255))
+        draw.rounded_rectangle(
+            (card_x, fy, card_x + card_width * 2 + gap, fy + 60),
+            radius=12,
+            outline=(191, 219, 254),
+            width=2,
+            fill=(239, 246, 255),
+        )
         draw.text((card_x + 12, fy + 10), str(feedback_card.get("key") or ""), fill=(30, 64, 175))
         draw.text((card_x + 12, fy + 32), str(feedback_card.get("value")), fill=(15, 23, 42))
         return fy + 78
@@ -56,7 +67,12 @@ def _draw_heatmap(draw: ImageDraw.ImageDraw, report: dict[str, Any], *, y: int) 
         )
         draw.text((cell_x + bar_width + 12, y), str(retrieval), fill=(31, 41, 55))
         draw.rectangle(
-            (cell_x + bar_width + 80, y + 4, cell_x + bar_width + 80 + int((negative / max_negative) * bar_width), y + 18),
+            (
+                cell_x + bar_width + 80,
+                y + 4,
+                cell_x + bar_width + 80 + int((negative / max_negative) * bar_width),
+                y + 18,
+            ),
             fill=(239, 68, 68),
         )
         draw.text((cell_x + bar_width * 2 + 92, y), str(negative), fill=(31, 41, 55))
@@ -113,7 +129,11 @@ def render_dataset_analysis_png(report: dict[str, Any]) -> bytes:
     draw = ImageDraw.Draw(image)
 
     y = 24
-    title = str(((report.get("meta") or {}).get("dataset_name")) or ((report.get("meta") or {}).get("dataset_id")) or "Dataset Analysis")
+    title = str(
+        ((report.get("meta") or {}).get("dataset_name"))
+        or ((report.get("meta") or {}).get("dataset_id"))
+        or "Dataset Analysis"
+    )
     draw.text((24, y), title, fill=(17, 24, 39))
     y += 36
     draw.text((24, y), f"generated_at: {((report.get('meta') or {}).get('generated_at') or '')}", fill=(75, 85, 99))

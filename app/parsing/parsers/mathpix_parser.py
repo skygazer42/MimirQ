@@ -1,4 +1,3 @@
-
 import asyncio
 from pathlib import Path
 from typing import Any
@@ -33,9 +32,7 @@ async def _call_mathpix_backend_async(*, file_path: Path, app_id: str, app_key: 
 
 
 def _call_mathpix_backend(*, file_path: Path, app_id: str, app_key: str) -> str:
-    return _run_coroutine_sync(
-        lambda: _call_mathpix_backend_async(file_path=file_path, app_id=app_id, app_key=app_key)
-    )
+    return _run_coroutine_sync(lambda: _call_mathpix_backend_async(file_path=file_path, app_id=app_id, app_key=app_key))
 
 
 class MathpixParser:
@@ -47,7 +44,9 @@ class MathpixParser:
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
         if file_path.suffix.lower() not in self.SUPPORTED_EXTENSIONS:
-            raise ValueError(f"MathpixParser supports only {sorted(self.SUPPORTED_EXTENSIONS)}, got: {file_path.suffix.lower()}")
+            raise ValueError(
+                f"MathpixParser supports only {sorted(self.SUPPORTED_EXTENSIONS)}, got: {file_path.suffix.lower()}"
+            )
 
         app_id = str(getattr(settings, "MATHPIX_APP_ID", "") or "").strip()
         app_key = str(getattr(settings, "MATHPIX_APP_KEY", "") or "").strip()

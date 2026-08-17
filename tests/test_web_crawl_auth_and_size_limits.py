@@ -174,7 +174,13 @@ async def test_crawl_site_passes_headers_to_page_fetch(monkeypatch: pytest.Monke
     )
 
     assert result.urls == ["https://example.com/start"]
-    assert page_fetch_headers == [{"Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8", "User-Agent": "MimirQ/1.0 (+web-crawl)", "Authorization": "Bearer secret-token"}]
+    assert page_fetch_headers == [
+        {
+            "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+            "User-Agent": "MimirQ/1.0 (+web-crawl)",
+            "Authorization": "Bearer secret-token",
+        }
+    ]
     assert result.sync_tokens["https://example.com/start"].startswith("content_type:text/html|body_sha256:")
 
 

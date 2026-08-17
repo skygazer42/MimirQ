@@ -35,9 +35,7 @@ _INDEXED_METADATA_SLOT_FIELD_PAIRS = tuple(
     for idx in range(1, _INDEXED_METADATA_SLOT_COUNT + 1)
 )
 _INDEXED_METADATA_VALUE_EXPR_FIELD = _INDEXED_METADATA_SLOT_FIELD_PAIRS[0][1]
-_INDEXED_METADATA_SLOT_FIELDS = frozenset(
-    field for pair in _INDEXED_METADATA_SLOT_FIELD_PAIRS for field in pair
-)
+_INDEXED_METADATA_SLOT_FIELDS = frozenset(field for pair in _INDEXED_METADATA_SLOT_FIELD_PAIRS for field in pair)
 
 # Safe allowlist for metadata expr pushdown (must exist in collection schema).
 _MILVUS_NUMERIC_FIELDS = frozenset({"chunk_index", "page_number"})
@@ -200,11 +198,7 @@ def _rehydrate_indexed_metadata_slots(meta: dict[str, Any]) -> dict[str, Any]:
 
 
 def _milvus_client_filter_spec(supported_filter: dict[str, Any]) -> dict[str, Any]:
-    out = {
-        key: value
-        for key, value in (supported_filter or {}).items()
-        if key != _INDEXED_METADATA_FILTERS_KEY
-    }
+    out = {key: value for key, value in (supported_filter or {}).items() if key != _INDEXED_METADATA_FILTERS_KEY}
     for item in supported_filter.get(_INDEXED_METADATA_FILTERS_KEY, []) or []:
         if not isinstance(item, dict):
             continue
@@ -216,11 +210,7 @@ def _milvus_client_filter_spec(supported_filter: dict[str, Any]) -> dict[str, An
 
 
 def _milvus_scalar_client_filter_spec(supported_filter: dict[str, Any]) -> dict[str, Any]:
-    return {
-        key: value
-        for key, value in (supported_filter or {}).items()
-        if key != _INDEXED_METADATA_FILTERS_KEY
-    }
+    return {key: value for key, value in (supported_filter or {}).items() if key != _INDEXED_METADATA_FILTERS_KEY}
 
 
 def _sanitize_milvus_metadata_filter(
@@ -368,7 +358,7 @@ def _milvus_value_expr(field: str, value: Any) -> str | None:
         except (TypeError, ValueError):
             return None
     if field in _MILVUS_STRING_FIELDS:
-        return f"\"{_escape_milvus_string(str(value))}\""
+        return f'"{_escape_milvus_string(str(value))}"'
     return None
 
 
@@ -526,6 +516,7 @@ def _build_milvus_metadata_expr(metadata_filter: dict[str, Any] | None) -> str |
 
 # ========= Embedding initialization ==========
 
+
 def _init_embedding_model():
     """Initialize embedding model using app.rag.embedding module."""
     from app.rag.embedding import create_langchain_embeddings_from_config
@@ -640,7 +631,9 @@ def _append_store_metadata_columns(
 
     fields = list(getattr(store, "fields", []))
     primary_field = _milvus_store_field_name(store, "_primary_field", "id")
-    allowed_fields = [field for field in fields if field != primary_field] if getattr(store, "auto_id", False) else fields
+    allowed_fields = (
+        [field for field in fields if field != primary_field] if getattr(store, "auto_id", False) else fields
+    )
     for metadata in metadatas:
         for key, value in metadata.items():
             if key in allowed_fields:
@@ -815,8 +808,7 @@ def _build_document_metadata(
     image_url = meta.get("image_url") or meta.get("img_url") or ""
     pipeline_hash = str(meta.get("pipeline_hash") or "")[:64]
     doc_pipeline_key = str(
-        meta.get("doc_pipeline_key")
-        or (f"{document_id}:{pipeline_hash}" if pipeline_hash else str(document_id))
+        meta.get("doc_pipeline_key") or (f"{document_id}:{pipeline_hash}" if pipeline_hash else str(document_id))
     )[:256]
     return vector_id, {
         "tenant_id": str(tenant_id),
@@ -901,7 +893,7 @@ def _dedupe_milvus_query_ids(ids: list[str]) -> list[str]:
 
 
 def _milvus_in_expr(field: str, values: list[str]) -> str | None:
-    items = [f"\"{_escape_milvus_string(value)}\"" for value in values]
+    items = [f'"{_escape_milvus_string(value)}"' for value in values]
     if not items:
         return None
     return f"{field} in [{', '.join(items)}]"
@@ -989,7 +981,8 @@ class MilvusSemanticCacheMaintenanceIterator:
             return []
         except Exception as exc:
             raise MilvusMaintenanceError(
-                f"semantic cache maintenance iterator failed for collection={self._collection_name}: {type(exc).__name__}: {exc}"
+                "semantic cache maintenance iterator failed for "
+                f"collection={self._collection_name}: {type(exc).__name__}: {exc}"
             ) from exc
 
         if rows in (None, []):
@@ -1029,11 +1022,13 @@ class MilvusSemanticCacheMaintenanceIterator:
             self._close()
         except Exception as exc:
             raise MilvusMaintenanceError(
-                f"semantic cache maintenance iterator close failed for collection={self._collection_name}: {type(exc).__name__}: {exc}"
+                "semantic cache maintenance iterator close failed for "
+                f"collection={self._collection_name}: {type(exc).__name__}: {exc}"
             ) from exc
 
 
 # ========= Generic Milvus adapter ==========
+
 
 class MilvusAdapter:
     """
@@ -1379,7 +1374,8 @@ class MilvusAdapter:
         col = getattr(store, "col", None)
         if col is None or not hasattr(col, "query_iterator"):
             raise MilvusMaintenanceError(
-                f"semantic cache maintenance requires Milvus query iterator support for collection={self.collection_name}"
+                "semantic cache maintenance requires Milvus query iterator support for "
+                f"collection={self.collection_name}"
             )
 
         primary_field = _milvus_store_field_name(store, "_primary_field", "id")
@@ -1403,7 +1399,8 @@ class MilvusAdapter:
             )
         except Exception as exc:
             raise MilvusMaintenanceError(
-                f"semantic cache maintenance query iterator failed for collection={self.collection_name}: {type(exc).__name__}: {exc}"
+                "semantic cache maintenance query iterator failed for "
+                f"collection={self.collection_name}: {type(exc).__name__}: {exc}"
             ) from exc
 
         next_batch = _milvus_iterator_next_callable(iterator)
@@ -1453,6 +1450,7 @@ def get_milvus_adapter(
 
 # ========= Document vector store (singleton) ==========
 
+
 class MilvusVectorStore:
     """
     Milvus vector store service (document vectors, singleton).
@@ -1494,7 +1492,11 @@ class MilvusVectorStore:
     def get_embedding_model(self):  # noqa: ANN201
         with self._store_lock:
             current_space = self._current_embedding_space_hash()
-            if self._embedding_model is not None and self._embedding_space_hash and current_space != self._embedding_space_hash:
+            if (
+                self._embedding_model is not None
+                and self._embedding_space_hash
+                and current_space != self._embedding_space_hash
+            ):
                 logger.info(
                     "Embedding space changed; rebuilding Milvus embedding client (%s -> %s)",
                     self._embedding_space_hash,

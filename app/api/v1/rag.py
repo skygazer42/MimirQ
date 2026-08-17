@@ -6,7 +6,6 @@ For debugging and validating:
 - Access control (tenant + account + document_ids)
 """
 
-
 import time
 from typing import Annotated, Any
 from uuid import UUID
@@ -128,8 +127,7 @@ def _enforce_non_empty_retrieval_scope(
         )
         q = q.filter(DBDocument.publication_status == "published")
         q = q.filter(
-            (DBDocument.status == "completed")
-            | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
+            (DBDocument.status == "completed") | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
         )
         exists = q.with_entities(DBDocument.id).order_by(DBDocument.updated_at.desc()).limit(1).first()
         if not exists:
@@ -149,8 +147,7 @@ def _enforce_non_empty_retrieval_scope(
             )
             q = q.filter(DBDocument.publication_status == "published")
             q = q.filter(
-                (DBDocument.status == "completed")
-                | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
+                (DBDocument.status == "completed") | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
             )
             exists = q.with_entities(DBDocument.id).order_by(DBDocument.updated_at.desc()).limit(1).first()
             if exists:
@@ -236,7 +233,12 @@ def _inject_query_image_context(
     except Exception as exc:  # noqa: BLE001
         return (
             {"enabled": False, "modality": "text", "reasons": [f"image_exception:{str(exc)[:80]}"]},
-            {"enabled": False, "used": False, "reason": f"image_exception:{str(exc)[:120]}", "query_source": query_source},
+            {
+                "enabled": False,
+                "used": False,
+                "reason": f"image_exception:{str(exc)[:120]}",
+                "query_source": query_source,
+            },
         )
 
 
@@ -492,15 +494,17 @@ async def _maybe_apply_iterative_retrieval_fallback(
     from app.rag.core.text import normalize_retrieval_mode
     from app.rag.retrieval.orchestrator import run_retrieval
 
-    fallback_profile = str(
-        getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_PROFILE", "coverage80") or "coverage80"
-    ).strip().lower()
+    fallback_profile = (
+        str(getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_PROFILE", "coverage80") or "coverage80")
+        .strip()
+        .lower()
+    )
     if fallback_profile not in {"recall20", "recall50", "coverage80"}:
         fallback_profile = "coverage80"
 
-    fallback_mode = str(
-        getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_MODE", "keyword") or "keyword"
-    ).strip().lower()
+    fallback_mode = (
+        str(getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_MODE", "keyword") or "keyword").strip().lower()
+    )
     fallback_mode = normalize_retrieval_mode(fallback_mode)
     if fallback_mode not in {"hybrid", "vector", "keyword", "mmr"}:
         fallback_mode = "keyword"
@@ -511,11 +515,14 @@ async def _maybe_apply_iterative_retrieval_fallback(
         fallback_mode=fallback_mode,
     )
     fallback_offload_metrics: dict[str, Any] = {}
-    fallback = await run_blocking_retrieval_call_with_managed_session(
-        lambda worker_db: run_retrieval({**fallback_state, "db": worker_db}),
-        request_db=db,
-        runtime_metrics=fallback_offload_metrics,
-    ) or {}
+    fallback = (
+        await run_blocking_retrieval_call_with_managed_session(
+            lambda worker_db: run_retrieval({**fallback_state, "db": worker_db}),
+            request_db=db,
+            runtime_metrics=fallback_offload_metrics,
+        )
+        or {}
+    )
     f_citations = fallback.get("citations") or []
     f_metrics = dict(fallback.get("metrics") or {})
     f_metrics.update(fallback_offload_metrics)
@@ -544,7 +551,9 @@ async def _maybe_apply_iterative_retrieval_fallback(
                 "pass": "primary",
                 "retrieval_mode": str(metrics.get("retrieval_mode") or ""),
                 "retrieval_profile": str(state.get("retrieval_profile") or "") or None,
-                "empty_retrieval": metrics.get("empty_retrieval") if isinstance(metrics.get("empty_retrieval"), dict) else None,
+                "empty_retrieval": metrics.get("empty_retrieval")
+                if isinstance(metrics.get("empty_retrieval"), dict)
+                else None,
                 "citations": int(p_n),
                 "top_relevance_score": round(float(p_top), 3),
                 "abstain_triggered": bool(abstain_triggered),
@@ -555,7 +564,9 @@ async def _maybe_apply_iterative_retrieval_fallback(
                 "pass": "fallback",
                 "retrieval_mode": str(f_metrics.get("retrieval_mode") or ""),
                 "retrieval_profile": str(fallback_profile),
-                "empty_retrieval": f_metrics.get("empty_retrieval") if isinstance(f_metrics.get("empty_retrieval"), dict) else None,
+                "empty_retrieval": f_metrics.get("empty_retrieval")
+                if isinstance(f_metrics.get("empty_retrieval"), dict)
+                else None,
                 "citations": int(f_n),
                 "top_relevance_score": round(float(f_top), 3),
                 "abstain_triggered": bool(f_abstain),
@@ -599,7 +610,12 @@ def _apply_min_top_relevance_gate(
     if top_rel is None and isinstance(citations, list) and citations:
         try:
             top_rel = max(
-                float(((c.get("relevance_score") if c.get("relevance_score") is not None else c.get("retrieval_score")) or 0.0))
+                float(
+                    (
+                        (c.get("relevance_score") if c.get("relevance_score") is not None else c.get("retrieval_score"))
+                        or 0.0
+                    )
+                )
                 for c in citations
                 if isinstance(c, dict)
             )
@@ -718,7 +734,10 @@ class RetrievePreviewRequest(BaseModel):
     rag_config: ChatRAGConfig = Field(default_factory=ChatRAGConfig)
     include_structure_trace: bool = Field(
         default=False,
-        description="Attach bounded document-structure trace for visual tree debugging. Disabled by default to keep retrieval preview latency predictable.",
+        description=(
+            "Attach bounded document-structure trace for visual tree debugging. Disabled by default "
+            "to keep retrieval preview latency predictable."
+        ),
     )
 
 
@@ -1046,11 +1065,14 @@ async def retrieve_preview(
     state["image_meta"] = image_meta
 
     offload_metrics: dict[str, Any] = {}
-    result = await run_blocking_retrieval_call_with_managed_session(
-        lambda worker_db: run_retrieval({**state, "db": worker_db}),
-        request_db=db,
-        runtime_metrics=offload_metrics,
-    ) or {}
+    result = (
+        await run_blocking_retrieval_call_with_managed_session(
+            lambda worker_db: run_retrieval({**state, "db": worker_db}),
+            request_db=db,
+            runtime_metrics=offload_metrics,
+        )
+        or {}
+    )
     citations = result.get("citations") or []
     metrics = result.get("metrics") or {}
     query_for_retrieval = (result.get("query_for_retrieval") or body.query or "").strip()
@@ -1102,7 +1124,9 @@ async def retrieve_preview(
     )
 
 
-@router.post("/tree-search-preview", response_model=TreeSearchPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/tree-search-preview", response_model=TreeSearchPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 async def tree_search_preview(
     body: TreeSearchPreviewRequest,
     *,
@@ -1480,11 +1504,14 @@ async def retrieve_evidence(
     state["image_meta"] = image_meta
 
     primary_offload_metrics: dict[str, Any] = {}
-    primary = await run_blocking_retrieval_call_with_managed_session(
-        lambda worker_db: run_retrieval({**state, "db": worker_db}),
-        request_db=db,
-        runtime_metrics=primary_offload_metrics,
-    ) or {}
+    primary = (
+        await run_blocking_retrieval_call_with_managed_session(
+            lambda worker_db: run_retrieval({**state, "db": worker_db}),
+            request_db=db,
+            runtime_metrics=primary_offload_metrics,
+        )
+        or {}
+    )
     citations = primary.get("citations") or []
     metrics = dict(primary.get("metrics") or {})
     metrics.update(primary_offload_metrics)
@@ -1728,11 +1755,14 @@ async def prompt_preview(
         db=db,
     )
     offload_metrics: dict[str, Any] = {}
-    retrieved = await run_blocking_retrieval_call_with_managed_session(
-        lambda worker_db: run_retrieval({**state, "db": worker_db}),
-        request_db=db,
-        runtime_metrics=offload_metrics,
-    ) or {}
+    retrieved = (
+        await run_blocking_retrieval_call_with_managed_session(
+            lambda worker_db: run_retrieval({**state, "db": worker_db}),
+            request_db=db,
+            runtime_metrics=offload_metrics,
+        )
+        or {}
+    )
     citations = retrieved.get("citations") or []
     docs = retrieved.get("docs") or []
     metrics = dict(retrieved.get("metrics") or {})

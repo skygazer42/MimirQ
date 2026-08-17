@@ -1,4 +1,3 @@
-
 from typing import Any
 
 import pytest
@@ -56,7 +55,9 @@ def test_run_retrieval_chains_decomposed_queries_sequentially(monkeypatch: pytes
 
     monkeypatch.setattr(orch, "hybrid_retriever", _Retriever(), raising=True)
     monkeypatch.setattr(orch, "get_rag_engine", lambda: _FakeEngine(), raising=True)
-    monkeypatch.setattr(orch, "_decompose_query", lambda *args, **kwargs: ["subquestion one", "subquestion two"], raising=False)
+    monkeypatch.setattr(
+        orch, "_decompose_query", lambda *args, **kwargs: ["subquestion one", "subquestion two"], raising=False
+    )
 
     out = orch.run_retrieval(_base_state())
 
@@ -153,7 +154,9 @@ def test_run_retrieval_marks_decomposition_chain_metrics(monkeypatch: pytest.Mon
 
     monkeypatch.setattr(orch, "hybrid_retriever", _Retriever(), raising=True)
     monkeypatch.setattr(orch, "get_rag_engine", lambda: _FakeEngine(), raising=True)
-    monkeypatch.setattr(orch, "_decompose_query", lambda *args, **kwargs: ["subquestion one", "subquestion two"], raising=False)
+    monkeypatch.setattr(
+        orch, "_decompose_query", lambda *args, **kwargs: ["subquestion one", "subquestion two"], raising=False
+    )
 
     out = orch.run_retrieval(_base_state())
 

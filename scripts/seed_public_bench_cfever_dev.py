@@ -23,7 +23,6 @@ Notes:
   and ablations, not re-embedding the corpus.
 """
 
-
 import argparse
 import json
 import re
@@ -308,7 +307,9 @@ def _delete_dataset_documents(*, tenant_id: UUID, dataset_id: UUID) -> dict[str,
                 store.delete_by_document_id(did, tenant_id=tenant_id)
             except Exception:
                 pass
-        deleted = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id, DBDocument.dataset_id == dataset_id).delete()
+        deleted = (
+            db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id, DBDocument.dataset_id == dataset_id).delete()
+        )
         db.commit()
         return {"deleted_documents": int(deleted or 0), "deleted_vectors_best_effort": int(len(doc_ids))}
     finally:
@@ -514,7 +515,7 @@ def _iter_reference_chunk_ids(*, dataset_id: UUID, cases: Iterable[DevCase]) -> 
     """
     out: set[UUID] = set()
     for c in cases or []:
-        for title, sid in (c.evidence or ()):
+        for title, sid in c.evidence or ():
             out.add(_uuid_for_sentence(dataset_id=dataset_id, page_title=title, sentence_id=sid))
     return sorted(out, key=lambda x: str(x))
 
@@ -589,7 +590,9 @@ def main(argv: list[str] | None = None) -> int:
 
     p.add_argument("--max-pages", type=int, default=0, help="Max wiki pages to seed (0=all required)")
     p.add_argument("--overwrite", action="store_true", help="Delete existing documents for this dataset before seeding")
-    p.add_argument("--out-cases", type=str, default="", help="Write regression case bundle JSON to this path (optional)")
+    p.add_argument(
+        "--out-cases", type=str, default="", help="Write regression case bundle JSON to this path (optional)"
+    )
     p.add_argument("--out-manifest", type=str, default="", help="Write seed manifest JSON to this path (optional)")
 
     mode = p.add_mutually_exclusive_group()
@@ -600,6 +603,7 @@ def main(argv: list[str] | None = None) -> int:
     dry_run = not bool(args.execute)
 
     from app.core.config import settings
+
     hf_revision = str(args.hf_revision or "").strip() or None
     if not hf_revision:
         print(
@@ -688,7 +692,9 @@ def main(argv: list[str] | None = None) -> int:
                 "revision": hf_revision,
                 "files": {
                     "cases_split": f"{SPLIT}.jsonl",
-                    "wiki_files": list((res.get("plan") or {}).get("wiki_files") or []) if isinstance(res, dict) else [],
+                    "wiki_files": list((res.get("plan") or {}).get("wiki_files") or [])
+                    if isinstance(res, dict)
+                    else [],
                 },
             },
             "params": {

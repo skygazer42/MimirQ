@@ -155,7 +155,12 @@ def test_production_bootstrap_registration_accepts_matching_token(monkeypatch) -
     monkeypatch.setattr(settings, "JWT_GROUPS_SYNC_ENABLED", False, raising=False)
     monkeypatch.setattr(settings, "JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED", False, raising=False)
     monkeypatch.setattr(settings, "DEFAULT_TENANT_ID", str(uuid4()), raising=False)
-    monkeypatch.setattr(settings, "INITIAL_REGISTRATION_TOKEN", "sha256:fc17cbe42905e3308ba7175fd672651094e30c926f2bdd426636f12dd19df41b", raising=False)
+    monkeypatch.setattr(
+        settings,
+        "INITIAL_REGISTRATION_TOKEN",
+        "sha256:fc17cbe42905e3308ba7175fd672651094e30c926f2bdd426636f12dd19df41b",
+        raising=False,
+    )
 
     engine, test_session, app = _build_auth_test_client()
 

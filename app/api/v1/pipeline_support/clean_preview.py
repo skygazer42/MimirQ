@@ -3,6 +3,7 @@
 Extracted verbatim from ``app/api/v1/pipeline.py``. Submodules must not import
 ``app.api.v1.pipeline`` (circular import).
 """
+
 from collections.abc import Iterable
 from dataclasses import dataclass
 from difflib import SequenceMatcher, unified_diff
@@ -214,7 +215,9 @@ def _build_clean_preview_rules(body: CleanPreviewRequest) -> tuple[list[RegexRul
     except RegexRulesValidationError as exc:
         raise HTTPException(status_code=400, detail=exc.to_detail()) from exc
 
-    custom_rules = [RegexRule(pattern=r["pattern"], repl=r["repl"], flags=r["flags"]) for r in (custom_rules_norm or [])]
+    custom_rules = [
+        RegexRule(pattern=r["pattern"], repl=r["repl"], flags=r["flags"]) for r in (custom_rules_norm or [])
+    ]
     _append_clean_preview_rules(rules, rule_meta, custom_rules, source="custom", pack=None)
     return rules, rule_meta
 
@@ -260,11 +263,15 @@ def _apply_preview_sensitive_redaction(
     pii_hits: dict[str, int] | None = None
     secrets_hits: dict[str, int] | None = None
     if body.pii_anonymize:
-        pii = anonymize_pii(text, enabled=True, mode=str(body.pii_mode or "mask"), mask=str(body.pii_mask or REDACTED_MASK))  # type: ignore[arg-type]
+        pii = anonymize_pii(
+            text, enabled=True, mode=str(body.pii_mode or "mask"), mask=str(body.pii_mask or REDACTED_MASK)
+        )  # type: ignore[arg-type]
         text = pii.text
         pii_hits = pii.hits or {}
     if body.secrets_redact:
-        sec = redact_secrets(text, enabled=True, mode=str(body.secrets_mode or "mask"), mask=str(body.secrets_mask or SECRET_MASK))  # type: ignore[arg-type]
+        sec = redact_secrets(
+            text, enabled=True, mode=str(body.secrets_mode or "mask"), mask=str(body.secrets_mask or SECRET_MASK)
+        )  # type: ignore[arg-type]
         text = sec.text
         secrets_hits = sec.hits or {}
     return text, pii_hits, secrets_hits
@@ -456,9 +463,9 @@ def _line_diff_stats(before: str, after: str) -> tuple[int, int, int]:
     changed = 0
     for tag, i1, i2, j1, j2 in sm.get_opcodes():
         if tag == "insert":
-            added += (j2 - j1)
+            added += j2 - j1
         elif tag == "delete":
-            removed += (i2 - i1)
+            removed += i2 - i1
         elif tag == "replace":
             # Count replaced region as changed (best-effort).
             changed += max(i2 - i1, j2 - j1)
@@ -505,11 +512,14 @@ class _LLMCleanPromptSelection:
 def _default_llm_clean_system_prompt() -> str:
     return (
         "You are a 'Markdown data governance cleaner'.\n"
-        "Goal: Clean up noise and formatting issues from parsing/copying, but do not change semantics or fabricate content.\n"
+        "Goal: Clean up noise and formatting issues from parsing/copying, but do not change "
+        "semantics or fabricate content.\n"
         "Requirements:\n"
         "1) Preserve heading/list/table/code block structure; do not modify code block content.\n"
-        "2) Remove obvious headers/footers/page numbers/TOC markers/repeated short lines/control characters/zero-width characters.\n"
-        "3) Normalize whitespace: merge excess blank lines, remove trailing spaces, merge 'soft line breaks' when necessary.\n"
+        "2) Remove obvious headers/footers/page numbers/TOC markers/repeated short lines/control "
+        "characters/zero-width characters.\n"
+        "3) Normalize whitespace: merge excess blank lines, remove trailing spaces, merge 'soft "
+        "line breaks' when necessary.\n"
         "4) Do not translate or rewrite; only clean and normalize.\n"
         "Output: Return strict JSON with fields: markdown/changes/warnings.\n"
     )

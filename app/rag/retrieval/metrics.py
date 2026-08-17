@@ -5,7 +5,6 @@ Keep labels low-cardinality:
 - Do not label by tenant/dataset/query.
 """
 
-
 from prometheus_client import Counter, Histogram
 
 from app.core.config import settings
@@ -55,9 +54,15 @@ def observe_evidence_retrieve(
         retrieval_mode=mode,
         selected_pass=sel,
     ).inc()
-    EVIDENCE_RETRIEVE_DURATION_SECONDS.labels(retrieval_mode=mode, selected_pass=sel).observe(max(0.0, float(duration_sec or 0.0)))
-    EVIDENCE_RETRIEVE_CITATIONS_COUNT.labels(retrieval_mode=mode, selected_pass=sel).observe(max(0.0, float(citations_count or 0.0)))
-    EVIDENCE_RETRIEVE_TOP_SCORE.labels(retrieval_mode=mode, selected_pass=sel).observe(max(0.0, min(1.0, float(top_relevance_score or 0.0))))
+    EVIDENCE_RETRIEVE_DURATION_SECONDS.labels(retrieval_mode=mode, selected_pass=sel).observe(
+        max(0.0, float(duration_sec or 0.0))
+    )
+    EVIDENCE_RETRIEVE_CITATIONS_COUNT.labels(retrieval_mode=mode, selected_pass=sel).observe(
+        max(0.0, float(citations_count or 0.0))
+    )
+    EVIDENCE_RETRIEVE_TOP_SCORE.labels(retrieval_mode=mode, selected_pass=sel).observe(
+        max(0.0, min(1.0, float(top_relevance_score or 0.0)))
+    )
 
 
 __all__ = ["observe_evidence_retrieve"]

@@ -1,4 +1,3 @@
-
 from datetime import datetime, timezone
 from typing import Any, Callable
 from uuid import UUID
@@ -81,7 +80,7 @@ def _find_trace_by_request_id(
         )
     except Exception:
         return None
-    for item in (getattr(traces, "items", []) or []):
+    for item in getattr(traces, "items", []) or []:
         if str(getattr(item, "request_id", "") or "") != rid:
             continue
         return _coerce_mapping(item)
@@ -176,7 +175,11 @@ def _previous_user_question(
         if str(getattr(msg, "role", "") or "").lower() != "user":
             continue
         created_at = getattr(msg, "created_at", None)
-        if isinstance(assistant_created_at, datetime) and isinstance(created_at, datetime) and created_at > assistant_created_at:
+        if (
+            isinstance(assistant_created_at, datetime)
+            and isinstance(created_at, datetime)
+            and created_at > assistant_created_at
+        ):
             continue
         candidates.append(msg)
     candidates.sort(
@@ -202,7 +205,9 @@ def _load_feedback_conversation(
     account_id: str,
     conversation_id: UUID | None,
 ) -> Conversation | None:
-    conv = db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id).first()
+    conv = (
+        db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id).first()
+    )
     if conv is not None:
         ensure_conversation_access(db, tenant_id, account_id, conv)
     return conv
@@ -263,10 +268,12 @@ def _feedback_reference_values(
 ) -> tuple[str | None, str | None, str | None]:
     profile = _safe_text(meta.get("retrieval_profile"), max_len=64) or None
     question = _previous_user_question(
-        messages=db.query(Message).filter(
+        messages=db.query(Message)
+        .filter(
             Message.tenant_id == tenant_id,
             Message.conversation_id == msg.conversation_id,
-        ).all(),
+        )
+        .all(),
         conversation_id=msg.conversation_id,
         assistant_created_at=getattr(msg, "created_at", None),
     )
@@ -533,11 +540,7 @@ class FeedbackService:
 
         message_map: dict[UUID, Message] = {}
         if message_ids:
-            messages = (
-                db.query(Message)
-                .filter(Message.tenant_id == tenant_id, Message.id.in_(message_ids))
-                .all()
-            )
+            messages = db.query(Message).filter(Message.tenant_id == tenant_id, Message.id.in_(message_ids)).all()
             message_map = {item.id: item for item in messages}
 
         conversation_map: dict[UUID, Conversation] = {}
@@ -650,15 +653,13 @@ class FeedbackService:
             return build_feedback_loop_candidate_payload([], ruleset=ruleset, max_rating=max_rating)
 
         message_ids = [row.message_id for row in feedback_rows if getattr(row, "message_id", None) is not None]
-        conversation_ids = [row.conversation_id for row in feedback_rows if getattr(row, "conversation_id", None) is not None]
+        conversation_ids = [
+            row.conversation_id for row in feedback_rows if getattr(row, "conversation_id", None) is not None
+        ]
 
         assistant_map: dict[UUID, Message] = {}
         if message_ids:
-            assistants = (
-                db.query(Message)
-                .filter(Message.tenant_id == tenant_id, Message.id.in_(message_ids))
-                .all()
-            )
+            assistants = db.query(Message).filter(Message.tenant_id == tenant_id, Message.id.in_(message_ids)).all()
             assistant_map = {item.id: item for item in assistants}
 
         conversation_map: dict[UUID, Conversation] = {}
@@ -691,7 +692,9 @@ class FeedbackService:
                 if isinstance(getattr(assistant, "message_metadata", None), dict)
                 else {}
             )
-            dataset_id = _safe_text(meta.get("dataset_id") or extra.get("dataset_id") or getattr(conv, "dataset_id", None), max_len=128)
+            dataset_id = _safe_text(
+                meta.get("dataset_id") or extra.get("dataset_id") or getattr(conv, "dataset_id", None), max_len=128
+            )
             retrieval_trace = extra.get("retrieval_trace") if isinstance(extra.get("retrieval_trace"), dict) else {}
 
             candidate_rows.append(

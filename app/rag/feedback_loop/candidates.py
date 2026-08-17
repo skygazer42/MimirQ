@@ -1,4 +1,3 @@
-
 import hashlib
 from typing import Any
 
@@ -204,7 +203,9 @@ def build_feedback_loop_candidates(
     max_hard_negatives: int = 10,
 ) -> dict[str, Any]:
     normalized_rows = [_as_mapping(row) for row in (rows or [])]
-    negative_rows = [row for row in normalized_rows if (_rating(row) is not None and int(_rating(row) or 0) <= int(max_rating))]
+    negative_rows = [
+        row for row in normalized_rows if (_rating(row) is not None and int(_rating(row) or 0) <= int(max_rating))
+    ]
 
     hard_negative_records: list[dict[str, Any]] = []
     training_triples: list[dict[str, Any]] = []

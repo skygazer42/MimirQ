@@ -5,7 +5,6 @@ Currently provides minimal loop capability:
 - List queries (isolated by tenant)
 """
 
-
 from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
@@ -164,7 +163,7 @@ def _find_trace_by_request_id(*, tenant_id: UUID, conversation_id: UUID, request
         )
     except Exception:
         return None
-    for item in (getattr(traces, "items", []) or []):
+    for item in getattr(traces, "items", []) or []:
         if str(getattr(item, "request_id", "") or "") != rid:
             continue
         if hasattr(item, "model_dump"):
@@ -219,11 +218,7 @@ def _get_feedback_for_promotion(db: Session, *, tenant_id: UUID, feedback_id: UU
 
 
 def _get_feedback_assistant_message(db: Session, *, tenant_id: UUID, message_id: UUID) -> Message:
-    assistant = (
-        db.query(Message)
-        .filter(Message.id == message_id, Message.tenant_id == tenant_id)
-        .first()
-    )
+    assistant = db.query(Message).filter(Message.id == message_id, Message.tenant_id == tenant_id).first()
     if not assistant:
         raise HTTPException(status_code=404, detail="Assistant message not found")
     return assistant
@@ -231,9 +226,7 @@ def _get_feedback_assistant_message(db: Session, *, tenant_id: UUID, message_id:
 
 def _get_feedback_conversation(db: Session, *, tenant_id: UUID, conversation_id: UUID) -> Conversation:
     conv = (
-        db.query(Conversation)
-        .filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id)
-        .first()
+        db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id).first()
     )
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -413,7 +406,12 @@ def _augment_feedback_extra_with_snapshots(
     return payload
 
 
-@router.post("/messages", response_model=MessageFeedbackOut, status_code=status.HTTP_201_CREATED, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/messages",
+    response_model=MessageFeedbackOut,
+    status_code=status.HTTP_201_CREATED,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def upsert_message_feedback(
     request: MessageFeedbackCreateRequest,
     *,
@@ -466,7 +464,9 @@ def list_message_feedback(
     )
 
 
-@router.get("/messages/enriched", response_model=MessageFeedbackEnrichedList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/messages/enriched", response_model=MessageFeedbackEnrichedList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def list_message_feedback_enriched(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
@@ -609,7 +609,12 @@ def export_feedback_loop_hard_negatives(
     )
 
 
-@router.post("/messages/{feedback_id}/to-regression-case", response_model=RagasRegressionCaseOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/messages/{feedback_id}/to-regression-case",
+    response_model=RagasRegressionCaseOut,
+    status_code=201,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def create_regression_case_from_feedback(
     feedback_id: UUID,
     body: FeedbackToRegressionCaseRequest,
@@ -714,7 +719,12 @@ def create_regression_case_from_feedback(
     return row
 
 
-@router.post("/messages/{feedback_id}/to-evidence-item", response_model=EvidenceItemOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/messages/{feedback_id}/to-evidence-item",
+    response_model=EvidenceItemOut,
+    status_code=201,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def create_evidence_item_from_feedback(
     feedback_id: UUID,
     body: FeedbackToEvidenceItemRequest,
@@ -732,11 +742,7 @@ def create_evidence_item_from_feedback(
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     suite_id = getattr(body, "suite_id", None)
-    suite = (
-        db.query(EvidenceSuite)
-        .filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id)
-        .first()
-    )
+    suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not suite:
         raise HTTPException(status_code=404, detail="Evidence suite not found")
     if getattr(suite, "archived_at", None) is not None:

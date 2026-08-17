@@ -7,7 +7,6 @@ This is a minimal v1 implementation focused on:
 """
 # ruff: noqa: F401
 
-
 import asyncio
 import contextlib
 import hashlib
@@ -190,8 +189,12 @@ _delta_sync_connector_documents_acl_by_source_url = connectors_acl._delta_sync_c
 _soft_disable_connector_documents_by_source_url = connectors_acl._soft_disable_connector_documents_by_source_url
 _soft_disable_connector_documents_by_source_ref = connectors_acl._soft_disable_connector_documents_by_source_ref
 _delta_sync_jira_documents_acl_by_issue_url = connectors_acl._delta_sync_jira_documents_acl_by_issue_url
-_soft_disable_jira_attachment_documents_missing_from_issue = connectors_acl._soft_disable_jira_attachment_documents_missing_from_issue
-_soft_disable_jira_linked_artifact_documents_missing_from_issue = connectors_acl._soft_disable_jira_linked_artifact_documents_missing_from_issue
+_soft_disable_jira_attachment_documents_missing_from_issue = (
+    connectors_acl._soft_disable_jira_attachment_documents_missing_from_issue
+)
+_soft_disable_jira_linked_artifact_documents_missing_from_issue = (
+    connectors_acl._soft_disable_jira_linked_artifact_documents_missing_from_issue
+)
 _apply_connector_identity_metadata = connectors_artifacts._apply_connector_identity_metadata
 _normalize_connector_string_list = connectors_artifacts._normalize_connector_string_list
 _normalize_connector_principal_list = connectors_artifacts._normalize_connector_principal_list
@@ -347,7 +350,9 @@ _jira_value_to_text = connectors_jira._jira_value_to_text
 _jira_html_from_value = connectors_jira._jira_html_from_value
 _jira_html_from_field = connectors_jira._jira_html_from_field
 _jira_issue_url = connectors_jira._jira_issue_url
-_soft_disable_jira_documents_missing_from_full_sync = connectors_jira._soft_disable_jira_documents_missing_from_full_sync
+_soft_disable_jira_documents_missing_from_full_sync = (
+    connectors_jira._soft_disable_jira_documents_missing_from_full_sync
+)
 _jira_jql_updated_after = connectors_jira._jira_jql_updated_after
 _jira_issue_fields = connectors_jira._jira_issue_fields
 _jira_issue_rendered_fields = connectors_jira._jira_issue_rendered_fields
@@ -415,6 +420,8 @@ _finalize_cancelled_web_crawl_run = connectors_web_crawl._finalize_cancelled_web
 _reconcile_removed_web_crawl_urls = connectors_web_crawl._reconcile_removed_web_crawl_urls
 _finalize_web_crawl_run_success = connectors_web_crawl._finalize_web_crawl_run_success
 _mark_web_crawl_run_failed = connectors_web_crawl._mark_web_crawl_run_failed
+
+
 def _now() -> datetime:
     return datetime.now(UTC)
 
@@ -426,6 +433,7 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
         tenant_id=tenant_id,
         requested_by=requested_by,
     )
+
 
 def _delta_sync_confluence_documents_acl_by_page_id(
     db: Session,
@@ -453,7 +461,6 @@ def _delta_sync_confluence_documents_acl_by_page_id(
         acl_provenance=acl_provenance,
         max_docs_scan=max_docs_scan,
     )
-
 
 
 async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:

@@ -1,4 +1,3 @@
-
 from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
@@ -82,7 +81,7 @@ def export_case_bundle(cases: Sequence[Any], dataset_id: UUID) -> dict[str, Any]
             items[-1]["extra"] = portable_extra
 
     # Stable ordering is useful for diffs/reviews.
-    items.sort(key=lambda it: (it.get("question") or ""))
+    items.sort(key=lambda it: it.get("question") or "")
 
     return {
         "schema": REGRESSION_CASE_BUNDLE_SCHEMA_V1,
@@ -136,11 +135,16 @@ def plan_case_import(
 
         if _is_review_only_local_sample_item(payload):
             skipped += 1
-            errors.append({
-                "index": idx,
-                "question": question,
-                "error": "review_only local sample Golden items cannot be imported; generate dataset goldens from indexed chunks",
-            })
+            errors.append(
+                {
+                    "index": idx,
+                    "question": question,
+                    "error": (
+                        "review_only local sample Golden items cannot be imported; generate dataset "
+                        "goldens from indexed chunks"
+                    ),
+                }
+            )
             continue
 
         if question in existing_questions:

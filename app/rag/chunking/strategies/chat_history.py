@@ -9,7 +9,6 @@ Optimized for exported/pasted chat logs with timestamps, e.g.:
 The chunker keeps whole messages together and uses message-level overlap.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -245,7 +244,9 @@ def looks_like_chat_history(text: str) -> bool:
     return len(speakers) >= 2
 
 
-def _split_fallback_docs(splitter: RecursiveCharacterTextSplitter, text: str, base_meta: dict[str, Any]) -> list[Document]:
+def _split_fallback_docs(
+    splitter: RecursiveCharacterTextSplitter, text: str, base_meta: dict[str, Any]
+) -> list[Document]:
     split_docs = splitter.create_documents(texts=[text], metadatas=[base_meta])
     chunks: list[Document] = []
     for split_doc in split_docs:
@@ -280,7 +281,9 @@ def _window_participants(msgs: list[_Msg], start_idx: int, end_idx: int) -> list
     return uniq[:10]
 
 
-def _build_message_chunk(msgs: list[_Msg], start_idx: int, end_idx: int, base_meta: dict[str, Any], text: str) -> Document:
+def _build_message_chunk(
+    msgs: list[_Msg], start_idx: int, end_idx: int, base_meta: dict[str, Any], text: str
+) -> Document:
     chunk_start = msgs[start_idx].start
     chunk_end = msgs[end_idx - 1].end
     meta: dict[str, Any] = dict(base_meta)

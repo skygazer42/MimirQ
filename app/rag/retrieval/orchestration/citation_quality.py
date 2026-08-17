@@ -106,7 +106,9 @@ def _empty_retrieval_reason_counts(enrich: dict[str, Any]) -> tuple[dict[str, in
     return signals, reason_counts
 
 
-def _build_empty_retrieval_diagnosis(enrich: dict[str, Any], signals: dict[str, int], reason_counts: list[tuple[str, int]]) -> dict[str, Any] | None:
+def _build_empty_retrieval_diagnosis(
+    enrich: dict[str, Any], signals: dict[str, int], reason_counts: list[tuple[str, int]]
+) -> dict[str, Any] | None:
     if not reason_counts:
         return None
     diag: dict[str, Any] = {
@@ -190,7 +192,9 @@ def _parse_quality_low_sample(doc: Document, *, rank: int, score: float) -> dict
     }
 
 
-def _parse_quality_risk_counters(docs: list[Document] | None, *, low_threshold: float) -> tuple[int, int, list[float], list[dict[str, Any]]]:
+def _parse_quality_risk_counters(
+    docs: list[Document] | None, *, low_threshold: float
+) -> tuple[int, int, list[float], list[dict[str, Any]]]:
     considered = 0
     low_count = 0
     scores: list[float] = []
@@ -217,7 +221,7 @@ def _summarize_parse_quality_risk(
 ) -> dict[str, Any]:
     considered, low_count, scores, low_samples = _parse_quality_risk_counters(docs, low_threshold=low_threshold)
     low_ratio = (float(low_count) / float(considered)) if considered > 0 else 0.0
-    avg_score = (float(sum(scores) / float(len(scores))) if scores else None)
+    avg_score = float(sum(scores) / float(len(scores))) if scores else None
     alert = bool(considered > 0 and low_ratio >= float(alert_ratio))
     recommendation = _parse_quality_recommendation(low_ratio=float(low_ratio), considered=int(considered))
 
@@ -321,12 +325,7 @@ def _count_parse_repair_actions(actions: list[Any]) -> tuple[dict[str, int], dic
 
 
 def _parse_repair_run_id(payload: dict[str, Any]) -> str:
-    return str(
-        payload.get("scheduler_run_id")
-        or payload.get("schedule_run_id")
-        or payload.get("run_id")
-        or ""
-    ).strip()
+    return str(payload.get("scheduler_run_id") or payload.get("schedule_run_id") or payload.get("run_id") or "").strip()
 
 
 def _parse_repair_gate_passed(payload: dict[str, Any]) -> Any:

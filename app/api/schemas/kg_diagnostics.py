@@ -8,7 +8,6 @@ Optionally, callers can persist a compact run snapshot (summary + per-case attri
 to support metric diffs over time.
 """
 
-
 from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
@@ -23,7 +22,9 @@ HardcaseKind = Literal["knowledge_pressure", "reasoning_pressure"]
 
 class KGSearchDiagnosticsRequest(BaseModel):
     dataset_id: UUID
-    case_ids: list[UUID] = Field(default_factory=list, description="Optional explicit case id list (else select by dataset)")
+    case_ids: list[UUID] = Field(
+        default_factory=list, description="Optional explicit case id list (else select by dataset)"
+    )
     max_cases: int = Field(default=50, ge=1, le=200, description="Max cases to evaluate (default: 50)")
 
     k: int = Field(default=10, ge=1, le=50, description="Hit@K and evaluation cutoff (default: 10)")

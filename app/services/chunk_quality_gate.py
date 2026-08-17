@@ -9,7 +9,6 @@ This logic is shared across:
 Important: This module is intentionally dependency-light and returns JSON-safe dicts.
 """
 
-
 from typing import Any, Literal
 
 
@@ -155,7 +154,9 @@ def _evaluate_short_chunk_signals(
             message=f"too many short chunks ({short_ratio:.0%})",
             meta={"short_ratio": short_ratio},
         )
-        acc.recommendations.append("Increase chunk_size or use a structure-aware chunk_strategy (outline/markdown_header/etc.).")
+        acc.recommendations.append(
+            "Increase chunk_size or use a structure-aware chunk_strategy (outline/markdown_header/etc.)."
+        )
         return
     if short_ratio > 0.30:
         acc.add_reason(
@@ -261,7 +262,9 @@ def _evaluate_chunk_count_signals(
 ) -> None:
     if total_chunks > 10_000:
         acc.add_reason(code="too_many_chunks_gt_10k", severity="warning", message="too many chunks (>10k)")
-        acc.recommendations.append("Increase chunk_size or switch strategy; very high chunk counts hurt latency and cost.")
+        acc.recommendations.append(
+            "Increase chunk_size or switch strategy; very high chunk counts hurt latency and cost."
+        )
         patch = _chunk_count_patch(chunk_size=chunk_size, chunk_overlap=chunk_overlap, growth=1.5)
         if patch is not None:
             acc.add_patch(
@@ -295,7 +298,9 @@ def _evaluate_original_text_signals(
 ) -> None:
     if not original_text_truncated or original_text_included:
         return
-    acc.recommendations.append("Original text omitted due to size; increase original_text_max_chars if you need precise highlighting.")
+    acc.recommendations.append(
+        "Original text omitted due to size; increase original_text_max_chars if you need precise highlighting."
+    )
     cur_max = max(0, original_text_max_chars)
     if not cur_max or cur_max >= 2_000_000:
         return
@@ -401,15 +406,15 @@ def compute_chunk_quality_gate(
         acc.add_patch(
             id="enable_governance_drop_duplicate_paragraphs",
             title="Enable duplicate paragraph drop",
-            description="Many duplicate chunks; consider enabling governance_drop_duplicate_paragraphs to reduce repetition.",
+            description=(
+                "Many duplicate chunks; consider enabling governance_drop_duplicate_paragraphs to reduce repetition."
+            ),
             target="pipeline",
             patch={"governance_enabled": True, "governance_drop_duplicate_paragraphs": True},
         )
 
     legacy_reasons = [
-        str(reason.get("message", "")).strip()
-        for reason in acc.reason_items
-        if str(reason.get("message", "")).strip()
+        str(reason.get("message", "")).strip() for reason in acc.reason_items if str(reason.get("message", "")).strip()
     ]
     gate = {
         "grade": str(_gate_grade(acc.reason_items)),

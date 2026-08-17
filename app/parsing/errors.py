@@ -7,7 +7,6 @@ runner so upstream layers (ingest pipeline / API) can:
 - apply bounded retries only when it makes sense
 """
 
-
 from typing import Any
 
 
@@ -29,7 +28,9 @@ class ParsingError(RuntimeError):
 
 
 class ParsingTimeoutError(ParsingError):
-    def __init__(self, message: str = "worker_timeout", *, details: dict[str, Any] | None = None, log_tail: str = "") -> None:
+    def __init__(
+        self, message: str = "worker_timeout", *, details: dict[str, Any] | None = None, log_tail: str = ""
+    ) -> None:
         super().__init__(message, code="timeout", details=details, log_tail=log_tail, retryable=False)
 
 
@@ -77,4 +78,3 @@ def classify_parser_subprocess_error(exc: Exception) -> ParsingError:
         return ParsingUnsupportedError(message, details=details, log_tail=log_tail)
 
     return ParsingInternalError(message, details=details, log_tail=log_tail)
-

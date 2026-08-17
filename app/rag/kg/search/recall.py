@@ -1,6 +1,7 @@
 """
 Recall stage: 8-step pipeline (query -> keys -> events -> weights).
 """
+
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -175,10 +176,7 @@ class RecallSearcher:
             }
             prefer_lexical_first = (config.dataset_id is not None or config.document_ids is not None) and (
                 "low_confidence_global_budget" in set(mode_reason_codes)
-                or (
-                    str(mode_norm) == "local"
-                    and bool({"dataset_factoid_scope", "quoted_term"} & query_reason_codes)
-                )
+                or (str(mode_norm) == "local" and bool({"dataset_factoid_scope", "quoted_term"} & query_reason_codes))
             )
             max_candidates = max(0, int(getattr(settings, "KG_SEARCH_MAX_RERANK_CANDIDATES", 0) or 0))
             if max_candidates > 0:
@@ -292,7 +290,7 @@ class RecallSearcher:
                         confidence=float((hit or {}).get("similarity", 1.0) or 1.0),
                         relation="query->entity:alias",
                         metadata={"method": "alias_match", "step": "step0"},
-                            )
+                    )
 
             if not raw_entities and not alias_hits:
                 try:
@@ -564,7 +562,7 @@ class RecallSearcher:
                     raw_entities = filtered_entities
             key_query_related = [
                 e for e in raw_entities if e.get("similarity", 0.0) >= config.recall.entity_similarity_threshold
-            ][: max_entities]
+            ][:max_entities]
 
             # clues
             for ent in key_query_related:
@@ -611,9 +609,7 @@ class RecallSearcher:
                     max_edges = max(0, int(getattr(settings, "KG_SEARCH_RELATION_MAX_EDGES", 0) or 0))
                     if max_edges <= 0:
                         max_edges = 500
-                    weight_factor = float(
-                        getattr(settings, "KG_SEARCH_RELATION_NEIGHBOR_WEIGHT_FACTOR", 0.7) or 0.7
-                    )
+                    weight_factor = float(getattr(settings, "KG_SEARCH_RELATION_NEIGHBOR_WEIGHT_FACTOR", 0.7) or 0.7)
                     bucket_low = float(getattr(settings, "KG_SEARCH_RELATION_CONF_BUCKET_LOW_MAX", 0.4) or 0.4)
                     bucket_mid = float(getattr(settings, "KG_SEARCH_RELATION_CONF_BUCKET_MID_MAX", 0.7) or 0.7)
 
@@ -685,9 +681,7 @@ class RecallSearcher:
                             if from_id in alias_key_ids:
                                 refs = getattr(rel, "references", None)
                                 evidence_quote = (
-                                    str(refs.get("evidence_quote") or "").strip()
-                                    if isinstance(refs, dict)
-                                    else ""
+                                    str(refs.get("evidence_quote") or "").strip() if isinstance(refs, dict) else ""
                                 )
                                 if not evidence_quote:
                                     continue
@@ -746,9 +740,7 @@ class RecallSearcher:
                                     "confidence_bucket": bucket,
                                     # Provenance (best-effort): allow diagnostics/UI to trace edges back to source.
                                     "relation_id": str(getattr(rel, "id", "") or "") or None,
-                                    "relation_document_id": (
-                                        str(getattr(rel, "document_id", "") or "") or None
-                                    ),
+                                    "relation_document_id": (str(getattr(rel, "document_id", "") or "") or None),
                                     "relation_chunk_id": str(getattr(rel, "chunk_id", "") or "") or None,
                                     "relation_event_id": str(getattr(rel, "event_id", "") or "") or None,
                                     "step": "step1.5",
@@ -763,7 +755,9 @@ class RecallSearcher:
                         relation_debug["edges_used"] = int(edges_used)
                         relation_debug["neighbors_total"] = int(len(neighbor_weights))
                         relation_debug["neighbors_selected"] = int(len(sorted_neighbors))
-                        relation_debug["predicate_hist"] = dict(sorted(predicate_hist.items(), key=lambda x: (-x[1], x[0])))  # type: ignore[assignment]
+                        relation_debug["predicate_hist"] = dict(
+                            sorted(predicate_hist.items(), key=lambda x: (-x[1], x[0]))
+                        )  # type: ignore[assignment]
                         relation_debug["confidence_bucket_hist"] = dict(conf_bucket_hist)
 
             # === Step2: keys -> events (entity relation) ===
@@ -937,7 +931,7 @@ class RecallSearcher:
                 if key_weights.get(e["entity_id"], 0.0) >= entity_weight_threshold
             ]
             key_final.sort(key=lambda x: x.get("weight", 0.0), reverse=True)
-            key_final = key_final[: final_entity_count]
+            key_final = key_final[:final_entity_count]
 
             return RecallResult(
                 query_vector=query_vec,

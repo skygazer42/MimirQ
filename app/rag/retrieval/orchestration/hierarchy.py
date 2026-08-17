@@ -108,7 +108,9 @@ def _build_hierarchy_family_features(docs_by_query: list[list[Document]]) -> dic
     return out
 
 
-def _resolve_family_aggregation_strategy(docs: list[Document], family_features: dict[str, dict[str, Any]], strategy: str) -> tuple[str, dict[str, Any] | None]:
+def _resolve_family_aggregation_strategy(
+    docs: list[Document], family_features: dict[str, dict[str, Any]], strategy: str
+) -> tuple[str, dict[str, Any] | None]:
     if not docs:
         return "", {"enabled": False, "reason": "no_docs"}
     if not family_features:
@@ -214,7 +216,11 @@ def _resolve_hierarchy_node_key(meta: dict[str, Any]) -> str:
 def _resolve_hierarchy_parent_key(meta: dict[str, Any]) -> str:
     # Respect explicit hierarchy_parent_key=None emitted by chunkers. Only fall back to
     # legacy parent_id fields when the hierarchy_parent_key field is absent entirely.
-    raw = meta.get("hierarchy_parent_key") if "hierarchy_parent_key" in meta else (meta.get("parent_id") or meta.get("parent_node_id"))
+    raw = (
+        meta.get("hierarchy_parent_key")
+        if "hierarchy_parent_key" in meta
+        else (meta.get("parent_id") or meta.get("parent_node_id"))
+    )
     s = str(raw or "").strip()
     return s if s else ""
 

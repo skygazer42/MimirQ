@@ -7,7 +7,6 @@ failure snippets. It intentionally uses only the standard library so it can run
 on production-like hosts without installing test dependencies.
 """
 
-
 import argparse
 import json
 import time
@@ -19,8 +18,7 @@ from urllib.request import Request, urlopen
 
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 DEFAULT_BACKENDS = (
-    "basic,deepdoc,docling,magicpdf,markitdown,"
-    "etl4llm,marker,paddle_vl,olmocr,textin,deepseek_ocr,qianfan_ocr"
+    "basic,deepdoc,docling,magicpdf,markitdown,etl4llm,marker,paddle_vl,olmocr,textin,deepseek_ocr,qianfan_ocr"
 )
 
 
@@ -134,12 +132,7 @@ def write_fixture_pdf(path: Path, *, pages: int = 2) -> None:
     out.extend(b"0000000000 65535 f \n")
     for offset in offsets[1:]:
         out.extend(f"{offset:010d} 00000 n \n".encode())
-    out.extend(
-        (
-            f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
-            f"startxref\n{xref}\n%%EOF\n"
-        ).encode()
-    )
+    out.extend((f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n").encode())
     path.write_bytes(bytes(out))
 
 
@@ -179,7 +172,9 @@ def classify_failure(
     lowered = text.lower()
     if status == 0:
         return "network_or_timeout"
-    if status in {400, 404, 409, 422} and any(word in lowered for word in ("disabled", "not enabled", "missing", "configure")):
+    if status in {400, 404, 409, 422} and any(
+        word in lowered for word in ("disabled", "not enabled", "missing", "configure")
+    ):
         return "unavailable_or_missing_config"
     if status >= 500:
         return "service_error"
@@ -203,7 +198,9 @@ def parser_messages(status_body: Any) -> dict[str, Any]:
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
-    artifact_dir = Path(args.artifact_dir or f"artifacts/parser-service-matrix/remote-{time.strftime('%Y%m%d-%H%M%S')}").resolve()
+    artifact_dir = Path(
+        args.artifact_dir or f"artifacts/parser-service-matrix/remote-{time.strftime('%Y%m%d-%H%M%S')}"
+    ).resolve()
     artifact_dir.mkdir(parents=True, exist_ok=True)
     pdf_path = artifact_dir / "parser-service-fixture.pdf"
     write_fixture_pdf(pdf_path, pages=args.pages)
@@ -212,7 +209,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     status_code, status_body, status_elapsed = api.get_json("/api/v1/settings/status")
     parser_status = parser_messages(status_body)
     (artifact_dir / "settings-status.json").write_text(
-        json.dumps({"status_code": status_code, "elapsed_sec": round(status_elapsed, 3), "body": status_body}, ensure_ascii=False, indent=2),
+        json.dumps(
+            {"status_code": status_code, "elapsed_sec": round(status_elapsed, 3), "body": status_body},
+            ensure_ascii=False,
+            indent=2,
+        ),
         encoding="utf-8",
     )
 
@@ -238,7 +239,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if not ok:
             result["error"] = json.dumps(body, ensure_ascii=False, default=str)[:1500]
         results.append(result)
-        (artifact_dir / "progress.json").write_text(json.dumps({"results": results}, ensure_ascii=False, indent=2), encoding="utf-8")
+        (artifact_dir / "progress.json").write_text(
+            json.dumps({"results": results}, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
 
     report = {
         "ok": all(item["ok"] for item in results if item["backend_requested"] not in args.allowed_failures_set),

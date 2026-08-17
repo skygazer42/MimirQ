@@ -13,7 +13,6 @@ Limitations:
   a forward cursor. For chunkers that rewrite content heavily, coverage signals may be noisy.
 """
 
-
 import argparse
 import json
 import sys
@@ -76,7 +75,9 @@ def _json_default(obj: Any) -> Any:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Offline batch chunk-preview evaluator")
     parser.add_argument("paths", nargs="+", help="Files or directories (recursively reads *.md/*.txt)")
-    parser.add_argument("--chunk-size", type=int, default=1000, help="chunk_size (chars or tokens depending on strategy)")
+    parser.add_argument(
+        "--chunk-size", type=int, default=1000, help="chunk_size (chars or tokens depending on strategy)"
+    )
     parser.add_argument("--chunk-overlap", type=int, default=200, help="chunk_overlap (ignored by separator strategy)")
     parser.add_argument("--strategy", type=str, default="langchain_recursive", help="chunk_strategy name")
     parser.add_argument("--max-files", type=int, default=0, help="Stop after N files (0 disables)")

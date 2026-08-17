@@ -230,7 +230,9 @@ def main() -> int:
                 enabled=bool(getattr(settings, "MAGIC_PDF_ENABLED", False)),
                 cli_path=str(cli_path) if cli_path else None,
                 models_dir=magicpdf_models_dir,
-                api_url=getattr(settings, "MAGIC_PDF_API_URL", "") if magicpdf_service_configured(getattr(settings, "MAGIC_PDF_API_URL", "")) else "",
+                api_url=getattr(settings, "MAGIC_PDF_API_URL", "")
+                if magicpdf_service_configured(getattr(settings, "MAGIC_PDF_API_URL", ""))
+                else "",
             ),
         )
     )
@@ -239,7 +241,7 @@ def main() -> int:
     col2 = max(len(r[1]) for r in rows)
 
     print(f"{'backend':<{col1}}  {'enabled':<{col2}}  status")
-    print(f"{'-'*col1}  {'-'*col2}  {'-'*30}")
+    print(f"{'-' * col1}  {'-' * col2}  {'-' * 30}")
     for backend, enabled, status in rows:
         print(f"{backend:<{col1}}  {enabled:<{col2}}  {status}")
 

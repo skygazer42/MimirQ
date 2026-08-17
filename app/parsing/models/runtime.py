@@ -1,4 +1,3 @@
-
 import os
 import time
 from dataclasses import dataclass
@@ -89,7 +88,9 @@ class SmallModelRuntime:
     def _size_mb(size_bytes: int) -> float:
         return round(float(size_bytes) / (1024.0 * 1024.0), 3)
 
-    def _cpu_rejection_reason(self, spec: SmallModelSpec, *, path: Path | None = None) -> tuple[str | None, float | None]:
+    def _cpu_rejection_reason(
+        self, spec: SmallModelSpec, *, path: Path | None = None
+    ) -> tuple[str | None, float | None]:
         if not spec.cpu_feasible:
             return "cpu_inference_not_supported", None
         limit_mb = float(spec.max_size_mb or _DEFAULT_CPU_MODEL_LIMIT_MB)

@@ -1,4 +1,3 @@
-
 import contextlib
 import hashlib
 import sys
@@ -96,12 +95,7 @@ def _minio_object_token(obj: object) -> str:
 
     last_modified_raw = getattr(obj, "last_modified", None)
     if isinstance(last_modified_raw, datetime):
-        last_modified = (
-            last_modified_raw.astimezone(UTC)
-            .replace(microsecond=0)
-            .isoformat()
-            .replace("+00:00", "Z")
-        )
+        last_modified = last_modified_raw.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     else:
         last_modified = str(last_modified_raw or "").strip()
 
@@ -424,7 +418,9 @@ async def _process_minio_bucket_objects(
             source_manifest_state[object_name] = object_token
         except Exception as exc:  # noqa: BLE001
             failed += 1
-            run.stats = _resolve_connectors_helper("_append_connector_error")(dict(run.stats or {}), url=object_name, exc=exc)
+            run.stats = _resolve_connectors_helper("_append_connector_error")(
+                dict(run.stats or {}), url=object_name, exc=exc
+            )
         finally:
             _resolve_connectors_helper("_persist_minio_bucket_progress")(
                 db,
@@ -481,7 +477,9 @@ def _reconcile_removed_minio_bucket_paths(
                 connector_config_id=connector_config_id,
             )
         except Exception as exc:  # noqa: BLE001
-            stats = _resolve_connectors_helper("_append_connector_error")(dict(run.stats or {}), url=source_ref, exc=exc)
+            stats = _resolve_connectors_helper("_append_connector_error")(
+                dict(run.stats or {}), url=source_ref, exc=exc
+            )
             run.stats = _resolve_connectors_helper("_finalize_connector_stats")(stats)
             db.commit()
             continue
@@ -526,11 +524,7 @@ def _finalize_minio_bucket_run_success(
 
 def _mark_minio_bucket_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, exc: Exception) -> None:
     with contextlib.suppress(Exception):
-        run = (
-            db.query(ConnectorRun)
-            .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
-            .first()
-        )
+        run = db.query(ConnectorRun).filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id).first()
         if run is not None:
             run.status = "failed"
             run.finished_at = _resolve_connectors_helper("_now")()

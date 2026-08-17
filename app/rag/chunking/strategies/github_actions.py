@@ -6,7 +6,6 @@ top-level `jobs:` section. The chunker splits by job blocks while preserving
 character offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -97,7 +96,9 @@ def _build_job_blocks(text: str) -> list[_JobBlock]:
             anchor_idx = i
             break
 
-    candidates, jobs_end = _collect_job_candidates(lines, anchor_idx=anchor_idx, base_indent=base_indent, text_length=len(text))
+    candidates, jobs_end = _collect_job_candidates(
+        lines, anchor_idx=anchor_idx, base_indent=base_indent, text_length=len(text)
+    )
     if not candidates:
         return []
 
@@ -167,7 +168,9 @@ def looks_like_github_actions_workflow(text: str) -> bool:
     return len(blocks) >= 1
 
 
-def _workflow_base_meta(base_meta: dict[str, Any], *, start_char: int, end_char: int, workflow_name: str | None) -> dict[str, Any]:
+def _workflow_base_meta(
+    base_meta: dict[str, Any], *, start_char: int, end_char: int, workflow_name: str | None
+) -> dict[str, Any]:
     meta: dict[str, Any] = dict(base_meta)
     meta["chunk_strategy"] = "github_actions"
     meta["start_char"] = start_char

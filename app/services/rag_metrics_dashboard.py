@@ -10,7 +10,6 @@ Design constraints:
 - Safe: never return raw question/query/chunk text; only numeric + categorical aggregates.
 """
 
-
 import gzip
 import hashlib
 import json
@@ -1422,7 +1421,11 @@ def _sanitize_trace_citations(citations: Any) -> list[dict[str, Any]] | None:
         citation_dict = _safe_dict(citation)
         if not citation_dict:
             continue
-        item = {key: citation_dict.get(key) for key in _TRACE_BUNDLE_CITATION_SAFE_KEYS if citation_dict.get(key) is not None}
+        item = {
+            key: citation_dict.get(key)
+            for key in _TRACE_BUNDLE_CITATION_SAFE_KEYS
+            if citation_dict.get(key) is not None
+        }
         if item:
             safe.append(item)
         if len(safe) >= 50:
@@ -1772,9 +1775,7 @@ def _sanitize_trace_bundle_record(record: dict[str, Any]) -> dict[str, Any]:
 
 def _matching_trace_bundle_records(records: list[dict[str, Any]], *, request_id: str) -> list[dict[str, Any]]:
     matched = [
-        _sanitize_trace_bundle_record(record)
-        for record in records
-        if str(record.get("request_id") or "") == request_id
+        _sanitize_trace_bundle_record(record) for record in records if str(record.get("request_id") or "") == request_id
     ]
     return sorted(matched, key=lambda x: int(x.get("ts_ms") or 0))
 

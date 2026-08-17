@@ -46,7 +46,9 @@ def run(*, capsule_path: Path, strict: bool = True, verify_signature: bool = Fal
         signature_valid, signature_reason = verify_evidence_capsule_signature(capsule)
 
     retrieval_summary = capsule.get("retrieval_summary") if isinstance(capsule.get("retrieval_summary"), dict) else {}
-    retrieval_contract = capsule.get("retrieval_contract") if isinstance(capsule.get("retrieval_contract"), dict) else {}
+    retrieval_contract = (
+        capsule.get("retrieval_contract") if isinstance(capsule.get("retrieval_contract"), dict) else {}
+    )
     must_recall = capsule.get("must_recall") if isinstance(capsule.get("must_recall"), dict) else {}
 
     # Prefer must-recall proof inside retrieval_trace when present; this keeps replay requests
@@ -55,12 +57,22 @@ def run(*, capsule_path: Path, strict: bool = True, verify_signature: bool = Fal
     trace = capsule.get("retrieval_trace") if isinstance(capsule.get("retrieval_trace"), dict) else {}
     if isinstance(trace, dict):
         contract_diag = trace.get("contract_diagnostics") if isinstance(trace.get("contract_diagnostics"), dict) else {}
-        mr = contract_diag.get("must_recall") if isinstance(contract_diag, dict) and isinstance(contract_diag.get("must_recall"), dict) else {}
+        mr = (
+            contract_diag.get("must_recall")
+            if isinstance(contract_diag, dict) and isinstance(contract_diag.get("must_recall"), dict)
+            else {}
+        )
         p = mr.get("proof") if isinstance(mr, dict) and isinstance(mr.get("proof"), dict) else {}
         proof = dict(p) if isinstance(p, dict) else {}
 
-    required_source_keys = [str(v) for v in (proof.get("required_source_keys") or []) if str(v).strip()] if isinstance(proof, dict) else []
-    required_anchor_fields = [str(v) for v in (proof.get("required_anchor_fields") or []) if str(v).strip()] if isinstance(proof, dict) else []
+    required_source_keys = (
+        [str(v) for v in (proof.get("required_source_keys") or []) if str(v).strip()] if isinstance(proof, dict) else []
+    )
+    required_anchor_fields = (
+        [str(v) for v in (proof.get("required_anchor_fields") or []) if str(v).strip()]
+        if isinstance(proof, dict)
+        else []
+    )
     if not required_anchor_fields:
         required_anchor_fields = [str(v) for v in (must_recall.get("required_anchor_fields") or []) if str(v).strip()]
 

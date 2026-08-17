@@ -1,6 +1,7 @@
 """
 User feedback (evaluation loop) schemas.
 """
+
 from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
@@ -20,7 +21,9 @@ class MessageFeedbackCreateRequest(BaseModel):
     rating: int = Field(..., ge=1, le=5, description="Rating (1-5, higher is better)")
     reason: str | None = Field(default=None, description="Reason/explanation (optional)")
     tags: list[str] = Field(default_factory=list, description="Tags (optional)")
-    expected_answer: str | None = Field(default=None, description="Expected answer (optional, for supervision and regression)")
+    expected_answer: str | None = Field(
+        default=None, description="Expected answer (optional, for supervision and regression)"
+    )
     category: FeedbackCategory | None = Field(default=None, description="Negative-feedback root cause (optional)")
     extra: dict[str, Any] = Field(default_factory=dict, description="Extension fields (optional)")
 

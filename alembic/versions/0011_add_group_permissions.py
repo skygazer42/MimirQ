@@ -5,7 +5,6 @@ Adds:
 - document_group_permissions
 """
 
-
 from alembic import op
 
 revision = "0011_add_group_permissions"
@@ -32,7 +31,6 @@ UPGRADE_SQL = [
     "CREATE INDEX IF NOT EXISTS ix_dataset_group_permissions_tenant_id ON dataset_group_permissions (tenant_id);",
     "CREATE INDEX IF NOT EXISTS ix_dataset_group_permissions_tenant_dataset ON dataset_group_permissions (tenant_id, dataset_id);",
     "CREATE INDEX IF NOT EXISTS ix_dataset_group_permissions_tenant_group ON dataset_group_permissions (tenant_id, group_id);",
-
     # Document group allowlist.
     "CREATE TABLE IF NOT EXISTS document_group_permissions (\n"
     "\tid UUID NOT NULL,\n"
@@ -73,4 +71,3 @@ def upgrade() -> None:
 def downgrade() -> None:
     for stmt in DOWNGRADE_SQL:
         op.execute(stmt)
-

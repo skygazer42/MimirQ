@@ -8,7 +8,6 @@ This is intentionally lightweight and heuristic-driven:
 Used initially by chunk preview to surface "needs_review" signals for data governance.
 """
 
-
 import re
 from typing import Any
 
@@ -21,12 +20,12 @@ OPTIMAL_CHUNK_RANGE = (200, 512)  # Sweet spot for recall
 
 # P0 Optimization: Context Cliff detection based on Anthropic research
 CONTEXT_CLIFF_WARNING = 2000  # Recall starts to decline
-CONTEXT_CLIFF_DANGER = 2500   # Steep drop in recall quality (92% -> 55%)
+CONTEXT_CLIFF_DANGER = 2500  # Steep drop in recall quality (92% -> 55%)
 
 _TERMINAL_PUNCT = set(".!?。！？;；:：")
 _SOFT_TERMINAL_PUNCT = set(",，")
 
-_CLOSING_PUNCT = set(")]}”’\"」】》")
+_CLOSING_PUNCT = set(')]}”’"」】》')
 _OPENING_TO_CLOSING = {
     "(": ")",
     "[": "]",
@@ -39,9 +38,7 @@ _OPENING_TO_CLOSING = {
 }
 
 # Coarse context-dependent indicators (best-effort).
-_PRONOUN_EN_RE = re.compile(
-    r"(?i)\b(it|this|that|these|those|they|them|their|its|here|there|above|below)\b"
-)
+_PRONOUN_EN_RE = re.compile(r"(?i)\b(it|this|that|these|those|they|them|their|its|here|there|above|below)\b")
 _PRONOUN_ZH_RE = re.compile(r"(?:上述|下文|本节|本段|此处|这里|那里|这个|这些|那个|那些|其|该[文段节项]?)")
 
 
@@ -144,7 +141,7 @@ def validate_chunk_size_bounds(tokens_est: int) -> dict[str, Any]:
         "size_category": "optimal",
         "warning": None,
         "recommendation": None,
-        "severity": "none"
+        "severity": "none",
     }
 
     if tokens_est < MIN_CHUNK_SIZE_TOKENS:
@@ -198,8 +195,11 @@ def detect_context_cliff(tokens_est: int) -> dict[str, Any]:
             "severity": "critical",
             "action": "split_required",
             "target_sizes": [600, 800, 1000],
-            "explanation": f"Exceeds Context Cliff threshold ({tokens_est} >= {CONTEXT_CLIFF_DANGER} tokens). Recall drops to ~55%.",
-            "estimated_recall": 0.55
+            "explanation": (
+                f"Exceeds Context Cliff threshold ({tokens_est} >= {CONTEXT_CLIFF_DANGER} tokens). "
+                "Recall drops to ~55%."
+            ),
+            "estimated_recall": 0.55,
         }
     elif tokens_est >= CONTEXT_CLIFF_WARNING:
         return {
@@ -207,8 +207,10 @@ def detect_context_cliff(tokens_est: int) -> dict[str, Any]:
             "severity": "warning",
             "action": "consider_split",
             "target_sizes": [1000, 1200],
-            "explanation": f"Approaching Context Cliff ({tokens_est} >= {CONTEXT_CLIFF_WARNING} tokens). Consider splitting.",
-            "estimated_recall": 0.75
+            "explanation": (
+                f"Approaching Context Cliff ({tokens_est} >= {CONTEXT_CLIFF_WARNING} tokens). Consider splitting."
+            ),
+            "estimated_recall": 0.75,
         }
     elif tokens_est >= OPTIMAL_CHUNK_RANGE[1]:
         return {
@@ -217,7 +219,7 @@ def detect_context_cliff(tokens_est: int) -> dict[str, Any]:
             "action": "monitor",
             "target_sizes": None,
             "explanation": f"Within safe range ({tokens_est} tokens). Monitor for growth.",
-            "estimated_recall": 0.88
+            "estimated_recall": 0.88,
         }
     else:
         return {
@@ -226,7 +228,7 @@ def detect_context_cliff(tokens_est: int) -> dict[str, Any]:
             "action": "none",
             "target_sizes": None,
             "explanation": f"In optimal range ({tokens_est} tokens).",
-            "estimated_recall": 0.92
+            "estimated_recall": 0.92,
         }
 
 

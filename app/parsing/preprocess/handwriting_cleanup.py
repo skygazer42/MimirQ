@@ -6,7 +6,6 @@ This stage is feature-flagged and best-effort:
 - http backend: forward the file to a remote cleanup service and store returned bytes
 """
 
-
 from pathlib import Path
 from typing import Any
 
@@ -188,7 +187,9 @@ def _resolve_cleanup_backend(*, backend: str, input_path: Path, model_path: str,
     return "skip"
 
 
-def _run_heuristic_cleanup(*, input_path: Path, output_path: Path, info: dict[str, Any]) -> tuple[bool, str, dict[str, Any]]:
+def _run_heuristic_cleanup(
+    *, input_path: Path, output_path: Path, info: dict[str, Any]
+) -> tuple[bool, str, dict[str, Any]]:
     try:
         from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 

@@ -28,7 +28,6 @@ Example:
     --out-json runs/fusion_weights/search.json
 """
 
-
 import argparse
 import json
 import sys
@@ -194,9 +193,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--max-cases", type=int, default=0, help="Limit number of cases (default: all)")
     p.add_argument("--top-k", type=int, default=50, help="Evidence API rag_config.top_k (default: %(default)s)")
-    p.add_argument("--score-threshold", type=float, default=0.0, help="Evidence API rag_config.score_threshold (default: %(default)s)")
+    p.add_argument(
+        "--score-threshold",
+        type=float,
+        default=0.0,
+        help="Evidence API rag_config.score_threshold (default: %(default)s)",
+    )
     p.add_argument("--retrieval-mode", default="hybrid", help="hybrid|vector|keyword|mmr (default: %(default)s)")
-    p.add_argument("--retrieval-profile", default="recall50", help="recall20|recall50|coverage80 (default: %(default)s)")
+    p.add_argument(
+        "--retrieval-profile", default="recall50", help="recall20|recall50|coverage80 (default: %(default)s)"
+    )
 
     p.add_argument("--out-json", default="", help="Optional: write full search result JSON to this path")
     p.add_argument("--out-weights", default="", help="Optional: write best weights JSON to this path")
@@ -371,4 +377,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

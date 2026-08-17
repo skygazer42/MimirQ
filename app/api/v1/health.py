@@ -4,7 +4,6 @@ Health check endpoints.
 Public endpoints stay probe-friendly and minimal; detailed dependency state is admin-gated.
 """
 
-
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -133,7 +132,11 @@ def _collect_ready_details() -> tuple[dict[str, Any], int, dict[str, Any] | None
     cache_key = _ready_cache_key()
     cached_payload, cached_status = _get_ready_cache(cache_key)
     if cached_payload is not None:
-        return cached_payload, int(cached_status or 200), cached_payload.get("milvus") if isinstance(cached_payload, dict) else None
+        return (
+            cached_payload,
+            int(cached_status or 200),
+            cached_payload.get("milvus") if isinstance(cached_payload, dict) else None,
+        )
 
     ok = True
 
@@ -194,7 +197,9 @@ def _collect_ready_details() -> tuple[dict[str, Any], int, dict[str, Any] | None
                 "enabled": True,
                 "status": "unknown",
                 "ready": False,
-                "required_for_ready": bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_REQUIRED_FOR_READY", False)),
+                "required_for_ready": bool(
+                    getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_REQUIRED_FOR_READY", False)
+                ),
                 "error": str(exc)[:200],
             }
             if bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_REQUIRED_FOR_READY", False)):

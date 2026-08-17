@@ -46,7 +46,9 @@ def _restore_updated_assocs(db: Session, event_entity_model: Any, *, entity_id: 
     return restored
 
 
-def _restore_deleted_assoc_rows(db: Session, event_entity_model: Any, *, source_id: UUID, rows: list[dict[str, Any]]) -> int:
+def _restore_deleted_assoc_rows(
+    db: Session, event_entity_model: Any, *, source_id: UUID, rows: list[dict[str, Any]]
+) -> int:
     restored = 0
     for row in rows:
         row_id = _uuid_or_none(row.get("id"))
@@ -158,7 +160,9 @@ def _remove_merge_redirect(
     return False
 
 
-def _restore_source_entity_vector_if_needed(db: Session, *, tenant_id: UUID, source_id: UUID, vector_deleted: bool) -> None:
+def _restore_source_entity_vector_if_needed(
+    db: Session, *, tenant_id: UUID, source_id: UUID, vector_deleted: bool
+) -> None:
     if not vector_deleted or not bool(getattr(settings, "KG_ENTITY_RESOLUTION_UPDATE_VECTORS_ENABLED", False)):
         return
     try:

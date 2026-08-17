@@ -90,4 +90,6 @@ class DatasetCategoryMembership(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
     dataset = relationship("Dataset", foreign_keys=[tenant_id, dataset_id], overlaps="memberships")
-    category = relationship("DatasetCategory", back_populates="memberships", foreign_keys=[tenant_id, category_id], overlaps="dataset")
+    category = relationship(
+        "DatasetCategory", back_populates="memberships", foreign_keys=[tenant_id, category_id], overlaps="dataset"
+    )

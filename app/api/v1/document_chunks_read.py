@@ -1,4 +1,3 @@
-
 import uuid
 from typing import Annotated
 from uuid import UUID
@@ -36,8 +35,12 @@ def list_document_chunks(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=2000)] = 500,
     q: Annotated[str | None, Query(max_length=200)] = None,
-    pipeline_hash: Annotated[str | None, Query(max_length=64, description="Optional: filter by a specific pipeline_hash version")] = None,
-    all_versions: Annotated[bool, Query(description="If true, return chunks across all pipeline versions (debug)")] = False,
+    pipeline_hash: Annotated[
+        str | None, Query(max_length=64, description="Optional: filter by a specific pipeline_hash version")
+    ] = None,
+    all_versions: Annotated[
+        bool, Query(description="If true, return chunks across all pipeline versions (debug)")
+    ] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -50,11 +53,7 @@ def list_document_chunks(
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    document = (
-        db.query(DBDocument)
-        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-        .first()
-    )
+    document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
         raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
@@ -93,13 +92,19 @@ def list_document_chunks(
     return {"total": total, "items": items}
 
 
-@router.get("/{document_id}/chunks/matches", response_model=DocumentChunkMatchList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/{document_id}/chunks/matches", response_model=DocumentChunkMatchList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def list_document_chunk_matches(
     document_id: uuid.UUID,
     q: Annotated[str, Query(..., max_length=200, description="Case-insensitive substring match against chunk content")],
     limit: Annotated[int, Query(ge=1, le=5000, description="Max returned matches (may be truncated)")] = 2000,
-    pipeline_hash: Annotated[str | None, Query(max_length=64, description="Optional: filter by a specific pipeline_hash version")] = None,
-    all_versions: Annotated[bool, Query(description="If true, return matches across all pipeline versions (debug)")] = False,
+    pipeline_hash: Annotated[
+        str | None, Query(max_length=64, description="Optional: filter by a specific pipeline_hash version")
+    ] = None,
+    all_versions: Annotated[
+        bool, Query(description="If true, return matches across all pipeline versions (debug)")
+    ] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -114,11 +119,7 @@ def list_document_chunk_matches(
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    document = (
-        db.query(DBDocument)
-        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-        .first()
-    )
+    document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
         raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
@@ -157,9 +158,7 @@ def list_document_chunk_matches(
 
     total = int(query.count())
     rows = (
-        query.with_entities(DocumentChunk.id, DocumentChunk.chunk_index, DocumentChunk.page_number)
-        .limit(limit)
-        .all()
+        query.with_entities(DocumentChunk.id, DocumentChunk.chunk_index, DocumentChunk.page_number).limit(limit).all()
     )
     items = [
         {
@@ -177,7 +176,9 @@ def list_document_chunk_matches(
     }
 
 
-@router.get("/{document_id}/chunks/{chunk_id}", response_model=DocumentChunkSchema, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/{document_id}/chunks/{chunk_id}", response_model=DocumentChunkSchema, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def get_document_chunk(
     document_id: uuid.UUID,
     chunk_id: uuid.UUID,
@@ -191,11 +192,7 @@ def get_document_chunk(
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    document = (
-        db.query(DBDocument)
-        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-        .first()
-    )
+    document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
         raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 

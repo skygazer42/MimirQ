@@ -265,7 +265,9 @@ def test_faiss_vector_store_serializes_same_tenant_but_allows_cross_tenant(monke
 
     class _FakeFAISS:
         @staticmethod
-        def from_texts(*, texts: list[str], embedding: Any, metadatas: list[dict[str, Any]], ids: list[str]) -> _FakeStore:  # noqa: ARG004
+        def from_texts(
+            *, texts: list[str], embedding: Any, metadatas: list[dict[str, Any]], ids: list[str]
+        ) -> _FakeStore:  # noqa: ARG004
             if texts and texts[0] == "same-tenant-first":
                 same_tenant_started.set()
                 assert release_same_tenant.wait(timeout=1.0)
@@ -316,7 +318,10 @@ def test_faiss_vector_store_serializes_same_tenant_but_allows_cross_tenant(monke
     cross_tenant.join(timeout=1.0)
 
     assert second_same_tenant_done.is_set()
-    assert add_calls[:2] == ["other-tenant", "same-tenant-first"] or add_calls[:2] == ["same-tenant-first", "other-tenant"]
+    assert add_calls[:2] == ["other-tenant", "same-tenant-first"] or add_calls[:2] == [
+        "same-tenant-first",
+        "other-tenant",
+    ]
     assert add_calls[-1] == "same-tenant-second"
 
 

@@ -12,7 +12,6 @@ Scope:
 - Best-effort PDF watermark annotation stripping (cheap path) before model-based removal.
 """
 
-
 import re
 import time
 from dataclasses import dataclass
@@ -345,7 +344,9 @@ def _append_orientation_step(
 
     if is_pdf:
         out_path = artifact_root / f"{input_path.stem}.oriented.pdf"
-        changed, note, info = normalize_pdf_rotation(input_path=current, output_path=out_path, sample_pages=sample_pages)
+        changed, note, info = normalize_pdf_rotation(
+            input_path=current, output_path=out_path, sample_pages=sample_pages
+        )
         meta["pdf_rotation"] = info
     else:
         out_path = artifact_root / f"{input_path.stem}.oriented{input_path.suffix.lower()}"

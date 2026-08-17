@@ -1,6 +1,5 @@
 """Document index channel state helpers."""
 
-
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -161,7 +160,11 @@ def _normalized_transition_state(
 
 
 def _transition_error_value(status: str, error: str | None) -> str | None:
-    return None if status in {DOCUMENT_INDEX_CHANNEL_READY, DOCUMENT_INDEX_CHANNEL_SKIPPED, DOCUMENT_INDEX_CHANNEL_DISABLED} else error
+    return (
+        None
+        if status in {DOCUMENT_INDEX_CHANNEL_READY, DOCUMENT_INDEX_CHANNEL_SKIPPED, DOCUMENT_INDEX_CHANNEL_DISABLED}
+        else error
+    )
 
 
 def _existing_document_index_channel(
@@ -214,7 +217,9 @@ def _transition_upsert_kwargs(
     }
     if existing is None:
         kwargs["last_attempted_at"] = occurred_at if increment_attempt else None
-        kwargs["last_succeeded_at"] = occurred_at if normalized_status in {DOCUMENT_INDEX_CHANNEL_READY, DOCUMENT_INDEX_CHANNEL_SKIPPED} else None
+        kwargs["last_succeeded_at"] = (
+            occurred_at if normalized_status in {DOCUMENT_INDEX_CHANNEL_READY, DOCUMENT_INDEX_CHANNEL_SKIPPED} else None
+        )
         kwargs["last_failed_at"] = occurred_at if normalized_status == DOCUMENT_INDEX_CHANNEL_ERROR else None
         if atomic:
             kwargs["attempt_count"] = None
@@ -228,7 +233,9 @@ def _transition_upsert_kwargs(
     kwargs["attempt_count"] = attempt_count
     kwargs["last_attempted_at"] = occurred_at if increment_attempt else getattr(existing, "last_attempted_at", None)
     kwargs["last_succeeded_at"] = (
-        occurred_at if normalized_status in {DOCUMENT_INDEX_CHANNEL_READY, DOCUMENT_INDEX_CHANNEL_SKIPPED} else getattr(existing, "last_succeeded_at", None)
+        occurred_at
+        if normalized_status in {DOCUMENT_INDEX_CHANNEL_READY, DOCUMENT_INDEX_CHANNEL_SKIPPED}
+        else getattr(existing, "last_succeeded_at", None)
     )
     kwargs["last_failed_at"] = (
         occurred_at if normalized_status == DOCUMENT_INDEX_CHANNEL_ERROR else getattr(existing, "last_failed_at", None)
@@ -236,7 +243,9 @@ def _transition_upsert_kwargs(
     return kwargs
 
 
-def _finish_document_index_channel_write(db: Session, row: DocumentIndexChannel, *, commit: bool) -> DocumentIndexChannel:
+def _finish_document_index_channel_write(
+    db: Session, row: DocumentIndexChannel, *, commit: bool
+) -> DocumentIndexChannel:
     if commit:
         db.commit()
         db.refresh(row)
@@ -517,7 +526,9 @@ def _document_index_channel_insert_values(
         "enabled": bool(enabled),
         "status": normalized_status,
         "error": str(error or "").strip()[:2000] or None,
-        "attempt_count": normalized_attempt_count if normalized_attempt_count is not None else normalized_attempt_increment,
+        "attempt_count": normalized_attempt_count
+        if normalized_attempt_count is not None
+        else normalized_attempt_increment,
         "last_attempted_at": last_attempted_at,
         "last_succeeded_at": last_succeeded_at,
         "last_failed_at": last_failed_at,
@@ -684,14 +695,18 @@ def summarize_document_index_channels(
         statuses[str(row.channel)] = _row_to_dict(row)
     for channel in DOCUMENT_INDEX_CHANNELS:
         if channel not in statuses:
-            statuses[channel] = _legacy_channel_status(document, channel=channel, enabled=bool(flags.get(channel, False)))
+            statuses[channel] = _legacy_channel_status(
+                document, channel=channel, enabled=bool(flags.get(channel, False))
+            )
 
     required_channels = [channel for channel, payload in statuses.items() if bool(payload.get("required"))]
     enabled_channels = [channel for channel, payload in statuses.items() if bool(payload.get("enabled"))]
     pending_channels = [
         channel
         for channel, payload in statuses.items()
-        if bool(payload.get("enabled")) and str(payload.get("status") or "").strip().lower() not in DOCUMENT_INDEX_CHANNEL_TERMINAL_READY | DOCUMENT_INDEX_CHANNEL_TERMINAL_ERROR
+        if bool(payload.get("enabled"))
+        and str(payload.get("status") or "").strip().lower()
+        not in DOCUMENT_INDEX_CHANNEL_TERMINAL_READY | DOCUMENT_INDEX_CHANNEL_TERMINAL_ERROR
     ]
     error_channels = [
         channel

@@ -9,7 +9,6 @@ Targets documents that look like term-definition lists, e.g.:
 The chunker tries to keep a full entry together and uses entry-level overlap.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -132,7 +131,9 @@ def looks_like_glossary(text: str) -> bool:
     return len(entries) >= 5
 
 
-def _split_glossary_fallback_docs(splitter: RecursiveCharacterTextSplitter, text: str, base_meta: dict[str, Any]) -> list[Document]:
+def _split_glossary_fallback_docs(
+    splitter: RecursiveCharacterTextSplitter, text: str, base_meta: dict[str, Any]
+) -> list[Document]:
     split_docs = splitter.create_documents(texts=[text], metadatas=[base_meta])
     chunks: list[Document] = []
     for split_doc in split_docs:
@@ -167,7 +168,9 @@ def _window_glossary_terms(entries: list[_Entry], start_idx: int, end_idx: int) 
     return uniq_terms[:8]
 
 
-def _build_glossary_chunk(entries: list[_Entry], start_idx: int, end_idx: int, base_meta: dict[str, Any], text: str) -> Document:
+def _build_glossary_chunk(
+    entries: list[_Entry], start_idx: int, end_idx: int, base_meta: dict[str, Any], text: str
+) -> Document:
     chunk_start = entries[start_idx].start
     chunk_end = entries[end_idx - 1].end
     meta: dict[str, Any] = dict(base_meta)

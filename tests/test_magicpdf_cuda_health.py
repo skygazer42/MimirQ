@@ -15,7 +15,9 @@ def _load_magicpdf_server():
 def test_cuda_health_rejects_stale_torch_result_when_nvidia_smi_fails(monkeypatch):
     server = _load_magicpdf_server()
     monkeypatch.setattr(server.torch.cuda, "is_available", lambda: True)
-    monkeypatch.setattr(server.shutil, "which", lambda command: "/usr/bin/nvidia-smi" if command == "nvidia-smi" else None)
+    monkeypatch.setattr(
+        server.shutil, "which", lambda command: "/usr/bin/nvidia-smi" if command == "nvidia-smi" else None
+    )
 
     def fail_nvidia_smi(*_args, **_kwargs):
         raise subprocess.CalledProcessError(1, ["nvidia-smi", "-L"])

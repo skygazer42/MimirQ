@@ -7,7 +7,6 @@ A planner breaks down complex tasks, workers execute subtasks.
 Pattern: Plan -> [Worker1, Worker2, ...] -> Synthesize -> Result
 """
 
-
 import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -124,7 +123,7 @@ task3: [description] | deps: none
 Plan:"""
 
         response = await self._llm.ainvoke(prompt)
-        content = response.content if hasattr(response, 'content') else str(response)
+        content = response.content if hasattr(response, "content") else str(response)
 
         # Parse subtasks
         subtasks = []
@@ -154,7 +153,7 @@ Plan:"""
             if description:
                 subtasks.append(SubTask(task_id, description, deps))
 
-        return subtasks[:self.max_subtasks]
+        return subtasks[: self.max_subtasks]
 
     async def _execute_worker(self, subtask: SubTask) -> str:
         """Execute a subtask using the worker."""
@@ -179,10 +178,7 @@ Plan:"""
 
         while len(completed) < len(subtasks):
             # Find tasks ready to execute
-            ready = [
-                t for t in subtasks
-                if t.id not in completed and all(d in completed for d in t.dependencies)
-            ]
+            ready = [t for t in subtasks if t.id not in completed and all(d in completed for d in t.dependencies)]
 
             if not ready:
                 # No tasks ready - might have circular deps
@@ -198,9 +194,7 @@ Plan:"""
                     result = await self._execute_worker(task)
                     return task.id, result
 
-                task_results = await asyncio.gather(
-                    *[run_task(t) for t in ready]
-                )
+                task_results = await asyncio.gather(*[run_task(t) for t in ready])
                 for task_id, result in task_results:
                     results[task_id] = result
                     completed.add(task_id)
@@ -253,7 +247,7 @@ Based on all the subtask results above, provide a comprehensive answer to the or
 Final Answer:"""
 
         response = await self._llm.ainvoke(prompt)
-        return response.content if hasattr(response, 'content') else str(response)
+        return response.content if hasattr(response, "content") else str(response)
 
     async def run(self, state: dict[str, Any]) -> WorkflowResult:
         """
@@ -279,7 +273,9 @@ Final Answer:"""
         # Plan
         try:
             subtasks = await self._plan(question)
-            current_state["plan"] = [{"id": t.id, "description": t.description, "dependencies": t.dependencies} for t in subtasks]
+            current_state["plan"] = [
+                {"id": t.id, "description": t.description, "dependencies": t.dependencies} for t in subtasks
+            ]
             execution_path.append(f"planned:{len(subtasks)}_tasks")
         except Exception as e:
             logger.exception("Planning failed: %s", e)
@@ -351,6 +347,7 @@ def create_rag_worker(
     Returns:
         Worker function
     """
+
     async def worker(subtask: str) -> str:
         # Retrieve relevant context
         contexts = await retrieve_func(subtask)

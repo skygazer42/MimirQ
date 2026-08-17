@@ -6,7 +6,6 @@ METRICS_LOG_INCLUDE_TEXT=true, because this endpoint is meant for UI tooling
 and should stay PII-safe by construction.
 """
 
-
 import json
 import time
 from collections.abc import Iterable
@@ -420,13 +419,19 @@ def _safe_retriever_channels(ch_raw: Any) -> dict[str, Any] | None:
     out_ch: dict[str, Any] = {}
 
     _add_safe_strings(out_ch, ch_raw, (("retrieval_mode", 80), ("fusion_strategy", 80), ("vector_backend", 80)))
-    _add_safe_ints(out_ch, ch_raw, ("rrf_k", "merged_pre_dedup", "merged_post_dedup", "merged_post_rerank", "returned_top_k"))
+    _add_safe_ints(
+        out_ch, ch_raw, ("rrf_k", "merged_pre_dedup", "merged_post_dedup", "merged_post_rerank", "returned_top_k")
+    )
 
-    timing = _safe_float_bucket(ch_raw.get("timing"), ("vector_ms", "colbert_ms", "bm25_ms", "fusion_ms"), lo=0.0, hi=1_000_000.0, digits=2)
+    timing = _safe_float_bucket(
+        ch_raw.get("timing"), ("vector_ms", "colbert_ms", "bm25_ms", "fusion_ms"), lo=0.0, hi=1_000_000.0, digits=2
+    )
     if timing:
         out_ch["timing"] = timing
 
-    counts = _safe_int_bucket(ch_raw.get("counts"), ("vector_candidates", "colbert_candidates", "bm25_candidates", "sparse_candidates"))
+    counts = _safe_int_bucket(
+        ch_raw.get("counts"), ("vector_candidates", "colbert_candidates", "bm25_candidates", "sparse_candidates")
+    )
     if counts:
         out_ch["counts"] = counts
 
@@ -841,7 +846,9 @@ def _safe_retrieval_per_query(raw: Any) -> list[RagTraceRetrievalQuery]:
     return out
 
 
-def _retrieval_elapsed(raw_retrieval: dict[str, Any], citations: list[RagTraceCitation], per_query: list[RagTraceRetrievalQuery]) -> float | None:
+def _retrieval_elapsed(
+    raw_retrieval: dict[str, Any], citations: list[RagTraceCitation], per_query: list[RagTraceRetrievalQuery]
+) -> float | None:
     elapsed = _to_float(raw_retrieval.get("elapsed_sec"))
     if elapsed is not None:
         return elapsed
@@ -1004,7 +1011,9 @@ def normalize_rag_trace_record(record: dict[str, Any]) -> RagTrace:
 
     retrieval = RagTraceRetrieval(
         mode=(str(raw_retrieval.get("mode")) if raw_retrieval.get("mode") is not None else None),
-        requested_mode=(str(raw_retrieval.get("requested_mode")) if raw_retrieval.get("requested_mode") is not None else None),
+        requested_mode=(
+            str(raw_retrieval.get("requested_mode")) if raw_retrieval.get("requested_mode") is not None else None
+        ),
         auto_routed=_to_bool(raw_retrieval.get("auto_routed")),
         router_layers=_safe_router_layers(raw_retrieval.get("router_layers") or record.get("router_layers")),
         retrieval_config_hash=retrieval_config_hash,

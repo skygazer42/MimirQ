@@ -1,6 +1,7 @@
 """
 Base embedding model abstract class.
 """
+
 import asyncio
 import os
 from abc import ABC, abstractmethod
@@ -100,9 +101,7 @@ class BaseEmbeddingModel(ABC):
         """
         return await self.aencode(queries)
 
-    def batch_encode(
-        self, messages: list[str], batch_size: int = 40
-    ) -> list[list[float]]:
+    def batch_encode(self, messages: list[str], batch_size: int = 40) -> list[list[float]]:
         """Encode messages in batches.
 
         Args:
@@ -182,7 +181,9 @@ class BaseEmbeddingModel(ABC):
         async def encode_batch_with_limit(batch_info):
             idx, group_msg = batch_info
             async with semaphore:
-                logger.info(f"Encoding batch [{idx}/{len(messages)}] (bsz={len(group_msg)}, concurrent={max_concurrent})")
+                logger.info(
+                    f"Encoding batch [{idx}/{len(messages)}] (bsz={len(group_msg)}, concurrent={max_concurrent})"
+                )
                 result = await self.aencode(group_msg)
                 if task_id:
                     self.embed_state[task_id]["progress"] = min(idx + len(group_msg), len(messages))

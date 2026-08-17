@@ -2,7 +2,6 @@
 # ruff: noqa: E402, I001
 """Run a remote prompt workflow matrix against a live MimirQ API."""
 
-
 import argparse
 import json
 import sys
@@ -150,7 +149,9 @@ def delete_regression_cases(
 ) -> dict[str, Any]:
     deleted = 0
     for case_id in case_ids:
-        status, body, elapsed = api.json("DELETE", f"/api/v1/evaluations/ragas/regression/cases/{case_id}", timeout=timeout)
+        status, body, elapsed = api.json(
+            "DELETE", f"/api/v1/evaluations/ragas/regression/cases/{case_id}", timeout=timeout
+        )
         record_step(steps, "cleanup:delete_regression_case", status, body, elapsed, case_id=case_id)
         if ok_status(status) or int(status) == 204:
             deleted += 1
@@ -186,7 +187,9 @@ def main() -> int:
     document_ids: list[str] = []
     regression_case_ids: list[str] = []
     try:
-        status, body, elapsed = api.json("POST", "/api/v1/prompt-templates/builtins/sync", payload={}, timeout=args.timeout)
+        status, body, elapsed = api.json(
+            "POST", "/api/v1/prompt-templates/builtins/sync", payload={}, timeout=args.timeout
+        )
         record_step(steps, "sync_builtin_prompt_templates", status, body, elapsed)
         if not ok_status(status):
             raise RuntimeError(f"builtin prompt sync failed: {snippet(body)}")
@@ -238,7 +241,9 @@ def main() -> int:
             document_id = str((body or {}).get("id") or (body or {}).get("document_id") or "")
             if not document_id:
                 raise RuntimeError(f"upload missing document_id for {fixture['filename']}")
-            final_doc = poll_document_until_completed(api, document_id=document_id, steps=steps, timeout=args.poll_timeout)
+            final_doc = poll_document_until_completed(
+                api, document_id=document_id, steps=steps, timeout=args.poll_timeout
+            )
             document_ids.append(document_id)
             if not summary.get("documents"):
                 summary["documents"] = []
@@ -246,7 +251,11 @@ def main() -> int:
                 {
                     "document_id": document_id,
                     "filename": fixture["filename"],
-                    "pipeline_hash": str((final_doc.get("metadata") or {}).get("active_pipeline_hash") or (final_doc.get("metadata") or {}).get("pipeline_hash") or ""),
+                    "pipeline_hash": str(
+                        (final_doc.get("metadata") or {}).get("active_pipeline_hash")
+                        or (final_doc.get("metadata") or {}).get("pipeline_hash")
+                        or ""
+                    ),
                 }
             )
 
@@ -272,7 +281,9 @@ def main() -> int:
             },
             timeout=args.timeout,
         )
-        record_step(steps, "prompt_preview", status, body, elapsed, citation_count=len((body or {}).get("citations") or []))
+        record_step(
+            steps, "prompt_preview", status, body, elapsed, citation_count=len((body or {}).get("citations") or [])
+        )
         if not ok_status(status):
             raise RuntimeError(f"prompt preview failed: {snippet(body)}")
         prompt_text = str((body or {}).get("prompt_text") or "")
@@ -379,7 +390,11 @@ def main() -> int:
         record_step(steps, "testgen_from_documents", status, body, elapsed)
         if not ok_status(status):
             raise RuntimeError(f"test generation failed: {snippet(body)}")
-        generated_questions = body.get("generated_questions") if isinstance(body, dict) and isinstance(body.get("generated_questions"), list) else []
+        generated_questions = (
+            body.get("generated_questions")
+            if isinstance(body, dict) and isinstance(body.get("generated_questions"), list)
+            else []
+        )
         regression_case_ids = [str(item) for item in (body.get("saved_case_ids") or []) if str(item).strip()]
         if len(generated_questions) <= 0 or len(regression_case_ids) <= 0:
             raise RuntimeError(f"test generation returned no questions/cases: {snippet(body)}")
@@ -423,7 +438,11 @@ def main() -> int:
         summary_data = run.get("summary") if isinstance(run.get("summary"), dict) else {}
         if str(summary_data.get("llm_judge_prompt_template_key") or "") != PROMPT_KEYS["judge"]:
             raise RuntimeError(f"regression summary missing judge prompt key: {snippet(run_detail)}")
-        first_item_meta = items[0].get("meta") if items and isinstance(items[0], dict) and isinstance(items[0].get("meta"), dict) else {}
+        first_item_meta = (
+            items[0].get("meta")
+            if items and isinstance(items[0], dict) and isinstance(items[0].get("meta"), dict)
+            else {}
+        )
         llm_judge_meta = first_item_meta.get("llm_judge") if isinstance(first_item_meta.get("llm_judge"), dict) else {}
         generation_meta = llm_judge_meta.get("generation") if isinstance(llm_judge_meta.get("generation"), dict) else {}
         if str(generation_meta.get("prompt_template_key") or "") != PROMPT_KEYS["judge"]:

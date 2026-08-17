@@ -4,6 +4,7 @@ Extracted verbatim from ``app/api/v1/pipeline.py`` (built-in profile lookups are
 passed in via ``builtin_by_key`` instead of reading the pipeline module's
 import-time snapshot). Submodules must not import ``app.api.v1.pipeline``.
 """
+
 import json
 from dataclasses import dataclass
 from typing import Any
@@ -112,7 +113,11 @@ def _resolve_custom_profile_row(
         ref_uuid = None
 
     q = db.query(DBGovernanceProfile).filter(DBGovernanceProfile.tenant_id == tenant_id)
-    row = q.filter(DBGovernanceProfile.id == ref_uuid).first() if ref_uuid else q.filter(DBGovernanceProfile.key == ref).first()
+    row = (
+        q.filter(DBGovernanceProfile.id == ref_uuid).first()
+        if ref_uuid
+        else q.filter(DBGovernanceProfile.key == ref).first()
+    )
     if row is None:
         raise HTTPException(status_code=404, detail=GOVERNANCE_PROFILE_NOT_FOUND_DETAIL)
     return row

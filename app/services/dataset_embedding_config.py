@@ -1,6 +1,5 @@
 """Dataset-scoped embedding runtime configuration."""
 
-
 import re
 from dataclasses import dataclass
 from functools import lru_cache
@@ -60,7 +59,12 @@ def resolve_dataset_embedding_runtime(
     raw = dataset_metadata.get("embedding_defaults") if isinstance(dataset_metadata, dict) else None
     dataset_scoped = isinstance(raw, dict) and any(_clean(raw.get(key)) for key in ("provider", "model", "api_base"))
     if isinstance(raw, dict):
-        provider = EmbeddingProviders.PROVIDER_MAP.get(_clean(raw.get("provider")).lower(), _clean(raw.get("provider")).lower()) or provider
+        provider = (
+            EmbeddingProviders.PROVIDER_MAP.get(
+                _clean(raw.get("provider")).lower(), _clean(raw.get("provider")).lower()
+            )
+            or provider
+        )
         model = _clean(raw.get("model")) or model
         api_base = _clean(raw.get("api_base")) or api_base
     if dataset_scoped and _vector_backend() != "milvus":

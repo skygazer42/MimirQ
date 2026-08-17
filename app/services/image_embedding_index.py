@@ -7,7 +7,6 @@ Design goals:
 - Deterministic-ish: indexing is stable given the same (image bytes, model, settings).
 """
 
-
 import contextlib
 import io
 from collections.abc import Iterable
@@ -168,9 +167,7 @@ def _image_ref_from_chunk_meta(meta: dict[str, Any]) -> tuple[str | None, str | 
 def _image_index_limits(*, max_chunks: int, max_image_bytes: int | None) -> tuple[int, int]:
     limit = max(1, min(int(max_chunks or 0), 20_000))
     max_bytes = (
-        int(max_image_bytes)
-        if max_image_bytes is not None
-        else int(getattr(settings, "MINIO_IMAGE_MAX_BYTES", 0) or 0)
+        int(max_image_bytes) if max_image_bytes is not None else int(getattr(settings, "MINIO_IMAGE_MAX_BYTES", 0) or 0)
     )
     if max_bytes <= 0:
         max_bytes = 10_000_000
@@ -260,7 +257,10 @@ def index_clip_image_embeddings_for_dataset(
     # Pull recent chunks first; image chunks tend to be sparse.
     rows = (
         db.query(DocumentChunk)
-        .join(DBDocument, and_(DBDocument.id == DocumentChunk.document_id, DBDocument.tenant_id == DocumentChunk.tenant_id))
+        .join(
+            DBDocument,
+            and_(DBDocument.id == DocumentChunk.document_id, DBDocument.tenant_id == DocumentChunk.tenant_id),
+        )
         .filter(DocumentChunk.tenant_id == tenant_id, DBDocument.dataset_id == dataset_id)
         .order_by(DocumentChunk.updated_at.desc().nullslast(), DocumentChunk.created_at.desc().nullslast())
         .limit(limit)
@@ -268,7 +268,9 @@ def index_clip_image_embeddings_for_dataset(
     )
 
     collection = str(getattr(settings, "IMAGE_EMBEDDING_COLLECTION_NAME", "") or "").strip() or "image_chunks"
-    adapter = get_milvus_adapter(collection_name=resolve_collection_name(collection), vector_field="embedding", text_field="content")
+    adapter = get_milvus_adapter(
+        collection_name=resolve_collection_name(collection), vector_field="embedding", text_field="content"
+    )
 
     items: list[dict[str, Any]] = []
     embeddings: list[list[float]] = []
@@ -366,7 +368,9 @@ def search_clip_images(
         return []
 
     collection = str(getattr(settings, "IMAGE_EMBEDDING_COLLECTION_NAME", "") or "").strip() or "image_chunks"
-    adapter = get_milvus_adapter(collection_name=resolve_collection_name(collection), vector_field="embedding", text_field="content")
+    adapter = get_milvus_adapter(
+        collection_name=resolve_collection_name(collection), vector_field="embedding", text_field="content"
+    )
 
     eff_filter = dict(metadata_filter or {})
     eff_filter.setdefault("tenant_id", str(tenant_id))
@@ -423,7 +427,10 @@ def build_image_citations(
 
     rows_q = (
         db.query(DocumentChunk, DBDocument.filename)
-        .join(DBDocument, and_(DBDocument.id == DocumentChunk.document_id, DBDocument.tenant_id == DocumentChunk.tenant_id))
+        .join(
+            DBDocument,
+            and_(DBDocument.id == DocumentChunk.document_id, DBDocument.tenant_id == DocumentChunk.tenant_id),
+        )
         .filter(
             DocumentChunk.tenant_id == tenant_id,
             DocumentChunk.id.in_(want_ids),

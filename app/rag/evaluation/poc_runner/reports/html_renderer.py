@@ -1,4 +1,3 @@
-
 from html import escape
 from typing import Any
 
@@ -38,18 +37,23 @@ def _render_umap_scatter(report: dict[str, Any]) -> str:
         circles.append(f"<circle cx='{cx:.1f}' cy='{cy:.1f}' r='{radius}' fill='{color}' fill-opacity='0.78' />")
         if str(point.get("group") or "") == "out_of_scope_candidate":
             labels.append(
-                f"<text x='{cx + 8:.1f}' y='{cy - 6:.1f}' font-size='11' fill='#7f1d1d'>{escape(str(point.get('label') or '')[:24])}</text>"
+                f"<text x='{cx + 8:.1f}' y='{cy - 6:.1f}' font-size='11' fill='#7f1d1d'>"
+                f"{escape(str(point.get('label') or '')[:24])}</text>"
             )
 
     legend = (
         "<div style='display:flex;gap:16px;margin-top:12px;font-size:12px'>"
-        "<span><span style='display:inline-block;width:10px;height:10px;background:#2563eb;border-radius:999px'></span> document</span>"
-        "<span><span style='display:inline-block;width:10px;height:10px;background:#64748b;border-radius:999px'></span> query</span>"
-        "<span><span style='display:inline-block;width:10px;height:10px;background:#dc2626;border-radius:999px'></span> out_of_scope_candidate</span>"
+        "<span><span style='display:inline-block;width:10px;height:10px;background:#2563eb;"
+        "border-radius:999px'></span> document</span>"
+        "<span><span style='display:inline-block;width:10px;height:10px;background:#64748b;"
+        "border-radius:999px'></span> query</span>"
+        "<span><span style='display:inline-block;width:10px;height:10px;background:#dc2626;"
+        "border-radius:999px'></span> out_of_scope_candidate</span>"
         "</div>"
     )
     svg = (
-        f"<svg viewBox='0 0 {int(width)} {int(height)}' width='100%' height='{int(height)}' role='img' aria-label='umap scatter'>"
+        f"<svg viewBox='0 0 {int(width)} {int(height)}' width='100%' "
+        f"height='{int(height)}' role='img' aria-label='umap scatter'>"
         "<rect x='0' y='0' width='100%' height='100%' fill='#f8fafc' rx='16' />"
         + "".join(circles)
         + "".join(labels)
@@ -68,7 +72,8 @@ def _render_latency_breakdown(report: dict[str, Any]) -> str:
         f"<p><code>avg_wait_in_queue_ms</code>: {escape(str(summary.get('avg_wait_in_queue_ms')))}</p>"
         f"<p><code>avg_active_inference_ms</code>: {escape(str(summary.get('avg_active_inference_ms')))}</p>"
         f"<p><code>concurrency_issue_count</code>: {escape(str(summary.get('concurrency_issue_count')))}</p>"
-        f"<p><code>hardware_or_model_issue_count</code>: {escape(str(summary.get('hardware_or_model_issue_count')))}</p>"
+        "<p><code>hardware_or_model_issue_count</code>: "
+        f"{escape(str(summary.get('hardware_or_model_issue_count')))}</p>"
         "</div>"
     )
 
@@ -157,10 +162,13 @@ def render_dataset_analysis_html(report: dict[str, Any]) -> str:
     scope_summary = dict(meta.get("scope_summary") or {})
     glossary_candidates = list(report.get("glossary_candidates") or [])
 
-    glossary_html = "".join(
-        f"<li>{escape(str(item.get('token') or ''))} ({escape(str(item.get('count') or '0'))})</li>"
-        for item in glossary_candidates[:10]
-    ) or "<li>暂无候选</li>"
+    glossary_html = (
+        "".join(
+            f"<li>{escape(str(item.get('token') or ''))} ({escape(str(item.get('count') or '0'))})</li>"
+            for item in glossary_candidates[:10]
+        )
+        or "<li>暂无候选</li>"
+    )
 
     return f"""<!doctype html>
 <html lang="zh-CN">

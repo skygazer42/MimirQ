@@ -1,4 +1,3 @@
-
 import re
 from typing import Any
 
@@ -192,7 +191,9 @@ def _service_item_event(doc: Document, meta: dict[str, Any], index: int) -> dict
         _entity(online_url, "Url", role="online_url"),
     ]
     for alias in aliases:
-        entities.append(_entity(alias, "ServiceItem", role="alias", description=f"{alias} 是 {service_name} 的相似问法"))
+        entities.append(
+            _entity(alias, "ServiceItem", role="alias", description=f"{alias} 是 {service_name} 的相似问法")
+        )
     for channel in _split_simple_list(fields.get("办理形式")):
         entities.append(_entity(channel, "Channel", role="service_channel"))
     for material in _material_items(fields.get("办理材料")):
@@ -281,7 +282,9 @@ def _one_thing_event(doc: Document, meta: dict[str, Any], index: int) -> dict[st
     operation_steps = meta.get("operation_steps") if isinstance(meta.get("operation_steps"), list) else []
     urls = meta.get("urls") if isinstance(meta.get("urls"), list) else []
     entities: list[dict[str, Any] | None] = [
-        _entity(case_title, "OneThingCase", role="subject", description=_clamp(content, 240), evidence_quote=case_title),
+        _entity(
+            case_title, "OneThingCase", role="subject", description=_clamp(content, 240), evidence_quote=case_title
+        ),
         _entity(meta.get("knowledge_section"), "GovKnowledgeSection", role="knowledge_section"),
         _entity(section_label or section_type, "OneThingSection", role="section"),
     ]
@@ -315,7 +318,9 @@ def _one_thing_event(doc: Document, meta: dict[str, Any], index: int) -> dict[st
 
 def _text_event(doc: Document, meta: dict[str, Any], index: int) -> dict[str, Any]:
     content = _text(doc.page_content)
-    title = _first_present(meta, ("title", "service_name", "case_title", "question")) or _first_line(content) or "政务知识"
+    title = (
+        _first_present(meta, ("title", "service_name", "case_title", "question")) or _first_line(content) or "政务知识"
+    )
     entities = _dedupe_entities(
         [
             _entity(title, "GovKnowledge", role="subject", description=_clamp(content, 240), evidence_quote=title),

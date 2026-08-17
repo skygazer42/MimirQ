@@ -1,6 +1,5 @@
 """Capability discovery for reranker providers."""
 
-
 from typing import Any
 
 from app.core.config import settings
@@ -28,7 +27,10 @@ def describe_reranker_provider(provider: str | None, **kwargs: Any) -> dict[str,
     if family.canonical_name == "local_bge_v2_m3":
         return {"provider": "local_bge_v2_m3", "tier": family.tier}
     if family.canonical_name == "colbert":
-        mode = provider_name or str(getattr(settings, "COLBERT_RERANK_PROVIDER", "deterministic") or "deterministic").strip().lower()
+        mode = (
+            provider_name
+            or str(getattr(settings, "COLBERT_RERANK_PROVIDER", "deterministic") or "deterministic").strip().lower()
+        )
         if mode == "deterministic":
             return {"provider": "colbert", "tier": "offline_only", "mode": "deterministic"}
         return {"provider": "colbert", "tier": family.tier, "mode": mode}

@@ -10,7 +10,6 @@ The chunker groups whole instruction blocks together, and splits by stages
 when multiple FROM instructions exist. Offsets are preserved.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -123,7 +122,9 @@ def looks_like_dockerfile(text: str) -> bool:
     if not lines:
         return False
     head = "\n".join(lines[:80])
-    if re.search(r"(?mi)^\s*from\s+\S+", head) and re.search(r"(?mi)^\s*(run|copy|add|cmd|entrypoint|env|workdir)\b", head):
+    if re.search(r"(?mi)^\s*from\s+\S+", head) and re.search(
+        r"(?mi)^\s*(run|copy|add|cmd|entrypoint|env|workdir)\b", head
+    ):
         return True
     return False
 

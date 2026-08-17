@@ -17,7 +17,6 @@ Examples:
   python scripts/run_stale_report_jobs.py --all-tenants --execute
 """
 
-
 import argparse
 import json
 from datetime import UTC, datetime
@@ -48,7 +47,9 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--execute", action="store_true", help="Write audit log entry (best-effort).")
 
     p.add_argument("--stale-after-days", type=int, default=30, help="Mark stale when older than N days (default: 30)")
-    p.add_argument("--max-documents", type=int, default=5000, help="Max connector documents scanned per tenant (default: 5000)")
+    p.add_argument(
+        "--max-documents", type=int, default=5000, help="Max connector documents scanned per tenant (default: 5000)"
+    )
     p.add_argument("--force", action="store_true", help="Write audit even if today's report already exists.")
 
     args = p.parse_args(argv)

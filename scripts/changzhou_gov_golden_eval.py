@@ -6,7 +6,6 @@ MimirQ's Dify adapter with fixed cases and scores whether the expected source
 or chunk appears in the returned records.
 """
 
-
 import argparse
 import ipaddress
 import json
@@ -228,7 +227,6 @@ def _quality_point_in_text(point: str, text: str) -> bool:
     return _quality_point_cjk_fuzzy_in_text(point, text)
 
 
-
 def _contains_all(value: Any, expected: list[Any]) -> bool:
     text = _text(value)
     return all(_text(item) in text for item in expected if _text(item))
@@ -387,7 +385,9 @@ def _answer_key_point_aliases(case: dict[str, Any]) -> dict[str, list[str]]:
 
 
 def _quality_point_or_alias_in_text(point: str, text: str, aliases: dict[str, list[str]]) -> bool:
-    return _quality_point_in_text(point, text) or any(_quality_point_in_text(alias, text) for alias in aliases.get(point, []))
+    return _quality_point_in_text(point, text) or any(
+        _quality_point_in_text(alias, text) for alias in aliases.get(point, [])
+    )
 
 
 def _case_answer_context_top_k(case: dict[str, Any]) -> int:
@@ -420,7 +420,9 @@ def evaluate_answer_quality(case: dict[str, Any], records: list[dict[str, Any]])
         sum(
             1
             for record in context_records
-            if any(_quality_point_or_alias_in_text(point, _text(record.get("content")), aliases) for point in key_points)
+            if any(
+                _quality_point_or_alias_in_text(point, _text(record.get("content")), aliases) for point in key_points
+            )
         )
         if key_points
         else 0
@@ -554,12 +556,11 @@ def summarize_results(results: list[dict[str, Any]], *, required_sections: tuple
     metadata_items = [
         item.get("metadata_quality")
         for item in results
-        if isinstance(item.get("metadata_quality"), dict) and (item.get("metadata_quality") or {}).get("evaluated") is True
+        if isinstance(item.get("metadata_quality"), dict)
+        and (item.get("metadata_quality") or {}).get("evaluated") is True
     ]
     kg_items = [
-        item.get("kg_hint_diagnostics")
-        for item in results
-        if isinstance(item.get("kg_hint_diagnostics"), dict)
+        item.get("kg_hint_diagnostics") for item in results if isinstance(item.get("kg_hint_diagnostics"), dict)
     ]
     kg_candidate_records = sum(int((item or {}).get("kg_candidate_count") or 0) for item in kg_items)
     kg_noise_evaluated_items = [item for item in kg_items if bool((item or {}).get("kg_noise_evaluated"))]
@@ -574,11 +575,7 @@ def summarize_results(results: list[dict[str, Any]], *, required_sections: tuple
     ]
     generated_total_points = sum(int((item or {}).get("key_points_total") or 0) for item in generated_items)
     generated_matched_points = sum(int((item or {}).get("key_points_matched") or 0) for item in generated_items)
-    scope_items = [
-        item.get("case_scope")
-        for item in results
-        if isinstance(item.get("case_scope"), dict)
-    ]
+    scope_items = [item.get("case_scope") for item in results if isinstance(item.get("case_scope"), dict)]
     section_counts: dict[str, int] = {}
     for item in scope_items:
         section = _text((item or {}).get("knowledge_section"))
@@ -1015,12 +1012,20 @@ def run_live_eval(
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run Changzhou plugin golden retrieval evaluation against MimirQ.")
-    parser.add_argument("--report", default="", help="Re-evaluate an existing report JSON instead of running live retrieval.")
-    parser.add_argument("--baseline-report", default="", help="KG-off or previous golden report JSON for comparison mode.")
-    parser.add_argument("--candidate-report", default="", help="KG-on or candidate golden report JSON for comparison mode.")
+    parser.add_argument(
+        "--report", default="", help="Re-evaluate an existing report JSON instead of running live retrieval."
+    )
+    parser.add_argument(
+        "--baseline-report", default="", help="KG-off or previous golden report JSON for comparison mode."
+    )
+    parser.add_argument(
+        "--candidate-report", default="", help="KG-on or candidate golden report JSON for comparison mode."
+    )
     parser.add_argument("--cases", default=DEFAULT_CASES)
     parser.add_argument("--base-url", default=os.getenv("MIMIRQ_API_BASE_URL") or "http://127.0.0.1:8000")
-    parser.add_argument("--token", default="", help="Dify external knowledge bearer token; defaults to env or --env-file.")
+    parser.add_argument(
+        "--token", default="", help="Dify external knowledge bearer token; defaults to env or --env-file."
+    )
     parser.add_argument("--env-file", default=".env", help="Env file used to load DIFY_EXTERNAL_KNOWLEDGE_API_KEY(S).")
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--timeout", type=float, default=90.0)
@@ -1120,7 +1125,9 @@ def main(argv: list[str] | None = None) -> int:
         else:
             token = load_token(str(args.token), env_file=str(args.env_file))
             if not token:
-                print("DIFY_EXTERNAL_KNOWLEDGE_API_KEY(S), --token, or --env-file with token is required", file=sys.stderr)
+                print(
+                    "DIFY_EXTERNAL_KNOWLEDGE_API_KEY(S), --token, or --env-file with token is required", file=sys.stderr
+                )
                 return 2
             report = run_live_eval(
                 cases=load_cases(str(args.cases)),

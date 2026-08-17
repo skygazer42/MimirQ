@@ -7,7 +7,6 @@ This module intentionally keeps execution *declarative* and safe:
 - Query execution is SELECT-only and uses sqlite authorizer to restrict table access.
 """
 
-
 import datetime as dt
 import hashlib
 import json
@@ -343,7 +342,9 @@ def import_table_document(  # noqa: PLR0913 - public importer keeps explicit API
         return _write_single_sheet(
             context=context,
             df=df,
-            options=SheetWriteOptions(sheet_index=0, sheet_name=None, truncated=truncated, sample_rows=limits.sample_rows),
+            options=SheetWriteOptions(
+                sheet_index=0, sheet_name=None, truncated=truncated, sample_rows=limits.sample_rows
+            ),
         )
 
     # Excel (.xls/.xlsx)
@@ -416,7 +417,9 @@ def _bounded_excel_sheet_names(sheet_names: list[str]) -> tuple[list[str], bool]
     return sheet_names, False
 
 
-def _read_excel_sheet(xls: Any, *, sheet_name: str, limits: TableImportLimits, workbook_truncated: bool) -> tuple["pd.DataFrame", bool] | None:
+def _read_excel_sheet(
+    xls: Any, *, sheet_name: str, limits: TableImportLimits, workbook_truncated: bool
+) -> tuple["pd.DataFrame", bool] | None:
     hard_nrows = limits.row_limit
     nrows = (hard_nrows + 1) if hard_nrows > 0 else None
     try:
@@ -549,7 +552,9 @@ def _write_single_sheet(
         sample_rows=_df_sample_rows(df, sample_rows=options.sample_rows),
         row_source_table=(str(options.row_source_table).strip() if options.row_source_table else None),
         row_source_sync_token=(str(options.row_source_sync_token).strip() if options.row_source_sync_token else None),
-        row_source_pk_hash_col=(str(options.row_source_pk_hash_col).strip() if options.row_source_pk_hash_col else None),
+        row_source_pk_hash_col=(
+            str(options.row_source_pk_hash_col).strip() if options.row_source_pk_hash_col else None
+        ),
     )
     return [asset]
 
@@ -751,7 +756,11 @@ def _split_markdown_table_row(line: str) -> list[str]:
 
 def _markdown_table_body_start(lines: list[str], header_width: int) -> tuple[int, bool]:
     separator = _split_markdown_table_row(lines[1]) if len(lines) >= 2 else []
-    if separator and len(separator) == header_width and all(_MD_TABLE_SEP_CELL_RE.match(cell or "") for cell in separator):
+    if (
+        separator
+        and len(separator) == header_width
+        and all(_MD_TABLE_SEP_CELL_RE.match(cell or "") for cell in separator)
+    ):
         return 2, True
     return 1, False
 
@@ -813,7 +822,7 @@ def import_markdown_tables(  # noqa: PLR0913 - public importer keeps explicit AP
     assets: list[TableAsset] = []
     sheet_index = 0
 
-    for t in (tables or []):
+    for t in tables or []:
         if not isinstance(t, dict):
             continue
         md = str(t.get("markdown") or "")
@@ -936,7 +945,9 @@ def _db_snapshot_dataframe(snap: dict[str, Any], *, max_rows: int, max_cols: int
     return _sanitize_dataframe(pd.DataFrame(clipped_rows, columns=column_names)), pk_hash_col
 
 
-def _db_snapshot_write_options(snap: dict[str, Any], *, idx: int, sample_rows: int, pk_hash_col: str) -> SheetWriteOptions:
+def _db_snapshot_write_options(
+    snap: dict[str, Any], *, idx: int, sample_rows: int, pk_hash_col: str
+) -> SheetWriteOptions:
     fallback_name = f"table_{idx + 1}"
     sheet_name = str(snap.get("sheet_name") or snap.get("source_table") or fallback_name).strip()[:200] or fallback_name
     return SheetWriteOptions(
@@ -1073,11 +1084,7 @@ def evaluate_planner_execution_mismatch(
     actual_fp = fingerprint_sql(str(executed_sql or ""), length=16)
     mismatch_reasons: list[str] = []
 
-    expected_tables = [
-        str(v).strip()
-        for v in (planner.get("selected_tables") or [])
-        if str(v).strip()
-    ]
+    expected_tables = [str(v).strip() for v in (planner.get("selected_tables") or []) if str(v).strip()]
     actual_tables = _extract_sql_table_refs(str(executed_sql or ""))
 
     if expected_fp and actual_fp and expected_fp != actual_fp:
@@ -1149,7 +1156,9 @@ def _query_allowed_tables(*, sql_table: str, allowed_sql_tables: list[str] | Non
 
 
 def _validate_query_table_refs(normalized_sql: str, *, allowed_tables: set[str]) -> None:
-    if _SQL_DISALLOWED_JOIN_RE.search(normalized_sql) and not bool(getattr(settings, "TABLE_QUERY_ALLOW_CROSS_JOIN", False)):
+    if _SQL_DISALLOWED_JOIN_RE.search(normalized_sql) and not bool(
+        getattr(settings, "TABLE_QUERY_ALLOW_CROSS_JOIN", False)
+    ):
         raise ValueError("join_type_not_allowed")
 
     referenced_tables = _extract_sql_table_refs(normalized_sql)
@@ -1190,7 +1199,9 @@ def _limited_query_columns(cur: sqlite3.Cursor, *, max_cols: int) -> tuple[list[
     return col_names, False
 
 
-def _fetch_query_rows(cur: sqlite3.Cursor, *, col_names: list[str], limits: TableQueryLimits) -> tuple[list[list[Any]], bool]:
+def _fetch_query_rows(
+    cur: sqlite3.Cursor, *, col_names: list[str], limits: TableQueryLimits
+) -> tuple[list[list[Any]], bool]:
     out_rows: list[list[Any]] = []
     bytes_used = 0
     truncated = False

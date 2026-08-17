@@ -1,4 +1,3 @@
-
 import argparse
 from pathlib import Path
 
@@ -17,10 +16,54 @@ def _write_qr(path: Path, value: str) -> None:
 
 
 def _write_barcode(path: Path, value12: str) -> None:
-    l_codes = {"0": "0001101", "1": "0011001", "2": "0010011", "3": "0111101", "4": "0100011", "5": "0110001", "6": "0101111", "7": "0111011", "8": "0110111", "9": "0001011"}
-    g_codes = {"0": "0100111", "1": "0110011", "2": "0011011", "3": "0100001", "4": "0011101", "5": "0111001", "6": "0000101", "7": "0010001", "8": "0001001", "9": "0010111"}
-    r_codes = {"0": "1110010", "1": "1100110", "2": "1101100", "3": "1000010", "4": "1011100", "5": "1001110", "6": "1010000", "7": "1000100", "8": "1001000", "9": "1110100"}
-    parity_patterns = {"0": "LLLLLL", "1": "LLGLGG", "2": "LLGGLG", "3": "LLGGGL", "4": "LGLLGG", "5": "LGGLLG", "6": "LGGGLL", "7": "LGLGLG", "8": "LGLGGL", "9": "LGGLGL"}
+    l_codes = {
+        "0": "0001101",
+        "1": "0011001",
+        "2": "0010011",
+        "3": "0111101",
+        "4": "0100011",
+        "5": "0110001",
+        "6": "0101111",
+        "7": "0111011",
+        "8": "0110111",
+        "9": "0001011",
+    }
+    g_codes = {
+        "0": "0100111",
+        "1": "0110011",
+        "2": "0011011",
+        "3": "0100001",
+        "4": "0011101",
+        "5": "0111001",
+        "6": "0000101",
+        "7": "0010001",
+        "8": "0001001",
+        "9": "0010111",
+    }
+    r_codes = {
+        "0": "1110010",
+        "1": "1100110",
+        "2": "1101100",
+        "3": "1000010",
+        "4": "1011100",
+        "5": "1001110",
+        "6": "1010000",
+        "7": "1000100",
+        "8": "1001000",
+        "9": "1110100",
+    }
+    parity_patterns = {
+        "0": "LLLLLL",
+        "1": "LLGLGG",
+        "2": "LLGGLG",
+        "3": "LLGGGL",
+        "4": "LGLLGG",
+        "5": "LGGLLG",
+        "6": "LGGGLL",
+        "7": "LGLGLG",
+        "8": "LGLGGL",
+        "9": "LGGLGL",
+    }
 
     def checksum12(raw: str) -> str:
         total = 0
@@ -455,7 +498,9 @@ def _write_mixed_scan_memo(path: Path) -> None:
     blurred = cv2.GaussianBlur(arr, (5, 5), 0)
     noise = np.random.default_rng(29).normal(loc=0.0, scale=10.5, size=blurred.shape)
     noisy = np.clip(blurred.astype("float32") + noise, 0, 255).astype("uint8")
-    src = np.float32([[16, 20], [arr.shape[1] - 18, 8], [28, arr.shape[0] - 18], [arr.shape[1] - 24, arr.shape[0] - 12]])
+    src = np.float32(
+        [[16, 20], [arr.shape[1] - 18, 8], [28, arr.shape[0] - 18], [arr.shape[1] - 24, arr.shape[0] - 12]]
+    )
     dst = np.float32([[0, 0], [arr.shape[1], 14], [8, arr.shape[0]], [arr.shape[1], arr.shape[0] - 18]])
     mat = cv2.getPerspectiveTransform(src, dst)
     warped = cv2.warpPerspective(noisy, mat, (arr.shape[1], arr.shape[0]), borderValue=241)
@@ -753,7 +798,9 @@ def generate_broader_assets(output_root: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Generate deterministic image assets for parser benchmark root fixtures.")
+    parser = argparse.ArgumentParser(
+        description="Generate deterministic image assets for parser benchmark root fixtures."
+    )
     parser.add_argument(
         "--output-root",
         default="tests/fixtures/parsing_golden",

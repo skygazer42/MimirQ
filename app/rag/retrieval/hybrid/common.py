@@ -222,7 +222,9 @@ def _query_looks_like_cjk_metadata_anchor(query: str) -> bool:
     return _looks_like_metadata_exact_anchor("question", normalized)
 
 
-def _results_contain_metadata_exact_anchor(query: str, results: list[dict[str, Any]], *, limit: int | None = None) -> bool:
+def _results_contain_metadata_exact_anchor(
+    query: str, results: list[dict[str, Any]], *, limit: int | None = None
+) -> bool:
     candidates = list(results or [])
     if limit is not None and int(limit or 0) > 0:
         candidates = sorted(

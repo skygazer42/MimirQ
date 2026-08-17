@@ -6,7 +6,6 @@ Goal:
 - Attach a stable retrieval_config_hash so downstream dashboards can group runs by config.
 """
 
-
 import json
 from collections.abc import Iterable
 from typing import Any
@@ -123,8 +122,12 @@ def _build_run_retrieval_config_hash(*, rag_params: dict[str, Any]) -> str | Non
             "evidence_post_rerank_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_ENABLED", False)),
             "evidence_post_rerank_provider": str(getattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "") or ""),
             "evidence_post_rerank_top_n": int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0),
-            "evidence_post_rerank_pipeline_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE_ENABLED", False)),
-            "evidence_post_rerank_pipeline": _safe_post_rerank_pipeline_summary(getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE", "")),
+            "evidence_post_rerank_pipeline_enabled": bool(
+                getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE_ENABLED", False)
+            ),
+            "evidence_post_rerank_pipeline": _safe_post_rerank_pipeline_summary(
+                getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE", "")
+            ),
             "query_rewrite": {
                 "enabled": bool(rewrite_enabled),
                 "strategy_id": rewrite_strategy_id if rewrite_enabled else None,
@@ -153,7 +156,7 @@ def build_regression_run_leaderboard(
     limit = max(1, min(int(limit or 0), 500))
 
     items: list[dict[str, Any]] = []
-    for r in (runs or []):
+    for r in runs or []:
         summary = _safe_dict(getattr(r, "summary", None))
         params = _safe_dict(getattr(r, "params", None))
         rag_params = _safe_dict(params.get("rag_params"))

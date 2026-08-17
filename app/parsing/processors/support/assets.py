@@ -1,4 +1,5 @@
 """Asset reference collection and inline-asset audit helpers."""
+
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -88,9 +89,30 @@ def _apply_inline_asset_audit_patch(
         meta_patch = dict(db_document.doc_metadata or {})
         field_specs = (
             ("image_codes_added", "image_codes_added", None, None, "image_code_audit", "image_code_audit"),
-            ("image_captions_added", "captions_added", "image_caption_backend", "caption_backend", "image_caption_audit", "caption_audit"),
-            ("formula_ocr_added", "formulas_added", "formula_ocr_backend", "formula_backend", "formula_ocr_audit", "formula_audit"),
-            ("chart_data_added", "charts_added", "chart_data_backend", "chart_backend", "chart_data_audit", "chart_audit"),
+            (
+                "image_captions_added",
+                "captions_added",
+                "image_caption_backend",
+                "caption_backend",
+                "image_caption_audit",
+                "caption_audit",
+            ),
+            (
+                "formula_ocr_added",
+                "formulas_added",
+                "formula_ocr_backend",
+                "formula_backend",
+                "formula_ocr_audit",
+                "formula_audit",
+            ),
+            (
+                "chart_data_added",
+                "charts_added",
+                "chart_data_backend",
+                "chart_backend",
+                "chart_data_audit",
+                "chart_audit",
+            ),
         )
         for count_key, count_attr, backend_key, backend_attr, audit_key, audit_attr in field_specs:
             meta_patch[count_key] = int(getattr(inline_result, count_attr, 0) or 0)

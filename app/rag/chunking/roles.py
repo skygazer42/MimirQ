@@ -11,7 +11,6 @@ Notes:
   structural roles (parent/child/qa/etc).
 """
 
-
 import re
 from collections.abc import Mapping
 from enum import Enum
@@ -45,14 +44,37 @@ _NUMBERED_LIST_RE = re.compile(r"(?m)^\s*\d{1,3}[.)]\s+\S")
 _SEMANTIC_ROLE_VALUES = frozenset(role.value for role in ChunkSemanticRole)
 _HEADER_ROLE_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (ChunkSemanticRole.FAQ.value, ("faq", "frequently asked", "常见问题")),
-    (ChunkSemanticRole.DEFINITION.value, ("definition", "definitions", "glossary", "terminology", "定义", "术语", "名词解释")),
+    (
+        ChunkSemanticRole.DEFINITION.value,
+        ("definition", "definitions", "glossary", "terminology", "定义", "术语", "名词解释"),
+    ),
     (
         ChunkSemanticRole.PROCEDURE.value,
-        ("procedure", "procedures", "step", "steps", "how to", "usage", "install", "setup", "步骤", "流程", "使用", "操作", "指南"),
+        (
+            "procedure",
+            "procedures",
+            "step",
+            "steps",
+            "how to",
+            "usage",
+            "install",
+            "setup",
+            "步骤",
+            "流程",
+            "使用",
+            "操作",
+            "指南",
+        ),
     ),
-    (ChunkSemanticRole.POLICY.value, ("policy", "policies", "compliance", "privacy", "security", "政策", "合规", "隐私", "安全")),
+    (
+        ChunkSemanticRole.POLICY.value,
+        ("policy", "policies", "compliance", "privacy", "security", "政策", "合规", "隐私", "安全"),
+    ),
     (ChunkSemanticRole.EXAMPLE.value, ("example", "examples", "sample", "samples", "demo", "示例", "样例", "例子")),
-    (ChunkSemanticRole.REFERENCE.value, ("reference", "appendix", "resources", "api reference", "参考", "附录", "资源")),
+    (
+        ChunkSemanticRole.REFERENCE.value,
+        ("reference", "appendix", "resources", "api reference", "参考", "附录", "资源"),
+    ),
 )
 
 

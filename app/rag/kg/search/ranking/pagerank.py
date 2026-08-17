@@ -1,6 +1,7 @@
 """
 PageRank-style rerank combining query similarity and entity co-occurrence graph.
 """
+
 import math
 from typing import Any
 
@@ -184,7 +185,9 @@ class RerankPageRankSearcher:
             if not events:
                 return {"events": [], "clues": [], "stats": {}}
 
-            query_vec = query_vector if query_vector is not None else await self.processor.generate_embedding(config.query)
+            query_vec = (
+                query_vector if query_vector is not None else await self.processor.generate_embedding(config.query)
+            )
             key_weights = _key_weight_map(key_final)
             key_entity_ids = _key_entity_ids(key_final)
             assoc_map = repo.get_entities_for_events(event_ids, tenant_id=config.tenant_id)

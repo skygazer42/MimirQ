@@ -5,7 +5,6 @@ The default mode is dry-run: fetch the current draft, write a backup, build the
 POST payload, and report lint deltas. Remote writes require explicit --apply.
 """
 
-
 import argparse
 import json
 import os
@@ -257,7 +256,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Dry-run or apply a sanitized Dify draft workflow.")
     parser.add_argument("--app-id", required=True)
     parser.add_argument("--workflow-json", required=True)
-    parser.add_argument("--console-base-url", default=os.getenv("DIFY_CONSOLE_API_BASE_URL") or DEFAULT_CONSOLE_BASE_URL)
+    parser.add_argument(
+        "--console-base-url", default=os.getenv("DIFY_CONSOLE_API_BASE_URL") or DEFAULT_CONSOLE_BASE_URL
+    )
     parser.add_argument("--console-token", default=os.getenv("DIFY_CONSOLE_TOKEN") or "")
     parser.add_argument("--storage-state", default=DEFAULT_STORAGE_STATE)
     parser.add_argument("--timeout", type=float, default=30.0)
@@ -275,7 +276,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         console_token = load_console_token(str(args.console_token), str(args.storage_state))
         if not console_token:
-            print("DIFY_CONSOLE_TOKEN, --console-token, or --storage-state with console_token is required", file=sys.stderr)
+            print(
+                "DIFY_CONSOLE_TOKEN, --console-token, or --storage-state with console_token is required",
+                file=sys.stderr,
+            )
             return 2
         target_workflow = _load_workflow_json(str(args.workflow_json))
         report = sync_workflow_draft(
@@ -297,12 +301,11 @@ def main(argv: list[str] | None = None) -> int:
     _write_json(str(args.out), report)
     print(json.dumps(report, ensure_ascii=False, indent=2))
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
-    issue_count = int(summary.get("target_prompt_template_leak_warnings") or 0) + int(
-        summary.get("post_verify_prompt_template_leak_warnings") or 0
-    ) + int(
-        summary.get("target_http_json_template_warnings") or 0
-    ) + int(
-        summary.get("post_verify_http_json_template_warnings") or 0
+    issue_count = (
+        int(summary.get("target_prompt_template_leak_warnings") or 0)
+        + int(summary.get("post_verify_prompt_template_leak_warnings") or 0)
+        + int(summary.get("target_http_json_template_warnings") or 0)
+        + int(summary.get("post_verify_http_json_template_warnings") or 0)
     )
     return 0 if issue_count == 0 else 1
 

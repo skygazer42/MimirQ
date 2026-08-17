@@ -1,4 +1,3 @@
-
 import contextlib
 from typing import Any
 from uuid import UUID
@@ -42,7 +41,9 @@ def _db_catalog_connector_config_id(stats: dict[str, Any]) -> UUID | None:
         return None
 
 
-def _build_db_catalog_run_context(db: Session, *, run: ConnectorRun) -> tuple[str, dict[str, Any], dict[str, Any], UUID | None, Any]:
+def _build_db_catalog_run_context(
+    db: Session, *, run: ConnectorRun
+) -> tuple[str, dict[str, Any], dict[str, Any], UUID | None, Any]:
     from app.connectors.db.catalog_store_sqlalchemy import SqlAlchemyCatalogStore
     from app.core.secrets import decrypt_connector_config_secrets
 
@@ -174,9 +175,7 @@ def _db_catalog_row_sync_settings(cfg: dict[str, Any]) -> tuple[bool, int, int, 
     enabled = bool(getattr(settings, "DB_CATALOG_ROW_SYNC_ENABLED", False) and cfg.get("row_sync_enabled"))
     max_tables = int(cfg.get("row_sync_max_tables") or getattr(settings, "DB_CATALOG_ROW_SYNC_MAX_TABLES", 20) or 20)
     max_rows = int(
-        cfg.get("row_sync_max_rows_per_table")
-        or getattr(settings, "DB_CATALOG_ROW_SYNC_MAX_ROWS_PER_TABLE", 50)
-        or 50
+        cfg.get("row_sync_max_rows_per_table") or getattr(settings, "DB_CATALOG_ROW_SYNC_MAX_ROWS_PER_TABLE", 50) or 50
     )
     max_cols = int(cfg.get("row_sync_max_cols") or getattr(settings, "DB_CATALOG_ROW_SYNC_MAX_COLS", 50) or 50)
     return enabled, max_tables, max_rows, max_cols
@@ -347,11 +346,7 @@ def _mark_db_catalog_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, e
     from app.api.v1 import connectors as connectors_module  # Local import to avoid circular import.
 
     with contextlib.suppress(Exception):
-        run = (
-            db.query(ConnectorRun)
-            .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
-            .first()
-        )
+        run = db.query(ConnectorRun).filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id).first()
         if run is not None:
             run.status = "failed"
             run.finished_at = connectors_module._now()

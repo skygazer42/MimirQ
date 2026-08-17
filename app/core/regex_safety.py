@@ -5,7 +5,6 @@ These helpers are used to validate user-provided regex rules (e.g. governance pr
 pipeline clean-preview custom rules) to reduce ReDoS risk and keep payloads bounded.
 """
 
-
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
@@ -167,7 +166,9 @@ def _validate_pattern(index: int, raw_pattern: Any, *, max_pattern_len: int) -> 
     return pattern, None
 
 
-def _validate_replacement(index: int, raw_replacement: Any, *, max_repl_len: int) -> tuple[str, RegexRuleViolation | None]:
+def _validate_replacement(
+    index: int, raw_replacement: Any, *, max_repl_len: int
+) -> tuple[str, RegexRuleViolation | None]:
     replacement = str(raw_replacement or "")
     if max_repl_len and len(replacement) > int(max_repl_len):
         return replacement, RegexRuleViolation(

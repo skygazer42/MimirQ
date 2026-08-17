@@ -133,7 +133,9 @@ def _render_hierarchy_recall_audit() -> tuple[str, dict[str, Any]]:
         risk_signals += 1
     else:
         text = profiles_path.read_text(encoding="utf-8", errors="ignore")
-        has_profiles = all(k in text for k in ("hierarchy_recall20", "hierarchy_hybrid_ce", "hierarchy_grounded_strict"))
+        has_profiles = all(
+            k in text for k in ("hierarchy_recall20", "hierarchy_hybrid_ce", "hierarchy_grounded_strict")
+        )
         checks.append(
             (
                 "hierarchy_profiles_present",
@@ -156,7 +158,9 @@ def _render_hierarchy_recall_audit() -> tuple[str, dict[str, Any]]:
         parent_depth = _extract_int(r'out\["hierarchy_parent_depth"\]\s*=\s*(\d+)')
         sibling_window = _extract_int(r'out\["hierarchy_sibling_window"\]\s*=\s*(\d+)')
         if parent_depth is None or sibling_window is None:
-            checks.append(("hierarchy_overlay_safe_defaults", "warn", "could not detect default parent/sibling expansion"))
+            checks.append(
+                ("hierarchy_overlay_safe_defaults", "warn", "could not detect default parent/sibling expansion")
+            )
             risk_signals += 1
         else:
             safe = int(parent_depth) == 0 and int(sibling_window) == 0
@@ -181,7 +185,9 @@ def _render_hierarchy_recall_audit() -> tuple[str, dict[str, Any]]:
             (
                 "must_recall_anchor_excludes_hierarchy_context",
                 "ok" if ok else "warn",
-                "exclude_retrieval_role_prefixes=['hierarchy_'] detected" if ok else "missing anchor-field exclusion for hierarchy_*",
+                "exclude_retrieval_role_prefixes=['hierarchy_'] detected"
+                if ok
+                else "missing anchor-field exclusion for hierarchy_*",
             )
         )
         if not ok:
@@ -198,7 +204,9 @@ def _render_hierarchy_recall_audit() -> tuple[str, dict[str, Any]]:
             (
                 "eval_summary_includes_doc_family_recall",
                 "ok" if ok else "warn",
-                "doc/family recall metrics detected" if ok else "missing retrieval_doc_recall / retrieval_family_recall",
+                "doc/family recall metrics detected"
+                if ok
+                else "missing retrieval_doc_recall / retrieval_family_recall",
             )
         )
         if not ok:
@@ -285,8 +293,10 @@ def _build_action_queue(
 
 def generate_report(*, out_path: Path, template_path: Path, stale_days: int) -> str:
     now = _now_utc()
-    template = template_path.read_text(encoding="utf-8") if template_path.exists() else (
-        "# Retrieval Debt Audit\n\nGenerated At: {{generated_at}}\n\n{{summary}}\n"
+    template = (
+        template_path.read_text(encoding="utf-8")
+        if template_path.exists()
+        else ("# Retrieval Debt Audit\n\nGenerated At: {{generated_at}}\n\n{{summary}}\n")
     )
 
     threshold_text, threshold_stats = _render_threshold_staleness(now=now, stale_days=stale_days)

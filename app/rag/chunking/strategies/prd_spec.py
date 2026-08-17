@@ -10,7 +10,6 @@ fallback RecursiveCharacterTextSplitter inside each section while preserving
 character offsets.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -150,7 +149,10 @@ def looks_like_prd_spec(text: str) -> bool:
         return True
     lowered = (text or "").lower()
     # A weaker signal: at least 3 sections plus PRD-ish keywords.
-    if len(keys) >= 3 and any(k in lowered for k in ("acceptance", "non-functional", "milestone", "roadmap", "user story", "验收", "里程碑", "非功能")):
+    if len(keys) >= 3 and any(
+        k in lowered
+        for k in ("acceptance", "non-functional", "milestone", "roadmap", "user story", "验收", "里程碑", "非功能")
+    ):
         return True
     return False
 

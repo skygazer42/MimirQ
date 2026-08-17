@@ -1,4 +1,3 @@
-
 import contextlib
 import uuid
 from datetime import UTC, datetime
@@ -394,7 +393,9 @@ async def _delete_chunk_indexes(
     return strictness, vector_error, bm25_error
 
 
-def _refresh_document_chunk_stats(*, db: Session, tenant_id: UUID, document_id: UUID, document, active_key: str | None) -> None:
+def _refresh_document_chunk_stats(
+    *, db: Session, tenant_id: UUID, document_id: UUID, document, active_key: str | None
+) -> None:
     try:
         stat_q = db.query(
             func.count(documents_module.DocumentChunk.id),
@@ -718,7 +719,9 @@ async def disable_document_chunk(
             vector_error=vector_error,
             bm25_error=bm25_error,
         )
-        raise HTTPException(status_code=409, detail="Index consistency strict mode blocked disable; drift item recorded")
+        raise HTTPException(
+            status_code=409, detail="Index consistency strict mode blocked disable; drift item recorded"
+        )
 
     if getattr(chunk, "disabled_at", None) is None:
         chunk.disabled_at = datetime.now(UTC)

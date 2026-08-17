@@ -7,7 +7,6 @@ captures two signals:
 - content: whether normalized cell text matches at the same row/column slot
 """
 
-
 import re
 from collections import Counter
 from typing import Any
@@ -51,8 +50,12 @@ def compute_table_grits(
     if not pred_rows and not gold_rows:
         return {"topology": None, "content": None, "f1": None}
 
-    pred_topology = Counter((row_idx, col_idx) for row_idx, row in enumerate(pred_rows) for col_idx, _ in enumerate(row))
-    gold_topology = Counter((row_idx, col_idx) for row_idx, row in enumerate(gold_rows) for col_idx, _ in enumerate(row))
+    pred_topology = Counter(
+        (row_idx, col_idx) for row_idx, row in enumerate(pred_rows) for col_idx, _ in enumerate(row)
+    )
+    gold_topology = Counter(
+        (row_idx, col_idx) for row_idx, row in enumerate(gold_rows) for col_idx, _ in enumerate(row)
+    )
     topology = _f1_from_counters(pred_topology, gold_topology)
 
     pred_content = Counter(

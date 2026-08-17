@@ -21,7 +21,6 @@ Typical flow:
    - Disable shadow dual-write after a safety window
 """
 
-
 import argparse
 import json
 import sys
@@ -61,7 +60,9 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--dry-run", action="store_true", help="Plan only (no writes). Default.")
     mode.add_argument("--execute", action="store_true", help="Write vectors into shadow collection.")
 
-    p.add_argument("--overlap-check", action="store_true", help="Run a bounded overlap check after (or instead of) backfill.")
+    p.add_argument(
+        "--overlap-check", action="store_true", help="Run a bounded overlap check after (or instead of) backfill."
+    )
     p.add_argument("--overlap-sample-n", type=int, default=50, help="Overlap: number of sampled queries (default: 50)")
     p.add_argument("--overlap-top-k", type=int, default=10, help="Overlap: top-k (default: 10)")
 

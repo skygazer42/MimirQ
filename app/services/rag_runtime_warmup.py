@@ -380,7 +380,12 @@ def start_rag_runtime_warmup(*, create_task: Any | None = None) -> Any | None:
             completed=0,
             failed=0,
             elapsed_ms=0.0,
-            embedding={**_new_probe_state("embedding"), "status": "skipped", "ready": True, "reason": "warmup_disabled"},
+            embedding={
+                **_new_probe_state("embedding"),
+                "status": "skipped",
+                "ready": True,
+                "reason": "warmup_disabled",
+            },
             reranker={**_new_probe_state("reranker"), "status": "skipped", "ready": True, "reason": "warmup_disabled"},
         )
         return None

@@ -1,4 +1,3 @@
-
 import contextlib
 import sys
 from typing import Any
@@ -245,7 +244,9 @@ async def _process_web_crawl_urls(
             succeeded = True
         except Exception as exc:  # noqa: BLE001
             failed += 1
-            run.stats = _resolve_connectors_helper("_append_connector_error")(dict(run.stats or {}), url=str(url or ""), exc=exc)
+            run.stats = _resolve_connectors_helper("_append_connector_error")(
+                dict(run.stats or {}), url=str(url or ""), exc=exc
+            )
 
         _persist_web_crawl_progress(
             db,
@@ -299,7 +300,9 @@ def _reconcile_removed_web_crawl_urls(
                 source_url=source_url,
             )
         except Exception as exc:  # noqa: BLE001
-            stats = _resolve_connectors_helper("_append_connector_error")(dict(run.stats or {}), url=source_url, exc=exc)
+            stats = _resolve_connectors_helper("_append_connector_error")(
+                dict(run.stats or {}), url=source_url, exc=exc
+            )
             run.stats = _resolve_connectors_helper("_finalize_connector_stats")(stats)
             db.commit()
             continue
@@ -344,11 +347,7 @@ def _finalize_web_crawl_run_success(
 
 def _mark_web_crawl_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, exc: Exception) -> None:
     with contextlib.suppress(Exception):
-        run = (
-            db.query(ConnectorRun)
-            .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
-            .first()
-        )
+        run = db.query(ConnectorRun).filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id).first()
         if run is not None:
             run.status = "failed"
             run.finished_at = _resolve_connectors_helper("_now")()

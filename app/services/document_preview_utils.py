@@ -1,4 +1,3 @@
-
 import contextlib
 import hashlib
 import json
@@ -28,9 +27,7 @@ from app.rag.core.logging import get_logger
 logger = get_logger("documents.preview_utils")
 
 UUID_PATTERN = r"(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
-PREVIEW_IMAGE_REF_RE = re.compile(
-    rf"(?:https?://[^\s)\"']+)?/api/v1/documents/image/({UUID_PATTERN})(?![0-9A-Za-z_-])"
-)
+PREVIEW_IMAGE_REF_RE = re.compile(rf"(?:https?://[^\s)\"']+)?/api/v1/documents/image/({UUID_PATTERN})(?![0-9A-Za-z_-])")
 MINIO_IMAGE_REF_RE = re.compile(r"(?:https?://[^\s)\"']+)?/api/v1/documents/image-url/([^\s)\"']+)")
 PREVIEW_MD_IMAGE_REF_RE = re.compile(
     r"!\[[^\]]*\]\(\s*(?:<)?([^)\s>]+)(?:>)?(?:\s+['\"][^'\"]*['\"])?\s*\)",
@@ -119,7 +116,9 @@ def _preview_chunk_mergeable(chunk: Document, *, page_index: int | None, page_te
     )
 
 
-def _merge_preview_chunks_on_page(a: Document, b: Document, *, page_index: int, page_text: dict[int, str]) -> Document | None:
+def _merge_preview_chunks_on_page(
+    a: Document, b: Document, *, page_index: int, page_text: dict[int, str]
+) -> Document | None:
     text = page_text.get(page_index)
     if text is None:
         return None
@@ -139,7 +138,9 @@ def _merge_preview_chunks_on_page(a: Document, b: Document, *, page_index: int, 
     return Document(page_content=text[start_local:end_local], metadata=meta_a, id=getattr(a, "id", None))
 
 
-def _merge_preview_pair_or_append(out: list[Document], first: Document, second: Document, *, page_index: int, page_text: dict[int, str]) -> None:
+def _merge_preview_pair_or_append(
+    out: list[Document], first: Document, second: Document, *, page_index: int, page_text: dict[int, str]
+) -> None:
     merged = _merge_preview_chunks_on_page(first, second, page_index=page_index, page_text=page_text)
     if merged is None:
         out.extend([first, second])
@@ -152,7 +153,9 @@ def _flush_pending_preview_chunk(out: list[Document], pending: Document | None) 
         out.append(pending)
 
 
-def _append_non_mergeable_preview_chunk(out: list[Document], pending: Document | None, chunk: Document) -> tuple[None, None]:
+def _append_non_mergeable_preview_chunk(
+    out: list[Document], pending: Document | None, chunk: Document
+) -> tuple[None, None]:
     _flush_pending_preview_chunk(out, pending)
     out.append(chunk)
     return None, None
@@ -547,7 +550,11 @@ def _resolve_preview_local_image_path(ref: str, *, base_dir_resolved: Path) -> P
             continue
         with contextlib.suppress(Exception):
             path_obj = Path(candidate)
-            path_obj = path_obj.resolve(strict=False) if path_obj.is_absolute() else (base_dir_resolved / path_obj).resolve(strict=False)
+            path_obj = (
+                path_obj.resolve(strict=False)
+                if path_obj.is_absolute()
+                else (base_dir_resolved / path_obj).resolve(strict=False)
+            )
             path_obj.relative_to(base_dir_resolved)
             if path_obj.exists() and path_obj.is_file():
                 return path_obj
@@ -566,7 +573,9 @@ def _read_preview_local_image(path: Path, *, max_image_bytes: int) -> tuple[byte
     return raw_bytes, path.suffix.lower()
 
 
-def _convert_preview_local_image_bytes(raw_bytes: bytes, *, ext: str, pil_image: Any | None, pillow_ok: bool) -> tuple[bytes, str] | None:
+def _convert_preview_local_image_bytes(
+    raw_bytes: bytes, *, ext: str, pil_image: Any | None, pillow_ok: bool
+) -> tuple[bytes, str] | None:
     if ext in LOCAL_PREVIEW_IMAGE_EXTS:
         return raw_bytes, ext
     if not pillow_ok or pil_image is None:
@@ -666,9 +675,7 @@ def _rewrite_preview_local_image_refs(content: str, replacements: dict[str, str]
     return PREVIEW_HTML_IMAGE_REF_RE.sub(lambda m: _replace_preview_image_ref(m, replacements), content)
 
 
-def _materialize_local_images_for_preview(
-    documents: list, *, tenant_id: UUID, account_id: str | None = None
-) -> list:
+def _materialize_local_images_for_preview(documents: list, *, tenant_id: UUID, account_id: str | None = None) -> list:
     """
     Rewrite local/relative image references in Markdown/HTML into preview-time
     `/api/v1/documents/image/{uuid}` URLs.
@@ -731,6 +738,7 @@ def _materialize_local_images_for_preview(
 
     return documents
 
+
 def _compute_chunk_coverage_metrics_from_ranges(
     ranges: list[tuple[int, int]], *, total_characters: int
 ) -> dict[str, float | int]:
@@ -769,7 +777,12 @@ def _chunk_histogram_step(max_value: int, *, unit: Literal["chars", "tokens"], t
 def _chunk_histogram_empty_bins(max_value: int, *, step: int) -> list[dict[str, object]]:
     bin_count = max(1, int(math.ceil((max_value + 1) / step))) if step > 0 else 1
     return [
-        {"label": f"{int(i * step)}-{int((i + 1) * step)}", "min": int(i * step), "max": int((i + 1) * step), "count": 0}
+        {
+            "label": f"{int(i * step)}-{int((i + 1) * step)}",
+            "min": int(i * step),
+            "max": int((i + 1) * step),
+            "count": 0,
+        }
         for i in range(bin_count)
     ]
 
@@ -832,7 +845,8 @@ def _chunk_preview_analysis_items(
     filtered = [
         chunk
         for chunk in analysis
-        if not isinstance(getattr(chunk, "metadata", None), dict) or getattr(chunk, "metadata", {}).get("chunk_role") != "parent"
+        if not isinstance(getattr(chunk, "metadata", None), dict)
+        or getattr(chunk, "metadata", {}).get("chunk_role") != "parent"
     ]
     return (filtered, "child") if filtered else (analysis, "all")
 

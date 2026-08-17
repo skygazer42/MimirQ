@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Assemble a unified Dify/MimirQ benchmark report from separately produced run files."""
 
-
 import argparse
 import json
 import subprocess
@@ -63,7 +62,11 @@ def merge_run_payloads(payloads: list[dict[str, Any]], *, run_name: str) -> dict
     latest = dict(payloads[-1])
     ordered_items = sorted(merged_items.values(), key=_item_sort_key)
     declared_cases = max(
-        [int((payload.get("summary") or {}).get("cases") or 0) for payload in payloads if isinstance(payload.get("summary"), dict)]
+        [
+            int((payload.get("summary") or {}).get("cases") or 0)
+            for payload in payloads
+            if isinstance(payload.get("summary"), dict)
+        ]
         or [0]
     )
     total_cases = max(declared_cases, len(ordered_items))
@@ -96,17 +99,18 @@ def collect_merged_runs(source_dirs: list[str]) -> dict[str, dict[str, Any]]:
                 continue
             grouped.setdefault(run_file.name, []).append(payload)
 
-    return {
-        run_name: merge_run_payloads(payloads, run_name=run_name)
-        for run_name, payloads in sorted(grouped.items())
-    }
+    return {run_name: merge_run_payloads(payloads, run_name=run_name) for run_name, payloads in sorted(grouped.items())}
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Collect run_*.json files from multiple benchmark directories and rebuild a single comparison report.")
+    parser = argparse.ArgumentParser(
+        description="Collect run_*.json files from multiple benchmark directories and rebuild a single comparison report."
+    )
     parser.add_argument("--cases", required=True, help="Path to the shared benchmark cases JSON")
     parser.add_argument("--out-dir", required=True, help="Destination directory for the assembled report")
-    parser.add_argument("--app-key-file", default="", help="Optional app key file passed through to report-only rebuild")
+    parser.add_argument(
+        "--app-key-file", default="", help="Optional app key file passed through to report-only rebuild"
+    )
     parser.add_argument("--include-mimirq-direct", action="store_true")
     parser.add_argument(
         "--source-dir",

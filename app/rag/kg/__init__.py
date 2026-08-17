@@ -32,5 +32,7 @@ def __getattr__(name: str) -> Any:  # pragma: no cover
     if name in {"EntityRepository", "EventRepository", "get_session"}:
         from app.rag.kg.repository import EntityRepository, EventRepository, get_session
 
-        return {"EntityRepository": EntityRepository, "EventRepository": EventRepository, "get_session": get_session}[name]
+        return {"EntityRepository": EntityRepository, "EventRepository": EventRepository, "get_session": get_session}[
+            name
+        ]
     raise AttributeError(f"module 'app.kg' has no attribute {name!r}")

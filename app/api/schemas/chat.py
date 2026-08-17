@@ -1,6 +1,7 @@
 """
 Chat-related Pydantic schemas.
 """
+
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
@@ -74,9 +75,7 @@ def _clean_float_fusion_map(
         except Exception as exc:  # noqa: BLE001
             raise ValueError(rule.value_error) from exc
         if fv < rule.min_value or fv > rule.max_value:
-            raise ValueError(
-                f"{rule.field_name} values must be between {rule.min_value:.1f} and {rule.max_value:.1f}"
-            )
+            raise ValueError(f"{rule.field_name} values must be between {rule.min_value:.1f} and {rule.max_value:.1f}")
         cleaned[key] = fv
     return cleaned or None
 
@@ -137,6 +136,7 @@ def _apply_profile_value_overrides(config: Any, applied: dict[str, Any]) -> None
 
 class CitationBbox(BaseModel):
     """PDF/page-space bounding box for precise citation highlighting."""
+
     x0: int
     y0: int
     x1: int
@@ -145,6 +145,7 @@ class CitationBbox(BaseModel):
 
 class Citation(BaseModel):
     """Citation information."""
+
     document_id: UUID
     document_name: str
     chunk_id: UUID
@@ -184,7 +185,9 @@ class Citation(BaseModel):
     hit_type: str | None = None  # vector | keyword | mmr | hybrid
     # Image-related fields.
     has_image: bool = Field(default=False, description="Whether this citation contains an image")
-    img_id: str | None = Field(default=None, description="Image ID (MinIO format: {tenant_id}:{dataset_id}:{document_id}:{chunk_index})")
+    img_id: str | None = Field(
+        default=None, description="Image ID (MinIO format: {tenant_id}:{dataset_id}:{document_id}:{chunk_index})"
+    )
     img_url: str | None = Field(default=None, description="Image access URL")
     clean_docx_url: str | None = Field(default=None, description="Optional URL for cleaned DOCX preview/download")
 
@@ -193,6 +196,7 @@ class Citation(BaseModel):
 
 class MessageSchema(OrmModel):
     """Message."""
+
     id: UUID
     role: str  # user | assistant
     content: str
@@ -203,6 +207,7 @@ class MessageSchema(OrmModel):
 
 class ConversationCreate(BaseModel):
     """Create conversation."""
+
     title: str | None = None
     dataset_id: UUID | None = None
     document_ids: list[UUID] = Field(default_factory=list)
@@ -216,6 +221,7 @@ class ConversationUpdate(BaseModel):
 
 class ConversationSchema(OrmModel):
     """Conversation session."""
+
     id: UUID
     title: str | None = None
     last_message: str | None = None
@@ -227,6 +233,7 @@ class ConversationSchema(OrmModel):
 
 class ConversationDetail(BaseModel):
     """Conversation detail."""
+
     conversation_id: UUID
     returned: int = 0
     has_more: bool = False
@@ -235,6 +242,7 @@ class ConversationDetail(BaseModel):
 
 class ConversationList(BaseModel):
     """Conversation list."""
+
     total: int
     returned: int = 0
     has_more: bool = False
@@ -244,6 +252,7 @@ class ConversationList(BaseModel):
 
 class HistoryMessage(BaseModel):
     """History message."""
+
     role: Literal["user", "assistant"]
     content: str
 
@@ -405,8 +414,7 @@ class ChatRAGConfig(BaseModel):
         mode = normalize_retrieval_contract_mode(v)
         if mode not in VALID_RETRIEVAL_CONTRACT_MODES:
             raise ValueError(
-                "retrieval_contract_mode must be one of: "
-                + ", ".join(sorted(VALID_RETRIEVAL_CONTRACT_MODES))
+                "retrieval_contract_mode must be one of: " + ", ".join(sorted(VALID_RETRIEVAL_CONTRACT_MODES))
             )
         return mode
 
@@ -450,16 +458,14 @@ class ChatRAGConfig(BaseModel):
             return None
         if not isinstance(v, str):
             raise ValueError(
-                "hierarchy_family_aggregation must be one of: "
-                + ", ".join(HIERARCHY_FAMILY_AGGREGATION_VALUES)
+                "hierarchy_family_aggregation must be one of: " + ", ".join(HIERARCHY_FAMILY_AGGREGATION_VALUES)
             )
         raw = v.strip().lower()
         if not raw:
             return None
         if raw not in HIERARCHY_FAMILY_AGGREGATION_VALUES:
             raise ValueError(
-                "hierarchy_family_aggregation must be one of: "
-                + ", ".join(HIERARCHY_FAMILY_AGGREGATION_VALUES)
+                "hierarchy_family_aggregation must be one of: " + ", ".join(HIERARCHY_FAMILY_AGGREGATION_VALUES)
             )
         return raw
 
@@ -586,8 +592,10 @@ class ChatRAGConfig(BaseModel):
             self.visible_evidence_only = True
         return self
 
+
 class ChatRequest(BaseModel):
     """Chat request."""
+
     conversation_id: UUID | None = None
     message: str = Field(min_length=1, max_length=settings.RETRIEVAL_QUERY_MAX_CHARS)
     history: list[HistoryMessage] = Field(default_factory=list)  # Conversation history.
@@ -684,6 +692,7 @@ class ChatResponse(BaseModel):
 
 class StreamEvent(BaseModel):
     """Stream event."""
+
     type: str  # citations | token | done | error
     data: Any
 

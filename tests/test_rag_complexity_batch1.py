@@ -83,7 +83,9 @@ def test_sqlite_saver_list_respects_namespace_before_filter_limit_and_pending_wr
         "cp-004",
     }
 
-    with_writes = list(saver.list({"configurable": {"thread_id": "thread-1", "checkpoint_ns": "ns-a", "checkpoint_id": "cp-002"}}))
+    with_writes = list(
+        saver.list({"configurable": {"thread_id": "thread-1", "checkpoint_ns": "ns-a", "checkpoint_id": "cp-002"}})
+    )
     assert with_writes[0].pending_writes == [
         ("task-1", "alpha", {"value": 1}),
         ("task-1", "beta", ["x"]),

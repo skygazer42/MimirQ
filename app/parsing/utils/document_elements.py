@@ -1,4 +1,3 @@
-
 import re
 from collections.abc import Iterable, Mapping
 from pathlib import Path
@@ -270,7 +269,9 @@ def _infer_visual_kind(*, kind: str, text: str, attributes: Mapping[str, Any] | 
     return None
 
 
-def _prefer_image_code_text(*, kind: str, visual_kind: str | None, text: str, attributes: Mapping[str, Any] | None) -> str:
+def _prefer_image_code_text(
+    *, kind: str, visual_kind: str | None, text: str, attributes: Mapping[str, Any] | None
+) -> str:
     if kind != "image":
         return text
     if str(visual_kind or "").strip().lower() not in {"qr", "barcode"}:
@@ -420,7 +421,9 @@ def _resolve_element_visuals(
         text=text,
         attributes=attributes,
     )
-    next_attributes = dict(attributes or {}) if visual_kind else (dict(attributes) if isinstance(attributes, dict) else attributes)
+    next_attributes = (
+        dict(attributes or {}) if visual_kind else (dict(attributes) if isinstance(attributes, dict) else attributes)
+    )
     if visual_kind:
         next_attributes = dict(attributes or {})
         next_attributes["visual_kind"] = visual_kind

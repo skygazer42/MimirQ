@@ -1,4 +1,3 @@
-
 from uuid import uuid4
 
 from langchain_core.documents import Document
@@ -38,7 +37,9 @@ def test_expand_ranked_chunk_results_unifies_sibling_and_neighbor_strategies() -
 
     short_chunks = [
         _FakeChunk(chunk_id=uuid4(), tenant_id=tenant_id, document_id=short_doc_id, chunk_index=0, content="short-0"),
-        _FakeChunk(chunk_id=short_anchor_id, tenant_id=tenant_id, document_id=short_doc_id, chunk_index=1, content="short-1"),
+        _FakeChunk(
+            chunk_id=short_anchor_id, tenant_id=tenant_id, document_id=short_doc_id, chunk_index=1, content="short-1"
+        ),
         _FakeChunk(chunk_id=uuid4(), tenant_id=tenant_id, document_id=short_doc_id, chunk_index=2, content="short-2"),
     ]
     long_left = _FakeChunk(
@@ -93,7 +94,10 @@ def test_expand_ranked_chunk_results_unifies_sibling_and_neighbor_strategies() -
         window=1,
         max_added=10,
         sibling_max_added=10,
-        document_chunks_by_doc={str(short_doc_id): short_chunks, str(long_doc_id): [long_left, long_anchor, long_right]},
+        document_chunks_by_doc={
+            str(short_doc_id): short_chunks,
+            str(long_doc_id): [long_left, long_anchor, long_right],
+        },
         short_doc_ids={str(short_doc_id)},
         neighbors_by_pair={
             (str(long_doc_id), 0): long_left,

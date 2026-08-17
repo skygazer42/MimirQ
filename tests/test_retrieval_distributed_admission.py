@@ -345,7 +345,9 @@ def test_distributed_backend_budget_is_shared_across_processes(
     start = context.Event()
 
     monkeypatch.setattr(limiter.settings, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED", True, raising=False)
-    monkeypatch.setattr(limiter.settings, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX", "ragadm-multiprocess", raising=False)
+    monkeypatch.setattr(
+        limiter.settings, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX", "ragadm-multiprocess", raising=False
+    )
     monkeypatch.setattr(limiter.settings, "RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC", 2.0, raising=False)
     monkeypatch.setattr(limiter.settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 2, raising=False)
     monkeypatch.setattr(limiter.settings, "RAG_VECTOR_SHARD_GLOBAL_MAX_CONCURRENCY", 2, raising=False)
@@ -512,9 +514,7 @@ async def test_distributed_retrieval_admission_degrades_to_local_gate_when_redis
         first_started.set()
         assert release_first.wait(timeout=2)
 
-    first_task = asyncio.create_task(
-        limiter.run_blocking_retrieval_call(first_work, runtime_metrics=first_metrics)
-    )
+    first_task = asyncio.create_task(limiter.run_blocking_retrieval_call(first_work, runtime_metrics=first_metrics))
     assert await asyncio.to_thread(first_started.wait, 1)
 
     second_task = asyncio.create_task(

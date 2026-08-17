@@ -1,4 +1,3 @@
-
 from collections.abc import Iterable
 
 _LEGACY_TYPES = {"doc", "xls", "ppt"}
@@ -56,7 +55,10 @@ def infer_primary_tag(*, file_type: str, findings: Iterable[str] | None) -> str:
     fset = _normalized_findings(findings)
     if "parse_failed" in fset:
         return "Parse_Failed"
-    if ft in _TABLE_TYPES or {"large_spreadsheet", "wide_spreadsheet", "many_sheets_spreadsheet", "merged_heavy_spreadsheet"} & fset:
+    if (
+        ft in _TABLE_TYPES
+        or {"large_spreadsheet", "wide_spreadsheet", "many_sheets_spreadsheet", "merged_heavy_spreadsheet"} & fset
+    ):
         return "Table_Heavy"
     if ft == "pdf" and {"pdf_scanned", "pdf_mixed", "pdf_low_density", "pdf_unknown", "pdf_encrypted"} & fset:
         return "Scan_PDF"

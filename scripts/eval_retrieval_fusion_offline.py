@@ -12,7 +12,6 @@ Metrics:
 - Abstain rate (from API response)
 """
 
-
 import argparse
 import json
 import sys
@@ -177,9 +176,16 @@ def main(argv: list[str] | None = None) -> int:
 
     # Global base rag_config defaults (variants can override via --matrix).
     p.add_argument("--top-k", type=int, default=50, help="Evidence API rag_config.top_k (default: %(default)s)")
-    p.add_argument("--score-threshold", type=float, default=0.0, help="Evidence API rag_config.score_threshold (default: %(default)s)")
+    p.add_argument(
+        "--score-threshold",
+        type=float,
+        default=0.0,
+        help="Evidence API rag_config.score_threshold (default: %(default)s)",
+    )
     p.add_argument("--retrieval-mode", default="hybrid", help="hybrid|vector|keyword|mmr (default: %(default)s)")
-    p.add_argument("--retrieval-profile", default="recall50", help="recall20|recall50|coverage80 (default: %(default)s)")
+    p.add_argument(
+        "--retrieval-profile", default="recall50", help="recall20|recall50|coverage80 (default: %(default)s)"
+    )
     p.add_argument("--alpha", type=float, default=0.6, help="Fusion alpha (default: %(default)s)")
     p.add_argument(
         "--enable-weight-rerank",

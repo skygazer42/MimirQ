@@ -1,4 +1,3 @@
-
 import tempfile
 import time
 from dataclasses import dataclass
@@ -951,7 +950,9 @@ def run_chunk_strategy_matrix(
     validate_strategy_fixture_mapping()
     results: list[dict[str, Any]] = []
 
-    for strategy in sorted(set(chunker_factory.SUPPORTED_STRATEGIES.keys()) | set(chunker_factory.INTEGRATED_PIPELINE_STRATEGIES)):
+    for strategy in sorted(
+        set(chunker_factory.SUPPORTED_STRATEGIES.keys()) | set(chunker_factory.INTEGRATED_PIPELINE_STRATEGIES)
+    ):
         started = time.perf_counter()
         fixture = FIXTURES[STRATEGY_FIXTURE_KEY[strategy]]
         try:
@@ -970,7 +971,9 @@ def run_chunk_strategy_matrix(
                     first_meta = dict((chunks or [{}])[0]) if chunk_count > 0 and isinstance(chunks[0], dict) else {}
             else:
                 restore_llama_flag = None
-                if strategy in {"llama_index", "llama_index_hierarchical"} and not bool(getattr(settings, "LLAMA_INDEX_ENABLED", False)):
+                if strategy in {"llama_index", "llama_index_hierarchical"} and not bool(
+                    getattr(settings, "LLAMA_INDEX_ENABLED", False)
+                ):
                     restore_llama_flag = bool(getattr(settings, "LLAMA_INDEX_ENABLED", False))
                     settings.LLAMA_INDEX_ENABLED = True
                 try:
@@ -995,7 +998,9 @@ def run_chunk_strategy_matrix(
                     "chunk_count": chunk_count,
                     "elapsed_ms": elapsed_ms,
                     "metadata_keys": sorted(first_meta.keys())[:12],
-                    "runtime_flag_enabled": bool(getattr(settings, "LLAMA_INDEX_ENABLED", False)) if strategy in {"llama_index", "llama_index_hierarchical"} else None,
+                    "runtime_flag_enabled": bool(getattr(settings, "LLAMA_INDEX_ENABLED", False))
+                    if strategy in {"llama_index", "llama_index_hierarchical"}
+                    else None,
                 }
             )
         except Exception as exc:  # noqa: BLE001

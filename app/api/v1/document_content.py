@@ -1,4 +1,3 @@
-
 import uuid
 from pathlib import Path
 from typing import Annotated, Any
@@ -155,7 +154,11 @@ def _parsed_content_with_fallback(
     return fallback_text, fallback_text, fallback_truncated, fallback_truncated, True
 
 
-@router.get("/{document_id}/parsed-content", response_model=DocumentParsedContentResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/{document_id}/parsed-content",
+    response_model=DocumentParsedContentResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def get_document_parsed_content(
     document_id: uuid.UUID,
     max_chars: Annotated[int, Query(ge=0, le=2000000)] = 200_000,
@@ -174,11 +177,7 @@ def get_document_parsed_content(
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    document = (
-        db.query(DBDocument)
-        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-        .first()
-    )
+    document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
         raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
@@ -197,11 +196,13 @@ def get_document_parsed_content(
     )
 
     max_chars_eff = int(max_chars or 0)
-    markdown, original, markdown_truncated, original_truncated, source_fallback_available = _parsed_content_with_fallback(
-        document=document,
-        tenant_id=tenant_id,
-        row=row,
-        max_chars=max_chars_eff,
+    markdown, original, markdown_truncated, original_truncated, source_fallback_available = (
+        _parsed_content_with_fallback(
+            document=document,
+            tenant_id=tenant_id,
+            row=row,
+            max_chars=max_chars_eff,
+        )
     )
 
     return DocumentParsedContentResponse(
@@ -226,11 +227,7 @@ def download_document_clean_docx(
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    document = (
-        db.query(DBDocument)
-        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-        .first()
-    )
+    document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
         raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 

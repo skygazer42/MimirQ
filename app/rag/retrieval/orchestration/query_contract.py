@@ -176,7 +176,9 @@ def normalize_query_contract(payload: QueryContractNormalizationInput) -> QueryC
         retrieval_mode=request_retrieval_mode,
         enable_reranker=bool(state.get("enable_reranker", payload.defaults.enable_reranker)),
         reranker_provider=str(state.get("reranker_provider", payload.defaults.reranker_provider) or ""),
-        reranker_top_n=int(state.get("reranker_top_n", payload.defaults.reranker_top_n) or payload.defaults.reranker_top_n or 20),
+        reranker_top_n=int(
+            state.get("reranker_top_n", payload.defaults.reranker_top_n) or payload.defaults.reranker_top_n or 20
+        ),
         enable_weight_rerank=bool(state.get("enable_weight_rerank", True)),
         retrieval_contract_mode=(
             state.get("retrieval_contract_mode")
@@ -184,9 +186,7 @@ def normalize_query_contract(payload: QueryContractNormalizationInput) -> QueryC
             else payload.defaults.retrieval_contract_mode
         ),
         visible_evidence_only=(
-            bool(state.get("visible_evidence_only"))
-            if state.get("visible_evidence_only") is not None
-            else None
+            bool(state.get("visible_evidence_only")) if state.get("visible_evidence_only") is not None else None
         ),
     )
     profile_norm = str(profile_applied.get("retrieval_profile") or "").strip().lower() or None
@@ -342,6 +342,4 @@ def build_retrieval_config_snapshot(payload: RetrievalConfigSnapshotInput) -> Re
     rag_config_template = _normalize_rag_config_template(payload.rag_config_template)
     if rag_config_template:
         config["rag_config_template"] = rag_config_template
-    return RetrievalConfigSnapshotOutput(
-        fingerprint=build_retrieval_config_fingerprint(config=config)
-    )
+    return RetrievalConfigSnapshotOutput(fingerprint=build_retrieval_config_fingerprint(config=config))

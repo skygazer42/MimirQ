@@ -10,7 +10,6 @@ Goal (P0):
 - Provide a small dashboard summary (window + timeseries + alerts)
 """
 
-
 import atexit
 import hashlib
 import math
@@ -226,12 +225,8 @@ def _quality_timeseries(
         bucket = buckets[key]
         faith_count = int(bucket.get("faith_n") or 0)
         utilization_count = int(bucket.get("util_n") or 0)
-        faithfulness.append(
-            (float(bucket.get("faith_sum") or 0.0) / faith_count) if faith_count else None
-        )
-        utilization.append(
-            (float(bucket.get("util_sum") or 0.0) / utilization_count) if utilization_count else None
-        )
+        faithfulness.append((float(bucket.get("faith_sum") or 0.0) / faith_count) if faith_count else None)
+        utilization.append((float(bucket.get("util_sum") or 0.0) / utilization_count) if utilization_count else None)
     return timestamps, samples, faithfulness, utilization
 
 
@@ -293,7 +288,9 @@ def summarize_online_quality(
     bucket_minutes: int = 5,
     max_bytes: int = 5_000_000,
 ) -> OnlineQualitySummary:
-    enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False)) and bool(getattr(settings, "ONLINE_EVAL_ENABLED", False))
+    enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False)) and bool(
+        getattr(settings, "ONLINE_EVAL_ENABLED", False)
+    )
     path_str = str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl")
     path = Path(path_str)
 
@@ -423,7 +420,9 @@ def maybe_enqueue_online_eval(
 
     Returns a small debug dict (PII-minimal) intended for in-memory metrics/debugging only.
     """
-    enabled = bool(getattr(settings, "ONLINE_EVAL_ENABLED", False)) and bool(getattr(settings, "ENABLE_METRICS_LOG", False))
+    enabled = bool(getattr(settings, "ONLINE_EVAL_ENABLED", False)) and bool(
+        getattr(settings, "ENABLE_METRICS_LOG", False)
+    )
     if not enabled:
         return {"enabled": False, "enqueued": False, "reason": "disabled"}
 

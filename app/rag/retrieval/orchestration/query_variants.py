@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -180,7 +179,9 @@ def build_query_variant_stage(payload: QueryVariantStageInput) -> QueryVariantSt
         )
         query_expansion_budget_meta["selected_count"] = int(max(0, len(retrieval_queries) - 1))
         query_expansion_budget_meta["selected_tokens"] = int(selected_tokens)
-        query_expansion_budget_meta["dropped_count"] = int(max(0, len(extra_queries) - query_expansion_budget_meta["selected_count"]))
+        query_expansion_budget_meta["dropped_count"] = int(
+            max(0, len(extra_queries) - query_expansion_budget_meta["selected_count"])
+        )
         query_expansion_budget_meta["reasons"] = list(dict.fromkeys(query_expansion_budget_meta["reasons"]))
         query_expansion_budget_meta["degraded"] = bool(query_expansion_budget_meta["dropped_count"] > 0)
 

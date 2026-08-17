@@ -210,11 +210,7 @@ async def test_retry_document_processing_hash_ignores_parser_backend_resolved_dr
         raising=True,
     )
     expected_hash = documents_module._compute_pipeline_hash(
-        {
-            key: value
-            for key, value in document.doc_metadata.items()
-            if key != "parser_backend_resolved"
-        }
+        {key: value for key, value in document.doc_metadata.items() if key != "parser_backend_resolved"}
     )
 
     result = await document_processing.retry_document_processing(
@@ -407,12 +403,15 @@ def test_document_worker_applies_deferred_retry_cleanup(monkeypatch: pytest.Monk
 
     monkeypatch.setattr(processor, "Indexer", _Indexer)
 
-    assert processor.DocumentProcessorService()._apply_pending_retry_cleanup(
-        db,
-        db_document=document,
-        tenant_id=uuid.uuid4(),
-        document_id=uuid.uuid4(),
-    ) == "applied"
+    assert (
+        processor.DocumentProcessorService()._apply_pending_retry_cleanup(
+            db,
+            db_document=document,
+            tenant_id=uuid.uuid4(),
+            document_id=uuid.uuid4(),
+        )
+        == "applied"
+    )
 
     assert cleanup_calls == ["chunks", "events"]
     assert processor.DocumentParsedContent in db.deletes
@@ -467,7 +466,10 @@ def test_document_worker_scoped_retry_cleanup_only_deletes_target_version(
             return self
 
         def all(self) -> list[tuple]:
-            if getattr(self._model, "class_", None) is processor.DocumentChunk and getattr(self._model, "key", None) == "id":
+            if (
+                getattr(self._model, "class_", None) is processor.DocumentChunk
+                and getattr(self._model, "key", None) == "id"
+            ):
                 return [(chunk["id"],) for chunk in self._db.chunks if chunk["doc_pipeline_key"] == target_key]
             return []
 
@@ -483,7 +485,9 @@ def test_document_worker_scoped_retry_cleanup_only_deletes_target_version(
             if self._model.__name__ == "KgRelation":
                 doomed = [chunk_id for chunk_id in self._db.relation_chunk_ids if chunk_id in target_chunk_ids]
                 self._db.deleted_relation_chunk_ids.extend(doomed)
-                self._db.relation_chunk_ids = [chunk_id for chunk_id in self._db.relation_chunk_ids if chunk_id not in target_chunk_ids]
+                self._db.relation_chunk_ids = [
+                    chunk_id for chunk_id in self._db.relation_chunk_ids if chunk_id not in target_chunk_ids
+                ]
                 return len(doomed)
             return 0
 
@@ -591,12 +595,15 @@ def test_document_worker_preserves_retry_cleanup_when_kg_cleanup_fails(
     monkeypatch.setattr(processor, "Indexer", _Indexer)
 
     with caplog.at_level("WARNING"):
-        assert processor.DocumentProcessorService()._apply_pending_retry_cleanup(
-            db,
-            db_document=document,
-            tenant_id=uuid.uuid4(),
-            document_id=uuid.uuid4(),
-        ) == "deferred"
+        assert (
+            processor.DocumentProcessorService()._apply_pending_retry_cleanup(
+                db,
+                db_document=document,
+                tenant_id=uuid.uuid4(),
+                document_id=uuid.uuid4(),
+            )
+            == "deferred"
+        )
 
     assert cleanup_calls == ["chunks", "events"]
     assert processor.DocumentParsedContent in db.deletes

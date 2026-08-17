@@ -5,7 +5,6 @@ This script intentionally uses only the Python standard library so it can run
 on production-like hosts without extra dependencies.
 """
 
-
 import argparse
 import json
 import mimetypes
@@ -84,7 +83,9 @@ class LiveApi:
         headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
         return self._request(method, path, data=b"".join(chunks), headers=headers, timeout=int(timeout or self.timeout))
 
-    def _request(self, method: str, path: str, *, data: bytes | None, headers: dict[str, str], timeout: int) -> ApiResponse:
+    def _request(
+        self, method: str, path: str, *, data: bytes | None, headers: dict[str, str], timeout: int
+    ) -> ApiResponse:
         request = Request(f"{self.base_url}{path}", data=data, headers=headers, method=method)
         started = time.perf_counter()
         try:
@@ -441,12 +442,16 @@ def main() -> int:
             if not document_id:
                 raise RuntimeError(f"upload:{key} missing document id: {snippet(resp.body)}")
 
-            detail = wait_for_document_completed(api, steps=steps, filename=key, document_id=document_id, poll_timeout=args.poll_timeout)
+            detail = wait_for_document_completed(
+                api, steps=steps, filename=key, document_id=document_id, poll_timeout=args.poll_timeout
+            )
             chunks_resp = api.json("GET", f"/api/v1/documents/{document_id}/chunks?limit=200")
             record_step(steps, f"chunks:{key}", chunks_resp, chunk_count=list_count(chunks_resp.body))
             ensure_success(f"chunks:{key}", chunks_resp)
             parsed_resp = api.json("GET", f"/api/v1/documents/{document_id}/parsed-content?max_chars=8000")
-            record_step(steps, f"parsed:{key}", parsed_resp, parsed_chars=len(parsed_text_from_response(parsed_resp.body)))
+            record_step(
+                steps, f"parsed:{key}", parsed_resp, parsed_chars=len(parsed_text_from_response(parsed_resp.body))
+            )
             ensure_success(f"parsed:{key}", parsed_resp)
 
             dataset_info[key] = {
@@ -460,7 +465,9 @@ def main() -> int:
         summary["datasets"] = dataset_info
 
         for key, info in dataset_info.items():
-            resp = api.json("GET", f"/api/v1/datasets/{info['dataset_id']}/documents/export?export_format=json&limit=20")
+            resp = api.json(
+                "GET", f"/api/v1/datasets/{info['dataset_id']}/documents/export?export_format=json&limit=20"
+            )
             export_ids = exported_document_ids(resp.body)
             record_step(steps, f"inventory_export:{key}", resp, document_ids=export_ids)
             ensure_success(f"inventory_export:{key}", resp)
@@ -600,7 +607,9 @@ def main() -> int:
             failures = evaluate_boundary_case(
                 case,
                 citation_doc_ids=citation_ids,
-                citation_count=list_count((resp.body or {}).get("citations") if isinstance(resp.body, dict) else resp.body),
+                citation_count=list_count(
+                    (resp.body or {}).get("citations") if isinstance(resp.body, dict) else resp.body
+                ),
                 response_text=text,
             )
             row = {
@@ -608,7 +617,9 @@ def main() -> int:
                 "status_code": resp.status,
                 "ok": not failures,
                 "citation_document_ids": citation_ids,
-                "citation_count": list_count((resp.body or {}).get("citations") if isinstance(resp.body, dict) else resp.body),
+                "citation_count": list_count(
+                    (resp.body or {}).get("citations") if isinstance(resp.body, dict) else resp.body
+                ),
                 "answer_preview": text[:300],
                 "failures": failures,
             }

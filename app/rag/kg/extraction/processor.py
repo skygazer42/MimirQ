@@ -1,6 +1,7 @@
 """
 Simplified event processor: call LLM to extract events and entities from chunk text.
 """
+
 import json
 from typing import Any
 
@@ -103,7 +104,8 @@ def _render_prompt(
         f"and an entity list (up to {max_entities} items).\n"
         "\n"
         "Evidence requirements:\n"
-        "- Each entity should include evidence_quote: an exact substring from the [Target] chunk that mentions the entity.\n"
+        "- Each entity should include evidence_quote: an exact substring from the [Target] chunk "
+        "that mentions the entity.\n"
         "- evidence_quote MUST be copied verbatim (no paraphrase).\n"
         f"{context}"
     )
@@ -150,7 +152,9 @@ def _build_entity_payload(
             "weight": weight if isinstance(weight, (int, float)) else None,
             "evidence_quote": str(evidence_quote or "").strip() or None,
             "evidence_source": str(source_span.get("source") or "").strip() or None,
-            "evidence_start_char": source_span.get("start_char") if isinstance(source_span.get("start_char"), int) else None,
+            "evidence_start_char": source_span.get("start_char")
+            if isinstance(source_span.get("start_char"), int)
+            else None,
             "evidence_end_char": source_span.get("end_char") if isinstance(source_span.get("end_char"), int) else None,
         },
     )

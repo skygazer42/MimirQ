@@ -10,7 +10,6 @@ It must be safe and fast:
 - Uses conservative heuristics (no heavy NLP).
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -103,7 +102,10 @@ def analyze_governance(
                 GovernanceIssue(
                     code="html_tags_present",
                     severity="warning",
-                    message="检测到 HTML 标签残留：建议使用 HTML 输入格式并配合 XPath 提取正文，或在解析阶段选择更适合的网页解析器。",
+                    message=(
+                        "检测到 HTML 标签残留：建议使用 HTML 输入格式并配合 XPath 提取正文，"
+                        "或在解析阶段选择更适合的网页解析器。"
+                    ),
                     count=len(html_hits),
                     samples=samples,
                     suggested_pipeline_patch={},
@@ -136,7 +138,9 @@ def analyze_governance(
                 message="疑似 PDF 导出导致的段落断行：建议开启“合并软换行”。",
                 count=lines_n,
                 samples=[],
-                suggested_pipeline_patch={"governance_unwrap_lines": True} if not bool(opts.get("unwrap_lines", True)) else {},
+                suggested_pipeline_patch={"governance_unwrap_lines": True}
+                if not bool(opts.get("unwrap_lines", True))
+                else {},
             )
         )
 
@@ -152,7 +156,9 @@ def analyze_governance(
                 message="检测到较多断字连字符（'-\\n'）：合并软换行/去连字符可改善连贯性。",
                 count=len(hyphen_breaks),
                 samples=[],
-                suggested_pipeline_patch={"governance_unwrap_lines": True} if not bool(opts.get("unwrap_lines", True)) else {},
+                suggested_pipeline_patch={"governance_unwrap_lines": True}
+                if not bool(opts.get("unwrap_lines", True))
+                else {},
             )
         )
 
@@ -168,7 +174,9 @@ def analyze_governance(
                 message="检测到跨页重复行（疑似页眉/页脚/水印）：建议开启“去重页眉页脚”。",
                 count=len(repeated),
                 samples=_clip_samples(repeated, limit=5),
-                suggested_pipeline_patch={"governance_remove_common_lines": True} if not bool(opts.get("remove_common_lines", True)) else {},
+                suggested_pipeline_patch={"governance_remove_common_lines": True}
+                if not bool(opts.get("remove_common_lines", True))
+                else {},
             )
         )
 
@@ -245,7 +253,9 @@ def analyze_governance(
         logger.debug("Ignoring non-critical governance diagnostics fallback failure: %s", exc)
 
     try:
-        low_density_decision = drop_if_low_density(raw_before, threshold=float(opts.get("drop_low_density_threshold", 0.12) or 0.12))
+        low_density_decision = drop_if_low_density(
+            raw_before, threshold=float(opts.get("drop_low_density_threshold", 0.12) or 0.12)
+        )
         if low_density_decision.dropped and not bool(opts.get("drop_low_density", False)):
             patch["governance_drop_low_density"] = True
             issues.append(

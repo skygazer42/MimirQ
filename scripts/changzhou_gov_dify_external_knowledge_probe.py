@@ -6,7 +6,6 @@ MimirQ data; it only proves which side of the Dify external-knowledge boundary
 is returning empty results.
 """
 
-
 import argparse
 import ipaddress
 import json
@@ -213,11 +212,7 @@ def _select_external_api(payload: dict[str, Any], external_api_id: str) -> dict[
             if isinstance(item, dict) and item.get("id") == external_api_id:
                 return item
         raise ValueError(f"Dify external knowledge API not found: {external_api_id}")
-    mimirq_apis = [
-        item
-        for item in apis
-        if isinstance(item, dict) and "mimirq" in _text(item.get("name")).lower()
-    ]
+    mimirq_apis = [item for item in apis if isinstance(item, dict) and "mimirq" in _text(item.get("name")).lower()]
     if len(mimirq_apis) == 1:
         return mimirq_apis[0]
     raise ValueError("Pass --external-api-id when Dify has zero or multiple MimirQ external APIs")
@@ -543,10 +538,14 @@ def _progress_to_stderr(event: dict[str, Any]) -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Probe Dify external knowledge hit-testing against direct MimirQ retrieval.")
+    parser = argparse.ArgumentParser(
+        description="Probe Dify external knowledge hit-testing against direct MimirQ retrieval."
+    )
     parser.add_argument("--cases", required=True)
     parser.add_argument("--external-api-id", default=os.getenv("DIFY_EXTERNAL_KNOWLEDGE_API_ID") or "")
-    parser.add_argument("--console-base-url", default=os.getenv("DIFY_CONSOLE_API_BASE_URL") or DEFAULT_CONSOLE_BASE_URL)
+    parser.add_argument(
+        "--console-base-url", default=os.getenv("DIFY_CONSOLE_API_BASE_URL") or DEFAULT_CONSOLE_BASE_URL
+    )
     parser.add_argument("--console-token", default=os.getenv("DIFY_CONSOLE_TOKEN") or "")
     parser.add_argument("--storage-state", default=DEFAULT_STORAGE_STATE)
     parser.add_argument("--timeout", type=float, default=30.0)

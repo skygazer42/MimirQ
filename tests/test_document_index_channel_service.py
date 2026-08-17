@@ -176,7 +176,9 @@ def test_transition_document_index_channel_tracks_attempts_and_timestamps(monkey
         ),
         raising=True,
     )
-    monkeypatch.setattr(svc, "list_document_index_channels", lambda *_args, **_kwargs: list(rows.values()), raising=True)
+    monkeypatch.setattr(
+        svc, "list_document_index_channels", lambda *_args, **_kwargs: list(rows.values()), raising=True
+    )
 
     def _fake_upsert(_db, **kwargs):  # noqa: ANN001
         row = rows.get(kwargs["channel"]) or SimpleNamespace(channel=kwargs["channel"])
@@ -212,7 +214,9 @@ def test_transition_document_index_channel_tracks_attempts_and_timestamps(monkey
     assert ready_row.error is None
 
 
-def test_transition_document_index_channel_keeps_disabled_optional_channels_out_of_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_transition_document_index_channel_keeps_disabled_optional_channels_out_of_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     doc = _document(status="completed")
 
     class _DB:
@@ -260,7 +264,9 @@ def test_transition_document_index_channel_keeps_disabled_optional_channels_out_
     assert captured["error"] is None
 
 
-def test_transition_document_index_channel_savepoint_failure_does_not_block_next_update(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_transition_document_index_channel_savepoint_failure_does_not_block_next_update(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     doc = _document(status="processing")
     calls = {"count": 0}
 
@@ -373,7 +379,9 @@ def test_upsert_document_index_channel_uses_atomic_postgres_execute_path() -> No
     str(os.getenv("MIMIRQ_INTEGRATION_TESTS", "") or "").strip().lower() not in {"1", "true", "yes", "y", "on"},
     reason="Integration tests disabled",
 )
-def test_transition_document_index_channel_is_atomic_under_postgres_concurrency(pg_session, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_transition_document_index_channel_is_atomic_under_postgres_concurrency(
+    pg_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -494,4 +502,6 @@ def test_transition_document_index_channel_is_atomic_under_postgres_concurrency(
     assert continued.status == "ready"
     assert continued.attempt_count == 2
     assert continued.last_succeeded_at is not None
-    assert continued.last_status_changed_at.tzinfo == timezone.utc or continued.last_status_changed_at.tzinfo is not None
+    assert (
+        continued.last_status_changed_at.tzinfo == timezone.utc or continued.last_status_changed_at.tzinfo is not None
+    )

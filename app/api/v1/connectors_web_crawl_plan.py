@@ -1,4 +1,3 @@
-
 import hashlib
 import re
 from typing import Any
@@ -77,7 +76,9 @@ def _web_crawl_extract_token_part(token: str | None, *, key: str) -> str | None:
 def _web_crawl_build_doc_sync_token(*, source_url: str, doc: Any, crawl_token: str | None = None) -> str:
     meta = dict(getattr(doc, "doc_metadata", None) or {})
     etag = str(meta.get("source_etag") or "").strip() or None
-    last_modified = str(meta.get("source_last_modified_raw") or meta.get("source_last_modified_at") or "").strip() or None
+    last_modified = (
+        str(meta.get("source_last_modified_raw") or meta.get("source_last_modified_at") or "").strip() or None
+    )
     body_sha = str(meta.get("file_sha256") or "").strip().lower() or None
     if not body_sha:
         body_sha = _web_crawl_extract_token_part(crawl_token, key="body_sha256")

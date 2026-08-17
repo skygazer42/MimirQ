@@ -473,7 +473,9 @@ async def test_persist_commit_failure_keeps_local_source_when_row_exists(monkeyp
 
 
 @pytest.mark.asyncio
-async def test_persist_commit_failure_keeps_local_source_when_row_existence_unknown(monkeypatch, tmp_path: Path) -> None:
+async def test_persist_commit_failure_keeps_local_source_when_row_existence_unknown(
+    monkeypatch, tmp_path: Path
+) -> None:
     source = tmp_path / "source.txt"
     source.write_text("hello", encoding="utf-8")
     db_document = SimpleNamespace(id=uuid.uuid4(), file_path=str(source))

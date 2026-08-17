@@ -84,17 +84,13 @@ def _resolve_stored_object_region(
     if str(metadata.get(SOURCE_STORAGE_BACKEND_KEY) or "").strip().lower() != SOURCE_STORAGE_BACKEND_OBJECT_STORAGE:
         return region
 
-    profiles = parse_object_storage_region_profiles(
-        getattr(settings, "OBJECT_STORAGE_REGION_PROFILES", "") or ""
-    )
+    profiles = parse_object_storage_region_profiles(getattr(settings, "OBJECT_STORAGE_REGION_PROFILES", "") or "")
     matching_regions: list[str] = []
     for profile_region, profile in profiles.items():
         provider = normalize_object_store_provider(
             str(profile.get("provider") or getattr(settings, "OBJECT_STORAGE_PROVIDER", "") or "minio")
         )
-        bucket = str(
-            profile.get("bucket_name") or getattr(settings, "OBJECT_STORAGE_BUCKET_NAME", "") or ""
-        ).strip()
+        bucket = str(profile.get("bucket_name") or getattr(settings, "OBJECT_STORAGE_BUCKET_NAME", "") or "").strip()
         if provider == ref.provider and bucket == ref.bucket:
             matching_regions.append(profile_region)
     if len(matching_regions) == 1:
@@ -106,7 +102,9 @@ def _resolve_stored_object_region(
     return region
 
 
-def get_object_store_for_uri(uri: str, *, region: str | None = None, document_metadata: dict[str, object] | None = None):
+def get_object_store_for_uri(
+    uri: str, *, region: str | None = None, document_metadata: dict[str, object] | None = None
+):
     ref = parse_object_storage_uri(uri)
     metadata = document_metadata if isinstance(document_metadata, dict) else {}
     resolved_region = _resolve_stored_object_region(ref, region=region, document_metadata=metadata)

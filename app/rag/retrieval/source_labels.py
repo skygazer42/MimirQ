@@ -1,6 +1,5 @@
 """Source label helpers for generation and citation metadata."""
 
-
 import re
 from pathlib import Path
 from typing import Any
@@ -11,7 +10,9 @@ _UUID_PDF_RE = re.compile(
     flags=re.IGNORECASE,
 )
 _ARXIV_SUFFIX_RE = re.compile(r"([_-])(?:v?\d{4}\.\d{4,6}|[a-f0-9]{32,})(?:v\d+)?$", flags=re.IGNORECASE)
-_SECTION_HEADING_RE = re.compile(r"^\s*(?:\d+(?:\.\d+)*\s+)?(?:abstract|keywords?|introduction|references)\b", re.IGNORECASE)
+_SECTION_HEADING_RE = re.compile(
+    r"^\s*(?:\d+(?:\.\d+)*\s+)?(?:abstract|keywords?|introduction|references)\b", re.IGNORECASE
+)
 _AUTHOR_AFFILIATION_RE = re.compile(
     r"(@|\{|\}|university|institute|department|google ai|facebook ai|princeton|microsoft|research|school of)",
     flags=re.IGNORECASE,

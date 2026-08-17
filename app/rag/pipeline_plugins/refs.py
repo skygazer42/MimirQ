@@ -1,4 +1,3 @@
-
 import re
 from typing import Any
 
@@ -40,7 +39,9 @@ def _normalize_python_plugin_ref_value(
     if len(value) > 240:
         raise ValueError(f"{field_name} too long (max=240)")
     if "/" in value or "\\" in value or "\x00" in value:
-        raise ValueError(file_path_message or f"{field_name} must be an import path or registered plugin ref, not a file path")
+        raise ValueError(
+            file_path_message or f"{field_name} must be an import path or registered plugin ref, not a file path"
+        )
     return value
 
 
@@ -58,8 +59,7 @@ def _validate_python_import_ref(
     allowed = python_plugin_allow_prefixes()
     if not allowed:
         raise ValueError(
-            disabled_import_message
-            or "python plugin import refs are disabled; use plugin:<id>@<version>:<stage>"
+            disabled_import_message or "python plugin import refs are disabled; use plugin:<id>@<version>:<stage>"
         )
     if not any(module_name.startswith(prefix) for prefix in allowed):
         raise ValueError(f"{field_name} module '{module_name}' is not allowed")

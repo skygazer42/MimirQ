@@ -1,11 +1,14 @@
-
 import re
 from dataclasses import dataclass
 from typing import Any
 
 _NOISE_PATTERNS: tuple[tuple[str, str, re.Pattern[str]], ...] = (
     ("pdf_export_noise", "wechat2pdf", re.compile(r"(wechat2pdf|微信文章在线转\s*pdf|在线转\s*pdf)", re.IGNORECASE)),
-    ("watermark_text", "confidential", re.compile(r"(watermark|company confidential|for internal use only)", re.IGNORECASE)),
+    (
+        "watermark_text",
+        "confidential",
+        re.compile(r"(watermark|company confidential|for internal use only)", re.IGNORECASE),
+    ),
     ("watermark_text", "cn_confidential", re.compile(r"(仅供内部使用|机密|保密)", re.IGNORECASE)),
     ("pdf_export_noise", "page_footer", re.compile(r"^\s*(page\s*)?\d+\s*/\s*\d+\s*$", re.IGNORECASE)),
 )

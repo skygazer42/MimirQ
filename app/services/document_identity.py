@@ -1,6 +1,5 @@
 """Document ingestion identity helpers."""
 
-
 import hashlib
 import json
 from typing import Any
@@ -76,7 +75,8 @@ def sync_pipeline_execution_identity(
         "pipeline_hash": pipeline_hash_norm,
         "parser_backend": str(meta.get("parser_backend") or "").strip() or None,
         "parser_backend_requested": str(meta.get("parser_backend_requested") or "").strip() or None,
-        "parser_backend_resolved": str(parser_backend_resolved or meta.get("parser_backend_resolved") or "").strip() or None,
+        "parser_backend_resolved": str(parser_backend_resolved or meta.get("parser_backend_resolved") or "").strip()
+        or None,
         "chunk_strategy": str(meta.get("chunk_strategy") or "").strip() or None,
         "chunk_strategy_requested": str(meta.get("chunk_strategy_requested") or "").strip() or None,
         "dedup_key": dedup_key,

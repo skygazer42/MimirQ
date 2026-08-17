@@ -17,10 +17,13 @@ def test_png_worker_lost_default_wait_tracks_seeded_lease() -> None:
     )
 
     assert 4.0 <= wait_sec <= 6.5
-    assert gate._resolve_png_worker_lost_wait_sec(
-        {"lease_expires_at": lease_expires_at},
-        configured_wait_sec=0.0,
-    ) == 0.0
+    assert (
+        gate._resolve_png_worker_lost_wait_sec(
+            {"lease_expires_at": lease_expires_at},
+            configured_wait_sec=0.0,
+        )
+        == 0.0
+    )
 
 
 def _config() -> gate.LiveCoreReleaseGateConfig:
@@ -161,7 +164,10 @@ def test_live_core_release_gate_uses_secondary_api_for_duplicate_probe(monkeypat
     monkeypatch.setattr(
         gate,
         "_run_retrieve_only_load_pair",
-        lambda **_kwargs: (_load_report(concurrency=1, throughput_rps=1.0, overlap=False), _load_report(concurrency=3, throughput_rps=1.8, overlap=True)),
+        lambda **_kwargs: (
+            _load_report(concurrency=1, throughput_rps=1.0, overlap=False),
+            _load_report(concurrency=3, throughput_rps=1.8, overlap=True),
+        ),
         raising=True,
     )
     monkeypatch.setattr(
@@ -196,9 +202,21 @@ def test_live_core_release_gate_uses_secondary_api_for_duplicate_probe(monkeypat
             dataset_id = str(payload.get("dataset_id") or "")
             tenant = request.headers.get("X-Tenant-ID", "")
             if tenant == "tenant-a" and dataset_id == "dataset-tenant-a":
-                return httpx.Response(200, json={"has_evidence": True, "citations": [{"document_id": "doc-a", "chunk_content": payload["query"]}]})
+                return httpx.Response(
+                    200,
+                    json={
+                        "has_evidence": True,
+                        "citations": [{"document_id": "doc-a", "chunk_content": payload["query"]}],
+                    },
+                )
             if tenant == "tenant-b" and dataset_id == "dataset-tenant-b":
-                return httpx.Response(200, json={"has_evidence": True, "citations": [{"document_id": "doc-b", "chunk_content": payload["query"]}]})
+                return httpx.Response(
+                    200,
+                    json={
+                        "has_evidence": True,
+                        "citations": [{"document_id": "doc-b", "chunk_content": payload["query"]}],
+                    },
+                )
             return httpx.Response(404, json={"detail": "Dataset not found"})
         raise AssertionError(f"unexpected request: {request.method} {request.url}")
 
@@ -274,7 +292,9 @@ def test_live_core_release_gate_fails_when_duplicate_upload_changes_document_id(
 
     assert report["passed"] is False
     assert report["duplicate_upload"]["passed"] is False
-    assert any("concurrent duplicate upload returned different document ids" in failure for failure in report["failures"])
+    assert any(
+        "concurrent duplicate upload returned different document ids" in failure for failure in report["failures"]
+    )
 
 
 def test_same_key_dual_instance_probe_requires_follower_hit(monkeypatch) -> None:

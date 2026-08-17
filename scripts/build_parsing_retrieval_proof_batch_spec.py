@@ -1,4 +1,3 @@
-
 import argparse
 import json
 from pathlib import Path
@@ -83,11 +82,11 @@ def build_batch_spec(
                 "queries_json": str(resolved_queries_path),
                 "parser_backend": str(query_cfg.get("parser_backend") or defaults_obj.get("parser_backend") or "basic"),
                 "top_k": int(query_cfg.get("top_k") or defaults_obj.get("top_k") or 1),
-                "retrieval_mode": str(query_cfg.get("retrieval_mode") or defaults_obj.get("retrieval_mode") or "keyword"),
+                "retrieval_mode": str(
+                    query_cfg.get("retrieval_mode") or defaults_obj.get("retrieval_mode") or "keyword"
+                ),
                 "governance_rule_packs": [
-                    str(item).strip()
-                    for item in (query_cfg.get("governance_rule_packs") or [])
-                    if str(item).strip()
+                    str(item).strip() for item in (query_cfg.get("governance_rule_packs") or []) if str(item).strip()
                 ],
                 "case_family": _derive_case_family(case_category),
                 "case_category": case_category,
@@ -115,7 +114,9 @@ def build_batch_spec(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Build a parsing-proof batch spec from a parser manifest plus a case-query mapping JSON.")
+    parser = argparse.ArgumentParser(
+        description="Build a parsing-proof batch spec from a parser manifest plus a case-query mapping JSON."
+    )
     parser.add_argument("--manifest-json", required=True, help="Path to parser manifest JSON.")
     parser.add_argument("--case-queries-json", required=True, help="Path to case-id -> queries-json mapping JSON.")
     parser.add_argument("--out", required=True, help="Output batch spec JSON path.")

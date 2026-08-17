@@ -190,18 +190,19 @@ def _build_colbert_reranker(
     warmup_colbert_embedder = _load_attr("app.rag.reranker.colbert", "warmup_colbert_embedder")
 
     embedder = kwargs.get("embedder")
-    provider_name = str(
-        kwargs.get("provider_name")
-        or getattr(settings, "COLBERT_RERANK_PROVIDER", "deterministic")
-        or "deterministic"
-    ).strip().lower()
+    provider_name = (
+        str(
+            kwargs.get("provider_name")
+            or getattr(settings, "COLBERT_RERANK_PROVIDER", "deterministic")
+            or "deterministic"
+        )
+        .strip()
+        .lower()
+    )
     if provider_name not in {"deterministic", "hf"}:
         provider_name = "deterministic"
     resolved_model_name = str(
-        kwargs.get("colbert_model_name")
-        or model_name
-        or getattr(settings, "COLBERT_RERANK_MODEL_NAME", "")
-        or ""
+        kwargs.get("colbert_model_name") or model_name or getattr(settings, "COLBERT_RERANK_MODEL_NAME", "") or ""
     ).strip()
     device = str(kwargs.get("device") or getattr(settings, "COLBERT_RERANK_DEVICE", "cpu") or "cpu").strip() or "cpu"
     batch_size = max(1, int(kwargs.get("batch_size") or getattr(settings, "COLBERT_RERANK_BATCH_SIZE", 16) or 16))
@@ -230,9 +231,7 @@ def _build_colbert_reranker(
     effective_provider_name = provider_name
     if provider_name == "hf" and not bool(provider_health.get("ready")):
         if strict_healthcheck:
-            raise ValueError(
-                f"colbert_provider_unready:{str(provider_health.get('reason') or 'unknown')}"
-            )
+            raise ValueError(f"colbert_provider_unready:{str(provider_health.get('reason') or 'unknown')}")
         effective_provider_name = "deterministic"
         provider_health = {
             **dict(provider_health or {}),
@@ -252,9 +251,7 @@ def _build_colbert_reranker(
         )
         if not bool(warmup_status.get("ok")):
             if strict_healthcheck:
-                raise ValueError(
-                    f"colbert_provider_unready:{str(warmup_status.get('reason') or 'warmup_failed')}"
-                )
+                raise ValueError(f"colbert_provider_unready:{str(warmup_status.get('reason') or 'warmup_failed')}")
             effective_provider_name = "deterministic"
             provider_health = {
                 **dict(provider_health or {}),
@@ -310,7 +307,9 @@ def _build_ltr_reranker(_requested_provider: str, **kwargs: Any) -> BaseReranker
     ltr_feature_spec_cls = _load_attr("app.rag.reranker.ltr", "LTRFeatureSpec")
     ltr_reranker_cls = _load_attr("app.rag.reranker.ltr", "LTRReranker")
 
-    model_path = str(kwargs.get("model_path") or "").strip() or str(getattr(settings, "LTR_MODEL_PATH", "") or "").strip()
+    model_path = (
+        str(kwargs.get("model_path") or "").strip() or str(getattr(settings, "LTR_MODEL_PATH", "") or "").strip()
+    )
     if not model_path:
         try:
             from app.services.ltr_model_registry import resolve_active_model_paths  # noqa: WPS433
@@ -329,7 +328,10 @@ def _build_ltr_reranker(_requested_provider: str, **kwargs: Any) -> BaseReranker
     if not model_path:
         raise ValueError("LTR reranker requires model_path (pass model_path=... or set LTR_MODEL_PATH)")
 
-    manifest_path = str(kwargs.get("manifest_path") or "").strip() or str(getattr(settings, "LTR_MODEL_MANIFEST_PATH", "") or "").strip()
+    manifest_path = (
+        str(kwargs.get("manifest_path") or "").strip()
+        or str(getattr(settings, "LTR_MODEL_MANIFEST_PATH", "") or "").strip()
+    )
 
     spec_version = kwargs.get("feature_spec_version")
     if spec_version is None:
@@ -520,11 +522,8 @@ def get_rag_reranker(provider: str | None = None) -> BaseReranker:
     Use get_reranker() instead.
     """
     import warnings
-    warnings.warn(
-        "get_rag_reranker() is deprecated, use get_reranker() instead",
-        DeprecationWarning,
-        stacklevel=2
-    )
+
+    warnings.warn("get_rag_reranker() is deprecated, use get_reranker() instead", DeprecationWarning, stacklevel=2)
 
     provider = (provider or "llm").lower()
     if provider == "pc":

@@ -5,7 +5,6 @@ These helpers build bounded invalidation tokens for cache keys that depend on
 the currently served corpus version.
 """
 
-
 import json
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -60,7 +59,9 @@ def _dataset_embedding_binding(dataset_meta: Any) -> dict[str, Any]:
     }
 
 
-def build_dataset_scope_corpus_cache_token(*, dataset_id: Any, updated_at: Any, dataset_embedding_binding: Any = None) -> str | None:
+def build_dataset_scope_corpus_cache_token(
+    *, dataset_id: Any, updated_at: Any, dataset_embedding_binding: Any = None
+) -> str | None:
     ds = str(dataset_id or "").strip()
     if not ds:
         return None
@@ -200,7 +201,9 @@ def resolve_corpus_cache_token(
             dataset_embedding_binding=_dataset_embedding_binding(dataset_meta),
         )
 
-    scope_dataset_ids = sorted({dataset_scope_id for dataset_scope_id in (dataset_ids or []) if dataset_scope_id is not None}, key=str)
+    scope_dataset_ids = sorted(
+        {dataset_scope_id for dataset_scope_id in (dataset_ids or []) if dataset_scope_id is not None}, key=str
+    )
     if scope_dataset_ids:
         rows = (
             db.query(Dataset.id, Dataset.updated_at, Dataset.dataset_metadata)
@@ -236,11 +239,7 @@ def invalidate_dataset_cache_namespace(
         document_ids=[],
     )
 
-    dataset = (
-        db.query(Dataset)
-        .filter(Dataset.tenant_id == tenant_id, Dataset.id == dataset_id)
-        .first()
-    )
+    dataset = db.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.id == dataset_id).first()
     if dataset is None:
         raise LookupError("dataset not found")
 
@@ -268,7 +267,9 @@ def invalidate_dataset_cache_namespace(
         "current_corpus_cache_token": current_token,
         "invalidated_at": invalidated_at,
         "evidence_post_rerank_memory_cleared": memory_cleared,
-        "note": "Dataset caches are invalidated by rotating the dataset corpus token. Existing redis entries expire by TTL.",
+        "note": (
+            "Dataset caches are invalidated by rotating the dataset corpus token. Existing redis entries expire by TTL."
+        ),
     }
 
 

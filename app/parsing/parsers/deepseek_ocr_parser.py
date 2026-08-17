@@ -5,7 +5,6 @@ This backend converts PDF pages into images and uses DeepSeek-OCR to return
 Markdown. Intended for scanned PDFs or image-heavy documents.
 """
 
-
 import base64
 import hashlib
 import re
@@ -460,7 +459,9 @@ class DeepSeekOCRParser:
         except Exception:
             return None
 
-    def _persist_page_assets(self, *, page_idx: int, pix: fitz.Pixmap, images_dir: Path) -> tuple[bytes, Path, Path, bytes | None]:
+    def _persist_page_assets(
+        self, *, page_idx: int, pix: fitz.Pixmap, images_dir: Path
+    ) -> tuple[bytes, Path, Path, bytes | None]:
         img_bytes = pix.tobytes("png")
         self._persist_page_image_variants(pix=pix, png_bytes=img_bytes, images_dir=images_dir)
         png_path, jpg_path = self._persist_named_page_images(

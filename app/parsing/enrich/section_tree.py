@@ -1,4 +1,3 @@
-
 import re
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -77,7 +76,9 @@ def build_section_tree(elements: Sequence[Mapping[str, Any]] | None) -> list[dic
     return out
 
 
-def add_section_paths(elements: Sequence[Mapping[str, Any]] | None, section_tree: Sequence[Mapping[str, Any]] | None) -> list[dict[str, Any]]:
+def add_section_paths(
+    elements: Sequence[Mapping[str, Any]] | None, section_tree: Sequence[Mapping[str, Any]] | None
+) -> list[dict[str, Any]]:
     if not elements:
         return []
     by_id = {str(node.get("id") or ""): dict(node) for node in (section_tree or []) if isinstance(node, Mapping)}

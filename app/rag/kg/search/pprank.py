@@ -1,4 +1,3 @@
-
 from typing import Any
 
 
@@ -65,7 +64,9 @@ def _run_power_iterations(
             src_score = float(scores.get(src, 0.0) or 0.0)
             denom = float(out_sum.get(src, 1.0) or 1.0)
             for dst, weight in (graph.get(src) or {}).items():
-                next_scores[dst] = float(next_scores.get(dst, 0.0) or 0.0) + damping_value * src_score * (float(weight) / denom)
+                next_scores[dst] = float(next_scores.get(dst, 0.0) or 0.0) + damping_value * src_score * (
+                    float(weight) / denom
+                )
         scores = next_scores
     return scores
 

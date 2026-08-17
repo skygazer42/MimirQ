@@ -62,10 +62,7 @@ class _DBByModel:
 
 
 def _build_request(*, query: str = "", headers: dict[str, str] | None = None) -> Request:
-    raw_headers = [
-        (name.lower().encode("latin-1"), value.encode("latin-1"))
-        for name, value in (headers or {}).items()
-    ]
+    raw_headers = [(name.lower().encode("latin-1"), value.encode("latin-1")) for name, value in (headers or {}).items()]
     scope = {
         "type": "http",
         "method": "GET",
@@ -344,10 +341,7 @@ def test_get_image_uses_header_auth_and_no_store_cache(monkeypatch, tmp_path):  
     image_path = image_dir / f"{image_id.hex}.png"
     image_path.write_bytes(b"\x89PNG\r\n\x1a\npng-data")
     (image_dir / f"{image_id.hex}.json").write_text(
-        (
-            '{"dataset_id":"%s","document_id":"%s","tenant_id":"%s"}'
-            % (dataset_id, document_id, tenant_id)
-        ),
+        ('{"dataset_id":"%s","document_id":"%s","tenant_id":"%s"}' % (dataset_id, document_id, tenant_id)),
         encoding="utf-8",
     )
 
@@ -375,7 +369,9 @@ def test_get_image_uses_header_auth_and_no_store_cache(monkeypatch, tmp_path):  
         owner_id="owner-1",
     )
     monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(documents_module, "_assert_document_acl_readable", _fake_assert_document_acl_readable, raising=True)
+    monkeypatch.setattr(
+        documents_module, "_assert_document_acl_readable", _fake_assert_document_acl_readable, raising=True
+    )
 
     client = _build_image_client_with_db(_DBByModel({"Document": [document], "Dataset": [dataset]}))
 
@@ -818,7 +814,9 @@ def test_get_image_enforces_parent_document_acl_from_preview_ownership_metadata(
     monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(DatasetService, "get_dataset", lambda *_args, **_kwargs: dataset, raising=True)
     monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(documents_module, "_assert_document_acl_readable", _fake_assert_document_acl_readable, raising=True)
+    monkeypatch.setattr(
+        documents_module, "_assert_document_acl_readable", _fake_assert_document_acl_readable, raising=True
+    )
 
     client = _build_image_client_with_db(_DBByModel({"Document": document}))
     response = client.get(

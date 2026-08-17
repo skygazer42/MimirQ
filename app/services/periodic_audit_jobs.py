@@ -15,7 +15,6 @@ Design principles (mirrors retention/stale jobs):
 - Fail-open: never crash product flows due to automation
 """
 
-
 from collections import Counter
 from datetime import UTC, datetime
 from typing import Any
@@ -148,7 +147,11 @@ def _run_dataset_evidence_drift_audit(
         row[0]
         for row in (
             db.query(EvidenceSuite.id)
-            .filter(EvidenceSuite.tenant_id == tenant_id, EvidenceSuite.dataset_id == dataset_id, EvidenceSuite.archived_at.is_(None))
+            .filter(
+                EvidenceSuite.tenant_id == tenant_id,
+                EvidenceSuite.dataset_id == dataset_id,
+                EvidenceSuite.archived_at.is_(None),
+            )
             .all()
         )
         if row and row[0] is not None
@@ -292,12 +295,16 @@ def run_daily_index_audit_report(
     now0 = now or datetime.now(UTC)
     report_date = now0.date().isoformat()
 
-    if bool(execute) and (not bool(force)) and _audit_already_written(
-        db,
-        tenant_id=tenant_id,
-        action="observability.index_audit.daily",
-        resource_type="index_audit_report",
-        report_date=report_date,
+    if (
+        bool(execute)
+        and (not bool(force))
+        and _audit_already_written(
+            db,
+            tenant_id=tenant_id,
+            action="observability.index_audit.daily",
+            resource_type="index_audit_report",
+            report_date=report_date,
+        )
     ):
         return {
             "tenant_id": str(tenant_id),
@@ -407,12 +414,16 @@ def run_daily_embedding_drift_report(
     now0 = now or datetime.now(UTC)
     report_date = now0.date().isoformat()
 
-    if bool(execute) and (not bool(force)) and _audit_already_written(
-        db,
-        tenant_id=tenant_id,
-        action="observability.embedding_drift.daily",
-        resource_type="embedding_drift_report",
-        report_date=report_date,
+    if (
+        bool(execute)
+        and (not bool(force))
+        and _audit_already_written(
+            db,
+            tenant_id=tenant_id,
+            action="observability.embedding_drift.daily",
+            resource_type="embedding_drift_report",
+            report_date=report_date,
+        )
     ):
         return {
             "tenant_id": str(tenant_id),
@@ -512,12 +523,16 @@ def run_daily_evidence_drift_audit_report(
     now0 = now or datetime.now(UTC)
     report_date = now0.date().isoformat()
 
-    if bool(execute) and (not bool(force)) and _audit_already_written(
-        db,
-        tenant_id=tenant_id,
-        action="evidence.drift_audit.daily",
-        resource_type="evidence_drift_report",
-        report_date=report_date,
+    if (
+        bool(execute)
+        and (not bool(force))
+        and _audit_already_written(
+            db,
+            tenant_id=tenant_id,
+            action="evidence.drift_audit.daily",
+            resource_type="evidence_drift_report",
+            report_date=report_date,
+        )
     ):
         return {
             "tenant_id": str(tenant_id),
@@ -590,7 +605,14 @@ def run_daily_evidence_drift_audit_report(
 
     overall_drift_rate = round((drift_refs / total_refs), 6) if total_refs > 0 else 0.0
 
-    top_drift_datasets = sorted(per_dataset, key=lambda d: (-float(d.get("drift_rate") or 0.0), -int(d.get("drift_references") or 0), str(d.get("dataset_id") or "")))[:50]
+    top_drift_datasets = sorted(
+        per_dataset,
+        key=lambda d: (
+            -float(d.get("drift_rate") or 0.0),
+            -int(d.get("drift_references") or 0),
+            str(d.get("dataset_id") or ""),
+        ),
+    )[:50]
 
     summary: dict[str, Any] = {
         "tenant_id": str(tenant_id),
@@ -661,12 +683,16 @@ def run_daily_access_review_summary(
     now0 = now or datetime.now(UTC)
     report_date = now0.date().isoformat()
 
-    if bool(execute) and (not bool(force)) and _audit_already_written(
-        db,
-        tenant_id=tenant_id,
-        action="compliance.access_review.daily",
-        resource_type="access_review_summary",
-        report_date=report_date,
+    if (
+        bool(execute)
+        and (not bool(force))
+        and _audit_already_written(
+            db,
+            tenant_id=tenant_id,
+            action="compliance.access_review.daily",
+            resource_type="access_review_summary",
+            report_date=report_date,
+        )
     ):
         return {
             "tenant_id": str(tenant_id),
@@ -700,7 +726,9 @@ def run_daily_access_review_summary(
             ),
         }
 
-        dataset_member_allowlist_count = int(db.query(DatasetPermission).filter(DatasetPermission.tenant_id == tenant_id).count())
+        dataset_member_allowlist_count = int(
+            db.query(DatasetPermission).filter(DatasetPermission.tenant_id == tenant_id).count()
+        )
         dataset_group_allowlist_count = int(
             db.query(DatasetGroupPermission).filter(DatasetGroupPermission.tenant_id == tenant_id).count()
         )
@@ -719,13 +747,17 @@ def run_daily_access_review_summary(
             .count()
         )
         doc_partial_count = int(
-            db.query(Document).filter(Document.tenant_id == tenant_id, Document.access_mode == "partial_members").count()
+            db.query(Document)
+            .filter(Document.tenant_id == tenant_id, Document.access_mode == "partial_members")
+            .count()
         )
         doc_only_me_count = int(
             db.query(Document).filter(Document.tenant_id == tenant_id, Document.access_mode == "only_me").count()
         )
         doc_all_team_count = int(
-            db.query(Document).filter(Document.tenant_id == tenant_id, Document.access_mode == "all_team_members").count()
+            db.query(Document)
+            .filter(Document.tenant_id == tenant_id, Document.access_mode == "all_team_members")
+            .count()
         )
         doc_known = doc_inherit_count + doc_partial_count + doc_only_me_count + doc_all_team_count
         doc_unknown_count = max(0, int(document_count - doc_known))

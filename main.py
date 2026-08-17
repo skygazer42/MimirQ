@@ -76,7 +76,11 @@ def main() -> None:
     except OSError as exc:
         # Uvicorn reload uses watchfiles+inotify by default. Some environments (containers/CI)
         # have low watch limits; fallback to polling to keep dev workflow usable.
-        if reload_enabled and not _is_truthy(os.getenv("WATCHFILES_FORCE_POLLING"), default=False) and _is_watch_limit_error(exc):
+        if (
+            reload_enabled
+            and not _is_truthy(os.getenv("WATCHFILES_FORCE_POLLING"), default=False)
+            and _is_watch_limit_error(exc)
+        ):
             warnings.warn(
                 "OS file watch limit reached; falling back to polling reloader. "
                 "To avoid reload, set UVICORN_RELOAD=false. To force polling, set WATCHFILES_FORCE_POLLING=1.",

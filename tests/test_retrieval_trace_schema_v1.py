@@ -1,4 +1,3 @@
-
 import uuid
 
 import langchain
@@ -119,7 +118,12 @@ def test_orchestrator_emits_stable_retrieval_trace_schema(monkeypatch: pytest.Mo
             "parse_repair_actions": {
                 "run_id": "parse-repair-001",
                 "actions": [
-                    {"document_id": str(doc_id), "action": "reparse_document", "status": "scheduled", "priority": "high"}
+                    {
+                        "document_id": str(doc_id),
+                        "action": "reparse_document",
+                        "status": "scheduled",
+                        "priority": "high",
+                    }
                 ],
             },
             "metrics": {},
@@ -308,7 +312,9 @@ def test_orchestrator_preserves_degradation_contract_in_query_debug_and_trace(
             "attempted_channels": ["vector", "sparse"],
             "successful_channels": ["vector"],
             "retrieval_degraded": True,
-            "degraded_reasons": [{"channel": "sparse", "error_type": "timeout", "detail": "ignored by public contract"}],
+            "degraded_reasons": [
+                {"channel": "sparse", "error_type": "timeout", "detail": "ignored by public contract"}
+            ],
             "all_retrieval_channels_failed": False,
         }
     ]

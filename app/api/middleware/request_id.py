@@ -6,7 +6,6 @@ Adds a stable request id to:
 - response header (default: X-Request-ID)
 """
 
-
 import re
 import uuid
 from collections.abc import Callable
@@ -52,7 +51,9 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         user_id = ""
         if mode == "header":
             user_id = (request.headers.get("X-User-ID") or "").strip()
-        tokens = bind_request_context(request_id=request_id, tenant_id=tenant_id, user_id=user_id, route=str(request.url.path))
+        tokens = bind_request_context(
+            request_id=request_id, tenant_id=tenant_id, user_id=user_id, route=str(request.url.path)
+        )
         try:
             response = await call_next(request)
         finally:

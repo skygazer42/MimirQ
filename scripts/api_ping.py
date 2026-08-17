@@ -1,4 +1,3 @@
-
 import argparse
 import ipaddress
 import json
@@ -137,7 +136,9 @@ def main() -> int:
         extra = _summarize_data(result.data)
         extra_part = f"  {extra}" if extra else ""
         err_part = f"  ({result.error})" if result.error else ""
-        print(f"[api-ping] {status}: {label}  {code if code is not None else '-'}  {result.elapsed_ms}ms  {url}{err_part}{extra_part}")
+        print(
+            f"[api-ping] {status}: {label}  {code if code is not None else '-'}  {result.elapsed_ms}ms  {url}{err_part}{extra_part}"
+        )
 
     return 0 if ok else 1
 

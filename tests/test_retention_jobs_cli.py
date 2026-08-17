@@ -31,8 +31,8 @@ def test_retention_jobs_cli_runs_semantic_cache_dry_run(
 ) -> None:
     tenant_id = uuid.uuid4()
     calls: list[dict[str, object]] = []
-    runtime_deps.run_semantic_cache_retention = (
-        lambda **kwargs: calls.append(kwargs) or {"job": "semantic-cache", "deleted": 0, "eligible": 3, "failed": False}
+    runtime_deps.run_semantic_cache_retention = lambda **kwargs: (
+        calls.append(kwargs) or {"job": "semantic-cache", "deleted": 0, "eligible": 3, "failed": False}
     )
 
     rc = cli.main(
@@ -62,8 +62,8 @@ def test_retention_jobs_cli_runs_semantic_cache_execute_for_default_tenant(
     default_tenant = uuid.uuid4()
     calls: list[dict[str, object]] = []
     runtime_deps.settings.DEFAULT_TENANT_ID = str(default_tenant)
-    runtime_deps.run_semantic_cache_retention = (
-        lambda **kwargs: calls.append(kwargs) or {"job": "semantic-cache", "deleted": 2, "eligible": 2, "failed": False}
+    runtime_deps.run_semantic_cache_retention = lambda **kwargs: (
+        calls.append(kwargs) or {"job": "semantic-cache", "deleted": 2, "eligible": 2, "failed": False}
     )
 
     rc = cli.main(["--semantic-cache", "--execute", "--max-delete", "9", "--max-scan", "15"])
@@ -117,9 +117,15 @@ def test_retention_jobs_cli_runs_semantic_cache_for_all_tenants(
             return None
 
     runtime_deps.SessionLocal = lambda: _FakeSession()
-    runtime_deps.run_semantic_cache_retention = (
-        lambda **kwargs: calls.append(kwargs)
-        or {"job": "semantic-cache", "tenant_id": str(kwargs["tenant_id"]), "deleted": 1, "eligible": 1, "failed": False}
+    runtime_deps.run_semantic_cache_retention = lambda **kwargs: (
+        calls.append(kwargs)
+        or {
+            "job": "semantic-cache",
+            "tenant_id": str(kwargs["tenant_id"]),
+            "deleted": 1,
+            "eligible": 1,
+            "failed": False,
+        }
     )
 
     rc = cli.main(["--semantic-cache", "--all-tenants", "--execute", "--max-delete", "5", "--max-scan", "12"])
@@ -148,9 +154,8 @@ def test_retention_jobs_cli_runs_db_backed_audit_retention(
 
     session = _FakeSession()
     runtime_deps.SessionLocal = lambda: session
-    runtime_deps.run_audit_log_retention = (
-        lambda db, **kwargs: calls.append((db, kwargs))
-        or {"job": "audit-log-retention", "deleted": 0, "eligible": 2, "failed": False}
+    runtime_deps.run_audit_log_retention = lambda db, **kwargs: (
+        calls.append((db, kwargs)) or {"job": "audit-log-retention", "deleted": 0, "eligible": 2, "failed": False}
     )
 
     rc = cli.main(

@@ -17,7 +17,6 @@ Notes:
   This keeps the script dependency-light but may under-estimate late-interaction wins.
 """
 
-
 import argparse
 import json
 import math
@@ -203,10 +202,7 @@ def build_pipeline_summary(
     metric_keys = ("hit", "mrr", "recall", "ndcg")
     baseline_out = {key: round(_as_float(baseline.get(key)), 4) for key in metric_keys}
     pipeline_out = {key: round(_as_float(pipeline_metrics.get(key)), 4) for key in metric_keys}
-    delta_metrics = {
-        key: round(pipeline_out.get(key, 0.0) - baseline_out.get(key, 0.0), 4)
-        for key in metric_keys
-    }
+    delta_metrics = {key: round(pipeline_out.get(key, 0.0) - baseline_out.get(key, 0.0), 4) for key in metric_keys}
 
     delta_counts: dict[str, dict[str, int]] = {}
     for key in metric_keys:
@@ -314,17 +310,23 @@ def apply_pipeline(
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="Offline evaluation: baseline vs local rerank pipeline (candidates via Evidence API).")
+    p = argparse.ArgumentParser(
+        description="Offline evaluation: baseline vs local rerank pipeline (candidates via Evidence API)."
+    )
     p.add_argument("--cases", required=True, help="Path to regression cases JSON (bundle v1 or legacy array)")
     p.add_argument("--pipeline", required=True, help="Pipeline JSON string or path to a JSON file")
 
     p.add_argument("--ltr-model", default="", help="Path to LTR model artifact (required if pipeline includes 'ltr')")
-    p.add_argument("--ltr-feature-spec-version", type=int, default=1, help="LTR feature spec version (default: %(default)s)")
+    p.add_argument(
+        "--ltr-feature-spec-version", type=int, default=1, help="LTR feature spec version (default: %(default)s)"
+    )
     p.add_argument("--colbert-provider", default="deterministic", help="deterministic|hf (default: %(default)s)")
     p.add_argument("--colbert-model-name", default="", help="HF model name for provider=hf")
     p.add_argument("--colbert-device", default="cpu", help="cpu|cuda|auto (default: %(default)s)")
     p.add_argument("--colbert-batch-size", type=int, default=16, help="ColBERT token batch size (default: %(default)s)")
-    p.add_argument("--colbert-max-length", type=int, default=256, help="Max token length for HF provider (default: %(default)s)")
+    p.add_argument(
+        "--colbert-max-length", type=int, default=256, help="Max token length for HF provider (default: %(default)s)"
+    )
     p.add_argument(
         "--colbert-deterministic-dim",
         type=int,
@@ -339,9 +341,16 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--timeout-sec", type=float, default=30.0, help="HTTP timeout seconds (default: %(default)s)")
 
     p.add_argument("--top-k", type=int, default=50, help="Evidence API rag_config.top_k (default: %(default)s)")
-    p.add_argument("--score-threshold", type=float, default=0.0, help="Evidence API rag_config.score_threshold (default: %(default)s)")
+    p.add_argument(
+        "--score-threshold",
+        type=float,
+        default=0.0,
+        help="Evidence API rag_config.score_threshold (default: %(default)s)",
+    )
     p.add_argument("--retrieval-mode", default="hybrid", help="hybrid|vector|keyword|mmr (default: %(default)s)")
-    p.add_argument("--retrieval-profile", default="recall50", help="recall20|recall50|coverage80 (default: %(default)s)")
+    p.add_argument(
+        "--retrieval-profile", default="recall50", help="recall20|recall50|coverage80 (default: %(default)s)"
+    )
     p.add_argument("--alpha", type=float, default=0.6, help="Fusion alpha (default: %(default)s)")
 
     p.add_argument("--k", type=int, default=20, help="Compute metrics at K (default: %(default)s)")
@@ -367,7 +376,9 @@ def main(argv: list[str] | None = None) -> int:
     ltr: LTRReranker | None = None
     if any(str(st.get("provider") or "").strip().lower() == "ltr" for st in pipeline):
         if ltr_model_path is None or not ltr_model_path.exists():
-            print("[pipeline-eval] ERROR: pipeline includes 'ltr' but --ltr-model is missing/not found", file=sys.stderr)
+            print(
+                "[pipeline-eval] ERROR: pipeline includes 'ltr' but --ltr-model is missing/not found", file=sys.stderr
+            )
             return 2
         spec = LTRFeatureSpec.from_version(int(args.ltr_feature_spec_version or 1))
         ltr = LTRReranker(model_path=str(ltr_model_path), spec=spec)

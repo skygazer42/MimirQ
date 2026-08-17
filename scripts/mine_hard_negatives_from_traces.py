@@ -16,7 +16,6 @@ Output:
 - PII-safe by construction: NO raw query text is written.
 """
 
-
 import argparse
 import json
 import sys
@@ -166,12 +165,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--out", required=True, help="Write mined hard negatives JSONL to this path")
 
-    p.add_argument("--retrieval-config-hash", default="", help="Only use trace records matching this retrieval_config_hash (optional)")
+    p.add_argument(
+        "--retrieval-config-hash",
+        default="",
+        help="Only use trace records matching this retrieval_config_hash (optional)",
+    )
     p.add_argument("--tenant-id", default="", help="Only use trace records matching this tenant_id (optional)")
     p.add_argument("--max-cases", type=int, default=0, help="Limit cases processed (default: all)")
     p.add_argument("--max-traces", type=int, default=0, help="Limit trace records read (default: all)")
     p.add_argument("--max-hard-negatives", type=int, default=10, help="Hard negatives per case (default: %(default)s)")
-    p.add_argument("--max-negatives-per-document", type=int, default=2, help="Cap negatives per document_id (default: %(default)s)")
+    p.add_argument(
+        "--max-negatives-per-document", type=int, default=2, help="Cap negatives per document_id (default: %(default)s)"
+    )
 
     args = p.parse_args(argv)
 
@@ -258,7 +263,9 @@ def main(argv: list[str] | None = None) -> int:
                 tenant_candidates = [
                     rec.get("tenant_id"),
                     row.get("tenant_id"),
-                    (row.get("source_metadata") or {}).get("tenant_id") if isinstance(row.get("source_metadata"), dict) else None,
+                    (row.get("source_metadata") or {}).get("tenant_id")
+                    if isinstance(row.get("source_metadata"), dict)
+                    else None,
                 ]
                 tenant_hit = False
                 for raw_tenant in tenant_candidates:

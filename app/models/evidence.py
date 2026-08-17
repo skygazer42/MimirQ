@@ -62,7 +62,9 @@ class EvidenceItem(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     dataset_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    suite_id = Column(UUID(as_uuid=True), ForeignKey("evidence_suites.id", ondelete="CASCADE"), nullable=False, index=True)
+    suite_id = Column(
+        UUID(as_uuid=True), ForeignKey("evidence_suites.id", ondelete="CASCADE"), nullable=False, index=True
+    )
 
     status = Column(String(20), nullable=False, default="draft", index=True)  # draft|reviewed|approved|archived
 

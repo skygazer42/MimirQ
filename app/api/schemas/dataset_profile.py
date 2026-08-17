@@ -6,7 +6,6 @@ These schemas are used to:
 - Track deep scan runs (async backfill + persisted summary)
 """
 
-
 from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
@@ -151,7 +150,9 @@ class DatasetProfileSummary(BaseModel):
     language_mix: dict[str, int] = Field(default_factory=dict)
 
     pdf_scan: DatasetProfilePdfScanStats = Field(default_factory=DatasetProfilePdfScanStats)
-    parsing_provenance: DatasetProfileParsingProvenanceStats = Field(default_factory=DatasetProfileParsingProvenanceStats)
+    parsing_provenance: DatasetProfileParsingProvenanceStats = Field(
+        default_factory=DatasetProfileParsingProvenanceStats
+    )
 
     pii_hits_total: dict[str, int] = Field(default_factory=dict)
     secrets_hits_total: dict[str, int] = Field(default_factory=dict)

@@ -3,6 +3,7 @@ SentenceTransformer local embedding model.
 
 Supports local sentence-transformers models for embeddings.
 """
+
 from app.core.optional_deps import require_dependency
 from app.rag.embedding.base import BaseEmbeddingModel
 from app.rag.embedding.utils import logger
@@ -50,11 +51,11 @@ class SentenceTransformerEmbedding(BaseEmbeddingModel):
         )
         sentence_transformer_cls = getattr(sentence_transformers, "SentenceTransformer", None)
         if sentence_transformer_cls is None:
-            raise RuntimeError("sentence_transformers.SentenceTransformer missing (unsupported sentence-transformers version)")
+            raise RuntimeError(
+                "sentence_transformers.SentenceTransformer missing (unsupported sentence-transformers version)"
+            )
 
-        logger.info(
-            f"Loading sentence-transformers model: {self.model} on {self._device}"
-        )
+        logger.info(f"Loading sentence-transformers model: {self.model} on {self._device}")
         self._model = sentence_transformer_cls(self.model, device=self._device)
 
         # Auto-detect dimension if not set

@@ -128,7 +128,9 @@ def _field_line_parts(line: str) -> tuple[str, str] | None:
     return label, value
 
 
-def _response_hint_string_list(response_hints: dict[str, Any], key: str, *, default: tuple[str, ...] = ()) -> tuple[str, ...]:
+def _response_hint_string_list(
+    response_hints: dict[str, Any], key: str, *, default: tuple[str, ...] = ()
+) -> tuple[str, ...]:
     raw = response_hints.get(key) if isinstance(response_hints, dict) else None
     if raw is None:
         return default
@@ -270,6 +272,7 @@ def _quoted_anchor_match_text(match: re.Match[str]) -> str:
         if text:
             return text
     return ""
+
 
 def _quoted_query_anchor_display_terms(query: str) -> tuple[str, ...]:
     out: list[str] = []
@@ -505,7 +508,9 @@ def _extract_numbered_option_terms(
     named_markers: dict[str, Any] | None = None,
 ) -> list[str]:
     normalized = " ".join(str(text or "").split())
-    named_marker_values = {str(value or "").strip() for value in (named_markers or {}).values() if str(value or "").strip()}
+    named_marker_values = {
+        str(value or "").strip() for value in (named_markers or {}).values() if str(value or "").strip()
+    }
     terms: list[str] = []
     cursor = 0
     for number in range(1, max_terms + 1):

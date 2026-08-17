@@ -1,4 +1,3 @@
-
 import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -85,7 +84,9 @@ def test_document_lifecycle_metadata_get_and_patch(monkeypatch):  # noqa: ANN001
     client, documents_module = _build_client(monkeypatch, doc=dummy_doc)
 
     # Allow writes for this test.
-    monkeypatch.setattr(documents_module.DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(
+        documents_module.DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True
+    )
 
     captured: list[dict] = []
 
@@ -199,7 +200,9 @@ def test_document_lifecycle_metadata_patch_rejects_self_supersedes(monkeypatch, 
     dummy_doc = _DummyDoc()
     client, documents_module = _build_client(monkeypatch, doc=dummy_doc)
 
-    monkeypatch.setattr(documents_module.DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(
+        documents_module.DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True
+    )
 
     # Use doc_id string; ensure endpoint rejects self reference regardless of other payload fields.
     payload = {"supersedes_document_id": str(doc_id)}
@@ -234,7 +237,9 @@ def test_document_qa_calls_the_qa_service(monkeypatch) -> None:
         return SimpleNamespace(mode="extract", deleted=0, created=1, chunk_ids=[], preview=[])
 
     monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args: None, raising=True)
-    monkeypatch.setattr(documents_module, "_assert_document_writable_for_lifecycle", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(
+        documents_module, "_assert_document_writable_for_lifecycle", lambda *_args, **_kwargs: None, raising=True
+    )
     monkeypatch.setattr(mutations_module, "audit_log_event", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(mutations_module, "generate_and_index_document_qa", _generate, raising=True)
 

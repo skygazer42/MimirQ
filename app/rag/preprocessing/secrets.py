@@ -7,7 +7,6 @@ Goals:
 - Be code-fence agnostic (callers decide where to apply).
 """
 
-
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -53,7 +52,9 @@ _SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 ]
 
 
-def redact_secrets(text: str, *, enabled: bool, mode: SecretMode = "mask", mask: str = "[SECRET]") -> SecretsRedactResult:
+def redact_secrets(
+    text: str, *, enabled: bool, mode: SecretMode = "mask", mask: str = "[SECRET]"
+) -> SecretsRedactResult:
     original = text or ""
     if not enabled or not original:
         return SecretsRedactResult(text=original, hits={}, changed=False)

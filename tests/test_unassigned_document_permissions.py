@@ -358,7 +358,9 @@ async def test_document_processing_endpoints_use_shared_unassigned_acl(
     tmp_path: Path,
 ) -> None:
     documents_module = document_processing._documents_module()
-    document = _unassigned_document(access_mode="all_team_members", status="processing", file_path=str(tmp_path / "retry.txt"))
+    document = _unassigned_document(
+        access_mode="all_team_members", status="processing", file_path=str(tmp_path / "retry.txt")
+    )
     Path(document.file_path).write_text("hello", encoding="utf-8")
     db = _DB(document)
     sentinel = HTTPException(status_code=403, detail="shared-write-policy")
@@ -599,7 +601,12 @@ def test_document_batch_mutations_use_shared_unassigned_acl(monkeypatch: pytest.
     db = _BatchDB([document])
     sentinel = HTTPException(status_code=403, detail="shared-write-policy")
 
-    monkeypatch.setattr(document_batches._documents_module().DatasetService, "ensure_member", lambda *_args, **_kwargs: SimpleNamespace(role="editor"), raising=True)
+    monkeypatch.setattr(
+        document_batches._documents_module().DatasetService,
+        "ensure_member",
+        lambda *_args, **_kwargs: SimpleNamespace(role="editor"),
+        raising=True,
+    )
     monkeypatch.setattr(
         documents_module,
         "_assert_document_writable_for_lifecycle",

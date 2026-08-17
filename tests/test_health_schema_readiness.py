@@ -104,7 +104,9 @@ def _stub_ready_dependencies(monkeypatch: pytest.MonkeyPatch, health_module: obj
         raising=True,
     )
     monkeypatch.setattr(health_module, "rag_runtime_warmup_ready", lambda: True, raising=True)
-    monkeypatch.setattr(health_module, "minio_service", type("_Probe", (), {"is_enabled": lambda self: False})(), raising=True)
+    monkeypatch.setattr(
+        health_module, "minio_service", type("_Probe", (), {"is_enabled": lambda self: False})(), raising=True
+    )
 
 
 @pytest.mark.parametrize(

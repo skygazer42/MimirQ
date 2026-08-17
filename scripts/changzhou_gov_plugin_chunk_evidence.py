@@ -66,7 +66,9 @@ def _markdown_table(headers: list[str], rows: list[list[str]]) -> list[str]:
         "| " + " | ".join(headers) + " |",
         "| " + " | ".join("---" for _header in headers) + " |",
     ]
-    lines.extend("| " + " | ".join(_text(cell).replace("\n", " ").replace("|", "\\|") for cell in row) + " |" for row in rows)
+    lines.extend(
+        "| " + " | ".join(_text(cell).replace("\n", " ").replace("|", "\\|") for cell in row) + " |" for row in rows
+    )
     return lines
 
 
@@ -137,7 +139,9 @@ def _write_text(path: str | Path, text: str) -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Build shareable Changzhou plugin chunk evidence from a local raw report.")
+    parser = argparse.ArgumentParser(
+        description="Build shareable Changzhou plugin chunk evidence from a local raw report."
+    )
     parser.add_argument("--input", default=DEFAULT_INPUT)
     parser.add_argument("--json-out", default=DEFAULT_JSON_OUT)
     parser.add_argument("--markdown-out", default=DEFAULT_MARKDOWN_OUT)

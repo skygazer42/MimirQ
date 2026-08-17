@@ -21,11 +21,7 @@ def test_csv_parser_characterizes_headerless_rows(tmp_path: Path) -> None:
     document = CsvParser().parse(path)[0]
 
     assert document.page_content == (
-        "CSV: sample.csv\n"
-        "Delimiter: ','\n"
-        "Columns: 1, 2\n\n"
-        "row 1: 1=1 | 2=2\n"
-        "row 2: 1=3 | 2=4\n"
+        "CSV: sample.csv\nDelimiter: ','\nColumns: 1, 2\n\nrow 1: 1=1 | 2=2\nrow 2: 1=3 | 2=4\n"
     )
     assert document.metadata["csv_has_header"] is False
     assert document.metadata["csv_rows_emitted"] == 2
@@ -43,16 +39,15 @@ def test_csv_parser_characterizes_empty_cells_and_truncation(
     document = CsvParser(max_cell_chars=6).parse(path)[0]
 
     assert document.page_content == (
-        "CSV: sample.csv\n"
-        "Delimiter: ','\n"
-        "Columns: name, col2, notes\n\n"
-        "row 1: name=Alice | col2= | notes=line …\n"
+        "CSV: sample.csv\nDelimiter: ','\nColumns: name, col2, notes\n\nrow 1: name=Alice | col2= | notes=line …\n"
     )
     assert document.metadata["csv_has_header"] is True
     assert document.metadata["csv_columns"] == ["name", "col2", "notes"]
 
 
-def test_docx_parser_preserves_block_order_and_formats_structures(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_docx_parser_preserves_block_order_and_formats_structures(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     fake_doc = object()
     docx_module = ModuleType("docx")
     docx_module.Document = lambda _path: fake_doc  # type: ignore[attr-defined]
@@ -68,9 +63,15 @@ def test_docx_parser_preserves_block_order_and_formats_structures(monkeypatch: p
         ]
     )
 
-    monkeypatch.setattr("app.parsing.parsers.docx_parser._iter_docx_blocks", lambda _doc: [heading, bullet, paragraph, table])
-    monkeypatch.setattr("app.parsing.parsers.docx_parser._is_list_paragraph", lambda block: bool(getattr(block, "is_list", False)))
-    monkeypatch.setattr("app.parsing.parsers.docx_parser._list_level", lambda block: int(getattr(block, "list_level", 0)))
+    monkeypatch.setattr(
+        "app.parsing.parsers.docx_parser._iter_docx_blocks", lambda _doc: [heading, bullet, paragraph, table]
+    )
+    monkeypatch.setattr(
+        "app.parsing.parsers.docx_parser._is_list_paragraph", lambda block: bool(getattr(block, "is_list", False))
+    )
+    monkeypatch.setattr(
+        "app.parsing.parsers.docx_parser._list_level", lambda block: int(getattr(block, "list_level", 0))
+    )
 
     path = tmp_path / "brief.docx"
     path.write_bytes(b"placeholder")
@@ -218,7 +219,9 @@ def test_normalize_pdf_rotation_characterizes_uniform_rotation(monkeypatch: pyte
     assert [page.set_rotation_calls for page in fake_doc.pages] == [[0], [0], [0]]
 
 
-def test_normalize_pdf_rotation_characterizes_mixed_sample_skip(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_normalize_pdf_rotation_characterizes_mixed_sample_skip(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     class _FakePage:
         def __init__(self, rotation: int) -> None:
             self.rotation = rotation

@@ -1,4 +1,3 @@
-
 from collections import defaultdict
 from typing import Any
 
@@ -124,8 +123,7 @@ async def run_redteam_suite(cases: list[dict[str, Any]]) -> dict[str, Any]:
     baseline_succeeded = sum(
         1
         for result in results
-        if bool(result.get("counted_in_asr_regex_baseline"))
-        and bool(result.get("regex_baseline_attack_succeeded"))
+        if bool(result.get("counted_in_asr_regex_baseline")) and bool(result.get("regex_baseline_attack_succeeded"))
     )
 
     by_kind: dict[str, dict[str, int]] = defaultdict(
@@ -167,7 +165,9 @@ async def run_redteam_suite(cases: list[dict[str, Any]]) -> dict[str, Any]:
             "regex_baseline_attack_cases": int(baseline_total),
             "regex_baseline_attacks_succeeded": int(baseline_succeeded),
             "regex_baseline_attacks_blocked": int(max(0, baseline_total - baseline_succeeded)),
-            "asr_regex_baseline": round(float(baseline_succeeded) / float(baseline_total), 4) if baseline_total else None,
+            "asr_regex_baseline": round(float(baseline_succeeded) / float(baseline_total), 4)
+            if baseline_total
+            else None,
             "by_kind": dict(sorted(by_kind.items())),
         },
     }

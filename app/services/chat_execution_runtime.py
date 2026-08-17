@@ -1,4 +1,3 @@
-
 import hashlib
 import re
 import time
@@ -154,7 +153,19 @@ async def preflight_model_provider_fast() -> tuple[bool, str | None]:
             return True, None
         detail = response.text[:400]
         exc = RuntimeError(f"LLM preflight failed HTTP {response.status_code}: {detail}")
-        if response.status_code in {400, 401, 402, 403, 408, 409, 429, 500, 502, 503, 504} or is_model_provider_unavailable_error(exc):
+        if response.status_code in {
+            400,
+            401,
+            402,
+            403,
+            408,
+            409,
+            429,
+            500,
+            502,
+            503,
+            504,
+        } or is_model_provider_unavailable_error(exc):
             mark_model_provider_unavailable()
             return False, str(exc)[:400]
         return True, None
@@ -355,10 +366,7 @@ def _extractive_evidence_lines(
 
 def _extractive_no_evidence_message(*, explicit_mode: bool) -> str:
     if explicit_mode:
-        return (
-            "已按抽取式回答模式检索知识库，但没有找到可用于回答的引用证据。"
-            "请检查当前数据集是否已经完成入库和索引。"
-        )
+        return "已按抽取式回答模式检索知识库，但没有找到可用于回答的引用证据。请检查当前数据集是否已经完成入库和索引。"
     return (
         "模型服务当前不可用，系统已尝试检索知识库，但没有找到可用于回答的引用证据。"
         "请稍后重试，或检查当前数据集是否已经完成入库和索引。"
@@ -435,16 +443,17 @@ def build_extractive_fallback_answer(
         citations=citations[: max(1, max_items)],
     )
     direct_answer_section = f"\n\n结论：{direct_answer}" if direct_answer else ""
-    prefix = "以下为基于已检索引用生成的抽取式可审计摘要。" if explicit_mode else "模型服务当前不可用，以下为基于已检索引用生成的可审计摘要。"
-    suffix = "说明：该回答按抽取式模式生成，未调用外部大模型；请以引用内容作为最终核验依据。" if explicit_mode else "说明：该回答未调用外部大模型生成，仅基于返回引用做抽取式摘要；请以引用内容作为最终核验依据。"
-    return (
-        f"{prefix}"
-        f"{direct_answer_section}\n\n"
-        f"问题：{question_text}\n\n"
-        "检索证据要点：\n"
-        f"{evidence_lines}\n\n"
-        f"{suffix}"
+    prefix = (
+        "以下为基于已检索引用生成的抽取式可审计摘要。"
+        if explicit_mode
+        else "模型服务当前不可用，以下为基于已检索引用生成的可审计摘要。"
     )
+    suffix = (
+        "说明：该回答按抽取式模式生成，未调用外部大模型；请以引用内容作为最终核验依据。"
+        if explicit_mode
+        else "说明：该回答未调用外部大模型生成，仅基于返回引用做抽取式摘要；请以引用内容作为最终核验依据。"
+    )
+    return f"{prefix}{direct_answer_section}\n\n问题：{question_text}\n\n检索证据要点：\n{evidence_lines}\n\n{suffix}"
 
 
 def _answer_evidence_from_retrieval(
@@ -507,10 +516,13 @@ def _source_identification_answer_from_citations(
 ) -> str | None:
     if not citations:
         return None
-    if maybe_build_source_identification_answer(
-        question=question,
-        docs=[Document(page_content="", metadata={"document_title": "__probe__"})],
-    ) is None:
+    if (
+        maybe_build_source_identification_answer(
+            question=question,
+            docs=[Document(page_content="", metadata={"document_title": "__probe__"})],
+        )
+        is None
+    ):
         return None
 
     first = citations[0]
@@ -616,7 +628,9 @@ def execute_extractive_fallback_once(
             getattr(effective_rag_config, "enable_query_alias_expansion", None) if explicit_mode else None
         ),
         query_aliases=(getattr(effective_rag_config, "query_aliases", None) if explicit_mode else None),
-        query_alias_max_queries=(getattr(effective_rag_config, "query_alias_max_queries", None) if explicit_mode else None),
+        query_alias_max_queries=(
+            getattr(effective_rag_config, "query_alias_max_queries", None) if explicit_mode else None
+        ),
         enable_multi_query=(getattr(effective_rag_config, "enable_multi_query", None) if explicit_mode else False),
         multi_query_count=(getattr(effective_rag_config, "multi_query_count", None) if explicit_mode else None),
         multi_query_temperature=(
@@ -636,10 +650,10 @@ def execute_extractive_fallback_once(
         hierarchy_family_aggregation=(
             getattr(effective_rag_config, "hierarchy_family_aggregation", None) if explicit_mode else None
         ),
-        hierarchy_tree_dedup=(
-            getattr(effective_rag_config, "hierarchy_tree_dedup", None) if explicit_mode else None
+        hierarchy_tree_dedup=(getattr(effective_rag_config, "hierarchy_tree_dedup", None) if explicit_mode else None),
+        hierarchy_parent_depth=(
+            getattr(effective_rag_config, "hierarchy_parent_depth", None) if explicit_mode else None
         ),
-        hierarchy_parent_depth=(getattr(effective_rag_config, "hierarchy_parent_depth", None) if explicit_mode else None),
         hierarchy_sibling_window=(
             getattr(effective_rag_config, "hierarchy_sibling_window", None) if explicit_mode else None
         ),
@@ -655,12 +669,8 @@ def execute_extractive_fallback_once(
         kg_chunk_injection_max_chunks=(
             getattr(effective_rag_config, "kg_chunk_injection_max_chunks", None) if explicit_mode else None
         ),
-        enable_kg_chunk_boost=(
-            getattr(effective_rag_config, "enable_kg_chunk_boost", None) if explicit_mode else None
-        ),
-        kg_chunk_boost_weight=(
-            getattr(effective_rag_config, "kg_chunk_boost_weight", None) if explicit_mode else None
-        ),
+        enable_kg_chunk_boost=(getattr(effective_rag_config, "enable_kg_chunk_boost", None) if explicit_mode else None),
+        kg_chunk_boost_weight=(getattr(effective_rag_config, "kg_chunk_boost_weight", None) if explicit_mode else None),
         kg_chunk_boost_max_promoted=(
             getattr(effective_rag_config, "kg_chunk_boost_max_promoted", None) if explicit_mode else None
         ),

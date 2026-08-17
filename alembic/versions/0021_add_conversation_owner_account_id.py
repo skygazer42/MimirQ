@@ -5,7 +5,6 @@ Backfill strategy:
 - leave NULL rows untouched so runtime can fail closed until explicitly repaired
 """
 
-
 from alembic import op
 
 revision = "0021_conv_owner_account"

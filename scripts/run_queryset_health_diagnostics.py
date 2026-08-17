@@ -1,4 +1,3 @@
-
 import argparse
 import json
 import sys
@@ -154,7 +153,9 @@ def run(
             )
         )
     else:
-        print(f"[queryset-health] status={snapshot.get('status')} out={out} profile_hash={snapshot.get('profile_hash')}")
+        print(
+            f"[queryset-health] status={snapshot.get('status')} out={out} profile_hash={snapshot.get('profile_hash')}"
+        )
 
     return snapshot
 

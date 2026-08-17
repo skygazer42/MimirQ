@@ -103,7 +103,9 @@ def test_retriever_dataset_scope_raises_when_runtime_lookup_fails(
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
 
-    monkeypatch.setattr(HybridRetriever, "_resolve_embedding_runtime", lambda self, *, tenant_id: _runtime(dataset_scoped=False))
+    monkeypatch.setattr(
+        HybridRetriever, "_resolve_embedding_runtime", lambda self, *, tenant_id: _runtime(dataset_scoped=False)
+    )
 
     class _Query:
         def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
@@ -182,13 +184,17 @@ def test_retriever_document_scope_raises_when_dataset_runtime_is_missing(
     document_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
 
-    monkeypatch.setattr(HybridRetriever, "_resolve_embedding_runtime", lambda self, *, tenant_id: _runtime(dataset_scoped=False))
+    monkeypatch.setattr(
+        HybridRetriever, "_resolve_embedding_runtime", lambda self, *, tenant_id: _runtime(dataset_scoped=False)
+    )
     monkeypatch.setattr(
         HybridRetriever,
         "_resolve_document_dataset_scope",
         lambda self, *, tenant_id, document_ids: ((dataset_id,), False),  # noqa: ARG005
     )
-    monkeypatch.setattr(HybridRetriever, "_resolve_dataset_runtime_shards", lambda self, *, tenant_id, dataset_ids=None: [])  # noqa: ARG005
+    monkeypatch.setattr(
+        HybridRetriever, "_resolve_dataset_runtime_shards", lambda self, *, tenant_id, dataset_ids=None: []
+    )  # noqa: ARG005
 
     retriever = HybridRetriever(
         tenant_id=tenant_id,

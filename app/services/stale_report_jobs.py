@@ -11,7 +11,6 @@ Design principles (similar to retention jobs):
 - Fail-open: never crash the product due to reporting automation
 """
 
-
 import contextlib
 from collections import Counter
 from datetime import UTC, datetime, timedelta
@@ -190,7 +189,13 @@ def run_daily_stale_report(
     report_date = now0.date().isoformat()
     cutoff = now0 - timedelta(days=int(days_i))
 
-    if bool(execute) and (not bool(force)) and _audit_already_written(db, tenant_id=tenant_id, action="connectors.stale_report.daily", report_date=report_date):
+    if (
+        bool(execute)
+        and (not bool(force))
+        and _audit_already_written(
+            db, tenant_id=tenant_id, action="connectors.stale_report.daily", report_date=report_date
+        )
+    ):
         return {
             "tenant_id": str(tenant_id),
             "report_date": report_date,
@@ -249,12 +254,7 @@ def run_daily_stale_report(
             eff_dt = _parse_datetime_best_effort(meta.get("source_fetched_at"))
             reason = "meta:source_fetched_at"
         if eff_dt is None:
-            eff_dt = (
-                row.get("processed_at")
-                or row.get("updated_at")
-                or row.get("created_at")
-                or row.get("linked_at")
-            )
+            eff_dt = row.get("processed_at") or row.get("updated_at") or row.get("created_at") or row.get("linked_at")
             reason = "fallback:document_timestamps"
         if isinstance(eff_dt, datetime):
             if eff_dt.tzinfo is None:

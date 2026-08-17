@@ -1,4 +1,3 @@
-
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -10,7 +9,9 @@ from app.parsing.enrich.table_renderers import render_table_csv, render_table_ht
 
 def _is_table_doc(doc: Document) -> bool:
     meta = dict(getattr(doc, "metadata", None) or {})
-    return str(meta.get("content_type") or meta.get("element_kind") or meta.get("doc_type_kwd") or "").lower() == "table"
+    return (
+        str(meta.get("content_type") or meta.get("element_kind") or meta.get("doc_type_kwd") or "").lower() == "table"
+    )
 
 
 def _coerce_int(value: Any) -> int | None:
@@ -78,7 +79,10 @@ def _should_merge(left: Document, right: Document) -> bool:
 
 
 def _make_extraction(meta: Mapping[str, Any], rows: list[list[str]]) -> TableExtraction:
-    columns = [str(item or "").strip() for item in (meta.get("table_columns") if isinstance(meta.get("table_columns"), list) else [])]
+    columns = [
+        str(item or "").strip()
+        for item in (meta.get("table_columns") if isinstance(meta.get("table_columns"), list) else [])
+    ]
     if not columns:
         extraction = meta.get("table_extraction")
         if isinstance(extraction, Mapping) and isinstance(extraction.get("columns"), list):

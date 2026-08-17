@@ -1,4 +1,3 @@
-
 import uuid
 from datetime import UTC, datetime
 
@@ -86,7 +85,9 @@ def test_documents_upload_url_happy_path(monkeypatch, tmp_path):  # noqa: ANN001
     monkeypatch.setattr(documents_module, "validate_url_for_ingest", _ok_validate, raising=True)
     monkeypatch.setattr(documents_module, "download_url_to_path", _fake_download, raising=True)
     monkeypatch.setattr(documents_module, "enqueue_document_processing", _fake_enqueue, raising=True)
-    monkeypatch.setattr(documents_module, "_resolve_writable_dataset", lambda *_args, **_kwargs: _Dataset(dataset_id), raising=True)
+    monkeypatch.setattr(
+        documents_module, "_resolve_writable_dataset", lambda *_args, **_kwargs: _Dataset(dataset_id), raising=True
+    )
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db
@@ -159,7 +160,9 @@ def test_documents_upload_url_falls_back_when_last_modified_missing(monkeypatch,
     monkeypatch.setattr(documents_module, "validate_url_for_ingest", _ok_validate, raising=True)
     monkeypatch.setattr(documents_module, "download_url_to_path", _fake_download, raising=True)
     monkeypatch.setattr(documents_module, "enqueue_document_processing", _fake_enqueue, raising=True)
-    monkeypatch.setattr(documents_module, "_resolve_writable_dataset", lambda *_args, **_kwargs: _Dataset(dataset_id), raising=True)
+    monkeypatch.setattr(
+        documents_module, "_resolve_writable_dataset", lambda *_args, **_kwargs: _Dataset(dataset_id), raising=True
+    )
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db

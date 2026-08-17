@@ -158,7 +158,10 @@ def test_answer_quality_workflow_is_real_provider_nightly_and_pr_ci_is_determini
     assert "artifacts/retrieval_ranking_proxy.summary.json" in ci
     assert "artifacts/retrieval_ranking_proxy_gate.report.json" in ci
     assert "Build deterministic retrieval-ranking proxy artifact" in ci
-    assert "artifacts/answer_quality.summary.json" not in ci.split("retrieval-only-bounded-gate:", 1)[1].split("retrieval-regression-gate:", 1)[0]
+    assert (
+        "artifacts/answer_quality.summary.json"
+        not in ci.split("retrieval-only-bounded-gate:", 1)[1].split("retrieval-regression-gate:", 1)[0]
+    )
 
     thresholds = json.loads((_repo_root() / "ci/answer_quality_thresholds.v1.json").read_text(encoding="utf-8"))
     assert thresholds["metrics"]["llm_judge_generation_avg"]["required"] is True

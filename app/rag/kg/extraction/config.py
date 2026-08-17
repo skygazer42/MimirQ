@@ -69,10 +69,14 @@ class ExtractConfig(KGBaseModel):
     prompt_template_key: str | None = None
     prompt_ab_experiment_key: str | None = None
     ab_user_key: str | None = None
-    extraction_backend: str | None = Field(default=None, description="Extraction backend override: llm|gliner|hybrid|heuristic")
+    extraction_backend: str | None = Field(
+        default=None, description="Extraction backend override: llm|gliner|hybrid|heuristic"
+    )
     kg_python_plugin: str | None = Field(
         default=None,
-        description="Registered KG plugin ref; legacy module:function refs require PYTHON_PIPELINE_PLUGIN_ALLOW_PREFIXES.",
+        description=(
+            "Registered KG plugin ref; legacy module:function refs require PYTHON_PIPELINE_PLUGIN_ALLOW_PREFIXES."
+        ),
     )
     kg_python_params: dict | None = Field(default=None, description="Optional params passed to the KG pipeline plugin")
 

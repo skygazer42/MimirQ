@@ -1,4 +1,3 @@
-
 import math
 from collections import defaultdict
 from statistics import pstdev
@@ -65,7 +64,9 @@ def _is_correct_answer(row: dict[str, Any]) -> bool:
     evaluators = row.get("evaluators") if isinstance(row.get("evaluators"), dict) else {}
     answer_det = evaluators.get("answer_det") if isinstance(evaluators.get("answer_det"), dict) else {}
     if "refusal_correct" in answer_det:
-        refusal_correct = bool(answer_det.get("refusal_correct")) if answer_det.get("refusal_correct") is not None else None
+        refusal_correct = (
+            bool(answer_det.get("refusal_correct")) if answer_det.get("refusal_correct") is not None else None
+        )
     return bool(refusal_correct)
 
 
@@ -110,10 +111,16 @@ def _fusion_dimension(rows: list[dict[str, Any]]) -> dict[str, float | None]:
             continue
         fusion_rows.append(row)
 
-    fusion = compute_fusion_metrics(fusion_rows) if fusion_rows else {"conflict_rate": None, "net_gain_over_best_single": None}
+    fusion = (
+        compute_fusion_metrics(fusion_rows)
+        if fusion_rows
+        else {"conflict_rate": None, "net_gain_over_best_single": None}
+    )
     return {
         "conflict_rate": _avg(fusion_conflict_values) if fusion_conflict_values else fusion.get("conflict_rate"),
-        "net_gain_over_best_single": _avg(fusion_gain_values) if fusion_gain_values else fusion.get("net_gain_over_best_single"),
+        "net_gain_over_best_single": _avg(fusion_gain_values)
+        if fusion_gain_values
+        else fusion.get("net_gain_over_best_single"),
     }
 
 
@@ -162,7 +169,9 @@ def _stability_dimension(rows: list[dict[str, Any]]) -> dict[str, Any]:
         if len(group) < 2:
             continue
         repeated_groups += 1
-        answer_group = [value for row in group if (value := _extract_eval_metric(row, "answer_det", "answer_f1")) is not None]
+        answer_group = [
+            value for row in group if (value := _extract_eval_metric(row, "answer_det", "answer_f1")) is not None
+        ]
         latency_group = [value for row in group if (value := _to_float(row.get("latency_ms"))) is not None]
         if len(answer_group) >= 2:
             answer_f1_std_values.append(round(float(pstdev(answer_group)), 4))
@@ -246,7 +255,9 @@ def _compute_dimensions(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 def summarize_eval_dashboard_11d(rows: list[dict[str, Any]]) -> dict[str, Any]:
     normalized_rows = [dict(row or {}) for row in (rows or []) if isinstance(row, dict)]
-    route_ids = sorted({str(row.get("route_id") or "").strip() for row in normalized_rows if str(row.get("route_id") or "").strip()})
+    route_ids = sorted(
+        {str(row.get("route_id") or "").strip() for row in normalized_rows if str(row.get("route_id") or "").strip()}
+    )
 
     by_query_type: dict[str, dict[str, Any]] = {}
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)

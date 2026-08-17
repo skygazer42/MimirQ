@@ -32,7 +32,9 @@ def _safe_int(value: Any, *, default: int = 0, minimum: int | None = None, maxim
     return int(out)
 
 
-def _safe_float(value: Any, *, default: float = 0.0, minimum: float | None = None, maximum: float | None = None) -> float:
+def _safe_float(
+    value: Any, *, default: float = 0.0, minimum: float | None = None, maximum: float | None = None
+) -> float:
     try:
         out = float(value) if value is not None else float(default)
     except (TypeError, ValueError, AttributeError):

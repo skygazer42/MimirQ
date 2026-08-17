@@ -8,7 +8,6 @@ It is intended to run as a background job (arq worker) but can also run inline
 when TASK_QUEUE_ENABLED=false.
 """
 
-
 import contextlib
 import hashlib
 import time
@@ -220,12 +219,15 @@ def run_dataset_profile_deep_scan(
     max_docs_raw = cfg.get("max_documents")
     max_documents = int(max_docs_raw) if isinstance(max_docs_raw, (int, float)) and int(max_docs_raw) > 0 else None
 
-    _dataset, query = build_dataset_documents_query(db, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_id)
+    _dataset, query = build_dataset_documents_query(
+        db, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_id
+    )
 
     # Only fetch fields we need; keep the ORM objects for metadata updates.
     docs = (
-        query.order_by(DBDocument.created_at.asc(), DBDocument.id.asc())
-        .limit(max_documents) if max_documents else query.order_by(DBDocument.created_at.asc(), DBDocument.id.asc())
+        query.order_by(DBDocument.created_at.asc(), DBDocument.id.asc()).limit(max_documents)
+        if max_documents
+        else query.order_by(DBDocument.created_at.asc(), DBDocument.id.asc())
     ).all()
 
     total = len(docs)
@@ -279,7 +281,11 @@ def run_dataset_profile_deep_scan(
                         temp_root=temp_root,
                     )
                     try:
-                        quality = score_pdf_quality(local_path, sample_pages=3, use_ocr_validation=bool(getattr(settings, "RAPIDOCR_ENABLED", False)))
+                        quality = score_pdf_quality(
+                            local_path,
+                            sample_pages=3,
+                            use_ocr_validation=bool(getattr(settings, "RAPIDOCR_ENABLED", False)),
+                        )
                         if isinstance(quality, dict) and quality:
                             meta["pdf_quality"] = quality
                             changed = True
@@ -289,7 +295,9 @@ def run_dataset_profile_deep_scan(
                             with contextlib.suppress(Exception):
                                 temp_path.unlink(missing_ok=True)
 
-            if _backfill_page_count(meta, meta.get("pdf_quality") if isinstance(meta.get("pdf_quality"), dict) else None):
+            if _backfill_page_count(
+                meta, meta.get("pdf_quality") if isinstance(meta.get("pdf_quality"), dict) else None
+            ):
                 changed = True
 
             # Backfill parsed text quality (density/replace chars).
@@ -298,7 +306,9 @@ def run_dataset_profile_deep_scan(
                     text: str = ""
                     rec = (
                         db.query(DocumentParsedContent.markdown_content)
-                        .filter(DocumentParsedContent.tenant_id == tenant_id, DocumentParsedContent.document_id == doc.id)
+                        .filter(
+                            DocumentParsedContent.tenant_id == tenant_id, DocumentParsedContent.document_id == doc.id
+                        )
                         .first()
                     )
                     if rec and isinstance(rec[0], str) and rec[0].strip():
@@ -451,11 +461,17 @@ def run_dataset_profile_deep_scan(
             # Optional: backfill chunk quality gate (requires stats/coverage; best-effort).
             if backfill_chunk_quality_gate:
                 existing = meta.get("chunk_quality_gate")
-                has_gate = isinstance(existing, dict) and isinstance(existing.get("grade"), str) and bool(existing.get("grade"))
+                has_gate = (
+                    isinstance(existing, dict)
+                    and isinstance(existing.get("grade"), str)
+                    and bool(existing.get("grade"))
+                )
                 if not has_gate:
                     stats = meta.get("chunking_stats") if isinstance(meta.get("chunking_stats"), dict) else {}
                     cov = meta.get("chunk_coverage") if isinstance(meta.get("chunk_coverage"), dict) else {}
-                    effective = meta.get("pipeline_effective") if isinstance(meta.get("pipeline_effective"), dict) else {}
+                    effective = (
+                        meta.get("pipeline_effective") if isinstance(meta.get("pipeline_effective"), dict) else {}
+                    )
                     try:
                         chunk_size = int(effective.get("chunk_size") or 0)
                     except Exception:

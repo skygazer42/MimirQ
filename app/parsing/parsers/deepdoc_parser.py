@@ -424,7 +424,18 @@ class DeepDocParser:
                     tag = candidate
                     continue
                 normalized = candidate.lower()
-                if normalized in {"text", "paragraph", "heading", "title", "list", "table", "image", "figure", "equation", "formula"}:
+                if normalized in {
+                    "text",
+                    "paragraph",
+                    "heading",
+                    "title",
+                    "list",
+                    "table",
+                    "image",
+                    "figure",
+                    "equation",
+                    "formula",
+                }:
                     native_kind = normalized
             if tag and tag not in text:
                 text = f"{text}{tag}"
@@ -480,7 +491,9 @@ class DeepDocParser:
             changed=watermark_removal.changed,
         )
 
-        header_footer_removal = remove_repeated_header_footer_elements([record["element"] for record in section_records])
+        header_footer_removal = remove_repeated_header_footer_elements(
+            [record["element"] for record in section_records]
+        )
         section_records = self._filter_records_by_elements(
             section_records,
             header_footer_removal.elements,
@@ -499,7 +512,15 @@ class DeepDocParser:
         section_tree = build_section_tree(derived_elements)
         if section_tree:
             derived_elements = add_section_paths(derived_elements, section_tree)
-        return section_records, text_parts, derived_elements, section_tree, watermark_removal, header_footer_removal, reading_order_fix
+        return (
+            section_records,
+            text_parts,
+            derived_elements,
+            section_tree,
+            watermark_removal,
+            header_footer_removal,
+            reading_order_fix,
+        )
 
     def _text_document_from_sections(
         self,
@@ -751,7 +772,9 @@ class DeepDocParser:
         meta["image"] = image_obj
         return Document(page_content=content, metadata=meta)
 
-    def _media_documents(self, media: Any, *, base_meta: dict[str, Any], derived_elements: list[dict[str, Any]]) -> list[Document]:
+    def _media_documents(
+        self, media: Any, *, base_meta: dict[str, Any], derived_elements: list[dict[str, Any]]
+    ) -> list[Document]:
         docs: list[Document] = []
         if not isinstance(media, list):
             return docs
@@ -801,7 +824,15 @@ class DeepDocParser:
         base_meta = self._pdf_base_meta(file_path, runtime_metadata=runtime_metadata, total_pages=total_pages)
 
         section_records = self._section_records(sections)
-        section_records, text_parts, derived_elements, section_tree, watermark_removal, header_footer_removal, reading_order_fix = self._prepare_section_content(section_records)
+        (
+            section_records,
+            text_parts,
+            derived_elements,
+            section_tree,
+            watermark_removal,
+            header_footer_removal,
+            reading_order_fix,
+        ) = self._prepare_section_content(section_records)
         docs: list[Document] = []
         text_doc = self._text_document_from_sections(
             merged_text="\n\n".join(text_parts).strip(),

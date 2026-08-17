@@ -113,7 +113,9 @@ class SparseIndexMixin:
             return None
 
         try:
-            store = store_cls(base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", SPARSE_INDEX_DIR_FALLBACK) or ""))
+            store = store_cls(
+                base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", SPARSE_INDEX_DIR_FALLBACK) or "")
+            )
             store.save(
                 cache_key=cache_key,
                 provider_config=provider_config,
@@ -140,7 +142,9 @@ class SparseIndexMixin:
             return {}, "skipped"
 
         try:
-            store = store_cls(base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", SPARSE_INDEX_DIR_FALLBACK) or ""))
+            store = store_cls(
+                base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", SPARSE_INDEX_DIR_FALLBACK) or "")
+            )
             loaded = store.load(
                 cache_key=cache_key,
                 provider_config=provider_config,
@@ -240,7 +244,7 @@ class SparseIndexMixin:
                 context="_build_sparse_index",
             )
         except Exception as exc:
-            _log_retriever_fallback('_build_sparse_index', exc)
+            _log_retriever_fallback("_build_sparse_index", exc)
             build_outcome = "error"
             raise
         finally:
@@ -354,7 +358,7 @@ class SparseIndexMixin:
                 context="_upsert_sparse_index_incremental",
             )
         except Exception as exc:
-            _log_retriever_fallback('_upsert_sparse_index_incremental', exc)
+            _log_retriever_fallback("_upsert_sparse_index_incremental", exc)
             build_outcome = "error"
             raise
         finally:
@@ -471,7 +475,9 @@ class SparseIndexMixin:
         load_outcome = "miss"
         try:
             fp = self._sparse_corpus_fingerprint(docs)
-            store = store_cls(base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", SPARSE_INDEX_DIR_FALLBACK) or ""))
+            store = store_cls(
+                base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", SPARSE_INDEX_DIR_FALLBACK) or "")
+            )
             loaded = store.load(
                 cache_key=cache_key,
                 provider_config=provider_config,
@@ -484,7 +490,7 @@ class SparseIndexMixin:
                 return loaded, False
             return {}, False
         except Exception as exc:
-            _log_retriever_fallback('_search_sparse', exc)
+            _log_retriever_fallback("_search_sparse", exc)
             load_outcome = "error"
             return {}, True
         finally:
@@ -529,7 +535,7 @@ class SparseIndexMixin:
                     )
                     sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
         except Exception as exc:
-            _log_retriever_fallback('_search_sparse', exc)
+            _log_retriever_fallback("_search_sparse", exc)
             had_build_error = True
             sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
         return sparse_vecs, had_load_error, had_build_error
@@ -769,7 +775,7 @@ class SparseIndexMixin:
             )
             return results
         except Exception as exc:
-            _log_retriever_fallback('_search_sparse', exc)
+            _log_retriever_fallback("_search_sparse", exc)
             outcome = "error"
             if reason == "none":
                 reason = "exception"

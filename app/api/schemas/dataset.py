@@ -2,6 +2,7 @@
 Dataset-related Pydantic schemas.
 Defines data models for dataset creation, update, and query endpoints.
 """
+
 from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
@@ -71,14 +72,26 @@ class DatasetChunkTargetsV2(BaseModel):
     token_p50_max: int | None = Field(default=None, ge=0, le=4000, description="Target P50 chunk token length (max)")
 
     # Ratio checks (percentage points, 0-100).
-    short_pct_warn: int | None = Field(default=None, ge=0, le=100, description="Warn threshold for short chunk ratio (<=100 tokens)")
-    short_pct_fail: int | None = Field(default=None, ge=0, le=100, description="Fail threshold for short chunk ratio (<=100 tokens)")
-    long_pct_warn: int | None = Field(default=None, ge=0, le=100, description="Warn threshold for long chunk ratio (>=800 tokens)")
-    long_pct_fail: int | None = Field(default=None, ge=0, le=100, description="Fail threshold for long chunk ratio (>=800 tokens)")
+    short_pct_warn: int | None = Field(
+        default=None, ge=0, le=100, description="Warn threshold for short chunk ratio (<=100 tokens)"
+    )
+    short_pct_fail: int | None = Field(
+        default=None, ge=0, le=100, description="Fail threshold for short chunk ratio (<=100 tokens)"
+    )
+    long_pct_warn: int | None = Field(
+        default=None, ge=0, le=100, description="Warn threshold for long chunk ratio (>=800 tokens)"
+    )
+    long_pct_fail: int | None = Field(
+        default=None, ge=0, le=100, description="Fail threshold for long chunk ratio (>=800 tokens)"
+    )
 
     # Chunk overlap waste objectives (percentage points, 0-100).
-    overlap_waste_p50_warn: int | None = Field(default=None, ge=0, le=100, description="Warn threshold for overlap waste P50 (%)")
-    overlap_waste_p50_fail: int | None = Field(default=None, ge=0, le=100, description="Fail threshold for overlap waste P50 (%)")
+    overlap_waste_p50_warn: int | None = Field(
+        default=None, ge=0, le=100, description="Warn threshold for overlap waste P50 (%)"
+    )
+    overlap_waste_p50_fail: int | None = Field(
+        default=None, ge=0, le=100, description="Fail threshold for overlap waste P50 (%)"
+    )
 
     # Chunk coverage objectives (percentage points, 0-100). This is best-effort and may be missing.
     coverage_p50_warn: int | None = Field(default=None, ge=0, le=100, description="Warn threshold for coverage P50 (%)")
@@ -167,8 +180,7 @@ class DatasetRAGDefaults(BaseModel):
         mode = normalize_retrieval_contract_mode(v)
         if mode not in VALID_RETRIEVAL_CONTRACT_MODES:
             raise ValueError(
-                "retrieval_contract_mode must be one of: "
-                + ", ".join(sorted(VALID_RETRIEVAL_CONTRACT_MODES))
+                "retrieval_contract_mode must be one of: " + ", ".join(sorted(VALID_RETRIEVAL_CONTRACT_MODES))
             )
         return mode
 
@@ -179,16 +191,14 @@ class DatasetRAGDefaults(BaseModel):
             return None
         if not isinstance(v, str):
             raise ValueError(
-                "hierarchy_family_aggregation must be one of: "
-                + ", ".join(HIERARCHY_FAMILY_AGGREGATION_VALUES)
+                "hierarchy_family_aggregation must be one of: " + ", ".join(HIERARCHY_FAMILY_AGGREGATION_VALUES)
             )
         raw = v.strip().lower()
         if not raw:
             return None
         if raw not in HIERARCHY_FAMILY_AGGREGATION_VALUES:
             raise ValueError(
-                "hierarchy_family_aggregation must be one of: "
-                + ", ".join(HIERARCHY_FAMILY_AGGREGATION_VALUES)
+                "hierarchy_family_aggregation must be one of: " + ", ".join(HIERARCHY_FAMILY_AGGREGATION_VALUES)
             )
         return raw
 

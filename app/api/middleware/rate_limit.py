@@ -6,6 +6,7 @@ Token bucket algorithm based FastAPI request rate limiting:
 - Configurable rate limit parameters
 - Thread-safe implementation
 """
+
 import asyncio
 import math
 import time
@@ -331,7 +332,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     ) -> None:
         super().__init__(app)
 
-        use_redis = bool(getattr(settings, "RATE_LIMIT_REDIS_ENABLED", False)) and bool(getattr(settings, "REDIS_URL", ""))
+        use_redis = bool(getattr(settings, "RATE_LIMIT_REDIS_ENABLED", False)) and bool(
+            getattr(settings, "REDIS_URL", "")
+        )
         if use_redis:
             self.limiter = RedisRateLimiter(
                 redis_url=str(getattr(settings, "REDIS_URL", "") or ""),
@@ -406,7 +409,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if request.method.upper() == "OPTIONS":
             return await call_next(request)
 
-        if path in self.exclude_paths or (self.exclude_prefixes and any(path.startswith(p) for p in self.exclude_prefixes)):
+        if path in self.exclude_paths or (
+            self.exclude_prefixes and any(path.startswith(p) for p in self.exclude_prefixes)
+        ):
             return await call_next(request)
 
         key = await get_client_key(request)
@@ -437,7 +442,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     message="Too many requests. Please try again later.",
                     detail=detail,
                     request_id=get_request_id(request),
-                    hint="You are being rate limited. Retry later, or reduce concurrent requests / embedding concurrency.",
+                    hint=(
+                        "You are being rate limited. Retry later, or reduce concurrent requests / "
+                        "embedding concurrency."
+                    ),
                 ).model_dump(exclude_none=True),
             )
 

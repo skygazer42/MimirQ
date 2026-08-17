@@ -1,4 +1,3 @@
-
 import argparse
 import json
 from pathlib import Path
@@ -44,7 +43,9 @@ def _normalize_documents(documents: list[dict[str, Any]] | None) -> list[dict[st
     return out
 
 
-def _normalize_queries(*, queries: list[dict[str, Any]] | None, documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _normalize_queries(
+    *, queries: list[dict[str, Any]] | None, documents: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     chunk_ids = [str(item.get("chunk_id") or "").strip() for item in documents]
     for index, raw in enumerate(queries or []):
@@ -137,7 +138,9 @@ def _coerce_documents_payload(value: Any) -> list[dict[str, Any]]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Build a deterministic retrieval fixture from parser-like document rows and query specs.")
+    parser = argparse.ArgumentParser(
+        description="Build a deterministic retrieval fixture from parser-like document rows and query specs."
+    )
     parser.add_argument(
         "--documents-json",
         "--chunks-json",

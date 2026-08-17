@@ -710,7 +710,9 @@ def _related_event_ids_for_center_event(
     pipeline_hash: str | None,
     max_events: int,
 ) -> list[UUID]:
-    entity_ids = db.query(event_entity_model.entity_id).filter(event_entity_model.event_id == center_event.id).limit(2000).all()
+    entity_ids = (
+        db.query(event_entity_model.entity_id).filter(event_entity_model.event_id == center_event.id).limit(2000).all()
+    )
     entity_ids_flat = [row[0] for row in entity_ids]
     if not entity_ids_flat or int(max_events) <= 1:
         return []
@@ -725,7 +727,10 @@ def _related_event_ids_for_center_event(
         )
     )
     related_q = _apply_event_pipeline_scope(related_q, pipeline_hash=pipeline_hash)
-    return [row[0] for row in related_q.order_by(source_event_model.updated_at.desc()).limit(max(0, int(max_events) - 1)).all()]
+    return [
+        row[0]
+        for row in related_q.order_by(source_event_model.updated_at.desc()).limit(max(0, int(max_events) - 1)).all()
+    ]
 
 
 def _load_events_by_ids(

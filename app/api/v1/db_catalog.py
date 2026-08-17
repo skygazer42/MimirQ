@@ -5,7 +5,6 @@ These endpoints expose metadata and safe, aggregate profiling snapshots stored
 by DB catalog connectors. They do NOT expose raw DB rows.
 """
 
-
 from typing import Annotated
 from uuid import UUID
 
@@ -93,8 +92,8 @@ def list_db_catalog_tables(
     dataset_id: UUID,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
-    engine: Annotated[str | None, Query(description='Filter by engine: mysql|sqlserver')] = None,
-    q: Annotated[str | None, Query(description='Fuzzy search across db/schema/table names')] = None,
+    engine: Annotated[str | None, Query(description="Filter by engine: mysql|sqlserver")] = None,
+    q: Annotated[str | None, Query(description="Fuzzy search across db/schema/table names")] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -103,7 +102,9 @@ def list_db_catalog_tables(
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
 
-    query = db.query(DbCatalogTable).filter(DbCatalogTable.tenant_id == tenant_id, DbCatalogTable.dataset_id == dataset_id)
+    query = db.query(DbCatalogTable).filter(
+        DbCatalogTable.tenant_id == tenant_id, DbCatalogTable.dataset_id == dataset_id
+    )
 
     eng = str(engine or "").strip().lower()
     if eng:
@@ -218,8 +219,10 @@ def get_db_catalog_table(
 )
 def list_db_catalog_profiles(
     dataset_id: UUID,
-    table_id: Annotated[UUID, Query(..., description='Catalog table id')],
-    entitlement_hash: Annotated[str | None, Query(description='Filter by entitlement hash (stable permission context)')] = None,
+    table_id: Annotated[UUID, Query(..., description="Catalog table id")],
+    entitlement_hash: Annotated[
+        str | None, Query(description="Filter by entitlement hash (stable permission context)")
+    ] = None,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     *,
@@ -266,7 +269,12 @@ def list_db_catalog_profiles(
     if ent:
         query = query.filter(DbProfileSnapshot.entitlement_hash == ent)
     total = int(query.count())
-    rows = query.order_by(DbProfileSnapshot.created_at.desc(), DbProfileSnapshot.id.asc()).offset(int(skip)).limit(int(limit)).all()
+    rows = (
+        query.order_by(DbProfileSnapshot.created_at.desc(), DbProfileSnapshot.id.asc())
+        .offset(int(skip))
+        .limit(int(limit))
+        .all()
+    )
 
     items: list[DbProfileSnapshotOut] = []
     for r in rows:

@@ -6,7 +6,6 @@ Goal:
 - emit stable, compact drift summary for PR/release review
 """
 
-
 from collections.abc import Mapping
 from typing import Any
 
@@ -68,7 +67,9 @@ def diff_queryset_health_snapshots(
     curr_risk = current.get("risk") if isinstance(current.get("risk"), Mapping) else {}
 
     metric_deltas = {
-        "hit_at_k_delta": _delta(_as_float(curr_metrics.get("hit_at_k")), _as_float(base_metrics.get("hit_at_k")), digits=6),
+        "hit_at_k_delta": _delta(
+            _as_float(curr_metrics.get("hit_at_k")), _as_float(base_metrics.get("hit_at_k")), digits=6
+        ),
         "mrr_delta": _delta(_as_float(curr_metrics.get("mrr")), _as_float(base_metrics.get("mrr")), digits=6),
         "ndcg_at_k_delta": _delta(
             _as_float(curr_metrics.get("ndcg_at_k")),
@@ -80,7 +81,9 @@ def diff_queryset_health_snapshots(
             _as_float(base_metrics.get("p95_latency_ms")),
             digits=3,
         ),
-        "miss_rate_delta": _delta(_as_float(curr_risk.get("miss_rate")), _as_float(base_risk.get("miss_rate")), digits=6),
+        "miss_rate_delta": _delta(
+            _as_float(curr_risk.get("miss_rate")), _as_float(base_risk.get("miss_rate")), digits=6
+        ),
         "weak_hit_rate_delta": _delta(
             _as_float(curr_risk.get("weak_hit_rate")),
             _as_float(base_risk.get("weak_hit_rate")),

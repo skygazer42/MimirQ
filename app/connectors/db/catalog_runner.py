@@ -28,7 +28,14 @@ logger = get_logger(__name__)
 
 def _fingerprint(*, engine: str, db_name: str, schema_name: str | None, table_name: str) -> str:
     # Stable table identity for upsert. Keep it deterministic and do not include secrets.
-    key = f"{str(engine or '').strip().lower()}|{str(db_name or '').strip()}|{str(schema_name or '').strip()}|{str(table_name or '').strip()}"
+    key = "|".join(
+        (
+            str(engine or "").strip().lower(),
+            str(db_name or "").strip(),
+            str(schema_name or "").strip(),
+            str(table_name or "").strip(),
+        )
+    )
     return hashlib.sha256(key.encode("utf-8")).hexdigest()
 
 

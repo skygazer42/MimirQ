@@ -6,7 +6,6 @@ Keep this module pure and dependency-free so it can be used from:
 - background jobs (deep scan runs)
 """
 
-
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -299,7 +298,10 @@ def build_recall_risk_hints(
     hints.sort(
         key=lambda h: (
             -int(sev_order.get(str(h.get("severity") or "warning"), 1)),
-            -int((h.get("observed") or {}).get("short_chunk_pct", (h.get("observed") or {}).get("duplicate_docs_pct", 0)) or 0),
+            -int(
+                (h.get("observed") or {}).get("short_chunk_pct", (h.get("observed") or {}).get("duplicate_docs_pct", 0))
+                or 0
+            ),
             str(h.get("key") or ""),
         )
     )

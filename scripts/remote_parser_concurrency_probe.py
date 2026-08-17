@@ -2,7 +2,6 @@
 # ruff: noqa: E402, I001
 """Run a small parser concurrency probe against a live API."""
 
-
 import argparse
 import json
 import math
@@ -153,7 +152,9 @@ def main() -> int:
         "levels": results_by_level,
     }
     (artifact_dir / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(json.dumps({k: report[k] for k in ("ok", "artifact_dir", "backend", "fixtures")}, ensure_ascii=False, indent=2))
+    print(
+        json.dumps({k: report[k] for k in ("ok", "artifact_dir", "backend", "fixtures")}, ensure_ascii=False, indent=2)
+    )
     return 0 if report["ok"] else 1
 
 

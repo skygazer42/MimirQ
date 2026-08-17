@@ -9,7 +9,6 @@ This is an optional second LLM pass designed to:
 All outputs are gated by deterministic evidence checks in the caller.
 """
 
-
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -132,10 +131,12 @@ class EntityVerifier:
             "Rules:\n"
             f"- Keep at most {keep_lim} entities.\n"
             "- Only keep entities that are clearly supported by the text.\n"
-            "- Prefer specific named entities over generic concepts (avoid keeping stopwords like 'system', 'method' unless truly central).\n"
+            "- Prefer specific named entities over generic concepts (avoid keeping stopwords like "
+            "'system', 'method' unless truly central).\n"
             "- You may correct the entity type and description.\n"
             "- For each kept entity, include evidence_quote: an exact substring copied verbatim from the text.\n"
-            f"- If you identify explicit aliases/abbreviations/synonyms among the candidates, add up to {alias_lim} alias edges.\n"
+            "- If you identify explicit aliases/abbreviations/synonyms among the candidates, add up "
+            f"to {alias_lim} alias edges.\n"
             "- For each alias edge, include evidence_quote copied verbatim from the text.\n"
             "- alias_id and canonical_id MUST refer to candidate ids.\n"
             "\n"

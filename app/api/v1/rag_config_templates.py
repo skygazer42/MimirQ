@@ -8,7 +8,6 @@ These templates provide versioned retrieval/rerank config patches that can be us
 All operations are tenant-isolated and admin-gated (settings.write / settings.read).
 """
 
-
 from typing import Annotated
 from uuid import UUID
 
@@ -76,7 +75,12 @@ def _derive_template_key(name: str) -> str:
     return key or "rag_config"
 
 
-@router.post("", response_model=RagConfigTemplateOut, status_code=status.HTTP_201_CREATED, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "",
+    response_model=RagConfigTemplateOut,
+    status_code=status.HTTP_201_CREATED,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def create_rag_config_template(
     request: RagConfigTemplateCreate,
     *,
@@ -234,7 +238,12 @@ def _apply_rag_config_template_experiment_fields(
         template.ab_weight = float(request.ab_weight)
 
 
-@router.post("/{template_id}/versions", response_model=RagConfigTemplateOut, status_code=status.HTTP_201_CREATED, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/{template_id}/versions",
+    response_model=RagConfigTemplateOut,
+    status_code=status.HTTP_201_CREATED,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def create_rag_config_template_version(
     template_id: UUID,
     request: RagConfigTemplateNewVersion,
@@ -281,7 +290,9 @@ def create_rag_config_template_version(
             else (current.config_patch or {})
         ),
         is_active=bool(request.is_active),
-        ab_experiment_key=request.ab_experiment_key if request.ab_experiment_key is not None else current.ab_experiment_key,
+        ab_experiment_key=request.ab_experiment_key
+        if request.ab_experiment_key is not None
+        else current.ab_experiment_key,
         ab_variant=request.ab_variant if request.ab_variant is not None else current.ab_variant,
         ab_weight=float(request.ab_weight or 1.0),
     )

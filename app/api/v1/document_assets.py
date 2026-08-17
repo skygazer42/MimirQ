@@ -1,4 +1,3 @@
-
 import importlib
 import mimetypes
 import uuid
@@ -55,11 +54,7 @@ def _authorize_bound_preview_document(
     dataset_id: UUID,
     document_id: UUID,
 ) -> DBDocument | None:
-    document = (
-        db.query(DBDocument)
-        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-        .first()
-    )
+    document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document or getattr(document, "dataset_id", None) != dataset_id:
         return None
     if account_id:
@@ -117,11 +112,7 @@ def _resolve_legacy_preview_binding(
         logger.warning("Legacy preview image ownership lookup failed: %s", str(exc)[:160])
         return None
 
-    documents = (
-        db.query(DBDocument)
-        .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(document_ids))
-        .all()
-    )
+    documents = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(document_ids)).all()
     documents_by_id = {
         document.id: document
         for document in documents
@@ -263,10 +254,12 @@ def _quoted_etag(raw_value: str | None) -> str | None:
     etag_raw = str(raw_value or "").strip()
     if not etag_raw:
         return None
-    return etag_raw if etag_raw.startswith("\"") else f"\"{etag_raw}\""
+    return etag_raw if etag_raw.startswith('"') else f'"{etag_raw}"'
 
 
-def _asset_response_headers(*, cache_control: str, etag: str | None = None, accept_ranges: bool = False) -> dict[str, str]:
+def _asset_response_headers(
+    *, cache_control: str, etag: str | None = None, accept_ranges: bool = False
+) -> dict[str, str]:
     headers = {
         "Cache-Control": cache_control,
         "Referrer-Policy": "no-referrer",
@@ -291,7 +284,9 @@ def _not_modified_response(request: Request, *, etag: str | None, cache_control:
     return Response(status_code=304, headers=_asset_response_headers(cache_control=cache_control, etag=etag))
 
 
-def _parse_range_request(*, range_header: str, total_size: int, invalid_detail: str) -> tuple[int, int | None, int, dict[str, str]]:
+def _parse_range_request(
+    *, range_header: str, total_size: int, invalid_detail: str
+) -> tuple[int, int | None, int, dict[str, str]]:
     if not range_header:
         return 0, None, 200, {"Content-Length": str(total_size)}
     if not range_header.lower().startswith("bytes="):
@@ -320,10 +315,15 @@ def _parse_range_request(*, range_header: str, total_size: int, invalid_detail: 
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=416, detail=invalid_detail) from exc
     length = int(end - offset + 1)
-    return offset, length, 206, {
-        "Content-Range": f"bytes {offset}-{offset + length - 1}/{total_size}",
-        "Content-Length": str(length),
-    }
+    return (
+        offset,
+        length,
+        206,
+        {
+            "Content-Range": f"bytes {offset}-{offset + length - 1}/{total_size}",
+            "Content-Length": str(length),
+        },
+    )
 
 
 def _resolve_document_download(
@@ -336,11 +336,7 @@ def _resolve_document_download(
 ) -> DBDocument:
     if account_id:
         DatasetService.ensure_member(db, tenant_id, account_id)
-    document = (
-        db.query(DBDocument)
-        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-        .first()
-    )
+    document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
         raise HTTPException(status_code=404, detail=docs_mod.DOC_NOT_FOUND_DETAIL)
     dataset: Dataset | None = None
@@ -513,10 +509,7 @@ def _file_etag(file_path: Path) -> tuple[Any, str | None]:
         stat_result = file_path.stat()
     except Exception:
         return None, None
-    etag = (
-        f"\"{int(getattr(stat_result, 'st_mtime_ns', 0) or 0):x}-"
-        f"{int(getattr(stat_result, 'st_size', 0) or 0):x}\""
-    )
+    etag = f'"{int(getattr(stat_result, "st_mtime_ns", 0) or 0):x}-{int(getattr(stat_result, "st_size", 0) or 0):x}"'
     return stat_result, etag
 
 
@@ -548,9 +541,7 @@ def _authorize_image_url_request(
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=404, detail=docs_mod.IMAGE_NOT_FOUND_DETAIL) from exc
         document = (
-            db.query(DBDocument)
-            .filter(DBDocument.id == document_uuid, DBDocument.tenant_id == tenant_id)
-            .first()
+            db.query(DBDocument).filter(DBDocument.id == document_uuid, DBDocument.tenant_id == tenant_id).first()
         )
         if not document or (document.dataset_id and document.dataset_id != dataset_uuid):
             raise HTTPException(status_code=404, detail=docs_mod.IMAGE_NOT_FOUND_DETAIL)

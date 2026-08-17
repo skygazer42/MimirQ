@@ -109,7 +109,9 @@ def test_capsules_are_bucketed_by_tenant_and_bound_in_payload(tmp_path: Path, mo
     module = _load_evidence_capsules_module(monkeypatch)
 
     monkeypatch.setattr(module.settings, "EVIDENCE_CAPSULE_STORE_DIR", str(tmp_path), raising=False)
-    monkeypatch.setattr(module.DatasetService, "ensure_member", staticmethod(lambda db, tenant_id, account_id: object()))
+    monkeypatch.setattr(
+        module.DatasetService, "ensure_member", staticmethod(lambda db, tenant_id, account_id: object())
+    )
 
     capsule_a = _build_capsule()
     response_a = module.persist_evidence_capsule(
@@ -173,7 +175,9 @@ def test_capsules_are_owner_bound_within_same_tenant_for_get_and_overwrite(
 
     monkeypatch.setattr(module.settings, "EVIDENCE_CAPSULE_STORE_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(module.settings, "EVIDENCE_CAPSULE_ALLOW_OVERWRITE", True, raising=False)
-    monkeypatch.setattr(module.DatasetService, "ensure_member", staticmethod(lambda db, tenant_id, account_id: object()))
+    monkeypatch.setattr(
+        module.DatasetService, "ensure_member", staticmethod(lambda db, tenant_id, account_id: object())
+    )
 
     original = _build_capsule()
     module.persist_evidence_capsule(
@@ -241,7 +245,9 @@ def test_legacy_global_capsule_file_is_readable_only_when_bound_to_same_tenant_a
 
     monkeypatch.setattr(module.settings, "EVIDENCE_CAPSULE_STORE_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(module.settings, "EVIDENCE_CAPSULE_ALLOW_OVERWRITE", True, raising=False)
-    monkeypatch.setattr(module.DatasetService, "ensure_member", staticmethod(lambda db, tenant_id, account_id: object()))
+    monkeypatch.setattr(
+        module.DatasetService, "ensure_member", staticmethod(lambda db, tenant_id, account_id: object())
+    )
 
     matched = module.get_evidence_capsule(capsule_id, tenant_id=tenant_id, account_id="owner-a", db=object())
     assert matched.capsule == legacy_capsule
@@ -280,7 +286,9 @@ def test_legacy_global_capsule_file_is_not_used_as_cross_tenant_fallback(
     legacy_path.write_text(json.dumps(legacy_capsule), encoding="utf-8")
 
     monkeypatch.setattr(module.settings, "EVIDENCE_CAPSULE_STORE_DIR", str(tmp_path), raising=False)
-    monkeypatch.setattr(module.DatasetService, "ensure_member", staticmethod(lambda db, tenant_id, account_id: object()))
+    monkeypatch.setattr(
+        module.DatasetService, "ensure_member", staticmethod(lambda db, tenant_id, account_id: object())
+    )
 
     with pytest.raises(HTTPException, match="capsule_not_found"):
         module.get_evidence_capsule(capsule_id, tenant_id=tenant_id, account_id="user-a", db=object())
@@ -296,7 +304,9 @@ def test_concurrent_persist_does_not_allow_silent_overwrite(
 
     monkeypatch.setattr(module.settings, "EVIDENCE_CAPSULE_STORE_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(module.settings, "EVIDENCE_CAPSULE_ALLOW_OVERWRITE", False, raising=False)
-    monkeypatch.setattr(module.DatasetService, "ensure_member", staticmethod(lambda db, tenant_id, account_id: object()))
+    monkeypatch.setattr(
+        module.DatasetService, "ensure_member", staticmethod(lambda db, tenant_id, account_id: object())
+    )
 
     target_path = tmp_path / str(tenant_id) / f"{capsule_id}.json"
     original_exists = module.Path.exists

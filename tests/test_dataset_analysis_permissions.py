@@ -67,7 +67,7 @@ def _build_client(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, str, str
     monkeypatch.setattr(
         dataset_analysis_api,
         "export_dataset_analysis_jsonl",
-        lambda **_k: "{\"ok\":true}\n",
+        lambda **_k: '{"ok":true}\n',
         raising=True,
     )
     monkeypatch.setattr(
@@ -179,7 +179,11 @@ def test_glossary_writeback_requires_dataset_writable(monkeypatch: pytest.Monkey
     [
         ("POST", "/api/v1/datasets/{dataset_id}/analysis/export.png", "create_dataset_analysis_png_task"),
         ("GET", "/api/v1/datasets/{dataset_id}/analysis/export-tasks/task-1", "get_dataset_analysis_png_task_status"),
-        ("GET", "/api/v1/datasets/{dataset_id}/analysis/export-tasks/task-1/result.png", "get_dataset_analysis_png_result"),
+        (
+            "GET",
+            "/api/v1/datasets/{dataset_id}/analysis/export-tasks/task-1/result.png",
+            "get_dataset_analysis_png_result",
+        ),
     ],
 )
 def test_png_task_endpoints_forward_current_account(
@@ -191,7 +195,9 @@ def test_png_task_endpoints_forward_current_account(
     client, _tenant_id, dataset_id = _build_client(monkeypatch)
     seen: list[str] = []
 
-    monkeypatch.setattr(dataset_analysis_api.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(
+        dataset_analysis_api.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True
+    )
 
     def _capture(**kwargs):
         seen.append(str(kwargs["account_id"]))

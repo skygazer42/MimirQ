@@ -1,4 +1,3 @@
-
 import re
 from typing import Any
 
@@ -35,7 +34,9 @@ def normalize_kg_query_mode(mode: Any, *, default: str = "auto") -> str:
     raw = str(mode or "").strip().lower()
     if raw in _ALLOWED_MODES:
         return raw
-    return str(default or "auto").strip().lower() if str(default or "auto").strip().lower() in _ALLOWED_MODES else "auto"
+    return (
+        str(default or "auto").strip().lower() if str(default or "auto").strip().lower() in _ALLOWED_MODES else "auto"
+    )
 
 
 def _query_mode_result(mode: str, confidence: str, reasons: list[str]) -> dict[str, Any]:
@@ -107,9 +108,7 @@ def _apply_global_budget(
     reason_codes: list[str],
 ) -> tuple[int, int, int]:
     is_low_confidence_fallback = (
-        confidence == "low"
-        and "global_pattern" not in input_reasons
-        and "drift_pattern" not in input_reasons
+        confidence == "low" and "global_pattern" not in input_reasons and "drift_pattern" not in input_reasons
     )
     if is_low_confidence_fallback:
         max_events_out = min(

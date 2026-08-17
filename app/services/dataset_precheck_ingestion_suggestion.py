@@ -10,7 +10,6 @@ Design principles:
 - Keep payload sizes bounded for API safety.
 """
 
-
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -144,9 +143,7 @@ def build_ingestion_policy_suggestion(
     unknown_pdfs = _safe_int(pdf_scan.get("unknown"))
     finding_list = summary.get("findings") if isinstance(summary.get("findings"), list) else []
     finding_by_key = {
-        str(item.get("key") or "").strip().lower(): item
-        for item in (finding_list or [])
-        if isinstance(item, dict)
+        str(item.get("key") or "").strip().lower(): item for item in (finding_list or []) if isinstance(item, dict)
     }
     large_spreadsheets = _safe_int((finding_by_key.get("large_spreadsheet") or {}).get("count"))
     wide_spreadsheets = _safe_int((finding_by_key.get("wide_spreadsheet") or {}).get("count"))
@@ -185,7 +182,9 @@ def build_ingestion_policy_suggestion(
     if unknown_pdfs > 0:
         notes.append(f"PDF 类型未知：{unknown_pdfs}（可能为加密/权限/依赖缺失；建议加入人工复核队列）")
     if use_longform:
-        notes.append(f"P90 文本长度较长（{p90} chars）：Markdown/长文建议使用 longform 治理预设（去重+裁剪 References）")
+        notes.append(
+            f"P90 文本长度较长（{p90} chars）：Markdown/长文建议使用 longform 治理预设（去重+裁剪 References）"
+        )
 
     # Conservative chunk_size hint based on token distribution (does not auto-apply patches).
     if bool(getattr(settings, "PRECHECK_SUGGEST_CHUNK_SIZE", True)) and token_p90 > 0:
@@ -209,7 +208,8 @@ def build_ingestion_policy_suggestion(
         notes.append(
             "Token 分布（best-effort）："
             f"P50~{token_p50}、P90~{token_p90} tokens。"
-            f"可尝试 chunk_size={suggested_size} chars、chunk_overlap={suggested_overlap}（建议先在 chunk-preview 验证分布）"
+            f"可尝试 chunk_size={suggested_size} chars、chunk_overlap={suggested_overlap}"
+            "（建议先在 chunk-preview 验证分布）"
         )
     if large_spreadsheets > 0:
         notes.append(f"检测到大表/复杂表格：{large_spreadsheets}（建议优先走 TAG/SQL 方案，而不是硬上纯 RAG）")
@@ -291,7 +291,9 @@ def build_ingestion_policy_suggestion(
         "table_store_auto_row_threshold": int(getattr(settings, "TABLE_STORE_AUTO_ROW_THRESHOLD", 5000) or 5000),
         "table_store_auto_col_threshold": int(getattr(settings, "TABLE_STORE_AUTO_COL_THRESHOLD", 80) or 80),
         "table_store_auto_sheet_threshold": int(getattr(settings, "TABLE_STORE_AUTO_SHEET_THRESHOLD", 5) or 5),
-        "table_store_auto_file_bytes_threshold": int(getattr(settings, "TABLE_STORE_AUTO_FILE_BYTES_THRESHOLD", 5_000_000) or 5_000_000),
+        "table_store_auto_file_bytes_threshold": int(
+            getattr(settings, "TABLE_STORE_AUTO_FILE_BYTES_THRESHOLD", 5_000_000) or 5_000_000
+        ),
     }
     if table_has_pii:
         # Conservative default: do not persist raw sample rows when precheck suggests PII exists.
@@ -369,7 +371,9 @@ def build_ingestion_policy_suggestion(
     # - Markdown: prefer header-aware chunking for better structure/citation.
     # - Plain text: prefer sentence-boundary chunking for cleaner boundaries (esp. zh/en mixed).
     md_profile = "builtin:wiki_longform" if use_longform else "builtin:kb_default"
-    md_patch = _pii_secrets_patch(enable_pii=bool({"md", "txt"} & pii_types), enable_secrets=bool({"md", "txt"} & secrets_types))
+    md_patch = _pii_secrets_patch(
+        enable_pii=bool({"md", "txt"} & pii_types), enable_secrets=bool({"md", "txt"} & secrets_types)
+    )
     common_text_preprocess = [
         STEP_REENCODE_UTF8,
         STEP_STRIP_BOM,
@@ -475,7 +479,11 @@ def build_ingestion_policy_suggestion(
                     _assert_artifact_path_under_tenant(tenant_id=tenant_id, path=p)
                     if p.exists() and p.is_file():
                         obj = json.loads(p.read_text(encoding="utf-8"))
-                        clusters = obj.get("clusters") if isinstance(obj, dict) and isinstance(obj.get("clusters"), list) else []
+                        clusters = (
+                            obj.get("clusters")
+                            if isinstance(obj, dict) and isinstance(obj.get("clusters"), list)
+                            else []
+                        )
                         affected: list[str] = []
                         for c in clusters:
                             if not isinstance(c, dict):

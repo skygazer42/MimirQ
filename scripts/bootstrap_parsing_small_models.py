@@ -273,7 +273,9 @@ def bootstrap_selected_models(
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Download explicitly selected parsing small models into project resources.")
+    parser = argparse.ArgumentParser(
+        description="Download explicitly selected parsing small models into project resources."
+    )
     parser.add_argument(
         "--manifest",
         default=str(_DEFAULT_MANIFEST),
@@ -286,13 +288,17 @@ def _build_parser() -> argparse.ArgumentParser:
         default=[],
         help="Model selection in task:model_id form, for example table_structure:tatr_v1_1_all.",
     )
-    parser.add_argument("--all-optional", action="store_true", help="Download every optional HuggingFace model in the manifest.")
+    parser.add_argument(
+        "--all-optional", action="store_true", help="Download every optional HuggingFace model in the manifest."
+    )
     parser.add_argument(
         "--output-root",
         default=str(_DEFAULT_OUTPUT_ROOT),
         help="Project model resource root. Defaults to app/deepdoc/resources/models.",
     )
-    parser.add_argument("--convert-onnx", action="store_true", help="Try ONNX conversion when the HF snapshot has no .onnx file.")
+    parser.add_argument(
+        "--convert-onnx", action="store_true", help="Try ONNX conversion when the HF snapshot has no .onnx file."
+    )
     parser.add_argument("--onnx-opset", type=int, default=17, help="ONNX opset used by optional conversion.")
     return parser
 

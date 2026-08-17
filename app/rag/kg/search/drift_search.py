@@ -1,4 +1,3 @@
-
 import re
 from typing import Any
 
@@ -9,7 +8,9 @@ def _tokenize(text: str) -> set[str]:
     return {str(token).casefold() for token in _TOKEN_RE.findall(str(text or "").strip()) if str(token).strip()}
 
 
-def _score_reports(query_tokens: set[str], community_reports: list[dict[str, Any]]) -> list[tuple[float, dict[str, Any]]]:
+def _score_reports(
+    query_tokens: set[str], community_reports: list[dict[str, Any]]
+) -> list[tuple[float, dict[str, Any]]]:
     scored: list[tuple[float, dict[str, Any]]] = []
     for report in community_reports or []:
         if isinstance(report, dict):
@@ -42,7 +43,9 @@ def _collect_report_ids(selected: list[dict[str, Any]], key: str, candidates: tu
     for report in selected:
         for item in report.get(key) or []:
             if isinstance(item, dict):
-                _append_unique_id(out, seen, next((item.get(candidate) for candidate in candidates if item.get(candidate)), ""))
+                _append_unique_id(
+                    out, seen, next((item.get(candidate) for candidate in candidates if item.get(candidate)), "")
+                )
     return out
 
 

@@ -1,4 +1,3 @@
-
 import argparse
 import json
 import statistics
@@ -110,9 +109,7 @@ def run_batch(*, spec_path: Path, out_dir: Path) -> dict[str, Any]:
             top_k=top_k,
             retrieval_mode=retrieval_mode,
             governance_rule_packs=[
-                str(item).strip()
-                for item in (case.get("governance_rule_packs") or [])
-                if str(item).strip()
+                str(item).strip() for item in (case.get("governance_rule_packs") or []) if str(item).strip()
             ],
         )
         summary = report.get("summary") if isinstance(report, dict) and isinstance(report.get("summary"), dict) else {}
@@ -132,9 +129,7 @@ def run_batch(*, spec_path: Path, out_dir: Path) -> dict[str, Any]:
                 "top_k": int(top_k),
                 "retrieval_mode": retrieval_mode,
                 "governance_rule_packs": [
-                    str(item).strip()
-                    for item in (case.get("governance_rule_packs") or [])
-                    if str(item).strip()
+                    str(item).strip() for item in (case.get("governance_rule_packs") or []) if str(item).strip()
                 ],
                 "case_family": case_family,
                 "case_category": case_category,
@@ -173,7 +168,9 @@ def run_batch(*, spec_path: Path, out_dir: Path) -> dict[str, Any]:
         },
         "cases": case_reports,
     }
-    (out_dir / "batch.report.json").write_text(json.dumps(report_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    (out_dir / "batch.report.json").write_text(
+        json.dumps(report_payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     return report_payload
 
 

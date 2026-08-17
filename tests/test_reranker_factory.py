@@ -65,7 +65,9 @@ def test_describe_reranker_provider_keeps_colbert_default_mode_contract(
 ) -> None:
     from app.rag.reranker.factory import describe_reranker_provider
 
-    monkeypatch.setattr("app.rag.reranker.capabilities.settings.COLBERT_RERANK_PROVIDER", "deterministic", raising=False)
+    monkeypatch.setattr(
+        "app.rag.reranker.capabilities.settings.COLBERT_RERANK_PROVIDER", "deterministic", raising=False
+    )
     assert describe_reranker_provider("late_interaction") == {
         "provider": "colbert",
         "tier": "offline_only",

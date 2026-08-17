@@ -1,4 +1,3 @@
-
 import uuid
 from typing import Annotated, Any
 from uuid import UUID
@@ -41,7 +40,9 @@ def _lifecycle_metadata_response(document) -> DocumentLifecycleMetadata:
     )
 
 
-def _apply_lifecycle_metadata_updates(*, document, payload: DocumentLifecycleMetadataUpdateRequest, fields_set: set[str]) -> None:
+def _apply_lifecycle_metadata_updates(
+    *, document, payload: DocumentLifecycleMetadataUpdateRequest, fields_set: set[str]
+) -> None:
     if "lifecycle_owner" in fields_set:
         owner = payload.lifecycle_owner
         document.lifecycle_owner = (str(owner).strip() or None) if owner is not None else None  # type: ignore[assignment]
@@ -68,8 +69,20 @@ def _snapshot_lifecycle_metadata(document) -> dict[str, Any]:
     }
 
 
-def _build_lifecycle_audit_details(*, before: dict[str, Any], after: dict[str, Any], fields_set: set[str]) -> dict[str, Any]:
-    changed_fields = [key for key in ("lifecycle_owner", "review_due_at", "authority_level", "supersedes_document_id", "publication_status") if key in fields_set and before.get(key) != after.get(key)]
+def _build_lifecycle_audit_details(
+    *, before: dict[str, Any], after: dict[str, Any], fields_set: set[str]
+) -> dict[str, Any]:
+    changed_fields = [
+        key
+        for key in (
+            "lifecycle_owner",
+            "review_due_at",
+            "authority_level",
+            "supersedes_document_id",
+            "publication_status",
+        )
+        if key in fields_set and before.get(key) != after.get(key)
+    ]
     details: dict[str, Any] = {
         "fields": sorted(fields_set)[:50],
         "changed_fields": changed_fields[:50],
@@ -90,7 +103,11 @@ def _build_lifecycle_audit_details(*, before: dict[str, Any], after: dict[str, A
     return details
 
 
-@router.get("/{document_id}/lifecycle-metadata", response_model=DocumentLifecycleMetadata, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/{document_id}/lifecycle-metadata",
+    response_model=DocumentLifecycleMetadata,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def get_document_lifecycle_metadata(
     document_id: uuid.UUID,
     *,
@@ -119,7 +136,11 @@ def get_document_lifecycle_metadata(
     return _lifecycle_metadata_response(document)
 
 
-@router.patch("/{document_id}/lifecycle-metadata", response_model=DocumentLifecycleMetadata, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.patch(
+    "/{document_id}/lifecycle-metadata",
+    response_model=DocumentLifecycleMetadata,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def patch_document_lifecycle_metadata(
     document_id: uuid.UUID,
     payload: DocumentLifecycleMetadataUpdateRequest,

@@ -329,7 +329,9 @@ def test_chunker_factory_resolve_strategy_preserves_current_alias_behavior(alias
 
 
 def test_chunker_factory_uses_default_strategy_when_strategy_is_none(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("app.rag.chunking.factory.settings.DEFAULT_CHUNK_STRATEGY", "langchain_recursive", raising=False)
+    monkeypatch.setattr(
+        "app.rag.chunking.factory.settings.DEFAULT_CHUNK_STRATEGY", "langchain_recursive", raising=False
+    )
     assert chunker_factory.resolve_strategy(None) == "langchain_recursive"
 
 
@@ -339,8 +341,7 @@ def test_chunker_factory_rejects_unknown_strategy_with_supported_list() -> None:
 
     expected_supported = EXPECTED_SUPPORTED_STRATEGIES + sorted(chunker_factory.INTEGRATED_PIPELINE_STRATEGIES)
     assert str(exc_info.value) == (
-        "Unsupported chunk strategy 'does-not-exist'. "
-        f"Supported strategies: {expected_supported}"
+        f"Unsupported chunk strategy 'does-not-exist'. Supported strategies: {expected_supported}"
     )
 
 

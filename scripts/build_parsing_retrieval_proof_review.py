@@ -55,8 +55,12 @@ def _append_group_table(lines: list[str], *, title: str, groups: Any) -> None:
 
 def _append_sample_composition(lines: list[str], summary: dict[str, Any]) -> None:
     composition = summary.get("sample_composition") if isinstance(summary.get("sample_composition"), dict) else {}
-    family_counts = composition.get("case_family_counts") if isinstance(composition.get("case_family_counts"), dict) else {}
-    category_counts = composition.get("case_category_counts") if isinstance(composition.get("case_category_counts"), dict) else {}
+    family_counts = (
+        composition.get("case_family_counts") if isinstance(composition.get("case_family_counts"), dict) else {}
+    )
+    category_counts = (
+        composition.get("case_category_counts") if isinstance(composition.get("case_category_counts"), dict) else {}
+    )
     family_text = ", ".join(f"{key}={family_counts[key]}" for key in sorted(family_counts)) or "none"
     category_text = ", ".join(f"{key}={category_counts[key]}" for key in sorted(category_counts)) or "none"
     lines.append("## Sample Composition")
@@ -143,9 +147,7 @@ def build_review_markdown(
         for row in case_rows:
             if not isinstance(row, dict):
                 continue
-            lines.append(
-                f"| {row.get('id') or ''} | {row.get('hit_at_k')} | {row.get('mrr')} |"
-            )
+            lines.append(f"| {row.get('id') or ''} | {row.get('hit_at_k')} | {row.get('mrr')} |")
     else:
         lines.append("- None")
     lines.append("")
@@ -158,7 +160,9 @@ def build_review_markdown(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Build a human-readable parsing-proof review markdown from summary/report/gate/diff artifacts.")
+    parser = argparse.ArgumentParser(
+        description="Build a human-readable parsing-proof review markdown from summary/report/gate/diff artifacts."
+    )
     parser.add_argument("--summary", required=True, help="Parsing proof summary JSON path.")
     parser.add_argument("--report", required=True, help="Parsing proof report JSON path.")
     parser.add_argument("--gate", required=True, help="Parsing proof gate JSON path.")

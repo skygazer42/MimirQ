@@ -342,7 +342,9 @@ def build_retrieval_trace_stage(payload: RetrievalTraceStageInput) -> RetrievalT
             "max_hops": int(payload.contextual_followup_max_hops),
             "latency_budget_ms": round(float(payload.contextual_followup_latency_budget_ms), 3),
             "hops_attempted": int(
-                len([hop for hop in payload.iterative_pass_hops if isinstance(hop, dict) and bool(hop.get("attempted"))])
+                len(
+                    [hop for hop in payload.iterative_pass_hops if isinstance(hop, dict) and bool(hop.get("attempted"))]
+                )
             ),
             "hops_used": int(
                 len([hop for hop in payload.iterative_pass_hops if isinstance(hop, dict) and bool(hop.get("used"))])

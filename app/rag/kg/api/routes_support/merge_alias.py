@@ -50,7 +50,10 @@ def _offline_alias_suggestions(
         query = query.filter(entity_model.normalized_name.like(f"{prefix}%"))  # noqa: WPS323
     candidates = query.order_by(entity_model.normalized_name.asc(), entity_model.id.asc()).limit(500).all()
     scored = _score_alias_candidates(candidates, norm=norm, min_similarity=float(min_similarity))
-    suggestions = [_alias_suggestion_item(candidate, similarity=sim, reason="offline:normalized_name_sequence_match") for sim, _sid, candidate in scored[:want_k]]
+    suggestions = [
+        _alias_suggestion_item(candidate, similarity=sim, reason="offline:normalized_name_sequence_match")
+        for sim, _sid, candidate in scored[:want_k]
+    ]
     return KGEntityAliasSuggestionsResponse(
         entity_id=resolved_id,
         suggestions=suggestions,
@@ -102,9 +105,15 @@ def _vector_alias_suggestions(
             k=max(1, int(want_k)),
             entity_type=str(getattr(entity, "type", "") or None) or None,
         )
-        suggestions = [_vector_alias_suggestion_item(hit) for hit in hits if _uuid_or_none(hit.get("entity_id") or hit.get("id")) != resolved_id]
+        suggestions = [
+            _vector_alias_suggestion_item(hit)
+            for hit in hits
+            if _uuid_or_none(hit.get("entity_id") or hit.get("id")) != resolved_id
+        ]
         suggestions = [item for item in suggestions if item is not None][:want_k]
-        return KGEntityAliasSuggestionsResponse(entity_id=resolved_id, suggestions=suggestions, mode="vector", stats={"returned": len(suggestions)})
+        return KGEntityAliasSuggestionsResponse(
+            entity_id=resolved_id, suggestions=suggestions, mode="vector", stats={"returned": len(suggestions)}
+        )
     except Exception:
         return KGEntityAliasSuggestionsResponse(
             entity_id=resolved_id,
@@ -181,9 +190,7 @@ def _merge_affected_rows(
             str(assoc.id): _event_entity_snapshot(assoc) for assoc in source_assocs if getattr(assoc, "id", None)
         },
         impacted_event_ids={
-            getattr(assoc, "event_id", None)
-            for assoc in source_assocs
-            if getattr(assoc, "event_id", None) is not None
+            getattr(assoc, "event_id", None) for assoc in source_assocs if getattr(assoc, "event_id", None) is not None
         },
         source_relations=source_relations,
         source_relation_ids={
@@ -287,7 +294,9 @@ def _ensure_merge_redirect(
     return True
 
 
-def _apply_merge_relation_updates(*, source_id: UUID, target_id: UUID, affected: KGMergeAffectedRows, db: Session) -> list[dict[str, Any]]:
+def _apply_merge_relation_updates(
+    *, source_id: UUID, target_id: UUID, affected: KGMergeAffectedRows, db: Session
+) -> list[dict[str, Any]]:
     relation_deleted_rows: list[dict[str, Any]] = []
     for relation in affected.source_relations:
         relation_id = str(getattr(relation, "id", "") or "")

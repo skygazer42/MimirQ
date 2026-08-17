@@ -4,7 +4,6 @@ Audit log endpoints (admin-only).
 This is intentionally minimal and PII-safe by default.
 """
 
-
 import gzip as gzip_lib
 import io
 import json
@@ -173,12 +172,10 @@ def audit_log_filter_params(
 
 def audit_log_export_params(
     limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
-    after_created_at: Annotated[datetime | None, Query(description='Cursor: last seen created_at')] = None,
-    after_id: Annotated[UUID | None, Query(description='Cursor: last seen id (tie-breaker)')] = None,
-    include_sensitive: Annotated[
-        bool, Query(description='Include sensitive detail keys (admin/auditor only)')
-    ] = False,
-    gzip: Annotated[bool, Query(description='Return gzip-compressed NDJSON (Content-Encoding: gzip)')] = False,
+    after_created_at: Annotated[datetime | None, Query(description="Cursor: last seen created_at")] = None,
+    after_id: Annotated[UUID | None, Query(description="Cursor: last seen id (tie-breaker)")] = None,
+    include_sensitive: Annotated[bool, Query(description="Include sensitive detail keys (admin/auditor only)")] = False,
+    gzip: Annotated[bool, Query(description="Return gzip-compressed NDJSON (Content-Encoding: gzip)")] = False,
 ) -> AuditLogExportParams:
     return AuditLogExportParams(
         limit=limit,
@@ -190,12 +187,12 @@ def audit_log_export_params(
 
 
 def audit_log_purge_params(
-    retention_days: Annotated[int, Query(ge=1, le=3650, description='Delete logs older than N days')] = 90,
-    max_delete: Annotated[int, Query(ge=1, le=1000000, description='Max rows to delete in this call')] = 100_000,
-    dry_run: Annotated[bool, Query(description='Plan only; do not delete rows')] = True,
+    retention_days: Annotated[int, Query(ge=1, le=3650, description="Delete logs older than N days")] = 90,
+    max_delete: Annotated[int, Query(ge=1, le=1000000, description="Max rows to delete in this call")] = 100_000,
+    dry_run: Annotated[bool, Query(description="Plan only; do not delete rows")] = True,
     purge_scope: Annotated[
         Literal["retention", "filtered"],
-        Query(description='retention=older than N days; filtered=current explicit filters'),
+        Query(description="retention=older than N days; filtered=current explicit filters"),
     ] = "retention",
 ) -> AuditLogPurgeParams:
     return AuditLogPurgeParams(
@@ -852,10 +849,7 @@ def _collect_access_graph_page(
             after_row_id=(after_id if kind == after_kind else None),
             take=remaining,
         )
-        out.extend(
-            _export_access_graph_row(kind=kind, row=row, include_sensitive=include_sensitive)
-            for row in rows
-        )
+        out.extend(_export_access_graph_row(kind=kind, row=row, include_sensitive=include_sensitive) for row in rows)
         if len(out) >= max_items or len(rows) >= remaining:
             break
     return out[:max_items]
@@ -946,12 +940,14 @@ def _access_graph_json_response(
 @router.get("/access-graph/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_access_graph_ndjson(
     limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
-    after_kind: Annotated[str | None, Query(max_length=64, description='Cursor: last seen kind')] = None,
-    after_created_at: Annotated[datetime | None, Query(description='Cursor: last seen created_at')] = None,
-    after_id: Annotated[UUID | None, Query(description='Cursor: last seen id (tie-breaker)')] = None,
-    include_sensitive: Annotated[bool, Query(description='Include raw user/group/dataset identifiers (admin/auditor only)')] = False,
-    export_format: Annotated[str, Query(description='ndjson|json')] = "ndjson",
-    gzip: Annotated[bool, Query(description='Return gzip-compressed NDJSON/JSON (Content-Encoding: gzip)')] = False,
+    after_kind: Annotated[str | None, Query(max_length=64, description="Cursor: last seen kind")] = None,
+    after_created_at: Annotated[datetime | None, Query(description="Cursor: last seen created_at")] = None,
+    after_id: Annotated[UUID | None, Query(description="Cursor: last seen id (tie-breaker)")] = None,
+    include_sensitive: Annotated[
+        bool, Query(description="Include raw user/group/dataset identifiers (admin/auditor only)")
+    ] = False,
+    export_format: Annotated[str, Query(description="ndjson|json")] = "ndjson",
+    gzip: Annotated[bool, Query(description="Return gzip-compressed NDJSON/JSON (Content-Encoding: gzip)")] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],

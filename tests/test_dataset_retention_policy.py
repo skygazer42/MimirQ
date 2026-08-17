@@ -1,4 +1,3 @@
-
 import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -315,7 +314,9 @@ async def test_run_dataset_retention_sweep_delete_uses_system_membership_bypass(
         delete_calls.append(kwargs)
 
     monkeypatch.setattr(rp, "_expired_documents_query", lambda *_a, **_k: _ExpiredQuery(), raising=True)
-    monkeypatch.setattr(retention_jobs, "_resolve_delete_document_lifecycle", lambda: _fake_delete_document_lifecycle, raising=True)
+    monkeypatch.setattr(
+        retention_jobs, "_resolve_delete_document_lifecycle", lambda: _fake_delete_document_lifecycle, raising=True
+    )
     monkeypatch.setattr(rp, "invalidate_dataset_cache_namespace", lambda *_a, **_k: "cache-token", raising=True)
     monkeypatch.setattr(rp, "audit_log_event", lambda *_a, **_k: None, raising=True)
 

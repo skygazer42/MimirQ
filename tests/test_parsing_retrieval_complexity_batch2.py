@@ -124,8 +124,12 @@ def test_docling_parser_parse_converts_tables_and_prepends_page_images(
     parser = DoclingParser(extract_images=True, table_mode="markdown")
     fake_parser = SimpleNamespace(page_images=["img-a", "img-b"], page_from=2)
 
-    monkeypatch.setattr("app.parsing.parsers.docling_parser.BaseAdvancedParser.parse", lambda self, path, **kwargs: list(base_docs))
-    monkeypatch.setattr("app.parsing.parsers.docling_parser.settings.DOCLING_INCLUDE_PAGE_IMAGES_IF_EMPTY", True, raising=False)
+    monkeypatch.setattr(
+        "app.parsing.parsers.docling_parser.BaseAdvancedParser.parse", lambda self, path, **kwargs: list(base_docs)
+    )
+    monkeypatch.setattr(
+        "app.parsing.parsers.docling_parser.settings.DOCLING_INCLUDE_PAGE_IMAGES_IF_EMPTY", True, raising=False
+    )
     monkeypatch.setattr("app.parsing.parsers.docling_parser.settings.DOCLING_PAGE_IMAGE_MAX_PAGES", 1, raising=False)
     monkeypatch.setattr(parser, "_get_parser", lambda: fake_parser)
 

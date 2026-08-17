@@ -188,16 +188,7 @@ async def test_relation_verifier_verify_preserves_dedup_and_evidence_trimming() 
 
 def test_extract_markdown_frontmatter_preserves_list_and_strip_output_contract() -> None:
     text = (
-        "---\n"
-        "title: Example Doc\n"
-        "tags: [alpha, 'beta']\n"
-        "authors:\n"
-        "  - Alice\n"
-        "  - 'Bob'\n"
-        "draft: true\n"
-        "---\n"
-        "\n"
-        "# Body\n"
+        "---\ntitle: Example Doc\ntags: [alpha, 'beta']\nauthors:\n  - Alice\n  - 'Bob'\ndraft: true\n---\n\n# Body\n"
     )
 
     result = extract_markdown_frontmatter(text, strip=True)
@@ -257,7 +248,9 @@ def test_cross_encoder_rerank_preserves_sorting_and_top_n_contracts() -> None:
     ]
 
 
-def test_ltr_reranker_init_preserves_manifest_validation_and_sha_model_id(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ltr_reranker_init_preserves_manifest_validation_and_sha_model_id(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     model_path = tmp_path / "model.bin"
     model_path.write_bytes(b"ltr-model")
     sha = hashlib.sha256(b"ltr-model").hexdigest()
@@ -309,9 +302,12 @@ def test_collect_lexical_dataset_scope_preserves_current_and_or_semantics() -> N
             ]
         }
     ) == [dataset_a, dataset_b]
-    assert LexicalDBMixin._collect_lexical_dataset_scope(
-        {"$or": [{"dataset_id": str(dataset_a)}, {"other": "missing-scope"}]}
-    ) == []
+    assert (
+        LexicalDBMixin._collect_lexical_dataset_scope(
+            {"$or": [{"dataset_id": str(dataset_a)}, {"other": "missing-scope"}]}
+        )
+        == []
+    )
 
 
 def test_metadata_condition_to_filter_preserves_explicit_filters_and_allowed_field_validation() -> None:

@@ -30,7 +30,9 @@ def _parse_args() -> argparse.Namespace:
 
     test = sub.add_parser("test", help="Run a local pipeline plugin test and write the test report.")
     test.add_argument("plugin_dir", help="Plugin package directory containing mimirq-plugin.json/yaml.")
-    test.add_argument("--input", required=True, dest="input_path", help="JSON sample input: array or {documents:[...]}.")
+    test.add_argument(
+        "--input", required=True, dest="input_path", help="JSON sample input: array or {documents:[...]}."
+    )
     test.add_argument(
         "--stage",
         action="append",
@@ -38,11 +40,15 @@ def _parse_args() -> argparse.Namespace:
         dest="stages",
         help="Stage to test. Repeat for multiple stages. Defaults to every entry in the manifest.",
     )
-    test.add_argument("--no-write-report", action="store_true", help="Run test without writing .mimirq-plugin-test.json.")
+    test.add_argument(
+        "--no-write-report", action="store_true", help="Run test without writing .mimirq-plugin-test.json."
+    )
 
     golden = sub.add_parser("golden-draft", help="Build a local Golden regression bundle from a plugin sample.")
     golden.add_argument("plugin_dir", help="Plugin package directory containing mimirq-plugin.json/yaml.")
-    golden.add_argument("--input", required=True, dest="input_path", help="JSON sample input: array or {documents:[...]}.")
+    golden.add_argument(
+        "--input", required=True, dest="input_path", help="JSON sample input: array or {documents:[...]}."
+    )
     golden.add_argument(
         "--stage",
         action="append",
@@ -55,7 +61,9 @@ def _parse_args() -> argparse.Namespace:
         default="00000000-0000-0000-0000-000000000000",
         help="Dataset id to embed in the regression bundle (default: %(default)s).",
     )
-    golden.add_argument("--max-items", type=int, default=500, help="Maximum Golden cases to emit (default: %(default)s).")
+    golden.add_argument(
+        "--max-items", type=int, default=500, help="Maximum Golden cases to emit (default: %(default)s)."
+    )
     golden.add_argument("--out", default="-", help="Output JSON path, or '-' for stdout (default: %(default)s).")
     return parser.parse_args()
 

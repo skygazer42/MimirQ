@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
@@ -54,7 +53,8 @@ STRUCTURED_OUTPUT_INSTRUCTIONS: dict[str, str] = {
 
 _DEFAULT_STRUCTURED_OUTPUT_INSTRUCTIONS = (
     "Please return JSON only, structure: "
-    '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "...", "page_number": null, "relevance_score": 0.0}]} '
+    '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "...", '
+    '"page_number": null, "relevance_score": 0.0}]} '
     "No extra text."
 )
 

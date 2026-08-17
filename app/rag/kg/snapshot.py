@@ -10,7 +10,6 @@ Note:
 - This module focuses on the pure diff logic so it is easy to unit-test.
 """
 
-
 import hashlib
 import json
 from typing import Any
@@ -69,7 +68,9 @@ def _detail_items(snapshot: dict[str, Any], key: str) -> list[dict[str, Any]]:
             continue
         normalized = dict(item)
         normalized["id"] = item_id
-        normalized["props_hash"] = str(normalized.get("props_hash") or canonical_json_hash({k: v for k, v in normalized.items() if k != "id"}))
+        normalized["props_hash"] = str(
+            normalized.get("props_hash") or canonical_json_hash({k: v for k, v in normalized.items() if k != "id"})
+        )
         out.append(normalized)
     out.sort(key=lambda x: str(x.get("id") or ""))
     return out

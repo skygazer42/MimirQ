@@ -1,4 +1,3 @@
-
 import locale
 import platform
 import shutil
@@ -94,13 +93,17 @@ def main() -> int:
     if shutil.which("docker") is not None:
         code, _out = _run(["docker", "ps"])
         if code != 0:
-            print("[doctor] WARN: Docker CLI is installed but the daemon may not be running (try starting Docker Desktop).")
+            print(
+                "[doctor] WARN: Docker CLI is installed but the daemon may not be running (try starting Docker Desktop)."
+            )
 
     # Best-effort: warn about CRLF auto-conversion which may cause noisy diffs.
     if shutil.which("git") is not None:
         code, out = _run(["git", "config", "--get", "core.autocrlf"])
         if code == 0 and (out or "").strip().lower() in {"true", "input"}:
-            print("[doctor] WARN: git core.autocrlf is enabled; consider disabling to reduce CRLF/LF churn (repo enforces LF via .gitattributes).")
+            print(
+                "[doctor] WARN: git core.autocrlf is enabled; consider disabling to reduce CRLF/LF churn (repo enforces LF via .gitattributes)."
+            )
 
     ok &= _check_file(repo_root / "docker/docker-compose.yml", required=True)
     ok &= _check_file(repo_root / "docker/docker-compose.web.yml", required=True)

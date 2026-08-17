@@ -3,6 +3,7 @@
 Extracted verbatim from ``app/api/v1/pipeline.py``. Submodules must not import
 ``app.api.v1.pipeline`` (circular import).
 """
+
 import asyncio
 import re
 from collections.abc import Iterable
@@ -51,19 +52,25 @@ _FOCUS_RULES: tuple[tuple[str, str, re.Pattern[str], float], ...] = (
     (
         "动作项",
         "custom",
-        re.compile(r"[^。！？!?；;\n]{0,50}(?:建议|需要|应当|必须|后续|下一步|待|TODO|完善|优化|修复)[^。！？!?；;\n]{2,100}[。！？!?；;]?"),
+        re.compile(
+            r"[^。！？!?；;\n]{0,50}(?:建议|需要|应当|必须|后续|下一步|待|TODO|完善|优化|修复)[^。！？!?；;\n]{2,100}[。！？!?；;]?"
+        ),
         0.82,
     ),
     (
         "风险线索",
         "custom",
-        re.compile(r"[^。！？!?；;\n]{0,50}(?:风险|异常|失败|阻断|漏洞|敏感|脱敏|隔离|告警|质量问题)[^。！？!?；;\n]{2,100}[。！？!?；;]?"),
+        re.compile(
+            r"[^。！？!?；;\n]{0,50}(?:风险|异常|失败|阻断|漏洞|敏感|脱敏|隔离|告警|质量问题)[^。！？!?；;\n]{2,100}[。！？!?；;]?"
+        ),
         0.8,
     ),
     (
         "文档重点",
         "custom",
-        re.compile(r"[^。！？!?；;\n]{0,50}(?:核心能力|重点|结论|目标|范围|方案|流程|策略|指标|知识库|数据治理|检索|入库)[^。！？!?；;\n]{2,120}[。！？!?；;]?"),
+        re.compile(
+            r"[^。！？!?；;\n]{0,50}(?:核心能力|重点|结论|目标|范围|方案|流程|策略|指标|知识库|数据治理|检索|入库)[^。！？!?；;\n]{2,120}[。！？!?；;]?"
+        ),
         0.76,
     ),
 )
@@ -463,7 +470,9 @@ def _collect_focus_keyword_annotations(
     return provider_key, out
 
 
-def _collect_domain_focus_terms(text: str, *, max_items: int, blocked: list[AutoAnnotationItem]) -> list[AutoAnnotationItem]:
+def _collect_domain_focus_terms(
+    text: str, *, max_items: int, blocked: list[AutoAnnotationItem]
+) -> list[AutoAnnotationItem]:
     out: list[AutoAnnotationItem] = []
     for term in _DOMAIN_FOCUS_TERMS:
         for start, end in _find_keyword_offsets(text, term, limit=1):
@@ -804,7 +813,9 @@ def _remaining_auto_slots(draft: _AutoAnnotationDraft, max_items: int) -> int:
     return max(0, max_items - len(draft.candidates))
 
 
-def _collect_cpu_auto_provider(draft: _AutoAnnotationDraft, scan_text: str, body: AutoAnnotationRequest, max_items: int) -> None:
+def _collect_cpu_auto_provider(
+    draft: _AutoAnnotationDraft, scan_text: str, body: AutoAnnotationRequest, max_items: int
+) -> None:
     cpu_summary, cpu_tags, cpu_items = _collect_cpu_focus_annotations(
         scan_text,
         keyword_provider=str(body.keyword_provider or "simple"),
@@ -819,7 +830,9 @@ def _collect_cpu_auto_provider(draft: _AutoAnnotationDraft, scan_text: str, body
         _append_provider_used(draft.providers_used, "cpu")
 
 
-async def _collect_llm_auto_provider(draft: _AutoAnnotationDraft, scan_text: str, body: AutoAnnotationRequest, max_items: int) -> None:
+async def _collect_llm_auto_provider(
+    draft: _AutoAnnotationDraft, scan_text: str, body: AutoAnnotationRequest, max_items: int
+) -> None:
     try:
         llm_summary, llm_tags, llm_items = await asyncio.wait_for(
             _collect_llm_focus_annotations(
@@ -875,10 +888,14 @@ def _collect_document_focus_rule_fallback(
     draft.strategy = "hybrid" if draft.strategy == "llm" else "rules"
 
 
-async def _collect_gliner_auto_provider(draft: _AutoAnnotationDraft, scan_text: str, max_items: int) -> list[AutoAnnotationItem]:
+async def _collect_gliner_auto_provider(
+    draft: _AutoAnnotationDraft, scan_text: str, max_items: int
+) -> list[AutoAnnotationItem]:
     if _remaining_auto_slots(draft, max_items) <= 0:
         return []
-    gliner_items = await _collect_gliner_entity_annotations(scan_text, max_items=_remaining_auto_slots(draft, max_items))
+    gliner_items = await _collect_gliner_entity_annotations(
+        scan_text, max_items=_remaining_auto_slots(draft, max_items)
+    )
     draft.candidates.extend(gliner_items)
     if gliner_items:
         _append_provider_used(draft.providers_used, "gliner")
@@ -914,7 +931,9 @@ def _collect_regex_auto_provider(draft: _AutoAnnotationDraft, scan_text: str, ma
         _append_provider_used(draft.providers_used, "regex")
 
 
-def _collect_keyword_auto_provider(draft: _AutoAnnotationDraft, scan_text: str, body: AutoAnnotationRequest, max_items: int) -> None:
+def _collect_keyword_auto_provider(
+    draft: _AutoAnnotationDraft, scan_text: str, body: AutoAnnotationRequest, max_items: int
+) -> None:
     if _remaining_auto_slots(draft, max_items) <= 0:
         return
     draft.keyword_provider, keyword_items = _collect_keyword_annotations(

@@ -47,6 +47,7 @@ _ACL_ACCOUNT_ID_DESCRIPTION = "Optional account/user id for ACL trimming"
 # Configuration
 MCP_ENABLED = getattr(settings, "MCP_ENABLED", False)
 
+
 @contextlib.contextmanager
 def _db_session() -> Iterator[Any]:
     # Helper kept at module scope so unit tests can monkeypatch it.
@@ -138,14 +139,16 @@ async def search_documents(
         for doc in documents:
             content = doc.page_content if hasattr(doc, "page_content") else doc.get("content", "")
             metadata = doc.metadata if hasattr(doc, "metadata") else doc.get("metadata", {})
-            results.append({
-                "content": content[:500] + "..." if len(content) > 500 else content,
-                "document_id": metadata.get("document_id"),
-                "chunk_id": metadata.get("chunk_id") or metadata.get("id"),
-                "page": metadata.get("page"),
-                "source": metadata.get("source", "unknown"),
-                "score": metadata.get("score", 0),
-            })
+            results.append(
+                {
+                    "content": content[:500] + "..." if len(content) > 500 else content,
+                    "document_id": metadata.get("document_id"),
+                    "chunk_id": metadata.get("chunk_id") or metadata.get("id"),
+                    "page": metadata.get("page"),
+                    "source": metadata.get("source", "unknown"),
+                    "score": metadata.get("score", 0),
+                }
+            )
 
         return {
             "query": query,
@@ -525,7 +528,12 @@ def _get_document_structure_sync(
             )
     except Exception as e:
         logger.exception("Failed to get document structure: %s", e)
-        return {"schema": _DOCUMENT_STRUCTURE_SCHEMA, "document": {"document_id": document_id}, "nodes": [], "error": str(e)}
+        return {
+            "schema": _DOCUMENT_STRUCTURE_SCHEMA,
+            "document": {"document_id": document_id},
+            "nodes": [],
+            "error": str(e),
+        }
 
 
 async def get_document_structure(
@@ -1095,20 +1103,122 @@ def extract_keywords(
 
     # Filter stop words (basic)
     stop_words = {
-        "the", "a", "an", "is", "are", "was", "were", "be", "been",
-        "being", "have", "has", "had", "do", "does", "did", "will",
-        "would", "could", "should", "may", "might", "must", "shall",
-        "can", "need", "dare", "ought", "used", "to", "of", "in",
-        "for", "on", "with", "at", "by", "from", "as", "into", "through",
-        "during", "before", "after", "above", "below", "between", "under",
-        "again", "further", "then", "once", "here", "there", "when",
-        "where", "why", "how", "all", "each", "few", "more", "most",
-        "other", "some", "such", "no", "nor", "not", "only", "own",
-        "same", "so", "than", "too", "very", "just", "and", "but",
-        "if", "or", "because", "until", "while", "although", "though",
-        "的", "是", "在", "有", "和", "与", "了", "不", "人", "我",
-        "他", "她", "它", "们", "这", "那", "就", "也", "都", "而",
-        "及", "着", "或", "把", "被", "让", "给", "到", "从", "向",
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "must",
+        "shall",
+        "can",
+        "need",
+        "dare",
+        "ought",
+        "used",
+        "to",
+        "of",
+        "in",
+        "for",
+        "on",
+        "with",
+        "at",
+        "by",
+        "from",
+        "as",
+        "into",
+        "through",
+        "during",
+        "before",
+        "after",
+        "above",
+        "below",
+        "between",
+        "under",
+        "again",
+        "further",
+        "then",
+        "once",
+        "here",
+        "there",
+        "when",
+        "where",
+        "why",
+        "how",
+        "all",
+        "each",
+        "few",
+        "more",
+        "most",
+        "other",
+        "some",
+        "such",
+        "no",
+        "nor",
+        "not",
+        "only",
+        "own",
+        "same",
+        "so",
+        "than",
+        "too",
+        "very",
+        "just",
+        "and",
+        "but",
+        "if",
+        "or",
+        "because",
+        "until",
+        "while",
+        "although",
+        "though",
+        "的",
+        "是",
+        "在",
+        "有",
+        "和",
+        "与",
+        "了",
+        "不",
+        "人",
+        "我",
+        "他",
+        "她",
+        "它",
+        "们",
+        "这",
+        "那",
+        "就",
+        "也",
+        "都",
+        "而",
+        "及",
+        "着",
+        "或",
+        "把",
+        "被",
+        "让",
+        "给",
+        "到",
+        "从",
+        "向",
     }
 
     filtered = [w for w in words if w not in stop_words and len(w) > 1]
@@ -1202,7 +1312,9 @@ def register_default_tools(registry: MCPToolRegistry | None = None) -> MCPToolRe
         description="Get page or page-range content for document-structure navigation",
         parameters=[
             ToolParameter(name="document_id", type="string", description=_DOCUMENT_ID_UUID_DESCRIPTION, required=True),
-            ToolParameter(name="pages", type="string", description="Page selector, e.g. '3', '5-7', or '3,8'", required=True),
+            ToolParameter(
+                name="pages", type="string", description="Page selector, e.g. '3', '5-7', or '3,8'", required=True
+            ),
             ToolParameter(name="dataset_id", type="string", description=_DATASET_ID_UUID_DESCRIPTION, required=True),
             ToolParameter(name="account_id", type="string", description=_ACL_ACCOUNT_ID_DESCRIPTION, default=None),
             ToolParameter(name="max_chars", type="integer", description="Max characters to return", default=50000),

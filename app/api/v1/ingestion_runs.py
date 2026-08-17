@@ -3,7 +3,6 @@
 This exposes a unified run_id view for ingestion entrypoints (upload/batch/URL/connector).
 """
 
-
 import contextlib
 import json
 import re
@@ -76,7 +75,7 @@ def _writable_dataset_ids_subquery(*, tenant_id: UUID, account_id: str):
 
 def _run_out(run: DBIngestionRun) -> IngestionRunOut:
     docs: list[IngestionRunDocumentOut] = []
-    for d in (getattr(run, "documents", None) or []):
+    for d in getattr(run, "documents", None) or []:
         if getattr(d, "document_id", None) is None:
             continue
         docs.append(
@@ -123,7 +122,7 @@ def _load_replay_base_run(*, db: Session, run_id: UUID, tenant_id: UUID, account
 
 def _collect_replay_doc_ids(base: DBIngestionRun) -> list[UUID]:
     doc_ids: list[UUID] = []
-    for document in (getattr(base, "documents", None) or []):
+    for document in getattr(base, "documents", None) or []:
         document_id = getattr(document, "document_id", None)
         if document_id:
             doc_ids.append(document_id)
@@ -252,7 +251,9 @@ def list_ingestion_runs(
     elif str(getattr(member, "role", "") or "").lower() not in EDIT_ROLES:
         return IngestionRunListResponse(total=0, items=[])
     else:
-        q = q.filter(DBIngestionRun.dataset_id.in_(_writable_dataset_ids_subquery(tenant_id=tenant_id, account_id=account_id)))
+        q = q.filter(
+            DBIngestionRun.dataset_id.in_(_writable_dataset_ids_subquery(tenant_id=tenant_id, account_id=account_id))
+        )
 
     status_norm = str(status or "").strip().lower()
     if status_norm:
@@ -397,7 +398,11 @@ def export_ingestion_run_html(
     )
 
 
-@router.get("/runs/{run_id}/compare/{other_run_id}", response_model=IngestionRunCompareResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/runs/{run_id}/compare/{other_run_id}",
+    response_model=IngestionRunCompareResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def compare_ingestion_runs(
     run_id: UUID,
     other_run_id: UUID,
@@ -412,7 +417,11 @@ def compare_ingestion_runs(
 
     # Load ORM rows for diff (best-effort; avoid duplicate queries when possible).
     row_a = db.query(DBIngestionRun).filter(DBIngestionRun.id == run_id, DBIngestionRun.tenant_id == tenant_id).first()
-    row_b = db.query(DBIngestionRun).filter(DBIngestionRun.id == other_run_id, DBIngestionRun.tenant_id == tenant_id).first()
+    row_b = (
+        db.query(DBIngestionRun)
+        .filter(DBIngestionRun.id == other_run_id, DBIngestionRun.tenant_id == tenant_id)
+        .first()
+    )
     diff = {}
     if row_a is not None and row_b is not None:
         diff = IngestionRunService.compare_runs(run_a=row_a, run_b=row_b)
@@ -439,7 +448,12 @@ def compare_ingestion_runs(
     return IngestionRunCompareResponse(run_a=a, run_b=b, diff=diff)
 
 
-@router.post("/runs/{run_id}/replay", response_model=IngestionRunOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/runs/{run_id}/replay",
+    response_model=IngestionRunOut,
+    status_code=201,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def replay_ingestion_run(
     run_id: UUID,
     background_tasks: BackgroundTasks,

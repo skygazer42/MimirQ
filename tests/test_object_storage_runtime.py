@@ -205,10 +205,7 @@ def test_legacy_regionless_metadata_fails_closed_when_bucket_mapping_is_ambiguou
     monkeypatch.setattr(
         runtime.settings,
         "OBJECT_STORAGE_REGION_PROFILES",
-        (
-            '{"region-a":{"provider":"s3","bucket_name":"shared"},'
-            '"region-b":{"provider":"s3","bucket_name":"shared"}}'
-        ),
+        ('{"region-a":{"provider":"s3","bucket_name":"shared"},"region-b":{"provider":"s3","bucket_name":"shared"}}'),
         raising=False,
     )
 
@@ -269,7 +266,9 @@ def test_runtime_settings_refresh_object_store_and_readiness_cache(monkeypatch: 
     reset_object_store_cache()
 
 
-def test_get_object_store_for_uri_prefers_generic_minio_when_document_metadata_marks_object_storage(monkeypatch) -> None:  # noqa: ANN001
+def test_get_object_store_for_uri_prefers_generic_minio_when_document_metadata_marks_object_storage(
+    monkeypatch,
+) -> None:  # noqa: ANN001
     sentinel = object()
 
     monkeypatch.setattr(

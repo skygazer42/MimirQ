@@ -1,4 +1,3 @@
-
 import argparse
 import importlib.util
 import json
@@ -49,11 +48,7 @@ def _filter_manifest_cases(manifest_path: Path, docs_arg: str) -> tuple[Path, Pa
         return manifest_path.parent, manifest_path
 
     requested = {item.strip() for item in docs_raw.split(",") if item.strip()}
-    filtered = [
-        row
-        for row in rows
-        if isinstance(row, dict) and str(row.get("id") or "").strip().lower() in requested
-    ]
+    filtered = [row for row in rows if isinstance(row, dict) and str(row.get("id") or "").strip().lower() in requested]
     if not filtered:
         raise ValueError("docs_filter_empty")
 
@@ -80,7 +75,9 @@ def run(argv: list[str] | None = None) -> int:
     parser.add_argument("--manifest", default=str(DEFAULT_MANIFEST), help="Manifest path.")
     parser.add_argument("--out", default="artifacts/parse_bench/report.json", help="Output JSON path.")
     parser.add_argument("--baseline", default="", help="Optional baseline report path.")
-    parser.add_argument("--strict-profile", default="ci/parser_strict_profile.v1.json", help="Strict profile JSON path.")
+    parser.add_argument(
+        "--strict-profile", default="ci/parser_strict_profile.v1.json", help="Strict profile JSON path."
+    )
     parser.add_argument("--strict", action="store_true", help="Fail on baseline regression.")
     parser.add_argument("--max-files", type=int, default=50, help="Max cases to run.")
     args = parser.parse_args(argv)

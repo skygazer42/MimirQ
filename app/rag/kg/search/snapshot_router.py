@@ -1,9 +1,10 @@
-
 import re
 from typing import Any
 
 _YEAR_RE = re.compile(r"\b(20\d{2})\b")
-_TEMPORAL_HINT_RE = re.compile(r"(?i)\b(current|latest|now|today|timeline|history|before|after)\b|当前|现在|最新|历史|之前|之后")
+_TEMPORAL_HINT_RE = re.compile(
+    r"(?i)\b(current|latest|now|today|timeline|history|before|after)\b|当前|现在|最新|历史|之前|之后"
+)
 
 
 def _sorted_snapshots(available_snapshots: list[str]) -> list[str]:

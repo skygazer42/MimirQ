@@ -1,4 +1,3 @@
-
 import contextlib
 import shutil
 import uuid
@@ -52,10 +51,7 @@ def _sanitize_preview_value(value: Any) -> Any:
     if isinstance(value, list):
         return [_sanitize_preview_value(item) for item in value]
     if isinstance(value, dict):
-        return {
-            _strip_preview_nul_chars(str(key)): _sanitize_preview_value(item)
-            for key, item in value.items()
-        }
+        return {_strip_preview_nul_chars(str(key)): _sanitize_preview_value(item) for key, item in value.items()}
     return value
 
 
@@ -259,9 +255,15 @@ async def preview_document(
                 "normalize_urls": pipeline_effective.governance_normalize_urls,
                 "normalize_urls_strip_tracking": pipeline_effective.governance_normalize_urls_strip_tracking,
                 "drop_duplicate_paragraphs": pipeline_effective.governance_drop_duplicate_paragraphs,
-                "drop_duplicate_paragraphs_min_occurrences": pipeline_effective.governance_drop_duplicate_paragraphs_min_occurrences,
-                "drop_duplicate_paragraphs_min_chars": pipeline_effective.governance_drop_duplicate_paragraphs_min_chars,
-                "drop_duplicate_paragraphs_max_chars": pipeline_effective.governance_drop_duplicate_paragraphs_max_chars,
+                "drop_duplicate_paragraphs_min_occurrences": (
+                    pipeline_effective.governance_drop_duplicate_paragraphs_min_occurrences
+                ),
+                "drop_duplicate_paragraphs_min_chars": (
+                    pipeline_effective.governance_drop_duplicate_paragraphs_min_chars
+                ),
+                "drop_duplicate_paragraphs_max_chars": (
+                    pipeline_effective.governance_drop_duplicate_paragraphs_max_chars
+                ),
                 "trim_references": pipeline_effective.governance_trim_references,
                 "extract_keywords": pipeline_effective.governance_extract_keywords,
                 "keywords_provider": pipeline_effective.governance_keywords_provider,
@@ -366,7 +368,15 @@ async def preview_document(
                         continue
                     if not any(
                         part in path.parts
-                        for part in {".magicpdf", ".deepseek_ocr", ".qianfan_ocr", ".etl4llm", ".marker", ".paddlevl", ".olmocr"}
+                        for part in {
+                            ".magicpdf",
+                            ".deepseek_ocr",
+                            ".qianfan_ocr",
+                            ".etl4llm",
+                            ".marker",
+                            ".paddlevl",
+                            ".olmocr",
+                        }
                     ):
                         continue
                     path.relative_to(tenant_root)

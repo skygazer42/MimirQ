@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from app.rag.core.confidence import compute_confidence_score
@@ -26,7 +25,11 @@ def _resolve_confidence(
                 band = "medium"
             else:
                 band = "low"
-            return {"score": round(score, 4), "band": band, "reasons": [{"signal": "explicit_confidence", "value": score}]}
+            return {
+                "score": round(score, 4),
+                "band": band,
+                "reasons": [{"signal": "explicit_confidence", "value": score}],
+            }
 
     return compute_confidence_score(
         faithfulness_score=faithfulness_score,

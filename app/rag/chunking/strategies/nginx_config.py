@@ -10,7 +10,6 @@ The chunker prefers splitting by server blocks when present; otherwise it falls
 back to a brace-aware block splitter. Offsets are preserved.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -31,7 +30,9 @@ class _Block:
 
 
 _SERVER_OPEN_RE = re.compile(r"(?m)^\s*server\s*\{")
-_BLOCK_OPEN_RE = re.compile(r"(?m)^\s*(?P<kind>http|server|location|upstream|map|events)\b(?P<rest>[^;{]*)\{\s*(?:#.*)?$")
+_BLOCK_OPEN_RE = re.compile(
+    r"(?m)^\s*(?P<kind>http|server|location|upstream|map|events)\b(?P<rest>[^;{]*)\{\s*(?:#.*)?$"
+)
 
 
 def _extract_directive_value(text: str, directive: str) -> str | None:

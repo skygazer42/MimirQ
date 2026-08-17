@@ -89,7 +89,12 @@ def list_ingest_dead_letters(
         query = query.filter(IngestDeadLetter.failed_stage == failed_stage.strip().lower())
 
     total = int(query.count())
-    items = query.order_by(IngestDeadLetter.last_attempt_at.desc(), IngestDeadLetter.id.asc()).offset(skip).limit(limit).all()
+    items = (
+        query.order_by(IngestDeadLetter.last_attempt_at.desc(), IngestDeadLetter.id.asc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
     return {"total": total, "items": items}
 
 
@@ -118,9 +123,7 @@ async def replay_ingest_dead_letter(
         raise HTTPException(status_code=409, detail="Dead letter has no reprocessable document")
 
     document = (
-        db.query(DBDocument)
-        .filter(DBDocument.id == dead_letter.document_id, DBDocument.tenant_id == tenant_id)
-        .first()
+        db.query(DBDocument).filter(DBDocument.id == dead_letter.document_id, DBDocument.tenant_id == tenant_id).first()
     )
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")

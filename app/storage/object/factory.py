@@ -1,4 +1,3 @@
-
 import threading
 from collections.abc import Mapping
 
@@ -36,13 +35,26 @@ def _resolve_object_store_config(provider: str | None = None, *, region: str | N
     return {
         "region": region_key or None,
         "provider": normalize_object_store_provider(
-            str(region_profile.get("provider") or provider or getattr(settings, "OBJECT_STORAGE_PROVIDER", "") or "minio")
+            str(
+                region_profile.get("provider")
+                or provider
+                or getattr(settings, "OBJECT_STORAGE_PROVIDER", "")
+                or "minio"
+            )
         ),
         "enabled": bool(region_profile.get("enabled", getattr(settings, "OBJECT_STORAGE_ENABLED", False))),
-        "endpoint": str(region_profile.get("endpoint") or getattr(settings, "OBJECT_STORAGE_ENDPOINT", "") or "").strip(),
-        "access_key": str(region_profile.get("access_key") or getattr(settings, "OBJECT_STORAGE_ACCESS_KEY", "") or "").strip(),
-        "secret_key": str(region_profile.get("secret_key") or getattr(settings, "OBJECT_STORAGE_SECRET_KEY", "") or "").strip(),
-        "bucket_name": str(region_profile.get("bucket_name") or getattr(settings, "OBJECT_STORAGE_BUCKET_NAME", "") or "").strip(),
+        "endpoint": str(
+            region_profile.get("endpoint") or getattr(settings, "OBJECT_STORAGE_ENDPOINT", "") or ""
+        ).strip(),
+        "access_key": str(
+            region_profile.get("access_key") or getattr(settings, "OBJECT_STORAGE_ACCESS_KEY", "") or ""
+        ).strip(),
+        "secret_key": str(
+            region_profile.get("secret_key") or getattr(settings, "OBJECT_STORAGE_SECRET_KEY", "") or ""
+        ).strip(),
+        "bucket_name": str(
+            region_profile.get("bucket_name") or getattr(settings, "OBJECT_STORAGE_BUCKET_NAME", "") or ""
+        ).strip(),
         "use_ssl": bool(region_profile.get("use_ssl", getattr(settings, "OBJECT_STORAGE_USE_SSL", True))),
         "metrics_log_path": str(
             region_profile.get("metrics_log_path")

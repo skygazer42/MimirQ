@@ -49,7 +49,9 @@ def _build_retriever(monkeypatch: pytest.MonkeyPatch, **overrides):
         "_resolve_document_dataset_scope",
         lambda self, *, tenant_id, document_ids: ((), True),  # noqa: ANN001,ARG005
     )
-    monkeypatch.setattr(HybridRetriever, "_enrich_results_with_db_metadata", lambda self, results, **kwargs: list(results))
+    monkeypatch.setattr(
+        HybridRetriever, "_enrich_results_with_db_metadata", lambda self, results, **kwargs: list(results)
+    )
     monkeypatch.setattr(HybridRetriever, "_expand_results_with_neighbors", lambda self, results: list(results))
     monkeypatch.setattr(HybridRetriever, "_auto_merge_parent_child", lambda self, results: list(results))
 

@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -25,7 +24,9 @@ def _normalized_backend(requested_backend: str | None) -> str:
     return "llm"
 
 
-def resolve_extraction_backend(*, llm_processor: Any, requested_backend: str | None = None) -> ExtractionBackendSelection:
+def resolve_extraction_backend(
+    *, llm_processor: Any, requested_backend: str | None = None
+) -> ExtractionBackendSelection:
     backend = _normalized_backend(requested_backend)
     if backend == "llm":
         return ExtractionBackendSelection(backend="llm", processor=llm_processor)

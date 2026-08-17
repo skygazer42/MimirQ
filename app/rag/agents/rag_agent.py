@@ -1,4 +1,3 @@
-
 import re
 import threading
 import time
@@ -231,9 +230,11 @@ class AgenticRAGRunner:
         max_steps = max(1, int(max_steps or 1))
         planner_llm = self._engine.models.get("fast") or llm
         try:
-            plan_chain = self._engine.decompose_prompt | planner_llm.bind(
-                temperature=float(getattr(settings, "QUERY_DECOMPOSITION_TEMPERATURE", 0.2) or 0.2)
-            ) | StrOutputParser()
+            plan_chain = (
+                self._engine.decompose_prompt
+                | planner_llm.bind(temperature=float(getattr(settings, "QUERY_DECOMPOSITION_TEMPERATURE", 0.2) or 0.2))
+                | StrOutputParser()
+            )
             raw = await plan_chain.ainvoke({"query": question, "n": max_steps})
             data, _meta = parse_json_from_text(raw, expected="array")
             if isinstance(data, list):
@@ -336,9 +337,19 @@ class AgenticRAGRunner:
                 )
             )
 
-        if dataset_id and len(document_ids or []) == 1 and any(
-            phrase in question_lower
-            for phrase in ("full document", "whole document", "entire document", "document content", "read the document")
+        if (
+            dataset_id
+            and len(document_ids or []) == 1
+            and any(
+                phrase in question_lower
+                for phrase in (
+                    "full document",
+                    "whole document",
+                    "entire document",
+                    "document content",
+                    "read the document",
+                )
+            )
         ):
             page_match = re.search(r"\bpage\s+(\d+)\b", question_lower)
             args: dict[str, Any] = {
@@ -431,9 +442,7 @@ class AgenticRAGRunner:
             return
 
         base_state_kwargs = {
-            key: value
-            for key, value in (stream_request.state_overrides or {}).items()
-            if key in _RAG_STATE_BUILD_KEYS
+            key: value for key, value in (stream_request.state_overrides or {}).items() if key in _RAG_STATE_BUILD_KEYS
         }
         base_state_kwargs.update(
             {
@@ -539,7 +548,9 @@ class AgenticRAGRunner:
                         },
                     }
             except Exception:
-                tool_metrics.append({"name": "registry_init", "success": False, "backend": None, "error": "tool_registry_failed"})
+                tool_metrics.append(
+                    {"name": "registry_init", "success": False, "backend": None, "error": "tool_registry_failed"}
+                )
 
         for round_idx, step in enumerate(plan_steps[:max_rounds], 1):
             retrieval_query = build_chained_query(step.query, prior_findings) or step.query
@@ -646,7 +657,9 @@ class AgenticRAGRunner:
                 structured_data, _meta = parse_json_from_text(full_response, expected="object")
 
             evidence_text = ""
-            if bool(getattr(settings, "RAG_SELF_RAG_ENABLED", False)) or bool(getattr(settings, "RAG_CRITIC_ENABLED", False)):
+            if bool(getattr(settings, "RAG_SELF_RAG_ENABLED", False)) or bool(
+                getattr(settings, "RAG_CRITIC_ENABLED", False)
+            ):
                 evidence_text = "\n".join(
                     [
                         str(getattr(doc, "page_content", "") or "").strip()
@@ -723,7 +736,9 @@ class AgenticRAGRunner:
             "agentic_critic_style_issue_count": (
                 len((critic_review or {}).get("style_issues") or []) if critic_review is not None else None
             ),
-            "agentic_critic_reason_codes": list((critic_review or {}).get("reason_codes") or []) if critic_review else [],
+            "agentic_critic_reason_codes": list((critic_review or {}).get("reason_codes") or [])
+            if critic_review
+            else [],
         }
 
         yield {

@@ -2,7 +2,6 @@
 Tenant groups API (enterprise directory primitive).
 """
 
-
 import contextlib
 from typing import Annotated
 from uuid import UUID
@@ -182,7 +181,9 @@ def delete_group(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/{group_id}/members", response_model=TenantGroupMemberListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/{group_id}/members", response_model=TenantGroupMemberListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def list_group_members(
     group_id: UUID,
     skip: Annotated[int, Query(ge=0)] = 0,
@@ -204,7 +205,9 @@ def list_group_members(
     return TenantGroupMemberListResponse(total=total, items=items)
 
 
-@router.post("/{group_id}/members", response_model=TenantGroupMembersUpdateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/{group_id}/members", response_model=TenantGroupMembersUpdateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def add_group_members(
     group_id: UUID,
     payload: TenantGroupMembersUpdateRequest,
@@ -238,7 +241,11 @@ def add_group_members(
     return TenantGroupMembersUpdateResponse(updated=int(added))
 
 
-@router.post("/{group_id}/members/remove", response_model=TenantGroupMembersUpdateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/{group_id}/members/remove",
+    response_model=TenantGroupMembersUpdateResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def remove_group_members(
     group_id: UUID,
     payload: TenantGroupMembersUpdateRequest,
@@ -254,7 +261,9 @@ def remove_group_members(
         TenantPermissions.SETTINGS_WRITE,
         detail="No permission to manage group members",
     )
-    removed = TenantGroupService.remove_members(db, tenant_id=tenant_id, group_id=group_id, member_ids=payload.member_ids)
+    removed = TenantGroupService.remove_members(
+        db, tenant_id=tenant_id, group_id=group_id, member_ids=payload.member_ids
+    )
     audit_log_event(
         db,
         tenant_id=tenant_id,

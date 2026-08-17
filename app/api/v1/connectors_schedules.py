@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated
@@ -91,11 +90,7 @@ def _claim_scheduled_config_window(ctx: _ScheduledTickContext, cfg: ConnectorCon
     else:
         where.append(ConnectorConfig.last_run_at == cfg.last_run_at)
 
-    result = ctx.db.execute(
-        update(ConnectorConfig)
-        .where(*where)
-        .values(last_run_at=ctx.now, last_error=None)
-    )
+    result = ctx.db.execute(update(ConnectorConfig).where(*where).values(last_run_at=ctx.now, last_error=None))
     return bool(getattr(result, "rowcount", 0))
 
 
@@ -117,7 +112,9 @@ def _create_scheduled_run(ctx: _ScheduledTickContext, cfg: ConnectorConfig, conn
 def _disabled_connector_error(connector_id: str) -> str | None:
     if connector_id in _URL_CONNECTORS and not bool(getattr(connectors_module.settings, "URL_INGEST_ENABLED", False)):
         return "url_ingest_disabled"
-    if connector_id in _DB_CATALOG_CONNECTORS and not bool(getattr(connectors_module.settings, "DB_CATALOG_ENABLED", False)):
+    if connector_id in _DB_CATALOG_CONNECTORS and not bool(
+        getattr(connectors_module.settings, "DB_CATALOG_ENABLED", False)
+    ):
         return "db_catalog_disabled"
     return None
 

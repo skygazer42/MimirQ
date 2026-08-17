@@ -50,8 +50,12 @@ def test_mineru_parser_forwards_account_id_to_preview_service(monkeypatch, tmp_p
         captured.update(kwargs)
         return []
 
-    monkeypatch.setattr("app.parsing.parsers.mineru_parser.settings.MINERU_LOCAL_SERVER_URL", "http://mineru.local", raising=False)
-    monkeypatch.setattr("app.parsing.parsers.mineru_parser.mineru_service.parse_file_local", _fake_parse_file_local, raising=True)
+    monkeypatch.setattr(
+        "app.parsing.parsers.mineru_parser.settings.MINERU_LOCAL_SERVER_URL", "http://mineru.local", raising=False
+    )
+    monkeypatch.setattr(
+        "app.parsing.parsers.mineru_parser.mineru_service.parse_file_local", _fake_parse_file_local, raising=True
+    )
 
     parser = MinerUParser()
     parser.parse(

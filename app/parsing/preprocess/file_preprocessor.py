@@ -11,7 +11,6 @@ Security:
 - Preprocessing is bounded by a maximum byte budget to avoid OOM/DoS.
 """
 
-
 import hashlib
 import os
 import re
@@ -305,13 +304,17 @@ def _step_collapse_blank_lines(text: str, *, ext: str, enc: str, conf: float) ->
 
 def _step_trim_trailing_whitespace(text: str, *, ext: str, enc: str, conf: float) -> tuple[str, bool, bool, str]:
     _ = (ext, enc, conf)
-    new_text, changed = _apply_transform(text, lambda value: "\n".join(line.rstrip(" \t") for line in value.split("\n")))
+    new_text, changed = _apply_transform(
+        text, lambda value: "\n".join(line.rstrip(" \t") for line in value.split("\n"))
+    )
     return new_text, True, changed, ""
 
 
 def _step_remove_zero_width(text: str, *, ext: str, enc: str, conf: float) -> tuple[str, bool, bool, str]:
     _ = (ext, enc, conf)
-    new_text, changed = _apply_transform(text, lambda value: re.sub(r"[\u200b\u200c\u200d\u2060\u00ad\ufeff]", "", value))
+    new_text, changed = _apply_transform(
+        text, lambda value: re.sub(r"[\u200b\u200c\u200d\u2060\u00ad\ufeff]", "", value)
+    )
     return new_text, True, changed, ""
 
 
@@ -335,13 +338,17 @@ def _step_unicode_nfkc(text: str, *, ext: str, enc: str, conf: float) -> tuple[s
 
 def _step_strip_scripts_styles(text: str, *, ext: str, enc: str, conf: float) -> tuple[str, bool, bool, str]:
     _ = (enc, conf)
-    new_text, changed, note = _apply_html_transform(text, ext=ext, transform=lambda value: _RE_SCRIPT_STYLE.sub("", value))
+    new_text, changed, note = _apply_html_transform(
+        text, ext=ext, transform=lambda value: _RE_SCRIPT_STYLE.sub("", value)
+    )
     return new_text, True, changed, note
 
 
 def _step_strip_comments(text: str, *, ext: str, enc: str, conf: float) -> tuple[str, bool, bool, str]:
     _ = (enc, conf)
-    new_text, changed, note = _apply_html_transform(text, ext=ext, transform=lambda value: _RE_HTML_COMMENT.sub("", value))
+    new_text, changed, note = _apply_html_transform(
+        text, ext=ext, transform=lambda value: _RE_HTML_COMMENT.sub("", value)
+    )
     return new_text, True, changed, note
 
 

@@ -1,4 +1,3 @@
-
 import argparse
 import json
 import os
@@ -172,7 +171,9 @@ def _maybe_bucket_stats(*, enabled: bool, prefix: str, max_objects: int) -> None
     secure = secure_raw in {"1", "true", "yes", "y", "on"}
 
     if not endpoint or not access_key or not secret_key or not bucket:
-        print("[minio-metrics] bucket stats skipped: set MINIO_ENDPOINT/MINIO_ACCESS_KEY/MINIO_SECRET_KEY/MINIO_BUCKET_NAME")
+        print(
+            "[minio-metrics] bucket stats skipped: set MINIO_ENDPOINT/MINIO_ACCESS_KEY/MINIO_SECRET_KEY/MINIO_BUCKET_NAME"
+        )
         return
 
     client = Minio(endpoint=endpoint, access_key=access_key, secret_key=secret_key, secure=secure)
@@ -193,7 +194,9 @@ def _maybe_bucket_stats(*, enabled: bool, prefix: str, max_objects: int) -> None
     elapsed_ms = int((time.perf_counter() - t0) * 1000)
     truncated = bool(max_objects and count >= max_objects)
     trunc_note = " (truncated)" if truncated else ""
-    print(f"[minio-metrics] bucket stats{trunc_note}: prefix={prefix!r} objects={count} bytes={total_bytes} elapsed_ms={elapsed_ms}")
+    print(
+        f"[minio-metrics] bucket stats{trunc_note}: prefix={prefix!r} objects={count} bytes={total_bytes} elapsed_ms={elapsed_ms}"
+    )
 
 
 def main() -> int:
@@ -216,9 +219,15 @@ def main() -> int:
         help="Only read last N lines from the metrics file (0 = read all)",
     )
     parser.add_argument("--show-errors", action="store_true", help="Print recent failure error strings (best-effort)")
-    parser.add_argument("--bucket-stats", action="store_true", help="Also compute bucket prefix object count/bytes (requires MINIO_* env vars)")
+    parser.add_argument(
+        "--bucket-stats",
+        action="store_true",
+        help="Also compute bucket prefix object count/bytes (requires MINIO_* env vars)",
+    )
     parser.add_argument("--prefix", default="images/", help="Bucket prefix for --bucket-stats (default: images/)")
-    parser.add_argument("--max-objects", type=int, default=0, help="Max objects to scan for bucket stats (0 = unlimited)")
+    parser.add_argument(
+        "--max-objects", type=int, default=0, help="Max objects to scan for bucket stats (0 = unlimited)"
+    )
     args = parser.parse_args()
 
     path = Path(str(args.path))
@@ -240,10 +249,11 @@ def main() -> int:
         for e in errors[-20:]:
             print(f"  - {e}")
 
-    _maybe_bucket_stats(enabled=bool(args.bucket_stats), prefix=str(args.prefix or "images/"), max_objects=int(args.max_objects or 0))
+    _maybe_bucket_stats(
+        enabled=bool(args.bucket_stats), prefix=str(args.prefix or "images/"), max_objects=int(args.max_objects or 0)
+    )
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

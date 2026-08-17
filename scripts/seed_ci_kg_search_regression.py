@@ -379,9 +379,9 @@ def seed_fixture(*, fixture: dict[str, Any]) -> None:
                 row.doc_metadata = dict(doc_meta)
 
             # Replace chunks for this document (idempotent across reruns).
-            db.query(DocumentChunk).filter(DocumentChunk.tenant_id == tenant_id, DocumentChunk.document_id == doc_id).delete(
-                synchronize_session=False
-            )
+            db.query(DocumentChunk).filter(
+                DocumentChunk.tenant_id == tenant_id, DocumentChunk.document_id == doc_id
+            ).delete(synchronize_session=False)
 
             for ch in chunks:
                 if not isinstance(ch, dict):

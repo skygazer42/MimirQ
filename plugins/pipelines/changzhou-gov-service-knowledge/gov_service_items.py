@@ -1,6 +1,5 @@
 """Governance and chunk helpers owned by the Changzhou service plugin."""
 
-
 import hashlib
 import re
 from typing import Any
@@ -44,7 +43,10 @@ _PRIMARY_FIELDS = (
 )
 
 _CHUNK_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("service_basic", ("行使层级", "办理形式", "办理地点", "办理时间", "办件类型", "法定办结时限", "承诺办结时限", "收费情况")),
+    (
+        "service_basic",
+        ("行使层级", "办理形式", "办理地点", "办理时间", "办件类型", "法定办结时限", "承诺办结时限", "收费情况"),
+    ),
     ("service_condition", ("受理条件",)),
     ("service_materials", ("办理材料", "精细化材料提醒")),
     ("service_process", ("办理流程",)),
@@ -86,7 +88,9 @@ def _normalize_url(raw: str) -> str:
         return ""
     try:
         parts = urlsplit(value)
-        query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k.lower() not in _TRACKING_QUERY_KEYS]
+        query = [
+            (k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k.lower() not in _TRACKING_QUERY_KEYS
+        ]
         return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), ""))
     except ValueError:
         return value

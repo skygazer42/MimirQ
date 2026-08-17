@@ -41,7 +41,9 @@ class FusionMixin:
 
         field_aware_enabled = bool(getattr(settings, "RETRIEVAL_FIELD_AWARE_RECALL_ENABLED", False))
         field_aware_title_boost = max(0.0, float(getattr(settings, "RETRIEVAL_FIELD_AWARE_TITLE_BOOST", 0.08) or 0.0))
-        field_aware_heading_boost = max(0.0, float(getattr(settings, "RETRIEVAL_FIELD_AWARE_HEADING_BOOST", 0.05) or 0.0))
+        field_aware_heading_boost = max(
+            0.0, float(getattr(settings, "RETRIEVAL_FIELD_AWARE_HEADING_BOOST", 0.05) or 0.0)
+        )
         field_aware_max_boost = max(0.0, float(getattr(settings, "RETRIEVAL_FIELD_AWARE_MAX_BOOST", 0.10) or 0.0))
         field_aware_title_boost = min(field_aware_title_boost, field_aware_max_boost)
         field_aware_heading_boost = min(field_aware_heading_boost, field_aware_max_boost)
@@ -50,12 +52,9 @@ class FusionMixin:
 
         def _resolve_chunk_type(result: dict[str, Any]) -> str:
             meta = result.get("metadata") or {}
-            raw = str(
-                meta.get("chunk_type")
-                or meta.get("content_type")
-                or meta.get("visual_kind")
-                or ""
-            ).strip().lower()
+            raw = (
+                str(meta.get("chunk_type") or meta.get("content_type") or meta.get("visual_kind") or "").strip().lower()
+            )
             if raw in {"text", "formula", "table", "code", "figure", "chart_data", "seal"}:
                 return raw
             if raw == "chart":
@@ -96,12 +95,16 @@ class FusionMixin:
 
         def _resolve_field_signal(result: dict[str, Any]) -> str:
             meta = result.get("metadata") or {}
-            hinted = str(
-                meta.get("embedding_field_role")
-                or meta.get("embedding_field_kind")
-                or meta.get("field_channel")
-                or ""
-            ).strip().lower()
+            hinted = (
+                str(
+                    meta.get("embedding_field_role")
+                    or meta.get("embedding_field_kind")
+                    or meta.get("field_channel")
+                    or ""
+                )
+                .strip()
+                .lower()
+            )
             if hinted in {"title", "heading", "body"}:
                 return hinted
 
@@ -221,6 +224,7 @@ class FusionMixin:
 
         fusion = (fusion_strategy or "linear").lower().strip()
         if fusion in ("rrf", "reciprocal_rank_fusion"):
+
             def _rank_sort_key(r: dict[str, Any]) -> tuple[float, str]:
                 # Deterministic ordering is important for regression replay.
                 return (-float(r.get("score", 0.0) or 0.0), self._result_key(r))
@@ -256,7 +260,9 @@ class FusionMixin:
 
             merged: dict[str, dict[str, Any]] = {}
             raw_scores: list[float] = []
-            keys = sorted(set(vector_norm.keys()) | set(bm25_norm.keys()) | set(lexical_norm.keys()) | set(sparse_norm.keys()))
+            keys = sorted(
+                set(vector_norm.keys()) | set(bm25_norm.keys()) | set(lexical_norm.keys()) | set(sparse_norm.keys())
+            )
             for key in keys:
                 v_data = vector_norm.get(key, {}).get("data")
                 b_data = bm25_norm.get(key, {}).get("data")
@@ -345,6 +351,7 @@ class FusionMixin:
             return self._apply_plugin_retrieval_policy(sorted(merged.values(), key=_sort_key), query=query)
 
         if fusion in ("budgeted_rrf", "budget_rrf"):
+
             def _rank_sort_key(r: dict[str, Any]) -> tuple[float, str]:
                 # Deterministic ordering is important for regression replay.
                 return (-float(r.get("score", 0.0) or 0.0), self._result_key(r))
@@ -440,7 +447,9 @@ class FusionMixin:
                         budgets[channel] = 1
                         remaining -= 1
 
-                    priority = [channel for channel in ("vector", "bm25", "lexical", "sparse") if channel in active_channels]
+                    priority = [
+                        channel for channel in ("vector", "bm25", "lexical", "sparse") if channel in active_channels
+                    ]
                     idx = 0
                     while remaining > 0 and priority:
                         channel = priority[idx % len(priority)]
@@ -455,7 +464,9 @@ class FusionMixin:
 
             merged: dict[str, dict[str, Any]] = {}
             raw_scores: list[float] = []
-            keys = sorted(set(vector_norm.keys()) | set(bm25_norm.keys()) | set(lexical_norm.keys()) | set(sparse_norm.keys()))
+            keys = sorted(
+                set(vector_norm.keys()) | set(bm25_norm.keys()) | set(lexical_norm.keys()) | set(sparse_norm.keys())
+            )
 
             def _candidate_eligible(key: str) -> bool:
                 # Candidate must have at least one channel where it meets that channel's min score (if configured).
@@ -585,7 +596,9 @@ class FusionMixin:
             used: set[str] = set()
             picked_by_channel: dict[str, int] = {"vector": 0, "bm25": 0, "lexical": 0, "sparse": 0, "fill": 0}
 
-            def _select_from_channel(channel: str, sorted_results: list[dict[str, Any]], rank_map: dict[str, int]) -> None:
+            def _select_from_channel(
+                channel: str, sorted_results: list[dict[str, Any]], rank_map: dict[str, int]
+            ) -> None:
                 quota = int(budgets.get(channel, 0) or 0)
                 if quota <= 0:
                     return
@@ -651,7 +664,9 @@ class FusionMixin:
 
                 budgets_out = dict(sorted((str(k), int(v or 0)) for k, v in (budgets or {}).items()))
                 min_scores_out = dict(sorted((str(k), float(v or 0.0)) for k, v in (min_scores or {}).items()))
-                picked_out = {k: int(picked_by_channel.get(k, 0) or 0) for k in ("vector", "bm25", "lexical", "sparse", "fill")}
+                picked_out = {
+                    k: int(picked_by_channel.get(k, 0) or 0) for k in ("vector", "bm25", "lexical", "sparse", "fill")
+                }
 
                 if isinstance(self._last_channel_metrics, dict):
                     self._last_channel_metrics["fusion_budgeted_rrf"] = {
@@ -668,6 +683,7 @@ class FusionMixin:
             return self._apply_plugin_retrieval_policy(prefix + rest, query=query)
 
         if fusion in ("weighted", "weighted_linear", "weighted_sum"):
+
             def _coerce_weights(raw: Any) -> dict[str, float]:
                 if not isinstance(raw, dict):
                     return {}
@@ -772,7 +788,9 @@ class FusionMixin:
                 return self._apply_plugin_retrieval_policy(sorted(merged.values(), key=_sort_key), query=query)
 
         merged: dict[str, dict[str, Any]] = {}
-        keys = sorted(set(vector_norm.keys()) | set(bm25_norm.keys()) | set(lexical_norm.keys()) | set(sparse_norm.keys()))
+        keys = sorted(
+            set(vector_norm.keys()) | set(bm25_norm.keys()) | set(lexical_norm.keys()) | set(sparse_norm.keys())
+        )
         for key in keys:
             v_score = vector_norm.get(key, {}).get("score", 0.0)
             b_score = bm25_norm.get(key, {}).get("score", 0.0)
@@ -867,10 +885,7 @@ class FusionMixin:
         }
 
         def tfidf_vec(term_frequencies: Counter[str]) -> dict[str, float]:
-            return {
-                token: count * token_idf.get(token, 0.0)
-                for token, count in term_frequencies.items()
-            }
+            return {token: count * token_idf.get(token, 0.0) for token, count in term_frequencies.items()}
 
         query_vec = tfidf_vec(Counter(query_tokens))
         doc_vecs = [tfidf_vec(term_frequencies) for term_frequencies in doc_term_frequencies]

@@ -86,7 +86,9 @@ def test_update_settings_preserves_write_apply_and_reset_order(monkeypatch: pyte
     def _reset_rag_engine():
         calls.append("reset_rag_engine")
 
-    monkeypatch.setitem(sys.modules, "app.services.audit_log_service", SimpleNamespace(audit_log_event=_audit_log_event))
+    monkeypatch.setitem(
+        sys.modules, "app.services.audit_log_service", SimpleNamespace(audit_log_event=_audit_log_event)
+    )
     monkeypatch.setitem(sys.modules, "app.rag.engine", SimpleNamespace(reset_rag_engine=_reset_rag_engine))
 
     result = settings_api.update_settings(

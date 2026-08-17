@@ -523,7 +523,9 @@ def test_generate_questions_from_conversations_preserves_request_order_and_filte
                 tenant_id=tenant_id,
                 conversation_id=conv_b.id,
                 role="assistant",
-                content="Rollback happens when health checks fail repeatedly after rollout and error budgets are exceeded.",
+                content=(
+                    "Rollback happens when health checks fail repeatedly after rollout and error budgets are exceeded."
+                ),
                 citations=[{"document_id": "doc-b"}],
                 created_at=_utc_datetime(4, hour=1),
             ),

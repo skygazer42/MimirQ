@@ -187,7 +187,7 @@ def test_parse_qa_faq_import_bytes_csv_normalizes_payload() -> None:
 
     raw = (
         "Question,Expected Answer,Tags,source,extra\n"
-        "\"  How  to deploy?  \",Done,\"alpha; beta;alpha\",guide,keep\n"
+        '"  How  to deploy?  ",Done,"alpha; beta;alpha",guide,keep\n'
         ",Missing query,,guide,\n"
     ).encode("utf-8")
 
@@ -310,7 +310,9 @@ def test_list_queryset_health_runs_filters_newest_first_and_timeseries(monkeypat
     module.load_queryset_health_history = lambda _path: list(history)
 
     monkeypatch.setattr(observability, "_ensure_admin", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(observability.settings, "QUERYSET_HEALTH_HISTORY_PATH", "/tmp/queryset-history.jsonl", raising=False)
+    monkeypatch.setattr(
+        observability.settings, "QUERYSET_HEALTH_HISTORY_PATH", "/tmp/queryset-history.jsonl", raising=False
+    )
     monkeypatch.setitem(sys.modules, "app.services.queryset_health_service", module)
 
     response = observability.list_queryset_health_runs(
@@ -531,7 +533,9 @@ def test_execute_confluence_space_run_probes_completion_before_soft_delete(monke
         },
     )
     monkeypatch.setattr(connectors_confluence, "_build_confluence_space_search_cql", lambda **_kwargs: "type=page")
-    monkeypatch.setattr(connectors_confluence, "_initialize_confluence_space_run_stats", lambda **_kwargs: {"seed": True})
+    monkeypatch.setattr(
+        connectors_confluence, "_initialize_confluence_space_run_stats", lambda **_kwargs: {"seed": True}
+    )
     monkeypatch.setattr(connectors_confluence, "_initialize_confluence_space_progress", lambda: {"processed": 0})
     monkeypatch.setattr(connectors_confluence, "_fetch_confluence_space_listing_page", fake_fetch_listing_page)
     monkeypatch.setattr(connectors_confluence, "_confluence_space_run_cancelled", lambda *_args, **_kwargs: False)

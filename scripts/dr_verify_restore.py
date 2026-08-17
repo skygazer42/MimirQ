@@ -15,7 +15,6 @@ Notes:
 - Safe-by-default: does not print tokens; relies on smoke_test redaction.
 """
 
-
 import argparse
 import json
 import os
@@ -194,13 +193,17 @@ def main(argv: list[str] | None = None) -> int:
 
     p.add_argument("--skip-smoke", action="store_true", help="Skip smoke test step.")
     p.add_argument("--skip-index-audit", action="store_true", help="Skip index-audit step.")
-    p.add_argument("--dataset-id", default="", help="Explicit dataset id for index-audit (otherwise uses smoke dataset).")
+    p.add_argument(
+        "--dataset-id", default="", help="Explicit dataset id for index-audit (otherwise uses smoke dataset)."
+    )
 
     p.add_argument("--max-check-ids", type=int, default=2000)
     p.add_argument("--milvus-list-limit", type=int, default=500)
     p.add_argument("--sample-limit", type=int, default=20)
 
-    p.add_argument("--allow-unstructured", action="store_true", help="Allow smoke test to pass without structured output.")
+    p.add_argument(
+        "--allow-unstructured", action="store_true", help="Allow smoke test to pass without structured output."
+    )
     p.add_argument("--out", default="", help="Write JSON report to file path (best-effort).")
     p.add_argument("--verbose", action="store_true")
 
@@ -270,7 +273,10 @@ def main(argv: list[str] | None = None) -> int:
 
         if not dataset_id:
             audit_ok = False
-            report["steps"]["index_audit"] = {"ok": False, "error": "no_dataset_id (pass --dataset-id or run smoke step)"}
+            report["steps"]["index_audit"] = {
+                "ok": False,
+                "error": "no_dataset_id (pass --dataset-id or run smoke step)",
+            }
         else:
             headers = _build_headers(tenant_id=tenant_id, user_id=user_id, token=token)
             with httpx.Client(timeout=timeout, limits=limits, follow_redirects=False, trust_env=False) as client:
