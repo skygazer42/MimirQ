@@ -135,6 +135,24 @@ def test_hybrid_search_normalizes_vector_candidates_and_exact_anchor_metrics(
     assert retriever._last_channel_metrics["degraded_reasons"] == []
 
 
+def test_bm25_candidates_preserve_active_pipeline_identity() -> None:
+    from app.rag.retriever import HybridRetriever
+
+    metadata = HybridRetriever._candidate_metadata_from_doc(
+        {
+            "document_id": "doc-1",
+            "pipeline_hash": "pipeline-v2",
+            "doc_pipeline_key": "doc-1:pipeline-v2",
+            "active_pipeline_hash": "pipeline-v2",
+        },
+        chunk_id="chunk-1",
+    )
+
+    assert metadata["pipeline_hash"] == "pipeline-v2"
+    assert metadata["doc_pipeline_key"] == "doc-1:pipeline-v2"
+    assert metadata["active_pipeline_hash"] == "pipeline-v2"
+
+
 def test_invoke_preserves_debug_degradation_contract_with_bm25_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

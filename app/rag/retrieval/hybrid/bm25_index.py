@@ -1422,6 +1422,10 @@ class Bm25IndexMixin:
             value = meta.get(key) or pipeline_meta.get(key)
             if value:
                 out[key] = value
+        for key in ("doc_pipeline_key", "pipeline_hash", "active_pipeline_hash"):
+            value = meta.get(key) or pipeline_meta.get(key)
+            if value:
+                out[key] = value
         for key in _PLATFORM_METADATA_VIEW_KEYS:
             value = meta.get(key)
             if isinstance(value, dict) and value:
