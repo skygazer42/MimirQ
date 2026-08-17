@@ -394,6 +394,90 @@ def _extract_derived_attributes(meta: Mapping[str, Any]) -> dict[str, Any] | Non
     return attrs or None
 
 
+def _resolve_source_fields(
+    raw: Mapping[str, Any],
+    *,
+    attributes: Mapping[str, Any] | None,
+) -> tuple[str | None, str | None]:
+    source_backend = _clean_optional_string(raw.get("source_backend"))
+    if source_backend is None and isinstance(attributes, Mapping):
+        source_backend = _clean_optional_string(attributes.get("source_backend"))
+    source_element_id = _clean_optional_string(raw.get("source_element_id"))
+    if source_element_id is None and isinstance(attributes, Mapping):
+        source_element_id = _clean_optional_string(attributes.get("source_element_id"))
+    return source_backend, source_element_id
+
+
+def _resolve_element_visuals(
+    raw: Mapping[str, Any],
+    *,
+    kind: str,
+    text: str,
+    attributes: Mapping[str, Any] | None,
+) -> tuple[str | None, dict[str, Any] | None, str]:
+    visual_kind = _normalize_string(raw.get("visual_kind")) or _infer_visual_kind(
+        kind=kind,
+        text=text,
+        attributes=attributes,
+    )
+    next_attributes = dict(attributes or {}) if visual_kind else (dict(attributes) if isinstance(attributes, dict) else attributes)
+    if visual_kind:
+        next_attributes = dict(attributes or {})
+        next_attributes["visual_kind"] = visual_kind
+    preferred_text = _prefer_image_code_text(kind=kind, visual_kind=visual_kind, text=text, attributes=next_attributes)
+    return visual_kind, next_attributes, preferred_text
+
+
+def _coerce_element_confidence(raw: Mapping[str, Any], *keys: str) -> float | None:
+    for key in keys:
+        confidence = _coerce_float(raw.get(key))
+        if confidence is not None:
+            return confidence
+    return None
+
+
+def _normalize_single_derived_element(
+    raw: Mapping[str, Any],
+    *,
+    index: int,
+    parent_id: str,
+    parent_page: int | None,
+) -> dict[str, Any]:
+    text = _clean_element_text(raw.get("text") or raw.get("element_text"))
+    kind = str(raw.get("kind") or raw.get("element_kind") or "").strip().lower()
+    if kind not in _KNOWN_KINDS:
+        kind = _classify_kind(raw, text)
+    page = _coerce_int(raw.get("page"))
+    if page is None:
+        page = _extract_page(raw)
+    if page is None:
+        page = parent_page
+    pages = _extract_pages(raw)
+    bbox = _coerce_bbox(raw.get("bbox"))
+    if bbox is None:
+        bbox = _extract_bbox(raw)
+    attributes = _extract_derived_attributes(raw)
+    source_backend, source_element_id = _resolve_source_fields(raw, attributes=attributes)
+    visual_kind, attributes, text = _resolve_element_visuals(raw, kind=kind, text=text, attributes=attributes)
+    confidence = _coerce_element_confidence(raw, "confidence", "element_confidence", "score", "seal_score")
+    item_id = str(raw.get("id") or raw.get("element_id") or "").strip()
+    if not item_id:
+        item_id = f"{parent_id}:derived:{index}"
+    return {
+        "id": item_id,
+        "kind": kind,
+        "page": page,
+        "pages": pages,
+        "visual_kind": visual_kind or None,
+        "text": text or None,
+        "bbox": bbox,
+        "confidence": confidence,
+        "source_backend": source_backend,
+        "source_element_id": source_element_id,
+        "attributes": attributes,
+    }
+
+
 def _normalize_derived_elements(
     meta: Mapping[str, Any],
     *,
@@ -408,58 +492,7 @@ def _normalize_derived_elements(
     for index, raw in enumerate(raw_elements):
         if not isinstance(raw, Mapping):
             continue
-        text = _clean_element_text(raw.get("text") or raw.get("element_text"))
-        kind = str(raw.get("kind") or raw.get("element_kind") or "").strip().lower()
-        if kind not in _KNOWN_KINDS:
-            kind = _classify_kind(raw, text)
-        page = _coerce_int(raw.get("page"))
-        if page is None:
-            page = _extract_page(raw)
-        if page is None:
-            page = parent_page
-        pages = _extract_pages(raw)
-        bbox = _coerce_bbox(raw.get("bbox"))
-        if bbox is None:
-            bbox = _extract_bbox(raw)
-        attributes = _extract_derived_attributes(raw)
-        source_backend = _clean_optional_string(raw.get("source_backend"))
-        if source_backend is None and isinstance(attributes, Mapping):
-            source_backend = _clean_optional_string(attributes.get("source_backend"))
-        source_element_id = _clean_optional_string(raw.get("source_element_id"))
-        if source_element_id is None and isinstance(attributes, Mapping):
-            source_element_id = _clean_optional_string(attributes.get("source_element_id"))
-        visual_kind = _normalize_string(raw.get("visual_kind")) or _infer_visual_kind(kind=kind, text=text, attributes=attributes)
-        if visual_kind:
-            attrs = dict(attributes or {})
-            attrs["visual_kind"] = visual_kind
-            attributes = attrs
-        text = _prefer_image_code_text(kind=kind, visual_kind=visual_kind, text=text, attributes=attributes)
-
-        confidence = None
-        for key in ("confidence", "element_confidence", "score", "seal_score"):
-            confidence = _coerce_float(raw.get(key))
-            if confidence is not None:
-                break
-
-        item_id = str(raw.get("id") or raw.get("element_id") or "").strip()
-        if not item_id:
-            item_id = f"{parent_id}:derived:{index}"
-
-        out.append(
-            {
-                "id": item_id,
-                "kind": kind,
-                "page": page,
-                "pages": pages,
-                "visual_kind": visual_kind or None,
-                "text": text or None,
-                "bbox": bbox,
-                "confidence": confidence,
-                "source_backend": source_backend,
-                "source_element_id": source_element_id,
-                "attributes": attributes,
-            }
-        )
+        out.append(_normalize_single_derived_element(raw, index=index, parent_id=parent_id, parent_page=parent_page))
     return out
 
 

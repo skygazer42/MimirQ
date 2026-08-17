@@ -100,6 +100,86 @@ def _parse_speaker_and_rest(s: str, start: int) -> tuple[str, int] | None:
     return speaker, i
 
 
+def _parse_bracketed_message_start(s: str, start: int) -> tuple[str, str | None] | None:
+    close = s.find("]", start + 1)
+    if close == -1:
+        return None
+    inside = s[start + 1 : close]
+    if len(inside) > 40:
+        return None
+    if _parse_date_prefix(inside, 0) is None:
+        return None
+    parsed = _parse_speaker_and_rest(s, close + 1)
+    if not parsed:
+        return None
+    speaker, _ = parsed
+    return speaker, inside.strip()
+
+
+def _parse_dated_message_start(s: str, start: int) -> tuple[str, str | None] | None:
+    date_end = _parse_date_prefix(s, start)
+    if date_end is None:
+        return None
+    for separator in (",", None):
+        parsed = _parse_dated_speaker_and_timestamp(s, start=start, date_end=date_end, separator=separator)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _parse_dated_speaker_and_timestamp(
+    s: str,
+    *,
+    start: int,
+    date_end: int,
+    separator: str | None,
+) -> tuple[str, str | None] | None:
+    n = len(s)
+    index = date_end
+    if separator is not None:
+        if index >= n or s[index] != separator:
+            return None
+        index += 1
+        while index < n and s[index].isspace():
+            index += 1
+    else:
+        if index >= n or not s[index].isspace():
+            return None
+        while index < n and s[index].isspace():
+            index += 1
+
+    time_end = _parse_time_prefix(s, index)
+    if time_end is None:
+        return None
+    speaker_start = _skip_dash_separator(s, time_end)
+    parsed = _parse_speaker_and_rest(s, speaker_start)
+    if not parsed:
+        return None
+    speaker, _ = parsed
+    return speaker, s[start:time_end].strip()
+
+
+def _skip_dash_separator(s: str, start: int) -> int:
+    n = len(s)
+    index = start
+    while index < n and s[index].isspace():
+        index += 1
+    if index < n and s[index] in _DASH_CHARS:
+        index += 1
+    return index
+
+
+def _parse_time_only_message_start(s: str, start: int) -> tuple[str, str | None] | None:
+    time_end = _parse_time_prefix(s, start)
+    if time_end is None:
+        return None
+    parsed = _parse_speaker_and_rest(s, time_end)
+    if not parsed:
+        return None
+    speaker, _ = parsed
+    return speaker, s[start:time_end].strip()
+
+
 def _parse_message_start(line: str) -> tuple[str, str | None] | None:
     """
     Detect chat message boundaries. Implemented without regex to avoid backtracking hotspots.
@@ -116,72 +196,15 @@ def _parse_message_start(line: str) -> tuple[str, str | None] | None:
     if i >= n:
         return None
 
-    # [YYYY-MM-DD ...] Speaker: ...
     if s[i] == "[":
-        close = s.find("]", i + 1)
-        if close == -1:
-            return None
-        inside = s[i + 1 : close]
-        if len(inside) > 40:
-            return None
-        date_end = _parse_date_prefix(inside, 0)
-        if date_end is None:
-            return None
-        ts = inside.strip()
-        parsed = _parse_speaker_and_rest(s, close + 1)
-        if not parsed:
-            return None
-        speaker, _ = parsed
-        return speaker, ts
+        return _parse_bracketed_message_start(s, i)
 
-    # YYYY/MM/DD, 10:00 - Speaker: ...
-    date_end = _parse_date_prefix(s, i)
-    if date_end is not None:
-        j = date_end
-        if j < n and s[j] == ",":
-            j += 1
-            while j < n and s[j].isspace():
-                j += 1
-            time_end = _parse_time_prefix(s, j)
-            if time_end is not None:
-                ts = s[i:time_end].strip()
-                k = time_end
-                while k < n and s[k].isspace():
-                    k += 1
-                if k < n and s[k] in _DASH_CHARS:
-                    k += 1
-                parsed = _parse_speaker_and_rest(s, k)
-                if parsed:
-                    speaker, _ = parsed
-                    return speaker, ts
-
-        # YYYY-MM-DD 10:00 - Speaker: ...
-        j = date_end
-        if j < n and s[j].isspace():
-            while j < n and s[j].isspace():
-                j += 1
-            time_end = _parse_time_prefix(s, j)
-            if time_end is not None:
-                ts = s[i:time_end].strip()
-                k = time_end
-                while k < n and s[k].isspace():
-                    k += 1
-                if k < n and s[k] in _DASH_CHARS:
-                    k += 1
-                parsed = _parse_speaker_and_rest(s, k)
-                if parsed:
-                    speaker, _ = parsed
-                    return speaker, ts
-
-    # 10:00 Speaker: ...
-    time_end = _parse_time_prefix(s, i)
-    if time_end is not None:
-        ts = s[i:time_end].strip()
-        parsed = _parse_speaker_and_rest(s, time_end)
-        if parsed:
-            speaker, _ = parsed
-            return speaker, ts
-
+    dated = _parse_dated_message_start(s, i)
+    if dated is not None:
+        return dated
+    time_only = _parse_time_only_message_start(s, i)
+    if time_only is not None:
+        return time_only
     return None
 
 
@@ -222,6 +245,78 @@ def looks_like_chat_history(text: str) -> bool:
     return len(speakers) >= 2
 
 
+def _split_fallback_docs(splitter: RecursiveCharacterTextSplitter, text: str, base_meta: dict[str, Any]) -> list[Document]:
+    split_docs = splitter.create_documents(texts=[text], metadatas=[base_meta])
+    chunks: list[Document] = []
+    for split_doc in split_docs:
+        split_meta = dict(split_doc.metadata or {})
+        abs_start = int(split_meta.pop("start_index", None) or 0)
+        meta: dict[str, Any] = dict(base_meta)
+        meta.update(split_meta)
+        meta["chunk_strategy"] = "chat_history"
+        meta["start_char"] = abs_start
+        meta["end_char"] = abs_start + len(split_doc.page_content)
+        meta["chat_fallback"] = True
+        chunks.append(Document(page_content=split_doc.page_content, metadata=meta))
+    return chunks
+
+
+def _message_window_end(msgs: list[_Msg], start_idx: int, chunk_size: int) -> int:
+    end_idx = start_idx
+    while end_idx < len(msgs):
+        candidate_len = msgs[end_idx].end - msgs[start_idx].start
+        if end_idx == start_idx or candidate_len <= chunk_size:
+            end_idx += 1
+            continue
+        break
+    return end_idx if end_idx > start_idx else start_idx + 1
+
+
+def _window_participants(msgs: list[_Msg], start_idx: int, end_idx: int) -> list[str]:
+    uniq: list[str] = []
+    for msg in msgs[start_idx:end_idx]:
+        if msg.speaker and msg.speaker not in uniq:
+            uniq.append(msg.speaker)
+    return uniq[:10]
+
+
+def _build_message_chunk(msgs: list[_Msg], start_idx: int, end_idx: int, base_meta: dict[str, Any], text: str) -> Document:
+    chunk_start = msgs[start_idx].start
+    chunk_end = msgs[end_idx - 1].end
+    meta: dict[str, Any] = dict(base_meta)
+    meta["chunk_strategy"] = "chat_history"
+    meta["start_char"] = chunk_start
+    meta["end_char"] = chunk_end
+    meta["message_count"] = int(end_idx - start_idx)
+    participants = _window_participants(msgs, start_idx, end_idx)
+    if participants:
+        meta["participants"] = participants
+    meta["has_timestamps"] = True
+    first_ts = msgs[start_idx].ts
+    last_ts = msgs[end_idx - 1].ts
+    if first_ts:
+        meta["first_timestamp"] = first_ts
+    if last_ts:
+        meta["last_timestamp"] = last_ts
+    return Document(page_content=text[chunk_start:chunk_end], metadata=meta)
+
+
+def _next_message_start(msgs: list[_Msg], start_idx: int, end_idx: int, chunk_overlap: int) -> int:
+    next_start = end_idx
+    if chunk_overlap <= 0 or (end_idx - start_idx) <= 1:
+        return next_start
+
+    desired = end_idx - 1
+    while desired > start_idx:
+        overlap_len = msgs[end_idx - 1].end - msgs[desired - 1].start
+        if overlap_len <= chunk_overlap:
+            desired -= 1
+            continue
+        break
+    next_start = desired if desired > start_idx else (end_idx - 1)
+    return next_start if next_start > start_idx else end_idx
+
+
 class ChatHistoryChunker(BaseChunker):
     def __init__(self, chunk_size: int, chunk_overlap: int):
         self.chunk_size = int(chunk_size)
@@ -239,83 +334,7 @@ class ChatHistoryChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
-            base_meta = dict(doc.metadata or {})
-            if not text.strip():
-                continue
-
-            msgs = _iter_messages(text)
-            if not msgs:
-                split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "chat_history"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta["chat_fallback"] = True
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
-                continue
-
-            start_idx = 0
-            while start_idx < len(msgs):
-                end_idx = start_idx
-                while end_idx < len(msgs):
-                    candidate_end = msgs[end_idx].end
-                    candidate_len = candidate_end - msgs[start_idx].start
-                    if end_idx == start_idx or candidate_len <= self.chunk_size:
-                        end_idx += 1
-                        continue
-                    break
-
-                if end_idx == start_idx:
-                    end_idx = start_idx + 1
-
-                chunk_start = msgs[start_idx].start
-                chunk_end = msgs[end_idx - 1].end
-                content = text[chunk_start:chunk_end]
-
-                speakers = [m.speaker for m in msgs[start_idx:end_idx] if m.speaker]
-                uniq: list[str] = []
-                for s in speakers:
-                    if s not in uniq:
-                        uniq.append(s)
-                uniq = uniq[:10]
-
-                meta: dict[str, Any] = dict(base_meta)
-                meta["chunk_strategy"] = "chat_history"
-                meta["start_char"] = chunk_start
-                meta["end_char"] = chunk_end
-                meta["message_count"] = int(end_idx - start_idx)
-                if uniq:
-                    meta["participants"] = uniq
-                meta["has_timestamps"] = True
-                first_ts = msgs[start_idx].ts
-                last_ts = msgs[end_idx - 1].ts
-                if first_ts:
-                    meta["first_timestamp"] = first_ts
-                if last_ts:
-                    meta["last_timestamp"] = last_ts
-                out.append(Document(page_content=content, metadata=meta))
-
-                # Message-level overlap.
-                next_start = end_idx
-                if self.chunk_overlap > 0 and (end_idx - start_idx) > 1:
-                    desired = end_idx - 1
-                    while desired > start_idx:
-                        overlap_len = msgs[end_idx - 1].end - msgs[desired - 1].start
-                        if overlap_len <= self.chunk_overlap:
-                            desired -= 1
-                            continue
-                        break
-                    next_start = desired if desired > start_idx else (end_idx - 1)
-
-                if next_start <= start_idx:
-                    next_start = end_idx
-                start_idx = next_start
+            out.extend(self._split_document(doc))
 
         for idx, chunk in enumerate(out):
             meta = dict(chunk.metadata or {})
@@ -323,3 +342,21 @@ class ChatHistoryChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
+
+    def _split_document(self, doc: Document) -> list[Document]:
+        text = doc.page_content or ""
+        if not text.strip():
+            return []
+
+        base_meta = dict(doc.metadata or {})
+        msgs = _iter_messages(text)
+        if not msgs:
+            return _split_fallback_docs(self._fallback_splitter, text, base_meta)
+
+        chunks: list[Document] = []
+        start_idx = 0
+        while start_idx < len(msgs):
+            end_idx = _message_window_end(msgs, start_idx, self.chunk_size)
+            chunks.append(_build_message_chunk(msgs, start_idx, end_idx, base_meta, text))
+            start_idx = _next_message_start(msgs, start_idx, end_idx, self.chunk_overlap)
+        return chunks

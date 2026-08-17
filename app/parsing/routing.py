@@ -60,89 +60,131 @@ def choose_pdf_backend(quality: dict | None, requested: str | None) -> str:
       fallback Docling/MagicPDF/MarkItDown/basic.
     - mid range -> prefer Docling/DeepDoc/MinerU/ETL4LLM, fallback MagicPDF/MarkItDown/basic.
     """
+    requested_norm = normalize_parser_backend(requested)
+    if requested_norm and requested_norm != "auto":
+        return requested_norm
     quality = quality or {}
     score = float(quality.get("score", 0.0) or 0.0)
     text_quality_score = float(quality.get("text_quality_score", 0.0) or 0.0)
     page_count = float(quality.get("page_count", 0.0) or 0.0)
     is_scanned = bool(quality.get("is_scanned", False))
 
-    def _magicpdf_available() -> bool:
-        if not bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
-            return False
-        if magicpdf_service_configured(getattr(settings, "MAGIC_PDF_API_URL", "")):
-            return True
-        cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
-        return bool(
-            resolve_cli_command(cli)
-            and resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
-        )
+    availability = {
+        "etl4llm": _etl4llm_available(),
+        "deepseek_ocr": _deepseek_ocr_available(),
+        "qianfan_ocr": _qianfan_ocr_available(),
+        "magicpdf": _magicpdf_available(),
+        "mineru": _mineru_available(),
+    }
 
-    requested_norm = normalize_parser_backend(requested)
-    if requested_norm and requested_norm != "auto":
-        return requested_norm
+    if score >= 0.8 and not is_scanned:
+        return _choose_high_quality_backend(availability)
+    if _should_use_basic_for_scanned_pdf(is_scanned=is_scanned, score=score, text_quality_score=text_quality_score):
+        return "basic"
+    if _should_use_basic_for_small_text_pdf(
+        is_scanned=is_scanned,
+        score=score,
+        text_quality_score=text_quality_score,
+        page_count=page_count,
+    ):
+        return "basic"
+    if is_scanned or score <= 0.5:
+        return _choose_low_quality_backend(availability)
+    return _choose_mid_quality_backend(availability)
 
-    etl4llm_ok = bool(getattr(settings, "ETL4LLM_ENABLED", False)) and bool(
+
+def _magicpdf_available() -> bool:
+    if not bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
+        return False
+    if magicpdf_service_configured(getattr(settings, "MAGIC_PDF_API_URL", "")):
+        return True
+    cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
+    return bool(
+        resolve_cli_command(cli)
+        and resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
+    )
+
+
+def _etl4llm_available() -> bool:
+    return bool(getattr(settings, "ETL4LLM_ENABLED", False)) and bool(
         (getattr(settings, "ETL4LLM_API_URL", "") or "").strip()
     )
-    deepseek_ocr_ok = bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False)) and bool(
+
+
+def _deepseek_ocr_available() -> bool:
+    return bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False)) and bool(
         (getattr(settings, "SILICONFLOW_API_KEY", "") or "").strip()
     )
-    qianfan_ocr_ok = bool(getattr(settings, "QIANFAN_OCR_ENABLED", False)) and bool(
+
+
+def _qianfan_ocr_available() -> bool:
+    return bool(getattr(settings, "QIANFAN_OCR_ENABLED", False)) and bool(
         (getattr(settings, "QIANFAN_OCR_API_URL", "") or "").strip()
     )
 
-    if score >= 0.8 and not is_scanned:
-        if getattr(settings, "DOCLING_ENABLED", False):
-            return "docling"
-        if etl4llm_ok:
-            return "etl4llm"
-        if settings.MARKITDOWN_ENABLED:
-            return "markitdown"
-        if settings.DEEPDOC_ENABLED:
-            return "deepdoc"
-        return "basic"
 
-    if is_scanned and score > 0.5 and text_quality_score >= 0.1:
-        # Some table-heavy PDFs are flagged as scanned because text density is
-        # low, but PyMuPDF can still extract useful text quickly. Avoid sending
-        # those to heavyweight OCR services first.
-        return "basic"
+def _mineru_available() -> bool:
+    return bool(settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL))
 
-    if not is_scanned and 0.5 < score < 0.8 and text_quality_score >= 0.3 and 0 < page_count <= 5:
-        # For small, text-extractable PDFs, basic preview is usually sufficient
-        # and avoids slow structure parsers on interactive preview paths.
-        return "basic"
 
-    if is_scanned or score <= 0.5:
-        if settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL):
-            return "mineru"
-        if deepseek_ocr_ok:
-            return "deepseek_ocr"
-        if qianfan_ocr_ok:
-            return "qianfan_ocr"
-        if etl4llm_ok:
-            return "etl4llm"
-        if settings.DEEPDOC_ENABLED:
-            return "deepdoc"
-        if getattr(settings, "DOCLING_ENABLED", False):
-            return "docling"
-        if _magicpdf_available():
-            return "magicpdf"
-        if settings.MARKITDOWN_ENABLED:
-            return "markitdown"
-        return "basic"
+def _should_use_basic_for_scanned_pdf(*, is_scanned: bool, score: float, text_quality_score: float) -> bool:
+    return bool(is_scanned and score > 0.5 and text_quality_score >= 0.1)
 
+
+def _should_use_basic_for_small_text_pdf(
+    *,
+    is_scanned: bool,
+    score: float,
+    text_quality_score: float,
+    page_count: float,
+) -> bool:
+    return bool(not is_scanned and 0.5 < score < 0.8 and text_quality_score >= 0.3 and 0 < page_count <= 5)
+
+
+def _choose_high_quality_backend(availability: dict[str, bool]) -> str:
     if getattr(settings, "DOCLING_ENABLED", False):
         return "docling"
-    if etl4llm_ok:
+    if availability["etl4llm"]:
+        return "etl4llm"
+    if settings.MARKITDOWN_ENABLED:
+        return "markitdown"
+    if settings.DEEPDOC_ENABLED:
+        return "deepdoc"
+    return "basic"
+
+
+def _choose_low_quality_backend(availability: dict[str, bool]) -> str:
+    if availability["mineru"]:
+        return "mineru"
+    if availability["deepseek_ocr"]:
+        return "deepseek_ocr"
+    if availability["qianfan_ocr"]:
+        return "qianfan_ocr"
+    if availability["etl4llm"]:
         return "etl4llm"
     if settings.DEEPDOC_ENABLED:
         return "deepdoc"
-    if settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL):
+    if getattr(settings, "DOCLING_ENABLED", False):
+        return "docling"
+    if availability["magicpdf"]:
+        return "magicpdf"
+    if settings.MARKITDOWN_ENABLED:
+        return "markitdown"
+    return "basic"
+
+
+def _choose_mid_quality_backend(availability: dict[str, bool]) -> str:
+    if getattr(settings, "DOCLING_ENABLED", False):
+        return "docling"
+    if availability["etl4llm"]:
+        return "etl4llm"
+    if settings.DEEPDOC_ENABLED:
+        return "deepdoc"
+    if availability["mineru"]:
         return "mineru"
-    if qianfan_ocr_ok:
+    if availability["qianfan_ocr"]:
         return "qianfan_ocr"
-    if _magicpdf_available():
+    if availability["magicpdf"]:
         return "magicpdf"
     if settings.MARKITDOWN_ENABLED:
         return "markitdown"

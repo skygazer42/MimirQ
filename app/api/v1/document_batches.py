@@ -21,7 +21,6 @@ from app.api.schemas.document import (
     DocumentPipelinePatchRequest,
 )
 from app.core.database import get_db
-from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -37,6 +36,57 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 def _documents_module():
     return importlib.import_module("app.api.v1.documents")
+
+
+def _record_batch_http_error(
+    *,
+    exc: HTTPException,
+    document_id: UUID,
+    not_found: list[UUID],
+    denied: list[UUID],
+    conflicts: list[UUID],
+) -> bool:
+    if exc.status_code == 404:
+        not_found.append(document_id)
+        return True
+    if exc.status_code in (401, 403):
+        denied.append(document_id)
+        return True
+    if exc.status_code in (409, 413, 429, 503):
+        conflicts.append(document_id)
+        return True
+    return False
+
+
+def _resolve_batch_move_target(
+    *,
+    documents_module,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    payload: DocumentBatchMoveRequest,
+):
+    member = documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    if payload.target_dataset_id is not None:
+        target_ds = documents_module.DatasetService.get_dataset(db, tenant_id, payload.target_dataset_id)
+        documents_module.DatasetService.assert_dataset_writable(db, target_ds, account_id)
+        return member
+    role = (getattr(member, "role", None) or "").lower()
+    if role not in documents_module.EDIT_ROLES:
+        raise HTTPException(status_code=403, detail="No permission to move documents to unassigned scope")
+    return member
+
+
+def _move_document_conflicts(*, documents_module, doc: DBDocument) -> bool:
+    status = str(doc.status or "").lower()
+    if status in {"pending", "processing"}:
+        return True
+    raw_path = str(getattr(doc, "file_path", "") or "").strip()
+    if raw_path and documents_module.is_object_storage_uri(raw_path):
+        return True
+    meta = dict(getattr(doc, "doc_metadata", None) or {})
+    img_ids = meta.get("img_ids")
+    return isinstance(img_ids, list) and any(isinstance(value, str) and value.strip() for value in img_ids)
 
 
 @router.post("/batch/metadata", response_model=DocumentBatchUserMetadataPatchResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -191,14 +241,13 @@ async def batch_reingest_documents(
                     db=db,
                 )
             except HTTPException as exc:
-                if exc.status_code == 404:
-                    not_found.append(document_id)
-                    continue
-                if exc.status_code in (401, 403):
-                    denied.append(document_id)
-                    continue
-                if exc.status_code in (409, 413, 429, 503):
-                    conflicts.append(document_id)
+                if _record_batch_http_error(
+                    exc=exc,
+                    document_id=document_id,
+                    not_found=not_found,
+                    denied=denied,
+                    conflicts=conflicts,
+                ):
                     continue
                 raise
 
@@ -212,20 +261,18 @@ async def batch_reingest_documents(
                 account_id=account_id,
                 db=db,
             )
-            status = str((out or {}).get("status") or "").lower()
-            if bool(payload.force) and bool(payload.skip_if_unchanged) and status == "completed":
+            if bool(payload.force) and bool(payload.skip_if_unchanged) and str((out or {}).get("status") or "").lower() == "completed":
                 skipped += 1
             else:
                 queued += 1
         except HTTPException as exc:
-            if exc.status_code == 404:
-                not_found.append(document_id)
-                continue
-            if exc.status_code in (401, 403):
-                denied.append(document_id)
-                continue
-            if exc.status_code in (409, 413, 429, 503):
-                conflicts.append(document_id)
+            if _record_batch_http_error(
+                exc=exc,
+                document_id=document_id,
+                not_found=not_found,
+                denied=denied,
+                conflicts=conflicts,
+            ):
                 continue
             raise
 
@@ -293,16 +340,13 @@ def batch_move_documents(
     - Disallows moving documents that are pending/processing.
     """
     documents_module = _documents_module()
-    member = documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
-
-    target_ds: Dataset | None = None
-    if payload.target_dataset_id is not None:
-        target_ds = documents_module.DatasetService.get_dataset(db, tenant_id, payload.target_dataset_id)
-        documents_module.DatasetService.assert_dataset_writable(db, target_ds, account_id)
-    else:
-        role = (getattr(member, "role", None) or "").lower()
-        if role not in documents_module.EDIT_ROLES:
-            raise HTTPException(status_code=403, detail="No permission to move documents to unassigned scope")
+    _resolve_batch_move_target(
+        documents_module=documents_module,
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        payload=payload,
+    )
 
     moved = 0
     not_found: list[UUID] = []
@@ -340,20 +384,7 @@ def batch_move_documents(
             except HTTPException:
                 denied.append(document_id)
                 continue
-
-        status = str(doc.status or "").lower()
-        if status in {"pending", "processing"}:
-            conflicts.append(document_id)
-            continue
-
-        raw_path = str(getattr(doc, "file_path", "") or "").strip()
-        if raw_path and documents_module.is_object_storage_uri(raw_path):
-            conflicts.append(document_id)
-            continue
-
-        meta = dict(getattr(doc, "doc_metadata", None) or {})
-        img_ids = meta.get("img_ids")
-        if isinstance(img_ids, list) and any(isinstance(value, str) and value.strip() for value in img_ids):
+        if _move_document_conflicts(documents_module=documents_module, doc=doc):
             conflicts.append(document_id)
             continue
 

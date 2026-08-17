@@ -70,21 +70,27 @@ def _normalize_extensions(raw: object) -> list[str]:
         raise ValueError(f"match.extensions too many entries (max={MAX_EXTENSIONS_PER_RULE})")
     out: list[str] = []
     for item in raw:
-        if not isinstance(item, str):
+        normalized = _normalize_extension_item(item)
+        if normalized is None:
             continue
-        v = item.strip().lower()
-        if not v:
-            continue
-        if not v.startswith("."):
-            v = "." + v
-        if len(v) > MAX_EXTENSION_LEN:
-            raise ValueError("match.extensions contains an entry that is too long")
-        # Very conservative: extensions must be ".foo" with safe characters.
-        if not re.fullmatch(r"\.[a-z0-9][a-z0-9._-]*", v):
-            raise ValueError(f"invalid extension: {v}")
-        if v not in out:
-            out.append(v)
+        if normalized not in out:
+            out.append(normalized)
     return out
+
+
+def _normalize_extension_item(item: object) -> str | None:
+    if not isinstance(item, str):
+        return None
+    value = item.strip().lower()
+    if not value:
+        return None
+    if not value.startswith("."):
+        value = "." + value
+    if len(value) > MAX_EXTENSION_LEN:
+        raise ValueError("match.extensions contains an entry that is too long")
+    if not re.fullmatch(r"\.[a-z0-9][a-z0-9._-]*", value):
+        raise ValueError(f"invalid extension: {value}")
+    return value
 
 
 def _normalize_filename_regex(raw: object) -> str | None:
@@ -106,6 +112,26 @@ def _normalize_filename_regex(raw: object) -> str | None:
     return pat
 
 
+def _coerce_preprocess_step(item: object, *, idx: int) -> IngestionPreprocessStep:
+    if isinstance(item, IngestionPreprocessStep):
+        return item
+    if isinstance(item, dict):
+        try:
+            return IngestionPreprocessStep(**item)
+        except ValidationError as exc:
+            raise ValueError(f"invalid preprocess step at index={idx}") from exc
+    raise ValueError(f"invalid preprocess step at index={idx}")
+
+
+def _normalized_step_id(step: IngestionPreprocessStep, *, idx: int) -> str:
+    sid = str(step.id or "").strip().lower()
+    if not sid:
+        raise ValueError(f"preprocess step id is required at index={idx}")
+    if sid not in ALLOWED_PREPROCESS_STEP_IDS:
+        raise ValueError(f"unsupported preprocess step id: {sid}")
+    return sid
+
+
 def _normalize_preprocess_steps(raw: object) -> list[dict]:
     if raw is None:
         return []
@@ -115,22 +141,8 @@ def _normalize_preprocess_steps(raw: object) -> list[dict]:
         raise ValueError(f"preprocess.steps too many steps (max={MAX_PREPROCESS_STEPS})")
     out: list[dict] = []
     for idx, item in enumerate(raw):
-        step: IngestionPreprocessStep
-        if isinstance(item, IngestionPreprocessStep):
-            step = item
-        elif isinstance(item, dict):
-            try:
-                step = IngestionPreprocessStep(**item)
-            except ValidationError as exc:
-                raise ValueError(f"invalid preprocess step at index={idx}") from exc
-        else:
-            raise ValueError(f"invalid preprocess step at index={idx}")
-
-        sid = str(step.id or "").strip().lower()
-        if not sid:
-            raise ValueError(f"preprocess step id is required at index={idx}")
-        if sid not in ALLOWED_PREPROCESS_STEP_IDS:
-            raise ValueError(f"unsupported preprocess step id: {sid}")
+        step = _coerce_preprocess_step(item, idx=idx)
+        sid = _normalized_step_id(step, idx=idx)
 
         params = step.params or {}
         if not isinstance(params, dict):
@@ -152,6 +164,68 @@ def _normalize_pipeline_patch(raw: object) -> dict:
     )
 
 
+def _coerce_rule(rule: IngestionRule | dict[str, Any] | object, *, idx: int) -> IngestionRule:
+    if isinstance(rule, IngestionRule):
+        return rule
+    try:
+        return IngestionRule(**(rule if isinstance(rule, dict) else {}))
+    except ValidationError as exc:
+        raise ValueError(f"invalid rule at index={idx}") from exc
+
+
+def _normalize_optional_override(value: Any) -> str | None:
+    if value is None:
+        return None
+    return str(value).strip().lower() or None
+
+
+def _normalize_governance_profile_ref(value: Any) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip() or None
+    if normalized and ("\x7f" in normalized or any(ord(ch) < 32 for ch in normalized)):
+        raise ValueError("invalid governance_profile_ref")
+    return normalized
+
+
+def _normalize_rule(rule: IngestionRule | dict[str, Any] | object, *, idx: int, seen_ids: set[str]) -> IngestionRule:
+    rule = _coerce_rule(rule, idx=idx)
+
+    rid = str(rule.id or "").strip()
+    if not rid:
+        raise ValueError(f"rule.id is required at index={idx}")
+    if not RULE_ID_RE.match(rid):
+        raise ValueError(f"invalid rule.id format at index={idx}")
+    if rid in seen_ids:
+        raise ValueError(f"duplicate rule.id: {rid}")
+    seen_ids.add(rid)
+
+    name = str(rule.name or "").strip()
+    if not name:
+        raise ValueError(f"rule.name is required at index={idx}")
+
+    match = rule.match or {}
+    ext_list = _normalize_extensions(getattr(match, "extensions", None))
+    filename_regex = _normalize_filename_regex(getattr(match, "filename_regex", None))
+
+    preprocess = rule.preprocess
+    preprocess_enabled = bool(getattr(preprocess, "enabled", True))
+    preprocess_steps = getattr(preprocess, "steps", None) if preprocess_enabled else []
+    steps_norm = _normalize_preprocess_steps(preprocess_steps)
+
+    return IngestionRule(
+        id=rid,
+        name=name[:200],
+        enabled=bool(rule.enabled),
+        match={"extensions": ext_list, "filename_regex": filename_regex},
+        preprocess={"enabled": preprocess_enabled, "steps": steps_norm},
+        parser_backend=_normalize_optional_override(rule.parser_backend),
+        chunk_strategy=_normalize_optional_override(rule.chunk_strategy),
+        governance_profile_ref=_normalize_governance_profile_ref(rule.governance_profile_ref),
+        pipeline_patch=_normalize_pipeline_patch(rule.pipeline_patch),
+    )
+
+
 def validate_and_normalize_ingestion_policy(policy: IngestionPolicy) -> IngestionPolicy:
     """
     Validate and normalize policy.
@@ -169,54 +243,7 @@ def validate_and_normalize_ingestion_policy(policy: IngestionPolicy) -> Ingestio
     normalized_rules: list[IngestionRule] = []
 
     for idx, rule in enumerate(rules_in):
-        if not isinstance(rule, IngestionRule):
-            try:
-                rule = IngestionRule(**(rule if isinstance(rule, dict) else {}))
-            except ValidationError as exc:
-                raise ValueError(f"invalid rule at index={idx}") from exc
-
-        rid = str(rule.id or "").strip()
-        if not rid:
-            raise ValueError(f"rule.id is required at index={idx}")
-        if not RULE_ID_RE.match(rid):
-            raise ValueError(f"invalid rule.id format at index={idx}")
-        if rid in seen_ids:
-            raise ValueError(f"duplicate rule.id: {rid}")
-        seen_ids.add(rid)
-
-        name = str(rule.name or "").strip()
-        if not name:
-            raise ValueError(f"rule.name is required at index={idx}")
-
-        match = rule.match or {}
-        ext_list = _normalize_extensions(getattr(match, "extensions", None))
-        filename_regex = _normalize_filename_regex(getattr(match, "filename_regex", None))
-
-        preprocess = rule.preprocess
-        preprocess_enabled = bool(getattr(preprocess, "enabled", True))
-        steps_norm = _normalize_preprocess_steps(getattr(preprocess, "steps", None) if preprocess_enabled else [])
-
-        parser_backend = (str(rule.parser_backend or "").strip().lower() or None) if rule.parser_backend is not None else None
-        chunk_strategy = (str(rule.chunk_strategy or "").strip().lower() or None) if rule.chunk_strategy is not None else None
-        governance_profile_ref = (str(rule.governance_profile_ref or "").strip() or None) if rule.governance_profile_ref is not None else None
-        if governance_profile_ref and ("\x7f" in governance_profile_ref or any(ord(ch) < 32 for ch in governance_profile_ref)):
-            raise ValueError("invalid governance_profile_ref")
-
-        patch_norm = _normalize_pipeline_patch(rule.pipeline_patch)
-
-        normalized_rules.append(
-            IngestionRule(
-                id=rid,
-                name=name[:200],
-                enabled=bool(rule.enabled),
-                match={"extensions": ext_list, "filename_regex": filename_regex},
-                preprocess={"enabled": preprocess_enabled, "steps": steps_norm},
-                parser_backend=parser_backend,
-                chunk_strategy=chunk_strategy,
-                governance_profile_ref=governance_profile_ref,
-                pipeline_patch=patch_norm,
-            )
-        )
+        normalized_rules.append(_normalize_rule(rule, idx=idx, seen_ids=seen_ids))
 
     return IngestionPolicy(version="1", rules=normalized_rules)
 

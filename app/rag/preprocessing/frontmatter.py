@@ -124,6 +124,62 @@ def _parse_inline_list(value: str) -> list[str] | None:
     return out
 
 
+def _find_frontmatter_end(lines: list[str], *, max_chars: int) -> int | None:
+    offset = 0
+    for i in range(1, len(lines)):
+        offset += len(lines[i - 1])
+        plain = lines[i].rstrip("\r\n").strip()
+        if _FRONTMATTER_END_RE.match(plain):
+            return offset + len(lines[i])
+        if offset > max_chars:
+            return None
+    return None
+
+
+def _parse_frontmatter_data(frontmatter_raw: str) -> dict[str, Any]:
+    data: dict[str, Any] = {}
+    current_key: str | None = None
+    current_list: list[str] | None = None
+    for line in frontmatter_raw.splitlines()[1:]:
+        plain = line.strip()
+        if _FRONTMATTER_END_RE.match(plain):
+            break
+        if not plain or plain.startswith("#"):
+            continue
+
+        item_val = _parse_frontmatter_list_item(line)
+        if item_val and current_key and current_list is not None:
+            val = item_val.strip().strip("'\"")
+            if val:
+                current_list.append(val)
+            continue
+
+        kv = _parse_frontmatter_key_value(line)
+        if not kv:
+            current_key = None
+            current_list = None
+            continue
+
+        key, val_raw = kv
+        val_raw = (val_raw or "").strip()
+        inline_list = _parse_inline_list(val_raw)
+        if inline_list is not None:
+            data[key] = inline_list
+            current_key = None
+            current_list = None
+            continue
+        if val_raw == "":
+            current_key = key
+            current_list = []
+            data[key] = current_list
+            continue
+
+        data[key] = _coerce_scalar(val_raw)
+        current_key = None
+        current_list = None
+    return data
+
+
 def extract_markdown_frontmatter(
     text: str,
     *,
@@ -150,72 +206,14 @@ def extract_markdown_frontmatter(
     if not _FRONTMATTER_START_RE.match(first.strip()):
         return None
 
-    offset = 0
-    end_char = None
-    for i in range(1, len(lines)):
-        offset += len(lines[i - 1])
-        plain = lines[i].rstrip("\r\n").strip()
-        if _FRONTMATTER_END_RE.match(plain):
-            end_char = offset + len(lines[i])
-            break
-
-        if offset > max(0, int(max_chars or 0)):
-            return None
-
+    end_char = _find_frontmatter_end(lines, max_chars=max(0, int(max_chars or 0)))
     if end_char is None:
         return None
 
     fm_raw = raw[:end_char]
     body = raw[end_char:]
     stripped_text = body.lstrip("\r\n") if strip else raw
-
-    # Parse limited YAML for common keys.
-    data: dict[str, Any] = {}
-    yaml_lines = fm_raw.splitlines()
-    current_key: str | None = None
-    current_list: list[str] | None = None
-
-    for ln in yaml_lines[1:]:  # skip opening ---
-        plain = ln.strip()
-        if _FRONTMATTER_END_RE.match(plain):
-            break
-        if not plain or plain.startswith("#"):
-            continue
-
-        # Multi-line list items.
-        item_val = _parse_frontmatter_list_item(ln)
-        if item_val and current_key and current_list is not None:
-            val = item_val.strip().strip("'\"")
-            if val:
-                current_list.append(val)
-            continue
-
-        kv = _parse_frontmatter_key_value(ln)
-        if not kv:
-            current_key = None
-            current_list = None
-            continue
-
-        key, val_raw = kv
-        val_raw = (val_raw or "").strip()
-
-        inline_list = _parse_inline_list(val_raw)
-        if inline_list is not None:
-            data[key] = inline_list
-            current_key = None
-            current_list = None
-            continue
-
-        if val_raw == "":
-            # Start a multi-line list.
-            current_key = key
-            current_list = []
-            data[key] = current_list
-            continue
-
-        data[key] = _coerce_scalar(val_raw)
-        current_key = None
-        current_list = None
+    data = _parse_frontmatter_data(fm_raw)
 
     return FrontmatterExtractResult(
         data=data,

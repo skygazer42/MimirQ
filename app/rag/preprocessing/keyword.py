@@ -254,37 +254,48 @@ def _normalize_hanlp_tokens(value: Any) -> list[str]:
         return []
 
     if isinstance(value, str):
-        parts = [p.strip() for p in value.split() if p.strip()]
-        if parts:
-            return parts
-        return [value.strip()] if value.strip() else []
+        return _normalize_hanlp_string(value)
 
     if isinstance(value, list):
-        out: list[str] = []
-        for item in value:
-            if item is None:
-                continue
-            if isinstance(item, str):
-                s = item.strip()
-                if s:
-                    out.append(s)
-            else:
-                s = str(item).strip()
-                if s:
-                    out.append(s)
-        return out
+        return _normalize_hanlp_list(value)
 
     if isinstance(value, dict):
-        for key in ("tok", "tok/coarse", "tok/fine"):
-            if key in value:
-                return _normalize_hanlp_tokens(value.get(key))
-        for v in value.values():
-            if isinstance(v, (list, str)):
-                tokens = _normalize_hanlp_tokens(v)
-                if tokens:
-                    return tokens
-        return []
+        return _normalize_hanlp_dict(value)
 
+    return []
+
+
+def _normalize_hanlp_string(value: str) -> list[str]:
+    parts = [p.strip() for p in value.split() if p.strip()]
+    if parts:
+        return parts
+    stripped = value.strip()
+    return [stripped] if stripped else []
+
+
+def _normalize_hanlp_list(value: list[Any]) -> list[str]:
+    out: list[str] = []
+    for item in value:
+        if item is None:
+            continue
+        if isinstance(item, str):
+            token = item.strip()
+        else:
+            token = str(item).strip()
+        if token:
+            out.append(token)
+    return out
+
+
+def _normalize_hanlp_dict(value: dict[str, Any]) -> list[str]:
+    for key in ("tok", "tok/coarse", "tok/fine"):
+        if key in value:
+            return _normalize_hanlp_tokens(value.get(key))
+    for item in value.values():
+        if isinstance(item, (list, str)):
+            tokens = _normalize_hanlp_tokens(item)
+            if tokens:
+                return tokens
     return []
 
 

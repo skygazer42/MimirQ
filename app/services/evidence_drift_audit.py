@@ -64,6 +64,68 @@ def build_drift_slice_keys(*, document_file_type: object, document_metadata: obj
     )
 
 
+def _expected_reference_source(reference_source: dict[str, Any]) -> tuple[dict[str, Any], UUID | None]:
+    doc_id = _as_uuid(reference_source.get("document_id"))
+    chunk_id = _as_uuid(reference_source.get("chunk_id"))
+    expected = {
+        "document_id": str(doc_id) if doc_id else None,
+        "chunk_id": str(chunk_id) if chunk_id else None,
+        "chunk_index": reference_source.get("chunk_index"),
+        "pipeline_hash": reference_source.get("pipeline_hash"),
+        "doc_pipeline_key": reference_source.get("doc_pipeline_key"),
+    }
+    return expected, doc_id
+
+
+def _chunk_index_drift(
+    *,
+    reference_source: dict[str, Any],
+    chunk_row: dict[str, Any],
+    expected: dict[str, Any],
+    observed: dict[str, Any],
+) -> tuple[bool, str, dict[str, Any], dict[str, Any]] | None:
+    exp_idx = reference_source.get("chunk_index")
+    if exp_idx is None:
+        return None
+
+    try:
+        exp_idx_int = int(exp_idx)
+    except Exception:
+        return None
+
+    try:
+        obs_idx = int(chunk_row.get("chunk_index")) if chunk_row.get("chunk_index") is not None else None
+    except Exception:
+        obs_idx = None
+
+    observed["chunk_index"] = obs_idx
+    if obs_idx != exp_idx_int:
+        return False, DRIFT_REASON_CHUNK_INDEX_MISMATCH, expected, observed
+    return None
+
+
+def _chunk_metadata_drift(
+    *,
+    expected_value: Any,
+    observed_key: str,
+    metadata_key: str,
+    reason: str,
+    chunk_row: dict[str, Any],
+    expected: dict[str, Any],
+    observed: dict[str, Any],
+) -> tuple[bool, str, dict[str, Any], dict[str, Any]] | None:
+    if not isinstance(expected_value, str) or not expected_value.strip():
+        return None
+
+    normalized_expected = expected_value.strip()
+    metadata = chunk_row.get("metadata") if isinstance(chunk_row.get("metadata"), dict) else {}
+    observed_value = str(metadata.get(metadata_key) or "").strip()
+    observed[observed_key] = observed_value or None
+    if observed_value != normalized_expected:
+        return False, reason, expected, observed
+    return None
+
+
 def classify_reference_source_drift(
     *,
     reference_source: dict[str, Any],
@@ -77,16 +139,8 @@ def classify_reference_source_drift(
     Returns:
         (ok, reason, expected, observed)
     """
-    expected: dict[str, Any] = {}
     observed: dict[str, Any] = {}
-
-    doc_id = _as_uuid(reference_source.get("document_id"))
-    chunk_id = _as_uuid(reference_source.get("chunk_id"))
-    expected["document_id"] = str(doc_id) if doc_id else None
-    expected["chunk_id"] = str(chunk_id) if chunk_id else None
-    expected["chunk_index"] = reference_source.get("chunk_index")
-    expected["pipeline_hash"] = reference_source.get("pipeline_hash")
-    expected["doc_pipeline_key"] = reference_source.get("doc_pipeline_key")
+    expected, doc_id = _expected_reference_source(reference_source)
 
     if document_row is None:
         return False, DRIFT_REASON_DOCUMENT_MISSING, expected, observed
@@ -107,41 +161,30 @@ def classify_reference_source_drift(
     if doc_id is not None and observed_chunk_doc_id is not None and observed_chunk_doc_id != doc_id:
         return False, DRIFT_REASON_CHUNK_DOCUMENT_MISMATCH, expected, observed
 
-    # Optional chunk_index match.
-    exp_idx = reference_source.get("chunk_index")
-    if exp_idx is not None:
-        try:
-            exp_idx_int = int(exp_idx)
-        except Exception:
-            exp_idx_int = None
-        if exp_idx_int is not None:
-            try:
-                obs_idx = int(chunk_row.get("chunk_index")) if chunk_row.get("chunk_index") is not None else None
-            except Exception:
-                obs_idx = None
-            observed["chunk_index"] = obs_idx
-            if obs_idx != exp_idx_int:
-                return False, DRIFT_REASON_CHUNK_INDEX_MISMATCH, expected, observed
+    drift = _chunk_index_drift(reference_source=reference_source, chunk_row=chunk_row, expected=expected, observed=observed)
+    if drift is not None:
+        return drift
 
-    # Optional pipeline hash match.
-    exp_pipeline_hash = reference_source.get("pipeline_hash")
-    if isinstance(exp_pipeline_hash, str) and exp_pipeline_hash.strip():
-        exp_pipeline_hash = exp_pipeline_hash.strip()
-        cmeta = chunk_row.get("metadata") if isinstance(chunk_row.get("metadata"), dict) else {}
-        obs_pipeline_hash = str(cmeta.get("pipeline_hash") or "").strip()
-        observed["pipeline_hash"] = obs_pipeline_hash or None
-        if obs_pipeline_hash != exp_pipeline_hash:
-            return False, DRIFT_REASON_PIPELINE_HASH_MISMATCH, expected, observed
-
-    # Optional doc_pipeline_key match.
-    exp_doc_pipeline_key = reference_source.get("doc_pipeline_key")
-    if isinstance(exp_doc_pipeline_key, str) and exp_doc_pipeline_key.strip():
-        exp_doc_pipeline_key = exp_doc_pipeline_key.strip()
-        cmeta = chunk_row.get("metadata") if isinstance(chunk_row.get("metadata"), dict) else {}
-        obs_key = str(cmeta.get("doc_pipeline_key") or "").strip()
-        observed["doc_pipeline_key"] = obs_key or None
-        if obs_key != exp_doc_pipeline_key:
-            return False, DRIFT_REASON_DOC_PIPELINE_KEY_MISMATCH, expected, observed
+    for expected_value, observed_key, metadata_key, reason in (
+        (reference_source.get("pipeline_hash"), "pipeline_hash", "pipeline_hash", DRIFT_REASON_PIPELINE_HASH_MISMATCH),
+        (
+            reference_source.get("doc_pipeline_key"),
+            "doc_pipeline_key",
+            "doc_pipeline_key",
+            DRIFT_REASON_DOC_PIPELINE_KEY_MISMATCH,
+        ),
+    ):
+        drift = _chunk_metadata_drift(
+            expected_value=expected_value,
+            observed_key=observed_key,
+            metadata_key=metadata_key,
+            reason=reason,
+            chunk_row=chunk_row,
+            expected=expected,
+            observed=observed,
+        )
+        if drift is not None:
+            return drift
 
     # Disabled chunk (best-effort).
     if chunk_row.get("disabled_at") is not None:

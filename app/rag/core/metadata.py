@@ -131,6 +131,73 @@ def _leading_indent_level(line: str) -> int:
     return min(indent // 2, 50)
 
 
+def _list_item_indent_level(line: str) -> int | None:
+    if not line or not line.strip():
+        return None
+    stripped = line.lstrip(" \t")
+    if not stripped:
+        return None
+    if not (_LIST_BULLET_RE.match(stripped) or _LIST_ORDERED_RE.match(stripped)):
+        return None
+    return _leading_indent_level(line)
+
+
+def _infer_list_structure(content: str) -> dict[str, int] | None:
+    levels: list[int] = []
+    for line in str(content or "").splitlines():
+        level = _list_item_indent_level(line)
+        if level is None:
+            continue
+        levels.append(level)
+        if len(levels) >= 2000:
+            break
+    if not levels:
+        return None
+    return {
+        "item_count": len(levels),
+        "min_level": min(levels),
+        "max_level": max(levels),
+    }
+
+
+def _trimmed_metadata_text(meta: dict[str, Any], key: str) -> str | None:
+    value = meta.get(key)
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text or None
+
+
+def _stringified_metadata_text(meta: dict[str, Any], key: str) -> str | None:
+    value = meta.get(key)
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _first_metadata_text(meta: dict[str, Any], keys: tuple[str, ...]) -> str | None:
+    for key in keys:
+        text = _trimmed_metadata_text(meta, key)
+        if text:
+            return text
+    return None
+
+
+def _infer_table_structure(meta: dict[str, Any]) -> dict[str, str] | None:
+    table: dict[str, str] = {}
+    sheet_name = _trimmed_metadata_text(meta, "sheet_name")
+    if sheet_name and sheet_name != "_meta":
+        table["sheet_name"] = sheet_name[:200]
+
+    title = _first_metadata_text(meta, ("table_title", "table_header", "header_path"))
+    if not title:
+        title = table.get("sheet_name")
+    if title:
+        table["title"] = title[:200]
+    return table or None
+
+
 def infer_chunk_structure(meta: dict[str, Any], content: str) -> dict[str, Any]:
     """
     Infer lightweight structure signals for retrieval/reranking.
@@ -152,56 +219,58 @@ def infer_chunk_structure(meta: dict[str, Any], content: str) -> dict[str, Any]:
     else:
         structure = {}
 
-    text = str(content or "")
-    if text:
-        item_count = 0
-        min_level: int | None = None
-        max_level: int | None = None
-        for line in text.splitlines():
-            if not line or not line.strip():
-                continue
-            stripped = line.lstrip(" \t")
-            if not stripped:
-                continue
-            if not (_LIST_BULLET_RE.match(stripped) or _LIST_ORDERED_RE.match(stripped)):
-                continue
-            level = _leading_indent_level(line)
-            item_count += 1
-            min_level = level if min_level is None else min(min_level, level)
-            max_level = level if max_level is None else max(max_level, level)
-            if item_count >= 2000:
-                break
-        if item_count > 0 and min_level is not None and max_level is not None:
-            structure["list"] = {
-                "item_count": int(item_count),
-                "min_level": int(min_level),
-                "max_level": int(max_level),
-            }
+    list_structure = _infer_list_structure(content)
+    if list_structure:
+        structure["list"] = list_structure
 
-    table: dict[str, Any] = {}
-    sheet_name = meta.get("sheet_name")
-    if isinstance(sheet_name, str) and sheet_name.strip():
-        sn = sheet_name.strip()
-        if sn and sn != "_meta":
-            table["sheet_name"] = sn[:200]
-
-    title: str | None = None
-    for key in ("table_title", "table_header", "header_path"):
-        v = meta.get(key)
-        if isinstance(v, str) and v.strip():
-            title = v.strip()
-            break
-    if not title and isinstance(table.get("sheet_name"), str) and str(table.get("sheet_name") or "").strip():
-        title = str(table.get("sheet_name")).strip()
-    if title:
-        table["title"] = title[:200]
-
-    if table:
-        structure["table"] = table
+    table_structure = _infer_table_structure(meta)
+    if table_structure:
+        structure["table"] = table_structure
 
     if structure:
         meta["structure"] = structure
     return meta
+
+
+def _header_path_from_outline(meta: dict[str, Any]) -> str | None:
+    outline_path_str = _trimmed_metadata_text(meta, "outline_path_str")
+    if outline_path_str:
+        return outline_path_str
+
+    outline_path = meta.get("outline_path")
+    if not isinstance(outline_path, list) or not outline_path:
+        return None
+    parts = [str(item).strip() for item in outline_path if str(item).strip()]
+    if not parts:
+        return None
+    meta["outline_path"] = parts
+    meta.setdefault("outline_path_str", " / ".join(parts))
+    return _trimmed_metadata_text(meta, "outline_path_str")
+
+
+def _fallback_section_header(meta: dict[str, Any]) -> str | None:
+    header_context = _trimmed_metadata_text(meta, "header_context")
+    if header_context:
+        return header_context
+
+    minutes_title = _trimmed_metadata_text(meta, "minutes_section_title")
+    if minutes_title:
+        return minutes_title[:200]
+
+    sheet_name = _trimmed_metadata_text(meta, "sheet_name")
+    if sheet_name and sheet_name != "_meta":
+        return sheet_name[:200]
+
+    table_title = _trimmed_metadata_text(meta, "table_title")
+    if table_title:
+        return table_title[:200]
+
+    parts = [
+        value
+        for index in range(1, 7)
+        if (value := _stringified_metadata_text(meta, f"header_{index}"))
+    ]
+    return " > ".join(parts) or None
 
 
 def normalize_section_metadata(meta: dict[str, Any]) -> dict[str, Any]:
@@ -216,61 +285,92 @@ def normalize_section_metadata(meta: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(meta, dict):
         return {}
 
-    header_path = meta.get("header_path")
-    if isinstance(header_path, str) and header_path.strip():
+    if _trimmed_metadata_text(meta, "header_path"):
         return meta
 
-    outline_path_str = meta.get("outline_path_str")
-    if isinstance(outline_path_str, str) and outline_path_str.strip():
-        meta["header_path"] = outline_path_str.strip()
-        return meta
-
-    outline_path = meta.get("outline_path")
-    if isinstance(outline_path, list) and outline_path:
-        parts = [str(x).strip() for x in outline_path if str(x).strip()]
-        if parts:
-            meta["outline_path"] = parts
-            meta.setdefault("outline_path_str", " / ".join(parts))
-            outline_path_str2 = meta.get("outline_path_str")
-            if isinstance(outline_path_str2, str) and outline_path_str2.strip():
-                meta["header_path"] = outline_path_str2.strip()
-                return meta
-
-    header_context = meta.get("header_context")
-    if isinstance(header_context, str) and header_context.strip():
-        meta["header_path"] = header_context.strip()
-        return meta
-
-    minutes_title = meta.get("minutes_section_title")
-    if isinstance(minutes_title, str) and minutes_title.strip():
-        meta["header_path"] = minutes_title.strip()[:200]
-        return meta
-
-    sheet_name = meta.get("sheet_name")
-    if isinstance(sheet_name, str) and sheet_name.strip():
-        sn = sheet_name.strip()
-        if sn and sn != "_meta":
-            meta["header_path"] = sn[:200]
-            return meta
-
-    table_title = meta.get("table_title")
-    if isinstance(table_title, str) and table_title.strip():
-        meta["header_path"] = table_title.strip()[:200]
-        return meta
-
-    # LangChain MarkdownHeaderTextSplitter metadata keys: header_1..header_6.
-    parts = []
-    for i in range(1, 7):
-        v = meta.get(f"header_{i}")
-        if v is None:
-            continue
-        s = str(v).strip()
-        if s:
-            parts.append(s)
-    if parts:
-        meta["header_path"] = " > ".join(parts)
+    header_path = _header_path_from_outline(meta) or _fallback_section_header(meta)
+    if header_path:
+        meta["header_path"] = header_path
 
     return meta
+
+
+def _hierarchy_parent_key(meta: dict[str, Any]) -> str:
+    if "hierarchy_parent_key" in meta:
+        raw_parent_key = meta.get("hierarchy_parent_key")
+    else:
+        raw_parent_key = meta.get("parent_id") or meta.get("parent_node_id")
+    return str(raw_parent_key or "").strip()
+
+
+def _hierarchy_level(meta: dict[str, Any], parent_key: str) -> str:
+    level = str(meta.get("hierarchy_level") or "").strip().lower()
+    if level:
+        return level
+    role = str(meta.get("chunk_role") or "").strip().lower()
+    if role in {"parent", "child", "paragraph", "sentence"}:
+        return role
+    return "child" if parent_key else "chunk"
+
+
+def _hierarchy_basis(meta: dict[str, Any]) -> str:
+    basis = str(meta.get("hierarchy_basis") or "").strip().lower()
+    if basis:
+        return basis
+    strategy = str(meta.get("chunk_strategy") or "").strip().lower()
+    if strategy == "parent_child":
+        return "parent_child"
+    if strategy == "hierarchical_markdown":
+        return "markdown_structure"
+    return "chunk_sequence"
+
+
+def _hierarchy_family_key(
+    meta: dict[str, Any],
+    *,
+    document_id: str,
+    parent_key: str,
+    node_key: str,
+) -> str:
+    family_key = str(meta.get("hierarchy_family_key") or "").strip()
+    if family_key:
+        return family_key
+    if parent_key:
+        return stable_hash(f"hf:{document_id}:{parent_key}", length=32)
+    return node_key
+
+
+def _nonnegative_index(value: Any) -> int | None:
+    try:
+        index = int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+    return index if index is not None and index >= 0 else None
+
+
+def _set_adjacent_hierarchy_metadata(
+    meta: dict[str, Any],
+    *,
+    direction: str,
+    document_id: str,
+    default_index: int | None,
+) -> None:
+    index_key = f"{direction}_chunk_index"
+    chunk_key = f"{direction}_chunk_key"
+    sibling_key = f"hierarchy_{direction}_sibling_key"
+    raw_index = meta.get(index_key)
+    index = _nonnegative_index(default_index if raw_index is None else raw_index)
+    if index is None:
+        meta.setdefault(sibling_key, None)
+        return
+
+    meta.setdefault(index_key, index)
+    key = str(meta.get(chunk_key) or "").strip()
+    if not key and document_id:
+        key = f"{document_id}:{index}"
+    if key:
+        meta.setdefault(chunk_key, key)
+        meta.setdefault(sibling_key, key)
 
 
 def ensure_hierarchy_overlay_metadata(
@@ -300,80 +400,32 @@ def ensure_hierarchy_overlay_metadata(
     node_key = str(meta.get("hierarchy_node_key") or "").strip() or chunk_key
     meta["hierarchy_node_key"] = node_key
 
-    # Respect explicit hierarchy_parent_key=None emitted by chunkers (e.g. parent nodes in
-    # parent_child / markdown hierarchy). Only fall back to legacy parent_id fields when the
-    # hierarchy_parent_key field is absent entirely.
-    if "hierarchy_parent_key" in meta:
-        parent_key_raw = meta.get("hierarchy_parent_key")
-    else:
-        parent_key_raw = meta.get("parent_id") or meta.get("parent_node_id")
-    parent_key = str(parent_key_raw or "").strip()
-    meta["hierarchy_parent_key"] = (parent_key if parent_key else None)
-
-    level = str(meta.get("hierarchy_level") or "").strip().lower()
-    if not level:
-        role = str(meta.get("chunk_role") or "").strip().lower()
-        if role in {"parent", "child", "paragraph", "sentence"}:
-            level = role
-        elif parent_key:
-            level = "child"
-        else:
-            level = "chunk"
-    meta["hierarchy_level"] = level
-
-    basis = str(meta.get("hierarchy_basis") or "").strip().lower()
-    if not basis:
-        strategy = str(meta.get("chunk_strategy") or "").strip().lower()
-        if strategy == "parent_child":
-            basis = "parent_child"
-        elif strategy == "hierarchical_markdown":
-            basis = "markdown_structure"
-        else:
-            basis = "chunk_sequence"
-    meta["hierarchy_basis"] = basis
-
-    family_key = str(meta.get("hierarchy_family_key") or "").strip()
-    if not family_key:
-        if parent_key:
-            family_key = stable_hash(f"hf:{doc_id}:{parent_key}", length=32)
-        else:
-            family_key = node_key
-    meta["hierarchy_family_key"] = family_key
+    parent_key = _hierarchy_parent_key(meta)
+    meta["hierarchy_parent_key"] = parent_key or None
+    meta["hierarchy_level"] = _hierarchy_level(meta, parent_key)
+    meta["hierarchy_basis"] = _hierarchy_basis(meta)
+    meta["hierarchy_family_key"] = _hierarchy_family_key(
+        meta,
+        document_id=doc_id,
+        parent_key=parent_key,
+        node_key=node_key,
+    )
 
     if meta.get("hierarchy_sibling_index") is None:
         meta["hierarchy_sibling_index"] = idx
 
-    prev_idx = meta.get("prev_chunk_index")
-    if prev_idx is None and idx > 0:
-        prev_idx = idx - 1
-    try:
-        prev_idx_i = int(prev_idx) if prev_idx is not None else None
-    except (TypeError, ValueError):
-        prev_idx_i = None
-    if prev_idx_i is not None and prev_idx_i >= 0:
-        meta.setdefault("prev_chunk_index", prev_idx_i)
-        prev_key = str(meta.get("prev_chunk_key") or "").strip() or (f"{doc_id}:{prev_idx_i}" if doc_id else "")
-        if prev_key:
-            meta.setdefault("prev_chunk_key", prev_key)
-            meta.setdefault("hierarchy_prev_sibling_key", prev_key)
-    else:
-        meta.setdefault("hierarchy_prev_sibling_key", None)
-
-    next_idx = meta.get("next_chunk_index")
-    if next_idx is None and total is not None and (idx + 1) < total:
-        next_idx = idx + 1
-    try:
-        next_idx_i = int(next_idx) if next_idx is not None else None
-    except (TypeError, ValueError):
-        next_idx_i = None
-    if next_idx_i is not None and next_idx_i >= 0:
-        meta.setdefault("next_chunk_index", next_idx_i)
-        next_key = str(meta.get("next_chunk_key") or "").strip() or (f"{doc_id}:{next_idx_i}" if doc_id else "")
-        if next_key:
-            meta.setdefault("next_chunk_key", next_key)
-            meta.setdefault("hierarchy_next_sibling_key", next_key)
-    else:
-        meta.setdefault("hierarchy_next_sibling_key", None)
+    _set_adjacent_hierarchy_metadata(
+        meta,
+        direction="prev",
+        document_id=doc_id,
+        default_index=idx - 1 if idx > 0 else None,
+    )
+    _set_adjacent_hierarchy_metadata(
+        meta,
+        direction="next",
+        document_id=doc_id,
+        default_index=idx + 1 if total is not None and idx + 1 < total else None,
+    )
 
     return meta
 

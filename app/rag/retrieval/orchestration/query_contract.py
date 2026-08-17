@@ -90,18 +90,84 @@ def _requested_score_threshold(state: Mapping[str, Any], defaults: QueryContract
     return float(raw)
 
 
-def normalize_query_contract(payload: QueryContractNormalizationInput) -> QueryContractNormalizationOutput:
-    state = payload.state
+def _resolve_request_retrieval_mode(*, state: Mapping[str, Any], query_for_retrieval: str) -> tuple[str, bool]:
     effective_retrieval_mode = state.get("retrieval_mode", "hybrid") or "hybrid"
     request_retrieval_mode = normalize_retrieval_mode(effective_retrieval_mode)
-    retrieval_mode_routed = False
     mode_norm = str(request_retrieval_mode or "hybrid").lower().strip()
     if mode_norm == "auto":
-        request_retrieval_mode = guess_retrieval_mode(payload.query_for_retrieval)
-        retrieval_mode_routed = True
-        mode_norm = str(request_retrieval_mode or "hybrid").lower().strip()
+        routed_mode = guess_retrieval_mode(query_for_retrieval)
+        mode_norm = str(routed_mode or "hybrid").lower().strip()
+        return (routed_mode if mode_norm in ("hybrid", "vector", "keyword", "mmr") else "hybrid"), True
     if mode_norm not in ("hybrid", "vector", "keyword", "mmr"):
-        request_retrieval_mode = "hybrid"
+        return "hybrid", False
+    return str(request_retrieval_mode or "hybrid"), False
+
+
+def _apply_hierarchy_profile_overrides(
+    hierarchy: HierarchyContractSettings,
+    profile_applied: Mapping[str, Any],
+) -> HierarchyContractSettings:
+    updates: dict[str, Any] = {}
+    if profile_applied.get("enable_hierarchy_recall") is not None:
+        updates["enabled"] = bool(profile_applied.get("enable_hierarchy_recall"))
+    if profile_applied.get("hierarchy_family_collapse") is not None:
+        updates["family_collapse"] = bool(profile_applied.get("hierarchy_family_collapse"))
+    if profile_applied.get("hierarchy_family_aggregation") is not None:
+        updates["family_aggregation"] = (
+            str(profile_applied.get("hierarchy_family_aggregation") or "combined").strip().lower() or "combined"
+        )
+    if profile_applied.get("hierarchy_tree_dedup") is not None:
+        updates["tree_dedup"] = bool(profile_applied.get("hierarchy_tree_dedup"))
+    if profile_applied.get("hierarchy_parent_depth") is not None:
+        updates["parent_depth"] = max(0, int(profile_applied.get("hierarchy_parent_depth") or 0))
+    if profile_applied.get("hierarchy_sibling_window") is not None:
+        updates["sibling_window"] = max(0, int(profile_applied.get("hierarchy_sibling_window") or 0))
+    if profile_applied.get("hierarchy_overfetch_factor") is not None:
+        updates["overfetch_factor"] = max(1, int(profile_applied.get("hierarchy_overfetch_factor") or 1))
+    if not updates:
+        return hierarchy
+
+    return HierarchyContractSettings(
+        enabled=bool(updates.get("enabled", hierarchy.enabled)),
+        family_collapse=bool(updates.get("family_collapse", hierarchy.family_collapse)),
+        family_aggregation=str(updates.get("family_aggregation", hierarchy.family_aggregation)),
+        tree_dedup=bool(updates.get("tree_dedup", hierarchy.tree_dedup)),
+        parent_depth=int(updates.get("parent_depth", hierarchy.parent_depth)),
+        sibling_window=int(updates.get("sibling_window", hierarchy.sibling_window)),
+        overfetch_factor=int(updates.get("overfetch_factor", hierarchy.overfetch_factor)),
+    )
+
+
+def _resolve_sparse_settings(
+    *,
+    sparse_enabled: bool,
+    sparse_provider: str,
+    profile_applied: Mapping[str, Any],
+) -> tuple[bool, str]:
+    enabled = sparse_enabled
+    provider = sparse_provider
+    if profile_applied.get("sparse_retrieval_enabled") is not None:
+        enabled = bool(profile_applied.get("sparse_retrieval_enabled"))
+    if profile_applied.get("sparse_retrieval_provider"):
+        provider = str(profile_applied.get("sparse_retrieval_provider") or "")
+    return enabled, provider
+
+
+def _state_updates_from_profile(profile_applied: Mapping[str, Any]) -> dict[str, Any]:
+    updates: dict[str, Any] = {}
+    if profile_applied.get("retrieval_contract_mode") is not None:
+        updates["retrieval_contract_mode"] = profile_applied.get("retrieval_contract_mode")
+    if profile_applied.get("visible_evidence_only") is not None:
+        updates["visible_evidence_only"] = bool(profile_applied.get("visible_evidence_only"))
+    return updates
+
+
+def normalize_query_contract(payload: QueryContractNormalizationInput) -> QueryContractNormalizationOutput:
+    state = payload.state
+    request_retrieval_mode, retrieval_mode_routed = _resolve_request_retrieval_mode(
+        state=state,
+        query_for_retrieval=payload.query_for_retrieval,
+    )
 
     profile_applied = apply_retrieval_profile_overrides(
         profile=state.get("retrieval_profile"),
@@ -125,85 +191,12 @@ def normalize_query_contract(payload: QueryContractNormalizationInput) -> QueryC
     )
     profile_norm = str(profile_applied.get("retrieval_profile") or "").strip().lower() or None
 
-    hierarchy = payload.hierarchy
-    if profile_applied.get("enable_hierarchy_recall") is not None:
-        hierarchy = HierarchyContractSettings(
-            enabled=bool(profile_applied.get("enable_hierarchy_recall")),
-            family_collapse=hierarchy.family_collapse,
-            family_aggregation=hierarchy.family_aggregation,
-            tree_dedup=hierarchy.tree_dedup,
-            parent_depth=hierarchy.parent_depth,
-            sibling_window=hierarchy.sibling_window,
-            overfetch_factor=hierarchy.overfetch_factor,
-        )
-    if profile_applied.get("hierarchy_family_collapse") is not None:
-        hierarchy = HierarchyContractSettings(
-            enabled=hierarchy.enabled,
-            family_collapse=bool(profile_applied.get("hierarchy_family_collapse")),
-            family_aggregation=hierarchy.family_aggregation,
-            tree_dedup=hierarchy.tree_dedup,
-            parent_depth=hierarchy.parent_depth,
-            sibling_window=hierarchy.sibling_window,
-            overfetch_factor=hierarchy.overfetch_factor,
-        )
-    if profile_applied.get("hierarchy_family_aggregation") is not None:
-        hierarchy = HierarchyContractSettings(
-            enabled=hierarchy.enabled,
-            family_collapse=hierarchy.family_collapse,
-            family_aggregation=str(profile_applied.get("hierarchy_family_aggregation") or "combined").strip().lower()
-            or "combined",
-            tree_dedup=hierarchy.tree_dedup,
-            parent_depth=hierarchy.parent_depth,
-            sibling_window=hierarchy.sibling_window,
-            overfetch_factor=hierarchy.overfetch_factor,
-        )
-    if profile_applied.get("hierarchy_tree_dedup") is not None:
-        hierarchy = HierarchyContractSettings(
-            enabled=hierarchy.enabled,
-            family_collapse=hierarchy.family_collapse,
-            family_aggregation=hierarchy.family_aggregation,
-            tree_dedup=bool(profile_applied.get("hierarchy_tree_dedup")),
-            parent_depth=hierarchy.parent_depth,
-            sibling_window=hierarchy.sibling_window,
-            overfetch_factor=hierarchy.overfetch_factor,
-        )
-    if profile_applied.get("hierarchy_parent_depth") is not None:
-        hierarchy = HierarchyContractSettings(
-            enabled=hierarchy.enabled,
-            family_collapse=hierarchy.family_collapse,
-            family_aggregation=hierarchy.family_aggregation,
-            tree_dedup=hierarchy.tree_dedup,
-            parent_depth=max(0, int(profile_applied.get("hierarchy_parent_depth") or 0)),
-            sibling_window=hierarchy.sibling_window,
-            overfetch_factor=hierarchy.overfetch_factor,
-        )
-    if profile_applied.get("hierarchy_sibling_window") is not None:
-        hierarchy = HierarchyContractSettings(
-            enabled=hierarchy.enabled,
-            family_collapse=hierarchy.family_collapse,
-            family_aggregation=hierarchy.family_aggregation,
-            tree_dedup=hierarchy.tree_dedup,
-            parent_depth=hierarchy.parent_depth,
-            sibling_window=max(0, int(profile_applied.get("hierarchy_sibling_window") or 0)),
-            overfetch_factor=hierarchy.overfetch_factor,
-        )
-    if profile_applied.get("hierarchy_overfetch_factor") is not None:
-        hierarchy = HierarchyContractSettings(
-            enabled=hierarchy.enabled,
-            family_collapse=hierarchy.family_collapse,
-            family_aggregation=hierarchy.family_aggregation,
-            tree_dedup=hierarchy.tree_dedup,
-            parent_depth=hierarchy.parent_depth,
-            sibling_window=hierarchy.sibling_window,
-            overfetch_factor=max(1, int(profile_applied.get("hierarchy_overfetch_factor") or 1)),
-        )
-
-    sparse_enabled = payload.sparse_enabled
-    sparse_provider = payload.sparse_provider
-    if profile_applied.get("sparse_retrieval_enabled") is not None:
-        sparse_enabled = bool(profile_applied.get("sparse_retrieval_enabled"))
-    if profile_applied.get("sparse_retrieval_provider"):
-        sparse_provider = str(profile_applied.get("sparse_retrieval_provider") or "")
+    hierarchy = _apply_hierarchy_profile_overrides(payload.hierarchy, profile_applied)
+    sparse_enabled, sparse_provider = _resolve_sparse_settings(
+        sparse_enabled=payload.sparse_enabled,
+        sparse_provider=payload.sparse_provider,
+        profile_applied=profile_applied,
+    )
 
     retriever_update: dict[str, Any] = {
         "k": int(profile_applied.get("top_k") or payload.defaults.retrieval_top_k),
@@ -265,11 +258,7 @@ def normalize_query_contract(payload: QueryContractNormalizationInput) -> QueryC
         "hierarchy_overfetch_factor": int(hierarchy.overfetch_factor),
     }
 
-    state_updates: dict[str, Any] = {}
-    if profile_applied.get("retrieval_contract_mode") is not None:
-        state_updates["retrieval_contract_mode"] = profile_applied.get("retrieval_contract_mode")
-    if profile_applied.get("visible_evidence_only") is not None:
-        state_updates["visible_evidence_only"] = bool(profile_applied.get("visible_evidence_only"))
+    state_updates = _state_updates_from_profile(profile_applied)
 
     retrieval_contract_policy = resolve_retrieval_contract_policy(
         mode=(

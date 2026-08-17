@@ -39,6 +39,92 @@ def _embed_cache_key(text: str, *, space: str | None = None) -> str:
     return f"{prefix}:{space}:{digest}"
 
 
+def _document_cache_client() -> object | None:
+    if bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", True)):
+        return _get_redis_client()
+    return None
+
+
+def _read_cached_document_vectors(client: object, keys: list[str]) -> list[bytes | None] | None:
+    try:
+        return client.mget(keys)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Embedding cache read failed (mget): %s", str(exc)[:200])
+        _invalidate_redis_client()
+        return None
+
+
+def _missing_document_vectors(
+    *,
+    texts: list[str],
+    cached_raw: list[bytes | None],
+) -> tuple[list[list[float] | None], list[tuple[int, str]], int, int, int]:
+    cache_hits = 0
+    cache_misses = 0
+    cache_corrupt = 0
+    missing: list[tuple[int, str]] = []
+    out: list[list[float] | None] = [None] * len(texts)
+
+    for i, raw in enumerate(cached_raw):
+        if raw:
+            try:
+                out[i] = json.loads(raw)
+                cache_hits += 1
+                continue
+            except Exception:  # noqa: BLE001
+                cache_corrupt += 1
+        cache_misses += 1
+        missing.append((i, texts[i]))
+
+    return out, missing, cache_hits, cache_misses, cache_corrupt
+
+
+def _write_missing_document_vectors(
+    *,
+    client: object,
+    keys: list[str],
+    missing: list[tuple[int, str]],
+    computed: list[list[float]],
+    out: list[list[float] | None],
+) -> None:
+    ttl = int(getattr(settings, "EMBEDDING_CACHE_TTL_SEC", 7 * 24 * 3600) or 0)
+    try:
+        pipe = client.pipeline(transaction=False)
+        for (idx, _text), vec in zip(missing, computed, strict=False):
+            out[idx] = vec
+            try:
+                payload = json.dumps(vec, separators=(",", ":")).encode("utf-8")
+                if ttl > 0:
+                    pipe.set(keys[idx], payload, ex=ttl)
+                else:
+                    pipe.set(keys[idx], payload)
+            except Exception as exc:  # noqa: BLE001
+                # Cache failures do not affect main flow.
+                logger.debug("Embedding cache write payload failed; continuing without cached vector: %s", exc)
+        try:
+            pipe.execute()
+        except Exception:  # noqa: BLE001
+            _invalidate_redis_client()
+    except Exception:  # noqa: BLE001
+        _invalidate_redis_client()
+
+
+def _log_document_cache_metrics(*, total: int, hits: int, misses: int, corrupt: int) -> None:
+    try:
+        log_metrics(
+            {
+                "event": "embedding.cache",
+                "op": "documents",
+                "total": int(total),
+                "hits": int(hits),
+                "misses": int(misses),
+                "corrupt": int(corrupt),
+            }
+        )
+    except Exception as exc:
+        logger.debug("Ignoring non-critical embedding adapter fallback failure: %s", exc)
+
+
 class LangChainEmbeddingsAdapter:
     """LangChain Embeddings interface adapter.
 
@@ -84,90 +170,44 @@ class LangChainEmbeddingsAdapter:
         Returns:
             List of embedding vectors
         """
-        # Best-effort Redis cache to avoid repeated embedding calls during ingest.
-        if bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", True)):
-            client = _get_redis_client()
-        else:
-            client = None
-
         if not texts:
             return []
+        client = _document_cache_client()
 
         embeddings: list[list[float]]
         if client is None:
             embeddings = self._model.encode(texts)
         else:
             keys = [self._cache_key(t) for t in texts]
-            try:
-                cached_raw = client.mget(keys)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Embedding cache read failed (mget): %s", str(exc)[:200])
-                _invalidate_redis_client()
-                cached_raw = None
-
+            cached_raw = _read_cached_document_vectors(client, keys)
             if cached_raw is None:
                 embeddings = self._model.encode(texts)
                 if self._normalize:
                     embeddings = self._normalize_vectors(embeddings)
                 return embeddings
 
-            cache_hits = 0
-            cache_misses = 0
-            cache_corrupt = 0
-
-            missing: list[tuple[int, str]] = []
-            out: list[list[float] | None] = [None] * len(texts)
-            for i, raw in enumerate(cached_raw):
-                if raw:
-                    try:
-                        out[i] = json.loads(raw)
-                        cache_hits += 1
-                    except Exception:  # noqa: BLE001
-                        cache_corrupt += 1
-                        cache_misses += 1
-                        missing.append((i, texts[i]))
-                else:
-                    cache_misses += 1
-                    missing.append((i, texts[i]))
-
+            out, missing, cache_hits, cache_misses, cache_corrupt = _missing_document_vectors(
+                texts=texts,
+                cached_raw=cached_raw,
+            )
             if missing:
                 missing_texts = [t for _, t in missing]
                 computed = self._model.encode(missing_texts)
-                ttl = int(getattr(settings, "EMBEDDING_CACHE_TTL_SEC", 7 * 24 * 3600) or 0)
-                try:
-                    pipe = client.pipeline(transaction=False)
-                    for (idx, _t), vec in zip(missing, computed, strict=False):
-                        out[idx] = vec
-                        try:
-                            payload = json.dumps(vec, separators=(",", ":")).encode("utf-8")
-                            if ttl > 0:
-                                pipe.set(keys[idx], payload, ex=ttl)
-                            else:
-                                pipe.set(keys[idx], payload)
-                        except Exception as exc:  # noqa: BLE001
-                            # Cache failures do not affect main flow.
-                            logger.debug("Embedding cache write payload failed; continuing without cached vector: %s", exc)
-                    try:
-                        pipe.execute()
-                    except Exception:  # noqa: BLE001
-                        _invalidate_redis_client()
-                except Exception:  # noqa: BLE001
-                    _invalidate_redis_client()
+                _write_missing_document_vectors(
+                    client=client,
+                    keys=keys,
+                    missing=missing,
+                    computed=computed,
+                    out=out,
+                )
 
             embeddings = [v if v is not None else [] for v in out]
-            try:
-                log_metrics(
-                    {
-                        "event": "embedding.cache",
-                        "op": "documents",
-                        "total": int(len(texts)),
-                        "hits": int(cache_hits),
-                        "misses": int(cache_misses),
-                        "corrupt": int(cache_corrupt),
-                    }
-                )
-            except Exception as exc:
-                logger.debug("Ignoring non-critical embedding adapter fallback failure: %s", exc)
+            _log_document_cache_metrics(
+                total=len(texts),
+                hits=cache_hits,
+                misses=cache_misses,
+                corrupt=cache_corrupt,
+            )
 
         if self._normalize:
             embeddings = self._normalize_vectors(embeddings)

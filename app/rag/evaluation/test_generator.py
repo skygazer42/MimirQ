@@ -544,7 +544,43 @@ def generate_questions_from_conversations(
     Returns:
         Generated question list.
     """
-    # Query conversations and messages.
+    scoped_conversations = _load_scoped_conversations(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        conversation_ids=conversation_ids,
+    )
+    if not scoped_conversations:
+        return []
+
+    high_quality_turns = _collect_high_quality_conversation_turns(
+        db=db,
+        tenant_id=tenant_id,
+        scoped_conversations=scoped_conversations,
+        quality_threshold=quality_threshold,
+    )
+    if not high_quality_turns:
+        return []
+
+    conversation_text = _conversation_turns_text(
+        _sample_high_quality_turns(
+            high_quality_turns,
+            num_questions=num_questions,
+        )
+    )
+    return _generate_questions_from_conversation_text(
+        conversation_text=conversation_text,
+        num_questions=num_questions,
+    )
+
+
+def _load_scoped_conversations(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    conversation_ids: list[UUID],
+) -> list[Conversation]:
     conversations = (
         db.query(Conversation)
         .filter(
@@ -553,7 +589,6 @@ def generate_questions_from_conversations(
         )
         .all()
     )
-
     if not conversations:
         return []
 
@@ -565,64 +600,101 @@ def generate_questions_from_conversations(
             continue
         ensure_conversation_access(db, tenant_id, account_id, conversation)
         scoped_conversations.append(conversation)
+    return scoped_conversations
 
-    # Collect high-quality user questions.
-    high_quality_turns: list[tuple[str, str, UUID]] = []
 
-    for conv in scoped_conversations:
-        messages = (
-            db.query(Message)
-            .filter(
-                Message.conversation_id == conv.id,
-                Message.tenant_id == tenant_id
-            )
-            .order_by(Message.created_at.asc())
-            .all()
+def _conversation_turn_quality(*, user_content: str, assistant_content: str, citations: Any) -> float:
+    quality_score = 0.0
+    if len(user_content.strip()) >= 10:
+        quality_score += 0.3
+    if len(assistant_content.strip()) >= 50:
+        quality_score += 0.3
+    if citations:
+        quality_score += 0.4
+    return quality_score
+
+
+def _conversation_messages(db: Session, *, tenant_id: UUID, conversation_id: UUID) -> list[Message]:
+    return (
+        db.query(Message)
+        .filter(
+            Message.conversation_id == conversation_id,
+            Message.tenant_id == tenant_id
         )
+        .order_by(Message.created_at.asc())
+        .all()
+    )
 
-        # Pair user-assistant messages.
-        pending_user = None
+
+def _collect_high_quality_conversation_turns(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    scoped_conversations: list[Conversation],
+    quality_threshold: float,
+) -> list[tuple[str, str, UUID]]:
+    high_quality_turns: list[tuple[str, str, UUID]] = []
+    for conv in scoped_conversations:
+        messages = _conversation_messages(db, tenant_id=tenant_id, conversation_id=conv.id)
+        pending_user: Message | None = None
         for msg in messages:
             if msg.role == "user":
                 pending_user = msg
-            elif msg.role == "assistant" and pending_user:
-                # Quality score based on message length and citation count.
-                user_len = len(pending_user.content.strip())
-                assistant_len = len(msg.content.strip())
-                num_citations = len(msg.citations) if msg.citations else 0
+                continue
+            if msg.role != "assistant" or pending_user is None:
+                continue
+            quality_score = _conversation_turn_quality(
+                user_content=pending_user.content,
+                assistant_content=msg.content,
+                citations=msg.citations,
+            )
+            if quality_score >= quality_threshold:
+                high_quality_turns.append((pending_user.content, msg.content, conv.id))
+            pending_user = None
+    return high_quality_turns
 
-                # Simple scoring rules.
-                quality_score = 0.0
-                if user_len >= 10:  # Question long enough.
-                    quality_score += 0.3
-                if assistant_len >= 50:  # Answer detailed enough.
-                    quality_score += 0.3
-                if num_citations > 0:  # Has citations.
-                    quality_score += 0.4
 
-                if quality_score >= quality_threshold:
-                    high_quality_turns.append((
-                        pending_user.content,
-                        msg.content,
-                        conv.id
-                    ))
+def _sample_high_quality_turns(
+    high_quality_turns: list[tuple[str, str, UUID]],
+    *,
+    num_questions: int,
+) -> list[tuple[str, str, UUID]]:
+    if len(high_quality_turns) <= num_questions * 2:
+        return high_quality_turns
+    return secure_sample(high_quality_turns, num_questions * 2)
 
-                pending_user = None
 
-    if not high_quality_turns:
-        return []
-
-    # If many high-quality conversations, sample randomly.
-    if len(high_quality_turns) > num_questions * 2:
-        high_quality_turns = secure_sample(high_quality_turns, num_questions * 2)
-
-    # Prepare conversation text.
-    conversation_text = "\n\n".join([
+def _conversation_turns_text(high_quality_turns: list[tuple[str, str, UUID]]) -> str:
+    return "\n\n".join(
         f"User: {user}\nAssistant: {assistant}"
         for user, assistant, _ in high_quality_turns
-    ])
+    )
 
-    # Prepare LLM.
+
+def _conversation_generated_questions(result: Any) -> list[GeneratedQuestion]:
+    if not isinstance(result, dict) or "questions" not in result:
+        return []
+    questions: list[GeneratedQuestion] = []
+    for q in result["questions"]:
+        questions.append(
+            GeneratedQuestion(
+                question=q.get("question", ""),
+                expected_answer=q.get("expected_answer"),
+                context=q.get("original_question"),
+                metadata={
+                    "source_type": "conversation",
+                    "original_question": q.get("original_question", "")
+                }
+            )
+        )
+    return questions
+
+
+def _generate_questions_from_conversation_text(
+    *,
+    conversation_text: str,
+    num_questions: int,
+) -> list[GeneratedQuestion]:
     http_client, http_async_client = _build_testgen_http_clients()
     try:
         llm = ChatOpenAI(
@@ -644,26 +716,13 @@ def generate_questions_from_conversations(
         chain = prompt | llm | parser
 
         try:
-            result = chain.invoke({
-                "conversations": conversation_text[:8000],  # Limit length.
-                "num_questions": num_questions
-            })
-
-            questions: list[GeneratedQuestion] = []
-
-            if isinstance(result, dict) and "questions" in result:
-                for q in result["questions"]:
-                    questions.append(GeneratedQuestion(
-                        question=q.get("question", ""),
-                        expected_answer=q.get("expected_answer"),
-                        context=q.get("original_question"),
-                        metadata={
-                            "source_type": "conversation",
-                            "original_question": q.get("original_question", "")
-                        }
-                    ))
-
-            return questions[:num_questions]
+            result = chain.invoke(
+                {
+                    "conversations": conversation_text[:8000],
+                    "num_questions": num_questions,
+                }
+            )
+            return _conversation_generated_questions(result)[:num_questions]
 
         except Exception as e:
             logger.warning("Failed to generate questions from conversation: %s", e)

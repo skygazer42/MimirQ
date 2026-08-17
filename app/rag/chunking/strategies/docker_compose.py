@@ -79,29 +79,11 @@ def _build_service_blocks(text: str) -> list[_ServiceBlock]:
             anchor_idx = i
             break
 
-    candidates: list[tuple[int, int, str]] = []
-    services_end = len(text)
-
-    for i in range(anchor_idx + 1, len(lines)):
-        plain = lines[i].plain
-        if not plain.strip() or plain.lstrip().startswith("#"):
-            continue
-        indent = len(plain) - len(plain.lstrip(" "))
-        if indent <= base_indent:
-            services_end = lines[i].start
-            break
-        m = _KEY_RE.match(plain)
-        if not m:
-            continue
-        key = (m.group("key") or "").strip()
-        if key:
-            candidates.append((i, indent, key))
-
+    candidates, services_end = _collect_service_candidates(lines, anchor_idx=anchor_idx, base_indent=base_indent, text_length=len(text))
     if not candidates:
         return []
 
-    service_indent = min(ind for _, ind, _ in candidates)
-    service_keys: list[tuple[int, str]] = [(i, key) for i, ind, key in candidates if ind == service_indent]
+    service_keys = _service_keys_from_candidates(candidates)
     if not service_keys:
         return []
 
@@ -115,6 +97,44 @@ def _build_service_blocks(text: str) -> list[_ServiceBlock]:
     return blocks
 
 
+def _collect_service_candidates(
+    lines: list[_Line],
+    *,
+    anchor_idx: int,
+    base_indent: int,
+    text_length: int,
+) -> tuple[list[tuple[int, int, str]], int]:
+    candidates: list[tuple[int, int, str]] = []
+    services_end = text_length
+    for i in range(anchor_idx + 1, len(lines)):
+        candidate = _service_candidate_for_line(lines[i], base_indent=base_indent)
+        if candidate == "stop":
+            services_end = lines[i].start
+            break
+        if candidate is not None:
+            candidates.append((i, *candidate))
+    return candidates, services_end
+
+
+def _service_candidate_for_line(line: _Line, *, base_indent: int) -> tuple[int, str] | str | None:
+    plain = line.plain
+    if not plain.strip() or plain.lstrip().startswith("#"):
+        return None
+    indent = len(plain) - len(plain.lstrip(" "))
+    if indent <= base_indent:
+        return "stop"
+    match = _KEY_RE.match(plain)
+    if not match:
+        return None
+    key = (match.group("key") or "").strip()
+    return (indent, key) if key else None
+
+
+def _service_keys_from_candidates(candidates: list[tuple[int, int, str]]) -> list[tuple[int, str]]:
+    service_indent = min(indent for _, indent, _ in candidates)
+    return [(line_index, key) for line_index, indent, key in candidates if indent == service_indent]
+
+
 def looks_like_docker_compose(text: str) -> bool:
     if not text or len(text) < 60:
         return False
@@ -125,6 +145,77 @@ def looks_like_docker_compose(text: str) -> bool:
         return False
     blocks = _build_service_blocks(text)
     return len(blocks) >= 1
+
+
+def _compose_base_meta(base_meta: dict[str, Any], *, start_char: int, end_char: int, version: str | None) -> dict[str, Any]:
+    meta: dict[str, Any] = dict(base_meta)
+    meta["chunk_strategy"] = "docker_compose"
+    meta["start_char"] = start_char
+    meta["end_char"] = end_char
+    if version:
+        meta["docker_compose_version"] = version
+    meta.setdefault("doc_type_kwd", "docker-compose")
+    return meta
+
+
+def _split_fallback_chunk_docs(
+    splitter: RecursiveCharacterTextSplitter,
+    text: str,
+    base_meta: dict[str, Any],
+    *,
+    version: str | None,
+    fallback_key: str,
+    start_offset: int = 0,
+) -> list[Document]:
+    split_docs = splitter.create_documents(texts=[text], metadatas=[base_meta])
+    chunks: list[Document] = []
+    for split_doc in split_docs:
+        split_meta = dict(split_doc.metadata or {})
+        local_start = int(split_meta.pop("start_index", None) or 0)
+        abs_start = start_offset + local_start
+        meta = _compose_base_meta(
+            base_meta,
+            start_char=abs_start,
+            end_char=abs_start + len(split_doc.page_content),
+            version=version,
+        )
+        meta.update(split_meta)
+        meta[fallback_key] = True
+        chunks.append(Document(page_content=split_doc.page_content, metadata=meta))
+    return chunks
+
+
+def _split_service_chunk_docs(
+    splitter: RecursiveCharacterTextSplitter,
+    text: str,
+    base_meta: dict[str, Any],
+    *,
+    block: _ServiceBlock,
+    version: str | None,
+    service_count: int,
+) -> list[Document]:
+    block_text = text[block.start : block.end]
+    if not block_text.strip():
+        return []
+
+    split_docs = splitter.create_documents(texts=[block_text], metadatas=[base_meta])
+    chunks: list[Document] = []
+    for split_doc in split_docs:
+        split_meta = dict(split_doc.metadata or {})
+        local_start = int(split_meta.pop("start_index", None) or 0)
+        abs_start = block.start + local_start
+        meta = _compose_base_meta(
+            base_meta,
+            start_char=abs_start,
+            end_char=abs_start + len(split_doc.page_content),
+            version=version,
+        )
+        meta.update(split_meta)
+        meta["compose_service"] = block.name
+        meta["compose_service_index"] = int(block.index)
+        meta["compose_service_count"] = int(service_count)
+        chunks.append(Document(page_content=split_doc.page_content, metadata=meta))
+    return chunks
 
 
 class DockerComposeChunker(BaseChunker):
@@ -144,75 +235,7 @@ class DockerComposeChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
-            base_meta = dict(doc.metadata or {})
-            if not text.strip():
-                continue
-
-            version = _extract_version(text)
-            blocks = _build_service_blocks(text)
-
-            if not blocks:
-                split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "docker_compose"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta["docker_compose_fallback"] = True
-                    if version:
-                        meta["docker_compose_version"] = version
-                    meta.setdefault("doc_type_kwd", "docker-compose")
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
-                continue
-
-            first = blocks[0]
-            if first.start > 0:
-                pre = text[: first.start]
-                if pre.strip():
-                    split_docs = self._fallback_splitter.create_documents(texts=[pre], metadatas=[base_meta])
-                    for sd in split_docs:
-                        local_start = sd.metadata.pop("start_index", None) or 0
-                        abs_start = int(local_start)
-                        abs_end = abs_start + len(sd.page_content)
-                        meta: dict[str, Any] = dict(base_meta)
-                        meta.update(sd.metadata or {})
-                        meta["chunk_strategy"] = "docker_compose"
-                        meta["start_char"] = abs_start
-                        meta["end_char"] = abs_end
-                        meta["docker_compose_preamble"] = True
-                        if version:
-                            meta["docker_compose_version"] = version
-                        meta.setdefault("doc_type_kwd", "docker-compose")
-                        out.append(Document(page_content=sd.page_content, metadata=meta))
-
-            for blk in blocks:
-                blk_text = text[blk.start : blk.end]
-                if not blk_text.strip():
-                    continue
-                split_docs = self._fallback_splitter.create_documents(texts=[blk_text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = blk.start + int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "docker_compose"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta.setdefault("doc_type_kwd", "docker-compose")
-                    if version:
-                        meta["docker_compose_version"] = version
-                    meta["compose_service"] = blk.name
-                    meta["compose_service_index"] = int(blk.index)
-                    meta["compose_service_count"] = int(len(blocks))
-
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+            out.extend(self._split_document(doc))
 
         for idx, chunk in enumerate(out):
             meta = dict(chunk.metadata or {})
@@ -220,3 +243,48 @@ class DockerComposeChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
+
+    def _split_document(self, doc: Document) -> list[Document]:
+        text = doc.page_content or ""
+        if not text.strip():
+            return []
+
+        base_meta = dict(doc.metadata or {})
+        version = _extract_version(text)
+        blocks = _build_service_blocks(text)
+        if not blocks:
+            return _split_fallback_chunk_docs(
+                self._fallback_splitter,
+                text,
+                base_meta,
+                version=version,
+                fallback_key="docker_compose_fallback",
+            )
+
+        chunks: list[Document] = []
+        first = blocks[0]
+        if first.start > 0:
+            preamble = text[: first.start]
+            if preamble.strip():
+                chunks.extend(
+                    _split_fallback_chunk_docs(
+                        self._fallback_splitter,
+                        preamble,
+                        base_meta,
+                        version=version,
+                        fallback_key="docker_compose_preamble",
+                    )
+                )
+
+        for block in blocks:
+            chunks.extend(
+                _split_service_chunk_docs(
+                    self._fallback_splitter,
+                    text,
+                    base_meta,
+                    block=block,
+                    version=version,
+                    service_count=len(blocks),
+                )
+            )
+        return chunks

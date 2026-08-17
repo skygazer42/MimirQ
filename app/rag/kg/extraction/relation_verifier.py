@@ -47,47 +47,26 @@ class RelationVerifier:
         allow = [normalize_predicate(p) for p in (allowed_predicates or []) if str(p or "").strip()]
         self.allowed_predicates = set(allow)
 
-    async def verify(
-        self,
-        *,
-        text: str,
-        candidates: Sequence[RelationCandidate],
-        max_keep: int = 20,
-    ) -> dict[str, Any]:
-        clean_text = (text or "").strip()
-        if not clean_text:
-            return {"kept": []}
-
-        cand_list = [c for c in (candidates or []) if str(getattr(c, "rid", "") or "").strip()]
-        if not cand_list:
-            return {"kept": []}
-
-        lim = max(0, int(max_keep or 0))
-        if lim <= 0:
-            return {"kept": []}
-
+    @staticmethod
+    def _candidate_lines(candidates: Sequence[RelationCandidate]) -> list[str]:
         lines: list[str] = []
-        for c in cand_list:
-            rid = str(c.rid).strip()
-            subj = str(c.subject_id).strip()
-            obj = str(c.object_id).strip()
-            pred = str(c.predicate or "").strip() or "unknown"
-            evq = str(c.evidence_quote or "").strip()
+        for candidate in candidates:
+            rid = str(candidate.rid).strip()
+            subj = str(candidate.subject_id).strip()
+            obj = str(candidate.object_id).strip()
+            pred = str(candidate.predicate or "").strip() or "unknown"
+            evq = str(candidate.evidence_quote or "").strip()
             if not rid or not subj or not obj:
                 continue
             if evq:
-                evq = evq[:160]
-                lines.append(f"{rid}: {subj} -[{pred}]-> {obj} | evidence: {evq}")
+                lines.append(f"{rid}: {subj} -[{pred}]-> {obj} | evidence: {evq[:160]}")
             else:
                 lines.append(f"{rid}: {subj} -[{pred}]-> {obj}")
+        return lines
 
-        if not lines:
-            return {"kept": []}
-
-        allowlist = sorted(self.allowed_predicates) if self.allowed_predicates else []
-        allow_hint = ", ".join(allowlist[:200]) if allowlist else ""
-
-        schema: dict[str, Any] = {
+    @staticmethod
+    def _response_schema() -> dict[str, Any]:
+        return {
             "type": "object",
             "properties": {
                 "kept": {
@@ -106,6 +85,42 @@ class RelationVerifier:
             },
         }
 
+    @staticmethod
+    def _normalize_kept_item(
+        item: dict[str, Any],
+        *,
+        valid_rids: set[str],
+        seen: set[str],
+        allowed_predicates: set[str],
+    ) -> dict[str, Any] | None:
+        rid = str(item.get("rid") or "").strip()
+        if not rid or rid not in valid_rids or rid in seen:
+            return None
+        seen.add(rid)
+
+        pred_in = str(item.get("predicate") or "").strip()
+        pred = normalize_predicate(pred_in) if pred_in else ""
+        if not pred:
+            pred = "unknown"
+        if allowed_predicates and pred not in allowed_predicates:
+            return None
+
+        evq = str(item.get("evidence_quote") or "").strip() or None
+        return {
+            "rid": rid,
+            "predicate": pred,
+            "confidence": _clamp01(item.get("confidence"), default=0.7),
+            "evidence_quote": evq[:300] if evq else None,
+        }
+
+    async def _verify_candidates_with_llm(
+        self,
+        *,
+        clean_text: str,
+        lines: list[str],
+        lim: int,
+        allow_hint: str,
+    ) -> list[Any]:
         prompt = (
             "You are verifying KG relation triples extracted from the text.\n"
             "Return JSON only.\n"
@@ -125,16 +140,51 @@ class RelationVerifier:
             "Text:\n"
             f"{clean_text}\n"
         )
-
         messages = [LLMMessage(role=LLMRole.USER, content=prompt)]
         try:
-            raw = await self.llm_client.chat_with_schema(messages, response_schema=schema, temperature=0.2)
+            raw = await self.llm_client.chat_with_schema(
+                messages,
+                response_schema=self._response_schema(),
+                temperature=0.2,
+            )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Relation verify failed; returning no-op: %s", str(exc)[:200])
+            return []
+        kept_raw = raw.get("kept") if isinstance(raw, dict) else None
+        return kept_raw if isinstance(kept_raw, list) else []
+
+    async def verify(
+        self,
+        *,
+        text: str,
+        candidates: Sequence[RelationCandidate],
+        max_keep: int = 20,
+    ) -> dict[str, Any]:
+        clean_text = (text or "").strip()
+        if not clean_text:
             return {"kept": []}
 
-        kept_raw = raw.get("kept") if isinstance(raw, dict) else None
-        if not isinstance(kept_raw, list):
+        cand_list = [c for c in (candidates or []) if str(getattr(c, "rid", "") or "").strip()]
+        if not cand_list:
+            return {"kept": []}
+
+        lim = max(0, int(max_keep or 0))
+        if lim <= 0:
+            return {"kept": []}
+
+        lines = self._candidate_lines(cand_list)
+        if not lines:
+            return {"kept": []}
+
+        allowlist = sorted(self.allowed_predicates) if self.allowed_predicates else []
+        allow_hint = ", ".join(allowlist[:200]) if allowlist else ""
+        kept_raw = await self._verify_candidates_with_llm(
+            clean_text=clean_text,
+            lines=lines,
+            lim=lim,
+            allow_hint=allow_hint,
+        )
+        if not kept_raw:
             return {"kept": []}
 
         valid_rids = {str(c.rid).strip() for c in cand_list}
@@ -144,28 +194,15 @@ class RelationVerifier:
         for item in kept_raw:
             if not isinstance(item, dict):
                 continue
-            rid = str(item.get("rid") or "").strip()
-            if not rid or rid not in valid_rids or rid in seen:
-                continue
-            seen.add(rid)
-
-            pred_in = str(item.get("predicate") or "").strip()
-            pred = normalize_predicate(pred_in) if pred_in else ""
-            if not pred:
-                pred = "unknown"
-            if self.allowed_predicates and pred not in self.allowed_predicates:
-                # If verifier outputs a non-allowlisted predicate, drop it (avoid schema drift).
-                continue
-
-            evq = str(item.get("evidence_quote") or "").strip() or None
-            out.append(
-                {
-                    "rid": rid,
-                    "predicate": pred,
-                    "confidence": _clamp01(item.get("confidence"), default=0.7),
-                    "evidence_quote": (evq[:300] if evq else None),
-                }
+            normalized = self._normalize_kept_item(
+                item,
+                valid_rids=valid_rids,
+                seen=seen,
+                allowed_predicates=self.allowed_predicates,
             )
+            if normalized is None:
+                continue
+            out.append(normalized)
             if len(out) >= lim:
                 break
 

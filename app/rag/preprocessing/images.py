@@ -62,54 +62,61 @@ def _is_decorative_image(*, alt: str, url: str) -> bool:
     return any(tok in joined for tok in _DECORATIVE_TOKENS)
 
 
+def _replace_markdown_image(
+    match: re.Match[str],
+    *,
+    mode: ImageRemoveMode,
+    url_group: str,
+    removed: list[int],
+) -> str:
+    if mode == "all":
+        removed[0] += 1
+        return ""
+
+    alt = (match.group("alt") or "").strip()
+    url = (match.group(url_group) or "").strip()
+    if _is_decorative_image(alt=alt, url=url):
+        removed[0] += 1
+        return ""
+    return match.group(0)
+
+
+def _replace_html_image(match: re.Match[str], *, mode: ImageRemoveMode, removed: list[int]) -> str:
+    if mode == "all":
+        removed[0] += 1
+        return ""
+
+    tag = match.group(0) or ""
+    attrs = {
+        (m.group("key") or "").strip().lower(): (m.group("val") or "").strip()
+        for m in _HTML_ATTR_RE.finditer(tag)
+    }
+    if _is_decorative_image(alt=attrs.get("alt", ""), url=attrs.get("src", "")):
+        removed[0] += 1
+        return ""
+    return tag
+
+
+def _strip_image_line(line: str, *, mode: ImageRemoveMode, removed: list[int]) -> str:
+    current = _HTML_IMG_RE.sub(lambda match: _replace_html_image(match, mode=mode, removed=removed), line)
+    current = _MD_IMAGE_INLINE_RE.sub(
+        lambda match: _replace_markdown_image(match, mode=mode, url_group="url", removed=removed),
+        current,
+    )
+    return _MD_IMAGE_REF_RE.sub(
+        lambda match: _replace_markdown_image(match, mode=mode, url_group="ref", removed=removed),
+        current,
+    )
+
+
 def strip_images(text: str, *, mode: ImageRemoveMode) -> ImageStripResult:
     original = text or ""
     if not original or mode == "none":
         return ImageStripResult(text=original, removed=0, changed=False)
 
-    removed = 0
+    removed = [0]
     out_lines: list[str] = []
     in_code = False
-
-    def md_inline_repl(match: re.Match[str]) -> str:
-        nonlocal removed
-        if mode == "all":
-            removed += 1
-            return ""
-        alt = (match.group("alt") or "").strip()
-        url = (match.group("url") or "").strip()
-        if _is_decorative_image(alt=alt, url=url):
-            removed += 1
-            return ""
-        return match.group(0)
-
-    def md_ref_repl(match: re.Match[str]) -> str:
-        nonlocal removed
-        if mode == "all":
-            removed += 1
-            return ""
-        alt = (match.group("alt") or "").strip()
-        ref = (match.group("ref") or "").strip()
-        if _is_decorative_image(alt=alt, url=ref):
-            removed += 1
-            return ""
-        return match.group(0)
-
-    def html_img_repl(match: re.Match[str]) -> str:
-        nonlocal removed
-        if mode == "all":
-            removed += 1
-            return ""
-        tag = match.group(0) or ""
-        attrs: dict[str, str] = {}
-        for m in _HTML_ATTR_RE.finditer(tag):
-            attrs[(m.group("key") or "").strip().lower()] = (m.group("val") or "").strip()
-        alt = attrs.get("alt", "")
-        src = attrs.get("src", "")
-        if _is_decorative_image(alt=alt, url=src):
-            removed += 1
-            return ""
-        return tag
 
     for line in original.splitlines():
         if _CODE_FENCE_RE.match(line):
@@ -120,11 +127,7 @@ def strip_images(text: str, *, mode: ImageRemoveMode) -> ImageStripResult:
             out_lines.append(line)
             continue
 
-        current = _HTML_IMG_RE.sub(html_img_repl, line)
-        current = _MD_IMAGE_INLINE_RE.sub(md_inline_repl, current)
-        current = _MD_IMAGE_REF_RE.sub(md_ref_repl, current)
-        out_lines.append(current)
+        out_lines.append(_strip_image_line(line, mode=mode, removed=removed))
 
     cleaned = "\n".join(out_lines)
-    return ImageStripResult(text=cleaned, removed=removed, changed=(cleaned != original))
-
+    return ImageStripResult(text=cleaned, removed=removed[0], changed=(cleaned != original))

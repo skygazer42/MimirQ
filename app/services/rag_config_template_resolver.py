@@ -254,6 +254,138 @@ def _pick_highest_reward_variant(
     return ranked[idx]
 
 
+def _resolver_debug_payload(
+    *,
+    strategy: str,
+    decision: str,
+    chosen: RagConfigTemplate | None,
+    epsilon: float | None = None,
+    reward_snapshot: dict[str, Any] | None = None,
+    weights: dict[str, float] | None = None,
+) -> dict[str, Any]:
+    debug: dict[str, Any] = {
+        "strategy": strategy,
+        "epsilon": epsilon,
+        "decision": decision,
+        "chosen_variant": _variant_key(chosen) if chosen is not None else None,
+        "reward_snapshot": reward_snapshot,
+    }
+    if weights is not None:
+        debug["weights"] = weights
+    return debug
+
+
+def _return_with_optional_debug(
+    *,
+    chosen: RagConfigTemplate | None,
+    debug: dict[str, Any] | None,
+    return_debug_metadata: bool,
+) -> RagConfigTemplate | None | tuple[RagConfigTemplate | None, dict[str, Any] | None]:
+    return (chosen, debug) if return_debug_metadata else chosen
+
+
+def _resolve_experiment_variants(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    query: Any,
+    ab_experiment_key: str,
+    ab_user_key: str | None,
+    routing_mode: str,
+    adaptive_epsilon: float,
+    feedback_reward_snapshot: dict[str, Any] | None,
+    feedback_reward_hook: FeedbackRewardHook | None,
+    return_debug_metadata: bool,
+) -> RagConfigTemplate | None | tuple[RagConfigTemplate | None, dict[str, Any] | None]:
+    exp = str(ab_experiment_key or "").strip()
+    if not exp:
+        return _return_with_optional_debug(chosen=None, debug=None, return_debug_metadata=return_debug_metadata)
+
+    variants = (
+        query.filter(RagConfigTemplate.ab_experiment_key == exp)
+        .order_by(RagConfigTemplate.ab_variant.asc().nullslast(), RagConfigTemplate.updated_at.desc())
+        .all()
+    )
+    if not variants:
+        return _return_with_optional_debug(chosen=None, debug=None, return_debug_metadata=return_debug_metadata)
+
+    if len(variants) == 1:
+        single = variants[0]
+        return _return_with_optional_debug(
+            chosen=single,
+            debug=_resolver_debug_payload(
+                strategy="weighted",
+                epsilon=None,
+                decision="single_variant",
+                chosen=single,
+                reward_snapshot=None,
+                weights={_variant_key(single): 1.0},
+            ),
+            return_debug_metadata=return_debug_metadata,
+        )
+
+    weights, total = _normalize_variant_weights(variants)
+    seed = f"{exp}:{ab_user_key or ''}"
+    weighted_choice = _weighted_pick(
+        variants=variants,
+        weights=weights,
+        total_weight=total,
+        seed=f"{seed}:weighted",
+    )
+    weights_map = {str(_variant_key(v)): round(float(w), 4) for v, w in zip(variants, weights, strict=False)}
+
+    routing = str(routing_mode or "weighted").strip().lower()
+    if routing in {"adaptive_epsilon_greedy", "epsilon_greedy"}:
+        routing = "adaptive"
+    if routing != "adaptive":
+        return _return_with_optional_debug(
+            chosen=weighted_choice,
+            debug=_resolver_debug_payload(
+                strategy="weighted",
+                epsilon=None,
+                decision="weighted",
+                chosen=weighted_choice,
+                reward_snapshot=None,
+                weights=weights_map,
+            ),
+            return_debug_metadata=return_debug_metadata,
+        )
+
+    epsilon = _as_float(adaptive_epsilon)
+    epsilon = min(1.0, max(0.0, float(0.1 if epsilon is None else epsilon)))
+    reward_snapshot = feedback_reward_snapshot if isinstance(feedback_reward_snapshot, dict) else None
+    if reward_snapshot is None and feedback_reward_hook is not None:
+        try:
+            raw_snapshot = feedback_reward_hook(db, tenant_id, exp, variants)
+            if isinstance(raw_snapshot, dict):
+                reward_snapshot = dict(raw_snapshot)
+            elif isinstance(raw_snapshot, Sequence):
+                reward_snapshot = aggregate_feedback_rewards(raw_snapshot)
+        except Exception:
+            reward_snapshot = None
+
+    normalized_snapshot = _normalize_reward_snapshot(variants=variants, snapshot=reward_snapshot)
+    explore = _stable_unit_interval(f"{seed}:adaptive:explore") < epsilon
+    chosen = weighted_choice if explore else _pick_highest_reward_variant(
+        variants=variants,
+        reward_snapshot=normalized_snapshot,
+        seed=seed,
+    )
+    decision = "explore" if explore else "exploit"
+    return _return_with_optional_debug(
+        chosen=chosen,
+        debug=_resolver_debug_payload(
+            strategy="adaptive_epsilon_greedy",
+            epsilon=round(float(epsilon), 4),
+            decision=decision,
+            chosen=chosen,
+            reward_snapshot=normalized_snapshot,
+            weights=weights_map,
+        ),
+        return_debug_metadata=return_debug_metadata,
+    )
+
+
 def resolve_rag_config_template(
     *,
     db: Session,
@@ -286,14 +418,17 @@ def resolve_rag_config_template(
             )
             .first()
         )
-        debug = {
-            "strategy": "explicit_template_id",
-            "epsilon": None,
-            "decision": "explicit",
-            "chosen_variant": (_variant_key(chosen) if chosen is not None else None),
-            "reward_snapshot": None,
-        }
-        return (chosen, debug) if return_debug_metadata else chosen
+        return _return_with_optional_debug(
+            chosen=chosen,
+            debug=_resolver_debug_payload(
+                strategy="explicit_template_id",
+                epsilon=None,
+                decision="explicit",
+                chosen=chosen,
+                reward_snapshot=None,
+            ),
+            return_debug_metadata=return_debug_metadata,
+        )
 
     query = db.query(RagConfigTemplate).filter(
         RagConfigTemplate.tenant_id == tenant_id,
@@ -308,105 +443,33 @@ def resolve_rag_config_template(
                 .order_by(RagConfigTemplate.version.desc(), RagConfigTemplate.updated_at.desc())
                 .first()
             )
-            debug = {
-                "strategy": "template_key_latest",
-                "epsilon": None,
-                "decision": "latest",
-                "chosen_variant": (_variant_key(chosen) if chosen is not None else None),
-                "reward_snapshot": None,
-            }
-            return (chosen, debug) if return_debug_metadata else chosen
-
-    if ab_experiment_key:
-        exp = str(ab_experiment_key or "").strip()
-        if not exp:
-            return (None, None) if return_debug_metadata else None
-
-        variants = (
-            query.filter(RagConfigTemplate.ab_experiment_key == exp)
-            .order_by(RagConfigTemplate.ab_variant.asc().nullslast(), RagConfigTemplate.updated_at.desc())
-            .all()
-        )
-        if not variants:
-            return (None, None) if return_debug_metadata else None
-        if len(variants) == 1:
-            single = variants[0]
-            debug = {
-                "strategy": "weighted",
-                "epsilon": None,
-                "decision": "single_variant",
-                "chosen_variant": _variant_key(single),
-                "reward_snapshot": None,
-                "weights": {_variant_key(single): 1.0},
-            }
-            return (single, debug) if return_debug_metadata else single
-
-        weights, total = _normalize_variant_weights(variants)
-        seed = f"{exp}:{ab_user_key or ''}"
-        weighted_choice = _weighted_pick(
-            variants=variants,
-            weights=weights,
-            total_weight=total,
-            seed=f"{seed}:weighted",
-        )
-        weights_map = {str(_variant_key(v)): round(float(w), 4) for v, w in zip(variants, weights, strict=False)}
-
-        routing = str(routing_mode or "weighted").strip().lower()
-        if routing in {"adaptive_epsilon_greedy", "epsilon_greedy"}:
-            routing = "adaptive"
-        if routing != "adaptive":
-            debug = {
-                "strategy": "weighted",
-                "epsilon": None,
-                "decision": "weighted",
-                "chosen_variant": _variant_key(weighted_choice),
-                "reward_snapshot": None,
-                "weights": weights_map,
-            }
-            return (weighted_choice, debug) if return_debug_metadata else weighted_choice
-
-        epsilon = _as_float(adaptive_epsilon)
-        if epsilon is None:
-            epsilon = 0.1
-        epsilon = min(1.0, max(0.0, float(epsilon)))
-        decision = "exploit"
-        chosen = weighted_choice
-
-        reward_snapshot = feedback_reward_snapshot if isinstance(feedback_reward_snapshot, dict) else None
-        if reward_snapshot is None and feedback_reward_hook is not None:
-            try:
-                raw_snapshot = feedback_reward_hook(db, tenant_id, exp, variants)
-                if isinstance(raw_snapshot, dict):
-                    reward_snapshot = dict(raw_snapshot)
-                elif isinstance(raw_snapshot, Sequence):
-                    reward_snapshot = aggregate_feedback_rewards(raw_snapshot)
-            except Exception:
-                reward_snapshot = None
-
-        normalized_snapshot = _normalize_reward_snapshot(variants=variants, snapshot=reward_snapshot)
-        explore = _stable_unit_interval(f"{seed}:adaptive:explore") < epsilon
-        if explore:
-            decision = "explore"
-            chosen = weighted_choice
-        else:
-            decision = "exploit"
-            chosen = _pick_highest_reward_variant(
-                variants=variants,
-                reward_snapshot=normalized_snapshot,
-                seed=seed,
+            return _return_with_optional_debug(
+                chosen=chosen,
+                debug=_resolver_debug_payload(
+                    strategy="template_key_latest",
+                    epsilon=None,
+                    decision="latest",
+                    chosen=chosen,
+                    reward_snapshot=None,
+                ),
+                return_debug_metadata=return_debug_metadata,
             )
 
-        debug = {
-            "strategy": "adaptive_epsilon_greedy",
-            "epsilon": round(float(epsilon), 4),
-            "decision": decision,
-            "chosen_variant": _variant_key(chosen),
-            "reward_snapshot": normalized_snapshot,
-            "weights": weights_map,
-        }
-        return (chosen, debug) if return_debug_metadata else chosen
+    if ab_experiment_key:
+        return _resolve_experiment_variants(
+            db=db,
+            tenant_id=tenant_id,
+            query=query,
+            ab_experiment_key=ab_experiment_key,
+            ab_user_key=ab_user_key,
+            routing_mode=routing_mode,
+            adaptive_epsilon=adaptive_epsilon,
+            feedback_reward_snapshot=feedback_reward_snapshot,
+            feedback_reward_hook=feedback_reward_hook,
+            return_debug_metadata=return_debug_metadata,
+        )
 
-    return (None, None) if return_debug_metadata else None
+    return _return_with_optional_debug(chosen=None, debug=None, return_debug_metadata=return_debug_metadata)
 
 
 __all__ = [

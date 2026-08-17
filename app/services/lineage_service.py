@@ -1,6 +1,6 @@
 
-import json
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -13,11 +13,11 @@ from app.models.chat import Conversation
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentPermission
 from app.rag.core.hashing import stable_hash
-from app.rag.core.logging import get_logger
 from app.services.chat_conversation_access import resolve_conversation_owner_account_id
 from app.services.connector_reconcile_service import extract_connector_source_identity
 from app.services.dataset_service import DatasetService
 from app.services.document_access import get_allowed_document_id_sets
+from app.services.jsonl_tail import read_jsonl_tail
 from app.services.rbac_service import TenantPermissions, role_allows
 
 CHUNK_RETRIEVAL_LINEAGE_SCHEMA = "mimirq.chunk_retrieval_lineage.v1"
@@ -54,43 +54,7 @@ def _safe_list(raw: Any) -> list[Any]:
 
 
 def _read_jsonl_tail(path: Path, *, max_bytes: int) -> list[dict[str, Any]]:
-    limit = max(1, int(max_bytes or 0))
-    try:
-        size = int(path.stat().st_size)
-    except Exception:
-        return []
-
-    start = max(0, size - limit)
-    try:
-        with path.open("rb") as fh:
-            if start:
-                fh.seek(start)
-            raw = fh.read()
-    except Exception:
-        return []
-
-    if start:
-        nl = raw.find(b"\n")
-        if nl >= 0:
-            raw = raw[nl + 1 :]
-
-    try:
-        text = raw.decode("utf-8", errors="replace")
-    except Exception:
-        return []
-
-    records: list[dict[str, Any]] = []
-    for line in text.splitlines():
-        item = line.strip()
-        if not item:
-            continue
-        try:
-            obj = json.loads(item)
-        except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
-        if isinstance(obj, dict):
-            records.append(obj)
+    records, _truncated = read_jsonl_tail(path, max_bytes=max_bytes)
     return records
 
 
@@ -239,6 +203,112 @@ def _hash_permission_ids(permissions: Iterable[Any] | None, *, max_items: int = 
     return [digest for _account_id, digest in rows]
 
 
+@dataclass(frozen=True)
+class _TraceChunkUsage:
+    citations_matched: int
+    request_id: str | None
+    retrieval_mode: str | None
+    hits: list[dict[str, Any]]
+
+
+def _eligible_retrieval_trace(
+    raw: Mapping[str, Any],
+    *,
+    tenant_id: str,
+    cutoff_ms: int,
+) -> tuple[dict[str, Any], int] | None:
+    record = dict(raw) if isinstance(raw, Mapping) else {}
+    if str(record.get("event") or "") != "rag_trace":
+        return None
+    if str(record.get("tenant_id") or "") != tenant_id:
+        return None
+    ts_ms = _to_int(record.get("ts_ms")) or 0
+    if ts_ms and ts_ms < cutoff_ms:
+        return None
+    return record, ts_ms
+
+
+def _chunk_hit_payload(
+    *,
+    record: Mapping[str, Any],
+    citation: Mapping[str, Any],
+    retrieval: Mapping[str, Any],
+    retrieval_mode: str | None,
+    chunk_id: str,
+    ts_ms: int,
+    citation_index: int,
+    request_id: str | None,
+) -> dict[str, Any]:
+    return {
+        "request_id": request_id,
+        "conversation_id": _safe_str(record.get("conversation_id"), max_len=120),
+        "ts_ms": int(ts_ms),
+        "citation_index": int(citation_index),
+        "document_id": _safe_str(citation.get("document_id"), max_len=120),
+        "chunk_id": chunk_id,
+        "page_number": _to_int(citation.get("page_number")),
+        "chunk_index": _to_int(citation.get("chunk_index")),
+        "retrieval_role": _safe_str(citation.get("retrieval_role"), max_len=80),
+        "hit_type": _safe_str(citation.get("hit_type"), max_len=40),
+        "retrieval": {
+            "mode": retrieval_mode,
+            "requested_mode": _safe_str(retrieval.get("requested_mode"), max_len=80),
+            "retrieval_config_hash": _safe_str(retrieval.get("retrieval_config_hash"), max_len=120),
+            "reranker_provider": _safe_str(retrieval.get("reranker_provider"), max_len=80),
+        },
+    }
+
+
+def _trace_chunk_usage(
+    record: Mapping[str, Any],
+    *,
+    chunk_id: str,
+    ts_ms: int,
+    hit_limit: int,
+) -> _TraceChunkUsage:
+    retrieval = _safe_dict(record.get("retrieval"))
+    retrieval_mode = _safe_str(retrieval.get("mode"), max_len=80)
+    request_id = _safe_str(record.get("request_id"), max_len=120)
+    citations_matched = 0
+    hits: list[dict[str, Any]] = []
+    for index, citation_raw in enumerate(_safe_list(record.get("citations"))):
+        citation = _safe_dict(citation_raw)
+        if str(citation.get("chunk_id") or "") != chunk_id:
+            continue
+        citations_matched += 1
+        if len(hits) < hit_limit:
+            hits.append(
+                _chunk_hit_payload(
+                    record=record,
+                    citation=citation,
+                    retrieval=retrieval,
+                    retrieval_mode=retrieval_mode,
+                    chunk_id=chunk_id,
+                    ts_ms=ts_ms,
+                    citation_index=index,
+                    request_id=request_id,
+                )
+            )
+    return _TraceChunkUsage(
+        citations_matched=citations_matched,
+        request_id=request_id if citations_matched else None,
+        retrieval_mode=retrieval_mode if citations_matched else None,
+        hits=hits,
+    )
+
+
+def _request_ids_from_sorted_hits(hits: Sequence[Mapping[str, Any]]) -> list[str]:
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for item in hits:
+        request_id = _safe_str(item.get("request_id"), max_len=120)
+        if not request_id or request_id in seen:
+            continue
+        seen.add(request_id)
+        ordered.append(request_id)
+    return ordered
+
+
 def summarize_chunk_retrieval_usage_from_records(
     records: Sequence[Mapping[str, Any]] | None,
     *,
@@ -262,63 +332,30 @@ def summarize_chunk_retrieval_usage_from_records(
     retrieval_modes: dict[str, int] = {}
     hits: list[dict[str, Any]] = []
 
+    hit_limit = max(0, int(max_hits or 0))
     for raw in records or []:
-        record = dict(raw) if isinstance(raw, Mapping) else {}
-        if str(record.get("event") or "") != "rag_trace":
+        eligible = _eligible_retrieval_trace(raw, tenant_id=tenant_key, cutoff_ms=cutoff_ms)
+        if eligible is None:
             continue
-        if str(record.get("tenant_id") or "") != tenant_key:
-            continue
-        ts_ms = _to_int(record.get("ts_ms")) or 0
-        if ts_ms and ts_ms < cutoff_ms:
-            continue
-
+        record, ts_ms = eligible
         traces_scanned += 1
-        trace_hits = 0
-        citations = _safe_list(record.get("citations"))
-        retrieval = _safe_dict(record.get("retrieval"))
-        mode = _safe_str(retrieval.get("mode"), max_len=80)
-
-        for idx, citation_raw in enumerate(citations):
-            citation = _safe_dict(citation_raw)
-            if str(citation.get("chunk_id") or "") != chunk_key:
-                continue
-
-            citations_matched += 1
-            trace_hits += 1
-            if last_seen_ts_ms is None or ts_ms > last_seen_ts_ms:
-                last_seen_ts_ms = int(ts_ms)
-
-            req_id = _safe_str(record.get("request_id"), max_len=120)
-            if req_id and req_id not in request_seen:
-                request_seen.add(req_id)
-                request_ids.append(req_id)
-
-            if len(hits) < max(0, int(max_hits or 0)):
-                hits.append(
-                    {
-                        "request_id": req_id,
-                        "conversation_id": _safe_str(record.get("conversation_id"), max_len=120),
-                        "ts_ms": int(ts_ms),
-                        "citation_index": int(idx),
-                        "document_id": _safe_str(citation.get("document_id"), max_len=120),
-                        "chunk_id": chunk_key,
-                        "page_number": _to_int(citation.get("page_number")),
-                        "chunk_index": _to_int(citation.get("chunk_index")),
-                        "retrieval_role": _safe_str(citation.get("retrieval_role"), max_len=80),
-                        "hit_type": _safe_str(citation.get("hit_type"), max_len=40),
-                        "retrieval": {
-                            "mode": mode,
-                            "requested_mode": _safe_str(retrieval.get("requested_mode"), max_len=80),
-                            "retrieval_config_hash": _safe_str(retrieval.get("retrieval_config_hash"), max_len=120),
-                            "reranker_provider": _safe_str(retrieval.get("reranker_provider"), max_len=80),
-                        },
-                    }
-                )
-
-        if trace_hits > 0:
-            traces_with_hits += 1
-            if mode:
-                retrieval_modes[mode] = int(retrieval_modes.get(mode, 0) or 0) + 1
+        usage = _trace_chunk_usage(
+            record,
+            chunk_id=chunk_key,
+            ts_ms=ts_ms,
+            hit_limit=max(0, hit_limit - len(hits)),
+        )
+        if not usage.citations_matched:
+            continue
+        traces_with_hits += 1
+        citations_matched += usage.citations_matched
+        last_seen_ts_ms = max(last_seen_ts_ms or ts_ms, ts_ms)
+        if usage.request_id and usage.request_id not in request_seen:
+            request_seen.add(usage.request_id)
+            request_ids.append(usage.request_id)
+        if usage.retrieval_mode:
+            retrieval_modes[usage.retrieval_mode] = int(retrieval_modes.get(usage.retrieval_mode, 0) or 0) + 1
+        hits.extend(usage.hits)
 
     hits.sort(
         key=lambda item: (
@@ -328,14 +365,7 @@ def summarize_chunk_retrieval_usage_from_records(
         )
     )
 
-    ordered_request_ids: list[str] = []
-    seen_req: set[str] = set()
-    for item in hits:
-        req_id = _safe_str(item.get("request_id"), max_len=120)
-        if not req_id or req_id in seen_req:
-            continue
-        seen_req.add(req_id)
-        ordered_request_ids.append(req_id)
+    ordered_request_ids = _request_ids_from_sorted_hits(hits)
     if ordered_request_ids:
         request_ids = ordered_request_ids
 

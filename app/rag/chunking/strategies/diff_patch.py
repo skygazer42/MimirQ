@@ -133,9 +133,137 @@ class DiffPatchChunker(BaseChunker):
             add_start_index=True,
         )
 
+    def _append_fallback_chunks(self, *, out: list[Document], text: str, base_meta: dict[str, Any]) -> None:
+        split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
+        for sd in split_docs:
+            local_start = sd.metadata.pop("start_index", None) or 0
+            abs_start = int(local_start)
+            abs_end = abs_start + len(sd.page_content)
+            meta: dict[str, Any] = dict(base_meta)
+            meta.update(sd.metadata or {})
+            meta["chunk_strategy"] = "diff_patch"
+            meta["start_char"] = abs_start
+            meta["end_char"] = abs_end
+            meta["diff_fallback"] = True
+            meta.setdefault("doc_type_kwd", "diff")
+            out.append(Document(page_content=sd.page_content, metadata=meta))
+
+    @staticmethod
+    def _append_file_chunk(
+        *,
+        out: list[Document],
+        text: str,
+        base_meta: dict[str, Any],
+        file_block: _FileBlock,
+        chunk_start: int,
+        chunk_end: int,
+        hunk_range: tuple[int, int] | None,
+    ) -> None:
+        meta: dict[str, Any] = dict(base_meta)
+        meta["chunk_strategy"] = "diff_patch"
+        meta["start_char"] = chunk_start
+        meta["end_char"] = chunk_end
+        meta.setdefault("doc_type_kwd", "diff")
+        meta["diff_file_index"] = int(file_block.index)
+        meta["diff_path_a"] = file_block.a_path
+        meta["diff_path_b"] = file_block.b_path
+        if hunk_range is None:
+            meta["diff_hunk_count"] = 0
+        else:
+            start_idx, end_idx = hunk_range
+            meta["diff_hunk_count"] = int(end_idx - start_idx)
+            meta["diff_hunk_start_index"] = int(start_idx)
+            meta["diff_hunk_end_index"] = int(end_idx - 1)
+        out.append(Document(page_content=text[chunk_start:chunk_end], metadata=meta))
+
+    def _next_hunk_start(self, *, hunks: list[_Span], start_idx: int, end_idx: int) -> int:
+        if self.chunk_overlap <= 0 or (end_idx - start_idx) <= 1:
+            return end_idx
+        desired = end_idx - 1
+        while desired > start_idx:
+            overlap_len = hunks[end_idx - 1].end - hunks[desired - 1].start
+            if overlap_len <= self.chunk_overlap:
+                desired -= 1
+                continue
+            break
+        next_start = desired if desired > start_idx else (end_idx - 1)
+        return next_start if next_start > start_idx else end_idx
+
+    def _append_hunk_chunks(
+        self,
+        *,
+        out: list[Document],
+        text: str,
+        base_meta: dict[str, Any],
+        file_block: _FileBlock,
+        hunks: list[_Span],
+    ) -> None:
+        start_idx = 0
+        first = True
+        while start_idx < len(hunks):
+            end_idx = start_idx
+            while end_idx < len(hunks):
+                cand_start = file_block.start if first else hunks[start_idx].start
+                cand_end = hunks[end_idx].end
+                cand_len = cand_end - cand_start
+                if end_idx == start_idx or cand_len <= self.chunk_size:
+                    end_idx += 1
+                    continue
+                break
+
+            if end_idx == start_idx:
+                end_idx = start_idx + 1
+
+            chunk_start = file_block.start if first else hunks[start_idx].start
+            chunk_end = hunks[end_idx - 1].end
+            self._append_file_chunk(
+                out=out,
+                text=text,
+                base_meta=base_meta,
+                file_block=file_block,
+                chunk_start=chunk_start,
+                chunk_end=chunk_end,
+                hunk_range=(start_idx, end_idx),
+            )
+            start_idx = self._next_hunk_start(hunks=hunks, start_idx=start_idx, end_idx=end_idx)
+            first = False
+
+    def _append_file_block_chunks(
+        self,
+        *,
+        out: list[Document],
+        text: str,
+        base_meta: dict[str, Any],
+        file_block: _FileBlock,
+    ) -> None:
+        file_text = text[file_block.start : file_block.end]
+        if not file_text.strip():
+            return
+
+        hunks = _iter_hunks(text, start=file_block.start, end=file_block.end)
+        if not hunks:
+            self._append_file_chunk(
+                out=out,
+                text=text,
+                base_meta=base_meta,
+                file_block=file_block,
+                chunk_start=file_block.start,
+                chunk_end=file_block.end,
+                hunk_range=None,
+            )
+            return
+        self._append_hunk_chunks(out=out, text=text, base_meta=base_meta, file_block=file_block, hunks=hunks)
+
+    @staticmethod
+    def _finalize_chunk_indexes(out: list[Document]) -> list[Document]:
+        for idx, chunk in enumerate(out):
+            meta = dict(chunk.metadata or {})
+            meta["chunk_index"] = idx
+            chunk.metadata = meta
+        return out
+
     def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
-
         for doc in documents:
             text = doc.page_content or ""
             base_meta = dict(doc.metadata or {})
@@ -144,93 +272,10 @@ class DiffPatchChunker(BaseChunker):
 
             files = _iter_file_blocks(text)
             if not files:
-                split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "diff_patch"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta["diff_fallback"] = True
-                    meta.setdefault("doc_type_kwd", "diff")
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                self._append_fallback_chunks(out=out, text=text, base_meta=base_meta)
                 continue
 
             for file_block in files:
-                file_text = text[file_block.start : file_block.end]
-                if not file_text.strip():
-                    continue
+                self._append_file_block_chunks(out=out, text=text, base_meta=base_meta, file_block=file_block)
 
-                hunks = _iter_hunks(text, start=file_block.start, end=file_block.end)
-                if not hunks:
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta["chunk_strategy"] = "diff_patch"
-                    meta["start_char"] = file_block.start
-                    meta["end_char"] = file_block.end
-                    meta.setdefault("doc_type_kwd", "diff")
-                    meta["diff_file_index"] = int(file_block.index)
-                    meta["diff_path_a"] = file_block.a_path
-                    meta["diff_path_b"] = file_block.b_path
-                    meta["diff_hunk_count"] = 0
-                    out.append(Document(page_content=file_text, metadata=meta))
-                    continue
-
-                start_idx = 0
-                first = True
-                while start_idx < len(hunks):
-                    end_idx = start_idx
-                    while end_idx < len(hunks):
-                        cand_start = file_block.start if first else hunks[start_idx].start
-                        cand_end = hunks[end_idx].end
-                        cand_len = cand_end - cand_start
-                        if end_idx == start_idx or cand_len <= self.chunk_size:
-                            end_idx += 1
-                            continue
-                        break
-
-                    if end_idx == start_idx:
-                        end_idx = start_idx + 1
-
-                    chunk_start = file_block.start if first else hunks[start_idx].start
-                    chunk_end = hunks[end_idx - 1].end
-                    content = text[chunk_start:chunk_end]
-
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta["chunk_strategy"] = "diff_patch"
-                    meta["start_char"] = chunk_start
-                    meta["end_char"] = chunk_end
-                    meta.setdefault("doc_type_kwd", "diff")
-                    meta["diff_file_index"] = int(file_block.index)
-                    meta["diff_path_a"] = file_block.a_path
-                    meta["diff_path_b"] = file_block.b_path
-                    meta["diff_hunk_count"] = int(end_idx - start_idx)
-                    meta["diff_hunk_start_index"] = int(start_idx)
-                    meta["diff_hunk_end_index"] = int(end_idx - 1)
-                    out.append(Document(page_content=content, metadata=meta))
-
-                    # Hunk-level overlap.
-                    next_start = end_idx
-                    if self.chunk_overlap > 0 and (end_idx - start_idx) > 1:
-                        desired = end_idx - 1
-                        while desired > start_idx:
-                            overlap_len = hunks[end_idx - 1].end - hunks[desired - 1].start
-                            if overlap_len <= self.chunk_overlap:
-                                desired -= 1
-                                continue
-                            break
-                        next_start = desired if desired > start_idx else (end_idx - 1)
-
-                    if next_start <= start_idx:
-                        next_start = end_idx
-                    start_idx = next_start
-                    first = False
-
-        for idx, chunk in enumerate(out):
-            meta = dict(chunk.metadata or {})
-            meta["chunk_index"] = idx
-            chunk.metadata = meta
-
-        return out
+        return self._finalize_chunk_indexes(out)

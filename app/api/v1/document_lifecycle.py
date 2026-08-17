@@ -31,6 +31,65 @@ DOC_NOT_FOUND_DETAIL = "Document not found"
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
+def _lifecycle_metadata_response(document) -> DocumentLifecycleMetadata:
+    return DocumentLifecycleMetadata(
+        lifecycle_owner=getattr(document, "lifecycle_owner", None),
+        review_due_at=getattr(document, "review_due_at", None),
+        authority_level=getattr(document, "authority_level", None),
+        supersedes_document_id=getattr(document, "supersedes_document_id", None),
+        publication_status=str(getattr(document, "publication_status", "published") or "published"),
+    )
+
+
+def _apply_lifecycle_metadata_updates(*, document, payload: DocumentLifecycleMetadataUpdateRequest, fields_set: set[str]) -> None:
+    if "lifecycle_owner" in fields_set:
+        owner = payload.lifecycle_owner
+        document.lifecycle_owner = (str(owner).strip() or None) if owner is not None else None  # type: ignore[assignment]
+    if "review_due_at" in fields_set:
+        document.review_due_at = payload.review_due_at  # type: ignore[assignment]
+    if "authority_level" in fields_set:
+        document.authority_level = payload.authority_level  # type: ignore[assignment]
+    if "supersedes_document_id" in fields_set:
+        supersedes_document_id = payload.supersedes_document_id
+        if supersedes_document_id is not None and str(supersedes_document_id) == str(document.id):
+            raise HTTPException(status_code=400, detail="supersedes_document_id cannot equal document_id")
+        document.supersedes_document_id = supersedes_document_id  # type: ignore[assignment]
+    if "publication_status" in fields_set:
+        document.publication_status = str(payload.publication_status or "published")  # type: ignore[assignment]
+
+
+def _snapshot_lifecycle_metadata(document) -> dict[str, Any]:
+    return {
+        "lifecycle_owner": getattr(document, "lifecycle_owner", None),
+        "review_due_at": getattr(document, "review_due_at", None),
+        "authority_level": getattr(document, "authority_level", None),
+        "supersedes_document_id": getattr(document, "supersedes_document_id", None),
+        "publication_status": getattr(document, "publication_status", None),
+    }
+
+
+def _build_lifecycle_audit_details(*, before: dict[str, Any], after: dict[str, Any], fields_set: set[str]) -> dict[str, Any]:
+    changed_fields = [key for key in ("lifecycle_owner", "review_due_at", "authority_level", "supersedes_document_id", "publication_status") if key in fields_set and before.get(key) != after.get(key)]
+    details: dict[str, Any] = {
+        "fields": sorted(fields_set)[:50],
+        "changed_fields": changed_fields[:50],
+    }
+    if "lifecycle_owner" in fields_set:
+        raw = str(after.get("lifecycle_owner") or "")
+        details["lifecycle_owner_hash"] = stable_hash(raw, length=16) if raw else None
+    if "review_due_at" in fields_set:
+        due = after.get("review_due_at")
+        details["review_due_at"] = due.isoformat() if due is not None else None
+    if "authority_level" in fields_set:
+        details["authority_level"] = after.get("authority_level")
+    if "supersedes_document_id" in fields_set:
+        supersedes_document_id = after.get("supersedes_document_id")
+        details["supersedes_document_id"] = str(supersedes_document_id) if supersedes_document_id is not None else None
+    if "publication_status" in fields_set:
+        details["publication_status"] = after.get("publication_status")
+    return details
+
+
 @router.get("/{document_id}/lifecycle-metadata", response_model=DocumentLifecycleMetadata, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_document_lifecycle_metadata(
     document_id: uuid.UUID,
@@ -57,13 +116,7 @@ def get_document_lifecycle_metadata(
         document=document,
     )
 
-    return DocumentLifecycleMetadata(
-        lifecycle_owner=getattr(document, "lifecycle_owner", None),
-        review_due_at=getattr(document, "review_due_at", None),
-        authority_level=getattr(document, "authority_level", None),
-        supersedes_document_id=getattr(document, "supersedes_document_id", None),
-        publication_status=str(getattr(document, "publication_status", "published") or "published"),
-    )
+    return _lifecycle_metadata_response(document)
 
 
 @router.patch("/{document_id}/lifecycle-metadata", response_model=DocumentLifecycleMetadata, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -99,79 +152,16 @@ def patch_document_lifecycle_metadata(
 
     fields_set = set(getattr(payload, "model_fields_set", set()) or set())
     if not fields_set:
-        return DocumentLifecycleMetadata(
-            lifecycle_owner=getattr(document, "lifecycle_owner", None),
-            review_due_at=getattr(document, "review_due_at", None),
-            authority_level=getattr(document, "authority_level", None),
-            supersedes_document_id=getattr(document, "supersedes_document_id", None),
-            publication_status=str(getattr(document, "publication_status", "published") or "published"),
-        )
+        return _lifecycle_metadata_response(document)
 
-    before = {
-        "lifecycle_owner": getattr(document, "lifecycle_owner", None),
-        "review_due_at": getattr(document, "review_due_at", None),
-        "authority_level": getattr(document, "authority_level", None),
-        "supersedes_document_id": getattr(document, "supersedes_document_id", None),
-        "publication_status": getattr(document, "publication_status", None),
-    }
-
-    if "lifecycle_owner" in fields_set:
-        owner = payload.lifecycle_owner
-        if owner is not None:
-            owner = str(owner).strip()
-        if not owner:
-            owner = None
-        document.lifecycle_owner = owner  # type: ignore[assignment]
-
-    if "review_due_at" in fields_set:
-        document.review_due_at = payload.review_due_at  # type: ignore[assignment]
-
-    if "authority_level" in fields_set:
-        document.authority_level = payload.authority_level  # type: ignore[assignment]
-
-    if "supersedes_document_id" in fields_set:
-        supersedes_document_id = payload.supersedes_document_id
-        if supersedes_document_id is not None and str(supersedes_document_id) == str(document.id):
-            raise HTTPException(status_code=400, detail="supersedes_document_id cannot equal document_id")
-        document.supersedes_document_id = supersedes_document_id  # type: ignore[assignment]
-
-    if "publication_status" in fields_set:
-        document.publication_status = str(payload.publication_status or "published")  # type: ignore[assignment]
+    before = _snapshot_lifecycle_metadata(document)
+    _apply_lifecycle_metadata_updates(document=document, payload=payload, fields_set=fields_set)
 
     db.commit()
     db.refresh(document)
 
     try:
-        after = {
-            "lifecycle_owner": getattr(document, "lifecycle_owner", None),
-            "review_due_at": getattr(document, "review_due_at", None),
-            "authority_level": getattr(document, "authority_level", None),
-            "supersedes_document_id": getattr(document, "supersedes_document_id", None),
-            "publication_status": getattr(document, "publication_status", None),
-        }
-        changed_fields: list[str] = []
-        for key in ("lifecycle_owner", "review_due_at", "authority_level", "supersedes_document_id", "publication_status"):
-            if key in fields_set and before.get(key) != after.get(key):
-                changed_fields.append(key)
-
-        details: dict[str, Any] = {
-            "fields": sorted(fields_set)[:50],
-            "changed_fields": changed_fields[:50],
-        }
-        if "lifecycle_owner" in fields_set:
-            raw = str(after.get("lifecycle_owner") or "")
-            details["lifecycle_owner_hash"] = stable_hash(raw, length=16) if raw else None
-        if "review_due_at" in fields_set:
-            due = after.get("review_due_at")
-            details["review_due_at"] = due.isoformat() if due is not None else None
-        if "authority_level" in fields_set:
-            details["authority_level"] = after.get("authority_level")
-        if "supersedes_document_id" in fields_set:
-            supersedes_document_id = after.get("supersedes_document_id")
-            details["supersedes_document_id"] = str(supersedes_document_id) if supersedes_document_id is not None else None
-        if "publication_status" in fields_set:
-            details["publication_status"] = after.get("publication_status")
-
+        after = _snapshot_lifecycle_metadata(document)
         audit_log_event(
             db,
             tenant_id=tenant_id,
@@ -179,16 +169,10 @@ def patch_document_lifecycle_metadata(
             action="document.lifecycle_metadata.patch",
             resource_type="document",
             resource_id=str(document_id),
-            details=details,
+            details=_build_lifecycle_audit_details(before=before, after=after, fields_set=fields_set),
         )
         db.commit()
     except Exception:
         db.rollback()
 
-    return DocumentLifecycleMetadata(
-        lifecycle_owner=getattr(document, "lifecycle_owner", None),
-        review_due_at=getattr(document, "review_due_at", None),
-        authority_level=getattr(document, "authority_level", None),
-        supersedes_document_id=getattr(document, "supersedes_document_id", None),
-        publication_status=str(getattr(document, "publication_status", "published") or "published"),
-    )
+    return _lifecycle_metadata_response(document)

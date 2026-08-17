@@ -128,9 +128,108 @@ class MakefileChunker(BaseChunker):
             add_start_index=True,
         )
 
+    def _append_fallback_chunks(self, *, out: list[Document], text: str, base_meta: dict[str, Any]) -> None:
+        split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
+        for sd in split_docs:
+            local_start = sd.metadata.pop("start_index", None) or 0
+            abs_start = int(local_start)
+            abs_end = abs_start + len(sd.page_content)
+            meta: dict[str, Any] = dict(base_meta)
+            meta.update(sd.metadata or {})
+            meta["chunk_strategy"] = "makefile"
+            meta["start_char"] = abs_start
+            meta["end_char"] = abs_end
+            meta.setdefault("doc_type_kwd", "makefile")
+            meta["make_fallback"] = True
+            out.append(Document(page_content=sd.page_content, metadata=meta))
+
+    @staticmethod
+    def _target_names(targets: list[_Target], *, start_idx: int, end_idx: int) -> list[str]:
+        uniq: list[str] = []
+        for target in targets[start_idx:end_idx]:
+            if target.name and target.name not in uniq:
+                uniq.append(target.name)
+        return uniq[:25]
+
+    @staticmethod
+    def _append_target_chunk(
+        *,
+        out: list[Document],
+        text: str,
+        base_meta: dict[str, Any],
+        targets: list[_Target],
+        start_idx: int,
+        end_idx: int,
+    ) -> None:
+        chunk_start = targets[start_idx].start
+        chunk_end = targets[end_idx - 1].end
+        meta: dict[str, Any] = dict(base_meta)
+        meta["chunk_strategy"] = "makefile"
+        meta["start_char"] = chunk_start
+        meta["end_char"] = chunk_end
+        meta.setdefault("doc_type_kwd", "makefile")
+        meta["make_target_count"] = int(end_idx - start_idx)
+        uniq = MakefileChunker._target_names(targets, start_idx=start_idx, end_idx=end_idx)
+        if uniq:
+            meta["make_targets"] = uniq
+            meta["make_target"] = uniq[0]
+        out.append(Document(page_content=text[chunk_start:chunk_end], metadata=meta))
+
+    def _next_target_start(self, *, targets: list[_Target], start_idx: int, end_idx: int) -> int:
+        if self.chunk_overlap <= 0 or (end_idx - start_idx) <= 1:
+            return end_idx
+        desired = end_idx - 1
+        while desired > start_idx:
+            overlap_len = targets[end_idx - 1].end - targets[desired - 1].start
+            if overlap_len <= self.chunk_overlap:
+                desired -= 1
+                continue
+            break
+        next_start = desired if desired > start_idx else (end_idx - 1)
+        return next_start if next_start > start_idx else end_idx
+
+    @staticmethod
+    def _finalize_chunk_indexes(out: list[Document]) -> list[Document]:
+        for idx, chunk in enumerate(out):
+            meta = dict(chunk.metadata or {})
+            meta["chunk_index"] = idx
+            chunk.metadata = meta
+        return out
+
+    def _append_target_chunks(
+        self,
+        *,
+        out: list[Document],
+        text: str,
+        base_meta: dict[str, Any],
+        targets: list[_Target],
+    ) -> None:
+        start_idx = 0
+        while start_idx < len(targets):
+            end_idx = start_idx
+            while end_idx < len(targets):
+                cand_start = targets[start_idx].start
+                cand_end = targets[end_idx].end
+                cand_len = cand_end - cand_start
+                if end_idx == start_idx or cand_len <= self.chunk_size:
+                    end_idx += 1
+                    continue
+                break
+            if end_idx == start_idx:
+                end_idx = start_idx + 1
+
+            self._append_target_chunk(
+                out=out,
+                text=text,
+                base_meta=base_meta,
+                targets=targets,
+                start_idx=start_idx,
+                end_idx=end_idx,
+            )
+            start_idx = self._next_target_start(targets=targets, start_idx=start_idx, end_idx=end_idx)
+
     def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
-
         for doc in documents:
             text = doc.page_content or ""
             base_meta = dict(doc.metadata or {})
@@ -139,75 +238,9 @@ class MakefileChunker(BaseChunker):
 
             targets = _iter_targets(text)
             if not targets:
-                split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "makefile"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta.setdefault("doc_type_kwd", "makefile")
-                    meta["make_fallback"] = True
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                self._append_fallback_chunks(out=out, text=text, base_meta=base_meta)
                 continue
 
-            start_idx = 0
-            while start_idx < len(targets):
-                end_idx = start_idx
-                while end_idx < len(targets):
-                    cand_start = targets[start_idx].start
-                    cand_end = targets[end_idx].end
-                    cand_len = cand_end - cand_start
-                    if end_idx == start_idx or cand_len <= self.chunk_size:
-                        end_idx += 1
-                        continue
-                    break
-                if end_idx == start_idx:
-                    end_idx = start_idx + 1
+            self._append_target_chunks(out=out, text=text, base_meta=base_meta, targets=targets)
 
-                chunk_start = targets[start_idx].start
-                chunk_end = targets[end_idx - 1].end
-                content = text[chunk_start:chunk_end]
-
-                names = [t.name for t in targets[start_idx:end_idx] if t.name]
-                uniq: list[str] = []
-                for n in names:
-                    if n not in uniq:
-                        uniq.append(n)
-                uniq = uniq[:25]
-
-                meta: dict[str, Any] = dict(base_meta)
-                meta["chunk_strategy"] = "makefile"
-                meta["start_char"] = chunk_start
-                meta["end_char"] = chunk_end
-                meta.setdefault("doc_type_kwd", "makefile")
-                meta["make_target_count"] = int(end_idx - start_idx)
-                if uniq:
-                    meta["make_targets"] = uniq
-                    meta["make_target"] = uniq[0]
-                out.append(Document(page_content=content, metadata=meta))
-
-                next_start = end_idx
-                if self.chunk_overlap > 0 and (end_idx - start_idx) > 1:
-                    desired = end_idx - 1
-                    while desired > start_idx:
-                        overlap_len = targets[end_idx - 1].end - targets[desired - 1].start
-                        if overlap_len <= self.chunk_overlap:
-                            desired -= 1
-                            continue
-                        break
-                    next_start = desired if desired > start_idx else (end_idx - 1)
-
-                if next_start <= start_idx:
-                    next_start = end_idx
-                start_idx = next_start
-
-        for idx, chunk in enumerate(out):
-            meta = dict(chunk.metadata or {})
-            meta["chunk_index"] = idx
-            chunk.metadata = meta
-
-        return out
+        return self._finalize_chunk_indexes(out)

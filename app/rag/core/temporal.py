@@ -162,6 +162,71 @@ def apply_recency_boost(
     }
 
 
+def _parse_uuid(value: Any) -> UUID | None:
+    try:
+        return UUID(str(value))
+    except Exception:
+        return None
+
+
+def _normalize_document_uuid_list(document_ids: list[str], *, max_docs: int) -> list[UUID]:
+    doc_uuid_list: list[UUID] = []
+    seen: set[str] = set()
+    for did in document_ids:
+        s = str(did or "").strip()
+        if not s or s in seen:
+            continue
+        seen.add(s)
+        parsed = _parse_uuid(s)
+        if parsed is None:
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            continue
+        doc_uuid_list.append(parsed)
+        if len(doc_uuid_list) >= max_docs:
+            break
+    return doc_uuid_list
+
+
+def _rows_to_updated_timestamps(rows: list[tuple[Any, Any, Any]]) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for did, updated_at, created_at in rows:
+        ts = updated_at or created_at
+        try:
+            ts_sec = float(ts.timestamp()) if ts is not None else None
+        except Exception:
+            ts_sec = None
+        if ts_sec is None:
+            continue
+        out[str(did)] = float(ts_sec)
+    return out
+
+
+def _query_document_timestamp_rows(
+    *,
+    tenant_uuid: UUID,
+    dataset_uuid: UUID | None,
+    doc_uuid_list: list[UUID],
+) -> list[tuple[Any, Any, Any]]:
+    from app.core.database import SessionLocal  # noqa: WPS433
+    from app.models.document import Document as DBDocument  # noqa: WPS433
+
+    db = SessionLocal()
+    try:
+        q = (
+            db.query(DBDocument.id, DBDocument.updated_at, DBDocument.created_at)
+            .filter(DBDocument.tenant_id == tenant_uuid)
+            .filter(DBDocument.id.in_(sorted(doc_uuid_list)))
+        )
+        if dataset_uuid is not None:
+            q = q.filter(DBDocument.dataset_id == dataset_uuid)
+        return q.all()
+    finally:
+        try:
+            db.close()
+        except Exception as exc:
+            logger.debug("Ignoring temporal metadata session close failure: %s", exc)
+
+
 def fetch_document_updated_ts(
     document_ids: list[str],
     *,
@@ -183,70 +248,24 @@ def fetch_document_updated_ts(
         return {}
 
     # Parse IDs early to avoid wasting DB calls.
-    doc_uuid_list: list[UUID] = []
-    seen: set[str] = set()
-    for did in document_ids:
-        s = str(did or "").strip()
-        if not s:
-            continue
-        if s in seen:
-            continue
-        seen.add(s)
-        try:
-            doc_uuid_list.append(UUID(s))
-        except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
-        if len(doc_uuid_list) >= max_docs:
-            break
-
+    doc_uuid_list = _normalize_document_uuid_list(document_ids, max_docs=max_docs)
     if not doc_uuid_list:
         return {}
 
-    try:
-        tenant_uuid = UUID(str(tenant_id))
-    except Exception:
+    tenant_uuid = _parse_uuid(tenant_id)
+    if tenant_uuid is None:
         return {}
 
-    dataset_uuid = None
-    if dataset_id is not None:
-        try:
-            dataset_uuid = UUID(str(dataset_id))
-        except Exception:
-            dataset_uuid = None
-
-    from app.core.database import SessionLocal  # noqa: WPS433
-    from app.models.document import Document as DBDocument  # noqa: WPS433
-
-    db = SessionLocal()
+    dataset_uuid = _parse_uuid(dataset_id) if dataset_id is not None else None
     try:
-        q = (
-            db.query(DBDocument.id, DBDocument.updated_at, DBDocument.created_at)
-            .filter(DBDocument.tenant_id == tenant_uuid)
-            .filter(DBDocument.id.in_(sorted(doc_uuid_list)))
+        rows = _query_document_timestamp_rows(
+            tenant_uuid=tenant_uuid,
+            dataset_uuid=dataset_uuid,
+            doc_uuid_list=doc_uuid_list,
         )
-        if dataset_uuid is not None:
-            q = q.filter(DBDocument.dataset_id == dataset_uuid)
-        rows = q.all()
-
-        out: dict[str, float] = {}
-        for did, updated_at, created_at in rows:
-            ts = updated_at or created_at
-            try:
-                ts_sec = float(ts.timestamp()) if ts is not None else None
-            except Exception:
-                ts_sec = None
-            if ts_sec is None:
-                continue
-            out[str(did)] = float(ts_sec)
-        return out
+        return _rows_to_updated_timestamps(rows)
     except Exception:
         return {}
-    finally:
-        try:
-            db.close()
-        except Exception as exc:
-            logger.debug("Ignoring temporal metadata session close failure: %s", exc)
 
 
 __all__ = [

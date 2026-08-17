@@ -17,6 +17,7 @@ import ast
 import asyncio
 import contextlib
 import math
+import operator
 import re
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -161,6 +162,154 @@ async def search_documents(
         }
 
 
+def _document_content_error(document_id: str, page: int | None, error: str) -> dict[str, Any]:
+    return {"document_id": document_id, "content": "", "page": page, "error": error}
+
+
+def _document_content_ids(
+    *,
+    document_id: str,
+    dataset_id: str | None,
+    page: int | None,
+) -> tuple[UUID, UUID, UUID] | dict[str, Any]:
+    if dataset_id is None or not str(dataset_id).strip():
+        return _document_content_error(document_id, page, _DATASET_ID_REQUIRED_ERROR)
+    try:
+        dataset_uuid = UUID(str(dataset_id))
+    except Exception:
+        return _document_content_error(document_id, page, "dataset_id must be a UUID")
+    try:
+        document_uuid = UUID(str(document_id))
+    except Exception:
+        return _document_content_error(document_id, page, "document_id must be a UUID")
+    try:
+        tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or "").strip())
+    except Exception:
+        return _document_content_error(document_id, page, "DEFAULT_TENANT_ID is invalid")
+    return dataset_uuid, document_uuid, tenant_uuid
+
+
+def _document_content_limit(max_chars: int) -> int:
+    limit = int(max_chars or 0)
+    return max(1_000, min(limit if limit > 0 else 50_000, 500_000))
+
+
+def _load_scoped_document(
+    db: Any,
+    document_model: Any,
+    *,
+    document_id: UUID,
+    tenant_id: UUID,
+    dataset_id: UUID,
+) -> Any | None:
+    document = (
+        db.query(document_model)
+        .filter(
+            document_model.id == document_id,
+            document_model.tenant_id == tenant_id,
+            document_model.disabled_at.is_(None),
+        )
+        .first()
+    )
+    if document is None or getattr(document, "dataset_id", None) != dataset_id:
+        return None
+    return document
+
+
+def _can_read_document_content(
+    db: Any,
+    document: Any,
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    account_id: str | None,
+) -> bool:
+    if not account_id:
+        return True
+    mode = str(getattr(document, "access_mode", "") or "").strip().lower()
+    owner = str(getattr(document, "owner_id", "") or "").strip()
+    actor = str(account_id or "").strip()
+    if not mode or mode in {"inherit", "all_team_members"} or (owner and owner == actor):
+        return True
+    if mode == "partial_members":
+        return _document_permission_exists(
+            db,
+            tenant_id=tenant_id,
+            document_id=document_id,
+            account_id=actor,
+        )
+    return False
+
+
+def _load_document_content_chunks(
+    db: Any,
+    chunk_model: Any,
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    active_key: str | None,
+) -> list[Any]:
+    query = (
+        db.query(chunk_model)
+        .filter(
+            chunk_model.tenant_id == tenant_id,
+            chunk_model.document_id == document_id,
+            chunk_model.disabled_at.is_(None),
+        )
+        .order_by(chunk_model.chunk_index.asc(), chunk_model.id.asc())
+    )
+    if not active_key:
+        return list(query.all())
+    active_chunks = query.filter(
+        chunk_model.doc_metadata["doc_pipeline_key"].astext == active_key  # type: ignore[attr-defined]
+    ).all()
+    return list(active_chunks or query.all())
+
+
+def _filter_document_chunks_by_page(
+    chunks: list[Any],
+    page: int | None,
+) -> list[Any] | None:
+    if page is None:
+        return chunks
+    try:
+        page_number = int(page)
+    except Exception:
+        return None
+    return [chunk for chunk in chunks if int(getattr(chunk, "page_number", -1) or -1) == page_number]
+
+
+def _assemble_document_content(
+    chunks: list[Any],
+    *,
+    max_chars: int,
+) -> tuple[str, int, list[int], bool]:
+    parts: list[str] = []
+    total = 0
+    truncated = False
+    returned_chunks = 0
+    pages: list[int] = []
+    for chunk in chunks:
+        text = str(getattr(chunk, "content", "") or "")
+        if not text.strip():
+            continue
+        separator = "\n\n" if parts else ""
+        remaining = max_chars - total - len(separator)
+        if remaining <= 0:
+            truncated = True
+            break
+        clipped = len(text) > remaining
+        parts.append(separator + (text[:remaining] if clipped else text))
+        total += len(separator) + (remaining if clipped else len(text))
+        returned_chunks += 1
+        if getattr(chunk, "page_number", None) is not None:
+            pages.append(int(chunk.page_number))
+        if clipped:
+            truncated = True
+            break
+    return "".join(parts), returned_chunks, pages, truncated
+
+
 def _get_document_content_sync(
     document_id: str,
     page: int | None = None,
@@ -174,179 +323,51 @@ def _get_document_content_sync(
         from app.models.document import Document as DBDocument
         from app.models.document import DocumentChunk
 
-        if dataset_id is None or not str(dataset_id).strip():
-            return {
-                "document_id": document_id,
-                "content": "",
-                "page": page,
-                "error": _DATASET_ID_REQUIRED_ERROR,
-            }
-        try:
-            ds_uuid = UUID(str(dataset_id))
-        except Exception:
-            return {
-                "document_id": document_id,
-                "content": "",
-                "page": page,
-                "error": "dataset_id must be a UUID",
-            }
-
-        try:
-            doc_uuid = UUID(str(document_id))
-        except Exception:
-            return {
-                "document_id": document_id,
-                "content": "",
-                "page": page,
-                "error": "document_id must be a UUID",
-            }
-
-        try:
-            tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or "").strip())
-        except Exception:
-            # Should never happen; keep the failure explicit.
-            return {
-                "document_id": document_id,
-                "content": "",
-                "page": page,
-                "error": "DEFAULT_TENANT_ID is invalid",
-            }
-
-        max_chars = int(max_chars or 0)
-        if max_chars <= 0:
-            max_chars = 50_000
-        max_chars = max(1_000, min(max_chars, 500_000))
-
+        identifiers = _document_content_ids(
+            document_id=document_id,
+            dataset_id=dataset_id,
+            page=page,
+        )
+        if isinstance(identifiers, dict):
+            return identifiers
+        dataset_uuid, document_uuid, tenant_uuid = identifiers
         with _db_session() as db:
-            document = (
-                db.query(DBDocument)
-                .filter(
-                    DBDocument.id == doc_uuid,
-                    DBDocument.tenant_id == tenant_uuid,
-                    DBDocument.disabled_at.is_(None),
-                )
-                .first()
+            document = _load_scoped_document(
+                db,
+                DBDocument,
+                document_id=document_uuid,
+                tenant_id=tenant_uuid,
+                dataset_id=dataset_uuid,
             )
-            if not document:
-                return {
-                    "document_id": document_id,
-                    "content": "",
-                    "page": page,
-                    "error": _DOCUMENT_NOT_FOUND_ERROR,
-                }
-
-            # Fail closed: the caller must operate within the dataset scope they searched.
-            if getattr(document, "dataset_id", None) != ds_uuid:
-                return {
-                    "document_id": document_id,
-                    "content": "",
-                    "page": page,
-                    "error": _DOCUMENT_NOT_FOUND_ERROR,
-                }
-
-            # Best-effort document-level ACL trimming when account_id is provided.
-            mode = str(getattr(document, "access_mode", "") or "").strip().lower()
-            owner = str(getattr(document, "owner_id", "") or "").strip()
-            if account_id:
-                actor = str(account_id or "").strip()
-                is_owner = bool(owner and owner == actor)
-                if mode and mode not in {"inherit", "all_team_members"} and not is_owner:
-                    if mode == "only_me":
-                        return {
-                            "document_id": document_id,
-                            "content": "",
-                            "page": page,
-                            "error": _NO_DOCUMENT_ACCESS_ERROR,
-                        }
-                    if mode == "partial_members":
-                        if not _document_permission_exists(
-                            db,
-                            tenant_id=tenant_uuid,
-                            document_id=doc_uuid,
-                            account_id=actor,
-                        ):
-                            return {
-                                "document_id": document_id,
-                                "content": "",
-                                "page": page,
-                                "error": _NO_DOCUMENT_ACCESS_ERROR,
-                            }
-                    else:
-                        return {
-                            "document_id": document_id,
-                            "content": "",
-                            "page": page,
-                            "error": _NO_DOCUMENT_ACCESS_ERROR,
-                        }
-
-            # Scope to active pipeline version when available; fall back to legacy chunks if absent.
+            if document is None:
+                return _document_content_error(document_id, page, _DOCUMENT_NOT_FOUND_ERROR)
+            if not _can_read_document_content(
+                db,
+                document,
+                tenant_id=tenant_uuid,
+                document_id=document_uuid,
+                account_id=account_id,
+            ):
+                return _document_content_error(document_id, page, _NO_DOCUMENT_ACCESS_ERROR)
             active_hash = get_active_pipeline_hash(getattr(document, "doc_metadata", None))
-            active_key = build_doc_pipeline_key(doc_uuid, active_hash) if active_hash else None
-
-            q = (
-                db.query(DocumentChunk)
-                .filter(
-                    DocumentChunk.tenant_id == tenant_uuid,
-                    DocumentChunk.document_id == doc_uuid,
-                    DocumentChunk.disabled_at.is_(None),
-                )
-                .order_by(DocumentChunk.chunk_index.asc(), DocumentChunk.id.asc())
+            active_key = build_doc_pipeline_key(document_uuid, active_hash) if active_hash else None
+            chunks = _load_document_content_chunks(
+                db,
+                DocumentChunk,
+                tenant_id=tenant_uuid,
+                document_id=document_uuid,
+                active_key=active_key,
             )
-            if active_key:
-                q_active = q.filter(
-                    DocumentChunk.doc_metadata["doc_pipeline_key"].astext == active_key  # type: ignore[attr-defined]
-                )
-                chunks = q_active.all()
-                if not chunks:
-                    chunks = q.all()
-            else:
-                chunks = q.all()
-
-            if page is not None:
-                try:
-                    page_int = int(page)
-                except Exception:
-                    return {
-                        "document_id": document_id,
-                        "content": "",
-                        "page": page,
-                        "error": "page must be an integer",
-                    }
-                chunks = [c for c in chunks if int(getattr(c, "page_number", -1) or -1) == page_int]
-
-            # Assemble content with a hard cap to avoid exploding tool payload size.
-            parts: list[str] = []
-            total = 0
-            truncated = False
-            returned_chunks = 0
-            pages: list[int] = []
-            for c in chunks:
-                text = str(getattr(c, "content", "") or "")
-                if not text.strip():
-                    continue
-                sep = "\n\n" if parts else ""
-                remaining = max_chars - total - len(sep)
-                if remaining <= 0:
-                    truncated = True
-                    break
-                if len(text) > remaining:
-                    parts.append(sep + text[:remaining])
-                    total += len(sep) + remaining
-                    truncated = True
-                    returned_chunks += 1
-                    if getattr(c, "page_number", None) is not None:
-                        pages.append(int(c.page_number))
-                    break
-                parts.append(sep + text)
-                total += len(sep) + len(text)
-                returned_chunks += 1
-                if getattr(c, "page_number", None) is not None:
-                    pages.append(int(c.page_number))
-
-            content = "".join(parts)
+            chunks = _filter_document_chunks_by_page(chunks, page)
+            if chunks is None:
+                return _document_content_error(document_id, page, "page must be an integer")
+            content, returned_chunks, pages, truncated = _assemble_document_content(
+                chunks,
+                max_chars=_document_content_limit(max_chars),
+            )
         return {
             "document_id": document_id,
-            "dataset_id": str(ds_uuid),
+            "dataset_id": str(dataset_uuid),
             "filename": str(getattr(document, "filename", "") or ""),
             "file_type": str(getattr(document, "file_type", "") or ""),
             "page": page,
@@ -356,12 +377,9 @@ def _get_document_content_sync(
             "truncated": bool(truncated),
             "content": content,
         }
-    except Exception as e:
-        logger.exception("Failed to get document: %s", e)
-        return {
-            "document_id": document_id,
-            "error": str(e),
-        }
+    except Exception as exc:
+        logger.exception("Failed to get document: %s", exc)
+        return {"document_id": document_id, "error": str(exc)}
 
 
 async def get_document_content(
@@ -527,6 +545,29 @@ async def get_document_structure(
     )
 
 
+def _page_number(value: str) -> int | None:
+    try:
+        return int(value.strip())
+    except Exception:
+        get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+        return None
+
+
+def _page_token_values(token: str) -> list[int]:
+    if not token:
+        return []
+    if "-" not in token:
+        value = _page_number(token)
+        return [value] if value is not None and value > 0 else []
+    left, right = token.split("-", 1)
+    start = _page_number(left)
+    end = _page_number(right)
+    if start is None or end is None or start <= 0 or end <= 0:
+        return []
+    lower, upper = sorted((start, end))
+    return list(range(lower, min(upper, lower + 99) + 1))
+
+
 def _parse_pages_selector(pages: Any) -> list[int]:
     if pages is None:
         return []
@@ -538,28 +579,7 @@ def _parse_pages_selector(pages: Any) -> list[int]:
     out: list[int] = []
     for part in raw.split(","):
         token = part.strip()
-        if not token:
-            continue
-        if "-" in token:
-            left, right = token.split("-", 1)
-            try:
-                start = int(left.strip())
-                end = int(right.strip())
-            except Exception:
-                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-                continue
-            if start <= 0 or end <= 0:
-                continue
-            lo, hi = sorted((start, end))
-            out.extend(range(lo, min(hi, lo + 99) + 1))
-            continue
-        try:
-            value = int(token)
-        except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
-        if value > 0:
-            out.append(value)
+        out.extend(_page_token_values(token))
     return sorted(set(out))[:100]
 
 
@@ -655,145 +675,153 @@ _MAX_MATH_INT_BITS = 4096
 _MAX_MATH_POW_ABS_EXP = 4096
 
 
-def _safe_eval_math(expression: str, allowed_names: dict[str, Any]) -> Any:
-    expr = (expression or "").strip().lower()
-    if not expr:
-        raise ValueError("Empty expression")
-    if len(expr) > _MAX_MATH_EXPRESSION_CHARS:
-        raise ValueError("Expression too long")
+class _SafeMathEvaluator:
+    def __init__(self, allowed_names: dict[str, Any]) -> None:
+        self.allowed_names = allowed_names
+        self.node_count = 0
 
-    # Keep compatibility: treat "^" as power.
-    expr = expr.replace("^", "**")
-
-    tree = ast.parse(expr, mode="eval")
-
-    node_count = 0
-
-    def _bump(_node: ast.AST) -> None:
-        nonlocal node_count
-        node_count += 1
-        if node_count > _MAX_MATH_AST_NODES:
+    def _bump(self) -> None:
+        self.node_count += 1
+        if self.node_count > _MAX_MATH_AST_NODES:
             raise ValueError("Expression too complex")
 
+    @staticmethod
     def _ensure_number_safe(value: Any) -> None:
         if isinstance(value, bool):
             raise ValueError("Invalid number")
         if isinstance(value, int) and value.bit_length() > _MAX_MATH_INT_BITS:
             raise ValueError(_NUMBER_TOO_LARGE_ERROR)
 
-    def _safe_pow(base: Any, exp: Any, mod: Any | None = None) -> Any:
-        if isinstance(base, bool) or isinstance(exp, bool) or isinstance(mod, bool):
+    @staticmethod
+    def _validate_pow_exponent(base: Any, exponent: Any) -> None:
+        if not isinstance(exponent, int):
+            return
+        if abs(exponent) > _MAX_MATH_POW_ABS_EXP:
+            raise ValueError("Exponent too large")
+        if isinstance(base, int) and exponent >= 0 and base not in (0, 1, -1):
+            estimated_bits = abs(exponent) * max(1, base.bit_length())
+            if estimated_bits > _MAX_MATH_INT_BITS:
+                raise ValueError(_NUMBER_TOO_LARGE_ERROR)
+
+    def _safe_pow(self, base: Any, exponent: Any, modulus: Any | None = None) -> Any:
+        if any(isinstance(value, bool) for value in (base, exponent, modulus)):
             raise ValueError("Invalid number")
-
-        if isinstance(exp, int):
-            if abs(exp) > _MAX_MATH_POW_ABS_EXP:
-                raise ValueError("Exponent too large")
-            if isinstance(base, int) and exp >= 0 and base not in (0, 1, -1):
-                estimated_bits = abs(exp) * max(1, base.bit_length())
-                if estimated_bits > _MAX_MATH_INT_BITS:
-                    raise ValueError(_NUMBER_TOO_LARGE_ERROR)
-
-        if mod is not None:
-            if not (isinstance(base, int) and isinstance(exp, int) and isinstance(mod, int)):
+        self._validate_pow_exponent(base, exponent)
+        if modulus is None:
+            result = base**exponent
+        else:
+            if not all(isinstance(value, int) for value in (base, exponent, modulus)):
                 raise ValueError("pow(a, b, mod) only supports integers")
-            if mod == 0:
+            if modulus == 0:
                 raise ValueError("Modulo cannot be zero")
-            out = pow(base, exp, mod)
-            _ensure_number_safe(out)
-            return out
+            result = pow(base, exponent, modulus)
+        self._ensure_number_safe(result)
+        return result
 
-        out = base ** exp
-        _ensure_number_safe(out)
-        return out
+    def _expression(self, node: ast.Expression) -> Any:
+        return self.evaluate(node.body)
 
-    def _eval(node: ast.AST) -> Any:
-        _bump(node)
-
-        if isinstance(node, ast.Expression):
-            return _eval(node.body)
-
-        if isinstance(node, ast.Constant):
-            if isinstance(node.value, (int, float)) and not isinstance(node.value, bool):
-                _ensure_number_safe(node.value)
-                return node.value
+    def _constant(self, node: ast.Constant) -> Any:
+        if not isinstance(node.value, (int, float)) or isinstance(node.value, bool):
             raise ValueError("Only numbers are allowed")
+        self._ensure_number_safe(node.value)
+        return node.value
 
-        if isinstance(node, ast.UnaryOp):
-            operand = _eval(node.operand)
-            if isinstance(node.op, ast.UAdd):
-                out = +operand
-            elif isinstance(node.op, ast.USub):
-                out = -operand
-            else:
-                raise ValueError("Unsupported unary operator")
-            _ensure_number_safe(out)
-            return out
+    def _unary(self, node: ast.UnaryOp) -> Any:
+        operation = {ast.UAdd: operator.pos, ast.USub: operator.neg}.get(type(node.op))
+        if operation is None:
+            raise ValueError("Unsupported unary operator")
+        result = operation(self.evaluate(node.operand))
+        self._ensure_number_safe(result)
+        return result
 
-        if isinstance(node, ast.BinOp):
-            left = _eval(node.left)
-            right = _eval(node.right)
+    @staticmethod
+    def _safe_multiply(left: Any, right: Any) -> Any:
+        if isinstance(left, int) and isinstance(right, int):
+            if left.bit_length() + right.bit_length() > _MAX_MATH_INT_BITS:
+                raise ValueError(_NUMBER_TOO_LARGE_ERROR)
+        return left * right
 
-            if isinstance(node.op, ast.Add):
-                out = left + right
-            elif isinstance(node.op, ast.Sub):
-                out = left - right
-            elif isinstance(node.op, ast.Mult):
-                if isinstance(left, int) and isinstance(right, int):
-                    if left.bit_length() + right.bit_length() > _MAX_MATH_INT_BITS:
-                        raise ValueError(_NUMBER_TOO_LARGE_ERROR)
-                out = left * right
-            elif isinstance(node.op, ast.Div):
-                out = left / right
-            elif isinstance(node.op, ast.FloorDiv):
-                out = left // right
-            elif isinstance(node.op, ast.Mod):
-                out = left % right
-            elif isinstance(node.op, ast.Pow):
-                out = _safe_pow(left, right)
-            else:
-                raise ValueError("Unsupported operator")
+    def _binary(self, node: ast.BinOp) -> Any:
+        left = self.evaluate(node.left)
+        right = self.evaluate(node.right)
+        if isinstance(node.op, ast.Pow):
+            return self._safe_pow(left, right)
+        operations = {
+            ast.Add: operator.add,
+            ast.Sub: operator.sub,
+            ast.Mult: self._safe_multiply,
+            ast.Div: operator.truediv,
+            ast.FloorDiv: operator.floordiv,
+            ast.Mod: operator.mod,
+        }
+        operation = operations.get(type(node.op))
+        if operation is None:
+            raise ValueError("Unsupported operator")
+        result = operation(left, right)
+        self._ensure_number_safe(result)
+        return result
 
-            _ensure_number_safe(out)
-            return out
+    def _name(self, node: ast.Name) -> Any:
+        if node.id not in self.allowed_names:
+            raise ValueError(f"Unknown name: {node.id}")
+        value = self.allowed_names[node.id]
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            self._ensure_number_safe(value)
+            return value
+        raise ValueError(f"'{node.id}' must be called as a function")
 
-        if isinstance(node, ast.Name):
-            name = node.id
-            if name not in allowed_names:
-                raise ValueError(f"Unknown name: {name}")
-            value = allowed_names[name]
-            if isinstance(value, (int, float)) and not isinstance(value, bool):
-                _ensure_number_safe(value)
-                return value
-            raise ValueError(f"'{name}' must be called as a function")
+    def _call(self, node: ast.Call) -> Any:
+        if not isinstance(node.func, ast.Name):
+            raise ValueError("Only direct function calls are allowed")
+        if node.keywords:
+            raise ValueError("Keyword arguments are not allowed")
+        name = node.func.id
+        function = self.allowed_names.get(name)
+        if function is None or not callable(function):
+            raise ValueError(f"Unknown function: {name}")
+        arguments = [self.evaluate(argument) for argument in node.args]
+        if name == "pow":
+            if len(arguments) not in (2, 3):
+                raise ValueError("pow() expects 2 or 3 arguments")
+            return self._safe_pow(
+                arguments[0],
+                arguments[1],
+                arguments[2] if len(arguments) == 3 else None,
+            )
+        result = function(*arguments)
+        self._ensure_number_safe(result)
+        return result
 
-        if isinstance(node, ast.Call):
-            if not isinstance(node.func, ast.Name):
-                raise ValueError("Only direct function calls are allowed")
-            if node.keywords:
-                raise ValueError("Keyword arguments are not allowed")
+    def _sequence(self, node: ast.Tuple | ast.List) -> list[Any]:
+        return [self.evaluate(element) for element in node.elts]
 
-            name = node.func.id
-            fn = allowed_names.get(name)
-            if fn is None or not callable(fn):
-                raise ValueError(f"Unknown function: {name}")
+    def evaluate(self, node: ast.AST) -> Any:
+        self._bump()
+        handlers = {
+            ast.Expression: self._expression,
+            ast.Constant: self._constant,
+            ast.UnaryOp: self._unary,
+            ast.BinOp: self._binary,
+            ast.Name: self._name,
+            ast.Call: self._call,
+            ast.Tuple: self._sequence,
+            ast.List: self._sequence,
+        }
+        handler = handlers.get(type(node))
+        if handler is None:
+            raise ValueError("Unsupported expression")
+        return handler(node)
 
-            args = [_eval(a) for a in node.args]
 
-            if name == "pow":
-                if len(args) not in (2, 3):
-                    raise ValueError("pow() expects 2 or 3 arguments")
-                return _safe_pow(args[0], args[1], args[2] if len(args) == 3 else None)
-
-            out = fn(*args)
-            _ensure_number_safe(out)
-            return out
-
-        if isinstance(node, (ast.Tuple, ast.List)):
-            return [_eval(elt) for elt in node.elts]
-
-        raise ValueError("Unsupported expression")
-
-    return _eval(tree)
+def _safe_eval_math(expression: str, allowed_names: dict[str, Any]) -> Any:
+    expr = (expression or "").strip().lower()
+    if not expr:
+        raise ValueError("Empty expression")
+    if len(expr) > _MAX_MATH_EXPRESSION_CHARS:
+        raise ValueError("Expression too long")
+    tree = ast.parse(expr.replace("^", "**"), mode="eval")
+    return _SafeMathEvaluator(allowed_names).evaluate(tree)
 
 
 def _resolve_timezone(name: str | None):

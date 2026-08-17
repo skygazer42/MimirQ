@@ -85,6 +85,16 @@ def _parse_en_num_section(s: str, start: int) -> tuple[str, int] | None:
     return s[start:i], i
 
 
+def _en_heading_candidates() -> tuple[tuple[str, int, tuple[str, ...], Any], ...]:
+    return (
+        ("volume", 1, ("volume", "vol."), _parse_en_num_simple),
+        ("book", 1, ("book",), _parse_en_num_simple),
+        ("part", 1, ("part",), _parse_en_num_simple),
+        ("chapter", 2, ("chapter", "ch."), _parse_en_num_simple),
+        ("section", 3, ("section",), _parse_en_num_section),
+    )
+
+
 def _parse_en_heading(line: str) -> tuple[str, int, str] | None:
     """
     Parse book-ish headings without regex to avoid backtracking hotspots.
@@ -94,40 +104,72 @@ def _parse_en_heading(line: str) -> tuple[str, int, str] | None:
     if not s:
         return None
     low = s.lower()
-    n = len(s)
-
-    candidates = [
-        ("volume", 1, ("volume", "vol."), _parse_en_num_simple),
-        ("book", 1, ("book",), _parse_en_num_simple),
-        ("part", 1, ("part",), _parse_en_num_simple),
-        ("chapter", 2, ("chapter", "ch."), _parse_en_num_simple),
-        ("section", 3, ("section",), _parse_en_num_section),
-    ]
-
-    for kind, level, prefixes, num_parser in candidates:
-        for pref in prefixes:
-            if not low.startswith(pref):
-                continue
-            if len(low) > len(pref) and not low[len(pref)].isspace():
-                continue
-
-            i = len(pref)
-            while i < n and s[i].isspace():
-                i += 1
-            if i >= n:
-                continue
-
-            parsed = num_parser(s, i)
-            if not parsed:
-                continue
-            num, j = parsed
-            if j < n and (s[j].isalnum() or s[j] == "_"):
-                continue
-            if j + 1 < n and s[j] == "." and s[j + 1].isdigit():
-                continue
-            return kind, int(level), num
-
+    for kind, level, prefixes, num_parser in _en_heading_candidates():
+        parsed = _parse_en_heading_candidate(s, low, prefixes=prefixes, num_parser=num_parser)
+        if parsed is not None:
+            return kind, int(level), parsed
     return None
+
+
+def _parse_en_heading_candidate(
+    s: str,
+    low: str,
+    *,
+    prefixes: tuple[str, ...],
+    num_parser,
+) -> str | None:
+    n = len(s)
+    for pref in prefixes:
+        if not low.startswith(pref):
+            continue
+        if len(low) > len(pref) and not low[len(pref)].isspace():
+            continue
+
+        index = _skip_heading_whitespace(s, len(pref))
+        if index >= n:
+            continue
+
+        parsed = num_parser(s, index)
+        if not parsed:
+            continue
+        num, end = parsed
+        if _heading_parse_stops_cleanly(s, end):
+            return num
+    return None
+
+
+def _skip_heading_whitespace(s: str, start: int) -> int:
+    n = len(s)
+    i = start
+    while i < n and s[i].isspace():
+        i += 1
+    return i
+
+
+def _heading_parse_stops_cleanly(s: str, end: int) -> bool:
+    if end < len(s) and (s[end].isalnum() or s[end] == "_"):
+        return False
+    if end + 1 < len(s) and s[end] == "." and s[end + 1].isdigit():
+        return False
+    return True
+
+
+def _classify_heading_line(line: str) -> tuple[str, int] | None:
+    cn_candidates = (
+        ("volume", 1, "卷"),
+        ("part", 1, "部"),
+        ("chapter", 2, "章回"),
+        ("section", 3, "节"),
+    )
+    for kind, level, suffixes in cn_candidates:
+        if parse_cn_prefixed_heading(line, suffixes=suffixes) is not None:
+            return kind, level
+
+    parsed = _parse_en_heading(line)
+    if parsed is None:
+        return None
+    kind, level, _ = parsed
+    return kind, level
 
 
 def _iter_headings(text: str) -> list[BookHeading]:
@@ -146,21 +188,10 @@ def _iter_headings(text: str) -> list[BookHeading]:
         if len(line) > 160:
             continue
 
-        kind: str | None = None
-        level: int | None = None
-        if parse_cn_prefixed_heading(line, suffixes="卷") is not None:
-            kind, level = "volume", 1
-        elif parse_cn_prefixed_heading(line, suffixes="部") is not None:
-            kind, level = "part", 1
-        elif parse_cn_prefixed_heading(line, suffixes="章回") is not None:
-            kind, level = "chapter", 2
-        elif parse_cn_prefixed_heading(line, suffixes="节") is not None:
-            kind, level = "section", 3
-        elif (en := _parse_en_heading(line)) is not None:
-            kind, level, _ = en
-
-        if kind is None or level is None:
+        classified = _classify_heading_line(line)
+        if classified is None:
             continue
+        kind, level = classified
 
         headings.append(
             BookHeading(
@@ -207,6 +238,47 @@ def _update_heading_stack(stack: list[str], *, level: int, heading_text: str) ->
     stack.append(heading_text)
 
 
+def _build_section_path(section: _Section, heading_stack: list[str]) -> tuple[list[str], str | None]:
+    sec_heading = section.heading
+    if sec_heading is not None:
+        _update_heading_stack(
+            heading_stack,
+            level=sec_heading.level,
+            heading_text=sec_heading.text,
+        )
+    path = list(heading_stack)
+    return path, " / ".join(path) if path else None
+
+
+def _build_section_chunk_meta(
+    base_meta: dict[str, Any],
+    *,
+    section: _Section,
+    split_meta: dict[str, Any],
+    content: str,
+    path: list[str],
+    path_str: str | None,
+    local_start: int,
+) -> dict[str, Any]:
+    abs_start = section.start + local_start
+    meta: dict[str, Any] = dict(base_meta)
+    meta.update(split_meta)
+    meta["chunk_strategy"] = "book_structured"
+    meta["start_char"] = abs_start
+    meta["end_char"] = abs_start + len(content)
+
+    sec_heading = section.heading
+    if sec_heading is not None:
+        meta["book_heading"] = sec_heading.text
+        meta["book_level"] = int(sec_heading.level)
+        meta["book_kind"] = sec_heading.kind
+    if path:
+        meta["book_path"] = path
+    if path_str:
+        meta["book_path_str"] = path_str
+    return meta
+
+
 def looks_like_book(text: str) -> bool:
     if not text or len(text) < 200:
         return False
@@ -238,57 +310,7 @@ class BookStructuredChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
-            base_meta = dict(doc.metadata or {})
-            if not text.strip():
-                continue
-
-            headings = _iter_headings(text)
-            sections = _build_sections(text, headings)
-
-            heading_stack: list[str] = []
-
-            for section in sections:
-                sec_text = text[section.start : section.end]
-                if not sec_text.strip():
-                    continue
-
-                sec_heading = section.heading
-                if sec_heading is not None:
-                    _update_heading_stack(
-                        heading_stack,
-                        level=sec_heading.level,
-                        heading_text=sec_heading.text,
-                    )
-
-                path = list(heading_stack)
-                path_str = " / ".join(path) if path else None
-
-                split_docs = self._fallback_splitter.create_documents(
-                    texts=[sec_text],
-                    metadatas=[base_meta],
-                )
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = section.start + int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "book_structured"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-
-                    if sec_heading is not None:
-                        meta["book_heading"] = sec_heading.text
-                        meta["book_level"] = int(sec_heading.level)
-                        meta["book_kind"] = sec_heading.kind
-                    if path:
-                        meta["book_path"] = path
-                    if path_str:
-                        meta["book_path_str"] = path_str
-
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+            out.extend(self._split_document(doc))
 
         for idx, chunk in enumerate(out):
             meta = dict(chunk.metadata or {})
@@ -296,3 +318,47 @@ class BookStructuredChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
+
+    def _split_document(self, doc: Document) -> list[Document]:
+        text = doc.page_content or ""
+        if not text.strip():
+            return []
+
+        base_meta = dict(doc.metadata or {})
+        sections = _build_sections(text, _iter_headings(text))
+        heading_stack: list[str] = []
+        chunks: list[Document] = []
+
+        for section in sections:
+            sec_text = text[section.start : section.end]
+            if not sec_text.strip():
+                continue
+            path, path_str = _build_section_path(section, heading_stack)
+            chunks.extend(self._split_section(sec_text, base_meta, section=section, path=path, path_str=path_str))
+        return chunks
+
+    def _split_section(
+        self,
+        section_text: str,
+        base_meta: dict[str, Any],
+        *,
+        section: _Section,
+        path: list[str],
+        path_str: str | None,
+    ) -> list[Document]:
+        split_docs = self._fallback_splitter.create_documents(texts=[section_text], metadatas=[base_meta])
+        chunks: list[Document] = []
+        for split_doc in split_docs:
+            split_meta = dict(split_doc.metadata or {})
+            local_start = int(split_meta.pop("start_index", None) or 0)
+            meta = _build_section_chunk_meta(
+                base_meta,
+                section=section,
+                split_meta=split_meta,
+                content=split_doc.page_content,
+                path=path,
+                path_str=path_str,
+                local_start=local_start,
+            )
+            chunks.append(Document(page_content=split_doc.page_content, metadata=meta))
+        return chunks

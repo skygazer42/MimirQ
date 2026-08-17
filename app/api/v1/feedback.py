@@ -6,6 +6,7 @@ Currently provides minimal loop capability:
 """
 
 
+from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -87,6 +88,46 @@ def _coerce_int(value: Any, *, min_value: int | None = None) -> int | None:
     return out
 
 
+def _copy_citation_text_field(
+    payload: dict[str, Any],
+    item: dict[str, Any],
+    *,
+    key_name: str,
+    max_length: int,
+) -> None:
+    raw = item.get(key_name)
+    if raw is None:
+        return
+    text = str(raw).strip()
+    if text:
+        payload[key_name] = text[:max_length]
+
+
+def _build_reference_source_payload(item: dict[str, Any], *, doc_id: UUID, chunk_id: UUID) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "document_id": str(doc_id),
+        "chunk_id": str(chunk_id),
+    }
+    optional_ints = (
+        ("page_number", 1),
+        ("start_char", 0),
+        ("end_char", 0),
+        ("chunk_index", 0),
+    )
+    for key_name, min_value in optional_ints:
+        value = _coerce_int(item.get(key_name), min_value=min_value)
+        if value is not None:
+            payload[key_name] = value
+    for key_name, max_length in (
+        ("doc_pipeline_key", 128),
+        ("pipeline_hash", 128),
+        ("quote", 2000),
+        ("label", 128),
+    ):
+        _copy_citation_text_field(payload, item, key_name=key_name, max_length=max_length)
+    return payload
+
+
 def _extract_reference_sources(citations: Any) -> list[dict]:
     if not isinstance(citations, list):
         return []
@@ -103,31 +144,7 @@ def _extract_reference_sources(citations: Any) -> list[dict]:
         if key in seen:
             continue
         seen.add(key)
-
-        payload: dict[str, Any] = {
-            "document_id": str(doc_id),
-            "chunk_id": str(chunk_id),
-        }
-        page_number = _coerce_int(item.get("page_number"), min_value=1)
-        if page_number is not None:
-            payload["page_number"] = page_number
-        start_char = _coerce_int(item.get("start_char"), min_value=0)
-        if start_char is not None:
-            payload["start_char"] = start_char
-        end_char = _coerce_int(item.get("end_char"), min_value=0)
-        if end_char is not None:
-            payload["end_char"] = end_char
-        chunk_index = _coerce_int(item.get("chunk_index"), min_value=0)
-        if chunk_index is not None:
-            payload["chunk_index"] = chunk_index
-        for key_name in ("doc_pipeline_key", "pipeline_hash", "quote", "label"):
-            raw = item.get(key_name)
-            if raw is None:
-                continue
-            text = str(raw).strip()
-            if text:
-                payload[key_name] = text[:2000] if key_name == "quote" else text[:128]
-        out.append(payload)
+        out.append(_build_reference_source_payload(item, doc_id=doc_id, chunk_id=chunk_id))
         if len(out) >= 100:
             break
     return out
@@ -164,6 +181,216 @@ def _extract_rag_config_snapshot(trace_payload: dict[str, Any] | None) -> dict[s
     if not isinstance(retrieval, dict):
         return {}
     return dict(retrieval)
+
+
+def _normalize_feedback_tags(*tag_groups: Any) -> list[str]:
+    tags: list[str] = []
+    for group in tag_groups:
+        if not isinstance(group, list):
+            continue
+        tags.extend(str(value) for value in group if isinstance(value, (str, int, float)))
+
+    seen: set[str] = set()
+    cleaned: list[str] = []
+    for tag in tags:
+        value = str(tag or "").strip()
+        if not value:
+            continue
+        key = value.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(value[:64])
+        if len(cleaned) >= 30:
+            break
+    return cleaned
+
+
+def _get_feedback_for_promotion(db: Session, *, tenant_id: UUID, feedback_id: UUID) -> MessageFeedback:
+    fb = (
+        db.query(MessageFeedback)
+        .filter(MessageFeedback.id == feedback_id, MessageFeedback.tenant_id == tenant_id)
+        .with_for_update()
+        .first()
+    )
+    if not fb:
+        raise HTTPException(status_code=404, detail="Feedback not found")
+    return fb
+
+
+def _get_feedback_assistant_message(db: Session, *, tenant_id: UUID, message_id: UUID) -> Message:
+    assistant = (
+        db.query(Message)
+        .filter(Message.id == message_id, Message.tenant_id == tenant_id)
+        .first()
+    )
+    if not assistant:
+        raise HTTPException(status_code=404, detail="Assistant message not found")
+    return assistant
+
+
+def _get_feedback_conversation(db: Session, *, tenant_id: UUID, conversation_id: UUID) -> Conversation:
+    conv = (
+        db.query(Conversation)
+        .filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id)
+        .first()
+    )
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return conv
+
+
+def _infer_feedback_question(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    conversation_id: UUID,
+    assistant_created_at: datetime,
+) -> str:
+    q_msg = (
+        db.query(Message)
+        .filter(
+            Message.tenant_id == tenant_id,
+            Message.conversation_id == conversation_id,
+            Message.role == "user",
+            Message.created_at <= assistant_created_at,
+        )
+        .order_by(Message.created_at.desc())
+        .first()
+    )
+    question = (q_msg.content if q_msg else "").strip()
+    return question or "(missing user question)"
+
+
+def _resolve_feedback_dataset_id(
+    assistant: Message,
+    conv: Conversation,
+) -> tuple[UUID | None, dict[str, Any], str]:
+    meta = assistant.message_metadata if isinstance(getattr(assistant, "message_metadata", None), dict) else {}
+    dataset_id: UUID | None = None
+    raw_ds = meta.get("dataset_id") if isinstance(meta, dict) else None
+    if isinstance(raw_ds, str) and raw_ds.strip():
+        try:
+            dataset_id = UUID(raw_ds.strip())
+        except Exception:
+            dataset_id = None
+    if dataset_id is None:
+        dataset_id = getattr(conv, "dataset_id", None)
+    request_id = str(meta.get("request_id") or "").strip() if isinstance(meta, dict) else ""
+    return dataset_id, meta, request_id
+
+
+def _hydrate_feedback_trace_payload(
+    *,
+    tenant_id: UUID,
+    conversation_id: UUID,
+    request_id: str,
+    citations: Any,
+) -> tuple[list[dict], dict[str, Any] | None]:
+    reference_sources = _extract_reference_sources(citations)
+    trace_payload = _find_trace_by_request_id(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        request_id=request_id,
+    )
+    if trace_payload and isinstance(trace_payload, dict) and not reference_sources:
+        reference_sources = _extract_reference_sources(trace_payload.get("citations"))
+    return reference_sources, trace_payload if isinstance(trace_payload, dict) else None
+
+
+def _regression_case_extra_keys() -> set[str]:
+    return {
+        "source",
+        "feedback_id",
+        "message_id",
+        "rating",
+        "feedback_category",
+        "feedback_category_source",
+        "dataset_id",
+        "query_hash",
+        "retrieval_trace_ref",
+        "profile",
+        "judge_score_ref",
+        "retrieval_trace",
+        "retrieval_trace_request_id",
+    }
+
+
+def _build_regression_case_extra(
+    *,
+    fb: MessageFeedback,
+    body_extra: Any,
+    dataset_id: UUID | None,
+) -> dict[str, Any]:
+    extra: dict[str, Any] = {}
+    if isinstance(fb.extra, dict):
+        extra.update(fb.extra)
+    if isinstance(body_extra, dict):
+        protected = _regression_case_extra_keys()
+        extra.update({key: value for key, value in body_extra.items() if key not in protected})
+    extra["source"] = "feedback"
+    extra["feedback_id"] = str(fb.id)
+    extra["message_id"] = str(fb.message_id)
+    extra["rating"] = int(fb.rating)
+    if dataset_id is not None:
+        extra["dataset_id"] = str(dataset_id)
+    if getattr(fb, "category", None):
+        extra["feedback_category"] = str(fb.category)
+        extra["feedback_category_source"] = str(getattr(fb, "category_source", "") or "") or None
+    return extra
+
+
+def _merge_trace_payload_into_extra(
+    *,
+    extra: dict[str, Any],
+    trace_payload: dict[str, Any] | None,
+    request_id: str,
+) -> None:
+    if not isinstance(trace_payload, dict):
+        return
+    extra["retrieval_trace"] = trace_payload
+    extra["retrieval_trace_request_id"] = request_id
+
+
+def _build_evidence_item_extra(
+    *,
+    fb: MessageFeedback,
+    body_extra: Any,
+) -> dict[str, Any]:
+    extra: dict[str, Any] = {}
+    if isinstance(fb.extra, dict):
+        extra.update(fb.extra)
+    if isinstance(body_extra, dict):
+        extra.update(body_extra)
+    extra.setdefault("source", "feedback")
+    extra.setdefault("feedback_id", str(fb.id))
+    extra.setdefault("message_id", str(fb.message_id))
+    extra.setdefault("rating", int(fb.rating))
+    return extra
+
+
+def _finalize_feedback_reference_sources_or_keep_original(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID | None,
+    reference_sources: list[dict],
+) -> list[dict]:
+    try:
+        if dataset_id is not None and reference_sources:
+            from app.api.v1.evaluations import _finalize_reference_sources
+
+            return _finalize_reference_sources(
+                db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                dataset_id=dataset_id,
+                reference_sources=reference_sources,
+            )
+    except Exception as exc:
+        logger.debug(_FEEDBACK_FALLBACK_LOG_MESSAGE, exc)
+    return reference_sources
 
 
 def _augment_feedback_extra_with_snapshots(
@@ -407,127 +634,42 @@ def create_regression_case_from_feedback(
         detail="No permission to promote feedback",
     )
 
-    fb = (
-        db.query(MessageFeedback)
-        .filter(MessageFeedback.id == feedback_id, MessageFeedback.tenant_id == tenant_id)
-        .with_for_update()
-        .first()
-    )
-    if not fb:
-        raise HTTPException(status_code=404, detail="Feedback not found")
+    fb = _get_feedback_for_promotion(db, tenant_id=tenant_id, feedback_id=feedback_id)
     feedback_extra = dict(fb.extra or {}) if isinstance(fb.extra, dict) else {}
     if str(feedback_extra.get("eval_case_status") or "").strip().lower() == "promoted":
         raise HTTPException(status_code=409, detail="Feedback already promoted to a regression case")
 
-    assistant = (
-        db.query(Message)
-        .filter(Message.id == fb.message_id, Message.tenant_id == tenant_id)
-        .first()
+    assistant = _get_feedback_assistant_message(db, tenant_id=tenant_id, message_id=fb.message_id)
+    conv = _get_feedback_conversation(db, tenant_id=tenant_id, conversation_id=fb.conversation_id)
+    question = _infer_feedback_question(
+        db,
+        tenant_id=tenant_id,
+        conversation_id=conv.id,
+        assistant_created_at=assistant.created_at,
     )
-    if not assistant:
-        raise HTTPException(status_code=404, detail="Assistant message not found")
-
-    conv = (
-        db.query(Conversation)
-        .filter(Conversation.id == fb.conversation_id, Conversation.tenant_id == tenant_id)
-        .first()
-    )
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-
-    # Infer question from last user message before the assistant answer.
-    q_msg = (
-        db.query(Message)
-        .filter(
-            Message.tenant_id == tenant_id,
-            Message.conversation_id == conv.id,
-            Message.role == "user",
-            Message.created_at <= assistant.created_at,
-        )
-        .order_by(Message.created_at.desc())
-        .first()
-    )
-    question = (q_msg.content if q_msg else "").strip()
-    if not question:
-        # Fallback: keep a stable placeholder to avoid empty regression cases.
-        question = "(missing user question)"
-
-    dataset_id: UUID | None = None
-    meta = assistant.message_metadata if isinstance(getattr(assistant, "message_metadata", None), dict) else {}
-    raw_ds = meta.get("dataset_id") if isinstance(meta, dict) else None
-    if isinstance(raw_ds, str) and raw_ds.strip():
-        try:
-            dataset_id = UUID(raw_ds.strip())
-        except Exception:
-            dataset_id = None
-    if dataset_id is None:
-        dataset_id = getattr(conv, "dataset_id", None)
+    dataset_id, _meta, request_id = _resolve_feedback_dataset_id(assistant, conv)
     if dataset_id is not None:
         dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
         DatasetService.assert_dataset_writable(db, dataset, account_id)
-    request_id = str(meta.get("request_id") or "").strip() if isinstance(meta, dict) else ""
 
     doc_ids: list[str] = []
     if bool(getattr(body, "include_document_scope", True)):
         doc_ids = [str(x) for x in (conv.document_ids or [])]
 
-    tags: list[str] = []
-    if isinstance(fb.tags, list):
-        tags.extend([str(x) for x in fb.tags if isinstance(x, (str, int, float))])
-    if getattr(fb, "category", None):
-        tags.append(str(fb.category))
-    if isinstance(getattr(body, "tags", None), list):
-        tags.extend([str(x) for x in body.tags if isinstance(x, (str, int, float))])
-    # Small normalization: unique + cap.
-    seen: set[str] = set()
-    cleaned: list[str] = []
-    for t in tags:
-        v = str(t or "").strip()
-        if not v:
-            continue
-        key = v.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        cleaned.append(v[:64])
-        if len(cleaned) >= 30:
-            break
-
-    protected_extra_keys = {
-        "source",
-        "feedback_id",
-        "message_id",
-        "rating",
-        "feedback_category",
-        "feedback_category_source",
-        "dataset_id",
-        "query_hash",
-        "retrieval_trace_ref",
-        "profile",
-        "judge_score_ref",
-        "retrieval_trace",
-        "retrieval_trace_request_id",
-    }
-    extra: dict = {}
-    if isinstance(fb.extra, dict):
-        extra.update(fb.extra)
-    if isinstance(getattr(body, "extra", None), dict):
-        extra.update({key: value for key, value in body.extra.items() if key not in protected_extra_keys})
-    extra["source"] = "feedback"
-    extra["feedback_id"] = str(fb.id)
-    extra["message_id"] = str(fb.message_id)
-    extra["rating"] = int(fb.rating)
-    if getattr(fb, "category", None):
-        extra["feedback_category"] = str(fb.category)
-        extra["feedback_category_source"] = str(getattr(fb, "category_source", "") or "") or None
-
-    reference_sources = _extract_reference_sources(getattr(assistant, "citations", None))
-    trace_payload = _find_trace_by_request_id(tenant_id=tenant_id, conversation_id=conv.id, request_id=request_id)
-    if trace_payload and isinstance(trace_payload, dict):
-        extra["retrieval_trace"] = trace_payload
-        extra["retrieval_trace_request_id"] = request_id
-        if not reference_sources:
-            reference_sources = _extract_reference_sources(trace_payload.get("citations"))
+    category_tags = [str(fb.category)] if getattr(fb, "category", None) else []
+    cleaned = _normalize_feedback_tags(fb.tags, category_tags, getattr(body, "tags", None))
+    extra = _build_regression_case_extra(
+        fb=fb,
+        body_extra=getattr(body, "extra", None),
+        dataset_id=dataset_id,
+    )
+    reference_sources, trace_payload = _hydrate_feedback_trace_payload(
+        tenant_id=tenant_id,
+        conversation_id=conv.id,
+        request_id=request_id,
+        citations=getattr(assistant, "citations", None),
+    )
+    _merge_trace_payload_into_extra(extra=extra, trace_payload=trace_payload, request_id=request_id)
 
     row = RagasRegressionCase(
         tenant_id=tenant_id,
@@ -604,114 +746,34 @@ def create_evidence_item_from_feedback(
     ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
     DatasetService.assert_dataset_readable(db, ds, account_id)
 
-    fb = (
-        db.query(MessageFeedback)
-        .filter(MessageFeedback.id == feedback_id, MessageFeedback.tenant_id == tenant_id)
-        .first()
+    fb = _get_feedback_for_promotion(db, tenant_id=tenant_id, feedback_id=feedback_id)
+    assistant = _get_feedback_assistant_message(db, tenant_id=tenant_id, message_id=fb.message_id)
+    conv = _get_feedback_conversation(db, tenant_id=tenant_id, conversation_id=fb.conversation_id)
+    question = _infer_feedback_question(
+        db,
+        tenant_id=tenant_id,
+        conversation_id=conv.id,
+        assistant_created_at=assistant.created_at,
     )
-    if not fb:
-        raise HTTPException(status_code=404, detail="Feedback not found")
-
-    assistant = (
-        db.query(Message)
-        .filter(Message.id == fb.message_id, Message.tenant_id == tenant_id)
-        .first()
-    )
-    if not assistant:
-        raise HTTPException(status_code=404, detail="Assistant message not found")
-
-    conv = (
-        db.query(Conversation)
-        .filter(Conversation.id == fb.conversation_id, Conversation.tenant_id == tenant_id)
-        .first()
-    )
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-
-    # Infer question from last user message before the assistant answer.
-    q_msg = (
-        db.query(Message)
-        .filter(
-            Message.tenant_id == tenant_id,
-            Message.conversation_id == conv.id,
-            Message.role == "user",
-            Message.created_at <= assistant.created_at,
-        )
-        .order_by(Message.created_at.desc())
-        .first()
-    )
-    question = (q_msg.content if q_msg else "").strip()
-    if not question:
-        question = "(missing user question)"
-
-    # Resolve dataset_id (best-effort).
-    meta = assistant.message_metadata if isinstance(getattr(assistant, "message_metadata", None), dict) else {}
-    dataset_id: UUID | None = None
-    raw_ds = meta.get("dataset_id") if isinstance(meta, dict) else None
-    if isinstance(raw_ds, str) and raw_ds.strip():
-        try:
-            dataset_id = UUID(raw_ds.strip())
-        except Exception:
-            dataset_id = None
-    if dataset_id is None:
-        dataset_id = getattr(conv, "dataset_id", None)
+    dataset_id, _meta, request_id = _resolve_feedback_dataset_id(assistant, conv)
     if dataset_id is not None and dataset_id != suite.dataset_id:
         raise HTTPException(status_code=400, detail="Feedback dataset_id does not match evidence suite dataset_id")
-
-    request_id = str(meta.get("request_id") or "").strip() if isinstance(meta, dict) else ""
-
-    tags: list[str] = []
-    if isinstance(fb.tags, list):
-        tags.extend([str(x) for x in fb.tags if isinstance(x, (str, int, float))])
-    if isinstance(getattr(body, "tags", None), list):
-        tags.extend([str(x) for x in body.tags if isinstance(x, (str, int, float))])
-    # Normalize: unique + cap.
-    seen: set[str] = set()
-    cleaned: list[str] = []
-    for t in tags:
-        v = str(t or "").strip()
-        if not v:
-            continue
-        key = v.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        cleaned.append(v[:64])
-        if len(cleaned) >= 30:
-            break
-
-    extra: dict = {}
-    if isinstance(fb.extra, dict):
-        extra.update(fb.extra)
-    if isinstance(getattr(body, "extra", None), dict):
-        extra.update(body.extra)
-    extra.setdefault("source", "feedback")
-    extra.setdefault("feedback_id", str(fb.id))
-    extra.setdefault("message_id", str(fb.message_id))
-    extra.setdefault("rating", int(fb.rating))
-
-    reference_sources = _extract_reference_sources(getattr(assistant, "citations", None))
-    trace_payload = _find_trace_by_request_id(tenant_id=tenant_id, conversation_id=conv.id, request_id=request_id)
-    if trace_payload and isinstance(trace_payload, dict):
-        extra["retrieval_trace"] = trace_payload
-        extra["retrieval_trace_request_id"] = request_id
-        if not reference_sources:
-            reference_sources = _extract_reference_sources(trace_payload.get("citations"))
-
-    # Best-effort: normalize/validate pointers (do not block draft creation on failures).
-    try:
-        if dataset_id is not None and reference_sources:
-            from app.api.v1.evaluations import _finalize_reference_sources  # noqa: WPS433
-
-            reference_sources = _finalize_reference_sources(
-                db,
-                tenant_id=tenant_id,
-                account_id=account_id,
-                dataset_id=dataset_id,
-                reference_sources=reference_sources,
-            )
-    except Exception as exc:
-        logger.debug(_FEEDBACK_FALLBACK_LOG_MESSAGE, exc)
+    cleaned = _normalize_feedback_tags(fb.tags, getattr(body, "tags", None))
+    extra = _build_evidence_item_extra(fb=fb, body_extra=getattr(body, "extra", None))
+    reference_sources, trace_payload = _hydrate_feedback_trace_payload(
+        tenant_id=tenant_id,
+        conversation_id=conv.id,
+        request_id=request_id,
+        citations=getattr(assistant, "citations", None),
+    )
+    _merge_trace_payload_into_extra(extra=extra, trace_payload=trace_payload, request_id=request_id)
+    reference_sources = _finalize_feedback_reference_sources_or_keep_original(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=dataset_id,
+        reference_sources=reference_sources,
+    )
 
     retrieval_snapshot: dict[str, Any] = trace_payload if isinstance(trace_payload, dict) else {}
     rag_config_snapshot: dict[str, Any] = {}

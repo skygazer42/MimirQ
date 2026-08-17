@@ -105,6 +105,130 @@ def _run_out(run: DBIngestionRun) -> IngestionRunOut:
     )
 
 
+def _load_replay_base_run(*, db: Session, run_id: UUID, tenant_id: UUID, account_id: str) -> DBIngestionRun:
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    base = (
+        db.query(DBIngestionRun)
+        .options(selectinload(DBIngestionRun.documents))
+        .filter(DBIngestionRun.id == run_id, DBIngestionRun.tenant_id == tenant_id)
+        .first()
+    )
+    if not base:
+        raise HTTPException(status_code=404, detail="Ingestion run not found")
+    if base.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, base.dataset_id)
+        DatasetService.assert_dataset_writable(db, ds, account_id)
+    return base
+
+
+def _collect_replay_doc_ids(base: DBIngestionRun) -> list[UUID]:
+    doc_ids: list[UUID] = []
+    for document in (getattr(base, "documents", None) or []):
+        document_id = getattr(document, "document_id", None)
+        if document_id:
+            doc_ids.append(document_id)
+        if len(doc_ids) >= 2000:
+            break
+    if not doc_ids:
+        raise HTTPException(status_code=400, detail="No documents to replay")
+    return doc_ids
+
+
+def _audit_replay_creation(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    new_run: DBIngestionRun,
+    base: DBIngestionRun,
+    doc_ids: list[UUID],
+) -> None:
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="ingestion.run.replay",
+            resource_type="ingestion_run",
+            resource_id=str(new_run.id),
+            details={
+                "base_run_id": str(base.id),
+                "dataset_id": str(getattr(base, "dataset_id", None)) if getattr(base, "dataset_id", None) else None,
+                "documents": int(len(doc_ids)),
+            },
+        )
+        db.commit()
+    except Exception:
+        with contextlib.suppress(Exception):
+            db.rollback()
+
+
+def _attach_replay_documents(*, db: Session, tenant_id: UUID, run_id: UUID, doc_ids: list[UUID]) -> None:
+    for doc_id in doc_ids[:2000]:
+        try:
+            IngestionRunService.add_document(
+                db,
+                tenant_id=tenant_id,
+                run_id=run_id,
+                document_id=doc_id,
+                source_ref=None,
+                initial_status="pending",
+                doc_meta=None,
+            )
+        except Exception:
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+
+
+async def _run_replay_retries(
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    new_run_id: UUID,
+    doc_ids: list[UUID],
+) -> None:
+    from app.api.v1.documents import retry_document_processing
+    from app.core.database import SessionLocal
+    from app.models.document import Document as DBDocument
+
+    db0 = SessionLocal()
+    try:
+        for doc_id in (doc_ids or [])[:2000]:
+            try:
+                doc = db0.query(DBDocument).filter(DBDocument.id == doc_id, DBDocument.tenant_id == tenant_id).first()
+                if doc is not None:
+                    meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+                    meta0["last_ingestion_run_id"] = str(new_run_id)
+                    meta0["last_ingestion_kind"] = "replay"
+                    doc.doc_metadata = meta0
+                    db0.commit()
+                    with contextlib.suppress(Exception):
+                        db0.refresh(doc)
+            except Exception:
+                with contextlib.suppress(Exception):
+                    db0.rollback()
+
+            bg = BackgroundTasks()
+            try:
+                await retry_document_processing(
+                    document_id=doc_id,
+                    background_tasks=bg,
+                    force=True,
+                    skip_if_unchanged=False,
+                    tenant_id=tenant_id,
+                    account_id=account_id,
+                    db=db0,
+                )
+            except Exception:
+                with contextlib.suppress(Exception):
+                    db0.rollback()
+                continue
+            with contextlib.suppress(Exception):
+                if getattr(bg, "tasks", None):
+                    await bg()
+    finally:
+        db0.close()
+
+
 @router.get("/runs", response_model=IngestionRunListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_ingestion_runs(
     skip: Annotated[int, Query(ge=0)] = 0,
@@ -331,28 +455,8 @@ def replay_ingestion_run(
     - Uses existing /documents/{id}/retry logic (force=true) to kick off processing.
     - Does not re-download connector sources; it reprocesses existing stored files.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
-    base = (
-        db.query(DBIngestionRun)
-        .options(selectinload(DBIngestionRun.documents))
-        .filter(DBIngestionRun.id == run_id, DBIngestionRun.tenant_id == tenant_id)
-        .first()
-    )
-    if not base:
-        raise HTTPException(status_code=404, detail="Ingestion run not found")
-    if base.dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, base.dataset_id)
-        DatasetService.assert_dataset_writable(db, ds, account_id)
-
-    doc_ids: list[UUID] = []
-    for d in (getattr(base, "documents", None) or []):
-        if getattr(d, "document_id", None):
-            doc_ids.append(d.document_id)
-        if len(doc_ids) >= 2000:
-            break
-    if not doc_ids:
-        raise HTTPException(status_code=400, detail="No documents to replay")
+    base = _load_replay_base_run(db=db, run_id=run_id, tenant_id=tenant_id, account_id=account_id)
+    doc_ids = _collect_replay_doc_ids(base)
 
     new_run = IngestionRunService.create_run(
         db,
@@ -364,95 +468,21 @@ def replay_ingestion_run(
         expected_documents=len(doc_ids),
     )
 
-    # Best-effort audit log (PII-minimal): record replay operation.
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=account_id,
-            action="ingestion.run.replay",
-            resource_type="ingestion_run",
-            resource_id=str(new_run.id),
-            details={
-                "base_run_id": str(base.id),
-                "dataset_id": str(getattr(base, "dataset_id", None)) if getattr(base, "dataset_id", None) else None,
-                "documents": int(len(doc_ids)),
-            },
-        )
-        db.commit()
-    except Exception:
-        with contextlib.suppress(Exception):
-            db.rollback()
-
-    # Kick retries in background (bounded). Use fresh DB sessions (BackgroundTasks run after request-scoped
-    # dependencies are finalized, so we must not reuse the request session).
-    from app.api.v1.documents import retry_document_processing
-    from app.core.database import SessionLocal
-    from app.models.document import Document as DBDocument
-
-    new_run_id = new_run.id
-
-    async def _run_all(doc_ids0: list[UUID]) -> None:
-        db0 = SessionLocal()
-        try:
-            for doc_id in (doc_ids0 or [])[:2000]:
-                # Best-effort: tag the doc for run-scoped status propagation + UI navigation.
-                try:
-                    doc = (
-                        db0.query(DBDocument)
-                        .filter(DBDocument.id == doc_id, DBDocument.tenant_id == tenant_id)
-                        .first()
-                    )
-                    if doc is not None:
-                        meta0 = dict(getattr(doc, "doc_metadata", None) or {})
-                        meta0["last_ingestion_run_id"] = str(new_run_id)
-                        meta0["last_ingestion_kind"] = "replay"
-                        doc.doc_metadata = meta0
-                        db0.commit()
-                        with contextlib.suppress(Exception):
-                            db0.refresh(doc)
-                except Exception:
-                    with contextlib.suppress(Exception):
-                        db0.rollback()
-
-                # Reuse the existing retry logic (queue-aware). When queue is disabled, we execute any
-                # scheduled background tasks inline so replay still works.
-                bg = BackgroundTasks()
-                try:
-                    await retry_document_processing(
-                        document_id=doc_id,
-                        background_tasks=bg,
-                        force=True,
-                        skip_if_unchanged=False,
-                        tenant_id=tenant_id,
-                        account_id=account_id,
-                        db=db0,
-                    )
-                except Exception:
-                    with contextlib.suppress(Exception):
-                        db0.rollback()
-                    continue
-                with contextlib.suppress(Exception):
-                    if getattr(bg, "tasks", None):
-                        await bg()
-        finally:
-            db0.close()
-
-    for doc_id in doc_ids[:2000]:
-        try:
-            IngestionRunService.add_document(
-                db,
-                tenant_id=tenant_id,
-                run_id=new_run.id,
-                document_id=doc_id,
-                source_ref=None,
-                initial_status="pending",
-                doc_meta=None,
-            )
-        except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
-
-    background_tasks.add_task(_run_all, doc_ids)
+    _audit_replay_creation(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        new_run=new_run,
+        base=base,
+        doc_ids=doc_ids,
+    )
+    _attach_replay_documents(db=db, tenant_id=tenant_id, run_id=new_run.id, doc_ids=doc_ids)
+    background_tasks.add_task(
+        _run_replay_retries,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        new_run_id=new_run.id,
+        doc_ids=doc_ids,
+    )
 
     return _run_out(new_run)

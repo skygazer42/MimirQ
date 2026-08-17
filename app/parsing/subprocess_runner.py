@@ -61,59 +61,98 @@ def _get_subprocess_workdir(*, _tenant_id: UUID) -> Path:
     return (root / str(_tenant_id) / ".subprocess").resolve(strict=False)
 
 
+def _process_finished(process: Any) -> bool:
+    return getattr(process, "returncode", None) is not None
+
+
+def _process_pid(process: Any) -> int | None:
+    return getattr(process, "pid", None)
+
+
+def _terminate_process(process: Any) -> None:
+    if os.name == "posix":
+        os.killpg(process.pid, signal.SIGTERM)
+        return
+    terminate = getattr(process, "terminate", None)
+    if callable(terminate):  # pragma: no cover
+        terminate()
+
+
+def _kill_process(process: Any) -> None:
+    if os.name == "posix":
+        os.killpg(process.pid, signal.SIGKILL)
+        return
+    kill = getattr(process, "kill", None)
+    if callable(kill):  # pragma: no cover
+        kill()
+
+
+async def _wait_for_process_exit(process: Any, *, timeout: float | None = None) -> None:
+    if isinstance(process, asyncio.subprocess.Process):
+        if timeout is None:
+            await process.wait()
+            return
+        await asyncio.wait_for(process.wait(), timeout=timeout)
+        return
+
+    if timeout is None:
+        await asyncio.to_thread(process.wait)
+        return
+    await asyncio.to_thread(process.wait, timeout)
+
+
+def _log_subprocess_signal_failure(*, action: str, pid: int, exc: Exception) -> None:
+    logger.warning("Failed to %s subprocess %s: %s", action, pid, str(exc)[:200])
+
+
+def _log_subprocess_wait_timeout(*, pid: int, exc: Exception) -> None:
+    if isinstance(exc, subprocess.TimeoutExpired):
+        logger.debug("Ignoring subprocess timeout while terminating pid=%s", pid)
+    elif isinstance(exc, asyncio.TimeoutError):
+        logger.debug("Ignoring async timeout while terminating pid=%s", pid)
+
+
+async def _wait_for_graceful_exit(process: Any, *, pid: int, grace_sec: float) -> bool:
+    try:
+        await _wait_for_process_exit(process, timeout=grace_sec)
+        return True
+    except (subprocess.TimeoutExpired, asyncio.TimeoutError) as exc:
+        _log_subprocess_wait_timeout(pid=pid, exc=exc)
+        return False
+    except Exception:
+        return True
+
+
 async def _terminate_process_group(process: Any, *, grace_sec: float = 2.0) -> None:
     # The default asyncio event loop on Windows (SelectorEventLoop) does not support
     # asyncio subprocess APIs. In that case we fall back to `subprocess.Popen` and
     # this helper must handle both process types.
-    if getattr(process, "returncode", None) is not None:
+    if _process_finished(process):
         return
 
-    pid = getattr(process, "pid", None)
+    pid = _process_pid(process)
     if pid is None:
         return
 
     try:
-        if os.name == "posix":
-            os.killpg(pid, signal.SIGTERM)
-        else:  # pragma: no cover
-            terminate = getattr(process, "terminate", None)
-            if callable(terminate):
-                terminate()
+        _terminate_process(process)
     except ProcessLookupError:
         return
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to terminate subprocess %s: %s", pid, str(exc)[:200])
+        _log_subprocess_signal_failure(action="terminate", pid=pid, exc=exc)
 
-    try:
-        if isinstance(process, asyncio.subprocess.Process):
-            await asyncio.wait_for(process.wait(), timeout=grace_sec)
-        else:  # Popen-like
-            await asyncio.to_thread(process.wait, grace_sec)
-        return
-    except subprocess.TimeoutExpired:
-        logger.debug("Ignoring subprocess timeout while terminating pid=%s", pid)
-    except asyncio.TimeoutError:
-        logger.debug("Ignoring async timeout while terminating pid=%s", pid)
-    except Exception:
+    if await _wait_for_graceful_exit(process, pid=pid, grace_sec=grace_sec):
         return
 
     try:
-        if os.name == "posix":
-            os.killpg(pid, signal.SIGKILL)
-        else:  # pragma: no cover
-            kill = getattr(process, "kill", None)
-            if callable(kill):
-                kill()
+        _kill_process(process)
     except ProcessLookupError:
         return
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to kill subprocess %s: %s", pid, str(exc)[:200])
+        _log_subprocess_signal_failure(action="kill", pid=pid, exc=exc)
 
     try:
-        if isinstance(process, asyncio.subprocess.Process):
-            await process.wait()
-        else:  # Popen-like
-            await asyncio.to_thread(process.wait)
+        await _wait_for_process_exit(process)
     except Exception:
         return
 
@@ -130,6 +169,174 @@ def _read_log_tail(path: Path, *, max_bytes: int = 16_000) -> str:
         return raw.decode("utf-8", errors="ignore").strip()
     except Exception:
         return ""
+
+
+def _write_payload_file(*, payload_path: Path, payload: dict[str, Any]) -> None:
+    payload_json = json.dumps(payload, ensure_ascii=False, default=str)
+    max_payload_bytes = int(getattr(settings, "SUBPROCESS_PAYLOAD_MAX_BYTES", 0) or 0)
+    if max_payload_bytes > 0:
+        payload_bytes = payload_json.encode("utf-8", errors="ignore")
+        if len(payload_bytes) > max_payload_bytes:
+            raise SubprocessWorkerError(
+                "payload_too_large",
+                details={
+                    "max_bytes": int(max_payload_bytes),
+                    "actual_bytes": int(len(payload_bytes)),
+                },
+            )
+        payload_path.write_bytes(payload_bytes)
+        return
+    payload_path.write_text(payload_json, encoding="utf-8")
+
+
+async def _spawn_subprocess_worker(
+    *,
+    payload_path: Path,
+    result_path: Path,
+    log_file: Any,
+) -> Any:
+    try:
+        # Fixed internal worker entrypoint; no caller-provided executable is accepted.
+        return await asyncio.create_subprocess_exec(  # NOSONAR
+            sys.executable,
+            "-m",
+            "app.parsing.subprocess_worker",
+            str(payload_path),
+            str(result_path),
+            stdout=log_file,
+            stderr=log_file,
+            start_new_session=True,
+        )
+    except NotImplementedError:
+        # WindowsSelectorEventLoopPolicy cannot spawn asyncio subprocesses.
+        logger.warning(
+            "asyncio subprocess API not available on this event loop (%s); falling back to subprocess.Popen",
+            asyncio.get_running_loop().__class__.__name__,
+        )
+        return _start_subprocess_worker_fallback(
+            payload_path=payload_path,
+            result_path=result_path,
+            log_file=log_file,
+        )
+
+
+async def _run_async_check(check: DisconnectCheck | CancelCheck | None, *, label: str) -> bool:
+    if check is None:
+        return False
+    try:
+        return bool(await check())
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("%s failed (ignored): %s", label, str(exc)[:200])
+        return False
+
+
+def _worker_log_size(path: Path) -> int:
+    try:
+        return int(path.stat().st_size)
+    except Exception:
+        return 0
+
+
+def _enforce_worker_log_limit(*, log_path: Path, max_log_bytes: int) -> None:
+    if max_log_bytes <= 0:
+        return
+    log_size = _worker_log_size(log_path)
+    if log_size <= max_log_bytes:
+        return
+    raise SubprocessWorkerError(
+        "worker_log_too_large",
+        details={"max_bytes": int(max_log_bytes), "actual_bytes": int(log_size)},
+        log_tail=_read_log_tail(log_path),
+    )
+
+
+async def _monitor_subprocess_worker(
+    *,
+    process: Any,
+    disconnect_check: DisconnectCheck | None,
+    cancel_check: CancelCheck | None,
+    timeout_sec: float | None,
+    poll_interval_sec: float,
+    log_path: Path,
+) -> None:
+    start = time.monotonic()
+    max_log_bytes = int(getattr(settings, "SUBPROCESS_LOG_MAX_BYTES", 0) or 0)
+    while True:
+        poll = getattr(process, "poll", None)
+        if callable(poll):
+            poll()
+        if _process_finished(process):
+            return
+        try:
+            if await _run_async_check(disconnect_check, label="disconnect_check"):
+                await _terminate_process_group(process)
+                raise SubprocessCancelled("client_disconnected")
+            if await _run_async_check(cancel_check, label="cancel_check"):
+                await _terminate_process_group(process)
+                raise SubprocessCancelled("cancel_requested")
+            _enforce_worker_log_limit(log_path=log_path, max_log_bytes=max_log_bytes)
+            if timeout_sec is not None and (time.monotonic() - start) > timeout_sec:
+                await _terminate_process_group(process)
+                raise SubprocessWorkerError("worker_timeout", log_tail=_read_log_tail(log_path))
+        except asyncio.CancelledError:
+            await _terminate_process_group(process)
+            raise
+
+        await asyncio.sleep(poll_interval_sec)
+
+
+def _load_worker_result(*, process: Any, result_path: Path, log_path: Path) -> dict[str, Any]:
+    if not result_path.exists():
+        raise SubprocessWorkerError(
+            f"worker_did_not_write_result (exit_code={getattr(process, 'returncode', None)})",
+            log_tail=_read_log_tail(log_path),
+        )
+
+    max_result_bytes = int(getattr(settings, "SUBPROCESS_RESULT_MAX_BYTES", 0) or 0)
+    if max_result_bytes > 0:
+        try:
+            size = int(result_path.stat().st_size)
+        except Exception:
+            size = 0
+        if size > int(max_result_bytes):
+            raise SubprocessWorkerError(
+                "worker_result_too_large",
+                details={
+                    "max_bytes": int(max_result_bytes),
+                    "actual_bytes": int(size),
+                },
+                log_tail=_read_log_tail(log_path),
+            )
+
+    raw = result_path.read_text(encoding="utf-8", errors="ignore")
+    parsed = json.loads(raw or "{}")
+    if not isinstance(parsed, dict):
+        raise SubprocessWorkerError("worker_invalid_result_format", log_tail=_read_log_tail(log_path))
+    if parsed.get("ok") is True:
+        data = parsed.get("data")
+        if isinstance(data, dict):
+            return data
+        raise SubprocessWorkerError("worker_ok_without_data", log_tail=_read_log_tail(log_path))
+
+    err = parsed.get("error") if isinstance(parsed.get("error"), dict) else {}
+    msg = str(err.get("message") or "worker_failed")
+    raise SubprocessWorkerError(msg, details=err, log_tail=_read_log_tail(log_path))
+
+
+def _cleanup_worker_files(*, log_file: Any, payload_path: Path, result_path: Path, log_path: Path) -> None:
+    try:
+        if log_file is not None:
+            log_file.close()
+    except (OSError, ValueError) as exc:
+        logger.debug("Ignoring non-critical subprocess log close failure: %s", exc)
+
+    for path in (payload_path, result_path, log_path):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.debug("Ignoring non-critical subprocess cleanup failure: %s", exc)
 
 
 async def run_subprocess_worker(
@@ -157,160 +364,37 @@ async def run_subprocess_worker(
     result_path = workdir / f"{run_id}.result.json"
     log_path = workdir / f"{run_id}.log"
 
-    payload_json = json.dumps(payload, ensure_ascii=False, default=str)
-    max_payload_bytes = int(getattr(settings, "SUBPROCESS_PAYLOAD_MAX_BYTES", 0) or 0)
-    if max_payload_bytes > 0:
-        payload_bytes = payload_json.encode("utf-8", errors="ignore")
-        if len(payload_bytes) > max_payload_bytes:
-            raise SubprocessWorkerError(
-                "payload_too_large",
-                details={
-                    "max_bytes": int(max_payload_bytes),
-                    "actual_bytes": int(len(payload_bytes)),
-                },
-            )
-        payload_path.write_bytes(payload_bytes)
-    else:
-        payload_path.write_text(payload_json, encoding="utf-8")
+    _write_payload_file(payload_path=payload_path, payload=payload)
 
     log_file = None
     process: Any = None
     try:
         log_file = log_path.open("wb")
-        try:
-            # Fixed internal worker entrypoint; no caller-provided executable is accepted.
-            process = await asyncio.create_subprocess_exec(  # NOSONAR
-                sys.executable,
-                "-m",
-                "app.parsing.subprocess_worker",
-                str(payload_path),
-                str(result_path),
-                stdout=log_file,
-                stderr=log_file,
-                start_new_session=True,
-            )
-        except NotImplementedError:
-            # WindowsSelectorEventLoopPolicy cannot spawn asyncio subprocesses.
-            logger.warning(
-                "asyncio subprocess API not available on this event loop (%s); falling back to subprocess.Popen",
-                asyncio.get_running_loop().__class__.__name__,
-            )
-            process = _start_subprocess_worker_fallback(
-                payload_path=payload_path,
-                result_path=result_path,
-                log_file=log_file,
-            )
-
-        start = time.monotonic()
-        max_log_bytes = int(getattr(settings, "SUBPROCESS_LOG_MAX_BYTES", 0) or 0)
-        while True:
-            poll = getattr(process, "poll", None)
-            if callable(poll):
-                poll()
-            if getattr(process, "returncode", None) is not None:
-                break
-            try:
-                disconnected = False
-                if disconnect_check is not None:
-                    try:
-                        disconnected = bool(await disconnect_check())
-                    except asyncio.CancelledError:
-                        raise
-                    except Exception as exc:  # noqa: BLE001
-                        logger.debug("disconnect_check failed (ignored): %s", str(exc)[:200])
-                        disconnected = False
-
-                if disconnected:
-                    await _terminate_process_group(process)
-                    raise SubprocessCancelled("client_disconnected")
-
-                cancel_requested = False
-                if cancel_check is not None:
-                    try:
-                        cancel_requested = bool(await cancel_check())
-                    except asyncio.CancelledError:
-                        raise
-                    except Exception as exc:  # noqa: BLE001
-                        logger.debug("cancel_check failed (ignored): %s", str(exc)[:200])
-                        cancel_requested = False
-
-                if cancel_requested:
-                    await _terminate_process_group(process)
-                    raise SubprocessCancelled("cancel_requested")
-                if max_log_bytes > 0:
-                    try:
-                        log_size = int(log_path.stat().st_size)
-                    except Exception:
-                        log_size = 0
-                    if log_size > max_log_bytes:
-                        await _terminate_process_group(process)
-                        raise SubprocessWorkerError(
-                            "worker_log_too_large",
-                            details={"max_bytes": int(max_log_bytes), "actual_bytes": int(log_size)},
-                            log_tail=_read_log_tail(log_path),
-                        )
-                if timeout_sec is not None and (time.monotonic() - start) > timeout_sec:
-                    await _terminate_process_group(process)
-                    raise SubprocessWorkerError("worker_timeout", log_tail=_read_log_tail(log_path))
-            except asyncio.CancelledError:
-                await _terminate_process_group(process)
-                raise
-
-            await asyncio.sleep(poll_interval_sec)
-
-        if not result_path.exists():
-            raise SubprocessWorkerError(
-                f"worker_did_not_write_result (exit_code={getattr(process, 'returncode', None)})",
-                log_tail=_read_log_tail(log_path),
-            )
-
-        max_result_bytes = int(getattr(settings, "SUBPROCESS_RESULT_MAX_BYTES", 0) or 0)
-        if max_result_bytes > 0:
-            try:
-                size = int(result_path.stat().st_size)
-            except Exception:
-                size = 0
-            if size > int(max_result_bytes):
-                raise SubprocessWorkerError(
-                    "worker_result_too_large",
-                    details={
-                        "max_bytes": int(max_result_bytes),
-                        "actual_bytes": int(size),
-                    },
-                    log_tail=_read_log_tail(log_path),
-                )
-
-        raw = result_path.read_text(encoding="utf-8", errors="ignore")
-        parsed = json.loads(raw or "{}")
-        if not isinstance(parsed, dict):
-            raise SubprocessWorkerError("worker_invalid_result_format", log_tail=_read_log_tail(log_path))
-
-        if parsed.get("ok") is True:
-            data = parsed.get("data")
-            if isinstance(data, dict):
-                return data
-            raise SubprocessWorkerError("worker_ok_without_data", log_tail=_read_log_tail(log_path))
-
-        err = parsed.get("error") if isinstance(parsed.get("error"), dict) else {}
-        msg = str(err.get("message") or "worker_failed")
-        raise SubprocessWorkerError(msg, details=err, log_tail=_read_log_tail(log_path))
+        process = await _spawn_subprocess_worker(
+            payload_path=payload_path,
+            result_path=result_path,
+            log_file=log_file,
+        )
+        await _monitor_subprocess_worker(
+            process=process,
+            disconnect_check=disconnect_check,
+            cancel_check=cancel_check,
+            timeout_sec=timeout_sec,
+            poll_interval_sec=poll_interval_sec,
+            log_path=log_path,
+        )
+        return _load_worker_result(process=process, result_path=result_path, log_path=log_path)
     except asyncio.CancelledError:
         if process is not None:
             await _terminate_process_group(process)
         raise
     finally:
-        try:
-            if log_file is not None:
-                log_file.close()
-        except (OSError, ValueError) as exc:
-            logger.debug("Ignoring non-critical subprocess log close failure: %s", exc)
-
-        # Best-effort cleanup.
-        for p in (payload_path, result_path, log_path):
-            try:
-                p.unlink(missing_ok=True)
-            except OSError as exc:
-                logger.debug("Ignoring non-critical subprocess cleanup failure: %s", exc)
+        _cleanup_worker_files(
+            log_file=log_file,
+            payload_path=payload_path,
+            result_path=result_path,
+            log_path=log_path,
+        )
 
 
 def _compute_retry_delay_sec(*, attempt: int, base_delay_sec: float, max_delay_sec: float) -> float:

@@ -309,29 +309,87 @@ def _soft_disable_connector_documents_by_source_ref(
     return int(disabled)
 
 
-def _delta_sync_jira_documents_acl_by_issue_url(
-    db: Session,
+def _normalize_jira_issue_scope(
     *,
-    tenant_id: UUID,
     dataset_id: UUID | None,
     base_url: str,
     project_key: str,
     issue_url: str,
-    requested_by: str,
-    access: dict | None,
-    acl_provenance: dict | None,
-    max_docs_scan: int = 5000,
-) -> int:
+    seen_urls: set[str] | None = None,
+) -> tuple[UUID, str, str, str, set[str]] | None:
     if dataset_id is None:
-        return 0
+        return None
+    normalized_base_url = str(base_url or "").strip().rstrip("/")
+    normalized_project_key = str(project_key or "").strip().upper()
+    normalized_issue_url = str(issue_url or "").strip()
+    normalized_seen_urls = {
+        str(url or "").strip()
+        for url in (seen_urls or set())
+        if str(url or "").strip()
+    }
+    if not normalized_base_url or not normalized_project_key or not normalized_issue_url:
+        return None
+    return dataset_id, normalized_base_url, normalized_project_key, normalized_issue_url, normalized_seen_urls
 
-    base_url = str(base_url or "").strip().rstrip("/")
-    project_key = str(project_key or "").strip().upper()
-    issue_url = str(issue_url or "").strip()
-    if not base_url or not project_key or not issue_url:
-        return 0
 
-    updated = 0
+def _connector_metadata(doc: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+    meta = doc.doc_metadata if isinstance(getattr(doc, "doc_metadata", None), dict) else {}
+    conn = meta.get("connector") if isinstance(meta.get("connector"), dict) else {}
+    return meta, conn
+
+
+def _jira_issue_connector_matches(
+    conn: dict[str, Any],
+    *,
+    base_url: str,
+    project_key: str,
+    issue_url: str,
+    doc_kind: str | None = None,
+) -> bool:
+    if str(conn.get("connector_id") or "") != "jira_project":
+        return False
+    if doc_kind is not None and str(conn.get("doc_kind") or "") != doc_kind:
+        return False
+    if str(conn.get("base_url") or "").strip().rstrip("/") != base_url:
+        return False
+    if str(conn.get("project_key") or "").strip().upper() != project_key:
+        return False
+    return str(conn.get("issue_url") or "").strip() == issue_url
+
+
+def _recent_active_dataset_documents(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    max_docs_scan: int,
+) -> list[Any]:
+    scan_limit = max(0, int(max_docs_scan or 0)) or 5000
+    return (
+        db.query(DBDocument)
+        .filter(
+            DBDocument.tenant_id == tenant_id,
+            DBDocument.dataset_id == dataset_id,
+            DBDocument.archived_at.is_(None),
+            DBDocument.disabled_at.is_(None),
+        )
+        .order_by(DBDocument.created_at.desc())
+        .limit(scan_limit)
+        .all()
+    )
+
+
+def _query_jira_issue_documents(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    base_url: str,
+    project_key: str,
+    issue_url: str,
+    doc_kind: str | None = None,
+    max_docs_scan: int = 5000,
+) -> list[Any]:
     try:
         q = (
             db.query(DBDocument)
@@ -345,73 +403,135 @@ def _delta_sync_jira_documents_acl_by_issue_url(
             .filter(DBDocument.doc_metadata["connector"]["base_url"].astext == base_url)  # type: ignore[attr-defined]
             .filter(DBDocument.doc_metadata["connector"]["project_key"].astext == project_key)  # type: ignore[attr-defined]
             .filter(DBDocument.doc_metadata["connector"]["issue_url"].astext == issue_url)  # type: ignore[attr-defined]
-            .order_by(DBDocument.created_at.desc())
         )
-        for doc in q.yield_per(200):
-            _resolve_acl_helper("_apply_document_access_from_config")(
-                db,
-                tenant_id=tenant_id,
-                requested_by=requested_by,
-                doc=doc,
-                access=access,
-                connector_id="jira_project",
-            )
-            if isinstance(acl_provenance, dict):
-                try:
-                    meta0 = dict(getattr(doc, "doc_metadata", None) or {})
-                    meta0["acl_provenance"] = dict(acl_provenance)
-                    doc.doc_metadata = meta0
-                except Exception as exc:
-                    logger.debug("Ignoring Jira connector ACL provenance metadata update failure: %s", exc)
-            updated += 1
+        if doc_kind is not None:
+            q = q.filter(DBDocument.doc_metadata["connector"]["doc_kind"].astext == doc_kind)  # type: ignore[attr-defined]
+        return q.order_by(DBDocument.created_at.desc()).all()
     except Exception:
-        max_docs_scan = max(0, int(max_docs_scan or 0))
-        if max_docs_scan <= 0:
-            max_docs_scan = 5000
-        docs = (
-            db.query(DBDocument)
-            .filter(
-                DBDocument.tenant_id == tenant_id,
-                DBDocument.dataset_id == dataset_id,
-                DBDocument.archived_at.is_(None),
-                DBDocument.disabled_at.is_(None),
-            )
-            .order_by(DBDocument.created_at.desc())
-            .limit(max_docs_scan)
-            .all()
+        docs = _recent_active_dataset_documents(
+            db,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            max_docs_scan=max_docs_scan,
         )
-        for doc in docs or []:
-            meta = (
-                doc.doc_metadata
-                if isinstance(getattr(doc, "doc_metadata", None), dict)
-                else {}
+        return [
+            doc
+            for doc in docs
+            if _jira_issue_connector_matches(
+                _connector_metadata(doc)[1],
+                base_url=base_url,
+                project_key=project_key,
+                issue_url=issue_url,
+                doc_kind=doc_kind,
             )
-            conn = meta.get("connector") if isinstance(meta.get("connector"), dict) else {}
-            if str(conn.get("connector_id") or "") != "jira_project":
-                continue
-            if str(conn.get("base_url") or "").strip().rstrip("/") != base_url:
-                continue
-            if str(conn.get("project_key") or "").strip().upper() != project_key:
-                continue
-            if str(conn.get("issue_url") or "").strip() != issue_url:
-                continue
-            _resolve_acl_helper("_apply_document_access_from_config")(
-                db,
-                tenant_id=tenant_id,
-                requested_by=requested_by,
-                doc=doc,
-                access=access,
-                connector_id="jira_project",
-            )
-            if isinstance(acl_provenance, dict):
-                try:
-                    meta0 = dict(meta or {})
-                    meta0["acl_provenance"] = dict(acl_provenance)
-                    doc.doc_metadata = meta0
-                except Exception as exc:
-                    logger.debug("Ignoring Jira connector ACL provenance fallback metadata update failure: %s", exc)
-            updated += 1
+        ]
 
+
+def _apply_acl_provenance(doc: Any, *, acl_provenance: dict | None, message: str) -> None:
+    if not isinstance(acl_provenance, dict):
+        return
+    try:
+        meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+        meta0["acl_provenance"] = dict(acl_provenance)
+        doc.doc_metadata = meta0
+    except Exception as exc:
+        logger.debug(message, exc)
+
+
+def _disable_missing_jira_issue_documents(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID | None,
+    base_url: str,
+    project_key: str,
+    issue_url: str,
+    seen_urls: set[str],
+    doc_kind: str,
+    url_field: str,
+    max_docs_scan: int = 5000,
+) -> int:
+    scope = _normalize_jira_issue_scope(
+        dataset_id=dataset_id,
+        base_url=base_url,
+        project_key=project_key,
+        issue_url=issue_url,
+        seen_urls=seen_urls,
+    )
+    if scope is None:
+        return 0
+    dataset_id, base_url, project_key, issue_url, seen_urls = scope
+    docs = _query_jira_issue_documents(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        base_url=base_url,
+        project_key=project_key,
+        issue_url=issue_url,
+        doc_kind=doc_kind,
+        max_docs_scan=max_docs_scan,
+    )
+    now = _now()
+    disabled = 0
+    for doc in docs:
+        meta, conn = _connector_metadata(doc)
+        resource_url = str(conn.get(url_field) or meta.get("source_url") or "").strip()
+        if not resource_url or resource_url in seen_urls:
+            continue
+        if getattr(doc, "disabled_at", None) is None:
+            doc.disabled_at = now
+            disabled += 1
+    return int(disabled)
+
+
+def _delta_sync_jira_documents_acl_by_issue_url(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID | None,
+    base_url: str,
+    project_key: str,
+    issue_url: str,
+    requested_by: str,
+    access: dict | None,
+    acl_provenance: dict | None,
+    max_docs_scan: int = 5000,
+) -> int:
+    scope = _normalize_jira_issue_scope(
+        dataset_id=dataset_id,
+        base_url=base_url,
+        project_key=project_key,
+        issue_url=issue_url,
+    )
+    if scope is None:
+        return 0
+    dataset_id, base_url, project_key, issue_url, _seen_urls = scope
+    apply_access = _resolve_acl_helper("_apply_document_access_from_config")
+    docs = _query_jira_issue_documents(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        base_url=base_url,
+        project_key=project_key,
+        issue_url=issue_url,
+        max_docs_scan=max_docs_scan,
+    )
+    updated = 0
+    for doc in docs:
+        apply_access(
+            db,
+            tenant_id=tenant_id,
+            requested_by=requested_by,
+            doc=doc,
+            access=access,
+            connector_id="jira_project",
+        )
+        _apply_acl_provenance(
+            doc,
+            acl_provenance=acl_provenance,
+            message="Ignoring Jira connector ACL provenance metadata update failure: %s",
+        )
+        updated += 1
     return int(updated)
 
 
@@ -426,84 +546,18 @@ def _soft_disable_jira_attachment_documents_missing_from_issue(
     seen_attachment_urls: set[str],
     max_docs_scan: int = 5000,
 ) -> int:
-    if dataset_id is None:
-        return 0
-
-    base_url = str(base_url or "").strip().rstrip("/")
-    project_key = str(project_key or "").strip().upper()
-    issue_url = str(issue_url or "").strip()
-    seen_urls = {
-        str(url or "").strip()
-        for url in (seen_attachment_urls or set())
-        if str(url or "").strip()
-    }
-    if not base_url or not project_key or not issue_url:
-        return 0
-
-    docs: list[Any]
-    try:
-        docs = (
-            db.query(DBDocument)
-            .filter(
-                DBDocument.tenant_id == tenant_id,
-                DBDocument.dataset_id == dataset_id,
-                DBDocument.archived_at.is_(None),
-                DBDocument.disabled_at.is_(None),
-            )
-            .filter(DBDocument.doc_metadata["connector"]["connector_id"].astext == "jira_project")  # type: ignore[attr-defined]
-            .filter(DBDocument.doc_metadata["connector"]["doc_kind"].astext == "attachment")  # type: ignore[attr-defined]
-            .filter(DBDocument.doc_metadata["connector"]["base_url"].astext == base_url)  # type: ignore[attr-defined]
-            .filter(DBDocument.doc_metadata["connector"]["project_key"].astext == project_key)  # type: ignore[attr-defined]
-            .filter(DBDocument.doc_metadata["connector"]["issue_url"].astext == issue_url)  # type: ignore[attr-defined]
-            .order_by(DBDocument.created_at.desc())
-            .all()
-        )
-    except Exception:
-        max_docs_scan = max(0, int(max_docs_scan or 0))
-        if max_docs_scan <= 0:
-            max_docs_scan = 5000
-        docs = (
-            db.query(DBDocument)
-            .filter(
-                DBDocument.tenant_id == tenant_id,
-                DBDocument.dataset_id == dataset_id,
-                DBDocument.archived_at.is_(None),
-                DBDocument.disabled_at.is_(None),
-            )
-            .order_by(DBDocument.created_at.desc())
-            .limit(max_docs_scan)
-            .all()
-        )
-
-    now = _now()
-    disabled = 0
-    for doc in docs or []:
-        meta = (
-            doc.doc_metadata
-            if isinstance(getattr(doc, "doc_metadata", None), dict)
-            else {}
-        )
-        conn = meta.get("connector") if isinstance(meta.get("connector"), dict) else {}
-        if str(conn.get("connector_id") or "") != "jira_project":
-            continue
-        if str(conn.get("doc_kind") or "") != "attachment":
-            continue
-        if str(conn.get("base_url") or "").strip().rstrip("/") != base_url:
-            continue
-        if str(conn.get("project_key") or "").strip().upper() != project_key:
-            continue
-        if str(conn.get("issue_url") or "").strip() != issue_url:
-            continue
-
-        download_url = str(conn.get("download_url") or meta.get("source_url") or "").strip()
-        if not download_url or download_url in seen_urls:
-            continue
-
-        if getattr(doc, "disabled_at", None) is None:
-            doc.disabled_at = now
-            disabled += 1
-
-    return int(disabled)
+    return _disable_missing_jira_issue_documents(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        base_url=base_url,
+        project_key=project_key,
+        issue_url=issue_url,
+        seen_urls=seen_attachment_urls,
+        doc_kind="attachment",
+        url_field="download_url",
+        max_docs_scan=max_docs_scan,
+    )
 
 
 def _soft_disable_jira_linked_artifact_documents_missing_from_issue(
@@ -517,81 +571,15 @@ def _soft_disable_jira_linked_artifact_documents_missing_from_issue(
     seen_link_urls: set[str],
     max_docs_scan: int = 5000,
 ) -> int:
-    if dataset_id is None:
-        return 0
-
-    base_url = str(base_url or "").strip().rstrip("/")
-    project_key = str(project_key or "").strip().upper()
-    issue_url = str(issue_url or "").strip()
-    seen_urls = {
-        str(url or "").strip()
-        for url in (seen_link_urls or set())
-        if str(url or "").strip()
-    }
-    if not base_url or not project_key or not issue_url:
-        return 0
-
-    docs: list[Any]
-    try:
-        docs = (
-            db.query(DBDocument)
-            .filter(
-                DBDocument.tenant_id == tenant_id,
-                DBDocument.dataset_id == dataset_id,
-                DBDocument.archived_at.is_(None),
-                DBDocument.disabled_at.is_(None),
-            )
-            .filter(DBDocument.doc_metadata["connector"]["connector_id"].astext == "jira_project")  # type: ignore[attr-defined]
-            .filter(DBDocument.doc_metadata["connector"]["doc_kind"].astext == "linked_artifact")  # type: ignore[attr-defined]
-            .filter(DBDocument.doc_metadata["connector"]["base_url"].astext == base_url)  # type: ignore[attr-defined]
-            .filter(DBDocument.doc_metadata["connector"]["project_key"].astext == project_key)  # type: ignore[attr-defined]
-            .filter(DBDocument.doc_metadata["connector"]["issue_url"].astext == issue_url)  # type: ignore[attr-defined]
-            .order_by(DBDocument.created_at.desc())
-            .all()
-        )
-    except Exception:
-        max_docs_scan = max(0, int(max_docs_scan or 0))
-        if max_docs_scan <= 0:
-            max_docs_scan = 5000
-        docs = (
-            db.query(DBDocument)
-            .filter(
-                DBDocument.tenant_id == tenant_id,
-                DBDocument.dataset_id == dataset_id,
-                DBDocument.archived_at.is_(None),
-                DBDocument.disabled_at.is_(None),
-            )
-            .order_by(DBDocument.created_at.desc())
-            .limit(max_docs_scan)
-            .all()
-        )
-
-    now = _now()
-    disabled = 0
-    for doc in docs or []:
-        meta = (
-            doc.doc_metadata
-            if isinstance(getattr(doc, "doc_metadata", None), dict)
-            else {}
-        )
-        conn = meta.get("connector") if isinstance(meta.get("connector"), dict) else {}
-        if str(conn.get("connector_id") or "") != "jira_project":
-            continue
-        if str(conn.get("doc_kind") or "") != "linked_artifact":
-            continue
-        if str(conn.get("base_url") or "").strip().rstrip("/") != base_url:
-            continue
-        if str(conn.get("project_key") or "").strip().upper() != project_key:
-            continue
-        if str(conn.get("issue_url") or "").strip() != issue_url:
-            continue
-
-        artifact_url = str(conn.get("artifact_url") or meta.get("source_url") or "").strip()
-        if not artifact_url or artifact_url in seen_urls:
-            continue
-
-        if getattr(doc, "disabled_at", None) is None:
-            doc.disabled_at = now
-            disabled += 1
-
-    return int(disabled)
+    return _disable_missing_jira_issue_documents(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        base_url=base_url,
+        project_key=project_key,
+        issue_url=issue_url,
+        seen_urls=seen_link_urls,
+        doc_kind="linked_artifact",
+        url_field="artifact_url",
+        max_docs_scan=max_docs_scan,
+    )

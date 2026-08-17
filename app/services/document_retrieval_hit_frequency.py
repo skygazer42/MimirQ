@@ -10,7 +10,6 @@ Design constraints:
 """
 
 
-import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -18,6 +17,7 @@ from uuid import UUID
 
 from app.core.config import settings
 from app.rag.core.logging import get_logger
+from app.services.jsonl_tail import read_jsonl_tail
 
 logger = get_logger("document_retrieval_hit_frequency")
 
@@ -36,47 +36,85 @@ def _read_jsonl_tail(path: Path, *, max_bytes: int) -> tuple[list[dict[str, Any]
     Return: (records, truncated)
     `truncated=true` means we did not read the entire file, so results might be incomplete.
     """
-    max_bytes = max(1, int(max_bytes or 0))
-    try:
-        st = path.stat()
-        size = int(st.st_size)
-    except Exception:
-        return [], False
+    return read_jsonl_tail(path, max_bytes=max_bytes)
 
-    start = max(0, size - max_bytes)
-    truncated = start > 0
 
-    try:
-        with path.open("rb") as f:
-            if start:
-                f.seek(start)
-            raw = f.read()
-    except Exception:
-        return [], truncated
+def _unavailable_summary(
+    *,
+    enabled: bool,
+    path: str,
+    window_minutes: int,
+    max_bytes: int,
+) -> dict[str, Any]:
+    return {
+        "enabled": enabled,
+        "available": False,
+        "path": path,
+        "window_minutes": window_minutes,
+        "max_bytes": max_bytes,
+        "truncated": False,
+        "traces_scanned": 0,
+        "traces_with_hits": 0,
+        "citations_matched": 0,
+        "unique_chunks_matched": 0,
+        "hit_rate": None,
+    }
 
-    if start:
-        nl = raw.find(b"\n")
-        if nl >= 0:
-            raw = raw[nl + 1 :]
 
-    try:
-        text = raw.decode("utf-8", errors="replace")
-    except Exception:
-        return [], truncated
-
-    records: list[dict[str, Any]] = []
-    for line in text.splitlines():
-        line = (line or "").strip()
-        if not line:
+def _count_matching_citations(
+    citations: list[Any],
+    *,
+    document_id: str,
+    unique_chunk_ids: set[str],
+) -> int:
+    matched = 0
+    for citation in citations:
+        if not isinstance(citation, dict):
             continue
+        if str(citation.get("document_id") or "") != document_id:
+            continue
+        matched += 1
+        chunk_id = str(citation.get("chunk_id") or "").strip()
+        if chunk_id:
+            unique_chunk_ids.add(chunk_id)
+    return matched
+
+
+def _scan_trace_hits(
+    records: list[dict[str, Any]],
+    *,
+    tenant_id: str,
+    document_id: str,
+    cutoff_ms: int,
+) -> tuple[int, int, int, set[str]]:
+    traces_scanned = 0
+    traces_with_hits = 0
+    citations_matched = 0
+    unique_chunk_ids: set[str] = set()
+    for record in records:
         try:
-            obj = json.loads(line)
+            if str(record.get("event") or "") != "rag_trace":
+                continue
+            if str(record.get("tenant_id") or "") != tenant_id:
+                continue
+            ts_ms = _to_int(record.get("ts_ms")) or 0
+            if ts_ms and ts_ms < cutoff_ms:
+                continue
+            traces_scanned += 1
+            citations = record.get("citations")
+            if not isinstance(citations, list) or not citations:
+                continue
+            matched = _count_matching_citations(
+                citations,
+                document_id=document_id,
+                unique_chunk_ids=unique_chunk_ids,
+            )
+            citations_matched += matched
+            if matched:
+                traces_with_hits += 1
         except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
-        if isinstance(obj, dict):
-            records.append(obj)
-    return records, truncated
+            logger.debug("Skipping item after non-critical exception", exc_info=True)
+    return traces_scanned, traces_with_hits, citations_matched, unique_chunk_ids
 
 
 def compute_document_retrieval_hit_frequency(
@@ -96,79 +134,21 @@ def compute_document_retrieval_hit_frequency(
     now0 = now or datetime.now(UTC)
     cutoff_ms = int(now0.timestamp() * 1000) - (window_minutes_i * 60 * 1000)
 
-    if not enabled:
-        return {
-            "enabled": False,
-            "available": False,
-            "path": path_str,
-            "window_minutes": window_minutes_i,
-            "max_bytes": max_bytes_i,
-            "truncated": False,
-            "traces_scanned": 0,
-            "traces_with_hits": 0,
-            "citations_matched": 0,
-            "unique_chunks_matched": 0,
-            "hit_rate": None,
-        }
-
-    if not path.exists():
-        return {
-            "enabled": True,
-            "available": False,
-            "path": path_str,
-            "window_minutes": window_minutes_i,
-            "max_bytes": max_bytes_i,
-            "truncated": False,
-            "traces_scanned": 0,
-            "traces_with_hits": 0,
-            "citations_matched": 0,
-            "unique_chunks_matched": 0,
-            "hit_rate": None,
-        }
+    if not enabled or not path.exists():
+        return _unavailable_summary(
+            enabled=enabled,
+            path=path_str,
+            window_minutes=window_minutes_i,
+            max_bytes=max_bytes_i,
+        )
 
     raw_records, truncated = _read_jsonl_tail(path, max_bytes=max_bytes_i)
-
-    tenant_key = str(tenant_id)
-    doc_key = str(document_id)
-
-    traces_scanned = 0
-    traces_with_hits = 0
-    citations_matched = 0
-    unique_chunk_ids: set[str] = set()
-
-    for r in raw_records:
-        try:
-            if str(r.get("event") or "") != "rag_trace":
-                continue
-            if str(r.get("tenant_id") or "") != tenant_key:
-                continue
-            ts_ms = _to_int(r.get("ts_ms")) or 0
-            if ts_ms and ts_ms < cutoff_ms:
-                continue
-            traces_scanned += 1
-
-            citations = r.get("citations")
-            if not isinstance(citations, list) or not citations:
-                continue
-
-            hit_this_trace = False
-            for c in citations:
-                if not isinstance(c, dict):
-                    continue
-                if str(c.get("document_id") or "") != doc_key:
-                    continue
-                citations_matched += 1
-                hit_this_trace = True
-                cid = str(c.get("chunk_id") or "").strip()
-                if cid:
-                    unique_chunk_ids.add(cid)
-
-            if hit_this_trace:
-                traces_with_hits += 1
-        except Exception:
-            # Best-effort: never break health card due to one bad line.
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
+    traces_scanned, traces_with_hits, citations_matched, unique_chunk_ids = _scan_trace_hits(
+        raw_records,
+        tenant_id=str(tenant_id),
+        document_id=str(document_id),
+        cutoff_ms=cutoff_ms,
+    )
 
     hit_rate = (float(traces_with_hits) / float(traces_scanned)) if traces_scanned else None
 

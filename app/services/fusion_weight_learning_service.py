@@ -68,6 +68,41 @@ def _extract_channels(trace: Mapping[str, Any]) -> dict[str, Any]:
     return {}
 
 
+def _weight_profile(fusion_weights: Mapping[str, Any] | None) -> str:
+    if not isinstance(fusion_weights, Mapping) or not fusion_weights:
+        return ""
+    return ",".join(
+        f"{key}:{round(_as_float(fusion_weights.get(key)), 3):.3f}"
+        for key in _CHANNELS
+        if fusion_weights.get(key) is not None
+    )
+
+
+def _count_channel_signal_coverage(
+    *,
+    citations: Any,
+    coverage: Counter[str],
+) -> None:
+    if not isinstance(citations, list):
+        return
+    for citation in citations:
+        if not isinstance(citation, Mapping):
+            continue
+        for channel in _CHANNELS:
+            if _as_float(citation.get(f"{channel}_score"), 0.0) > 0.0:
+                coverage[channel] += 1
+
+
+def _is_ltr_training_ready_row(*, row: Mapping[str, Any], trace: Mapping[str, Any]) -> bool:
+    return (
+        str(row.get("schema") or "").strip() == "mimirq.training_export_row.v1"
+        and isinstance(row.get("reference_sources"), list)
+        and isinstance(trace.get("citations"), list)
+        and bool(row.get("reference_sources"))
+        and bool(trace.get("citations"))
+    )
+
+
 def summarize_fusion_weight_observability(
     rows: Sequence[Mapping[str, Any]],
     *,
@@ -90,32 +125,16 @@ def summarize_fusion_weight_observability(
         if rrf_k is not None:
             rrf_hist[str(int(_as_float(rrf_k, 0.0)))] += 1
 
-        fusion_weights = channels.get("fusion_weights")
-        if isinstance(fusion_weights, Mapping) and fusion_weights:
-            profile = ",".join(
-                f"{key}:{round(_as_float(fusion_weights.get(key)), 3):.3f}"
-                for key in _CHANNELS
-                if fusion_weights.get(key) is not None
-            )
-            if profile:
-                weight_profiles[profile] += 1
+        profile = _weight_profile(channels.get("fusion_weights"))
+        if profile:
+            weight_profiles[profile] += 1
 
-        citations = trace.get("citations")
-        if isinstance(citations, list):
-            for citation in citations:
-                if not isinstance(citation, Mapping):
-                    continue
-                for channel in _CHANNELS:
-                    if _as_float(citation.get(f"{channel}_score"), 0.0) > 0.0:
-                        channel_signal_coverage[channel] += 1
+        _count_channel_signal_coverage(
+            citations=trace.get("citations"),
+            coverage=channel_signal_coverage,
+        )
 
-        if (
-            str(row.get("schema") or "").strip() == "mimirq.training_export_row.v1"
-            and isinstance(row.get("reference_sources"), list)
-            and isinstance(trace.get("citations"), list)
-            and row.get("reference_sources")
-            and trace.get("citations")
-        ):
+        if _is_ltr_training_ready_row(row=row, trace=trace):
             ltr_training_ready_rows += 1
 
     return {
@@ -158,6 +177,36 @@ def _is_positive_citation(citation: Mapping[str, Any], refs: set[tuple[str, str]
     return False
 
 
+def _append_channel_scores(
+    *,
+    citation: Mapping[str, Any],
+    target: defaultdict[str, list[float]],
+) -> None:
+    for channel in _CHANNELS:
+        score = _as_float(citation.get(f"{channel}_score"), 0.0)
+        if score > 0.0:
+            target[channel].append(score)
+
+
+def _average(values: list[float]) -> float:
+    return sum(values) / len(values) if values else 0.0
+
+
+def _normalized_weights_from_separation(separation: dict[str, float]) -> dict[str, float]:
+    total_sep = sum(separation.values())
+    if total_sep <= 0.0:
+        return {"vector": 0.4, "bm25": 0.2, "lexical": 0.2, "sparse": 0.2}
+
+    weights = {channel: round(separation[channel] / total_sep, 6) for channel in _CHANNELS}
+    total = sum(weights.values())
+    if total > 0.0:
+        weights = {channel: round(weights.get(channel, 0.0) / total, 6) for channel in _CHANNELS}
+        total = sum(weights.values())
+        if total > 0.0:
+            weights = {channel: round(value / total, 6) for channel, value in weights.items()}
+    return weights
+
+
 def suggest_tenant_fusion_weights(
     rows: Sequence[Mapping[str, Any]],
     *,
@@ -181,33 +230,23 @@ def suggest_tenant_fusion_weights(
         for citation in citations:
             if not isinstance(citation, Mapping):
                 continue
-            target = positives if _is_positive_citation(citation, refs) else negatives
-            for channel in _CHANNELS:
-                score = _as_float(citation.get(f"{channel}_score"), 0.0)
-                if score > 0.0:
-                    target[channel].append(score)
+            _append_channel_scores(
+                citation=citation,
+                target=positives if _is_positive_citation(citation, refs) else negatives,
+            )
 
     separation: dict[str, float] = {}
     for channel in _CHANNELS:
-        pos_avg = sum(positives[channel]) / len(positives[channel]) if positives[channel] else 0.0
-        neg_avg = sum(negatives[channel]) / len(negatives[channel]) if negatives[channel] else 0.0
+        pos_avg = _average(positives[channel])
+        neg_avg = _average(negatives[channel])
         separation[channel] = max(0.0, pos_avg - neg_avg)
 
-    total_sep = sum(separation.values())
-    if used_rows < max(1, int(min_rows or 0)) or total_sep <= 0.0:
+    if used_rows < max(1, int(min_rows or 0)) or sum(separation.values()) <= 0.0:
         weights = {"vector": 0.4, "bm25": 0.2, "lexical": 0.2, "sparse": 0.2}
         weight_source = "fallback_default"
     else:
-        weights = {channel: round(separation[channel] / total_sep, 6) for channel in _CHANNELS}
+        weights = _normalized_weights_from_separation(separation)
         weight_source = "feedback_trace_snapshot"
-
-    # Normalize defensively after rounding.
-    total = sum(weights.values())
-    if total > 0.0:
-        weights = {channel: round(weights.get(channel, 0.0) / total, 6) for channel in _CHANNELS}
-        total = sum(weights.values())
-        if total > 0.0:
-            weights = {channel: round(value / total, 6) for channel, value in weights.items()}
 
     return {
         "schema": TENANT_FUSION_WEIGHTS_SCHEMA,
@@ -216,8 +255,8 @@ def suggest_tenant_fusion_weights(
         "summary": {
             "training_rows": int(used_rows),
             "weight_source": weight_source,
-            "channel_positive_avg": {channel: round(sum(positives[channel]) / len(positives[channel]), 6) if positives[channel] else 0.0 for channel in _CHANNELS},
-            "channel_negative_avg": {channel: round(sum(negatives[channel]) / len(negatives[channel]), 6) if negatives[channel] else 0.0 for channel in _CHANNELS},
+            "channel_positive_avg": {channel: round(_average(positives[channel]), 6) for channel in _CHANNELS},
+            "channel_negative_avg": {channel: round(_average(negatives[channel]), 6) for channel in _CHANNELS},
             "channel_separation": {channel: round(separation[channel], 6) for channel in _CHANNELS},
         },
     }

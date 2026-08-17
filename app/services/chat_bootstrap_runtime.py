@@ -86,6 +86,212 @@ class PreparedStreamChatRuntime:
     structured_data: object | None
 
 
+def _request_fields_set(request: Any) -> set[str]:
+    return set(getattr(request, "model_fields_set", set()) or set())
+
+
+def _rag_fields_set(request: Any) -> set[str]:
+    rag_fields = set(getattr(request.rag_config, "model_fields_set", set()) or set())
+    if "rag_config" not in _request_fields_set(request):
+        return set()
+    return rag_fields
+
+
+def _resolve_dataset_rag_defaults(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    request: Any,
+    scope_dataset_id: UUID | None,
+    document_ids: list[UUID],
+) -> tuple[Any, list[str], dict[str, Any] | None, UUID | None]:
+    effective_rag_config = request.rag_config
+    dataset_rag_defaults_applied_fields: list[str] = []
+    dataset_defaults_meta: dict[str, Any] | None = None
+    dataset_id_used: UUID | None = scope_dataset_id
+    try:
+        if dataset_id_used is None:
+            dataset_id_used = resolve_single_dataset_id_for_documents(
+                db,
+                tenant_id=tenant_id,
+                document_ids=document_ids,
+            )
+        if dataset_id_used is None:
+            return effective_rag_config, dataset_rag_defaults_applied_fields, dataset_defaults_meta, dataset_id_used
+        ds_meta = load_dataset_metadata(db, tenant_id=tenant_id, dataset_id=dataset_id_used)
+        dataset_defaults_meta = ds_meta if isinstance(ds_meta, dict) else None
+        raw_defaults = ds_meta.get("rag_defaults") if isinstance(ds_meta, dict) else None
+        effective_rag_config, dataset_rag_defaults_applied_fields = merge_rag_config_with_dataset_defaults(
+            rag_config=effective_rag_config,
+            request_fields_set=_rag_fields_set(request),
+            raw_dataset_defaults=raw_defaults,
+        )
+    except Exception:
+        return request.rag_config, [], None, scope_dataset_id
+    return effective_rag_config, dataset_rag_defaults_applied_fields, dataset_defaults_meta, dataset_id_used
+
+
+def _resolve_prompt_defaults(
+    *,
+    request: Any,
+    dataset_defaults_meta: dict[str, Any] | None,
+) -> tuple[UUID | None, str | None, str | None, list[str]]:
+    return merge_prompt_defaults_with_dataset(
+        prompt_template_id=request.prompt_template_id,
+        prompt_template_key=request.prompt_template_key,
+        prompt_ab_experiment_key=request.prompt_ab_experiment_key,
+        request_fields_set=_request_fields_set(request),
+        dataset_meta=dataset_defaults_meta,
+    )
+
+
+def _resolve_rag_template_defaults(
+    *,
+    request: Any,
+    dataset_defaults_meta: dict[str, Any] | None,
+) -> tuple[UUID | None, str | None, str | None, list[str]]:
+    return merge_rag_config_template_defaults_with_dataset(
+        rag_config_template_id=request.rag_config_template_id,
+        rag_config_template_key=request.rag_config_template_key,
+        rag_config_ab_experiment_key=request.rag_config_ab_experiment_key,
+        request_fields_set=_request_fields_set(request),
+        dataset_meta=dataset_defaults_meta,
+    )
+
+
+def _build_rag_template_meta(
+    *,
+    chosen: Any,
+    rag_config_template_resolver_debug: dict[str, Any] | None,
+    rag_config_template_patch_applied_fields: list[str],
+    effective_rag_config_ab_experiment_key: str | None,
+    request_id: str,
+) -> dict[str, Any]:
+    rag_config_template_meta = {
+        "template_id": str(chosen.id),
+        "template_key": getattr(chosen, "template_key", None),
+        "version": int(getattr(chosen, "version", 0) or 0),
+        "ab_experiment_key": getattr(chosen, "ab_experiment_key", None),
+        "ab_variant": getattr(chosen, "ab_variant", None),
+        "patch_hash": build_rag_config_patch_hash(getattr(chosen, "config_patch", None)),
+        "patch_applied_fields": rag_config_template_patch_applied_fields,
+    }
+    if not rag_config_template_resolver_debug:
+        return rag_config_template_meta
+    rag_config_template_meta["resolver_debug"] = rag_config_template_resolver_debug
+    strategy = str(rag_config_template_resolver_debug.get("strategy") or "").strip().lower()
+    if strategy == "adaptive_epsilon_greedy":
+        rag_config_template_meta["reward_writeback"] = build_adaptive_routing_reward_writeback(
+            experiment_key=getattr(chosen, "ab_experiment_key", None) or effective_rag_config_ab_experiment_key,
+            variant=getattr(chosen, "ab_variant", None),
+            strategy=rag_config_template_resolver_debug.get("strategy"),
+            decision=rag_config_template_resolver_debug.get("decision"),
+            request_id=str(request_id),
+            template_id=str(chosen.id),
+            template_key=getattr(chosen, "template_key", None),
+        )
+    return rag_config_template_meta
+
+
+def _update_template_usage(db: Session, chosen: Any) -> None:
+    try:
+        chosen.usage_count = int(getattr(chosen, "usage_count", 0) or 0) + 1
+        db.commit()
+    except Exception:
+        with contextlib.suppress(Exception):
+            db.rollback()
+
+
+def _resolve_rag_template_runtime(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    request_id: str,
+    effective_rag_config: Any,
+    rag_fields_set: set[str],
+    effective_rag_config_template_id: UUID | None,
+    effective_rag_config_template_key: str | None,
+    effective_rag_config_ab_experiment_key: str | None,
+) -> tuple[Any, dict[str, Any] | None]:
+    try:
+        if not (
+            effective_rag_config_template_id
+            or (effective_rag_config_template_key or "").strip()
+            or (effective_rag_config_ab_experiment_key or "").strip()
+        ):
+            return effective_rag_config, None
+        chosen, rag_config_template_resolver_debug = resolve_rag_config_template(
+            db=db,
+            tenant_id=tenant_id,
+            rag_config_template_id=effective_rag_config_template_id,
+            template_key=effective_rag_config_template_key,
+            ab_experiment_key=effective_rag_config_ab_experiment_key,
+            ab_user_key=account_id,
+            return_debug_metadata=True,
+        )
+        if not chosen:
+            return effective_rag_config, None
+        effective_rag_config, rag_config_template_patch_applied_fields = apply_rag_config_patch(
+            rag_config=effective_rag_config,
+            patch=getattr(chosen, "config_patch", None),
+            request_fields_set=rag_fields_set,
+        )
+        rag_config_template_meta = _build_rag_template_meta(
+            chosen=chosen,
+            rag_config_template_resolver_debug=rag_config_template_resolver_debug,
+            rag_config_template_patch_applied_fields=rag_config_template_patch_applied_fields,
+            effective_rag_config_ab_experiment_key=effective_rag_config_ab_experiment_key,
+            request_id=request_id,
+        )
+        _update_template_usage(db, chosen)
+        return effective_rag_config, rag_config_template_meta
+    except Exception:
+        return effective_rag_config, None
+
+
+def _build_history_for_llm(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    request: Any,
+    conversation_id: UUID | None,
+    long_term_messages: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    history_for_llm = [m.model_dump() for m in request.history] + long_term_messages
+    if bool(getattr(request, "enable_summary_memory", False)) and conversation_id:
+        try:
+            summary_text = get_conversation_summary(db, tenant_id=tenant_id, conversation_id=conversation_id)
+        except Exception:
+            summary_text = None
+        if summary_text:
+            history_for_llm = [{"role": "system", "content": summary_text}] + history_for_llm
+
+    if (
+        bool(getattr(request, "enable_structured_memory", False))
+        and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False))
+        and conversation_id
+    ):
+        try:
+            records = _retrieve_structured_memory_records(
+                db=db,
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                max_messages=int(getattr(settings, "STRUCTURED_MEMORY_LOOKBACK_MESSAGES", 80) or 80),
+            )
+            ctx = build_structured_memory_context(
+                records=records,
+                max_entities=int(getattr(settings, "STRUCTURED_MEMORY_MAX_ENTITIES", 20) or 20),
+                max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
+                max_chars=int(getattr(settings, "STRUCTURED_MEMORY_MAX_CONTEXT_CHARS", 1200) or 1200),
+            )
+        except Exception:
+            ctx = ""
+        if ctx:
+            history_for_llm = [{"role": "system", "content": ctx}] + history_for_llm
+    return history_for_llm
+
+
 def prepare_chat_turn_session(
     *,
     db: Session,
@@ -167,150 +373,52 @@ def prepare_chat_request_runtime(
     long_term_messages: list[dict[str, Any]],
     request_id: str,
 ) -> PreparedChatRequestRuntime:
-    effective_rag_config = request.rag_config
-    dataset_rag_defaults_applied_fields: list[str] = []
-    dataset_defaults_meta: dict[str, Any] | None = None
-    dataset_id_used: UUID | None = scope_dataset_id
-    rag_fields_set = set(getattr(request.rag_config, "model_fields_set", set()) or set())
-    if "rag_config" not in set(getattr(request, "model_fields_set", set()) or set()):
-        rag_fields_set = set()
-    try:
-        if dataset_id_used is None:
-            dataset_id_used = resolve_single_dataset_id_for_documents(
-                db,
-                tenant_id=tenant_id,
-                document_ids=document_ids,
-            )
-        if dataset_id_used is not None:
-            ds_meta = load_dataset_metadata(db, tenant_id=tenant_id, dataset_id=dataset_id_used)
-            dataset_defaults_meta = ds_meta if isinstance(ds_meta, dict) else None
-            raw_defaults = ds_meta.get("rag_defaults") if isinstance(ds_meta, dict) else None
-            effective_rag_config, dataset_rag_defaults_applied_fields = merge_rag_config_with_dataset_defaults(
-                rag_config=effective_rag_config,
-                request_fields_set=rag_fields_set,
-                raw_dataset_defaults=raw_defaults,
-            )
-    except Exception:
-        dataset_rag_defaults_applied_fields = []
-        dataset_defaults_meta = None
-        dataset_id_used = scope_dataset_id
-
-    req_fields = set(getattr(request, "model_fields_set", set()) or set())
+    rag_fields_set = _rag_fields_set(request)
+    (
+        effective_rag_config,
+        dataset_rag_defaults_applied_fields,
+        dataset_defaults_meta,
+        dataset_id_used,
+    ) = _resolve_dataset_rag_defaults(
+        db=db,
+        tenant_id=tenant_id,
+        request=request,
+        scope_dataset_id=scope_dataset_id,
+        document_ids=document_ids,
+    )
     (
         effective_prompt_template_id,
         effective_prompt_template_key,
         effective_prompt_ab_experiment_key,
         dataset_prompt_defaults_applied_fields,
-    ) = merge_prompt_defaults_with_dataset(
-        prompt_template_id=request.prompt_template_id,
-        prompt_template_key=request.prompt_template_key,
-        prompt_ab_experiment_key=request.prompt_ab_experiment_key,
-        request_fields_set=req_fields,
-        dataset_meta=dataset_defaults_meta,
-    )
+    ) = _resolve_prompt_defaults(request=request, dataset_defaults_meta=dataset_defaults_meta)
 
     (
         effective_rag_config_template_id,
         effective_rag_config_template_key,
         effective_rag_config_ab_experiment_key,
         dataset_rag_config_template_defaults_applied_fields,
-    ) = merge_rag_config_template_defaults_with_dataset(
-        rag_config_template_id=request.rag_config_template_id,
-        rag_config_template_key=request.rag_config_template_key,
-        rag_config_ab_experiment_key=request.rag_config_ab_experiment_key,
-        request_fields_set=req_fields,
-        dataset_meta=dataset_defaults_meta,
+    ) = _resolve_rag_template_defaults(request=request, dataset_defaults_meta=dataset_defaults_meta)
+
+    effective_rag_config, rag_config_template_meta = _resolve_rag_template_runtime(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        request_id=request_id,
+        effective_rag_config=effective_rag_config,
+        rag_fields_set=rag_fields_set,
+        effective_rag_config_template_id=effective_rag_config_template_id,
+        effective_rag_config_template_key=effective_rag_config_template_key,
+        effective_rag_config_ab_experiment_key=effective_rag_config_ab_experiment_key,
     )
 
-    rag_config_template_meta: dict[str, Any] | None = None
-    rag_config_template_resolver_debug: dict[str, Any] | None = None
-    rag_config_template_patch_applied_fields: list[str] = []
-    try:
-        if (
-            effective_rag_config_template_id
-            or (effective_rag_config_template_key or "").strip()
-            or (effective_rag_config_ab_experiment_key or "").strip()
-        ):
-            chosen, rag_config_template_resolver_debug = resolve_rag_config_template(
-                db=db,
-                tenant_id=tenant_id,
-                rag_config_template_id=effective_rag_config_template_id,
-                template_key=effective_rag_config_template_key,
-                ab_experiment_key=effective_rag_config_ab_experiment_key,
-                ab_user_key=account_id,
-                return_debug_metadata=True,
-            )
-            if chosen:
-                effective_rag_config, rag_config_template_patch_applied_fields = apply_rag_config_patch(
-                    rag_config=effective_rag_config,
-                    patch=getattr(chosen, "config_patch", None),
-                    request_fields_set=rag_fields_set,
-                )
-                rag_config_template_meta = {
-                    "template_id": str(chosen.id),
-                    "template_key": getattr(chosen, "template_key", None),
-                    "version": int(getattr(chosen, "version", 0) or 0),
-                    "ab_experiment_key": getattr(chosen, "ab_experiment_key", None),
-                    "ab_variant": getattr(chosen, "ab_variant", None),
-                    "patch_hash": build_rag_config_patch_hash(getattr(chosen, "config_patch", None)),
-                    "patch_applied_fields": rag_config_template_patch_applied_fields,
-                }
-                if rag_config_template_resolver_debug:
-                    rag_config_template_meta["resolver_debug"] = rag_config_template_resolver_debug
-                    strategy = str(rag_config_template_resolver_debug.get("strategy") or "").strip().lower()
-                    if strategy == "adaptive_epsilon_greedy":
-                        rag_config_template_meta["reward_writeback"] = build_adaptive_routing_reward_writeback(
-                            experiment_key=(
-                                getattr(chosen, "ab_experiment_key", None) or effective_rag_config_ab_experiment_key
-                            ),
-                            variant=getattr(chosen, "ab_variant", None),
-                            strategy=rag_config_template_resolver_debug.get("strategy"),
-                            decision=rag_config_template_resolver_debug.get("decision"),
-                            request_id=str(request_id),
-                            template_id=str(chosen.id),
-                            template_key=getattr(chosen, "template_key", None),
-                        )
-
-                try:
-                    chosen.usage_count = int(getattr(chosen, "usage_count", 0) or 0) + 1
-                    db.commit()
-                except Exception:
-                    with contextlib.suppress(Exception):
-                        db.rollback()
-    except Exception:
-        rag_config_template_meta = None
-
-    history_for_llm = [m.model_dump() for m in request.history] + long_term_messages
-    if bool(getattr(request, "enable_summary_memory", False)) and conversation_id:
-        try:
-            summary_text = get_conversation_summary(db, tenant_id=tenant_id, conversation_id=conversation_id)
-        except Exception:
-            summary_text = None
-        if summary_text:
-            history_for_llm = [{"role": "system", "content": summary_text}] + history_for_llm
-
-    if (
-        bool(getattr(request, "enable_structured_memory", False))
-        and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False))
-        and conversation_id
-    ):
-        try:
-            records = _retrieve_structured_memory_records(
-                db=db,
-                tenant_id=tenant_id,
-                conversation_id=conversation_id,
-                max_messages=int(getattr(settings, "STRUCTURED_MEMORY_LOOKBACK_MESSAGES", 80) or 80),
-            )
-            ctx = build_structured_memory_context(
-                records=records,
-                max_entities=int(getattr(settings, "STRUCTURED_MEMORY_MAX_ENTITIES", 20) or 20),
-                max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
-                max_chars=int(getattr(settings, "STRUCTURED_MEMORY_MAX_CONTEXT_CHARS", 1200) or 1200),
-            )
-        except Exception:
-            ctx = ""
-        if ctx:
-            history_for_llm = [{"role": "system", "content": ctx}] + history_for_llm
+    history_for_llm = _build_history_for_llm(
+        db=db,
+        tenant_id=tenant_id,
+        request=request,
+        conversation_id=conversation_id,
+        long_term_messages=long_term_messages,
+    )
 
     return PreparedChatRequestRuntime(
         effective_rag_config=effective_rag_config,

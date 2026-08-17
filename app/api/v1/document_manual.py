@@ -100,6 +100,84 @@ def _run_manual_kg_extraction(
         )
 
 
+def _manual_chunk_metadata(
+    *,
+    request: ManualDocumentCreate,
+    dataset: Dataset,
+    db_document: DBDocument,
+    chunk: Any,
+    chunk_index: int,
+) -> dict[str, Any]:
+    pipeline_hash = str((db_document.doc_metadata or {}).get("pipeline_hash") or "").strip()
+    return {
+        "source": request.filename,
+        "file_type": request.file_type.lower(),
+        "dataset_id": str(dataset.id),
+        "page": chunk.page_number,
+        "document_id": str(db_document.id),
+        "chunk_index": chunk_index,
+        "pipeline_hash": pipeline_hash,
+        "doc_pipeline_key": f"{db_document.id}:{pipeline_hash}" if pipeline_hash else str(db_document.id),
+        **(chunk.metadata or {}),
+    }
+
+
+def _populate_manual_existing_image_metadata(*, docs_mod: Any, content: str, metadata: dict[str, Any]) -> None:
+    if not settings.MINIO_ENABLED or metadata.get("img_id") or metadata.get("image_id"):
+        return
+    match = docs_mod.MINIO_IMAGE_REF_RE.search(content)
+    if not match:
+        return
+    maybe_id = (match.group(1) or "").strip()
+    if maybe_id:
+        metadata["img_id"] = maybe_id
+
+
+def _append_manual_chunk_record(
+    *,
+    records: list[IndexRecord],
+    db_document: DBDocument,
+    chunk: Any,
+    content: str,
+    metadata: dict[str, Any],
+) -> None:
+    records.append(
+        IndexRecord(
+            kind=IndexKind.CHUNK,
+            content=content,
+            metadata=metadata,
+            document_id=db_document.id,
+            page_number=chunk.page_number,
+            start_char=chunk.start_char,
+            end_char=chunk.end_char,
+        )
+    )
+
+
+def _merge_manual_document_image_ids(*, db_document: DBDocument, document_img_ids: set[str]) -> None:
+    if not settings.MINIO_ENABLED or not document_img_ids:
+        return
+    meta = dict(db_document.doc_metadata or {})
+    existing = meta.get("img_ids")
+    merged: set[str] = set()
+    if isinstance(existing, list):
+        merged |= {value for value in existing if isinstance(value, str) and value.strip()}
+    merged |= {value for value in document_img_ids if isinstance(value, str) and value.strip()}
+    meta["img_ids"] = sorted(merged)
+    meta["image_count"] = len(merged)
+    db_document.doc_metadata = meta
+
+
+def _require_manual_chunk_persist_result(persist_result: Any) -> Any:
+    if persist_result is None:
+        raise RuntimeError("Chunk indexing returned no result")
+    if not persist_result.chunk_ids:
+        raise RuntimeError("No chunks were indexed")
+    if not persist_result.db_chunks:
+        raise RuntimeError("Database chunks were not persisted")
+    return persist_result
+
+
 def _index_manual_document_chunks(
     *,
     db: Session,
@@ -137,25 +215,14 @@ def _index_manual_document_chunks(
     records: list[IndexRecord] = []
     for idx, chunk in enumerate(request.chunks):
         content = chunk.content or ""
-        pipeline_hash = str((db_document.doc_metadata or {}).get("pipeline_hash") or "").strip()
-        metadata = {
-            "source": request.filename,
-            "file_type": request.file_type.lower(),
-            "dataset_id": str(dataset.id),
-            "page": chunk.page_number,
-            "document_id": str(db_document.id),
-            "chunk_index": idx,
-            "pipeline_hash": pipeline_hash,
-            "doc_pipeline_key": f"{db_document.id}:{pipeline_hash}" if pipeline_hash else str(db_document.id),
-            **(chunk.metadata or {}),
-        }
-
-        if settings.MINIO_ENABLED and not (metadata.get("img_id") or metadata.get("image_id")):
-            match = docs_mod.MINIO_IMAGE_REF_RE.search(content)
-            if match:
-                maybe_id = (match.group(1) or "").strip()
-                if maybe_id:
-                    metadata["img_id"] = maybe_id
+        metadata = _manual_chunk_metadata(
+            request=request,
+            dataset=dataset,
+            db_document=db_document,
+            chunk=chunk,
+            chunk_index=idx,
+        )
+        _populate_manual_existing_image_metadata(docs_mod=docs_mod, content=content, metadata=metadata)
 
         content, img_ids, asset_index = docs_mod._rewrite_preview_images_to_minio(
             content,
@@ -175,42 +242,25 @@ def _index_manual_document_chunks(
             metadata.setdefault("img_ids", img_ids)
             metadata.setdefault("image_count", len(img_ids))
 
-        records.append(
-            IndexRecord(
-                kind=IndexKind.CHUNK,
-                content=content,
-                metadata=metadata,
-                document_id=db_document.id,
-                page_number=chunk.page_number,
-                start_char=chunk.start_char,
-                end_char=chunk.end_char,
-            )
+        _append_manual_chunk_record(
+            records=records,
+            db_document=db_document,
+            chunk=chunk,
+            content=content,
+            metadata=metadata,
         )
 
-    if settings.MINIO_ENABLED and document_img_ids:
-        meta = dict(db_document.doc_metadata or {})
-        existing = meta.get("img_ids")
-        merged: set[str] = set()
-        if isinstance(existing, list):
-            merged |= {value for value in existing if isinstance(value, str) and value.strip()}
-        merged |= {value for value in document_img_ids if isinstance(value, str) and value.strip()}
-        meta["img_ids"] = sorted(merged)
-        meta["image_count"] = len(merged)
-        db_document.doc_metadata = meta
+    _merge_manual_document_image_ids(db_document=db_document, document_img_ids=document_img_ids)
 
-    persist_result = Indexer(db).upsert(
-        tenant_id=tenant_id,
-        records=records,
-        default_source=request.filename,
-        options=index_options,
-        commit=False,
-    ).chunk_result
-    if persist_result is None:
-        raise RuntimeError("Chunk indexing returned no result")
-    if not persist_result.chunk_ids:
-        raise RuntimeError("No chunks were indexed")
-    if not persist_result.db_chunks:
-        raise RuntimeError("Database chunks were not persisted")
+    persist_result = _require_manual_chunk_persist_result(
+        Indexer(db).upsert(
+            tenant_id=tenant_id,
+            records=records,
+            default_source=request.filename,
+            options=index_options,
+            commit=False,
+        ).chunk_result
+    )
 
     db_document.chunk_count = len(request.chunks)
     db_document.total_characters = persist_result.total_characters

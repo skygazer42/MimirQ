@@ -142,6 +142,294 @@ async def _offload_graph_chat(
     )
 
 
+def _build_extractive_fallback_kwargs(
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    request: ChatRequest,
+    doc_ids_to_use: list[UUID],
+    history_for_llm: list[dict[str, Any]],
+    scope_dataset_id: UUID | None,
+    dataset_id_used: UUID | None,
+    effective_rag_config: Any,
+) -> dict[str, Any]:
+    return {
+        "tenant_id": tenant_id,
+        "account_id": account_id,
+        "request": request,
+        "doc_ids_to_use": doc_ids_to_use,
+        "history_for_llm": history_for_llm,
+        "scope_dataset_id": scope_dataset_id,
+        "dataset_id_used": dataset_id_used,
+        "effective_rag_config": effective_rag_config,
+    }
+
+
+async def _run_extractive_chat_fallback(
+    *,
+    request_db: Session,
+    fallback_kwargs: dict[str, Any],
+    reason: str,
+    runtime_metrics: dict[str, Any],
+    original_error: Exception | None = None,
+) -> Any:
+    kwargs = dict(fallback_kwargs)
+    kwargs["reason"] = reason
+    if original_error is not None:
+        kwargs["original_error"] = original_error
+    return await _offload_extractive_fallback(
+        request_db=request_db,
+        runtime_metrics=runtime_metrics,
+        **kwargs,
+    )
+
+
+def _attach_generation_fallback_error(chat_result: Any, provider_error: str | None) -> Any:
+    if not provider_error:
+        return chat_result
+    metrics_data = dict(chat_result.metrics or {})
+    metrics_data["generation_fallback_error"] = provider_error
+    return type(chat_result)(
+        content=chat_result.content,
+        citations=chat_result.citations,
+        metrics=metrics_data,
+        structured_data=chat_result.structured_data,
+    )
+
+
+def _build_chat_execution_context(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    request: ChatRequest,
+    conversation_id: UUID,
+    request_id: str,
+    doc_ids_to_use: list[UUID],
+    history_for_llm: list[dict[str, Any]],
+    scope_dataset_id: UUID | None,
+    dataset_id_used: UUID | None,
+    effective_rag_config: Any,
+    effective_prompt_template_id: UUID | None,
+    effective_prompt_template_key: str | None,
+    effective_prompt_ab_experiment_key: str | None,
+    rag_config_template_meta: dict[str, Any] | None,
+) -> _ChatExecutionContext:
+    return _ChatExecutionContext(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        request=request,
+        conversation_id=conversation_id,
+        request_id=request_id,
+        doc_ids_to_use=doc_ids_to_use,
+        history_for_llm=history_for_llm,
+        scope_dataset_id=scope_dataset_id,
+        dataset_id_used=dataset_id_used,
+        effective_rag_config=effective_rag_config,
+        effective_prompt_template_id=effective_prompt_template_id,
+        effective_prompt_template_key=effective_prompt_template_key,
+        effective_prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
+        rag_config_template_meta=rag_config_template_meta,
+    )
+
+
+async def _execute_provider_chat_once(
+    *,
+    db: Session,
+    fallback_kwargs: dict[str, Any],
+    runtime_metrics: dict[str, Any],
+    conversation_id: UUID,
+    request_id: str,
+    effective_rag_config: Any,
+    tenant_id: UUID,
+    account_id: str,
+    request: ChatRequest,
+    doc_ids_to_use: list[UUID],
+    history_for_llm: list[dict[str, Any]],
+    scope_dataset_id: UUID | None,
+    dataset_id_used: UUID | None,
+    effective_prompt_template_id: UUID | None,
+    effective_prompt_template_key: str | None,
+    effective_prompt_ab_experiment_key: str | None,
+    rag_config_template_meta: dict[str, Any] | None,
+) -> Any:
+    provider_available, provider_error = await _preflight_model_provider_fast()
+    if not provider_available:
+        chat_result = await _run_extractive_chat_fallback(
+            request_db=db,
+            fallback_kwargs=fallback_kwargs,
+            reason="model_provider_preflight_failed",
+            runtime_metrics=runtime_metrics,
+        )
+        return _attach_generation_fallback_error(chat_result, provider_error)
+
+    execution_context = _build_chat_execution_context(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        request=request,
+        conversation_id=conversation_id,
+        request_id=request_id,
+        doc_ids_to_use=doc_ids_to_use,
+        history_for_llm=history_for_llm,
+        scope_dataset_id=scope_dataset_id,
+        dataset_id_used=dataset_id_used,
+        effective_rag_config=effective_rag_config,
+        effective_prompt_template_id=effective_prompt_template_id,
+        effective_prompt_template_key=effective_prompt_template_key,
+        effective_prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
+        rag_config_template_meta=rag_config_template_meta,
+    )
+    try:
+        if effective_rag_config.use_graph:
+            return await _offload_graph_chat(
+                request_db=db,
+                context=execution_context,
+            )
+        from app.rag.engine import get_rag_engine
+
+        engine = get_rag_engine()
+        return await _execute_langchain_chat_once(
+            engine=engine,
+            context=execution_context,
+        )
+    except Exception as exc:
+        if not _is_model_provider_unavailable_error(exc):
+            raise
+        _mark_model_provider_unavailable()
+        return await _run_extractive_chat_fallback(
+            request_db=db,
+            fallback_kwargs=fallback_kwargs,
+            reason="model_provider_runtime_unavailable",
+            runtime_metrics=runtime_metrics,
+            original_error=exc,
+        )
+
+
+async def _run_non_streaming_chat_generation(
+    *,
+    db: Session,
+    conversation_id: UUID,
+    request_id: str,
+    tenant_id: UUID,
+    account_id: str,
+    request: ChatRequest,
+    doc_ids_to_use: list[UUID],
+    history_for_llm: list[dict[str, Any]],
+    scope_dataset_id: UUID | None,
+    dataset_id_used: UUID | None,
+    effective_rag_config: Any,
+    effective_prompt_template_id: UUID | None,
+    effective_prompt_template_key: str | None,
+    effective_prompt_ab_experiment_key: str | None,
+    rag_config_template_meta: dict[str, Any] | None,
+    runtime_metrics: dict[str, Any],
+) -> Any:
+    fallback_kwargs = _build_extractive_fallback_kwargs(
+        tenant_id=tenant_id,
+        account_id=account_id,
+        request=request,
+        doc_ids_to_use=doc_ids_to_use,
+        history_for_llm=history_for_llm,
+        scope_dataset_id=scope_dataset_id,
+        dataset_id_used=dataset_id_used,
+        effective_rag_config=effective_rag_config,
+    )
+    if getattr(effective_rag_config, "answer_mode", "llm") == "extractive":
+        return await _run_extractive_chat_fallback(
+            request_db=db,
+            fallback_kwargs=fallback_kwargs,
+            reason="explicit_extractive_answer_mode",
+            runtime_metrics=runtime_metrics,
+        )
+    if _is_model_provider_unavailable_circuit_open():
+        return await _run_extractive_chat_fallback(
+            request_db=db,
+            fallback_kwargs=fallback_kwargs,
+            reason="model_provider_circuit_open",
+            runtime_metrics=runtime_metrics,
+        )
+    return await _execute_provider_chat_once(
+        db=db,
+        fallback_kwargs=fallback_kwargs,
+        runtime_metrics=runtime_metrics,
+        conversation_id=conversation_id,
+        request_id=request_id,
+        effective_rag_config=effective_rag_config,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        request=request,
+        doc_ids_to_use=doc_ids_to_use,
+        history_for_llm=history_for_llm,
+        scope_dataset_id=scope_dataset_id,
+        dataset_id_used=dataset_id_used,
+        effective_prompt_template_id=effective_prompt_template_id,
+        effective_prompt_template_key=effective_prompt_template_key,
+        effective_prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
+        rag_config_template_meta=rag_config_template_meta,
+    )
+
+
+def _raise_chat_quota_exceeded_if_needed(quota_meta: dict[str, Any]) -> None:
+    if not quota_meta.get("enabled"):
+        return
+    if not quota_meta.get("exceeded"):
+        return
+    if quota_meta.get("mode") != "block":
+        return
+    raise HTTPException(
+        status_code=429,
+        detail={
+            "message": "Chat quota exceeded (assistant tokens)",
+            "retry_after_sec": None,
+            "limit": int(quota_meta.get("limit") or 0),
+            "scope": "chat_tokens",
+        },
+    )
+
+
+def _reject_singleflight_leader_if_needed(
+    *,
+    singleflight_key: str | None,
+    singleflight_leader: bool,
+    error: Exception,
+) -> None:
+    if singleflight_key and singleflight_leader:
+        reject_inflight_chat_response(singleflight_key, error)
+
+
+def _singleflight_role(
+    *,
+    singleflight_hit: bool,
+    singleflight_leader: bool,
+) -> str | None:
+    if singleflight_hit:
+        return "follower"
+    if singleflight_leader:
+        return "leader"
+    return None
+
+
+def _maybe_schedule_summary_update(
+    *,
+    background_tasks: BackgroundTasks,
+    request: ChatRequest,
+    tenant_id: UUID,
+    conversation_id: UUID | None,
+) -> None:
+    if not bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_ENABLED", False)):
+        return
+    if not bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE", False)):
+        return
+    if not bool(getattr(request, "enable_summary_memory", False)):
+        return
+    if not conversation_id:
+        return
+    with contextlib.suppress(Exception):
+        background_tasks.add_task(_auto_update_summary_background, tenant_id=tenant_id, conversation_id=conversation_id)
+
+
 def _spawn_background_task(coro: Any) -> None:
     """
     Best-effort fire-and-forget task runner.
@@ -213,16 +501,7 @@ async def chat(
     tenant_qps_meta = await enforce_tenant_qps_quota_async(tenant_id=tenant_id, key="chat")
 
     quota_meta = check_chat_assistant_token_quota(db, tenant_id=tenant_id)
-    if quota_meta.get("enabled") and quota_meta.get("exceeded") and quota_meta.get("mode") == "block":
-        raise HTTPException(
-            status_code=429,
-            detail={
-                "message": "Chat quota exceeded (assistant tokens)",
-                "retry_after_sec": None,
-                "limit": int(quota_meta.get("limit") or 0),
-                "scope": "chat_tokens",
-            },
-        )
+    _raise_chat_quota_exceeded_if_needed(quota_meta)
 
     turn_session = _prepare_chat_turn_session(
         db=db,
@@ -326,112 +605,24 @@ async def chat(
 
     try:
         if not cache_hit and not singleflight_hit:
-            if getattr(effective_rag_config, "answer_mode", "llm") == "extractive":
-                chat_result = await _offload_extractive_fallback(
-                    request_db=db,
-                    tenant_id=tenant_id,
-                    account_id=account_id,
-                    request=request,
-                    doc_ids_to_use=doc_ids_to_use,
-                    history_for_llm=history_for_llm,
-                    scope_dataset_id=scope_dataset_id,
-                    dataset_id_used=dataset_id_used,
-                    effective_rag_config=effective_rag_config,
-                    reason="explicit_extractive_answer_mode",
-                    runtime_metrics=offload_metrics,
-                )
-            elif _is_model_provider_unavailable_circuit_open():
-                chat_result = await _offload_extractive_fallback(
-                    request_db=db,
-                    tenant_id=tenant_id,
-                    account_id=account_id,
-                    request=request,
-                    doc_ids_to_use=doc_ids_to_use,
-                    history_for_llm=history_for_llm,
-                    scope_dataset_id=scope_dataset_id,
-                    dataset_id_used=dataset_id_used,
-                    effective_rag_config=effective_rag_config,
-                    reason="model_provider_circuit_open",
-                    runtime_metrics=offload_metrics,
-                )
-            else:
-                provider_available, provider_error = await _preflight_model_provider_fast()
-                if not provider_available:
-                    chat_result = await _offload_extractive_fallback(
-                        request_db=db,
-                        tenant_id=tenant_id,
-                        account_id=account_id,
-                        request=request,
-                        doc_ids_to_use=doc_ids_to_use,
-                        history_for_llm=history_for_llm,
-                        scope_dataset_id=scope_dataset_id,
-                        dataset_id_used=dataset_id_used,
-                        effective_rag_config=effective_rag_config,
-                        reason="model_provider_preflight_failed",
-                        runtime_metrics=offload_metrics,
-                    )
-                    if provider_error:
-                        metrics_data = dict(chat_result.metrics or {})
-                        metrics_data["generation_fallback_error"] = provider_error
-                        chat_result = type(chat_result)(
-                            content=chat_result.content,
-                            citations=chat_result.citations,
-                            metrics=metrics_data,
-                            structured_data=chat_result.structured_data,
-                        )
-                else:
-                    try:
-                        execution_context = _ChatExecutionContext(
-                            db=db,
-                            tenant_id=tenant_id,
-                            account_id=account_id,
-                            request=request,
-                            conversation_id=conversation_id,
-                            request_id=str(request_id),
-                            doc_ids_to_use=doc_ids_to_use,
-                            history_for_llm=history_for_llm,
-                            scope_dataset_id=scope_dataset_id,
-                            dataset_id_used=dataset_id_used,
-                            effective_rag_config=effective_rag_config,
-                            effective_prompt_template_id=effective_prompt_template_id,
-                            effective_prompt_template_key=effective_prompt_template_key,
-                            effective_prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
-                            rag_config_template_meta=rag_config_template_meta,
-                        )
-                        if effective_rag_config.use_graph:
-                            chat_result = await _offload_graph_chat(
-                                request_db=db,
-                                context=execution_context,
-                            )
-                        else:
-                            from app.rag.engine import get_rag_engine
-
-                            engine = get_rag_engine()
-                            chat_result = await _execute_langchain_chat_once(
-                                engine=engine,
-                                context=execution_context,
-                            )
-                    except Exception as exc:
-                        if not _is_model_provider_unavailable_error(exc):
-                            raise
-                        _mark_model_provider_unavailable()
-                        chat_result = await _offload_extractive_fallback(
-                            request_db=db,
-                            tenant_id=tenant_id,
-                            account_id=account_id,
-                            request=request,
-                            doc_ids_to_use=doc_ids_to_use,
-                            history_for_llm=history_for_llm,
-                            scope_dataset_id=scope_dataset_id,
-                            dataset_id_used=dataset_id_used,
-                            effective_rag_config=effective_rag_config,
-                            original_error=exc,
-                            runtime_metrics=offload_metrics,
-                        )
-                    citations_data = chat_result.citations
-                    full_response = chat_result.content
-                    metrics_data = dict(chat_result.metrics or {})
-                    structured_data = chat_result.structured_data
+            chat_result = await _run_non_streaming_chat_generation(
+                db=db,
+                conversation_id=conversation_id,
+                request_id=str(request_id),
+                tenant_id=tenant_id,
+                account_id=account_id,
+                request=request,
+                doc_ids_to_use=doc_ids_to_use,
+                history_for_llm=history_for_llm,
+                scope_dataset_id=scope_dataset_id,
+                dataset_id_used=dataset_id_used,
+                effective_rag_config=effective_rag_config,
+                effective_prompt_template_id=effective_prompt_template_id,
+                effective_prompt_template_key=effective_prompt_template_key,
+                effective_prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
+                rag_config_template_meta=rag_config_template_meta,
+                runtime_metrics=offload_metrics,
+            )
             if chat_result is not None:
                 citations_data = chat_result.citations
                 full_response = chat_result.content
@@ -446,16 +637,14 @@ async def chat(
             hit=cache_hit,
             skip_reason=None if cache_hit else cache_skip_reason,
         )
-        singleflight_role = None
-        if singleflight_hit:
-            singleflight_role = "follower"
-        elif singleflight_leader:
-            singleflight_role = "leader"
         metrics_data = _annotate_chat_singleflight_metrics(
             metrics_data,
             enabled=bool(getattr(settings, "CHAT_RESPONSE_SINGLEFLIGHT_ENABLED", False)),
             hit=singleflight_hit,
-            role=singleflight_role,
+            role=_singleflight_role(
+                singleflight_hit=singleflight_hit,
+                singleflight_leader=singleflight_leader,
+            ),
         )
 
         metrics_data = _apply_chat_runtime_metrics_context(
@@ -504,19 +693,25 @@ async def chat(
         )
 
     except asyncio.CancelledError:
-        if singleflight_key and singleflight_leader:
-            reject_inflight_chat_response(
-                singleflight_key,
-                InflightResponseLeaderCancelledError("singleflight leader request cancelled"),
-            )
+        _reject_singleflight_leader_if_needed(
+            singleflight_key=singleflight_key,
+            singleflight_leader=singleflight_leader,
+            error=InflightResponseLeaderCancelledError("singleflight leader request cancelled"),
+        )
         raise
     except RetrievalAdmissionTimeoutError as exc:
-        if singleflight_key and singleflight_leader:
-            reject_inflight_chat_response(singleflight_key, exc)
+        _reject_singleflight_leader_if_needed(
+            singleflight_key=singleflight_key,
+            singleflight_leader=singleflight_leader,
+            error=exc,
+        )
         raise
     except Exception as exc:  # noqa: BLE001
-        if singleflight_key and singleflight_leader:
-            reject_inflight_chat_response(singleflight_key, exc)
+        _reject_singleflight_leader_if_needed(
+            singleflight_key=singleflight_key,
+            singleflight_leader=singleflight_leader,
+            error=exc,
+        )
         logger.exception("Chat error: %s", str(exc)[:200])
         raise HTTPException(status_code=500, detail=_format_stream_error_message(exc)) from exc
 
@@ -524,14 +719,12 @@ async def chat(
         raise HTTPException(status_code=500, detail="Conversation id missing")
 
     # Optional: auto-update persistent summary after the assistant turn (best-effort).
-    if (
-        bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_ENABLED", False))
-        and bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE", False))
-        and bool(getattr(request, "enable_summary_memory", False))
-        and conversation_id
-    ):
-        with contextlib.suppress(Exception):
-            background_tasks.add_task(_auto_update_summary_background, tenant_id=tenant_id, conversation_id=conversation_id)
+    _maybe_schedule_summary_update(
+        background_tasks=background_tasks,
+        request=request,
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+    )
 
     retrieval_mode_used = metrics_data.get("retrieval_mode") or effective_rag_config.retrieval_mode
     vector_backend_used = metrics_data.get("vector_backend") or settings.VECTOR_BACKEND

@@ -107,6 +107,112 @@ def _any_endswith(haystack: Any, needle: Any) -> bool:
     return str(haystack).lower().endswith(expected)
 
 
+class _MetadataFilterMatcher:
+    def __init__(self, metadata: dict[str, Any]) -> None:
+        self.metadata = metadata
+        self.budget = 0
+        self.invalid = False
+
+    def _within_budget(self, depth: int) -> bool:
+        if depth > _MAX_FILTER_DEPTH or self.budget > _MAX_FILTER_NODES:
+            self.invalid = True
+            return False
+        return True
+
+    def _consume_node(self) -> bool:
+        self.budget += 1
+        if self.budget > _MAX_FILTER_NODES:
+            self.invalid = True
+            return False
+        return True
+
+    def _match_and(self, condition: Any, *, depth: int) -> bool:
+        if not isinstance(condition, list) or not condition:
+            return False
+        for item in condition:
+            if not isinstance(item, dict) or not self.match(item, depth=depth + 1):
+                return False
+        return True
+
+    def _match_or(self, condition: Any, *, depth: int) -> bool:
+        if not isinstance(condition, list) or not condition:
+            return False
+        for item in condition:
+            if not isinstance(item, dict):
+                return False
+            if self.match(item, depth=depth + 1):
+                return True
+            if self.invalid:
+                return False
+        return False
+
+    def _match_not(self, condition: Any, *, depth: int) -> bool:
+        if not isinstance(condition, dict) or not condition:
+            return False
+        matched = self.match(condition, depth=depth + 1)
+        return False if self.invalid else not matched
+
+    def _match_boolean(self, key: str, condition: Any, *, depth: int) -> bool:
+        handlers = {
+            "$and": self._match_and,
+            "$or": self._match_or,
+            "$not": self._match_not,
+        }
+        handler = handlers.get(key)
+        return bool(handler and handler(condition, depth=depth))
+
+    @staticmethod
+    def _match_in(meta_value: Any, expected: Any) -> bool:
+        if meta_value is None and isinstance(expected, (list, tuple, set)) and "" in expected:
+            return True
+        return _any_in(meta_value, expected)
+
+    @staticmethod
+    def _match_exists(meta_value: Any, expected: Any) -> bool:
+        return (meta_value is not None) if bool(expected) else (meta_value is None)
+
+    def _match_operator(self, meta_value: Any, operator: str, expected: Any) -> bool:
+        handlers = {
+            "$exists": self._match_exists,
+            "$eq": lambda value, target: value == target,
+            "$ne": lambda value, target: value != target,
+            "$gt": lambda value, target: value is not None and value > target,
+            "$gte": lambda value, target: value is not None and value >= target,
+            "$lt": lambda value, target: value is not None and value < target,
+            "$lte": lambda value, target: value is not None and value <= target,
+            "$in": self._match_in,
+            "$nin": _any_not_in,
+            "$contains": _any_contains,
+            "$startswith": _any_startswith,
+            "$endswith": _any_endswith,
+        }
+        handler = handlers.get(operator)
+        return bool(handler and handler(meta_value, expected))
+
+    def _match_field(self, key: str, condition: Any) -> bool:
+        meta_value = _get_meta_value(self.metadata, key)
+        if not isinstance(condition, dict):
+            return meta_value == condition
+        for operator, expected in condition.items():
+            if not self._match_operator(meta_value, operator, expected):
+                return False
+        return True
+
+    def match(self, specification: dict[str, Any], *, depth: int) -> bool:
+        if not self._within_budget(depth):
+            return False
+        for key, condition in specification.items():
+            if not isinstance(key, str) or not self._consume_node():
+                return False
+            if key in {"$and", "$or", "$not"}:
+                if not self._match_boolean(key, condition, depth=depth):
+                    return False
+                continue
+            if key.startswith("$") or not self._match_field(key, condition):
+                return False
+        return True
+
+
 def match_metadata_filter(meta: dict[str, Any], filter_spec: dict[str, Any]) -> bool:
     """
     Check if metadata matches the filter specification.
@@ -140,129 +246,54 @@ def match_metadata_filter(meta: dict[str, Any], filter_spec: dict[str, Any]) -> 
     if not isinstance(filter_spec, dict):
         return False
 
-    budget = [0]
-    invalid = [False]
+    return _MetadataFilterMatcher(meta).match(filter_spec, depth=0)
 
-    def _match(meta0: dict[str, Any], spec0: dict[str, Any], *, depth: int) -> bool:
-        if depth > _MAX_FILTER_DEPTH:
-            invalid[0] = True
-            return False
-        if budget[0] > _MAX_FILTER_NODES:
-            invalid[0] = True
-            return False
 
-        for key, condition in spec0.items():
-            if not isinstance(key, str):
-                return False
+class _MetadataFilterSummary:
+    def __init__(self) -> None:
+        self.keys: set[str] = set()
+        self.operators: dict[str, int] = {}
+        self.budget = 0
 
-            budget[0] += 1
-            if budget[0] > _MAX_FILTER_NODES:
-                invalid[0] = True
-                return False
+    def _bump_operator(self, operator: str) -> None:
+        if operator:
+            self.operators[operator] = int(self.operators.get(operator, 0) or 0) + 1
 
-            # Boolean composition operators at the top-level.
-            if key == "$and":
-                if not isinstance(condition, list) or not condition:
-                    return False
-                for item in condition:
-                    if not isinstance(item, dict):
-                        return False
-                    if not _match(meta0, item, depth=depth + 1):
-                        if invalid[0]:
-                            return False
-                        return False
+    def _visit_operator(self, operator: str, value: Any, *, depth: int) -> None:
+        self._bump_operator(operator)
+        if operator in {"$and", "$or"} and isinstance(value, list):
+            for item in value:
+                self.visit(item, depth=depth + 1)
+        elif operator == "$not" and isinstance(value, dict):
+            self.visit(value, depth=depth + 1)
+
+    def _count_leaf_operators(self, value: Any) -> None:
+        if not isinstance(value, dict):
+            return
+        for operator in value:
+            if isinstance(operator, str) and operator.startswith("$"):
+                self._bump_operator(operator)
+
+    def _visit_dict(self, value: dict[Any, Any], *, depth: int) -> None:
+        for key, nested in value.items():
+            if self.budget > _MAX_FILTER_NODES:
+                return
+            self.budget += 1
+            if isinstance(key, str) and key.startswith("$"):
+                self._visit_operator(key, nested, depth=depth)
                 continue
+            if isinstance(key, str) and key:
+                self.keys.add(key)
+            self._count_leaf_operators(nested)
 
-            if key == "$or":
-                if not isinstance(condition, list) or not condition:
-                    return False
-                any_ok = False
-                for item in condition:
-                    if not isinstance(item, dict):
-                        return False
-                    ok = _match(meta0, item, depth=depth + 1)
-                    if invalid[0]:
-                        return False
-                    if ok:
-                        any_ok = True
-                        break
-                if not any_ok:
-                    return False
-                continue
-
-            if key == "$not":
-                if not isinstance(condition, dict) or not condition:
-                    return False
-                ok = _match(meta0, condition, depth=depth + 1)
-                if invalid[0]:
-                    return False
-                if ok:
-                    return False
-                continue
-
-            if key.startswith("$"):
-                # Unknown top-level operator: treat as non-match (safer than silently allowing).
-                return False
-
-            meta_value = _get_meta_value(meta0, key)
-
-            if isinstance(condition, dict):
-                for op, expected in condition.items():
-                    if op == "$exists":
-                        want = bool(expected)
-                        if want and meta_value is None:
-                            return False
-                        if (not want) and meta_value is not None:
-                            return False
-                    elif op == "$eq":
-                        if meta_value != expected:
-                            return False
-                    elif op == "$ne":
-                        if meta_value == expected:
-                            return False
-                    elif op == "$gt":
-                        if meta_value is None or meta_value <= expected:
-                            return False
-                    elif op == "$gte":
-                        if meta_value is None or meta_value < expected:
-                            return False
-                    elif op == "$lt":
-                        if meta_value is None or meta_value >= expected:
-                            return False
-                    elif op == "$lte":
-                        if meta_value is None or meta_value > expected:
-                            return False
-                    elif op == "$in":
-                        # Backward-compatible "allow missing" semantics:
-                        # When callers include "" in the $in list, treat a missing metadata value
-                        # (None) as equivalent to "" so older rows without this field are not
-                        # incorrectly filtered out.
-                        if meta_value is None and isinstance(expected, (list, tuple, set)) and "" in expected:
-                            continue
-                        if not _any_in(meta_value, expected):
-                            return False
-                    elif op == "$nin":
-                        if not _any_not_in(meta_value, expected):
-                            return False
-                    elif op == "$contains":
-                        if not _any_contains(meta_value, expected):
-                            return False
-                    elif op == "$startswith":
-                        if not _any_startswith(meta_value, expected):
-                            return False
-                    elif op == "$endswith":
-                        if not _any_endswith(meta_value, expected):
-                            return False
-                    else:
-                        # Unknown operator: treat as non-match (safer than silently allowing).
-                        return False
-            else:
-                if meta_value != condition:
-                    return False
-
-        return True
-
-    return _match(meta, filter_spec, depth=0)
+    def visit(self, value: Any, *, depth: int) -> None:
+        if depth > _MAX_FILTER_DEPTH or self.budget > _MAX_FILTER_NODES:
+            return
+        if isinstance(value, dict):
+            self._visit_dict(value, depth=depth)
+        elif isinstance(value, list):
+            for item in value:
+                self.visit(item, depth=depth + 1)
 
 
 def summarize_metadata_filter(
@@ -286,58 +317,9 @@ def summarize_metadata_filter(
     if not isinstance(filter_spec, dict):
         return None
 
-    keys: set[str] = set()
-    ops: dict[str, int] = {}
-
-    # Keep the traversal bounded so arbitrary user-provided filter specs can't blow up CPU.
-    budget = [0]
-
-    def _bump_op(op: str) -> None:
-        if not op:
-            return
-        ops[op] = int(ops.get(op, 0) or 0) + 1
-
-    def _visit(obj: Any, *, depth: int) -> None:
-        if depth > _MAX_FILTER_DEPTH:
-            return
-        if budget[0] > _MAX_FILTER_NODES:
-            return
-
-        if isinstance(obj, dict):
-            for k, v in obj.items():
-                if budget[0] > _MAX_FILTER_NODES:
-                    return
-                budget[0] += 1
-
-                if isinstance(k, str) and k.startswith("$"):
-                    _bump_op(k)
-                    # Boolean composition operators can nest more specs.
-                    if k in {"$and", "$or"} and isinstance(v, list):
-                        for item in v:
-                            _visit(item, depth=depth + 1)
-                    elif k == "$not" and isinstance(v, dict):
-                        _visit(v, depth=depth + 1)
-                    else:
-                        # Other operators: do not traverse values (may contain user-provided data).
-                        pass
-                    continue
-
-                if isinstance(k, str) and k:
-                    keys.add(k)
-
-                # Leaf condition: count operator keys under this field.
-                if isinstance(v, dict):
-                    for op in v.keys():
-                        if isinstance(op, str) and op.startswith("$"):
-                            _bump_op(op)
-
-        elif isinstance(obj, list):
-            for item in obj:
-                _visit(item, depth=depth + 1)
-
-    _visit(filter_spec, depth=0)
-
-    keys_sorted = sorted(keys)
+    summary = _MetadataFilterSummary()
+    summary.visit(filter_spec, depth=0)
+    keys_sorted = sorted(summary.keys)
     max_keys_sample = max(0, int(max_keys_sample or 0))
     if max_keys_sample > 0:
         keys_sample = keys_sorted[:max_keys_sample]
@@ -345,7 +327,12 @@ def summarize_metadata_filter(
         keys_sample = []
 
     # Keep ops deterministic and bounded.
-    ops_sorted = dict(sorted(((str(k), int(v or 0)) for k, v in ops.items()), key=lambda x: x[0]))
+    ops_sorted = dict(
+        sorted(
+            ((str(key), int(value or 0)) for key, value in summary.operators.items()),
+            key=lambda item: item[0],
+        )
+    )
 
     out: dict[str, Any] = {
         "keys_count": int(len(keys_sorted)),

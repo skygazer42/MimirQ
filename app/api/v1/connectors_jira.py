@@ -509,6 +509,118 @@ def _jira_issue_url(*, base_url: str, issue_key: str) -> str:
     return f"{base}/browse/{quote(key, safe='')}"
 
 
+def _normalize_jira_full_sync_scope(
+    *,
+    dataset_id: UUID | None,
+    base_url: str,
+    project_key: str,
+    connector_id: str,
+    seen_issue_urls: set[str],
+) -> tuple[UUID, str, str, str, set[str]] | None:
+    if dataset_id is None:
+        return None
+    normalized_base_url = str(base_url or "").strip().rstrip("/")
+    normalized_project_key = str(project_key or "").strip().upper()
+    normalized_connector_id = str(connector_id or "jira_project").strip() or "jira_project"
+    normalized_seen_urls = {
+        str(url or "").strip()
+        for url in (seen_issue_urls or set())
+        if str(url or "").strip()
+    }
+    if not normalized_base_url or not normalized_project_key:
+        return None
+    return dataset_id, normalized_base_url, normalized_project_key, normalized_connector_id, normalized_seen_urls
+
+
+def _jira_project_connector_metadata(doc: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+    meta = doc.doc_metadata if isinstance(getattr(doc, "doc_metadata", None), dict) else {}
+    conn = meta.get("connector") if isinstance(meta.get("connector"), dict) else {}
+    return meta, conn
+
+
+def _jira_project_doc_matches_scope(
+    doc: Any,
+    *,
+    base_url: str,
+    project_key: str,
+    connector_id: str,
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    meta, conn = _jira_project_connector_metadata(doc)
+    if str(conn.get("connector_id") or "") != connector_id:
+        return None
+    if str(conn.get("base_url") or "").strip().rstrip("/") != base_url:
+        return None
+    if str(conn.get("project_key") or "").strip().upper() != project_key:
+        return None
+    return meta, conn
+
+
+def _list_recent_jira_project_documents(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    max_docs_scan: int,
+) -> list[Any]:
+    scan_limit = max(0, int(max_docs_scan or 0)) or 5000
+    return (
+        db.query(DBDocument)
+        .filter(
+            DBDocument.tenant_id == tenant_id,
+            DBDocument.dataset_id == dataset_id,
+            DBDocument.archived_at.is_(None),
+            DBDocument.disabled_at.is_(None),
+        )
+        .order_by(DBDocument.created_at.desc())
+        .limit(scan_limit)
+        .all()
+    )
+
+
+def _load_jira_project_documents_for_full_sync(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    base_url: str,
+    project_key: str,
+    connector_id: str,
+    max_docs_scan: int,
+) -> list[Any]:
+    try:
+        return (
+            db.query(DBDocument)
+            .filter(
+                DBDocument.tenant_id == tenant_id,
+                DBDocument.dataset_id == dataset_id,
+                DBDocument.archived_at.is_(None),
+                DBDocument.disabled_at.is_(None),
+            )
+            .filter(DBDocument.doc_metadata["connector"]["connector_id"].astext == connector_id)  # type: ignore[attr-defined]
+            .filter(DBDocument.doc_metadata["connector"]["base_url"].astext == base_url)  # type: ignore[attr-defined]
+            .filter(DBDocument.doc_metadata["connector"]["project_key"].astext == project_key)  # type: ignore[attr-defined]
+            .order_by(DBDocument.created_at.desc())
+            .all()
+        )
+    except Exception:
+        docs = _list_recent_jira_project_documents(
+            db,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            max_docs_scan=max_docs_scan,
+        )
+        return [
+            doc
+            for doc in docs
+            if _jira_project_doc_matches_scope(
+                doc,
+                base_url=base_url,
+                project_key=project_key,
+                connector_id=connector_id,
+            )
+        ]
+
+
 def _soft_disable_jira_documents_missing_from_full_sync(
     db: Session,
     *,
@@ -525,52 +637,25 @@ def _soft_disable_jira_documents_missing_from_full_sync(
 
     Scope is limited to connector-managed Jira docs for the same tenant/dataset/base URL/project.
     """
-    if dataset_id is None:
+    scope = _normalize_jira_full_sync_scope(
+        dataset_id=dataset_id,
+        base_url=base_url,
+        project_key=project_key,
+        connector_id=connector_id,
+        seen_issue_urls=seen_issue_urls,
+    )
+    if scope is None:
         return 0, 0
-
-    base_url = str(base_url or "").strip().rstrip("/")
-    project_key = str(project_key or "").strip().upper()
-    connector_id = str(connector_id or "jira_project").strip() or "jira_project"
-    seen_urls = {
-        str(url or "").strip()
-        for url in (seen_issue_urls or set())
-        if str(url or "").strip()
-    }
-    if not base_url or not project_key:
-        return 0, 0
-
-    docs: list[Any]
-    try:
-        docs = (
-            db.query(DBDocument)
-            .filter(
-                DBDocument.tenant_id == tenant_id,
-                DBDocument.dataset_id == dataset_id,
-                DBDocument.archived_at.is_(None),
-                DBDocument.disabled_at.is_(None),
-            )
-            .filter(DBDocument.doc_metadata["connector"]["connector_id"].astext == connector_id)  # type: ignore[attr-defined]
-            .filter(DBDocument.doc_metadata["connector"]["base_url"].astext == base_url)  # type: ignore[attr-defined]
-            .filter(DBDocument.doc_metadata["connector"]["project_key"].astext == project_key)  # type: ignore[attr-defined]
-            .order_by(DBDocument.created_at.desc())
-            .all()
-        )
-    except Exception:
-        max_docs_scan = max(0, int(max_docs_scan or 0))
-        if max_docs_scan <= 0:
-            max_docs_scan = 5000
-        docs = (
-            db.query(DBDocument)
-            .filter(
-                DBDocument.tenant_id == tenant_id,
-                DBDocument.dataset_id == dataset_id,
-                DBDocument.archived_at.is_(None),
-                DBDocument.disabled_at.is_(None),
-            )
-            .order_by(DBDocument.created_at.desc())
-            .limit(max_docs_scan)
-            .all()
-        )
+    dataset_id, base_url, project_key, connector_id, seen_urls = scope
+    docs = _load_jira_project_documents_for_full_sync(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        base_url=base_url,
+        project_key=project_key,
+        connector_id=connector_id,
+        max_docs_scan=max_docs_scan,
+    )
 
     now = _resolve_connectors_helper("_now")()
     disabled = 0
@@ -578,15 +663,15 @@ def _soft_disable_jira_documents_missing_from_full_sync(
     for doc in docs or []:
         if getattr(doc, "archived_at", None) is not None:
             continue
-        meta = doc.doc_metadata if isinstance(getattr(doc, "doc_metadata", None), dict) else {}
-        conn = meta.get("connector") if isinstance(meta.get("connector"), dict) else {}
-        if str(conn.get("connector_id") or "") != connector_id:
+        match = _jira_project_doc_matches_scope(
+            doc,
+            base_url=base_url,
+            project_key=project_key,
+            connector_id=connector_id,
+        )
+        if match is None:
             continue
-        if str(conn.get("base_url") or "").strip().rstrip("/") != base_url:
-            continue
-        if str(conn.get("project_key") or "").strip().upper() != project_key:
-            continue
-
+        meta, conn = match
         issue_url = str(conn.get("issue_url") or meta.get("source_url") or "").strip()
         if not issue_url or issue_url in seen_urls:
             continue
@@ -2393,46 +2478,8 @@ async def _jira_project_fetch_issue_page(
     return _jira_project_parse_search_payload(payload)
 
 
-async def _process_jira_project_issues(
-    db: Session,
-    *,
-    run: ConnectorRun,
-    run_id: UUID,
-    tenant_id: UUID,
-    requested_by: str,
-    settings_map: dict[str, Any],
-) -> tuple[dict[str, Any], set[str], bool]:
-    base_url = str(settings_map.get("base_url") or "")
-    project_key = str(settings_map.get("project_key") or "")
-    cursor_last_modified = str(settings_map.get("cursor_last_modified") or "")
-    cursor_last_modified_ids = set(settings_map.get("cursor_last_modified_ids") or set())
-    effective_mode = str(settings_map.get("effective_mode") or "")
-    max_issues = int(settings_map.get("max_issues") or 0)
-    page_size = int(settings_map.get("page_size") or 0)
-    include_comments = bool(settings_map.get("include_comments"))
-    max_comments_per_issue = int(settings_map.get("max_comments_per_issue") or 0)
-    custom_fields = list(settings_map.get("custom_fields") or [])
-    include_attachments = bool(settings_map.get("include_attachments"))
-    max_attachments_per_issue = int(settings_map.get("max_attachments_per_issue") or 0)
-    max_total_attachments = int(settings_map.get("max_total_attachments") or 0)
-    include_linked_artifacts = bool(settings_map.get("include_linked_artifacts"))
-    max_linked_artifacts_per_issue = int(settings_map.get("max_linked_artifacts_per_issue") or 0)
-    max_total_linked_artifacts = int(settings_map.get("max_total_linked_artifacts") or 0)
-    parser_backend = str(settings_map.get("parser_backend") or "auto")
-    chunk_strategy = str(settings_map.get("chunk_strategy") or "jira_ticket")
-    pipeline = settings_map.get("pipeline")
-    access = settings_map.get("access")
-    user_agent = settings_map.get("user_agent")
-    auth_headers = dict(settings_map.get("auth_headers") or {})
-    search_url = str(settings_map.get("search_url") or "")
-    headers = dict(settings_map.get("headers") or {})
-    jql = str(settings_map.get("jql") or "")
-
-    source_acl_mode = str(settings_map.get("source_acl_mode") or "disabled")
-    source_acl_fallback_mode = str(settings_map.get("source_acl_fallback_mode") or "partial_members")
-    enable_source_acl = bool(settings_map.get("enable_source_acl"))
-
-    progress: dict[str, Any] = {
+def _initial_jira_project_progress() -> dict[str, Any]:
+    return {
         "created": 0,
         "failed": 0,
         "processed": 0,
@@ -2451,38 +2498,86 @@ async def _process_jira_project_issues(
         "removed_issues_reconciled": 0,
         "removed_documents_disabled": 0,
     }
-    observed_issue_urls: set[str] = set()
-    listing_complete = False
-    total_issues_available: int | None = None
-    issue_context = JiraProjectIssueContext(
+
+
+def _build_jira_project_issue_context(
+    *,
+    run: ConnectorRun,
+    run_id: UUID,
+    tenant_id: UUID,
+    requested_by: str,
+    settings_map: dict[str, Any],
+) -> JiraProjectIssueContext:
+    return JiraProjectIssueContext(
         run=run,
         run_id=run_id,
         tenant_id=tenant_id,
         requested_by=requested_by,
-        base_url=base_url,
-        project_key=project_key,
-        cursor_last_modified=cursor_last_modified,
-        cursor_last_modified_ids=cursor_last_modified_ids,
-        effective_mode=effective_mode,
-        include_comments=include_comments,
-        max_comments_per_issue=max_comments_per_issue,
-        include_attachments=include_attachments,
-        max_attachments_per_issue=max_attachments_per_issue,
-        max_total_attachments=max_total_attachments,
-        include_linked_artifacts=include_linked_artifacts,
-        max_linked_artifacts_per_issue=max_linked_artifacts_per_issue,
-        max_total_linked_artifacts=max_total_linked_artifacts,
-        parser_backend=parser_backend,
-        chunk_strategy=chunk_strategy,
-        pipeline=pipeline,
-        access=access,
-        user_agent=user_agent,
-        auth_headers=auth_headers,
-        enable_source_acl=enable_source_acl,
-        source_acl_mode=source_acl_mode,
-        source_acl_fallback_mode=source_acl_fallback_mode,
+        base_url=str(settings_map.get("base_url") or ""),
+        project_key=str(settings_map.get("project_key") or ""),
+        cursor_last_modified=str(settings_map.get("cursor_last_modified") or ""),
+        cursor_last_modified_ids=set(settings_map.get("cursor_last_modified_ids") or set()),
+        effective_mode=str(settings_map.get("effective_mode") or ""),
+        include_comments=bool(settings_map.get("include_comments")),
+        max_comments_per_issue=int(settings_map.get("max_comments_per_issue") or 0),
+        include_attachments=bool(settings_map.get("include_attachments")),
+        max_attachments_per_issue=int(settings_map.get("max_attachments_per_issue") or 0),
+        max_total_attachments=int(settings_map.get("max_total_attachments") or 0),
+        include_linked_artifacts=bool(settings_map.get("include_linked_artifacts")),
+        max_linked_artifacts_per_issue=int(settings_map.get("max_linked_artifacts_per_issue") or 0),
+        max_total_linked_artifacts=int(settings_map.get("max_total_linked_artifacts") or 0),
+        parser_backend=str(settings_map.get("parser_backend") or "auto"),
+        chunk_strategy=str(settings_map.get("chunk_strategy") or "jira_ticket"),
+        pipeline=settings_map.get("pipeline"),
+        access=settings_map.get("access"),
+        user_agent=settings_map.get("user_agent"),
+        auth_headers=dict(settings_map.get("auth_headers") or {}),
+        enable_source_acl=bool(settings_map.get("enable_source_acl")),
+        source_acl_mode=str(settings_map.get("source_acl_mode") or "disabled"),
+        source_acl_fallback_mode=str(settings_map.get("source_acl_fallback_mode") or "partial_members"),
     )
 
+
+async def _process_jira_project_issue_batch(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    issues: list[object],
+    progress: dict[str, Any],
+    observed_issue_urls: set[str],
+    issue_context: JiraProjectIssueContext,
+    max_issues: int,
+) -> None:
+    for issue in issues:
+        if int(progress.get("processed") or 0) >= max_issues:
+            break
+        if _resolve_connectors_helper("_jira_project_run_cancelled")(db, run=run):
+            break
+        await _resolve_connectors_helper("_process_jira_project_issue")(
+            db,
+            context=issue_context,
+            issue=issue,
+            progress=progress,
+            observed_issue_urls=observed_issue_urls,
+        )
+
+
+async def _run_jira_project_issue_loop(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    issue_context: JiraProjectIssueContext,
+    search_url: str,
+    headers: dict[str, str],
+    jql: str,
+    custom_fields: list[str],
+    max_issues: int,
+    page_size: int,
+) -> tuple[dict[str, Any], set[str], bool]:
+    progress = _initial_jira_project_progress()
+    observed_issue_urls: set[str] = set()
+    listing_complete = False
+    total_issues_available: int | None = None
     pool = _resolve_connectors_helper("get_http_client_pool")()
     start_at = 0
 
@@ -2503,26 +2598,20 @@ async def _process_jira_project_issues(
         )
         if page_total is not None:
             total_issues_available = page_total
-
         if not issues:
             if total_issues_available is None or start_at >= total_issues_available:
                 listing_complete = True
             break
 
-        for issue in issues:
-            if int(progress.get("processed") or 0) >= max_issues:
-                break
-            if _resolve_connectors_helper("_jira_project_run_cancelled")(db, run=run):
-                break
-
-            await _resolve_connectors_helper("_process_jira_project_issue")(
-                db,
-                context=issue_context,
-                issue=issue,
-                progress=progress,
-                observed_issue_urls=observed_issue_urls,
-            )
-
+        await _process_jira_project_issue_batch(
+            db,
+            run=run,
+            issues=issues,
+            progress=progress,
+            observed_issue_urls=observed_issue_urls,
+            issue_context=issue_context,
+            max_issues=max_issues,
+        )
         start_at += int(len(issues))
         if total_issues_available is not None and start_at >= total_issues_available:
             listing_complete = True
@@ -2531,6 +2620,41 @@ async def _process_jira_project_issues(
             break
 
     return progress, observed_issue_urls, listing_complete
+
+
+async def _process_jira_project_issues(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    run_id: UUID,
+    tenant_id: UUID,
+    requested_by: str,
+    settings_map: dict[str, Any],
+) -> tuple[dict[str, Any], set[str], bool]:
+    max_issues = int(settings_map.get("max_issues") or 0)
+    page_size = int(settings_map.get("page_size") or 0)
+    custom_fields = list(settings_map.get("custom_fields") or [])
+    search_url = str(settings_map.get("search_url") or "")
+    headers = dict(settings_map.get("headers") or {})
+    jql = str(settings_map.get("jql") or "")
+    issue_context = _build_jira_project_issue_context(
+        run=run,
+        run_id=run_id,
+        tenant_id=tenant_id,
+        requested_by=requested_by,
+        settings_map=settings_map,
+    )
+    return await _run_jira_project_issue_loop(
+        db,
+        run=run,
+        issue_context=issue_context,
+        search_url=search_url,
+        headers=headers,
+        jql=jql,
+        custom_fields=custom_fields,
+        max_issues=max_issues,
+        page_size=page_size,
+    )
 
 
 async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:

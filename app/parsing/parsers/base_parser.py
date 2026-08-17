@@ -144,6 +144,132 @@ class BaseAdvancedParser(ABC):
             self._logger.info(f"[{parser_name}] {progress:.0%} - {msg}")
         return callback
 
+    def _positions_from_tag(self, tag: str) -> list[tuple[int, float, float, float, float]]:
+        match = _POSITION_TAG_RE.search(tag or "")
+        if not match:
+            return []
+
+        page_tokens = [p for p in str(match.group(1) or "").split("-") if p.strip()]
+        left = float(match.group(2))
+        right = float(match.group(3))
+        top = float(match.group(4))
+        bottom = float(match.group(5))
+        positions: list[tuple[int, float, float, float, float]] = []
+        for token in page_tokens:
+            try:
+                positions.append((max(0, int(token) - 1), left, right, top, bottom))
+            except Exception:
+                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+        return positions
+
+    def _normalize_section(self, section: Any) -> tuple[str, str | None, str | None]:
+        if not isinstance(section, tuple):
+            return str(section or "").strip(), None, None
+
+        head = section[0] if section else ""
+        text = str(head or "").strip()
+        if not text:
+            return "", None, None
+
+        tag = ""
+        section_kind = None
+        for item in reversed(section[1:]):
+            if not isinstance(item, str):
+                continue
+            candidate = item.strip()
+            if "@@" in candidate and "##" in candidate and _POSITION_TAG_RE.search(candidate):
+                tag = candidate
+                continue
+            normalized = candidate.lower()
+            if normalized in _SECTION_KINDS:
+                section_kind = normalized
+
+        if tag and tag not in text:
+            text = f"{text}{tag}"
+        return text, tag or None, section_kind
+
+    def _build_equation_document(self, text: str, tag: str | None, base_metadata: dict) -> Document:
+        clean_text = _POSITION_TAG_RE.sub("", text).strip()
+        meta = {
+            **base_metadata,
+            "content_type": "equation",
+            "doc_type_kwd": "equation",
+            "element_kind": "equation",
+            "element_text": clean_text or text,
+        }
+        positions = self._positions_from_tag(tag or "")
+        if positions:
+            meta["positions"] = positions
+            first = positions[0]
+            meta["element_page"] = int(first[0]) + 1
+            meta["element_bbox"] = {
+                "x0": int(first[1]),
+                "x1": int(first[2]),
+                "y0": int(first[3]),
+                "y1": int(first[4]),
+            }
+        return Document(page_content=text, metadata=meta)
+
+    @staticmethod
+    def _build_text_document(text_parts: list[str], base_metadata: dict) -> Document | None:
+        if not text_parts:
+            return None
+        merged_text = "\n\n".join(text_parts)
+        return Document(
+            page_content=merged_text,
+            metadata={
+                **base_metadata,
+                "content_type": "text",
+                "element_kind": "paragraph",
+                "element_text": merged_text,
+            },
+        )
+
+    @staticmethod
+    def _extract_table_image_payload(table: Any) -> tuple[Any, Any]:
+        image_obj = None
+        positions = None
+        if not isinstance(table, tuple) or not table:
+            return image_obj, positions
+
+        table_data = table[0]
+        if isinstance(table_data, tuple) and table_data:
+            image_obj = table_data[0]
+        if len(table) >= 2:
+            positions = table[1]
+        return image_obj, positions
+
+    def _maybe_append_table_image_document(
+        self,
+        *,
+        documents: list[Document],
+        table: Any,
+        table_content: str,
+        table_index: int,
+        base_metadata: dict,
+    ) -> None:
+        try:
+            image_obj, positions = self._extract_table_image_payload(table)
+            if image_obj is None:
+                return
+
+            content = (table_content or "").strip() or "image"
+            if len(content) > 900:
+                content = content[:900].rstrip() + "..."
+            meta = {
+                **base_metadata,
+                "doc_type_kwd": "image",
+                "content_type": "image",
+                "table_index": table_index,
+                "image": image_obj,
+            }
+            if positions is not None:
+                meta["positions"] = positions
+            documents.append(Document(page_content=content, metadata=meta))
+        except Exception as exc:
+            # Best-effort: never fail parsing due to table image handling.
+            self._logger.debug("Failed to attach table image metadata; continuing parse: %s", exc)
+
     def _convert_sections_to_documents(
         self,
         sections: list,
@@ -162,91 +288,20 @@ class BaseAdvancedParser(ABC):
         if not sections:
             return []
 
-        def _positions_from_tag(tag: str) -> list[tuple[int, float, float, float, float]]:
-            match = _POSITION_TAG_RE.search(tag or "")
-            if not match:
-                return []
-            page_tokens = [p for p in str(match.group(1) or "").split("-") if p.strip()]
-            left = float(match.group(2))
-            right = float(match.group(3))
-            top = float(match.group(4))
-            bottom = float(match.group(5))
-            out: list[tuple[int, float, float, float, float]] = []
-            for token in page_tokens:
-                try:
-                    out.append((max(0, int(token) - 1), left, right, top, bottom))
-                except Exception:
-                    get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-                    continue
-            return out
-
-        def _normalize_section(section: Any) -> tuple[str, str | None, str | None]:
-            if isinstance(section, tuple):
-                head = section[0] if section else ""
-                text = str(head or "").strip()
-                if not text:
-                    return "", None, None
-
-                # Preserve position tags from parsers like Docling/MinerU that return (text, tag)
-                # or (text, type, tag). The integrated integrated pipeline relies on `@@...##` tags.
-                tag = ""
-                section_kind = None
-                for item in reversed(section[1:]):
-                    if not isinstance(item, str):
-                        continue
-                    candidate = item.strip()
-                    if "@@" in candidate and "##" in candidate and _POSITION_TAG_RE.search(candidate):
-                        tag = candidate
-                        continue
-                    normalized = candidate.lower()
-                    if normalized in _SECTION_KINDS:
-                        section_kind = normalized
-                if tag and tag not in text:
-                    text = f"{text}{tag}"
-                return text, tag or None, section_kind
-
-            return str(section or "").strip(), None, None
-
         documents: list[Document] = []
         text_parts: list[str] = []
         for section in sections:
-            text, tag, section_kind = _normalize_section(section)
-            if text:
-                if section_kind == "equation":
-                    clean_text = _POSITION_TAG_RE.sub("", text).strip()
-                    meta = {
-                        **base_metadata,
-                        "content_type": "equation",
-                        "doc_type_kwd": "equation",
-                        "element_kind": "equation",
-                        "element_text": clean_text or text,
-                    }
-                    positions = _positions_from_tag(tag or "")
-                    if positions:
-                        meta["positions"] = positions
-                        first = positions[0]
-                        meta["element_page"] = int(first[0]) + 1
-                        meta["element_bbox"] = {
-                            "x0": int(first[1]),
-                            "x1": int(first[2]),
-                            "y0": int(first[3]),
-                            "y1": int(first[4]),
-                        }
-                    documents.append(Document(page_content=text, metadata=meta))
-                    continue
-                text_parts.append(text)
+            text, tag, section_kind = self._normalize_section(section)
+            if not text:
+                continue
+            if section_kind == "equation":
+                documents.append(self._build_equation_document(text, tag, base_metadata))
+                continue
+            text_parts.append(text)
 
-        if not text_parts:
-            return documents
-
-        merged_text = "\n\n".join(text_parts)
-        documents.insert(
-            0,
-            Document(
-                page_content=merged_text,
-                metadata={**base_metadata, "content_type": "text", "element_kind": "paragraph", "element_text": merged_text},
-            ),
-        )
+        text_document = self._build_text_document(text_parts, base_metadata)
+        if text_document is not None:
+            documents.insert(0, text_document)
         return documents
 
     def _convert_tables_to_documents(
@@ -267,7 +322,7 @@ class BaseAdvancedParser(ABC):
         if not tables:
             return []
 
-        documents = []
+        documents: list[Document] = []
         for i, table in enumerate(tables):
             table_content = self._extract_table_content(table)
 
@@ -280,36 +335,13 @@ class BaseAdvancedParser(ABC):
                         "table_index": i,
                     }
                 ))
-
-            # If the underlying parser provides a cropped image (e.g., Docling tables/figures),
-            # emit an additional image Document so downstream can upload it to MinIO and preview it.
-            try:
-                image_obj = None
-                positions = None
-                if isinstance(table, tuple) and len(table) >= 1:
-                    table_data = table[0]
-                    if isinstance(table_data, tuple) and len(table_data) >= 1:
-                        image_obj = table_data[0]
-                    if len(table) >= 2:
-                        positions = table[1]
-
-                if image_obj is not None:
-                    content = (table_content or "").strip() or "image"
-                    if len(content) > 900:
-                        content = content[:900].rstrip() + "..."
-                    meta = {
-                        **base_metadata,
-                        "doc_type_kwd": "image",
-                        "content_type": "image",
-                        "table_index": i,
-                        "image": image_obj,
-                    }
-                    if positions is not None:
-                        meta["positions"] = positions
-                    documents.append(Document(page_content=content, metadata=meta))
-            except Exception as exc:
-                # Best-effort: never fail parsing due to table image handling.
-                self._logger.debug("Failed to attach table image metadata; continuing parse: %s", exc)
+            self._maybe_append_table_image_document(
+                documents=documents,
+                table=table,
+                table_content=table_content,
+                table_index=i,
+                base_metadata=base_metadata,
+            )
 
         return documents
 

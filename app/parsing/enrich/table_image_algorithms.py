@@ -221,20 +221,12 @@ def _rows_from_cells(*, cells: list[TableCell], row_count: int, col_count: int) 
     return rows
 
 
-def bind_ocr_lines_to_table_cells(
-    table: TableExtraction,
-    ocr_lines: Sequence[Mapping[str, Any]],
+def _bind_ocr_content(
     *,
-    min_overlap: float = 0.2,
-) -> CellOcrBindingResult:
-    cell_boxes = {_cell_key(cell): _bbox(cell.bbox) for cell in table.cells}
-    if not any(box is not None for box in cell_boxes.values()):
-        return CellOcrBindingResult(
-            table=table,
-            bound_cells=0,
-            metadata={"applied": False, "reason": "missing_cell_bboxes", "bound_cells": 0},
-        )
-
+    cell_boxes: dict[tuple[int, int], tuple[float, float, float, float] | None],
+    ocr_lines: Sequence[Mapping[str, Any]],
+    min_overlap: float,
+) -> tuple[dict[tuple[int, int], list[str]], dict[tuple[int, int], list[float]]]:
     text_by_cell: dict[tuple[int, int], list[str]] = {}
     confidence_by_cell: dict[tuple[int, int], list[float]] = {}
     for line in ocr_lines:
@@ -258,6 +250,36 @@ def bind_ocr_lines_to_table_cells(
             continue
         text_by_cell.setdefault(best_key, []).append(text)
         confidence_by_cell.setdefault(best_key, []).append(_coerce_score(line.get("confidence") or line.get("score")))
+    return text_by_cell, confidence_by_cell
+
+
+def _average_bound_confidence(confidence_by_cell: dict[tuple[int, int], list[float]]) -> float | None:
+    if not confidence_by_cell:
+        return None
+    total = sum(score for scores in confidence_by_cell.values() for score in scores)
+    count = sum(len(scores) for scores in confidence_by_cell.values())
+    return round(total / max(1, count), 6)
+
+
+def bind_ocr_lines_to_table_cells(
+    table: TableExtraction,
+    ocr_lines: Sequence[Mapping[str, Any]],
+    *,
+    min_overlap: float = 0.2,
+) -> CellOcrBindingResult:
+    cell_boxes = {_cell_key(cell): _bbox(cell.bbox) for cell in table.cells}
+    if not any(box is not None for box in cell_boxes.values()):
+        return CellOcrBindingResult(
+            table=table,
+            bound_cells=0,
+            metadata={"applied": False, "reason": "missing_cell_bboxes", "bound_cells": 0},
+        )
+
+    text_by_cell, confidence_by_cell = _bind_ocr_content(
+        cell_boxes=cell_boxes,
+        ocr_lines=ocr_lines,
+        min_overlap=float(min_overlap),
+    )
 
     next_cells: list[TableCell] = []
     bound_cells = 0
@@ -287,15 +309,7 @@ def bind_ocr_lines_to_table_cells(
         "applied": bool(bound_cells),
         "bound_cells": int(bound_cells),
         "ocr_lines": len(list(ocr_lines)),
-        "avg_confidence": (
-            round(
-                sum(score for scores in confidence_by_cell.values() for score in scores)
-                / max(1, sum(len(scores) for scores in confidence_by_cell.values())),
-                6,
-            )
-            if confidence_by_cell
-            else None
-        ),
+        "avg_confidence": _average_bound_confidence(confidence_by_cell),
     }
     next_table = TableExtraction(
         columns=list(table.columns),
@@ -309,6 +323,45 @@ def bind_ocr_lines_to_table_cells(
         metadata=metadata,
     )
     return CellOcrBindingResult(table=next_table, bound_cells=bound_cells, metadata=metadata["cell_ocr_binding"])
+
+
+def _coerce_ocr_line(raw: Any) -> dict[str, Any] | None:
+    if not isinstance(raw, (list, tuple)) or len(raw) < 2:
+        return None
+    points = raw[0]
+    payload = raw[1]
+    if not isinstance(points, (list, tuple)) or not points:
+        return None
+
+    xy: list[tuple[float, float]] = []
+    for point in points:
+        if not isinstance(point, (list, tuple)) or len(point) < 2:
+            continue
+        try:
+            xy.append((float(point[0]), float(point[1])))
+        except Exception:
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+    if not xy:
+        return None
+
+    text = ""
+    score = None
+    if isinstance(payload, (list, tuple)):
+        text = str(payload[0] or "").strip() if payload else ""
+        score = payload[1] if len(payload) >= 2 else None
+    else:
+        text = str(payload or "").strip()
+        score = raw[2] if len(raw) >= 3 else None
+    if not text:
+        return None
+
+    xs = [x for x, _y in xy]
+    ys = [y for _x, y in xy]
+    return {
+        "text": text,
+        "confidence": _coerce_score(score),
+        "bbox": {"left": min(xs), "top": min(ys), "right": max(xs), "bottom": max(ys)},
+    }
 
 
 def extract_ocr_lines_from_image(image: PILImage.Image, *, max_lines: int = 300) -> list[dict[str, Any]]:
@@ -326,42 +379,10 @@ def extract_ocr_lines_from_image(image: PILImage.Image, *, max_lines: int = 300)
 
     lines: list[dict[str, Any]] = []
     for raw in result or []:
-        if not isinstance(raw, (list, tuple)) or len(raw) < 2:
+        line = _coerce_ocr_line(raw)
+        if line is None:
             continue
-        points = raw[0]
-        payload = raw[1]
-        if not isinstance(points, (list, tuple)) or not points:
-            continue
-        xy: list[tuple[float, float]] = []
-        for point in points:
-            if not isinstance(point, (list, tuple)) or len(point) < 2:
-                continue
-            try:
-                xy.append((float(point[0]), float(point[1])))
-            except Exception:
-                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-                continue
-        if not xy:
-            continue
-        text = ""
-        score = None
-        if isinstance(payload, (list, tuple)):
-            text = str(payload[0] or "").strip() if payload else ""
-            score = payload[1] if len(payload) >= 2 else None
-        else:
-            text = str(payload or "").strip()
-            score = raw[2] if len(raw) >= 3 else None
-        if not text:
-            continue
-        xs = [x for x, _y in xy]
-        ys = [y for _x, y in xy]
-        lines.append(
-            {
-                "text": text,
-                "confidence": _coerce_score(score),
-                "bbox": {"left": min(xs), "top": min(ys), "right": max(xs), "bottom": max(ys)},
-            }
-        )
+        lines.append(line)
         if len(lines) >= int(max_lines or 300):
             break
     return lines

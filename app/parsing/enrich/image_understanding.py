@@ -75,6 +75,41 @@ def _safe_read_image_path(raw_path: str, *, tenant_id: str) -> bytes:
     return candidate.read_bytes()
 
 
+def _open_image_from_bytes(data: bytes) -> tuple[PILImage.Image | None, bool]:
+    try:
+        return PILImage.open(BytesIO(data)), True
+    except Exception:
+        return None, False
+
+
+def _load_inline_image(meta_value: Any) -> tuple[PILImage.Image | None, bool]:
+    if isinstance(meta_value, PILImage.Image):
+        return meta_value, False
+    if isinstance(meta_value, (bytes, bytearray)):
+        return _open_image_from_bytes(bytes(meta_value))
+    if isinstance(meta_value, str) and meta_value.strip():
+        return _open_image_from_bytes(_b64_to_bytes(meta_value))
+    return None, False
+
+
+def _load_path_image(meta: dict[str, Any], *, tenant_id: str) -> tuple[PILImage.Image | None, bool]:
+    raw_path = meta.get("image_path")
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        return None, False
+    binary = _safe_read_image_path(raw_path, tenant_id=tenant_id)
+    if not binary:
+        return None, False
+    return _open_image_from_bytes(binary)
+
+
+def _load_fallback_encoded_image(meta: dict[str, Any]) -> tuple[PILImage.Image | None, bool]:
+    for key in ("image_base64", "img_base64", "img", "image_data"):
+        value = meta.get(key)
+        if isinstance(value, str) and value.strip():
+            return _open_image_from_bytes(_b64_to_bytes(value))
+    return None, False
+
+
 def load_image_for_ocr(meta: dict[str, Any], *, _tenant_id: str) -> tuple[PILImage.Image | None, bool]:
     """
     Load a PIL image from chunk metadata for OCR (best-effort).
@@ -87,41 +122,17 @@ def load_image_for_ocr(meta: dict[str, Any], *, _tenant_id: str) -> tuple[PILIma
     if str(meta.get("doc_type_kwd") or "").lower() != "image":
         return None, False
 
-    val = meta.get("image")
-    if isinstance(val, PILImage.Image):
-        return val, False
-    if isinstance(val, (bytes, bytearray)):
+    for loader in (
+        lambda: _load_inline_image(meta.get("image")),
+        lambda: _load_path_image(meta, tenant_id=_tenant_id),
+        lambda: _load_fallback_encoded_image(meta),
+    ):
         try:
-            img = PILImage.open(BytesIO(bytes(val)))
-            return img, True
+            image, should_close = loader()
         except Exception:
             return None, False
-    if isinstance(val, str) and val.strip():
-        try:
-            img = PILImage.open(BytesIO(_b64_to_bytes(val)))
-            return img, True
-        except Exception:
-            return None, False
-
-    raw_path = meta.get("image_path")
-    if isinstance(raw_path, str) and raw_path.strip():
-        try:
-            binary = _safe_read_image_path(raw_path, tenant_id=_tenant_id)
-            if binary:
-                img = PILImage.open(BytesIO(binary))
-                return img, True
-        except Exception:
-            return None, False
-
-    for key in ("image_base64", "img_base64", "img", "image_data"):
-        s = meta.get(key)
-        if isinstance(s, str) and s.strip():
-            try:
-                img = PILImage.open(BytesIO(_b64_to_bytes(s)))
-                return img, True
-            except Exception:
-                return None, False
-
+        if image is not None:
+            return image, should_close
     return None, False
 
 
@@ -209,22 +220,14 @@ def _ean13_check_digit(payload12: str) -> str:
     return str((10 - (total % 10)) % 10)
 
 
-def _decode_clean_ean13_from_pixels(image: PILImage.Image) -> str:
-    """
-    Decode clean, generated EAN-13 fixtures without requiring system zbar.
-
-    This is intentionally narrow: it only handles high-contrast, axis-aligned
-    barcode images used by local parser fixtures and tests. Production paths
-    still prefer pyzbar when that optional native dependency is available.
-    """
+def _ean13_bit_string(image: PILImage.Image) -> str:
     try:
         import numpy as np
     except Exception:
         return ""
 
     try:
-        gray = image.convert("L")
-        arr = np.array(gray)
+        arr = np.array(image.convert("L"))
     except Exception:
         return ""
     if arr.ndim != 2 or arr.size == 0:
@@ -248,16 +251,15 @@ def _decode_clean_ean13_from_pixels(image: PILImage.Image) -> str:
     if module_width < 1.0:
         return ""
 
-    bits = []
+    bits: list[str] = []
     for index in range(95):
         center = int(round(start + (index + 0.5) * module_width))
         center = max(0, min(width - 1, center))
         bits.append("1" if dark_columns[center] else "0")
-    bit_string = "".join(bits)
+    return "".join(bits)
 
-    if not (bit_string.startswith("101") and bit_string[45:50] == "01010" and bit_string.endswith("101")):
-        return ""
 
+def _decode_left_ean13_digits(bit_string: str) -> tuple[str | None, str | None]:
     left_digits: list[str] = []
     parity: list[str] = []
     for offset in range(3, 45, 7):
@@ -265,46 +267,62 @@ def _decode_clean_ean13_from_pixels(image: PILImage.Image) -> str:
         if chunk in _EAN13_LEFT_ODD:
             left_digits.append(_EAN13_LEFT_ODD[chunk])
             parity.append("L")
-        elif chunk in _EAN13_LEFT_EVEN:
+            continue
+        if chunk in _EAN13_LEFT_EVEN:
             left_digits.append(_EAN13_LEFT_EVEN[chunk])
             parity.append("G")
-        else:
-            return ""
+            continue
+        return None, None
+    return "".join(left_digits), "".join(parity)
 
-    right_digits: list[str] = []
+
+def _decode_right_ean13_digits(bit_string: str) -> str | None:
+    digits: list[str] = []
     for offset in range(50, 92, 7):
         chunk = bit_string[offset : offset + 7]
         digit = _EAN13_RIGHT.get(chunk)
         if digit is None:
-            return ""
-        right_digits.append(digit)
+            return None
+        digits.append(digit)
+    return "".join(digits)
 
-    prefix = _EAN13_PARITY_PREFIX.get("".join(parity))
+
+def _decode_clean_ean13_from_pixels(image: PILImage.Image) -> str:
+    """
+    Decode clean, generated EAN-13 fixtures without requiring system zbar.
+
+    This is intentionally narrow: it only handles high-contrast, axis-aligned
+    barcode images used by local parser fixtures and tests. Production paths
+    still prefer pyzbar when that optional native dependency is available.
+    """
+    bit_string = _ean13_bit_string(image)
+    if not (bit_string.startswith("101") and bit_string[45:50] == "01010" and bit_string.endswith("101")):
+        return ""
+
+    left_digits, parity = _decode_left_ean13_digits(bit_string)
+    if left_digits is None or parity is None:
+        return ""
+    right_digits = _decode_right_ean13_digits(bit_string)
+    if right_digits is None:
+        return ""
+
+    prefix = _EAN13_PARITY_PREFIX.get(parity)
     if prefix is None:
         return ""
 
-    value = prefix + "".join(left_digits) + "".join(right_digits)
+    value = prefix + left_digits + right_digits
     if len(value) != 13 or _ean13_check_digit(value[:12]) != value[-1]:
         return ""
     return value
 
 
-def decode_image_codes(image: PILImage.Image) -> dict[str, Any]:
-    """
-    Best-effort decode of QR/barcode content from an image.
-
-    Returns a compact payload:
-    - visual_kind: qr | barcode
-    - text: first decoded value
-    - values: all decoded values (deduplicated)
-    """
+def _decode_with_pyzbar(image: PILImage.Image) -> tuple[list[str], str]:
     values: list[str] = []
     visual_kind = ""
     try:
         from pyzbar.pyzbar import decode  # type: ignore[import-untyped]
 
-        items = decode(image)
-        for item in items or []:
+        for item in decode(image) or []:
             raw_type = str(getattr(item, "type", "") or "").strip().upper()
             raw_data = getattr(item, "data", b"")
             try:
@@ -319,23 +337,38 @@ def decode_image_codes(image: PILImage.Image) -> dict[str, Any]:
                 visual_kind = "barcode"
     except Exception as exc:
         logger.debug("Ignoring non-critical image understanding fallback failure: %s", exc)
+    return values, visual_kind
 
+
+def _decode_with_opencv_qr(image: PILImage.Image) -> tuple[list[str], str]:
+    try:
+        import cv2
+        import numpy as np
+
+        detector = cv2.QRCodeDetector()
+        arr = np.array(image.convert("RGB"))
+        for candidate in (arr, cv2.resize(arr, None, fx=6, fy=6, interpolation=cv2.INTER_NEAREST)):
+            text, _points, _straight = detector.detectAndDecode(candidate)
+            text = str(text or "").strip()
+            if text:
+                return [text], "qr"
+    except Exception as exc:
+        logger.debug("Ignoring non-critical image understanding fallback failure: %s", exc)
+    return [], ""
+
+
+def decode_image_codes(image: PILImage.Image) -> dict[str, Any]:
+    """
+    Best-effort decode of QR/barcode content from an image.
+
+    Returns a compact payload:
+    - visual_kind: qr | barcode
+    - text: first decoded value
+    - values: all decoded values (deduplicated)
+    """
+    values, visual_kind = _decode_with_pyzbar(image)
     if not values:
-        try:
-            import cv2
-            import numpy as np
-
-            detector = cv2.QRCodeDetector()
-            arr = np.array(image.convert("RGB"))
-            for candidate in (arr, cv2.resize(arr, None, fx=6, fy=6, interpolation=cv2.INTER_NEAREST)):
-                text, _points, _straight = detector.detectAndDecode(candidate)
-                text = str(text or "").strip()
-                if text:
-                    values.append(text)
-                    visual_kind = "qr"
-                    break
-        except Exception as exc:
-            logger.debug("Ignoring non-critical image understanding fallback failure: %s", exc)
+        values, visual_kind = _decode_with_opencv_qr(image)
 
     if not values:
         text = _decode_clean_ean13_from_pixels(image)
@@ -352,44 +385,25 @@ def decode_image_codes(image: PILImage.Image) -> dict[str, Any]:
     }
 
 
-def infer_visual_kind_from_pixels(image: PILImage.Image) -> str:
-    """
-    Best-effort local visual-kind inference from image pixels.
-
-    Current supported kinds:
-    - chart: multiple solid bar-like regions, or axis + sloped line plot
-    - diagram: multiple box-like regions connected by sparse lines
-    """
+def _load_cv_image_arrays(image: PILImage.Image) -> tuple[Any, Any, Any] | None:
     try:
         import cv2
         import numpy as np
     except Exception:
-        return ""
+        return None
 
     try:
-        rgb = image.convert("RGB")
-        arr = np.array(rgb)
+        arr = np.array(image.convert("RGB"))
     except Exception:
-        return ""
-
+        return None
     if arr.size == 0 or arr.ndim != 3:
-        return ""
+        return None
+    return cv2, np, arr
 
-    height, width = arr.shape[:2]
-    if height < 24 or width < 24:
-        return ""
 
-    gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
-    mask = cv2.threshold(gray, 220, 255, cv2.THRESH_BINARY_INV)[1]
-    ink_ratio = float(mask.mean() / 255.0)
-    if ink_ratio <= 0.01:
-        return ""
-
-    min_component_area = max(32, int(width * height * 0.004))
-    component_count, _labels, stats, _centroids = cv2.connectedComponentsWithStats(mask, connectivity=8)
-
+def _find_solid_rects(stats: Any, *, height: int, min_component_area: int) -> list[tuple[int, int, int, int, int]]:
     solid_rects: list[tuple[int, int, int, int, int]] = []
-    for index in range(1, int(component_count)):
+    for index in range(1, len(stats)):
         x, y, w, h, area = (int(value) for value in stats[index])
         if area < min_component_area or w <= 0 or h <= 0:
             continue
@@ -397,48 +411,52 @@ def infer_visual_kind_from_pixels(image: PILImage.Image) -> str:
         aspect_ratio = float(w / float(h))
         if fill_ratio >= 0.55 and 0.18 <= aspect_ratio <= 1.8 and h >= int(height * 0.12):
             solid_rects.append((x, y, w, h, area))
+    return solid_rects
 
-    if len(solid_rects) >= 3:
-        solid_rects.sort(key=lambda item: item[0])
-        heights = [item[3] for item in solid_rects]
-        unique_heights = len({int(round(value / 4.0) * 4) for value in heights})
-        if unique_heights >= 3 and max(heights) - min(heights) >= int(height * 0.12):
-            return "chart"
 
-    edges = cv2.Canny(gray, 60, 180)
-    lines = cv2.HoughLinesP(
-        edges,
-        1,
-        np.pi / 180.0,
-        threshold=max(20, int(min(width, height) * 0.08)),
-        minLineLength=max(18, int(min(width, height) * 0.12)),
-        maxLineGap=max(6, int(min(width, height) * 0.03)),
-    )
-    if lines is not None:
-        horizontal_axes = 0
-        vertical_axes = 0
-        sloped_segments = 0
-        for raw in lines:
-            x1, y1, x2, y2 = (int(value) for value in raw[0])
-            dx = x2 - x1
-            dy = y2 - y1
-            length = float((dx * dx + dy * dy) ** 0.5)
-            if length < float(max(18, int(min(width, height) * 0.12))):
-                continue
-            abs_dx = abs(dx)
-            abs_dy = abs(dy)
-            if abs_dy <= 4 and length >= float(width * 0.35) and max(y1, y2) >= int(height * 0.55):
-                horizontal_axes += 1
-                continue
-            if abs_dx <= 4 and length >= float(height * 0.35) and min(x1, x2) <= int(width * 0.25):
-                vertical_axes += 1
-                continue
-            if abs_dx >= 8 and abs_dy >= 8 and 0.2 <= float(abs_dy) / float(abs_dx) <= 5.0:
-                sloped_segments += 1
-        if horizontal_axes >= 1 and vertical_axes >= 1 and sloped_segments >= 2 and ink_ratio <= 0.2:
-            return "chart"
+def _looks_like_bar_chart(solid_rects: list[tuple[int, int, int, int, int]], *, height: int) -> bool:
+    if len(solid_rects) < 3:
+        return False
+    solid_rects = sorted(solid_rects, key=lambda item: item[0])
+    heights = [item[3] for item in solid_rects]
+    unique_heights = len({int(round(value / 4.0) * 4) for value in heights})
+    return unique_heights >= 3 and max(heights) - min(heights) >= int(height * 0.12)
 
-    contours, _hierarchy = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+def _looks_like_line_chart(
+    lines: Any,
+    *,
+    width: int,
+    height: int,
+    ink_ratio: float,
+    min_line_length: int,
+) -> bool:
+    if lines is None:
+        return False
+    horizontal_axes = 0
+    vertical_axes = 0
+    sloped_segments = 0
+    for raw in lines:
+        x1, y1, x2, y2 = (int(value) for value in raw[0])
+        dx = x2 - x1
+        dy = y2 - y1
+        length = float((dx * dx + dy * dy) ** 0.5)
+        if length < float(min_line_length):
+            continue
+        abs_dx = abs(dx)
+        abs_dy = abs(dy)
+        if abs_dy <= 4 and length >= float(width * 0.35) and max(y1, y2) >= int(height * 0.55):
+            horizontal_axes += 1
+            continue
+        if abs_dx <= 4 and length >= float(height * 0.35) and min(x1, x2) <= int(width * 0.25):
+            vertical_axes += 1
+            continue
+        if abs_dx >= 8 and abs_dy >= 8 and 0.2 <= float(abs_dy) / float(abs_dx) <= 5.0:
+            sloped_segments += 1
+    return horizontal_axes >= 1 and vertical_axes >= 1 and sloped_segments >= 2 and ink_ratio <= 0.2
+
+
+def _count_rectangular_regions(cv2: Any, contours: Any, *, min_component_area: int) -> int:
     rectangular_regions = 0
     for contour in contours:
         x, y, w, h = (int(value) for value in cv2.boundingRect(contour))
@@ -458,6 +476,53 @@ def infer_visual_kind_from_pixels(image: PILImage.Image) -> str:
         extent = contour_area / float(box_area)
         if 4 <= len(approx) <= 10 and 1.2 <= aspect_ratio <= 4.5 and extent >= 0.45:
             rectangular_regions += 1
+    return rectangular_regions
+
+
+def infer_visual_kind_from_pixels(image: PILImage.Image) -> str:
+    """
+    Best-effort local visual-kind inference from image pixels.
+
+    Current supported kinds:
+    - chart: multiple solid bar-like regions, or axis + sloped line plot
+    - diagram: multiple box-like regions connected by sparse lines
+    """
+    loaded = _load_cv_image_arrays(image)
+    if loaded is None:
+        return ""
+    cv2, np, arr = loaded
+
+    height, width = arr.shape[:2]
+    if height < 24 or width < 24:
+        return ""
+
+    gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
+    mask = cv2.threshold(gray, 220, 255, cv2.THRESH_BINARY_INV)[1]
+    ink_ratio = float(mask.mean() / 255.0)
+    if ink_ratio <= 0.01:
+        return ""
+
+    min_component_area = max(32, int(width * height * 0.004))
+    component_count, _labels, stats, _centroids = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    solid_rects = _find_solid_rects(stats[: int(component_count)], height=height, min_component_area=min_component_area)
+    if _looks_like_bar_chart(solid_rects, height=height):
+        return "chart"
+
+    min_line_length = max(18, int(min(width, height) * 0.12))
+    edges = cv2.Canny(gray, 60, 180)
+    lines = cv2.HoughLinesP(
+        edges,
+        1,
+        np.pi / 180.0,
+        threshold=max(20, int(min(width, height) * 0.08)),
+        minLineLength=min_line_length,
+        maxLineGap=max(6, int(min(width, height) * 0.03)),
+    )
+    if _looks_like_line_chart(lines, width=width, height=height, ink_ratio=ink_ratio, min_line_length=min_line_length):
+        return "chart"
+
+    contours, _hierarchy = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    rectangular_regions = _count_rectangular_regions(cv2, contours, min_component_area=min_component_area)
 
     if rectangular_regions >= 3 and len(solid_rects) < 3 and ink_ratio <= 0.12:
         return "diagram"

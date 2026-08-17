@@ -201,6 +201,163 @@ class MagicPDFParser:
     def _extract_service_markdown(data: Any) -> str:
         return extract_markdown_response_text(data)
 
+    @staticmethod
+    def _decode_service_response(resp: requests.Response) -> tuple[Any, str]:
+        data: Any = {}
+        ctype = str(resp.headers.get("content-type") or "").lower()
+        if "application/json" in ctype:
+            try:
+                data = resp.json()
+            except Exception:
+                data = json.loads((resp.text or "").strip() or "{}")
+            return data, extract_markdown_response_text(data)
+        return data, resp.text or ""
+
+    def _build_service_metadata(
+        self,
+        *,
+        file_path: Path,
+        dataset_id: str | None,
+        method: str,
+        data: Any,
+    ) -> dict[str, Any]:
+        metadata: dict[str, Any] = {
+            "source": str(file_path.name),
+            "file_type": "pdf",
+            "parser_backend": "magicpdf",
+            "magicpdf_method": method,
+            "magicpdf_mode": "service",
+        }
+        if dataset_id:
+            metadata["dataset_id"] = str(dataset_id)
+        if not isinstance(data, dict):
+            return metadata
+        if data.get("asset_base_dir"):
+            metadata["asset_base_dir"] = str(data["asset_base_dir"])
+        if data.get("artifact_dir"):
+            metadata["artifact_dir"] = str(data["artifact_dir"])
+        if data.get("elapsed_sec") is not None:
+            try:
+                metadata["magicpdf_elapsed_sec"] = float(data["elapsed_sec"])
+            except (TypeError, ValueError):
+                metadata["magicpdf_elapsed_sec"] = data["elapsed_sec"]
+        return metadata
+
+    def _build_local_cli_command(
+        self,
+        *,
+        cli: str,
+        safe_pdf_path: Path,
+        artifact_root: Path,
+        method: str,
+        lang: str | None,
+        debug: bool,
+    ) -> list[str]:
+        cmd = [
+            cli,
+            "--path",
+            str(safe_pdf_path),
+            "--output-dir",
+            str(artifact_root),
+            "--method",
+            method,
+        ]
+        if lang:
+            cmd.extend(["--lang", lang])
+        if debug:
+            cmd.extend(["--debug", "true"])
+        return cmd
+
+    @staticmethod
+    def _prepare_safe_pdf(file_path: Path, artifact_root: Path) -> Path:
+        safe_stem = artifact_root.name
+        safe_pdf_path = artifact_root / f"{safe_stem}.pdf"
+        if safe_pdf_path.resolve() != file_path.resolve():
+            shutil.copyfile(file_path, safe_pdf_path)
+        return safe_pdf_path
+
+    @staticmethod
+    def _cli_environment(*, artifact_root: Path, config_path: Path) -> dict[str, str]:
+        env = os.environ.copy()
+        env["MINERU_TOOLS_CONFIG_JSON"] = str(config_path)
+        env.setdefault("YOLO_CONFIG_DIR", str(artifact_root / ".ultralytics"))
+        return env
+
+    def _run_local_cli(
+        self,
+        *,
+        cmd: list[str],
+        timeout_sec: float,
+        env: dict[str, str],
+        artifact_root: Path,
+    ) -> str:
+        stdout_text = ""
+        try:
+            proc = run_resolved_cli(
+                cmd,
+                check=True,
+                stdout=PIPE,
+                stderr=STDOUT,
+                text=True,
+                timeout=timeout_sec,
+                env=env,
+            )
+            stdout_text = proc.stdout or ""
+            if stdout_text:
+                logger.info("[magicpdf] %s", stdout_text.strip()[:4000])
+            return stdout_text
+        except TimeoutExpired as exc:
+            raise RuntimeError(f"MagicPDF timed out after {timeout_sec:.0f}s") from exc
+        except CalledProcessError as exc:
+            out = (exc.stdout or "").strip()
+            raise RuntimeError(f"MagicPDF failed: {out[:4000] or exc}") from exc
+
+    @staticmethod
+    def _resolve_markdown_path(*, artifact_root: Path, method: str) -> Path:
+        safe_stem = artifact_root.name
+        md_path = artifact_root / safe_stem / method / f"{safe_stem}.md"
+        if md_path.exists():
+            return md_path
+        candidates = list((artifact_root / safe_stem / method).glob("*.md"))
+        if candidates:
+            return candidates[0]
+        return md_path
+
+    @staticmethod
+    def _write_missing_output_log(*, artifact_root: Path, stdout_text: str) -> None:
+        try:
+            (artifact_root / "magic-pdf.log").write_text(stdout_text, encoding="utf-8", errors="ignore")
+        except Exception as exc:
+            logger.debug("[magicpdf] ignoring CLI failure log write error: %s", exc)
+
+    @staticmethod
+    def _sanitize_markdown(markdown_text: str) -> str:
+        if settings.MINIO_ENABLED or not markdown_text:
+            return markdown_text
+        markdown_text = re.sub(r"!\[[^\]]*\]\(\s*[^)\s]+?\s*\)\s*", "", markdown_text)
+        return re.sub(r"<img[^>]*?>", "", markdown_text, flags=re.IGNORECASE)
+
+    @staticmethod
+    def _build_local_metadata(
+        *,
+        file_path: Path,
+        md_path: Path,
+        artifact_root: Path,
+        method: str,
+        lang: str | None,
+    ) -> dict[str, Any]:
+        metadata = {
+            "source": str(file_path.name),
+            "file_type": "pdf",
+            "parser_backend": "magicpdf",
+            "asset_base_dir": str(md_path.parent),
+            "artifact_dir": str(artifact_root),
+            "magicpdf_method": method,
+        }
+        if lang:
+            metadata["magicpdf_lang"] = lang
+        return metadata
+
     def _parse_service(
         self,
         file_path: Path,
@@ -216,18 +373,7 @@ class MagicPDFParser:
         if int(getattr(resp, "status_code", 0) or 0) != 200:
             raise RuntimeError(f"MagicPDF service API error {resp.status_code}: {(resp.text or '')[:500]}")
 
-        data: Any = {}
-        markdown_text = ""
-        ctype = str(resp.headers.get("content-type") or "").lower()
-        if "application/json" in ctype:
-            try:
-                data = resp.json()
-            except Exception:
-                data = json.loads((resp.text or "").strip() or "{}")
-            markdown_text = self._extract_service_markdown(data)
-        else:
-            markdown_text = resp.text or ""
-
+        data, markdown_text = self._decode_service_response(resp)
         if not str(markdown_text or "").strip():
             raise RuntimeError("MagicPDF service returned empty Markdown.")
 
@@ -235,26 +381,12 @@ class MagicPDFParser:
         if isinstance(data, dict):
             method = str(data.get("method") or method)
 
-        metadata: dict[str, Any] = {
-            "source": str(file_path.name),
-            "file_type": "pdf",
-            "parser_backend": "magicpdf",
-            "magicpdf_method": method,
-            "magicpdf_mode": "service",
-        }
-        if dataset_id:
-            metadata["dataset_id"] = str(dataset_id)
-        if isinstance(data, dict):
-            if data.get("asset_base_dir"):
-                metadata["asset_base_dir"] = str(data["asset_base_dir"])
-            if data.get("artifact_dir"):
-                metadata["artifact_dir"] = str(data["artifact_dir"])
-            if data.get("elapsed_sec") is not None:
-                try:
-                    metadata["magicpdf_elapsed_sec"] = float(data["elapsed_sec"])
-                except (TypeError, ValueError):
-                    metadata["magicpdf_elapsed_sec"] = data["elapsed_sec"]
-
+        metadata = self._build_service_metadata(
+            file_path=file_path,
+            dataset_id=dataset_id,
+            method=method,
+            data=data,
+        )
         return [Document(page_content=markdown_text, metadata=metadata)]
 
     def _ensure_tools_config(self, artifact_root: Path) -> Path:
@@ -342,85 +474,45 @@ class MagicPDFParser:
         artifact_root.mkdir(parents=True, exist_ok=True)
 
         # Avoid spaces/unicode in the input filename (some parsers/tools are brittle).
-        safe_stem = artifact_root.name
-        safe_pdf_path = artifact_root / f"{safe_stem}.pdf"
-        if safe_pdf_path.resolve() != file_path.resolve():
-            shutil.copyfile(file_path, safe_pdf_path)
-
-        cmd: list[str] = [
-            cli,
-            "--path",
-            str(safe_pdf_path),
-            "--output-dir",
-            str(artifact_root),
-            "--method",
-            method,
-        ]
-        if lang:
-            cmd.extend(["--lang", lang])
-        if debug:
-            cmd.extend(["--debug", "true"])
+        safe_pdf_path = self._prepare_safe_pdf(file_path, artifact_root)
+        cmd = self._build_local_cli_command(
+            cli=cli,
+            safe_pdf_path=safe_pdf_path,
+            artifact_root=artifact_root,
+            method=method,
+            lang=lang,
+            debug=debug,
+        )
 
         logger.info("[magicpdf] parsing %s (method=%s)", file_path.name, method)
-        env = os.environ.copy()
-        env["MINERU_TOOLS_CONFIG_JSON"] = str(self._ensure_tools_config(artifact_root))
-        env.setdefault("YOLO_CONFIG_DIR", str(artifact_root / ".ultralytics"))
-        stdout_text = ""
-        try:
-            proc = run_resolved_cli(
-                cmd,
-                check=True,
-                stdout=PIPE,
-                stderr=STDOUT,
-                text=True,
-                timeout=timeout_sec,
-                env=env,
-            )
-            stdout_text = proc.stdout or ""
-            if stdout_text:
-                logger.info("[magicpdf] %s", stdout_text.strip()[:4000])
-        except TimeoutExpired as exc:
-            raise RuntimeError(f"MagicPDF timed out after {timeout_sec:.0f}s") from exc
-        except CalledProcessError as exc:
-            out = (exc.stdout or "").strip()
-            raise RuntimeError(f"MagicPDF failed: {out[:4000] or exc}") from exc
-
-        md_path = artifact_root / safe_stem / method / f"{safe_stem}.md"
-        if not md_path.exists():
-            # Best-effort: locate any markdown output.
-            candidates = list((artifact_root / safe_stem / method).glob("*.md"))
-            if candidates:
-                md_path = candidates[0]
+        env = self._cli_environment(
+            artifact_root=artifact_root,
+            config_path=self._ensure_tools_config(artifact_root),
+        )
+        stdout_text = self._run_local_cli(
+            cmd=cmd,
+            timeout_sec=timeout_sec,
+            env=env,
+            artifact_root=artifact_root,
+        )
+        md_path = self._resolve_markdown_path(artifact_root=artifact_root, method=method)
         if not md_path.exists():
             out = stdout_text.strip()
             if out:
                 # Keep the full CLI output for debugging. This is particularly helpful
                 # because the upstream CLI sometimes exits with code 0 on failures.
-                try:
-                    (artifact_root / "magic-pdf.log").write_text(stdout_text, encoding="utf-8", errors="ignore")
-                except Exception as exc:
-                    logger.debug("[magicpdf] ignoring CLI failure log write error: %s", exc)
+                self._write_missing_output_log(artifact_root=artifact_root, stdout_text=stdout_text)
                 raise RuntimeError(f"MagicPDF did not produce a markdown output file. Output:\n{out[:4000]}")
             raise RuntimeError("MagicPDF did not produce a markdown output file")
 
         markdown_text = md_path.read_text(encoding="utf-8", errors="ignore")
-
-        # If object storage is disabled, strip local image references to avoid dead links.
-        if not settings.MINIO_ENABLED and markdown_text:
-            markdown_text = re.sub(r"!\[[^\]]*\]\(\s*[^)\s]+?\s*\)\s*", "", markdown_text)
-            markdown_text = re.sub(r"<img[^>]*?>", "", markdown_text, flags=re.IGNORECASE)
-
-        metadata = {
-            "source": str(file_path.name),
-            "file_type": "pdf",
-            "parser_backend": "magicpdf",
-            # Used by downstream stages to resolve relative image paths like "images/foo.png".
-            "asset_base_dir": str(md_path.parent),
-            # Used for best-effort cleanup after ingestion.
-            "artifact_dir": str(artifact_root),
-            "magicpdf_method": method,
-        }
-        if lang:
-            metadata["magicpdf_lang"] = lang
+        markdown_text = self._sanitize_markdown(markdown_text)
+        metadata = self._build_local_metadata(
+            file_path=file_path,
+            md_path=md_path,
+            artifact_root=artifact_root,
+            method=method,
+            lang=lang,
+        )
 
         return [Document(page_content=markdown_text, metadata=metadata)]

@@ -329,51 +329,64 @@ def _count_inversions(ranks: list[int]) -> int:
     return int(inversions)
 
 
-def _score_reading_order_markdown(markdown: str, *, max_blocks: int = 600, min_blocks: int = 6) -> dict[str, Any]:
-    blocks, tag_count = _extract_blocks(str(markdown or ""))
-    if not blocks:
-        return {
-            "schema": _READING_ORDER_SCHEMA,
-            "method": "position_tags",
-            "score": None,
-            "nid": None,
-            "blocks": 0,
-            "tag_count": int(tag_count),
-            "pages": [],
-            "column_pages": 0,
-            "warnings": ["missing_position_tags"],
-        }
+def _reading_order_empty_result(*, tag_count: int) -> dict[str, Any]:
+    return {
+        "schema": _READING_ORDER_SCHEMA,
+        "method": "position_tags",
+        "score": None,
+        "nid": None,
+        "blocks": 0,
+        "tag_count": int(tag_count),
+        "pages": [],
+        "column_pages": 0,
+        "warnings": ["missing_position_tags"],
+    }
 
-    blocks_total = int(len(blocks))
-    if int(max_blocks or 0) > 0 and blocks_total > int(max_blocks):
-        keep = int(max_blocks)
-        head = keep // 2
-        tail = keep - head
-        blocks = list(blocks[:head]) + list(blocks[-tail:])
 
-    if len(blocks) < int(min_blocks):
-        pages = sorted({int(block.page) for block in blocks if int(block.page) > 0})
-        return {
-            "schema": _READING_ORDER_SCHEMA,
-            "method": "position_tags",
-            "score": None,
-            "nid": None,
-            "blocks": int(len(blocks)),
-            "tag_count": int(tag_count),
-            "pages": pages,
-            "column_pages": 0,
-            "warnings": ["insufficient_blocks"],
-        }
+def _trim_blocks(blocks: list[_Block], *, max_blocks: int) -> list[_Block]:
+    if int(max_blocks or 0) <= 0 or len(blocks) <= int(max_blocks):
+        return blocks
+    keep = int(max_blocks)
+    head = keep // 2
+    tail = keep - head
+    return list(blocks[:head]) + list(blocks[-tail:])
 
+
+def _reading_order_insufficient_blocks_result(blocks: list[_Block], *, tag_count: int) -> dict[str, Any]:
+    pages = sorted({int(block.page) for block in blocks if int(block.page) > 0})
+    return {
+        "schema": _READING_ORDER_SCHEMA,
+        "method": "position_tags",
+        "score": None,
+        "nid": None,
+        "blocks": int(len(blocks)),
+        "tag_count": int(tag_count),
+        "pages": pages,
+        "column_pages": 0,
+        "warnings": ["insufficient_blocks"],
+    }
+
+
+def _blocks_by_page(blocks: list[_Block]) -> dict[int, list[_Block]]:
     by_page: dict[int, list[_Block]] = {}
     for block in blocks:
         by_page.setdefault(int(block.page), []).append(block)
+    return by_page
 
+
+def _page_widths(by_page: Mapping[int, Sequence[_Block]]) -> dict[int, float]:
     page_width: dict[int, float] = {}
     for page, items in by_page.items():
         width = max((float(item.right) for item in items), default=0.0)
         page_width[int(page)] = float(width if width > 0.0 else 1.0)
+    return page_width
 
+
+def _page_layout_stats(
+    by_page: Mapping[int, Sequence[_Block]],
+    *,
+    page_width: Mapping[int, float],
+) -> tuple[dict[int, bool], dict[int, float], dict[int, float]]:
     page_is_two_col: dict[int, bool] = {}
     page_min_top: dict[int, float] = {}
     page_max_bottom: dict[int, float] = {}
@@ -385,33 +398,73 @@ def _score_reading_order_markdown(markdown: str, *, max_blocks: int = 600, min_b
         page_is_two_col[int(page)] = bool(left_any and right_any)
         page_min_top[int(page)] = min((float(item.top) for item in items), default=0.0)
         page_max_bottom[int(page)] = max((float(item.bottom) for item in items), default=0.0)
+    return page_is_two_col, page_min_top, page_max_bottom
 
-    def col_idx(block: _Block) -> int:
-        if not page_is_two_col.get(int(block.page), False):
-            return 0
-        width = page_width.get(int(block.page), 1.0) or 1.0
-        center = ((float(block.left) + float(block.right)) / 2.0) / float(width)
-        return 1 if center > 0.5 else 0
 
-    def flow_group(block: _Block) -> int:
-        if not page_is_two_col.get(int(block.page), False):
-            return 0
-        width = page_width.get(int(block.page), 1.0) or 1.0
-        span_ratio = max(0.0, float(block.right) - float(block.left)) / float(width)
-        if span_ratio < 0.75:
-            return col_idx(block)
-        top_min = float(page_min_top.get(int(block.page), 0.0))
-        bottom_max = float(page_max_bottom.get(int(block.page), float(block.bottom)))
-        vertical_span = max(1.0, bottom_max - top_min)
-        if float(block.top) <= top_min + vertical_span * 0.12:
-            return -1
-        if float(block.bottom) >= bottom_max - vertical_span * 0.12:
-            return 2
-        return 2 if float(block.top) >= top_min + vertical_span * 0.35 else -1
+def _column_index(
+    block: _Block,
+    *,
+    page_is_two_col: Mapping[int, bool],
+    page_width: Mapping[int, float],
+) -> int:
+    if not page_is_two_col.get(int(block.page), False):
+        return 0
+    width = page_width.get(int(block.page), 1.0) or 1.0
+    center = ((float(block.left) + float(block.right)) / 2.0) / float(width)
+    return 1 if center > 0.5 else 0
 
+
+def _flow_group(
+    block: _Block,
+    *,
+    page_is_two_col: Mapping[int, bool],
+    page_width: Mapping[int, float],
+    page_min_top: Mapping[int, float],
+    page_max_bottom: Mapping[int, float],
+) -> int:
+    if not page_is_two_col.get(int(block.page), False):
+        return 0
+    width = page_width.get(int(block.page), 1.0) or 1.0
+    span_ratio = max(0.0, float(block.right) - float(block.left)) / float(width)
+    if span_ratio < 0.75:
+        return _column_index(block, page_is_two_col=page_is_two_col, page_width=page_width)
+    top_min = float(page_min_top.get(int(block.page), 0.0))
+    bottom_max = float(page_max_bottom.get(int(block.page), float(block.bottom)))
+    vertical_span = max(1.0, bottom_max - top_min)
+    if float(block.top) <= top_min + vertical_span * 0.12:
+        return -1
+    if float(block.bottom) >= bottom_max - vertical_span * 0.12:
+        return 2
+    return 2 if float(block.top) >= top_min + vertical_span * 0.35 else -1
+
+
+def _score_reading_order_markdown(markdown: str, *, max_blocks: int = 600, min_blocks: int = 6) -> dict[str, Any]:
+    blocks, tag_count = _extract_blocks(str(markdown or ""))
+    if not blocks:
+        return _reading_order_empty_result(tag_count=tag_count)
+
+    blocks = _trim_blocks(blocks, max_blocks=int(max_blocks or 0))
+    if len(blocks) < int(min_blocks):
+        return _reading_order_insufficient_blocks_result(blocks, tag_count=tag_count)
+
+    by_page = _blocks_by_page(blocks)
+    page_width = _page_widths(by_page)
+    page_is_two_col, page_min_top, page_max_bottom = _page_layout_stats(by_page, page_width=page_width)
     expected = sorted(
         blocks,
-        key=lambda block: (int(block.page), flow_group(block), float(block.top), float(block.left), int(block.idx)),
+        key=lambda block: (
+            int(block.page),
+            _flow_group(
+                block,
+                page_is_two_col=page_is_two_col,
+                page_width=page_width,
+                page_min_top=page_min_top,
+                page_max_bottom=page_max_bottom,
+            ),
+            float(block.top),
+            float(block.left),
+            int(block.idx),
+        ),
     )
     expected_rank = {int(block.idx): index + 1 for index, block in enumerate(expected)}
     observed_ranks = [expected_rank.get(int(block.idx), 0) for block in blocks]

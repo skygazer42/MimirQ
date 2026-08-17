@@ -852,26 +852,18 @@ def _extract_member_ids(raw: Any) -> list[str]:
     return out
 
 
-@router.patch("/Groups/{group_id}", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-def patch_group_membership(
-    group_id: UUID,
-    payload: dict[str, Any],
-    *,
-    tenant_id: Annotated[UUID, Depends(get_scim_tenant_id)],
-    actor_id: Annotated[str, Depends(_require_scim_actor)],
-    db: Annotated[Session, Depends(get_db)],
-):
-    if not bool(getattr(settings, "SCIM_PATCH_GROUP_MEMBERSHIP_ENABLED", False)):
-        return _scim_error(status_code=404, detail="PATCH group membership not enabled")
-
+def _validate_group_membership_patch_payload(payload: dict[str, Any]) -> tuple[list[Any] | None, JSONResponse | None]:
     schemas = payload.get("schemas") if isinstance(payload, dict) else None
     if not isinstance(schemas, list) or _URN_PATCH_OP not in {str(s or "") for s in schemas}:
-        return _scim_error(status_code=400, detail="Invalid SCIM PATCH payload", scim_type="invalidSyntax")
+        return None, _scim_error(status_code=400, detail="Invalid SCIM PATCH payload", scim_type="invalidSyntax")
 
     ops = payload.get("Operations") if isinstance(payload, dict) else None
     if not isinstance(ops, list) or not ops:
-        return _scim_error(status_code=400, detail="Missing Operations", scim_type="invalidSyntax")
+        return None, _scim_error(status_code=400, detail="Missing Operations", scim_type="invalidSyntax")
+    return ops, None
 
+
+def _membership_patch_targets(ops: list[Any]) -> tuple[list[str], list[str]]:
     to_add: list[str] = []
     to_remove: list[str] = []
     for op in ops:
@@ -895,8 +887,17 @@ def patch_group_membership(
                 uid = str(m.group(1) or "").strip()
                 if uid:
                     to_remove.append(uid)
+    return to_add, to_remove
 
-    # Idempotent: underlying service dedupes (add) and deletes only existing (remove).
+
+def _apply_membership_patch(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    group_id: UUID,
+    to_add: list[str],
+    to_remove: list[str],
+) -> tuple[int, int] | JSONResponse:
     added = 0
     removed = 0
     try:
@@ -906,7 +907,20 @@ def patch_group_membership(
             removed = TenantGroupService.remove_members(db, tenant_id=tenant_id, group_id=group_id, member_ids=to_remove)
     except HTTPException as exc:
         return _scim_error(status_code=int(exc.status_code), detail=str(exc.detail or "error"))
+    return added, removed
 
+
+def _audit_membership_patch(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    actor_id: str,
+    group_id: UUID,
+    to_add: list[str],
+    to_remove: list[str],
+    added: int,
+    removed: int,
+) -> None:
     audit_log_event(
         db,
         tenant_id=tenant_id,
@@ -921,10 +935,55 @@ def patch_group_membership(
             "member_remove_updated": int(removed),
         },
     )
-    with contextlib.suppress(Exception):
-        db.commit()
 
+
+def _membership_patch_response(*, db: Session, tenant_id: UUID, group_id: UUID) -> JSONResponse:
     group = TenantGroupService.get_group(db, tenant_id=tenant_id, group_id=group_id)
     _total, rows = TenantGroupService.list_members(db, tenant_id=tenant_id, group_id=group_id, skip=0, limit=2000)
     members = [str(getattr(r, "user_id", "") or "").strip() for r in rows]
     return _scim_json(_scim_group(group, include_members=True, members=members))
+
+
+@router.patch("/Groups/{group_id}", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def patch_group_membership(
+    group_id: UUID,
+    payload: dict[str, Any],
+    *,
+    tenant_id: Annotated[UUID, Depends(get_scim_tenant_id)],
+    actor_id: Annotated[str, Depends(_require_scim_actor)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    if not bool(getattr(settings, "SCIM_PATCH_GROUP_MEMBERSHIP_ENABLED", False)):
+        return _scim_error(status_code=404, detail="PATCH group membership not enabled")
+
+    ops, error = _validate_group_membership_patch_payload(payload)
+    if error is not None:
+        return error
+
+    # Idempotent: underlying service dedupes (add) and deletes only existing (remove).
+    to_add, to_remove = _membership_patch_targets(ops or [])
+    applied = _apply_membership_patch(
+        db=db,
+        tenant_id=tenant_id,
+        group_id=group_id,
+        to_add=to_add,
+        to_remove=to_remove,
+    )
+    if isinstance(applied, JSONResponse):
+        return applied
+    added, removed = applied
+
+    _audit_membership_patch(
+        db=db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        group_id=group_id,
+        to_add=to_add,
+        to_remove=to_remove,
+        added=added,
+        removed=removed,
+    )
+    with contextlib.suppress(Exception):
+        db.commit()
+
+    return _membership_patch_response(db=db, tenant_id=tenant_id, group_id=group_id)

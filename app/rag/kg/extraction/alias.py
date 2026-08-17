@@ -232,6 +232,27 @@ def looks_like_version_token(text: str) -> bool:
     return False
 
 
+def _is_cjk_abbreviation(value: str) -> bool:
+    if not _is_all_cjk(value):
+        return False
+    if len(value) < 2 or len(value) > 4:
+        return False
+    return not any(value.endswith(suffix) for suffix in _CJK_NON_ABBREV_SUFFIXES)
+
+
+def _is_ascii_abbreviation(value: str) -> bool:
+    if len(value) < 2 or len(value) > 15 or value.isdigit():
+        return False
+    allowed = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._+/")
+    if any(character not in allowed for character in value):
+        return False
+    if not any(character.isalpha() for character in value):
+        return False
+    if value.isalpha():
+        return value.isupper()
+    return True
+
+
 def is_abbrev_token(text: str) -> bool:
     """
     Heuristic for abbreviation/alias tokens.
@@ -249,41 +270,7 @@ def is_abbrev_token(text: str) -> bool:
     if looks_like_version_token(s):
         return False
 
-    if _contains_cjk(s):
-        # High precision: only treat *pure* CJK tokens as CJK abbreviations.
-        if not _is_all_cjk(s):
-            return False
-        # Most Chinese abbreviations are 2-4 characters (e.g. 清华/北航/中科院).
-        if len(s) < 2 or len(s) > 4:
-            return False
-        # Common full-name suffixes should not be treated as abbreviations.
-        for suf in _CJK_NON_ABBREV_SUFFIXES:
-            if s.endswith(suf):
-                return False
-        return True
-
-    # ASCII-ish abbreviations.
-    if len(s) < 2 or len(s) > 15:
-        return False
-    if s.isdigit():
-        return False
-
-    # Allow a compact set of characters typical for abbreviations.
-    allowed = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._+/")
-    if any(ch not in allowed for ch in s):
-        return False
-
-    # Require at least one letter (avoid pure symbol/digit tokens).
-    if not any(ch.isalpha() for ch in s):
-        return False
-
-    # Pure alphabetic tokens are only treated as abbreviations when ALL CAPS.
-    # This keeps precision high (avoid treating regular words like "Foo" as abbreviations).
-    if s.isalpha():
-        return s.isupper()
-
-    # Mixed tokens (digits/punct) are allowed (e.g. GPT-4, DeepSeekV3).
-    return True
+    return _is_cjk_abbreviation(s) if _contains_cjk(s) else _is_ascii_abbreviation(s)
 
 
 def choose_alias_direction(a: str, b: str) -> tuple[str, str] | None:
@@ -311,6 +298,62 @@ def choose_alias_direction(a: str, b: str) -> tuple[str, str] | None:
     return None
 
 
+def _append_alias_candidate(
+    *,
+    out: list[AliasCandidate],
+    seen: set[tuple[str, str, str]],
+    limit: int,
+    first: str,
+    second: str,
+    method: str,
+    quote: str | None,
+) -> None:
+    if len(out) >= limit:
+        return
+    first_clean = _clean_surface(first)
+    if method == "parentheses":
+        first_clean = _trim_long_surface_parentheses(first_clean)
+    second_clean = _clean_surface(second)
+    if not first_clean or not second_clean or first_clean.casefold() == second_clean.casefold():
+        return
+    key = tuple(sorted([first_clean.casefold(), second_clean.casefold()])) + (method,)
+    if key in seen:
+        return
+    seen.add(key)
+    cleaned_quote = _clean_surface(quote or "") if quote else None
+    out.append(
+        AliasCandidate(
+            a=first_clean,
+            b=second_clean,
+            method=method,
+            quote=cleaned_quote[:240] if cleaned_quote else None,
+        )
+    )
+
+
+def _append_alias_matches(
+    *,
+    text: str,
+    pattern: re.Pattern[str],
+    method: str,
+    out: list[AliasCandidate],
+    seen: set[tuple[str, str, str]],
+    limit: int,
+) -> None:
+    for match in pattern.finditer(text):
+        _append_alias_candidate(
+            out=out,
+            seen=seen,
+            limit=limit,
+            first=match.group("long"),
+            second=match.group("short"),
+            method=method,
+            quote=match.group(0),
+        )
+        if len(out) >= limit:
+            break
+
+
 def extract_alias_candidates(text: str, *, max_candidates: int = 20) -> list[AliasCandidate]:
     """
     Extract explicit alias candidates from text.
@@ -327,45 +370,58 @@ def extract_alias_candidates(text: str, *, max_candidates: int = 20) -> list[Ali
 
     out: list[AliasCandidate] = []
     seen: set[tuple[str, str, str]] = set()
-
-    def _push_with_quote(a: str, b: str, method: str, *, quote: str | None) -> None:
-        if len(out) >= lim:
-            return
-        a2 = _clean_surface(a)
-        if method == "parentheses":
-            a2 = _trim_long_surface_parentheses(a2)
-        b2 = _clean_surface(b)
-        if not a2 or not b2:
-            return
-        if a2.casefold() == b2.casefold():
-            return
-        key = tuple(sorted([a2.casefold(), b2.casefold()])) + (method,)
-        if key in seen:
-            return
-        seen.add(key)
-        q = _clean_surface(quote or "") if quote else None
-        if q:
-            q = q[:240]
-        out.append(AliasCandidate(a=a2, b=b2, method=method, quote=q))
-
-    for m in _PARENS_RE.finditer(clean):
-        _push_with_quote(m.group("long"), m.group("short"), method="parentheses", quote=m.group(0))
-        if len(out) >= lim:
-            break
-
+    _append_alias_matches(
+        text=clean,
+        pattern=_PARENS_RE,
+        method="parentheses",
+        out=out,
+        seen=seen,
+        limit=lim,
+    )
     if len(out) < lim:
-        for m in _ZH_ABBR_RE.finditer(clean):
-            _push_with_quote(m.group("long"), m.group("short"), method="zh_abbr", quote=m.group(0))
-            if len(out) >= lim:
-                break
-
+        _append_alias_matches(
+            text=clean,
+            pattern=_ZH_ABBR_RE,
+            method="zh_abbr",
+            out=out,
+            seen=seen,
+            limit=lim,
+        )
     if len(out) < lim:
-        for m in _EN_AKA_RE.finditer(clean):
-            _push_with_quote(m.group("long"), m.group("short"), method="en_aka", quote=m.group(0))
-            if len(out) >= lim:
-                break
-
+        _append_alias_matches(
+            text=clean,
+            pattern=_EN_AKA_RE,
+            method="en_aka",
+            out=out,
+            seen=seen,
+            limit=lim,
+        )
     return out
+
+
+def _trailing_parenthetical_parts(surface: str) -> tuple[str, str] | None:
+    value = surface.strip()
+    if not value or value[-1] not in (")", "）"):
+        return None
+    close = value[-1]
+    open_index = max(
+        value.rfind("(", 0, len(value) - 1),
+        value.rfind("（", 0, len(value) - 1),
+    )
+    if open_index < 0:
+        return None
+    open_character = value[open_index]
+    if (open_character, close) not in {("(", ")"), ("（", "）")}:
+        return None
+    return value[:open_index].strip(), value[open_index + 1 : -1].strip()
+
+
+def _valid_parenthetical_alias_parts(head: str, tail: str) -> bool:
+    if not head or not tail:
+        return False
+    if not 2 <= len(tail) <= 40:
+        return False
+    return not any(character in "()（）\n\r" for character in tail)
 
 
 def split_trailing_parenthetical_alias(name: str) -> tuple[str, str] | None:
@@ -375,37 +431,12 @@ def split_trailing_parenthetical_alias(name: str) -> tuple[str, str] | None:
     raw = _clean_surface(name)
     if not raw:
         return None
-
-    # Parse a trailing parenthetical without regex to avoid S5852 hotspots.
-    # Accept both ASCII and fullwidth parentheses.
-    s = raw.strip()
-    if not s or s[-1] not in (")", "）"):
+    parts = _trailing_parenthetical_parts(raw)
+    if parts is None:
         return None
-
-    close = s[-1]
-    open_idx_ascii = s.rfind("(", 0, len(s) - 1)
-    open_idx_full = s.rfind("（", 0, len(s) - 1)
-    open_idx = max(open_idx_ascii, open_idx_full)
-    if open_idx < 0:
+    head_raw, tail_raw = parts
+    if not _valid_parenthetical_alias_parts(head_raw, tail_raw):
         return None
-
-    open_ch = s[open_idx]
-    if open_ch == "(" and close != ")":
-        return None
-    if open_ch == "（" and close != "）":
-        return None
-
-    head_raw = s[:open_idx].strip()
-    tail_raw = s[open_idx + 1 : -1].strip()
-
-    # Keep tail bounded and exclude nested parentheses/newlines to reduce noise.
-    if not head_raw or not tail_raw:
-        return None
-    if not (2 <= len(tail_raw) <= 40):
-        return None
-    if any(ch in "()（）\n\r" for ch in tail_raw):
-        return None
-
     head = _clean_surface(head_raw)
     tail = _clean_surface(tail_raw)
     if not head or not tail:

@@ -55,6 +55,155 @@ def _update_heading_stack(stack: list[str], *, heading: _Heading) -> list[str]:
     return trimmed
 
 
+def _group_sentences_by_parent(sentences: list[object]) -> dict[str, list[dict]]:
+    grouped: dict[str, list[dict]] = {}
+    for sentence in sentences:
+        if not isinstance(sentence, dict):
+            continue
+        parent_id = str(sentence.get("parent_id") or "").strip()
+        if not parent_id:
+            continue
+        grouped.setdefault(parent_id, []).append(sentence)
+
+    for sentence_list in grouped.values():
+        sentence_list.sort(key=lambda item: int(item.get("index") or 0))
+    return grouped
+
+
+def _header_path_resolver(text: str):
+    headings = _iter_markdown_headings(text)
+    h_cursor = 0
+    stack: list[str] = []
+
+    def resolve(start_char: int) -> str | None:
+        nonlocal h_cursor, stack
+        start_i = max(0, int(start_char or 0))
+        while h_cursor < len(headings) and int(headings[h_cursor].pos) <= start_i:
+            stack = _update_heading_stack(stack, heading=headings[h_cursor])
+            h_cursor += 1
+        path = " > ".join([part for part in stack if str(part or "").strip()])
+        return path if path else None
+
+    return resolve
+
+
+def _paragraph_metadata(base_meta: dict, paragraph: dict, *, start: int, end: int, header_path: str | None, chunk_index: int) -> dict:
+    meta = dict(base_meta)
+    meta.update(
+        {
+            "chunk_strategy": "markdown_hierarchy",
+            "chunk_role": "paragraph",
+            "start_char": start,
+            "end_char": end,
+            "hierarchy_basis": paragraph.get("hierarchy_basis"),
+            "hierarchy_level": paragraph.get("hierarchy_level") or "paragraph",
+            "hierarchy_node_key": paragraph.get("hierarchy_node_key") or paragraph.get("id"),
+            "hierarchy_family_key": paragraph.get("hierarchy_family_key") or paragraph.get("id"),
+            "hierarchy_parent_key": paragraph.get("hierarchy_parent_key"),
+            "hierarchy_prev_sibling_key": paragraph.get("hierarchy_prev_sibling_key"),
+            "hierarchy_next_sibling_key": paragraph.get("hierarchy_next_sibling_key"),
+            "hierarchy_sibling_index": paragraph.get("hierarchy_sibling_index"),
+            "tokens_est": paragraph.get("tokens_est"),
+            "chunk_index": chunk_index,
+        }
+    )
+    if header_path:
+        meta.setdefault("header_path", header_path)
+        meta.setdefault("header_context", header_path)
+    return meta
+
+
+def _sentence_documents(
+    *,
+    base_meta: dict,
+    paragraph_id: str,
+    sentences: list[dict],
+    paragraph_start: int,
+    header_path: str | None,
+    starting_chunk_index: int,
+) -> list[Document]:
+    out: list[Document] = []
+    for sentence in sentences:
+        text = str(sentence.get("text") or "")
+        if not text.strip():
+            continue
+
+        start = int(sentence.get("start") or paragraph_start)
+        end = int(sentence.get("end") or (start + len(text)))
+        meta = dict(base_meta)
+        meta.update(
+            {
+                "chunk_strategy": "markdown_hierarchy",
+                "chunk_role": "sentence",
+                "start_char": start,
+                "end_char": end,
+                "parent_id": paragraph_id,
+                "hierarchy_basis": sentence.get("hierarchy_basis"),
+                "hierarchy_level": sentence.get("hierarchy_level") or "sentence",
+                "hierarchy_node_key": sentence.get("hierarchy_node_key") or sentence.get("id"),
+                "hierarchy_family_key": sentence.get("hierarchy_family_key") or paragraph_id,
+                "hierarchy_parent_key": sentence.get("hierarchy_parent_key") or paragraph_id,
+                "hierarchy_prev_sibling_key": sentence.get("hierarchy_prev_sibling_key"),
+                "hierarchy_next_sibling_key": sentence.get("hierarchy_next_sibling_key"),
+                "hierarchy_sibling_index": sentence.get("hierarchy_sibling_index"),
+                "tokens_est": sentence.get("tokens_est"),
+                "chunk_index": starting_chunk_index + len(out),
+            }
+        )
+        if header_path:
+            meta.setdefault("header_path", header_path)
+            meta.setdefault("header_context", header_path)
+        out.append(Document(page_content=text, metadata=meta))
+    return out
+
+
+def _split_markdown_document(doc: Document) -> list[Document]:
+    text = doc.page_content or ""
+    if not text.strip():
+        return []
+
+    base_meta = dict(doc.metadata or {})
+    data = hierarchical_chunk_markdown(text) or {}
+    paragraphs = data.get("paragraphs") if isinstance(data, dict) and isinstance(data.get("paragraphs"), list) else []
+    sentences = data.get("sentences") if isinstance(data, dict) and isinstance(data.get("sentences"), list) else []
+    sentences_by_parent = _group_sentences_by_parent(sentences)
+    resolve_header_path = _header_path_resolver(text)
+
+    out: list[Document] = []
+    for paragraph in paragraphs:
+        if not isinstance(paragraph, dict):
+            continue
+        paragraph_text = str(paragraph.get("text") or "")
+        if not paragraph_text.strip():
+            continue
+
+        start = int(paragraph.get("start") or 0)
+        end = int(paragraph.get("end") or (start + len(paragraph_text)))
+        header_path = resolve_header_path(start)
+        paragraph_meta = _paragraph_metadata(
+            base_meta,
+            paragraph,
+            start=start,
+            end=end,
+            header_path=header_path,
+            chunk_index=len(out),
+        )
+        out.append(Document(page_content=paragraph_text, metadata=paragraph_meta))
+
+        paragraph_id = str(paragraph.get("id") or paragraph_meta.get("hierarchy_node_key") or "").strip()
+        out.extend(
+            _sentence_documents(
+                base_meta=base_meta,
+                paragraph_id=paragraph_id,
+                sentences=sentences_by_parent.get(paragraph_id, []),
+                paragraph_start=start,
+                header_path=header_path,
+                starting_chunk_index=len(out),
+            )
+        )
+    return out
+
+
 class MarkdownHierarchyChunker(BaseChunker):
     """
     Hierarchical Markdown chunker.
@@ -72,121 +221,8 @@ class MarkdownHierarchyChunker(BaseChunker):
 
     def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
-
         for doc in documents:
-            text = doc.page_content or ""
-            base_meta = dict(doc.metadata or {})
-            if not text.strip():
-                continue
-
-            data = hierarchical_chunk_markdown(text) or {}
-            paragraphs = data.get("paragraphs") if isinstance(data, dict) else None
-            sentences = data.get("sentences") if isinstance(data, dict) else None
-            paragraphs = paragraphs if isinstance(paragraphs, list) else []
-            sentences = sentences if isinstance(sentences, list) else []
-
-            # Group sentences by paragraph id for stable output order.
-            sentences_by_parent: dict[str, list[dict]] = {}
-            for s in sentences:
-                if not isinstance(s, dict):
-                    continue
-                pid = str(s.get("parent_id") or "").strip()
-                if not pid:
-                    continue
-                sentences_by_parent.setdefault(pid, []).append(s)
-
-            for _pid, slist in sentences_by_parent.items():
-                slist.sort(key=lambda x: int(x.get("index") or 0))
-
-            # Heading context (optional; used by embedding prefix logic).
-            headings = _iter_markdown_headings(text)
-            h_cursor = 0
-            stack: list[str] = []
-
-            def header_path_for(start_char: int) -> str | None:
-                nonlocal h_cursor, stack
-                start_i = max(0, int(start_char or 0))
-                while h_cursor < len(headings) and int(headings[h_cursor].pos) <= start_i:
-                    stack = _update_heading_stack(stack, heading=headings[h_cursor])
-                    h_cursor += 1
-                path = " > ".join([p for p in stack if str(p or "").strip()])
-                return path if path else None
-
-            # Emit paragraph then its sentence children (reading order).
-            for p in paragraphs:
-                if not isinstance(p, dict):
-                    continue
-                p_text = str(p.get("text") or "")
-                if not p_text.strip():
-                    continue
-
-                start = int(p.get("start") or 0)
-                end = int(p.get("end") or (start + len(p_text)))
-
-                p_meta = dict(base_meta)
-                p_meta.update(
-                    {
-                        "chunk_strategy": "markdown_hierarchy",
-                        "chunk_role": "paragraph",
-                        "start_char": start,
-                        "end_char": end,
-                        # Preserve hierarchy metadata emitted by the utility.
-                        "hierarchy_basis": p.get("hierarchy_basis"),
-                        "hierarchy_level": p.get("hierarchy_level") or "paragraph",
-                        "hierarchy_node_key": p.get("hierarchy_node_key") or p.get("id"),
-                        "hierarchy_family_key": p.get("hierarchy_family_key") or p.get("id"),
-                        "hierarchy_parent_key": p.get("hierarchy_parent_key"),
-                        "hierarchy_prev_sibling_key": p.get("hierarchy_prev_sibling_key"),
-                        "hierarchy_next_sibling_key": p.get("hierarchy_next_sibling_key"),
-                        "hierarchy_sibling_index": p.get("hierarchy_sibling_index"),
-                        "tokens_est": p.get("tokens_est"),
-                    }
-                )
-
-                hp = header_path_for(start)
-                if hp:
-                    p_meta.setdefault("header_path", hp)
-                    p_meta.setdefault("header_context", hp)
-
-                # Align metadata chunk_index with output order (tests rely on it).
-                p_meta["chunk_index"] = len(out)
-                para_doc = Document(page_content=p_text, metadata=p_meta)
-                out.append(para_doc)
-
-                sid = str(p.get("id") or p_meta.get("hierarchy_node_key") or "").strip()
-                for s in sentences_by_parent.get(sid, []):
-                    s_text = str(s.get("text") or "")
-                    if not s_text.strip():
-                        continue
-                    s_start = int(s.get("start") or start)
-                    s_end = int(s.get("end") or (s_start + len(s_text)))
-
-                    s_meta = dict(base_meta)
-                    s_meta.update(
-                        {
-                            "chunk_strategy": "markdown_hierarchy",
-                            "chunk_role": "sentence",
-                            "start_char": s_start,
-                            "end_char": s_end,
-                            "parent_id": sid,
-                            "hierarchy_basis": s.get("hierarchy_basis"),
-                            "hierarchy_level": s.get("hierarchy_level") or "sentence",
-                            "hierarchy_node_key": s.get("hierarchy_node_key") or s.get("id"),
-                            "hierarchy_family_key": s.get("hierarchy_family_key") or sid,
-                            "hierarchy_parent_key": s.get("hierarchy_parent_key") or sid,
-                            "hierarchy_prev_sibling_key": s.get("hierarchy_prev_sibling_key"),
-                            "hierarchy_next_sibling_key": s.get("hierarchy_next_sibling_key"),
-                            "hierarchy_sibling_index": s.get("hierarchy_sibling_index"),
-                            "tokens_est": s.get("tokens_est"),
-                        }
-                    )
-                    if hp:
-                        s_meta.setdefault("header_path", hp)
-                        s_meta.setdefault("header_context", hp)
-
-                    s_meta["chunk_index"] = len(out)
-                    out.append(Document(page_content=s_text, metadata=s_meta))
-
+            out.extend(_split_markdown_document(doc))
         return out
 
 

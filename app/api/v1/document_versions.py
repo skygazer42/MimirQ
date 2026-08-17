@@ -37,6 +37,123 @@ PIPELINE_HASH_TOO_LONG_DETAIL = "pipeline_hash too long"
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
+def _get_version_document_or_404(*, db: Session, tenant_id: UUID, document_id: UUID):
+    document = (
+        db.query(DBDocument)
+        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
+    return document
+
+
+def _normalize_pipeline_hash(pipeline_hash: str, *, required_detail: str) -> str:
+    pipeline_hash_norm = str(pipeline_hash or "").strip()
+    if not pipeline_hash_norm:
+        raise HTTPException(status_code=400, detail=required_detail)
+    if len(pipeline_hash_norm) > 64:
+        raise HTTPException(status_code=400, detail=PIPELINE_HASH_TOO_LONG_DETAIL)
+    return pipeline_hash_norm
+
+
+def _load_version_signatures(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    document_id: UUID,
+    target_key: str,
+) -> list[str]:
+    try:
+        rows = (
+            db.query(DocumentChunk.id, DocumentChunk.doc_metadata)
+            .filter(
+                DocumentChunk.tenant_id == tenant_id,
+                DocumentChunk.document_id == document_id,
+                DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
+            )
+            .execution_options(stream_results=True)
+            .enable_eagerloads(False)
+            .all()
+        )
+    except Exception:
+        rows = (
+            db.query(DocumentChunk.id, DocumentChunk.doc_metadata)
+            .filter(
+                DocumentChunk.tenant_id == tenant_id,
+                DocumentChunk.document_id == document_id,
+            )
+            .execution_options(stream_results=True)
+            .enable_eagerloads(False)
+            .all()
+        )
+
+    out: list[str] = []
+    for chunk_id, meta in rows or []:
+        metadata = meta if isinstance(meta, dict) else {}
+        if str(metadata.get("doc_pipeline_key") or "").strip() != target_key:
+            continue
+        content_hash = str(metadata.get("content_hash") or "").strip()
+        out.append(content_hash or f"id:{chunk_id}")
+    return out
+
+
+def _version_provenance_pair(document, *, from_hash: str, to_hash: str) -> tuple[dict[str, object] | None, dict[str, object] | None]:
+    doc_meta = dict(document.doc_metadata or {})
+    prov_versions = doc_meta.get("pipeline_provenance_versions") if isinstance(doc_meta.get("pipeline_provenance_versions"), dict) else {}
+    from_prov = prov_versions.get(from_hash) if isinstance(prov_versions, dict) else None
+    to_prov = prov_versions.get(to_hash) if isinstance(prov_versions, dict) else None
+    return (from_prov if isinstance(from_prov, dict) else None), (to_prov if isinstance(to_prov, dict) else None)
+
+
+def _changed_transform_keys(*, from_prov: dict[str, object] | None, to_prov: dict[str, object] | None) -> list[str]:
+    if not isinstance(from_prov, dict) or not isinstance(to_prov, dict):
+        return []
+    from_transforms = from_prov.get("transforms") if isinstance(from_prov.get("transforms"), dict) else {}
+    to_transforms = to_prov.get("transforms") if isinstance(to_prov.get("transforms"), dict) else {}
+    changed: list[str] = []
+    for key in sorted(set(from_transforms.keys()) | set(to_transforms.keys())):
+        from_transform = from_transforms.get(key) if isinstance(from_transforms.get(key), dict) else {}
+        to_transform = to_transforms.get(key) if isinstance(to_transforms.get(key), dict) else {}
+        if str(from_transform.get("hash") or "").strip() != str(to_transform.get("hash") or "").strip():
+            changed.append(str(key)[:64])
+    return changed
+
+
+def _load_version_chunk_ids(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    document_id: UUID,
+    target_key: str,
+) -> list[UUID]:
+    try:
+        rows = (
+            db.query(DocumentChunk.id)
+            .filter(
+                DocumentChunk.tenant_id == tenant_id,
+                DocumentChunk.document_id == document_id,
+                DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
+            )
+            .all()
+        )
+        return [chunk_id for (chunk_id,) in rows if isinstance(chunk_id, UUID)]
+    except Exception:
+        rows = (
+            db.query(DocumentChunk.id, DocumentChunk.doc_metadata)
+            .filter(
+                DocumentChunk.tenant_id == tenant_id,
+                DocumentChunk.document_id == document_id,
+            )
+            .all()
+        )
+        return [
+            chunk_id
+            for chunk_id, chunk_meta in rows
+            if str((chunk_meta if isinstance(chunk_meta, dict) else {}).get("doc_pipeline_key") or "").strip() == target_key
+        ]
+
+
 @router.get("/{document_id}/versions", response_model=DocumentVersionList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_document_versions(
     document_id: uuid.UUID,
@@ -188,15 +305,7 @@ def diff_document_versions(
       (so counts remain accurate, but "unchanged" may be underestimated).
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
-
-    document = (
-        db.query(DBDocument)
-        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-        .first()
-    )
-    if not document:
-        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
-
+    document = _get_version_document_or_404(db=db, tenant_id=tenant_id, document_id=document_id)
     assert_document_readable_for_lifecycle(
         db,
         tenant_id=tenant_id,
@@ -204,56 +313,22 @@ def diff_document_versions(
         document=document,
     )
 
-    from_hash = str(from_pipeline_hash or "").strip()
-    to_hash = str(to_pipeline_hash or "").strip()
-    if not from_hash or not to_hash:
-        raise HTTPException(status_code=400, detail="from/to pipeline_hash are required")
-    if len(from_hash) > 64 or len(to_hash) > 64:
-        raise HTTPException(status_code=400, detail=PIPELINE_HASH_TOO_LONG_DETAIL)
-
-    def _load_signatures(pipeline_hash: str) -> list[str]:
-        target_key = f"{document_id}:{pipeline_hash}"
-        rows = None
-        try:
-            rows = (
-                db.query(DocumentChunk.id, DocumentChunk.doc_metadata)
-                .filter(
-                    DocumentChunk.tenant_id == tenant_id,
-                    DocumentChunk.document_id == document_id,
-                    DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
-                )
-                .execution_options(stream_results=True)
-                .enable_eagerloads(False)
-                .all()
-            )
-        except Exception:
-            rows = (
-                db.query(DocumentChunk.id, DocumentChunk.doc_metadata)
-                .filter(
-                    DocumentChunk.tenant_id == tenant_id,
-                    DocumentChunk.document_id == document_id,
-                )
-                .execution_options(stream_results=True)
-                .enable_eagerloads(False)
-                .all()
-            )
-
-        out: list[str] = []
-        for chunk_id, meta in (rows or []):
-            metadata = meta if isinstance(meta, dict) else {}
-            key = str(metadata.get("doc_pipeline_key") or "").strip()
-            if key != target_key:
-                continue
-            content_hash = str(metadata.get("content_hash") or "").strip()
-            if not content_hash:
-                content_hash = f"id:{chunk_id}"
-            out.append(content_hash)
-        return out
-
-    from_sigs = _load_signatures(from_hash)
+    from_hash = _normalize_pipeline_hash(from_pipeline_hash, required_detail="from/to pipeline_hash are required")
+    to_hash = _normalize_pipeline_hash(to_pipeline_hash, required_detail="from/to pipeline_hash are required")
+    from_sigs = _load_version_signatures(
+        db=db,
+        tenant_id=tenant_id,
+        document_id=document_id,
+        target_key=f"{document_id}:{from_hash}",
+    )
     if not from_sigs:
         raise HTTPException(status_code=404, detail="from pipeline version not found (no chunks)")
-    to_sigs = _load_signatures(to_hash)
+    to_sigs = _load_version_signatures(
+        db=db,
+        tenant_id=tenant_id,
+        document_id=document_id,
+        target_key=f"{document_id}:{to_hash}",
+    )
     if not to_sigs:
         raise HTTPException(status_code=404, detail="to pipeline version not found (no chunks)")
 
@@ -264,32 +339,7 @@ def diff_document_versions(
         to_hashes=to_sigs,
         sample_limit=int(sample_limit or 0),
     )
-
-    doc_meta = dict(document.doc_metadata or {})
-    prov_versions = (
-        doc_meta.get("pipeline_provenance_versions")
-        if isinstance(doc_meta.get("pipeline_provenance_versions"), dict)
-        else {}
-    )
-    from_prov = prov_versions.get(from_hash) if isinstance(prov_versions, dict) else None
-    to_prov = prov_versions.get(to_hash) if isinstance(prov_versions, dict) else None
-    if not isinstance(from_prov, dict):
-        from_prov = None
-    if not isinstance(to_prov, dict):
-        to_prov = None
-
-    changed_transforms: list[str] = []
-    if isinstance(from_prov, dict) and isinstance(to_prov, dict):
-        from_transforms = from_prov.get("transforms") if isinstance(from_prov.get("transforms"), dict) else {}
-        to_transforms = to_prov.get("transforms") if isinstance(to_prov.get("transforms"), dict) else {}
-        for key in sorted(set(from_transforms.keys()) | set(to_transforms.keys())):
-            from_transform = from_transforms.get(key) if isinstance(from_transforms.get(key), dict) else {}
-            to_transform = to_transforms.get(key) if isinstance(to_transforms.get(key), dict) else {}
-            from_hash_value = str(from_transform.get("hash") or "").strip()
-            to_hash_value = str(to_transform.get("hash") or "").strip()
-            if from_hash_value != to_hash_value:
-                changed_transforms.append(str(key)[:64])
-
+    from_prov, to_prov = _version_provenance_pair(document, from_hash=from_hash, to_hash=to_hash)
     return {
         "document_id": document_id,
         "from_pipeline_hash": from_hash,
@@ -303,7 +353,7 @@ def diff_document_versions(
         "removed_hashes": list(diff.removed_hashes),
         "from_provenance": from_prov,
         "to_provenance": to_prov,
-        "changed_transforms": changed_transforms,
+        "changed_transforms": _changed_transform_keys(from_prov=from_prov, to_prov=to_prov),
     }
 
 
@@ -443,28 +493,14 @@ def delete_document_version(
     - This endpoint is intended for ops/debug cleanup; it does not re-run processing.
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
-
-    document = (
-        db.query(DBDocument)
-        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-        .first()
-    )
-    if not document:
-        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
-
+    document = _get_version_document_or_404(db=db, tenant_id=tenant_id, document_id=document_id)
     assert_document_writable_for_lifecycle(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
         document=document,
     )
-
-    pipeline_hash_norm = str(pipeline_hash or "").strip()
-    if not pipeline_hash_norm:
-        raise HTTPException(status_code=400, detail="pipeline_hash is required")
-    if len(pipeline_hash_norm) > 64:
-        raise HTTPException(status_code=400, detail=PIPELINE_HASH_TOO_LONG_DETAIL)
-
+    pipeline_hash_norm = _normalize_pipeline_hash(pipeline_hash, required_detail="pipeline_hash is required")
     doc_status = str(getattr(document, "status", "") or "").lower()
     meta = dict(getattr(document, "doc_metadata", None) or {})
     current_hash = str(meta.get("pipeline_hash") or "").strip()
@@ -476,34 +512,12 @@ def delete_document_version(
         raise HTTPException(status_code=409, detail="Cannot delete the active pipeline version (activate another first)")
 
     target_key = f"{document_id}:{pipeline_hash_norm}"
-
-    chunk_ids: list[UUID] = []
-    try:
-        rows = (
-            db.query(DocumentChunk.id)
-            .filter(
-                DocumentChunk.tenant_id == tenant_id,
-                DocumentChunk.document_id == document_id,
-                DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
-            )
-            .all()
-        )
-        chunk_ids = [chunk_id for (chunk_id,) in rows if isinstance(chunk_id, UUID)]
-    except Exception:
-        rows = (
-            db.query(DocumentChunk.id, DocumentChunk.doc_metadata)
-            .filter(
-                DocumentChunk.tenant_id == tenant_id,
-                DocumentChunk.document_id == document_id,
-            )
-            .all()
-        )
-        for chunk_id, chunk_meta in rows:
-            metadata = chunk_meta if isinstance(chunk_meta, dict) else {}
-            key = str(metadata.get("doc_pipeline_key") or "").strip()
-            if key == target_key:
-                chunk_ids.append(chunk_id)
-
+    chunk_ids = _load_version_chunk_ids(
+        db=db,
+        tenant_id=tenant_id,
+        document_id=document_id,
+        target_key=target_key,
+    )
     if not chunk_ids:
         raise HTTPException(status_code=404, detail="Document version not found (no chunks for this pipeline_hash)")
 

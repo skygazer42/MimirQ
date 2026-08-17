@@ -272,6 +272,74 @@ def _dedupe_uuids(values: list[UUID]) -> list[UUID]:
     return list(dict.fromkeys(values or []))
 
 
+def _apply_audit_log_filters(q: Any, filters: AuditLogFilterParams) -> Any:
+    if filters.actor_id:
+        q = q.filter(AuditLog.actor_id == filters.actor_id)
+    if filters.action:
+        q = q.filter(AuditLog.action == filters.action)
+    if filters.resource_type:
+        q = q.filter(AuditLog.resource_type == filters.resource_type)
+    if filters.resource_id:
+        q = q.filter(AuditLog.resource_id == filters.resource_id)
+    if filters.request_id:
+        q = q.filter(AuditLog.request_id == filters.request_id)
+    if filters.since is not None:
+        q = q.filter(AuditLog.created_at >= filters.since)
+    if filters.until is not None:
+        q = q.filter(AuditLog.created_at <= filters.until)
+    return q
+
+
+def _build_audit_log_query(db: Session, *, tenant_id: UUID, filters: AuditLogFilterParams):
+    return _apply_audit_log_filters(
+        db.query(AuditLog).filter(AuditLog.tenant_id == tenant_id),
+        filters,
+    )
+
+
+def _apply_audit_log_export_cursor(q: Any, export: AuditLogExportParams) -> Any:
+    if export.after_created_at is None:
+        return q
+    if export.after_id is not None:
+        return q.filter(
+            or_(
+                AuditLog.created_at > export.after_created_at,
+                and_(AuditLog.created_at == export.after_created_at, AuditLog.id > export.after_id),
+            )
+        )
+    return q.filter(AuditLog.created_at > export.after_created_at)
+
+
+def _iter_audit_log_export_lines(
+    rows: list[AuditLog],
+    *,
+    include_sensitive: bool,
+) -> Iterator[bytes]:
+    for row in rows:
+        obj = AuditLogOut.model_validate(row)
+        obj.details = _sanitize_details(dict(obj.details or {}), include_sensitive=include_sensitive)
+        payload = obj.model_dump(mode="json")
+        line = json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
+        yield line.encode("utf-8")
+
+
+def _build_ndjson_streaming_response(
+    body_iter: Iterator[bytes],
+    *,
+    gzip_enabled: bool,
+    headers: dict[str, str] | None = None,
+) -> StreamingResponse:
+    response_headers = dict(headers or {})
+    if gzip_enabled:
+        response_headers["Content-Encoding"] = "gzip"
+        body_iter = _iter_gzip_chunks(body_iter)
+    return StreamingResponse(
+        body_iter,
+        media_type="application/x-ndjson",
+        headers=response_headers,
+    )
+
+
 @router.get("/logs", response_model=AuditLogListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_audit_logs(
     skip: Annotated[int, Query(ge=0)] = 0,
@@ -291,22 +359,19 @@ def list_audit_logs(
 ):
     _ensure_admin(db, tenant_id, account_id)
 
-    q = db.query(AuditLog).filter(AuditLog.tenant_id == tenant_id)
-
-    if actor_id:
-        q = q.filter(AuditLog.actor_id == actor_id)
-    if action:
-        q = q.filter(AuditLog.action == action)
-    if resource_type:
-        q = q.filter(AuditLog.resource_type == resource_type)
-    if resource_id:
-        q = q.filter(AuditLog.resource_id == resource_id)
-    if request_id:
-        q = q.filter(AuditLog.request_id == request_id)
-    if since is not None:
-        q = q.filter(AuditLog.created_at >= since)
-    if until is not None:
-        q = q.filter(AuditLog.created_at <= until)
+    q = _build_audit_log_query(
+        db,
+        tenant_id=tenant_id,
+        filters=AuditLogFilterParams(
+            actor_id=actor_id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            request_id=request_id,
+            since=since,
+            until=until,
+        ),
+    )
 
     total = int(q.count())
     items = q.order_by(desc(AuditLog.created_at), desc(AuditLog.id)).offset(skip).limit(limit).all()
@@ -337,56 +402,13 @@ def export_audit_logs(
     """
     _ensure_admin(db, tenant_id, account_id)
 
-    q = db.query(AuditLog).filter(AuditLog.tenant_id == tenant_id)
-
-    if filters.actor_id:
-        q = q.filter(AuditLog.actor_id == filters.actor_id)
-    if filters.action:
-        q = q.filter(AuditLog.action == filters.action)
-    if filters.resource_type:
-        q = q.filter(AuditLog.resource_type == filters.resource_type)
-    if filters.resource_id:
-        q = q.filter(AuditLog.resource_id == filters.resource_id)
-    if filters.request_id:
-        q = q.filter(AuditLog.request_id == filters.request_id)
-    if filters.since is not None:
-        q = q.filter(AuditLog.created_at >= filters.since)
-    if filters.until is not None:
-        q = q.filter(AuditLog.created_at <= filters.until)
-
-    if export.after_created_at is not None:
-        if export.after_id is not None:
-            q = q.filter(
-                or_(
-                    AuditLog.created_at > export.after_created_at,
-                    and_(AuditLog.created_at == export.after_created_at, AuditLog.id > export.after_id),
-                )
-            )
-        else:
-            q = q.filter(AuditLog.created_at > export.after_created_at)
-
+    q = _build_audit_log_query(db, tenant_id=tenant_id, filters=filters)
+    q = _apply_audit_log_export_cursor(q, export)
     rows = q.order_by(AuditLog.created_at.asc(), AuditLog.id.asc()).limit(export.limit).all()
-
-    def _iter_lines() -> Iterator[bytes]:
-        for row in rows:
-            obj = AuditLogOut.model_validate(row)
-            obj.details = _sanitize_details(dict(obj.details or {}), include_sensitive=bool(export.include_sensitive))
-            payload = obj.model_dump(mode="json")
-            line = json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
-            yield line.encode("utf-8")
-
-    body_iter: Iterator[bytes] = _iter_lines()
-    headers = {
-        "Cache-Control": "no-store",
-    }
-    if export.gzip:
-        headers["Content-Encoding"] = "gzip"
-        body_iter = _iter_gzip_chunks(body_iter)
-
-    return StreamingResponse(
-        body_iter,
-        media_type="application/x-ndjson",
-        headers=headers,
+    return _build_ndjson_streaming_response(
+        _iter_audit_log_export_lines(rows, include_sensitive=bool(export.include_sensitive)),
+        gzip_enabled=bool(export.gzip),
+        headers={"Cache-Control": "no-store"},
     )
 
 
@@ -757,6 +779,170 @@ def _export_access_graph_row(*, kind: str, row: Any, include_sensitive: bool) ->
     return base
 
 
+_ACCESS_GRAPH_MODELS = {
+    "group": TenantGroup,
+    "group_member": TenantGroupMember,
+    "dataset": Dataset,
+    "dataset_member_permission": DatasetPermission,
+    "dataset_group_permission": DatasetGroupPermission,
+    "document": Document,
+    "document_member_permission": DocumentPermission,
+    "document_group_permission": DocumentGroupPermission,
+}
+
+
+def _normalize_access_graph_export_params(
+    *,
+    export_format: str,
+    after_kind: str | None,
+    after_created_at: datetime | None,
+    after_id: UUID | None,
+) -> tuple[str, str | None]:
+    fmt = str(export_format or "ndjson").strip().lower() or "ndjson"
+    if fmt not in {"ndjson", "json"}:
+        raise HTTPException(status_code=400, detail="export_format must be one of: ndjson, json")
+
+    kind = str(after_kind or "").strip().lower() or None
+    if (after_created_at is not None or after_id is not None) and not kind:
+        raise HTTPException(status_code=400, detail="after_kind is required when using after_created_at/after_id")
+    if kind is not None and kind not in _ACCESS_GRAPH_KINDS:
+        raise HTTPException(status_code=400, detail=f"after_kind must be one of: {', '.join(_ACCESS_GRAPH_KINDS)}")
+    return fmt, kind
+
+
+def _query_access_graph_rows(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    kind: str,
+    after_dt: datetime | None,
+    after_row_id: UUID | None,
+    take: int,
+) -> list[Any]:
+    model = _ACCESS_GRAPH_MODELS.get(kind)
+    if model is None:
+        return []
+    q = db.query(model).filter(model.tenant_id == tenant_id)
+    q = _apply_created_cursor(q, model, after_created_at=after_dt, after_id=after_row_id)
+    return q.order_by(model.created_at.asc(), model.id.asc()).limit(take).all()
+
+
+def _collect_access_graph_page(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    include_sensitive: bool,
+    limit: int,
+    after_kind: str | None,
+    after_created_at: datetime | None,
+    after_id: UUID | None,
+) -> list[dict[str, Any]]:
+    start_idx = _ACCESS_GRAPH_KINDS.index(after_kind) if after_kind else 0
+    out: list[dict[str, Any]] = []
+    max_items = int(limit or 0)
+    for kind in _ACCESS_GRAPH_KINDS[start_idx:]:
+        remaining = max_items - len(out)
+        if remaining <= 0:
+            break
+        rows = _query_access_graph_rows(
+            db,
+            tenant_id=tenant_id,
+            kind=kind,
+            after_dt=(after_created_at if kind == after_kind else None),
+            after_row_id=(after_id if kind == after_kind else None),
+            take=remaining,
+        )
+        out.extend(
+            _export_access_graph_row(kind=kind, row=row, include_sensitive=include_sensitive)
+            for row in rows
+        )
+        if len(out) >= max_items or len(rows) >= remaining:
+            break
+    return out[:max_items]
+
+
+def _access_graph_next_cursor(out: list[dict[str, Any]], *, limit: int) -> dict[str, Any] | None:
+    if len(out) < int(limit or 0) or not out:
+        return None
+    last = out[-1]
+    return {
+        "after_kind": str(last.get("kind") or ""),
+        "after_created_at": last.get("created_at"),
+        "after_id": last.get("id"),
+    }
+
+
+def _audit_access_graph_export(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    limit: int,
+    returned: int,
+    after_kind: str | None,
+    after_created_at: datetime | None,
+    after_id: UUID | None,
+    include_sensitive: bool,
+    export_format: str,
+    gzip_enabled: bool,
+) -> None:
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="compliance.access_graph.export",
+            resource_type="tenant",
+            resource_id=str(tenant_id),
+            details={
+                "limit": int(limit or 0),
+                "returned": int(returned),
+                "after_kind": after_kind,
+                "after_created_at": (after_created_at.isoformat() if after_created_at else None),
+                "after_id": (str(after_id) if after_id else None),
+                "include_sensitive": bool(include_sensitive),
+                "export_format": export_format,
+                "gzip": bool(gzip_enabled),
+            },
+        )
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception as exc:
+            logger.debug(_AUDIT_ROUTER_FALLBACK_LOG_MESSAGE, exc)
+
+
+def _build_access_graph_headers(next_cursor: dict[str, Any] | None) -> dict[str, str]:
+    headers: dict[str, str] = {"Cache-Control": "no-store"}
+    if next_cursor:
+        headers["X-Next-Cursor"] = json.dumps(next_cursor, ensure_ascii=True, separators=(",", ":"))
+    return headers
+
+
+def _access_graph_json_response(
+    *,
+    limit: int,
+    out: list[dict[str, Any]],
+    next_cursor: dict[str, Any] | None,
+    headers: dict[str, str],
+    gzip_enabled: bool,
+) -> Response:
+    payload = {
+        "schema": _ACCESS_GRAPH_PAGE_SCHEMA,
+        "limit": int(limit or 0),
+        "returned": int(len(out)),
+        "next_cursor": next_cursor,
+        "items": out,
+    }
+    content = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8")
+    response_headers = dict(headers)
+    if gzip_enabled:
+        response_headers["Content-Encoding"] = "gzip"
+        content = gzip_lib.compress(content)
+    return Response(content=content, media_type="application/json", headers=response_headers)
+
+
 @router.get("/access-graph/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_access_graph_ndjson(
     limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
@@ -785,149 +971,52 @@ def export_access_graph_ndjson(
     """
     _ensure_admin(db, tenant_id, account_id)
 
-    fmt = str(export_format or "ndjson").strip().lower() or "ndjson"
-    if fmt not in {"ndjson", "json"}:
-        raise HTTPException(status_code=400, detail="export_format must be one of: ndjson, json")
-
-    k = str(after_kind or "").strip().lower() or None
-    if (after_created_at is not None or after_id is not None) and not k:
-        raise HTTPException(status_code=400, detail="after_kind is required when using after_created_at/after_id")
-    if k is not None and k not in _ACCESS_GRAPH_KINDS:
-        raise HTTPException(status_code=400, detail=f"after_kind must be one of: {', '.join(_ACCESS_GRAPH_KINDS)}")
-
-    start_idx = _ACCESS_GRAPH_KINDS.index(k) if k else 0
-    max_items = int(limit or 0)
-
-    out: list[dict[str, Any]] = []
-
-    def _query_rows(kind: str, *, after_dt: datetime | None, after_row_id: UUID | None, take: int):  # noqa: ANN001
-        if kind == "group":
-            q = db.query(TenantGroup).filter(TenantGroup.tenant_id == tenant_id)
-            q = _apply_created_cursor(q, TenantGroup, after_created_at=after_dt, after_id=after_row_id)
-            return q.order_by(TenantGroup.created_at.asc(), TenantGroup.id.asc()).limit(take).all()
-        if kind == "group_member":
-            q = db.query(TenantGroupMember).filter(TenantGroupMember.tenant_id == tenant_id)
-            q = _apply_created_cursor(q, TenantGroupMember, after_created_at=after_dt, after_id=after_row_id)
-            return q.order_by(TenantGroupMember.created_at.asc(), TenantGroupMember.id.asc()).limit(take).all()
-        if kind == "dataset":
-            q = db.query(Dataset).filter(Dataset.tenant_id == tenant_id)
-            q = _apply_created_cursor(q, Dataset, after_created_at=after_dt, after_id=after_row_id)
-            return q.order_by(Dataset.created_at.asc(), Dataset.id.asc()).limit(take).all()
-        if kind == "dataset_member_permission":
-            q = db.query(DatasetPermission).filter(DatasetPermission.tenant_id == tenant_id)
-            q = _apply_created_cursor(q, DatasetPermission, after_created_at=after_dt, after_id=after_row_id)
-            return q.order_by(DatasetPermission.created_at.asc(), DatasetPermission.id.asc()).limit(take).all()
-        if kind == "dataset_group_permission":
-            q = db.query(DatasetGroupPermission).filter(DatasetGroupPermission.tenant_id == tenant_id)
-            q = _apply_created_cursor(q, DatasetGroupPermission, after_created_at=after_dt, after_id=after_row_id)
-            return (
-                q.order_by(DatasetGroupPermission.created_at.asc(), DatasetGroupPermission.id.asc()).limit(take).all()
-            )
-        if kind == "document":
-            q = db.query(Document).filter(Document.tenant_id == tenant_id)
-            q = _apply_created_cursor(q, Document, after_created_at=after_dt, after_id=after_row_id)
-            return q.order_by(Document.created_at.asc(), Document.id.asc()).limit(take).all()
-        if kind == "document_member_permission":
-            q = db.query(DocumentPermission).filter(DocumentPermission.tenant_id == tenant_id)
-            q = _apply_created_cursor(q, DocumentPermission, after_created_at=after_dt, after_id=after_row_id)
-            return q.order_by(DocumentPermission.created_at.asc(), DocumentPermission.id.asc()).limit(take).all()
-        if kind == "document_group_permission":
-            q = db.query(DocumentGroupPermission).filter(DocumentGroupPermission.tenant_id == tenant_id)
-            q = _apply_created_cursor(q, DocumentGroupPermission, after_created_at=after_dt, after_id=after_row_id)
-            return (
-                q.order_by(DocumentGroupPermission.created_at.asc(), DocumentGroupPermission.id.asc()).limit(take).all()
-            )
-        return []
-
-    for kind in _ACCESS_GRAPH_KINDS[start_idx:]:
-        remaining = max_items - len(out)
-        if remaining <= 0:
-            break
-        rows = _query_rows(
-            kind,
-            after_dt=(after_created_at if kind == k else None),
-            after_row_id=(after_id if kind == k else None),
-            take=remaining,
-        )
-        for row in rows:
-            out.append(_export_access_graph_row(kind=kind, row=row, include_sensitive=bool(include_sensitive)))
-            if len(out) >= max_items:
-                break
-        if len(out) >= max_items:
-            break
-
-        # Kind exhausted: keep filling from the next kind in the same page.
-        if len(rows) >= remaining:
-            break
-
-    has_more = bool(len(out) >= max_items and out)
-    next_cursor = None
-    if has_more:
-        last = out[-1]
-        next_cursor = {
-            "after_kind": str(last.get("kind") or ""),
-            "after_created_at": last.get("created_at"),
-            "after_id": last.get("id"),
-        }
-
-    # Best-effort audit log (PII-safe).
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=account_id,
-            action="compliance.access_graph.export",
-            resource_type="tenant",
-            resource_id=str(tenant_id),
-            details={
-                "limit": int(limit or 0),
-                "returned": int(len(out)),
-                "after_kind": k,
-                "after_created_at": (after_created_at.isoformat() if after_created_at else None),
-                "after_id": (str(after_id) if after_id else None),
-                "include_sensitive": bool(include_sensitive),
-                "export_format": fmt,
-                "gzip": bool(gzip),
-            },
-        )
-        db.commit()
-    except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(_AUDIT_ROUTER_FALLBACK_LOG_MESSAGE, exc)
-
-    headers: dict[str, str] = {
-        "Cache-Control": "no-store",
-    }
-    if next_cursor:
-        headers["X-Next-Cursor"] = json.dumps(next_cursor, ensure_ascii=True, separators=(",", ":"))
-
+    fmt, kind = _normalize_access_graph_export_params(
+        export_format=export_format,
+        after_kind=after_kind,
+        after_created_at=after_created_at,
+        after_id=after_id,
+    )
+    out = _collect_access_graph_page(
+        db,
+        tenant_id=tenant_id,
+        include_sensitive=bool(include_sensitive),
+        limit=int(limit or 0),
+        after_kind=kind,
+        after_created_at=after_created_at,
+        after_id=after_id,
+    )
+    next_cursor = _access_graph_next_cursor(out, limit=int(limit or 0))
+    _audit_access_graph_export(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        limit=int(limit or 0),
+        returned=len(out),
+        after_kind=kind,
+        after_created_at=after_created_at,
+        after_id=after_id,
+        include_sensitive=bool(include_sensitive),
+        export_format=fmt,
+        gzip_enabled=bool(gzip),
+    )
+    headers = _build_access_graph_headers(next_cursor)
     if fmt == "json":
-        payload = {
-            "schema": _ACCESS_GRAPH_PAGE_SCHEMA,
-            "limit": int(limit or 0),
-            "returned": int(len(out)),
-            "next_cursor": next_cursor,
-            "items": out,
-        }
-        content = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8")
-        if gzip:
-            headers["Content-Encoding"] = "gzip"
-            content = gzip_lib.compress(content)
-        return Response(content=content, media_type="application/json", headers=headers)
-
-    def _iter_lines() -> Iterator[bytes]:
-        for item in out:
-            line = json.dumps(item, ensure_ascii=False, separators=(",", ":"), default=str) + "\n"
-            yield line.encode("utf-8")
-
-    body_iter: Iterator[bytes] = _iter_lines()
-    if gzip:
-        headers["Content-Encoding"] = "gzip"
-        body_iter = _iter_gzip_chunks(body_iter)
-
-    return StreamingResponse(body_iter, media_type="application/x-ndjson", headers=headers)
+        return _access_graph_json_response(
+            limit=int(limit or 0),
+            out=out,
+            next_cursor=next_cursor,
+            headers=headers,
+            gzip_enabled=bool(gzip),
+        )
+    return _build_ndjson_streaming_response(
+        (
+            (json.dumps(item, ensure_ascii=False, separators=(",", ":"), default=str) + "\n").encode("utf-8")
+            for item in out
+        ),
+        gzip_enabled=bool(gzip),
+        headers=headers,
+    )
 
 
 @router.get("/access-graph/summary", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)

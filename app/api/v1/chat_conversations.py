@@ -113,6 +113,157 @@ def _apply_conversation_search(
     )
 
 
+def _normalized_conversation_limit(limit: int) -> int:
+    try:
+        limit_value = int(limit or 0)
+    except Exception:
+        limit_value = 20
+    return max(1, min(limit_value, 200))
+
+
+def _conversation_doc_ids_index(batch: list[Conversation]) -> tuple[dict[UUID, list[UUID]], set[UUID]]:
+    doc_ids_by_conversation_id: dict[UUID, list[UUID]] = {}
+    all_doc_ids: set[UUID] = set()
+    for conv in batch:
+        doc_ids = list(getattr(conv, "document_ids", None) or [])
+        doc_ids_by_conversation_id[conv.id] = doc_ids
+        all_doc_ids.update(doc_ids)
+    return doc_ids_by_conversation_id, all_doc_ids
+
+
+def _allowed_conversation_document_sets(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    all_doc_ids: set[UUID],
+) -> tuple[set[UUID], set[UUID]]:
+    if not all_doc_ids:
+        return set(), set()
+    return get_allowed_document_id_sets(
+        db,
+        tenant_id,
+        account_id,
+        list(all_doc_ids),
+        check_member=False,
+    )
+
+
+def _dataset_scope_accessible(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    conv: Conversation,
+    dataset_access: dict[UUID, bool],
+) -> bool:
+    dataset_id = getattr(conv, "dataset_id", None)
+    if dataset_id is None:
+        return True
+    if dataset_id not in dataset_access:
+        try:
+            ensure_conversation_dataset_access(
+                db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                conv=conv,
+            )
+            dataset_access[dataset_id] = True
+        except HTTPException:
+            dataset_access[dataset_id] = False
+    return dataset_access[dataset_id]
+
+
+def _conversation_documents_accessible(
+    *,
+    doc_ids: list[UUID],
+    allowed_doc_ids: set[UUID],
+    missing_doc_ids: set[UUID],
+) -> bool:
+    if not doc_ids:
+        return True
+    remaining_doc_ids = set(doc_ids) - missing_doc_ids
+    return not remaining_doc_ids or bool(remaining_doc_ids & allowed_doc_ids)
+
+
+def _build_conversation_list_item(
+    conv: Conversation,
+    *,
+    last_message_by_conversation_id: dict[UUID, Message],
+) -> dict[str, object]:
+    conv_dict: dict[str, object] = {
+        "id": conv.id,
+        "title": conv.title,
+        "message_count": conv.message_count,
+        "created_at": conv.created_at,
+        "updated_at": conv.updated_at,
+        "last_message": None,
+        "last_message_at": None,
+    }
+    last_msg = last_message_by_conversation_id.get(conv.id)
+    if last_msg:
+        conv_dict["last_message"] = last_msg.content[:100] + "..." if len(last_msg.content) > 100 else last_msg.content
+        conv_dict["last_message_at"] = last_msg.created_at
+    return conv_dict
+
+
+def _collect_accessible_conversations(
+    ordered_query: ORMQuery,
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    skip: int,
+    limit_eff: int,
+) -> tuple[int, list[Conversation]]:
+    batch_size = max(50, limit_eff)
+    query_offset = 0
+    accessible_total = 0
+    conversations: list[Conversation] = []
+    dataset_access: dict[UUID, bool] = {}
+
+    while True:
+        batch = ordered_query.offset(query_offset).limit(batch_size).all()
+        if not batch:
+            break
+        query_offset += len(batch)
+
+        doc_ids_by_conversation_id, all_doc_ids = _conversation_doc_ids_index(batch)
+        allowed_doc_ids, missing_doc_ids = _allowed_conversation_document_sets(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            all_doc_ids=all_doc_ids,
+        )
+
+        for conv in batch:
+            if not _dataset_scope_accessible(
+                db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                conv=conv,
+                dataset_access=dataset_access,
+            ):
+                continue
+            doc_ids = doc_ids_by_conversation_id.get(conv.id) or []
+            if not _conversation_documents_accessible(
+                doc_ids=doc_ids,
+                allowed_doc_ids=allowed_doc_ids,
+                missing_doc_ids=missing_doc_ids,
+            ):
+                continue
+            accessible_total += 1
+            if accessible_total <= int(skip):
+                continue
+            if len(conversations) < limit_eff:
+                conversations.append(conv)
+
+        if len(batch) < batch_size:
+            break
+
+    return accessible_total, conversations
+
+
 @router.post(
     "/conversations",
     response_model=ConversationSchema,
@@ -255,80 +406,15 @@ def list_conversations(
         )
 
     # Fill the page with accessible conversations (avoid returning <limit when some are filtered).
-    try:
-        limit_eff = int(limit or 0)
-    except Exception:
-        limit_eff = 20
-    limit_eff = max(1, min(limit_eff, 200))
-
-    ordered = query.order_by(Conversation.updated_at.desc())
-    batch_size = max(50, limit_eff)
-    query_offset = 0
-    accessible_total = 0
-    conversations: list[Conversation] = []
-    dataset_access: dict[UUID, bool] = {}
-
-    while True:
-        batch = ordered.offset(query_offset).limit(batch_size).all()
-        if not batch:
-            break
-        query_offset += len(batch)
-
-        doc_ids_by_conversation_id: dict[UUID, list[UUID]] = {}
-        all_doc_ids: set[UUID] = set()
-        for conv in batch:
-            doc_ids = list(getattr(conv, "document_ids", None) or [])
-            doc_ids_by_conversation_id[conv.id] = doc_ids
-            all_doc_ids.update(doc_ids)
-
-        allowed_doc_ids: set[UUID] = set()
-        missing_doc_ids: set[UUID] = set()
-        if all_doc_ids:
-            allowed_doc_ids, missing_doc_ids = get_allowed_document_id_sets(
-                db,
-                tenant_id,
-                account_id,
-                list(all_doc_ids),
-                check_member=False,
-            )
-
-        for conv in batch:
-            dataset_id = getattr(conv, "dataset_id", None)
-            if dataset_id is not None and dataset_id not in dataset_access:
-                try:
-                    ensure_conversation_dataset_access(
-                        db,
-                        tenant_id=tenant_id,
-                        account_id=account_id,
-                        conv=conv,
-                    )
-                    dataset_access[dataset_id] = True
-                except HTTPException:
-                    dataset_access[dataset_id] = False
-            if dataset_id is not None and not dataset_access[dataset_id]:
-                continue
-
-            doc_ids = doc_ids_by_conversation_id.get(conv.id) or []
-            is_accessible = False
-            if not doc_ids:
-                is_accessible = True
-            else:
-                doc_id_set = set(doc_ids)
-                remaining_doc_ids = doc_id_set - missing_doc_ids
-                if not remaining_doc_ids or remaining_doc_ids & allowed_doc_ids:
-                    is_accessible = True
-
-            if not is_accessible:
-                continue
-
-            accessible_total += 1
-            if accessible_total <= int(skip):
-                continue
-            if len(conversations) < limit_eff:
-                conversations.append(conv)
-
-        if len(batch) < batch_size:
-            break
+    limit_eff = _normalized_conversation_limit(limit)
+    accessible_total, conversations = _collect_accessible_conversations(
+        query.order_by(Conversation.updated_at.desc()),
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        skip=int(skip),
+        limit_eff=limit_eff,
+    )
 
     result_items = []
     conv_ids = [conv.id for conv in conversations]
@@ -339,24 +425,12 @@ def list_conversations(
     )
 
     for conv in conversations:
-        conv_dict = {
-            "id": conv.id,
-            "title": conv.title,
-            "message_count": conv.message_count,
-            "created_at": conv.created_at,
-            "updated_at": conv.updated_at,
-            "last_message": None,
-            "last_message_at": None,
-        }
-
-        last_msg = last_message_by_conversation_id.get(conv.id)
-        if last_msg:
-            conv_dict["last_message"] = (
-                last_msg.content[:100] + "..." if len(last_msg.content) > 100 else last_msg.content
+        result_items.append(
+            _build_conversation_list_item(
+                conv,
+                last_message_by_conversation_id=last_message_by_conversation_id,
             )
-            conv_dict["last_message_at"] = last_msg.created_at
-
-        result_items.append(conv_dict)
+        )
 
     result_items.sort(
         key=lambda item: item.get("last_message_at") or item.get("created_at") or item.get("updated_at"),

@@ -73,44 +73,52 @@ class LexicalDBMixin:
         if direct:
             return direct
 
-        and_parts = metadata_filter.get("$and")
-        if isinstance(and_parts, list):
-            scoped: list[UUID] = []
-            seen: set[str] = set()
-            for part in and_parts:
-                if not isinstance(part, dict):
+        and_scope = cls._collect_dataset_scope_from_and(metadata_filter.get("$and"))
+        if and_scope:
+            return and_scope
+
+        return cls._collect_dataset_scope_from_or(metadata_filter.get("$or"))
+
+    @classmethod
+    def _collect_dataset_scope_from_and(cls, parts: Any) -> list[UUID]:
+        if not isinstance(parts, list):
+            return []
+        scoped: list[UUID] = []
+        seen: set[str] = set()
+        for part in parts:
+            if not isinstance(part, dict):
+                continue
+            for dataset_uuid in cls._collect_lexical_dataset_scope(part):
+                key = str(dataset_uuid)
+                if key in seen:
                     continue
-                for dataset_uuid in cls._collect_lexical_dataset_scope(part):
-                    key = str(dataset_uuid)
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                    scoped.append(dataset_uuid)
-            if scoped:
-                return scoped
+                seen.add(key)
+                scoped.append(dataset_uuid)
+        return scoped
 
-        or_parts = metadata_filter.get("$or")
-        if isinstance(or_parts, list) and or_parts:
-            scoped_parts: list[list[UUID]] = []
-            for part in or_parts:
-                if not isinstance(part, dict):
-                    return []
-                part_scope = cls._collect_lexical_dataset_scope(part)
-                if not part_scope:
-                    return []
-                scoped_parts.append(part_scope)
-            scoped: list[UUID] = []
-            seen: set[str] = set()
-            for part_scope in scoped_parts:
-                for dataset_uuid in part_scope:
-                    key = str(dataset_uuid)
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                    scoped.append(dataset_uuid)
-            return scoped
+    @classmethod
+    def _collect_dataset_scope_from_or(cls, parts: Any) -> list[UUID]:
+        if not isinstance(parts, list) or not parts:
+            return []
+        scoped_parts: list[list[UUID]] = []
+        for part in parts:
+            if not isinstance(part, dict):
+                return []
+            part_scope = cls._collect_lexical_dataset_scope(part)
+            if not part_scope:
+                return []
+            scoped_parts.append(part_scope)
 
-        return []
+        scoped: list[UUID] = []
+        seen: set[str] = set()
+        for part_scope in scoped_parts:
+            for dataset_uuid in part_scope:
+                key = str(dataset_uuid)
+                if key in seen:
+                    continue
+                seen.add(key)
+                scoped.append(dataset_uuid)
+        return scoped
 
     @classmethod
     def _lexical_dataset_scope(cls, metadata_filter: dict[str, Any] | None) -> tuple[list[UUID] | None, str | None]:

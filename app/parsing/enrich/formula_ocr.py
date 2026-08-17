@@ -83,17 +83,7 @@ def _is_formula_candidate(*, alt: str, src: str) -> bool:
     return bool(re.search(r"(formula|equation|math|eqn)", (src or ""), flags=re.IGNORECASE))
 
 
-def _safe_read_local_image_bytes(*, src: str, origin_path: Path, max_bytes: int) -> tuple[bytes | None, str]:
-    raw = str(src or "").strip()
-    if not raw:
-        return None, "empty_src"
-    if raw.startswith("data:"):
-        return None, "data_url_unsupported"
-    if urlparse(raw).scheme in {"http", "https"}:
-        return None, "remote_url_unsupported"
-    if _MINIO_URL_HINT in raw:
-        return None, "already_minio_url"
-
+def _normalize_local_image_ref(raw: str) -> tuple[str | None, str | None]:
     resolved_ref = raw
     if raw.lower().startswith("file://"):
         parsed = urlparse(raw)
@@ -105,18 +95,23 @@ def _safe_read_local_image_bytes(*, src: str, origin_path: Path, max_bytes: int)
         resolved_ref = unquote(str(parsed.path or ""))
         if not resolved_ref:
             return None, "empty_file_path"
-        # file:///C:/... -> C:/...
         if re.match(r"^/[a-zA-Z]:/", resolved_ref):
             resolved_ref = resolved_ref[1:]
-    else:
-        resolved_ref = unquote(resolved_ref)
+        return resolved_ref, None
+    return unquote(resolved_ref), None
+
+
+def _resolve_origin_image_path(*, src: str, origin_path: Path) -> tuple[Path | None, str | None]:
+    resolved_ref, reason = _normalize_local_image_ref(src)
+    if reason:
+        return None, reason
 
     base_dir = origin_path.resolve(strict=False)
     if base_dir.is_file():
         base_dir = base_dir.parent
     base_dir_resolved = base_dir.resolve(strict=False)
 
-    path_obj = Path(resolved_ref)
+    path_obj = Path(resolved_ref or "")
     if not path_obj.is_absolute():
         path_obj = (base_dir_resolved / path_obj).resolve(strict=False)
     else:
@@ -128,6 +123,10 @@ def _safe_read_local_image_bytes(*, src: str, origin_path: Path, max_bytes: int)
         return None, "path_outside_origin"
     if not path_obj.exists() or not path_obj.is_file():
         return None, "missing_file"
+    return path_obj, None
+
+
+def _read_local_image_bytes(path_obj: Path, *, max_bytes: int) -> tuple[bytes | None, str]:
     try:
         if int(path_obj.stat().st_size) > int(max_bytes):
             return None, "too_large"
@@ -140,6 +139,22 @@ def _safe_read_local_image_bytes(*, src: str, origin_path: Path, max_bytes: int)
     if len(data) > int(max_bytes):
         return None, "too_large"
     return data, "ok"
+
+
+def _safe_read_local_image_bytes(*, src: str, origin_path: Path, max_bytes: int) -> tuple[bytes | None, str]:
+    raw = str(src or "").strip()
+    if not raw:
+        return None, "empty_src"
+    if raw.startswith("data:"):
+        return None, "data_url_unsupported"
+    if urlparse(raw).scheme in {"http", "https"}:
+        return None, "remote_url_unsupported"
+    if _MINIO_URL_HINT in raw:
+        return None, "already_minio_url"
+    path_obj, reason = _resolve_origin_image_path(src=raw, origin_path=origin_path)
+    if path_obj is None:
+        return None, str(reason or "missing_file")
+    return _read_local_image_bytes(path_obj, max_bytes=max_bytes)
 
 
 async def _call_formula_backend_async(
@@ -230,6 +245,104 @@ class FormulaOcrAudit:
         }
 
 
+def _next_non_empty_line(lines: list[str], start: int, *, limit: int = 4) -> str:
+    for index in range(start + 1, min(len(lines), start + limit)):
+        candidate = (lines[index] or "").strip()
+        if candidate:
+            return candidate
+    return ""
+
+
+def _iter_line_images(line: str) -> list[tuple[str, str]]:
+    return _extract_md_images(line) + _extract_html_imgs(line)
+
+
+def _extract_formula_element(
+    *,
+    alt: str,
+    src: str,
+    origin_path: Path,
+    max_image_bytes: int,
+    api_url: str,
+    timeout_sec: float,
+    max_latex_chars: int,
+) -> tuple[dict[str, Any] | None, int, int]:
+    if not _is_formula_candidate(alt=alt, src=src):
+        return None, 0, 0
+
+    img_bytes, reason = _safe_read_local_image_bytes(
+        src=src,
+        origin_path=origin_path,
+        max_bytes=int(max_image_bytes or 0),
+    )
+    if img_bytes is None:
+        logger.debug("[formula_ocr] skipped image (read=%s) src=%s", reason, str(src or "")[:200])
+        return None, 0, 0
+
+    latex_raw, status = _call_formula_backend(
+        api_url=api_url,
+        image_bytes=img_bytes,
+        filename=Path(str(src or "formula.png")).name,
+        timeout_sec=float(timeout_sec),
+    )
+    latex = _clean_latex(latex_raw, max_chars=int(max_latex_chars or 0))
+    if not latex:
+        logger.debug("[formula_ocr] backend returned empty latex (%s)", status)
+        return None, 1, 0
+
+    return {
+        "latex": latex,
+        "element": {
+            "kind": "equation",
+            "text": latex,
+            "attributes": {
+                "source_content_type": "formula_ocr",
+                "source_doc_type": "formula_ocr",
+                "formula_image_alt": str(alt or ""),
+                "formula_image_src": str(src or ""),
+                "formula_backend_status": str(status or ""),
+            },
+        },
+    }, 1, 1
+
+
+def _extract_formula_elements_for_line(
+    line: str,
+    *,
+    lines: list[str],
+    index: int,
+    remaining: int,
+    origin_path: Path,
+    max_image_bytes: int,
+    api_url: str,
+    timeout_sec: float,
+    max_latex_chars: int,
+) -> tuple[list[dict[str, Any]], int, int]:
+    if remaining <= 0 or _next_non_empty_line(lines, index).startswith("$"):
+        return [], 0, 0
+
+    extracted: list[dict[str, Any]] = []
+    attempted = 0
+    succeeded = 0
+    for alt, src in _iter_line_images(line):
+        if len(extracted) >= remaining:
+            break
+        element, attempted_inc, succeeded_inc = _extract_formula_element(
+            alt=alt,
+            src=src,
+            origin_path=origin_path,
+            max_image_bytes=max_image_bytes,
+            api_url=api_url,
+            timeout_sec=timeout_sec,
+            max_latex_chars=max_latex_chars,
+        )
+        attempted += attempted_inc
+        succeeded += succeeded_inc
+        if element is not None:
+            extracted.append(element)
+    return extracted, attempted, succeeded
+
+
 def add_formula_latex_blocks(
     markdown: str,
     *,
@@ -310,63 +423,23 @@ def add_formula_latex_blocks(
         if formulas_added >= max_images_i:
             continue
 
-        # Avoid doubling when the next non-empty line already looks like a LaTeX block.
-        next_non_empty = ""
-        for j in range(i + 1, min(len(lines), i + 4)):
-            cand = (lines[j] or "").strip()
-            if cand:
-                next_non_empty = cand
-                break
-        if next_non_empty.startswith("$"):
-            continue
-
-        images = _extract_md_images(line) + _extract_html_imgs(line)
-        if not images:
-            continue
-
-        for alt, src in images:
-            if formulas_added >= max_images_i:
-                break
-            if not _is_formula_candidate(alt=alt, src=src):
-                continue
-
-            img_bytes, reason = _safe_read_local_image_bytes(
-                src=src,
-                origin_path=origin_path,
-                max_bytes=int(max_image_bytes or 0),
-            )
-            if img_bytes is None:
-                logger.debug("[formula_ocr] skipped image (read=%s) src=%s", reason, str(src or "")[:200])
-                continue
-
-            images_attempted += 1
-            latex_raw, status = _call_formula_backend(
-                api_url=url,
-                image_bytes=img_bytes,
-                filename=Path(str(src or "formula.png")).name,
-                timeout_sec=float(timeout_sec),
-            )
-            latex = _clean_latex(latex_raw, max_chars=int(max_latex_chars or 0))
-            if not latex:
-                logger.debug("[formula_ocr] backend returned empty latex (%s)", status)
-                continue
-
-            images_succeeded += 1
+        extracted, attempted, succeeded = _extract_formula_elements_for_line(
+            line,
+            lines=lines,
+            index=i,
+            remaining=max_images_i - formulas_added,
+            origin_path=origin_path,
+            max_image_bytes=int(max_image_bytes or 0),
+            api_url=url,
+            timeout_sec=float(timeout_sec),
+            max_latex_chars=int(max_latex_chars or 0),
+        )
+        images_attempted += attempted
+        images_succeeded += succeeded
+        for element in extracted:
             formulas_added += 1
-            out_lines.append(f"$$ {latex} $$")
-            formula_elements.append(
-                {
-                    "kind": "equation",
-                    "text": latex,
-                    "attributes": {
-                        "source_content_type": "formula_ocr",
-                        "source_doc_type": "formula_ocr",
-                        "formula_image_alt": str(alt or ""),
-                        "formula_image_src": str(src or ""),
-                        "formula_backend_status": str(status or ""),
-                    },
-                }
-            )
+            out_lines.append(f"$$ {element['latex']} $$")
+            formula_elements.append(element["element"])
 
     elapsed_ms = int(round((time.perf_counter() - t0) * 1000))
     return (

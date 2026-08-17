@@ -165,6 +165,74 @@ def _image_ref_from_chunk_meta(meta: dict[str, Any]) -> tuple[str | None, str | 
     return None, image_id
 
 
+def _image_index_limits(*, max_chunks: int, max_image_bytes: int | None) -> tuple[int, int]:
+    limit = max(1, min(int(max_chunks or 0), 20_000))
+    max_bytes = (
+        int(max_image_bytes)
+        if max_image_bytes is not None
+        else int(getattr(settings, "MINIO_IMAGE_MAX_BYTES", 0) or 0)
+    )
+    if max_bytes <= 0:
+        max_bytes = 10_000_000
+    return limit, max_bytes
+
+
+def _load_chunk_image_bytes(*, tenant_id: UUID, meta: dict[str, Any], max_bytes: int) -> bytes | None:
+    img_id, image_id = _image_ref_from_chunk_meta(meta)
+    if img_id:
+        return _load_image_bytes_from_minio(img_id=img_id, max_bytes=max_bytes)
+    if image_id:
+        return _load_image_bytes_from_local(tenant_id=tenant_id, image_id=image_id, max_bytes=max_bytes)
+    return None
+
+
+def _build_image_index_item(
+    *,
+    chunk: Any,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    meta: dict[str, Any],
+) -> dict[str, Any] | None:
+    chunk_id = getattr(chunk, "id", None)
+    if chunk_id is None:
+        return None
+    normalize_image_metadata(meta)
+    return {
+        "id": str(chunk_id),
+        "content": "image",
+        "metadata": {
+            "tenant_id": str(tenant_id),
+            "dataset_id": str(dataset_id),
+            "document_id": str(getattr(chunk, "document_id", "") or ""),
+            "chunk_id": str(chunk_id),
+            "chunk_index": int(getattr(chunk, "chunk_index", 0) or 0),
+            "page_number": int(getattr(chunk, "page_number", 0) or 0),
+            "img_id": meta.get("img_id") or meta.get("image_id") or "",
+            "image_id": meta.get("image_id") or "",
+            "image_url": meta.get("image_url") or meta.get("img_url") or "",
+            "index_kind": "image",
+        },
+    }
+
+
+def _flush_image_index_batch(
+    *,
+    adapter: Any,
+    items: list[dict[str, Any]],
+    embeddings: list[list[float]],
+    upsert: bool,
+    errors: list[str],
+) -> int:
+    if not items:
+        return 0
+    try:
+        adapter.add_vectors(items, embeddings=embeddings, upsert=bool(upsert))
+        return 0
+    except Exception as exc:  # noqa: BLE001
+        errors.append(str(exc)[:200])
+        return len(items)
+
+
 def index_clip_image_embeddings_for_dataset(
     *,
     db: Session,
@@ -187,11 +255,7 @@ def index_clip_image_embeddings_for_dataset(
     from app.models.document import Document as DBDocument  # noqa: WPS433
     from app.models.document import DocumentChunk  # noqa: WPS433
 
-    limit = max(1, min(int(max_chunks or 0), 20_000))
-    max_bytes = int(max_image_bytes) if max_image_bytes is not None else int(getattr(settings, "MINIO_IMAGE_MAX_BYTES", 0) or 0)
-    # Fallback cap to keep memory bounded in case MINIO_IMAGE_MAX_BYTES is unset.
-    if max_bytes <= 0:
-        max_bytes = 10_000_000
+    limit, max_bytes = _image_index_limits(max_chunks=max_chunks, max_image_bytes=max_image_bytes)
 
     # Pull recent chunks first; image chunks tend to be sparse.
     rows = (
@@ -221,13 +285,7 @@ def index_clip_image_embeddings_for_dataset(
             skipped += 1
             continue
 
-        img_id, image_id = _image_ref_from_chunk_meta(meta)
-        raw_bytes: bytes | None = None
-        if img_id:
-            raw_bytes = _load_image_bytes_from_minio(img_id=img_id, max_bytes=max_bytes)
-        elif image_id:
-            raw_bytes = _load_image_bytes_from_local(tenant_id=tenant_id, image_id=image_id, max_bytes=max_bytes)
-
+        raw_bytes = _load_chunk_image_bytes(tenant_id=tenant_id, meta=meta, max_bytes=max_bytes)
         if not raw_bytes:
             skipped += 1
             continue
@@ -245,50 +303,34 @@ def index_clip_image_embeddings_for_dataset(
         if dim <= 0:
             dim = int(len(vec))
 
-        chunk_id = getattr(chunk, "id", None)
-        if chunk_id is None:
+        item = _build_image_index_item(chunk=chunk, tenant_id=tenant_id, dataset_id=dataset_id, meta=meta)
+        if item is None:
             skipped += 1
             continue
 
-        normalize_image_metadata(meta)
-        items.append(
-            {
-                "id": str(chunk_id),
-                "content": "image",
-                "metadata": {
-                    "tenant_id": str(tenant_id),
-                    "dataset_id": str(dataset_id),
-                    "document_id": str(getattr(chunk, "document_id", "") or ""),
-                    "chunk_id": str(chunk_id),
-                    "chunk_index": int(getattr(chunk, "chunk_index", 0) or 0),
-                    "page_number": int(getattr(chunk, "page_number", 0) or 0),
-                    # Best-effort image refs for citations/UI.
-                    "img_id": meta.get("img_id") or meta.get("image_id") or "",
-                    "image_id": meta.get("image_id") or "",
-                    "image_url": meta.get("image_url") or meta.get("img_url") or "",
-                    "index_kind": "image",
-                },
-            }
-        )
+        items.append(item)
         embeddings.append(vec)
 
         indexed += 1
         # Batch insert size cap to avoid huge Milvus writes; flush opportunistically.
         if indexed % 256 == 0:
-            try:
-                adapter.add_vectors(items, embeddings=embeddings, upsert=bool(upsert))
-            except Exception as exc:  # noqa: BLE001
-                failed += len(items)
-                errors.append(str(exc)[:200])
+            failed += _flush_image_index_batch(
+                adapter=adapter,
+                items=items,
+                embeddings=embeddings,
+                upsert=bool(upsert),
+                errors=errors,
+            )
             items = []
             embeddings = []
 
-    if items:
-        try:
-            adapter.add_vectors(items, embeddings=embeddings, upsert=bool(upsert))
-        except Exception as exc:  # noqa: BLE001
-            failed += len(items)
-            errors.append(str(exc)[:200])
+    failed += _flush_image_index_batch(
+        adapter=adapter,
+        items=items,
+        embeddings=embeddings,
+        upsert=bool(upsert),
+        errors=errors,
+    )
 
     return ImageIndexStats(
         indexed=int(indexed),

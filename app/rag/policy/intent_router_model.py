@@ -52,6 +52,58 @@ def _coerce_int(value: Any, *, default: int = 0) -> int:
         return int(default)
 
 
+def _normalize_rule_tokens(tokens_raw: Any) -> list[str]:
+    if not isinstance(tokens_raw, list):
+        return []
+
+    tokens: list[str] = []
+    seen: set[str] = set()
+    for token in tokens_raw:
+        tok = str(token or "").strip()
+        if not tok:
+            continue
+        key = tok.casefold() if tok.isascii() else tok
+        if key in seen:
+            continue
+        seen.add(key)
+        tokens.append(tok[:64])
+        if len(tokens) >= 24:
+            break
+    return tokens
+
+
+def _normalize_rule_overrides(overrides_raw: Any) -> dict[str, Any]:
+    if not isinstance(overrides_raw, dict):
+        return {}
+    return {str(k): v for k, v in overrides_raw.items() if str(k) in _ALLOWED_OVERRIDES}
+
+
+def _normalize_rule(item: dict[str, Any]) -> dict[str, Any] | None:
+    rid = str(item.get("rule_id") or "").strip()[:40]
+    if not rid:
+        return None
+
+    tokens = _normalize_rule_tokens(item.get("tokens"))
+    if not tokens:
+        return None
+
+    overrides = _normalize_rule_overrides(item.get("overrides"))
+    if not overrides:
+        return None
+
+    min_match = min(max(1, _coerce_int(item.get("min_match"), default=1)), len(tokens))
+    confidence = min(1.0, max(0.0, _coerce_float(item.get("confidence"), default=0.0)))
+    weight = min(2.0, max(0.0, _coerce_float(item.get("weight"), default=1.0)))
+    return {
+        "rule_id": rid,
+        "tokens": tokens,
+        "min_match": min_match,
+        "confidence": confidence,
+        "weight": weight,
+        "overrides": overrides,
+    }
+
+
 def normalize_intent_router_model(raw: Any) -> dict[str, Any] | None:
     payload = raw if isinstance(raw, dict) else {}
     if str(payload.get("schema") or "").strip() != INTENT_ROUTER_MODEL_SCHEMA_V1:
@@ -64,52 +116,9 @@ def normalize_intent_router_model(raw: Any) -> dict[str, Any] | None:
     for item in rules_raw[:200]:
         if not isinstance(item, dict):
             continue
-        rid = str(item.get("rule_id") or "").strip()[:40]
-        if not rid:
-            continue
-        tokens_raw = item.get("tokens")
-        if not isinstance(tokens_raw, list):
-            continue
-        tokens: list[str] = []
-        seen: set[str] = set()
-        for token in tokens_raw:
-            tok = str(token or "").strip()
-            if not tok:
-                continue
-            key = tok.casefold() if tok.isascii() else tok
-            if key in seen:
-                continue
-            seen.add(key)
-            tokens.append(tok[:64])
-            if len(tokens) >= 24:
-                break
-        if not tokens:
-            continue
-
-        overrides_raw = item.get("overrides")
-        if not isinstance(overrides_raw, dict):
-            continue
-        overrides = {str(k): v for k, v in overrides_raw.items() if str(k) in _ALLOWED_OVERRIDES}
-        if not overrides:
-            continue
-
-        min_match = max(1, _coerce_int(item.get("min_match"), default=1))
-        min_match = min(min_match, len(tokens))
-        confidence = _coerce_float(item.get("confidence"), default=0.0)
-        confidence = min(1.0, max(0.0, confidence))
-        weight = _coerce_float(item.get("weight"), default=1.0)
-        weight = min(2.0, max(0.0, weight))
-
-        rules.append(
-            {
-                "rule_id": rid,
-                "tokens": tokens,
-                "min_match": min_match,
-                "confidence": confidence,
-                "weight": weight,
-                "overrides": overrides,
-            }
-        )
+        normalized_rule = _normalize_rule(item)
+        if normalized_rule is not None:
+            rules.append(normalized_rule)
 
     if not rules:
         return None

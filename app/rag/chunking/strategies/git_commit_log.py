@@ -56,6 +56,19 @@ def _extract_commit_header_value(line: str, *, prefix: str) -> str | None:
     return value[:_HEADER_VALUE_CHAR_LIMIT] or None
 
 
+def _scan_commit_headers(chunk: str) -> tuple[str | None, str | None]:
+    author = None
+    date = None
+    for line in chunk[:_HEADER_SCAN_CHAR_LIMIT].splitlines()[:_HEADER_SCAN_LINE_LIMIT]:
+        if author is None:
+            author = _extract_commit_header_value(line, prefix=_AUTHOR_PREFIX)
+        if date is None:
+            date = _extract_commit_header_value(line, prefix=_DATE_PREFIX)
+        if author is not None and date is not None:
+            break
+    return author, date
+
+
 def _iter_commits(text: str) -> list[_Commit]:
     starts = [m.start() for m in _COMMIT_RE.finditer(text or "")]
     if not starts:
@@ -68,23 +81,7 @@ def _iter_commits(text: str) -> list[_Commit]:
         if not m:
             continue
         sha = (m.group("sha") or "").strip()
-        author = None
-        date = None
-        for ln in chunk[:_HEADER_SCAN_CHAR_LIMIT].splitlines()[:_HEADER_SCAN_LINE_LIMIT]:
-            if author is None:
-                author = _extract_commit_header_value(ln, prefix=_AUTHOR_PREFIX)
-                if author is not None:
-                    if date is not None:
-                        break
-                    continue
-            if date is None:
-                date = _extract_commit_header_value(ln, prefix=_DATE_PREFIX)
-                if date is not None:
-                    if author is not None:
-                        break
-                    continue
-            if author is not None and date is not None:
-                break
+        author, date = _scan_commit_headers(chunk)
         commits.append(_Commit(start=start, end=end, index=len(commits), sha=sha, author=author, date=date))
     return commits
 
@@ -118,6 +115,36 @@ def looks_like_git_commit_log(text: str) -> bool:
     return False
 
 
+def _split_commit_section_docs(
+    splitter: RecursiveCharacterTextSplitter,
+    section_text: str,
+    base_meta: dict[str, Any],
+    *,
+    section: _Section,
+    current: _Commit | None,
+) -> list[Document]:
+    split_docs = splitter.create_documents(texts=[section_text], metadatas=[base_meta])
+    chunks: list[Document] = []
+    for split_doc in split_docs:
+        split_meta = dict(split_doc.metadata or {})
+        local_start = int(split_meta.pop("start_index", None) or 0)
+        abs_start = section.start + local_start
+        meta: dict[str, Any] = dict(base_meta)
+        meta.update(split_meta)
+        meta["chunk_strategy"] = "git_commit_log"
+        meta["start_char"] = abs_start
+        meta["end_char"] = abs_start + len(split_doc.page_content)
+        meta.setdefault("doc_type_kwd", "git")
+        if current is not None:
+            meta["git_commit"] = current.sha
+            if current.author:
+                meta["git_author"] = current.author
+            if current.date:
+                meta["git_date"] = current.date
+        chunks.append(Document(page_content=split_doc.page_content, metadata=meta))
+    return chunks
+
+
 class GitCommitLogChunker(BaseChunker):
     def __init__(self, chunk_size: int, chunk_overlap: int):
         self.chunk_size = int(chunk_size)
@@ -135,42 +162,7 @@ class GitCommitLogChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
-            base_meta = dict(doc.metadata or {})
-            if not text.strip():
-                continue
-
-            commits = _iter_commits(text)
-            sections = _build_sections(text, commits)
-
-            current: _Commit | None = None
-            for section in sections:
-                sec_text = text[section.start : section.end]
-                if not sec_text.strip():
-                    continue
-                if section.commit is not None:
-                    current = section.commit
-
-                split_docs = self._fallback_splitter.create_documents(texts=[sec_text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = section.start + int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "git_commit_log"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta.setdefault("doc_type_kwd", "git")
-                    if current is not None:
-                        meta["git_commit"] = current.sha
-                        if current.author:
-                            meta["git_author"] = current.author
-                        if current.date:
-                            meta["git_date"] = current.date
-
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+            out.extend(self._split_document(doc))
 
         for idx, chunk in enumerate(out):
             meta = dict(chunk.metadata or {})
@@ -178,3 +170,29 @@ class GitCommitLogChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
+
+    def _split_document(self, doc: Document) -> list[Document]:
+        text = doc.page_content or ""
+        if not text.strip():
+            return []
+
+        base_meta = dict(doc.metadata or {})
+        sections = _build_sections(text, _iter_commits(text))
+        chunks: list[Document] = []
+        current: _Commit | None = None
+        for section in sections:
+            sec_text = text[section.start : section.end]
+            if not sec_text.strip():
+                continue
+            if section.commit is not None:
+                current = section.commit
+            chunks.extend(
+                _split_commit_section_docs(
+                    self._fallback_splitter,
+                    sec_text,
+                    base_meta,
+                    section=section,
+                    current=current,
+                )
+            )
+        return chunks

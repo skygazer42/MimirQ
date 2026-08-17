@@ -96,6 +96,66 @@ def _extract_html_imgs(line: str) -> list[tuple[str, str]]:
     return out
 
 
+def _extract_line_images(line: str) -> tuple[int, list[tuple[str, str]]]:
+    token_start = (line or "").find("![")
+    if token_start >= 0:
+        tail = (line or "")[token_start:]
+        tail_wo_images = _MD_IMAGE_RE.sub("", tail)
+        tail_wo_images = _MD_IMAGE_REF_RE.sub("", tail_wo_images)
+        if (_MD_IMAGE_RE.search(tail) or _MD_IMAGE_REF_RE.search(tail)) and not tail_wo_images.strip():
+            return token_start, _extract_md_images(tail)
+        return token_start, []
+
+    token_start = (line or "").lower().find("<img")
+    if token_start >= 0:
+        tail = (line or "")[token_start:]
+        if _HTML_IMG_TAG_RE.search(tail) and not _HTML_IMG_TAG_RE.sub("", tail).strip():
+            return token_start, _extract_html_imgs(tail)
+    return -1, []
+
+
+def _build_caption_text(images: list[tuple[str, str]], *, max_caption_chars: int) -> str:
+    captions: list[str] = []
+    for alt, src in images:
+        cap = _clean_caption_text(alt, max_chars=max_caption_chars)
+        if not cap:
+            cap = _clean_caption_text(_filename_from_src(src), max_chars=max_caption_chars)
+        if cap:
+            captions.append(cap)
+    if not captions:
+        return ""
+    return _clean_caption_text("; ".join(captions), max_chars=max_caption_chars)
+
+
+def _next_line_has_caption(lines: list[str], idx: int) -> bool:
+    next_line = lines[idx + 1] if idx + 1 < len(lines) else ""
+    return _normalize_caption_check(next_line).startswith(_CAPTION_PREFIXES)
+
+
+def _build_caption_line(
+    line: str,
+    *,
+    lines: list[str],
+    idx: int,
+    prefix: str,
+    max_caption_chars: int,
+) -> str:
+    if _looks_like_table_row(line) or not (line or "").strip() or _next_line_has_caption(lines, idx):
+        return ""
+
+    token_start, images = _extract_line_images(line)
+    if not images:
+        return ""
+
+    caption_text = _build_caption_text(images, max_caption_chars=max_caption_chars)
+    if not caption_text:
+        return ""
+
+    prefix0 = str(prefix or _IMAGE_CAPTION_PREFIX).strip() or _IMAGE_CAPTION_PREFIX
+    lead = line[:token_start] if token_start >= 0 else ""
+    return f"{lead}{prefix0} {caption_text}"
+
+
 def add_image_captions(
     markdown: str,
     *,
@@ -132,60 +192,16 @@ def add_image_captions(
             continue
         if added >= int(max_captions or 0):
             continue
-
-        if _looks_like_table_row(line):
+        caption_line = _build_caption_line(
+            line,
+            lines=lines,
+            idx=idx,
+            prefix=prefix,
+            max_caption_chars=int(max_caption_chars or 0),
+        )
+        if not caption_line:
             continue
-
-        if not (line or "").strip():
-            continue
-
-        images: list[tuple[str, str]] = []
-
-        # Only caption when the line tail (from the first image token) is *just* images.
-        # This allows leading blockquote/list prefixes (">", "- ", "1. ", etc.).
-        token_start = (line or "").find("![")
-        if token_start >= 0:
-            tail = (line or "")[token_start:]
-            tail_wo_images = _MD_IMAGE_RE.sub("", tail)
-            tail_wo_images = _MD_IMAGE_REF_RE.sub("", tail_wo_images)
-            if (_MD_IMAGE_RE.search(tail) or _MD_IMAGE_REF_RE.search(tail)) and not tail_wo_images.strip():
-                images.extend(_extract_md_images(tail))
-        else:
-            token_start = (line or "").lower().find("<img")
-            if token_start >= 0:
-                tail = (line or "")[token_start:]
-                if _HTML_IMG_TAG_RE.search(tail) and not _HTML_IMG_TAG_RE.sub("", tail).strip():
-                    images.extend(_extract_html_imgs(tail))
-
-        if not images:
-            continue
-
-        captions: list[str] = []
-        for alt, src in images:
-            cap = _clean_caption_text(alt, max_chars=max_caption_chars)
-            if not cap:
-                cap = _clean_caption_text(_filename_from_src(src), max_chars=max_caption_chars)
-            if cap:
-                captions.append(cap)
-
-        if not captions:
-            continue
-
-        # Skip if the next line already looks like a caption.
-        next_line = lines[idx + 1] if idx + 1 < len(lines) else ""
-        if _normalize_caption_check(next_line).startswith(_CAPTION_PREFIXES):
-            continue
-
-        joiner = "; "
-        caption_text = joiner.join(captions)
-        caption_text = _clean_caption_text(caption_text, max_chars=max_caption_chars)
-        if not caption_text:
-            continue
-
-        prefix0 = str(prefix or _IMAGE_CAPTION_PREFIX).strip() or _IMAGE_CAPTION_PREFIX
-        # Preserve any prefix (blockquote/list indent) before the image token.
-        lead = line[:token_start] if token_start is not None and token_start >= 0 else ""
-        out.append(f"{lead}{prefix0} {caption_text}")
+        out.append(caption_line)
         added += 1
 
     result = "\n".join(out)

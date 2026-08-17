@@ -240,6 +240,463 @@ def _inject_query_image_context(
         )
 
 
+def _resolve_retrieval_scope(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    document_ids: list[UUID],
+    dataset_id: UUID | None,
+    dataset_ids: list[UUID] | None = None,
+    allow_multi_dataset: bool = False,
+    query_image: str | None = None,
+) -> tuple[UUID | None, list[UUID], list[UUID]]:
+    requested_dataset_ids = _unique_dataset_ids(dataset_ids)
+    if allow_multi_dataset and dataset_id is not None and requested_dataset_ids:
+        raise HTTPException(status_code=400, detail=DATASET_ID_AND_DATASET_IDS_CONFLICT_DETAIL)
+
+    scope_dataset_id: UUID | None = None
+    scope_dataset_ids: list[UUID] = []
+    scope_document_ids: list[UUID] = []
+    if document_ids:
+        scope_document_ids = filter_allowed_document_ids(db, tenant_id, account_id, document_ids)
+    elif allow_multi_dataset and requested_dataset_ids:
+        _assert_dataset_ids_readable(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_ids=requested_dataset_ids,
+        )
+        scope_dataset_ids = requested_dataset_ids
+    elif dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
+        DatasetService.assert_dataset_readable(db, ds, account_id)
+        scope_dataset_id = dataset_id
+    elif not bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False)):
+        raise HTTPException(
+            status_code=400,
+            detail=DATASET_REQUIRED_WHEN_DOC_IDS_EMPTY_DETAIL,
+        )
+
+    _enforce_non_empty_retrieval_scope(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        scope_document_ids=scope_document_ids,
+        scope_dataset_id=scope_dataset_id,
+        scope_dataset_ids=scope_dataset_ids,
+        allow_empty_scope=bool(str(query_image or "").strip()),
+    )
+    return scope_dataset_id, scope_dataset_ids, scope_document_ids
+
+
+def _resolve_dataset_defaults_rag_config(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    scope_dataset_id: UUID | None,
+    scope_document_ids: list[UUID],
+    rag_config: ChatRAGConfig,
+    request_fields_set: set[str],
+    default_profile: str | None = None,
+) -> tuple[ChatRAGConfig, list[str], dict[str, Any] | None, set[str]]:
+    rag_config_provided = "rag_config" in request_fields_set
+    effective_rag_config = rag_config
+    rag_fields_set = set(getattr(rag_config, "model_fields_set", set()) or set())
+    if default_profile and not rag_config_provided:
+        effective_rag_config = ChatRAGConfig(retrieval_profile=default_profile)
+        rag_fields_set = set()
+    elif not rag_config_provided:
+        rag_fields_set = set()
+
+    dataset_rag_defaults_applied_fields: list[str] = []
+    dataset_defaults_meta: dict[str, Any] | None = None
+    try:
+        ds_id = scope_dataset_id
+        if ds_id is None and scope_document_ids:
+            ds_id = resolve_single_dataset_id_for_documents(db, tenant_id=tenant_id, document_ids=scope_document_ids)
+        if ds_id is not None:
+            ds_meta = load_dataset_metadata(db, tenant_id=tenant_id, dataset_id=ds_id)
+            dataset_defaults_meta = ds_meta if isinstance(ds_meta, dict) else None
+            raw_defaults = ds_meta.get("rag_defaults") if isinstance(ds_meta, dict) else None
+            effective_rag_config, dataset_rag_defaults_applied_fields = merge_rag_config_with_dataset_defaults(
+                rag_config=effective_rag_config,
+                request_fields_set=rag_fields_set,
+                raw_dataset_defaults=raw_defaults,
+            )
+    except Exception:
+        dataset_rag_defaults_applied_fields = []
+        dataset_defaults_meta = None
+    return effective_rag_config, dataset_rag_defaults_applied_fields, dataset_defaults_meta, rag_fields_set
+
+
+def _resolve_preview_rag_template_meta(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    body: Any,
+    request_fields_set: set[str],
+    dataset_defaults_meta: dict[str, Any] | None,
+    effective_rag_config: ChatRAGConfig,
+    rag_fields_set: set[str],
+) -> tuple[ChatRAGConfig, dict[str, Any] | None, list[str], list[str]]:
+    (
+        effective_rag_config_template_id,
+        effective_rag_config_template_key,
+        effective_rag_config_ab_experiment_key,
+        dataset_rag_config_template_defaults_applied_fields,
+    ) = merge_rag_config_template_defaults_with_dataset(
+        rag_config_template_id=body.rag_config_template_id,
+        rag_config_template_key=body.rag_config_template_key,
+        rag_config_ab_experiment_key=body.rag_config_ab_experiment_key,
+        request_fields_set=request_fields_set,
+        dataset_meta=dataset_defaults_meta,
+    )
+
+    rag_config_template_meta: dict[str, Any] | None = None
+    rag_config_template_patch_applied_fields: list[str] = []
+    try:
+        if (
+            effective_rag_config_template_id
+            or (effective_rag_config_template_key or "").strip()
+            or (effective_rag_config_ab_experiment_key or "").strip()
+        ):
+            chosen, resolver_debug = resolve_rag_config_template(
+                db=db,
+                tenant_id=tenant_id,
+                rag_config_template_id=effective_rag_config_template_id,
+                template_key=effective_rag_config_template_key,
+                ab_experiment_key=effective_rag_config_ab_experiment_key,
+                ab_user_key=account_id,
+                return_debug_metadata=True,
+            )
+            if chosen:
+                effective_rag_config, rag_config_template_patch_applied_fields = apply_rag_config_patch(
+                    rag_config=effective_rag_config,
+                    patch=getattr(chosen, "config_patch", None),
+                    request_fields_set=rag_fields_set,
+                )
+                rag_config_template_meta = {
+                    "template_id": str(chosen.id),
+                    "template_key": getattr(chosen, "template_key", None),
+                    "version": int(getattr(chosen, "version", 0) or 0),
+                    "ab_experiment_key": getattr(chosen, "ab_experiment_key", None),
+                    "ab_variant": getattr(chosen, "ab_variant", None),
+                    "patch_hash": build_rag_config_patch_hash(getattr(chosen, "config_patch", None)),
+                    "patch_applied_fields": rag_config_template_patch_applied_fields,
+                }
+                if resolver_debug:
+                    rag_config_template_meta["resolver_debug"] = resolver_debug
+                try:
+                    chosen.usage_count = int(getattr(chosen, "usage_count", 0) or 0) + 1
+                    db.commit()
+                except Exception:
+                    db.rollback()
+    except Exception:
+        rag_config_template_meta = None
+        rag_config_template_patch_applied_fields = []
+    return (
+        effective_rag_config,
+        rag_config_template_meta,
+        rag_config_template_patch_applied_fields,
+        dataset_rag_config_template_defaults_applied_fields,
+    )
+
+
+def _resolve_structure_dataset_id(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    scope_dataset_id: UUID | None,
+    scope_document_ids: list[UUID],
+) -> UUID | None:
+    if scope_dataset_id is not None or not scope_document_ids:
+        return scope_dataset_id
+    try:
+        return resolve_single_dataset_id_for_documents(
+            db,
+            tenant_id=tenant_id,
+            document_ids=scope_document_ids,
+        )
+    except Exception:
+        return None
+
+
+def _top_relevance_score(metrics: dict[str, Any]) -> float:
+    raw = metrics.get("top_relevance_score")
+    try:
+        return float(raw) if raw is not None else 0.0
+    except Exception:
+        return 0.0
+
+
+def _build_iterative_fallback_state(
+    *,
+    state: dict[str, Any],
+    fallback_profile: str,
+    fallback_mode: str,
+) -> dict[str, Any]:
+    try:
+        base_k = int(state.get("top_k") or 0)
+    except Exception:
+        base_k = 0
+    if fallback_profile == "recall20":
+        fallback_k = max(base_k, 20)
+    elif fallback_profile == "recall50":
+        fallback_k = max(base_k, 50)
+    else:
+        fallback_k = max(base_k, 80)
+
+    fallback_state = dict(state)
+    fallback_state["retrieval_profile"] = fallback_profile
+    fallback_state["retrieval_mode"] = fallback_mode
+    fallback_state["top_k"] = fallback_k
+    fallback_state["score_threshold"] = 0.0
+    return fallback_state
+
+
+async def _maybe_apply_iterative_retrieval_fallback(
+    *,
+    db: Session,
+    state: dict[str, Any],
+    citations: list[dict[str, Any]],
+    metrics: dict[str, Any],
+    query_for_retrieval: str,
+    query_debug: dict[str, Any] | None,
+    abstain_triggered: bool,
+    has_evidence: bool,
+) -> dict[str, Any]:
+    try:
+        iterative_enabled = bool(getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_ENABLED", False))
+        max_passes = max(1, int(getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_MAX_PASSES", 2) or 2))
+    except Exception:
+        iterative_enabled = False
+        max_passes = 1
+
+    result = {
+        "citations": citations,
+        "metrics": metrics,
+        "query_for_retrieval": query_for_retrieval,
+        "query_debug": query_debug,
+        "abstain_triggered": abstain_triggered,
+        "abstain_reason": metrics.get("abstain_reason"),
+        "has_evidence": has_evidence,
+        "selected_pass": "primary",
+        "fallback": None,
+        "iterative_summary": None,
+    }
+    if not iterative_enabled or max_passes < 2 or has_evidence:
+        return result
+
+    from app.rag.core.text import normalize_retrieval_mode
+    from app.rag.retrieval.orchestrator import run_retrieval
+
+    fallback_profile = str(
+        getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_PROFILE", "coverage80") or "coverage80"
+    ).strip().lower()
+    if fallback_profile not in {"recall20", "recall50", "coverage80"}:
+        fallback_profile = "coverage80"
+
+    fallback_mode = str(
+        getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_MODE", "keyword") or "keyword"
+    ).strip().lower()
+    fallback_mode = normalize_retrieval_mode(fallback_mode)
+    if fallback_mode not in {"hybrid", "vector", "keyword", "mmr"}:
+        fallback_mode = "keyword"
+
+    fallback_state = _build_iterative_fallback_state(
+        state=state,
+        fallback_profile=fallback_profile,
+        fallback_mode=fallback_mode,
+    )
+    fallback_offload_metrics: dict[str, Any] = {}
+    fallback = await run_blocking_retrieval_call_with_managed_session(
+        lambda worker_db: run_retrieval({**fallback_state, "db": worker_db}),
+        request_db=db,
+        runtime_metrics=fallback_offload_metrics,
+    ) or {}
+    f_citations = fallback.get("citations") or []
+    f_metrics = dict(fallback.get("metrics") or {})
+    f_metrics.update(fallback_offload_metrics)
+    f_abstain = bool(fallback.get("abstain_triggered") or f_metrics.get("abstain_triggered") or False)
+    f_has_evidence = bool(f_citations) and not f_abstain
+
+    p_top = _top_relevance_score(metrics)
+    f_top = _top_relevance_score(f_metrics)
+    p_n = len(citations) if isinstance(citations, list) else 0
+    f_n = len(f_citations) if isinstance(f_citations, list) else 0
+
+    use_fallback = False
+    if f_has_evidence and not has_evidence:
+        use_fallback = True
+    elif f_has_evidence and has_evidence:
+        use_fallback = f_top > p_top
+    elif (not f_has_evidence) and (not has_evidence):
+        use_fallback = (f_top > p_top) or (f_top == p_top and f_n > p_n)
+
+    iterative_summary = {
+        "enabled": True,
+        "max_passes": int(max_passes),
+        "selected_pass": "fallback" if use_fallback else "primary",
+        "passes": [
+            {
+                "pass": "primary",
+                "retrieval_mode": str(metrics.get("retrieval_mode") or ""),
+                "retrieval_profile": str(state.get("retrieval_profile") or "") or None,
+                "empty_retrieval": metrics.get("empty_retrieval") if isinstance(metrics.get("empty_retrieval"), dict) else None,
+                "citations": int(p_n),
+                "top_relevance_score": round(float(p_top), 3),
+                "abstain_triggered": bool(abstain_triggered),
+                "has_evidence": bool(has_evidence),
+                "retrieval_elapsed_sec": float(metrics.get("retrieval_elapsed_sec") or 0.0),
+            },
+            {
+                "pass": "fallback",
+                "retrieval_mode": str(f_metrics.get("retrieval_mode") or ""),
+                "retrieval_profile": str(fallback_profile),
+                "empty_retrieval": f_metrics.get("empty_retrieval") if isinstance(f_metrics.get("empty_retrieval"), dict) else None,
+                "citations": int(f_n),
+                "top_relevance_score": round(float(f_top), 3),
+                "abstain_triggered": bool(f_abstain),
+                "has_evidence": bool(f_has_evidence),
+                "retrieval_elapsed_sec": float(f_metrics.get("retrieval_elapsed_sec") or 0.0),
+            },
+        ],
+    }
+    result["fallback"] = fallback
+    result["iterative_summary"] = iterative_summary
+    if not use_fallback:
+        return result
+
+    result["citations"] = f_citations
+    result["metrics"] = f_metrics
+    result["query_for_retrieval"] = (fallback.get("query_for_retrieval") or query_for_retrieval or "").strip()
+    qd = fallback.get("query_debug")
+    result["query_debug"] = qd if isinstance(qd, dict) else query_debug
+    result["abstain_triggered"] = bool(f_abstain)
+    result["abstain_reason"] = fallback.get("abstain_reason") or f_metrics.get("abstain_reason") or None
+    result["has_evidence"] = bool(f_has_evidence)
+    result["selected_pass"] = "fallback"
+    return result
+
+
+def _apply_min_top_relevance_gate(
+    *,
+    citations: list[dict[str, Any]],
+    metrics: dict[str, Any],
+    has_evidence: bool,
+) -> bool:
+    min_top_rel = float(getattr(settings, "RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE", 0.0) or 0.0)
+    if not has_evidence or min_top_rel <= 0.0:
+        return has_evidence
+
+    top_rel_raw = metrics.get("top_relevance_score")
+    try:
+        top_rel = float(top_rel_raw) if top_rel_raw is not None else None
+    except Exception:
+        top_rel = None
+    if top_rel is None and isinstance(citations, list) and citations:
+        try:
+            top_rel = max(
+                float(((c.get("relevance_score") if c.get("relevance_score") is not None else c.get("retrieval_score")) or 0.0))
+                for c in citations
+                if isinstance(c, dict)
+            )
+        except Exception:
+            top_rel = None
+    if top_rel is not None and top_rel < min_top_rel:
+        return False
+    return has_evidence
+
+
+def _build_retrieval_trace_payload(
+    *,
+    primary: dict[str, Any],
+    fallback: dict[str, Any] | None,
+    selected_pass: str,
+) -> dict[str, Any] | None:
+    try:
+        passes: list[dict[str, Any]] = []
+        primary_trace = primary.get("retrieval_trace")
+        if isinstance(primary_trace, dict):
+            passes.append({"pass": "primary", "trace": primary_trace})
+        fallback_trace = (fallback or {}).get("retrieval_trace") if isinstance(fallback, dict) else None
+        if isinstance(fallback_trace, dict):
+            passes.append({"pass": "fallback", "trace": fallback_trace})
+        if passes:
+            return {
+                "schema": "mimirq.retrieval_trace.v1",
+                "selected_pass": str(selected_pass),
+                "passes": passes,
+            }
+    except Exception:
+        return None
+    return None
+
+
+def _build_evidence_capsule_payload(
+    *,
+    query_for_retrieval: str,
+    citations: list[dict[str, Any]],
+    metrics: dict[str, Any],
+    retrieval_trace_payload: dict[str, Any] | None,
+    query_debug: dict[str, Any] | None,
+    tenant_id: UUID,
+    scope_dataset_id: UUID | None,
+    scope_dataset_ids: list[UUID],
+    scope_document_ids: list[UUID],
+    selected_pass: str,
+) -> dict[str, Any] | None:
+    try:
+        if not bool(getattr(settings, "RAG_EVIDENCE_CAPSULE_ENABLED", True)):
+            return None
+        from app.rag.core.evidence_capsule_builder import build_evidence_capsule
+
+        return build_evidence_capsule(
+            query_for_retrieval=query_for_retrieval,
+            citations=[c for c in citations if isinstance(c, dict)],
+            metrics=metrics,
+            retrieval_trace=retrieval_trace_payload,
+            query_debug=query_debug if isinstance(query_debug, dict) else None,
+            request_context={
+                "tenant_id": str(tenant_id),
+                "dataset_id": str(scope_dataset_id) if scope_dataset_id else None,
+                "dataset_ids": [str(dataset_id) for dataset_id in scope_dataset_ids],
+                "document_ids": [str(d) for d in scope_document_ids[:200]],
+                "selected_pass": str(selected_pass),
+            },
+        )
+    except Exception:
+        return None
+
+
+def _observe_evidence_retrieve_metrics(
+    *,
+    t_api_start: float,
+    metrics: dict[str, Any],
+    effective_rag_config: ChatRAGConfig,
+    selected_pass: str,
+    citations: list[dict[str, Any]],
+    has_evidence: bool,
+    abstain_triggered: bool,
+) -> None:
+    try:
+        from app.rag.retrieval.metrics import observe_evidence_retrieve
+
+        observe_evidence_retrieve(
+            duration_sec=(time.monotonic() - t_api_start),
+            has_evidence=bool(has_evidence),
+            abstain_triggered=bool(abstain_triggered),
+            retrieval_mode=str(metrics.get("retrieval_mode") or effective_rag_config.retrieval_mode or ""),
+            selected_pass=str(selected_pass),
+            citations_count=(len(citations) if isinstance(citations, list) else 0),
+            top_relevance_score=float(_top_relevance_score(metrics) or 0.0),
+        )
+    except Exception as exc:
+        logger.debug("Failed to record retrieval preview metrics: %s", exc)
+
+
 class RetrievePreviewRequest(BaseModel):
     query: str = Field(min_length=1, max_length=settings.RETRIEVAL_QUERY_MAX_CHARS)
     query_image: str | None = Field(
@@ -453,43 +910,15 @@ async def retrieve_preview(
 
     tenant_qps_meta = await enforce_tenant_qps_quota_async(tenant_id=tenant_id, key="retrieval")
 
-    requested_dataset_ids = _unique_dataset_ids(body.dataset_ids)
-    if body.dataset_id is not None and requested_dataset_ids:
-        raise HTTPException(status_code=400, detail=DATASET_ID_AND_DATASET_IDS_CONFLICT_DETAIL)
-
-    scope_dataset_id: UUID | None = None
-    scope_dataset_ids: list[UUID] = []
-    scope_document_ids: list[UUID] = []
-    if body.document_ids:
-        scope_document_ids = filter_allowed_document_ids(db, tenant_id, account_id, body.document_ids)
-    elif requested_dataset_ids:
-        _assert_dataset_ids_readable(
-            db,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            dataset_ids=requested_dataset_ids,
-        )
-        scope_dataset_ids = requested_dataset_ids
-    elif body.dataset_id:
-        # Dataset-scoped retrieval without enumerating all document_ids (scales better).
-        ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
-        DatasetService.assert_dataset_readable(db, ds, account_id)
-        scope_dataset_id = body.dataset_id
-    else:
-        allow_open_scope = bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False))
-        if not allow_open_scope:
-            raise HTTPException(
-                status_code=400,
-                detail=DATASET_REQUIRED_WHEN_DOC_IDS_EMPTY_DETAIL,
-            )
-    _enforce_non_empty_retrieval_scope(
-        db,
+    scope_dataset_id, scope_dataset_ids, scope_document_ids = _resolve_retrieval_scope(
+        db=db,
         tenant_id=tenant_id,
         account_id=account_id,
-        scope_document_ids=scope_document_ids,
-        scope_dataset_id=scope_dataset_id,
-        scope_dataset_ids=scope_dataset_ids,
-        allow_empty_scope=bool(str(body.query_image or "").strip()),
+        document_ids=body.document_ids,
+        dataset_id=body.dataset_id,
+        dataset_ids=body.dataset_ids,
+        allow_multi_dataset=True,
+        query_image=body.query_image,
     )
 
     from app.rag.pipelines.langgraph import build_rag_state
@@ -500,93 +929,36 @@ async def retrieve_preview(
     # For this debug endpoint, we default to a recall-first profile when the caller omits rag_config,
     # so retrieval tuning starts from a "must-recall" baseline.
     request_fields_set = set(getattr(body, "model_fields_set", set()) or set())
-    rag_config_provided = "rag_config" in request_fields_set
-
-    effective_rag_config = body.rag_config
-    dataset_rag_defaults_applied_fields: list[str] = []
-    dataset_defaults_meta: dict | None = None
-    rag_fields_set = set(getattr(body.rag_config, "model_fields_set", set()) or set())
-    if not rag_config_provided:
-        effective_rag_config = ChatRAGConfig(retrieval_profile="recall20")
-        rag_fields_set = set()
-    try:
-        ds_id = None
-        if scope_dataset_id is not None:
-            ds_id = scope_dataset_id
-        elif scope_document_ids:
-            ds_id = resolve_single_dataset_id_for_documents(db, tenant_id=tenant_id, document_ids=scope_document_ids)
-        if ds_id is not None:
-            ds_meta = load_dataset_metadata(db, tenant_id=tenant_id, dataset_id=ds_id)
-            dataset_defaults_meta = ds_meta if isinstance(ds_meta, dict) else None
-            raw_defaults = ds_meta.get("rag_defaults") if isinstance(ds_meta, dict) else None
-            effective_rag_config, dataset_rag_defaults_applied_fields = merge_rag_config_with_dataset_defaults(
-                rag_config=effective_rag_config,
-                request_fields_set=rag_fields_set,
-                raw_dataset_defaults=raw_defaults,
-            )
-    except Exception:
-        dataset_rag_defaults_applied_fields = []
-        dataset_defaults_meta = None
-
-    # Dataset-level default RAG config template selectors + patch application (best-effort).
     (
-        effective_rag_config_template_id,
-        effective_rag_config_template_key,
-        effective_rag_config_ab_experiment_key,
-        dataset_rag_config_template_defaults_applied_fields,
-    ) = merge_rag_config_template_defaults_with_dataset(
-        rag_config_template_id=body.rag_config_template_id,
-        rag_config_template_key=body.rag_config_template_key,
-        rag_config_ab_experiment_key=body.rag_config_ab_experiment_key,
+        effective_rag_config,
+        dataset_rag_defaults_applied_fields,
+        dataset_defaults_meta,
+        rag_fields_set,
+    ) = _resolve_dataset_defaults_rag_config(
+        db=db,
+        tenant_id=tenant_id,
+        scope_dataset_id=scope_dataset_id,
+        scope_document_ids=scope_document_ids,
+        rag_config=body.rag_config,
         request_fields_set=request_fields_set,
-        dataset_meta=dataset_defaults_meta,
+        default_profile="recall20",
     )
 
-    rag_config_template_meta: dict[str, Any] | None = None
-    rag_config_template_resolver_debug: dict[str, Any] | None = None
-    rag_config_template_patch_applied_fields: list[str] = []
-    try:
-        if (
-            effective_rag_config_template_id
-            or (effective_rag_config_template_key or "").strip()
-            or (effective_rag_config_ab_experiment_key or "").strip()
-        ):
-            chosen, rag_config_template_resolver_debug = resolve_rag_config_template(
-                db=db,
-                tenant_id=tenant_id,
-                rag_config_template_id=effective_rag_config_template_id,
-                template_key=effective_rag_config_template_key,
-                ab_experiment_key=effective_rag_config_ab_experiment_key,
-                ab_user_key=account_id,
-                return_debug_metadata=True,
-            )
-            if chosen:
-                effective_rag_config, rag_config_template_patch_applied_fields = apply_rag_config_patch(
-                    rag_config=effective_rag_config,
-                    patch=getattr(chosen, "config_patch", None),
-                    request_fields_set=rag_fields_set,
-                )
-                rag_config_template_meta = {
-                    "template_id": str(chosen.id),
-                    "template_key": getattr(chosen, "template_key", None),
-                    "version": int(getattr(chosen, "version", 0) or 0),
-                    "ab_experiment_key": getattr(chosen, "ab_experiment_key", None),
-                    "ab_variant": getattr(chosen, "ab_variant", None),
-                    "patch_hash": build_rag_config_patch_hash(getattr(chosen, "config_patch", None)),
-                    "patch_applied_fields": rag_config_template_patch_applied_fields,
-                }
-                if rag_config_template_resolver_debug:
-                    rag_config_template_meta["resolver_debug"] = rag_config_template_resolver_debug
-
-                # Analytics only; never fail preview due to counter updates.
-                try:
-                    chosen.usage_count = int(getattr(chosen, "usage_count", 0) or 0) + 1
-                    db.commit()
-                except Exception:
-                    db.rollback()
-    except Exception:
-        rag_config_template_meta = None
-        rag_config_template_patch_applied_fields = []
+    (
+        effective_rag_config,
+        rag_config_template_meta,
+        _rag_config_template_patch_applied_fields,
+        dataset_rag_config_template_defaults_applied_fields,
+    ) = _resolve_preview_rag_template_meta(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        body=body,
+        request_fields_set=request_fields_set,
+        dataset_defaults_meta=dataset_defaults_meta,
+        effective_rag_config=effective_rag_config,
+        rag_fields_set=rag_fields_set,
+    )
 
     metadata_filter = _merge_dataset_ids_metadata_filter(
         effective_rag_config.metadata_filter,
@@ -705,16 +1077,12 @@ async def retrieve_preview(
     if scope_dataset_ids:
         metrics.setdefault("scope_dataset_ids", [str(dataset_id) for dataset_id in scope_dataset_ids])
 
-    structure_dataset_id = scope_dataset_id
-    if structure_dataset_id is None and scope_document_ids:
-        try:
-            structure_dataset_id = resolve_single_dataset_id_for_documents(
-                db,
-                tenant_id=tenant_id,
-                document_ids=scope_document_ids,
-            )
-        except Exception:
-            structure_dataset_id = None
+    structure_dataset_id = _resolve_structure_dataset_id(
+        db=db,
+        tenant_id=tenant_id,
+        scope_dataset_id=scope_dataset_id,
+        scope_document_ids=scope_document_ids,
+    )
     if bool(body.include_structure_trace):
         _attach_document_structure_trace(
             metrics=metrics,
@@ -984,43 +1352,15 @@ async def retrieve_evidence(
 
     tenant_qps_meta = await enforce_tenant_qps_quota_async(tenant_id=tenant_id, key="retrieval")
 
-    requested_dataset_ids = _unique_dataset_ids(body.dataset_ids)
-    if body.dataset_id is not None and requested_dataset_ids:
-        raise HTTPException(status_code=400, detail=DATASET_ID_AND_DATASET_IDS_CONFLICT_DETAIL)
-
-    scope_dataset_id: UUID | None = None
-    scope_dataset_ids: list[UUID] = []
-    scope_document_ids: list[UUID] = []
-    if body.document_ids:
-        scope_document_ids = filter_allowed_document_ids(db, tenant_id, account_id, body.document_ids)
-    elif requested_dataset_ids:
-        _assert_dataset_ids_readable(
-            db,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            dataset_ids=requested_dataset_ids,
-        )
-        scope_dataset_ids = requested_dataset_ids
-    elif body.dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
-        DatasetService.assert_dataset_readable(db, ds, account_id)
-        scope_dataset_id = body.dataset_id
-    else:
-        allow_open_scope = bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False))
-        if not allow_open_scope:
-            raise HTTPException(
-                status_code=400,
-                detail=DATASET_REQUIRED_WHEN_DOC_IDS_EMPTY_DETAIL,
-            )
-
-    _enforce_non_empty_retrieval_scope(
-        db,
+    scope_dataset_id, scope_dataset_ids, scope_document_ids = _resolve_retrieval_scope(
+        db=db,
         tenant_id=tenant_id,
         account_id=account_id,
-        scope_document_ids=scope_document_ids,
-        scope_dataset_id=scope_dataset_id,
-        scope_dataset_ids=scope_dataset_ids,
-        allow_empty_scope=bool(str(body.query_image or "").strip()),
+        document_ids=body.document_ids,
+        dataset_id=body.dataset_id,
+        dataset_ids=body.dataset_ids,
+        allow_multi_dataset=True,
+        query_image=body.query_image,
     )
 
     from app.rag.pipelines.langgraph import build_rag_state
@@ -1028,30 +1368,20 @@ async def retrieve_evidence(
 
     # Dataset-level default RAG config (best-effort): apply only when all docs share one dataset_id.
     request_fields_set = set(getattr(body, "model_fields_set", set()) or set())
-    rag_config_provided = "rag_config" in request_fields_set
-
-    effective_rag_config = body.rag_config
-    dataset_rag_defaults_applied_fields: list[str] = []
-    rag_fields_set = set(getattr(body.rag_config, "model_fields_set", set()) or set())
-    if not rag_config_provided:
-        effective_rag_config = ChatRAGConfig(retrieval_profile="recall50")
-        rag_fields_set = set()
-    try:
-        ds_id = None
-        if scope_dataset_id is not None:
-            ds_id = scope_dataset_id
-        elif scope_document_ids:
-            ds_id = resolve_single_dataset_id_for_documents(db, tenant_id=tenant_id, document_ids=scope_document_ids)
-        if ds_id is not None:
-            ds_meta = load_dataset_metadata(db, tenant_id=tenant_id, dataset_id=ds_id)
-            raw_defaults = ds_meta.get("rag_defaults") if isinstance(ds_meta, dict) else None
-            effective_rag_config, dataset_rag_defaults_applied_fields = merge_rag_config_with_dataset_defaults(
-                rag_config=effective_rag_config,
-                request_fields_set=rag_fields_set,
-                raw_dataset_defaults=raw_defaults,
-            )
-    except Exception:
-        dataset_rag_defaults_applied_fields = []
+    (
+        effective_rag_config,
+        dataset_rag_defaults_applied_fields,
+        _dataset_defaults_meta,
+        _rag_fields_set,
+    ) = _resolve_dataset_defaults_rag_config(
+        db=db,
+        tenant_id=tenant_id,
+        scope_dataset_id=scope_dataset_id,
+        scope_document_ids=scope_document_ids,
+        rag_config=body.rag_config,
+        request_fields_set=request_fields_set,
+        default_profile="recall50",
+    )
 
     metadata_filter = _merge_dataset_ids_metadata_filter(
         effective_rag_config.metadata_filter,
@@ -1175,156 +1505,31 @@ async def retrieve_evidence(
         metrics.setdefault("scope_dataset_ids", [str(dataset_id) for dataset_id in scope_dataset_ids])
 
     abstain_triggered = bool(primary.get("abstain_triggered") or metrics.get("abstain_triggered") or False)
-    abstain_reason = primary.get("abstain_reason") or metrics.get("abstain_reason") or None
     has_evidence = bool(citations) and not abstain_triggered
-
-    # Retrieval pass label, not a credential.
-    selected_pass = "primary"  # noqa: S105
-    fallback: dict[str, Any] | None = None
-
-    # Optional: iterative fallback for evidence discovery.
-    try:
-        iterative_enabled = bool(getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_ENABLED", False))
-        max_passes = max(1, int(getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_MAX_PASSES", 2) or 2))
-    except Exception:
-        iterative_enabled = False
-        max_passes = 1
-
-    iterative_summary: dict[str, Any] | None = None
-    if iterative_enabled and max_passes >= 2 and not has_evidence:
-        from app.rag.core.text import normalize_retrieval_mode  # avoid import cycles at module import
-
-        # Pass 2: switch to a more recall-friendly setup.
-        fallback_profile = str(getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_PROFILE", "coverage80") or "coverage80").strip().lower()
-        if fallback_profile not in {"recall20", "recall50", "coverage80"}:
-            fallback_profile = "coverage80"
-
-        # Default fallback mode is keyword; allow override, but keep it safe.
-        fallback_mode = str(getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_MODE", "keyword") or "keyword").strip().lower()
-        fallback_mode = normalize_retrieval_mode(fallback_mode)
-        if fallback_mode not in {"hybrid", "vector", "keyword", "mmr"}:
-            fallback_mode = "keyword"
-
-        # Ensure the profile's top_k contract holds on the final slice as well.
-        try:
-            base_k = int(state.get("top_k") or 0)
-        except Exception:
-            base_k = 0
-        if fallback_profile == "recall20":
-            fallback_k = max(base_k, 20)
-        elif fallback_profile == "recall50":
-            fallback_k = max(base_k, 50)
-        else:
-            fallback_k = max(base_k, 80)
-
-        fallback_state = dict(state)
-        fallback_state["retrieval_profile"] = fallback_profile
-        fallback_state["retrieval_mode"] = fallback_mode
-        fallback_state["top_k"] = fallback_k
-        fallback_state["score_threshold"] = 0.0
-
-        fallback_offload_metrics: dict[str, Any] = {}
-        fallback = await run_blocking_retrieval_call_with_managed_session(
-            lambda worker_db: run_retrieval({**fallback_state, "db": worker_db}),
-            request_db=db,
-            runtime_metrics=fallback_offload_metrics,
-        ) or {}
-        f_citations = fallback.get("citations") or []
-        f_metrics = dict(fallback.get("metrics") or {})
-        f_metrics.update(fallback_offload_metrics)
-        f_abstain = bool(fallback.get("abstain_triggered") or f_metrics.get("abstain_triggered") or False)
-        f_has_evidence = bool(f_citations) and not f_abstain
-
-        def _top_score(m: dict[str, Any]) -> float:
-            raw = m.get("top_relevance_score")
-            try:
-                return float(raw) if raw is not None else 0.0
-            except Exception:
-                return 0.0
-
-        p_top = _top_score(metrics)
-        f_top = _top_score(f_metrics)
-
-        p_n = len(citations) if isinstance(citations, list) else 0
-        f_n = len(f_citations) if isinstance(f_citations, list) else 0
-
-        # Selection: prefer a pass that clears abstain/has evidence; else prefer higher top score / more citations.
-        use_fallback = False
-        if f_has_evidence and not has_evidence:
-            use_fallback = True
-        elif f_has_evidence and has_evidence:
-            use_fallback = f_top > p_top
-        elif (not f_has_evidence) and (not has_evidence):
-            use_fallback = (f_top > p_top) or (f_top == p_top and f_n > p_n)
-
-        iterative_summary = {
-            "enabled": True,
-            "max_passes": int(max_passes),
-            "selected_pass": "fallback" if use_fallback else "primary",
-            "passes": [
-                {
-                    "pass": "primary",
-                    "retrieval_mode": str(metrics.get("retrieval_mode") or ""),
-                    "retrieval_profile": str(state.get("retrieval_profile") or "") or None,
-                    "empty_retrieval": (metrics.get("empty_retrieval") if isinstance(metrics.get("empty_retrieval"), dict) else None),
-                    "citations": int(p_n),
-                    "top_relevance_score": round(float(p_top), 3),
-                    "abstain_triggered": bool(abstain_triggered),
-                    "has_evidence": bool(has_evidence),
-                    "retrieval_elapsed_sec": float(metrics.get("retrieval_elapsed_sec") or 0.0),
-                },
-                {
-                    "pass": "fallback",
-                    "retrieval_mode": str(f_metrics.get("retrieval_mode") or ""),
-                    "retrieval_profile": str(fallback_profile),
-                    "empty_retrieval": (f_metrics.get("empty_retrieval") if isinstance(f_metrics.get("empty_retrieval"), dict) else None),
-                    "citations": int(f_n),
-                    "top_relevance_score": round(float(f_top), 3),
-                    "abstain_triggered": bool(f_abstain),
-                    "has_evidence": bool(f_has_evidence),
-                    "retrieval_elapsed_sec": float(f_metrics.get("retrieval_elapsed_sec") or 0.0),
-                },
-            ],
-        }
-
-        if use_fallback:
-            # Retrieval pass label, not a credential.
-            selected_pass = "fallback"  # noqa: S105
-            citations = f_citations
-            metrics = f_metrics
-            query_for_retrieval = (fallback.get("query_for_retrieval") or query_for_retrieval or "").strip()
-            qd = fallback.get("query_debug")
-            query_debug = qd if isinstance(qd, dict) else query_debug
-            abstain_triggered = bool(f_abstain)
-            abstain_reason = fallback.get("abstain_reason") or f_metrics.get("abstain_reason") or None
-            has_evidence = bool(f_has_evidence)
-
-    # Optional strictness: if configured, require the top relevance score to clear the threshold.
-    # This is a lightweight guardrail for "does the corpus contain this?" style calls.
-    min_top_rel = float(getattr(settings, "RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE", 0.0) or 0.0)
-    if has_evidence and min_top_rel > 0.0:
-        top_rel_raw = metrics.get("top_relevance_score")
-        try:
-            top_rel = float(top_rel_raw) if top_rel_raw is not None else None
-        except Exception:
-            top_rel = None
-        if top_rel is None and isinstance(citations, list) and citations:
-            try:
-                top_rel = max(
-                    float(
-                        (
-                            (c.get("relevance_score") if c.get("relevance_score") is not None else c.get("retrieval_score"))
-                            or 0.0
-                        )
-                    )
-                    for c in citations
-                    if isinstance(c, dict)
-                )
-            except Exception:
-                top_rel = None
-        if top_rel is not None and top_rel < min_top_rel:
-            has_evidence = False
-
+    iterative_result = await _maybe_apply_iterative_retrieval_fallback(
+        db=db,
+        state=state,
+        citations=citations,
+        metrics=metrics,
+        query_for_retrieval=query_for_retrieval,
+        query_debug=query_debug,
+        abstain_triggered=abstain_triggered,
+        has_evidence=has_evidence,
+    )
+    citations = iterative_result["citations"]
+    metrics = iterative_result["metrics"]
+    query_for_retrieval = iterative_result["query_for_retrieval"]
+    query_debug = iterative_result["query_debug"]
+    abstain_triggered = bool(iterative_result["abstain_triggered"])
+    abstain_reason = iterative_result["abstain_reason"]
+    has_evidence = _apply_min_top_relevance_gate(
+        citations=[c for c in citations if isinstance(c, dict)],
+        metrics=metrics,
+        has_evidence=bool(iterative_result["has_evidence"]),
+    )
+    selected_pass = str(iterative_result["selected_pass"])
+    fallback = iterative_result["fallback"]
+    iterative_summary = iterative_result["iterative_summary"]
     if iterative_summary and isinstance(iterative_summary, dict):
         metrics.setdefault("iterative_retrieve", iterative_summary)
         if isinstance(query_debug, dict):
@@ -1332,16 +1537,12 @@ async def retrieve_evidence(
 
     metrics.setdefault("tenant_qps_quota", tenant_qps_meta)
 
-    structure_dataset_id = scope_dataset_id
-    if structure_dataset_id is None and scope_document_ids:
-        try:
-            structure_dataset_id = resolve_single_dataset_id_for_documents(
-                db,
-                tenant_id=tenant_id,
-                document_ids=scope_document_ids,
-            )
-        except Exception:
-            structure_dataset_id = None
+    structure_dataset_id = _resolve_structure_dataset_id(
+        db=db,
+        tenant_id=tenant_id,
+        scope_dataset_id=scope_dataset_id,
+        scope_document_ids=scope_document_ids,
+    )
     _attach_document_structure_trace(
         metrics=metrics,
         db=db,
@@ -1351,69 +1552,32 @@ async def retrieve_evidence(
         citations=[c for c in citations if isinstance(c, dict)],
     )
 
-    # Prometheus metrics (optional; no-op when disabled).
-    try:
-        from app.rag.retrieval.metrics import observe_evidence_retrieve
-
-        top_rel = 0.0
-        try:
-            top_rel = float(metrics.get("top_relevance_score") or 0.0)
-        except Exception:
-            top_rel = 0.0
-        observe_evidence_retrieve(
-            duration_sec=(time.monotonic() - t_api_start),
-            has_evidence=bool(has_evidence),
-            abstain_triggered=bool(abstain_triggered),
-            retrieval_mode=str(metrics.get("retrieval_mode") or effective_rag_config.retrieval_mode or ""),
-            selected_pass=str(selected_pass),
-            citations_count=(len(citations) if isinstance(citations, list) else 0),
-            top_relevance_score=float(top_rel or 0.0),
-        )
-    except Exception as exc:
-        # Metrics are best-effort; never fail the API due to observability.
-        logger.debug("Failed to record retrieval preview metrics: %s", exc)
-
-    # Stable, versioned retrieval trace (separate from metrics/query_debug).
-    retrieval_trace_payload: dict[str, Any] | None = None
-    try:
-        passes: list[dict[str, Any]] = []
-        primary_trace = primary.get("retrieval_trace")
-        if isinstance(primary_trace, dict):
-            passes.append({"pass": "primary", "trace": primary_trace})
-        fallback_trace = (fallback or {}).get("retrieval_trace") if isinstance(fallback, dict) else None
-        if isinstance(fallback_trace, dict):
-            passes.append({"pass": "fallback", "trace": fallback_trace})
-
-        if passes:
-            retrieval_trace_payload = {
-                "schema": "mimirq.retrieval_trace.v1",
-                "selected_pass": str(selected_pass),
-                "passes": passes,
-            }
-    except Exception:
-        retrieval_trace_payload = None
-
-    evidence_capsule: dict[str, Any] | None = None
-    try:
-        if bool(getattr(settings, "RAG_EVIDENCE_CAPSULE_ENABLED", True)):
-            from app.rag.core.evidence_capsule_builder import build_evidence_capsule
-
-            evidence_capsule = build_evidence_capsule(
-                query_for_retrieval=query_for_retrieval,
-                citations=[c for c in citations if isinstance(c, dict)],
-                metrics=metrics,
-                retrieval_trace=retrieval_trace_payload,
-                query_debug=query_debug if isinstance(query_debug, dict) else None,
-                request_context={
-                    "tenant_id": str(tenant_id),
-                    "dataset_id": str(scope_dataset_id) if scope_dataset_id else None,
-                    "dataset_ids": [str(dataset_id) for dataset_id in scope_dataset_ids],
-                    "document_ids": [str(d) for d in scope_document_ids[:200]],
-                    "selected_pass": str(selected_pass),
-                },
-            )
-    except Exception:
-        evidence_capsule = None
+    _observe_evidence_retrieve_metrics(
+        t_api_start=t_api_start,
+        metrics=metrics,
+        effective_rag_config=effective_rag_config,
+        selected_pass=selected_pass,
+        citations=[c for c in citations if isinstance(c, dict)],
+        has_evidence=bool(has_evidence),
+        abstain_triggered=bool(abstain_triggered),
+    )
+    retrieval_trace_payload = _build_retrieval_trace_payload(
+        primary=primary,
+        fallback=fallback if isinstance(fallback, dict) else None,
+        selected_pass=selected_pass,
+    )
+    evidence_capsule = _build_evidence_capsule_payload(
+        query_for_retrieval=query_for_retrieval,
+        citations=[c for c in citations if isinstance(c, dict)],
+        metrics=metrics,
+        retrieval_trace_payload=retrieval_trace_payload,
+        query_debug=query_debug if isinstance(query_debug, dict) else None,
+        tenant_id=tenant_id,
+        scope_dataset_id=scope_dataset_id,
+        scope_dataset_ids=scope_dataset_ids,
+        scope_document_ids=scope_document_ids,
+        selected_pass=selected_pass,
+    )
 
     return EvidenceRetrieveResponse(
         query_for_retrieval=query_for_retrieval,
@@ -1471,52 +1635,29 @@ async def prompt_preview(
 
     tenant_qps_meta = await enforce_tenant_qps_quota_async(tenant_id=tenant_id, key="retrieval")
 
-    scope_dataset_id: UUID | None = None
-    scope_document_ids: list[UUID] = []
-    if body.document_ids:
-        scope_document_ids = filter_allowed_document_ids(db, tenant_id, account_id, body.document_ids)
-    elif body.dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
-        DatasetService.assert_dataset_readable(db, ds, account_id)
-        scope_dataset_id = body.dataset_id
-    else:
-        allow_open_scope = bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False))
-        if not allow_open_scope:
-            raise HTTPException(
-                status_code=400,
-                detail=DATASET_REQUIRED_WHEN_DOC_IDS_EMPTY_DETAIL,
-            )
-
-    _enforce_non_empty_retrieval_scope(
-        db,
+    scope_dataset_id, _scope_dataset_ids, scope_document_ids = _resolve_retrieval_scope(
+        db=db,
         tenant_id=tenant_id,
         account_id=account_id,
-        scope_document_ids=scope_document_ids,
-        scope_dataset_id=scope_dataset_id,
+        document_ids=body.document_ids,
+        dataset_id=body.dataset_id,
     )
 
     # Dataset-level default RAG config (best-effort): apply only when all docs share one dataset_id.
-    effective_rag_config = body.rag_config
-    dataset_rag_defaults_applied_fields: list[str] = []
-    rag_fields_set = set(getattr(body.rag_config, "model_fields_set", set()) or set())
-    if "rag_config" not in set(getattr(body, "model_fields_set", set()) or set()):
-        rag_fields_set = set()
-    try:
-        ds_id = None
-        if scope_dataset_id is not None:
-            ds_id = scope_dataset_id
-        elif scope_document_ids:
-            ds_id = resolve_single_dataset_id_for_documents(db, tenant_id=tenant_id, document_ids=scope_document_ids)
-        if ds_id is not None:
-            ds_meta = load_dataset_metadata(db, tenant_id=tenant_id, dataset_id=ds_id)
-            raw_defaults = ds_meta.get("rag_defaults") if isinstance(ds_meta, dict) else None
-            effective_rag_config, dataset_rag_defaults_applied_fields = merge_rag_config_with_dataset_defaults(
-                rag_config=effective_rag_config,
-                request_fields_set=rag_fields_set,
-                raw_dataset_defaults=raw_defaults,
-            )
-    except Exception:
-        dataset_rag_defaults_applied_fields = []
+    request_fields_set = set(getattr(body, "model_fields_set", set()) or set())
+    (
+        effective_rag_config,
+        dataset_rag_defaults_applied_fields,
+        _dataset_defaults_meta,
+        _rag_fields_set,
+    ) = _resolve_dataset_defaults_rag_config(
+        db=db,
+        tenant_id=tenant_id,
+        scope_dataset_id=scope_dataset_id,
+        scope_document_ids=scope_document_ids,
+        rag_config=body.rag_config,
+        request_fields_set=request_fields_set,
+    )
 
     from langchain_core.prompts import ChatPromptTemplate
 

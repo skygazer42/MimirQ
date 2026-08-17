@@ -128,6 +128,592 @@ def _suite_counts(db: Session, *, tenant_id: UUID, suite_ids: list[UUID]) -> dic
     return out
 
 
+def _get_evidence_suite_or_404(db: Session, *, tenant_id: UUID, suite_id: UUID) -> EvidenceSuite:
+    suite = (
+        db.query(EvidenceSuite)
+        .filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id)
+        .first()
+    )
+    if not suite:
+        raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
+    return suite
+
+
+def _get_evidence_item_or_404(db: Session, *, tenant_id: UUID, item_id: UUID) -> EvidenceItem:
+    row = (
+        db.query(EvidenceItem)
+        .filter(EvidenceItem.id == item_id, EvidenceItem.tenant_id == tenant_id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail=_DETAIL_ITEM_NOT_FOUND)
+    return row
+
+
+def _assert_suite_access(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    suite: EvidenceSuite,
+    writable: bool,
+) -> None:
+    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
+    if writable:
+        DatasetService.assert_dataset_writable(db, ds, account_id)
+        return
+    DatasetService.assert_dataset_readable(db, ds, account_id)
+
+
+def _build_empty_reference_repair_response(
+    *,
+    suite_id: UUID,
+    dataset_id: UUID,
+    applied: bool,
+) -> EvidenceReferenceRepairResponse:
+    return EvidenceReferenceRepairResponse(
+        suite_id=suite_id,
+        dataset_id=dataset_id,
+        applied=applied,
+        scanned_items=0,
+        scanned_references=0,
+        drifted_references=0,
+        repaired_references=0,
+        skipped_approved_items=0,
+        skipped_archived_items=0,
+        changes_truncated=False,
+        changes=[],
+    )
+
+
+async def _enqueue_reference_repair_job(
+    *,
+    tenant_id: UUID,
+    suite_id: UUID,
+    account_id: str,
+    payload: EvidenceReferenceRepairRequest,
+) -> str | None:
+    from app.tasks.queue import enqueue_evidence_reference_sources_repair
+
+    cfg = payload.model_dump()
+    cfg_json = json.dumps(cfg, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    cfg_hash = hashlib.sha256(cfg_json.encode("utf-8", "ignore")).hexdigest()[:16]
+    job_id = f"evidence_repair:{tenant_id}:{suite_id}:{cfg_hash}"
+    return await enqueue_evidence_reference_sources_repair(
+        tenant_id=tenant_id,
+        suite_id=suite_id,
+        requested_by=account_id,
+        job_id=job_id,
+        apply=bool(payload.apply),
+        allow_approved=bool(payload.allow_approved),
+        include_archived_items=bool(payload.include_archived_items),
+        max_items=int(payload.max_items or 0),
+        max_refs_per_item=int(payload.max_refs_per_item or 0),
+        max_changes=int(payload.max_changes or 0),
+    )
+
+
+def _audit_reference_repair_enqueue(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    suite_id: UUID,
+    task_id: str | None,
+    payload: EvidenceReferenceRepairRequest,
+) -> None:
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="evidence.reference_sources.repair.enqueue",
+            resource_type="evidence_suite",
+            resource_id=str(suite_id),
+            details={
+                "async": True,
+                "task_id": task_id,
+                "applied": bool(payload.apply),
+                "allow_approved": bool(payload.allow_approved),
+                "include_archived_items": bool(payload.include_archived_items),
+                "max_items": int(payload.max_items or 0),
+                "max_refs_per_item": int(payload.max_refs_per_item or 0),
+                "max_changes": int(payload.max_changes or 0),
+            },
+        )
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception as exc:
+            logger.debug("Ignoring non-critical evidence router fallback failure: %s", exc)
+
+
+def _configure_async_repair_response(response: Response | None, *, task_id: str | None) -> None:
+    if response is None:
+        return
+    response.status_code = 202
+    if task_id:
+        response.headers["X-Task-Id"] = str(task_id)
+
+
+def _load_hardcase_traces(
+    *,
+    tenant_id: UUID,
+    now: datetime,
+    window_minutes: int,
+    max_bytes: int,
+    path_str: str,
+) -> tuple[dict[str, Any], bool]:
+    cutoff_ms = int(now.timestamp() * 1000) - (int(window_minutes) * 60_000)
+    raw_records, truncated_by_tail = read_jsonl_tail(Path(path_str), max_bytes=int(max_bytes or 0))
+    tenant_key = str(tenant_id)
+
+    earliest_ts_ms: int | None = None
+    for record in raw_records:
+        if str(record.get("event") or "") != "rag_trace":
+            continue
+        if str(record.get("tenant_id") or "") != tenant_key:
+            continue
+        try:
+            ts_ms = int(record.get("ts_ms") or 0)
+        except Exception:
+            ts_ms = 0
+        if not ts_ms:
+            continue
+        if earliest_ts_ms is None or ts_ms < earliest_ts_ms:
+            earliest_ts_ms = ts_ms
+
+    trace_index = build_rag_trace_index_from_records(
+        records=raw_records,
+        tenant_id=tenant_key,
+        cutoff_ms=cutoff_ms,
+    )
+    truncated = bool(truncated_by_tail and earliest_ts_ms is not None and earliest_ts_ms > cutoff_ms)
+    return trace_index, truncated
+
+
+def _collect_existing_suite_fingerprints(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    suite_id: UUID,
+    max_existing_items: int,
+) -> tuple[set[str], set[str]]:
+    existing_question_hashes: set[str] = set()
+    existing_feedback_ids: set[str] = set()
+    existing_rows = (
+        db.query(EvidenceItem.query, EvidenceItem.source_metadata)
+        .filter(EvidenceItem.tenant_id == tenant_id, EvidenceItem.suite_id == suite_id)
+        .limit(max_existing_items)
+        .all()
+    )
+    for query_text, metadata in existing_rows:
+        if isinstance(query_text, str) and query_text.strip():
+            existing_question_hashes.add(_hash_text_for_metrics(query_text.strip()))
+        if isinstance(metadata, dict):
+            feedback_id = str(metadata.get("feedback_id") or "").strip()
+            if feedback_id:
+                existing_feedback_ids.add(feedback_id)
+    return existing_question_hashes, existing_feedback_ids
+
+
+def _collect_hardcase_feedback_rows(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    suite: EvidenceSuite,
+    max_rating: int,
+    cutoff_dt: datetime,
+    max_feedback_rows: int,
+) -> list[dict[str, Any]]:
+    fb_rows = (
+        db.query(MessageFeedback, Message.message_metadata)
+        .join(Message, Message.id == MessageFeedback.message_id)
+        .join(Conversation, Conversation.id == MessageFeedback.conversation_id)
+        .filter(
+            MessageFeedback.tenant_id == tenant_id,
+            Conversation.tenant_id == tenant_id,
+            Message.tenant_id == tenant_id,
+            Conversation.dataset_id == suite.dataset_id,
+            MessageFeedback.rating <= int(max_rating),
+            MessageFeedback.updated_at >= cutoff_dt,
+        )
+        .order_by(MessageFeedback.updated_at.desc())
+        .limit(int(max_feedback_rows))
+        .all()
+    )
+
+    out: list[dict[str, Any]] = []
+    for feedback, meta in fb_rows:
+        message_metadata = meta if isinstance(meta, dict) else {}
+        request_id = str(message_metadata.get("request_id") or "").strip()
+        if not request_id:
+            continue
+        out.append(
+            {
+                "feedback_id": str(feedback.id),
+                "conversation_id": str(feedback.conversation_id),
+                "message_id": str(feedback.message_id),
+                "request_id": request_id,
+                "rating": int(getattr(feedback, "rating", 0) or 0),
+                "tags": list(getattr(feedback, "tags", []) or [])
+                if isinstance(getattr(feedback, "tags", None), list)
+                else [],
+            }
+        )
+    return out
+
+
+def _apply_evidence_item_patch_fields(
+    payload: EvidenceItemPatchRequest,
+    *,
+    row: EvidenceItem,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID,
+) -> None:
+    fields = set(getattr(payload, "model_fields_set", set()) or set())
+    if "query" in fields and payload.query is not None:
+        row.query = payload.query
+    if "expected_answer" in fields:
+        row.expected_answer = payload.expected_answer
+    if "tags" in fields and payload.tags is not None:
+        row.tags = list(payload.tags or [])
+    if "source_metadata" in fields and payload.source_metadata is not None:
+        row.source_metadata = dict(payload.source_metadata or {})
+    if "notes" in fields:
+        row.notes = payload.notes
+    if "retrieval_snapshot" in fields and payload.retrieval_snapshot is not None:
+        row.retrieval_snapshot = dict(payload.retrieval_snapshot or {})
+    if "rag_config_snapshot" in fields and payload.rag_config_snapshot is not None:
+        row.rag_config_snapshot = dict(payload.rag_config_snapshot or {})
+    if "reference_sources" not in fields or payload.reference_sources is None:
+        return
+
+    from app.api.v1.evaluations import _finalize_reference_sources
+
+    row.reference_sources = _finalize_reference_sources(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=dataset_id,
+        reference_sources=payload.reference_sources,
+    )
+
+
+def _as_float_or_zero(value: Any) -> float:
+    try:
+        if value is None:
+            return 0.0
+        return float(value)
+    except Exception:
+        return 0.0
+
+
+def _extract_reference_chunk_ids(item: EvidenceItem) -> set[str]:
+    refs = getattr(item, "reference_sources", None) or []
+    if not isinstance(refs, list):
+        return set()
+    out: set[str] = set()
+    for src in refs:
+        if not isinstance(src, dict):
+            continue
+        chunk_id = str(src.get("chunk_id") or "").strip()
+        if chunk_id:
+            out.add(chunk_id)
+    return out
+
+
+def _resolve_retrieval_config_hash(snapshot: dict[str, Any]) -> str | None:
+    metrics = snapshot.get("metrics") if isinstance(snapshot.get("metrics"), dict) else {}
+    retrieval_cfg_hash = str(metrics.get("retrieval_config_hash") or "").strip() or None
+    if retrieval_cfg_hash is not None:
+        return retrieval_cfg_hash
+
+    trace = snapshot.get("retrieval_trace") if isinstance(snapshot.get("retrieval_trace"), dict) else None
+    fingerprint = (trace or {}).get("retrieval_config") if isinstance((trace or {}).get("retrieval_config"), dict) else None
+    maybe_hash = (fingerprint or {}).get("hash") if isinstance(fingerprint, dict) else None
+    return str(maybe_hash or "").strip() or None
+
+
+def _build_ltr_candidate_metadata(citation: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "vector_score": _as_float_or_zero(citation.get("vector_score")),
+        "bm25_score": _as_float_or_zero(citation.get("bm25_score")),
+        "lexical_score": _as_float_or_zero(citation.get("lexical_score")),
+        "sparse_score": _as_float_or_zero(citation.get("sparse_score")),
+        "score": _as_float_or_zero(
+            citation.get("relevance_score") or citation.get("retrieval_score") or citation.get("score")
+        ),
+        "retrieval_role": citation.get("retrieval_role"),
+        "kg_pagerank": _as_float_or_zero(citation.get("kg_pagerank")),
+        "kg_shared_events": _as_float_or_zero(citation.get("kg_shared_events")),
+        "kg_path_length": _as_float_or_zero(citation.get("kg_path_length")),
+        "kg_edge_conf_low": _as_float_or_zero(citation.get("kg_edge_conf_low")),
+        "kg_edge_conf_mid": _as_float_or_zero(citation.get("kg_edge_conf_mid")),
+        "kg_edge_conf_high": _as_float_or_zero(citation.get("kg_edge_conf_high")),
+        "kg_evidence_anchored": _as_float_or_zero(citation.get("kg_evidence_anchored")),
+    }
+
+
+def _build_ltr_training_row(
+    *,
+    suite: EvidenceSuite,
+    item: EvidenceItem,
+    citation: dict[str, Any],
+    rank: int,
+    query_hash: str,
+    retrieval_cfg_hash: str | None,
+    ref_chunk_ids: set[str],
+    spec: Any,
+    extract_ltr_features: Any,
+    rerank_candidate_cls: Any,
+) -> dict[str, Any] | None:
+    chunk_id = str(citation.get("chunk_id") or "").strip()
+    if not chunk_id:
+        return None
+
+    values = extract_ltr_features(
+        spec=spec,
+        query="",
+        candidate=rerank_candidate_cls(
+            id=chunk_id,
+            text="",
+            metadata=_build_ltr_candidate_metadata(citation),
+        ),
+    )
+    features = {name: float(value) for name, value in zip(spec.feature_names, values, strict=False)}
+    return {
+        "schema": "mimirq.ltr_training_row.v1",
+        "suite_id": str(suite.id),
+        "item_id": str(item.id),
+        "dataset_id": str(suite.dataset_id),
+        "query_hash": query_hash,
+        "retrieval_config_hash": retrieval_cfg_hash,
+        "rank": int(rank),
+        "label": int(1 if chunk_id in ref_chunk_ids else 0),
+        "candidate": {
+            "chunk_id": chunk_id,
+            "document_id": str(citation.get("document_id") or "").strip() or None,
+        },
+        "slices": {
+            "status": str(getattr(item, "status", "") or "").strip().lower() or None,
+            "tags": list(getattr(item, "tags", []) or []),
+        },
+        "features": features,
+    }
+
+
+def _append_hard_negative_line(
+    *,
+    hard_lines: list[str],
+    suite: EvidenceSuite,
+    item: EvidenceItem,
+    citations: list[dict[str, Any]],
+    retrieval_cfg_hash: str | None,
+    query_hash: str,
+    mine_hard_negatives_for_case_from_trace: Any,
+) -> int:
+    try:
+        trace_record = {
+            "citations": citations,
+            "retrieval": {"retrieval_config_hash": retrieval_cfg_hash},
+        }
+        case = {"reference_sources": getattr(item, "reference_sources", None) or []}
+        hard_negative = mine_hard_negatives_for_case_from_trace(
+            case=case,
+            trace_record=trace_record,
+            query_hash=query_hash,
+            max_hard_negatives=10,
+            max_negatives_per_document=2,
+        )
+        if not isinstance(hard_negative, dict):
+            return 0
+        hard_negative["suite_id"] = str(suite.id)
+        hard_negative["item_id"] = str(item.id)
+        hard_negative["dataset_id"] = str(suite.dataset_id)
+        hard_negative["tags"] = list(getattr(item, "tags", []) or [])
+        hard_lines.append(json.dumps(hard_negative, ensure_ascii=False, separators=(",", ":"), default=str))
+        return 1
+    except Exception as exc:
+        logger.debug("Failed to export hard negative row; continuing training export: %s", exc)
+        return 0
+
+
+def _collect_ltr_training_bundle_rows(
+    *,
+    suite: EvidenceSuite,
+    items: list[EvidenceItem],
+    spec: Any,
+    stable_hash: Any,
+    extract_ltr_features: Any,
+    rerank_candidate_cls: Any,
+    mine_hard_negatives_for_case_from_trace: Any,
+) -> tuple[list[str], list[str], int, int, int]:
+    training_lines: list[str] = []
+    hard_lines: list[str] = []
+    items_with_snapshot = 0
+    rows_total = 0
+    hard_total = 0
+
+    for item in items:
+        snapshot = getattr(item, "retrieval_snapshot", None) or {}
+        if not isinstance(snapshot, dict):
+            continue
+        citations = snapshot.get("citations") or []
+        if not isinstance(citations, list) or not citations:
+            continue
+
+        items_with_snapshot += 1
+        query_hash = stable_hash(str(getattr(item, "query", "") or ""), length=64)
+        ref_chunk_ids = _extract_reference_chunk_ids(item)
+        retrieval_cfg_hash = _resolve_retrieval_config_hash(snapshot)
+
+        for rank, citation in enumerate(citations, 1):
+            if not isinstance(citation, dict):
+                continue
+            row = _build_ltr_training_row(
+                suite=suite,
+                item=item,
+                citation=citation,
+                rank=rank,
+                query_hash=query_hash,
+                retrieval_cfg_hash=retrieval_cfg_hash,
+                ref_chunk_ids=ref_chunk_ids,
+                spec=spec,
+                extract_ltr_features=extract_ltr_features,
+                rerank_candidate_cls=rerank_candidate_cls,
+            )
+            if row is None:
+                continue
+            training_lines.append(json.dumps(row, ensure_ascii=False, separators=(",", ":"), default=str))
+            rows_total += 1
+
+        hard_total += _append_hard_negative_line(
+            hard_lines=hard_lines,
+            suite=suite,
+            item=item,
+            citations=[citation for citation in citations if isinstance(citation, dict)],
+            retrieval_cfg_hash=retrieval_cfg_hash,
+            query_hash=query_hash,
+            mine_hard_negatives_for_case_from_trace=mine_hard_negatives_for_case_from_trace,
+        )
+    return training_lines, hard_lines, items_with_snapshot, rows_total, hard_total
+
+
+def _build_ltr_training_manifest(
+    *,
+    exported_at: datetime,
+    tenant_id: UUID,
+    suite: EvidenceSuite,
+    include_archived_items: bool,
+    max_items: int,
+    spec_version: int,
+    spec: Any,
+    items_total: int,
+    items_with_snapshot: int,
+    rows_total: int,
+    hard_total: int,
+) -> dict[str, Any]:
+    return {
+        "schema": "mimirq.ltr_training_export.v1",
+        "exported_at": exported_at.isoformat(),
+        "tenant_id": str(tenant_id),
+        "dataset_id": str(suite.dataset_id),
+        "suite": {
+            "id": str(suite.id),
+            "name": str(getattr(suite, "name", "") or ""),
+            "tags": list(getattr(suite, "tags", []) or []),
+            "include_archived_items": bool(include_archived_items),
+            "max_items": int(max_items or 0),
+        },
+        "feature_spec": {
+            "version": int(spec_version),
+            "schema": str(spec.schema),
+            "feature_names": list(spec.feature_names),
+        },
+        "counts": {
+            "items_total": int(items_total),
+            "items_with_snapshot": int(items_with_snapshot),
+            "training_rows": int(rows_total),
+            "hard_negative_records": int(hard_total),
+        },
+    }
+
+
+def _audit_ltr_training_export(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    suite_id: UUID,
+    suite_dataset_id: UUID,
+    items_total: int,
+    items_with_snapshot: int,
+    rows_total: int,
+    hard_total: int,
+    spec_version: int,
+) -> None:
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="evidence_suite.export_ltr_training",
+            resource_type="evidence_suite",
+            resource_id=str(suite_id),
+            details={
+                "dataset_id": str(suite_dataset_id),
+                "items_total": int(items_total),
+                "items_with_snapshot": int(items_with_snapshot),
+                "training_rows": int(rows_total),
+                "hard_negative_records": int(hard_total),
+                "feature_spec_version": int(spec_version),
+            },
+        )
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception as exc:
+            logger.debug("Ignoring non-critical evidence router fallback failure: %s", exc)
+
+
+def _render_ltr_training_zip(
+    *,
+    manifest: dict[str, Any],
+    training_lines: list[str],
+    hard_lines: list[str],
+) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, separators=(",", ":"), default=str))
+        zf.writestr(
+            "training_rows.ndjson",
+            ("\n".join(training_lines) + ("\n" if training_lines else "")).encode("utf-8"),
+        )
+        zf.writestr(
+            "hard_negatives.ndjson",
+            ("\n".join(hard_lines) + ("\n" if hard_lines else "")).encode("utf-8"),
+        )
+        zf.writestr(
+            "README.txt",
+            (
+                "MimirQ Evidence Suite LTR Training Export\n\n"
+                "- manifest.json: export metadata + LTR feature spec\n"
+                "- training_rows.ndjson: one row per (query_hash, candidate chunk_id) with features + label\n"
+                "- hard_negatives.ndjson: mined near-miss negatives (PII-safe) per query_hash\n"
+                "\n"
+                "Notes:\n"
+                "- training_rows is PII-minimized: it does not include raw query text.\n"
+                "- This export relies on per-item retrieval_snapshot for reproducibility.\n"
+            ),
+        )
+    return buf.getvalue()
+
+
 def _feedback_training_export_row(
     *,
     feedback: MessageFeedback,
@@ -362,88 +948,39 @@ async def repair_evidence_suite_reference_sources(
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    suite = (
-        db.query(EvidenceSuite)
-        .filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id)
-        .first()
+    suite = _get_evidence_suite_or_404(db, tenant_id=tenant_id, suite_id=suite_id)
+    _assert_suite_access(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        suite=suite,
+        writable=bool(payload.apply),
     )
-    if not suite:
-        raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
-
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    if bool(payload.apply):
-        DatasetService.assert_dataset_writable(db, ds, account_id)
-    else:
-        DatasetService.assert_dataset_readable(db, ds, account_id)
 
     # Optional async enqueue: run repair as a queue job (default remains synchronous for compatibility).
     if bool(async_mode):
         if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
             raise HTTPException(status_code=400, detail="Task queue is disabled (TASK_QUEUE_ENABLED=false)")
         try:
-            from app.tasks.queue import enqueue_evidence_reference_sources_repair
-
-            cfg = payload.model_dump()
-            cfg_json = json.dumps(cfg, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-            cfg_hash = hashlib.sha256(cfg_json.encode("utf-8", "ignore")).hexdigest()[:16]
-            job_id = f"evidence_repair:{tenant_id}:{suite_id}:{cfg_hash}"
-            task_id = await enqueue_evidence_reference_sources_repair(
+            task_id = await _enqueue_reference_repair_job(
                 tenant_id=tenant_id,
                 suite_id=suite_id,
-                requested_by=account_id,
-                job_id=job_id,
-                apply=bool(payload.apply),
-                allow_approved=bool(payload.allow_approved),
-                include_archived_items=bool(payload.include_archived_items),
-                max_items=int(payload.max_items or 0),
-                max_refs_per_item=int(payload.max_refs_per_item or 0),
-                max_changes=int(payload.max_changes or 0),
+                account_id=account_id,
+                payload=payload,
             )
-
-            # Best-effort audit log for enqueue (PII-safe).
-            try:
-                audit_log_event(
-                    db,
-                    tenant_id=tenant_id,
-                    actor_id=account_id,
-                    action="evidence.reference_sources.repair.enqueue",
-                    resource_type="evidence_suite",
-                    resource_id=str(suite_id),
-                    details={
-                        "async": True,
-                        "task_id": str(task_id) if task_id else None,
-                        "applied": bool(payload.apply),
-                        "allow_approved": bool(payload.allow_approved),
-                        "include_archived_items": bool(payload.include_archived_items),
-                        "max_items": int(payload.max_items or 0),
-                        "max_refs_per_item": int(payload.max_refs_per_item or 0),
-                        "max_changes": int(payload.max_changes or 0),
-                    },
-                )
-                db.commit()
-            except Exception:
-                try:
-                    db.rollback()
-                except Exception as exc:
-                    logger.debug("Ignoring non-critical evidence router fallback failure: %s", exc)
-
-            if response is not None:
-                response.status_code = 202
-                if task_id:
-                    response.headers["X-Task-Id"] = str(task_id)
-
-            return EvidenceReferenceRepairResponse(
+            _audit_reference_repair_enqueue(
+                db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                suite_id=suite_id,
+                task_id=str(task_id) if task_id else None,
+                payload=payload,
+            )
+            _configure_async_repair_response(response, task_id=str(task_id) if task_id else None)
+            return _build_empty_reference_repair_response(
                 suite_id=suite_id,
                 dataset_id=suite.dataset_id,
                 applied=bool(payload.apply),
-                scanned_items=0,
-                scanned_references=0,
-                drifted_references=0,
-                repaired_references=0,
-                skipped_approved_items=0,
-                skipped_archived_items=0,
-                changes_truncated=False,
-                changes=[],
             )
         except HTTPException:
             raise
@@ -692,18 +1229,16 @@ def list_evidence_suite_hardcase_candidates(
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    suite = (
-        db.query(EvidenceSuite)
-        .filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id)
-        .first()
-    )
-    if not suite:
-        raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
+    suite = _get_evidence_suite_or_404(db, tenant_id=tenant_id, suite_id=suite_id)
     if getattr(suite, "archived_at", None) is not None:
         raise HTTPException(status_code=400, detail="Evidence suite is archived")
-
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    _assert_suite_access(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        suite=suite,
+        writable=False,
+    )
 
     enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
     path_str = str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl")
@@ -724,88 +1259,33 @@ def list_evidence_suite_hardcase_candidates(
             candidates=[],
         )
 
-    cutoff_ms = int(now.timestamp() * 1000) - (int(window_minutes) * 60_000)
     cutoff_dt = now - timedelta(minutes=int(window_minutes))
-
-    # 1) Load recent trace summaries (bounded).
-    raw_records, truncated_by_tail = read_jsonl_tail(Path(path_str), max_bytes=int(max_bytes or 0))
-    tenant_key = str(tenant_id)
-
-    earliest_ts_ms: int | None = None
-    for r in raw_records:
-        if str(r.get("event") or "") != "rag_trace":
-            continue
-        if str(r.get("tenant_id") or "") != tenant_key:
-            continue
-        try:
-            ts_ms = int(r.get("ts_ms") or 0)
-        except Exception:
-            ts_ms = 0
-        if not ts_ms:
-            continue
-        if earliest_ts_ms is None or ts_ms < earliest_ts_ms:
-            earliest_ts_ms = ts_ms
-    truncated = bool(truncated_by_tail and earliest_ts_ms is not None and earliest_ts_ms > cutoff_ms)
-
-    trace_index = build_rag_trace_index_from_records(
-        records=raw_records,
-        tenant_id=tenant_key,
-        cutoff_ms=cutoff_ms,
+    trace_index, truncated = _load_hardcase_traces(
+        tenant_id=tenant_id,
+        now=now,
+        window_minutes=int(window_minutes),
+        max_bytes=int(max_bytes),
+        path_str=path_str,
     )
 
     # 2) Compute "already in suite" fingerprints (PII-safe).
-    max_existing_items = 5000
-    existing_question_hashes: set[str] = set()
-    existing_feedback_ids: set[str] = set()
-    existing_rows = (
-        db.query(EvidenceItem.query, EvidenceItem.source_metadata)
-        .filter(EvidenceItem.tenant_id == tenant_id, EvidenceItem.suite_id == suite_id)
-        .limit(max_existing_items)
-        .all()
+    existing_question_hashes, existing_feedback_ids = _collect_existing_suite_fingerprints(
+        db,
+        tenant_id=tenant_id,
+        suite_id=suite_id,
+        max_existing_items=5000,
     )
-    for q, meta in existing_rows:
-        if isinstance(q, str) and q.strip():
-            existing_question_hashes.add(_hash_text_for_metrics(q.strip()))
-        if isinstance(meta, dict):
-            fid = str(meta.get("feedback_id") or "").strip()
-            if fid:
-                existing_feedback_ids.add(fid)
 
     # 3) Fetch recent negative feedback (bounded).
     # Dataset-scope by conversation.dataset_id to avoid leaking cross-dataset pointers.
-    fb_rows = (
-        db.query(MessageFeedback, Message.message_metadata)
-        .join(Message, Message.id == MessageFeedback.message_id)
-        .join(Conversation, Conversation.id == MessageFeedback.conversation_id)
-        .filter(
-            MessageFeedback.tenant_id == tenant_id,
-            Conversation.tenant_id == tenant_id,
-            Message.tenant_id == tenant_id,
-            Conversation.dataset_id == suite.dataset_id,
-            MessageFeedback.rating <= int(max_rating),
-            MessageFeedback.updated_at >= cutoff_dt,
-        )
-        .order_by(MessageFeedback.updated_at.desc())
-        .limit(int(max_feedback_rows))
-        .all()
+    feedback_rows = _collect_hardcase_feedback_rows(
+        db,
+        tenant_id=tenant_id,
+        suite=suite,
+        max_rating=int(max_rating),
+        cutoff_dt=cutoff_dt,
+        max_feedback_rows=int(max_feedback_rows),
     )
-
-    feedback_rows: list[dict[str, Any]] = []
-    for fb, meta in fb_rows:
-        mm = meta if isinstance(meta, dict) else {}
-        request_id = str(mm.get("request_id") or "").strip()
-        if not request_id:
-            continue
-        feedback_rows.append(
-            {
-                "feedback_id": str(fb.id),
-                "conversation_id": str(fb.conversation_id),
-                "message_id": str(fb.message_id),
-                "request_id": request_id,
-                "rating": int(getattr(fb, "rating", 0) or 0),
-                "tags": list(getattr(fb, "tags", []) or []) if isinstance(getattr(fb, "tags", None), list) else [],
-            }
-        )
 
     candidates = plan_feedback_hardcase_candidates(
         feedback_rows=feedback_rows,
@@ -1181,53 +1661,26 @@ def patch_evidence_item(
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    row = (
-        db.query(EvidenceItem)
-        .filter(EvidenceItem.id == item_id, EvidenceItem.tenant_id == tenant_id)
-        .first()
+    row = _get_evidence_item_or_404(db, tenant_id=tenant_id, item_id=item_id)
+    suite = _get_evidence_suite_or_404(db, tenant_id=tenant_id, suite_id=row.suite_id)
+    _assert_suite_access(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        suite=suite,
+        writable=True,
     )
-    if not row:
-        raise HTTPException(status_code=404, detail=_DETAIL_ITEM_NOT_FOUND)
-
-    suite = (
-        db.query(EvidenceSuite)
-        .filter(EvidenceSuite.id == row.suite_id, EvidenceSuite.tenant_id == tenant_id)
-        .first()
-    )
-    if not suite:
-        raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
-
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
 
     # Keep lifecycle strict: only editable in draft.
     _ensure_status(row, expected="draft")
-
-    fields = set(getattr(payload, "model_fields_set", set()) or set())
-    if "query" in fields and payload.query is not None:
-        row.query = payload.query
-    if "expected_answer" in fields:
-        row.expected_answer = payload.expected_answer
-    if "tags" in fields and payload.tags is not None:
-        row.tags = list(payload.tags or [])
-    if "source_metadata" in fields and payload.source_metadata is not None:
-        row.source_metadata = dict(payload.source_metadata or {})
-    if "notes" in fields:
-        row.notes = payload.notes
-    if "retrieval_snapshot" in fields and payload.retrieval_snapshot is not None:
-        row.retrieval_snapshot = dict(payload.retrieval_snapshot or {})
-    if "rag_config_snapshot" in fields and payload.rag_config_snapshot is not None:
-        row.rag_config_snapshot = dict(payload.rag_config_snapshot or {})
-    if "reference_sources" in fields and payload.reference_sources is not None:
-        from app.api.v1.evaluations import _finalize_reference_sources  # noqa: WPS433
-
-        row.reference_sources = _finalize_reference_sources(
-            db,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            dataset_id=suite.dataset_id,
-            reference_sources=payload.reference_sources,
-        )
+    _apply_evidence_item_patch_fields(
+        payload,
+        row=row,
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=suite.dataset_id,
+    )
 
     db.add(row)
     db.commit()
@@ -1674,16 +2127,14 @@ def export_evidence_suite_ltr_training_bundle(
 
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    suite = (
-        db.query(EvidenceSuite)
-        .filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id)
-        .first()
+    suite = _get_evidence_suite_or_404(db, tenant_id=tenant_id, suite_id=suite_id)
+    _assert_suite_access(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        suite=suite,
+        writable=False,
     )
-    if not suite:
-        raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
-
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
 
     q = (
         db.query(EvidenceItem)
@@ -1695,219 +2146,49 @@ def export_evidence_suite_ltr_training_bundle(
         q = q.filter(EvidenceItem.status != "archived")
     items = q.all()
 
-    exported_at = _now_utc()
-
     spec_version = int(getattr(settings, "LTR_FEATURE_SPEC_VERSION", 1) or 1)
     spec = LTRFeatureSpec.from_version(spec_version)
-
-    def _as_float(v: Any) -> float:
-        try:
-            if v is None:
-                return 0.0
-            return float(v)
-        except Exception:
-            return 0.0
-
-    def _extract_reference_chunk_ids(item: EvidenceItem) -> set[str]:
-        refs = getattr(item, "reference_sources", None) or []
-        if not isinstance(refs, list):
-            return set()
-        out: set[str] = set()
-        for src in refs:
-            if not isinstance(src, dict):
-                continue
-            cid = str(src.get("chunk_id") or "").strip()
-            if cid:
-                out.add(cid)
-        return out
-
-    training_lines: list[str] = []
-    hard_lines: list[str] = []
-
     items_total = int(len(items))
-    items_with_snapshot = 0
-    rows_total = 0
-    hard_total = 0
+    training_lines, hard_lines, items_with_snapshot, rows_total, hard_total = _collect_ltr_training_bundle_rows(
+        suite=suite,
+        items=items,
+        spec=spec,
+        stable_hash=stable_hash,
+        extract_ltr_features=extract_ltr_features,
+        rerank_candidate_cls=RerankCandidate,
+        mine_hard_negatives_for_case_from_trace=mine_hard_negatives_for_case_from_trace,
+    )
+    manifest = _build_ltr_training_manifest(
+        exported_at=_now_utc(),
+        tenant_id=tenant_id,
+        suite=suite,
+        include_archived_items=bool(include_archived_items),
+        max_items=int(max_items or 0),
+        spec_version=spec_version,
+        spec=spec,
+        items_total=items_total,
+        items_with_snapshot=items_with_snapshot,
+        rows_total=rows_total,
+        hard_total=hard_total,
+    )
+    _audit_ltr_training_export(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        suite_id=suite_id,
+        suite_dataset_id=suite.dataset_id,
+        items_total=items_total,
+        items_with_snapshot=items_with_snapshot,
+        rows_total=rows_total,
+        hard_total=hard_total,
+        spec_version=spec_version,
+    )
 
-    for it in items:
-        snap = getattr(it, "retrieval_snapshot", None) or {}
-        if not isinstance(snap, dict):
-            continue
-        citations = snap.get("citations") or []
-        if not isinstance(citations, list) or not citations:
-            continue
-
-        items_with_snapshot += 1
-
-        query = str(getattr(it, "query", "") or "")
-        query_hash = stable_hash(query, length=64)
-        ref_chunk_ids = _extract_reference_chunk_ids(it)
-
-        metrics = snap.get("metrics") if isinstance(snap.get("metrics"), dict) else {}
-        retrieval_cfg_hash = str(metrics.get("retrieval_config_hash") or "").strip() or None
-        if retrieval_cfg_hash is None:
-            # Best-effort: try to recover from retrieval_trace.
-            trace = snap.get("retrieval_trace") if isinstance(snap.get("retrieval_trace"), dict) else None
-            fp = (trace or {}).get("retrieval_config") if isinstance((trace or {}).get("retrieval_config"), dict) else None
-            maybe = (fp or {}).get("hash") if isinstance(fp, dict) else None
-            retrieval_cfg_hash = str(maybe or "").strip() or None
-
-        # Training rows: per-citation features + labels.
-        for rank, c in enumerate(citations, 1):
-            if not isinstance(c, dict):
-                continue
-            cid = str(c.get("chunk_id") or "").strip()
-            if not cid:
-                continue
-
-            meta = {
-                "vector_score": _as_float(c.get("vector_score")),
-                "bm25_score": _as_float(c.get("bm25_score")),
-                "lexical_score": _as_float(c.get("lexical_score")),
-                "sparse_score": _as_float(c.get("sparse_score")),
-                # Prefer evidence API's overall score (relevance_score).
-                "score": _as_float(c.get("relevance_score") or c.get("retrieval_score") or c.get("score")),
-                "retrieval_role": c.get("retrieval_role"),
-                # Optional KG ranking signals (low-cardinality, numeric only).
-                "kg_pagerank": _as_float(c.get("kg_pagerank")),
-                "kg_shared_events": _as_float(c.get("kg_shared_events")),
-                "kg_path_length": _as_float(c.get("kg_path_length")),
-                "kg_edge_conf_low": _as_float(c.get("kg_edge_conf_low")),
-                "kg_edge_conf_mid": _as_float(c.get("kg_edge_conf_mid")),
-                "kg_edge_conf_high": _as_float(c.get("kg_edge_conf_high")),
-                "kg_evidence_anchored": _as_float(c.get("kg_evidence_anchored")),
-            }
-            values = extract_ltr_features(
-                spec=spec,
-                query="",  # reserved for future query-dependent features; keep export PII-minimized
-                candidate=RerankCandidate(id=cid, text="", metadata=meta),
-            )
-            features = {name: float(v) for name, v in zip(spec.feature_names, values, strict=False)}
-
-            row = {
-                "schema": "mimirq.ltr_training_row.v1",
-                "suite_id": str(suite.id),
-                "item_id": str(it.id),
-                "dataset_id": str(suite.dataset_id),
-                "query_hash": query_hash,
-                "retrieval_config_hash": retrieval_cfg_hash,
-                "rank": int(rank),
-                "label": int(1 if cid in ref_chunk_ids else 0),
-                "candidate": {
-                    "chunk_id": cid,
-                    "document_id": str(c.get("document_id") or "").strip() or None,
-                },
-                "slices": {
-                    "status": str(getattr(it, "status", "") or "").strip().lower() or None,
-                    "tags": list(getattr(it, "tags", []) or []),
-                },
-                "features": features,
-            }
-            training_lines.append(json.dumps(row, ensure_ascii=False, separators=(",", ":"), default=str))
-            rows_total += 1
-
-        # Hard negatives: near-miss negatives before first positive (PII-safe).
-        try:
-            trace_record = {
-                "citations": citations,
-                "retrieval": {"retrieval_config_hash": retrieval_cfg_hash},
-            }
-            case = {"reference_sources": getattr(it, "reference_sources", None) or []}
-            hn = mine_hard_negatives_for_case_from_trace(
-                case=case,
-                trace_record=trace_record,
-                query_hash=query_hash,
-                max_hard_negatives=10,
-                max_negatives_per_document=2,
-            )
-            if isinstance(hn, dict):
-                hn["suite_id"] = str(suite.id)
-                hn["item_id"] = str(it.id)
-                hn["dataset_id"] = str(suite.dataset_id)
-                hn["tags"] = list(getattr(it, "tags", []) or [])
-                hard_lines.append(json.dumps(hn, ensure_ascii=False, separators=(",", ":"), default=str))
-                hard_total += 1
-        except Exception as exc:
-            # Hard negatives are best-effort; training rows are the primary export.
-            logger.debug("Failed to export hard negative row; continuing training export: %s", exc)
-
-    manifest: dict[str, Any] = {
-        "schema": "mimirq.ltr_training_export.v1",
-        "exported_at": exported_at.isoformat(),
-        "tenant_id": str(tenant_id),
-        "dataset_id": str(suite.dataset_id),
-        "suite": {
-            "id": str(suite.id),
-            "name": str(getattr(suite, "name", "") or ""),
-            "tags": list(getattr(suite, "tags", []) or []),
-            "include_archived_items": bool(include_archived_items),
-            "max_items": int(max_items or 0),
-        },
-        "feature_spec": {
-            "version": int(spec_version),
-            "schema": str(spec.schema),
-            "feature_names": list(spec.feature_names),
-        },
-        "counts": {
-            "items_total": int(items_total),
-            "items_with_snapshot": int(items_with_snapshot),
-            "training_rows": int(rows_total),
-            "hard_negative_records": int(hard_total),
-        },
-    }
-
-    # Best-effort audit log (PII-minimal).
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=account_id,
-            action="evidence_suite.export_ltr_training",
-            resource_type="evidence_suite",
-            resource_id=str(suite_id),
-            details={
-                "dataset_id": str(suite.dataset_id),
-                "items_total": int(items_total),
-                "items_with_snapshot": int(items_with_snapshot),
-                "training_rows": int(rows_total),
-                "hard_negative_records": int(hard_total),
-                "feature_spec_version": int(spec_version),
-            },
-        )
-        db.commit()
-    except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug("Ignoring non-critical evidence router fallback failure: %s", exc)
-
-    # Write ZIP bundle in memory (bounded by max_items).
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, separators=(",", ":"), default=str))
-        zf.writestr(
-            "training_rows.ndjson",
-            ("\n".join(training_lines) + ("\n" if training_lines else "")).encode("utf-8"),
-        )
-        zf.writestr(
-            "hard_negatives.ndjson",
-            ("\n".join(hard_lines) + ("\n" if hard_lines else "")).encode("utf-8"),
-        )
-        zf.writestr(
-            "README.txt",
-            (
-                "MimirQ Evidence Suite LTR Training Export\n\n"
-                "- manifest.json: export metadata + LTR feature spec\n"
-                "- training_rows.ndjson: one row per (query_hash, candidate chunk_id) with features + label\n"
-                "- hard_negatives.ndjson: mined near-miss negatives (PII-safe) per query_hash\n"
-                "\n"
-                "Notes:\n"
-                "- training_rows is PII-minimized: it does not include raw query text.\n"
-                "- This export relies on per-item retrieval_snapshot for reproducibility.\n"
-            ),
-        )
-
-    raw = buf.getvalue()
+    raw = _render_ltr_training_zip(
+        manifest=manifest,
+        training_lines=training_lines,
+        hard_lines=hard_lines,
+    )
     safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(getattr(suite, "name", "") or "evidence_suite"))[:64]
     filename = f"{safe}.ltr_training.zip"
     return Response(

@@ -34,7 +34,22 @@ class HtmlParser:
     def parse(self, file_path: Path, *, html_xpath: str | None = None) -> list[Document]:
         decoded = read_text_file(file_path)
         raw_html = decoded.text or ""
+        title, extracted_html = self._extract_readability_content(raw_html)
+        text, xpath_matches, xpath_error = self._extract_xpath_text(raw_html, html_xpath)
+        if not text:
+            text = self._extract_plain_text(extracted_html=extracted_html, raw_html=raw_html)
+        metadata = self._build_metadata(
+            file_path=file_path,
+            decoded=decoded,
+            title=title,
+            html_xpath=html_xpath,
+            xpath_matches=xpath_matches,
+            xpath_error=xpath_error,
+        )
+        return [Document(page_content=text, metadata=metadata)]
 
+    @staticmethod
+    def _extract_readability_content(raw_html: str) -> tuple[str | None, str]:
         title: str | None = None
         extracted_html: str = raw_html
 
@@ -49,7 +64,10 @@ class HtmlParser:
                     extracted_html = rd.summary() or raw_html
                 except Exception:
                     extracted_html = raw_html
+        return title, extracted_html
 
+    @staticmethod
+    def _extract_xpath_text(raw_html: str, html_xpath: str | None) -> tuple[str, int, str | None]:
         # 2) Optional XPath extraction (when caller provides governance_html_xpath).
         xpath_matches = 0
         xpath_error: str | None = None
@@ -67,21 +85,34 @@ class HtmlParser:
                 xpath_error = f"extract_failed:{str(exc)[:120]}"
         else:
             text = ""
+        return text, xpath_matches, xpath_error
 
+    @staticmethod
+    def _extract_plain_text(*, extracted_html: str, raw_html: str) -> str:
         # 3) Convert HTML to plain text.
-        if not text:
-            html_text = _get_html_text()
-            extract_text = getattr(html_text, "extract_text", None) if html_text is not None else None
-            if callable(extract_text):
-                try:
-                    text = extract_text(extracted_html or "", guess_layout=True) or ""
-                except Exception:
-                    text = ""
+        text = ""
+        html_text = _get_html_text()
+        extract_text = getattr(html_text, "extract_text", None) if html_text is not None else None
+        if callable(extract_text):
+            try:
+                text = extract_text(extracted_html or "", guess_layout=True) or ""
+            except Exception:
+                text = ""
+        if text:
+            return text
+        # Last resort: keep raw HTML (still searchable, but less clean).
+        return extracted_html or raw_html or ""
 
-            if not text:
-                # Last resort: keep raw HTML (still searchable, but less clean).
-                text = extracted_html or raw_html or ""
-
+    @staticmethod
+    def _build_metadata(
+        *,
+        file_path: Path,
+        decoded,
+        title: str | None,
+        html_xpath: str | None,
+        xpath_matches: int,
+        xpath_error: str | None,
+    ) -> dict[str, object]:
         metadata = {
             "source": str(file_path.name),
             "file_type": "html",
@@ -96,5 +127,4 @@ class HtmlParser:
             metadata["html_xpath_matches"] = int(xpath_matches)
             if xpath_error:
                 metadata["html_xpath_error"] = str(xpath_error)
-
-        return [Document(page_content=text, metadata=metadata)]
+        return metadata

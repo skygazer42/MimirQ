@@ -30,6 +30,24 @@ def _as_float(v: Any) -> float:
         return 0.0
 
 
+def _empty_rerank_result(*, model_name: str, provider: str) -> RerankResult:
+    return RerankResult(
+        ordered_ids=[],
+        score_map={},
+        elapsed_sec=0.0,
+        model_used=model_name,
+        provider=provider,
+    )
+
+
+def _normalize_top_n(value: Any) -> int | None:
+    try:
+        top_n = int(value) if value is not None else None
+    except Exception:
+        return None
+    return max(0, top_n) if top_n is not None else None
+
+
 class CrossEncoderReranker(BaseReranker):
     """
     Cross-encoder reranker backed by sentence-transformers CrossEncoder.
@@ -125,6 +143,46 @@ class CrossEncoderReranker(BaseReranker):
             raise self._load_exception
         raise RuntimeError(f"cross_encoder_load_failed:{self.model_name}")
 
+    @staticmethod
+    def _collect_pairs(
+        *,
+        query: str,
+        candidates: Sequence[RerankCandidate],
+        max_chars: int,
+    ) -> tuple[list[str], list[tuple[str, str]]]:
+        ids: list[str] = []
+        pairs: list[tuple[str, str]] = []
+        for candidate in candidates:
+            cid = str(getattr(candidate, "id", "") or "").strip()
+            text = str(getattr(candidate, "text", "") or "").strip()
+            if not cid or not text:
+                continue
+            if max_chars > 0 and len(text) > max_chars:
+                text = text[:max_chars] + "..."
+            ids.append(cid)
+            pairs.append((query, text))
+        return ids, pairs
+
+    def _predict_scores(
+        self,
+        *,
+        model: Any,
+        pairs: list[tuple[str, str]],
+        batch_size: int,
+    ) -> list[float]:
+        scores: list[float] = []
+        for i in range(0, len(pairs), batch_size):
+            batch_scores = model.predict(pairs[i : i + batch_size])  # type: ignore[attr-defined]
+            if hasattr(batch_scores, "tolist"):
+                try:
+                    batch_scores = batch_scores.tolist()
+                except Exception as exc:
+                    logger.debug("Ignoring cross-encoder score tolist normalization failure: %s", exc)
+            if not isinstance(batch_scores, list):
+                batch_scores = list(batch_scores)  # type: ignore[arg-type]
+            scores.extend([_as_float(score) for score in batch_scores])
+        return scores
+
     def rerank(
         self,
         query: str,
@@ -134,13 +192,7 @@ class CrossEncoderReranker(BaseReranker):
         provider = "cross_encoder"
         start = time.time()
 
-        top_n_raw = kwargs.get("top_n")
-        try:
-            top_n = int(top_n_raw) if top_n_raw is not None else None
-        except Exception:
-            top_n = None
-        if top_n is not None:
-            top_n = max(0, top_n)
+        top_n = _normalize_top_n(kwargs.get("top_n"))
 
         batch_size = int(kwargs.get("batch_size") or settings.RERANKER_API_BATCH_SIZE or 32)
         batch_size = max(1, batch_size)
@@ -148,50 +200,15 @@ class CrossEncoderReranker(BaseReranker):
 
         q = (query or "").strip()
         if not q or not candidates:
-            return RerankResult(
-                ordered_ids=[],
-                score_map={},
-                elapsed_sec=0.0,
-                model_used=self.model_name,
-                provider=provider,
-            )
+            return _empty_rerank_result(model_name=self.model_name, provider=provider)
 
-        ids: list[str] = []
-        pairs: list[tuple[str, str]] = []
-        for c in candidates:
-            cid = str(getattr(c, "id", "") or "").strip()
-            text = str(getattr(c, "text", "") or "").strip()
-            if not cid or not text:
-                continue
-            if max_chars > 0 and len(text) > max_chars:
-                text = text[:max_chars] + "..."
-            ids.append(cid)
-            pairs.append((q, text))
+        ids, pairs = self._collect_pairs(query=q, candidates=candidates, max_chars=max_chars)
 
         if not pairs:
-            return RerankResult(
-                ordered_ids=[],
-                score_map={},
-                elapsed_sec=0.0,
-                model_used=self.model_name,
-                provider=provider,
-            )
+            return _empty_rerank_result(model_name=self.model_name, provider=provider)
 
         model = self._load_model()
-
-        scores: list[float] = []
-        for i in range(0, len(pairs), batch_size):
-            batch = pairs[i : i + batch_size]
-            batch_scores = model.predict(batch)  # type: ignore[attr-defined]
-            # sentence-transformers returns list[float] or np.ndarray; normalize to a python list.
-            if hasattr(batch_scores, "tolist"):
-                try:
-                    batch_scores = batch_scores.tolist()
-                except Exception as exc:
-                    logger.debug("Ignoring cross-encoder score tolist normalization failure: %s", exc)
-            if not isinstance(batch_scores, list):
-                batch_scores = list(batch_scores)  # type: ignore[arg-type]
-            scores.extend([_as_float(s) for s in batch_scores])
+        scores = self._predict_scores(model=model, pairs=pairs, batch_size=batch_size)
 
         # Defensive: avoid score/id mismatch.
         if len(scores) != len(ids):

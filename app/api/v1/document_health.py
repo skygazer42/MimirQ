@@ -40,6 +40,186 @@ DOC_NOT_FOUND_DETAIL = "Document not found"
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
+def _get_health_document_or_404(*, db: Session, tenant_id: UUID, document_id: UUID):
+    document = (
+        db.query(DBDocument)
+        .filter(
+            DBDocument.id == document_id,
+            DBDocument.tenant_id == tenant_id,
+        )
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
+    return document
+
+
+def _authorize_health_document(*, db: Session, tenant_id: UUID, account_id: str, document) -> None:
+    dataset: Dataset | None = None
+    if document.dataset_id:
+        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_readable(db, dataset, account_id)
+    assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=dataset)
+
+
+def _parsing_health(document, meta: dict[str, Any]) -> DocumentHealthParsing:
+    pdf_quality = meta.get("pdf_quality") if isinstance(meta.get("pdf_quality"), dict) else None
+    is_scanned = bool(pdf_quality.get("is_scanned")) if isinstance(pdf_quality, dict) and isinstance(pdf_quality.get("is_scanned"), bool) else None
+    try:
+        page_count = int(pdf_quality.get("page_count")) if isinstance(pdf_quality, dict) and pdf_quality.get("page_count") is not None else None
+    except Exception:
+        page_count = None
+    return DocumentHealthParsing(
+        parser_backend=(str(meta.get("parser_backend") or "").strip() or None),
+        parser_backend_requested=(str(meta.get("parser_backend_requested") or "").strip() or None),
+        parse_quality=meta.get("parse_quality") if isinstance(meta.get("parse_quality"), dict) else None,
+        pdf_quality=pdf_quality,
+        seal_summary=meta.get("seal_summary") if isinstance(meta.get("seal_summary"), dict) else None,
+        is_scanned=is_scanned,
+        page_count=page_count,
+        processed_at=getattr(document, "processed_at", None),
+    )
+
+
+def _document_target_pipeline_key(document_id: UUID, document) -> str | None:
+    from app.core.pipeline_versions import resolve_doc_pipeline_key
+
+    return resolve_doc_pipeline_key(
+        document_id,
+        getattr(document, "doc_metadata", None),
+        pipeline_hash=None,
+        all_versions=False,
+    )
+
+
+def _load_health_chunk_ranges(*, db: Session, tenant_id: UUID, document_id: UUID, target_key: str | None) -> list[tuple[int, int]]:
+    ranges: list[tuple[int, int]] = []
+    chunk_query = db.query(DocumentChunk.start_char, DocumentChunk.end_char).filter(
+        DocumentChunk.tenant_id == tenant_id,
+        DocumentChunk.document_id == document_id,
+        DocumentChunk.disabled_at.is_(None),
+    )
+    if target_key:
+        chunk_query = chunk_query.filter(
+            DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key  # type: ignore[attr-defined]
+        )
+    for start, end in chunk_query.order_by(DocumentChunk.chunk_index.asc()).all():
+        if start is None or end is None:
+            continue
+        try:
+            ranges.append((int(start), int(end)))
+        except Exception:
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+    return ranges
+
+
+def _semantic_quality_summary(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    document_id: UUID,
+    document,
+    target_key: str | None,
+    max_chunks_scored: int,
+) -> DocumentHealthSemanticQualitySummary | None:
+    max_chunks_scored_i = max(0, int(max_chunks_scored or 0))
+    if not max_chunks_scored_i:
+        return None
+    from app.rag.chunking.quality_scorer import score_chunk_semantic_quality
+
+    chunks_q = db.query(DocumentChunk.content).filter(
+        DocumentChunk.tenant_id == tenant_id,
+        DocumentChunk.document_id == document_id,
+        DocumentChunk.disabled_at.is_(None),
+    )
+    if target_key:
+        chunks_q = chunks_q.filter(
+            DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key  # type: ignore[attr-defined]
+        )
+    chunks = chunks_q.order_by(DocumentChunk.chunk_index.asc()).limit(max_chunks_scored_i).all()
+    sampled = 0
+    needs_review = 0
+    sum_density = 0.0
+    sum_complete = 0.0
+    sum_self = 0.0
+    sum_pronoun = 0.0
+    hist = [0 for _ in range(10)]
+    prev_token_set: set[str] | None = None
+    for (content,) in chunks:
+        sampled += 1
+        scores, prev_token_set = score_chunk_semantic_quality(str(content or ""), prev_token_set=prev_token_set)
+        density = float(scores.get("information_density") or 0.0)
+        completeness = float(scores.get("semantic_completeness") or 0.0)
+        self_contained = float(scores.get("self_containedness") or 0.0)
+        pronoun_ratio = float(scores.get("pronoun_ratio") or 0.0)
+        sum_density += density
+        sum_complete += completeness
+        sum_self += self_contained
+        sum_pronoun += pronoun_ratio
+        if bool(scores.get("needs_review")):
+            needs_review += 1
+        idx = max(0, min(9, int(((density + completeness + self_contained) / 3.0) * 10.0)))
+        hist[idx] += 1
+    note = f"Scored first {sampled} chunks only (bounded)." if sampled >= max_chunks_scored_i else None
+    return DocumentHealthSemanticQualitySummary(
+        sampled_chunks=int(sampled),
+        needs_review=int(needs_review),
+        needs_review_ratio=float(needs_review / max(1, sampled)),
+        mean_information_density=float(round(sum_density / max(1, sampled), 4)) if sampled else None,
+        mean_semantic_completeness=float(round(sum_complete / max(1, sampled), 4)) if sampled else None,
+        mean_self_containedness=float(round(sum_self / max(1, sampled), 4)) if sampled else None,
+        mean_pronoun_ratio=float(round(sum_pronoun / max(1, sampled), 4)) if sampled else None,
+        overall_histogram_10=[int(x) for x in hist],
+        note=note,
+    )
+
+
+def _best_effort_kg_report(*, db: Session, meta: dict[str, Any], tenant_id: UUID, document_id: UUID) -> dict[str, Any] | None:
+    try:
+        from app.core.pipeline_versions import get_active_pipeline_hash
+        from app.rag.kg.quality.kg_completeness_scorer import build_kg_quality_report
+
+        return build_kg_quality_report(
+            db,
+            tenant_id=tenant_id,
+            document_ids=[document_id],
+            pipeline_hash=get_active_pipeline_hash(meta),
+        )
+    except Exception:
+        return None
+
+
+def _best_effort_retrieval_hits(
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    window_minutes: int,
+    max_bytes: int,
+    now0: datetime,
+) -> DocumentHealthRetrievalHits | None:
+    try:
+        from app.services.document_retrieval_hit_frequency import compute_document_retrieval_hit_frequency
+
+        return DocumentHealthRetrievalHits(
+            **compute_document_retrieval_hit_frequency(
+                tenant_id=tenant_id,
+                document_id=document_id,
+                window_minutes=int(window_minutes or 0),
+                max_bytes=int(max_bytes or 0),
+                now=now0,
+            )
+        )
+    except Exception:
+        return None
+
+
+def _best_effort_index_readiness(*, db: Session, document):
+    try:
+        return summarize_document_index_channels(db, document=document).to_dict()
+    except Exception:
+        return None
+
+
 @router.get("/{document_id}/health", response_model=DocumentHealthCard, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_document_health_card(
     document_id: uuid.UUID,
@@ -57,213 +237,37 @@ def get_document_health_card(
     PII-safe: returns aggregate signals only (no raw chunk text).
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
-
-    document = (
-        db.query(DBDocument)
-        .filter(
-            DBDocument.id == document_id,
-            DBDocument.tenant_id == tenant_id,
-        )
-        .first()
-    )
-    if not document:
-        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
-
-    dataset: Dataset | None = None
-    if document.dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
-    assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=dataset)
-
+    document = _get_health_document_or_404(db=db, tenant_id=tenant_id, document_id=document_id)
+    _authorize_health_document(db=db, tenant_id=tenant_id, account_id=account_id, document=document)
     now0 = datetime.now(UTC)
     meta = dict(getattr(document, "doc_metadata", None) or {})
-
-    pdf_quality = meta.get("pdf_quality") if isinstance(meta.get("pdf_quality"), dict) else None
-    parse_quality = meta.get("parse_quality") if isinstance(meta.get("parse_quality"), dict) else None
-    seal_summary = meta.get("seal_summary") if isinstance(meta.get("seal_summary"), dict) else None
-    is_scanned = None
-    page_count = None
-    if isinstance(pdf_quality, dict):
-        if isinstance(pdf_quality.get("is_scanned"), bool):
-            is_scanned = bool(pdf_quality.get("is_scanned"))
-        try:
-            page_count = int(pdf_quality.get("page_count")) if pdf_quality.get("page_count") is not None else None
-        except Exception:
-            page_count = None
-
-    parsing = DocumentHealthParsing(
-        parser_backend=(str(meta.get("parser_backend") or "").strip() or None),
-        parser_backend_requested=(str(meta.get("parser_backend_requested") or "").strip() or None),
-        parse_quality=parse_quality,
-        pdf_quality=pdf_quality,
-        seal_summary=seal_summary,
-        is_scanned=is_scanned,
-        page_count=page_count,
-        processed_at=getattr(document, "processed_at", None),
-    )
-
-    from app.core.pipeline_versions import resolve_doc_pipeline_key
-
-    target_key = resolve_doc_pipeline_key(
-        document_id,
-        getattr(document, "doc_metadata", None),
-        pipeline_hash=None,
-        all_versions=False,
-    )
-
-    ranges: list[tuple[int, int]] = []
-    chunk_query = db.query(DocumentChunk.start_char, DocumentChunk.end_char).filter(
-        DocumentChunk.tenant_id == tenant_id,
-        DocumentChunk.document_id == document_id,
-        DocumentChunk.disabled_at.is_(None),
-    )
-    if target_key:
-        chunk_query = chunk_query.filter(
-            DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key  # type: ignore[attr-defined]
+    target_key = _document_target_pipeline_key(document_id, document)
+    coverage_out = DocumentHealthChunkCoverage(
+        **compute_chunk_coverage_metrics_from_ranges(
+            _load_health_chunk_ranges(
+                db=db,
+                tenant_id=tenant_id,
+                document_id=document_id,
+                target_key=target_key,
+            ),
+            total_characters=int(getattr(document, "total_characters", 0) or 0),
         )
-
-    for start, end in chunk_query.order_by(DocumentChunk.chunk_index.asc()).all():
-        if start is None or end is None:
-            continue
-        try:
-            ranges.append((int(start), int(end)))
-        except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
-
-    coverage = compute_chunk_coverage_metrics_from_ranges(
-        ranges,
-        total_characters=int(getattr(document, "total_characters", 0) or 0),
     )
-    coverage_out = DocumentHealthChunkCoverage(**coverage)
-
-    semantic_summary: DocumentHealthSemanticQualitySummary | None = None
-    max_chunks_scored_i = max(0, int(max_chunks_scored or 0))
-    if max_chunks_scored_i:
-        from app.rag.chunking.quality_scorer import score_chunk_semantic_quality
-
-        chunks_q = db.query(DocumentChunk.content).filter(
-            DocumentChunk.tenant_id == tenant_id,
-            DocumentChunk.document_id == document_id,
-            DocumentChunk.disabled_at.is_(None),
-        )
-        if target_key:
-            chunks_q = chunks_q.filter(
-                DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key  # type: ignore[attr-defined]
-            )
-        chunks = chunks_q.order_by(DocumentChunk.chunk_index.asc()).limit(max_chunks_scored_i).all()
-
-        sampled = 0
-        needs_review = 0
-        sum_density = 0.0
-        sum_complete = 0.0
-        sum_self = 0.0
-        sum_pronoun = 0.0
-        hist = [0 for _ in range(10)]
-        prev_token_set: set[str] | None = None
-
-        for (content,) in chunks:
-            sampled += 1
-            scores, prev_token_set = score_chunk_semantic_quality(
-                str(content or ""),
-                prev_token_set=prev_token_set,
-            )
-            try:
-                density = float(scores.get("information_density") or 0.0)
-            except Exception:
-                density = 0.0
-            try:
-                completeness = float(scores.get("semantic_completeness") or 0.0)
-            except Exception:
-                completeness = 0.0
-            try:
-                self_contained = float(scores.get("self_containedness") or 0.0)
-            except Exception:
-                self_contained = 0.0
-            try:
-                pronoun_ratio = float(scores.get("pronoun_ratio") or 0.0)
-            except Exception:
-                pronoun_ratio = 0.0
-
-            sum_density += density
-            sum_complete += completeness
-            sum_self += self_contained
-            sum_pronoun += pronoun_ratio
-            if bool(scores.get("needs_review")):
-                needs_review += 1
-
-            overall = (density + completeness + self_contained) / 3.0
-            try:
-                idx = int(overall * 10.0)
-            except Exception:
-                idx = 0
-            if idx < 0:
-                idx = 0
-            if idx > 9:
-                idx = 9
-            hist[idx] += 1
-
-        note = None
-        if sampled >= max_chunks_scored_i:
-            note = f"Scored first {sampled} chunks only (bounded)."
-
-        semantic_summary = DocumentHealthSemanticQualitySummary(
-            sampled_chunks=int(sampled),
-            needs_review=int(needs_review),
-            needs_review_ratio=float(needs_review / max(1, sampled)),
-            mean_information_density=float(round(sum_density / max(1, sampled), 4)) if sampled else None,
-            mean_semantic_completeness=float(round(sum_complete / max(1, sampled), 4)) if sampled else None,
-            mean_self_containedness=float(round(sum_self / max(1, sampled), 4)) if sampled else None,
-            mean_pronoun_ratio=float(round(sum_pronoun / max(1, sampled), 4)) if sampled else None,
-            overall_histogram_10=[int(x) for x in hist],
-            note=note,
-        )
-
     chunking = DocumentHealthChunking(
         chunk_strategy=(str(meta.get("chunk_strategy") or "").strip() or None),
         chunk_strategy_requested=(str(meta.get("chunk_strategy_requested") or "").strip() or None),
         chunk_count=int(getattr(document, "chunk_count", 0) or 0),
         total_characters=int(getattr(document, "total_characters", 0) or 0),
         coverage=coverage_out,
-        semantic_quality=semantic_summary,
-    )
-
-    kg_report: dict[str, Any] | None = None
-    try:
-        from app.core.pipeline_versions import get_active_pipeline_hash
-        from app.rag.kg.quality.kg_completeness_scorer import build_kg_quality_report
-
-        active_hash = get_active_pipeline_hash(meta)
-        kg_report = build_kg_quality_report(
-            db,
+        semantic_quality=_semantic_quality_summary(
+            db=db,
             tenant_id=tenant_id,
-            document_ids=[document_id],
-            pipeline_hash=active_hash,
-        )
-    except Exception:
-        kg_report = None
-
-    retrieval_hits: DocumentHealthRetrievalHits | None = None
-    try:
-        from app.services.document_retrieval_hit_frequency import compute_document_retrieval_hit_frequency
-
-        retrieval_hits = DocumentHealthRetrievalHits(
-            **compute_document_retrieval_hit_frequency(
-                tenant_id=tenant_id,
-                document_id=document_id,
-                window_minutes=int(window_minutes or 0),
-                max_bytes=int(max_bytes or 0),
-                now=now0,
-            )
-        )
-    except Exception:
-        retrieval_hits = None
-
-    index_readiness = None
-    try:
-        index_readiness = summarize_document_index_channels(db, document=document).to_dict()
-    except Exception:
-        index_readiness = None
+            document_id=document_id,
+            document=document,
+            target_key=target_key,
+            max_chunks_scored=max_chunks_scored,
+        ),
+    )
 
     return DocumentHealthCard(
         document_id=document.id,
@@ -275,9 +279,15 @@ def get_document_health_card(
         updated_at=getattr(document, "updated_at", None),
         generated_at=now0,
         status=str(getattr(document, "status", None) or "") or None,
-        parsing=parsing,
+        parsing=_parsing_health(document, meta),
         chunking=chunking,
-        kg=kg_report,
-        retrieval_hits=retrieval_hits,
-        index_readiness=index_readiness,
+        kg=_best_effort_kg_report(db=db, meta=meta, tenant_id=tenant_id, document_id=document_id),
+        retrieval_hits=_best_effort_retrieval_hits(
+            tenant_id=tenant_id,
+            document_id=document_id,
+            window_minutes=int(window_minutes or 0),
+            max_bytes=int(max_bytes or 0),
+            now0=now0,
+        ),
+        index_readiness=_best_effort_index_readiness(db=db, document=document),
     )

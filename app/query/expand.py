@@ -13,6 +13,32 @@ from pathlib import Path
 from typing import Any
 
 
+def _rule_values(raw: Any) -> list[Any] | None:
+    if isinstance(raw, str):
+        return [raw]
+    if isinstance(raw, list):
+        return raw
+    return None
+
+
+def _unique_rule_values(key: str, raw: Any) -> list[str]:
+    values = _rule_values(raw)
+    if values is None:
+        return []
+    seen: set[str] = set()
+    unique: list[str] = []
+    for item in values:
+        value = str(item or "").strip()
+        if not value or value == key:
+            continue
+        signature = value.casefold() if value.isascii() else value
+        if signature in seen:
+            continue
+        seen.add(signature)
+        unique.append(value)
+    return unique
+
+
 def coerce_expansion_rules(raw: Any) -> dict[str, list[str]]:
     """
     Coerce a user/dataset-provided expansion dictionary into a normalized mapping.
@@ -31,41 +57,9 @@ def coerce_expansion_rules(raw: Any) -> dict[str, list[str]]:
         key = str(k or "").strip()
         if not key:
             continue
-
-        vals: list[Any]
-        if isinstance(v, str):
-            vals = [v]
-        elif isinstance(v, list):
-            vals = v
-        else:
-            continue
-
-        cleaned: list[str] = []
-        for item in vals:
-            s = str(item or "").strip()
-            if not s:
-                continue
-            # Avoid trivial self-aliasing.
-            if s == key:
-                continue
-            cleaned.append(s)
-
-        if not cleaned:
-            continue
-
-        # Stable de-dup (case-insensitive for ASCII).
-        seen: set[str] = set()
-        unique: list[str] = []
-        for s in cleaned:
-            sig = s.casefold() if s.isascii() else s
-            if sig in seen:
-                continue
-            seen.add(sig)
-            unique.append(s)
-
+        unique = _unique_rule_values(key, v)
         if unique:
             out[key] = unique
-
     return out
 
 
@@ -91,6 +85,60 @@ def _replace(query: str, term: str, replacement: str) -> str:
     if term.isascii():
         return _term_pattern(term).sub(replacement, query)
     return query.replace(term, replacement)
+
+
+def _bounded_expansion_text(
+    base: str,
+    source: str,
+    target: str,
+    *,
+    max_query_chars: int,
+) -> str:
+    expanded = _replace(base, source, target).strip()
+    if max_query_chars and len(expanded) > int(max_query_chars):
+        return expanded[: int(max_query_chars)] + "..."
+    return expanded
+
+
+def _append_rule_expansions(
+    *,
+    expansions: list[dict[str, Any]],
+    seen: set[str],
+    base: str,
+    source: str,
+    targets: list[str],
+    max_expansions_total: int,
+    max_expansions_per_rule: int,
+    max_query_chars: int,
+) -> None:
+    per_rule = 0
+    for target in targets:
+        if len(expansions) >= max_expansions_total or per_rule >= max_expansions_per_rule:
+            break
+        if not target:
+            continue
+        expanded = _bounded_expansion_text(
+            base,
+            source,
+            target,
+            max_query_chars=max_query_chars,
+        )
+        if not expanded or expanded == base:
+            continue
+        signature = expanded.casefold() if expanded.isascii() else expanded
+        if signature in seen:
+            continue
+        seen.add(signature)
+        expansions.append(
+            {
+                "expanded_text": expanded,
+                "source_rule_id": f"dict:{source}",
+                "weight": 1.0,
+                "src": source,
+                "tgt": target,
+            }
+        )
+        per_rule += 1
 
 
 def generate_dictionary_expansions(
@@ -129,38 +177,16 @@ def generate_dictionary_expansions(
             break
         if not _contains(base, key):
             continue
-
-        per_rule = 0
-        for tgt in targets:
-            if len(expansions) >= max_expansions_total:
-                break
-            if per_rule >= max_expansions_per_rule:
-                break
-            if not tgt:
-                continue
-
-            v = _replace(base, key, tgt).strip()
-            if not v or v == base:
-                continue
-            if max_query_chars and len(v) > int(max_query_chars):
-                v = v[: int(max_query_chars)] + "..."
-
-            sig = v.casefold() if v.isascii() else v
-            if sig in seen:
-                continue
-            seen.add(sig)
-
-            expansions.append(
-                {
-                    "expanded_text": v,
-                    "source_rule_id": f"dict:{key}",
-                    # Weight is intentionally simple today; callers can re-weight later.
-                    "weight": 1.0,
-                    "src": key,
-                    "tgt": tgt,
-                }
-            )
-            per_rule += 1
+        _append_rule_expansions(
+            expansions=expansions,
+            seen=seen,
+            base=base,
+            source=key,
+            targets=targets,
+            max_expansions_total=max_expansions_total,
+            max_expansions_per_rule=max_expansions_per_rule,
+            max_query_chars=max_query_chars,
+        )
 
     return expansions, {
         "enabled": True,
@@ -171,6 +197,26 @@ def generate_dictionary_expansions(
         "max_expansions_per_rule": max_expansions_per_rule,
         "base_query_chars": len(base),
     }
+
+
+def _dictionary_heading(line: str, stripped: str) -> str | None:
+    if line.startswith((" ", "\t")) or not stripped.endswith(":"):
+        return None
+    return stripped[:-1].strip().strip('"').strip("'")
+
+
+def _dictionary_list_value(stripped: str) -> str | None:
+    if not stripped.startswith("-"):
+        return None
+    value = stripped[1:].strip()
+    if not value:
+        return None
+    quoted = (value.startswith('"') and value.endswith('"')) or (
+        value.startswith("'") and value.endswith("'")
+    )
+    if quoted and len(value) >= 2:
+        return value[1:-1]
+    return value
 
 
 def load_base_dictionary_rules() -> dict[str, list[str]]:
@@ -195,23 +241,14 @@ def load_base_dictionary_rules() -> dict[str, list[str]]:
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
-
-        if not line.startswith((" ", "\t")) and stripped.endswith(":"):
-            key = stripped[:-1].strip().strip('"').strip("'")
-            current_key = key if key else None
+        heading = _dictionary_heading(line, stripped)
+        if heading is not None:
+            current_key = heading if heading else None
             if current_key and current_key not in parsed:
                 parsed[current_key] = []
             continue
-
-        if stripped.startswith("-"):
-            if not current_key:
-                continue
-            val = stripped[1:].strip()
-            if not val:
-                continue
-            if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
-                if len(val) >= 2:
-                    val = val[1:-1]
-            parsed.setdefault(current_key, []).append(val)
+        value = _dictionary_list_value(stripped)
+        if value is not None and current_key:
+            parsed.setdefault(current_key, []).append(value)
 
     return coerce_expansion_rules(parsed)

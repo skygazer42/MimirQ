@@ -70,6 +70,88 @@ def _source_path_prefix_expr(prefix: str | None):  # noqa: ANN201
     return DBDocument.doc_metadata["source_path"].astext.startswith(val)  # type: ignore[attr-defined]
 
 
+def _apply_dataset_scope(
+    *,
+    query,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID | None,
+):
+    if dataset_id:
+        dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+        DatasetService.assert_dataset_readable(db, dataset, account_id)
+        return query.filter(DBDocument.dataset_id == dataset_id)
+
+    allowed_dataset_ids_subq = select(Dataset.id).where(
+        Dataset.tenant_id == tenant_id,
+        build_dataset_read_filter(tenant_id=tenant_id, account_id=account_id),
+    )
+    return query.filter(
+        or_(
+            DBDocument.dataset_id.is_(None),
+            DBDocument.dataset_id.in_(allowed_dataset_ids_subq),
+        )
+    )
+
+
+def _apply_status_filter(*, query, status: str | None):
+    if not status or status == "all":
+        return query
+    normalized = str(status).strip().lower()
+    if normalized == "processing":
+        return query.filter(DBDocument.status.in_(["pending", "processing"]))
+    return query.filter(DBDocument.status == status)
+
+
+def _apply_lifecycle_filter(*, query, lifecycle: str | None):
+    lifecycle0 = str(lifecycle or "active").strip().lower()
+    if lifecycle0 == "all":
+        return query
+    if lifecycle0 == "archived":
+        return query.filter(DBDocument.archived_at.isnot(None))
+    if lifecycle0 == "disabled":
+        return query.filter(DBDocument.disabled_at.isnot(None))
+    return query.filter(DBDocument.archived_at.is_(None), DBDocument.disabled_at.is_(None))
+
+
+def _apply_optional_listing_filters(
+    *,
+    query,
+    file_type: str | None,
+    owner_id: str | None,
+    q: str | None,
+    source_path_prefix: str | None,
+):
+    if file_type:
+        file_type_norm = str(file_type or "").strip().lower()
+        if file_type_norm:
+            query = query.filter(DBDocument.file_type == file_type_norm)
+
+    if owner_id:
+        owner_id_norm = str(owner_id or "").strip()
+        if owner_id_norm:
+            query = query.filter(DBDocument.owner_id == owner_id_norm)
+
+    if q:
+        term = q.strip()
+        if term:
+            query = query.filter(DBDocument.filename.ilike(f"%{term}%"))
+
+    sp_expr = _source_path_prefix_expr(source_path_prefix)
+    if sp_expr is not None:
+        query = query.filter(sp_expr)
+    return query
+
+
+def _resolve_order_column(order_by: str):
+    if order_by == "filename":
+        return DBDocument.filename
+    if order_by == "file_size":
+        return DBDocument.file_size
+    return DBDocument.created_at
+
+
 @router.get("/", response_model=DocumentList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_documents(
     params: Annotated[ListDocumentsQueryFields, Depends()],
@@ -96,71 +178,26 @@ def list_documents(
     order_dir = params.order_dir
 
     query = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id)
-
-    if dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
-        query = query.filter(DBDocument.dataset_id == dataset_id)
-    else:
-        allowed_dataset_ids_subq = select(Dataset.id).where(
-            Dataset.tenant_id == tenant_id,
-            build_dataset_read_filter(tenant_id=tenant_id, account_id=account_id),
-        )
-
-        query = query.filter(
-            or_(
-                DBDocument.dataset_id.is_(None),
-                DBDocument.dataset_id.in_(allowed_dataset_ids_subq),
-            )
-        )
-
-    query = query.filter(
-        build_document_read_filter(tenant_id=tenant_id, account_id=account_id)
+    query = _apply_dataset_scope(
+        query=query,
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=dataset_id,
+    )
+    query = query.filter(build_document_read_filter(tenant_id=tenant_id, account_id=account_id))
+    query = _apply_status_filter(query=query, status=status)
+    query = _apply_lifecycle_filter(query=query, lifecycle=lifecycle)
+    query = _apply_optional_listing_filters(
+        query=query,
+        file_type=file_type,
+        owner_id=owner_id,
+        q=q,
+        source_path_prefix=source_path_prefix,
     )
 
-    if status and status != "all":
-        normalized = str(status).strip().lower()
-        if normalized == "processing":
-            query = query.filter(DBDocument.status.in_(["pending", "processing"]))
-        else:
-            query = query.filter(DBDocument.status == status)
-
-    lifecycle0 = str(lifecycle or "active").strip().lower()
-    if lifecycle0 != "all":
-        if lifecycle0 == "archived":
-            query = query.filter(DBDocument.archived_at.isnot(None))
-        elif lifecycle0 == "disabled":
-            query = query.filter(DBDocument.disabled_at.isnot(None))
-        else:
-            query = query.filter(DBDocument.archived_at.is_(None), DBDocument.disabled_at.is_(None))
-
-    if file_type:
-        file_type_norm = str(file_type or "").strip().lower()
-        if file_type_norm:
-            query = query.filter(DBDocument.file_type == file_type_norm)
-
-    if owner_id:
-        owner_id_norm = str(owner_id or "").strip()
-        if owner_id_norm:
-            query = query.filter(DBDocument.owner_id == owner_id_norm)
-
-    if q:
-        term = q.strip()
-        if term:
-            query = query.filter(DBDocument.filename.ilike(f"%{term}%"))
-
-    sp_expr = _source_path_prefix_expr(source_path_prefix)
-    if sp_expr is not None:
-        query = query.filter(sp_expr)
-
     total = int(query.count())
-
-    if order_by == "filename":
-        order_col = DBDocument.filename
-    elif order_by == "file_size":
-        order_col = DBDocument.file_size
-    else:
-        order_col = DBDocument.created_at
+    order_col = _resolve_order_column(order_by)
 
     query = query.order_by(order_col.asc() if order_dir == "asc" else order_col.desc(), DBDocument.id.asc())
     documents = query.offset(skip).limit(limit).all()

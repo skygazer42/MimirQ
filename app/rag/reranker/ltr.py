@@ -162,6 +162,69 @@ def _as_float(v: Any) -> float:
         return 0.0
 
 
+def _resolve_ltr_manifest_path(*, model_path: Path, manifest_path: str | None) -> str | None:
+    explicit_path = str(manifest_path or "").strip() if manifest_path is not None else ""
+    if explicit_path:
+        return explicit_path
+    sidecar = model_path.with_suffix(".manifest.json")
+    return str(sidecar) if sidecar.exists() else None
+
+
+def _read_ltr_manifest(manifest_path: str) -> dict[str, Any]:
+    man_p = Path(manifest_path)
+    try:
+        raw = json.loads(man_p.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ValueError(f"failed to read LTR manifest: {man_p}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError("LTR manifest must be a JSON object")
+    return raw
+
+
+def _validate_ltr_manifest(
+    *,
+    raw: dict[str, Any],
+    spec: LTRFeatureSpec,
+    model_path: Path,
+) -> tuple[dict[str, Any], str | None]:
+    schema = str(raw.get("schema") or "").strip()
+    if schema != _MANIFEST_SCHEMA_V1:
+        raise ValueError(f"LTR manifest schema mismatch: {schema or '<missing>'} (expected: {_MANIFEST_SCHEMA_V1})")
+
+    feature_schema = str(raw.get("feature_schema") or "").strip()
+    if feature_schema != str(spec.schema or "").strip():
+        raise ValueError(
+            f"LTR manifest feature_schema mismatch: {feature_schema or '<missing>'} (expected: {spec.schema})"
+        )
+
+    names = raw.get("feature_names")
+    if not isinstance(names, list):
+        raise ValueError("LTR manifest feature_names must be a list")
+    names_norm = [str(x) for x in names if x is not None]
+    if names_norm != list(spec.feature_names):
+        raise ValueError("LTR manifest feature_names mismatch (feature order/count must match spec)")
+
+    sha = str(raw.get("model_sha256") or "").strip() or None
+    if sha:
+        try:
+            model_bytes = model_path.read_bytes()
+        except Exception as exc:
+            raise ValueError(f"failed to read LTR model for sha256 check: {model_path}") from exc
+        digest = hashlib.sha256(model_bytes).hexdigest()
+        if digest != sha:
+            raise ValueError("LTR manifest model_sha256 mismatch (model file content changed)")
+
+    return (
+        {
+            "schema": schema,
+            "feature_schema": feature_schema,
+            "feature_names": list(names_norm),
+            "model_sha256": sha,
+        },
+        sha,
+    )
+
+
 def _role_one_hot(role: str | None) -> dict[str, float]:
     r = str(role or "").strip().lower()
     if not r:
@@ -346,60 +409,12 @@ class LTRReranker(BaseReranker):
         # Human-friendly model id for telemetry (avoid leaking full paths).
         self._model_id = model_p.name
 
-        self._manifest_path: str | None = None
+        self._manifest_path = _resolve_ltr_manifest_path(model_path=model_p, manifest_path=manifest_path)
         self._manifest: dict[str, Any] | None = None
 
-        mp = str(manifest_path or "").strip() if manifest_path is not None else ""
-        sidecar = model_p.with_suffix(".manifest.json")
-        if mp:
-            self._manifest_path = mp
-        elif sidecar.exists():
-            self._manifest_path = str(sidecar)
-
         if self._manifest_path:
-            man_p = Path(self._manifest_path)
-            try:
-                raw = json.loads(man_p.read_text(encoding="utf-8"))
-            except Exception as exc:
-                raise ValueError(f"failed to read LTR manifest: {man_p}") from exc
-            if not isinstance(raw, dict):
-                raise ValueError("LTR manifest must be a JSON object")
-
-            schema = str(raw.get("schema") or "").strip()
-            if schema != _MANIFEST_SCHEMA_V1:
-                raise ValueError(f"LTR manifest schema mismatch: {schema or '<missing>'} (expected: {_MANIFEST_SCHEMA_V1})")
-
-            feature_schema = str(raw.get("feature_schema") or "").strip()
-            if feature_schema != str(self._spec.schema or "").strip():
-                raise ValueError(
-                    f"LTR manifest feature_schema mismatch: {feature_schema or '<missing>'} (expected: {self._spec.schema})"
-                )
-
-            names = raw.get("feature_names")
-            if not isinstance(names, list):
-                raise ValueError("LTR manifest feature_names must be a list")
-            names_norm = [str(x) for x in names if x is not None]
-            if names_norm != list(self._spec.feature_names):
-                raise ValueError("LTR manifest feature_names mismatch (feature order/count must match spec)")
-
-            # Optional hash pin: if present, ensure the model bytes match.
-            sha = str(raw.get("model_sha256") or "").strip()
-            if sha:
-                try:
-                    model_bytes = model_p.read_bytes()
-                except Exception as exc:
-                    raise ValueError(f"failed to read LTR model for sha256 check: {model_p}") from exc
-                digest = hashlib.sha256(model_bytes).hexdigest()
-                if digest != sha:
-                    raise ValueError("LTR manifest model_sha256 mismatch (model file content changed)")
-
-            # Keep a copy for debugging/telemetry (do not include high-cardinality training data).
-            self._manifest = {
-                "schema": schema,
-                "feature_schema": feature_schema,
-                "feature_names": list(names_norm),
-                "model_sha256": sha or None,
-            }
+            raw = _read_ltr_manifest(self._manifest_path)
+            self._manifest, sha = _validate_ltr_manifest(raw=raw, spec=self._spec, model_path=model_p)
             if sha:
                 # Stable across deployments; safer than full paths in traces/metrics.
                 self._model_id = f"sha256:{sha[:12]}"

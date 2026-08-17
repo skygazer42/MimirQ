@@ -2,7 +2,7 @@
 import asyncio
 import contextlib
 import threading
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any, AsyncIterator, Callable, cast
 
 from app.core.config import settings
@@ -22,6 +22,87 @@ from app.services.chat_stream_persistence import dispatch_chat_stream_persistenc
 _SYNC_STREAM_END = object()
 
 
+def _put_sync_stream_payload(
+    *,
+    payload: tuple[bool, Any],
+    stop: threading.Event,
+    slots: threading.BoundedSemaphore,
+    loop: asyncio.AbstractEventLoop,
+    outbox: asyncio.Queue[tuple[bool, Any]],
+) -> bool:
+    while not stop.is_set():
+        if not slots.acquire(timeout=0.1):
+            continue
+        try:
+            loop.call_soon_threadsafe(outbox.put_nowait, payload)
+        except RuntimeError:
+            slots.release()
+            return False
+        return True
+    return False
+
+
+def _close_sync_iterator(iterator: Any) -> None:
+    close = getattr(iterator, "close", None)
+    if callable(close):
+        with contextlib.suppress(Exception):
+            close()
+
+
+def _run_sync_stream_producer(
+    factory: Callable[[], Any],
+    *,
+    stop: threading.Event,
+    slots: threading.BoundedSemaphore,
+    loop: asyncio.AbstractEventLoop,
+    outbox: asyncio.Queue[tuple[bool, Any]],
+) -> None:
+    iterator = None
+    try:
+        iterator = iter(factory())
+        for item in iterator:
+            if not _put_sync_stream_payload(
+                payload=(True, item),
+                stop=stop,
+                slots=slots,
+                loop=loop,
+                outbox=outbox,
+            ):
+                return
+    except Exception as exc:
+        _put_sync_stream_payload(
+            payload=(False, exc),
+            stop=stop,
+            slots=slots,
+            loop=loop,
+            outbox=outbox,
+        )
+    finally:
+        _close_sync_iterator(iterator)
+        _put_sync_stream_payload(
+            payload=(True, _SYNC_STREAM_END),
+            stop=stop,
+            slots=slots,
+            loop=loop,
+            outbox=outbox,
+        )
+
+
+async def _iterate_sync_worker_outbox(
+    *,
+    outbox: asyncio.Queue[tuple[bool, Any]],
+    slots: threading.BoundedSemaphore,
+) -> AsyncIterator[Any]:
+    while True:
+        ok, item = await outbox.get()
+        slots.release()
+        if item is _SYNC_STREAM_END:
+            return
+        if not ok:
+            raise item
+        yield item
+
+
 async def _iterate_sync_in_worker(
     factory: Callable[[], Any],
     *,
@@ -34,44 +115,18 @@ async def _iterate_sync_in_worker(
     slots = threading.BoundedSemaphore(max(1, max_queue_size))
     stop = stop_event or threading.Event()
     loop = asyncio.get_running_loop()
-
-    def put(payload: tuple[bool, Any]) -> bool:
-        while not stop.is_set():
-            if not slots.acquire(timeout=0.1):
-                continue
-            try:
-                loop.call_soon_threadsafe(outbox.put_nowait, payload)
-            except RuntimeError:
-                slots.release()
-                return False
-            return True
-        return False
-
-    def produce() -> None:
-        iterator = None
-        try:
-            iterator = iter(factory())
-            for item in iterator:
-                if not put((True, item)):
-                    return
-        except Exception as exc:
-            put((False, exc))
-        finally:
-            close = getattr(iterator, "close", None)
-            if callable(close):
-                with contextlib.suppress(Exception):
-                    close()
-            put((True, _SYNC_STREAM_END))
-
-    producer = asyncio.create_task(asyncio.to_thread(produce))
+    producer = asyncio.create_task(
+        asyncio.to_thread(
+            _run_sync_stream_producer,
+            factory,
+            stop=stop,
+            slots=slots,
+            loop=loop,
+            outbox=outbox,
+        )
+    )
     try:
-        while True:
-            ok, item = await outbox.get()
-            slots.release()
-            if item is _SYNC_STREAM_END:
-                break
-            if not ok:
-                raise item
+        async for item in _iterate_sync_worker_outbox(outbox=outbox, slots=slots):
             yield item
         await producer
     finally:
@@ -100,46 +155,44 @@ class GraphChatStreamSessionInput:
     persist_options: ChatStreamPersistInput
 
 
-async def stream_graph_chat_events(
+@dataclass
+class _GraphStreamAccumulator:
+    final_state: dict[str, Any] | None = None
+    citations_sent: bool = False
+    answer_sent: bool = False
+    response_parts: list[str] = field(default_factory=list)
+    citations_data: list[dict[str, Any]] = field(default_factory=list)
+
+
+def _build_graph_runtime_context(
     *,
     context: ChatExecutionContext,
-    result_holder: dict[str, Any],
-) -> AsyncIterator[dict[str, Any]]:
-    from app.rag.pipelines.langgraph import build_rag_state, rag_workflow
-
-    db = context.db
-    tenant_id = context.tenant_id
-    account_id = context.account_id
-    request = context.request
-    conversation_id = context.conversation_id
-    request_id = context.request_id
-    doc_ids_to_use = context.doc_ids_to_use
-    history_for_llm = context.history_for_llm
-    scope_dataset_id = context.scope_dataset_id
-    dataset_id_used = context.dataset_id_used
-    effective_rag_config = context.effective_rag_config
-    effective_prompt_template_id = context.effective_prompt_template_id
-    effective_prompt_template_key = context.effective_prompt_template_key
-    effective_prompt_ab_experiment_key = context.effective_prompt_ab_experiment_key
-    rag_config_template_meta = context.rag_config_template_meta
-
-    thread_id = str(conversation_id) if conversation_id else f"rag-{request_id}"
-    graph_cancel_event = threading.Event()
-    runtime_context = {
-        "request_id": str(request_id),
-        "conversation_id": str(conversation_id) if conversation_id else None,
-        "tenant_id": str(tenant_id) if tenant_id else None,
-        "account_id": account_id,
-        "cancel_event": graph_cancel_event,
+    cancel_event: threading.Event,
+) -> dict[str, Any]:
+    return {
+        "request_id": str(context.request_id),
+        "conversation_id": str(context.conversation_id) if context.conversation_id else None,
+        "tenant_id": str(context.tenant_id) if context.tenant_id else None,
+        "account_id": context.account_id,
+        "cancel_event": cancel_event,
     }
 
+
+def _build_graph_stream_state(
+    *,
+    context: ChatExecutionContext,
+) -> dict[str, Any]:
+    from app.rag.pipelines.langgraph import build_rag_state
+
+    request = context.request
+    effective_rag_config = context.effective_rag_config
     state = build_rag_state(
         question=request.message,
-        history=history_for_llm,
-        document_ids=doc_ids_to_use,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        dataset_id=dataset_id_used or scope_dataset_id,
+        history=context.history_for_llm,
+        document_ids=context.doc_ids_to_use,
+        tenant_id=context.tenant_id,
+        account_id=context.account_id,
+        dataset_id=context.dataset_id_used or context.scope_dataset_id,
         top_k=effective_rag_config.top_k,
         score_threshold=effective_rag_config.score_threshold,
         retrieval_mode=effective_rag_config.retrieval_mode,
@@ -187,45 +240,179 @@ async def stream_graph_chat_events(
         structured_output=request.structured_output,
         structured_preset=request.structured_preset,
         visible_evidence_only=effective_rag_config.visible_evidence_only,
-        prompt_template_id=effective_prompt_template_id,
-        prompt_template_key=effective_prompt_template_key,
-        prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
-        ab_user_key=account_id,
-        db=db,
+        prompt_template_id=context.effective_prompt_template_id,
+        prompt_template_key=context.effective_prompt_template_key,
+        prompt_ab_experiment_key=context.effective_prompt_ab_experiment_key,
+        ab_user_key=context.account_id,
+        db=context.db,
     )
-    if rag_config_template_meta:
-        state["rag_config_template"] = rag_config_template_meta
+    if context.rag_config_template_meta:
+        state["rag_config_template"] = context.rag_config_template_meta
+    return state
+
+
+def _build_graph_stream_config(*, conversation_id: Any, request_id: str) -> dict[str, Any]:
+    thread_id = str(conversation_id) if conversation_id else f"rag-{request_id}"
+    recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
+    return {"configurable": {"thread_id": thread_id}, "recursion_limit": recursion_limit}
+
+
+def _maybe_attach_tag_context(
+    *,
+    state: dict[str, Any],
+    db: Any,
+    tenant_id: Any,
+    doc_ids_to_use: list[Any],
+    question: str,
+    effective_rag_config: Any,
+) -> str | None:
+    import inspect
+
+    from app.services.chat_tag_service import build_chat_tag_context_docs
+
+    tag_kwargs: dict[str, Any] = {
+        "tenant_id": tenant_id,
+        "document_ids": doc_ids_to_use,
+        "question": question,
+    }
+    if "must_recall_expected_source_keys" in inspect.signature(build_chat_tag_context_docs).parameters:
+        tag_kwargs["must_recall_expected_source_keys"] = effective_rag_config.must_recall_expected_source_keys
 
     try:
-        import inspect
-
-        from app.services.chat_tag_service import build_chat_tag_context_docs
-
-        tag_kwargs: dict[str, Any] = {
-            "tenant_id": tenant_id,
-            "document_ids": doc_ids_to_use,
-            "question": request.message,
-        }
-        if "must_recall_expected_source_keys" in inspect.signature(build_chat_tag_context_docs).parameters:
-            tag_kwargs["must_recall_expected_source_keys"] = (
-                effective_rag_config.must_recall_expected_source_keys
-            )
-
         tag_docs, tag_meta = build_chat_tag_context_docs(db, **tag_kwargs)
         state["tag_docs"] = tag_docs
         state["tag_meta"] = tag_meta
         if bool(tag_meta.get("enabled")):
-            yield {"type": "event", "data": {"message": "尝试表格查询（TAG）…"}}
+            return "尝试表格查询（TAG）…"
     except Exception as exc:  # noqa: BLE001
         state["tag_meta"] = {"enabled": False, "used": False, "reason": f"tag_exception:{str(exc)[:120]}"}
+    return None
 
-    recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
-    config = {"configurable": {"thread_id": thread_id}, "recursion_limit": recursion_limit}
-    final_state: dict[str, Any] | None = None
-    citations_sent = False
-    answer_sent = False
-    response_parts: list[str] = []
+
+def _answer_token_events(answer_text: str, response_parts: list[str]) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    for i in range(0, len(answer_text), 120):
+        token_chunk = answer_text[i : i + 120]
+        response_parts.append(token_chunk)
+        events.append({"type": "token", "data": {"content": token_chunk}})
+    return events
+
+
+def _consume_graph_value_chunk(
+    *,
+    chunk: dict[str, Any],
+    citations_sent: bool,
+    answer_sent: bool,
+    response_parts: list[str],
+) -> tuple[list[dict[str, Any]], bool, bool, list[dict[str, Any]]]:
+    events: list[dict[str, Any]] = []
     citations_data: list[dict[str, Any]] = []
+    if not citations_sent and "citations" in chunk:
+        citations_data = chunk.get("citations") or []
+        citations_sent = True
+        events.append({"type": "citations", "data": citations_data})
+    if not answer_sent and "answer" in chunk:
+        events.extend(_answer_token_events(chunk.get("answer") or "", response_parts))
+        answer_sent = True
+    return events, citations_sent, answer_sent, citations_data
+
+
+def _graph_metrics_payload(
+    *,
+    graph_result: dict[str, Any],
+    effective_rag_config: Any,
+) -> dict[str, Any]:
+    metrics_data = graph_result.get("metrics") or {
+        "retrieval_mode": effective_rag_config.retrieval_mode,
+        "vector_backend": settings.VECTOR_BACKEND,
+        "elapsed_sec": None,
+    }
+    metrics_data = dict(metrics_data or {})
+    metrics_data.setdefault("model_used", graph_result.get("model_used"))
+    metrics_data.setdefault("route", graph_result.get("route"))
+    return metrics_data
+
+
+def _parse_structured_graph_output(
+    *,
+    request: Any,
+    full_response: str,
+    metrics_data: dict[str, Any],
+) -> object | None:
+    if not request.structured_output:
+        return None
+
+    from app.rag.core.text import parse_json_from_text
+
+    structured_data, structured_parse_meta = parse_json_from_text(full_response, expected="object")
+    metrics_data["structured_parse_ok"] = bool(structured_parse_meta.get("ok"))
+    metrics_data["structured_parse_method"] = structured_parse_meta.get("method")
+    metrics_data["structured_parse_error"] = structured_parse_meta.get("error")
+    metrics_data["structured_type"] = type(structured_data).__name__ if structured_data is not None else None
+    metrics_data["structured_preset"] = request.structured_preset
+    return structured_data
+
+
+async def _stream_graph_workflow_events(
+    *,
+    graph_events: Callable[[], Any],
+    graph_cancel_event: threading.Event,
+    stream_state: _GraphStreamAccumulator,
+) -> AsyncIterator[dict[str, Any]]:
+    async for mode, chunk in _iterate_sync_in_worker(
+        graph_events,
+        stop_event=graph_cancel_event,
+    ):
+        if mode == "custom":
+            yield {"type": "graph", "data": chunk}
+            continue
+        if mode != "values" or not isinstance(chunk, dict):
+            continue
+
+        stream_state.final_state = chunk
+        events, stream_state.citations_sent, stream_state.answer_sent, citations_chunk = _consume_graph_value_chunk(
+            chunk=chunk,
+            citations_sent=stream_state.citations_sent,
+            answer_sent=stream_state.answer_sent,
+            response_parts=stream_state.response_parts,
+        )
+        if citations_chunk:
+            stream_state.citations_data = citations_chunk
+        for event in events:
+            yield event
+
+
+async def stream_graph_chat_events(
+    *,
+    context: ChatExecutionContext,
+    result_holder: dict[str, Any],
+) -> AsyncIterator[dict[str, Any]]:
+    from app.rag.pipelines.langgraph import rag_workflow
+
+    db = context.db
+    tenant_id = context.tenant_id
+    request = context.request
+    conversation_id = context.conversation_id
+    request_id = context.request_id
+    doc_ids_to_use = context.doc_ids_to_use
+    effective_rag_config = context.effective_rag_config
+
+    graph_cancel_event = threading.Event()
+    runtime_context = _build_graph_runtime_context(context=context, cancel_event=graph_cancel_event)
+    state = _build_graph_stream_state(context=context)
+    tag_message = _maybe_attach_tag_context(
+        state=state,
+        db=db,
+        tenant_id=tenant_id,
+        doc_ids_to_use=doc_ids_to_use,
+        question=request.message,
+        effective_rag_config=effective_rag_config,
+    )
+    if tag_message:
+        yield {"type": "event", "data": {"message": tag_message}}
+
+    config = _build_graph_stream_config(conversation_id=conversation_id, request_id=request_id)
+    stream_state = _GraphStreamAccumulator()
 
     db.rollback()
     state.pop("db", None)
@@ -238,70 +425,36 @@ async def stream_graph_chat_events(
             stream_mode=["custom", "values"],
         )
 
-    async for mode, chunk in _iterate_sync_in_worker(
-        graph_events,
-        stop_event=graph_cancel_event,
+    async for event in _stream_graph_workflow_events(
+        graph_events=graph_events,
+        graph_cancel_event=graph_cancel_event,
+        stream_state=stream_state,
     ):
-        if mode == "custom":
-            yield {"type": "graph", "data": chunk}
-            continue
+        yield event
 
-        if mode != "values" or not isinstance(chunk, dict):
-            continue
+    graph_result = stream_state.final_state or {}
 
-        final_state = chunk
+    if not stream_state.citations_sent:
+        stream_state.citations_data = graph_result.get("citations") or []
+        yield {"type": "citations", "data": stream_state.citations_data}
 
-        if not citations_sent and "citations" in chunk:
-            citations_data = chunk.get("citations") or []
-            citations_sent = True
-            yield {"type": "citations", "data": citations_data}
+    if not stream_state.answer_sent:
+        for event in _answer_token_events(graph_result.get("answer") or "", stream_state.response_parts):
+            yield event
 
-        if not answer_sent and "answer" in chunk:
-            answer_text = chunk.get("answer") or ""
-            chunk_size = 120
-            for i in range(0, len(answer_text), chunk_size):
-                token_chunk = answer_text[i : i + chunk_size]
-                response_parts.append(token_chunk)
-                yield {"type": "token", "data": {"content": token_chunk}}
-            answer_sent = True
-
-    graph_result = final_state or {}
-
-    if not citations_sent:
-        citations_data = graph_result.get("citations") or []
-        yield {"type": "citations", "data": citations_data}
-
-    if not answer_sent:
-        answer_text = graph_result.get("answer") or ""
-        chunk_size = 120
-        for i in range(0, len(answer_text), chunk_size):
-            token_chunk = answer_text[i : i + chunk_size]
-            response_parts.append(token_chunk)
-            yield {"type": "token", "data": {"content": token_chunk}}
-
-    full_response = "".join(response_parts)
-    metrics_data = graph_result.get("metrics") or {
-        "retrieval_mode": effective_rag_config.retrieval_mode,
-        "vector_backend": settings.VECTOR_BACKEND,
-        "elapsed_sec": None,
-    }
-    metrics_data = dict(metrics_data or {})
-    metrics_data.setdefault("model_used", graph_result.get("model_used"))
-    metrics_data.setdefault("route", graph_result.get("route"))
-
-    structured_data = None
-    if request.structured_output:
-        from app.rag.core.text import parse_json_from_text
-
-        structured_data, structured_parse_meta = parse_json_from_text(full_response, expected="object")
-        metrics_data["structured_parse_ok"] = bool(structured_parse_meta.get("ok"))
-        metrics_data["structured_parse_method"] = structured_parse_meta.get("method")
-        metrics_data["structured_parse_error"] = structured_parse_meta.get("error")
-        metrics_data["structured_type"] = type(structured_data).__name__ if structured_data is not None else None
-        metrics_data["structured_preset"] = request.structured_preset
+    full_response = "".join(stream_state.response_parts)
+    metrics_data = _graph_metrics_payload(
+        graph_result=graph_result,
+        effective_rag_config=effective_rag_config,
+    )
+    structured_data = _parse_structured_graph_output(
+        request=request,
+        full_response=full_response,
+        metrics_data=metrics_data,
+    )
 
     result_holder["content"] = full_response
-    result_holder["citations"] = citations_data
+    result_holder["citations"] = stream_state.citations_data
     result_holder["metrics"] = metrics_data
     result_holder["structured_data"] = structured_data
 

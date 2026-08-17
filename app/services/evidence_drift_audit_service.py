@@ -23,6 +23,127 @@ from app.models.evidence import EvidenceItem
 from app.services.evidence_drift_audit import build_drift_slice_keys, classify_reference_source_drift
 
 
+def _flatten_reference_pointers(items: list[EvidenceItem]) -> tuple[list[dict[str, Any]], int]:
+    pointers: list[dict[str, Any]] = []
+    invalid_refs = 0
+    for item in items:
+        raw_refs = getattr(item, "reference_sources", None)
+        refs = raw_refs if isinstance(raw_refs, list) else []
+        for ref in refs:
+            if not isinstance(ref, dict):
+                invalid_refs += 1
+                continue
+            try:
+                doc_uuid = UUID(str(ref.get("document_id")))
+                chunk_uuid = UUID(str(ref.get("chunk_id")))
+            except Exception:
+                invalid_refs += 1
+                continue
+            pointers.append(
+                {
+                    "suite_id": item.suite_id,
+                    "item_id": item.id,
+                    "item_status": str(getattr(item, "status", "") or "").strip().lower() or "unknown",
+                    "dataset_id": item.dataset_id,
+                    "reference_source": dict(ref),
+                    "document_id": doc_uuid,
+                    "chunk_id": chunk_uuid,
+                }
+            )
+    return pointers, invalid_refs
+
+
+def _fetch_document_map(db: Session, *, tenant_id: UUID, pointers: list[dict[str, Any]]) -> dict[UUID, dict[str, Any]]:
+    doc_ids = sorted({pointer["document_id"] for pointer in pointers if pointer.get("document_id") is not None})
+    if not doc_ids:
+        return {}
+    rows = (
+        db.query(DBDocument.id, DBDocument.dataset_id, DBDocument.file_type, DBDocument.doc_metadata)
+        .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(doc_ids))
+        .all()
+    )
+    return {
+        row[0]: {
+            "id": row[0],
+            "dataset_id": row[1],
+            "file_type": row[2],
+            "metadata": row[3] if isinstance(row[3], dict) else {},
+        }
+        for row in rows
+        if row and row[0] is not None
+    }
+
+
+def _fetch_chunk_map(db: Session, *, tenant_id: UUID, pointers: list[dict[str, Any]]) -> dict[UUID, dict[str, Any]]:
+    chunk_ids = sorted({pointer["chunk_id"] for pointer in pointers if pointer.get("chunk_id") is not None})
+    if not chunk_ids:
+        return {}
+    rows = (
+        db.query(
+            DocumentChunk.id,
+            DocumentChunk.document_id,
+            DocumentChunk.chunk_index,
+            DocumentChunk.doc_metadata,
+            DocumentChunk.disabled_at,
+        )
+        .filter(DocumentChunk.tenant_id == tenant_id, DocumentChunk.id.in_(chunk_ids))
+        .all()
+    )
+    return {
+        row[0]: {
+            "id": row[0],
+            "document_id": row[1],
+            "chunk_index": row[2],
+            "metadata": row[3] if isinstance(row[3], dict) else {},
+            "disabled_at": row[4],
+        }
+        for row in rows
+        if row and row[0] is not None
+    }
+
+
+def _slice_bucket_keys(doc: dict[str, Any] | None) -> dict[str, str]:
+    if not doc:
+        return {"file_type": "unknown", "language": "unknown", "quality_bucket": "unknown", "directory": "root"}
+    keys = build_drift_slice_keys(document_file_type=doc.get("file_type"), document_metadata=doc.get("metadata"))
+    return {
+        "file_type": keys.file_type,
+        "language": keys.language,
+        "quality_bucket": keys.quality_bucket,
+        "directory": keys.directory,
+    }
+
+
+def _build_slice_output(
+    *,
+    slice_totals: dict[str, dict[str, int]],
+    slice_drifts: dict[str, dict[str, int]],
+    slice_reasons: dict[str, dict[str, Counter[str]]],
+    slice_top_n: int,
+) -> dict[str, dict[str, Any]]:
+    slices_out: dict[str, dict[str, Any]] = {}
+    for slice_name, buckets in slice_totals.items():
+        rows = sorted(buckets.items(), key=lambda kv: (-int(kv[1] or 0), kv[0]))[: max(0, int(slice_top_n or 0))]
+        out_buckets: dict[str, Any] = {}
+        for bucket, total in rows:
+            total_i = int(total or 0)
+            drift_i = int(slice_drifts[slice_name].get(bucket) or 0)
+            ok_i = max(0, total_i - drift_i)
+            out_buckets[bucket] = {
+                "total": total_i,
+                "ok": ok_i,
+                "drift": drift_i,
+                "drift_rate": round(drift_i / total_i, 6) if total_i > 0 else 0.0,
+                "reasons": {
+                    str(k): int(v)
+                    for k, v in sorted((slice_reasons[slice_name].get(bucket) or Counter()).items())
+                    if int(v or 0) > 0
+                },
+            }
+        slices_out[slice_name] = out_buckets
+    return slices_out
+
+
 def audit_reference_sources_drift(
     db: Session,
     *,
@@ -42,82 +163,9 @@ def audit_reference_sources_drift(
     """
     now = datetime.now(UTC)
 
-    # Flatten pointers.
-    pointers: list[dict[str, Any]] = []
-    invalid_refs = 0
-    for it in items:
-        raw_refs = getattr(it, "reference_sources", None)
-        refs = raw_refs if isinstance(raw_refs, list) else []
-        for ref in refs:
-            if not isinstance(ref, dict):
-                invalid_refs += 1
-                continue
-            doc_raw = ref.get("document_id")
-            chunk_raw = ref.get("chunk_id")
-            try:
-                doc_uuid = UUID(str(doc_raw))
-                chunk_uuid = UUID(str(chunk_raw))
-            except Exception:
-                invalid_refs += 1
-                continue
-            pointers.append(
-                {
-                    "suite_id": it.suite_id,
-                    "item_id": it.id,
-                    "item_status": str(getattr(it, "status", "") or "").strip().lower() or "unknown",
-                    "dataset_id": it.dataset_id,
-                    "reference_source": dict(ref),
-                    "document_id": doc_uuid,
-                    "chunk_id": chunk_uuid,
-                }
-            )
-
-    doc_ids = sorted({p["document_id"] for p in pointers if p.get("document_id") is not None})
-    chunk_ids = sorted({p["chunk_id"] for p in pointers if p.get("chunk_id") is not None})
-
-    # Batch fetch docs/chunks.
-    doc_rows = (
-        db.query(DBDocument.id, DBDocument.dataset_id, DBDocument.file_type, DBDocument.doc_metadata)
-        .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(doc_ids))
-        .all()
-        if doc_ids
-        else []
-    )
-    doc_map: dict[UUID, dict[str, Any]] = {
-        row[0]: {
-            "id": row[0],
-            "dataset_id": row[1],
-            "file_type": row[2],
-            "metadata": row[3] if isinstance(row[3], dict) else {},
-        }
-        for row in doc_rows
-        if row and row[0] is not None
-    }
-
-    chunk_rows = (
-        db.query(
-            DocumentChunk.id,
-            DocumentChunk.document_id,
-            DocumentChunk.chunk_index,
-            DocumentChunk.doc_metadata,
-            DocumentChunk.disabled_at,
-        )
-        .filter(DocumentChunk.tenant_id == tenant_id, DocumentChunk.id.in_(chunk_ids))
-        .all()
-        if chunk_ids
-        else []
-    )
-    chunk_map: dict[UUID, dict[str, Any]] = {
-        row[0]: {
-            "id": row[0],
-            "document_id": row[1],
-            "chunk_index": row[2],
-            "metadata": row[3] if isinstance(row[3], dict) else {},
-            "disabled_at": row[4],
-        }
-        for row in chunk_rows
-        if row and row[0] is not None
-    }
+    pointers, invalid_refs = _flatten_reference_pointers(items)
+    doc_map = _fetch_document_map(db, tenant_id=tenant_id, pointers=pointers)
+    chunk_map = _fetch_chunk_map(db, tenant_id=tenant_id, pointers=pointers)
 
     # Aggregate counters.
     total_items = len({it.id for it in items})
@@ -133,17 +181,6 @@ def audit_reference_sources_drift(
 
     details: list[dict[str, Any]] = []
     details_truncated = False
-
-    def _slice_bucket_keys(doc: dict[str, Any] | None) -> dict[str, str]:
-        if not doc:
-            return {"file_type": "unknown", "language": "unknown", "quality_bucket": "unknown", "directory": "root"}
-        keys = build_drift_slice_keys(document_file_type=doc.get("file_type"), document_metadata=doc.get("metadata"))
-        return {
-            "file_type": keys.file_type,
-            "language": keys.language,
-            "quality_bucket": keys.quality_bucket,
-            "directory": keys.directory,
-        }
 
     # Count invalid refs as drift (PII-safe, no details).
     if invalid_refs:
@@ -198,28 +235,12 @@ def audit_reference_sources_drift(
             else:
                 details_truncated = True
 
-    # Build slice outputs (cap buckets to top-N by total to keep payload bounded).
-    slices_out: dict[str, dict[str, Any]] = {}
-    for slice_name, buckets in slice_totals.items():
-        rows = sorted(buckets.items(), key=lambda kv: (-int(kv[1] or 0), kv[0]))[: max(0, int(slice_top_n or 0))]
-        out_buckets: dict[str, Any] = {}
-        for bucket, total in rows:
-            total_i = int(total or 0)
-            drift_i = int(slice_drifts[slice_name].get(bucket) or 0)
-            ok_i = max(0, total_i - drift_i)
-            out_buckets[bucket] = {
-                "total": total_i,
-                "ok": ok_i,
-                "drift": drift_i,
-                "drift_rate": (round(drift_i / total_i, 6) if total_i > 0 else 0.0),
-                "reasons": {
-                    str(k): int(v)
-                    for k, v in sorted((slice_reasons[slice_name].get(bucket) or Counter()).items())
-                    if int(v or 0) > 0
-                },
-            }
-        slices_out[slice_name] = out_buckets
-
+    slices_out = _build_slice_output(
+        slice_totals=slice_totals,
+        slice_drifts=slice_drifts,
+        slice_reasons=slice_reasons,
+        slice_top_n=slice_top_n,
+    )
     drift_rate = round(drift_refs / total_refs, 6) if total_refs > 0 else 0.0
     return EvidenceReferenceDriftAuditOut(
         generated_at=now,
@@ -238,4 +259,3 @@ def audit_reference_sources_drift(
 
 
 __all__ = ["audit_reference_sources_drift"]
-

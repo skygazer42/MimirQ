@@ -19,6 +19,150 @@ from app.services.chat_stream_persistence import dispatch_chat_stream_persistenc
 logger = get_logger(__name__)
 
 
+@dataclass
+class _StreamSessionState:
+    citations_data: list[Any]
+    response_parts: list[str]
+    metrics_data: dict[str, Any] | None
+    structured_data: object | None
+
+
+def _annotate_cache_metrics(options: "LangChainChatStreamSessionInput", metrics_data: Any) -> dict[str, Any]:
+    if isinstance(metrics_data, dict):
+        base_metrics = metrics_data
+    else:
+        base_metrics = {}
+    return annotate_chat_cache_metrics(
+        base_metrics,
+        enabled=options.cache_feature_enabled,
+        hit=options.cache_hit,
+        skip_reason=None if options.cache_hit else options.cache_skip_reason,
+    )
+
+
+def _apply_metrics_context(
+    options: "LangChainChatStreamSessionInput",
+    *,
+    dataset_id_used: Any,
+    rag_config_template_meta: dict[str, Any] | None,
+    metrics_data: Any,
+) -> dict[str, Any]:
+    return apply_chat_runtime_metrics_context(
+        metrics_data if isinstance(metrics_data, dict) else {},
+        dataset_id_used=dataset_id_used,
+        dataset_rag_defaults_applied_fields=options.dataset_rag_defaults_applied_fields,
+        dataset_rag_config_template_defaults_applied_fields=options.dataset_rag_config_template_defaults_applied_fields,
+        rag_config_template_meta=rag_config_template_meta,
+        dataset_prompt_defaults_applied_fields=options.dataset_prompt_defaults_applied_fields,
+        tenant_qps_meta=options.tenant_qps_meta,
+        quota_meta=options.quota_meta,
+    )
+
+
+async def _next_stream_event(
+    queue: "asyncio.Queue[dict | None]",
+    *,
+    heartbeat_sec: float,
+) -> dict | None:
+    if heartbeat_sec > 0:
+        return await asyncio.wait_for(queue.get(), timeout=heartbeat_sec)
+    return await queue.get()
+
+
+async def _disconnect_requested(options: "LangChainChatStreamSessionInput") -> bool:
+    if options.disconnect_check is None:
+        return False
+    try:
+        return await options.disconnect_check()
+    except Exception as exc:
+        logger.debug("Ignoring chat stream disconnect check failure: %s", exc)
+        return False
+
+
+def _handle_stream_event(
+    event: dict,
+    *,
+    options: "LangChainChatStreamSessionInput",
+    dataset_id_used: Any,
+    rag_config_template_meta: dict[str, Any] | None,
+    request_id: Any,
+    state: _StreamSessionState,
+) -> dict:
+    event_type = event.get("type")
+    if event_type == "citations":
+        state.citations_data = event.get("data") or []
+    elif event_type == "error":
+        data = event.get("data") if isinstance(event.get("data"), dict) else {}
+        message = str(data.get("message") or data.get("error") or "Chat stream error")
+        raise RuntimeError(message)
+    elif event_type == "done":
+        if isinstance(event.get("data"), dict):
+            event["data"]["assistant_message_id"] = str(options.persist_options.assistant_message_id)
+            state.metrics_data = event["data"].get("metrics", {})
+            state.structured_data = event["data"].get("structured_data")
+        else:
+            state.metrics_data = {}
+        state.metrics_data = _annotate_cache_metrics(options, state.metrics_data)
+        state.metrics_data = _apply_metrics_context(
+            options,
+            dataset_id_used=dataset_id_used,
+            rag_config_template_meta=rag_config_template_meta,
+            metrics_data=state.metrics_data,
+        )
+        if isinstance(event.get("data"), dict):
+            event["data"]["metrics"] = dict(state.metrics_data)
+    elif event_type == "token":
+        data = event.get("data") if isinstance(event.get("data"), dict) else {}
+        state.response_parts.append(str((data or {}).get("content") or ""))
+    event["request_id"] = str(request_id)
+    return event
+
+
+def _finalize_stream_session(
+    *,
+    db: Any,
+    options: "LangChainChatStreamSessionInput",
+    dataset_id_used: Any,
+    rag_config_template_meta: dict[str, Any] | None,
+    state: _StreamSessionState,
+) -> None:
+    full_response = "".join(state.response_parts)
+    metrics_data = _annotate_cache_metrics(options, state.metrics_data)
+
+    store_chat_response_cache_if_needed(
+        cache_eligible=options.cache_eligible,
+        cache_hit=options.cache_hit,
+        cache_key=options.cache_key,
+        content=full_response,
+        citations=state.citations_data,
+        metrics=metrics_data,
+        structured_data=state.structured_data,
+    )
+
+    metrics_data = _apply_metrics_context(
+        options,
+        dataset_id_used=dataset_id_used,
+        rag_config_template_meta=rag_config_template_meta,
+        metrics_data=metrics_data,
+    )
+
+    dispatch_chat_stream_persistence(
+        db=db,
+        persist_in_background=options.persist_in_background,
+        spawn_background_task=options.spawn_background_task,
+        options=cast(
+            ChatStreamPersistInput,
+            replace(
+                options.persist_options,
+                content=full_response,
+                citations=state.citations_data,
+                metrics=metrics_data,
+                structured_data=state.structured_data,
+            ),
+        ),
+    )
+
+
 @dataclass(frozen=True)
 class LangChainChatStreamSessionInput:
     execution: ChatExecutionContext
@@ -59,28 +203,17 @@ async def stream_langchain_chat_session_events(
         )
     )
     disconnected = False
-    citations_data: list[Any] = []
-    response_parts: list[str] = []
-    metrics_data: dict[str, Any] | None = {}
-    structured_data: object | None = None
+    state = _StreamSessionState(citations_data=[], response_parts=[], metrics_data={}, structured_data=None)
 
     try:
         while True:
-            if options.disconnect_check is not None:
-                try:
-                    if await options.disconnect_check():
-                        disconnected = True
-                        producer_task.cancel()
-                        break
-                except Exception as exc:
-                    logger.debug("Ignoring chat stream disconnect check failure: %s", exc)
+            if await _disconnect_requested(options):
+                disconnected = True
+                producer_task.cancel()
+                break
 
             try:
-                ev = (
-                    await asyncio.wait_for(q.get(), timeout=options.heartbeat_sec)
-                    if options.heartbeat_sec > 0
-                    else await q.get()
-                )
+                ev = await _next_stream_event(q, heartbeat_sec=options.heartbeat_sec)
             except asyncio.TimeoutError:
                 yield ": keepalive\n\n"
                 continue
@@ -88,56 +221,14 @@ async def stream_langchain_chat_session_events(
             if ev is None:
                 break
 
-            event = ev
-            if event.get("type") == "citations":
-                citations_data = event.get("data") or []
-
-            if event.get("type") == "error":
-                data = event.get("data") if isinstance(event.get("data"), dict) else {}
-                message = str(data.get("message") or data.get("error") or "Chat stream error")
-                raise RuntimeError(message)
-
-            if event.get("type") == "done":
-                if isinstance(event.get("data"), dict):
-                    event["data"]["assistant_message_id"] = str(
-                        options.persist_options.assistant_message_id
-                    )
-                    metrics_data = event["data"].get("metrics", {})  # type: ignore[assignment]
-                    structured_data = event["data"].get("structured_data")
-                else:
-                    metrics_data = {}
-                if isinstance(metrics_data, dict):
-                    metrics_data = annotate_chat_cache_metrics(
-                        metrics_data,
-                        enabled=options.cache_feature_enabled,
-                        hit=options.cache_hit,
-                        skip_reason=None if options.cache_hit else options.cache_skip_reason,
-                    )
-                else:
-                    metrics_data = annotate_chat_cache_metrics(
-                        {},
-                        enabled=options.cache_feature_enabled,
-                        hit=options.cache_hit,
-                        skip_reason=None if options.cache_hit else options.cache_skip_reason,
-                    )
-                metrics_data = apply_chat_runtime_metrics_context(
-                    metrics_data if isinstance(metrics_data, dict) else {},
-                    dataset_id_used=dataset_id_used,
-                    dataset_rag_defaults_applied_fields=options.dataset_rag_defaults_applied_fields,
-                    dataset_rag_config_template_defaults_applied_fields=options.dataset_rag_config_template_defaults_applied_fields,
-                    rag_config_template_meta=rag_config_template_meta,
-                    dataset_prompt_defaults_applied_fields=options.dataset_prompt_defaults_applied_fields,
-                    tenant_qps_meta=options.tenant_qps_meta,
-                    quota_meta=options.quota_meta,
-                )
-                if isinstance(event.get("data"), dict):
-                    event["data"]["metrics"] = dict(metrics_data)
-
-            if event.get("type") == "token":
-                data = event.get("data") if isinstance(event.get("data"), dict) else {}
-                response_parts.append(str((data or {}).get("content") or ""))
-
-            event["request_id"] = str(request_id)
+            event = _handle_stream_event(
+                ev,
+                options=options,
+                dataset_id_used=dataset_id_used,
+                rag_config_template_meta=rag_config_template_meta,
+                request_id=request_id,
+                state=state,
+            )
             yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
     finally:
         if not producer_task.done():
@@ -148,57 +239,12 @@ async def stream_langchain_chat_session_events(
     if disconnected:
         return
 
-    full_response = "".join(response_parts)
-    if isinstance(metrics_data, dict):
-        metrics_data = annotate_chat_cache_metrics(
-            metrics_data,
-            enabled=options.cache_feature_enabled,
-            hit=options.cache_hit,
-            skip_reason=None if options.cache_hit else options.cache_skip_reason,
-        )
-    else:
-        metrics_data = annotate_chat_cache_metrics(
-            {},
-            enabled=options.cache_feature_enabled,
-            hit=options.cache_hit,
-            skip_reason=None if options.cache_hit else options.cache_skip_reason,
-        )
-
-    store_chat_response_cache_if_needed(
-        cache_eligible=options.cache_eligible,
-        cache_hit=options.cache_hit,
-        cache_key=options.cache_key,
-        content=full_response,
-        citations=citations_data,
-        metrics=metrics_data,
-        structured_data=structured_data,
-    )
-
-    metrics_data = apply_chat_runtime_metrics_context(
-        metrics_data if isinstance(metrics_data, dict) else {},
-        dataset_id_used=dataset_id_used,
-        dataset_rag_defaults_applied_fields=options.dataset_rag_defaults_applied_fields,
-        dataset_rag_config_template_defaults_applied_fields=options.dataset_rag_config_template_defaults_applied_fields,
-        rag_config_template_meta=rag_config_template_meta,
-        dataset_prompt_defaults_applied_fields=options.dataset_prompt_defaults_applied_fields,
-        tenant_qps_meta=options.tenant_qps_meta,
-        quota_meta=options.quota_meta,
-    )
-
-    dispatch_chat_stream_persistence(
+    _finalize_stream_session(
         db=db,
-        persist_in_background=options.persist_in_background,
-        spawn_background_task=options.spawn_background_task,
-        options=cast(
-            ChatStreamPersistInput,
-            replace(
-                options.persist_options,
-                content=full_response,
-                citations=citations_data,
-                metrics=metrics_data,
-                structured_data=structured_data,
-            ),
-        ),
+        options=options,
+        dataset_id_used=dataset_id_used,
+        rag_config_template_meta=rag_config_template_meta,
+        state=state,
     )
 
 

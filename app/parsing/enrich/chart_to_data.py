@@ -111,17 +111,7 @@ def _is_chart_candidate(*, alt: str, src: str) -> bool:
     return bool(hint and _CHART_HINT_RE.search(hint))
 
 
-def _safe_read_local_image_bytes(*, src: str, origin_path: Path, max_bytes: int) -> tuple[bytes | None, str]:
-    raw = str(src or "").strip()
-    if not raw:
-        return None, "empty_src"
-    if raw.startswith("data:"):
-        return None, "data_url_unsupported"
-    if urlparse(raw).scheme in {"http", "https"}:
-        return None, "remote_url_unsupported"
-    if _MINIO_URL_HINT in raw:
-        return None, "already_minio_url"
-
+def _normalize_local_image_ref(raw: str) -> tuple[str | None, str | None]:
     resolved_ref = raw
     if raw.lower().startswith("file://"):
         parsed = urlparse(raw)
@@ -133,14 +123,21 @@ def _safe_read_local_image_bytes(*, src: str, origin_path: Path, max_bytes: int)
         resolved_ref = unquote(str(parsed.path or ""))
         if re.match(r"^/[a-zA-Z]:/", resolved_ref):
             resolved_ref = resolved_ref[1:]
-    else:
-        resolved_ref = unquote(resolved_ref)
+        return resolved_ref, None
+    return unquote(resolved_ref), None
+
+
+def _resolve_origin_image_path(*, src: str, origin_path: Path) -> tuple[Path | None, str | None]:
+    resolved_ref, reason = _normalize_local_image_ref(src)
+    if reason:
+        return None, reason
 
     base_dir = origin_path.resolve(strict=False)
     if base_dir.is_file():
         base_dir = base_dir.parent
     base_dir_resolved = base_dir.resolve(strict=False)
-    path_obj = Path(resolved_ref)
+
+    path_obj = Path(resolved_ref or "")
     if not path_obj.is_absolute():
         path_obj = (base_dir_resolved / path_obj).resolve(strict=False)
     else:
@@ -152,6 +149,10 @@ def _safe_read_local_image_bytes(*, src: str, origin_path: Path, max_bytes: int)
         return None, "path_outside_origin"
     if not path_obj.exists() or not path_obj.is_file():
         return None, "missing_file"
+    return path_obj, None
+
+
+def _read_local_image_bytes(path_obj: Path, *, max_bytes: int) -> tuple[bytes | None, str]:
     try:
         if int(path_obj.stat().st_size) > int(max_bytes):
             return None, "too_large"
@@ -161,6 +162,22 @@ def _safe_read_local_image_bytes(*, src: str, origin_path: Path, max_bytes: int)
     if len(data) > int(max_bytes):
         return None, "too_large"
     return data, "ok"
+
+
+def _safe_read_local_image_bytes(*, src: str, origin_path: Path, max_bytes: int) -> tuple[bytes | None, str]:
+    raw = str(src or "").strip()
+    if not raw:
+        return None, "empty_src"
+    if raw.startswith("data:"):
+        return None, "data_url_unsupported"
+    if urlparse(raw).scheme in {"http", "https"}:
+        return None, "remote_url_unsupported"
+    if _MINIO_URL_HINT in raw:
+        return None, "already_minio_url"
+    path_obj, reason = _resolve_origin_image_path(src=raw, origin_path=origin_path)
+    if path_obj is None:
+        return None, str(reason or "missing_file")
+    return _read_local_image_bytes(path_obj, max_bytes=max_bytes)
 
 
 async def _call_chart_backend_async(
@@ -233,6 +250,54 @@ class ChartToDataAudit:
         }
 
 
+def _iter_line_images(line: str) -> list[tuple[str, str]]:
+    return _extract_md_images(line) + _extract_html_imgs(line)
+
+
+def _extract_chart_payload(
+    *,
+    alt: str,
+    src: str,
+    origin_path: Path,
+    max_image_bytes: int,
+    api_url: str,
+    timeout_sec: float,
+) -> tuple[dict[str, Any] | None, str, int, int]:
+    if not _is_chart_candidate(alt=alt, src=src):
+        return None, "", 0, 0
+    image_bytes, _ = _safe_read_local_image_bytes(
+        src=src,
+        origin_path=origin_path,
+        max_bytes=int(max_image_bytes or 0),
+    )
+    if image_bytes is None:
+        return None, "", 0, 0
+    payload, backend_status = _call_chart_backend(
+        api_url=api_url,
+        image_bytes=image_bytes,
+        filename=Path(src).name or "chart.png",
+        timeout_sec=float(timeout_sec or 20.0),
+    )
+    if not payload:
+        return None, backend_status, 1, 0
+    chart_payload = build_chart_data_v1_payload(
+        payload,
+        src=src,
+        alt=alt,
+        image_bytes=image_bytes,
+    )
+    return chart_payload, backend_status, 1, 1
+
+
+def _append_chart_block(out_lines: list[str], chart_payload: dict[str, Any]) -> None:
+    block = json.dumps(chart_payload, ensure_ascii=False, indent=2)
+    out_lines.append("")
+    out_lines.append("Chart data:")
+    out_lines.append("```json")
+    out_lines.append(block)
+    out_lines.append("```")
+
+
 def add_chart_data_blocks(
     markdown: str,
     *,
@@ -286,43 +351,22 @@ def add_chart_data_blocks(
         if in_fence or charts_added >= max(0, int(max_images or 0)):
             continue
 
-        images = _extract_md_images(line) + _extract_html_imgs(line)
-        if not images:
-            continue
-        for alt, src in images:
+        for alt, src in _iter_line_images(line):
             if charts_added >= max(0, int(max_images or 0)):
                 break
-            if not _is_chart_candidate(alt=alt, src=src):
-                continue
-            image_bytes, _ = _safe_read_local_image_bytes(
+            chart_payload, backend_status, attempted, succeeded = _extract_chart_payload(
+                alt=alt,
                 src=src,
                 origin_path=origin_path,
-                max_bytes=int(max_image_bytes or 0),
-            )
-            if image_bytes is None:
-                continue
-            images_attempted += 1
-            payload, backend_status = _call_chart_backend(
+                max_image_bytes=int(max_image_bytes or 0),
                 api_url=api_url,
-                image_bytes=image_bytes,
-                filename=Path(src).name or "chart.png",
                 timeout_sec=float(timeout_sec or 20.0),
             )
-            if not payload:
+            images_attempted += attempted
+            images_succeeded += succeeded
+            if chart_payload is None:
                 continue
-            images_succeeded += 1
-            chart_payload = build_chart_data_v1_payload(
-                payload,
-                src=src,
-                alt=alt,
-                image_bytes=image_bytes,
-            )
-            block = json.dumps(chart_payload, ensure_ascii=False, indent=2)
-            out_lines.append("")
-            out_lines.append("Chart data:")
-            out_lines.append("```json")
-            out_lines.append(block)
-            out_lines.append("```")
+            _append_chart_block(out_lines, chart_payload)
             charts_added += 1
             chart_elements.append(
                 {

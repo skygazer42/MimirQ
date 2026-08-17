@@ -17,6 +17,34 @@ DEFAULT_MAX_REPL_LEN = 2000
 DEFAULT_ALLOWED_FLAG_BITS = int(re.IGNORECASE | re.MULTILINE | re.DOTALL)
 
 
+def _scan_group_body(pattern: str, start: int) -> tuple[int, bool]:
+    index = start + 1
+    escaped = False
+    contains_quantifier = False
+    while index < len(pattern):
+        char = pattern[index]
+        if escaped:
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif char == ")":
+            break
+        elif char in {"+", "*"}:
+            contains_quantifier = True
+        index += 1
+    return index, contains_quantifier
+
+
+def _group_has_outer_quantifier(pattern: str, close_index: int, contains_quantifier: bool) -> bool:
+    return (
+        contains_quantifier
+        and close_index < len(pattern)
+        and pattern[close_index] == ")"
+        and close_index + 1 < len(pattern)
+        and pattern[close_index + 1] in {"+", "*"}
+    )
+
+
 def looks_like_nested_quantifier(pattern: str) -> bool:
     """
     Detect a common nested-quantifier shape:
@@ -52,30 +80,9 @@ def looks_like_nested_quantifier(pattern: str) -> bool:
             i += 1
             continue
 
-        # Scan forward to the next unescaped ')', tracking whether the group
-        # contains an unescaped '+' or '*'.
-        j = i + 1
-        inner_escaped = False
-        inner_has_quant = False
-        while j < n:
-            cj = s[j]
-            if inner_escaped:
-                inner_escaped = False
-                j += 1
-                continue
-            if cj == "\\":
-                inner_escaped = True
-                j += 1
-                continue
-            if cj == ")":
-                break
-            if cj in {"+", "*"}:
-                inner_has_quant = True
-            j += 1
-
-        if j < n and s[j] == ")":
-            if inner_has_quant and j + 1 < n and s[j + 1] in {"+", "*"}:
-                return True
+        j, inner_has_quant = _scan_group_body(s, i)
+        if _group_has_outer_quantifier(s, j, inner_has_quant):
+            return True
 
         i = j + 1
 
@@ -118,6 +125,128 @@ def _get_field(item: Any, key: str) -> Any:
     return getattr(item, key, None)
 
 
+def _rules_sequence(rules: Any, *, max_rules: int) -> list[Any]:
+    if isinstance(rules, (str, bytes)) or not isinstance(rules, Sequence):
+        raise RegexRulesValidationError(
+            "regex rules must be a list",
+            errors=[RegexRuleViolation(index=-1, field="rules", code="type", message="expected list")],
+        )
+    items = list(rules)
+    limit = max(0, int(max_rules or 0))
+    if limit and len(items) > limit:
+        raise RegexRulesValidationError(
+            f"too many regex rules (max={limit})",
+            errors=[RegexRuleViolation(index=-1, field="rules", code="too_many", message=f"max={limit}")],
+        )
+    return items
+
+
+def _validate_pattern(index: int, raw_pattern: Any, *, max_pattern_len: int) -> tuple[str, RegexRuleViolation | None]:
+    pattern = str(raw_pattern or "")
+    if not pattern.strip():
+        return pattern, RegexRuleViolation(
+            index=index,
+            field="pattern",
+            code="required",
+            message="pattern is required",
+        )
+    if max_pattern_len and len(pattern) > int(max_pattern_len):
+        return pattern, RegexRuleViolation(
+            index=index,
+            field="pattern",
+            code="too_long",
+            message=f"max_len={int(max_pattern_len)}",
+        )
+    if _has_suspicious_nested_quantifier(pattern):
+        return pattern, RegexRuleViolation(
+            index=index,
+            field="pattern",
+            code="unsafe",
+            message="nested quantifier",
+        )
+    return pattern, None
+
+
+def _validate_replacement(index: int, raw_replacement: Any, *, max_repl_len: int) -> tuple[str, RegexRuleViolation | None]:
+    replacement = str(raw_replacement or "")
+    if max_repl_len and len(replacement) > int(max_repl_len):
+        return replacement, RegexRuleViolation(
+            index=index,
+            field="repl",
+            code="too_long",
+            message=f"max_len={int(max_repl_len)}",
+        )
+    return replacement, None
+
+
+def _validate_flags(index: int, raw_flags: Any, *, allowed_flag_bits: int) -> tuple[int, RegexRuleViolation | None]:
+    try:
+        flags = int(raw_flags or 0)
+    except (TypeError, ValueError):
+        return 0, RegexRuleViolation(
+            index=index,
+            field="flags",
+            code="invalid",
+            message="flags must be int",
+        )
+    if flags < 0:
+        return flags, RegexRuleViolation(
+            index=index,
+            field="flags",
+            code="invalid",
+            message="flags must be >= 0",
+        )
+    if int(allowed_flag_bits) and (flags & ~int(allowed_flag_bits)):
+        return flags, RegexRuleViolation(
+            index=index,
+            field="flags",
+            code="unsupported",
+            message="unsupported flag bits",
+        )
+    return flags, None
+
+
+def _normalize_regex_rule(
+    index: int,
+    item: Any,
+    *,
+    max_pattern_len: int,
+    max_repl_len: int,
+    allowed_flag_bits: int,
+) -> tuple[dict[str, Any] | None, RegexRuleViolation | None]:
+    pattern, violation = _validate_pattern(
+        index,
+        _get_field(item, "pattern"),
+        max_pattern_len=max_pattern_len,
+    )
+    if violation is not None:
+        return None, violation
+    replacement, violation = _validate_replacement(
+        index,
+        _get_field(item, "repl"),
+        max_repl_len=max_repl_len,
+    )
+    if violation is not None:
+        return None, violation
+    flags, violation = _validate_flags(
+        index,
+        _get_field(item, "flags"),
+        allowed_flag_bits=allowed_flag_bits,
+    )
+    if violation is not None:
+        return None, violation
+    try:
+        re.compile(pattern, flags=flags)
+    except re.error as exc:
+        return None, RegexRuleViolation(
+            index=index,
+            field="pattern",
+            code="compile_error",
+            message=str(exc)[:200],
+        )
+    return {"pattern": pattern, "repl": replacement, "flags": flags}, None
+
+
 def validate_regex_rules(
     rules: Any,
     *,
@@ -140,108 +269,23 @@ def validate_regex_rules(
     """
     if rules is None:
         return []
-
-    if isinstance(rules, (str, bytes)):
-        raise RegexRulesValidationError(
-            "regex rules must be a list",
-            errors=[
-                RegexRuleViolation(index=-1, field="rules", code="type", message="expected list"),
-            ],
-        )
-
-    if not isinstance(rules, Sequence):
-        raise RegexRulesValidationError(
-            "regex rules must be a list",
-            errors=[
-                RegexRuleViolation(index=-1, field="rules", code="type", message="expected list"),
-            ],
-        )
-
-    items = list(rules)
-    limit = max(0, int(max_rules or 0))
-    if limit and len(items) > limit:
-        raise RegexRulesValidationError(
-            f"too many regex rules (max={limit})",
-            errors=[RegexRuleViolation(index=-1, field="rules", code="too_many", message=f"max={limit}")],
-        )
-
+    items = _rules_sequence(rules, max_rules=max_rules)
     normalized: list[dict[str, Any]] = []
     violations: list[RegexRuleViolation] = []
-
     for idx, item in enumerate(items):
-        pat_raw = _get_field(item, "pattern")
-        repl_raw = _get_field(item, "repl")
-        flags_raw = _get_field(item, "flags")
-
-        pat = str(pat_raw or "")
-        if not pat.strip():
-            violations.append(
-                RegexRuleViolation(index=idx, field="pattern", code="required", message="pattern is required")
-            )
-            continue
-
-        if max_pattern_len and len(pat) > int(max_pattern_len):
-            violations.append(
-                RegexRuleViolation(
-                    index=idx,
-                    field="pattern",
-                    code="too_long",
-                    message=f"max_len={int(max_pattern_len)}",
-                )
-            )
-            continue
-
-        if _has_suspicious_nested_quantifier(pat):
-            violations.append(
-                RegexRuleViolation(index=idx, field="pattern", code="unsafe", message="nested quantifier")
-            )
-            continue
-
-        repl = str(repl_raw or "")
-        if max_repl_len and len(repl) > int(max_repl_len):
-            violations.append(
-                RegexRuleViolation(
-                    index=idx,
-                    field="repl",
-                    code="too_long",
-                    message=f"max_len={int(max_repl_len)}",
-                )
-            )
-            continue
-
-        try:
-            flags = int(flags_raw or 0)
-        except (TypeError, ValueError):
-            violations.append(
-                RegexRuleViolation(index=idx, field="flags", code="invalid", message="flags must be int")
-            )
-            continue
-
-        if flags < 0:
-            violations.append(
-                RegexRuleViolation(index=idx, field="flags", code="invalid", message="flags must be >= 0")
-            )
-            continue
-
-        if int(allowed_flag_bits) and (flags & ~int(allowed_flag_bits)):
-            violations.append(
-                RegexRuleViolation(index=idx, field="flags", code="unsupported", message="unsupported flag bits")
-            )
-            continue
-
-        try:
-            re.compile(pat, flags=flags)
-        except re.error as exc:
-            violations.append(
-                RegexRuleViolation(index=idx, field="pattern", code="compile_error", message=str(exc)[:200])
-            )
-            continue
-
-        normalized.append({"pattern": pat, "repl": repl, "flags": flags})
-
+        rule, violation = _normalize_regex_rule(
+            idx,
+            item,
+            max_pattern_len=max_pattern_len,
+            max_repl_len=max_repl_len,
+            allowed_flag_bits=allowed_flag_bits,
+        )
+        if violation is not None:
+            violations.append(violation)
+        elif rule is not None:
+            normalized.append(rule)
     if violations:
         raise RegexRulesValidationError("invalid regex rules", errors=violations)
-
     return normalized
 
 

@@ -168,94 +168,89 @@ def create_document_chunk(
     return chunk
 
 
-@router.patch(
-    "/{document_id}/chunks/{chunk_id}",
-    response_model=DocumentChunkSchema,
-    responses=documents_module._DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
-def patch_document_chunk(
-    document_id: uuid.UUID,
-    chunk_id: uuid.UUID,
-    payload: DocumentChunkUpdateRequest,
+def _load_chunk_write_document(
     *,
-    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
-    account_id: Annotated[str, Depends(get_current_account_id)],
-    db: Annotated[Session, Depends(get_db)],
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    document_id: UUID,
+    edit_verb: str,
 ):
-    """
-    Patch a chunk and update its indexes (vector + BM25) best-effort.
-    """
-
     documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
-
-    document = (
-        db.query(documents_module.DBDocument)
-        .filter(documents_module.DBDocument.id == document_id, documents_module.DBDocument.tenant_id == tenant_id)
-        .first()
-    )
+    document = documents_module._get_document_for_chunk_ops(db, tenant_id, document_id)
     if not document:
         raise HTTPException(status_code=404, detail=documents_module.DOC_NOT_FOUND_DETAIL)
-
     documents_module._assert_document_writable_for_chunk_ops(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
         document=document,
     )
-
-    current_status = str(document.status or "").lower()
+    current_status = str(getattr(document, "status", "") or "").lower()
     if current_status in {"pending", "processing"}:
-        raise HTTPException(status_code=409, detail=f"Cannot edit chunks for a {current_status} document")
-
-    chunk = (
-        db.query(documents_module.DocumentChunk)
-        .filter(
-            documents_module.DocumentChunk.tenant_id == tenant_id,
-            documents_module.DocumentChunk.document_id == document_id,
-            documents_module.DocumentChunk.id == chunk_id,
-        )
-        .first()
-    )
-    if not chunk:
-        raise HTTPException(status_code=404, detail=documents_module.CHUNK_NOT_FOUND_DETAIL)
-
+        raise HTTPException(status_code=409, detail=f"Cannot {edit_verb} for a {current_status} document")
     doc_meta = dict(getattr(document, "doc_metadata", None) or {})
     active_key = documents_module._resolve_active_doc_pipeline_key(document_id, doc_meta)
-    chunk_key = str((chunk.doc_metadata or {}).get("doc_pipeline_key") or "").strip()
+    return document, active_key
+
+
+def _get_active_chunk_or_404(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    document_id: UUID,
+    chunk_id: UUID,
+    active_key: str | None,
+):
+    chunk = documents_module._get_chunk_for_chunk_ops(db, tenant_id, document_id, chunk_id)
+    if not chunk:
+        raise HTTPException(status_code=404, detail=documents_module.CHUNK_NOT_FOUND_DETAIL)
+    chunk_key = str((getattr(chunk, "doc_metadata", None) or {}).get("doc_pipeline_key") or "").strip()
     if active_key and chunk_key and chunk_key != active_key:
         raise HTTPException(status_code=409, detail=documents_module.CHUNK_NOT_ACTIVE_PIPELINE_DETAIL)
+    return chunk
 
-    if payload.content is not None:
-        chunk.content = payload.content
-    if payload.page_number is not None:
-        chunk.page_number = payload.page_number
-    if payload.start_char is not None:
-        chunk.start_char = payload.start_char
-    if payload.end_char is not None:
-        chunk.end_char = payload.end_char
 
-    if payload.metadata is not None and isinstance(payload.metadata, dict):
-        meta = documents_module._apply_chunk_metadata_patch(current=dict(chunk.doc_metadata or {}), patch=payload.metadata)
-        meta["tenant_id"] = str(tenant_id)
-        meta["document_id"] = str(document_id)
-        meta["chunk_id"] = str(chunk.id)
-        meta["chunk_index"] = int(chunk.chunk_index)
-        if active_key:
-            meta.setdefault("doc_pipeline_key", active_key)
-        chunk.doc_metadata = meta
+def _apply_chunk_payload_updates(
+    *,
+    chunk,
+    payload: DocumentChunkUpdateRequest,
+    tenant_id: UUID,
+    document_id: UUID,
+    active_key: str | None,
+) -> None:
+    for field in ("content", "page_number", "start_char", "end_char"):
+        value = getattr(payload, field)
+        if value is not None:
+            setattr(chunk, field, value)
+    if payload.metadata is None or not isinstance(payload.metadata, dict):
+        return
+    meta = documents_module._apply_chunk_metadata_patch(current=dict(chunk.doc_metadata or {}), patch=payload.metadata)
+    meta["tenant_id"] = str(tenant_id)
+    meta["document_id"] = str(document_id)
+    meta["chunk_id"] = str(chunk.id)
+    meta["chunk_index"] = int(chunk.chunk_index)
+    if active_key:
+        meta.setdefault("doc_pipeline_key", active_key)
+    chunk.doc_metadata = meta
 
-    document.updated_at = datetime.now(UTC)
-    db.commit()
-    db.refresh(chunk)
 
+def _reindex_chunk_after_patch(
+    *,
+    db: Session,
+    document,
+    chunk,
+    tenant_id: UUID,
+    document_id: UUID,
+) -> tuple[str, dict[str, Any], str | None, str | None]:
     strictness = documents_module._normalize_index_consistency_strictness(patch_mode=True)
     emit_drift_markers = bool(getattr(documents_module.settings, "INDEX_CONSISTENCY_EMIT_DRIFT_MARKERS", True))
     drift_markers: list[dict[str, Any]] = []
     vector_error: str | None = None
     bm25_error: str | None = None
     vector_id_after: str | None = None
-
     indexer = documents_module.Indexer(db)
+
     try:
         indexer.delete_document_chunk_vectors(
             document_id=document_id,
@@ -322,22 +317,20 @@ def patch_document_chunk(
             )
         )
 
-    vector_result = documents_module._build_index_channel_result(
-        status=("error" if vector_error else "ok"),
-        attempted=True,
-        error=vector_error,
-        vector_id=vector_id_after,
-    )
-    bm25_result = documents_module._build_index_channel_result(
-        status=("error" if bm25_error else "ok"),
-        attempted=True,
-        error=bm25_error,
-    )
     operation_result = documents_module._build_chunk_index_operation_result(
         operation=documents_module.CHUNK_PATCH_OPERATION,
         strictness=strictness,
-        vector=vector_result,
-        bm25=bm25_result,
+        vector=documents_module._build_index_channel_result(
+            status=("error" if vector_error else "ok"),
+            attempted=True,
+            error=vector_error,
+            vector_id=vector_id_after,
+        ),
+        bm25=documents_module._build_index_channel_result(
+            status=("error" if bm25_error else "ok"),
+            attempted=True,
+            error=bm25_error,
+        ),
         kg=None,
         drift_markers=drift_markers,
     )
@@ -346,6 +339,214 @@ def patch_document_chunk(
         chunk=chunk,
         result=operation_result,
         drift_markers=drift_markers,
+    )
+    return strictness, operation_result, vector_error, bm25_error
+
+
+async def _delete_chunk_indexes(
+    *,
+    db: Session,
+    document,
+    chunk,
+    tenant_id: UUID,
+    account_id: str,
+    document_id: UUID,
+) -> tuple[str, str | None, str | None]:
+    from app.rag.retriever import hybrid_retriever
+
+    strictness = documents_module._normalize_index_consistency_strictness(patch_mode=False)
+    vector_error: str | None = None
+    bm25_error: str | None = None
+    indexer = documents_module.Indexer(db)
+    try:
+        indexer.delete_document_chunk_vectors(
+            document_id=document_id,
+            tenant_id=tenant_id,
+            metadata_filter={"chunk_id": {"$eq": str(chunk.id)}},
+        )
+    except NotImplementedError as exc:
+        vector_error = "vector backend does not support chunk-level deletes"
+        if strictness != "strict":
+            raise HTTPException(status_code=409, detail="Vector backend does not support chunk-level deletes") from exc
+    except Exception as exc:
+        vector_error = f"vector delete failed: {str(exc)[:160]}"
+
+    try:
+        hybrid_retriever.remove_from_bm25_index_by_metadata_filter(
+            tenant_id=tenant_id,
+            metadata_filter={"chunk_id": {"$eq": str(chunk.id)}},
+        )
+    except Exception:
+        bm25_error = "bm25 delete failed"
+
+    if vector_error or bm25_error:
+        await documents_module._record_chunk_index_drift(
+            db=db,
+            document=document,
+            chunk=chunk,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            operation="chunk.delete",
+            strictness=strictness,
+            vector_error=vector_error,
+            bm25_error=bm25_error,
+        )
+    return strictness, vector_error, bm25_error
+
+
+def _refresh_document_chunk_stats(*, db: Session, tenant_id: UUID, document_id: UUID, document, active_key: str | None) -> None:
+    try:
+        stat_q = db.query(
+            func.count(documents_module.DocumentChunk.id),
+            func.sum(func.length(documents_module.DocumentChunk.content)),
+        ).filter(
+            documents_module.DocumentChunk.tenant_id == tenant_id,
+            documents_module.DocumentChunk.document_id == document_id,
+        )
+        if active_key:
+            stat_q = stat_q.filter(
+                documents_module.DocumentChunk.doc_metadata["doc_pipeline_key"].astext == active_key  # type: ignore[attr-defined]
+            )
+        cnt, total_chars = stat_q.first() or (None, None)
+        document.chunk_count = int(cnt or 0)
+        document.total_characters = int(total_chars or 0)
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
+def _cleanup_deleted_chunk_kg(*, db: Session, tenant_id: UUID, chunk_id: UUID) -> None:
+    try:
+        from app.rag.kg.models import KgRelation
+
+        db.query(KgRelation).filter(
+            KgRelation.tenant_id == tenant_id,
+            KgRelation.chunk_id == chunk_id,
+        ).delete(synchronize_session=False)
+
+        documents_module.Indexer(db).delete_event_indexes_for_chunks(
+            tenant_id=tenant_id,
+            chunk_ids=[chunk_id],
+            commit=False,
+            prune_orphan_entities=True,
+        )
+        db.commit()
+    except Exception:
+        with contextlib.suppress(Exception):
+            db.rollback()
+
+
+def _reembed_single_chunk(
+    *,
+    db: Session,
+    document,
+    chunk,
+    tenant_id: UUID,
+    document_id: UUID,
+    account_id: str,
+    indexer,
+) -> bool:
+    from app.rag.retriever import hybrid_retriever
+
+    meta_for_vector = dict(getattr(chunk, "doc_metadata", None) or {})
+    meta_for_vector.setdefault("tenant_id", str(tenant_id))
+    meta_for_vector.setdefault("document_id", str(document_id))
+    meta_for_vector.setdefault("chunk_id", str(chunk.id))
+    meta_for_vector.setdefault("chunk_index", int(getattr(chunk, "chunk_index", 0) or 0))
+
+    try:
+        indexer.delete_document_chunk_vectors(
+            document_id=document_id,
+            tenant_id=tenant_id,
+            metadata_filter={"chunk_id": {"$eq": str(chunk.id)}},
+        )
+    except Exception as exc:  # noqa: BLE001
+        documents_module.logger.debug("Vector filtered delete failed for chunk %s: %s", str(chunk.id), str(exc)[:160])
+
+    try:
+        vector_id = indexer.upsert_document_chunk_vector(
+            document_id=document_id,
+            tenant_id=tenant_id,
+            content=chunk.content,
+            metadata=meta_for_vector,
+        )
+        if vector_id:
+            chunk.doc_metadata = meta_for_vector
+            chunk.vector_id = vector_id
+    except Exception:
+        return False
+
+    try:
+        bm25_meta = dict(meta_for_vector)
+        bm25_meta.setdefault("source", bm25_meta.get("source", str(getattr(document, "filename", "") or "unknown")))
+        bm25_doc = documents_module.Document(
+            page_content=str(getattr(chunk, "content", "") or ""),
+            id=str(chunk.id),
+            metadata=bm25_meta,
+        )
+        hybrid_retriever.upsert_bm25_documents([bm25_doc], tenant_id=tenant_id, db=db)
+    except Exception as exc:  # noqa: BLE001
+        documents_module.logger.debug("BM25 upsert failed for chunk %s: %s", str(chunk.id), str(exc)[:160])
+
+    documents_module.audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=account_id,
+        action="document.chunk.reembed",
+        resource_type="document",
+        resource_id=str(document_id),
+        details={"chunk_id": str(chunk.id), "chunk_index": int(getattr(chunk, "chunk_index", 0) or 0)},
+    )
+    return True
+
+
+@router.patch(
+    "/{document_id}/chunks/{chunk_id}",
+    response_model=DocumentChunkSchema,
+    responses=documents_module._DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
+def patch_document_chunk(
+    document_id: uuid.UUID,
+    chunk_id: uuid.UUID,
+    payload: DocumentChunkUpdateRequest,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Patch a chunk and update its indexes (vector + BM25) best-effort.
+    """
+    document, active_key = _load_chunk_write_document(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        document_id=document_id,
+        edit_verb="edit chunks",
+    )
+    chunk = _get_active_chunk_or_404(
+        db=db,
+        tenant_id=tenant_id,
+        document_id=document_id,
+        chunk_id=chunk_id,
+        active_key=active_key,
+    )
+    _apply_chunk_payload_updates(
+        chunk=chunk,
+        payload=payload,
+        tenant_id=tenant_id,
+        document_id=document_id,
+        active_key=active_key,
+    )
+    document.updated_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(chunk)
+    strictness, operation_result, vector_error, bm25_error = _reindex_chunk_after_patch(
+        db=db,
+        document=document,
+        chunk=chunk,
+        tenant_id=tenant_id,
+        document_id=document_id,
     )
 
     documents_module.audit_log_event(
@@ -387,130 +588,41 @@ async def delete_document_chunk(
     """
     Delete a chunk and update its indexes (vector + BM25) best-effort.
     """
-    from app.rag.retriever import hybrid_retriever
-
-    documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
-
-    document = (
-        db.query(documents_module.DBDocument)
-        .filter(documents_module.DBDocument.id == document_id, documents_module.DBDocument.tenant_id == tenant_id)
-        .first()
-    )
-    if not document:
-        raise HTTPException(status_code=404, detail=documents_module.DOC_NOT_FOUND_DETAIL)
-
-    documents_module._assert_document_writable_for_chunk_ops(
-        db,
+    document, active_key = _load_chunk_write_document(
+        db=db,
         tenant_id=tenant_id,
         account_id=account_id,
+        document_id=document_id,
+        edit_verb="edit chunks",
+    )
+    chunk = _get_active_chunk_or_404(
+        db=db,
+        tenant_id=tenant_id,
+        document_id=document_id,
+        chunk_id=chunk_id,
+        active_key=active_key,
+    )
+    strictness, vector_error, bm25_error = await _delete_chunk_indexes(
+        db=db,
         document=document,
+        chunk=chunk,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        document_id=document_id,
     )
-
-    current_status = str(document.status or "").lower()
-    if current_status in {"pending", "processing"}:
-        raise HTTPException(status_code=409, detail=f"Cannot edit chunks for a {current_status} document")
-
-    chunk = (
-        db.query(documents_module.DocumentChunk)
-        .filter(
-            documents_module.DocumentChunk.tenant_id == tenant_id,
-            documents_module.DocumentChunk.document_id == document_id,
-            documents_module.DocumentChunk.id == chunk_id,
-        )
-        .first()
-    )
-    if not chunk:
-        raise HTTPException(status_code=404, detail=documents_module.CHUNK_NOT_FOUND_DETAIL)
-
-    doc_meta = dict(getattr(document, "doc_metadata", None) or {})
-    active_key = documents_module._resolve_active_doc_pipeline_key(document_id, doc_meta)
-    chunk_key = str((chunk.doc_metadata or {}).get("doc_pipeline_key") or "").strip()
-    if active_key and chunk_key and chunk_key != active_key:
-        raise HTTPException(status_code=409, detail=documents_module.CHUNK_NOT_ACTIVE_PIPELINE_DETAIL)
-
-    strictness = documents_module._normalize_index_consistency_strictness(patch_mode=False)
-    vector_error: str | None = None
-    bm25_error: str | None = None
-
-    indexer = documents_module.Indexer(db)
-    try:
-        indexer.delete_document_chunk_vectors(
-            document_id=document_id,
-            tenant_id=tenant_id,
-            metadata_filter={"chunk_id": {"$eq": str(chunk.id)}},
-        )
-    except NotImplementedError as exc:
-        vector_error = "vector backend does not support chunk-level deletes"
-        if strictness != "strict":
-            raise HTTPException(status_code=409, detail="Vector backend does not support chunk-level deletes") from exc
-    except Exception as exc:
-        vector_error = f"vector delete failed: {str(exc)[:160]}"
-
-    try:
-        hybrid_retriever.remove_from_bm25_index_by_metadata_filter(
-            tenant_id=tenant_id,
-            metadata_filter={"chunk_id": {"$eq": str(chunk.id)}},
-        )
-    except Exception:
-        bm25_error = "bm25 delete failed"
-
-    if vector_error or bm25_error:
-        _operation_result, _markers, _task_id = await documents_module._record_chunk_index_drift(
-            db=db,
-            document=document,
-            chunk=chunk,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            operation="chunk.delete",
-            strictness=strictness,
-            vector_error=vector_error,
-            bm25_error=bm25_error,
-        )
-        if strictness == "strict":
-            raise HTTPException(status_code=409, detail="Index consistency strict mode blocked delete; drift item recorded")
-
+    if strictness == "strict" and (vector_error or bm25_error):
+        raise HTTPException(status_code=409, detail="Index consistency strict mode blocked delete; drift item recorded")
     db.delete(chunk)
     document.updated_at = datetime.now(UTC)
     db.commit()
-
-    try:
-        stat_q = db.query(
-            func.count(documents_module.DocumentChunk.id),
-            func.sum(func.length(documents_module.DocumentChunk.content)),
-        ).filter(
-            documents_module.DocumentChunk.tenant_id == tenant_id,
-            documents_module.DocumentChunk.document_id == document_id,
-        )
-        if active_key:
-            stat_q = stat_q.filter(
-                documents_module.DocumentChunk.doc_metadata["doc_pipeline_key"].astext == active_key  # type: ignore[attr-defined]
-            )
-        cnt, total_chars = stat_q.first() or (None, None)
-        document.chunk_count = int(cnt or 0)
-        document.total_characters = int(total_chars or 0)
-        db.commit()
-    except Exception:
-        db.rollback()
-
-    try:
-        from app.rag.kg.models import KgRelation
-
-        db.query(KgRelation).filter(
-            KgRelation.tenant_id == tenant_id,
-            KgRelation.chunk_id == chunk_id,
-        ).delete(synchronize_session=False)
-
-        documents_module.Indexer(db).delete_event_indexes_for_chunks(
-            tenant_id=tenant_id,
-            chunk_ids=[chunk_id],
-            commit=False,
-            prune_orphan_entities=True,
-        )
-        db.commit()
-    except Exception:
-        with contextlib.suppress(Exception):
-            db.rollback()
-
+    _refresh_document_chunk_stats(
+        db=db,
+        tenant_id=tenant_id,
+        document_id=document_id,
+        document=document,
+        active_key=active_key,
+    )
+    _cleanup_deleted_chunk_kg(db=db, tenant_id=tenant_id, chunk_id=chunk_id)
     documents_module.audit_log_event(
         db,
         tenant_id=tenant_id,
@@ -720,32 +832,17 @@ def reembed_document_chunks(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Re-embed selected chunks (vector + BM25) best-effort."""
-    from app.rag.retriever import hybrid_retriever
-
-    documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
-
-    document = documents_module._get_document_for_chunk_ops(db, tenant_id, document_id)
-    if not document:
-        raise HTTPException(status_code=404, detail=documents_module.DOC_NOT_FOUND_DETAIL)
-    documents_module._assert_document_writable_for_chunk_ops(
-        db,
+    document, active_key = _load_chunk_write_document(
+        db=db,
         tenant_id=tenant_id,
         account_id=account_id,
-        document=document,
+        document_id=document_id,
+        edit_verb="re-embed chunks",
     )
-
-    current_status = str(getattr(document, "status", "") or "").lower()
-    if current_status in {"pending", "processing"}:
-        raise HTTPException(status_code=409, detail=f"Cannot re-embed chunks for a {current_status} document")
-
-    doc_meta = dict(getattr(document, "doc_metadata", None) or {})
-    active_key = documents_module._resolve_active_doc_pipeline_key(document_id, doc_meta)
-
     reembedded = 0
     not_found: list[UUID] = []
     denied: list[UUID] = []
     conflicts: list[UUID] = []
-
     indexer = documents_module.Indexer(db)
 
     for chunk_id in payload.chunk_ids:
@@ -753,68 +850,25 @@ def reembed_document_chunks(
         if not chunk:
             not_found.append(chunk_id)
             continue
-
         if getattr(chunk, "disabled_at", None) is not None and not bool(payload.include_disabled):
             conflicts.append(chunk_id)
             continue
-
         chunk_key = str((getattr(chunk, "doc_metadata", None) or {}).get("doc_pipeline_key") or "").strip()
         if active_key and chunk_key and chunk_key != active_key:
             conflicts.append(chunk_id)
             continue
-
-        meta_for_vector = dict(getattr(chunk, "doc_metadata", None) or {})
-        meta_for_vector.setdefault("tenant_id", str(tenant_id))
-        meta_for_vector.setdefault("document_id", str(document_id))
-        meta_for_vector.setdefault("chunk_id", str(chunk.id))
-        meta_for_vector.setdefault("chunk_index", int(getattr(chunk, "chunk_index", 0) or 0))
-
-        try:
-            indexer.delete_document_chunk_vectors(
-                document_id=document_id,
-                tenant_id=tenant_id,
-                metadata_filter={"chunk_id": {"$eq": str(chunk.id)}},
-            )
-        except Exception as exc:  # noqa: BLE001
-            documents_module.logger.debug("Vector filtered delete failed for chunk %s: %s", str(chunk.id), str(exc)[:160])
-
-        try:
-            vector_id = indexer.upsert_document_chunk_vector(
-                document_id=document_id,
-                tenant_id=tenant_id,
-                content=chunk.content,
-                metadata=meta_for_vector,
-            )
-            if vector_id:
-                chunk.doc_metadata = meta_for_vector
-                chunk.vector_id = vector_id
-        except Exception:
+        if not _reembed_single_chunk(
+            db=db,
+            document=document,
+            chunk=chunk,
+            tenant_id=tenant_id,
+            document_id=document_id,
+            account_id=account_id,
+            indexer=indexer,
+        ):
             conflicts.append(chunk_id)
             continue
-
-        try:
-            bm25_meta = dict(meta_for_vector)
-            bm25_meta.setdefault("source", bm25_meta.get("source", str(getattr(document, "filename", "") or "unknown")))
-            bm25_doc = documents_module.Document(
-                page_content=str(getattr(chunk, "content", "") or ""),
-                id=str(chunk.id),
-                metadata=bm25_meta,
-            )
-            hybrid_retriever.upsert_bm25_documents([bm25_doc], tenant_id=tenant_id, db=db)
-        except Exception as exc:  # noqa: BLE001
-            documents_module.logger.debug("BM25 upsert failed for chunk %s: %s", str(chunk.id), str(exc)[:160])
-
         reembedded += 1
-
-        documents_module.audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=account_id,
-            action="document.chunk.reembed",
-            resource_type="document",
-            resource_id=str(document_id),
-            details={"chunk_id": str(chunk.id), "chunk_index": int(getattr(chunk, "chunk_index", 0) or 0)},
-        )
 
     if reembedded:
         db.commit()

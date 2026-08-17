@@ -42,6 +42,71 @@ def _escape_md_cell(text: str) -> str:
     return _clean_line(text).replace("|", r"\|")
 
 
+def _extract_table_text(shape: object) -> str | None:
+    try:
+        if not bool(getattr(shape, "has_table", False)):
+            return None
+        table = shape.table
+        rows: list[list[str]] = []
+        for row_index in range(len(table.rows)):
+            row: list[str] = []
+            for col_index in range(len(table.columns)):
+                try:
+                    cell_text = table.cell(row_index, col_index).text
+                except Exception:
+                    cell_text = ""
+                row.append(_escape_md_cell(cell_text))
+            if any(row):
+                rows.append(row)
+        return _md_table(rows) if rows else ""
+    except Exception as exc:
+        # Best-effort: ignore table extraction errors.
+        logger.debug("Failed to extract PPTX table; falling back to text frame handling: %s", exc)
+        return None
+
+
+def _paragraph_text(para: object) -> str:
+    raw = str(getattr(para, "text", "") or "")
+    text = _clean_line(raw)
+    if not text:
+        return ""
+    try:
+        level = int(getattr(para, "level", 0) or 0)
+    except Exception:
+        level = 0
+    level = max(0, min(level, 10))
+    prefix = ("  " * level) + "- " if text else ""
+    return f"{prefix}{text}" if prefix else text
+
+
+def _extract_shape_text(shape: object) -> list[str]:
+    try:
+        if not bool(getattr(shape, "has_text_frame", False)):
+            return []
+        tf = shape.text_frame
+        parts: list[str] = []
+        for para in getattr(tf, "paragraphs", []) or []:
+            text = _paragraph_text(para)
+            if text:
+                parts.append(text)
+        return parts
+    except Exception:
+        get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+        return []
+
+
+def _extract_slide_parts(slide: object) -> list[str]:
+    parts: list[str] = []
+    for shape in getattr(slide, "shapes", []) or []:
+        table_text = _extract_table_text(shape)
+        if table_text is not None:
+            if table_text:
+                parts.append(table_text)
+            continue
+        parts.extend(_extract_shape_text(shape))
+    return parts
+
+
 class PptxParser:
     """Parse a PowerPoint .pptx into slide-level Documents."""
 
@@ -56,53 +121,7 @@ class PptxParser:
         documents: list[Document] = []
 
         for idx, slide in enumerate(prs.slides):
-            parts: list[str] = []
-
-            for shape in getattr(slide, "shapes", []) or []:
-                # Tables -> Markdown
-                try:
-                    if bool(getattr(shape, "has_table", False)):
-                        table = shape.table
-                        rows: list[list[str]] = []
-                        for r in range(len(table.rows)):
-                            row: list[str] = []
-                            for c in range(len(table.columns)):
-                                try:
-                                    cell_text = table.cell(r, c).text
-                                except Exception:
-                                    cell_text = ""
-                                row.append(_escape_md_cell(cell_text))
-                            if any(row):
-                                rows.append(row)
-                        if rows:
-                            parts.append(_md_table(rows))
-                        continue
-                except Exception as exc:
-                    # Best-effort: ignore table extraction errors.
-                    logger.debug("Failed to extract PPTX table; falling back to text frame handling: %s", exc)
-
-                # Text frames -> plain text (keep bullet/indent via paragraph.level).
-                try:
-                    if not bool(getattr(shape, "has_text_frame", False)):
-                        continue
-                    tf = shape.text_frame
-                    for para in getattr(tf, "paragraphs", []) or []:
-                        raw = str(getattr(para, "text", "") or "")
-                        text = _clean_line(raw)
-                        if not text:
-                            continue
-                        level = 0
-                        try:
-                            level = int(getattr(para, "level", 0) or 0)
-                        except Exception:
-                            level = 0
-                        level = max(0, min(level, 10))
-                        prefix = ("  " * level) + "- " if text else ""
-                        parts.append(f"{prefix}{text}" if prefix else text)
-                except Exception:
-                    get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-                    continue
-
+            parts = _extract_slide_parts(slide)
             content = "\n".join([p for p in (parts or []) if p]).strip()
             if not content:
                 continue

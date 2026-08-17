@@ -63,6 +63,81 @@ def looks_like_timeline_events(text: str) -> bool:
     return len(events) >= 4
 
 
+def _fallback_documents(
+    *,
+    splitter: RecursiveCharacterTextSplitter,
+    text: str,
+    base_meta: dict[str, Any],
+) -> list[Document]:
+    out: list[Document] = []
+    split_docs = splitter.create_documents(texts=[text], metadatas=[base_meta])
+    for sd in split_docs:
+        local_start = sd.metadata.pop("start_index", None) or 0
+        abs_start = int(local_start)
+        abs_end = abs_start + len(sd.page_content)
+        meta: dict[str, Any] = dict(base_meta)
+        meta.update(sd.metadata or {})
+        meta["chunk_strategy"] = "timeline_events"
+        meta["start_char"] = abs_start
+        meta["end_char"] = abs_end
+        meta["timeline_fallback"] = True
+        out.append(Document(page_content=sd.page_content, metadata=meta))
+    return out
+
+
+def _window_end_index(*, events: list[_Event], start_idx: int, chunk_size: int) -> int:
+    end_idx = start_idx
+    while end_idx < len(events):
+        candidate_end = events[end_idx].end
+        candidate_len = candidate_end - events[start_idx].start
+        if end_idx == start_idx or candidate_len <= chunk_size:
+            end_idx += 1
+            continue
+        break
+    return end_idx if end_idx > start_idx else start_idx + 1
+
+
+def _next_window_start(*, events: list[_Event], start_idx: int, end_idx: int, chunk_overlap: int) -> int:
+    next_start = end_idx
+    if chunk_overlap > 0 and (end_idx - start_idx) > 1:
+        desired = end_idx - 1
+        while desired > start_idx:
+            overlap_len = events[end_idx - 1].end - events[desired - 1].start
+            if overlap_len <= chunk_overlap:
+                desired -= 1
+                continue
+            break
+        next_start = desired if desired > start_idx else (end_idx - 1)
+    return next_start if next_start > start_idx else end_idx
+
+
+def _event_chunk_document(
+    *,
+    text: str,
+    base_meta: dict[str, Any],
+    events: list[_Event],
+    start_idx: int,
+    end_idx: int,
+) -> Document:
+    chunk_start = events[start_idx].start
+    chunk_end = events[end_idx - 1].end
+    previews = [event.preview for event in events[start_idx:end_idx] if event.preview][:3]
+    first = events[start_idx]
+    last = events[end_idx - 1]
+    first_date = first.date + ((" " + first.time) if first.time else "")
+    last_date = last.date + ((" " + last.time) if last.time else "")
+    meta: dict[str, Any] = dict(base_meta)
+    meta["chunk_strategy"] = "timeline_events"
+    meta["start_char"] = chunk_start
+    meta["end_char"] = chunk_end
+    meta["event_count"] = int(end_idx - start_idx)
+    meta["first_event"] = first_date
+    meta["last_event"] = last_date
+    if previews:
+        meta["event_previews"] = previews
+    return Document(page_content=text[chunk_start:chunk_end], metadata=meta)
+
+
 class TimelineEventsChunker(BaseChunker):
     def __init__(self, chunk_size: int, chunk_overlap: int):
         self.chunk_size = int(chunk_size)
@@ -87,67 +162,19 @@ class TimelineEventsChunker(BaseChunker):
 
             events = _iter_events(text)
             if not events:
-                split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "timeline_events"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta["timeline_fallback"] = True
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                out.extend(_fallback_documents(splitter=self._fallback_splitter, text=text, base_meta=base_meta))
                 continue
 
             start_idx = 0
             while start_idx < len(events):
-                end_idx = start_idx
-                while end_idx < len(events):
-                    candidate_end = events[end_idx].end
-                    candidate_len = candidate_end - events[start_idx].start
-                    if end_idx == start_idx or candidate_len <= self.chunk_size:
-                        end_idx += 1
-                        continue
-                    break
-
-                if end_idx == start_idx:
-                    end_idx = start_idx + 1
-
-                chunk_start = events[start_idx].start
-                chunk_end = events[end_idx - 1].end
-                content = text[chunk_start:chunk_end]
-
-                previews = [e.preview for e in events[start_idx:end_idx] if e.preview][:3]
-                first_date = events[start_idx].date + ((" " + events[start_idx].time) if events[start_idx].time else "")
-                last_date = events[end_idx - 1].date + ((" " + events[end_idx - 1].time) if events[end_idx - 1].time else "")
-
-                meta: dict[str, Any] = dict(base_meta)
-                meta["chunk_strategy"] = "timeline_events"
-                meta["start_char"] = chunk_start
-                meta["end_char"] = chunk_end
-                meta["event_count"] = int(end_idx - start_idx)
-                meta["first_event"] = first_date
-                meta["last_event"] = last_date
-                if previews:
-                    meta["event_previews"] = previews
-                out.append(Document(page_content=content, metadata=meta))
-
-                next_start = end_idx
-                if self.chunk_overlap > 0 and (end_idx - start_idx) > 1:
-                    desired = end_idx - 1
-                    while desired > start_idx:
-                        overlap_len = events[end_idx - 1].end - events[desired - 1].start
-                        if overlap_len <= self.chunk_overlap:
-                            desired -= 1
-                            continue
-                        break
-                    next_start = desired if desired > start_idx else (end_idx - 1)
-
-                if next_start <= start_idx:
-                    next_start = end_idx
-                start_idx = next_start
+                end_idx = _window_end_index(events=events, start_idx=start_idx, chunk_size=self.chunk_size)
+                out.append(_event_chunk_document(text=text, base_meta=base_meta, events=events, start_idx=start_idx, end_idx=end_idx))
+                start_idx = _next_window_start(
+                    events=events,
+                    start_idx=start_idx,
+                    end_idx=end_idx,
+                    chunk_overlap=self.chunk_overlap,
+                )
 
         for idx, chunk in enumerate(out):
             meta = dict(chunk.metadata or {})
@@ -155,4 +182,3 @@ class TimelineEventsChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

@@ -282,6 +282,58 @@ class SpladeSparseEncoder:
             self._model = model
             self._torch_device = device
 
+    def _special_ids(self) -> list[int]:
+        try:
+            return list(getattr(self._tokenizer, "all_special_ids", []) or [])
+        except Exception:
+            return []
+
+    @staticmethod
+    def _mask_logits(logits: Any, attention_mask: Any) -> Any:
+        if attention_mask is None:
+            return logits
+        mask = attention_mask.unsqueeze(-1).expand_as(logits)
+        return logits.masked_fill(mask == 0, -1e9)
+
+    def _topk_batch_weights(
+        self,
+        *,
+        torch: Any,
+        logits: Any,
+        attention_mask: Any,
+        special_ids: list[int],
+    ) -> tuple[Any, Any]:
+        logits = self._mask_logits(logits, attention_mask)
+        weights = torch.log1p(torch.relu(logits))
+        weights = torch.max(weights, dim=1).values  # [B, V]
+        if special_ids:
+            try:
+                weights[:, special_ids] = 0.0
+            except Exception as exc:
+                logger.debug("Ignoring SPLADE special-token zeroing failure: %s", exc)
+        top_k = self._top_k if self._top_k > 0 else int(weights.shape[1])
+        top_k = min(int(weights.shape[1]), int(top_k))
+        vals, idxs = torch.topk(weights, k=top_k, dim=1)
+        return vals.detach().cpu(), idxs.detach().cpu()
+
+    def _vector_from_topk(self, *, row_vals: Any, row_idxs: Any) -> SparseVector:
+        m: dict[str, float] = {}
+        ids = [int(x) for x in row_idxs.tolist()]
+        tokens = self._tokenizer.convert_ids_to_tokens(ids)
+        for token, val in zip(tokens, row_vals.tolist(), strict=False):
+            try:
+                score = float(val)
+            except Exception:
+                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                continue
+            if score <= self._min_w:
+                continue
+            t = str(token or "").strip()
+            if not t or (t.startswith("[") and t.endswith("]")):
+                continue
+            m[t] = score
+        return SparseVector(weights=m)
+
     def encode_batch(self, texts: Sequence[str]) -> list[SparseVector]:
         raw = [str(t or "") for t in (texts or [])]
         if not raw:
@@ -298,13 +350,7 @@ class SpladeSparseEncoder:
 
         out: list[SparseVector] = []
         bs = self._batch_size
-
-        # Best-effort list of special ids to zero out.
-        special_ids: list[int] = []
-        try:
-            special_ids = list(getattr(tok, "all_special_ids", []) or [])
-        except Exception:
-            special_ids = []
+        special_ids = self._special_ids()
 
         for i in range(0, len(raw), bs):
             batch_texts = raw[i : i + bs]
@@ -319,44 +365,15 @@ class SpladeSparseEncoder:
 
             with torch.no_grad():
                 logits = model(**enc).logits  # [B, L, V]
-                attn = enc.get("attention_mask")
-                if attn is not None:
-                    mask = attn.unsqueeze(-1).expand_as(logits)
-                    logits = logits.masked_fill(mask == 0, -1e9)
-
-                # SPLADE-style activation: log(1+relu(logits)) then max-pool over L.
-                weights = torch.log1p(torch.relu(logits))
-                weights = torch.max(weights, dim=1).values  # [B, V]
-                if special_ids:
-                    try:
-                        weights[:, special_ids] = 0.0
-                    except Exception as exc:
-                        logger.debug("Ignoring SPLADE special-token zeroing failure: %s", exc)
-
-                top_k = self._top_k if self._top_k > 0 else int(weights.shape[1])
-                top_k = min(int(weights.shape[1]), int(top_k))
-                vals, idxs = torch.topk(weights, k=top_k, dim=1)
-
-                vals = vals.detach().cpu()
-                idxs = idxs.detach().cpu()
+                vals, idxs = self._topk_batch_weights(
+                    torch=torch,
+                    logits=logits,
+                    attention_mask=enc.get("attention_mask"),
+                    special_ids=special_ids,
+                )
 
             for row_vals, row_idxs in zip(vals, idxs, strict=False):
-                m: dict[str, float] = {}
-                ids = [int(x) for x in row_idxs.tolist()]
-                tokens = tok.convert_ids_to_tokens(ids)
-                for token, val in zip(tokens, row_vals.tolist(), strict=False):
-                    try:
-                        score = float(val)
-                    except Exception:
-                        get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-                        continue
-                    if score <= self._min_w:
-                        continue
-                    t = str(token or "").strip()
-                    if not t or (t.startswith("[") and t.endswith("]")):
-                        continue
-                    m[t] = score
-                out.append(SparseVector(weights=m))
+                out.append(self._vector_from_topk(row_vals=row_vals, row_idxs=row_idxs))
 
         # Preserve 1:1 shape with input texts.
         if len(out) != len(raw):

@@ -93,6 +93,99 @@ def looks_like_jsonl_records(text: str) -> bool:
     return parseable >= 3 and (parseable / max(1, len(sample))) >= 0.4
 
 
+def _build_fallback_chunks(
+    splitter: RecursiveCharacterTextSplitter,
+    *,
+    text: str,
+    base_meta: dict[str, Any],
+) -> list[Document]:
+    out: list[Document] = []
+    split_docs = splitter.create_documents(texts=[text], metadatas=[base_meta])
+    for sd in split_docs:
+        local_start = sd.metadata.pop("start_index", None) or 0
+        abs_start = int(local_start)
+        abs_end = abs_start + len(sd.page_content)
+        meta: dict[str, Any] = dict(base_meta)
+        meta.update(sd.metadata or {})
+        meta["chunk_strategy"] = "jsonl_records"
+        meta["start_char"] = abs_start
+        meta["end_char"] = abs_end
+        meta["jsonl_fallback"] = True
+        meta.setdefault("doc_type_kwd", "jsonl")
+        out.append(Document(page_content=sd.page_content, metadata=meta))
+    return out
+
+
+def _record_window_end(records: list[_Record], *, start_idx: int, chunk_size: int) -> int:
+    end_idx = start_idx
+    while end_idx < len(records):
+        cand_start = records[start_idx].start
+        cand_end = records[end_idx].end
+        cand_len = cand_end - cand_start
+        if end_idx == start_idx or cand_len <= chunk_size:
+            end_idx += 1
+            continue
+        break
+    return end_idx if end_idx != start_idx else (start_idx + 1)
+
+
+def _record_keys(records: list[_Record]) -> list[str]:
+    keys: list[str] = []
+    for record in records:
+        for key in record.keys:
+            if key not in keys:
+                keys.append(key)
+    return keys[:25]
+
+
+def _build_record_chunk(
+    *,
+    text: str,
+    base_meta: dict[str, Any],
+    records: list[_Record],
+    start_idx: int,
+    end_idx: int,
+) -> Document:
+    chunk_start = records[start_idx].start
+    chunk_end = records[end_idx - 1].end
+    meta: dict[str, Any] = dict(base_meta)
+    meta["chunk_strategy"] = "jsonl_records"
+    meta["start_char"] = chunk_start
+    meta["end_char"] = chunk_end
+    meta.setdefault("doc_type_kwd", "jsonl")
+    meta["jsonl_record_count"] = int(end_idx - start_idx)
+    meta["jsonl_first_index"] = int(records[start_idx].index)
+    meta["jsonl_last_index"] = int(records[end_idx - 1].index)
+    keys = _record_keys(records[start_idx:end_idx])
+    if keys:
+        meta["jsonl_keys"] = keys
+    return Document(page_content=text[chunk_start:chunk_end], metadata=meta)
+
+
+def _next_record_start(records: list[_Record], *, start_idx: int, end_idx: int, chunk_overlap: int) -> int:
+    next_start = end_idx
+    if chunk_overlap > 0 and (end_idx - start_idx) > 1:
+        desired = end_idx - 1
+        while desired > start_idx:
+            overlap_len = records[end_idx - 1].end - records[desired - 1].start
+            if overlap_len <= chunk_overlap:
+                desired -= 1
+                continue
+            break
+        next_start = desired if desired > start_idx else (end_idx - 1)
+    if next_start <= start_idx:
+        return end_idx
+    return next_start
+
+
+def _assign_chunk_indexes(chunks: list[Document]) -> list[Document]:
+    for idx, chunk in enumerate(chunks):
+        meta = dict(chunk.metadata or {})
+        meta["chunk_index"] = idx
+        chunk.metadata = meta
+    return chunks
+
+
 class JsonlRecordsChunker(BaseChunker):
     def __init__(self, chunk_size: int, chunk_overlap: int):
         self.chunk_size = int(chunk_size)
@@ -117,76 +210,26 @@ class JsonlRecordsChunker(BaseChunker):
 
             records = _iter_records(text)
             if not records:
-                split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "jsonl_records"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta["jsonl_fallback"] = True
-                    meta.setdefault("doc_type_kwd", "jsonl")
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                out.extend(_build_fallback_chunks(self._fallback_splitter, text=text, base_meta=base_meta))
                 continue
 
             start_idx = 0
             while start_idx < len(records):
-                end_idx = start_idx
-                while end_idx < len(records):
-                    cand_start = records[start_idx].start
-                    cand_end = records[end_idx].end
-                    cand_len = cand_end - cand_start
-                    if end_idx == start_idx or cand_len <= self.chunk_size:
-                        end_idx += 1
-                        continue
-                    break
-                if end_idx == start_idx:
-                    end_idx = start_idx + 1
+                end_idx = _record_window_end(records, start_idx=start_idx, chunk_size=self.chunk_size)
+                out.append(
+                    _build_record_chunk(
+                        text=text,
+                        base_meta=base_meta,
+                        records=records,
+                        start_idx=start_idx,
+                        end_idx=end_idx,
+                    )
+                )
+                start_idx = _next_record_start(
+                    records,
+                    start_idx=start_idx,
+                    end_idx=end_idx,
+                    chunk_overlap=self.chunk_overlap,
+                )
 
-                chunk_start = records[start_idx].start
-                chunk_end = records[end_idx - 1].end
-                content = text[chunk_start:chunk_end]
-
-                keys: list[str] = []
-                for r in records[start_idx:end_idx]:
-                    for k in r.keys:
-                        if k not in keys:
-                            keys.append(k)
-                keys = keys[:25]
-
-                meta: dict[str, Any] = dict(base_meta)
-                meta["chunk_strategy"] = "jsonl_records"
-                meta["start_char"] = chunk_start
-                meta["end_char"] = chunk_end
-                meta.setdefault("doc_type_kwd", "jsonl")
-                meta["jsonl_record_count"] = int(end_idx - start_idx)
-                meta["jsonl_first_index"] = int(records[start_idx].index)
-                meta["jsonl_last_index"] = int(records[end_idx - 1].index)
-                if keys:
-                    meta["jsonl_keys"] = keys
-                out.append(Document(page_content=content, metadata=meta))
-
-                next_start = end_idx
-                if self.chunk_overlap > 0 and (end_idx - start_idx) > 1:
-                    desired = end_idx - 1
-                    while desired > start_idx:
-                        overlap_len = records[end_idx - 1].end - records[desired - 1].start
-                        if overlap_len <= self.chunk_overlap:
-                            desired -= 1
-                            continue
-                        break
-                    next_start = desired if desired > start_idx else (end_idx - 1)
-
-                if next_start <= start_idx:
-                    next_start = end_idx
-                start_idx = next_start
-
-        for idx, chunk in enumerate(out):
-            meta = dict(chunk.metadata or {})
-            meta["chunk_index"] = idx
-            chunk.metadata = meta
-
-        return out
+        return _assign_chunk_indexes(out)

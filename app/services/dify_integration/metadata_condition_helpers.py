@@ -48,29 +48,35 @@ def as_list(value: Any) -> list[Any]:
     return [value]
 
 
-def dify_metadata_condition_item_to_filter(condition: dict[str, Any]) -> dict[str, Any]:
-    name = str(condition.get("name") or "").strip()
-    op = str(condition.get("comparison_operator") or "").strip().lower()
-    value = condition.get("value")
-    if not name or not op:
-        raise MetadataConditionValidationError("Invalid Dify metadata_condition condition")
-
-    if op == "contains":
-        return {name: {"$contains": value}}
+def _comparison_operator_filter(*, name: str, op: str, value: Any) -> dict[str, Any] | None:
+    direct_operators = {
+        "contains": "$contains",
+        "start with": "$startswith",
+        "end with": "$endswith",
+        "is": "$eq",
+        "=": "$eq",
+        "is not": "$ne",
+        "≠": "$ne",
+        "!=": "$ne",
+        ">": "$gt",
+        "after": "$gt",
+        "<": "$lt",
+        "before": "$lt",
+        "≥": "$gte",
+        ">=": "$gte",
+        "≤": "$lte",
+        "<=": "$lte",
+    }
+    sequence_operators = {
+        "in": "$in",
+        "not in": "$nin",
+    }
+    if op in direct_operators:
+        return {name: {direct_operators[op]: value}}
+    if op in sequence_operators:
+        return {name: {sequence_operators[op]: as_list(value)}}
     if op == "not contains":
         return {"$not": {name: {"$contains": value}}}
-    if op == "start with":
-        return {name: {"$startswith": value}}
-    if op == "end with":
-        return {name: {"$endswith": value}}
-    if op in {"is", "="}:
-        return {name: {"$eq": value}}
-    if op in {"is not", "≠", "!="}:
-        return {name: {"$ne": value}}
-    if op == "in":
-        return {name: {"$in": as_list(value)}}
-    if op == "not in":
-        return {name: {"$nin": as_list(value)}}
     if op == "empty":
         return {"$or": [{name: {"$exists": False}}, {name: {"$eq": ""}}, {name: {"$eq": []}}]}
     if op == "not empty":
@@ -81,14 +87,19 @@ def dify_metadata_condition_item_to_filter(condition: dict[str, Any]) -> dict[st
                 {"$not": {name: {"$eq": []}}},
             ]
         }
-    if op in {">", "after"}:
-        return {name: {"$gt": value}}
-    if op in {"<", "before"}:
-        return {name: {"$lt": value}}
-    if op in {"≥", ">="}:
-        return {name: {"$gte": value}}
-    if op in {"≤", "<="}:
-        return {name: {"$lte": value}}
+    return None
+
+
+def dify_metadata_condition_item_to_filter(condition: dict[str, Any]) -> dict[str, Any]:
+    name = str(condition.get("name") or "").strip()
+    op = str(condition.get("comparison_operator") or "").strip().lower()
+    value = condition.get("value")
+    if not name or not op:
+        raise MetadataConditionValidationError("Invalid Dify metadata_condition condition")
+
+    converted = _comparison_operator_filter(name=name, op=op, value=value)
+    if converted is not None:
+        return converted
 
     raise MetadataConditionValidationError(f"Unsupported Dify metadata comparison operator: {op}")
 

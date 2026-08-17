@@ -162,53 +162,56 @@ def _extract_headers(message_text: str) -> dict[str, str]:
     return headers
 
 
-def _iter_messages(text: str) -> list[_Message]:
-    if not text:
-        return []
-
+def _message_start_candidates(text: str) -> list[int]:
     candidates: list[int] = [0]
     offset = 0
     for raw_line in text.splitlines(keepends=True):
         line_start = offset
         offset += len(raw_line)
         plain = raw_line.rstrip("\r\n")
-
         if _looks_like_thread_separator_line(plain):
             candidates.append(line_start)
             continue
-
-        parsed = _parse_header_line(plain)
-        if parsed is not None and parsed[0] in _HEADER_START_KEYS:
-            if _has_plausible_header_block(text, line_start):
-                candidates.append(line_start)
-                continue
-
+        if _line_starts_header_block(text, plain, line_start):
+            candidates.append(line_start)
+            continue
         if _looks_like_on_wrote_line(plain):
             candidates.append(line_start)
+    return sorted({i for i in candidates if 0 <= i < len(text)})
 
-    starts = sorted({i for i in candidates if 0 <= i < len(text)})
-    if len(starts) < 2:
-        return []
 
+def _line_starts_header_block(text: str, line: str, line_start: int) -> bool:
+    parsed = _parse_header_line(line)
+    if parsed is None or parsed[0] not in _HEADER_START_KEYS:
+        return False
+    return _has_plausible_header_block(text, line_start)
+
+
+def _messages_from_starts(text: str, starts: list[int]) -> list[_Message]:
     msgs: list[_Message] = []
     for idx, start in enumerate(starts):
         end = starts[idx + 1] if idx + 1 < len(starts) else len(text)
         if end <= start:
             continue
-        seg = text[start:end]
-        if not seg.strip():
+        segment = text[start:end]
+        if not segment.strip():
             continue
-        headers = _extract_headers(seg)
-        msgs.append(_Message(start=start, end=end, headers=headers))
+        msgs.append(_Message(start=start, end=end, headers=_extract_headers(segment)))
+    return msgs
 
-    # Filter out accidental micro-segments (e.g., inline "On ... wrote:" lines).
-    filtered: list[_Message] = []
-    for m in msgs:
-        if (m.end - m.start) < 40:
-            continue
-        filtered.append(m)
 
+def _filter_messages(msgs: list[_Message]) -> list[_Message]:
+    filtered = [msg for msg in msgs if (msg.end - msg.start) >= 40]
     return filtered if len(filtered) >= 2 else []
+
+
+def _iter_messages(text: str) -> list[_Message]:
+    if not text:
+        return []
+    starts = _message_start_candidates(text)
+    if len(starts) < 2:
+        return []
+    return _filter_messages(_messages_from_starts(text, starts))
 
 
 def looks_like_email_thread(text: str) -> bool:
@@ -222,6 +225,82 @@ def looks_like_email_thread(text: str) -> bool:
     has_sep = any(_looks_like_thread_separator_line(ln) for ln in head.splitlines())
     has_headers = _count_header_lines(head.splitlines()[:120]) >= 3
     return bool(has_sep and has_headers)
+
+
+def _split_email_fallback_docs(splitter: RecursiveCharacterTextSplitter, text: str, base_meta: dict[str, Any]) -> list[Document]:
+    split_docs = splitter.create_documents(texts=[text], metadatas=[base_meta])
+    chunks: list[Document] = []
+    for split_doc in split_docs:
+        split_meta = dict(split_doc.metadata or {})
+        abs_start = int(split_meta.pop("start_index", None) or 0)
+        meta: dict[str, Any] = dict(base_meta)
+        meta.update(split_meta)
+        meta["chunk_strategy"] = "email_thread"
+        meta["start_char"] = abs_start
+        meta["end_char"] = abs_start + len(split_doc.page_content)
+        meta["email_thread_fallback"] = True
+        chunks.append(Document(page_content=split_doc.page_content, metadata=meta))
+    return chunks
+
+
+def _email_window_end(msgs: list[_Message], start_idx: int, chunk_size: int) -> int:
+    end_idx = start_idx
+    while end_idx < len(msgs):
+        candidate_len = msgs[end_idx].end - msgs[start_idx].start
+        if end_idx == start_idx or candidate_len <= chunk_size:
+            end_idx += 1
+            continue
+        break
+    return end_idx if end_idx > start_idx else start_idx + 1
+
+
+def _window_email_subjects(msgs: list[_Message], start_idx: int, end_idx: int) -> tuple[list[str], list[str]]:
+    subjects: list[str] = []
+    froms: list[str] = []
+    for msg in msgs[start_idx:end_idx]:
+        headers = msg.headers
+        subject = headers.get("subject") or headers.get("主题")
+        sender = headers.get("from") or headers.get("发件人")
+        if subject and subject not in subjects:
+            subjects.append(subject)
+        if sender and sender not in froms:
+            froms.append(sender)
+    return subjects[:3], froms[:3]
+
+
+def _build_email_chunk(msgs: list[_Message], start_idx: int, end_idx: int, base_meta: dict[str, Any], text: str) -> Document:
+    chunk_start = msgs[start_idx].start
+    chunk_end = msgs[end_idx - 1].end
+    content = text[chunk_start:chunk_end]
+    subjects, froms = _window_email_subjects(msgs, start_idx, end_idx)
+
+    meta: dict[str, Any] = dict(base_meta)
+    meta["chunk_strategy"] = "email_thread"
+    meta["start_char"] = chunk_start
+    meta["end_char"] = chunk_end
+    meta["email_message_count"] = int(end_idx - start_idx)
+    if subjects:
+        meta["email_subjects"] = subjects
+    if froms:
+        meta["email_froms"] = froms
+    meta["email_has_quotes"] = _has_quote_lines(content)
+    return Document(page_content=content, metadata=meta)
+
+
+def _next_email_start(msgs: list[_Message], start_idx: int, end_idx: int, chunk_overlap: int) -> int:
+    next_start = end_idx
+    if chunk_overlap <= 0 or (end_idx - start_idx) <= 1:
+        return next_start
+
+    desired = end_idx - 1
+    while desired > start_idx:
+        overlap_len = msgs[end_idx - 1].end - msgs[desired - 1].start
+        if overlap_len <= chunk_overlap:
+            desired -= 1
+            continue
+        break
+    next_start = desired if desired > start_idx else (end_idx - 1)
+    return next_start if next_start > start_idx else end_idx
 
 
 class EmailThreadChunker(BaseChunker):
@@ -241,85 +320,7 @@ class EmailThreadChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
-            base_meta = dict(doc.metadata or {})
-            if not text.strip():
-                continue
-
-            msgs = _iter_messages(text)
-            if not msgs:
-                split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "email_thread"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta["email_thread_fallback"] = True
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
-                continue
-
-            start_idx = 0
-            while start_idx < len(msgs):
-                end_idx = start_idx
-                while end_idx < len(msgs):
-                    candidate_end = msgs[end_idx].end
-                    candidate_len = candidate_end - msgs[start_idx].start
-                    if end_idx == start_idx or candidate_len <= self.chunk_size:
-                        end_idx += 1
-                        continue
-                    break
-
-                if end_idx == start_idx:
-                    end_idx = start_idx + 1
-
-                chunk_start = msgs[start_idx].start
-                chunk_end = msgs[end_idx - 1].end
-                content = text[chunk_start:chunk_end]
-
-                subjects: list[str] = []
-                froms: list[str] = []
-                for m in msgs[start_idx:end_idx]:
-                    h = m.headers
-                    subj = h.get("subject") or h.get("主题")
-                    frm = h.get("from") or h.get("发件人")
-                    if subj and subj not in subjects:
-                        subjects.append(subj)
-                    if frm and frm not in froms:
-                        froms.append(frm)
-                subjects = subjects[:3]
-                froms = froms[:3]
-
-                meta: dict[str, Any] = dict(base_meta)
-                meta["chunk_strategy"] = "email_thread"
-                meta["start_char"] = chunk_start
-                meta["end_char"] = chunk_end
-                meta["email_message_count"] = int(end_idx - start_idx)
-                if subjects:
-                    meta["email_subjects"] = subjects
-                if froms:
-                    meta["email_froms"] = froms
-                meta["email_has_quotes"] = _has_quote_lines(content)
-                out.append(Document(page_content=content, metadata=meta))
-
-                # Message-level overlap.
-                next_start = end_idx
-                if self.chunk_overlap > 0 and (end_idx - start_idx) > 1:
-                    desired = end_idx - 1
-                    while desired > start_idx:
-                        overlap_len = msgs[end_idx - 1].end - msgs[desired - 1].start
-                        if overlap_len <= self.chunk_overlap:
-                            desired -= 1
-                            continue
-                        break
-                    next_start = desired if desired > start_idx else (end_idx - 1)
-
-                if next_start <= start_idx:
-                    next_start = end_idx
-                start_idx = next_start
+            out.extend(self._split_document(doc))
 
         for idx, chunk in enumerate(out):
             meta = dict(chunk.metadata or {})
@@ -327,3 +328,21 @@ class EmailThreadChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
+
+    def _split_document(self, doc: Document) -> list[Document]:
+        text = doc.page_content or ""
+        if not text.strip():
+            return []
+
+        base_meta = dict(doc.metadata or {})
+        msgs = _iter_messages(text)
+        if not msgs:
+            return _split_email_fallback_docs(self._fallback_splitter, text, base_meta)
+
+        chunks: list[Document] = []
+        start_idx = 0
+        while start_idx < len(msgs):
+            end_idx = _email_window_end(msgs, start_idx, self.chunk_size)
+            chunks.append(_build_email_chunk(msgs, start_idx, end_idx, base_meta, text))
+            start_idx = _next_email_start(msgs, start_idx, end_idx, self.chunk_overlap)
+        return chunks
