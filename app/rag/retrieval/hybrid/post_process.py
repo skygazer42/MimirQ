@@ -618,7 +618,11 @@ class PostProcessMixin:
         if doc_ctx.doc_ready_by_id and not doc_ctx.doc_ready_by_id.get(doc_id_str, False):
             self._increment_enrichment_stat(stats0, "filtered_not_ready")
             return False
-        if not self._embedding_space_allowed(meta, embedding_space=embedding_space):
+        if not self._embedding_space_allowed(
+            meta,
+            embedding_space=embedding_space,
+            chunk=chunk,
+        ):
             self._increment_enrichment_stat(stats0, "filtered_embedding_space")
             return False
         if not self._active_pipeline_allowed(chunk, meta, doc_ctx=doc_ctx):
@@ -631,13 +635,20 @@ class PostProcessMixin:
         if stats0 is not None:
             stats0[key] = int(stats0.get(key, 0) or 0) + 1
 
-    def _embedding_space_allowed(self, meta: dict[str, Any], *, embedding_space: str) -> bool:
+    def _embedding_space_allowed(
+        self,
+        meta: dict[str, Any],
+        *,
+        embedding_space: str,
+        chunk: DocumentChunk,
+    ) -> bool:
         expected_embedding_space = str(
             meta.get(_RETRIEVAL_EXPECTED_EMBEDDING_SPACE_KEY) or embedding_space or ""
         ).strip()
         if meta.get(_RETRIEVAL_EXPECTED_EMBEDDING_SPACE_KEY) is None and meta.get("score") is None:
             return True
-        ck_space = str(meta.get("embedding_space_hash") or "").strip()
+        stored_meta = chunk.doc_metadata if isinstance(chunk.doc_metadata, dict) else {}
+        ck_space = str(meta.get("embedding_space_hash") or stored_meta.get("embedding_space_hash") or "").strip()
         return not expected_embedding_space or ck_space == expected_embedding_space
 
     def _active_pipeline_allowed(

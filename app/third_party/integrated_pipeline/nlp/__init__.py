@@ -55,33 +55,123 @@ def _roman_to_int(text: str) -> int:
         raise ValueError("not_roman")
     return total
 
-__all__ = ['rag_tokenizer']
+
+__all__ = ["rag_tokenizer"]
 
 all_codecs = [
-    'utf-8', 'gb2312', 'gbk', 'utf_16', 'ascii', 'big5', 'big5hkscs',
-    'cp037', 'cp273', 'cp424', 'cp437',
-    'cp500', 'cp720', 'cp737', 'cp775', 'cp850', 'cp852', 'cp855', 'cp856', 'cp857',
-    'cp858', 'cp860', 'cp861', 'cp862', 'cp863', 'cp864', 'cp865', 'cp866', 'cp869',
-    'cp874', 'cp875', 'cp932', 'cp949', 'cp950', 'cp1006', 'cp1026', 'cp1125',
-    'cp1140', 'cp1250', 'cp1251', 'cp1252', 'cp1253', 'cp1254', 'cp1255', 'cp1256',
-    'cp1257', 'cp1258', 'euc_jp', 'euc_jis_2004', 'euc_jisx0213', 'euc_kr',
-    'gb18030', 'hz', 'iso2022_jp', 'iso2022_jp_1', 'iso2022_jp_2',
-    'iso2022_jp_2004', 'iso2022_jp_3', 'iso2022_jp_ext', 'iso2022_kr', 'latin_1',
-    'iso8859_2', 'iso8859_3', 'iso8859_4', 'iso8859_5', 'iso8859_6', 'iso8859_7',
-    'iso8859_8', 'iso8859_9', 'iso8859_10', 'iso8859_11', 'iso8859_13',
-    'iso8859_14', 'iso8859_15', 'iso8859_16', 'johab', 'koi8_r', 'koi8_t', 'koi8_u',
-    'kz1048', 'mac_cyrillic', 'mac_greek', 'mac_iceland', 'mac_latin2', 'mac_roman',
-    'mac_turkish', 'ptcp154', 'shift_jis', 'shift_jis_2004', 'shift_jisx0213',
-    'utf_32', 'utf_32_be', 'utf_32_le', 'utf_16_be', 'utf_16_le', 'utf_7', 'windows-1250', 'windows-1251',
-    'windows-1252', 'windows-1253', 'windows-1254', 'windows-1255', 'windows-1256',
-    'windows-1257', 'windows-1258', 'latin-2'
+    "utf-8",
+    "gb2312",
+    "gbk",
+    "utf_16",
+    "ascii",
+    "big5",
+    "big5hkscs",
+    "cp037",
+    "cp273",
+    "cp424",
+    "cp437",
+    "cp500",
+    "cp720",
+    "cp737",
+    "cp775",
+    "cp850",
+    "cp852",
+    "cp855",
+    "cp856",
+    "cp857",
+    "cp858",
+    "cp860",
+    "cp861",
+    "cp862",
+    "cp863",
+    "cp864",
+    "cp865",
+    "cp866",
+    "cp869",
+    "cp874",
+    "cp875",
+    "cp932",
+    "cp949",
+    "cp950",
+    "cp1006",
+    "cp1026",
+    "cp1125",
+    "cp1140",
+    "cp1250",
+    "cp1251",
+    "cp1252",
+    "cp1253",
+    "cp1254",
+    "cp1255",
+    "cp1256",
+    "cp1257",
+    "cp1258",
+    "euc_jp",
+    "euc_jis_2004",
+    "euc_jisx0213",
+    "euc_kr",
+    "gb18030",
+    "hz",
+    "iso2022_jp",
+    "iso2022_jp_1",
+    "iso2022_jp_2",
+    "iso2022_jp_2004",
+    "iso2022_jp_3",
+    "iso2022_jp_ext",
+    "iso2022_kr",
+    "latin_1",
+    "iso8859_2",
+    "iso8859_3",
+    "iso8859_4",
+    "iso8859_5",
+    "iso8859_6",
+    "iso8859_7",
+    "iso8859_8",
+    "iso8859_9",
+    "iso8859_10",
+    "iso8859_11",
+    "iso8859_13",
+    "iso8859_14",
+    "iso8859_15",
+    "iso8859_16",
+    "johab",
+    "koi8_r",
+    "koi8_t",
+    "koi8_u",
+    "kz1048",
+    "mac_cyrillic",
+    "mac_greek",
+    "mac_iceland",
+    "mac_latin2",
+    "mac_roman",
+    "mac_turkish",
+    "ptcp154",
+    "shift_jis",
+    "shift_jis_2004",
+    "shift_jisx0213",
+    "utf_32",
+    "utf_32_be",
+    "utf_32_le",
+    "utf_16_be",
+    "utf_16_le",
+    "utf_7",
+    "windows-1250",
+    "windows-1251",
+    "windows-1252",
+    "windows-1253",
+    "windows-1254",
+    "windows-1255",
+    "windows-1256",
+    "windows-1257",
+    "windows-1258",
+    "latin-2",
 ]
 
 
 def find_codec(blob):
     detected = chardet.detect(blob[:1024])
-    if detected['confidence'] > 0.5:
-        if detected['encoding'] == "ascii":
+    if detected["confidence"] > 0.5:
+        if detected["encoding"] == "ascii":
             return "utf-8"
 
     for c in all_codecs:
@@ -115,46 +205,55 @@ QUESTION_PATTERN = [
 
 
 def has_qbullet(reg, box, last_box, last_index, last_bull, bull_x0_list):
-    section, last_section = box['text'], last_box['text']
-    q_reg = r'(\w|\W)*?(?:？|\?|\n|$)+'
-    full_reg = reg + q_reg
-    has_bull = re.match(full_reg, section)
-    index_str = None
-    if has_bull:
-        if 'x0' not in last_box:
-            last_box['x0'] = box['x0']
-        if 'top' not in last_box:
-            last_box['top'] = box['top']
-        if last_bull and box['x0'] - last_box['x0'] > 10:
-            return None, last_index
-        if not last_bull and box['x0'] >= last_box['x0'] and box['top'] - last_box['top'] < 20:
-            return None, last_index
-        avg_bull_x0 = 0
-        if bull_x0_list:
-            avg_bull_x0 = sum(bull_x0_list) / len(bull_x0_list)
-        else:
-            avg_bull_x0 = box['x0']
-        if box['x0'] - avg_bull_x0 > 10:
-            return None, last_index
-        index_str = has_bull.group(1)
-        index = index_int(index_str)
-        if last_section[-1] == ':' or last_section[-1] == '：':
-            return None, last_index
-        if not last_index or index >= last_index:
-            bull_x0_list.append(box['x0'])
-            return has_bull, index
-        if section[-1] == '?' or section[-1] == '？':
-            bull_x0_list.append(box['x0'])
-            return has_bull, index
-        if box['layout_type'] == 'title':
-            bull_x0_list.append(box['x0'])
-            return has_bull, index
-        pure_section = section.lstrip(re.match(reg, section).group()).lower()
-        ask_reg = r'(what|when|where|how|why|which|who|whose|为什么|为啥|哪)'
-        if re.match(ask_reg, pure_section):
-            bull_x0_list.append(box['x0'])
-            return has_bull, index
+    section, last_section = box["text"], last_box["text"]
+    has_bull = re.match(reg + r"(\w|\W)*?(?:？|\?|\n|$)+", section)
+    if not has_bull:
+        return None, last_index
+    _fill_missing_box_position(last_box, box)
+    if _misaligned_qbullet(box, last_box, last_bull, bull_x0_list):
+        return None, last_index
+    index = index_int(has_bull.group(1))
+    if last_section[-1] in ":：":
+        return None, last_index
+    if _accept_qbullet_index(section, box, reg, index, last_index):
+        bull_x0_list.append(box["x0"])
+        return has_bull, index
     return None, last_index
+
+
+def _fill_missing_box_position(last_box, box):
+    if "x0" not in last_box:
+        last_box["x0"] = box["x0"]
+    if "top" not in last_box:
+        last_box["top"] = box["top"]
+
+
+def _misaligned_qbullet(box, last_box, last_bull, bull_x0_list):
+    if last_bull and box["x0"] - last_box["x0"] > 10:
+        return True
+    if not last_bull and box["x0"] >= last_box["x0"] and box["top"] - last_box["top"] < 20:
+        return True
+    avg_bull_x0 = sum(bull_x0_list) / len(bull_x0_list) if bull_x0_list else box["x0"]
+    return box["x0"] - avg_bull_x0 > 10
+
+
+def _accept_qbullet_index(section, box, reg, index, last_index):
+    if not last_index or index >= last_index:
+        return True
+    if section[-1] in "?？":
+        return True
+    if box["layout_type"] == "title":
+        return True
+    return _question_has_interrogative_lead(section, reg)
+
+
+def _question_has_interrogative_lead(section, reg):
+    matched = re.match(reg, section)
+    if not matched:
+        return False
+    pure_section = section.lstrip(matched.group()).lower()
+    ask_reg = r"(what|when|where|how|why|which|who|whose|为什么|为啥|哪)"
+    return bool(re.match(ask_reg, pure_section))
 
 
 def index_int(index_str):
@@ -193,38 +292,43 @@ def qbullets_category(sections):
     return res, QUESTION_PATTERN[res]
 
 
-BULLET_PATTERN = [[
-    r"第[零一二三四五六七八九十百0-9]+(分?编|部分)",
-    r"第[零一二三四五六七八九十百0-9]+章",
-    r"第[零一二三四五六七八九十百0-9]+节",
-    r"第[零一二三四五六七八九十百0-9]+条",
-    r"[\(（][零一二三四五六七八九十百]+[\)）]",
-], [
-    r"第\d+章",
-    r"第\d+节",
-    r"\d{,2}[\. 、]",
-    r"\d{,2}\.\d{,2}[^a-zA-Z/%~-]",
-    r"\d{,2}\.\d{,2}\.\d{,2}",
-    r"\d{,2}\.\d{,2}\.\d{,2}\.\d{,2}",
-], [
-    r"第[零一二三四五六七八九十百0-9]+章",
-    r"第[零一二三四五六七八九十百0-9]+节",
-    r"[零一二三四五六七八九十百]+[ 、]",
-    r"[\(（][零一二三四五六七八九十百]+[\)）]",
-    r"[\(（]\d{,2}[\)）]",
-], [
-    r"PART (ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|TEN)",
-    r"Chapter (I+V?|VI*|XI|IX|X)",
-    r"Section \d+",
-    r"Article \d+"
-], [
-    r"^#[^#]",
-    r"^##[^#]",
-    r"^###.*",
-    r"^####.*",
-    r"^#####.*",
-    r"^######.*",
-]
+BULLET_PATTERN = [
+    [
+        r"第[零一二三四五六七八九十百0-9]+(分?编|部分)",
+        r"第[零一二三四五六七八九十百0-9]+章",
+        r"第[零一二三四五六七八九十百0-9]+节",
+        r"第[零一二三四五六七八九十百0-9]+条",
+        r"[\(（][零一二三四五六七八九十百]+[\)）]",
+    ],
+    [
+        r"第\d+章",
+        r"第\d+节",
+        r"\d{,2}[\. 、]",
+        r"\d{,2}\.\d{,2}[^a-zA-Z/%~-]",
+        r"\d{,2}\.\d{,2}\.\d{,2}",
+        r"\d{,2}\.\d{,2}\.\d{,2}\.\d{,2}",
+    ],
+    [
+        r"第[零一二三四五六七八九十百0-9]+章",
+        r"第[零一二三四五六七八九十百0-9]+节",
+        r"[零一二三四五六七八九十百]+[ 、]",
+        r"[\(（][零一二三四五六七八九十百]+[\)）]",
+        r"[\(（]\d{,2}[\)）]",
+    ],
+    [
+        r"PART (ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|TEN)",
+        r"Chapter (I+V?|VI*|XI|IX|X)",
+        r"Section \d+",
+        r"Article \d+",
+    ],
+    [
+        r"^#[^#]",
+        r"^##[^#]",
+        r"^###.*",
+        r"^####.*",
+        r"^#####.*",
+        r"^######.*",
+    ],
 ]
 
 
@@ -234,9 +338,7 @@ def random_choices(arr, k):
 
 
 def not_bullet(line):
-    patt = [
-        r"0", r"\d+ +[0-9~个只-]", r"\d+\.{2,}"
-    ]
+    patt = [r"0", r"\d+ +[0-9~个只-]", r"\d+\.{2,}"]
     return any(re.match(r, line) for r in patt)
 
 
@@ -285,7 +387,7 @@ def is_chinese(text):
         return False
     chinese = 0
     for ch in text:
-        if '\u4e00' <= ch <= '\u9fff':
+        if "\u4e00" <= ch <= "\u9fff":
             chinese += 1
     if chinese / len(text) > 0.2:
         return True
@@ -294,6 +396,7 @@ def is_chinese(text):
 
 def tokenize(d, txt, eng):
     from . import rag_tokenizer
+
     _ = eng
     d["content_with_weight"] = txt
     t = re.sub(r"</?(table|td|caption|tr|th)( [^<>]{0,12})?>", " ", txt)
@@ -317,7 +420,7 @@ def tokenize_chunks(chunks, doc, eng, pdf_parser=None, child_delimiters_pattern=
             except NotImplementedError:
                 pass
         else:
-            add_positions(d, [[ii]*5])
+            add_positions(d, [[ii] * 5])
 
         if child_delimiters_pattern:
             d["mom_with_weight"] = ck
@@ -341,7 +444,7 @@ def tokenize_chunks_with_images(chunks, doc, eng, images, child_delimiters_patte
         logging.debug("-- {}".format(ck))
         d = copy.deepcopy(doc)
         d["image"] = image
-        add_positions(d, [[ii]*5])
+        add_positions(d, [[ii] * 5])
         if child_delimiters_pattern:
             d["mom_with_weight"] = ck
             for txt in re.split(r"(%s)" % child_delimiters_pattern, ck, flags=re.DOTALL):
@@ -375,7 +478,7 @@ def tokenize_table(tbls, doc, eng, batch_size=10):
         de = "; " if eng else "； "
         for i in range(0, len(rows), batch_size):
             d = copy.deepcopy(doc)
-            r = de.join(rows[i:i + batch_size])
+            r = de.join(rows[i : i + batch_size])
             tokenize(d, r, eng)
             d["doc_type_kwd"] = "table"
             if img:
@@ -393,186 +496,200 @@ def attach_media_context(chunks, table_context_size=0, image_context_size=0):
     order chunks before collecting context; otherwise keep original order.
     """
     from . import rag_tokenizer
+
     if not chunks or (table_context_size <= 0 and image_context_size <= 0):
         return chunks
 
-    def is_image_chunk(ck):
-        if ck.get("doc_type_kwd") == "image":
-            return True
-
-        text_val = ck.get("content_with_weight") if isinstance(ck.get("content_with_weight"), str) else ck.get("text")
-        has_text = isinstance(text_val, str) and text_val.strip()
-        return bool(ck.get("image")) and not has_text
-
-    def is_table_chunk(ck):
-        return ck.get("doc_type_kwd") == "table"
-
-    def is_text_chunk(ck):
-        return not is_image_chunk(ck) and not is_table_chunk(ck)
-
-    def get_text(ck):
-        if isinstance(ck.get("content_with_weight"), str):
-            return ck["content_with_weight"]
-        if isinstance(ck.get("text"), str):
-            return ck["text"]
-        return ""
-
-    def split_sentences(text):
-        pattern = r"([.。！？!?；;：:\n])"
-        parts = re.split(pattern, text)
-        sentences = []
-        buf = ""
-        for p in parts:
-            if not p:
-                continue
-            if re.fullmatch(pattern, p):
-                buf += p
-                sentences.append(buf)
-                buf = ""
-            else:
-                buf += p
-        if buf:
-            sentences.append(buf)
-        return sentences
-
-    def trim_to_tokens(text, token_budget, from_tail=False):
-        if token_budget <= 0 or not text:
-            return ""
-        sentences = split_sentences(text)
-        if not sentences:
-            return ""
-
-        collected = []
-        remaining = token_budget
-        seq = reversed(sentences) if from_tail else sentences
-        for s in seq:
-            tks = num_tokens_from_string(s)
-            if tks <= 0:
-                continue
-            if tks > remaining:
-                collected.append(s)
-                break
-            collected.append(s)
-            remaining -= tks
-
-        if from_tail:
-            collected = list(reversed(collected))
-        return "".join(collected)
-
-    def extract_position(ck):
-        pn = None
-        top = None
-        left = None
-        try:
-            if ck.get("page_num_int"):
-                pn = ck["page_num_int"][0]
-            elif ck.get("page_number") is not None:
-                pn = ck.get("page_number")
-
-            if ck.get("top_int"):
-                top = ck["top_int"][0]
-            elif ck.get("top") is not None:
-                top = ck.get("top")
-
-            if ck.get("position_int"):
-                left = ck["position_int"][0][1]
-            elif ck.get("x0") is not None:
-                left = ck.get("x0")
-        except Exception:
-            pn = top = left = None
-        return pn, top, left
-
-    indexed = list(enumerate(chunks))
-    positioned_indices = []
-    unpositioned_indices = []
-    for idx, ck in indexed:
-        pn, top, left = extract_position(ck)
-        if pn is not None and top is not None:
-            positioned_indices.append((idx, pn, top, left if left is not None else 0))
-        else:
-            unpositioned_indices.append(idx)
-
-    if positioned_indices:
-        positioned_indices.sort(key=lambda x: (int(x[1]), int(x[2]), int(x[3]), x[0]))
-        ordered_indices = [i for i, _, _, _ in positioned_indices] + unpositioned_indices
-    else:
-        ordered_indices = [idx for idx, _ in indexed]
-
-    total = len(ordered_indices)
+    ordered_indices, has_positioned_chunks = _ordered_chunk_indices(chunks)
     for sorted_pos, idx in enumerate(ordered_indices):
         ck = chunks[idx]
-        token_budget = image_context_size if is_image_chunk(ck) else table_context_size if is_table_chunk(ck) else 0
+        token_budget = _media_context_budget(ck, table_context_size, image_context_size)
         if token_budget <= 0:
             continue
-
-        prev_ctx = []
-        remaining_prev = token_budget
-        for prev_idx in range(sorted_pos - 1, -1, -1):
-            if remaining_prev <= 0:
-                break
-            neighbor_idx = ordered_indices[prev_idx]
-            if not is_text_chunk(chunks[neighbor_idx]):
-                break
-            txt = get_text(chunks[neighbor_idx])
-            if not txt:
-                continue
-            tks = num_tokens_from_string(txt)
-            if tks <= 0:
-                continue
-            if tks > remaining_prev:
-                txt = trim_to_tokens(txt, remaining_prev, from_tail=True)
-                tks = num_tokens_from_string(txt)
-            prev_ctx.append(txt)
-            remaining_prev -= tks
-        prev_ctx.reverse()
-
-        next_ctx = []
-        remaining_next = token_budget
-        for next_idx in range(sorted_pos + 1, total):
-            if remaining_next <= 0:
-                break
-            neighbor_idx = ordered_indices[next_idx]
-            if not is_text_chunk(chunks[neighbor_idx]):
-                break
-            txt = get_text(chunks[neighbor_idx])
-            if not txt:
-                continue
-            tks = num_tokens_from_string(txt)
-            if tks <= 0:
-                continue
-            if tks > remaining_next:
-                txt = trim_to_tokens(txt, remaining_next, from_tail=False)
-                tks = num_tokens_from_string(txt)
-            next_ctx.append(txt)
-            remaining_next -= tks
-
+        prev_ctx = _collect_neighbor_context(chunks, ordered_indices, sorted_pos, token_budget, -1)
+        next_ctx = _collect_neighbor_context(chunks, ordered_indices, sorted_pos, token_budget, 1)
         if not prev_ctx and not next_ctx:
             continue
-
-        self_text = get_text(ck)
-        pieces = [*prev_ctx]
-        if self_text:
-            pieces.append(self_text)
-        pieces.extend(next_ctx)
-        combined = "\n".join(pieces)
-
-        original = ck.get("content_with_weight")
-        if "content_with_weight" in ck:
-            ck["content_with_weight"] = combined
-        elif "text" in ck:
-            original = ck.get("text")
-            ck["text"] = combined
-
+        combined = "\n".join(_media_context_pieces(prev_ctx, _chunk_text(ck), next_ctx))
+        original = _replace_chunk_text(ck, combined)
         if combined != original:
-            if "content_ltks" in ck:
-                ck["content_ltks"] = rag_tokenizer.tokenize(combined)
-            if "content_sm_ltks" in ck:
-                ck["content_sm_ltks"] = rag_tokenizer.fine_grained_tokenize(ck.get("content_ltks", rag_tokenizer.tokenize(combined)))
-
-    if positioned_indices:
+            _refresh_chunk_tokens(ck, combined, rag_tokenizer)
+    if has_positioned_chunks:
         chunks[:] = [chunks[i] for i in ordered_indices]
 
     return chunks
+
+
+def _is_image_chunk(ck):
+    if ck.get("doc_type_kwd") == "image":
+        return True
+    text_val = ck.get("content_with_weight") if isinstance(ck.get("content_with_weight"), str) else ck.get("text")
+    has_text = isinstance(text_val, str) and text_val.strip()
+    return bool(ck.get("image")) and not has_text
+
+
+def _is_table_chunk(ck):
+    return ck.get("doc_type_kwd") == "table"
+
+
+def _is_text_chunk(ck):
+    return not _is_image_chunk(ck) and not _is_table_chunk(ck)
+
+
+def _chunk_text(ck):
+    if isinstance(ck.get("content_with_weight"), str):
+        return ck["content_with_weight"]
+    if isinstance(ck.get("text"), str):
+        return ck["text"]
+    return ""
+
+
+def _split_context_sentences(text):
+    pattern = r"([.。！？!?；;：:\n])"
+    parts = re.split(pattern, text)
+    sentences = []
+    buf = ""
+    for part in parts:
+        if not part:
+            continue
+        if re.fullmatch(pattern, part):
+            buf += part
+            sentences.append(buf)
+            buf = ""
+            continue
+        buf += part
+    if buf:
+        sentences.append(buf)
+    return sentences
+
+
+def _trim_context_to_tokens(text, token_budget, from_tail=False):
+    if token_budget <= 0 or not text:
+        return ""
+    sentences = _split_context_sentences(text)
+    if not sentences:
+        return ""
+    collected = []
+    remaining = token_budget
+    sequence = reversed(sentences) if from_tail else sentences
+    for sentence in sequence:
+        tks = num_tokens_from_string(sentence)
+        if tks <= 0:
+            continue
+        collected.append(sentence)
+        if tks > remaining:
+            break
+        remaining -= tks
+    if from_tail:
+        collected.reverse()
+    return "".join(collected)
+
+
+def _chunk_position(ck):
+    pn = None
+    top = None
+    left = None
+    try:
+        if ck.get("page_num_int"):
+            pn = ck["page_num_int"][0]
+        elif ck.get("page_number") is not None:
+            pn = ck.get("page_number")
+        if ck.get("top_int"):
+            top = ck["top_int"][0]
+        elif ck.get("top") is not None:
+            top = ck.get("top")
+        if ck.get("position_int"):
+            left = ck["position_int"][0][1]
+        elif ck.get("x0") is not None:
+            left = ck.get("x0")
+    except Exception:
+        return None, None, None
+    return pn, top, left
+
+
+def _ordered_chunk_indices(chunks):
+    positioned = []
+    unpositioned = []
+    for idx, ck in enumerate(chunks):
+        pn, top, left = _chunk_position(ck)
+        if pn is not None and top is not None:
+            positioned.append((idx, pn, top, left if left is not None else 0))
+            continue
+        unpositioned.append(idx)
+    if not positioned:
+        return list(range(len(chunks))), False
+    positioned.sort(key=lambda item: (int(item[1]), int(item[2]), int(item[3]), item[0]))
+    return [idx for idx, _, _, _ in positioned] + unpositioned, True
+
+
+def _media_context_budget(ck, table_context_size, image_context_size):
+    if _is_image_chunk(ck):
+        return image_context_size
+    if _is_table_chunk(ck):
+        return table_context_size
+    return 0
+
+
+def _collect_neighbor_context(chunks, ordered_indices, sorted_pos, token_budget, step):
+    context = []
+    remaining = token_budget
+    stop = len(ordered_indices) if step > 0 else -1
+    for pos in range(sorted_pos + step, stop, step):
+        if remaining <= 0:
+            break
+        neighbor = chunks[ordered_indices[pos]]
+        if not _is_text_chunk(neighbor):
+            break
+        txt, tks = _fit_context_text(_chunk_text(neighbor), remaining, step < 0)
+        if not txt:
+            continue
+        context.append(txt)
+        remaining -= tks
+    if step < 0:
+        context.reverse()
+    return context
+
+
+def _fit_context_text(text, token_budget, from_tail):
+    if not text:
+        return "", 0
+    tks = num_tokens_from_string(text)
+    if tks <= 0:
+        return "", 0
+    if tks > token_budget:
+        text = _trim_context_to_tokens(text, token_budget, from_tail=from_tail)
+        tks = num_tokens_from_string(text)
+    return text, tks
+
+
+def _media_context_pieces(prev_ctx, self_text, next_ctx):
+    pieces = [*prev_ctx]
+    if self_text:
+        pieces.append(self_text)
+    pieces.extend(next_ctx)
+    return pieces
+
+
+def _replace_chunk_text(ck, combined):
+    original = ck.get("content_with_weight")
+    if "content_with_weight" in ck:
+        ck["content_with_weight"] = combined
+        return original
+    if "text" in ck:
+        original = ck.get("text")
+        ck["text"] = combined
+    return original
+
+
+def _refresh_chunk_tokens(ck, combined, rag_tokenizer):
+    content_tokens = ck.get("content_ltks")
+    if "content_ltks" in ck:
+        content_tokens = rag_tokenizer.tokenize(combined)
+        ck["content_ltks"] = content_tokens
+    if "content_sm_ltks" in ck:
+        if content_tokens is None:
+            content_tokens = rag_tokenizer.tokenize(combined)
+        ck["content_sm_ltks"] = rag_tokenizer.fine_grained_tokenize(content_tokens)
 
 
 def add_positions(d, poss):
@@ -593,33 +710,49 @@ def add_positions(d, poss):
 def remove_contents_table(sections, eng=False):
     i = 0
     while i < len(sections):
-        def get(i):
-            nonlocal sections
-            return (sections[i] if isinstance(sections[i],
-                                              type("")) else sections[i][0]).strip()
-
-        if not re.match(r"(contents|目录|目次|table of contents|致谢|acknowledge)$",
-                        re.sub(r"( | |\u3000)+", "", get(i).split("@@")[0], flags=re.IGNORECASE)):
+        if not _is_contents_heading(_section_text(sections[i])):
             i += 1
             continue
         sections.pop(i)
         if i >= len(sections):
             break
-        prefix = get(i)[:3] if not eng else " ".join(get(i).split()[:2])
-        while not prefix:
-            sections.pop(i)
-            if i >= len(sections):
-                break
-            prefix = get(i)[:3] if not eng else " ".join(get(i).split()[:2])
+        prefix = _consume_empty_contents_entries(sections, i, eng)
+        if i >= len(sections):
+            break
         sections.pop(i)
         if i >= len(sections) or not prefix:
             break
-        for j in range(i, min(i + 128, len(sections))):
-            if not re.match(prefix, get(j)):
-                continue
-            for _ in range(i, j):
-                sections.pop(i)
-            break
+        _drop_prefixed_contents_entries(sections, i, prefix)
+
+
+def _section_text(section):
+    return (section if isinstance(section, str) else section[0]).strip()
+
+
+def _is_contents_heading(text):
+    normalized = re.sub(r"( | |\u3000)+", "", text.split("@@")[0], flags=re.IGNORECASE)
+    return bool(re.match(r"(contents|目录|目次|table of contents|致谢|acknowledge)$", normalized))
+
+
+def _consume_empty_contents_entries(sections, index, eng):
+    while index < len(sections):
+        prefix = _contents_prefix(_section_text(sections[index]), eng)
+        if prefix:
+            return prefix
+        sections.pop(index)
+    return ""
+
+
+def _contents_prefix(text, eng):
+    return " ".join(text.split()[:2]) if eng else text[:3]
+
+
+def _drop_prefixed_contents_entries(sections, index, prefix):
+    for end in range(index, min(index + 128, len(sections))):
+        if not re.match(prefix, _section_text(sections[end])):
+            continue
+        del sections[index:end]
+        break
 
 
 def make_colon_as_title(sections):
@@ -673,285 +806,347 @@ def not_title(txt):
         return True
     return re.search(r"[,;，。；！!]", txt)
 
-def tree_merge(bull, sections, depth):
 
+def tree_merge(bull, sections, depth):
     if not sections or bull < 0:
         return sections
-    if isinstance(sections[0], type("")):
-        sections = [(s, "") for s in sections]
+    normalized_sections = _normalize_structured_sections(sections)
+    lines, sorted_levels = _tree_lines(bull, normalized_sections)
+    target_level = _tree_target_level(sorted_levels, bull, depth)
+    root = Node(level=0, depth=target_level, texts=[])
+    root.build_tree(lines)
+    return [element for element in root.get_tree() if element]
 
-    # filter out position information in pdf sections
-    sections = [(t, o) for t, o in sections if
-                t and len(t.split("@")[0].strip()) > 1 and not re.match(r"\d+$", t.split("@")[0].strip())]
 
-    def get_level(bull, section):
-        text, layout = section
-        text = re.sub(r"\u3000", " ",   text).strip()
+def _normalize_structured_sections(sections):
+    if isinstance(sections[0], str):
+        sections = [(section, "") for section in sections]
+    return [
+        (text, layout)
+        for text, layout in sections
+        if text and len(text.split("@")[0].strip()) > 1 and not re.match(r"\d+$", text.split("@")[0].strip())
+    ]
 
-        for i, title in enumerate(BULLET_PATTERN[bull]):
-            if re.match(title, text.strip()):
-                return i+1, text
-        else:
-            if re.search(r"(title|head)", layout) and not not_title(text):
-                return len(BULLET_PATTERN[bull])+1, text
-            else:
-                return len(BULLET_PATTERN[bull])+2, text
+
+def _tree_section_level(bull, section):
+    text, layout = section
+    text = re.sub(r"\u3000", " ", text).strip()
+    for level, title in enumerate(BULLET_PATTERN[bull], start=1):
+        if re.match(title, text.strip()):
+            return level, text
+    if re.search(r"(title|head)", layout) and not not_title(text):
+        return len(BULLET_PATTERN[bull]) + 1, text
+    return len(BULLET_PATTERN[bull]) + 2, text
+
+
+def _tree_lines(bull, sections):
     level_set = set()
     lines = []
     for section in sections:
-        level, text = get_level(bull, section)
+        level, text = _tree_section_level(bull, section)
         if not text.strip("\n"):
             continue
-
         lines.append((level, text))
         level_set.add(level)
+    return lines, sorted(level_set)
 
-    sorted_levels = sorted(level_set)
 
-    if depth <= len(sorted_levels):
-        target_level = sorted_levels[depth - 1]
-    else:
-        target_level = sorted_levels[-1]
-
+def _tree_target_level(sorted_levels, bull, depth):
+    target_level = sorted_levels[depth - 1] if depth <= len(sorted_levels) else sorted_levels[-1]
     if target_level == len(BULLET_PATTERN[bull]) + 2:
-        target_level = sorted_levels[-2] if len(sorted_levels) > 1 else sorted_levels[0]
+        return sorted_levels[-2] if len(sorted_levels) > 1 else sorted_levels[0]
+    return target_level
 
-    root = Node(level=0, depth=target_level, texts=[])
-    root.build_tree(lines)
-
-    return [element for element in root.get_tree() if element]
 
 def hierarchical_merge(bull, sections, depth):
-
     if not sections or bull < 0:
         return []
-    if isinstance(sections[0], type("")):
-        sections = [(s, "") for s in sections]
-    sections = [(t, o) for t, o in sections if
-                t and len(t.split("@")[0].strip()) > 1 and not re.match(r"\d+$", t.split("@")[0].strip())]
-    bullets_size = len(BULLET_PATTERN[bull])
-    levels = [[] for _ in range(bullets_size + 2)]
-
-    for i, (txt, layout) in enumerate(sections):
-        for j, p in enumerate(BULLET_PATTERN[bull]):
-            if re.match(p, txt.strip()):
-                levels[j].append(i)
-                break
-        else:
-            if re.search(r"(title|head)", layout) and not not_title(txt):
-                levels[bullets_size].append(i)
-            else:
-                levels[bullets_size + 1].append(i)
-    sections = [t for t, _ in sections]
-
-    # for s in sections: print("--", s)
-
-    def binary_search(arr, target):
-        if not arr:
-            return -1
-        if target > arr[-1]:
-            return len(arr) - 1
-        if target < arr[0]:
-            return -1
-        s, e = 0, len(arr)
-        while e - s > 1:
-            i = (e + s) // 2
-            if target > arr[i]:
-                s = i
-                continue
-            elif target < arr[i]:
-                e = i
-                continue
-            else:
-                assert False
-        return s
-
-    cks = []
-    readed = [False] * len(sections)
-    levels = levels[::-1]
-    for i, arr in enumerate(levels[:depth]):
-        for j in arr:
-            if readed[j]:
-                continue
-            readed[j] = True
-            cks.append([j])
-            if i + 1 == len(levels) - 1:
-                continue
-            for ii in range(i + 1, len(levels)):
-                jj = binary_search(levels[ii], j)
-                if jj < 0:
-                    continue
-                if levels[ii][jj] > cks[-1][-1]:
-                    cks[-1].pop(-1)
-                cks[-1].append(levels[ii][jj])
-            for ii in cks[-1]:
-                readed[ii] = True
-
+    normalized_sections = _normalize_structured_sections(sections)
+    level_groups, section_texts = _hierarchical_level_groups(bull, normalized_sections)
+    cks = _hierarchical_chunk_indices(level_groups, depth, len(section_texts))
     if not cks:
         return cks
+    rendered_chunks = _render_hierarchical_chunks(cks, section_texts)
+    return _pack_hierarchical_chunks(rendered_chunks)
 
-    for i in range(len(cks)):
-        cks[i] = [sections[j] for j in cks[i][::-1]]
-        logging.debug("\n* ".join(cks[i]))
 
-    res = [[]]
-    num = [0]
-    for ck in cks:
-        if len(ck) == 1:
-            n = num_tokens_from_string(re.sub(r"@@\d+.*", "", ck[0]))
-            if n + num[-1] < 218:
-                res[-1].append(ck[0])
-                num[-1] += n
+def _hierarchical_level_groups(bull, sections):
+    bullets_size = len(BULLET_PATTERN[bull])
+    levels = [[] for _ in range(bullets_size + 2)]
+    for index, (text, layout) in enumerate(sections):
+        levels[_hierarchical_section_level(bull, text, layout)].append(index)
+    return levels, [text for text, _ in sections]
+
+
+def _hierarchical_section_level(bull, text, layout):
+    for level, pattern in enumerate(BULLET_PATTERN[bull]):
+        if re.match(pattern, text.strip()):
+            return level
+    if re.search(r"(title|head)", layout) and not not_title(text):
+        return len(BULLET_PATTERN[bull])
+    return len(BULLET_PATTERN[bull]) + 1
+
+
+def _binary_search_floor(arr, target):
+    if not arr:
+        return -1
+    if target > arr[-1]:
+        return len(arr) - 1
+    if target < arr[0]:
+        return -1
+    start, end = 0, len(arr)
+    while end - start > 1:
+        middle = (end + start) // 2
+        if target > arr[middle]:
+            start = middle
+        elif target < arr[middle]:
+            end = middle
+        else:
+            raise AssertionError
+    return start
+
+
+def _hierarchical_chunk_indices(levels, depth, section_count):
+    readed = [False] * section_count
+    chunks = []
+    reversed_levels = levels[::-1]
+    for level_index, entries in enumerate(reversed_levels[:depth]):
+        for section_index in entries:
+            if readed[section_index]:
                 continue
-            res.append(ck)
-            num.append(n)
-            continue
-        res.append(ck)
-        num.append(218)
+            chunk = _hierarchical_chunk_path(reversed_levels, level_index, section_index)
+            chunks.append(chunk)
+            for item in chunk:
+                readed[item] = True
+    return chunks
 
-    return res
+
+def _hierarchical_chunk_path(levels, level_index, section_index):
+    chunk = [section_index]
+    if level_index + 1 == len(levels) - 1:
+        return chunk
+    for next_level in range(level_index + 1, len(levels)):
+        floor_index = _binary_search_floor(levels[next_level], section_index)
+        if floor_index < 0:
+            continue
+        candidate = levels[next_level][floor_index]
+        if candidate > chunk[-1]:
+            chunk.pop()
+        chunk.append(candidate)
+    return chunk
+
+
+def _render_hierarchical_chunks(chunk_indices, section_texts):
+    rendered = []
+    for chunk in chunk_indices:
+        texts = [section_texts[index] for index in reversed(chunk)]
+        logging.debug("\n* ".join(texts))
+        rendered.append(texts)
+    return rendered
+
+
+def _pack_hierarchical_chunks(chunks):
+    result = [[]]
+    token_counts = [0]
+    for chunk in chunks:
+        if len(chunk) > 1:
+            result.append(chunk)
+            token_counts.append(218)
+            continue
+        text = chunk[0]
+        token_count = num_tokens_from_string(re.sub(r"@@\d+.*", "", text))
+        if token_count + token_counts[-1] < 218:
+            result[-1].append(text)
+            token_counts[-1] += token_count
+            continue
+        result.append(chunk)
+        token_counts.append(token_count)
+    return result
 
 
 def naive_merge(sections: str | list, chunk_token_num=128, delimiter="\n。；！？", overlapped_percent=0):
-    from app.deepdoc.parser.pdf_parser import IntegratedPipelinePdfParser
     if not sections:
         return []
+    sections = _normalize_merge_sections(sections)
+    custom_pattern = _custom_delimiter_pattern(delimiter)
+    if custom_pattern:
+        return _split_text_chunks_by_custom_delimiter(sections, custom_pattern)
+    return _merge_text_sections(sections, chunk_token_num, overlapped_percent)
+
+
+def _normalize_merge_sections(sections):
     if isinstance(sections, str):
         sections = [sections]
     if isinstance(sections[0], str):
-        sections = [(s, "") for s in sections]
-    cks = [""]
-    tk_nums = [0]
+        return [(section, "") for section in sections]
+    return sections
 
-    def add_chunk(t, pos):
-        nonlocal cks, tk_nums, delimiter
-        tnum = num_tokens_from_string(t)
-        if not pos:
-            pos = ""
-        if tnum < 8:
-            pos = ""
-        # Ensure that the length of the merged chunk does not exceed chunk_token_num
-        if cks[-1] == "" or tk_nums[-1] > chunk_token_num * (100 - overlapped_percent)/100.:
-            if cks:
-                overlapped = IntegratedPipelinePdfParser.remove_tag(cks[-1])
-                t = overlapped[int(len(overlapped)*(100-overlapped_percent)/100.):] + t
-            if t.find(pos) < 0:
-                t += pos
-            cks.append(t)
-            tk_nums.append(tnum)
-        else:
-            if cks[-1].find(pos) < 0:
-                t += pos
-            cks[-1] += t
-            tk_nums[-1] += tnum
 
-    custom_delimiters = [m.group(1) for m in re.finditer(r"`([^`]+)`", delimiter)]
-    has_custom = bool(custom_delimiters)
-    if has_custom:
-        custom_pattern = "|".join(re.escape(t) for t in sorted(set(custom_delimiters), key=len, reverse=True))
-        cks, tk_nums = [], []
-        for sec, pos in sections:
-            split_sec = re.split(r"(%s)" % custom_pattern, sec, flags=re.DOTALL)
-            for sub_sec in split_sec:
-                if re.fullmatch(custom_pattern, sub_sec or ""):
-                    continue
-                text = "\n" + sub_sec
-                local_pos = pos
-                if num_tokens_from_string(text) < 8:
-                    local_pos = ""
-                if local_pos and text.find(local_pos) < 0:
-                    text += local_pos
-                cks.append(text)
-                tk_nums.append(num_tokens_from_string(text))
-        return cks
+def _custom_delimiter_pattern(delimiter):
+    custom_delimiters = [match.group(1) for match in re.finditer(r"`([^`]+)`", delimiter)]
+    if not custom_delimiters:
+        return ""
+    unique_delimiters = sorted(set(custom_delimiters), key=len, reverse=True)
+    return "|".join(re.escape(text) for text in unique_delimiters)
 
-    for sec, pos in sections:
-        add_chunk("\n"+sec, pos)
 
-    return cks
+def _split_text_chunks_by_custom_delimiter(sections, custom_pattern):
+    chunks = []
+    for section, pos in sections:
+        for sub_section in _split_custom_segments(section, custom_pattern):
+            text = "\n" + sub_section
+            chunks.append(_append_position(text, pos))
+    return chunks
+
+
+def _split_custom_segments(text, custom_pattern):
+    return [
+        segment
+        for segment in re.split(r"(%s)" % custom_pattern, text, flags=re.DOTALL)
+        if not re.fullmatch(custom_pattern, segment or "")
+    ]
+
+
+def _append_position(text, pos):
+    local_pos = pos if num_tokens_from_string(text) >= 8 else ""
+    if local_pos and text.find(local_pos) < 0:
+        return text + local_pos
+    return text
+
+
+def _merge_text_sections(sections, chunk_token_num, overlapped_percent):
+    from app.deepdoc.parser.pdf_parser import IntegratedPipelinePdfParser
+
+    chunks = [""]
+    token_counts = [0]
+    for section, pos in sections:
+        text = "\n" + section
+        _append_text_chunk(
+            chunks,
+            token_counts,
+            text,
+            pos,
+            chunk_token_num,
+            overlapped_percent,
+            IntegratedPipelinePdfParser.remove_tag,
+        )
+    return chunks
+
+
+def _append_text_chunk(chunks, token_counts, text, pos, chunk_token_num, overlapped_percent, remove_tag):
+    token_count = num_tokens_from_string(text)
+    pos = "" if token_count < 8 else (pos or "")
+    if _starts_new_chunk(chunks[-1], token_counts[-1], chunk_token_num, overlapped_percent):
+        text = _prefixed_overlapped_text(chunks, text, overlapped_percent, remove_tag)
+        chunks.append(_append_position_suffix(text, pos))
+        token_counts.append(token_count)
+        return
+    chunks[-1] += _append_position_suffix(text, pos, base_text=chunks[-1])
+    token_counts[-1] += token_count
+
+
+def _starts_new_chunk(last_chunk, last_token_count, chunk_token_num, overlapped_percent):
+    threshold = chunk_token_num * (100 - overlapped_percent) / 100.0
+    return last_chunk == "" or last_token_count > threshold
+
+
+def _prefixed_overlapped_text(chunks, text, overlapped_percent, remove_tag):
+    if not chunks:
+        return text
+    overlapped = remove_tag(chunks[-1])
+    start = int(len(overlapped) * (100 - overlapped_percent) / 100.0)
+    return overlapped[start:] + text
+
+
+def _append_position_suffix(text, pos, base_text=""):
+    if pos and base_text.find(pos) < 0 and text.find(pos) < 0:
+        return text + pos
+    return text
 
 
 def naive_merge_with_images(texts, images, chunk_token_num=128, delimiter="\n。；！？", overlapped_percent=0):
-    from app.deepdoc.parser.pdf_parser import IntegratedPipelinePdfParser
     if not texts or len(texts) != len(images):
         return [], []
-    cks = [""]
-    result_images = [None]
-    tk_nums = [0]
+    custom_pattern = _custom_delimiter_pattern(delimiter)
+    if custom_pattern:
+        return _split_image_chunks_by_custom_delimiter(texts, images, custom_pattern)
+    return _merge_image_sections(texts, images, chunk_token_num, overlapped_percent)
 
-    def add_chunk(t, image, pos=""):
-        nonlocal cks, result_images, tk_nums, delimiter
-        tnum = num_tokens_from_string(t)
-        if not pos:
-            pos = ""
-        if tnum < 8:
-            pos = ""
-        # Ensure that the length of the merged chunk does not exceed chunk_token_num
-        if cks[-1] == "" or tk_nums[-1] > chunk_token_num * (100 - overlapped_percent)/100.:
-            if cks:
-                overlapped = IntegratedPipelinePdfParser.remove_tag(cks[-1])
-                t = overlapped[int(len(overlapped)*(100-overlapped_percent)/100.):] + t
-            if t.find(pos) < 0:
-                t += pos
-            cks.append(t)
-            result_images.append(image)
-            tk_nums.append(tnum)
-        else:
-            if cks[-1].find(pos) < 0:
-                t += pos
-            cks[-1] += t
-            if result_images[-1] is None:
-                result_images[-1] = image
-            else:
-                result_images[-1] = concat_img(result_images[-1], image)
-            tk_nums[-1] += tnum
 
-    custom_delimiters = [m.group(1) for m in re.finditer(r"`([^`]+)`", delimiter)]
-    has_custom = bool(custom_delimiters)
-    if has_custom:
-        custom_pattern = "|".join(re.escape(t) for t in sorted(set(custom_delimiters), key=len, reverse=True))
-        cks, result_images, tk_nums = [], [], []
-        for text, image in zip(texts, images, strict=False):
-            text_str = text[0] if isinstance(text, tuple) else text
-            text_pos = text[1] if isinstance(text, tuple) and len(text) > 1 else ""
-            split_sec = re.split(r"(%s)" % custom_pattern, text_str)
-            for sub_sec in split_sec:
-                if re.fullmatch(custom_pattern, sub_sec or ""):
-                    continue
-                text_seg = "\n" + sub_sec
-                local_pos = text_pos
-                if num_tokens_from_string(text_seg) < 8:
-                    local_pos = ""
-                if local_pos and text_seg.find(local_pos) < 0:
-                    text_seg += local_pos
-                cks.append(text_seg)
-                result_images.append(image)
-                tk_nums.append(num_tokens_from_string(text_seg))
-        return cks, result_images
-
+def _split_image_chunks_by_custom_delimiter(texts, images, custom_pattern):
+    chunks = []
+    result_images = []
     for text, image in zip(texts, images, strict=False):
-        # if text is tuple, unpack it
-        if isinstance(text, tuple):
-            text_str = text[0]
-            text_pos = text[1] if len(text) > 1 else ""
-            add_chunk("\n"+text_str, image, text_pos)
-        else:
-            add_chunk("\n"+text, image)
+        text_str, text_pos = _unpack_text_with_position(text)
+        for sub_section in _split_custom_segments(text_str, custom_pattern):
+            chunks.append(_append_position("\n" + sub_section, text_pos))
+            result_images.append(image)
+    return chunks, result_images
 
-    return cks, result_images
+
+def _unpack_text_with_position(text):
+    if isinstance(text, tuple):
+        return text[0], text[1] if len(text) > 1 else ""
+    return text, ""
+
+
+def _merge_image_sections(texts, images, chunk_token_num, overlapped_percent):
+    from app.deepdoc.parser.pdf_parser import IntegratedPipelinePdfParser
+
+    chunks = [""]
+    result_images = [None]
+    token_counts = [0]
+    for text, image in zip(texts, images, strict=False):
+        text_str, text_pos = _unpack_text_with_position(text)
+        _append_image_chunk(
+            chunks,
+            result_images,
+            token_counts,
+            "\n" + text_str,
+            image,
+            text_pos,
+            chunk_token_num,
+            overlapped_percent,
+            IntegratedPipelinePdfParser.remove_tag,
+        )
+    return chunks, result_images
+
+
+def _append_image_chunk(
+    chunks,
+    result_images,
+    token_counts,
+    text,
+    image,
+    pos,
+    chunk_token_num,
+    overlapped_percent,
+    remove_tag,
+):
+    token_count = num_tokens_from_string(text)
+    pos = "" if token_count < 8 else (pos or "")
+    if _starts_new_chunk(chunks[-1], token_counts[-1], chunk_token_num, overlapped_percent):
+        text = _prefixed_overlapped_text(chunks, text, overlapped_percent, remove_tag)
+        chunks.append(_append_position_suffix(text, pos))
+        result_images.append(image)
+        token_counts.append(token_count)
+        return
+    chunks[-1] += _append_position_suffix(text, pos, base_text=chunks[-1])
+    result_images[-1] = image if result_images[-1] is None else concat_img(result_images[-1], image)
+    token_counts[-1] += token_count
 
 
 def docx_question_level(p, bull=-1):
     txt = re.sub(r"\u3000", " ", p.text).strip()
-    if p.style.name.startswith('Heading'):
-        return int(p.style.name.split(' ')[-1]), txt
+    if p.style.name.startswith("Heading"):
+        return int(p.style.name.split(" ")[-1]), txt
     else:
         if bull < 0:
             return 0, txt
         for j, title in enumerate(BULLET_PATTERN[bull]):
             if re.match(title, txt):
                 return j + 1, txt
-    return len(BULLET_PATTERN[bull])+1, txt
+    return len(BULLET_PATTERN[bull]) + 1, txt
 
 
 def concat_img(img1, img2):
@@ -976,7 +1171,7 @@ def concat_img(img1, img2):
 
     new_width = max(width1, width2)
     new_height = height1 + height2
-    new_image = Image.new('RGB', (new_width, new_height))
+    new_image = Image.new("RGB", (new_width, new_height))
 
     new_image.paste(img1, (0, 0))
     new_image.paste(img2, (0, height1))
@@ -986,53 +1181,43 @@ def concat_img(img1, img2):
 def naive_merge_docx(sections, chunk_token_num=128, delimiter="\n。；！？"):
     if not sections:
         return [], []
+    custom_pattern = _custom_delimiter_pattern(delimiter)
+    if custom_pattern:
+        return _split_docx_chunks_by_custom_delimiter(sections, custom_pattern)
+    return _merge_docx_sections(sections, chunk_token_num)
 
-    cks = []
+
+def _split_docx_chunks_by_custom_delimiter(sections, custom_pattern):
+    chunks = []
     images = []
-    tk_nums = []
-
-    def add_chunk(t, image, pos=""):
-        nonlocal cks, images, tk_nums
-        tnum = num_tokens_from_string(t)
-        if tnum < 8:
-            pos = ""
-
-        if not cks or tk_nums[-1] > chunk_token_num:
-            # new chunk
-            if pos and t.find(pos) < 0:
-                t += pos
-            cks.append(t)
+    for section, image in sections:
+        for sub_section in _split_custom_segments(section, custom_pattern):
+            if not sub_section:
+                continue
+            chunks.append("\n" + sub_section)
             images.append(image)
-            tk_nums.append(tnum)
-        else:
-            # add to last chunk
-            if pos and cks[-1].find(pos) < 0:
-                t += pos
-            cks[-1] += t
-            images[-1] = concat_img(images[-1], image)
-            tk_nums[-1] += tnum
+    return chunks, images
 
-    custom_delimiters = [m.group(1) for m in re.finditer(r"`([^`]+)`", delimiter)]
-    has_custom = bool(custom_delimiters)
-    if has_custom:
-        custom_pattern = "|".join(re.escape(t) for t in sorted(set(custom_delimiters), key=len, reverse=True))
-        cks, images, tk_nums = [], [], []
-        pattern = r"(%s)" % custom_pattern
-        for sec, image in sections:
-            split_sec = re.split(pattern, sec)
-            for sub_sec in split_sec:
-                if not sub_sec or re.fullmatch(custom_pattern, sub_sec):
-                    continue
-                text_seg = "\n" + sub_sec
-                cks.append(text_seg)
-                images.append(image)
-                tk_nums.append(num_tokens_from_string(text_seg))
-        return cks, images
 
-    for sec, image in sections:
-        add_chunk("\n" + sec, image, "")
+def _merge_docx_sections(sections, chunk_token_num):
+    chunks = []
+    images = []
+    token_counts = []
+    for section, image in sections:
+        _append_docx_chunk(chunks, images, token_counts, "\n" + section, image, chunk_token_num)
+    return chunks, images
 
-    return cks, images
+
+def _append_docx_chunk(chunks, images, token_counts, text, image, chunk_token_num):
+    token_count = num_tokens_from_string(text)
+    if not chunks or token_counts[-1] > chunk_token_num:
+        chunks.append(text)
+        images.append(image)
+        token_counts.append(token_count)
+        return
+    chunks[-1] += text
+    images[-1] = concat_img(images[-1], image)
+    token_counts[-1] += token_count
 
 
 def extract_between(text: str, start_tag: str, end_tag: str) -> list[str]:
@@ -1046,7 +1231,7 @@ def get_delimiters(delimiters: str):
     for m in re.finditer(r"`([^`]+)`", delimiters, re.I):
         f, t = m.span()
         dels.append(m.group(1))
-        dels.extend(list(delimiters[s: f]))
+        dels.extend(list(delimiters[s:f]))
         s = t
     if s < len(delimiters):
         dels.extend(list(delimiters[s:]))
@@ -1120,7 +1305,7 @@ class Node:
         child = node.get_children()
 
         if level == 0 and texts:
-            tree_list.append("\n".join(titles+texts))
+            tree_list.append("\n".join(titles + texts))
 
         # Titles within configured depth are accumulated into the current path
         if 1 <= level <= self.depth:

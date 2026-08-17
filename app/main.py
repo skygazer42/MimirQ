@@ -1,6 +1,7 @@
 """
 FastAPI main entry point.
 """
+
 import logging
 import os
 import time
@@ -39,6 +40,7 @@ warnings.filterwarnings(
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from sqlalchemy.orm import Session
 
 import app.models._all  # noqa: F401
 from app import __version__
@@ -65,10 +67,56 @@ from app.services.initial_admin_service import (
 from app.tasks.queue import close_queue, init_queue
 
 logger = logging.getLogger("mimirq")
-_OPENAPI_EXPORT_MODE = str(os.getenv("MIMIRQ_OPENAPI_EXPORT", "") or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+_OPENAPI_EXPORT_MODE = str(os.getenv("MIMIRQ_OPENAPI_EXPORT", "") or "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "y",
+    "on",
+}
 _DEV_LOCAL_CORS_PORTS = {3000, 3001, 3100}
 _ALL_INTERFACES_HOST = str(IPv4Address(0))
 _DOCS_PATH = "/docs"
+_LOCAL_DEV_HOSTS = {"localhost", "127.0.0.1", _ALL_INTERFACES_HOST}
+_LOCAL_DEV_SCHEMES = {"http", "https"}
+
+
+def _normalize_dev_origin(raw: str) -> str | None:
+    origin = (raw or "").strip().rstrip("/")
+    return origin or None
+
+
+def _parse_local_dev_origin(origin: str) -> tuple[str, str, int | None] | None:
+    parsed = urlparse(origin)
+    scheme = (parsed.scheme or "").lower().strip()
+    host = (parsed.hostname or "").lower().strip()
+    try:
+        port = parsed.port
+    except ValueError:
+        return None
+    if scheme not in _LOCAL_DEV_SCHEMES or host not in _LOCAL_DEV_HOSTS:
+        return None
+    return scheme, host, port
+
+
+def _expand_origin_aliases(expanded: set[str], origin: str) -> tuple[str, int | None] | None:
+    parsed_origin = _parse_local_dev_origin(origin)
+    if parsed_origin is None:
+        return None
+    scheme, host, port = parsed_origin
+    for alt in _LOCAL_DEV_HOSTS:
+        if alt == host:
+            continue
+        expanded.add(f"{scheme}://{alt}:{port}" if port is not None else f"{scheme}://{alt}")
+    return scheme, port
+
+
+def _expand_port_matrix(expanded: set[str], schemes: set[str], ports: set[int]) -> None:
+    for scheme in sorted(schemes):
+        for port in sorted(ports | _DEV_LOCAL_CORS_PORTS):
+            for host in sorted(_LOCAL_DEV_HOSTS):
+                expanded.add(f"{scheme}://{host}:{port}")
+
 
 def _expand_dev_cors_origins(origins: list[str]) -> list[str]:
     """
@@ -85,55 +133,20 @@ def _expand_dev_cors_origins(origins: list[str]) -> list[str]:
     if "*" in origins:
         return origins
 
-    expanded: set[str] = set()
-    for raw in origins:
-        origin = (raw or "").strip().rstrip("/")
-        if origin:
-            expanded.add(origin)
+    expanded = {origin for raw in origins if (origin := _normalize_dev_origin(raw))}
 
     local_schemes: set[str] = set()
     local_ports: set[int] = set()
     for origin in tuple(expanded):
-        parsed = urlparse(origin)
-        scheme = (parsed.scheme or "").lower().strip()
-        host = (parsed.hostname or "").lower().strip()
-        try:
-            port = parsed.port
-        except ValueError:
+        parsed_origin = _expand_origin_aliases(expanded, origin)
+        if parsed_origin is None:
             continue
-        if scheme not in {"http", "https"}:
-            continue
-        if host not in {"localhost", "127.0.0.1", _ALL_INTERFACES_HOST}:
-            continue
+        scheme, port = parsed_origin
         local_schemes.add(scheme)
         if port is not None:
             local_ports.add(port)
 
-    candidate_local_ports = sorted(local_ports | _DEV_LOCAL_CORS_PORTS)
-
-    # Iterate over a snapshot; we may add derived origins while expanding.
-    for origin in tuple(expanded):
-        parsed = urlparse(origin)
-        scheme = (parsed.scheme or "").lower().strip()
-        host = (parsed.hostname or "").lower().strip()
-        try:
-            port = parsed.port
-        except ValueError:
-            continue
-        if scheme not in {"http", "https"}:
-            continue
-        if host not in {"localhost", "127.0.0.1", _ALL_INTERFACES_HOST}:
-            continue
-
-        for alt in {"localhost", "127.0.0.1", _ALL_INTERFACES_HOST}:
-            if alt == host:
-                continue
-            expanded.add(f"{scheme}://{alt}:{port}" if port is not None else f"{scheme}://{alt}")
-
-    for scheme in sorted(local_schemes):
-        for port in candidate_local_ports:
-            for host in ("localhost", "127.0.0.1", _ALL_INTERFACES_HOST):
-                expanded.add(f"{scheme}://{host}:{port}")
+    _expand_port_matrix(expanded, local_schemes, local_ports)
 
     return sorted(expanded)
 
@@ -157,6 +170,7 @@ def _build_cors_expose_headers(raw_headers: str) -> list[str]:
         seen.add(key)
         headers.append(header)
     return headers
+
 
 # Optional JSON logging (LOG_FORMAT=json).
 configure_logging(
@@ -197,70 +211,80 @@ def _start_runtime_warmup():
     return start_rag_runtime_warmup()
 
 
-# Lifespan management
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Operations on app startup and shutdown."""
-    # Startup: create database tables.
-    logger.info("Starting MimirQ backend...")
-
-    # Ensure local directories exist (uploads/logs/vector persistence).
-    for dir_path in [
+def _iter_startup_directories() -> list[object]:
+    vector_backend = getattr(settings, "VECTOR_BACKEND", "milvus")
+    return [
         settings.UPLOAD_DIR,
         getattr(settings, "TABLE_STORE_DIR", None),
-        settings.FAISS_STORE_PATH if getattr(settings, "VECTOR_BACKEND", "milvus") == "faiss" else None,
-        settings.CHROMA_PERSIST_PATH if getattr(settings, "VECTOR_BACKEND", "milvus") == "chroma" else None,
-    ]:
-        if not dir_path:
-            continue
-        try:
-            Path(str(dir_path)).mkdir(parents=True, exist_ok=True)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to ensure directory %s: %s", str(dir_path), str(exc)[:200])
+        settings.FAISS_STORE_PATH if vector_backend == "faiss" else None,
+        settings.CHROMA_PERSIST_PATH if vector_backend == "chroma" else None,
+    ]
 
+
+def _ensure_directory(path_value: object, *, warning_prefix: str) -> None:
+    if not path_value:
+        return
+    try:
+        Path(str(path_value)).mkdir(parents=True, exist_ok=True)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("%s %s: %s", warning_prefix, str(path_value), str(exc)[:200])
+
+
+def _ensure_startup_directories() -> None:
+    for dir_path in _iter_startup_directories():
+        _ensure_directory(dir_path, warning_prefix="Failed to ensure directory")
+
+
+def _ensure_parent_directory(path_value: object, *, warning_message: str) -> None:
+    try:
+        Path(str(path_value)).parent.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("%s: %s", warning_message, str(exc)[:200])
+
+
+def _ensure_optional_log_directories() -> None:
     if bool(getattr(settings, "ENABLE_METRICS_LOG", False)):
-        try:
-            Path(str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl"))).parent.mkdir(
-                parents=True, exist_ok=True
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to ensure metrics log dir: %s", str(exc)[:200])
-
+        _ensure_parent_directory(
+            getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl"),
+            warning_message="Failed to ensure metrics log dir",
+        )
     if bool(getattr(settings, "MINIO_ENABLED", False)):
-        try:
-            Path(str(getattr(settings, "MINIO_METRICS_LOG_PATH", "./logs/minio_metrics.jsonl"))).parent.mkdir(
-                parents=True, exist_ok=True
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to ensure MinIO metrics log dir: %s", str(exc)[:200])
+        _ensure_parent_directory(
+            getattr(settings, "MINIO_METRICS_LOG_PATH", "./logs/minio_metrics.jsonl"),
+            warning_message="Failed to ensure MinIO metrics log dir",
+        )
 
-    if bool(getattr(settings, "LANGSMITH_TRACING_ENABLED", False)):
-        try:
-            from app.rag.tracing import setup_tracing
 
-            setup_tracing()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to setup LangSmith tracing: %s", str(exc)[:200])
+def _setup_langsmith_tracing() -> None:
+    if not bool(getattr(settings, "LANGSMITH_TRACING_ENABLED", False)):
+        return
+    try:
+        from app.rag.tracing import setup_tracing
+
+        setup_tracing()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to setup LangSmith tracing: %s", str(exc)[:200])
+
+
+def _initialize_database_for_startup() -> None:
     runtime_migrations_enabled = bool(getattr(settings, "DB_RUNTIME_MIGRATIONS_ENABLED", True))
     create_all_enabled = bool(getattr(settings, "DB_CREATE_ALL_ON_STARTUP", True))
 
-    # Best-effort runtime migrations (legacy compatibility).
-    #
-    # These are idempotent `ALTER TABLE ... IF NOT EXISTS` guardrails that keep older
-    # DBs bootable. For production deployments, prefer deterministic Alembic migrations
-    # executed out-of-band (e.g. `make db-upgrade`).
     if runtime_migrations_enabled:
         apply_runtime_migrations(engine)
 
-    if create_all_enabled:
-        logger.info("Creating database tables (create_all)...")
-        Base.metadata.create_all(bind=engine)
-        if runtime_migrations_enabled:
-            apply_runtime_migrations(engine)
-        logger.info("Database initialized")
-    else:
+    if not create_all_enabled:
         logger.info("DB auto-create disabled; expecting schema to be managed externally (e.g. Alembic)")
+        return
 
+    logger.info("Creating database tables (create_all)...")
+    Base.metadata.create_all(bind=engine)
+    if runtime_migrations_enabled:
+        apply_runtime_migrations(engine)
+    logger.info("Database initialized")
+
+
+def _bootstrap_initial_admin() -> None:
     try:
         db = SessionLocal()
         try:
@@ -271,94 +295,145 @@ async def lifespan(app: FastAPI):
     except InitialAdminBootstrapError as exc:
         raise RuntimeError(f"Initial administrator bootstrap failed: {exc}") from exc
 
-    # Initialize task queue (optional).
+
+async def _initialize_task_queue() -> None:
     try:
         await init_queue()
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to init task queue: %s", str(exc)[:200])
 
-    # Task queue observability poller (optional; keeps Prometheus gauges fresh).
-    if bool(getattr(settings, "PROMETHEUS_ENABLED", False)):
-        try:
-            from app.services.task_queue_observability_service import start_task_queue_observability_poller
 
-            start_task_queue_observability_poller()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to start task queue observability poller: %s", str(exc)[:200])
+def _start_task_queue_observability_poller() -> None:
+    if not bool(getattr(settings, "PROMETHEUS_ENABLED", False)):
+        return
+    try:
+        from app.services.task_queue_observability_service import start_task_queue_observability_poller
 
-    # Tokenizer initialization is process-local. Complete it before readiness so a
-    # newly added API replica does not serialize its first concurrent requests.
-    _warmup_retrieval_tokenizer()
-    _start_runtime_warmup()
+        start_task_queue_observability_poller()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to start task queue observability poller: %s", str(exc)[:200])
 
-    # Initialize BM25 index (optional; large deployments can rely on lazy-build).
+
+def _bm25_startup_skip_message() -> str | None:
     if not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
-        logger.info("BM25 indexing disabled; skipping startup build")
-    elif not bool(getattr(settings, "BM25_STARTUP_BUILD_ENABLED", False)):
-        logger.info("BM25 startup build disabled (BM25_STARTUP_BUILD_ENABLED=false)")
-    else:
-        logger.info("Initializing BM25 index (startup build)...")
-        from app.rag.retriever import hybrid_retriever
+        return "BM25 indexing disabled; skipping startup build"
+    if not bool(getattr(settings, "BM25_STARTUP_BUILD_ENABLED", False)):
+        return "BM25 startup build disabled (BM25_STARTUP_BUILD_ENABLED=false)"
+    return None
 
-        db = SessionLocal()
-        try:
-            from sqlalchemy import func
 
-            max_chunks = int(getattr(settings, "BM25_STARTUP_BUILD_MAX_CHUNKS", 0) or 0)
-            total_chunks = (
-                db.query(func.count(DocumentChunk.id))
-                .join(DBDocument)
-                .filter(DBDocument.status == "completed")
-                .filter(DBDocument.publication_status == "published")
-                .scalar()
-            ) or 0
+def _load_bm25_startup_tenant_ids(db: Session) -> list[object]:
+    tenant_ids: list[object] = []
+    tenant_q = (
+        db.query(DocumentChunk.tenant_id)
+        .join(DBDocument)
+        .filter(DBDocument.status == "completed")
+        .filter(DBDocument.publication_status == "published")
+        .distinct()
+        .execution_options(stream_results=True)
+        .enable_eagerloads(False)
+    )
+    for row in tenant_q.yield_per(2000):
+        if row and row[0]:
+            tenant_ids.append(row[0])
+    return tenant_ids
 
-            if max_chunks > 0 and int(total_chunks) > max_chunks:
-                logger.warning(
-                    "Skipping BM25 startup build: %s chunks exceeds cap %s; "
-                    "enable BM25_LAZY_BUILD_ENABLED for on-demand builds",
-                    int(total_chunks),
-                    max_chunks,
-                )
-            else:
-                # Stream tenant ids and build per-tenant BM25 to avoid a single `.all()` over huge corpora.
-                tenant_ids: list = []
-                tenant_q = (
-                    db.query(DocumentChunk.tenant_id)
-                    .join(DBDocument)
-                    .filter(DBDocument.status == "completed")
-                    .filter(DBDocument.publication_status == "published")
-                    .distinct()
-                    .execution_options(stream_results=True)
-                    .enable_eagerloads(False)
-                )
-                for row in tenant_q.yield_per(2000):
-                    if row and row[0]:
-                        tenant_ids.append(row[0])
 
-                if not tenant_ids:
-                    logger.warning("No documents found, BM25 index will be built on first upload")
-                else:
-                    built_total = 0
-                    for tid in tenant_ids:
-                        built_total += hybrid_retriever.build_bm25_index_from_db(db, tenant_id=tid, batch_size=2000)
-                    logger.info(
-                        "BM25 index loaded with %s chunks across %s tenants",
-                        built_total,
-                        len(tenant_ids),
-                    )
-        finally:
-            db.close()
+def _build_bm25_startup_indexes() -> None:
+    skip_message = _bm25_startup_skip_message()
+    if skip_message is not None:
+        logger.info(skip_message)
+        return
 
-    # Fire-and-forget Dify external retrieval warmup. This is separate from the
-    # global BM25 startup build: it follows Dify's configured knowledge map and
-    # warms the exact retrieval path used by external knowledge calls.
+    logger.info("Initializing BM25 index (startup build)...")
+    from sqlalchemy import func
+
+    from app.rag.retriever import hybrid_retriever
+
+    db = SessionLocal()
+    try:
+        max_chunks = int(getattr(settings, "BM25_STARTUP_BUILD_MAX_CHUNKS", 0) or 0)
+        total_chunks = (
+            db.query(func.count(DocumentChunk.id))
+            .join(DBDocument)
+            .filter(DBDocument.status == "completed")
+            .filter(DBDocument.publication_status == "published")
+            .scalar()
+        ) or 0
+        if max_chunks > 0 and int(total_chunks) > max_chunks:
+            logger.warning(
+                "Skipping BM25 startup build: %s chunks exceeds cap %s; "
+                "enable BM25_LAZY_BUILD_ENABLED for on-demand builds",
+                int(total_chunks),
+                max_chunks,
+            )
+            return
+
+        tenant_ids = _load_bm25_startup_tenant_ids(db)
+        if not tenant_ids:
+            logger.warning("No documents found, BM25 index will be built on first upload")
+            return
+
+        built_total = 0
+        for tid in tenant_ids:
+            built_total += hybrid_retriever.build_bm25_index_from_db(db, tenant_id=tid, batch_size=2000)
+        logger.info(
+            "BM25 index loaded with %s chunks across %s tenants",
+            built_total,
+            len(tenant_ids),
+        )
+    finally:
+        db.close()
+
+
+def _schedule_dify_external_knowledge_warmup() -> None:
     try:
         from app.api.v1.integrations_dify import start_dify_external_knowledge_warmup
 
         start_dify_external_knowledge_warmup()
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to schedule Dify external knowledge warmup: %s", str(exc)[:200])
+
+
+async def _stop_task_queue_observability_poller() -> None:
+    if not bool(getattr(settings, "PROMETHEUS_ENABLED", False)):
+        return
+    try:
+        from app.services.task_queue_observability_service import stop_task_queue_observability_poller
+
+        await stop_task_queue_observability_poller()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to stop task queue observability poller: %s", str(exc)[:200])
+
+
+def _dispose_database_engine() -> None:
+    try:
+        engine.dispose()
+        logger.info("Database engine disposed")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to dispose database engine: %s", str(exc)[:200])
+
+
+# Lifespan management
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Operations on app startup and shutdown."""
+    # Startup: create database tables.
+    logger.info("Starting MimirQ backend...")
+    _ensure_startup_directories()
+    _ensure_optional_log_directories()
+    _setup_langsmith_tracing()
+    _initialize_database_for_startup()
+    _bootstrap_initial_admin()
+    await _initialize_task_queue()
+    _start_task_queue_observability_poller()
+
+    # Tokenizer initialization is process-local. Complete it before readiness so a
+    # newly added API replica does not serialize its first concurrent requests.
+    _warmup_retrieval_tokenizer()
+    _start_runtime_warmup()
+    _build_bm25_startup_indexes()
+    _schedule_dify_external_knowledge_warmup()
 
     yield
 
@@ -370,23 +445,13 @@ async def lifespan(app: FastAPI):
     logger.info("HTTP client pool closed")
 
     # Stop task queue observability poller (optional).
-    if bool(getattr(settings, "PROMETHEUS_ENABLED", False)):
-        try:
-            from app.services.task_queue_observability_service import stop_task_queue_observability_poller
-
-            await stop_task_queue_observability_poller()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to stop task queue observability poller: %s", str(exc)[:200])
+    await _stop_task_queue_observability_poller()
 
     # Close task queue connection (optional).
     await close_queue()
 
     # Dispose DB engine pool (best-effort; avoids lingering connections in some runtimes).
-    try:
-        engine.dispose()
-        logger.info("Database engine disposed")
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to dispose database engine: %s", str(exc)[:200])
+    _dispose_database_engine()
 
     shutdown_otel()
 
@@ -399,16 +464,15 @@ app = FastAPI(
     docs_url=_DOCS_PATH if bool(getattr(settings, "API_DOCS_ENABLED", True)) else None,
     redoc_url="/redoc" if bool(getattr(settings, "API_DOCS_ENABLED", True)) else None,
     openapi_url=(
-        "/openapi.json"
-        if (bool(getattr(settings, "API_OPENAPI_ENABLED", True)) or _OPENAPI_EXPORT_MODE)
-        else None
+        "/openapi.json" if (bool(getattr(settings, "API_OPENAPI_ENABLED", True)) or _OPENAPI_EXPORT_MODE) else None
     ),
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # =============================================================================
 # OpenAPI post-processing (contract stability)
 # =============================================================================
+
 
 def _patch_openapi_additional_properties(spec: dict) -> None:  # noqa: ANN401
     """
@@ -539,7 +603,9 @@ if bool(getattr(settings, "SECURITY_HEADERS_ENABLED", True)):
 
     app.add_middleware(
         SecurityHeadersMiddleware,
-        x_content_type_options=str(getattr(settings, "SECURITY_HEADERS_X_CONTENT_TYPE_OPTIONS", "nosniff") or "nosniff"),
+        x_content_type_options=str(
+            getattr(settings, "SECURITY_HEADERS_X_CONTENT_TYPE_OPTIONS", "nosniff") or "nosniff"
+        ),
         x_frame_options=str(getattr(settings, "SECURITY_HEADERS_X_FRAME_OPTIONS", "DENY") or "DENY"),
         referrer_policy=str(
             getattr(settings, "SECURITY_HEADERS_REFERRER_POLICY", "strict-origin-when-cross-origin")
@@ -584,11 +650,7 @@ register_exception_handlers(app)
 @app.get("/")
 async def root():
     """Root path."""
-    return {
-        "message": "Welcome to MimirQ API",
-        "version": __version__,
-        "docs": _DOCS_PATH
-    }
+    return {"message": "Welcome to MimirQ API", "version": __version__, "docs": _DOCS_PATH}
 
 
 @app.get("/health")

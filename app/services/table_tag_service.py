@@ -6,7 +6,6 @@ This is intentionally conservative:
 - Result size is strictly bounded (rows/cols/bytes) before being passed back to the model.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -208,7 +207,9 @@ def _extract_quoted_literals(question: str, *, max_values: int = 8) -> list[str]
     return _unique_keep_order(out)
 
 
-def _schema_link_matches(terms: list[str], *, col_names: list[str], table_names: list[str]) -> tuple[list[str], list[str]]:
+def _schema_link_matches(
+    terms: list[str], *, col_names: list[str], table_names: list[str]
+) -> tuple[list[str], list[str]]:
     matched_columns: list[str] = []
     matched_tables: list[str] = []
     for term in terms:
@@ -280,7 +281,20 @@ def _schema_link_strategy(
 
 def _has_table_intent(question: str) -> bool:
     q_fold = question.casefold()
-    ascii_intents = ("select", "where", "group by", "order by", "limit", "sum", "avg", "count", "min", "max", "top", "前")
+    ascii_intents = (
+        "select",
+        "where",
+        "group by",
+        "order by",
+        "limit",
+        "sum",
+        "avg",
+        "count",
+        "min",
+        "max",
+        "top",
+        "前",
+    )
     zh_intents = ("统计", "汇总", "求和", "平均", "最大", "最小", "筛选", "过滤", "分组", "多少", "几条")
     return any(key in q_fold for key in ascii_intents) or any(key in question for key in zh_intents)
 
@@ -629,7 +643,9 @@ def _normalize_join_tables(tables: list[dict[str, Any]]) -> list[dict[str, Any]]
         except Exception:
             row_count = 0
         sample_rows_raw = raw.get("sample_rows")
-        sample_rows = [row for row in sample_rows_raw if isinstance(row, dict)] if isinstance(sample_rows_raw, list) else []
+        sample_rows = (
+            [row for row in sample_rows_raw if isinstance(row, dict)] if isinstance(sample_rows_raw, list) else []
+        )
         valid_tables.append(
             {
                 "table_name": table_name,
@@ -658,7 +674,9 @@ def _build_join_planning_state(valid_tables: list[dict[str, Any]]) -> _JoinPlann
         ambiguity_score_gap=ambiguity_gap,
         max_states=max(8, max_join_tables * 8),
     )
-    candidate_rows = [candidate for candidate in (plan_candidates.get("candidates") or []) if isinstance(candidate, dict)]
+    candidate_rows = [
+        candidate for candidate in (plan_candidates.get("candidates") or []) if isinstance(candidate, dict)
+    ]
     multi_candidate_rows = [
         candidate for candidate in (multi_plan_candidates.get("candidates") or []) if isinstance(candidate, dict)
     ]
@@ -778,7 +796,9 @@ def _join_metric_expr(
 
 
 def _join_metric_aggregation(question: str, *, question_fold: str, group_col: str | None) -> str | None:
-    if bool(_TABLE_PICK_SUM_INTENT_RE.search(question or "")) or (group_col is not None and "金额" in str(question or "")):
+    if bool(_TABLE_PICK_SUM_INTENT_RE.search(question or "")) or (
+        group_col is not None and "金额" in str(question or "")
+    ):
         return "sum"
     if any(k in question_fold for k in ("avg", "average", "均值", "平均")):
         return "avg"
@@ -816,7 +836,9 @@ def _build_join_query_sql(
     aggregation_column = metric_col if metric_table and metric_col else None
     if bool(_TABLE_PICK_COUNT_INTENT_RE.search(question or "")):
         if group_table and group_col:
-            group_expr = _join_group_expr(alias_map=alias_map, group_table=group_table, group_col=group_col, right_alias=right_alias)
+            group_expr = _join_group_expr(
+                alias_map=alias_map, group_table=group_table, group_col=group_col, right_alias=right_alias
+            )
             sql = (
                 f"SELECT {group_expr} AS {_quote_ident(group_col)}, COUNT(*) AS count "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
                 f"FROM {_quote_ident(left_table)} AS {left_alias} "
@@ -843,9 +865,13 @@ def _build_join_query_sql(
         group_col=group_col,
     )
     if aggregation == "sum":
-        metric_expr = _join_metric_expr(alias_map=alias_map, metric_table=metric_table, metric_col=metric_col, left_alias=left_alias)
+        metric_expr = _join_metric_expr(
+            alias_map=alias_map, metric_table=metric_table, metric_col=metric_col, left_alias=left_alias
+        )
         if group_table and group_col:
-            group_expr = _join_group_expr(alias_map=alias_map, group_table=group_table, group_col=group_col, right_alias=right_alias)
+            group_expr = _join_group_expr(
+                alias_map=alias_map, group_table=group_table, group_col=group_col, right_alias=right_alias
+            )
             sql = (
                 f"SELECT {group_expr} AS {_quote_ident(group_col)}, SUM({metric_expr}) AS total "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
                 f"FROM {_quote_ident(left_table)} AS {left_alias} "
@@ -864,10 +890,14 @@ def _build_join_query_sql(
         return sql, "join_aggregation", "sum", aggregation_column, None
 
     if aggregation in {"avg", "min", "max"}:
-        metric_expr = _join_metric_expr(alias_map=alias_map, metric_table=metric_table, metric_col=metric_col, left_alias=left_alias)
+        metric_expr = _join_metric_expr(
+            alias_map=alias_map, metric_table=metric_table, metric_col=metric_col, left_alias=left_alias
+        )
         agg_sql = aggregation.upper()
         if group_table and group_col:
-            group_expr = _join_group_expr(alias_map=alias_map, group_table=group_table, group_col=group_col, right_alias=right_alias)
+            group_expr = _join_group_expr(
+                alias_map=alias_map, group_table=group_table, group_col=group_col, right_alias=right_alias
+            )
             sql = (
                 f"SELECT {group_expr} AS {_quote_ident(group_col)}, {agg_sql}({metric_expr}) AS value "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
                 f"FROM {_quote_ident(left_table)} AS {left_alias} "
@@ -875,7 +905,13 @@ def _build_join_query_sql(
                 f"ON {left_alias}.{_quote_ident(left_column)} = {right_alias}.{_quote_ident(right_column)} "
                 f"GROUP BY {group_expr} ORDER BY value DESC LIMIT {int(limit)}"
             )
-            return sql, "join_aggregation_group", aggregation, aggregation_column, {"column": "value", "direction": "desc"}
+            return (
+                sql,
+                "join_aggregation_group",
+                aggregation,
+                aggregation_column,
+                {"column": "value", "direction": "desc"},
+            )
         sql = (
             f"SELECT {agg_sql}({metric_expr}) AS value "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
             f"FROM {_quote_ident(left_table)} AS {left_alias} "
@@ -1085,7 +1121,7 @@ def _extract_question_limit(question: str, *, default_limit: int) -> int:
 
 def _pick_numeric_column(columns: list[dict[str, Any]]) -> str | None:
     numeric_hints = ("int", "float", "double", "decimal", "number", "numeric", "real")
-    for c in (columns or []):
+    for c in columns or []:
         if not isinstance(c, dict):
             continue
         name = str(c.get("name") or "").strip()
@@ -1116,7 +1152,9 @@ def _extract_group_terms(question: str) -> list[str]:
     return terms
 
 
-def _find_group_term_match(question_terms: list[str], columns: list[dict[str, Any]], *, exclude: str | None = None) -> str | None:
+def _find_group_term_match(
+    question_terms: list[str], columns: list[dict[str, Any]], *, exclude: str | None = None
+) -> str | None:
     for term in question_terms:
         if not term:
             continue
@@ -1126,7 +1164,9 @@ def _find_group_term_match(question_terms: list[str], columns: list[dict[str, An
     return None
 
 
-def _match_group_requested_column(question: str, question_fold: str, columns: list[dict[str, Any]], *, exclude: str | None = None) -> str | None:
+def _match_group_requested_column(
+    question: str, question_fold: str, columns: list[dict[str, Any]], *, exclude: str | None = None
+) -> str | None:
     for _column, name in _iter_filtered_named_columns(columns, exclude=exclude):
         key = name.casefold() if name.isascii() else name
         if key and key in (question_fold if name.isascii() else question):
@@ -1433,7 +1473,11 @@ def _generate_sql_with_llm(
 
     max_rows_i = max(1, int(max_rows or 0))
     cols_str = "\n".join(
-        [f"- {str(c.get('name') or '').strip()} ({str(c.get('dtype') or '').strip()})" for c in (columns or []) if isinstance(c, dict)]
+        [
+            f"- {str(c.get('name') or '').strip()} ({str(c.get('dtype') or '').strip()})"
+            for c in (columns or [])
+            if isinstance(c, dict)
+        ]
     )
     cols_str = cols_str[:8000]
 
@@ -1444,18 +1488,13 @@ def _generate_sql_with_llm(
             "Hard constraints:\n"
             f"- ONLY output SQL (no markdown, no explanations).\n"
             f"- The query MUST be SELECT-only (or WITH ... SELECT).\n"
-            f"- The query MUST reference ONLY this table: \"{sql_table}\".\n"
+            f'- The query MUST reference ONLY this table: "{sql_table}".\n'
             f"- You MUST include a LIMIT <= {max_rows_i}.\n"
             "- Never use PRAGMA/ATTACH/DETACH/CREATE/INSERT/UPDATE/DELETE/DROP.\n"
         )
     )
     user = HumanMessage(
-        content=(
-            f"Table name: \"{sql_table}\"\n"
-            "Columns:\n"
-            f"{cols_str if cols_str else '(unknown)'}\n\n"
-            f"Question: {q}\n"
-        )
+        content=(f'Table name: "{sql_table}"\nColumns:\n{cols_str if cols_str else "(unknown)"}\n\nQuestion: {q}\n')
     )
 
     llm = _build_llm(temperature=0.0)
@@ -1520,13 +1559,17 @@ def generate_sql_for_table_with_metadata(
         )
         planner = dict(planner)
         planner["sql_fingerprint"] = fingerprint_sql(sql, length=16)
-        return sql, "deterministic", {
-            "schema_link": schema_link,
-            "planner": planner,
-            "sql_fingerprint": planner.get("sql_fingerprint"),
-            "schema_link_score": schema_link.get("score"),
-            "schema_link_strategy": schema_link.get("strategy"),
-        }
+        return (
+            sql,
+            "deterministic",
+            {
+                "schema_link": schema_link,
+                "planner": planner,
+                "sql_fingerprint": planner.get("sql_fingerprint"),
+                "schema_link_score": schema_link.get("score"),
+                "schema_link_strategy": schema_link.get("strategy"),
+            },
+        )
 
     if llm_key:
         try:
@@ -1546,13 +1589,17 @@ def generate_sql_for_table_with_metadata(
                 "limit": int(max(1, int(max_rows or 1))),
                 "sql_fingerprint": fingerprint_sql(sql, length=16),
             }
-            return sql, "llm", {
-                "schema_link": schema_link,
-                "planner": planner,
-                "sql_fingerprint": planner.get("sql_fingerprint"),
-                "schema_link_score": schema_link.get("score"),
-                "schema_link_strategy": schema_link.get("strategy"),
-            }
+            return (
+                sql,
+                "llm",
+                {
+                    "schema_link": schema_link,
+                    "planner": planner,
+                    "sql_fingerprint": planner.get("sql_fingerprint"),
+                    "schema_link_score": schema_link.get("score"),
+                    "schema_link_strategy": schema_link.get("strategy"),
+                },
+            )
         except Exception as exc:
             if not deterministic_fallback:
                 raise
@@ -1566,13 +1613,17 @@ def generate_sql_for_table_with_metadata(
             planner = dict(planner)
             planner["reason"] = f"llm_failed_fallback:{exc.__class__.__name__}"
             planner["sql_fingerprint"] = fingerprint_sql(sql, length=16)
-            return sql, "deterministic", {
-                "schema_link": schema_link,
-                "planner": planner,
-                "sql_fingerprint": planner.get("sql_fingerprint"),
-                "schema_link_score": schema_link.get("score"),
-                "schema_link_strategy": schema_link.get("strategy"),
-            }
+            return (
+                sql,
+                "deterministic",
+                {
+                    "schema_link": schema_link,
+                    "planner": planner,
+                    "sql_fingerprint": planner.get("sql_fingerprint"),
+                    "schema_link_score": schema_link.get("score"),
+                    "schema_link_strategy": schema_link.get("strategy"),
+                },
+            )
 
     if deterministic_fallback:
         sql, planner = _generate_deterministic_sql_with_diagnostics(
@@ -1585,13 +1636,17 @@ def generate_sql_for_table_with_metadata(
         planner = dict(planner)
         planner["reason"] = "no_llm_key_fallback"
         planner["sql_fingerprint"] = fingerprint_sql(sql, length=16)
-        return sql, "deterministic", {
-            "schema_link": schema_link,
-            "planner": planner,
-            "sql_fingerprint": planner.get("sql_fingerprint"),
-            "schema_link_score": schema_link.get("score"),
-            "schema_link_strategy": schema_link.get("strategy"),
-        }
+        return (
+            sql,
+            "deterministic",
+            {
+                "schema_link": schema_link,
+                "planner": planner,
+                "sql_fingerprint": planner.get("sql_fingerprint"),
+                "schema_link_score": schema_link.get("score"),
+                "schema_link_strategy": schema_link.get("strategy"),
+            },
+        )
 
     raise RuntimeError("LLM_API_KEY is not configured and deterministic fallback is disabled")
 
@@ -1653,13 +1708,7 @@ def generate_answer_from_result(
             "Keep the answer concise and include key numbers.\n"
         )
     )
-    user = HumanMessage(
-        content=(
-            f"Question: {q}\n\n"
-            f"SQL: {str(sql or '').strip()}\n\n"
-            f"Result: {preview_text}\n"
-        )
-    )
+    user = HumanMessage(content=(f"Question: {q}\n\nSQL: {str(sql or '').strip()}\n\nResult: {preview_text}\n"))
     llm = _build_llm(temperature=0.0)
     resp = llm.invoke([system, user])
     return str(getattr(resp, "content", "") or "").strip()

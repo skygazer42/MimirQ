@@ -1,4 +1,3 @@
-
 import contextlib
 import html
 import re
@@ -220,7 +219,11 @@ def _jira_adf_to_text(value: object) -> str:
     content = value.get("content")
     child_items = content if isinstance(content, list) else []
     text = "".join(_jira_adf_to_text(item) for item in child_items)
-    if node_type in {"paragraph", "heading", "listitem", "blockquote", "tablecell", "tableheader"} and text and not text.endswith("\n"):
+    if (
+        node_type in {"paragraph", "heading", "listitem", "blockquote", "tablecell", "tableheader"}
+        and text
+        and not text.endswith("\n")
+    ):
         text += "\n"
     return text
 
@@ -416,9 +419,7 @@ def _jira_adf_node_to_html(value: object, *, depth: int = 0) -> str:
     if isinstance(value, str):
         return html.escape(value)
     if isinstance(value, list):
-        return "\n".join(
-            part for part in (_jira_adf_node_to_html(item, depth=depth + 1) for item in value) if part
-        )
+        return "\n".join(part for part in (_jira_adf_node_to_html(item, depth=depth + 1) for item in value) if part)
     if not isinstance(value, dict):
         return html.escape(str(value))
 
@@ -522,11 +523,7 @@ def _normalize_jira_full_sync_scope(
     normalized_base_url = str(base_url or "").strip().rstrip("/")
     normalized_project_key = str(project_key or "").strip().upper()
     normalized_connector_id = str(connector_id or "jira_project").strip() or "jira_project"
-    normalized_seen_urls = {
-        str(url or "").strip()
-        for url in (seen_issue_urls or set())
-        if str(url or "").strip()
-    }
+    normalized_seen_urls = {str(url or "").strip() for url in (seen_issue_urls or set()) if str(url or "").strip()}
     if not normalized_base_url or not normalized_project_key:
         return None
     return dataset_id, normalized_base_url, normalized_project_key, normalized_connector_id, normalized_seen_urls
@@ -797,12 +794,7 @@ def _jira_render_custom_field_sections(*, fields: dict, rendered: dict) -> list[
         )
         if not value_html:
             continue
-        out.append(
-            "<article>"
-            f"<h3>{html.escape(key)}</h3>"
-            f"{value_html}"
-            "</article>"
-        )
+        out.append(f"<article><h3>{html.escape(key)}</h3>{value_html}</article>")
     return out
 
 
@@ -922,7 +914,9 @@ def _jira_project_cursor_state(cfg: dict[str, Any]) -> tuple[str, set[str]]:
     state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
     cursor_last_modified = str(state.get("last_modified") or "").strip() if isinstance(state, dict) else ""
     cursor_last_modified_ids = (
-        set(_resolve_connectors_helper("normalize_boundary_ids")(state.get("last_modified_ids"))) if isinstance(state, dict) else set()
+        set(_resolve_connectors_helper("normalize_boundary_ids")(state.get("last_modified_ids")))
+        if isinstance(state, dict)
+        else set()
     )
     return cursor_last_modified, cursor_last_modified_ids
 
@@ -957,7 +951,9 @@ def _jira_project_access_settings(cfg: dict[str, Any]) -> dict[str, Any]:
     access = cfg.get("access") if isinstance(cfg.get("access"), dict) else None
     source_acl = cfg.get("source_acl") if isinstance(cfg.get("source_acl"), dict) else None
     access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
-    source_acl_mode = str(source_acl.get("mode") or "disabled").strip().lower() if isinstance(source_acl, dict) else "disabled"
+    source_acl_mode = (
+        str(source_acl.get("mode") or "disabled").strip().lower() if isinstance(source_acl, dict) else "disabled"
+    )
     source_acl_fallback_mode = (
         str(source_acl.get("fallback_mode") or "partial_members").strip().lower()
         if isinstance(source_acl, dict)
@@ -989,8 +985,12 @@ def _build_jira_project_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
     effective_mode = _jira_project_effective_mode(cfg, cursor_last_modified=cursor_last_modified)
     custom_fields = _jira_project_custom_fields(cfg)
 
-    include_attachments, max_attachments_per_issue, max_total_attachments = _resolve_connectors_helper("_jira_attachment_limits")(cfg)
-    include_linked_artifacts, max_linked_artifacts_per_issue, max_total_linked_artifacts = _resolve_connectors_helper("_jira_linked_artifact_limits")(cfg)
+    include_attachments, max_attachments_per_issue, max_total_attachments = _resolve_connectors_helper(
+        "_jira_attachment_limits"
+    )(cfg)
+    include_linked_artifacts, max_linked_artifacts_per_issue, max_total_linked_artifacts = _resolve_connectors_helper(
+        "_jira_linked_artifact_limits"
+    )(cfg)
     access_settings = _jira_project_access_settings(cfg)
     user_agent = cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None
     auth_headers, headers = _jira_project_headers(cfg, user_agent=user_agent)
@@ -1050,7 +1050,9 @@ def _build_jira_issue_info(*, base_url: str, issue: dict[str, Any]) -> dict[str,
     issue_key = str(issue.get("key") or "").strip() if isinstance(issue, dict) else ""
     issue_id = str(issue.get("id") or "").strip() if isinstance(issue, dict) else ""
     issue_url = _resolve_connectors_helper("_jira_issue_url")(base_url=base_url, issue_key=issue_key)
-    updated = _resolve_connectors_helper("_jira_extract_issue_updated")(issue if isinstance(issue, dict) else {}) or None
+    updated = (
+        _resolve_connectors_helper("_jira_extract_issue_updated")(issue if isinstance(issue, dict) else {}) or None
+    )
     return {
         "issue_id": issue_id,
         "issue_key": issue_key,
@@ -1324,7 +1326,9 @@ def _jira_issue_comment_bodies(fields: dict[str, Any], *, max_comments: int) -> 
     return [comment.get("body") for comment in comment_items[:lim_comments] if isinstance(comment, dict)]
 
 
-def _jira_extract_linked_artifact_urls(issue: dict, *, include_comments: bool, max_comments: int, limit: int) -> list[str]:
+def _jira_extract_linked_artifact_urls(
+    issue: dict, *, include_comments: bool, max_comments: int, limit: int
+) -> list[str]:
     if not isinstance(issue, dict):
         return []
 
@@ -1554,7 +1558,8 @@ async def _ingest_jira_issue_linked_artifacts(
     if (
         not settings_map.get("include_linked_artifacts")
         or not issue_url
-        or int(progress.get("linked_artifacts_processed") or 0) >= int(settings_map.get("max_total_linked_artifacts") or 0)
+        or int(progress.get("linked_artifacts_processed") or 0)
+        >= int(settings_map.get("max_total_linked_artifacts") or 0)
         or _resolve_connectors_helper("_jira_project_run_cancelled")(db, run=run)
     ):
         return {
@@ -1568,7 +1573,9 @@ async def _ingest_jira_issue_linked_artifacts(
     remaining_total = int(settings_map.get("max_total_linked_artifacts") or 0) - int(
         progress.get("linked_artifacts_processed") or 0
     )
-    per_issue_limit_eff = int(min(int(settings_map.get("max_linked_artifacts_per_issue") or 0), max(0, remaining_total)))
+    per_issue_limit_eff = int(
+        min(int(settings_map.get("max_linked_artifacts_per_issue") or 0), max(0, remaining_total))
+    )
     if per_issue_limit_eff <= 0:
         return {
             "linked_artifacts_processed": 0,
@@ -1797,7 +1804,9 @@ async def _ingest_jira_issue_attachments(
             "removed_attachment_documents_disabled": 0,
         }
 
-    remaining_total = int(settings_map.get("max_total_attachments") or 0) - int(progress.get("attachments_processed") or 0)
+    remaining_total = int(settings_map.get("max_total_attachments") or 0) - int(
+        progress.get("attachments_processed") or 0
+    )
     per_issue_limit_eff = int(min(int(settings_map.get("max_attachments_per_issue") or 0), max(0, remaining_total)))
     if per_issue_limit_eff <= 0:
         return {
@@ -1947,7 +1956,9 @@ def _jira_project_progress_stats_patch(progress: dict[str, Any]) -> dict[str, An
         "removed_issues_reconciled": int(progress.get("removed_issues_reconciled") or 0),
         "removed_documents_disabled": int(progress.get("removed_documents_disabled") or 0),
         "removed_attachment_documents_disabled": int(progress.get("removed_attachment_documents_disabled") or 0),
-        "removed_linked_artifact_documents_disabled": int(progress.get("removed_linked_artifact_documents_disabled") or 0),
+        "removed_linked_artifact_documents_disabled": int(
+            progress.get("removed_linked_artifact_documents_disabled") or 0
+        ),
     }
 
 
@@ -2033,7 +2044,9 @@ def _finalize_jira_project_run(
             "removed_attachment_documents_disabled": int(progress.get("removed_attachment_documents_disabled") or 0),
             "processed_linked_artifacts": int(progress.get("linked_artifacts_processed") or 0),
             "created_linked_artifacts": int(progress.get("linked_artifacts_created") or 0),
-            "removed_linked_artifact_documents_disabled": int(progress.get("removed_linked_artifact_documents_disabled") or 0),
+            "removed_linked_artifact_documents_disabled": int(
+                progress.get("removed_linked_artifact_documents_disabled") or 0
+            ),
             "skipped_boundary_duplicates": int(progress.get("skipped_boundary_duplicates") or 0),
         }
     )
@@ -2310,7 +2323,9 @@ async def _process_jira_project_issue(
         created += int(linked_artifacts.get("linked_artifacts_created") or 0)
         failed += int(linked_artifacts.get("failed") or 0)
         created_doc_ids.extend(linked_artifacts.get("created_doc_ids") or [])
-        removed_linked_artifact_documents_disabled += int(linked_artifacts.get("removed_linked_artifact_documents_disabled") or 0)
+        removed_linked_artifact_documents_disabled += int(
+            linked_artifacts.get("removed_linked_artifact_documents_disabled") or 0
+        )
 
         attachments = await _resolve_connectors_helper("_ingest_jira_issue_attachments")(
             db,
@@ -2393,11 +2408,7 @@ def _mark_jira_project_run_running(db: Session, *, run: ConnectorRun) -> None:
 
 def _mark_jira_project_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, exc: Exception) -> None:
     with contextlib.suppress(Exception):
-        run = (
-            db.query(ConnectorRun)
-            .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
-            .first()
-        )
+        run = db.query(ConnectorRun).filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id).first()
         if run is None:
             return
         run.status = "failed"

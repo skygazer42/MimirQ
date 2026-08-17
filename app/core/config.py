@@ -7,6 +7,7 @@ Centralized settings management including:
 - RAG pipeline parameters
 - Storage backend config
 """
+
 import ipaddress
 import json
 import os
@@ -163,7 +164,6 @@ class Settings(BaseSettings):
     """
 
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/mimirq"
-    # SQLAlchemy connection pool (ignored for SQLite).
     DB_POOL_SIZE: int = 10
     DB_MAX_OVERFLOW: int = 20
     DB_POOL_TIMEOUT_SEC: int = 30
@@ -234,21 +234,14 @@ class Settings(BaseSettings):
     # in-process. Keep this bounded so parser/KG work cannot exhaust DB pools.
     API_DOCUMENT_BACKGROUND_MAX_CONCURRENCY: int = 2
     REDIS_URL: str = "redis://localhost:6379/0"
-    # Arq worker Redis connection retries.
     # Used to reduce crash loops on cold start when Redis isn't ready yet.
     TASK_WORKER_REDIS_CONN_TIMEOUT_SEC: int = 1
     TASK_WORKER_REDIS_CONN_RETRIES: int = 60
     TASK_WORKER_REDIS_CONN_RETRY_DELAY_SEC: int = 1
-    # Arq queue name
     TASK_QUEUE_NAME: str = "mimirq"
-    # Worker concurrency (Arq max_jobs).
     TASK_WORKER_MAX_JOBS: int = 10
-    # Worker liveness heartbeat (best-effort ops observability).
-    # Interval: how frequently workers update heartbeat in Redis.
     TASK_WORKER_HEARTBEAT_INTERVAL_SEC: float = 5.0
-    # TTL: how long a worker can go silent before being considered inactive.
     TASK_WORKER_HEARTBEAT_TTL_SEC: int = 30
-    # Task execution timeout (seconds).
     TASK_JOB_TIMEOUT_SEC: int = 60 * 30
     # Redis semaphore lease TTL for tenant/dataset concurrency slots.
     # A short lease prevents dead workers from blocking capacity for too long;
@@ -370,10 +363,14 @@ class Settings(BaseSettings):
     VECTOR_WRITE_RETRY_BACKOFF_SEC: float = 0.5
 
     LLM_API_KEY: str = Field(default="", validation_alias=AliasChoices("LLM_API_KEY", "OPENAI_API_KEY"))
-    LLM_API_BASE: str = Field(default=DEFAULT_OPENAI_API_BASE, validation_alias=AliasChoices("LLM_API_BASE", "OPENAI_BASE_URL"))
+    LLM_API_BASE: str = Field(
+        default=DEFAULT_OPENAI_API_BASE, validation_alias=AliasChoices("LLM_API_BASE", "OPENAI_BASE_URL")
+    )
     LLM_MODEL: str = Field(default="gpt-5.4-mini", validation_alias=AliasChoices("LLM_MODEL", "OPENAI_MODEL"))
     LLM_MODEL_FAST: str | None = Field(default=None, validation_alias=AliasChoices("LLM_MODEL_FAST", "LLM_MODEL_LIGHT"))
-    LLM_MODEL_HEAVY: str | None = Field(default=None, validation_alias=AliasChoices("LLM_MODEL_HEAVY", "LLM_MODEL_COMPLEX"))
+    LLM_MODEL_HEAVY: str | None = Field(
+        default=None, validation_alias=AliasChoices("LLM_MODEL_HEAVY", "LLM_MODEL_COMPLEX")
+    )
     ENABLE_DYNAMIC_MODEL_ROUTING: bool = False
     MODEL_COMPLEXITY_THRESHOLD: int = 160
     MODEL_COMPLEXITY_HISTORY_WEIGHT: float = 0.35
@@ -689,7 +686,13 @@ class Settings(BaseSettings):
     IMAGE_EMBEDDING_BATCH_SIZE: int = 8
     IMAGE_EMBEDDING_COLLECTION_NAME: str = "image_chunks"
     # Keep this aligned with parser_factory supported non-PDF formats.
-    ALLOWED_EXTENSIONS: str = ".pdf,.txt,.md,.rst,.adoc,.asciidoc,.tex,.yaml,.yml,.toml,.sql,.log,.conf,.ini,.cfg,.env,.properties,.patch,.diff,.srt,.vtt,.mk,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.htm,.json,.jsonl,.ndjson,.xml,.rss,.atom,.graphql,.gql,.proto,.tf,.hcl,.js,.jsx,.mjs,.cjs,.ts,.tsx,.mts,.cts,.py,.pyi,.rs,.go,.java,.kt,.kts,.c,.h,.cc,.cpp,.cxx,.hpp,.cs,.php,.rb,.swift,.scala,.sh,.bash,.zsh,.ps1,.lua,.r,.vue,.svelte,.astro,.css,.scss,.sass,.less,.epub,.rtf,.odt,.eml,.msg,.png,.jpg,.jpeg,.webp,.gif,.bmp"
+    ALLOWED_EXTENSIONS: str = (
+        ".pdf,.txt,.md,.rst,.adoc,.asciidoc,.tex,.yaml,.yml,.toml,.sql,.log,.conf,.ini,.cfg,.env,.properties,"
+        ".patch,.diff,.srt,.vtt,.mk,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.htm,.json,.jsonl,.ndjson,"
+        ".xml,.rss,.atom,.graphql,.gql,.proto,.tf,.hcl,.js,.jsx,.mjs,.cjs,.ts,.tsx,.mts,.cts,.py,.pyi,.rs,"
+        ".go,.java,.kt,.kts,.c,.h,.cc,.cpp,.cxx,.hpp,.cs,.php,.rb,.swift,.scala,.sh,.bash,.zsh,.ps1,.lua,"
+        ".r,.vue,.svelte,.astro,.css,.scss,.sass,.less,.epub,.rtf,.odt,.eml,.msg,.png,.jpg,.jpeg,.webp,.gif,.bmp"
+    )
 
     @property
     def allowed_extensions_list(self) -> list[str]:
@@ -743,18 +746,37 @@ class Settings(BaseSettings):
 
     # ETL4LLM (layout/table/image parsing via etl4llm service)
     # Backward-compatible env aliases (deprecated): BISHENG_UNSTRUCTURED_*
-    ETL4LLM_ENABLED: bool = Field(default=False, validation_alias=AliasChoices("ETL4LLM_ENABLED", "BISHENG_UNSTRUCTURED_ENABLED"))
+    ETL4LLM_ENABLED: bool = Field(
+        default=False, validation_alias=AliasChoices("ETL4LLM_ENABLED", "BISHENG_UNSTRUCTURED_ENABLED")
+    )
     # Example: http://localhost:10001/v1/etl4llm/predict
-    ETL4LLM_API_URL: str = Field(default="", validation_alias=AliasChoices("ETL4LLM_API_URL", "BISHENG_UNSTRUCTURED_API_URL"))
-    ETL4LLM_TIMEOUT_SEC: int = Field(default=120, validation_alias=AliasChoices("ETL4LLM_TIMEOUT_SEC", "BISHENG_UNSTRUCTURED_TIMEOUT_SEC"))
+    ETL4LLM_API_URL: str = Field(
+        default="", validation_alias=AliasChoices("ETL4LLM_API_URL", "BISHENG_UNSTRUCTURED_API_URL")
+    )
+    ETL4LLM_TIMEOUT_SEC: int = Field(
+        default=120, validation_alias=AliasChoices("ETL4LLM_TIMEOUT_SEC", "BISHENG_UNSTRUCTURED_TIMEOUT_SEC")
+    )
     # partition | text
-    ETL4LLM_MODE: str = Field(default="partition", validation_alias=AliasChoices("ETL4LLM_MODE", "BISHENG_UNSTRUCTURED_MODE"))
-    ETL4LLM_FORCE_OCR: bool = Field(default=False, validation_alias=AliasChoices("ETL4LLM_FORCE_OCR", "BISHENG_UNSTRUCTURED_FORCE_OCR"))
-    ETL4LLM_ENABLE_FORMULA: bool = Field(default=True, validation_alias=AliasChoices("ETL4LLM_ENABLE_FORMULA", "BISHENG_UNSTRUCTURED_ENABLE_FORMULA"))
+    ETL4LLM_MODE: str = Field(
+        default="partition", validation_alias=AliasChoices("ETL4LLM_MODE", "BISHENG_UNSTRUCTURED_MODE")
+    )
+    ETL4LLM_FORCE_OCR: bool = Field(
+        default=False, validation_alias=AliasChoices("ETL4LLM_FORCE_OCR", "BISHENG_UNSTRUCTURED_FORCE_OCR")
+    )
+    ETL4LLM_ENABLE_FORMULA: bool = Field(
+        default=True, validation_alias=AliasChoices("ETL4LLM_ENABLE_FORMULA", "BISHENG_UNSTRUCTURED_ENABLE_FORMULA")
+    )
     # If partitions contain Image elements, crop them from PDF and emit `![](images/<id>.png)` refs.
-    ETL4LLM_EXTRACT_IMAGES: bool = Field(default=True, validation_alias=AliasChoices("ETL4LLM_EXTRACT_IMAGES", "BISHENG_UNSTRUCTURED_EXTRACT_IMAGES"))
+    ETL4LLM_EXTRACT_IMAGES: bool = Field(
+        default=True, validation_alias=AliasChoices("ETL4LLM_EXTRACT_IMAGES", "BISHENG_UNSTRUCTURED_EXTRACT_IMAGES")
+    )
     # Best-effort: drop obvious header/footer partitions by type (if provided by the service).
-    ETL4LLM_FILTER_PAGE_HEADER_FOOTER: bool = Field(default=False, validation_alias=AliasChoices("ETL4LLM_FILTER_PAGE_HEADER_FOOTER", "BISHENG_UNSTRUCTURED_FILTER_PAGE_HEADER_FOOTER"))
+    ETL4LLM_FILTER_PAGE_HEADER_FOOTER: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "ETL4LLM_FILTER_PAGE_HEADER_FOOTER", "BISHENG_UNSTRUCTURED_FILTER_PAGE_HEADER_FOOTER"
+        ),
+    )
     # Fallback: when the service returns no image refs/crops, include page render images at the top.
     ETL4LLM_INCLUDE_PAGE_IMAGES_IF_EMPTY: bool = True
     ETL4LLM_PAGE_IMAGE_DPI: int = 150
@@ -903,7 +925,8 @@ class Settings(BaseSettings):
 
     # SAML assertion exchange (enterprise; backend validation + app JWT issuance).
     # JSON list, for example:
-    # [{"id":"default","issuer":"https://idp.example.com","audience":"https://app.example.com/api/saml/metadata","acs_url":"https://app.example.com/api/saml/acs","idp_cert_pem":"-----BEGIN CERTIFICATE-----..."}]
+    # Example item fields: id, issuer, audience, acs_url, and idp_cert_pem.
+    # The serialized value remains a JSON list supplied through the environment.
     SAML_PROVIDERS_JSON: str = ""
     # Allow small clock drift between IdP and SP.
     SAML_ALLOWED_CLOCK_SKEW_SEC: int = 60
@@ -1066,8 +1089,7 @@ class Settings(BaseSettings):
     # Allow browsers to read diagnostic headers from cross-origin responses.
     # NOTE: This does not affect which headers the backend sends, only what the browser exposes to JS.
     CORS_EXPOSE_HEADERS: str = (
-        "X-Request-ID,X-Process-Time-Ms,Server-Timing,Retry-After,"
-        "X-Conversation-ID,X-Assistant-Message-ID"
+        "X-Request-ID,X-Process-Time-Ms,Server-Timing,Retry-After,X-Conversation-ID,X-Assistant-Message-ID"
     )
     # Allowed Host header values (Starlette TrustedHostMiddleware).
     # - Dev default: empty => middleware disabled outside production.
@@ -1651,9 +1673,9 @@ class Settings(BaseSettings):
     # sqlite3 connection timeout (seconds) for TAG import/query. Keep low to avoid hanging requests.
     TABLE_STORE_SQLITE_TIMEOUT_SEC: float = 30.0
     TABLE_STORE_MAX_ROWS: int = 200_000  # 0 disables cap
-    TABLE_STORE_MAX_COLS: int = 500      # 0 disables cap
-    TABLE_STORE_MAX_SHEETS: int = 50     # 0 disables cap
-    TABLE_STORE_SAMPLE_ROWS: int = 20    # 0 disables sample persistence
+    TABLE_STORE_MAX_COLS: int = 500  # 0 disables cap
+    TABLE_STORE_MAX_SHEETS: int = 50  # 0 disables cap
+    TABLE_STORE_SAMPLE_ROWS: int = 20  # 0 disables sample persistence
     # When enabled, redact common PII/secrets patterns from table rows returned by TAG APIs
     # for non-admin roles. This is a UI/data-egress safety guard (independent from LLM usage).
     TABLE_ROW_REDACTION_ENABLED: bool = False
@@ -1923,7 +1945,8 @@ class Settings(BaseSettings):
     GOVERNANCE_SECRETS_REDACT: bool = False
     GOVERNANCE_SECRETS_MODE: str = "mask"  # mask | token
     GOVERNANCE_SECRETS_MASK: str = "[SECRET]"
-    # Compliance gate: if >=0, quarantine/drop a document when total secrets hits exceed this threshold (sum across kinds).
+    # Compliance gate: if >=0, quarantine/drop a document when total secrets hits
+    # exceed this threshold (sum across kinds).
     GOVERNANCE_SECRETS_MAX_HITS: int = -1
     GOVERNANCE_MAX_BLANK_LINES: int = 1
     GOVERNANCE_HTML_XPATH: str = ""
@@ -2067,7 +2090,9 @@ class Settings(BaseSettings):
     )
     VISION_RAG_READER_MAX_OUTPUT_CHARS: int = Field(
         default=1500,
-        validation_alias=AliasChoices("MIMIRQ_VISION_RAG_READER_MAX_OUTPUT_CHARS", "VISION_RAG_READER_MAX_OUTPUT_CHARS"),
+        validation_alias=AliasChoices(
+            "MIMIRQ_VISION_RAG_READER_MAX_OUTPUT_CHARS", "VISION_RAG_READER_MAX_OUTPUT_CHARS"
+        ),
     )
     # Optional: generate the final answer directly with the Vision LLM when image evidence is present.
     # This is closer to "Vision-native RAG" but can be more expensive than VLM-as-Reader.
@@ -2425,7 +2450,7 @@ class Settings(BaseSettings):
 
     # Image display strategy.
     SHOW_IMAGE_IN_ANSWER: bool = True  # Include image segments in the answer body.
-    IMAGE_APPEND_MAX: int = 3          # Max images appended to the answer.
+    IMAGE_APPEND_MAX: int = 3  # Max images appended to the answer.
 
     # Multi-tenant defaults
     DEFAULT_TENANT_ID: str = "00000000-0000-0000-0000-000000000000"

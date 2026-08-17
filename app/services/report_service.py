@@ -5,7 +5,6 @@ Goal:
 - Keep it lightweight by reusing existing summaries and limiting expensive queries.
 """
 
-
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -421,7 +420,9 @@ def _retrieval_audit_failure_categories(
 
     effective_context = _summary_ratio(summary, "retrieval_effective_context_rate")
     retrieval_noise = _summary_ratio(summary, "retrieval_noise_rate")
-    if (effective_context is not None and effective_context < 0.9) or (retrieval_noise is not None and retrieval_noise > 0.1):
+    if (effective_context is not None and effective_context < 0.9) or (
+        retrieval_noise is not None and retrieval_noise > 0.1
+    ):
         _increment_failure(categories, "chunking")
 
     hit_1 = _summary_ratio_any(summary, "hit_at_1", "retrieval_hit_at_1")
@@ -525,7 +526,9 @@ def _retrieval_audit_failure_categories_from_gates(gates: list[DatasetRetrievalA
 def _retrieval_audit_kg_recommendation_from_gate(gate: DatasetRetrievalAuditGateOut) -> str | None:
     metrics = dict(gate.metrics or {})
     is_kg_gate = gate.name == "kg_compare" or "kg_compare" in str(gate.source or "")
-    if not is_kg_gate and not any(key in metrics for key in ("candidate_gate_passed", "compared_metrics", "kg_noise_rate")):
+    if not is_kg_gate and not any(
+        key in metrics for key in ("candidate_gate_passed", "compared_metrics", "kg_noise_rate")
+    ):
         return None
 
     candidate_passed = metrics.get("candidate_gate_passed")
@@ -1093,7 +1096,9 @@ def _build_compliance_summary(profile: Any) -> ComplianceSummary:
     by_status = {str(k): int(v or 0) for k, v in (getattr(profile, "by_status", None) or {}).items()}
     return ComplianceSummary(
         pii_hits_total={str(k): int(v or 0) for k, v in (getattr(profile, "pii_hits_total", None) or {}).items()},
-        secrets_hits_total={str(k): int(v or 0) for k, v in (getattr(profile, "secrets_hits_total", None) or {}).items()},
+        secrets_hits_total={
+            str(k): int(v or 0) for k, v in (getattr(profile, "secrets_hits_total", None) or {}).items()
+        },
         quarantined_documents=int(by_status.get("quarantined", 0) or 0),
         failed_documents=int(by_status.get("failed", 0) or 0),
     )
@@ -1158,7 +1163,11 @@ def _load_pipeline_snapshots(
             meta_dict = meta if isinstance(meta, dict) else {}
             versions = meta_dict.get("pipeline_provenance_versions")
             snap = versions.get(ph) if isinstance(versions, dict) else None
-            snapshots[ph] = dict(snap) if isinstance(snap, dict) and snap else build_pipeline_version_snapshot(meta=meta_dict, pipeline_hash=ph)
+            snapshots[ph] = (
+                dict(snap)
+                if isinstance(snap, dict) and snap
+                else build_pipeline_version_snapshot(meta=meta_dict, pipeline_hash=ph)
+            )
             if len(snapshots) >= len(target_set):
                 break
         return snapshots
@@ -1220,7 +1229,9 @@ def _load_folder_tree(
         return None
 
 
-def _count_events_with_page_ref(db: Session, kg_source_event: Any, allowed_ids: Any, request: DatasetReportRequest) -> int:
+def _count_events_with_page_ref(
+    db: Session, kg_source_event: Any, allowed_ids: Any, request: DatasetReportRequest
+) -> int:
     try:
         page_expr = kg_source_event.references["page"].as_integer()  # type: ignore[index]
         return int(
@@ -1304,11 +1315,17 @@ def _load_kg_document_audit(query: Any) -> dict[str, Any]:
             .all()
         )
         return {
-            "documents_with_kg_extracted_at": int(query.filter(DBDocument.doc_metadata["kg_extracted_at"].as_string().isnot(None)).count()),
+            "documents_with_kg_extracted_at": int(
+                query.filter(DBDocument.doc_metadata["kg_extracted_at"].as_string().isnot(None)).count()
+            ),
             "documents_with_kg_events": int(query.filter(kg_event_expr > 0).count()),
-            "event_count_from_documents": int((query.with_entities(func.coalesce(func.sum(kg_event_expr), 0)).scalar() or 0)),
+            "event_count_from_documents": int(
+                (query.with_entities(func.coalesce(func.sum(kg_event_expr), 0)).scalar() or 0)
+            ),
             "skipped_chunks_total": int((query.with_entities(func.coalesce(func.sum(skipped_expr), 0)).scalar() or 0)),
-            "skipped_short_chunks_total": int((query.with_entities(func.coalesce(func.sum(skipped_short_expr), 0)).scalar() or 0)),
+            "skipped_short_chunks_total": int(
+                (query.with_entities(func.coalesce(func.sum(skipped_short_expr), 0)).scalar() or 0)
+            ),
             "failed_chunks_total": int((query.with_entities(func.coalesce(func.sum(failed_expr), 0)).scalar() or 0)),
             "retry_chunks_total": int((query.with_entities(func.coalesce(func.sum(retry_expr), 0)).scalar() or 0)),
             "top_documents": [_kg_top_document(row) for row in top_rows if getattr(row, "document_id", None)],
@@ -1338,7 +1355,9 @@ def _kg_top_document(row: Any) -> dict[str, Any]:
     }
 
 
-def _load_kg_stats(db: Session, request: DatasetReportRequest, pipeline_hash_norm: str | None) -> DatasetKGStatsOut | None:
+def _load_kg_stats(
+    db: Session, request: DatasetReportRequest, pipeline_hash_norm: str | None
+) -> DatasetKGStatsOut | None:
     try:
         if not bool(getattr(settings, "KG_ENABLED", False)):
             return None
@@ -1424,13 +1443,17 @@ def _load_kg_stats(db: Session, request: DatasetReportRequest, pipeline_hash_nor
 def _load_latest_regression_summaries(
     db: Session,
     request: DatasetReportRequest,
-) -> tuple[DatasetRegressionRunSummaryOut | None, DatasetMustRecallSummaryOut | None, DatasetHierarchyRecallSummaryOut | None]:
+) -> tuple[
+    DatasetRegressionRunSummaryOut | None, DatasetMustRecallSummaryOut | None, DatasetHierarchyRecallSummaryOut | None
+]:
     try:
         from app.models.evaluation import RagasRegressionRun
 
         row = (
             db.query(RagasRegressionRun)
-            .filter(RagasRegressionRun.tenant_id == request.tenant_id, RagasRegressionRun.dataset_id == request.dataset_id)
+            .filter(
+                RagasRegressionRun.tenant_id == request.tenant_id, RagasRegressionRun.dataset_id == request.dataset_id
+            )
             .order_by(RagasRegressionRun.created_at.desc())
             .first()
         )
@@ -1449,8 +1472,12 @@ def _load_latest_regression_summaries(
             started_at=getattr(row, "started_at", None),
             finished_at=getattr(row, "finished_at", None),
         )
-        return latest, _aggregate_must_recall_summary(latest_regression_summary=row_summary), _aggregate_hierarchy_recall_summary(
-            latest_regression_summary=row_summary,
+        return (
+            latest,
+            _aggregate_must_recall_summary(latest_regression_summary=row_summary),
+            _aggregate_hierarchy_recall_summary(
+                latest_regression_summary=row_summary,
+            ),
         )
     except Exception:
         return None, None, None
@@ -1464,7 +1491,12 @@ def _load_report_metadatas(
     max_docs: int = 2000,
 ) -> tuple[list[dict], bool]:
     query = _report_documents_query(db, request, pipeline_hash_norm)
-    rows = query.with_entities(DBDocument.id, DBDocument.doc_metadata).order_by(DBDocument.updated_at.desc()).limit(max_docs + 1).all()
+    rows = (
+        query.with_entities(DBDocument.id, DBDocument.doc_metadata)
+        .order_by(DBDocument.updated_at.desc())
+        .limit(max_docs + 1)
+        .all()
+    )
     metadatas: list[dict] = []
     for row in rows:
         if not isinstance(row, tuple) or len(row) != 2:
@@ -1555,7 +1587,9 @@ class ReportService:
         )
         total_documents = int(getattr(profile, "total_documents", 0) or 0)
         pipeline_versions = _load_pipeline_versions(db, request)
-        latest_regression_run, must_recall_summary, hierarchy_recall_summary = _load_latest_regression_summaries(db, request)
+        latest_regression_run, must_recall_summary, hierarchy_recall_summary = _load_latest_regression_summaries(
+            db, request
+        )
         governance_metrics, governance_audit, chunk_quality_metrics, parse_risk_summary = _load_metadata_summaries(
             db,
             request,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import io
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -62,11 +63,42 @@ def _write_jsonl(path: Path, rows: list[object]) -> None:
 def test_build_samples_payload_preserves_type_coverage_and_review_sorting(tmp_path: Path) -> None:
     jsonl_path = tmp_path / "files.jsonl"
     rows = [
-        {"name": "a.pdf", "file_type": "pdf", "file_size": 400, "pdf_scanned": True, "text_characters": 20, "findings": ["pdf_scanned"]},
-        {"name": "b.txt", "file_type": "txt", "file_size": 500, "text_characters": 300, "findings": ["pii"]},
-        {"name": "c.csv", "file_type": "csv", "file_size": 700, "text_characters": 120, "findings": ["large_spreadsheet"]},
-        {"name": "d.md", "file_type": "md", "file_size": 100, "text_characters": 50, "findings": []},
-        {"name": "e.txt", "file_type": "txt", "file_size": 900, "text_characters": 900, "findings": ["pii", "short_text"]},
+        {
+            "name": "a.pdf",
+            "file_type": "pdf",
+            "file_size": 400,
+            "pdf_scanned": True,
+            "text_characters": 20,
+            "findings": ["pdf_scanned"],
+        },
+        {
+            "name": "b.txt",
+            "file_type": "txt",
+            "file_size": 500,
+            "text_characters": 300,
+            "findings": ["pii"],
+        },
+        {
+            "name": "c.csv",
+            "file_type": "csv",
+            "file_size": 700,
+            "text_characters": 120,
+            "findings": ["large_spreadsheet"],
+        },
+        {
+            "name": "d.md",
+            "file_type": "md",
+            "file_size": 100,
+            "text_characters": 50,
+            "findings": [],
+        },
+        {
+            "name": "e.txt",
+            "file_type": "txt",
+            "file_size": 900,
+            "text_characters": 900,
+            "findings": ["pii", "short_text"],
+        },
     ]
     _write_jsonl(jsonl_path, rows)
 
@@ -185,7 +217,11 @@ def test_run_dataset_precheck_scan_keeps_completed_status_for_file_parse_failure
             "pdf_low_density_ratio_threshold": 0.5,
         },
     )
-    monkeypatch.setattr(runner, "_read_text_sample", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(
+        runner,
+        "_read_text_sample",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
     monkeypatch.setattr(runner, "classify_parse_failure_kind", lambda **_kwargs: "other_parse_failure")
     monkeypatch.setattr(runner, "build_embedding_language_advisories", lambda **_kwargs: [])
     build_scan_options = runner._build_scan_options
@@ -216,3 +252,177 @@ def test_run_dataset_precheck_scan_keeps_completed_status_for_file_parse_failure
     record = json.loads(jsonl_path.read_text(encoding="utf-8").splitlines()[0])
     assert record["error_message"] == "boom"
     assert record["findings"] == ["parse_failed", "other_parse_failure"]
+
+
+def test_process_candidate_calls_content_finalize_then_flush_in_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    rec = runner._FileRecord(name="doc.txt", file_type="txt", file_size=12)
+    state = runner._ScanAccumulator()
+    options = runner._build_scan_options(cfg={"root_path": "/tmp"})
+
+    monkeypatch.setattr(
+        runner,
+        "_build_file_record",
+        lambda **_kwargs: events.append("build") or (rec, ".txt", 12),
+    )
+    monkeypatch.setattr(
+        runner,
+        "_try_reuse_previous_record",
+        lambda *_args, **_kwargs: events.append("reuse") or False,
+    )
+    monkeypatch.setattr(
+        runner,
+        "_process_record_content",
+        lambda *_args, **_kwargs: events.append("process"),
+    )
+    monkeypatch.setattr(
+        runner,
+        "_finalize_record",
+        lambda *_args, **_kwargs: events.append("finalize"),
+    )
+
+    runner._process_candidate(
+        Path("/tmp/doc.txt"),
+        idx=3,
+        root=Path("/tmp"),
+        prev_records={"doc.txt": {"ignored": True}},
+        state=state,
+        options=options,
+        jf=io.StringIO(),
+        flush_progress=lambda idx: events.append(f"flush:{idx}"),
+    )
+
+    assert events == ["build", "reuse", "process", "finalize", "flush:3"]
+
+
+def test_try_reuse_previous_record_updates_stats_and_writes_before_flush(tmp_path: Path) -> None:
+    rec = runner._FileRecord(
+        name="dir/doc.txt",
+        file_type="txt",
+        file_size=64,
+        file_mtime=1234,
+    )
+    state = runner._ScanAccumulator()
+    options = replace(
+        runner._build_scan_options(cfg={"root_path": str(tmp_path)}),
+        enable_near_dup=True,
+        compute_file_hash=True,
+    )
+    prev_records = {
+        rec.name: {
+            "name": "stale-name.txt",
+            "file_type": "txt",
+            "file_size": 64,
+            "file_mtime": 1234,
+            "text_characters": 25,
+            "text_tokens_est": 7,
+            "language": "en",
+            "findings": ["pii"],
+            "pii_hits": {"email": 2},
+            "secrets_hits": {"token": 1},
+            "text_simhash64": "000000000000000f",
+            "file_sha256": "abc123",
+        }
+    }
+    handle = io.StringIO()
+    flushed: list[int] = []
+
+    def flush_progress(idx: int) -> None:
+        line = handle.getvalue().strip()
+        assert line
+        assert json.loads(line)["name"] == rec.name
+        flushed.append(idx)
+
+    reused = runner._try_reuse_previous_record(
+        prev_records,
+        rec=rec,
+        state=state,
+        options=options,
+        jf=handle,
+        idx=4,
+        flush_progress=flush_progress,
+    )
+
+    payload = json.loads(handle.getvalue().strip())
+
+    assert reused is True
+    assert flushed == [4]
+    assert state.reused_files == 1
+    assert state.by_type == {"txt": 1}
+    assert state.bytes_by_type == {"txt": 64}
+    assert state.text_lengths == [25]
+    assert state.token_lengths == [7]
+    assert state.language_counts["en"] == 1
+    assert state.pii_totals == {"email": 2}
+    assert state.secrets_totals == {"token": 1}
+    assert state.sha_counts == {"abc123": 1}
+    assert state.simhash_entries == [(rec.name, 15, 64, 25, 1234)]
+    assert payload["name"] == rec.name
+    assert payload["file_size"] == rec.file_size
+    assert payload["file_mtime"] == rec.file_mtime
+    assert payload["findings"] == ["pii"]
+
+
+def test_run_dataset_precheck_scan_keeps_cancelled_status_without_forcing_completion(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    tenant_id = uuid4()
+    dataset_id = uuid4()
+    scan_run_id = uuid4()
+    upload_root = tmp_path / "uploads"
+    root = upload_root / "scan-root"
+    root.mkdir(parents=True)
+
+    run = SimpleNamespace(
+        id=scan_run_id,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        config={"root_path": str(root)},
+        status="queued",
+        progress=None,
+        started_at=None,
+        updated_at=None,
+        finished_at=None,
+        error_message=None,
+        summary=None,
+        artifacts=None,
+    )
+    db = _FakeDB(run=run, dataset_metadata={"language": "en"})
+
+    monkeypatch.setattr(runner.settings, "LOCAL_SCAN_ENABLED", True, raising=False)
+    monkeypatch.setattr(runner.settings, "UPLOAD_DIR", str(upload_root), raising=False)
+    monkeypatch.setattr(runner.settings, "LOCAL_SCAN_ROOTS", "", raising=False)
+    monkeypatch.setattr(
+        runner,
+        "build_embedding_language_advisories",
+        lambda **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        runner,
+        "_collect_scan_candidates",
+        lambda **_kwargs: ([root / "a.txt", root / "b.txt"], {"txt": 2}),
+    )
+
+    def fake_scan_candidates_to_jsonl(**kwargs: object) -> None:
+        state = kwargs["state"]
+        flush_progress = kwargs["flush_progress"]
+        state.file_sizes.append(42)
+        state.by_type["txt"] = 1
+        flush_progress(1, force=True)
+        state.cancelled = True
+
+    monkeypatch.setattr(runner, "_scan_candidates_to_jsonl", fake_scan_candidates_to_jsonl)
+
+    result = runner.run_dataset_precheck_scan(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        scan_run_id=scan_run_id,
+    )
+
+    assert result == {"ok": True, "files": 2, "errors": 0, "reused": 0}
+    assert run.status == "cancelled"
+    assert run.progress == 50
+    assert run.summary["total_files"] == 1

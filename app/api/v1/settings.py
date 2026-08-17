@@ -255,6 +255,7 @@ async def _validate_public_base_url(base_url: str) -> _ValidatedFetchTarget:
 
 class FeatureFlags(BaseModel):
     """Feature flags."""
+
     kg_enabled: bool = False
     deepdoc_enabled: bool = False
     docling_enabled: bool = False
@@ -270,6 +271,7 @@ class FeatureFlags(BaseModel):
 
 class KGConfig(BaseModel):
     """KG-related config."""
+
     chat_enabled: bool = False
     extract_prompt_template_id: str = ""
     extract_prompt_template_key: str = ""
@@ -284,6 +286,7 @@ def _default_llm_api_base() -> str:
 
 class LLMConfig(BaseModel):
     """LLM config."""
+
     api_key: str = ""
     api_base: str = Field(default_factory=_default_llm_api_base)
     model: str = "gpt-5.4-mini"
@@ -294,6 +297,7 @@ class LLMConfig(BaseModel):
 
 class EmbeddingConfig(BaseModel):
     """Embedding config."""
+
     provider: str = "openai_compatible"
     model: str = "text-embedding-3-small"
     api_key: str = ""
@@ -302,6 +306,7 @@ class EmbeddingConfig(BaseModel):
 
 class MilvusConfig(BaseModel):
     """Milvus config."""
+
     host: str = "localhost"
     port: int = 19530
     user: str = ""
@@ -311,6 +316,7 @@ class MilvusConfig(BaseModel):
 
 class MinioConfig(BaseModel):
     """MinIO / S3-compatible object storage config."""
+
     enabled: bool = False
     endpoint: str = "localhost:9000"
     access_key: str = ""
@@ -323,6 +329,7 @@ class MinioConfig(BaseModel):
 
 class RAGConfig(BaseModel):
     """RAG parameter config."""
+
     chunk_size: int = 1000
     chunk_overlap: int = 200
     chunk_min_chars: int = 30
@@ -399,6 +406,7 @@ class GovernanceConfig(BaseModel):
 
 class ObservabilityConfig(BaseModel):
     """Observability/debug config."""
+
     tool_call_log_enabled: bool = False
     tool_call_log_include_preview: bool = False
     tool_call_log_max_preview_chars: int = Field(default=500, ge=0, le=5000)
@@ -414,6 +422,7 @@ class ObservabilityConfig(BaseModel):
 
 class SafetyConfig(BaseModel):
     """Security/privacy config."""
+
     pii_redaction_enabled: bool = False
     pii_redaction_mask: str = "[REDACTED]"
     pii_stream_holdback_chars: int = Field(default=128, ge=0, le=4096)
@@ -428,6 +437,7 @@ class ChatConfig(BaseModel):
 
 class LangGraphConfig(BaseModel):
     """LangGraph execution mode config."""
+
     use_subgraphs: bool = False
 
 
@@ -445,6 +455,7 @@ class CacheConfig(BaseModel):
 
 class MinerUConfig(BaseModel):
     """MinerU config."""
+
     api_token: str = ""
     api_base: str = "https://mineru.net/api/v4"
     model_version: str = "vlm"
@@ -460,6 +471,7 @@ class MinerUConfig(BaseModel):
 
 class MagicPDFConfig(BaseModel):
     """MagicPDF (magic-pdf) config."""
+
     api_url: str = ""
     request_timeout_sec: int = 600
     max_concurrent_jobs: int = 1
@@ -475,6 +487,7 @@ class MagicPDFConfig(BaseModel):
 
 class Etl4LlmConfig(BaseModel):
     """ETL4LLM (layout/table/image parsing) config."""
+
     api_url: str = ""
     timeout_sec: int = 120
     mode: str = "partition"  # partition | text
@@ -486,12 +499,14 @@ class Etl4LlmConfig(BaseModel):
 
 class MarkerConfig(BaseModel):
     """Marker external PDF->Markdown service config."""
+
     api_url: str = ""
     timeout_sec: int = 600
 
 
 class PaddleVLConfig(BaseModel):
     """PaddleOCR-VL external PDF->Markdown service config."""
+
     api_url: str = ""
     timeout_sec: int = 600
     # Display/audit only: expected service pipeline version/mode (not used by the backend parser directly).
@@ -501,6 +516,7 @@ class PaddleVLConfig(BaseModel):
 
 class TextInConfig(BaseModel):
     """TextIn xParse external document->Markdown API config."""
+
     api_url: str = "https://api.textin.com/ai/service/v1/pdf_to_markdown"
     app_id: str = ""
     secret_code: str = ""
@@ -539,6 +555,7 @@ class DifyExternalKnowledgeConfig(BaseModel):
 
 class SystemSettings(BaseModel):
     """Full system config."""
+
     feature_flags: FeatureFlags
     kg: KGConfig
     llm: LLMConfig
@@ -565,6 +582,7 @@ class SystemSettings(BaseModel):
 
 class UpdateSettingsRequest(BaseModel):
     """Update config request."""
+
     feature_flags: FeatureFlags | None = None
     kg: KGConfig | None = None
     llm: LLMConfig | None = None
@@ -763,7 +781,10 @@ def _apply_rag_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]
             ("RERANKER_PROVIDER", str),
             ("RERANKER_TOP_N", lambda value: _parse_int(value, default=settings.RERANKER_TOP_N)),
             ("SHOW_IMAGE_IN_ANSWER", _parse_bool),
-            ("IMAGE_APPEND_MAX", lambda value: _parse_int(value, default=int(getattr(settings, "IMAGE_APPEND_MAX", 3) or 3))),
+            (
+                "IMAGE_APPEND_MAX",
+                lambda value: _parse_int(value, default=int(getattr(settings, "IMAGE_APPEND_MAX", 3) or 3)),
+            ),
         ),
     )
 
@@ -787,7 +808,9 @@ def _apply_cache_runtime_settings(env_vars: dict[str, str], updated_keys: set[st
             ("CHAT_RESPONSE_CACHE_ENABLED", _parse_bool),
             (
                 "CHAT_RESPONSE_CACHE_TTL_SEC",
-                lambda value: _parse_int(value, default=int(getattr(settings, "CHAT_RESPONSE_CACHE_TTL_SEC", 300) or 300)),
+                lambda value: _parse_int(
+                    value, default=int(getattr(settings, "CHAT_RESPONSE_CACHE_TTL_SEC", 300) or 300)
+                ),
             ),
             (
                 "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES",
@@ -807,7 +830,10 @@ def _apply_url_ingest_runtime_settings(env_vars: dict[str, str], updated_keys: s
         updated_keys,
         (
             ("URL_INGEST_ENABLED", _parse_bool),
-            ("URL_INGEST_MAX_BYTES", lambda value: _parse_int(value, default=getattr(settings, "URL_INGEST_MAX_BYTES", 0))),
+            (
+                "URL_INGEST_MAX_BYTES",
+                lambda value: _parse_int(value, default=getattr(settings, "URL_INGEST_MAX_BYTES", 0)),
+            ),
             (
                 "URL_INGEST_TIMEOUT_SEC",
                 lambda value: _parse_float(value, default=getattr(settings, "URL_INGEST_TIMEOUT_SEC", 30.0)),
@@ -894,11 +920,15 @@ def _apply_magicpdf_runtime_settings(env_vars: dict[str, str], updated_keys: set
             ("MAGIC_PDF_API_URL", str),
             (
                 "MAGIC_PDF_REQUEST_TIMEOUT_SEC",
-                lambda value: _parse_int(value, default=int(getattr(settings, "MAGIC_PDF_REQUEST_TIMEOUT_SEC", 600) or 600)),
+                lambda value: _parse_int(
+                    value, default=int(getattr(settings, "MAGIC_PDF_REQUEST_TIMEOUT_SEC", 600) or 600)
+                ),
             ),
             (
                 "MAGIC_PDF_MAX_CONCURRENT_JOBS",
-                lambda value: _parse_int(value, default=int(getattr(settings, "MAGIC_PDF_MAX_CONCURRENT_JOBS", 1) or 1)),
+                lambda value: _parse_int(
+                    value, default=int(getattr(settings, "MAGIC_PDF_MAX_CONCURRENT_JOBS", 1) or 1)
+                ),
             ),
             ("MAGIC_PDF_CLI", str),
             ("MAGIC_PDF_METHOD", str),
@@ -919,10 +949,16 @@ def _apply_observability_runtime_settings(env_vars: dict[str, str], updated_keys
         (
             ("TOOL_CALL_LOG_ENABLED", _parse_bool),
             ("TOOL_CALL_LOG_INCLUDE_PREVIEW", _parse_bool),
-            ("TOOL_CALL_LOG_MAX_PREVIEW_CHARS", lambda value: _parse_int(value, default=settings.TOOL_CALL_LOG_MAX_PREVIEW_CHARS)),
+            (
+                "TOOL_CALL_LOG_MAX_PREVIEW_CHARS",
+                lambda value: _parse_int(value, default=settings.TOOL_CALL_LOG_MAX_PREVIEW_CHARS),
+            ),
             ("AGENT_LOG_ENABLED", _parse_bool),
             ("AGENT_LOG_INCLUDE_EXECUTION_PATH", _parse_bool),
-            ("AGENT_LOG_MAX_PREVIEW_CHARS", lambda value: _parse_int(value, default=settings.AGENT_LOG_MAX_PREVIEW_CHARS)),
+            (
+                "AGENT_LOG_MAX_PREVIEW_CHARS",
+                lambda value: _parse_int(value, default=settings.AGENT_LOG_MAX_PREVIEW_CHARS),
+            ),
             ("ENABLE_METRICS_LOG", _parse_bool),
             ("METRICS_LOG_INCLUDE_TEXT", _parse_bool),
         ),
@@ -975,7 +1011,9 @@ def _apply_dify_runtime_settings(env_vars: dict[str, str], updated_keys: set[str
             ("DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", str),
             (
                 "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX",
-                lambda value: _parse_int(value, default=int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 5) or 5)),
+                lambda value: _parse_int(
+                    value, default=int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 5) or 5)
+                ),
             ),
         ),
     )
@@ -1014,11 +1052,11 @@ def read_env_file() -> dict[str, str]:
     """Read .env file."""
     env_vars = {}
     if ENV_FILE.exists():
-        with open(ENV_FILE, 'r', encoding='utf-8') as f:
+        with open(ENV_FILE, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
-                if line and not line.startswith('#') and '=' in line:
-                    key, _, value = line.partition('=')
+                if line and not line.startswith("#") and "=" in line:
+                    key, _, value = line.partition("=")
                     env_vars[key.strip()] = value.strip()
     return env_vars
 
@@ -1030,18 +1068,18 @@ def write_env_file(env_vars: dict[str, str]):
 
     # Read existing file and preserve comments.
     if ENV_FILE.exists():
-        with open(ENV_FILE, 'r', encoding='utf-8') as f:
+        with open(ENV_FILE, "r", encoding="utf-8") as f:
             for line in f:
                 stripped = line.strip()
-                if stripped.startswith('#') or not stripped:
-                    lines.append(line.rstrip('\n'))
-                elif '=' in stripped:
-                    key = stripped.split('=')[0].strip()
+                if stripped.startswith("#") or not stripped:
+                    lines.append(line.rstrip("\n"))
+                elif "=" in stripped:
+                    key = stripped.split("=")[0].strip()
                     existing_keys.add(key)
                     if key in env_vars:
                         lines.append(f"{key}={env_vars[key]}")
                     else:
-                        lines.append(line.rstrip('\n'))
+                        lines.append(line.rstrip("\n"))
 
     # Add new key-value pairs.
     for key, value in env_vars.items():
@@ -1167,8 +1205,12 @@ def get_settings(
             upload_dedup_enabled=bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)),
             chat_response_cache_enabled=bool(getattr(settings, "CHAT_RESPONSE_CACHE_ENABLED", False)),
             chat_response_cache_ttl_sec=int(getattr(settings, "CHAT_RESPONSE_CACHE_TTL_SEC", 300) or 0),
-            chat_response_cache_max_value_bytes=int(getattr(settings, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 200_000) or 0),
-            chat_response_cache_require_empty_history=bool(getattr(settings, "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY", True)),
+            chat_response_cache_max_value_bytes=int(
+                getattr(settings, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 200_000) or 0
+            ),
+            chat_response_cache_require_empty_history=bool(
+                getattr(settings, "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY", True)
+            ),
         ),
         url_ingest=UrlIngestConfig(
             enabled=bool(getattr(settings, "URL_INGEST_ENABLED", False)),
@@ -1211,7 +1253,9 @@ def get_settings(
             mode=str(getattr(settings, "PADDLE_VL_MODE", "doc_parser") or "doc_parser"),
         ),
         textin=TextInConfig(
-            api_url=str(getattr(settings, "TEXTIN_API_URL", "") or "https://api.textin.com/ai/service/v1/pdf_to_markdown"),
+            api_url=str(
+                getattr(settings, "TEXTIN_API_URL", "") or "https://api.textin.com/ai/service/v1/pdf_to_markdown"
+            ),
             app_id=str(getattr(settings, "TEXTIN_APP_ID", "") or ""),
             secret_code=mask_secret(str(getattr(settings, "TEXTIN_SECRET_CODE", "") or "")),
             timeout_sec=int(getattr(settings, "TEXTIN_TIMEOUT_SEC", 180) or 180),
@@ -1582,7 +1626,9 @@ def _update_textin_env(env_vars: dict[str, str], updated_keys: list[str], textin
     env_vars["TEXTIN_TIMEOUT_SEC"] = str(int(textin.timeout_sec or 0))
     env_vars["TEXTIN_PARSE_MODE"] = _sanitize_env_value(
         "TEXTIN_PARSE_MODE",
-        _normalize_choice(textin.parse_mode or "auto", default="auto", allowed={"auto", "scan", "parse", "lite", "vlm"}),
+        _normalize_choice(
+            textin.parse_mode or "auto", default="auto", allowed={"auto", "scan", "parse", "lite", "vlm"}
+        ),
     )
     env_vars["TEXTIN_TABLE_FLAVOR"] = _sanitize_env_value(
         "TEXTIN_TABLE_FLAVOR",
@@ -1804,9 +1850,11 @@ def update_settings(
             # Best-effort, PII-minimal audit record (no secret values).
             from app.services.audit_log_service import audit_log_event
 
-            request_id = (http_request.headers.get("X-Request-ID") or "").strip() or str(
-                getattr(http_request.state, "request_id", "") or ""
-            ).strip() or None
+            request_id = (
+                (http_request.headers.get("X-Request-ID") or "").strip()
+                or str(getattr(http_request.state, "request_id", "") or "").strip()
+                or None
+            )
 
             ip = None
             with contextlib.suppress(Exception):
@@ -1841,7 +1889,7 @@ def update_settings(
         return {
             "success": True,
             "message": "配置已保存，大多数修改会影响后续请求；外部解析器仍需对应服务已启动。",
-            "updated_keys": updated_keys
+            "updated_keys": updated_keys,
         }
     except HTTPException:
         raise
@@ -2137,11 +2185,15 @@ async def get_system_status(
     from app.core.database import SessionLocal
     from app.parsing.parsers.magic_pdf_parser import resolve_magicpdf_models_dir
     from app.parsing.utils.cli import resolve_cli_command
+
     return {
         "database": _get_database_status(SessionLocal, text),
         "milvus": _get_milvus_status(connections),
         "llm": {"configured": bool(settings.LLM_API_KEY), "model": settings.LLM_MODEL},
-        "embedding": {"configured": bool(settings.EMBEDDING_API_KEY or settings.LLM_API_KEY), "model": settings.EMBEDDING_MODEL},
+        "embedding": {
+            "configured": bool(settings.EMBEDDING_API_KEY or settings.LLM_API_KEY),
+            "model": settings.EMBEDDING_MODEL,
+        },
         "parsers": await _build_parser_statuses(
             resolve_cli_command=resolve_cli_command,
             resolve_magicpdf_models_dir=resolve_magicpdf_models_dir,
@@ -2188,7 +2240,9 @@ async def test_llm_connection(
     timeout = float(request.timeout) if request.timeout else 20.0
 
     try:
-        http_client, http_async_client = _build_pinned_http_clients(validated_target, trust_env=trust_env, timeout=timeout)
+        http_client, http_async_client = _build_pinned_http_clients(
+            validated_target, trust_env=trust_env, timeout=timeout
+        )
         with http_client:
             async with http_async_client:
                 llm = ChatOpenAI(

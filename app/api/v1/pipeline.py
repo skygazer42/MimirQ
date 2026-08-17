@@ -1,8 +1,10 @@
 """
 Lightweight parsing and hierarchical chunk preview APIs:
-- /pipeline/parse-preview: route parsing by file type (auto/Pandoc/MarkItDown/DeepDoc/MinerU/...), return Markdown + image refs
+- /pipeline/parse-preview: route parsing by file type
+  (auto/Pandoc/MarkItDown/DeepDoc/MinerU/...), return Markdown + image refs
 - /pipeline/chunk-preview: hierarchical Markdown chunking (paragraph/sentence) with highlight offsets
 """
+
 import json
 import re
 import shutil
@@ -80,8 +82,6 @@ from app.api.v1.pipeline_support.capabilities import (
 )
 from app.api.v1.pipeline_support.clean_preview import (
     _PIPELINE_FALLBACK_LOG_MESSAGE,
-    REDACTED_MASK,
-    SECRET_MASK,
     _analyze_governance_preview,
     _apply_preview_cleanup_stats,
     _apply_preview_format_transforms,
@@ -115,14 +115,14 @@ from app.api.v1.pipeline_support.governance_profiles import (
     _upsert_governance_profile_import_record,
 )
 from app.api.v1.pipeline_support.ingestion_preview import (
-    _effective_bool,
-    _effective_float,
-    _effective_int,
-    _effective_str,
-    _empty_preprocess_summary,
+    _build_ingestion_clean_preview_request,
+    _dataset_metadata_dict,
+    _ingestion_preview_explain,
     _ingestion_preview_defaults,
+    _ingestion_preview_rule_output,
     _ingestion_rule_preprocess_steps,
     _IngestionPreviewConfig,
+    _preprocess_ingestion_preview_file,
 )
 from app.core.config import settings
 from app.core.database import get_db
@@ -134,7 +134,6 @@ from app.models.document import DocumentChunk
 from app.models.governance_profile import GovernanceProfile as DBGovernanceProfile
 from app.parsing.backends import normalize_parser_backend
 from app.parsing.factory import ParserFactory
-from app.parsing.preprocess.file_preprocessor import preprocess_file
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.parsing.utils.zip_processor import zip_image_processor
 from app.rag.chunking import chunker_factory, hierarchical_chunk_markdown
@@ -581,7 +580,11 @@ async def import_pipeline_plugin_golden_draft(
     return PipelinePluginGoldenDraftImportResponse(draft=draft, import_result=import_result)
 
 
-@router.get("/capabilities", response_model=PipelineCapabilitiesResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/capabilities",
+    response_model=PipelineCapabilitiesResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def get_pipeline_capabilities(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -595,8 +598,12 @@ def get_pipeline_capabilities(
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    default_parser_backend = normalize_parser_backend(getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto") or "auto"
-    default_chunk_strategy = (getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower()
+    default_parser_backend = (
+        normalize_parser_backend(getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto") or "auto"
+    )
+    default_chunk_strategy = (
+        (getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower()
+    )
 
     pdf_backends = [_pipeline_parser_backend_info(name) for name in sorted(ParserFactory.SUPPORTED_PDF_BACKENDS)]
 
@@ -612,7 +619,11 @@ def get_pipeline_capabilities(
     )
 
 
-@router.get("/governance-profiles", response_model=GovernanceProfileListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/governance-profiles",
+    response_model=GovernanceProfileListResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def list_governance_profiles(
     q: str | None = None,
     include_builtin: bool = True,
@@ -702,7 +713,12 @@ async def list_builtin_processing_scripts_endpoint(
     return BuiltinProcessingScriptListResponse(total=len(items), items=items)
 
 
-@router.post("/governance-profiles", response_model=GovernanceProfileOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/governance-profiles",
+    response_model=GovernanceProfileOut,
+    status_code=201,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def create_governance_profile(
     body: GovernanceProfileCreate,
     *,
@@ -751,7 +767,11 @@ def create_governance_profile(
     return _profile_out_from_row(row)
 
 
-@router.get("/governance-profiles/{profile_ref}", response_model=GovernanceProfileOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/governance-profiles/{profile_ref}",
+    response_model=GovernanceProfileOut,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def get_governance_profile(
     profile_ref: str,
     *,
@@ -760,10 +780,19 @@ def get_governance_profile(
     db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
-    return _resolve_profile_ref(db=db, tenant_id=tenant_id, profile_ref=profile_ref, builtin_by_key=_BUILTIN_GOVERNANCE_BY_KEY)
+    return _resolve_profile_ref(
+        db=db,
+        tenant_id=tenant_id,
+        profile_ref=profile_ref,
+        builtin_by_key=_BUILTIN_GOVERNANCE_BY_KEY,
+    )
 
 
-@router.get("/governance-profiles/{profile_ref}/resolved", response_model=GovernanceProfileResolvedResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/governance-profiles/{profile_ref}/resolved",
+    response_model=GovernanceProfileResolvedResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def get_governance_profile_resolved(
     profile_ref: str,
     *,
@@ -773,17 +802,29 @@ def get_governance_profile_resolved(
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
     try:
-        resolved = resolve_governance_profile_ref_effective(db=db, tenant_id=tenant_id, profile_ref=profile_ref)
+        resolved = resolve_governance_profile_ref_effective(
+            db=db,
+            tenant_id=tenant_id,
+            profile_ref=profile_ref,
+        )
     except ValueError as exc:
         msg = str(exc) or "invalid profile_ref"
         if "not found" in msg.lower():
             raise HTTPException(status_code=404, detail=msg) from exc
         raise HTTPException(status_code=400, detail=msg) from exc
 
-    return GovernanceProfileResolvedResponse(profile=resolved.profile, chain=resolved.chain, effective=resolved.effective)
+    return GovernanceProfileResolvedResponse(
+        profile=resolved.profile,
+        chain=resolved.chain,
+        effective=resolved.effective,
+    )
 
 
-@router.patch("/governance-profiles/{profile_ref}", response_model=GovernanceProfileOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.patch(
+    "/governance-profiles/{profile_ref}",
+    response_model=GovernanceProfileOut,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def update_governance_profile(
     profile_ref: str,
     body: GovernanceProfileUpdate,
@@ -794,7 +835,12 @@ def update_governance_profile(
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    row = _resolve_custom_profile_row(db=db, tenant_id=tenant_id, profile_ref=profile_ref, builtin_by_key=_BUILTIN_GOVERNANCE_BY_KEY)
+    row = _resolve_custom_profile_row(
+        db=db,
+        tenant_id=tenant_id,
+        profile_ref=profile_ref,
+        builtin_by_key=_BUILTIN_GOVERNANCE_BY_KEY,
+    )
 
     if body.name is not None:
         name = str(body.name or "").strip()
@@ -830,14 +876,23 @@ def delete_governance_profile(
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    row = _resolve_custom_profile_row(db=db, tenant_id=tenant_id, profile_ref=profile_ref, builtin_by_key=_BUILTIN_GOVERNANCE_BY_KEY)
+    row = _resolve_custom_profile_row(
+        db=db,
+        tenant_id=tenant_id,
+        profile_ref=profile_ref,
+        builtin_by_key=_BUILTIN_GOVERNANCE_BY_KEY,
+    )
 
     db.delete(row)
     db.commit()
     return None
 
 
-@router.post("/governance-profiles/import", response_model=GovernanceProfileImportResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/governance-profiles/import",
+    response_model=GovernanceProfileImportResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def import_governance_profiles(
     file: Annotated[UploadFile, File(...)],
     overwrite: Annotated[bool, Form()] = False,
@@ -884,7 +939,12 @@ def export_governance_profile(
     db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
-    profile = _resolve_profile_ref(db=db, tenant_id=tenant_id, profile_ref=profile_ref, builtin_by_key=_BUILTIN_GOVERNANCE_BY_KEY)
+    profile = _resolve_profile_ref(
+        db=db,
+        tenant_id=tenant_id,
+        profile_ref=profile_ref,
+        builtin_by_key=_BUILTIN_GOVERNANCE_BY_KEY,
+    )
 
     payload = profile.payload.model_dump()
     export_obj = {
@@ -905,7 +965,10 @@ def export_governance_profile(
     )
 
 
-@router.get("/governance-profiles/{profile_ref}/export-ingestion-policy", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/governance-profiles/{profile_ref}/export-ingestion-policy",
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def export_governance_profile_ingestion_policy(
     profile_ref: str,
     *,
@@ -920,7 +983,12 @@ def export_governance_profile_ingestion_policy(
     an ingestion_policy JSON snippet to be imported into a dataset.
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
-    profile = _resolve_profile_ref(db=db, tenant_id=tenant_id, profile_ref=profile_ref, builtin_by_key=_BUILTIN_GOVERNANCE_BY_KEY)
+    profile = _resolve_profile_ref(
+        db=db,
+        tenant_id=tenant_id,
+        profile_ref=profile_ref,
+        builtin_by_key=_BUILTIN_GOVERNANCE_BY_KEY,
+    )
 
     # Best-effort safe filename + rule id.
     safe_key = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(profile.key or "profile"))[:64] or "profile"
@@ -1001,18 +1069,18 @@ async def parse_preview(
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
-def _dataset_metadata_dict(dataset: object) -> dict[str, object]:
-    dataset_meta = getattr(dataset, "dataset_metadata", None)
-    return dataset_meta if isinstance(dataset_meta, dict) else {}
-
-
 def _profile_pipeline_patch_for_ingestion(
     *,
     db: Session,
     tenant_id: UUID,
     profile_ref: str,
 ) -> dict[str, object]:
-    prof = _resolve_profile_ref(db=db, tenant_id=tenant_id, profile_ref=profile_ref, builtin_by_key=_BUILTIN_GOVERNANCE_BY_KEY)
+    prof = _resolve_profile_ref(
+        db=db,
+        tenant_id=tenant_id,
+        profile_ref=profile_ref,
+        builtin_by_key=_BUILTIN_GOVERNANCE_BY_KEY,
+    )
     patch_dict = dict(prof.payload.pipeline_patch or {})
     rules = [rule.model_dump() for rule in (prof.payload.regex_rules or [])]
     if rules:
@@ -1047,149 +1115,15 @@ def _resolve_ingestion_preview_config(
     governance_profile_ref = getattr(matched_rule, "governance_profile_ref", None)
     if isinstance(governance_profile_ref, str) and governance_profile_ref.strip():
         config.governance_profile_ref = governance_profile_ref.strip()
-        config.patch_dict.update(_profile_pipeline_patch_for_ingestion(db=db, tenant_id=tenant_id, profile_ref=config.governance_profile_ref))
+        config.patch_dict.update(
+            _profile_pipeline_patch_for_ingestion(
+                db=db,
+                tenant_id=tenant_id,
+                profile_ref=config.governance_profile_ref,
+            )
+        )
     config.patch_dict.update(dict(getattr(matched_rule, "pipeline_patch", None) or {}))
     return config
-
-
-def _preprocess_ingestion_preview_file(
-    temp_path: Path,
-    preprocess_steps: list[dict[str, object]],
-) -> tuple[Path, dict[str, object]]:
-    if not preprocess_steps:
-        return temp_path, _empty_preprocess_summary()
-
-    pre = preprocess_file(input_path=temp_path, steps=preprocess_steps)
-    summary = {
-        "changed": bool(pre.changed),
-        "size_before": int(pre.size_before),
-        "size_after": int(pre.size_after),
-        "steps": [
-            {
-                "id": step.id,
-                "applied": bool(step.applied),
-                "changed": bool(step.changed),
-                "note": step.note,
-                "bytes_before": int(getattr(step, "bytes_before", 0) or 0),
-                "bytes_after": int(getattr(step, "bytes_after", 0) or 0),
-                "elapsed_ms": int(getattr(step, "elapsed_ms", 0) or 0),
-            }
-            for step in (pre.steps or [])
-        ],
-        "warnings": list(pre.warnings or []),
-    }
-    parse_path = Path(str(pre.output_path)) if bool(pre.changed) else temp_path
-    return parse_path, summary
-
-
-def _build_ingestion_clean_preview_request(
-    *,
-    parsed: dict[str, object],
-    effective: object,
-    diff_max_lines: int,
-) -> CleanPreviewRequest:
-    return CleanPreviewRequest(
-        markdown=str(parsed.get("markdown") or ""),
-        rules=[CleanRegexRuleModel(**r) for r in (getattr(effective, "governance_regex_rules", None) or [])],
-        use_default_rules=True,
-        include_diff=True,
-        diff_max_lines=int(diff_max_lines or 0),
-        input_format="markdown",
-        html_xpath=None,
-        normalize_line_endings=True,
-        trim_trailing_spaces=True,
-        collapse_blank_lines=True,
-        max_blank_lines=_effective_int(effective, "governance_max_blank_lines", 1),
-        remove_control_chars=True,
-        remove_toc_lines=_effective_bool(effective, "governance_remove_toc_lines", True),
-        remove_noise_lines=_effective_bool(effective, "governance_remove_noise_lines", True),
-        remove_common_lines=_effective_bool(effective, "governance_remove_common_lines", True),
-        unwrap_lines=_effective_bool(effective, "governance_unwrap_lines", True),
-        remove_boilerplate=_effective_bool(effective, "governance_remove_boilerplate", False),
-        remove_images=_effective_str(effective, "governance_remove_images", "none"),  # type: ignore[arg-type]
-        extract_frontmatter=_effective_bool(effective, "governance_extract_frontmatter", False),
-        strip_frontmatter=_effective_bool(effective, "governance_strip_frontmatter", False),
-        detect_language=_effective_bool(effective, "governance_detect_language", False),
-        language_min_chars=_effective_int(effective, "governance_language_min_chars", 40),
-        normalize_urls=_effective_bool(effective, "governance_normalize_urls", False),
-        normalize_urls_strip_tracking=_effective_bool(effective, "governance_normalize_urls_strip_tracking", True),
-        drop_duplicate_paragraphs=_effective_bool(effective, "governance_drop_duplicate_paragraphs", False),
-        drop_duplicate_paragraphs_min_occurrences=_effective_int(effective, "governance_drop_duplicate_paragraphs_min_occurrences", 3),
-        drop_duplicate_paragraphs_min_chars=_effective_int(effective, "governance_drop_duplicate_paragraphs_min_chars", 40),
-        drop_duplicate_paragraphs_max_chars=_effective_int(effective, "governance_drop_duplicate_paragraphs_max_chars", 1200),
-        trim_references=_effective_bool(effective, "governance_trim_references", False),
-        extract_keywords=_effective_bool(effective, "governance_extract_keywords", False),
-        keywords_provider=_effective_str(effective, "governance_keywords_provider", "auto"),
-        keywords_top_k=_effective_int(effective, "governance_keywords_top_k", 10),
-        keywords_max_chars=_effective_int(effective, "governance_keywords_max_chars", 20000),
-        normalize_tables=_effective_bool(effective, "governance_normalize_tables", False),
-        strip_code_line_numbers=_effective_bool(effective, "governance_strip_code_line_numbers", False),
-        pii_anonymize=_effective_bool(effective, "governance_pii_anonymize", False),
-        pii_mode=_effective_str(effective, "governance_pii_mode", "mask"),  # type: ignore[arg-type]
-        pii_mask=_effective_str(effective, "governance_pii_mask", REDACTED_MASK),
-        secrets_redact=_effective_bool(effective, "governance_secrets_redact", False),
-        secrets_mode=_effective_str(effective, "governance_secrets_mode", "mask"),  # type: ignore[arg-type]
-        secrets_mask=_effective_str(effective, "governance_secrets_mask", SECRET_MASK),
-        drop_outline_only=_effective_bool(effective, "governance_drop_outline_only", False),
-        drop_outline_min_content_chars=_effective_int(effective, "governance_drop_outline_min_content_chars", 200),
-        drop_outline_max_heading_ratio=_effective_float(effective, "governance_drop_outline_max_heading_ratio", 0.85),
-        drop_low_density=_effective_bool(effective, "governance_drop_low_density", False),
-        drop_low_density_threshold=_effective_float(effective, "governance_drop_low_density_threshold", 0.12),
-        unwrap_max_line_length=_effective_int(effective, "governance_unwrap_max_line_length", 120),
-        noise_min_chars=_effective_int(effective, "governance_noise_min_chars", 2),
-        noise_ratio_threshold=_effective_float(effective, "governance_noise_ratio_threshold", 0.2),
-        common_lines_min_occurrences=_effective_int(effective, "governance_common_lines_min_docs", 3),
-    )
-
-
-def _ingestion_preview_rule_output(
-    matched_rule: object | None,
-    config: _IngestionPreviewConfig,
-) -> dict[str, object]:
-    return {
-        "matched": matched_rule is not None,
-        "rule_id": getattr(matched_rule, "id", None) if matched_rule is not None else None,
-        "rule_name": getattr(matched_rule, "name", None) if matched_rule is not None else None,
-        "governance_profile_ref": config.governance_profile_ref,
-        "preprocess_steps": config.preprocess_steps,
-        "parser_backend": str(config.parser_backend_choice or "auto"),
-        "chunk_strategy": str(config.chunk_strategy_choice or ""),
-    }
-
-
-def _ingestion_preview_explain(
-    *,
-    dataset_id: UUID,
-    file: UploadFile,
-    file_ext: str,
-    config: _IngestionPreviewConfig,
-    rule_out: dict[str, object],
-    pre_summary: dict[str, object],
-    parsed: dict[str, object],
-) -> dict[str, object]:
-    filename = str(getattr(file, "filename", "") or "")
-    return {
-        "dataset_id": str(dataset_id),
-        "filename": filename,
-        "file_type": str(file_ext or ""),
-        "requested": {
-            "parser_backend": str(config.base_parser_backend or ""),
-            "chunk_strategy": str(config.base_chunk_strategy or ""),
-        },
-        "rule": rule_out,
-        "snapshot": {
-            "dataset_id": str(dataset_id),
-            "filename": filename,
-            "file_type": str(file_ext or ""),
-            "rule": rule_out,
-            "preprocess": dict(pre_summary),
-            "pipeline_patch": dict(config.patch_dict),
-            "parser_backend": str(config.parser_backend_choice or "auto"),
-            "chunk_strategy": str(config.chunk_strategy_choice or ""),
-            "parse_backend": str(parsed.get("backend") or ""),
-            "pdf_quality": parsed.get("pdf_quality"),
-        },
-    }
 
 
 @router.post("/ingestion-preview", response_model=IngestionPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -1219,7 +1153,10 @@ async def ingestion_preview(
 
     file_ext = Path(file.filename).suffix.lower()
     if file_ext not in settings.allowed_extensions_list:
-        raise HTTPException(status_code=400, detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}",
+        )
 
     preview_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "preview"
     preview_dir.mkdir(parents=True, exist_ok=True)
@@ -1246,7 +1183,11 @@ async def ingestion_preview(
 
         # Compute effective governance options (dataset defaults + rule/profile patches).
         patch_opts = PipelineOptions(**config.patch_dict) if config.patch_dict else PipelineOptions()
-        effective = resolve_pipeline_effective(dataset_metadata=dataset_meta, document_metadata={}, request_overrides=patch_opts)
+        effective = resolve_pipeline_effective(
+            dataset_metadata=dataset_meta,
+            document_metadata={},
+            request_overrides=patch_opts,
+        )
 
         # Parse preview via subprocess worker.
         parsed = await run_subprocess_worker(
@@ -1263,7 +1204,11 @@ async def ingestion_preview(
         )
 
         # Governance clean preview (issues + diff).
-        clean_body = _build_ingestion_clean_preview_request(parsed=parsed, effective=effective, diff_max_lines=diff_max_lines)
+        clean_body = _build_ingestion_clean_preview_request(
+            parsed=parsed,
+            effective=effective,
+            diff_max_lines=diff_max_lines,
+        )
         cleaned = clean_preview(body=clean_body, tenant_id=tenant_id, account_id=account_id, db=db)
         rule_out = _ingestion_preview_rule_output(matched_rule, config)
         explain = _ingestion_preview_explain(
@@ -1406,7 +1351,11 @@ def clean_preview(
     )
 
 
-@router.post("/learn-common-lines", response_model=GovernanceCommonLinesLearnResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/learn-common-lines",
+    response_model=GovernanceCommonLinesLearnResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def learn_common_lines(
     body: GovernanceCommonLinesLearnRequest,
     *,
@@ -1436,7 +1385,10 @@ def learn_common_lines(
     if len(texts) < 2:
         raise HTTPException(
             status_code=400,
-            detail="Not enough documents with persisted parsed content. Enable persist_parsed_content and ingest some documents first.",
+            detail=(
+                "Not enough documents with persisted parsed content. "
+                "Enable persist_parsed_content and ingest some documents first."
+            ),
         )
 
     candidates_raw = learn_common_line_candidates(
@@ -1650,8 +1602,11 @@ async def llm_clean_preview(
     )
 
 
-
-@router.post("/upload-zip-with-images", response_model=ZipWithImagesResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/upload-zip-with-images",
+    response_model=ZipWithImagesResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def upload_zip_with_images(
     file: Annotated[UploadFile, File(...)],
     dataset_id: Annotated[str, Form(...)],
@@ -1684,16 +1639,12 @@ async def upload_zip_with_images(
     """
     if not settings.MINIO_ENABLED:
         raise HTTPException(
-            status_code=503,
-            detail="MinIO is disabled; cannot process image uploads. Set MINIO_ENABLED=true"
+            status_code=503, detail="MinIO is disabled; cannot process image uploads. Set MINIO_ENABLED=true"
         )
 
     # Validate file type.
-    if not file.filename.endswith('.zip'):
-        raise HTTPException(
-            status_code=400,
-            detail="Only ZIP format files are supported"
-        )
+    if not file.filename.endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Only ZIP format files are supported")
 
     try:
         dataset_uuid = UUID(str(dataset_id))
@@ -1713,12 +1664,9 @@ async def upload_zip_with_images(
         await save_upload_file(file, temp_zip_path, max_bytes=settings.MAX_FILE_SIZE)
 
         # Process ZIP: extract images and upload to MinIO.
-        doc_id = document_id or file.filename.rsplit('.', 1)[0]
+        doc_id = document_id or file.filename.rsplit(".", 1)[0]
         result = zip_image_processor.process_zip_with_images(
-            zip_path=temp_zip_path,
-            tenant_id=str(tenant_id),
-            dataset_id=dataset_id,
-            document_id=doc_id
+            zip_path=temp_zip_path, tenant_id=str(tenant_id), dataset_id=dataset_id, document_id=doc_id
         )
 
         return {
@@ -1737,10 +1685,7 @@ async def upload_zip_with_images(
             detail=f"Invalid ZIP format/content: {str(e)}",
         ) from e
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"ZIP processing failed: {str(e)}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"ZIP processing failed: {str(e)}") from e
     finally:
         # Clean up temporary files.
         try:

@@ -34,6 +34,170 @@ class CheckpointedRetryRequiredError(RuntimeError):
     """Raised when finalization fails after a durable checkpoint was committed."""
 
 
+def _load_retry_cleanup_request(
+    metadata: dict[str, Any],
+    *,
+    document_id: UUID,
+) -> tuple[str, dict[str, Any] | None]:
+    request = metadata.get("retry_cleanup")
+    if request is None:
+        return "missing", None
+    if not isinstance(request, dict) or str(request.get("version") or "") != "1":
+        logger.error("Refusing unknown retry cleanup intent for document %s", document_id)
+        return "invalid", None
+    return "ok", request
+
+
+def _validate_retry_cleanup_scope(
+    metadata: dict[str, Any],
+    *,
+    request: dict[str, Any],
+    document_id: UUID,
+) -> tuple[str, str, bool] | None:
+    pipeline_hash = str(metadata.get("pipeline_hash") or "").strip()
+    scope = str(request.get("scope") or "").strip()
+    target_key = str(request.get("doc_pipeline_key") or "").strip()
+    if str(request.get("pipeline_hash") or "").strip() != pipeline_hash or scope not in {"document", "pipeline"}:
+        logger.error("Refusing stale retry cleanup intent for document %s", document_id)
+        return None
+    if scope == "pipeline" and target_key != f"{document_id}:{pipeline_hash}":
+        logger.error("Refusing invalid scoped retry cleanup intent for document %s", document_id)
+        return None
+    return scope, target_key, scope == "pipeline"
+
+
+def _clear_forced_retry_state(
+    db: Session,
+    *,
+    metadata: dict[str, Any],
+    request: dict[str, Any],
+    parsed_content_model: type[DocumentParsedContent],
+    document_id: UUID,
+    tenant_id: UUID,
+) -> None:
+    if not bool(request.get("force")):
+        return
+    metadata.pop("ingest_checkpoint", None)
+    metadata.pop("parsed_content_persisted", None)
+    db.query(parsed_content_model).filter(
+        parsed_content_model.document_id == document_id,
+        parsed_content_model.tenant_id == tenant_id,
+    ).delete(synchronize_session=False)
+
+
+def _load_pipeline_cleanup_chunk_ids(
+    db: Session,
+    *,
+    chunk_model: type[DocumentChunk],
+    document_id: UUID,
+    tenant_id: UUID,
+    target_key: str,
+) -> list[UUID]:
+    return [
+        chunk_id
+        for (chunk_id,) in (
+            db.query(chunk_model.id)
+            .filter(
+                chunk_model.document_id == document_id,
+                chunk_model.tenant_id == tenant_id,
+                chunk_model.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
+            )
+            .all()
+        )
+        if isinstance(chunk_id, UUID)
+    ]
+
+
+def _delete_retry_cleanup_chunks(
+    db: Session,
+    *,
+    db_document: DBDocument,
+    metadata: dict[str, Any],
+    preserve_existing: bool,
+    indexer: Any,
+    chunk_model: type[DocumentChunk],
+    document_id: UUID,
+    tenant_id: UUID,
+    target_key: str,
+) -> list[UUID]:
+    if preserve_existing:
+        cleanup_chunk_ids = _load_pipeline_cleanup_chunk_ids(
+            db,
+            chunk_model=chunk_model,
+            document_id=document_id,
+            tenant_id=tenant_id,
+            target_key=target_key,
+        )
+        indexer.delete_chunk_indexes_for_doc_pipeline_key(
+            tenant_id=tenant_id,
+            document_id=document_id,
+            doc_pipeline_key=target_key,
+        )
+        db.query(chunk_model).filter(
+            chunk_model.document_id == document_id,
+            chunk_model.tenant_id == tenant_id,
+            chunk_model.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
+        ).delete(synchronize_session=False)
+        return cleanup_chunk_ids
+
+    indexer.delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
+    db.query(chunk_model).filter(
+        chunk_model.document_id == document_id,
+        chunk_model.tenant_id == tenant_id,
+    ).delete(synchronize_session=False)
+    metadata.pop("img_ids", None)
+    db_document.chunk_count = 0
+    db_document.total_characters = 0
+    return []
+
+
+def _cleanup_retry_relations(
+    db: Session,
+    *,
+    indexer: Any,
+    preserve_existing: bool,
+    cleanup_chunk_ids: list[UUID],
+    tenant_id: UUID,
+    document_id: UUID,
+) -> None:
+    from app.rag.kg.models import KgRelation
+
+    relation_query = db.query(KgRelation).filter(KgRelation.tenant_id == tenant_id)
+    if preserve_existing:
+        if not cleanup_chunk_ids:
+            return
+        relation_query.filter(KgRelation.chunk_id.in_(cleanup_chunk_ids)).delete(synchronize_session=False)
+        indexer.delete_event_indexes_for_chunks(
+            tenant_id=tenant_id,
+            chunk_ids=cleanup_chunk_ids,
+            commit=False,
+            prune_orphan_entities=True,
+        )
+        return
+
+    relation_query.filter(KgRelation.document_id == document_id).delete(synchronize_session=False)
+    indexer.delete_event_indexes(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        commit=False,
+        prune_orphan_entities=True,
+    )
+
+
+def _restore_retry_cleanup_state(
+    *,
+    db_document: DBDocument,
+    original_meta: dict[str, Any],
+    original_chunk_count: Any,
+    original_total_characters: Any,
+) -> None:
+    db_document.doc_metadata = original_meta
+    if original_chunk_count is not None:
+        db_document.chunk_count = original_chunk_count
+    if original_total_characters is not None:
+        db_document.total_characters = original_total_characters
+
+
 def apply_pending_retry_cleanup(
     db: Session,
     *,
@@ -48,102 +212,59 @@ def apply_pending_retry_cleanup(
     original_chunk_count = getattr(db_document, "chunk_count", None)
     original_total_characters = getattr(db_document, "total_characters", None)
     meta = dict(original_meta)
-    request = meta.get("retry_cleanup")
-    if request is None:
+    request_status, request = _load_retry_cleanup_request(meta, document_id=document_id)
+    if request_status == "missing":
         return "applied"
-    if not isinstance(request, dict) or str(request.get("version") or "") != "1":
-        logger.error("Refusing unknown retry cleanup intent for document %s", document_id)
+    if request is None:
         return "invalid"
 
-    pipeline_hash = str(meta.get("pipeline_hash") or "").strip()
-    scope = str(request.get("scope") or "").strip()
-    target_key = str(request.get("doc_pipeline_key") or "").strip()
-    if str(request.get("pipeline_hash") or "").strip() != pipeline_hash or scope not in {"document", "pipeline"}:
-        logger.error("Refusing stale retry cleanup intent for document %s", document_id)
+    cleanup_scope = _validate_retry_cleanup_scope(meta, request=request, document_id=document_id)
+    if cleanup_scope is None:
         return "invalid"
-    if scope == "pipeline" and target_key != f"{document_id}:{pipeline_hash}":
-        logger.error("Refusing invalid scoped retry cleanup intent for document %s", document_id)
-        return "invalid"
-
-    preserve_existing = scope == "pipeline"
+    scope, target_key, preserve_existing = cleanup_scope
     indexer = indexer_factory(db)
-    cleanup_chunk_ids: list[UUID] = []
-
-    if bool(request.get("force")):
-        meta.pop("ingest_checkpoint", None)
-        meta.pop("parsed_content_persisted", None)
-        db.query(parsed_content_model).filter(
-            parsed_content_model.document_id == document_id,
-            parsed_content_model.tenant_id == tenant_id,
-        ).delete(synchronize_session=False)
-
-    if preserve_existing:
-        cleanup_chunk_ids = [
-            chunk_id
-            for (chunk_id,) in (
-                db.query(chunk_model.id)
-                .filter(
-                    chunk_model.document_id == document_id,
-                    chunk_model.tenant_id == tenant_id,
-                    chunk_model.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
-                )
-                .all()
-            )
-            if isinstance(chunk_id, UUID)
-        ]
-        indexer.delete_chunk_indexes_for_doc_pipeline_key(
-            tenant_id=tenant_id,
-            document_id=document_id,
-            doc_pipeline_key=target_key,
-        )
-        db.query(chunk_model).filter(
-            chunk_model.document_id == document_id,
-            chunk_model.tenant_id == tenant_id,
-            chunk_model.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
-        ).delete(synchronize_session=False)
-    else:
-        indexer.delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
-        db.query(chunk_model).filter(
-            chunk_model.document_id == document_id,
-            chunk_model.tenant_id == tenant_id,
-        ).delete(synchronize_session=False)
-        meta.pop("img_ids", None)
-        db_document.chunk_count = 0
-        db_document.total_characters = 0
+    _clear_forced_retry_state(
+        db,
+        metadata=meta,
+        request=request,
+        parsed_content_model=parsed_content_model,
+        document_id=document_id,
+        tenant_id=tenant_id,
+    )
+    cleanup_chunk_ids = _delete_retry_cleanup_chunks(
+        db,
+        db_document=db_document,
+        metadata=meta,
+        preserve_existing=preserve_existing,
+        indexer=indexer,
+        chunk_model=chunk_model,
+        document_id=document_id,
+        tenant_id=tenant_id,
+        target_key=target_key,
+    )
 
     db_document.doc_metadata = meta
 
     try:
-        from app.rag.kg.models import KgRelation
-
-        relation_query = db.query(KgRelation).filter(KgRelation.tenant_id == tenant_id)
-        if preserve_existing:
-            if cleanup_chunk_ids:
-                relation_query.filter(KgRelation.chunk_id.in_(cleanup_chunk_ids)).delete(synchronize_session=False)
-                indexer.delete_event_indexes_for_chunks(
-                    tenant_id=tenant_id,
-                    chunk_ids=cleanup_chunk_ids,
-                    commit=False,
-                    prune_orphan_entities=True,
-                )
-        else:
-            relation_query.filter(KgRelation.document_id == document_id).delete(synchronize_session=False)
-            indexer.delete_event_indexes(
-                tenant_id=tenant_id,
-                document_id=document_id,
-                commit=False,
-                prune_orphan_entities=True,
-            )
+        _cleanup_retry_relations(
+            db,
+            indexer=indexer,
+            preserve_existing=preserve_existing,
+            cleanup_chunk_ids=cleanup_chunk_ids,
+            tenant_id=tenant_id,
+            document_id=document_id,
+        )
         meta.pop("retry_cleanup", None)
         db_document.doc_metadata = meta
         db.commit()
     except Exception as exc:  # noqa: BLE001
         db.rollback()
-        db_document.doc_metadata = original_meta
-        if original_chunk_count is not None:
-            db_document.chunk_count = original_chunk_count
-        if original_total_characters is not None:
-            db_document.total_characters = original_total_characters
+        _restore_retry_cleanup_state(
+            db_document=db_document,
+            original_meta=original_meta,
+            original_chunk_count=original_chunk_count,
+            original_total_characters=original_total_characters,
+        )
         logger.warning(
             "Failed to complete retry cleanup for document %s; keeping retry cleanup marker for a later retry: %s",
             document_id,
@@ -359,6 +480,124 @@ def maybe_enrich_document_questions(
     db.refresh(db_document)
 
 
+def _kg_prompt_template_id() -> UUID | None:
+    try:
+        raw_template_id = (getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_ID", "") or "").strip()
+        return UUID(raw_template_id) if raw_template_id else None
+    except Exception:
+        return None
+
+
+def _kg_optional_setting(name: str) -> str | None:
+    value = str(getattr(settings, name, "") or "").strip()
+    return value or None
+
+
+def _kg_python_plugin_ref(pipeline_effective: PipelineEffective) -> str:
+    plugin_ref = str(getattr(pipeline_effective, "kg_python_plugin", "") or "").strip()
+    if plugin_ref:
+        return plugin_ref
+    return derive_registered_stage_plugin_ref(
+        str(getattr(pipeline_effective, "chunk_python_plugin", "") or "").strip(),
+        "kg",
+    )
+
+
+def _transition_kg_error(db: Session, *, db_document: DBDocument, error: Exception) -> None:
+    transition_document_index_channel(
+        db,
+        document=db_document,
+        channel="kg",
+        status=DOCUMENT_INDEX_CHANNEL_ERROR,
+        error=str(error)[:2000],
+        commit=False,
+    )
+
+
+def _mark_empty_kg_vectors(db: Session, *, db_document: DBDocument) -> None:
+    for channel_name in ("event_vector", "entity_vector"):
+        transition_document_index_channel(
+            db,
+            document=db_document,
+            channel=channel_name,
+            status=DOCUMENT_INDEX_CHANNEL_SKIPPED,
+            commit=False,
+        )
+
+
+async def _enqueue_post_completion_kg(
+    *,
+    db: Session,
+    db_document: DBDocument,
+    tenant_id: UUID,
+    document_id: UUID,
+    pipeline_effective: PipelineEffective,
+) -> None:
+    from app.core.pipeline_versions import get_active_pipeline_hash
+    from app.tasks.queue import enqueue_kg_extraction
+
+    raw_pipeline_hash = (
+        get_active_pipeline_hash(db_document.doc_metadata or {})
+        or (db_document.doc_metadata or {}).get("pipeline_hash")
+        or None
+    )
+    pipeline_hash = (str(raw_pipeline_hash).strip() or None) if raw_pipeline_hash is not None else None
+    effective_options = build_kg_extraction_job_options(
+        pipeline_hash=pipeline_hash,
+        prompt_template_id=_kg_prompt_template_id(),
+        prompt_template_key=_kg_optional_setting("KG_EXTRACT_PROMPT_TEMPLATE_KEY"),
+        prompt_ab_experiment_key=_kg_optional_setting("KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY"),
+        extraction_backend=_kg_optional_setting("KG_EXTRACTION_BACKEND"),
+        kg_python_plugin=_kg_python_plugin_ref(pipeline_effective),
+        kg_python_params=dict(getattr(pipeline_effective, "kg_python_params", {}) or {}),
+        replace_existing=bool(getattr(settings, "KG_EXTRACT_REPLACE_EXISTING", True)),
+        prune_orphan_entities=bool(getattr(settings, "KG_EXTRACT_PRUNE_ORPHAN_ENTITIES", True)),
+        extract_relations=bool(getattr(settings, "KG_RELATION_ENABLED", False)),
+        extract_skills=bool(getattr(settings, "KG_SKILL_ENABLED", False)),
+    )
+    options_fingerprint = kg_extraction_job_options_fingerprint(effective_options)
+    pipeline_job_label = pipeline_hash or "unversioned"
+    job_id = f"kg:{tenant_id}:{document_id}:{pipeline_job_label}:{options_fingerprint}"
+    kg_task_id = await enqueue_kg_extraction(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        requested_by="system",
+        job_id=job_id,
+        pipeline_hash=pipeline_hash,
+        effective_options=effective_options,
+    )
+    if kg_task_id:
+        meta = dict(db_document.doc_metadata or {})
+        meta["kg_task_id"] = kg_task_id
+        db_document.doc_metadata = meta
+        db.commit()
+        db.refresh(db_document)
+    log_metrics({"event": "ingest.kg.enqueued", "kg_task_id": kg_task_id})
+
+
+async def _extract_post_completion_kg_events(
+    *,
+    chunk_ids: list[UUID],
+    tenant_id: UUID,
+    db_chunks: list[DocumentChunk],
+    index_options: Any,
+    pipeline_effective: PipelineEffective,
+) -> tuple[list[Any], str]:
+    kg_python_plugin_ref = _kg_python_plugin_ref(pipeline_effective)
+    events = await extract_events(
+        chunk_ids,
+        tenant_id=tenant_id,
+        chunks=db_chunks,
+        index_options=index_options,
+        prompt_template_id=_kg_prompt_template_id(),
+        prompt_template_key=_kg_optional_setting("KG_EXTRACT_PROMPT_TEMPLATE_KEY"),
+        prompt_ab_experiment_key=_kg_optional_setting("KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY"),
+        kg_python_plugin=kg_python_plugin_ref,
+        kg_python_params=dict(getattr(pipeline_effective, "kg_python_params", {}) or {}),
+    )
+    return events, kg_python_plugin_ref
+
+
 async def run_post_completion_kg(
     *,
     db: Session,
@@ -384,89 +623,25 @@ async def run_post_completion_kg(
 
     if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
         try:
-            from app.core.pipeline_versions import get_active_pipeline_hash
-            from app.tasks.queue import enqueue_kg_extraction
-
-            raw_pipeline_hash = (
-                get_active_pipeline_hash(db_document.doc_metadata or {})
-                or (db_document.doc_metadata or {}).get("pipeline_hash")
-                or None
-            )
-            pipeline_hash = (str(raw_pipeline_hash).strip() or None) if raw_pipeline_hash is not None else None
-            raw_prompt_template_id = (getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_ID", "") or "").strip()
-            prompt_template_id = UUID(raw_prompt_template_id) if raw_prompt_template_id else None
-            kg_python_plugin_ref = str(getattr(pipeline_effective, "kg_python_plugin", "") or "").strip()
-            if not kg_python_plugin_ref:
-                kg_python_plugin_ref = derive_registered_stage_plugin_ref(
-                    str(getattr(pipeline_effective, "chunk_python_plugin", "") or "").strip(),
-                    "kg",
-                )
-            effective_options = build_kg_extraction_job_options(
-                pipeline_hash=pipeline_hash,
-                prompt_template_id=prompt_template_id,
-                prompt_template_key=(getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", "") or "").strip() or None,
-                prompt_ab_experiment_key=(getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or "").strip() or None,
-                extraction_backend=(getattr(settings, "KG_EXTRACTION_BACKEND", "") or "").strip() or None,
-                kg_python_plugin=kg_python_plugin_ref,
-                kg_python_params=dict(getattr(pipeline_effective, "kg_python_params", {}) or {}),
-                replace_existing=bool(getattr(settings, "KG_EXTRACT_REPLACE_EXISTING", True)),
-                prune_orphan_entities=bool(getattr(settings, "KG_EXTRACT_PRUNE_ORPHAN_ENTITIES", True)),
-                extract_relations=bool(getattr(settings, "KG_RELATION_ENABLED", False)),
-                extract_skills=bool(getattr(settings, "KG_SKILL_ENABLED", False)),
-            )
-            options_fingerprint = kg_extraction_job_options_fingerprint(effective_options)
-            pipeline_job_label = pipeline_hash or "unversioned"
-            job_id = f"kg:{tenant_id}:{document_id}:{pipeline_job_label}:{options_fingerprint}"
-            kg_task_id = await enqueue_kg_extraction(
+            await _enqueue_post_completion_kg(
+                db=db,
+                db_document=db_document,
                 tenant_id=tenant_id,
                 document_id=document_id,
-                requested_by="system",
-                job_id=job_id,
-                pipeline_hash=pipeline_hash,
-                effective_options=effective_options,
+                pipeline_effective=pipeline_effective,
             )
-            if kg_task_id:
-                meta = dict(db_document.doc_metadata or {})
-                meta["kg_task_id"] = kg_task_id
-                db_document.doc_metadata = meta
-                db.commit()
-                db.refresh(db_document)
-            log_metrics({"event": "ingest.kg.enqueued", "kg_task_id": kg_task_id})
         except Exception as exc:
-            transition_document_index_channel(
-                db,
-                document=db_document,
-                channel="kg",
-                status=DOCUMENT_INDEX_CHANNEL_ERROR,
-                error=str(exc)[:2000],
-                commit=False,
-            )
+            _transition_kg_error(db, db_document=db_document, error=exc)
             return
         return
 
     try:
-        raw_tid = (getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_ID", "") or "").strip()
-        prompt_template_id = UUID(raw_tid) if raw_tid else None
-    except Exception:
-        prompt_template_id = None
-    try:
-        kg_python_plugin_ref = str(getattr(pipeline_effective, "kg_python_plugin", "") or "").strip()
-        if not kg_python_plugin_ref:
-            kg_python_plugin_ref = derive_registered_stage_plugin_ref(
-                str(getattr(pipeline_effective, "chunk_python_plugin", "") or "").strip(),
-                "kg",
-            )
-        kg_python_params = dict(getattr(pipeline_effective, "kg_python_params", {}) or {})
-        events = await extract_events(
-            chunk_ids,
+        events, kg_python_plugin_ref = await _extract_post_completion_kg_events(
+            chunk_ids=chunk_ids,
             tenant_id=tenant_id,
-            chunks=db_chunks,
+            db_chunks=db_chunks,
             index_options=index_options,
-            prompt_template_id=prompt_template_id,
-            prompt_template_key=(getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", "") or "").strip() or None,
-            prompt_ab_experiment_key=(getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or "").strip() or None,
-            kg_python_plugin=kg_python_plugin_ref,
-            kg_python_params=kg_python_params,
+            pipeline_effective=pipeline_effective,
         )
         log_metrics(
             {
@@ -483,23 +658,9 @@ async def run_post_completion_kg(
             commit=False,
         )
         if not events:
-            for channel_name in ("event_vector", "entity_vector"):
-                transition_document_index_channel(
-                    db,
-                    document=db_document,
-                    channel=channel_name,
-                    status=DOCUMENT_INDEX_CHANNEL_SKIPPED,
-                    commit=False,
-                )
+            _mark_empty_kg_vectors(db, db_document=db_document)
     except Exception as exc:
-        transition_document_index_channel(
-            db,
-            document=db_document,
-            channel="kg",
-            status=DOCUMENT_INDEX_CHANNEL_ERROR,
-            error=str(exc)[:2000],
-            commit=False,
-        )
+        _transition_kg_error(db, db_document=db_document, error=exc)
         return
 
 

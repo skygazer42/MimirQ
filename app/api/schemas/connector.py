@@ -2,7 +2,6 @@
 Connector-related Pydantic schemas.
 """
 
-
 import re
 from datetime import datetime
 from typing import Any, Literal
@@ -121,7 +120,9 @@ class WebCrawlConnectorConfig(BaseModel):
     max_pages: int = Field(default=50, ge=1, le=500)
     max_depth: int = Field(default=3, ge=0, le=10)
     same_host_only: bool = Field(default=True, description="Only follow links under the same host as start_urls")
-    include_patterns: list[str] = Field(default_factory=list, description="Regex patterns; if set, only matched URLs are crawled")
+    include_patterns: list[str] = Field(
+        default_factory=list, description="Regex patterns; if set, only matched URLs are crawled"
+    )
     exclude_patterns: list[str] = Field(default_factory=list, description="Regex patterns to exclude URLs")
     use_sitemaps: bool = Field(
         default=False,
@@ -131,7 +132,9 @@ class WebCrawlConnectorConfig(BaseModel):
         default_factory=list,
         description="Optional explicit sitemap URLs (one or more sitemap.xml / sitemapindex.xml).",
     )
-    respect_robots: bool = Field(default=False, description="If true, respect robots.txt allow/deny rules (best-effort).")
+    respect_robots: bool = Field(
+        default=False, description="If true, respect robots.txt allow/deny rules (best-effort)."
+    )
     dedup_canonical: bool = Field(
         default=True,
         description="If true, deduplicate pages by <link rel='canonical'> when crawling HTML (best-effort).",
@@ -140,7 +143,9 @@ class WebCrawlConnectorConfig(BaseModel):
     auth: WebCrawlAuthConfig | None = None
 
     # Ingest options for each discovered URL.
-    filename: str | None = Field(default=None, max_length=500, description="Optional: override filename for display/extension inference")
+    filename: str | None = Field(
+        default=None, max_length=500, description="Optional: override filename for display/extension inference"
+    )
     parser_backend: str = Field(default="auto")
     chunk_strategy: str = Field(default="langchain_recursive")
     pipeline: DocumentPipelineOptions | None = None
@@ -176,8 +181,12 @@ class WebCrawlConnectorConfig(BaseModel):
         self.sitemap_urls = sitemap_norm
 
         # Cap regex patterns to reduce ReDoS risk (compiled server-side).
-        self.include_patterns = [str(p or "").strip()[:500] for p in (self.include_patterns or []) if str(p or "").strip()][:30]
-        self.exclude_patterns = [str(p or "").strip()[:500] for p in (self.exclude_patterns or []) if str(p or "").strip()][:60]
+        self.include_patterns = [
+            str(p or "").strip()[:500] for p in (self.include_patterns or []) if str(p or "").strip()
+        ][:30]
+        self.exclude_patterns = [
+            str(p or "").strip()[:500] for p in (self.exclude_patterns or []) if str(p or "").strip()
+        ][:60]
         return self
 
 
@@ -275,7 +284,9 @@ class DriveFilesConnectorConfig(BaseModel):
 class MinioBucketConnectorConfig(BaseModel):
     """Config for `minio_bucket` connector (list objects -> presigned URLs -> ingest)."""
 
-    bucket: str | None = Field(default=None, max_length=63, description="MinIO bucket name (default: settings.MINIO_BUCKET_NAME)")
+    bucket: str | None = Field(
+        default=None, max_length=63, description="MinIO bucket name (default: settings.MINIO_BUCKET_NAME)"
+    )
     prefix: str | None = Field(default=None, max_length=512)
     include_extensions: list[str] = Field(default_factory=lambda: [".pdf", ".md", ".txt"])
     max_objects: int = Field(default=50, ge=1, le=200)
@@ -308,10 +319,15 @@ class MinioBucketConnectorConfig(BaseModel):
         self.include_extensions = exts
         return self
 
+
 class ConfluenceSpaceConnectorConfig(BaseModel):
     """Config for `confluence_space` connector (list pages in a space -> ingest page HTML)."""
 
-    base_url: str = Field(..., max_length=2000, description="Confluence base URL (cloud or on-prem). Example: https://<site>.atlassian.net/wiki")
+    base_url: str = Field(
+        ...,
+        max_length=2000,
+        description="Confluence base URL (cloud or on-prem). Example: https://<site>.atlassian.net/wiki",
+    )
     space_key: str = Field(..., max_length=255, description="Confluence space key")
 
     # Confluence auth typically supports basic (email + API token) / bearer / cookie session.
@@ -331,11 +347,17 @@ class ConfluenceSpaceConnectorConfig(BaseModel):
     )
     max_pages: int = Field(default=50, ge=1, le=500)
     page_size: int = Field(default=25, ge=1, le=100)
-    soft_delete: bool = Field(default=False, description="If true, disable connector-managed docs missing from a full sync (best-effort).")
+    soft_delete: bool = Field(
+        default=False, description="If true, disable connector-managed docs missing from a full sync (best-effort)."
+    )
 
     include_attachments: bool = Field(default=False, description="If true, list and ingest page attachments (bounded).")
-    max_attachments_per_page: int = Field(default=10, ge=1, le=50, description="Max attachments ingested per page (bounded).")
-    max_total_attachments: int = Field(default=200, ge=1, le=2000, description="Max attachments ingested per run (bounded).")
+    max_attachments_per_page: int = Field(
+        default=10, ge=1, le=50, description="Max attachments ingested per page (bounded)."
+    )
+    max_total_attachments: int = Field(
+        default=200, ge=1, le=2000, description="Max attachments ingested per run (bounded)."
+    )
 
     user_agent: str | None = Field(default=None, max_length=200)
 
@@ -392,7 +414,9 @@ class JiraProjectConnectorConfig(BaseModel):
 
     base_url: str = Field(..., max_length=2000, description="Jira base URL. Example: https://<site>.atlassian.net")
     project_key: str = Field(..., max_length=255, description="Jira project key")
-    jql: str | None = Field(default=None, max_length=2000, description="Optional extra JQL filter appended to the project query.")
+    jql: str | None = Field(
+        default=None, max_length=2000, description="Optional extra JQL filter appended to the project query."
+    )
 
     auth: WebCrawlAuthConfig | None = None
 
@@ -402,21 +426,36 @@ class JiraProjectConnectorConfig(BaseModel):
     )
     max_issues: int = Field(default=50, ge=1, le=500)
     page_size: int = Field(default=25, ge=1, le=100)
-    include_comments: bool = Field(default=True, description="If true, include issue comments in the rendered HTML document.")
+    include_comments: bool = Field(
+        default=True, description="If true, include issue comments in the rendered HTML document."
+    )
     max_comments_per_issue: int = Field(default=20, ge=0, le=200)
     custom_fields: list[str] = Field(
         default_factory=list,
-        description="Optional: allowlist additional Jira custom fields to fetch and include in the rendered issue document. Example: customfield_10016",
+        description=(
+            "Optional: allowlist additional Jira custom fields to fetch and include in the rendered issue document. "
+            "Example: customfield_10016"
+        ),
     )
     include_linked_artifacts: bool = Field(
         default=False,
         description="If true, extract and ingest linked URL artifacts referenced by the issue (best-effort, bounded).",
     )
-    max_linked_artifacts_per_issue: int = Field(default=10, ge=1, le=50, description="Max linked artifacts ingested per issue (bounded).")
-    max_total_linked_artifacts: int = Field(default=200, ge=1, le=2000, description="Max linked artifacts ingested per run (bounded).")
-    include_attachments: bool = Field(default=False, description="If true, list and ingest issue attachments (bounded).")
-    max_attachments_per_issue: int = Field(default=10, ge=1, le=50, description="Max attachments ingested per issue (bounded).")
-    max_total_attachments: int = Field(default=200, ge=1, le=2000, description="Max attachments ingested per run (bounded).")
+    max_linked_artifacts_per_issue: int = Field(
+        default=10, ge=1, le=50, description="Max linked artifacts ingested per issue (bounded)."
+    )
+    max_total_linked_artifacts: int = Field(
+        default=200, ge=1, le=2000, description="Max linked artifacts ingested per run (bounded)."
+    )
+    include_attachments: bool = Field(
+        default=False, description="If true, list and ingest issue attachments (bounded)."
+    )
+    max_attachments_per_issue: int = Field(
+        default=10, ge=1, le=50, description="Max attachments ingested per issue (bounded)."
+    )
+    max_total_attachments: int = Field(
+        default=200, ge=1, le=2000, description="Max attachments ingested per run (bounded)."
+    )
 
     user_agent: str | None = Field(default=None, max_length=200)
 
@@ -456,16 +495,24 @@ class MySQLCatalogConnectorConfig(BaseModel):
     password: str = Field(..., max_length=10_000)
     # Optional: allowlist which schemas/tables to ingest (best-effort; connector runner may ignore).
     include_schemas: list[str] = Field(default_factory=list, description="Optional: ingest only these schemas")
-    include_tables: list[str] = Field(default_factory=list, description="Optional: ingest only these tables (names, not patterns)")
+    include_tables: list[str] = Field(
+        default_factory=list, description="Optional: ingest only these tables (names, not patterns)"
+    )
     max_tables: int = Field(default=200, ge=1, le=2000)
     profile_enabled: bool = Field(default=True, description="If true, compute safe aggregate profiles (no raw rows)")
     row_sync_enabled: bool = Field(
         default=False,
         description="If true, ingest bounded row snapshots into a TAG sidecar document for deterministic row recall.",
     )
-    row_sync_max_tables: int = Field(default=0, ge=0, le=500, description="Per-run cap for row-snapshot tables; 0 means use global default.")
-    row_sync_max_rows_per_table: int = Field(default=0, ge=0, le=1000, description="Per-table row cap for row snapshots; 0 means use global default.")
-    row_sync_max_cols: int = Field(default=0, ge=0, le=500, description="Per-table column cap for row snapshots; 0 means use global default.")
+    row_sync_max_tables: int = Field(
+        default=0, ge=0, le=500, description="Per-run cap for row-snapshot tables; 0 means use global default."
+    )
+    row_sync_max_rows_per_table: int = Field(
+        default=0, ge=0, le=1000, description="Per-table row cap for row snapshots; 0 means use global default."
+    )
+    row_sync_max_cols: int = Field(
+        default=0, ge=0, le=500, description="Per-table column cap for row snapshots; 0 means use global default."
+    )
 
     @model_validator(mode="after")
     def _normalize(self) -> "MySQLCatalogConnectorConfig":
@@ -492,16 +539,24 @@ class SQLServerCatalogConnectorConfig(BaseModel):
     password: str = Field(..., max_length=10_000)
     # Optional: allowlist which schemas/tables to ingest (best-effort; connector runner may ignore).
     include_schemas: list[str] = Field(default_factory=list, description="Optional: ingest only these schemas")
-    include_tables: list[str] = Field(default_factory=list, description="Optional: ingest only these tables (names, not patterns)")
+    include_tables: list[str] = Field(
+        default_factory=list, description="Optional: ingest only these tables (names, not patterns)"
+    )
     max_tables: int = Field(default=200, ge=1, le=2000)
     profile_enabled: bool = Field(default=True, description="If true, compute safe aggregate profiles (no raw rows)")
     row_sync_enabled: bool = Field(
         default=False,
         description="If true, ingest bounded row snapshots into a TAG sidecar document for deterministic row recall.",
     )
-    row_sync_max_tables: int = Field(default=0, ge=0, le=500, description="Per-run cap for row-snapshot tables; 0 means use global default.")
-    row_sync_max_rows_per_table: int = Field(default=0, ge=0, le=1000, description="Per-table row cap for row snapshots; 0 means use global default.")
-    row_sync_max_cols: int = Field(default=0, ge=0, le=500, description="Per-table column cap for row snapshots; 0 means use global default.")
+    row_sync_max_tables: int = Field(
+        default=0, ge=0, le=500, description="Per-run cap for row-snapshot tables; 0 means use global default."
+    )
+    row_sync_max_rows_per_table: int = Field(
+        default=0, ge=0, le=1000, description="Per-table row cap for row snapshots; 0 means use global default."
+    )
+    row_sync_max_cols: int = Field(
+        default=0, ge=0, le=500, description="Per-table column cap for row snapshots; 0 means use global default."
+    )
 
     @model_validator(mode="after")
     def _normalize(self) -> "SQLServerCatalogConnectorConfig":

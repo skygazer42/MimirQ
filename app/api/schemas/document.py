@@ -1,6 +1,7 @@
 """
 Document-related Pydantic schemas.
 """
+
 from datetime import datetime
 from enum import Enum
 from typing import Any, Literal, Optional
@@ -157,23 +158,55 @@ class DocumentPipelineOptions(BaseModel):
         description="Additional regex cleanup rules (stored in metadata.pipeline.governance.regex_rules).",
         max_length=60,
     )
-    governance_extract_frontmatter: bool | None = Field(default=None, description="Extract Markdown YAML frontmatter for metadata enrichment")
-    governance_strip_frontmatter: bool | None = Field(default=None, description="Strip Markdown YAML frontmatter from content after extraction")
-    governance_detect_language: bool | None = Field(default=None, description="Detect primary language/script (zh/en/mixed) for metadata enrichment")
-    governance_language_min_chars: int | None = Field(default=None, ge=0, le=200_000, description="Min alnum/CJK chars before language detection triggers")
-    governance_normalize_urls: bool | None = Field(default=None, description="Normalize URLs (e.g., strip tracking parameters) for consistency/dedup")
-    governance_normalize_urls_strip_tracking: bool | None = Field(default=None, description="When normalizing URLs, strip common tracking parameters (utm_*, gclid, fbclid, etc.)")
-    governance_drop_duplicate_paragraphs: bool | None = Field(default=None, description="Drop paragraphs repeated many times within a document (best-effort)")
-    governance_drop_duplicate_paragraphs_min_occurrences: int | None = Field(default=None, ge=2, le=100, description="Min repeat occurrences to drop a paragraph")
-    governance_drop_duplicate_paragraphs_min_chars: int | None = Field(default=None, ge=0, le=50_000, description="Min paragraph chars to consider for dedup")
-    governance_drop_duplicate_paragraphs_max_chars: int | None = Field(default=None, ge=0, le=200_000, description="Max paragraph chars to consider for dedup (0 disables cap)")
-    governance_trim_references: bool | None = Field(default=None, description="Trim trailing reference/bibliography sections (best-effort)")
-    governance_extract_keywords: bool | None = Field(default=None, description="Extract document-level keywords for metadata enrichment (best-effort)")
-    governance_keywords_provider: str | None = Field(default=None, description="Keyword provider: auto / jieba / jieba_textrank / hanlp / simple")
+    governance_extract_frontmatter: bool | None = Field(
+        default=None, description="Extract Markdown YAML frontmatter for metadata enrichment"
+    )
+    governance_strip_frontmatter: bool | None = Field(
+        default=None, description="Strip Markdown YAML frontmatter from content after extraction"
+    )
+    governance_detect_language: bool | None = Field(
+        default=None, description="Detect primary language/script (zh/en/mixed) for metadata enrichment"
+    )
+    governance_language_min_chars: int | None = Field(
+        default=None, ge=0, le=200_000, description="Min alnum/CJK chars before language detection triggers"
+    )
+    governance_normalize_urls: bool | None = Field(
+        default=None, description="Normalize URLs (e.g., strip tracking parameters) for consistency/dedup"
+    )
+    governance_normalize_urls_strip_tracking: bool | None = Field(
+        default=None, description="When normalizing URLs, strip common tracking parameters (utm_*, gclid, fbclid, etc.)"
+    )
+    governance_drop_duplicate_paragraphs: bool | None = Field(
+        default=None, description="Drop paragraphs repeated many times within a document (best-effort)"
+    )
+    governance_drop_duplicate_paragraphs_min_occurrences: int | None = Field(
+        default=None, ge=2, le=100, description="Min repeat occurrences to drop a paragraph"
+    )
+    governance_drop_duplicate_paragraphs_min_chars: int | None = Field(
+        default=None, ge=0, le=50_000, description="Min paragraph chars to consider for dedup"
+    )
+    governance_drop_duplicate_paragraphs_max_chars: int | None = Field(
+        default=None, ge=0, le=200_000, description="Max paragraph chars to consider for dedup (0 disables cap)"
+    )
+    governance_trim_references: bool | None = Field(
+        default=None, description="Trim trailing reference/bibliography sections (best-effort)"
+    )
+    governance_extract_keywords: bool | None = Field(
+        default=None, description="Extract document-level keywords for metadata enrichment (best-effort)"
+    )
+    governance_keywords_provider: str | None = Field(
+        default=None, description="Keyword provider: auto / jieba / jieba_textrank / hanlp / simple"
+    )
     governance_keywords_top_k: int | None = Field(default=None, ge=1, le=100, description="Max keywords to extract")
-    governance_keywords_max_chars: int | None = Field(default=None, ge=0, le=2_000_000, description="Max chars used for keyword extraction (truncate when exceeded)")
-    governance_normalize_tables: bool | None = Field(default=None, description="Normalize markdown tables (whitespace/column alignment)")
-    governance_strip_code_line_numbers: bool | None = Field(default=None, description="Strip leading line numbers inside fenced code blocks")
+    governance_keywords_max_chars: int | None = Field(
+        default=None, ge=0, le=2_000_000, description="Max chars used for keyword extraction (truncate when exceeded)"
+    )
+    governance_normalize_tables: bool | None = Field(
+        default=None, description="Normalize markdown tables (whitespace/column alignment)"
+    )
+    governance_strip_code_line_numbers: bool | None = Field(
+        default=None, description="Strip leading line numbers inside fenced code blocks"
+    )
     governance_pii_anonymize: bool | None = None
     governance_pii_mode: str | None = Field(
         default=None,
@@ -184,7 +217,9 @@ class DocumentPipelineOptions(BaseModel):
         default=None,
         ge=0,
         le=1_000_000,
-        description="Max allowed PII matches per document before drop/quarantine (sum across kinds). None disables gate.",
+        description=(
+            "Max allowed PII matches per document before drop/quarantine (sum across kinds). None disables gate."
+        ),
     )
     governance_llm_auto_tagging_enabled: bool | None = Field(
         default=None,
@@ -200,57 +235,106 @@ class DocumentPipelineOptions(BaseModel):
         default=None,
         description="Pre-POC quality gate mode: off | warn | strict",
     )
-    governance_secrets_redact: bool | None = Field(default=None, description="Redact common secrets/tokens (API keys, private keys, bearer tokens)")
+    governance_secrets_redact: bool | None = Field(
+        default=None, description="Redact common secrets/tokens (API keys, private keys, bearer tokens)"
+    )
     governance_secrets_mode: str | None = Field(default=None, description="Secrets redaction mode: mask | token")
     governance_secrets_mask: str | None = Field(default=None, description="Secrets replacement string (mask mode)")
     governance_secrets_max_hits: int | None = Field(
         default=None,
         ge=0,
         le=1_000_000,
-        description="Max allowed secrets matches per document before drop/quarantine (sum across kinds). None disables gate.",
+        description=(
+            "Max allowed secrets matches per document before drop/quarantine (sum across kinds). None disables gate."
+        ),
     )
     governance_max_blank_lines: int | None = Field(default=None, ge=0, le=10, description="Max consecutive blank lines")
     governance_html_xpath: str | None = Field(default=None, description="XPath for HTML extraction (HTML/HTM)")
     governance_drop_outline_only: bool | None = None
-    governance_drop_outline_min_content_chars: int | None = Field(default=None, ge=0, le=200_000, description="Min content chars before outline filter triggers")
-    governance_drop_outline_max_heading_ratio: float | None = Field(default=None, ge=0.0, le=1.0, description="Heading-like paragraph ratio threshold")
+    governance_drop_outline_min_content_chars: int | None = Field(
+        default=None, ge=0, le=200_000, description="Min content chars before outline filter triggers"
+    )
+    governance_drop_outline_max_heading_ratio: float | None = Field(
+        default=None, ge=0.0, le=1.0, description="Heading-like paragraph ratio threshold"
+    )
     governance_drop_low_density: bool | None = None
-    governance_drop_low_density_threshold: float | None = Field(default=None, ge=0.0, le=1.0, description="Alnum/CJK density threshold")
+    governance_drop_low_density_threshold: float | None = Field(
+        default=None, ge=0.0, le=1.0, description="Alnum/CJK density threshold"
+    )
     governance_quarantine_on_drop: bool | None = Field(
         default=None,
         description="When governance drop filters trigger, mark document as quarantined instead of failed",
     )
     governance_unwrap_max_line_length: int | None = Field(default=None, ge=40, le=400, description="max line length")
     governance_noise_min_chars: int | None = Field(default=None, ge=1, le=20, description="noise min chars")
-    governance_noise_ratio_threshold: float | None = Field(default=None, ge=0.0, le=1.0, description="noise ratio threshold")
+    governance_noise_ratio_threshold: float | None = Field(
+        default=None, ge=0.0, le=1.0, description="noise ratio threshold"
+    )
     governance_common_lines_min_docs: int | None = Field(default=None, ge=2, le=50, description="common line min docs")
-    governance_common_lines_min_ratio: float | None = Field(default=None, ge=0.0, le=1.0, description="common line ratio")
+    governance_common_lines_min_ratio: float | None = Field(
+        default=None, ge=0.0, le=1.0, description="common line ratio"
+    )
     governance_python_plugin: str | None = Field(
         default=None,
         max_length=240,
-        description="Registered governance plugin ref; legacy module:function refs require PYTHON_PIPELINE_PLUGIN_ALLOW_PREFIXES.",
+        description=(
+            "Registered governance plugin ref; legacy module:function refs require "
+            "PYTHON_PIPELINE_PLUGIN_ALLOW_PREFIXES."
+        ),
     )
     governance_python_params: dict[str, Any] | None = Field(
         default=None,
         description="Small primitive params object passed to the Python governance plugin",
     )
-    parse_fallback_enabled: bool | None = Field(default=None, description="Retry parsing with an alternative backend when output quality is low (PDF only)")
-    parse_fallback_min_content_chars: int | None = Field(default=None, ge=0, le=200_000, description="Min alnum/CJK chars to consider parse successful")
-    parse_fallback_min_parse_score: float | None = Field(default=None, ge=0.0, le=1.0, description="Min parse-quality score before triggering PDF fallback")
+    parse_fallback_enabled: bool | None = Field(
+        default=None, description="Retry parsing with an alternative backend when output quality is low (PDF only)"
+    )
+    parse_fallback_min_content_chars: int | None = Field(
+        default=None, ge=0, le=200_000, description="Min alnum/CJK chars to consider parse successful"
+    )
+    parse_fallback_min_parse_score: float | None = Field(
+        default=None, ge=0.0, le=1.0, description="Min parse-quality score before triggering PDF fallback"
+    )
     parse_fallback_max_retries: int | None = Field(default=None, ge=0, le=3, description="Max parse fallback retries")
-    cross_page_merge_enabled: bool | None = Field(default=None, description="Merge cross-page table/list continuations before chunking")
-    cross_page_merge_max_page_gap: int | None = Field(default=None, ge=1, le=5, description="Maximum page gap allowed for cross-page merging")
-    reading_order_enabled: bool | None = Field(default=None, description="Track reading-order quality signals for parse scoring and diagnostics")
-    parse_cache_enabled: bool | None = Field(default=None, description="Enable persisted parse cache keyed by file_sha256 + parser_backend + pipeline_hash")
-    parse_cache_ttl_sec: int | None = Field(default=None, ge=0, le=31_536_000, description="Persisted parse cache TTL in seconds")
-    vlm_correction_enabled: bool | None = Field(default=None, description="Enable best-effort VLM parse correction for low-quality PDF pages")
-    vlm_correction_min_table_score: float | None = Field(default=None, ge=0.0, le=1.0, description="Run VLM correction when table_quality_score is below this threshold")
-    vlm_correction_max_pages: int | None = Field(default=None, ge=1, le=10, description="Max pages corrected by VLM per document")
-    persist_parsed_content: bool | None = Field(default=None, description="Persist parsed markdown (raw+clean) into document_parsed_contents")
-    persist_parsed_content_max_chars: int | None = Field(default=None, ge=0, le=2_000_000, description="Max chars to persist (truncate when exceeded)")
-    near_dedup_enabled: bool | None = Field(default=None, description="Enable cross-document near-duplicate chunk dropping (SimHash)")
-    near_dedup_hamming_threshold: int | None = Field(default=None, ge=0, le=64, description="Near-dup Hamming distance threshold")
-    near_dedup_max_bucket_size: int | None = Field(default=None, ge=8, le=100_000, description="Max bucket size for near-dup index")
+    cross_page_merge_enabled: bool | None = Field(
+        default=None, description="Merge cross-page table/list continuations before chunking"
+    )
+    cross_page_merge_max_page_gap: int | None = Field(
+        default=None, ge=1, le=5, description="Maximum page gap allowed for cross-page merging"
+    )
+    reading_order_enabled: bool | None = Field(
+        default=None, description="Track reading-order quality signals for parse scoring and diagnostics"
+    )
+    parse_cache_enabled: bool | None = Field(
+        default=None, description="Enable persisted parse cache keyed by file_sha256 + parser_backend + pipeline_hash"
+    )
+    parse_cache_ttl_sec: int | None = Field(
+        default=None, ge=0, le=31_536_000, description="Persisted parse cache TTL in seconds"
+    )
+    vlm_correction_enabled: bool | None = Field(
+        default=None, description="Enable best-effort VLM parse correction for low-quality PDF pages"
+    )
+    vlm_correction_min_table_score: float | None = Field(
+        default=None, ge=0.0, le=1.0, description="Run VLM correction when table_quality_score is below this threshold"
+    )
+    vlm_correction_max_pages: int | None = Field(
+        default=None, ge=1, le=10, description="Max pages corrected by VLM per document"
+    )
+    persist_parsed_content: bool | None = Field(
+        default=None, description="Persist parsed markdown (raw+clean) into document_parsed_contents"
+    )
+    persist_parsed_content_max_chars: int | None = Field(
+        default=None, ge=0, le=2_000_000, description="Max chars to persist (truncate when exceeded)"
+    )
+    near_dedup_enabled: bool | None = Field(
+        default=None, description="Enable cross-document near-duplicate chunk dropping (SimHash)"
+    )
+    near_dedup_hamming_threshold: int | None = Field(
+        default=None, ge=0, le=64, description="Near-dup Hamming distance threshold"
+    )
+    near_dedup_max_bucket_size: int | None = Field(
+        default=None, ge=8, le=100_000, description="Max bucket size for near-dup index"
+    )
     chunk_size: int | None = Field(default=None, ge=100, le=4000, description="Chunk size")
     chunk_overlap: int | None = Field(default=None, ge=0, le=1000, description="Overlap size")
     chunk_merge_small_min_chars: int | None = Field(
@@ -269,7 +353,9 @@ class DocumentPipelineOptions(BaseModel):
     chunk_python_plugin: str | None = Field(
         default=None,
         max_length=240,
-        description="Registered chunk plugin ref; legacy module:function refs require PYTHON_PIPELINE_PLUGIN_ALLOW_PREFIXES.",
+        description=(
+            "Registered chunk plugin ref; legacy module:function refs require PYTHON_PIPELINE_PLUGIN_ALLOW_PREFIXES."
+        ),
     )
     chunk_python_params: dict[str, Any] | None = Field(
         default=None,
@@ -277,7 +363,10 @@ class DocumentPipelineOptions(BaseModel):
     )
     embedding_context_prefix_enabled: bool | None = Field(
         default=None,
-        description="Prefix chunk content with lightweight structural context (e.g. header_path) before embedding (vector-only).",
+        description=(
+            "Prefix chunk content with lightweight structural context (e.g. header_path) "
+            "before embedding (vector-only)."
+        ),
     )
     embedding_contextual_retrieval_enabled: bool | None = Field(
         default=None,
@@ -299,7 +388,9 @@ class DocumentPipelineOptions(BaseModel):
     kg_python_plugin: str | None = Field(
         default=None,
         max_length=240,
-        description="Registered KG plugin ref; legacy module:function refs require PYTHON_PIPELINE_PLUGIN_ALLOW_PREFIXES.",
+        description=(
+            "Registered KG plugin ref; legacy module:function refs require PYTHON_PIPELINE_PLUGIN_ALLOW_PREFIXES."
+        ),
     )
     kg_python_params: dict[str, Any] | None = Field(
         default=None,
@@ -310,10 +401,18 @@ class DocumentPipelineOptions(BaseModel):
     # Structured/table ingestion (TAG - Table Augmented Generation).
     # When enabled, supported table-like documents (.csv/.xls/.xlsx) are imported into a per-document
     # SQLite table store and can be queried via SQL / NL-to-SQL (separate endpoints).
-    table_store_enabled: bool | None = Field(default=None, description="Enable structured table store import for .csv/.xls/.xlsx (TAG)")
-    table_store_max_rows: int | None = Field(default=None, ge=0, le=5_000_000, description="Max rows to import per table (0 disables cap)")
-    table_store_max_cols: int | None = Field(default=None, ge=0, le=10_000, description="Max columns to import per table (0 disables cap)")
-    table_store_sample_rows: int | None = Field(default=None, ge=0, le=200, description="Rows to keep for metadata preview/sample (0 disables)")
+    table_store_enabled: bool | None = Field(
+        default=None, description="Enable structured table store import for .csv/.xls/.xlsx (TAG)"
+    )
+    table_store_max_rows: int | None = Field(
+        default=None, ge=0, le=5_000_000, description="Max rows to import per table (0 disables cap)"
+    )
+    table_store_max_cols: int | None = Field(
+        default=None, ge=0, le=10_000, description="Max columns to import per table (0 disables cap)"
+    )
+    table_store_sample_rows: int | None = Field(
+        default=None, ge=0, le=200, description="Rows to keep for metadata preview/sample (0 disables)"
+    )
     # Auto routing (optional): when enabled, decide per-file whether to use TAG (table_store) or
     # normal parsing+RAG based on size/complexity signals.
     table_store_auto_route: bool | None = Field(
@@ -323,8 +422,7 @@ class DocumentPipelineOptions(BaseModel):
     table_store_sidecar_exclusive_routing: bool | None = Field(
         default=None,
         description=(
-            "When true, parser-emitted table segments are TAG-sidecar only "
-            "(excluded from vector/BM25 indexing)."
+            "When true, parser-emitted table segments are TAG-sidecar only (excluded from vector/BM25 indexing)."
         ),
     )
     table_store_auto_row_threshold: int | None = Field(
@@ -473,7 +571,9 @@ class DocumentLifecycleMetadata(BaseModel):
     review_due_at: datetime | None = None
     authority_level: int | None = Field(default=None, ge=0, le=100)
     supersedes_document_id: UUID | None = None
-    publication_status: DocumentPublicationStatus = Field(default="published", description=DOCUMENT_PUBLICATION_STATUS_DESCRIPTION)
+    publication_status: DocumentPublicationStatus = Field(
+        default="published", description=DOCUMENT_PUBLICATION_STATUS_DESCRIPTION
+    )
 
     @field_validator("publication_status", mode="before")
     @classmethod
@@ -494,7 +594,9 @@ class DocumentLifecycleMetadataUpdateRequest(BaseModel):
     review_due_at: datetime | None = None
     authority_level: int | None = Field(default=None, ge=0, le=100)
     supersedes_document_id: UUID | None = None
-    publication_status: DocumentPublicationStatus = Field(default="published", description=DOCUMENT_PUBLICATION_STATUS_DESCRIPTION)
+    publication_status: DocumentPublicationStatus = Field(
+        default="published", description=DOCUMENT_PUBLICATION_STATUS_DESCRIPTION
+    )
 
 
 class DocumentBatchLifecycleRequest(BaseModel):
@@ -614,6 +716,7 @@ class DocumentDuplicateList(BaseModel):
 
 class DocumentChunkSchema(OrmModel):
     """Document chunk."""
+
     id: UUID
     content: str
     page_number: int | None = None
@@ -693,6 +796,7 @@ class GovernanceInfo(BaseModel):
 
 class DocumentDetail(OrmModel):
     """Document detail."""
+
     id: UUID
     filename: str
     file_type: str
@@ -708,7 +812,9 @@ class DocumentDetail(OrmModel):
     total_characters: int
     owner_id: str | None = None
     access_mode: DocumentAccessMode | None = None
-    publication_status: DocumentPublicationStatus = Field(default="published", description=DOCUMENT_PUBLICATION_STATUS_DESCRIPTION)
+    publication_status: DocumentPublicationStatus = Field(
+        default="published", description=DOCUMENT_PUBLICATION_STATUS_DESCRIPTION
+    )
     lifecycle_owner: str | None = None
     review_due_at: datetime | None = None
     authority_level: int | None = None
@@ -751,7 +857,9 @@ class DocumentDetail(OrmModel):
                 changed_documents=int(meta.get("governance_changed_documents") or 0),
                 rules_applied=int(meta.get("governance_rules_applied") or 0),
                 dropped_documents=int(meta.get("governance_dropped_documents") or 0),
-                drop_reasons=meta.get("governance_drop_reasons") if isinstance(meta.get("governance_drop_reasons"), dict) else {},
+                drop_reasons=meta.get("governance_drop_reasons")
+                if isinstance(meta.get("governance_drop_reasons"), dict)
+                else {},
             )
         except (TypeError, ValueError):
             self.governance = GovernanceInfo()
@@ -768,6 +876,7 @@ class DocumentDetail(OrmModel):
 
 class ParsedSegment(BaseModel):
     """Document parse preview segment."""
+
     index: int
     content: str
     page_number: int | None = None
@@ -914,6 +1023,7 @@ class DocumentPipelineProvenance(BaseModel):
 
 class DocumentParsePreview(BaseModel):
     """Document parse preview result."""
+
     filename: str
     file_type: str
     file_size: int
@@ -945,6 +1055,7 @@ class DocumentParsedContentResponse(BaseModel):
 
 class ManualChunkCreate(BaseModel):
     """Single chunk entry in a manual chunking request."""
+
     content: str
     page_number: int | None = None
     start_char: int | None = None
@@ -954,6 +1065,7 @@ class ManualChunkCreate(BaseModel):
 
 class ManualDocumentCreate(BaseModel):
     """Request to create a document from manual chunks."""
+
     dataset_id: UUID | None = None
     filename: str
     file_type: str
@@ -965,6 +1077,7 @@ class ManualDocumentCreate(BaseModel):
 
 class DocumentList(BaseModel):
     """Document list."""
+
     total: int
     items: list[DocumentDetail]
 
@@ -1034,6 +1147,7 @@ class DocumentChunkMatchList(BaseModel):
 
 class DocumentChunkList(BaseModel):
     """Paged document chunks."""
+
     total: int
     items: list[DocumentChunkSchema]
 
@@ -1086,6 +1200,7 @@ class DocumentVersionDiff(BaseModel):
 
 class DocumentStatus(OrmModel):
     """Document processing status."""
+
     id: UUID
     status: DocumentStatusEnum
     processing_progress: int
@@ -1099,8 +1214,10 @@ class DocumentStatus(OrmModel):
 
 # ============ Chunk preview schemas ============
 
+
 class ChunkPreviewParams(BaseModel):
     """Chunk preview parameters."""
+
     # Note: for langchain_token strategy this is interpreted as tokens; otherwise chars.
     chunk_size: int = Field(default=1000, ge=50, le=4000, description="Chunk size")
     chunk_overlap: int = Field(default=200, ge=0, le=1000, description="Overlap size")
@@ -1113,6 +1230,7 @@ class ChunkPreviewParams(BaseModel):
 
 class ChunkPreviewItem(BaseModel):
     """Chunk preview item."""
+
     index: int
     content: str
     length: int
@@ -1120,7 +1238,7 @@ class ChunkPreviewItem(BaseModel):
     # Approximate token count for UI display/stats (token-mode uses tiktoken when available).
     tokens_est: int | None = None
     start_index: int  # Start position in original text.
-    end_index: int    # End position in original text.
+    end_index: int  # End position in original text.
     page_number: int | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -1207,6 +1325,7 @@ class ChunkPreviewReviewSignals(BaseModel):
 
 class ChunkPreviewResponse(BaseModel):
     """Chunk preview response."""
+
     filename: str
     file_type: str
     file_size: int
@@ -1260,19 +1379,23 @@ class ChunkPreviewResponse(BaseModel):
 
 # ============ Batch upload schemas ============
 
+
 class BatchFileInfo(BaseModel):
     """Batch upload file info."""
+
     name: str = Field(..., description="Filename")
     data_id: str = Field(..., description="Custom data ID for file identification")
 
 
 class BatchUploadRequest(BaseModel):
     """Batch request for upload URLs."""
+
     files: list[BatchFileInfo] = Field(..., max_length=200, description="File list, max 200 files")
 
 
 class BatchUploadResponse(BaseModel):
     """Batch response for upload URLs."""
+
     batch_id: str = Field(..., description="Batch ID")
     file_urls: list[str] = Field(..., description="Upload URL list")
     files: list[BatchFileInfo] = Field(..., description="File info list")
@@ -1281,6 +1404,7 @@ class BatchUploadResponse(BaseModel):
 
 class BatchTaskStatus(BaseModel):
     """Batch task status."""
+
     batch_id: str
     status: str = Field(..., description="Task status: pending, processing, completed, failed")
     total_files: int
@@ -1293,8 +1417,10 @@ class BatchTaskStatus(BaseModel):
 
 # ============ Batch file upload (multiple files per request) schemas ============
 
+
 class DocumentBatchUploadSuccess(BaseModel):
     """Single file result for successful batch upload (lightweight response)."""
+
     document_id: UUID
     filename: str
     status: str
@@ -1305,6 +1431,7 @@ class DocumentBatchUploadSuccess(BaseModel):
 
 class DocumentBatchUploadFailure(BaseModel):
     """Single file result for failed batch upload."""
+
     filename: str
     error: str
     source_path: str | None = None
@@ -1312,6 +1439,7 @@ class DocumentBatchUploadFailure(BaseModel):
 
 class DocumentBatchUploadResponse(BaseModel):
     """Batch upload endpoint response."""
+
     total: int
     successful_count: int
     failed_count: int

@@ -106,12 +106,18 @@ class ReferenceSource(BaseModel):
 class RagasRegressionCaseCreateRequest(BaseModel):
     question: str = Field(..., min_length=1, description="Question (user_input for regression case)")
     dataset_id: UUID = Field(..., description="Dataset ID (required; regression suite is per-dataset)")
-    document_ids: list[UUID] = Field(default_factory=list, description="Document scope (optional, takes priority over dataset_id)")
-    expected_answer: str | None = Field(default=None, description="Expected answer (optional, for manual comparison/supervision)")
+    document_ids: list[UUID] = Field(
+        default_factory=list, description="Document scope (optional, takes priority over dataset_id)"
+    )
+    expected_answer: str | None = Field(
+        default=None, description="Expected answer (optional, for manual comparison/supervision)"
+    )
     reference_sources: list[ReferenceSource] = Field(
         ...,
         min_length=1,
-        description="Human-verified evidence sources (required; at least 1). Each source must include document_id + chunk_id.",
+        description=(
+            "Human-verified evidence sources (required; at least 1). Each source must include document_id + chunk_id."
+        ),
     )
     tags: list[str] = Field(default_factory=list, description="Tags (optional)")
     reasoning_hops: list[str] = Field(
@@ -153,7 +159,9 @@ class RagasRegressionCaseBundleItem(BaseModel):
     tags: list[str] = Field(default_factory=list)
     reasoning_hops: list[str] = Field(default_factory=list)
     evidence_chain: list[ReferenceSource] = Field(default_factory=list)
-    extra: dict[str, Any] = Field(default_factory=dict, description="Portable extension fields, such as plugin expected metadata")
+    extra: dict[str, Any] = Field(
+        default_factory=dict, description="Portable extension fields, such as plugin expected metadata"
+    )
 
 
 class RagasRegressionCaseImportRequest(BaseModel):
@@ -174,8 +182,12 @@ class RagasRegressionCaseImportResponse(BaseModel):
     errors: list[dict[str, Any]] = Field(default_factory=list)
     created_case_ids: list[UUID] = Field(default_factory=list)
     updated_case_ids: list[UUID] = Field(default_factory=list)
-    skipped_case_ids: list[UUID] = Field(default_factory=list, description="Existing ids skipped because overwrite=false.")
-    case_ids: list[UUID] = Field(default_factory=list, description="Created ids followed by updated and skipped-existing ids.")
+    skipped_case_ids: list[UUID] = Field(
+        default_factory=list, description="Existing ids skipped because overwrite=false."
+    )
+    case_ids: list[UUID] = Field(
+        default_factory=list, description="Created ids followed by updated and skipped-existing ids."
+    )
 
 
 class SyntheticHardcaseGenerateRequest(BaseModel):
@@ -231,7 +243,9 @@ class RagasRegressionCaseList(BaseModel):
 
 
 class RagasRegressionRunCreateRequest(BaseModel):
-    case_ids: list[UUID] = Field(default_factory=list, description="Case IDs to run (if empty, select by filter criteria)")
+    case_ids: list[UUID] = Field(
+        default_factory=list, description="Case IDs to run (if empty, select by filter criteria)"
+    )
     dataset_id: UUID = Field(..., description="Run cases under this dataset (required)")
     metrics: list[str] = Field(
         default_factory=lambda: ["faithfulness", "response_relevancy"],
@@ -268,7 +282,9 @@ class RagasRegressionRunCreateRequest(BaseModel):
     hierarchy_tree_dedup: bool | None = Field(default=None, description="Enable ancestor/child tree-style dedup")
     hierarchy_parent_depth: int | None = Field(default=None, ge=0, le=8, description="Max parent expansion depth")
     hierarchy_sibling_window: int | None = Field(default=None, ge=0, le=16, description="Max sibling expansion window")
-    hierarchy_overfetch_factor: int | None = Field(default=None, ge=1, le=32, description="Overfetch multiplier before collapse")
+    hierarchy_overfetch_factor: int | None = Field(
+        default=None, ge=1, le=32, description="Overfetch multiplier before collapse"
+    )
     enable_query_rewrite: bool | None = Field(default=None, description="Enable bounded query rewrite before retrieval")
     query_rewrite_strategy: str | None = Field(default=None, description="Override query rewrite strategy id")
     query_rewrite_temperature: float | None = Field(default=None, ge=0.0, le=2.0)
@@ -344,16 +360,14 @@ class RagasRegressionRunCreateRequest(BaseModel):
             return None
         if not isinstance(v, str):
             raise ValueError(
-                "hierarchy_family_aggregation must be one of: "
-                + ", ".join(HIERARCHY_FAMILY_AGGREGATION_VALUES)
+                "hierarchy_family_aggregation must be one of: " + ", ".join(HIERARCHY_FAMILY_AGGREGATION_VALUES)
             )
         raw = v.strip().lower()
         if not raw:
             return None
         if raw not in HIERARCHY_FAMILY_AGGREGATION_VALUES:
             raise ValueError(
-                "hierarchy_family_aggregation must be one of: "
-                + ", ".join(HIERARCHY_FAMILY_AGGREGATION_VALUES)
+                "hierarchy_family_aggregation must be one of: " + ", ".join(HIERARCHY_FAMILY_AGGREGATION_VALUES)
             )
         return raw
 
@@ -376,7 +390,9 @@ class RagasRegressionRunCreateRequest(BaseModel):
     @model_validator(mode="after")
     def _validate_fusion_overrides(self):
         _validate_numeric_fusion_override(self.fusion_budgets, field_name="fusion_budgets", caster=int, max_value=1000)
-        _validate_numeric_fusion_override(self.fusion_min_scores, field_name="fusion_min_scores", caster=float, max_value=1)
+        _validate_numeric_fusion_override(
+            self.fusion_min_scores, field_name="fusion_min_scores", caster=float, max_value=1
+        )
         _validate_numeric_fusion_override(self.fusion_weights, field_name="fusion_weights", caster=float, max_value=10)
         return self
 
