@@ -174,7 +174,7 @@ services:
       timeout: 3s
       retries: 10
       # Empty databases can spend several minutes creating the initial schema.
-      start_period: 240s
+      start_period: ${API_HEALTHCHECK_START_PERIOD:-240s}
     depends_on:
       mimirq-postgres:
         condition: service_healthy

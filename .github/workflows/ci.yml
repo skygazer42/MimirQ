@@ -408,6 +408,7 @@ jobs:
 
       - name: README docker quickstart smoke
         env:
+          API_HEALTHCHECK_START_PERIOD: "420s"
           BACKEND_PORT: "0"
           COMPOSE_PROJECT_NAME: mimirq-readme-${{ github.run_id }}-${{ github.run_attempt }}
           MARKDOWN_IMAGE_PROXY_SECRET: ci-markdown-image-proxy-secret
@@ -1483,6 +1484,9 @@ jobs:
             pnpm exec playwright test e2e/live-stack.smoke.spec.ts
 
       - name: README host quickstart smoke
+        env:
+          NEXT_PUBLIC_USER_ID: ci-bot
+          NEXT_PUBLIC_TENANT_ID: 00000000-0000-0000-0000-000000000000
         run: |
           mkdir -p artifacts
           make core-e2e \

@@ -617,6 +617,8 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     workflow = _read(".github/workflows/ci.yml")
     docker_job = workflow.split("\n  docker-build:", 1)[1].split("\n  retrieval-only-bounded-gate:", 1)[0]
     retrieval_compose = _read("docker/docker-compose.retrieval-dev.yml")
+    full_compose = _read("docker/docker-compose.yml")
+    lite_compose = _read("docker/docker-compose.lite.yml")
     backend_dockerfile = _read("docker/Dockerfile")
     web_dockerfile = _read("web/Dockerfile.prod")
     web_compose = _read("docker/docker-compose.web.yml")
@@ -633,6 +635,9 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     assert "printf 'DOCKER_BUILD_NETWORK=host\\n'" in docker_job
     assert "--build-arg NEXT_PUBLIC_API_URL=/" in docker_job
     assert "README docker quickstart smoke" in docker_job
+    assert 'API_HEALTHCHECK_START_PERIOD: "420s"' in docker_job
+    for compose in (full_compose, lite_compose, retrieval_compose):
+        assert "start_period: ${API_HEALTHCHECK_START_PERIOD:-240s}" in compose
     assert "make up-web" in docker_job
     assert "artifacts/core-e2e.readme-docker.json" in docker_job
     assert "README lite quickstart smoke" in docker_job
@@ -775,6 +780,12 @@ def test_main_ci_runs_core_e2e_against_the_existing_host_backend() -> None:
     assert "pnpm exec playwright test e2e/live-stack.smoke.spec.ts" in regression_job
     assert "README host quickstart smoke" in regression_job
     assert "make core-e2e" in regression_job
+    host_quickstart = regression_job.split("- name: README host quickstart smoke", 1)[1].split(
+        "- name: Run retrieval-only regression gate",
+        1,
+    )[0]
+    assert "NEXT_PUBLIC_USER_ID: ci-bot" in host_quickstart
+    assert "NEXT_PUBLIC_TENANT_ID: 00000000-0000-0000-0000-000000000000" in host_quickstart
     assert 'CORE_E2E_BASE_URL="http://127.0.0.1:${MIMIRQ_RETRIEVAL_API_PORT}"' in regression_job
     assert "CORE_E2E_OUT=artifacts/core-e2e.retrieval-regression.json" in regression_job
 

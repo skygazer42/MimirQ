@@ -1,7 +1,7 @@
-
 import hashlib
 import uuid
 from types import SimpleNamespace
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -13,6 +13,20 @@ from app.core.database import get_db
 from app.models.dataset import Dataset, DatasetPermissionEnum
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
+from app.models.tenant import Tenant, TenantMember
+
+
+def _add_tenant_owner(db: Any, *, tenant_id: uuid.UUID, account_id: str) -> None:
+    db.add(Tenant(id=tenant_id, name=f"tenant-{tenant_id}", status="active", plan="basic"))
+    db.add(
+        TenantMember(
+            tenant_id=tenant_id,
+            user_id=account_id,
+            role="owner",
+            is_active=True,
+            is_current=True,
+        )
+    )
 
 
 def _make_app(db, *, tenant_id: uuid.UUID, account_id: str) -> FastAPI:  # noqa: ANN001
@@ -60,15 +74,13 @@ def _add_chunk(  # noqa: ANN001
     )
 
 
-def test_document_version_diff_counts(pg_session, monkeypatch):  # noqa: ANN001
-    # Force dev-like behaviour for membership bootstrap.
-    monkeypatch.delenv("ENV", raising=False)
-
+def test_document_version_diff_counts(pg_session):  # noqa: ANN001
     tenant_id = uuid.uuid4()
     account_id = "test-account"
     dataset_id = uuid.uuid4()
     document_id = uuid.uuid4()
 
+    _add_tenant_owner(pg_session, tenant_id=tenant_id, account_id=account_id)
     pg_session.add(
         Dataset(
             id=dataset_id,
