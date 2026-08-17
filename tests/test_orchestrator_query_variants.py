@@ -1,10 +1,15 @@
+import pytest
+
 from app.rag.retrieval.orchestration.query_variants import (
     QueryVariantStageInput,
     build_query_variant_stage,
 )
 
 
-def test_query_variant_stage_preserves_order_dedup_and_budget_trimming() -> None:
+def test_query_variant_stage_preserves_order_dedup_and_budget_trimming(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.rag.retrieval.orchestration import query_variants
+
+    monkeypatch.setattr(query_variants, "num_tokens_from_string", lambda text: len(text.split()))
     output = build_query_variant_stage(
         QueryVariantStageInput(
             query_for_retrieval="q",

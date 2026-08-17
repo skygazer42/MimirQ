@@ -790,11 +790,13 @@ def test_compute_dimensions_prefers_explicit_fusion_evals_and_tracks_abstain_tra
     assert dimensions["explainability"] == {"decision_trace_coverage": 1.0}
 
 
-def test_query_variant_stage_applies_latency_budget_to_slow_variants() -> None:
-    from app.rag.retrieval.orchestration.query_variants import QueryVariantStageInput, build_query_variant_stage
+def test_query_variant_stage_applies_latency_budget_to_slow_variants(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.rag.retrieval.orchestration import query_variants
 
-    output = build_query_variant_stage(
-        QueryVariantStageInput(
+    monkeypatch.setattr(query_variants, "num_tokens_from_string", lambda text: len(text.split()))
+
+    output = query_variants.build_query_variant_stage(
+        query_variants.QueryVariantStageInput(
             query_for_retrieval="main q",
             alias_queries=["alias q"],
             dict_expansions=[],

@@ -856,12 +856,25 @@ def test_seed_fixture_rejects_bad_tenant_uuid_before_db_side_effects(monkeypatch
 def test_seed_fixture_uses_db_mocks_and_preserves_chunk_replacement(monkeypatch: pytest.MonkeyPatch) -> None:
     db = _TestDb()
     migration_calls, kg_calls = _install_seed_mocks(monkeypatch, db)
+    membership_calls: list[dict[str, object]] = []
+
+    def _record_membership(db_arg: object, **kwargs: object) -> None:
+        membership_calls.append({"db": db_arg, **kwargs})
+
+    monkeypatch.setattr(seed_mod, "ensure_fixture_tenant_owner", _record_membership)
     fixture = _seed_fixture_payload()
 
     seed_mod.seed_fixture(fixture=fixture)
 
     assert migration_calls == ["engine-sentinel", "engine-sentinel"]
     assert _TestBase.metadata.create_all_calls == ["engine-sentinel"]
+    assert membership_calls == [
+        {
+            "db": db,
+            "tenant_id": UUID("4ccb6554-4856-4916-b6ea-4430f8fa1bbd"),
+            "account_id": "ci-bot",
+        }
+    ]
     assert db.commits == 2
     assert db.closed is True
     assert [type(obj).__name__ for obj in db.added] == [

@@ -24,7 +24,7 @@ Examples:
 import argparse
 import json
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 from uuid import UUID
@@ -32,11 +32,114 @@ from uuid import UUID
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.core.config import settings
-from app.core.database import SessionLocal
-from app.models.tenant import Tenant
-from app.services.db_maintenance_jobs import run_postgres_maintenance
-from app.services.retention_jobs import run_audit_log_retention, run_regression_run_retention
+settings: Any | None = None
+SessionLocal: Callable[[], Any] | None = None
+Tenant: Any | None = None
+run_postgres_maintenance: Callable[..., dict[str, Any]] | None = None
+run_audit_log_retention: Callable[..., dict[str, Any]] | None = None
+run_regression_run_retention: Callable[..., dict[str, Any]] | None = None
+
+
+def _load_settings() -> None:
+    global settings
+    if settings is not None:
+        return
+
+    from app.core.config import settings as app_settings
+
+    if settings is None:
+        settings = app_settings
+
+
+def _load_session_local() -> None:
+    global SessionLocal
+    if SessionLocal is not None:
+        return
+
+    from app.core.database import SessionLocal as AppSessionLocal
+
+    if SessionLocal is None:
+        SessionLocal = AppSessionLocal
+
+
+def _load_tenant_model() -> None:
+    global Tenant
+    if Tenant is not None:
+        return
+
+    from app.models.tenant import Tenant as TenantModel
+
+    if Tenant is None:
+        Tenant = TenantModel
+
+
+def _load_postgres_runner() -> None:
+    global run_postgres_maintenance
+    if run_postgres_maintenance is not None:
+        return
+
+    from app.services.db_maintenance_jobs import run_postgres_maintenance as postgres_runner
+
+    if run_postgres_maintenance is None:
+        run_postgres_maintenance = postgres_runner
+
+
+def _load_audit_retention_runner() -> None:
+    global run_audit_log_retention
+    if run_audit_log_retention is not None:
+        return
+
+    from app.services.retention_jobs import run_audit_log_retention as audit_log_runner
+
+    if run_audit_log_retention is None:
+        run_audit_log_retention = audit_log_runner
+
+
+def _load_regression_retention_runner() -> None:
+    global run_regression_run_retention
+    if run_regression_run_retention is not None:
+        return
+
+    from app.services.retention_jobs import run_regression_run_retention as regression_run_runner
+
+    if run_regression_run_retention is None:
+        run_regression_run_retention = regression_run_runner
+
+
+def _get_settings() -> Any:
+    _load_settings()
+    assert settings is not None
+    return settings
+
+
+def _get_session_local() -> Callable[[], Any]:
+    _load_session_local()
+    assert SessionLocal is not None
+    return SessionLocal
+
+
+def _get_tenant_model() -> Any:
+    _load_tenant_model()
+    assert Tenant is not None
+    return Tenant
+
+
+def _get_postgres_runner() -> Callable[..., dict[str, Any]]:
+    _load_postgres_runner()
+    assert run_postgres_maintenance is not None
+    return run_postgres_maintenance
+
+
+def _get_audit_retention_runner() -> Callable[..., dict[str, Any]]:
+    _load_audit_retention_runner()
+    assert run_audit_log_retention is not None
+    return run_audit_log_retention
+
+
+def _get_regression_retention_runner() -> Callable[..., dict[str, Any]]:
+    _load_regression_retention_runner()
+    assert run_regression_run_retention is not None
+    return run_regression_run_retention
 
 
 def _parse_uuid(value: str) -> UUID:
@@ -99,7 +202,7 @@ def _run_postgres_job(
     results: list[dict[str, Any]],
 ) -> bool:
     try:
-        result = run_postgres_maintenance(
+        result = _get_postgres_runner()(
             vacuum=bool(args.vacuum),
             analyze=bool(args.analyze),
             verbose=bool(args.verbose),
@@ -117,9 +220,9 @@ def _run_postgres_job(
 
 def _tenant_ids(args: argparse.Namespace, results: list[dict[str, Any]]) -> tuple[list[UUID], bool]:
     if bool(args.all_tenants):
-        db = SessionLocal()
+        db = _get_session_local()()
         try:
-            rows = db.query(Tenant.id).all()
+            rows = db.query(_get_tenant_model().id).all()
             tenant_ids = [row[0] for row in rows if isinstance(row, tuple) and row and isinstance(row[0], UUID)]
             return tenant_ids, True
         except Exception as exc:  # noqa: BLE001
@@ -129,7 +232,7 @@ def _tenant_ids(args: argparse.Namespace, results: list[dict[str, Any]]) -> tupl
             db.close()
     if args.tenant_id is not None:
         return [args.tenant_id], True
-    return [UUID(str(settings.DEFAULT_TENANT_ID))], True
+    return [UUID(str(_get_settings().DEFAULT_TENANT_ID))], True
 
 
 def _run_retention_job(
@@ -169,11 +272,11 @@ def _run_retention_jobs(
 ) -> bool:
     tenant_ids, ok = _tenant_ids(args, results)
     for tenant_id in tenant_ids:
-        db = SessionLocal()
+        db = _get_session_local()()
         try:
             if bool(args.audit_logs):
                 job_ok = _run_retention_job(
-                    run_audit_log_retention,
+                    _get_audit_retention_runner(),
                     "audit_logs_retention",
                     db,
                     tenant_id,
@@ -185,7 +288,7 @@ def _run_retention_jobs(
                 ok = job_ok and ok
             if bool(args.regression_runs):
                 job_ok = _run_retention_job(
-                    run_regression_run_retention,
+                    _get_regression_retention_runner(),
                     "regression_runs_retention",
                     db,
                     tenant_id,
@@ -212,7 +315,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     dry_run = not bool(args.execute)
-    ran_at = datetime.now(UTC)
+    ran_at = datetime.now(timezone.utc)
     results: list[dict[str, Any]] = []
     ok = True
 

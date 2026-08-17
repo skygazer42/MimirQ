@@ -8,6 +8,8 @@ for use with LangChain vector stores (Milvus, FAISS, Chroma, etc.).
 import hashlib
 import json
 
+from langchain_core.embeddings import Embeddings
+
 from app.core.config import settings
 from app.core.redis_client import LazyRedisClient
 from app.rag.embedding.base import BaseEmbeddingModel
@@ -125,7 +127,7 @@ def _log_document_cache_metrics(*, total: int, hits: int, misses: int, corrupt: 
         logger.debug("Ignoring non-critical embedding adapter fallback failure: %s", exc)
 
 
-class LangChainEmbeddingsAdapter:
+class LangChainEmbeddingsAdapter(Embeddings):
     """LangChain Embeddings interface adapter.
 
     Adapts any BaseEmbeddingModel to LangChain's expected interface:
@@ -295,9 +297,7 @@ class LangChainEmbeddingsAdapter:
         return self._dimension
 
 
-def create_langchain_embeddings(
-    model_id: str, normalize: bool = True
-) -> LangChainEmbeddingsAdapter:
+def create_langchain_embeddings(model_id: str, normalize: bool = True) -> LangChainEmbeddingsAdapter:
     """Create a LangChain-compatible embeddings instance.
 
     Convenience function to create embeddings adapter from model_id.
@@ -366,13 +366,9 @@ def create_langchain_embeddings_from_config(
             model=model, dimension=dimension, base_url=base_url, api_key=api_key
         )
     elif provider == "dashscope":
-        embedding_model = DashScopeEmbedding(
-            model=model, dimension=dimension, base_url=base_url, api_key=api_key
-        )
+        embedding_model = DashScopeEmbedding(model=model, dimension=dimension, base_url=base_url, api_key=api_key)
     elif provider == "ollama":
-        embedding_model = OllamaEmbedding(
-            model=model, dimension=dimension, base_url=base_url, api_key=api_key
-        )
+        embedding_model = OllamaEmbedding(model=model, dimension=dimension, base_url=base_url, api_key=api_key)
     else:  # openai_compatible, openai, etc.
         embedding_model = OpenAICompatibleEmbedding(
             model=model, dimension=dimension, base_url=base_url, api_key=api_key

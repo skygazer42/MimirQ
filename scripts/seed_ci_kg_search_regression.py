@@ -39,6 +39,8 @@ KgEntityAlias = None
 KgEventEntity = None
 KgRelation = None
 KgSourceEvent = None
+Tenant = None
+TenantMember = None
 
 
 def _load_json(path: Path) -> Any:
@@ -88,6 +90,7 @@ def _ensure_app_imports() -> None:
     global Base, SessionLocal, engine, apply_runtime_migrations
     global Dataset, DatasetPermissionEnum, DBDocument, DocumentChunk
     global KgEntity, KgEntityAlias, KgEventEntity, KgRelation, KgSourceEvent
+    global Tenant, TenantMember
 
     if Base is not None:
         return
@@ -103,6 +106,9 @@ def _ensure_app_imports() -> None:
     document_module = importlib.import_module("app.models.document")
     DBDocument = document_module.Document
     DocumentChunk = document_module.DocumentChunk
+    tenant_module = importlib.import_module("app.models.tenant")
+    Tenant = tenant_module.Tenant
+    TenantMember = tenant_module.TenantMember
     kg_models = importlib.import_module("app.rag.kg.models")
     KgEntity = kg_models.KgEntity
     KgEntityAlias = kg_models.KgEntityAlias
@@ -126,6 +132,38 @@ def _normalize_type(text: str) -> str:
 def _kg_section_list(kg: dict[str, Any], key: str) -> list[dict[str, Any]]:
     rows = kg.get(key)
     return [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+
+
+def ensure_fixture_tenant_owner(db: Any, *, tenant_id: UUID, account_id: str) -> None:
+    """Create the explicit CI tenant membership required by authenticated APIs."""
+    _ensure_app_imports()
+
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    if tenant is None:
+        tenant = Tenant(
+            id=tenant_id,
+            name=f"CI KG Search Regression {str(tenant_id)[:8]}",
+            status="active",
+            plan="basic",
+        )
+        db.add(tenant)
+
+    member = (
+        db.query(TenantMember).filter(TenantMember.tenant_id == tenant_id, TenantMember.user_id == account_id).first()
+    )
+    if member is None:
+        member = TenantMember(
+            tenant_id=tenant_id,
+            user_id=account_id,
+            role="owner",
+            is_active=True,
+            is_current=True,
+        )
+        db.add(member)
+    else:
+        member.role = "owner"
+        member.is_active = True
+        member.is_current = True
 
 
 def _row_uuid_list(rows: list[dict[str, Any]]) -> list[UUID]:
@@ -481,6 +519,7 @@ def seed_fixture(*, fixture: dict[str, Any]) -> None:
 
     db = SessionLocal()
     try:
+        ensure_fixture_tenant_owner(db, tenant_id=tenant_id, account_id=account_id)
         _upsert_dataset(
             db=db,
             tenant_id=tenant_id,

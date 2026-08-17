@@ -14,10 +14,12 @@ RUNTIME_SCRIPTS = (
     "run_retention_jobs.py",
 )
 LAZY_APP_IMPORT_SCRIPTS = (
+    "run_db_maintenance_jobs.py",
     "run_nightly_ablations.py",
     "run_periodic_audit_jobs.py",
     "run_retention_jobs.py",
 )
+
 
 @pytest.mark.parametrize("script_name", LAZY_APP_IMPORT_SCRIPTS)
 def test_runtime_help_keeps_app_runtime_imports_lazy(script_name: str) -> None:

@@ -1,4 +1,3 @@
-
 import logging
 import re
 from pathlib import Path
@@ -12,6 +11,7 @@ from app.deepdoc.parser.mineru_parser import (
     MinerUParseMethod,
     MinerUParser,
 )
+from app.deepdoc.parser.pdf_parser import IntegratedPipelinePdfParser
 from app.deepdoc.src.model.rag_tokenizer import RagTokenizer
 from app.deepdoc.vision.recognizer import Recognizer
 from app.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
@@ -241,7 +241,8 @@ def test_mineru_transfer_to_sections_preserves_fallbacks_and_tuple_shapes() -> N
     ]
 
 
-def test_mineru_parse_pdf_removes_spaces_and_preserves_option_mapping(tmp_path) -> None:
+def test_mineru_parse_pdf_removes_spaces_and_preserves_option_mapping(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(IntegratedPipelinePdfParser, "__init__", lambda self: None)
     parser = MinerUParser(mineru_api="http://mineru.api", mineru_server_url="http://mineru.server")
     input_path = tmp_path / "report name.pdf"
     input_path.write_bytes(b"%PDF-1.4\n")
