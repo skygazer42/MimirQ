@@ -369,32 +369,12 @@ def build_common_line_signatures(
     if doc_count < min_docs:
         return set()
 
-    line_docs: dict[str, int] = {}
-    for text in texts:
-        seen: set[str] = set()
-        in_code = False
-        for line in text.splitlines():
-            if _CODE_FENCE_RE.match(line):
-                in_code = not in_code
-                continue
-            if in_code:
-                continue
-            if _is_structural_line(line):
-                continue
-            key = _normalize_line_signature(line)
-            if not key:
-                continue
-            if len(key) > max_line_length:
-                continue
-            seen.add(key)
-        for key in seen:
-            line_docs[key] = line_docs.get(key, 0) + 1
-
-    common: set[str] = set()
-    for key, count in line_docs.items():
-        if count >= min_docs and (count / doc_count) >= min_ratio:
-            common.add(key)
-    return common
+    line_docs, _samples = _common_line_stats(texts, max_line_length=max_line_length)
+    return {
+        key
+        for key, count in line_docs.items()
+        if count >= min_docs and (count / doc_count) >= min_ratio
+    }
 
 
 def build_repeated_line_signatures(
@@ -440,6 +420,40 @@ def _normalize_line_for_display(line: str) -> str:
     return text.strip()
 
 
+def _document_common_line_samples(text: str, *, max_line_length: int) -> dict[str, str]:
+    samples: dict[str, str] = {}
+    in_code = False
+    for raw_line in (text or "").splitlines():
+        if _CODE_FENCE_RE.match(raw_line):
+            in_code = not in_code
+            continue
+        if in_code or _is_structural_line(raw_line):
+            continue
+        signature = _normalize_line_signature(raw_line)
+        if not signature or len(signature) > max_line_length:
+            continue
+        samples.setdefault(signature, _normalize_line_for_display(raw_line) or signature)
+    return samples
+
+
+def _common_line_stats(
+    texts: Sequence[str],
+    *,
+    max_line_length: int,
+) -> tuple[dict[str, int], dict[str, str]]:
+    line_docs: dict[str, int] = {}
+    samples: dict[str, str] = {}
+    for text in texts:
+        document_samples = _document_common_line_samples(
+            text,
+            max_line_length=max_line_length,
+        )
+        for signature, sample in document_samples.items():
+            line_docs[signature] = line_docs.get(signature, 0) + 1
+            samples.setdefault(signature, sample)
+    return line_docs, samples
+
+
 def learn_common_line_candidates(
     texts: Sequence[str],
     *,
@@ -471,42 +485,19 @@ def learn_common_line_candidates(
 
     max_line_length_eff = max(0, int(max_line_length or 0)) or 120
 
-    line_docs: dict[str, int] = {}
-    samples: dict[str, str] = {}
-
-    for text in texts:
-        seen: set[str] = set()
-        in_code = False
-        for raw_line in (text or "").splitlines():
-            if _CODE_FENCE_RE.match(raw_line):
-                in_code = not in_code
-                continue
-            if in_code:
-                continue
-            if _is_structural_line(raw_line):
-                continue
-
-            signature = _normalize_line_signature(raw_line)
-            if not signature:
-                continue
-            if len(signature) > max_line_length_eff:
-                continue
-
-            seen.add(signature)
-            if signature not in samples:
-                samples[signature] = _normalize_line_for_display(raw_line) or signature
-
-        for sig in seen:
-            line_docs[sig] = line_docs.get(sig, 0) + 1
+    line_docs, samples = _common_line_stats(
+        texts,
+        max_line_length=max_line_length_eff,
+    )
 
     min_ratio_eff = float(min_ratio or 0.0)
     min_ratio_eff = max(0.0, min(1.0, min_ratio_eff))
 
     out: list[dict[str, object]] = []
     for sig, count in line_docs.items():
-        ratio = float(count) / float(doc_count) if doc_count else 0.0
         if count < min_docs_eff:
             continue
+        ratio = float(count) / float(doc_count)
         if ratio < min_ratio_eff:
             continue
         out.append(
@@ -514,7 +505,7 @@ def learn_common_line_candidates(
                 "signature": sig,
                 "sample": samples.get(sig, sig),
                 "docs": int(count),
-                "ratio": float(ratio),
+                "ratio": ratio,
             }
         )
 

@@ -1,4 +1,3 @@
-
 import importlib
 import inspect
 from collections.abc import Callable, Iterable
@@ -148,7 +147,9 @@ def _apply_registered_plugin_contracts(
         first = errors[0] if errors else {}
         field = first.get("field") if isinstance(first, dict) else None
         reason = first.get("reason") if isinstance(first, dict) else None
-        raise PythonPipelinePluginError(f"plugin metadata contract failed for {field or 'metadata'}: {reason or 'invalid'}")
+        raise PythonPipelinePluginError(
+            f"plugin metadata contract failed for {field or 'metadata'}: {reason or 'invalid'}"
+        )
     try:
         documents = apply_metadata_schema_views(
             documents,
@@ -188,7 +189,9 @@ def _apply_registered_kg_plugin_contracts(
         first = errors[0] if errors else {}
         field = first.get("field") if isinstance(first, dict) else None
         reason = first.get("reason") if isinstance(first, dict) else None
-        raise PythonPipelinePluginError(f"plugin KG metadata contract failed for {field or 'metadata'}: {reason or 'invalid'}")
+        raise PythonPipelinePluginError(
+            f"plugin KG metadata contract failed for {field or 'metadata'}: {reason or 'invalid'}"
+        )
     return events
 
 
@@ -204,31 +207,46 @@ def _invoke_plugin(
     except (TypeError, ValueError):
         return func(documents, params, context)
 
-    kwargs: dict[str, Any] = {}
-    positional: list[Any] = []
-    accepts_kwargs = any(param.kind == inspect.Parameter.VAR_KEYWORD for param in sig.parameters.values())
-    for name, param in sig.parameters.items():
-        if name in {"documents", "items", "docs"}:
-            kwargs[name] = documents
-        elif name == "params":
-            kwargs[name] = params
-        elif name == "context":
-            kwargs[name] = context
-        elif name == "chunk_size":
-            kwargs[name] = context.get("chunk_size")
-        elif name == "chunk_overlap":
-            kwargs[name] = context.get("chunk_overlap")
-        elif name == "stage":
-            kwargs[name] = context.get("stage")
-        elif param.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD):
-            if not positional and param.default is inspect.Parameter.empty:
-                positional.append(documents)
-        elif accepts_kwargs:
-            continue
-
+    positional, kwargs = _plugin_call_arguments(
+        sig,
+        documents=documents,
+        params=params,
+        context=context,
+    )
     if kwargs:
         return func(**kwargs)
     return func(*positional) if positional else func()
+
+
+def _plugin_call_arguments(
+    signature: inspect.Signature,
+    *,
+    documents: list[Document],
+    params: dict[str, Any],
+    context: dict[str, Any],
+) -> tuple[list[Any], dict[str, Any]]:
+    named_values = {
+        "documents": documents,
+        "items": documents,
+        "docs": documents,
+        "params": params,
+        "context": context,
+        "chunk_size": context.get("chunk_size"),
+        "chunk_overlap": context.get("chunk_overlap"),
+        "stage": context.get("stage"),
+    }
+    kwargs: dict[str, Any] = {}
+    positional: list[Any] = []
+    for name, param in signature.parameters.items():
+        if name in named_values:
+            kwargs[name] = named_values[name]
+        elif param.kind in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        ):
+            if not positional and param.default is inspect.Parameter.empty:
+                positional.append(documents)
+    return positional, kwargs
 
 
 def _coerce_metadata(value: Any) -> dict[str, Any]:
@@ -362,6 +380,76 @@ def _iter_kg_result(result: Any) -> list[Any]:
     return list(result)
 
 
+def _kg_event_text_fields(item: dict[str, Any]) -> tuple[str, str, str]:
+    title = str(item.get("title") or "").strip()
+    summary = str(item.get("summary") or "").strip()
+    content = str(item.get("content") or "").strip()
+    if not title:
+        title = (summary[:80] if summary else content[:80]).strip() or "KG Event"
+    if not summary:
+        summary = (content[:240] if content else title).strip() or title
+    return title, summary, content or summary or title
+
+
+def _kg_event_references(
+    item: dict[str, Any],
+    *,
+    source_metadata: dict[str, Any],
+    plugin_ref: str,
+) -> dict[str, Any]:
+    references = _coerce_metadata(item.get("references"))
+    for key in (
+        "source",
+        "source_file",
+        "source_path",
+        "chunk_index",
+        "content_hash",
+        "content_len",
+        "pipeline_hash",
+        "active_pipeline_hash",
+    ):
+        value = source_metadata.get(key)
+        if value is not None:
+            references.setdefault(key, value)
+    references.setdefault("kg_python_plugin", plugin_ref)
+    return references
+
+
+def _kg_event_entities(item: dict[str, Any], *, event_index: int) -> list[EventEntityInput]:
+    raw_entities = item.get("entities") if isinstance(item.get("entities"), list) else []
+    entities: list[EventEntityInput] = []
+    for entity_index, raw_entity in enumerate(raw_entities):
+        entity = _coerce_event_entity(
+            raw_entity,
+            event_index=event_index,
+            entity_index=entity_index,
+        )
+        if entity is not None:
+            entities.append(entity)
+    return entities
+
+
+def _kg_event_scope_ids(
+    item: dict[str, Any],
+    *,
+    source_metadata: dict[str, Any],
+    source_document: Document | None,
+) -> tuple[UUID | None, UUID | None]:
+    document_id = (
+        _coerce_uuid(item.get("document_id"))
+        or _coerce_uuid(source_metadata.get("document_id"))
+        or _coerce_uuid(source_metadata.get("doc_id"))
+    )
+    chunk_id = (
+        _coerce_uuid(item.get("chunk_id"))
+        or _coerce_uuid(source_metadata.get("chunk_id"))
+        or _coerce_uuid(source_metadata.get("id"))
+    )
+    if chunk_id is None and source_document is not None:
+        chunk_id = _coerce_uuid(getattr(source_document, "id", None))
+    return document_id, chunk_id
+
+
 def _coerce_kg_event(
     item: Any,
     *,
@@ -382,59 +470,32 @@ def _coerce_kg_event(
     meta = _source_metadata(documents, source_index)
     source_doc = _source_document(documents, source_index)
 
-    title = str(item.get("title") or "").strip()
-    summary = str(item.get("summary") or "").strip()
-    content = str(item.get("content") or "").strip()
-    if not title:
-        title = (summary[:80] if summary else content[:80]).strip() or "KG Event"
-    if not summary:
-        summary = (content[:240] if content else title).strip() or title
-    if not content:
-        content = summary or title
-
-    references = dict(item.get("references") if isinstance(item.get("references"), dict) else {})
-    for key in (
-        "source",
-        "source_file",
-        "source_path",
-        "chunk_index",
-        "content_hash",
-        "content_len",
-        "pipeline_hash",
-        "active_pipeline_hash",
-    ):
-        value = meta.get(key)
-        if value is not None and key not in references:
-            references[key] = value
-    references.setdefault("kg_python_plugin", plugin_ref)
-
-    extra_data = dict(item.get("extra_data") if isinstance(item.get("extra_data"), dict) else {})
+    title, summary, content = _kg_event_text_fields(item)
+    references = _kg_event_references(
+        item,
+        source_metadata=meta,
+        plugin_ref=plugin_ref,
+    )
+    extra_data = _coerce_metadata(item.get("extra_data"))
     extra_data.setdefault("kg_python_plugin", plugin_ref)
-
-    raw_entities = item.get("entities") if isinstance(item.get("entities"), list) else []
-    entities: list[EventEntityInput] = []
-    for entity_index, raw_entity in enumerate(raw_entities):
-        entity = _coerce_event_entity(raw_entity, event_index=index, entity_index=entity_index)
-        if entity is not None:
-            entities.append(entity)
-
-    doc_id = _coerce_uuid(item.get("document_id")) or _coerce_uuid(meta.get("document_id")) or _coerce_uuid(meta.get("doc_id"))
-    chunk_id = _coerce_uuid(item.get("chunk_id")) or _coerce_uuid(meta.get("chunk_id")) or _coerce_uuid(meta.get("id"))
-    if chunk_id is None and source_doc is not None:
-        chunk_id = _coerce_uuid(getattr(source_doc, "id", None))
+    document_id, chunk_id = _kg_event_scope_ids(
+        item,
+        source_metadata=meta,
+        source_document=source_doc,
+    )
 
     return IndexRecord(
         kind=IndexKind.EVENT,
         title=title,
         summary=summary,
         content=content,
-        metadata=dict(item.get("metadata") if isinstance(item.get("metadata"), dict) else {}),
-        document_id=doc_id,
+        metadata=_coerce_metadata(item.get("metadata")),
+        document_id=document_id,
         chunk_id=chunk_id,
         references=references,
         extra_data=extra_data,
         vector=_coerce_vector(item.get("vector")),
-        entities=entities,
+        entities=_kg_event_entities(item, event_index=index),
     )
 
 

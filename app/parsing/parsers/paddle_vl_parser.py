@@ -138,6 +138,175 @@ class PaddleVLParser:
             return children[0]
         return root
 
+    @staticmethod
+    def _page_dirs(output_dir: Path) -> list[Path]:
+        return sorted([p for p in output_dir.glob("page_*") if p.is_dir()])
+
+    @staticmethod
+    def _page_number(page_dir: Path) -> int | None:
+        try:
+            return int(page_dir.name.split("_", 1)[1])
+        except Exception:
+            logger.warning("[paddle_vl] invalid page directory: %s", page_dir.name)
+            return None
+
+    def _move_page_images(self, *, page_dir: Path, standard_image_dir: Path, image_counter: int) -> tuple[int, dict[str, str]]:
+        imgs_dir = page_dir / "imgs"
+        if not imgs_dir.exists():
+            return image_counter, {}
+
+        page_mapping: dict[str, str] = {}
+        for img_file in imgs_dir.iterdir():
+            if not img_file.is_file():
+                continue
+            new_name = f"image_{image_counter:03d}{img_file.suffix}"
+            new_path = standard_image_dir / new_name
+            try:
+                shutil.move(str(img_file), str(new_path))
+            except Exception as exc:
+                logger.warning("[paddle_vl] failed to move image %s: %s", img_file.name, str(exc)[:200])
+                continue
+            page_mapping[img_file.name] = new_name
+            image_counter += 1
+
+        try:
+            imgs_dir.rmdir()
+        except OSError:
+            pass
+        return image_counter, page_mapping
+
+    def _collect_image_mapping(self, *, output_dir: Path, standard_image_dir: Path) -> tuple[dict[int, dict[str, str]], int, list[Path]]:
+        image_mapping: dict[int, dict[str, str]] = {}
+        image_counter = 1
+        page_dirs = self._page_dirs(output_dir)
+        for page_dir in page_dirs:
+            page_num = self._page_number(page_dir)
+            if page_num is None:
+                continue
+            image_counter, page_mapping = self._move_page_images(
+                page_dir=page_dir,
+                standard_image_dir=standard_image_dir,
+                image_counter=image_counter,
+            )
+            image_mapping[page_num - 1] = page_mapping
+        return image_mapping, image_counter, page_dirs
+
+    def _inject_page_image_paths(self, *, page_data: dict[str, Any], page_img_mapping: dict[str, str]) -> None:
+        parsing_list = page_data.get("parsing_res_list")
+        if not (isinstance(parsing_list, list) and page_img_mapping):
+            return
+        for block in parsing_list:
+            if not isinstance(block, dict):
+                continue
+            if str(block.get("block_label") or "").strip().lower() != "image":
+                continue
+            bbox = block.get("block_bbox", [])
+            if not (isinstance(bbox, list) and len(bbox) == 4):
+                continue
+            candidates = [
+                f"img_in_image_box_{bbox[0]}_{bbox[1]}_{bbox[2]}_{bbox[3]}.jpg",
+                f"img_in_image_box_{bbox[0]}_{bbox[1]}_{bbox[2]}_{bbox[3]}.png",
+                f"img_in_image_box_{bbox[0]}_{bbox[1]}_{bbox[2]}_{bbox[3]}.jpeg",
+            ]
+            for name in candidates:
+                new_img_name = page_img_mapping.get(name)
+                if new_img_name:
+                    block["img_path"] = f"{self.STANDARD_IMAGE_DIR}/{new_img_name}"
+                    break
+
+    def _merge_page_jsons(self, *, page_dirs: list[Path], image_mapping: dict[int, dict[str, str]]) -> list[dict[str, Any]]:
+        all_pages_data: list[dict[str, Any]] = []
+        for page_dir in page_dirs:
+            json_files = list(page_dir.glob("*_res.json"))
+            if not json_files:
+                continue
+            json_file = json_files[0]
+            try:
+                page_data = json.loads(json_file.read_text(encoding="utf-8", errors="ignore") or "{}")
+                if not isinstance(page_data, dict):
+                    continue
+                page_idx = int(page_data.get("page_index", 0) or 0)
+                self._inject_page_image_paths(
+                    page_data=page_data,
+                    page_img_mapping=image_mapping.get(page_idx, {}),
+                )
+                all_pages_data.append(page_data)
+            except Exception as exc:
+                logger.warning("[paddle_vl] failed to process %s: %s", str(json_file.name), str(exc)[:200])
+        return all_pages_data
+
+    @staticmethod
+    def _write_combined_json(*, output_dir: Path, pages: list[dict[str, Any]]) -> Path | None:
+        if not pages:
+            return None
+        standard_json = output_dir / PaddleVLParser.STANDARD_JSON_NAME
+        combined = {
+            "pages": pages,
+            "total_pages": len(pages),
+            "format": "paddleocr-vl",
+        }
+        try:
+            standard_json.write_text(json.dumps(combined, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            return None
+        return standard_json
+
+    @staticmethod
+    def _full_image_mapping(image_mapping: dict[int, dict[str, str]]) -> dict[str, str]:
+        merged: dict[str, str] = {}
+        for page_mapping in image_mapping.values():
+            merged.update(page_mapping)
+        return merged
+
+    def _normalize_markdown_file(self, *, output_dir: Path, image_mapping: dict[int, dict[str, str]]) -> Path | None:
+        md_files = list(output_dir.rglob("*.md"))
+        if not md_files:
+            return None
+
+        main_md = ZipImageProcessor._choose_markdown_file(md_files)
+        standard_md = output_dir / self.STANDARD_MARKDOWN_NAME
+        try:
+            if main_md != standard_md:
+                if main_md.parent != output_dir:
+                    shutil.copy2(main_md, standard_md)
+                else:
+                    main_md.rename(standard_md)
+                main_md = standard_md
+        except Exception:
+            standard_md = main_md
+
+        try:
+            content = main_md.read_text(encoding="utf-8", errors="ignore")
+            full_image_mapping = self._full_image_mapping(image_mapping)
+            new_content = re.sub(
+                r"!\[([^\]]*)\]\(([^)]+)\)",
+                lambda match: self._replace_markdown_image(match, full_image_mapping),
+                content,
+            )
+            new_content = rewrite_html_image_refs(
+                new_content,
+                lambda img_path: self._resolve_html_image_src(img_path, full_image_mapping),
+            )
+            if new_content != content:
+                main_md.write_text(new_content, encoding="utf-8")
+        except Exception as exc:
+            logger.warning("[paddle_vl] failed to update markdown image refs: %s", str(exc)[:200])
+        return standard_md
+
+    def _replace_markdown_image(self, match: re.Match, full_image_mapping: dict[str, str]) -> str:
+        alt_text = match.group(1)
+        img_filename = Path(match.group(2)).name
+        new_name = full_image_mapping.get(img_filename)
+        if new_name:
+            return f"![{alt_text}]({self.STANDARD_IMAGE_DIR}/{new_name})"
+        return match.group(0)
+
+    def _resolve_html_image_src(self, img_path: str, full_image_mapping: dict[str, str]) -> str | None:
+        new_name = full_image_mapping.get(Path(img_path).name)
+        if new_name:
+            return f"{self.STANDARD_IMAGE_DIR}/{new_name}"
+        return None
+
     def _normalize_local_files(self, output_dir: Path) -> dict[str, Any]:
         """
         Normalize PaddleOCR-VL output directory layout.
@@ -150,151 +319,13 @@ class PaddleVLParser:
 
         standard_image_dir = output_dir / self.STANDARD_IMAGE_DIR
         standard_image_dir.mkdir(exist_ok=True)
-
-        image_mapping: dict[int, dict[str, str]] = {}
-        image_counter = 1
-
-        page_dirs = sorted([p for p in output_dir.glob("page_*") if p.is_dir()])
-
-        for page_dir in page_dirs:
-            try:
-                page_num = int(page_dir.name.split("_", 1)[1])
-            except Exception:
-                logger.warning("[paddle_vl] invalid page directory: %s", page_dir.name)
-                continue
-
-            imgs_dir = page_dir / "imgs"
-            if not imgs_dir.exists():
-                continue
-
-            page_mapping: dict[str, str] = {}
-            for img_file in imgs_dir.iterdir():
-                if not img_file.is_file():
-                    continue
-                file_ext = img_file.suffix
-                new_name = f"image_{image_counter:03d}{file_ext}"
-                new_path = standard_image_dir / new_name
-                try:
-                    shutil.move(str(img_file), str(new_path))
-                except Exception as exc:
-                    logger.warning("[paddle_vl] failed to move image %s: %s", img_file.name, str(exc)[:200])
-                    continue
-                page_mapping[img_file.name] = new_name
-                image_counter += 1
-
-            image_mapping[page_num - 1] = page_mapping
-
-            try:
-                imgs_dir.rmdir()
-            except OSError:
-                pass
-
-        # 2) Merge JSONs and inject img_path.
-        all_pages_data: list[dict[str, Any]] = []
-        for page_dir in page_dirs:
-            json_files = list(page_dir.glob("*_res.json"))
-            if not json_files:
-                continue
-
-            json_file = json_files[0]
-            try:
-                page_data = json.loads(json_file.read_text(encoding="utf-8", errors="ignore") or "{}")
-                if not isinstance(page_data, dict):
-                    continue
-
-                page_idx = int(page_data.get("page_index", 0) or 0)
-                page_img_mapping = image_mapping.get(page_idx, {})
-
-                parsing_list = page_data.get("parsing_res_list")
-                if isinstance(parsing_list, list) and page_img_mapping:
-                    for block in parsing_list:
-                        if not isinstance(block, dict):
-                            continue
-                        if str(block.get("block_label") or "").strip().lower() != "image":
-                            continue
-                        bbox = block.get("block_bbox", [])
-                        if not (isinstance(bbox, list) and len(bbox) == 4):
-                            continue
-                        # PaddleOCR-VL image naming convention.
-                        candidates = [
-                            f"img_in_image_box_{bbox[0]}_{bbox[1]}_{bbox[2]}_{bbox[3]}.jpg",
-                            f"img_in_image_box_{bbox[0]}_{bbox[1]}_{bbox[2]}_{bbox[3]}.png",
-                            f"img_in_image_box_{bbox[0]}_{bbox[1]}_{bbox[2]}_{bbox[3]}.jpeg",
-                        ]
-                        new_img_name = None
-                        for name in candidates:
-                            if name in page_img_mapping:
-                                new_img_name = page_img_mapping[name]
-                                break
-                        if new_img_name:
-                            block["img_path"] = f"{self.STANDARD_IMAGE_DIR}/{new_img_name}"
-
-                all_pages_data.append(page_data)
-            except Exception as exc:
-                logger.warning("[paddle_vl] failed to process %s: %s", str(json_file.name), str(exc)[:200])
-                continue
-
-        standard_json: Path | None = None
-        if all_pages_data:
-            standard_json = output_dir / self.STANDARD_JSON_NAME
-            combined = {
-                "pages": all_pages_data,
-                "total_pages": len(all_pages_data),
-                "format": "paddleocr-vl",
-            }
-            try:
-                standard_json.write_text(json.dumps(combined, ensure_ascii=False, indent=2), encoding="utf-8")
-            except Exception:
-                standard_json = None
-
-        # 3) Normalize Markdown and rewrite image refs.
-        md_files = list(output_dir.rglob("*.md"))
-        standard_md: Path | None = None
-
-        if md_files:
-            main_md = ZipImageProcessor._choose_markdown_file(md_files)
-            standard_md = output_dir / self.STANDARD_MARKDOWN_NAME
-            try:
-                if main_md != standard_md:
-                    if main_md.parent != output_dir:
-                        shutil.copy2(main_md, standard_md)
-                    else:
-                        main_md.rename(standard_md)
-                    main_md = standard_md
-            except Exception:
-                # Best-effort: keep original.
-                standard_md = main_md
-
-            try:
-                content = main_md.read_text(encoding="utf-8", errors="ignore")
-                full_image_mapping: dict[str, str] = {}
-                for page_mapping in image_mapping.values():
-                    full_image_mapping.update(page_mapping)
-
-                md_img_pattern = r"!\[([^\]]*)\]\(([^)]+)\)"
-
-                def replace_md_path(match: re.Match) -> str:
-                    alt_text = match.group(1)
-                    img_path = match.group(2)
-                    img_filename = Path(img_path).name
-                    new_name = full_image_mapping.get(img_filename)
-                    if new_name:
-                        return f"![{alt_text}]({self.STANDARD_IMAGE_DIR}/{new_name})"
-                    return match.group(0)
-
-                def resolve_html_img_src(img_path: str) -> str | None:
-                    img_filename = Path(img_path).name
-                    new_name = full_image_mapping.get(img_filename)
-                    if new_name:
-                        return f"{self.STANDARD_IMAGE_DIR}/{new_name}"
-                    return None
-
-                new_content = re.sub(md_img_pattern, replace_md_path, content)
-                new_content = rewrite_html_image_refs(new_content, resolve_html_img_src)
-                if new_content != content:
-                    main_md.write_text(new_content, encoding="utf-8")
-            except Exception as exc:
-                logger.warning("[paddle_vl] failed to update markdown image refs: %s", str(exc)[:200])
+        image_mapping, image_counter, page_dirs = self._collect_image_mapping(
+            output_dir=output_dir,
+            standard_image_dir=standard_image_dir,
+        )
+        all_pages_data = self._merge_page_jsons(page_dirs=page_dirs, image_mapping=image_mapping)
+        standard_json = self._write_combined_json(output_dir=output_dir, pages=all_pages_data)
+        standard_md = self._normalize_markdown_file(output_dir=output_dir, image_mapping=image_mapping)
 
         return {
             "markdown_file": standard_md,

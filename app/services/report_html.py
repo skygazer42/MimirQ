@@ -7,16 +7,15 @@ Design goals:
 - Optional redaction for sharing (hide dataset id/name/path)
 """
 
-
 from datetime import datetime
 from html import escape
 from typing import Any
 
-EMPTY_DATA_DIV = "<div class=\"empty\">暂无数据</div>"
-TABLE_TBODY_CLOSE = '</tbody></table>'
-REDACTED_TEXT = '[REDACTED]'
-BARS_METRIC_TABLE_HEADER = "<table class=\"bars\"><thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead><tbody>"
-EMPTY_BRIEF_DIV = "<div class=\"empty\">暂无</div>"
+EMPTY_DATA_DIV = '<div class="empty">暂无数据</div>'
+TABLE_TBODY_CLOSE = "</tbody></table>"
+REDACTED_TEXT = "[REDACTED]"
+BARS_METRIC_TABLE_HEADER = '<table class="bars"><thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead><tbody>'
+EMPTY_BRIEF_DIV = '<div class="empty">暂无</div>'
 _RETRIEVAL_AUDIT_HTML_METRIC_KEYS = (
     "hit_at_1",
     "hit_at_3",
@@ -97,17 +96,15 @@ def _render_bar_table(items: list[tuple[str, int]], *, total: int) -> str:
         pct = min(100.0, max(0.0, (float(v) / float(total)) * 100.0))
         rows.append(
             "<tr>"
-            f"<td class=\"k\">{escape(str(k))}</td>"
-            f"<td class=\"v\">{_fmt_int(v)}</td>"
-            f"<td class=\"bar\"><div class=\"bar-bg\"><div class=\"bar-fill\" style=\"width:{pct:.2f}%\"></div></div></td>"
+            f'<td class="k">{escape(str(k))}</td>'
+            f'<td class="v">{_fmt_int(v)}</td>'
+            f'<td class="bar"><div class="bar-bg"><div class="bar-fill" style="width:{pct:.2f}%"></div></div></td>'
             "</tr>"
         )
     return (
-        "<table class=\"bars\">"
-        "<thead><tr><th>Key</th><th>Count</th><th style=\"width:55%\">Ratio</th></tr></thead>"
-        "<tbody>"
-        + "".join(rows)
-        + TABLE_TBODY_CLOSE
+        '<table class="bars">'
+        '<thead><tr><th>Key</th><th>Count</th><th style="width:55%">Ratio</th></tr></thead>'
+        "<tbody>" + "".join(rows) + TABLE_TBODY_CLOSE
     )
 
 
@@ -168,7 +165,8 @@ def _safe_retrieval_audit_payload(raw: Any) -> dict[str, Any] | None:
         safe_metrics = {
             key: metrics[key]
             for key in _RETRIEVAL_AUDIT_HTML_METRIC_KEYS
-            if isinstance(metrics.get(key), bool) or (isinstance(metrics.get(key), (int, float)) and not isinstance(metrics.get(key), bool))
+            if isinstance(metrics.get(key), bool)
+            or (isinstance(metrics.get(key), (int, float)) and not isinstance(metrics.get(key), bool))
         }
         gates.append(
             {
@@ -185,7 +183,9 @@ def _safe_retrieval_audit_payload(raw: Any) -> dict[str, Any] | None:
         "status": str(raw.get("status") or "").strip(),
         "plugin_refs": _safe_text_list(raw.get("plugin_refs")),
         "plugin_package_hashes": _safe_text_list(raw.get("plugin_package_hashes")),
-        "failure_categories": {str(key): int(value or 0) for key, value in failure_categories.items() if str(key or "").strip()},
+        "failure_categories": {
+            str(key): int(value or 0) for key, value in failure_categories.items() if str(key or "").strip()
+        },
         "kg_recommendation": str(raw.get("kg_recommendation") or "").strip(),
         "recommended_next_action": str(raw.get("recommended_next_action") or "").strip(),
         "gates": gates,
@@ -225,7 +225,7 @@ def _render_retrieval_audit_section(report: Any) -> str:
     meta_table = (
         BARS_METRIC_TABLE_HEADER
         + "".join(
-            f"<tr><td class=\"k\">{escape(key)}</td><td class=\"v\">{escape(value)}</td><td></td></tr>"
+            f'<tr><td class="k">{escape(key)}</td><td class="v">{escape(value)}</td><td></td></tr>'
             for key, value in meta_rows
             if value
         )
@@ -243,21 +243,17 @@ def _render_retrieval_audit_section(report: Any) -> str:
                 continue
             metric_rows.append(
                 "<tr>"
-                f"<td class=\"k\">{escape(f'{gate_name}.{key}')}</td>"
-                f"<td class=\"v\">{escape(_fmt_scalar(metrics.get(key)))}</td>"
+                f'<td class="k">{escape(f"{gate_name}.{key}")}</td>'
+                f'<td class="v">{escape(_fmt_scalar(metrics.get(key)))}</td>'
                 "<td></td>"
                 "</tr>"
             )
     metric_table = (
-        BARS_METRIC_TABLE_HEADER
-        + "".join(metric_rows[:40])
-        + TABLE_TBODY_CLOSE
-        if metric_rows
-        else EMPTY_DATA_DIV
+        BARS_METRIC_TABLE_HEADER + "".join(metric_rows[:40]) + TABLE_TBODY_CLOSE if metric_rows else EMPTY_DATA_DIV
     )
 
     return (
-        "<div class=\"section two\">"
+        '<div class="section two">'
         "<div><h2>Retrieval Audit</h2>"
         f"{meta_table}"
         "</div>"
@@ -265,6 +261,573 @@ def _render_retrieval_audit_section(report: Any) -> str:
         f"{metric_table}"
         "</div>"
         "</div>"
+    )
+
+
+_REDACTION_PROFILE_KEYS = {
+    "generated_at",
+    "total_documents",
+    "total_size_bytes",
+    "by_status",
+    "by_file_type",
+    "by_quality_bucket",
+    "file_size_histogram",
+    "length_percentiles",
+    "length_histogram",
+    "chunk_count_percentiles",
+    "chunk_count_histogram",
+    "avg_chunk_chars_percentiles",
+    "avg_chunk_chars_histogram",
+    "chunk_length_percentiles",
+    "chunk_length_histogram",
+    "chunk_token_percentiles",
+    "chunk_token_histogram",
+    "avg_chunk_tokens_percentiles",
+    "avg_chunk_tokens_histogram",
+    "chunk_coverage_percentiles",
+    "chunk_coverage_histogram",
+    "chunk_overlap_waste_percentiles",
+    "chunk_overlap_waste_histogram",
+    "page_number_histogram",
+    "parse_quality_histogram",
+    "language_mix",
+    "pdf_scan",
+    "parsing_provenance",
+    "pii_hits_total",
+    "secrets_hits_total",
+}
+_REDACTION_COMPLIANCE_KEYS = {"pii_hits_total", "secrets_hits_total", "quarantined_documents", "failed_documents"}
+_REDACTION_KG_KEYS = {
+    "events",
+    "entities",
+    "links",
+    "events_with_document_id",
+    "events_with_chunk_id",
+    "events_with_page_ref",
+    "links_with_provenance",
+    "links_with_page_ref",
+    "documents_with_kg_extracted_at",
+    "documents_with_kg_events",
+    "event_count_from_documents",
+    "skipped_chunks_total",
+    "skipped_short_chunks_total",
+    "failed_chunks_total",
+    "retry_chunks_total",
+    "entity_types",
+    "updated_at",
+}
+_REDACTION_PRECHECK_KEYS = {
+    "generated_at",
+    "total_files",
+    "total_size_bytes",
+    "by_file_type",
+    "file_size_histogram",
+    "token_histogram",
+    "language_mix",
+    "pii_hits_total",
+    "secrets_hits_total",
+    "pdf_scan",
+}
+
+
+def _select_keys(source: Any, keys: set[str]) -> dict[str, Any]:
+    if not isinstance(source, dict):
+        return {}
+    return {key: source[key] for key in keys if key in source}
+
+
+def _objective_metrics_only(value: Any) -> Any:
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    if isinstance(value, dict):
+        return {
+            str(key): scrubbed for key, item in value.items() if (scrubbed := _objective_metrics_only(item)) is not None
+        }
+    if isinstance(value, list):
+        return [scrubbed for item in value if (scrubbed := _objective_metrics_only(item)) is not None]
+    return None
+
+
+def _collect_labeled_counts(items: Any, *, skip_nonpositive: bool = False) -> list[tuple[str, int]]:
+    rows: list[tuple[str, int]] = []
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("label") or item.get("key") or "").strip() or "unknown"
+        try:
+            count = int(item.get("count") or 0)
+        except Exception:
+            count = 0
+        if skip_nonpositive and count <= 0:
+            continue
+        rows.append((key, count))
+    rows.sort(key=lambda kv: (-kv[1], kv[0]))
+    return rows
+
+
+def _render_table_or_empty(header: str, rows: list[str], *, empty: str = EMPTY_DATA_DIV) -> str:
+    if not rows:
+        return empty
+    return header + "".join(rows) + TABLE_TBODY_CLOSE
+
+
+def _render_metric_value_table(rows: list[tuple[str, Any]]) -> str:
+    rendered = [
+        f'<tr><td class="k">{escape(str(key))}</td><td class="v">{escape(_fmt_scalar(value))}</td><td></td></tr>'
+        for key, value in rows
+        if value not in ("", None)
+    ]
+    return _render_table_or_empty(BARS_METRIC_TABLE_HEADER, rendered)
+
+
+def _format_generated_at(generated_at: datetime | str | None) -> str:
+    return generated_at.isoformat() if isinstance(generated_at, datetime) else (str(generated_at or "") or "")
+
+
+def _display_identity(*, redact: bool, value: str | None) -> str:
+    return REDACTED_TEXT if redact else (value or "")
+
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _as_list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _int_from(mapping: Any, key: str) -> int:
+    try:
+        return int(_as_dict(mapping).get(key) or 0)
+    except Exception:
+        return 0
+
+
+def _text_from(mapping: Any, key: str) -> str:
+    return str(_as_dict(mapping).get(key) or "").strip()
+
+
+def _percentile_int(mapping: Any, key: str, percentile: str) -> int:
+    return _int_from(_as_dict(mapping).get(key), percentile)
+
+
+def _render_redacted_latest_regression(report: dict[str, Any], safe: dict[str, Any]) -> None:
+    regression = report.get("latest_regression_run")
+    if not isinstance(regression, dict):
+        return
+    regression_safe = _select_keys(regression, {"status", "metrics"})
+    summary = _objective_metrics_only(regression.get("summary"))
+    if isinstance(summary, dict) and summary:
+        regression_safe["summary"] = summary
+    if regression_safe:
+        safe["latest_regression_run"] = regression_safe
+
+
+def _render_redacted_retrieval_audit(report: dict[str, Any], safe: dict[str, Any]) -> None:
+    retrieval_audit = report.get("retrieval_audit")
+    if not isinstance(retrieval_audit, dict):
+        return
+    audit_safe = _select_keys(retrieval_audit, {"status", "failure_categories"})
+    if audit_safe:
+        safe["retrieval_audit"] = audit_safe
+
+
+def _render_chunk_targets_table(chunk_targets: Any) -> str:
+    rows = [
+        "<tr>"
+        f'<td class="k">{escape(str(item.get("label") or item.get("key") or "").strip() or "unknown")}</td>'
+        f'<td class="v">{escape(str(item.get("status") or "").strip() or "unknown")}</td>'
+        f'<td class="v">{escape(str(item.get("message") or "").strip())}</td>'
+        f'<td class="v">{escape("; ".join(str(s).strip() for s in _as_list(item.get("suggestions")) if str(s).strip())[:500])}</td>'
+        "</tr>"
+        for item in _as_list(chunk_targets)
+        if isinstance(item, dict)
+    ]
+    return _render_table_or_empty(
+        '<table class="bars"><thead><tr><th>Check</th><th>Status</th><th>Message</th><th>Suggestions</th></tr></thead><tbody>',
+        rows,
+    )
+
+
+def _render_recall_risk_table(recall_risk_hints: Any) -> str:
+    rows: list[str] = []
+    for item in _as_list(recall_risk_hints):
+        if not isinstance(item, dict):
+            continue
+        observed = _as_dict(item.get("observed"))
+        observed_str = ", ".join(
+            f"{str(key)}={str(value)}" for key, value in sorted(observed.items(), key=lambda kv: str(kv[0] or ""))[:6]
+        )[:220]
+        rows.append(
+            "<tr>"
+            f'<td class="k">{escape(str(item.get("label") or item.get("key") or "").strip() or "unknown")}</td>'
+            f'<td class="v">{escape(str(item.get("severity") or "").strip() or "warning")}</td>'
+            f'<td class="v">{escape(observed_str)}</td>'
+            f'<td class="v">{escape(str(item.get("message") or "").strip())}</td>'
+            "</tr>"
+        )
+    return _render_table_or_empty(
+        '<table class="bars"><thead><tr><th>Hint</th><th>Severity</th><th>Observed</th><th>Message</th></tr></thead><tbody>',
+        rows,
+    )
+
+
+def _collect_version_items(versions: Any) -> list[tuple[str, int]]:
+    items: list[tuple[str, int]] = []
+    for item in _as_list(versions):
+        if not isinstance(item, dict):
+            continue
+        count = _int_from(item, "documents")
+        if count <= 0:
+            continue
+        items.append((str(item.get("pipeline_hash") or "").strip() or "unknown", count))
+    return items
+
+
+def _render_connector_runs_table(connectors: Any) -> str:
+    rows = [
+        "<tr>"
+        f'<td class="k">{escape(str(item.get("connector_id") or ""))}</td>'
+        f'<td class="v">{escape(str(item.get("status") or ""))}</td>'
+        f'<td class="v">{escape(str(item.get("created_at") or ""))}</td>'
+        "</tr>"
+        for item in _as_list(connectors)[:30]
+        if isinstance(item, dict)
+    ]
+    return _render_table_or_empty(
+        '<table class="bars"><thead><tr><th>connector_id</th><th>status</th><th>created_at</th></tr></thead><tbody>',
+        rows,
+    )
+
+
+def _collect_kg_type_items(raw_types: Any) -> list[tuple[str, int]]:
+    items: list[tuple[str, int]] = []
+    for item in _as_list(raw_types)[:50]:
+        if not isinstance(item, dict):
+            continue
+        count = _int_from(item, "count")
+        if count <= 0:
+            continue
+        items.append((str(item.get("type") or "").strip() or "unknown", count))
+    return items
+
+
+def _render_kg_top_docs_table(kgd: dict[str, Any], *, redact: bool, include_failures: bool) -> str:
+    if redact:
+        return EMPTY_DATA_DIV
+    rows: list[str] = []
+    for item in _as_list(kgd.get("top_documents"))[:10]:
+        if not isinstance(item, dict):
+            continue
+        did = str(item.get("document_id") or "").strip()
+        if not did:
+            continue
+        source = str(item.get("source") or "").strip()
+        if include_failures:
+            rows.append(
+                "<tr>"
+                f'<td class="k">{escape(source or did[:8])}</td>'
+                f'<td class="v">{_fmt_int(_int_from(item, "event_count"))}</td>'
+                f'<td class="v">{_fmt_int(_int_from(item, "skipped_chunks"))}</td>'
+                f'<td class="v">{_fmt_int(_int_from(item, "failed_chunks"))}</td>'
+                "</tr>"
+            )
+            continue
+        rows.append(
+            "<tr>"
+            f'<td class=\\"k\\">{escape(source or did[:8])}</td>'
+            f'<td class=\\"v\\">{_fmt_int(_int_from(item, "event_count"))}</td>'
+            "<td></td>"
+            "</tr>"
+        )
+    header = (
+        '<table class="bars"><thead><tr><th>doc</th><th>events</th><th>skipped</th><th>failed</th></tr></thead><tbody>'
+        if include_failures
+        else '<table class=\\"bars\\"><thead><tr><th>doc</th><th>events</th><th></th></tr></thead><tbody>'
+    )
+    return _render_table_or_empty(header, rows)
+
+
+def _render_regression_meta_table(rrd: dict[str, Any], *, include_extended_fields: bool) -> str:
+    metrics = ", ".join(str(item) for item in _as_list(rrd.get("metrics")) if str(item or "").strip())[:200]
+    rows = [("status", _text_from(rrd, "status")), ("created_at", _text_from(rrd, "created_at"))]
+    if include_extended_fields:
+        rows.extend(
+            [
+                ("run_id", _text_from(rrd, "run_id")),
+                ("metrics", metrics),
+                ("started_at", _text_from(rrd, "started_at")),
+            ]
+        )
+    rows.append(("finished_at", _text_from(rrd, "finished_at")))
+    return _render_table_or_empty(
+        '<table class="bars"><thead><tr><th>Field</th><th>Value</th><th></th></tr></thead><tbody>',
+        [
+            f'<tr><td class="k">{escape(str(key))}</td><td class="v">{escape(str(value))}</td><td></td></tr>'
+            for key, value in rows
+            if value
+        ],
+    )
+
+
+def _render_regression_summary_table(rr_summary: Any) -> str:
+    rows = [
+        f'<tr><td class="k">{escape(str(key))}</td><td class="v">{escape(_fmt_scalar(value))}</td><td></td></tr>'
+        for key, value in sorted(_as_dict(rr_summary).items(), key=lambda kv: str(kv[0] or ""))
+        if str(key or "").strip()
+        and (isinstance(value, bool) or (isinstance(value, (int, float)) and not isinstance(value, bool)))
+    ]
+    return _render_table_or_empty(BARS_METRIC_TABLE_HEADER, rows)
+
+
+def _render_rr_slice_table(rr_slices: Any, dim: str, *, redact: bool) -> str:
+    if redact and dim == "directory":
+        return '<div class="empty">已脱敏：directory 不展示</div>'
+    buckets = _as_list(_as_dict(_as_dict(rr_slices).get(dim)).get("buckets"))
+    rows: list[str] = []
+    for bucket in buckets[:10]:
+        if not isinstance(bucket, dict):
+            continue
+        key = str(bucket.get("key") or "").strip()
+        if not key:
+            continue
+        rows.append(
+            "<tr>"
+            f'<td class=\\"k\\">{escape(key)}</td>'
+            f'<td class=\\"v\\">{_fmt_int(_int_from(bucket, "items"))}</td>'
+            f'<td class=\\"v\\">{escape(_fmt_scalar(bucket.get("retrieval_recall")))}</td>'
+            f'<td class=\\"v\\">{escape(_fmt_scalar(bucket.get("retrieval_hit_at_20")))}</td>'
+            f'<td class=\\"v\\">{escape(_fmt_scalar(bucket.get("retrieval_mrr")))}</td>'
+            f'<td class=\\"v\\">{escape(_fmt_scalar(bucket.get("abstain_rate")))}</td>'
+            "</tr>"
+        )
+    return _render_table_or_empty(
+        '<table class=\\"bars\\"><thead><tr><th>bucket</th><th>items</th><th>recall</th><th>hit@20</th><th>mrr</th><th>abstain</th></tr></thead><tbody>',
+        rows,
+        empty='<div class="empty">暂无数据</div>',
+    )
+
+
+def _render_rr_slices_section(
+    rr_summary: Any,
+    *,
+    redact: bool,
+    title: str,
+    rows: tuple[tuple[str, ...], ...],
+) -> str:
+    rr_slices = _as_dict(_as_dict(rr_summary).get("retrieval_slices"))
+    if not rr_slices:
+        return ""
+    blocks: list[str] = [f'<div class=\\"section\\"><h2>{title}</h2>']
+    for index, dims in enumerate(rows):
+        margin = ' style=\\"margin-top:12px\\"' if index > 0 else ""
+        blocks.append(f'<div class=\\"two\\"{margin}>')
+        for dim in dims:
+            blocks.append(f"<div><h2>{dim}</h2>{_render_rr_slice_table(rr_slices, dim, redact=redact)}</div>")
+        blocks.append("</div>")
+    blocks.append("</div>")
+    return "".join(blocks)
+
+
+def _render_governance_audit_section(governance_audit: Any) -> str:
+    ga0 = _as_dict(governance_audit)
+    if not ga0:
+        return ""
+    ga_used_docs = _int_from(ga0, "used_documents")
+    ratio = max(0.0, min(1.0, float(ga0.get("char_reduction_ratio") or 0.0)))
+    note = ""
+    if ga_used_docs > 0:
+        truncated = " (truncated)" if bool(ga0.get("truncated") or False) else ""
+        note = (
+            f'<div class=\\"sub\\" style=\\"margin-top:6px\\">sample: {escape(_fmt_int(ga_used_docs))}{truncated}</div>'
+        )
+    rows = [
+        ("docs_changed", _int_from(ga0, "docs_changed")),
+        ("docs_dropped", _int_from(ga0, "docs_dropped")),
+        (
+            "docs_with_char_stats",
+            _int_from(ga0, "docs_with_char_stats") or _int_from(ga0, "docs_with_parsed_content_persisted"),
+        ),
+        ("docs_with_parsed_content_persisted", _int_from(ga0, "docs_with_parsed_content_persisted")),
+        ("parsed_content_truncated_docs", _int_from(ga0, "parsed_content_truncated_docs")),
+        ("original_chars_total", _int_from(ga0, "original_chars_total")),
+        ("cleaned_chars_total", _int_from(ga0, "cleaned_chars_total")),
+        ("char_reduction_ratio", f"{ratio:.2f} ({ratio * 100.0:.1f}%)"),
+        ("char_reduction_pct_p50", f"{_fmt_int(_percentile_int(ga0, 'char_reduction_pct_percentiles', 'p50'))}%"),
+        ("char_reduction_pct_p90", f"{_fmt_int(_percentile_int(ga0, 'char_reduction_pct_percentiles', 'p90'))}%"),
+        ("char_reduction_pct_p99", f"{_fmt_int(_percentile_int(ga0, 'char_reduction_pct_percentiles', 'p99'))}%"),
+        ("docs_with_governance_quality", _int_from(ga0, "docs_with_governance_quality")),
+        ("density_pct_p50", f"{_fmt_int(_percentile_int(ga0, 'density_pct_percentiles', 'p50'))}%"),
+        ("density_pct_p90", f"{_fmt_int(_percentile_int(ga0, 'density_pct_percentiles', 'p90'))}%"),
+        ("heading_ratio_pct_p50", f"{_fmt_int(_percentile_int(ga0, 'heading_ratio_pct_percentiles', 'p50'))}%"),
+        ("heading_ratio_pct_p90", f"{_fmt_int(_percentile_int(ga0, 'heading_ratio_pct_percentiles', 'p90'))}%"),
+        ("paragraphs_dropped_total", _int_from(ga0, "paragraphs_dropped_total")),
+        ("references_removed_lines_total", _int_from(ga0, "references_removed_lines_total")),
+        ("urls_changed_total", _int_from(ga0, "urls_changed_total")),
+        ("boilerplate_removed_sections_total", _int_from(ga0, "boilerplate_removed_sections_total")),
+        ("boilerplate_removed_lines_total", _int_from(ga0, "boilerplate_removed_lines_total")),
+        ("images_removed_total", _int_from(ga0, "images_removed_total")),
+        ("tables_normalized_total", _int_from(ga0, "tables_normalized_total")),
+        ("table_rows_changed_total", _int_from(ga0, "table_rows_changed_total")),
+        ("code_lines_stripped_total", _int_from(ga0, "code_lines_stripped_total")),
+    ]
+    return (
+        '<div class=\\"section\\"><h2>Governance Audit（治理效果）</h2>'
+        + note
+        + _render_metric_value_table(rows)
+        + "</div>"
+    )
+
+
+def _render_precheck_dir_table(items: Any, *, redact: bool, max_rows: int = 20) -> str:
+    if redact:
+        return '<div class="empty">已脱敏：目录结构不展示</div>'
+    rows: list[str] = []
+    for item in _as_list(items)[: max(0, int(max_rows))]:
+        if not isinstance(item, dict):
+            continue
+        rows.append(
+            "<tr>"
+            f'<td class="k">{escape(str(item.get("path") or "."))}</td>'
+            f'<td class="v">{_fmt_int(_int_from(item, "risky_files"))}/{_fmt_int(_int_from(item, "total_files"))}</td>'
+            f'<td class="v">{escape(_fmt_bytes(item.get("total_size_bytes") or 0))}</td>'
+            "</tr>"
+        )
+    return _render_table_or_empty(
+        '<table class="bars"><thead><tr><th>Directory</th><th>Risky/Total</th><th>Bytes</th></tr></thead><tbody>',
+        rows,
+    )
+
+
+def _render_precheck_samples_section(samples: Any) -> str:
+    samples_dict = _as_dict(samples)
+    if not samples_dict:
+        return ""
+
+    def _render_file_list(items: Any, *, max_rows: int = 60) -> str:
+        rows = [
+            f'<tr><td class="k">{escape(str(item.get("name") or ""))}</td><td class="v">{escape(str(item.get("file_type") or ""))}</td><td class="v">{escape(_fmt_bytes(item.get("file_size")))}</td></tr>'
+            for item in _as_list(items)[: max(0, int(max_rows))]
+            if isinstance(item, dict)
+        ]
+        return _render_table_or_empty(
+            '<table class="bars"><thead><tr><th>File</th><th>Type</th><th>Size</th></tr></thead><tbody>',
+            rows,
+            empty=EMPTY_BRIEF_DIV,
+        )
+
+    needs_rows = [
+        f'<tr><td class="k">{escape(str(key))}</td><td class="v">{_fmt_int(len(value))}</td></tr>'
+        for key, value in sorted(_as_dict(samples_dict.get("needs_review")).items(), key=lambda kv: str(kv[0] or ""))
+        if isinstance(value, list) and value
+    ]
+    needs_table = _render_table_or_empty(
+        '<table class="bars"><thead><tr><th>Bucket</th><th>Samples</th></tr></thead><tbody>',
+        needs_rows,
+        empty=EMPTY_BRIEF_DIV,
+    )
+    return (
+        '<div class="section two">'
+        "<div><h2>代表性样本（按格式/大小/PDF类型分层）</h2>"
+        + _render_file_list(samples_dict.get("representative"), max_rows=60)
+        + "</div><div><h2>需复核样本（按问题分桶）</h2>"
+        + needs_table
+        + "</div></div>"
+    )
+
+
+def _render_precheck_tips_html(
+    *,
+    summary: dict[str, Any],
+    pdf_scanned: int,
+    p90: int,
+    tok_p90: int,
+    pii: list[tuple[str, int]],
+    secrets: list[tuple[str, int]],
+) -> str:
+    findings = _as_list(summary.get("findings"))
+    finding_counts = {
+        str(item.get("key") or "").strip().lower(): _int_from(item, "count")
+        for item in findings
+        if isinstance(item, dict) and str(item.get("key") or "").strip()
+    }
+    tips: list[str] = []
+    if pdf_scanned > 0:
+        tips.append(
+            f"检测到疑似扫描 PDF：{_fmt_int(pdf_scanned)}（建议启用 OCR 解析链路，并优先复核 pdf_unknown/低密度页面）"
+        )
+    if _int_from(finding_counts, "gibberish_text") > 0:
+        tips.append(
+            "检测到疑似乱码/编码问题（抽样信号）：建议检查源文件编码、解析器后备策略，并优先启用治理低密度过滤/隔离"
+        )
+    if _int_from(finding_counts, "empty_text") > 0:
+        tips.append("存在“未提取到文本”的文件：若这些文件需要入库，建议调整解析/路由（PDF 走 OCR、二进制先转换）")
+    if tok_p90 >= 20_000:
+        tips.append(
+            f"P90 文本长度较长（~{_fmt_int(tok_p90)} tokens）：建议提高 chunk_size 或使用结构化 chunk_strategy（markdown_header/outline），入库后用 chunk-preview + gate 验证分布"
+        )
+    elif tok_p90 >= 5_000:
+        tips.append(
+            f"P90 文本长度偏长（~{_fmt_int(tok_p90)} tokens）：建议检查 chunk_size/overlap，避免 chunk 数过多导致成本/延迟上升"
+        )
+    elif p90 > 0:
+        tips.append(
+            "tokens 分布为空（可能未启用文本抽取或文件类型非文本）；如需成本估算，建议开启 enable_text_extract 并重跑预检"
+        )
+    if pii:
+        tips.append("检测到 PII 命中（来自抽样/治理信号）：建议启用治理脱敏/隔离规则（governance_pii_*）并人工复核样本")
+    if secrets:
+        tips.append(
+            "检测到 Secrets/Token 命中（来自抽样/治理信号）：建议启用 secrets 脱敏/隔离（governance_secrets_*）并人工复核样本"
+        )
+    if not tips:
+        tips.append("暂无显著风险信号；建议先用 chunk-preview 小样本调参，再进行小批量入库验证（可回归）")
+    return '<div class="notes"><ul>' + "".join(f"<li>{escape(tip)}</li>" for tip in tips) + "</ul></div>"
+
+
+def _render_precheck_section(precheck_summary: Any, *, redact: bool) -> str:
+    pre = _as_dict(precheck_summary)
+    if not pre:
+        return ""
+    pre_total_files = _int_from(pre, "total_files")
+    pre_total_bytes = _int_from(pre, "total_size_bytes")
+    pdf0 = _as_dict(pre.get("pdf_scan"))
+    pre_meta = (
+        '<table class="bars">'
+        "<thead><tr><th>Field</th><th>Value</th><th></th></tr></thead>"
+        "<tbody>"
+        f'<tr><td class="k">scan_run_id</td><td class="v">{escape(REDACTED_TEXT if redact else _text_from(pre, "scan_run_id"))}</td><td></td></tr>'
+        f'<tr><td class="k">generated_at</td><td class="v">{escape(_text_from(pre, "generated_at"))}</td><td></td></tr>'
+        f'<tr><td class="k">total_files</td><td class="v">{_fmt_int(pre_total_files)}</td><td></td></tr>'
+        f'<tr><td class="k">total_size</td><td class="v">{escape(_fmt_bytes(pre_total_bytes))}</td><td></td></tr>'
+        f'<tr><td class="k">pdf_scan (scanned/text/unknown)</td><td class="v">{_fmt_int(_int_from(pdf0, "scanned"))}/{_fmt_int(_int_from(pdf0, "not_scanned"))}/{_fmt_int(_int_from(pdf0, "unknown"))}</td><td></td></tr>'
+        + TABLE_TBODY_CLOSE
+    )
+    pre_finding_rows = [
+        row for row in _collect_labeled_counts(pre.get("findings"), skip_nonpositive=True) if row[1] > 0
+    ]
+    return (
+        '<div class="section">'
+        "<h2>Precheck（入库前摸底）</h2>"
+        '<div class="two">'
+        f"<div><h2>概览</h2>{pre_meta}</div>"
+        f"<div><h2>格式分布（Top）</h2>{_render_bar_table(_as_items(pre.get('by_file_type'), top=12), total=max(1, pre_total_files))}</div>"
+        "</div>"
+        '<div class="two" style="margin-top:12px">'
+        f"<div><h2>文件大小分布</h2>{_render_histogram(pre.get('file_size_histogram'))}</div>"
+        f"<div><h2>长度分布（tokens）</h2>{_render_histogram(pre.get('token_histogram'))}</div>"
+        "</div>"
+        '<div class="two" style="margin-top:12px">'
+        f"<div><h2>语言分布（抽样）</h2>{_render_bar_table(_as_items(pre.get('language_mix'), top=4), total=max(1, pre_total_files))}</div>"
+        f"<div><h2>问题清单（可操作）</h2>{_render_bar_table(pre_finding_rows[:12], total=max(1, pre_total_files))}</div>"
+        "</div>"
+        '<div class="two" style="margin-top:12px">'
+        f"<div><h2>PII 命中（次数）</h2>{_render_bar_table(_as_items(pre.get('pii_hits_total'), top=12), total=max(1, pre_total_files))}</div>"
+        f"<div><h2>Secrets/Token 命中（次数）</h2>{_render_bar_table(_as_items(pre.get('secrets_hits_total'), top=12), total=max(1, pre_total_files))}</div>"
+        "</div>"
+        '<div style="margin-top:12px">'
+        f"<h2>目录结构（Top 风险聚集区）</h2>{_render_precheck_dir_table(pre.get('directory_stats'), redact=redact, max_rows=20)}"
+        "</div></div>"
     )
 
 
@@ -279,138 +842,29 @@ def _scrub_report_for_redaction(report: Any) -> dict:
     if not isinstance(report, dict):
         return {"redacted": True}
 
-    def _select(source: Any, keys: set[str]) -> dict[str, Any]:
-        if not isinstance(source, dict):
-            return {}
-        return {key: source[key] for key in keys if key in source}
-
-    def _objective_metrics(value: Any) -> Any:
-        if value is None or isinstance(value, (bool, int, float)):
-            return value
-        if isinstance(value, dict):
-            return {
-                str(key): scrubbed
-                for key, item in value.items()
-                if (scrubbed := _objective_metrics(item)) is not None
-            }
-        if isinstance(value, list):
-            return [scrubbed for item in value if (scrubbed := _objective_metrics(item)) is not None]
-        return None
-
     safe: dict[str, Any] = {"redacted": True}
     if "dataset_name" in report:
         safe["dataset_name"] = REDACTED_TEXT
     if "dataset_id" in report:
         safe["dataset_id"] = REDACTED_TEXT
 
-    profile = _select(
-        report.get("profile"),
-        {
-            "generated_at",
-            "total_documents",
-            "total_size_bytes",
-            "by_status",
-            "by_file_type",
-            "by_quality_bucket",
-            "file_size_histogram",
-            "length_percentiles",
-            "length_histogram",
-            "chunk_count_percentiles",
-            "chunk_count_histogram",
-            "avg_chunk_chars_percentiles",
-            "avg_chunk_chars_histogram",
-            "chunk_length_percentiles",
-            "chunk_length_histogram",
-            "chunk_token_percentiles",
-            "chunk_token_histogram",
-            "avg_chunk_tokens_percentiles",
-            "avg_chunk_tokens_histogram",
-            "chunk_coverage_percentiles",
-            "chunk_coverage_histogram",
-            "chunk_overlap_waste_percentiles",
-            "chunk_overlap_waste_histogram",
-            "page_number_histogram",
-            "parse_quality_histogram",
-            "language_mix",
-            "pdf_scan",
-            "parsing_provenance",
-            "pii_hits_total",
-            "secrets_hits_total",
-        },
-    )
-    if profile:
-        safe["profile"] = profile
-
-    compliance = _select(
-        report.get("compliance"),
-        {"pii_hits_total", "secrets_hits_total", "quarantined_documents", "failed_documents"},
-    )
-    if compliance:
-        safe["compliance"] = compliance
+    for output_key, source_key, keys in (
+        ("profile", "profile", _REDACTION_PROFILE_KEYS),
+        ("compliance", "compliance", _REDACTION_COMPLIANCE_KEYS),
+        ("kg_stats", "kg_stats", _REDACTION_KG_KEYS),
+        ("precheck_summary", "precheck_summary", _REDACTION_PRECHECK_KEYS),
+    ):
+        section = _select_keys(report.get(source_key), keys)
+        if section:
+            safe[output_key] = section
 
     for section in ("governance_metrics", "governance_audit", "chunk_quality_metrics"):
-        objective = _objective_metrics(report.get(section))
+        objective = _objective_metrics_only(report.get(section))
         if isinstance(objective, dict) and objective:
             safe[section] = objective
 
-    kg = _select(
-        report.get("kg_stats"),
-        {
-            "events",
-            "entities",
-            "links",
-            "events_with_document_id",
-            "events_with_chunk_id",
-            "events_with_page_ref",
-            "links_with_provenance",
-            "links_with_page_ref",
-            "documents_with_kg_extracted_at",
-            "documents_with_kg_events",
-            "event_count_from_documents",
-            "skipped_chunks_total",
-            "skipped_short_chunks_total",
-            "failed_chunks_total",
-            "retry_chunks_total",
-            "entity_types",
-            "updated_at",
-        },
-    )
-    if kg:
-        safe["kg_stats"] = kg
-
-    regression = report.get("latest_regression_run")
-    if isinstance(regression, dict):
-        regression_safe = _select(regression, {"status", "metrics"})
-        summary = _objective_metrics(regression.get("summary"))
-        if isinstance(summary, dict) and summary:
-            regression_safe["summary"] = summary
-        if regression_safe:
-            safe["latest_regression_run"] = regression_safe
-
-    retrieval_audit = report.get("retrieval_audit")
-    if isinstance(retrieval_audit, dict):
-        audit_safe = _select(retrieval_audit, {"status", "failure_categories"})
-        if audit_safe:
-            safe["retrieval_audit"] = audit_safe
-
-    precheck = _select(
-        report.get("precheck_summary"),
-        {
-            "generated_at",
-            "total_files",
-            "total_size_bytes",
-            "by_file_type",
-            "file_size_histogram",
-            "token_histogram",
-            "language_mix",
-            "pii_hits_total",
-            "secrets_hits_total",
-            "pdf_scan",
-        },
-    )
-    if precheck:
-        safe["precheck_summary"] = precheck
-
+    _render_redacted_latest_regression(report, safe)
+    _render_redacted_retrieval_audit(report, safe)
     return safe
 
 
@@ -429,15 +883,74 @@ def render_dataset_profile_html(
 
     total_docs = int(summary.get("total_documents") or 0)
     total_bytes = int(summary.get("total_size_bytes") or 0)
-    p50 = int(((summary.get("length_percentiles") or {}) if isinstance(summary.get("length_percentiles"), dict) else {}).get("p50") or 0)
-    p90 = int(((summary.get("length_percentiles") or {}) if isinstance(summary.get("length_percentiles"), dict) else {}).get("p90") or 0)
-    chunk_p50 = int(((summary.get("chunk_count_percentiles") or {}) if isinstance(summary.get("chunk_count_percentiles"), dict) else {}).get("p50") or 0)
-    avg_chunk_p50 = int(((summary.get("avg_chunk_chars_percentiles") or {}) if isinstance(summary.get("avg_chunk_chars_percentiles"), dict) else {}).get("p50") or 0)
-    chunk_len_p50 = int(((summary.get("chunk_length_percentiles") or {}) if isinstance(summary.get("chunk_length_percentiles"), dict) else {}).get("p50") or 0)
-    chunk_tok_p50 = int(((summary.get("chunk_token_percentiles") or {}) if isinstance(summary.get("chunk_token_percentiles"), dict) else {}).get("p50") or 0)
-    avg_chunk_tok_p50 = int(((summary.get("avg_chunk_tokens_percentiles") or {}) if isinstance(summary.get("avg_chunk_tokens_percentiles"), dict) else {}).get("p50") or 0)
-    cov_p50 = int(((summary.get("chunk_coverage_percentiles") or {}) if isinstance(summary.get("chunk_coverage_percentiles"), dict) else {}).get("p50") or 0)
-    waste_p50 = int(((summary.get("chunk_overlap_waste_percentiles") or {}) if isinstance(summary.get("chunk_overlap_waste_percentiles"), dict) else {}).get("p50") or 0)
+    p50 = int(
+        ((summary.get("length_percentiles") or {}) if isinstance(summary.get("length_percentiles"), dict) else {}).get(
+            "p50"
+        )
+        or 0
+    )
+    p90 = int(
+        ((summary.get("length_percentiles") or {}) if isinstance(summary.get("length_percentiles"), dict) else {}).get(
+            "p90"
+        )
+        or 0
+    )
+    chunk_p50 = int(
+        (
+            (summary.get("chunk_count_percentiles") or {})
+            if isinstance(summary.get("chunk_count_percentiles"), dict)
+            else {}
+        ).get("p50")
+        or 0
+    )
+    avg_chunk_p50 = int(
+        (
+            (summary.get("avg_chunk_chars_percentiles") or {})
+            if isinstance(summary.get("avg_chunk_chars_percentiles"), dict)
+            else {}
+        ).get("p50")
+        or 0
+    )
+    chunk_len_p50 = int(
+        (
+            (summary.get("chunk_length_percentiles") or {})
+            if isinstance(summary.get("chunk_length_percentiles"), dict)
+            else {}
+        ).get("p50")
+        or 0
+    )
+    chunk_tok_p50 = int(
+        (
+            (summary.get("chunk_token_percentiles") or {})
+            if isinstance(summary.get("chunk_token_percentiles"), dict)
+            else {}
+        ).get("p50")
+        or 0
+    )
+    avg_chunk_tok_p50 = int(
+        (
+            (summary.get("avg_chunk_tokens_percentiles") or {})
+            if isinstance(summary.get("avg_chunk_tokens_percentiles"), dict)
+            else {}
+        ).get("p50")
+        or 0
+    )
+    cov_p50 = int(
+        (
+            (summary.get("chunk_coverage_percentiles") or {})
+            if isinstance(summary.get("chunk_coverage_percentiles"), dict)
+            else {}
+        ).get("p50")
+        or 0
+    )
+    waste_p50 = int(
+        (
+            (summary.get("chunk_overlap_waste_percentiles") or {})
+            if isinstance(summary.get("chunk_overlap_waste_percentiles"), dict)
+            else {}
+        ).get("p50")
+        or 0
+    )
 
     pdf = summary.get("pdf_scan") if isinstance(summary.get("pdf_scan"), dict) else {}
     pdf_scanned = int(pdf.get("scanned") or 0)
@@ -659,344 +1172,77 @@ def render_dataset_report_html(
 
     if redact:
         report = _scrub_report_for_redaction(report)
-    name = REDACTED_TEXT if redact else (dataset_name or "")
-    dsid = REDACTED_TEXT if redact else (dataset_id or "")
-    ts = generated_at.isoformat() if isinstance(generated_at, datetime) else (str(generated_at or "") or "")
+    report_dict = report if isinstance(report, dict) else {}
+    name = _display_identity(redact=redact, value=dataset_name)
+    dsid = _display_identity(redact=redact, value=dataset_id)
+    ts = _format_generated_at(generated_at)
 
-    profile = report.get("profile") if isinstance(report, dict) else None
-    prof = profile if isinstance(profile, dict) else {}
-
-    total_docs = int(prof.get("total_documents") or 0)
-    total_bytes = int(prof.get("total_size_bytes") or 0)
-
+    prof = _as_dict(report_dict.get("profile"))
+    total_docs = _int_from(prof, "total_documents")
+    total_bytes = _int_from(prof, "total_size_bytes")
     by_status = _as_items(prof.get("by_status"), top=12)
     by_type = _as_items(prof.get("by_file_type"), top=12)
+    finding_rows = _collect_labeled_counts(prof.get("findings"), skip_nonpositive=True)
 
-    # Actionable findings (best-effort; derived from profile.findings).
-    findings = prof.get("findings") if isinstance(prof.get("findings"), list) else []
-    finding_rows: list[tuple[str, int]] = []
-    for f in findings:
-        if not isinstance(f, dict):
-            continue
-        key = str(f.get("label") or f.get("key") or "").strip() or "unknown"
-        try:
-            cnt = int(f.get("count") or 0)
-        except Exception:
-            cnt = 0
-        if cnt <= 0:
-            continue
-        finding_rows.append((key, cnt))
-    finding_rows.sort(key=lambda kv: (-kv[1], kv[0]))
-
-    # Parsing provenance/routing (best-effort; derived from profile.parsing_provenance).
-    prov = prof.get("parsing_provenance") if isinstance(prof.get("parsing_provenance"), dict) else {}
-    prov_docs = int(prov.get("docs_with_provenance") or 0)
-    prov_fallback_docs = int(prov.get("fallback_docs") or 0)
+    prov = _as_dict(prof.get("parsing_provenance"))
+    prov_docs = _int_from(prov, "docs_with_provenance")
     prov_by_backend = _as_items(prov.get("by_resolved_backend"), top=12)
-    prov_elapsed = prov.get("elapsed_ms_percentiles") if isinstance(prov.get("elapsed_ms_percentiles"), dict) else {}
-    prov_elapsed_p50 = int(prov_elapsed.get("p50") or 0)
-    prov_elapsed_p90 = int(prov_elapsed.get("p90") or 0)
-    prov_meta_rows = [
-        ("docs_with_provenance", prov_docs),
-        ("fallback_docs", prov_fallback_docs),
-        ("p50_elapsed_ms", prov_elapsed_p50),
-        ("p90_elapsed_ms", prov_elapsed_p90),
-    ]
-    prov_meta_table = (
-        BARS_METRIC_TABLE_HEADER
-        + "".join(f'<tr><td class="k">{escape(str(k))}</td><td class="v">{_fmt_int(v)}</td><td></td></tr>' for k, v in prov_meta_rows)
-        + TABLE_TBODY_CLOSE
-        if prov_meta_rows
-        else EMPTY_DATA_DIV
-    )
-
-    # Chunk target checks (best-effort; derived from profile.chunk_targets).
-    chunk_targets = prof.get("chunk_targets") if isinstance(prof.get("chunk_targets"), list) else []
-    ct_rows: list[str] = []
-    for t in chunk_targets:
-        if not isinstance(t, dict):
-            continue
-        label = str(t.get("label") or t.get("key") or "").strip() or "unknown"
-        status = str(t.get("status") or "").strip() or "unknown"
-        msg = str(t.get("message") or "").strip()
-        sugg_raw = t.get("suggestions")
-        sugg_list = sugg_raw if isinstance(sugg_raw, list) else []
-        suggestions = "; ".join([str(s).strip() for s in sugg_list if str(s).strip()])[:500]
-        ct_rows.append(
-            "<tr>"
-            f"<td class=\"k\">{escape(label)}</td>"
-            f"<td class=\"v\">{escape(status)}</td>"
-            f"<td class=\"v\">{escape(msg)}</td>"
-            f"<td class=\"v\">{escape(suggestions)}</td>"
-            "</tr>"
-        )
-    chunk_targets_table = (
-        "<table class=\"bars\"><thead><tr><th>Check</th><th>Status</th><th>Message</th><th>Suggestions</th></tr></thead><tbody>"
-        + "".join(ct_rows)
-        + TABLE_TBODY_CLOSE
-        if ct_rows
-        else EMPTY_DATA_DIV
-    )
-
-    # Retrieval recall-risk hints (best-effort; from profile.recall_risk_hints).
-    recall_risk_hints = prof.get("recall_risk_hints") if isinstance(prof.get("recall_risk_hints"), list) else []
-    rrh_rows: list[str] = []
-    for h in recall_risk_hints:
-        if not isinstance(h, dict):
-            continue
-        label = str(h.get("label") or h.get("key") or "").strip() or "unknown"
-        severity = str(h.get("severity") or "").strip() or "warning"
-        msg = str(h.get("message") or "").strip()
-        observed = h.get("observed") if isinstance(h.get("observed"), dict) else {}
-        observed_str = ", ".join(
-            [f"{str(k)}={str(v)}" for k, v in sorted(observed.items(), key=lambda kv: str(kv[0] or ""))[:6]]
-        )[:220]
-        rrh_rows.append(
-            "<tr>"
-            f"<td class=\"k\">{escape(label)}</td>"
-            f"<td class=\"v\">{escape(severity)}</td>"
-            f"<td class=\"v\">{escape(observed_str)}</td>"
-            f"<td class=\"v\">{escape(msg)}</td>"
-            "</tr>"
-        )
-    recall_risk_table = (
-        "<table class=\"bars\"><thead><tr><th>Hint</th><th>Severity</th><th>Observed</th><th>Message</th></tr></thead><tbody>"
-        + "".join(rrh_rows)
-        + TABLE_TBODY_CLOSE
-        if rrh_rows
-        else EMPTY_DATA_DIV
-    )
-
-    comp = report.get("compliance") if isinstance(report, dict) else None
-    compd = comp if isinstance(comp, dict) else {}
-    quarantined = int(compd.get("quarantined_documents") or 0)
-    failed = int(compd.get("failed_documents") or 0)
-
-    versions = report.get("pipeline_versions") if isinstance(report, dict) else None
-    version_items: list[tuple[str, int]] = []
-    if isinstance(versions, list):
-        for v in versions:
-            if not isinstance(v, dict):
-                continue
-            ph = str(v.get("pipeline_hash") or "").strip() or "unknown"
-            try:
-                cnt = int(v.get("documents") or 0)
-            except Exception:
-                cnt = 0
-            if cnt <= 0:
-                continue
-            version_items.append((ph, cnt))
-
-    connectors = report.get("connectors") if isinstance(report, dict) else None
-    conn_rows: list[str] = []
-    if isinstance(connectors, list):
-        for r in connectors[:30]:
-            if not isinstance(r, dict):
-                continue
-            conn_rows.append(
-                "<tr>"
-                f"<td class=\"k\">{escape(str(r.get('connector_id') or ''))}</td>"
-                f"<td class=\"v\">{escape(str(r.get('status') or ''))}</td>"
-                f"<td class=\"v\">{escape(str(r.get('created_at') or ''))}</td>"
-                "</tr>"
-            )
-
-    cqm = report.get("chunk_quality_metrics") if isinstance(report, dict) else None
-    cqmd = cqm if isinstance(cqm, dict) else {}
-    gate_grades = _as_items(cqmd.get("gate_grade_docs"), top=12)
-    coverage_low = int(cqmd.get("coverage_low_documents") or 0)
-    overlap_high = int(cqmd.get("overlap_waste_high_documents") or 0)
-    tokens_missing = int(cqmd.get("token_stats_missing_documents") or 0)
-
-    # Optional: KG stats (best-effort; may be null when disabled or empty).
-    kg = report.get("kg_stats") if isinstance(report, dict) else None
-    kgd = kg if isinstance(kg, dict) else {}
-    kg_events = int(kgd.get("events") or 0)
-    kg_entities = int(kgd.get("entities") or 0)
-    kg_links = int(kgd.get("links") or 0)
-    kg_events_with_chunk = int(kgd.get("events_with_chunk_id") or 0)
-    kg_events_with_page = int(kgd.get("events_with_page_ref") or 0)
-    kg_links_with_prov = int(kgd.get("links_with_provenance") or 0)
-    kg_links_with_page = int(kgd.get("links_with_page_ref") or 0)
-    kg_docs_extracted = int(kgd.get("documents_with_kg_extracted_at") or 0)
-    kg_docs_with_events = int(kgd.get("documents_with_kg_events") or 0)
-    kg_event_count_from_docs = int(kgd.get("event_count_from_documents") or 0)
-    kg_skipped_chunks = int(kgd.get("skipped_chunks_total") or 0)
-    kg_skipped_short = int(kgd.get("skipped_short_chunks_total") or 0)
-    kg_failed_chunks = int(kgd.get("failed_chunks_total") or 0)
-    kg_retry_chunks = int(kgd.get("retry_chunks_total") or 0)
-    kg_updated_at = str(kgd.get("updated_at") or "").strip()
-    kg_type_items: list[tuple[str, int]] = []
-    raw_types = kgd.get("entity_types")
-    if isinstance(raw_types, list):
-        for t in raw_types[:50]:
-            if not isinstance(t, dict):
-                continue
-            tp = str(t.get("type") or "").strip() or "unknown"
-            try:
-                cnt = int(t.get("count") or 0)
-            except Exception:
-                cnt = 0
-            if cnt <= 0:
-                continue
-            kg_type_items.append((tp, cnt))
-
-    # Optional: KG drilldown (top docs by event_count). Render only when not redacting.
-    kg_top_docs = kgd.get("top_documents") if isinstance(kgd.get("top_documents"), list) else []
-    kg_doc_rows: list[str] = []
-    if not redact and isinstance(kg_top_docs, list):
-        for r in kg_top_docs[:10]:
-            if not isinstance(r, dict):
-                continue
-            did = str(r.get("document_id") or "").strip()
-            if not did:
-                continue
-            src = str(r.get("source") or "").strip()
-            try:
-                evc = int(r.get("event_count") or 0)
-            except Exception:
-                evc = 0
-            try:
-                sk = int(r.get("skipped_chunks") or 0)
-            except Exception:
-                sk = 0
-            try:
-                fs = int(r.get("failed_chunks") or 0)
-            except Exception:
-                fs = 0
-            kg_doc_rows.append(
-                "<tr>"
-                f"<td class=\"k\">{escape(src or did[:8])}</td>"
-                f"<td class=\"v\">{_fmt_int(evc)}</td>"
-                f"<td class=\"v\">{_fmt_int(sk)}</td>"
-                f"<td class=\"v\">{_fmt_int(fs)}</td>"
-                "</tr>"
-            )
-    kg_top_docs_table = (
-        "<table class=\"bars\"><thead><tr><th>doc</th><th>events</th><th>skipped</th><th>failed</th></tr></thead><tbody>"
-        + "".join(kg_doc_rows)
-        + TABLE_TBODY_CLOSE
-        if kg_doc_rows
-        else EMPTY_DATA_DIV
-    )
-
-    # Optional: latest regression run summary (best-effort).
-    rr = report.get("latest_regression_run") if isinstance(report, dict) else None
-    rrd = rr if isinstance(rr, dict) else {}
-    rr_id = str(rrd.get("run_id") or "").strip()
-    rr_status = str(rrd.get("status") or "").strip()
-    rr_created_at = str(rrd.get("created_at") or "").strip()
-    rr_started_at = str(rrd.get("started_at") or "").strip()
-    rr_finished_at = str(rrd.get("finished_at") or "").strip()
-    rr_metrics = rrd.get("metrics") if isinstance(rrd.get("metrics"), list) else []
-    rr_metrics_str = ", ".join(str(x) for x in rr_metrics if str(x or "").strip())[:200]
-    rr_summary = rrd.get("summary") if isinstance(rrd.get("summary"), dict) else {}
-
-    def _fmt_num(v: Any) -> str:
-        if v is None:
-            return ""
-        if isinstance(v, bool):
-            return "1" if v else "0"
-        if isinstance(v, int) and not isinstance(v, bool):
-            return _fmt_int(v)
-        if isinstance(v, float):
-            return f"{v:.4f}"
-        return str(v)
-
-    rr_meta_rows: list[str] = []
-    if rr_id or rr_status or rr_metrics_str or rr_created_at or rr_finished_at:
-        rr_meta_rows = [
-            f"<tr><td class=\"k\">status</td><td class=\"v\">{escape(rr_status or '')}</td><td></td></tr>",
-            f"<tr><td class=\"k\">run_id</td><td class=\"v\">{escape(rr_id or '')}</td><td></td></tr>",
-            f"<tr><td class=\"k\">metrics</td><td class=\"v\">{escape(rr_metrics_str or '')}</td><td></td></tr>",
-            f"<tr><td class=\"k\">created_at</td><td class=\"v\">{escape(rr_created_at or '')}</td><td></td></tr>",
-            f"<tr><td class=\"k\">started_at</td><td class=\"v\">{escape(rr_started_at or '')}</td><td></td></tr>",
-            f"<tr><td class=\"k\">finished_at</td><td class=\"v\">{escape(rr_finished_at or '')}</td><td></td></tr>",
+    prov_meta_table = _render_metric_value_table(
+        [
+            ("docs_with_provenance", prov_docs),
+            ("fallback_docs", _int_from(prov, "fallback_docs")),
+            ("p50_elapsed_ms", _percentile_int(prov, "elapsed_ms_percentiles", "p50")),
+            ("p90_elapsed_ms", _percentile_int(prov, "elapsed_ms_percentiles", "p90")),
         ]
-    rr_meta_table = (
-        "<table class=\"bars\"><thead><tr><th>Field</th><th>Value</th><th></th></tr></thead><tbody>"
-        + "".join(rr_meta_rows)
-        + TABLE_TBODY_CLOSE
-        if rr_meta_rows
-        else EMPTY_DATA_DIV
+    )
+    chunk_targets_table = _render_chunk_targets_table(prof.get("chunk_targets"))
+    recall_risk_table = _render_recall_risk_table(prof.get("recall_risk_hints"))
+
+    compd = _as_dict(report_dict.get("compliance"))
+    quarantined = _int_from(compd, "quarantined_documents")
+    failed = _int_from(compd, "failed_documents")
+
+    version_items = _collect_version_items(report_dict.get("pipeline_versions"))
+    connector_runs_table = _render_connector_runs_table(report_dict.get("connectors"))
+
+    cqmd = _as_dict(report_dict.get("chunk_quality_metrics"))
+    gate_grades = _as_items(cqmd.get("gate_grade_docs"), top=12)
+    coverage_low = _int_from(cqmd, "coverage_low_documents")
+    overlap_high = _int_from(cqmd, "overlap_waste_high_documents")
+    tokens_missing = _int_from(cqmd, "token_stats_missing_documents")
+
+    kgd = _as_dict(report_dict.get("kg_stats"))
+    kg_events = _int_from(kgd, "events")
+    kg_entities = _int_from(kgd, "entities")
+    kg_links = _int_from(kgd, "links")
+    kg_events_with_chunk = _int_from(kgd, "events_with_chunk_id")
+    kg_events_with_page = _int_from(kgd, "events_with_page_ref")
+    kg_links_with_prov = _int_from(kgd, "links_with_provenance")
+    kg_links_with_page = _int_from(kgd, "links_with_page_ref")
+    kg_docs_extracted = _int_from(kgd, "documents_with_kg_extracted_at")
+    kg_docs_with_events = _int_from(kgd, "documents_with_kg_events")
+    kg_event_count_from_docs = _int_from(kgd, "event_count_from_documents")
+    kg_skipped_chunks = _int_from(kgd, "skipped_chunks_total")
+    kg_skipped_short = _int_from(kgd, "skipped_short_chunks_total")
+    kg_failed_chunks = _int_from(kgd, "failed_chunks_total")
+    kg_retry_chunks = _int_from(kgd, "retry_chunks_total")
+    kg_updated_at = _text_from(kgd, "updated_at")
+    kg_type_items = _collect_kg_type_items(kgd.get("entity_types"))
+    kg_top_docs_table = _render_kg_top_docs_table(kgd, redact=redact, include_failures=True)
+
+    rrd = _as_dict(report_dict.get("latest_regression_run"))
+    rr_summary = _as_dict(rrd.get("summary"))
+    rr_meta_table = _render_regression_meta_table(rrd, include_extended_fields=True)
+    rr_summary_table = _render_regression_summary_table(rr_summary)
+    rr_slices_section = _render_rr_slices_section(
+        rr_summary,
+        redact=redact,
+        title="Retrieval Slices",
+        rows=(("file_type", "language"), ("hit_type", "quality"), ("pipeline_hash", "directory")),
     )
 
-    rr_summary_rows: list[str] = []
-    for k, v in sorted((rr_summary or {}).items(), key=lambda kv: str(kv[0] or "")):
-        key = str(k or "").strip()
-        if not key:
-            continue
-        # Objective numbers only: keep numeric/bool values; skip nested dict/list blobs.
-        if isinstance(v, bool) or (isinstance(v, (int, float)) and not isinstance(v, bool)):
-            rr_summary_rows.append(f"<tr><td class=\"k\">{escape(key)}</td><td class=\"v\">{escape(_fmt_num(v))}</td><td></td></tr>")
-
-    rr_summary_table = (
-        BARS_METRIC_TABLE_HEADER
-        + "".join(rr_summary_rows)
-        + TABLE_TBODY_CLOSE
-        if rr_summary_rows
-        else EMPTY_DATA_DIV
-    )
-
-    # Optional: retrieval-only slicing summary (nested dict) for deeper diagnostics.
-    rr_slices = rr_summary.get("retrieval_slices") if isinstance(rr_summary.get("retrieval_slices"), dict) else {}
-
-    def _render_rr_slice_table(dim: str) -> str:
-        if redact and dim == "directory":
-            return '<div class="empty">已脱敏：directory 不展示</div>'
-        obj = rr_slices.get(dim) if isinstance(rr_slices.get(dim), dict) else {}
-        buckets = obj.get("buckets") if isinstance(obj.get("buckets"), list) else []
-        rows: list[str] = []
-        for b in buckets[:10]:
-            if not isinstance(b, dict):
-                continue
-            key = str(b.get("key") or "").strip()
-            if not key:
-                continue
-            try:
-                items = int(b.get("items") or 0)
-            except Exception:
-                items = 0
-            rows.append(
-                "<tr>"
-                f"<td class=\\\"k\\\">{escape(key)}</td>"
-                f"<td class=\\\"v\\\">{_fmt_int(items)}</td>"
-                f"<td class=\\\"v\\\">{escape(_fmt_num(b.get('retrieval_recall')))}</td>"
-                f"<td class=\\\"v\\\">{escape(_fmt_num(b.get('retrieval_hit_at_20')))}</td>"
-                f"<td class=\\\"v\\\">{escape(_fmt_num(b.get('retrieval_mrr')))}</td>"
-                f"<td class=\\\"v\\\">{escape(_fmt_num(b.get('abstain_rate')))}</td>"
-                "</tr>"
-            )
-        return (
-            "<table class=\\\"bars\\\"><thead><tr><th>bucket</th><th>items</th><th>recall</th><th>hit@20</th><th>mrr</th><th>abstain</th></tr></thead><tbody>"
-            + "".join(rows)
-            + TABLE_TBODY_CLOSE
-            if rows
-            else '<div class=\"empty\">暂无数据</div>'
-        )
-
-    rr_slices_section = ""
-    if rr_slices:
-        rr_slices_section = (
-            "<div class=\\\"section\\\">"
-            "<h2>Retrieval Slices</h2>"
-            "<div class=\\\"two\\\">"
-            f"<div><h2>file_type</h2>{_render_rr_slice_table('file_type')}</div>"
-            f"<div><h2>language</h2>{_render_rr_slice_table('language')}</div>"
-            "</div>"
-            "<div class=\\\"two\\\" style=\\\"margin-top:12px\\\">"
-            f"<div><h2>hit_type</h2>{_render_rr_slice_table('hit_type')}</div>"
-            f"<div><h2>quality</h2>{_render_rr_slice_table('quality')}</div>"
-            "</div>"
-            "<div class=\\\"two\\\" style=\\\"margin-top:12px\\\">"
-            f"<div><h2>pipeline_hash</h2>{_render_rr_slice_table('pipeline_hash')}</div>"
-            f"<div><h2>directory</h2>{_render_rr_slice_table('directory')}</div>"
-            "</div>"
-            "</div>"
-        )
-
-    retrieval_audit_section = _render_retrieval_audit_section(report)
-    raw_report = _report_with_safe_retrieval_audit(report)
+    retrieval_audit_section = _render_retrieval_audit_section(report_dict)
+    raw_report = _report_with_safe_retrieval_audit(report_dict)
     raw_payload = _scrub_report_for_redaction(raw_report) if redact else raw_report
     raw_json = json.dumps(raw_payload, ensure_ascii=False, indent=2)
 
@@ -1156,7 +1402,7 @@ def render_dataset_report_html(
 
     <div class="section">
       <h2>最近 Connector Runs</h2>
-      {('<table class="bars"><thead><tr><th>connector_id</th><th>status</th><th>created_at</th></tr></thead><tbody>' + ''.join(conn_rows) + '</tbody></table>') if conn_rows else EMPTY_DATA_DIV}
+      {connector_runs_table}
     </div>
 
     <div class="section">
@@ -1194,375 +1440,72 @@ def render_rag_audit_html(
 
     if redact:
         report = _scrub_report_for_redaction(report)
-    name = REDACTED_TEXT if redact else (dataset_name or "")
-    dsid = REDACTED_TEXT if redact else (dataset_id or "")
-    ts = generated_at.isoformat() if isinstance(generated_at, datetime) else (str(generated_at or "") or "")
+    report_dict = report if isinstance(report, dict) else {}
+    name = _display_identity(redact=redact, value=dataset_name)
+    dsid = _display_identity(redact=redact, value=dataset_id)
+    ts = _format_generated_at(generated_at)
 
-    profile = report.get("profile") if isinstance(report, dict) else None
-    prof = profile if isinstance(profile, dict) else {}
-
-    total_docs = int(prof.get("total_documents") or 0)
-    total_bytes = int(prof.get("total_size_bytes") or 0)
-
+    prof = _as_dict(report_dict.get("profile"))
+    total_docs = _int_from(prof, "total_documents")
+    total_bytes = _int_from(prof, "total_size_bytes")
     by_status = _as_items(prof.get("by_status"), top=12)
     by_type = _as_items(prof.get("by_file_type"), top=12)
+    p50 = _percentile_int(prof, "length_percentiles", "p50")
+    p90 = _percentile_int(prof, "length_percentiles", "p90")
+    chunk_tok_p50 = _percentile_int(prof, "chunk_token_percentiles", "p50")
+    cov_p50 = _percentile_int(prof, "chunk_coverage_percentiles", "p50")
 
-    p50 = int(((prof.get("length_percentiles") or {}) if isinstance(prof.get("length_percentiles"), dict) else {}).get("p50") or 0)
-    p90 = int(((prof.get("length_percentiles") or {}) if isinstance(prof.get("length_percentiles"), dict) else {}).get("p90") or 0)
-    chunk_tok_p50 = int(((prof.get("chunk_token_percentiles") or {}) if isinstance(prof.get("chunk_token_percentiles"), dict) else {}).get("p50") or 0)
-    cov_p50 = int(((prof.get("chunk_coverage_percentiles") or {}) if isinstance(prof.get("chunk_coverage_percentiles"), dict) else {}).get("p50") or 0)
+    compd = _as_dict(report_dict.get("compliance"))
+    quarantined = _int_from(compd, "quarantined_documents")
+    failed = _int_from(compd, "failed_documents")
 
-    comp = report.get("compliance") if isinstance(report, dict) else None
-    compd = comp if isinstance(comp, dict) else {}
-    quarantined = int(compd.get("quarantined_documents") or 0)
-    failed = int(compd.get("failed_documents") or 0)
-
-    gov = report.get("governance_metrics") if isinstance(report, dict) else None
-    govd = gov if isinstance(gov, dict) else {}
+    govd = _as_dict(report_dict.get("governance_metrics"))
     drop_reasons = _as_items(govd.get("drop_reasons_total"), top=12)
     rule_packs = _as_items(govd.get("rule_packs_docs"), top=12)
+    governance_audit_section = _render_governance_audit_section(report_dict.get("governance_audit"))
 
-    # Optional: governance audit snapshot (effects/impact metrics).
-    ga0 = report.get("governance_audit") if isinstance(report, dict) else None
-    ga = ga0 if isinstance(ga0, dict) else {}
-    ga_used_docs = int(ga.get("used_documents") or 0)
-    ga_truncated = bool(ga.get("truncated") or False)
-    ga_persisted_docs = int(ga.get("docs_with_parsed_content_persisted") or 0)
-    ga_persisted_trunc_docs = int(ga.get("parsed_content_truncated_docs") or 0)
-    ga_char_stats_docs = int(ga.get("docs_with_char_stats") or ga_persisted_docs or 0)
-    ga_quality_docs = int(ga.get("docs_with_governance_quality") or 0)
-    ga_orig_chars = int(ga.get("original_chars_total") or 0)
-    ga_clean_chars = int(ga.get("cleaned_chars_total") or 0)
-    try:
-        ga_char_reduction_ratio = float(ga.get("char_reduction_ratio") or 0.0)
-    except Exception:
-        ga_char_reduction_ratio = 0.0
-    ga_char_reduction_ratio = max(0.0, min(1.0, ga_char_reduction_ratio))
-    pct0 = ga.get("char_reduction_pct_percentiles") if isinstance(ga.get("char_reduction_pct_percentiles"), dict) else {}
-    ga_char_reduction_p50 = int(pct0.get("p50") or 0)
-    ga_char_reduction_p90 = int(pct0.get("p90") or 0)
-    ga_char_reduction_p99 = int(pct0.get("p99") or 0)
-
-    dens0 = ga.get("density_pct_percentiles") if isinstance(ga.get("density_pct_percentiles"), dict) else {}
-    ga_density_p50 = int(dens0.get("p50") or 0)
-    ga_density_p90 = int(dens0.get("p90") or 0)
-
-    head0 = ga.get("heading_ratio_pct_percentiles") if isinstance(ga.get("heading_ratio_pct_percentiles"), dict) else {}
-    ga_heading_p50 = int(head0.get("p50") or 0)
-    ga_heading_p90 = int(head0.get("p90") or 0)
-    ga_docs_changed = int(ga.get("docs_changed") or 0)
-    ga_docs_dropped = int(ga.get("docs_dropped") or 0)
-
-    ga_paras_dropped = int(ga.get("paragraphs_dropped_total") or 0)
-    ga_refs_removed = int(ga.get("references_removed_lines_total") or 0)
-    ga_urls_changed = int(ga.get("urls_changed_total") or 0)
-    ga_boiler_sections = int(ga.get("boilerplate_removed_sections_total") or 0)
-    ga_boiler_lines = int(ga.get("boilerplate_removed_lines_total") or 0)
-    ga_images_removed = int(ga.get("images_removed_total") or 0)
-    ga_tables_norm = int(ga.get("tables_normalized_total") or 0)
-    ga_table_rows_changed = int(ga.get("table_rows_changed_total") or 0)
-    ga_code_lines_stripped = int(ga.get("code_lines_stripped_total") or 0)
-
-    governance_audit_section = ""
-    if isinstance(ga0, dict) and ga0:
-        ratio_str = f"{ga_char_reduction_ratio:.2f} ({ga_char_reduction_ratio * 100.0:.1f}%)"
-        audit_note = ""
-        if ga_used_docs > 0:
-            audit_note = f"<div class=\\\"sub\\\" style=\\\"margin-top:6px\\\">sample: {escape(_fmt_int(ga_used_docs))}{' (truncated)' if ga_truncated else ''}</div>"
-
-        governance_audit_section = (
-            "<div class=\\\"section\\\">"
-            "<h2>Governance Audit（治理效果）</h2>"
-            f"{audit_note}"
-            "<table class=\\\"bars\\\">"
-            "<thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead>"
-            "<tbody>"
-            f"<tr><td class=\\\"k\\\">docs_changed</td><td class=\\\"v\\\">{_fmt_int(ga_docs_changed)}</td><td></td></tr>"
-            f"<tr><td class=\\\"k\\\">docs_dropped</td><td class=\\\"v\\\">{_fmt_int(ga_docs_dropped)}</td><td></td></tr>"
-            f"<tr><td class=\\\"k\\\">docs_with_char_stats</td><td class=\\\"v\\\">{_fmt_int(ga_char_stats_docs)}</td><td></td></tr>"
-            f"<tr><td class=\\\"k\\\">docs_with_parsed_content_persisted</td><td class=\\\"v\\\">{_fmt_int(ga_persisted_docs)}</td><td></td></tr>"
-            f"<tr><td class=\\\"k\\\">parsed_content_truncated_docs</td><td class=\\\"v\\\">{_fmt_int(ga_persisted_trunc_docs)}</td><td></td></tr>"
-            f"<tr><td class=\\\"k\\\">original_chars_total</td><td class=\\\"v\\\">{_fmt_int(ga_orig_chars)}</td><td></td></tr>"
-            f"<tr><td class=\\\"k\\\">cleaned_chars_total</td><td class=\\\"v\\\">{_fmt_int(ga_clean_chars)}</td><td></td></tr>"
-            f"<tr><td class=\\\"k\\\">char_reduction_ratio</td><td class=\\\"v\\\">{escape(ratio_str)}</td><td></td></tr>"
-            f"<tr><td class=\\\"k\\\">char_reduction_pct_p50</td><td class=\\\"v\\\">{escape(f'{_fmt_int(ga_char_reduction_p50)}%')}</td><td></td></tr>"
-            f"<tr><td class=\\\"k\\\">char_reduction_pct_p90</td><td class=\\\"v\\\">{escape(f'{_fmt_int(ga_char_reduction_p90)}%')}</td><td></td></tr>"
-            f"<tr><td class=\\\"k\\\">char_reduction_pct_p99</td><td class=\\\"v\\\">{escape(f'{_fmt_int(ga_char_reduction_p99)}%')}</td><td></td></tr>"
-            f"<tr><td class=\\\"k\\\">docs_with_governance_quality</td><td class=\\\"v\\\">{_fmt_int(ga_quality_docs)}</td><td></td></tr>"
-            f"<tr><td class=\\\"k\\\">density_pct_p50</td><td class=\\\"v\\\">{escape(f'{_fmt_int(ga_density_p50)}%')}</td><td></td></tr>"
-            f"<tr><td class=\\\"k\\\">density_pct_p90</td><td class=\\\"v\\\">{escape(f'{_fmt_int(ga_density_p90)}%')}</td><td></td></tr>"
-            f"<tr><td class=\\\"k\\\">heading_ratio_pct_p50</td><td class=\\\"v\\\">{escape(f'{_fmt_int(ga_heading_p50)}%')}</td><td></td></tr>"
-            f"<tr><td class=\\\"k\\\">heading_ratio_pct_p90</td><td class=\\\"v\\\">{escape(f'{_fmt_int(ga_heading_p90)}%')}</td><td></td></tr>"
-            f"<tr><td class=\\\"k\\\">paragraphs_dropped_total</td><td class=\\\"v\\\">{_fmt_int(ga_paras_dropped)}</td><td></td></tr>"
-            f"<tr><td class=\\\"k\\\">references_removed_lines_total</td><td class=\\\"v\\\">{_fmt_int(ga_refs_removed)}</td><td></td></tr>"
-            f"<tr><td class=\\\"k\\\">urls_changed_total</td><td class=\\\"v\\\">{_fmt_int(ga_urls_changed)}</td><td></td></tr>"
-            f"<tr><td class=\\\"k\\\">boilerplate_removed_sections_total</td><td class=\\\"v\\\">{_fmt_int(ga_boiler_sections)}</td><td></td></tr>"
-            f"<tr><td class=\\\"k\\\">boilerplate_removed_lines_total</td><td class=\\\"v\\\">{_fmt_int(ga_boiler_lines)}</td><td></td></tr>"
-            f"<tr><td class=\\\"k\\\">images_removed_total</td><td class=\\\"v\\\">{_fmt_int(ga_images_removed)}</td><td></td></tr>"
-            f"<tr><td class=\\\"k\\\">tables_normalized_total</td><td class=\\\"v\\\">{_fmt_int(ga_tables_norm)}</td><td></td></tr>"
-            f"<tr><td class=\\\"k\\\">table_rows_changed_total</td><td class=\\\"v\\\">{_fmt_int(ga_table_rows_changed)}</td><td></td></tr>"
-            f"<tr><td class=\\\"k\\\">code_lines_stripped_total</td><td class=\\\"v\\\">{_fmt_int(ga_code_lines_stripped)}</td><td></td></tr>"
-            + TABLE_TBODY_CLOSE
-            + "</div>"
-        )
-
-    cqm = report.get("chunk_quality_metrics") if isinstance(report, dict) else None
-    cqmd = cqm if isinstance(cqm, dict) else {}
+    cqmd = _as_dict(report_dict.get("chunk_quality_metrics"))
     gate_grades = _as_items(cqmd.get("gate_grade_docs"), top=12)
-    coverage_low = int(cqmd.get("coverage_low_documents") or 0)
-    overlap_high = int(cqmd.get("overlap_waste_high_documents") or 0)
-    tokens_missing = int(cqmd.get("token_stats_missing_documents") or 0)
+    coverage_low = _int_from(cqmd, "coverage_low_documents")
+    overlap_high = _int_from(cqmd, "overlap_waste_high_documents")
+    tokens_missing = _int_from(cqmd, "token_stats_missing_documents")
 
-    # Optional: latest precheck summary snapshot (before ingestion).
-    precheck_summary = report.get("precheck_summary") if isinstance(report, dict) else None
-    pre = precheck_summary if isinstance(precheck_summary, dict) else {}
-    pre_total_files = int(pre.get("total_files") or 0)
-    pre_total_bytes = int(pre.get("total_size_bytes") or 0)
-    pre_scan_run_id = REDACTED_TEXT if redact else str(pre.get("scan_run_id") or "").strip()
-    pre_generated_at = str(pre.get("generated_at") or "").strip()
-    pre_by_type = _as_items(pre.get("by_file_type"), top=12)
-    pre_lang = _as_items(pre.get("language_mix"), top=4)
-    pre_pii = _as_items(pre.get("pii_hits_total"), top=12)
-    pre_secrets = _as_items(pre.get("secrets_hits_total"), top=12)
+    precheck_section = _render_precheck_section(report_dict.get("precheck_summary"), redact=redact)
 
-    pdf0 = pre.get("pdf_scan") if isinstance(pre.get("pdf_scan"), dict) else {}
-    pre_pdf_scanned = int(pdf0.get("scanned") or 0)
-    pre_pdf_text = int(pdf0.get("not_scanned") or 0)
-    pre_pdf_unknown = int(pdf0.get("unknown") or 0)
+    kgd = _as_dict(report_dict.get("kg_stats"))
+    kg_events = _int_from(kgd, "events")
+    kg_entities = _int_from(kgd, "entities")
+    kg_links = _int_from(kgd, "links")
+    kg_events_with_chunk = _int_from(kgd, "events_with_chunk_id")
+    kg_events_with_page = _int_from(kgd, "events_with_page_ref")
+    kg_links_with_prov = _int_from(kgd, "links_with_provenance")
+    kg_links_with_page = _int_from(kgd, "links_with_page_ref")
+    kg_docs_extracted = _int_from(kgd, "documents_with_kg_extracted_at")
+    kg_docs_with_events = _int_from(kgd, "documents_with_kg_events")
+    kg_event_count_from_docs = _int_from(kgd, "event_count_from_documents")
+    kg_skipped_chunks = _int_from(kgd, "skipped_chunks_total")
+    kg_skipped_short = _int_from(kgd, "skipped_short_chunks_total")
+    kg_failed_chunks = _int_from(kgd, "failed_chunks_total")
+    kg_retry_chunks = _int_from(kgd, "retry_chunks_total")
+    kg_updated_at = _text_from(kgd, "updated_at")
+    kg_types = _collect_kg_type_items(kgd.get("entity_types"))
+    kg_top_docs_table = _render_kg_top_docs_table(kgd, redact=redact, include_failures=False)
 
-    pre_findings = pre.get("findings") if isinstance(pre.get("findings"), list) else []
-    pre_finding_rows: list[tuple[str, int]] = []
-    for f in pre_findings:
-        if not isinstance(f, dict):
-            continue
-        key = str(f.get("label") or f.get("key") or "").strip() or "unknown"
-        try:
-            cnt = int(f.get("count") or 0)
-        except Exception:
-            cnt = 0
-        if cnt > 0:
-            pre_finding_rows.append((key, cnt))
-    pre_finding_rows.sort(key=lambda kv: (-kv[1], kv[0]))
-
-    def _render_pre_dir_table(items: Any, *, max_rows: int = 20) -> str:
-        if redact:
-            return '<div class="empty">已脱敏：目录结构不展示</div>'
-        if not isinstance(items, list) or not items:
-            return EMPTY_DATA_DIV
-        rows: list[str] = []
-        for obj in items[: max(0, int(max_rows))]:
-            if not isinstance(obj, dict):
-                continue
-            path = escape(str(obj.get("path") or "."))
-            total_files = int(obj.get("total_files") or 0)
-            risky_files = int(obj.get("risky_files") or 0)
-            size_bytes = _fmt_bytes(obj.get("total_size_bytes") or 0)
-            rows.append(
-                "<tr>"
-                f"<td class=\"k\">{path}</td>"
-                f"<td class=\"v\">{_fmt_int(risky_files)}/{_fmt_int(total_files)}</td>"
-                f"<td class=\"v\">{escape(size_bytes)}</td>"
-                "</tr>"
-            )
-        if not rows:
-            return EMPTY_DATA_DIV
-        return (
-            "<table class=\"bars\">"
-            "<thead><tr><th>Directory</th><th>Risky/Total</th><th>Bytes</th></tr></thead>"
-            "<tbody>"
-            + "".join(rows)
-            + TABLE_TBODY_CLOSE
-        )
-
-    precheck_section = ""
-    if isinstance(precheck_summary, dict) and precheck_summary:
-        pre_meta = (
-            "<table class=\"bars\">"
-            "<thead><tr><th>Field</th><th>Value</th><th></th></tr></thead>"
-            "<tbody>"
-            f"<tr><td class=\"k\">scan_run_id</td><td class=\"v\">{escape(pre_scan_run_id)}</td><td></td></tr>"
-            f"<tr><td class=\"k\">generated_at</td><td class=\"v\">{escape(pre_generated_at)}</td><td></td></tr>"
-            f"<tr><td class=\"k\">total_files</td><td class=\"v\">{_fmt_int(pre_total_files)}</td><td></td></tr>"
-            f"<tr><td class=\"k\">total_size</td><td class=\"v\">{escape(_fmt_bytes(pre_total_bytes))}</td><td></td></tr>"
-            f"<tr><td class=\"k\">pdf_scan (scanned/text/unknown)</td><td class=\"v\">{_fmt_int(pre_pdf_scanned)}/{_fmt_int(pre_pdf_text)}/{_fmt_int(pre_pdf_unknown)}</td><td></td></tr>"
-            + TABLE_TBODY_CLOSE
-        )
-        precheck_section = (
-            "<div class=\"section\">"
-            "<h2>Precheck（入库前摸底）</h2>"
-            "<div class=\"two\">"
-            f"<div><h2>概览</h2>{pre_meta}</div>"
-            f"<div><h2>格式分布（Top）</h2>{_render_bar_table(pre_by_type, total=max(1, pre_total_files))}</div>"
-            "</div>"
-            "<div class=\"two\" style=\"margin-top:12px\">"
-            f"<div><h2>文件大小分布</h2>{_render_histogram(pre.get('file_size_histogram'))}</div>"
-            f"<div><h2>长度分布（tokens）</h2>{_render_histogram(pre.get('token_histogram'))}</div>"
-            "</div>"
-            "<div class=\"two\" style=\"margin-top:12px\">"
-            f"<div><h2>语言分布（抽样）</h2>{_render_bar_table(pre_lang, total=max(1, pre_total_files))}</div>"
-            f"<div><h2>问题清单（可操作）</h2>{_render_bar_table(pre_finding_rows[:12], total=max(1, pre_total_files))}</div>"
-            "</div>"
-            "<div class=\"two\" style=\"margin-top:12px\">"
-            f"<div><h2>PII 命中（次数）</h2>{_render_bar_table(pre_pii, total=max(1, sum(v for _, v in pre_pii) if pre_pii else 1))}</div>"
-            f"<div><h2>Secrets/Token 命中（次数）</h2>{_render_bar_table(pre_secrets, total=max(1, sum(v for _, v in pre_secrets) if pre_secrets else 1))}</div>"
-            "</div>"
-            "<div style=\"margin-top:12px\">"
-            f"<h2>目录结构（Top 风险聚集区）</h2>{_render_pre_dir_table(pre.get('directory_stats'), max_rows=20)}"
-            "</div>"
-            "</div>"
-        )
-
-    kg = report.get("kg_stats") if isinstance(report, dict) else None
-    kgd = kg if isinstance(kg, dict) else {}
-    kg_events = int(kgd.get("events") or 0)
-    kg_entities = int(kgd.get("entities") or 0)
-    kg_links = int(kgd.get("links") or 0)
-    kg_events_with_chunk = int(kgd.get("events_with_chunk_id") or 0)
-    kg_events_with_page = int(kgd.get("events_with_page_ref") or 0)
-    kg_links_with_prov = int(kgd.get("links_with_provenance") or 0)
-    kg_links_with_page = int(kgd.get("links_with_page_ref") or 0)
-    kg_docs_extracted = int(kgd.get("documents_with_kg_extracted_at") or 0)
-    kg_docs_with_events = int(kgd.get("documents_with_kg_events") or 0)
-    kg_event_count_from_docs = int(kgd.get("event_count_from_documents") or 0)
-    kg_skipped_chunks = int(kgd.get("skipped_chunks_total") or 0)
-    kg_skipped_short = int(kgd.get("skipped_short_chunks_total") or 0)
-    kg_failed_chunks = int(kgd.get("failed_chunks_total") or 0)
-    kg_retry_chunks = int(kgd.get("retry_chunks_total") or 0)
-    kg_updated_at = str(kgd.get("updated_at") or "").strip()
-    kg_types: list[tuple[str, int]] = []
-    raw_types = kgd.get("entity_types")
-    if isinstance(raw_types, list):
-        for t in raw_types[:50]:
-            if not isinstance(t, dict):
-                continue
-            tp = str(t.get("type") or "").strip() or "unknown"
-            try:
-                cnt = int(t.get("count") or 0)
-            except Exception:
-                cnt = 0
-            if cnt > 0:
-                kg_types.append((tp, cnt))
-
-    kg_top_docs = kgd.get("top_documents") if isinstance(kgd.get("top_documents"), list) else []
-    kg_doc_rows: list[str] = []
-    if not redact and isinstance(kg_top_docs, list):
-        for r in kg_top_docs[:10]:
-            if not isinstance(r, dict):
-                continue
-            did = str(r.get("document_id") or "").strip()
-            if not did:
-                continue
-            src = str(r.get("source") or "").strip()
-            try:
-                evc = int(r.get("event_count") or 0)
-            except Exception:
-                evc = 0
-            kg_doc_rows.append(
-                "<tr>"
-                f"<td class=\\\"k\\\">{escape(src or did[:8])}</td>"
-                f"<td class=\\\"v\\\">{_fmt_int(evc)}</td>"
-                "<td></td>"
-                "</tr>"
-            )
-    kg_top_docs_table = (
-        "<table class=\\\"bars\\\"><thead><tr><th>doc</th><th>events</th><th></th></tr></thead><tbody>"
-        + "".join(kg_doc_rows)
-        + TABLE_TBODY_CLOSE
-        if kg_doc_rows
-        else EMPTY_DATA_DIV
+    rrd = _as_dict(report_dict.get("latest_regression_run"))
+    rr_status = _text_from(rrd, "status")
+    rr_created_at = _text_from(rrd, "created_at")
+    rr_finished_at = _text_from(rrd, "finished_at")
+    rr_summary = _as_dict(rrd.get("summary"))
+    rr_summary_table = _render_regression_summary_table(rr_summary)
+    rr_slices_section = _render_rr_slices_section(
+        rr_summary,
+        redact=redact,
+        title="Retrieval Slices（file_type / language / directory）",
+        rows=(("file_type", "language"), ("directory",)),
     )
 
-    rr = report.get("latest_regression_run") if isinstance(report, dict) else None
-    rrd = rr if isinstance(rr, dict) else {}
-    rr_status = str(rrd.get("status") or "").strip()
-    rr_created_at = str(rrd.get("created_at") or "").strip()
-    rr_finished_at = str(rrd.get("finished_at") or "").strip()
-    rr_summary = rrd.get("summary") if isinstance(rrd.get("summary"), dict) else {}
-    rr_summary_items: list[tuple[str, str]] = []
-    for k, v in sorted(rr_summary.items(), key=lambda kv: str(kv[0] or "")):
-        key = str(k or "").strip()
-        if not key:
-            continue
-        if isinstance(v, bool):
-            rr_summary_items.append((key, "1" if v else "0"))
-        elif isinstance(v, int) and not isinstance(v, bool):
-            rr_summary_items.append((key, _fmt_int(v)))
-        elif isinstance(v, float):
-            rr_summary_items.append((key, f"{v:.4f}"))
-
-    rr_summary_rows = [f"<tr><td class=\"k\">{escape(k)}</td><td class=\"v\">{escape(v)}</td><td></td></tr>" for k, v in rr_summary_items[:50]]
-    rr_summary_table = (
-        BARS_METRIC_TABLE_HEADER
-        + "".join(rr_summary_rows)
-        + TABLE_TBODY_CLOSE
-        if rr_summary_rows
-        else EMPTY_DATA_DIV
-    )
-
-    rr_slices = rr_summary.get("retrieval_slices") if isinstance(rr_summary.get("retrieval_slices"), dict) else {}
-
-    def _fmt_num(v: Any) -> str:
-        if v is None:
-            return ""
-        if isinstance(v, bool):
-            return "1" if v else "0"
-        if isinstance(v, int) and not isinstance(v, bool):
-            return _fmt_int(v)
-        if isinstance(v, float):
-            return f"{v:.4f}"
-        return str(v)
-
-    def _render_rr_slice_table(dim: str) -> str:
-        if redact and dim == "directory":
-            return '<div class="empty">已脱敏：directory 不展示</div>'
-        obj = rr_slices.get(dim) if isinstance(rr_slices.get(dim), dict) else {}
-        buckets = obj.get("buckets") if isinstance(obj.get("buckets"), list) else []
-        rows: list[str] = []
-        for b in buckets[:10]:
-            if not isinstance(b, dict):
-                continue
-            key = str(b.get("key") or "").strip()
-            if not key:
-                continue
-            try:
-                items = int(b.get("items") or 0)
-            except Exception:
-                items = 0
-            rows.append(
-                "<tr>"
-                f"<td class=\\\"k\\\">{escape(key)}</td>"
-                f"<td class=\\\"v\\\">{_fmt_int(items)}</td>"
-                f"<td class=\\\"v\\\">{escape(_fmt_num(b.get('retrieval_recall')))}</td>"
-                f"<td class=\\\"v\\\">{escape(_fmt_num(b.get('retrieval_hit_at_20')))}</td>"
-                f"<td class=\\\"v\\\">{escape(_fmt_num(b.get('retrieval_mrr')))}</td>"
-                f"<td class=\\\"v\\\">{escape(_fmt_num(b.get('abstain_rate')))}</td>"
-                "</tr>"
-            )
-        return (
-            "<table class=\\\"bars\\\"><thead><tr><th>bucket</th><th>items</th><th>recall</th><th>hit@20</th><th>mrr</th><th>abstain</th></tr></thead><tbody>"
-            + "".join(rows)
-            + TABLE_TBODY_CLOSE
-            if rows
-            else '<div class=\"empty\">暂无数据</div>'
-        )
-
-    rr_slices_section = ""
-    if rr_slices:
-        rr_slices_section = (
-            "<div class=\\\"section\\\">"
-            "<h2>Retrieval Slices（file_type / language / directory）</h2>"
-            "<div class=\\\"two\\\">"
-            f"<div><h2>file_type</h2>{_render_rr_slice_table('file_type')}</div>"
-            f"<div><h2>language</h2>{_render_rr_slice_table('language')}</div>"
-            "</div>"
-            "<div style=\\\"margin-top:12px\\\"><h2>directory</h2>"
-            f"{_render_rr_slice_table('directory')}"
-            "</div>"
-            "</div>"
-        )
-
-    retrieval_audit_section = _render_retrieval_audit_section(report)
-    raw_report = _report_with_safe_retrieval_audit(report)
+    retrieval_audit_section = _render_retrieval_audit_section(report_dict)
+    raw_report = _report_with_safe_retrieval_audit(report_dict)
     raw_payload = _scrub_report_for_redaction(raw_report) if redact else raw_report
     raw_json = json.dumps(raw_payload, ensure_ascii=False, indent=2)
 
@@ -1767,22 +1710,22 @@ def render_precheck_html(
     samples: dict | None = None,
     redact: bool = False,
 ) -> str:
-    name = REDACTED_TEXT if redact else (dataset_name or "")
-    dsid = REDACTED_TEXT if redact else (dataset_id or "")
-    rp = REDACTED_TEXT if redact else (root_path or "")
-    ts = generated_at.isoformat() if isinstance(generated_at, datetime) else (str(generated_at or "") or "")
+    name = _display_identity(redact=redact, value=dataset_name)
+    dsid = _display_identity(redact=redact, value=dataset_id)
+    rp = _display_identity(redact=redact, value=root_path)
+    ts = _format_generated_at(generated_at)
 
-    total_files = int(summary.get("total_files") or 0)
-    total_bytes = int(summary.get("total_size_bytes") or 0)
-    p50 = int(((summary.get("length_percentiles") or {}) if isinstance(summary.get("length_percentiles"), dict) else {}).get("p50") or 0)
-    p90 = int(((summary.get("length_percentiles") or {}) if isinstance(summary.get("length_percentiles"), dict) else {}).get("p90") or 0)
-    tok_p50 = int(((summary.get("token_percentiles") or {}) if isinstance(summary.get("token_percentiles"), dict) else {}).get("p50") or 0)
-    tok_p90 = int(((summary.get("token_percentiles") or {}) if isinstance(summary.get("token_percentiles"), dict) else {}).get("p90") or 0)
+    total_files = _int_from(summary, "total_files")
+    total_bytes = _int_from(summary, "total_size_bytes")
+    p50 = _percentile_int(summary, "length_percentiles", "p50")
+    p90 = _percentile_int(summary, "length_percentiles", "p90")
+    tok_p50 = _percentile_int(summary, "token_percentiles", "p50")
+    tok_p90 = _percentile_int(summary, "token_percentiles", "p90")
 
-    pdf = summary.get("pdf_scan") if isinstance(summary.get("pdf_scan"), dict) else {}
-    pdf_scanned = int(pdf.get("scanned") or 0)
-    pdf_text = int(pdf.get("not_scanned") or 0)
-    pdf_unknown = int(pdf.get("unknown") or 0)
+    pdf = _as_dict(summary.get("pdf_scan"))
+    pdf_scanned = _int_from(pdf, "scanned")
+    pdf_text = _int_from(pdf, "not_scanned")
+    pdf_unknown = _int_from(pdf, "unknown")
 
     by_type = _as_items(summary.get("by_file_type"), top=12)
     lang = _as_items(summary.get("language_mix"), top=4)
@@ -1790,148 +1733,17 @@ def render_precheck_html(
     secrets = _as_items(summary.get("secrets_hits_total"), top=12)
     primary_tags = _as_items(summary.get("primary_tag_counts"), top=12)
     processing_paths = _as_items(summary.get("processing_path_counts"), top=12)
-
-    # Best-effort actionable suggestions (objective signals only).
-    findings = summary.get("findings") if isinstance(summary.get("findings"), list) else []
-    finding_counts: dict[str, int] = {}
-    for f in findings:
-        if not isinstance(f, dict):
-            continue
-        k = str(f.get("key") or "").strip().lower()
-        if not k:
-            continue
-        try:
-            finding_counts[k] = int(f.get("count") or 0)
-        except Exception:
-            finding_counts[k] = 0
-
-    tips: list[str] = []
-    if int(pdf_scanned) > 0:
-        tips.append(f"检测到疑似扫描 PDF：{_fmt_int(pdf_scanned)}（建议启用 OCR 解析链路，并优先复核 pdf_unknown/低密度页面）")
-    if int(finding_counts.get("gibberish_text", 0) or 0) > 0:
-        tips.append("检测到疑似乱码/编码问题（抽样信号）：建议检查源文件编码、解析器后备策略，并优先启用治理低密度过滤/隔离")
-    if int(finding_counts.get("empty_text", 0) or 0) > 0:
-        tips.append("存在“未提取到文本”的文件：若这些文件需要入库，建议调整解析/路由（PDF 走 OCR、二进制先转换）")
-    if int(tok_p90) > 0:
-        if int(tok_p90) >= 20_000:
-            tips.append(f"P90 文本长度较长（~{_fmt_int(tok_p90)} tokens）：建议提高 chunk_size 或使用结构化 chunk_strategy（markdown_header/outline），入库后用 chunk-preview + gate 验证分布")
-        elif int(tok_p90) >= 5_000:
-            tips.append(f"P90 文本长度偏长（~{_fmt_int(tok_p90)} tokens）：建议检查 chunk_size/overlap，避免 chunk 数过多导致成本/延迟上升")
-    elif int(p90) > 0:
-        tips.append("tokens 分布为空（可能未启用文本抽取或文件类型非文本）；如需成本估算，建议开启 enable_text_extract 并重跑预检")
-    if pii:
-        tips.append("检测到 PII 命中（来自抽样/治理信号）：建议启用治理脱敏/隔离规则（governance_pii_*）并人工复核样本")
-    if secrets:
-        tips.append("检测到 Secrets/Token 命中（来自抽样/治理信号）：建议启用 secrets 脱敏/隔离（governance_secrets_*）并人工复核样本")
-    if not tips:
-        tips.append("暂无显著风险信号；建议先用 chunk-preview 小样本调参，再进行小批量入库验证（可回归）")
-
-    tips_html = (
-        "<div class=\"notes\"><ul>" + "".join(f"<li>{escape(t)}</li>" for t in tips) + "</ul></div>"
-        if tips
-        else EMPTY_BRIEF_DIV
+    tips_html = _render_precheck_tips_html(
+        summary=summary,
+        pdf_scanned=pdf_scanned,
+        p90=p90,
+        tok_p90=tok_p90,
+        pii=pii,
+        secrets=secrets,
     )
-
-    finding_rows: list[tuple[str, int]] = []
-    for f in findings:
-        if not isinstance(f, dict):
-            continue
-        key = str(f.get("label") or f.get("key") or "").strip() or "unknown"
-        try:
-            cnt = int(f.get("count") or 0)
-        except Exception:
-            cnt = 0
-        finding_rows.append((key, cnt))
-    finding_rows.sort(key=lambda kv: (-kv[1], kv[0]))
-
-    pdf_det = summary.get("pdf_detection") if isinstance(summary.get("pdf_detection"), dict) else {}
-
-    def _render_dir_table(items: Any, *, max_rows: int = 20) -> str:
-        if redact:
-            return '<div class="empty">已脱敏：目录结构不展示</div>'
-        if not isinstance(items, list) or not items:
-            return EMPTY_DATA_DIV
-        rows: list[str] = []
-        for obj in items[: max(0, int(max_rows))]:
-            if not isinstance(obj, dict):
-                continue
-            path = escape(str(obj.get("path") or "."))
-            total_files = int(obj.get("total_files") or 0)
-            risky_files = int(obj.get("risky_files") or 0)
-            size_bytes = _fmt_bytes(obj.get("total_size_bytes") or 0)
-            rows.append(
-                "<tr>"
-                f"<td class=\"k\">{path}</td>"
-                f"<td class=\"v\">{_fmt_int(risky_files)}/{_fmt_int(total_files)}</td>"
-                f"<td class=\"v\">{escape(size_bytes)}</td>"
-                "</tr>"
-            )
-        if not rows:
-            return EMPTY_DATA_DIV
-        return (
-            "<table class=\"bars\">"
-            "<thead><tr><th>Directory</th><th>Risky/Total</th><th>Bytes</th></tr></thead>"
-            "<tbody>"
-            + "".join(rows)
-            + TABLE_TBODY_CLOSE
-        )
-
-    # Optional representative sampling section.
-    samples_section = ""
-    if isinstance(samples, dict) and samples:
-        rep = samples.get("representative") if isinstance(samples.get("representative"), list) else []
-        needs_review = samples.get("needs_review") if isinstance(samples.get("needs_review"), dict) else {}
-
-        def _render_file_list(items: Any, *, max_rows: int = 60) -> str:
-            if not isinstance(items, list) or not items:
-                return EMPTY_BRIEF_DIV
-            rows: list[str] = []
-            for obj in items[: max(0, int(max_rows))]:
-                if not isinstance(obj, dict):
-                    continue
-                nm = escape(str(obj.get("name") or ""))
-                ft = escape(str(obj.get("file_type") or ""))
-                sz = _fmt_bytes(obj.get("file_size"))
-                rows.append(f"<tr><td class=\"k\">{nm}</td><td class=\"v\">{ft}</td><td class=\"v\">{escape(sz)}</td></tr>")
-            if not rows:
-                return EMPTY_BRIEF_DIV
-            return (
-                "<table class=\"bars\">"
-                "<thead><tr><th>File</th><th>Type</th><th>Size</th></tr></thead>"
-                "<tbody>"
-                + "".join(rows)
-                + TABLE_TBODY_CLOSE
-            )
-
-        # Needs-review overview (per bucket).
-        needs_rows: list[str] = []
-        for k, lst in sorted(needs_review.items(), key=lambda kv: str(kv[0] or "")):
-            if not isinstance(lst, list) or not lst:
-                continue
-            label = escape(str(k))
-            needs_rows.append(f"<tr><td class=\"k\">{label}</td><td class=\"v\">{_fmt_int(len(lst))}</td></tr>")
-        needs_table = (
-            "<table class=\"bars\">"
-            "<thead><tr><th>Bucket</th><th>Samples</th></tr></thead>"
-            "<tbody>"
-            + "".join(needs_rows)
-            + TABLE_TBODY_CLOSE
-            if needs_rows
-            else EMPTY_BRIEF_DIV
-        )
-
-        samples_section = (
-            "<div class=\"section two\">"
-            "<div>"
-            "<h2>代表性样本（按格式/大小/PDF类型分层）</h2>"
-            + _render_file_list(rep, max_rows=60)
-            + "</div>"
-            "<div>"
-            "<h2>需复核样本（按问题分桶）</h2>"
-            + needs_table
-            + "</div>"
-            "</div>"
-        )
+    finding_rows = _collect_labeled_counts(summary.get("findings"))
+    pdf_det = _as_dict(summary.get("pdf_detection"))
+    samples_section = _render_precheck_samples_section(samples)
 
     html = f"""<!doctype html>
 <html lang="zh-CN">
@@ -2020,7 +1832,7 @@ def render_precheck_html(
 
     <div class="section">
       <h2>目录结构（Top 风险聚集区）</h2>
-      {_render_dir_table(summary.get("directory_stats"), max_rows=20)}
+      {_render_precheck_dir_table(summary.get("directory_stats"), redact=redact, max_rows=20)}
     </div>
 
     <div class="section two">

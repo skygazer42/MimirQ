@@ -56,6 +56,269 @@ def _normalize_local_backend(value: Any) -> str:
     return backend
 
 
+def _zip_safe_entries(zip_bytes: bytes) -> tuple[zipfile.ZipFile, list[zipfile.ZipInfo]]:
+    max_files = int(getattr(settings, "ZIP_MAX_FILES", 2000))
+    max_total = int(getattr(settings, "ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES", 500_000_000))
+    max_single = int(getattr(settings, "ZIP_MAX_SINGLE_UNCOMPRESSED_BYTES", 100_000_000))
+    zip_file = zipfile.ZipFile(io.BytesIO(zip_bytes), "r")
+    infos = zip_file.infolist()
+    if len(infos) > max_files:
+        zip_file.close()
+        raise ValueError(f"ZIP contains too many files: {len(infos)} > {max_files}")
+
+    total_bytes = 0
+    for info in infos:
+        total_bytes += int(getattr(info, "file_size", 0) or 0)
+        if info.file_size and info.file_size > max_single:
+            zip_file.close()
+            raise ValueError(f"ZIP entry too large: {info.filename} ({info.file_size} bytes)")
+    if total_bytes > max_total:
+        zip_file.close()
+        raise ValueError(f"ZIP uncompressed size too large: {total_bytes} > {max_total}")
+    return zip_file, infos
+
+
+def _markdown_zip_infos(infos: list[zipfile.ZipInfo]) -> list[zipfile.ZipInfo]:
+    markdown_infos: list[zipfile.ZipInfo] = []
+    for info in infos:
+        if info.is_dir():
+            continue
+        name = (info.filename or "").replace("\\", "/")
+        parts = [part.lower() for part in name.split("/") if part]
+        if "__macosx" in parts:
+            continue
+        if name.lower().endswith(".md"):
+            markdown_infos.append(info)
+    return markdown_infos
+
+
+def _preferred_markdown_info(markdown_infos: list[zipfile.ZipInfo]) -> zipfile.ZipInfo | None:
+    preferred_names = ["full.md", "output.md", "result.md", "index.md", "readme.md"]
+    for preferred_name in preferred_names:
+        for info in markdown_infos:
+            base = (info.filename or "").replace("\\", "/").split("/")[-1].lower()
+            if base == preferred_name:
+                return info
+
+    if not markdown_infos:
+        return None
+
+    def sort_key(info: zipfile.ZipInfo) -> tuple[int, int]:
+        depth = len([part for part in (info.filename or "").replace("\\", "/").split("/") if part])
+        return (depth, -int(getattr(info, "file_size", 0) or 0))
+
+    return min(markdown_infos, key=sort_key)
+
+
+def _preview_markdown_refs(markdown: str) -> list[str]:
+    patterns = (
+        re.compile(
+            r"!\[[^\]]*\]\(\s*(?:<)?([^)\s>]+)(?:>)?(?:\s+['\"][^'\"]*['\"])?\s*\)",
+            flags=re.IGNORECASE,
+        ),
+        re.compile(r"<img[^>]+src=[\"']([^\"']+)[\"']", flags=re.IGNORECASE),
+    )
+    refs: list[str] = []
+    seen: set[str] = set()
+    for pattern in patterns:
+        for match in pattern.finditer(markdown):
+            ref = match.group(1)
+            if not isinstance(ref, str):
+                continue
+            ref = ref.strip()
+            if not ref or ref in seen:
+                continue
+            seen.add(ref)
+            refs.append(ref)
+    return refs
+
+
+def _preview_image_members(zip_file: zipfile.ZipFile) -> dict[str, str]:
+    image_exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
+    member_by_key: dict[str, str] = {}
+    for info in zip_file.infolist():
+        if info.is_dir():
+            continue
+        name = (info.filename or "").replace("\\", "/").lstrip("/")
+        if not name:
+            continue
+        parts_lower = [part.lower() for part in name.split("/") if part]
+        if "__macosx" in parts_lower:
+            continue
+        if Path(name).suffix.lower() not in image_exts:
+            continue
+        member_by_key[name] = name
+        member_by_key[Path(name).name] = name
+    return member_by_key
+
+
+def _preview_zip_member_for_ref(ref: str, member_by_key: dict[str, str]) -> tuple[str, str] | None:
+    parsed_ref = urlparse(ref)
+    scheme = (parsed_ref.scheme or "").lower().strip()
+    if scheme in {"http", "https"} or (parsed_ref.netloc or "").strip():
+        return None
+    if "/api/v1/documents/image/" in ref or "/api/v1/documents/image-url/" in ref:
+        return None
+    normalized_ref = zip_image_processor._normalize_ref_path(ref)
+    if not normalized_ref:
+        return None
+    member = member_by_key.get(normalized_ref)
+    if not member and not normalized_ref.startswith("images/"):
+        member = member_by_key.get(f"images/{normalized_ref}")
+    if not member:
+        return None
+    return normalized_ref, member
+
+
+def _normalize_batch_state_counters(extract_result: list[Any]) -> tuple[int, int, int, str | None]:
+    completed_files = 0
+    failed_files = 0
+    running_files = 0
+    first_error: str | None = None
+    for item in extract_result:
+        if not isinstance(item, dict):
+            continue
+        state = str(item.get("state") or "").lower()
+        if state == "done":
+            completed_files += 1
+            continue
+        if state == "failed":
+            failed_files += 1
+            if not first_error:
+                err = (item.get("err_msg") or "").strip()
+                if err:
+                    first_error = err
+            continue
+        if state == "running":
+            running_files += 1
+    return completed_files, failed_files, running_files, first_error
+
+
+def _normalized_batch_status(*, total_files: int, completed_files: int, failed_files: int, running_files: int) -> tuple[str, int]:
+    done_files = completed_files + failed_files
+    if total_files <= 0:
+        return "pending", 0
+    progress = int((done_files / float(total_files)) * 100)
+    if done_files >= total_files:
+        return ("failed" if failed_files > 0 else "completed"), 100
+    if running_files > 0:
+        return "processing", progress
+    return "pending", progress
+
+
+def _matching_extract_item(extract_result: list[dict[str, Any]], *, field_name: str, value: str | None) -> dict[str, Any] | None:
+    if not value:
+        return None
+    expected = str(value)
+    for item in extract_result:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get(field_name) or "") == expected:
+            return item
+    return None
+
+
+def _extract_preview_image_reference(
+    *,
+    zip_file: zipfile.ZipFile,
+    member: str,
+    normalized_ref: str,
+    images_dir: Path,
+    tenant_id: str,
+    account_id: str | None,
+    max_bytes: int,
+    image_exts: set[str],
+    cached_id_by_norm: dict[str, str],
+    extracted: list[dict[str, str]],
+) -> tuple[str, dict[str, dict[str, str]]] | None:
+    img_id = cached_id_by_norm.get(normalized_ref)
+    if not img_id:
+        try:
+            binary = zip_file.read(member)
+        except Exception:
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            return None
+        if not binary or len(binary) > max_bytes:
+            return None
+
+        ext = Path(member).suffix.lower()
+        if ext not in image_exts:
+            ext = ".png"
+        img_id = uuid.uuid4().hex
+        out_path = images_dir / f"{img_id}{ext}"
+        try:
+            out_path.write_bytes(binary)
+            _write_preview_owner_binding(
+                images_dir=images_dir,
+                preview_id=img_id,
+                binding=(
+                    {"tenant_id": str(tenant_id), "account_id": str(account_id or "").strip()}
+                    if str(account_id or "").strip()
+                    else None
+                ),
+            )
+        except Exception:
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            return None
+
+        cached_id_by_norm[normalized_ref] = img_id
+        extracted.append({"id": img_id, "filename": out_path.name, "url": f"/api/v1/documents/image/{img_id}"})
+
+    url = f"/api/v1/documents/image/{img_id}"
+    keys = {normalized_ref, Path(normalized_ref).name}
+    return url, {key: {"url": url} for key in keys if key}
+
+
+def _bounded_preview_refs(markdown: str) -> list[str]:
+    refs = _preview_markdown_refs(markdown)
+    if not refs:
+        return []
+    max_images = max(0, int(getattr(settings, "ZIP_MAX_IMAGES", 0) or 0))
+    if max_images and len(refs) > max_images:
+        return refs[:max_images]
+    return refs
+
+
+def _preview_image_mapping(
+    *,
+    zip_file: zipfile.ZipFile,
+    refs: list[str],
+    images_dir: Path,
+    tenant_id: str,
+    account_id: str | None,
+) -> tuple[list[dict[str, str]], dict[str, dict[str, str]]]:
+    member_by_key = _preview_image_members(zip_file)
+    max_bytes = int(getattr(settings, "MAX_INLINE_IMAGE_BYTES", 10_000_000) or 10_000_000)
+    max_bytes = max(1_000_000, max_bytes)
+    image_exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
+
+    extracted: list[dict[str, str]] = []
+    mapping: dict[str, dict[str, str]] = {}
+    cached_id_by_norm: dict[str, str] = {}
+    for ref in refs:
+        resolved_member = _preview_zip_member_for_ref(ref, member_by_key)
+        if resolved_member is None:
+            continue
+        norm, member = resolved_member
+        extracted_ref = _extract_preview_image_reference(
+            zip_file=zip_file,
+            member=member,
+            normalized_ref=norm,
+            images_dir=images_dir,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            max_bytes=max_bytes,
+            image_exts=image_exts,
+            cached_id_by_norm=cached_id_by_norm,
+            extracted=extracted,
+        )
+        if extracted_ref is None:
+            continue
+        _url, ref_mapping = extracted_ref
+        mapping.update(ref_mapping)
+    return extracted, mapping
+
+
 class MinerUService:
     """MinerU parsing service."""
 
@@ -338,39 +601,13 @@ class MinerUService:
             extract_result = []
 
         total_files = len(extract_result)
-        completed_files = 0
-        failed_files = 0
-        running_files = 0
-        first_error: str | None = None
-
-        for item in extract_result:
-            if not isinstance(item, dict):
-                continue
-            state = str(item.get("state") or "").lower()
-            if state == "done":
-                completed_files += 1
-            elif state == "failed":
-                failed_files += 1
-                if not first_error:
-                    err = (item.get("err_msg") or "").strip()
-                    if err:
-                        first_error = err
-            elif state == "running":
-                running_files += 1
-
-        if total_files <= 0:
-            status = "pending"
-            progress = 0
-        elif completed_files + failed_files >= total_files:
-            status = "failed" if failed_files > 0 else "completed"
-            progress = 100
-        elif running_files > 0:
-            status = "processing"
-            progress = int(((completed_files + failed_files) / float(total_files)) * 100)
-        else:
-            # e.g. all waiting-file
-            status = "pending"
-            progress = int(((completed_files + failed_files) / float(total_files)) * 100)
+        completed_files, failed_files, running_files, first_error = _normalize_batch_state_counters(extract_result)
+        status, progress = _normalized_batch_status(
+            total_files=total_files,
+            completed_files=completed_files,
+            failed_files=failed_files,
+            running_files=running_files,
+        )
 
         return {
             "status": status,
@@ -392,23 +629,11 @@ class MinerUService:
         if not extract_result:
             return None
 
-        if data_id:
-            for item in extract_result:
-                if not isinstance(item, dict):
-                    continue
-                if str(item.get("data_id") or "") == str(data_id):
-                    return item
-
-        if filename:
-            for item in extract_result:
-                if not isinstance(item, dict):
-                    continue
-                if str(item.get("file_name") or "") == str(filename):
-                    return item
-
-        if len(extract_result) == 1 and isinstance(extract_result[0], dict):
-            return extract_result[0]
-        return None
+        return (
+            _matching_extract_item(extract_result, field_name="data_id", value=data_id)
+            or _matching_extract_item(extract_result, field_name="file_name", value=filename)
+            or (extract_result[0] if len(extract_result) == 1 and isinstance(extract_result[0], dict) else None)
+        )
 
     async def aget_batch_results(self, batch_id: str) -> dict[str, Any]:
         """Fetch raw MinerU batch results (async)."""
@@ -546,56 +771,12 @@ class MinerUService:
         """
         Extract markdown text from a MinerU result ZIP (prefers `full.md`).
         """
-        max_files = int(getattr(settings, "ZIP_MAX_FILES", 2000))
-        max_total = int(getattr(settings, "ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES", 500_000_000))
-        max_single = int(getattr(settings, "ZIP_MAX_SINGLE_UNCOMPRESSED_BYTES", 100_000_000))
-
-        with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
-            infos = zf.infolist()
-            if len(infos) > max_files:
-                raise ValueError(f"ZIP contains too many files: {len(infos)} > {max_files}")
-
-            total_bytes = 0
-            for info in infos:
-                total_bytes += int(getattr(info, "file_size", 0) or 0)
-                if info.file_size and info.file_size > max_single:
-                    raise ValueError(f"ZIP entry too large: {info.filename} ({info.file_size} bytes)")
-            if total_bytes > max_total:
-                raise ValueError(f"ZIP uncompressed size too large: {total_bytes} > {max_total}")
-
-            md_infos: list[zipfile.ZipInfo] = []
-            for info in infos:
-                if info.is_dir():
-                    continue
-                name = (info.filename or "").replace("\\", "/")
-                parts = [p.lower() for p in name.split("/") if p]
-                if "__macosx" in parts:
-                    continue
-                if name.lower().endswith(".md"):
-                    md_infos.append(info)
-
-            if not md_infos:
-                return ""
-
-            chosen: zipfile.ZipInfo | None = None
-            preferred = ["full.md", "output.md", "result.md", "index.md", "readme.md"]
-            for pref in preferred:
-                for info in md_infos:
-                    base = (info.filename or "").replace("\\", "/").split("/")[-1].lower()
-                    if base == pref:
-                        chosen = info
-                        break
-                if chosen is not None:
-                    break
-
+        zip_file, infos = _zip_safe_entries(zip_bytes)
+        with zip_file as zf:
+            markdown_infos = _markdown_zip_infos(infos)
+            chosen = _preferred_markdown_info(markdown_infos)
             if chosen is None:
-                def sort_key(i: zipfile.ZipInfo) -> tuple[int, int]:
-                    depth = len([p for p in (i.filename or "").replace("\\", "/").split("/") if p])
-                    return (depth, -int(getattr(i, "file_size", 0) or 0))
-
-                md_infos.sort(key=sort_key)
-                chosen = md_infos[0]
-
+                return ""
             with zf.open(chosen, "r") as f:
                 raw = f.read()
             return raw.decode("utf-8", errors="ignore").strip()
@@ -626,130 +807,24 @@ class MinerUService:
         images_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "images"
         images_dir.mkdir(parents=True, exist_ok=True)
 
-        # Find image refs in Markdown/HTML.
-        md_pat = re.compile(
-            r"!\[[^\]]*\]\(\s*(?:<)?([^)\s>]+)(?:>)?(?:\s+['\"][^'\"]*['\"])?\s*\)",
-            flags=re.IGNORECASE,
-        )
-        html_pat = re.compile(r"<img[^>]+src=[\"']([^\"']+)[\"']", flags=re.IGNORECASE)
-
-        refs: list[str] = []
-        seen: set[str] = set()
-        for pat in (md_pat, html_pat):
-            for m in pat.finditer(markdown):
-                ref = m.group(1)
-                if not isinstance(ref, str):
-                    continue
-                ref = ref.strip()
-                if not ref or ref in seen:
-                    continue
-                seen.add(ref)
-                refs.append(ref)
-
+        refs = _bounded_preview_refs(markdown)
         if not refs:
             return markdown, []
-
-        max_images = max(0, int(getattr(settings, "ZIP_MAX_IMAGES", 0) or 0))
-        if max_images and len(refs) > max_images:
-            refs = refs[:max_images]
-
-        # Index ZIP members by common lookup keys.
-        image_exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
-        member_by_key: dict[str, str] = {}
         try:
             zf = zipfile.ZipFile(io.BytesIO(zip_bytes), "r")
         except Exception:
             return markdown, []
 
         try:
-            for info in zf.infolist():
-                if info.is_dir():
-                    continue
-                name = (info.filename or "").replace("\\", "/").lstrip("/")
-                if not name:
-                    continue
-                parts_lower = [p.lower() for p in name.split("/") if p]
-                if "__macosx" in parts_lower:
-                    continue
-                ext = Path(name).suffix.lower()
-                if ext not in image_exts:
-                    continue
-                member_by_key[name] = name
-                base = Path(name).name
-                member_by_key[base] = name
-
-            # Extract referenced images and build replacement mapping.
-            max_bytes = int(getattr(settings, "MAX_INLINE_IMAGE_BYTES", 10_000_000) or 10_000_000)
-            max_bytes = max(1_000_000, max_bytes)
-
-            extracted: list[dict[str, str]] = []
-            mapping: dict[str, dict[str, str]] = {}
-            cached_id_by_norm: dict[str, str] = {}
-
-            for ref in refs:
-                # Skip remote URLs and already-rewritten refs.
-                parsed_ref = urlparse(ref)
-                scheme = (parsed_ref.scheme or "").lower().strip()
-                if scheme in {"http", "https"} or (parsed_ref.netloc or "").strip():
-                    continue
-                if "/api/v1/documents/image/" in ref or "/api/v1/documents/image-url/" in ref:
-                    continue
-
-                norm = zip_image_processor._normalize_ref_path(ref)
-                if not norm:
-                    continue
-
-                member = member_by_key.get(norm)
-                if not member and not norm.startswith("images/"):
-                    member = member_by_key.get(f"images/{norm}")
-                if not member:
-                    continue
-
-                img_id = cached_id_by_norm.get(norm)
-                if not img_id:
-                    try:
-                        binary = zf.read(member)
-                    except Exception:
-                        get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-                        continue
-                    if not binary or len(binary) > max_bytes:
-                        continue
-
-                    ext = Path(member).suffix.lower()
-                    if ext not in image_exts:
-                        ext = ".png"
-                    img_id = uuid.uuid4().hex
-                    out_path = images_dir / f"{img_id}{ext}"
-                    try:
-                        out_path.write_bytes(binary)
-                        _write_preview_owner_binding(
-                            images_dir=images_dir,
-                            preview_id=img_id,
-                            binding=(
-                                {
-                                    "tenant_id": str(tenant_id),
-                                    "account_id": str(account_id or "").strip(),
-                                }
-                                if str(account_id or "").strip()
-                                else None
-                            ),
-                        )
-                    except Exception:
-                        get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-                        continue
-
-                    cached_id_by_norm[norm] = img_id
-                    extracted.append({"id": img_id, "filename": out_path.name, "url": f"/api/v1/documents/image/{img_id}"})
-
-                url = f"/api/v1/documents/image/{img_id}"
-                keys = {norm, Path(norm).name}
-                for key in keys:
-                    if key:
-                        mapping[key] = {"url": url}
-
+            extracted, mapping = _preview_image_mapping(
+                zip_file=zf,
+                refs=refs,
+                images_dir=images_dir,
+                tenant_id=tenant_id,
+                account_id=account_id,
+            )
             if mapping:
                 markdown = zip_image_processor._replace_image_refs(markdown, mapping)
-
             return markdown, extracted
         finally:
             try:

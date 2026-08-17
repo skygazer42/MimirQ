@@ -5,11 +5,13 @@ Stage classes that hold the service (``ParsingStage``, ``InlineAssetStage``,
 is annotated with a string literal so this module never imports
 ``app.parsing.processors.processor`` (circular import).
 """
+
 import asyncio
 import datetime as dt
 import hashlib
 import shutil
 import uuid
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -86,9 +88,415 @@ from app.services.parse_cache import (
 from app.types.document_analytics import compute_document_analytics
 
 
+@dataclass
+class _InlineAssetStats:
+    uploaded: list[str] = field(default_factory=list)
+    image_codes_added_total: int = 0
+    image_code_audit: dict[str, Any] | None = None
+    captions_added_total: int = 0
+    caption_backend: str | None = None
+    caption_audit: dict[str, Any] | None = None
+    formulas_added_total: int = 0
+    formula_backend: str | None = None
+    formula_audit: dict[str, Any] | None = None
+    charts_added_total: int = 0
+    chart_backend: str | None = None
+    chart_audit: dict[str, Any] | None = None
+
+    def to_result(self, *, documents: list[Document], next_asset_index: int) -> InlineAssetResult:
+        return InlineAssetResult(
+            documents=documents,
+            uploaded_img_ids=self.uploaded,
+            next_asset_index=next_asset_index,
+            image_codes_added=int(self.image_codes_added_total),
+            image_code_audit=(dict(self.image_code_audit) if isinstance(self.image_code_audit, dict) else None),
+            captions_added=int(self.captions_added_total),
+            caption_backend=self.caption_backend,
+            caption_audit=(dict(self.caption_audit) if isinstance(self.caption_audit, dict) else None),
+            formulas_added=int(self.formulas_added_total),
+            formula_backend=self.formula_backend,
+            formula_audit=(dict(self.formula_audit) if isinstance(self.formula_audit, dict) else None),
+            charts_added=int(self.charts_added_total),
+            chart_backend=self.chart_backend,
+            chart_audit=(dict(self.chart_audit) if isinstance(self.chart_audit, dict) else None),
+        )
+
+
+@dataclass(frozen=True)
+class _ChunkAssetDeps:
+    append_image_understanding_text: Any
+    decode_image_codes: Any
+    derive_image_caption: Any
+    infer_visual_kind_from_pixels: Any
+    load_image_for_ocr: Any
+    ocr_image: Any
+    redact_ocr_text: Any
+    score_chunk_quality: Any
+
+
+@dataclass
+class _ChunkAssetRuntime:
+    dataset_id: str
+    resolved_backend: str
+    resolved_chunk_strategy: str
+    ocr_remaining: int | None
+    img_ids: list[str] = field(default_factory=list)
+    out_chunks: list[Document] = field(default_factory=list)
+    out_idx: int = 0
+    seen_ocr_hashes: set[str] = field(default_factory=set)
+
+
+@dataclass(frozen=True)
+class _ImageUnderstandingResult:
+    caption: str = ""
+    ocr_text: str = ""
+    image_code_text: str = ""
+
+
 class ParsingStage:
     def __init__(self, service):
         self._svc = service
+
+    @staticmethod
+    def _artifact_root(*, tenant_id: UUID, document_id: UUID, suffix: str) -> Path:
+        return (
+            Path(settings.UPLOAD_DIR)
+            / str(tenant_id)
+            / MIMIRQ_PARSE_DIRNAME
+            / f"{str(document_id)}-{suffix}-{uuid.uuid4().hex}"
+        )
+
+    @staticmethod
+    def _cleanup_artifact_root(artifact_root: Path) -> None:
+        try:
+            shutil.rmtree(artifact_root, ignore_errors=True)
+        except Exception as exc:
+            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+
+    @staticmethod
+    def _documents_from_items(items: list[Any] | None) -> list[Document]:
+        return [
+            Document(
+                page_content=str(item.get("page_content") or ""),
+                metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
+                id=item.get("id") if isinstance(item.get("id"), str) else None,
+            )
+            for item in (items or [])
+            if isinstance(item, dict)
+        ]
+
+    @staticmethod
+    def _commit_document_metadata(db: Session, db_document: DBDocument, metadata: dict[str, Any]) -> None:
+        db_document.doc_metadata = metadata
+        db.commit()
+        db.refresh(db_document)
+
+    async def _run_parser_job(
+        self,
+        *,
+        db: Session,
+        tenant_id: UUID,
+        document_id: UUID,
+        artifact_root: Path,
+        payload: dict[str, Any],
+        error_prefix: str,
+    ) -> dict[str, Any]:
+        cancel_check = self._svc._build_cancel_check(db=db, tenant_id=tenant_id, document_id=document_id)
+
+        async def cancel_check_worker() -> bool:
+            return await cancel_check()
+
+        try:
+            return await run_parser_subprocess(
+                tenant_id=tenant_id,
+                payload=payload,
+                cancel_check=cancel_check_worker,
+                timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
+            )
+        except SubprocessCancelled as exc:
+            self._cleanup_artifact_root(artifact_root)
+            raise DocumentCancelledError(str(exc)) from exc
+        except asyncio.CancelledError:
+            self._cleanup_artifact_root(artifact_root)
+            raise
+        except ParsingError as exc:
+            raise RuntimeError(f"{error_prefix}: {str(exc)[:200]}") from exc
+
+    async def _run_integrated_pipeline(
+        self,
+        *,
+        db: Session,
+        db_document: DBDocument,
+        file_path: Path,
+        document_id: UUID,
+        tenant_id: UUID,
+        resolved_chunk_strategy: str,
+    ) -> ParseResult:
+        resolved_backend = "integrated"
+        self._svc._record_processing_metadata(
+            db,
+            tenant_id,
+            document_id,
+            parser_backend=resolved_backend,
+            chunk_strategy=resolved_chunk_strategy,
+        )
+        artifact_root = self._artifact_root(tenant_id=tenant_id, document_id=document_id, suffix="integrated")
+        result = await self._run_parser_job(
+            db=db,
+            tenant_id=tenant_id,
+            document_id=document_id,
+            artifact_root=artifact_root,
+            payload={
+                "action": "integrated_chunk",
+                "tenant_id": str(tenant_id),
+                "file_path": str(file_path),
+                "strategy": resolved_chunk_strategy,
+                "mode": "ingest",
+                "artifact_root": str(artifact_root),
+            },
+            error_prefix="Integrated pipeline parsing failed",
+        )
+        chunks = self._documents_from_items(result.get("documents"))
+        return ParseResult(
+            resolved_backend=resolved_backend,
+            resolved_chunk_strategy=resolved_chunk_strategy,
+            chunks=_attach_logical_source_metadata(chunks, db_document=db_document, file_path=file_path),
+        )
+
+    def _resolve_pdf_backend(
+        self,
+        *,
+        db: Session,
+        db_document: DBDocument,
+        file_path: Path,
+        parser_backend: str | None,
+    ) -> tuple[str | None, dict[str, Any] | None]:
+        effective_parser_backend = parser_backend
+        pdf_quality = None
+        if file_path.suffix.lower() != ".pdf":
+            return effective_parser_backend, pdf_quality
+
+        requested = (parser_backend or "").strip().lower()
+        if requested and requested != "auto":
+            return effective_parser_backend, pdf_quality
+
+        cached_quality = None
+        try:
+            metadata = db_document.doc_metadata or {}
+            quality = metadata.get("pdf_quality") if isinstance(metadata, dict) else None
+            if isinstance(quality, dict) and quality.get("score") is not None:
+                cached_quality = dict(quality)
+        except (TypeError, ValueError, AttributeError):
+            cached_quality = None
+
+        effective_parser_backend, pdf_quality = route_pdf_backend(
+            file_path,
+            parser_backend,
+            quality=cached_quality,
+            sample_pages=3,
+            use_ocr_validation=settings.RAPIDOCR_ENABLED,
+        )
+        if isinstance(pdf_quality, dict):
+            metadata = dict(db_document.doc_metadata or {})
+            metadata["pdf_quality"] = pdf_quality
+            self._commit_document_metadata(db, db_document, metadata)
+        return effective_parser_backend, pdf_quality
+
+    def _maybe_load_parse_cache(
+        self,
+        *,
+        db: Session,
+        db_document: DBDocument,
+        tenant_id: UUID,
+        dataset_id: str,
+        effective_parser_backend: str | None,
+    ) -> tuple[str | None, bool, list[Document]]:
+        parse_cache_key: str | None = None
+        if not bool(getattr(settings, "PARSE_CACHE_ENABLED", False)) or not bool(
+            getattr(settings, "MINIO_ENABLED", False)
+        ):
+            return parse_cache_key, False, []
+
+        try:
+            metadata = dict(db_document.doc_metadata or {})
+            file_sha = str(metadata.get("file_sha256") or "").strip().lower()
+            pipeline_hash = str(metadata.get("pipeline_hash") or metadata.get("active_pipeline_hash") or "").strip()
+            backend_key = str(effective_parser_backend or "").strip().lower()
+            if not file_sha or not backend_key:
+                return parse_cache_key, False, []
+
+            parse_cache_key = build_remote_parse_cache_key(
+                file_sha256=file_sha,
+                resolved_backend=backend_key,
+                config_hash=(pipeline_hash or "unknown"),
+                version=str(getattr(settings, "PARSE_CACHE_VERSION", "v1") or "v1"),
+            )
+            cached, age_ms = parse_cache_service.get(
+                tenant_id=str(tenant_id),
+                dataset_id=str(dataset_id),
+                cache_key=parse_cache_key,
+                ttl_sec=int(getattr(settings, "PARSE_CACHE_TTL_SEC", 0) or 0),
+                max_bytes=int(getattr(settings, "PARSE_CACHE_MAX_BYTES", 0) or 0),
+            )
+            documents = self._documents_from_items(list(getattr(cached, "documents", None) or []))
+            if not documents:
+                return parse_cache_key, False, []
+
+            try:
+                meta_patch = dict(db_document.doc_metadata or {})
+                meta_patch["parse_cache"] = {
+                    "schema": "mimirq.parse_cache_hit.v1",
+                    "hit": True,
+                    "age_ms": int(age_ms or 0),
+                    "backend": backend_key,
+                }
+                self._commit_document_metadata(db, db_document, meta_patch)
+            except Exception as exc:
+                logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+            return parse_cache_key, True, documents
+        except Exception as exc:
+            _log_processor_fallback("run", exc)
+            return parse_cache_key, False, []
+
+    async def _parse_documents(
+        self,
+        *,
+        db: Session,
+        file_path: Path,
+        document_id: UUID,
+        tenant_id: UUID,
+        dataset_id: str,
+        effective_parser_backend: str | None,
+        pdf_quality: dict[str, Any] | None,
+        html_xpath: str | None,
+    ) -> tuple[dict[str, Any], list[Document]]:
+        artifact_root = self._artifact_root(tenant_id=tenant_id, document_id=document_id, suffix="parse")
+        payload: dict[str, Any] = {
+            "action": "parse_documents",
+            "tenant_id": str(tenant_id),
+            "file_path": str(file_path),
+            "parser_backend": effective_parser_backend,
+            "mode": "ingest",
+            "dataset_id": dataset_id,
+            "document_id": str(document_id),
+            "pdf_quality": pdf_quality,
+            "artifact_root": str(artifact_root),
+        }
+        if isinstance(html_xpath, str) and html_xpath.strip():
+            payload["html_xpath"] = html_xpath.strip()
+
+        parsed = await self._run_parser_job(
+            db=db,
+            tenant_id=tenant_id,
+            document_id=document_id,
+            artifact_root=artifact_root,
+            payload=payload,
+            error_prefix="Parsing failed",
+        )
+        return parsed, self._documents_from_items(parsed.get("documents"))
+
+    def _persist_parse_provenance(self, db: Session, db_document: DBDocument, parsed: dict[str, Any] | None) -> None:
+        try:
+            provenance = parsed.get("provenance") if isinstance(parsed, dict) else None
+            if not isinstance(provenance, dict) or not provenance:
+                return
+            metadata = dict(db_document.doc_metadata or {})
+            metadata["parse_provenance"] = provenance
+            self._commit_document_metadata(db, db_document, metadata)
+        except Exception as exc:
+            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+
+    def _persist_parse_quality(
+        self,
+        *,
+        db: Session,
+        db_document: DBDocument,
+        documents: list[Document],
+        pdf_quality: dict[str, Any] | None,
+    ) -> None:
+        try:
+            joined = _join_document_page_content(documents)
+            quality = score_parsed_text_quality(joined).to_dict()
+            seal_summary = _build_seal_summary(documents)
+            specialty_signals = _seal_summary_to_specialty_signals(seal_summary)
+            ocr_summary = _build_ocr_quality_summary(
+                documents,
+                low_confidence_threshold=float(settings.PARSE_QUALITY_OCR_LOW_CONFIDENCE_THRESHOLD),
+            )
+            metadata = dict(db_document.doc_metadata or {})
+            metadata["parsed_text_quality"] = quality
+            metadata["parse_quality"] = score_document_parse_quality(
+                pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
+                parsed_text_quality=quality,
+                specialty_signals=specialty_signals,
+            )
+            if seal_summary is not None:
+                metadata["seal_summary"] = seal_summary
+            if ocr_summary is not None:
+                metadata["ocr"] = ocr_summary
+            metadata.update(
+                compute_parsing_artifact_stats(
+                    documents=documents,
+                    original_markdown=_join_original_markdown_for_persistence(documents),
+                    markdown=joined,
+                    pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
+                )
+            )
+            try:
+                metadata["document_analytics_raw"] = compute_document_analytics(
+                    markdown=joined,
+                    documents=documents,
+                    pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
+                    detect_language=bool(getattr(settings, "GOVERNANCE_DETECT_LANGUAGE", False)),
+                    language_min_chars=int(getattr(settings, "GOVERNANCE_LANGUAGE_MIN_CHARS", 40) or 40),
+                ).to_dict()
+            except Exception as exc:
+                logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+            self._commit_document_metadata(db, db_document, apply_parse_quality_gate_metadata(metadata))
+        except Exception as exc:
+            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+
+    def _maybe_write_parse_cache(
+        self,
+        *,
+        db_document: DBDocument,
+        tenant_id: UUID,
+        dataset_id: str,
+        parse_cache_key: str | None,
+        parse_cache_hit: bool,
+        documents: list[Document],
+        effective_parser_backend: str | None,
+    ) -> None:
+        if parse_cache_hit or not parse_cache_key or not documents:
+            return
+
+        try:
+            metadata = dict(db_document.doc_metadata or {})
+            file_sha = str(metadata.get("file_sha256") or "").strip().lower()
+            pipeline_hash = str(metadata.get("pipeline_hash") or metadata.get("active_pipeline_hash") or "").strip()
+            entry = RemoteParseCacheEntry(
+                created_at=dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat(),
+                file_sha256=file_sha,
+                resolved_backend=str(effective_parser_backend or "").strip().lower(),
+                config_hash=(pipeline_hash or "unknown"),
+                documents=[
+                    {
+                        "page_content": str(doc.page_content or ""),
+                        "metadata": dict(doc.metadata or {}),
+                        "id": str(doc.id) if isinstance(getattr(doc, "id", None), str) else None,
+                    }
+                    for doc in documents
+                ],
+            )
+            parse_cache_service.set(
+                tenant_id=str(tenant_id),
+                dataset_id=str(dataset_id),
+                cache_key=parse_cache_key,
+                entry=entry,
+                max_bytes=int(getattr(settings, "PARSE_CACHE_MAX_BYTES", 0) or 0),
+            )
+        except Exception as exc:
+            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
 
     async def run(
         self,
@@ -107,304 +515,61 @@ class ParsingStage:
         # are honored consistently (including integrated_* strategies).
         resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
         if resolved_chunk_strategy in self._svc.INTEGRATED_PIPELINE_STRATEGIES:
-            resolved_backend = "integrated"
-            self._svc._record_processing_metadata(
-                db,
-                tenant_id,
-                document_id,
-                parser_backend=resolved_backend,
-                chunk_strategy=resolved_chunk_strategy,
-            )
-            artifact_root = (
-                Path(settings.UPLOAD_DIR)
-                / str(tenant_id)
-                / MIMIRQ_PARSE_DIRNAME
-                / f"{str(document_id)}-integrated-{uuid.uuid4().hex}"
-            )
-            cancel_check = self._svc._build_cancel_check(db=db, tenant_id=tenant_id, document_id=document_id)
-
-            async def cancel_check_worker() -> bool:
-                return await cancel_check()
-
-            try:
-                result = await run_parser_subprocess(
-                    tenant_id=tenant_id,
-                    payload={
-                        "action": "integrated_chunk",
-                        "tenant_id": str(tenant_id),
-                        "file_path": str(file_path),
-                        "strategy": resolved_chunk_strategy,
-                        "mode": "ingest",
-                        "artifact_root": str(artifact_root),
-                    },
-                    cancel_check=cancel_check_worker,
-                    timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
-                )
-            except SubprocessCancelled as exc:
-                try:
-                    shutil.rmtree(artifact_root, ignore_errors=True)
-                except Exception as exc:
-                    logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-                raise DocumentCancelledError(str(exc)) from exc
-            except asyncio.CancelledError:
-                try:
-                    shutil.rmtree(artifact_root, ignore_errors=True)
-                except Exception as exc:
-                    logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-                raise
-            except ParsingError as exc:
-                raise RuntimeError(f"Integrated pipeline parsing failed: {str(exc)[:200]}") from exc
-
-            chunks = [
-                Document(
-                    page_content=str(item.get("page_content") or ""),
-                    metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
-                    id=item.get("id") if isinstance(item.get("id"), str) else None,
-                )
-                for item in (result.get("documents") or [])
-                if isinstance(item, dict)
-            ]
-            return ParseResult(
-                resolved_backend=resolved_backend,
+            return await self._run_integrated_pipeline(
+                db=db,
+                db_document=db_document,
+                file_path=file_path,
+                document_id=document_id,
+                tenant_id=tenant_id,
                 resolved_chunk_strategy=resolved_chunk_strategy,
-                chunks=_attach_logical_source_metadata(chunks, db_document=db_document, file_path=file_path),
             )
 
         logger.info("Parsing document: %s", file_path)
-        effective_parser_backend = parser_backend
-        file_ext = file_path.suffix.lower()
-        pdf_quality = None
-        parse_cache_key: str | None = None
-        parse_cache_hit = False
-        parse_cache_age_ms: int | None = None
-        if file_ext == ".pdf":
-            requested = (parser_backend or "").strip().lower()
-            if not requested or requested == "auto":
-                cached_quality = None
-                try:
-                    m0 = db_document.doc_metadata or {}
-                    q0 = m0.get("pdf_quality") if isinstance(m0, dict) else None
-                    if isinstance(q0, dict) and q0.get("score") is not None:
-                        cached_quality = dict(q0)
-                except (TypeError, ValueError, AttributeError):
-                    cached_quality = None
-                effective_parser_backend, pdf_quality = route_pdf_backend(
-                    file_path,
-                    parser_backend,
-                    quality=cached_quality,
-                    sample_pages=3,
-                    use_ocr_validation=settings.RAPIDOCR_ENABLED,
-                )
-                if isinstance(pdf_quality, dict):
-                    metadata = dict(db_document.doc_metadata or {})
-                    metadata["pdf_quality"] = pdf_quality
-                    db_document.doc_metadata = metadata
-                    db.commit()
-                    db.refresh(db_document)
+        effective_parser_backend, pdf_quality = self._resolve_pdf_backend(
+            db=db,
+            db_document=db_document,
+            file_path=file_path,
+            parser_backend=parser_backend,
+        )
+        parse_cache_key, parse_cache_hit, documents = self._maybe_load_parse_cache(
+            db=db,
+            db_document=db_document,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            effective_parser_backend=effective_parser_backend,
+        )
 
         parsed: dict[str, Any] | None = None
-        documents: list[Document] = []
-
-        # Optional: parse cache (MinIO). Best-effort and never blocks ingestion.
-        try:
-            if bool(getattr(settings, "PARSE_CACHE_ENABLED", False)) and bool(getattr(settings, "MINIO_ENABLED", False)):
-                meta0 = dict(db_document.doc_metadata or {})
-                file_sha = str(meta0.get("file_sha256") or "").strip().lower()
-                pipeline_hash = str(meta0.get("pipeline_hash") or meta0.get("active_pipeline_hash") or "").strip()
-                config_hash = pipeline_hash or "unknown"
-                backend_key = str(effective_parser_backend or "").strip().lower()
-                if file_sha and backend_key:
-                    parse_cache_key = build_remote_parse_cache_key(
-                        file_sha256=file_sha,
-                        resolved_backend=backend_key,
-                        config_hash=config_hash,
-                        version=str(getattr(settings, "PARSE_CACHE_VERSION", "v1") or "v1"),
-                    )
-                    cached, age_ms = parse_cache_service.get(
-                        tenant_id=str(tenant_id),
-                        dataset_id=str(dataset_id),
-                        cache_key=parse_cache_key,
-                        ttl_sec=int(getattr(settings, "PARSE_CACHE_TTL_SEC", 0) or 0),
-                        max_bytes=int(getattr(settings, "PARSE_CACHE_MAX_BYTES", 0) or 0),
-                    )
-                    if cached is not None and list(getattr(cached, "documents", None) or []):
-                        parse_cache_hit = True
-                        parse_cache_age_ms = age_ms
-                        documents = [
-                            Document(
-                                page_content=str(item.get("page_content") or ""),
-                                metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
-                                id=item.get("id") if isinstance(item.get("id"), str) else None,
-                            )
-                            for item in (cached.documents or [])
-                            if isinstance(item, dict)
-                        ]
-                        # Record cache hit for observability (best-effort).
-                        try:
-                            meta_patch = dict(db_document.doc_metadata or {})
-                            meta_patch["parse_cache"] = {
-                                "schema": "mimirq.parse_cache_hit.v1",
-                                "hit": True,
-                                "age_ms": int(parse_cache_age_ms or 0),
-                                "backend": backend_key,
-                            }
-                            db_document.doc_metadata = meta_patch
-                            db.commit()
-                            db.refresh(db_document)
-                        except Exception as exc:
-                            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-        except Exception as exc:
-            _log_processor_fallback('run', exc)
-            parse_cache_hit = False
 
         if not parse_cache_hit:
-            artifact_root = (
-                Path(settings.UPLOAD_DIR)
-                / str(tenant_id)
-                / MIMIRQ_PARSE_DIRNAME
-                / f"{str(document_id)}-parse-{uuid.uuid4().hex}"
+            parsed, documents = await self._parse_documents(
+                db=db,
+                file_path=file_path,
+                document_id=document_id,
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                effective_parser_backend=effective_parser_backend,
+                pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
+                html_xpath=html_xpath,
             )
-            cancel_check = self._svc._build_cancel_check(db=db, tenant_id=tenant_id, document_id=document_id)
-
-            async def cancel_check_worker() -> bool:
-                return await cancel_check()
-
-            try:
-                payload = {
-                    "action": "parse_documents",
-                    "tenant_id": str(tenant_id),
-                    "file_path": str(file_path),
-                    "parser_backend": effective_parser_backend,
-                    "mode": "ingest",
-                    "dataset_id": dataset_id,
-                    "document_id": str(document_id),
-                    "pdf_quality": pdf_quality,
-                    "artifact_root": str(artifact_root),
-                }
-                if isinstance(html_xpath, str) and html_xpath.strip():
-                    payload["html_xpath"] = html_xpath.strip()
-                parsed = await run_parser_subprocess(
-                    tenant_id=tenant_id,
-                    payload=payload,
-                    cancel_check=cancel_check_worker,
-                    timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
-                )
-            except SubprocessCancelled as exc:
-                try:
-                    shutil.rmtree(artifact_root, ignore_errors=True)
-                except Exception as exc:
-                    logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-                raise DocumentCancelledError(str(exc)) from exc
-            except asyncio.CancelledError:
-                try:
-                    shutil.rmtree(artifact_root, ignore_errors=True)
-                except Exception as exc:
-                    logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-                raise
-            except ParsingError as exc:
-                raise RuntimeError(f"Parsing failed: {str(exc)[:200]}") from exc
-
-            documents = [
-                Document(
-                    page_content=str(item.get("page_content") or ""),
-                    metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
-                    id=item.get("id") if isinstance(item.get("id"), str) else None,
-                )
-                for item in (parsed.get("documents") or [])
-                if isinstance(item, dict)
-            ]
 
         documents = _attach_logical_source_metadata(documents, db_document=db_document, file_path=file_path)
-
-        # Persist parse provenance for audit/debug (best-effort).
-        try:
-            prov = parsed.get("provenance") if isinstance(parsed, dict) else None
-            if isinstance(prov, dict) and prov:
-                meta = dict(db_document.doc_metadata or {})
-                meta["parse_provenance"] = prov
-                db_document.doc_metadata = meta
-                db.commit()
-                db.refresh(db_document)
-        except Exception as exc:
-            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-
-        # Attach lightweight parsed-text quality metrics for observability/tuning.
-        try:
-            joined = _join_document_page_content(documents)
-            quality = score_parsed_text_quality(joined).to_dict()
-            seal_summary = _build_seal_summary(documents)
-            specialty_signals = _seal_summary_to_specialty_signals(seal_summary)
-            ocr_summary = _build_ocr_quality_summary(
-                documents,
-                low_confidence_threshold=float(settings.PARSE_QUALITY_OCR_LOW_CONFIDENCE_THRESHOLD),
-            )
-            meta = dict(db_document.doc_metadata or {})
-            meta["parsed_text_quality"] = quality
-            meta["parse_quality"] = score_document_parse_quality(
-                pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
-                parsed_text_quality=quality,
-                specialty_signals=specialty_signals,
-            )
-            if seal_summary is not None:
-                meta["seal_summary"] = seal_summary
-            if ocr_summary is not None:
-                meta["ocr"] = ocr_summary
-            artifact_stats = compute_parsing_artifact_stats(
-                documents=documents,
-                original_markdown=_join_original_markdown_for_persistence(documents),
-                markdown=joined,
-                pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
-            )
-            meta.update(artifact_stats)
-            # Lightweight "document portrait" for UI (best-effort, safe to ignore).
-            try:
-                meta["document_analytics_raw"] = compute_document_analytics(
-                    markdown=joined,
-                    documents=documents,
-                    pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
-                    detect_language=bool(getattr(settings, "GOVERNANCE_DETECT_LANGUAGE", False)),
-                    language_min_chars=int(getattr(settings, "GOVERNANCE_LANGUAGE_MIN_CHARS", 40) or 40),
-                ).to_dict()
-            except Exception as exc:
-                logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-            meta = apply_parse_quality_gate_metadata(meta)
-            db_document.doc_metadata = meta
-            db.commit()
-            db.refresh(db_document)
-        except Exception as exc:
-            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-
-        # Parse cache write-through (best-effort, only when miss).
-        if (not parse_cache_hit) and parse_cache_key and documents:
-            try:
-                meta0 = dict(db_document.doc_metadata or {})
-                file_sha = str(meta0.get("file_sha256") or "").strip().lower()
-                pipeline_hash = str(meta0.get("pipeline_hash") or meta0.get("active_pipeline_hash") or "").strip()
-                config_hash = pipeline_hash or "unknown"
-                backend_key = str(effective_parser_backend or "").strip().lower()
-                entry = RemoteParseCacheEntry(
-                    created_at=dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat(),
-                    file_sha256=file_sha,
-                    resolved_backend=backend_key,
-                    config_hash=config_hash,
-                    documents=[
-                        {
-                            "page_content": str(d.page_content or ""),
-                            "metadata": dict(d.metadata or {}),
-                            "id": str(d.id) if isinstance(getattr(d, "id", None), str) else None,
-                        }
-                        for d in (documents or [])
-                    ],
-                )
-                parse_cache_service.set(
-                    tenant_id=str(tenant_id),
-                    dataset_id=str(dataset_id),
-                    cache_key=parse_cache_key,
-                    entry=entry,
-                    max_bytes=int(getattr(settings, "PARSE_CACHE_MAX_BYTES", 0) or 0),
-                )
-            except Exception as exc:
-                logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+        self._persist_parse_provenance(db, db_document, parsed)
+        self._persist_parse_quality(
+            db=db,
+            db_document=db_document,
+            documents=documents,
+            pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
+        )
+        self._maybe_write_parse_cache(
+            db_document=db_document,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            parse_cache_key=parse_cache_key,
+            parse_cache_hit=parse_cache_hit,
+            documents=documents,
+            effective_parser_backend=effective_parser_backend,
+        )
 
         parsed_backend = parsed.get("resolved_backend") if isinstance(parsed, dict) else None
         resolved_backend = str(parsed_backend or effective_parser_backend or parser_backend or "auto")
@@ -426,6 +591,190 @@ class InlineAssetStage:
     def __init__(self, service):
         self._svc = service
 
+    @staticmethod
+    def _resolve_origin_path(origin_path: Path, metadata: dict[str, Any]) -> Path:
+        base_dir = metadata.get("asset_base_dir")
+        if isinstance(base_dir, str) and base_dir.strip():
+            return Path(base_dir.strip())
+        return origin_path
+
+    @staticmethod
+    def _append_derived_elements(
+        metadata: dict[str, Any],
+        raw_elements: Any,
+        *,
+        prefix: str,
+    ) -> None:
+        if not isinstance(raw_elements, list) or not raw_elements:
+            return
+
+        derived = [item for item in (metadata.get("derived_elements") or []) if isinstance(item, dict)]
+        page_hint = metadata.get("element_page") or metadata.get("page")
+        for raw_element in raw_elements:
+            if not isinstance(raw_element, dict):
+                continue
+            item = dict(raw_element)
+            if item.get("page") is None and page_hint is not None:
+                item["page"] = page_hint
+            if not str(item.get("id") or "").strip():
+                page_part = item.get("page") if item.get("page") is not None else "na"
+                item["id"] = f"{prefix}:{page_part}:{len(derived)}"
+            derived.append(item)
+        if derived:
+            metadata["derived_elements"] = derived
+
+    def _apply_image_code_enrichment(
+        self,
+        *,
+        content: str,
+        origin_path: Path,
+        metadata: dict[str, Any],
+        stats: _InlineAssetStats,
+    ) -> str:
+        if not content:
+            return content
+        try:
+            content, added, audit = add_image_code_blocks(content, origin_path=origin_path)
+            stats.image_codes_added_total += int(added or 0)
+            stats.image_code_audit = audit.to_dict()
+            self._append_derived_elements(metadata, getattr(audit, "code_elements", None), prefix="image_code")
+        except Exception as exc:
+            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+        return content
+
+    def _apply_formula_enrichment(
+        self,
+        *,
+        content: str,
+        origin_path: Path,
+        metadata: dict[str, Any],
+        formula_url: str,
+        enabled: bool,
+        stats: _InlineAssetStats,
+    ) -> str:
+        if not enabled or not content:
+            return content
+        try:
+            content, added, audit = add_formula_latex_blocks(
+                content,
+                origin_path=origin_path,
+                api_url=formula_url,
+                timeout_sec=float(getattr(settings, "FORMULA_OCR_TIMEOUT_SEC", 60) or 60),
+                max_images=int(getattr(settings, "FORMULA_OCR_MAX_IMAGES", 12) or 12),
+                max_image_bytes=int(getattr(settings, "FORMULA_OCR_MAX_IMAGE_BYTES", 5_000_000) or 5_000_000),
+                max_latex_chars=int(getattr(settings, "FORMULA_OCR_MAX_LATEX_CHARS", 2000) or 2000),
+            )
+            stats.formulas_added_total += int(added or 0)
+            stats.formula_backend = "formula_http"
+            stats.formula_audit = audit.to_dict()
+            self._append_derived_elements(metadata, getattr(audit, "formula_elements", None), prefix="formula_ocr")
+        except Exception as exc:
+            _log_processor_fallback("run", exc)
+        return content
+
+    @staticmethod
+    def _apply_chart_enrichment(
+        *,
+        content: str,
+        origin_path: Path,
+        enabled: bool,
+        stats: _InlineAssetStats,
+    ) -> str:
+        if not enabled or not content:
+            return content
+        try:
+            content, added, audit = add_chart_data_blocks(
+                content,
+                origin_path=origin_path,
+                max_images=int(getattr(settings, "CHART_TO_DATA_MAX_IMAGES", 8) or 8),
+                max_image_bytes=int(getattr(settings, "CHART_TO_DATA_MAX_IMAGE_BYTES", 5_000_000) or 5_000_000),
+                timeout_sec=float(getattr(settings, "CHART_TO_DATA_TIMEOUT_SEC", 20) or 20),
+            )
+            stats.charts_added_total += int(added or 0)
+            stats.chart_backend = "chart_http"
+            stats.chart_audit = audit.to_dict()
+        except Exception as exc:
+            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+        return content
+
+    @staticmethod
+    def _apply_caption_enrichment(
+        *,
+        content: str,
+        origin_path: Path,
+        enabled: bool,
+        stats: _InlineAssetStats,
+    ) -> str:
+        if not enabled:
+            return content
+        try:
+            if (
+                bool(getattr(settings, "IMAGE_CAPTION_VLM_ENABLED", False))
+                and str(getattr(settings, "IMAGE_CAPTION_VLM_API_URL", "") or "").strip()
+            ):
+                content, added, audit = add_vlm_image_captions(
+                    content,
+                    origin_path=origin_path,
+                    api_url=str(getattr(settings, "IMAGE_CAPTION_VLM_API_URL", "") or ""),
+                    timeout_sec=float(getattr(settings, "IMAGE_CAPTION_VLM_TIMEOUT_SEC", 60) or 60),
+                    max_images=int(getattr(settings, "IMAGE_CAPTION_VLM_MAX_IMAGES", 20) or 20),
+                    max_image_bytes=int(getattr(settings, "IMAGE_CAPTION_VLM_MAX_IMAGE_BYTES", 5_000_000) or 5_000_000),
+                    max_caption_chars=int(getattr(settings, "IMAGE_CAPTION_VLM_MAX_CAPTION_CHARS", 200) or 200),
+                )
+                stats.captions_added_total += int(added or 0)
+                stats.caption_backend = "vlm_http"
+                stats.caption_audit = audit.to_dict()
+                return content
+
+            content, added = add_image_captions(content)
+            stats.captions_added_total += int(added or 0)
+            stats.caption_backend = "heuristic"
+        except Exception as exc:
+            _log_processor_fallback("run", exc)
+        return content
+
+    def _upload_inline_assets(
+        self,
+        *,
+        content: str,
+        enabled: bool,
+        tenant_id: UUID,
+        dataset_id: str,
+        document_id: UUID,
+        inline_cache: dict[str, str],
+        asset_idx: int,
+        origin_path: Path,
+        stats: _InlineAssetStats,
+    ) -> tuple[str, int]:
+        if not enabled:
+            return content, asset_idx
+
+        new_content, new_img_ids, next_asset_index = self._svc._upload_inline_images_to_minio(
+            markdown_text=content,
+            tenant_id=str(tenant_id),
+            dataset_id=dataset_id,
+            document_id=str(document_id),
+            cache=inline_cache,
+            start_index=asset_idx,
+            origin_path=origin_path,
+        )
+        stats.uploaded.extend(list(new_img_ids or []))
+        return new_content, next_asset_index
+
+    @staticmethod
+    def _build_output_document(
+        doc: Document,
+        *,
+        original_content: str,
+        new_content: str,
+        original_meta: dict[str, Any],
+        new_meta: dict[str, Any],
+    ) -> Document:
+        if new_content != original_content or new_meta != original_meta:
+            page_content = new_content if new_content != original_content else original_content
+            return Document(page_content=page_content, metadata=new_meta, id=doc.id)
+        return doc
+
     def run(
         self,
         *,
@@ -445,191 +794,75 @@ class InlineAssetStage:
             str(getattr(settings, "CHART_TO_DATA_API_URL", "") or "").strip()
         )
         image_code_enabled = True
-        if not upload_enabled and not caption_enabled and not formula_enabled and not chart_enabled and not image_code_enabled:
+        if (
+            not upload_enabled
+            and not caption_enabled
+            and not formula_enabled
+            and not chart_enabled
+            and not image_code_enabled
+        ):
             return InlineAssetResult(documents=documents, uploaded_img_ids=[], next_asset_index=int(start_index or 0))
 
         inline_cache: dict[str, str] = {}
         asset_idx = int(start_index or 0)
-        uploaded: list[str] = []
         processed_docs: list[Document] = []
-        image_codes_added_total = 0
-        image_code_audit: dict[str, Any] | None = None
-        captions_added_total = 0
-        caption_backend: str | None = None
-        caption_audit: dict[str, Any] | None = None
-        formulas_added_total = 0
-        formula_backend: str | None = None
-        formula_audit: dict[str, Any] | None = None
-        charts_added_total = 0
-        chart_backend: str | None = None
-        chart_audit: dict[str, Any] | None = None
+        stats = _InlineAssetStats()
 
         for doc in documents:
             content = doc.page_content or ""
             original_meta = dict(doc.metadata or {})
-            origin_for_doc = origin_path
-            base_dir = original_meta.get("asset_base_dir")
-            if isinstance(base_dir, str) and base_dir.strip():
-                origin_for_doc = Path(base_dir.strip())
+            origin_for_doc = self._resolve_origin_path(origin_path, original_meta)
 
             next_content = content
             next_meta = dict(original_meta)
-            if next_content:
-                try:
-                    next_content, added, audit = add_image_code_blocks(
-                        next_content,
-                        origin_path=origin_for_doc,
-                    )
-                    image_codes_added_total += int(added or 0)
-                    image_code_audit = audit.to_dict()
-                    raw_code_elements = getattr(audit, "code_elements", None)
-                    if isinstance(raw_code_elements, list) and raw_code_elements:
-                        derived = [item for item in (next_meta.get("derived_elements") or []) if isinstance(item, dict)]
-                        page_hint = next_meta.get("element_page") or next_meta.get("page")
-                        for raw_element in raw_code_elements:
-                            if not isinstance(raw_element, dict):
-                                continue
-                            item = dict(raw_element)
-                            if item.get("page") is None and page_hint is not None:
-                                item["page"] = page_hint
-                            if not str(item.get("id") or "").strip():
-                                page_part = item.get("page") if item.get("page") is not None else "na"
-                                item["id"] = f"image_code:{page_part}:{len(derived)}"
-                            derived.append(item)
-                        if derived:
-                            next_meta["derived_elements"] = derived
-                except Exception as exc:
-                    logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-            # Opt3: Formula OCR / LaTeX conversion (best-effort) before asset rewriting
-            # so we can still read local image files.
-            if formula_enabled and next_content:
-                try:
-                    next_content, added, audit = add_formula_latex_blocks(
-                        next_content,
-                        origin_path=origin_for_doc,
-                        api_url=formula_url,
-                        timeout_sec=float(getattr(settings, "FORMULA_OCR_TIMEOUT_SEC", 60) or 60),
-                        max_images=int(getattr(settings, "FORMULA_OCR_MAX_IMAGES", 12) or 12),
-                        max_image_bytes=int(getattr(settings, "FORMULA_OCR_MAX_IMAGE_BYTES", 5_000_000) or 5_000_000),
-                        max_latex_chars=int(getattr(settings, "FORMULA_OCR_MAX_LATEX_CHARS", 2000) or 2000),
-                    )
-                    formulas_added_total += int(added or 0)
-                    formula_backend = "formula_http"
-                    formula_audit = audit.to_dict()
-                    raw_formula_elements = getattr(audit, "formula_elements", None)
-                    if isinstance(raw_formula_elements, list) and raw_formula_elements:
-                        derived = [item for item in (next_meta.get("derived_elements") or []) if isinstance(item, dict)]
-                        page_hint = next_meta.get("element_page") or next_meta.get("page")
-                        for raw_element in raw_formula_elements:
-                            if not isinstance(raw_element, dict):
-                                continue
-                            item = dict(raw_element)
-                            if item.get("page") is None and page_hint is not None:
-                                item["page"] = page_hint
-                            if not str(item.get("id") or "").strip():
-                                page_part = item.get("page") if item.get("page") is not None else "na"
-                                item["id"] = f"formula_ocr:{page_part}:{len(derived)}"
-                            derived.append(item)
-                        if derived:
-                            next_meta["derived_elements"] = derived
-                except Exception as exc:
-                    _log_processor_fallback('run', exc)
-                    # Never fail ingest due to optional enrichment.
-
-            # Best-effort chart -> structured data extraction.
-            if chart_enabled and next_content:
-                try:
-                    next_content, added, audit = add_chart_data_blocks(
-                        next_content,
-                        origin_path=origin_for_doc,
-                        max_images=int(getattr(settings, "CHART_TO_DATA_MAX_IMAGES", 8) or 8),
-                        max_image_bytes=int(getattr(settings, "CHART_TO_DATA_MAX_IMAGE_BYTES", 5_000_000) or 5_000_000),
-                        timeout_sec=float(getattr(settings, "CHART_TO_DATA_TIMEOUT_SEC", 20) or 20),
-                    )
-                    charts_added_total += int(added or 0)
-                    chart_backend = "chart_http"
-                    chart_audit = audit.to_dict()
-                except Exception as exc:
-                    logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-
-            # Opt5: image captions (best-effort) before asset rewriting so we can still
-            # read local image files when using an external VLM backend.
-            if caption_enabled:
-                try:
-                    if bool(getattr(settings, "IMAGE_CAPTION_VLM_ENABLED", False)) and str(
-                        getattr(settings, "IMAGE_CAPTION_VLM_API_URL", "") or ""
-                    ).strip():
-                        next_content, added, audit = add_vlm_image_captions(
-                            next_content,
-                            origin_path=origin_for_doc,
-                            api_url=str(getattr(settings, "IMAGE_CAPTION_VLM_API_URL", "") or ""),
-                            timeout_sec=float(getattr(settings, "IMAGE_CAPTION_VLM_TIMEOUT_SEC", 60) or 60),
-                            max_images=int(getattr(settings, "IMAGE_CAPTION_VLM_MAX_IMAGES", 20) or 20),
-                            max_image_bytes=int(getattr(settings, "IMAGE_CAPTION_VLM_MAX_IMAGE_BYTES", 5_000_000) or 5_000_000),
-                            max_caption_chars=int(getattr(settings, "IMAGE_CAPTION_VLM_MAX_CAPTION_CHARS", 200) or 200),
-                        )
-                        captions_added_total += int(added or 0)
-                        caption_backend = "vlm_http"
-                        # Keep last audit (best-effort); do not grow unbounded.
-                        caption_audit = audit.to_dict()
-                    else:
-                        next_content, added = add_image_captions(next_content)
-                        captions_added_total += int(added or 0)
-                        caption_backend = "heuristic"
-                except Exception as exc:
-                    _log_processor_fallback('run', exc)
-                    # Never fail ingest due to optional captioning.
-
-            if upload_enabled:
-                new_content, new_img_ids, asset_idx = self._svc._upload_inline_images_to_minio(
-                    markdown_text=next_content,
-                    tenant_id=str(tenant_id),
-                    dataset_id=dataset_id,
-                    document_id=str(document_id),
-                    cache=inline_cache,
-                    start_index=asset_idx,
-                    origin_path=origin_for_doc,
+            next_content = self._apply_image_code_enrichment(
+                content=next_content,
+                origin_path=origin_for_doc,
+                metadata=next_meta,
+                stats=stats,
+            )
+            next_content = self._apply_formula_enrichment(
+                content=next_content,
+                origin_path=origin_for_doc,
+                metadata=next_meta,
+                formula_url=formula_url,
+                enabled=formula_enabled,
+                stats=stats,
+            )
+            next_content = self._apply_chart_enrichment(
+                content=next_content,
+                origin_path=origin_for_doc,
+                enabled=chart_enabled,
+                stats=stats,
+            )
+            next_content = self._apply_caption_enrichment(
+                content=next_content,
+                origin_path=origin_for_doc,
+                enabled=caption_enabled,
+                stats=stats,
+            )
+            new_content, asset_idx = self._upload_inline_assets(
+                content=next_content,
+                enabled=upload_enabled,
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                document_id=document_id,
+                inline_cache=inline_cache,
+                asset_idx=asset_idx,
+                origin_path=origin_for_doc,
+                stats=stats,
+            )
+            processed_docs.append(
+                self._build_output_document(
+                    doc,
+                    original_content=content,
+                    new_content=new_content,
+                    original_meta=original_meta,
+                    new_meta=next_meta,
                 )
-                uploaded.extend(list(new_img_ids or []))
-            else:
-                new_content = next_content
-                new_img_ids = []
+            )
 
-            if new_content != content:
-                processed_docs.append(
-                    Document(
-                        page_content=new_content,
-                        metadata=next_meta,
-                        id=doc.id,
-                    )
-                )
-            elif next_meta != original_meta:
-                processed_docs.append(
-                    Document(
-                        page_content=content,
-                        metadata=next_meta,
-                        id=doc.id,
-                    )
-                )
-            else:
-                processed_docs.append(doc)
-
-        return InlineAssetResult(
-            documents=processed_docs,
-            uploaded_img_ids=uploaded,
-            next_asset_index=asset_idx,
-            image_codes_added=int(image_codes_added_total),
-            image_code_audit=(dict(image_code_audit) if isinstance(image_code_audit, dict) else None),
-            captions_added=int(captions_added_total),
-            caption_backend=caption_backend,
-            caption_audit=(dict(caption_audit) if isinstance(caption_audit, dict) else None),
-            formulas_added=int(formulas_added_total),
-            formula_backend=formula_backend,
-            formula_audit=(dict(formula_audit) if isinstance(formula_audit, dict) else None),
-            charts_added=int(charts_added_total),
-            chart_backend=chart_backend,
-            chart_audit=(dict(chart_audit) if isinstance(chart_audit, dict) else None),
-        )
+        return stats.to_result(documents=processed_docs, next_asset_index=asset_idx)
 
 
 class GovernanceStage:
@@ -682,6 +915,134 @@ class NormalizeStage:
 
 
 class ChunkingStage:
+    @staticmethod
+    def _to_bool(value: object) -> bool | None:
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"1", "true", "yes", "y", "on"}:
+                return True
+            if normalized in {"0", "false", "no", "n", "off"}:
+                return False
+        return None
+
+    @staticmethod
+    def _to_int(value: object) -> int | None:
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, (int, float)):
+            try:
+                return int(value)
+            except (TypeError, ValueError, AttributeError):
+                return None
+        if isinstance(value, str):
+            try:
+                return int(float(value.strip()))
+            except (TypeError, ValueError, AttributeError):
+                return None
+        return None
+
+    @staticmethod
+    def _to_float(value: object) -> float | None:
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return float(value)
+        if isinstance(value, (int, float)):
+            try:
+                return float(value)
+            except (TypeError, ValueError, AttributeError):
+                return None
+        if isinstance(value, str):
+            try:
+                return float(value.strip())
+            except (TypeError, ValueError, AttributeError):
+                return None
+        return None
+
+    @staticmethod
+    def _decode_separator_value(raw_value: object) -> str:
+        separator = str(raw_value or "") or "\n\n"
+        try:
+            import json as _json  # local import to keep module deps minimal
+
+            escaped = separator.replace('"', '\\"')
+            return str(_json.loads(f'"{escaped}"'))
+        except Exception as exc:
+            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+            return separator
+
+    def _build_separator_chunker(
+        self,
+        *,
+        params: dict[str, Any],
+        chunk_size: int,
+        chunk_overlap: int,
+    ) -> SeparatorChunker:
+        preset = str(params.get("separator_preset") or "").strip() or "paragraph"
+        if preset != "custom":
+            separator = SeparatorChunker.PRESET_SEPARATORS.get(preset)
+            if separator is None:
+                raise ValueError(f"Invalid separator_preset: {preset}")
+        else:
+            raw_value = params.get("separator")
+            if raw_value is None:
+                raw_value = params.get("separator_custom")
+            separator = self._decode_separator_value(raw_value)
+
+        keep_separator = self._to_bool(params.get("keep_separator"))
+        max_chunk_size = self._to_int(params.get("separator_max_chunk_size"))
+        if max_chunk_size is None:
+            max_chunk_size = self._to_int(params.get("max_chunk_size"))
+        return SeparatorChunker(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            separator=separator,
+            keep_separator=(True if keep_separator is None else keep_separator),
+            max_chunk_size=int(max_chunk_size or 0),
+        )
+
+    def _coerce_strategy_params(self, params: dict[str, Any]) -> dict[str, Any]:
+        normalized = dict(params)
+        if "child_ratio" in normalized:
+            child_ratio = self._to_float(normalized.get("child_ratio"))
+            if child_ratio is not None:
+                normalized["child_ratio"] = child_ratio
+        if "min_child_size" in normalized:
+            min_child_size = self._to_int(normalized.get("min_child_size"))
+            if min_child_size is not None:
+                normalized["min_child_size"] = min_child_size
+        return normalized
+
+    @staticmethod
+    def _plugin_chunks(
+        *,
+        documents: list[Document],
+        chunk_strategy: str,
+        chunk_size: int,
+        chunk_overlap: int,
+        plugin_ref: str,
+        params: dict[str, Any],
+        chunk_python_params: dict[str, Any] | None,
+    ) -> list[Document]:
+        return apply_chunk_python_plugin(
+            documents,
+            plugin_ref=plugin_ref,
+            params={**params, **dict(chunk_python_params or {})},
+            context={
+                "chunk_strategy": chunk_strategy,
+                "chunk_size": int(chunk_size),
+                "chunk_overlap": int(chunk_overlap),
+            },
+        )
+
     def run(
         self,
         *,
@@ -699,126 +1060,31 @@ class ChunkingStage:
         params = dict(chunk_strategy_params or {})
         plugin_ref = str(chunk_python_plugin or "").strip()
         if plugin_ref:
-            plugin_params = {**params, **dict(chunk_python_params or {})}
-            chunks = apply_chunk_python_plugin(
-                documents,
-                plugin_ref=plugin_ref,
-                params=plugin_params,
-                context={
-                    "chunk_strategy": chunk_strategy,
-                    "chunk_size": int(chunk_size),
-                    "chunk_overlap": int(chunk_overlap),
-                },
+            return ChunkingResult(
+                chunks=self._plugin_chunks(
+                    documents=documents,
+                    chunk_strategy=chunk_strategy,
+                    chunk_size=chunk_size,
+                    chunk_overlap=chunk_overlap,
+                    plugin_ref=plugin_ref,
+                    params=params,
+                    chunk_python_params=chunk_python_params,
+                )
             )
-            return ChunkingResult(chunks=chunks)
-
-        def _to_bool(v: object) -> bool | None:
-            if v is None:
-                return None
-            if isinstance(v, bool):
-                return v
-            if isinstance(v, (int, float)):
-                return bool(v)
-            if isinstance(v, str):
-                s = v.strip().lower()
-                if s in {"1", "true", "yes", "y", "on"}:
-                    return True
-                if s in {"0", "false", "no", "n", "off"}:
-                    return False
-            return None
-
-        def _to_int(v: object) -> int | None:
-            if v is None:
-                return None
-            if isinstance(v, bool):
-                return int(v)
-            if isinstance(v, (int, float)):
-                try:
-                    return int(v)
-                except (TypeError, ValueError, AttributeError):
-                    return None
-            if isinstance(v, str):
-                try:
-                    return int(float(v.strip()))
-                except (TypeError, ValueError, AttributeError):
-                    return None
-            return None
-
-        def _to_float(v: object) -> float | None:
-            if v is None:
-                return None
-            if isinstance(v, bool):
-                return float(v)
-            if isinstance(v, (int, float)):
-                try:
-                    return float(v)
-                except (TypeError, ValueError, AttributeError):
-                    return None
-            if isinstance(v, str):
-                try:
-                    return float(v.strip())
-                except (TypeError, ValueError, AttributeError):
-                    return None
-            return None
 
         # Separator chunking needs preset/custom mapping (preview supports this too).
         if (chunk_strategy or "").strip().lower() == "separator":
-            preset = str(params.get("separator_preset") or "").strip() or "paragraph"
-            if preset != "custom":
-                sep_value = SeparatorChunker.PRESET_SEPARATORS.get(preset)
-                if sep_value is None:
-                    raise ValueError(f"Invalid separator_preset: {preset}")
-            else:
-                raw = params.get("separator")
-                if raw is None:
-                    raw = params.get("separator_custom")
-                sep_value = str(raw or "")
-                if not sep_value:
-                    sep_value = "\n\n"
-                # Support common escaped inputs like "\\n\\n" (match frontend behavior).
-                try:
-                    import json as _json  # local import to keep module deps minimal
-
-                    escaped = sep_value.replace("\"", "\\\"")
-                    sep_value = _json.loads(f"\"{escaped}\"")
-                except Exception as exc:
-                    logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-
-            keep_sep = params.get("keep_separator")
-            keep_sep_norm = _to_bool(keep_sep)
-            if keep_sep_norm is None:
-                keep_sep = True
-            else:
-                keep_sep = keep_sep_norm
-
-            max_chunk_size = _to_int(params.get("separator_max_chunk_size"))
-            if max_chunk_size is None:
-                max_chunk_size = _to_int(params.get("max_chunk_size"))
-            max_chunk_size = int(max_chunk_size or 0)
-
-            chunker = SeparatorChunker(
+            chunker = self._build_separator_chunker(
+                params=params,
                 chunk_size=chunk_size,
                 chunk_overlap=chunk_overlap,
-                separator=sep_value,
-                keep_separator=bool(keep_sep),
-                max_chunk_size=max_chunk_size,
             )
         else:
-            # Common numeric coercions for strategy kwargs (avoid accidental string types from patches).
-            if "child_ratio" in params:
-                r = _to_float(params.get("child_ratio"))
-                if r is not None:
-                    params["child_ratio"] = r
-            if "min_child_size" in params:
-                n = _to_int(params.get("min_child_size"))
-                if n is not None:
-                    params["min_child_size"] = n
-
             chunker = chunker_factory.get_chunker(
                 chunk_strategy,
                 chunk_size=chunk_size,
                 chunk_overlap=chunk_overlap,
-                **params,
+                **self._coerce_strategy_params(params),
             )
         return ChunkingResult(chunks=chunker.split_documents(documents))
 
@@ -899,14 +1165,8 @@ class ChunkAssetStage:
     def __init__(self, service):
         self._svc = service
 
-    def run(
-        self,
-        *,
-        chunks: list[Document],
-        tenant_id: UUID,
-        document_id: UUID,
-        options: ChunkAssetOptions,
-    ) -> ChunkAssetResult:
+    @staticmethod
+    def _load_deps() -> _ChunkAssetDeps:
         from app.parsing.enrich.image_understanding import (
             append_image_understanding_text,
             decode_image_codes,
@@ -918,291 +1178,414 @@ class ChunkAssetStage:
         from app.parsing.enrich.ocr_redaction import redact_ocr_text
         from app.services.chunk_quality_scoring import score_chunk_quality
 
-        dataset_id = options.dataset_id
-        resolved_backend = options.resolved_backend
-        resolved_chunk_strategy = options.resolved_chunk_strategy
-        image_caption_enabled = options.image_caption_enabled
-        image_ocr_enabled = options.image_ocr_enabled
-        image_ocr_max_chars = options.image_ocr_max_chars
-        pii_anonymize = options.pii_anonymize
-        pii_mode = options.pii_mode
-        pii_mask = options.pii_mask
-        secrets_redact = options.secrets_redact
-        secrets_mode = options.secrets_mode
-        secrets_mask = options.secrets_mask
+        return _ChunkAssetDeps(
+            append_image_understanding_text=append_image_understanding_text,
+            decode_image_codes=decode_image_codes,
+            derive_image_caption=derive_image_caption,
+            infer_visual_kind_from_pixels=infer_visual_kind_from_pixels,
+            load_image_for_ocr=load_image_for_ocr,
+            ocr_image=ocr_image,
+            redact_ocr_text=redact_ocr_text,
+            score_chunk_quality=score_chunk_quality,
+        )
 
+    @staticmethod
+    def _initial_ocr_remaining(options: ChunkAssetOptions) -> int | None:
         max_images = max(0, int(options.image_ocr_max_images or 0))
-        ocr_remaining: int | None = (max_images if max_images > 0 else None)
+        return max_images if max_images > 0 else None
 
-        img_ids: list[str] = []
-        out_chunks: list[Document] = []
-        out_idx = 0
-        seen_ocr_hashes: set[str] = set()
+    @staticmethod
+    def _build_runtime(options: ChunkAssetOptions) -> _ChunkAssetRuntime:
+        return _ChunkAssetRuntime(
+            dataset_id=options.dataset_id,
+            resolved_backend=options.resolved_backend,
+            resolved_chunk_strategy=options.resolved_chunk_strategy,
+            ocr_remaining=ChunkAssetStage._initial_ocr_remaining(options),
+        )
 
-        for chunk in chunks:
-            # Assign chunk_index in output order (may differ from input order when we emit OCR chunks).
-            idx = int(out_idx)
-            meta = dict(chunk.metadata or {})
-            meta.setdefault("dataset_id", str(dataset_id))
-            meta["document_id"] = str(document_id)
-            meta["chunk_index"] = idx
-            meta["parser_backend"] = resolved_backend
-            meta.setdefault("chunk_strategy", resolved_chunk_strategy)
-            meta["resolved_chunk_strategy"] = resolved_chunk_strategy
-            meta.setdefault("chunk_key", f"{str(document_id)}:{idx}")
-            normalize_section_metadata(meta)
-            ensure_hierarchy_overlay_metadata(
-                meta,
-                document_id=str(document_id),
-                chunk_index=idx,
+    @staticmethod
+    def _base_chunk_metadata(
+        *,
+        chunk: Document,
+        document_id: UUID,
+        idx: int,
+        runtime: _ChunkAssetRuntime,
+    ) -> dict[str, Any]:
+        metadata = dict(chunk.metadata or {})
+        metadata.setdefault("dataset_id", str(runtime.dataset_id))
+        metadata["document_id"] = str(document_id)
+        metadata["chunk_index"] = idx
+        metadata["parser_backend"] = runtime.resolved_backend
+        metadata.setdefault("chunk_strategy", runtime.resolved_chunk_strategy)
+        metadata["resolved_chunk_strategy"] = runtime.resolved_chunk_strategy
+        metadata.setdefault("chunk_key", f"{str(document_id)}:{idx}")
+        normalize_section_metadata(metadata)
+        ensure_hierarchy_overlay_metadata(metadata, document_id=str(document_id), chunk_index=idx)
+        return metadata
+
+    @staticmethod
+    def _needs_image_inspection(meta: dict[str, Any], *, image_ocr_enabled: bool, ocr_remaining: int | None) -> bool:
+        return (
+            not str(meta.get("visual_kind") or "").strip()
+            or not str(meta.get("image_code_text") or "").strip()
+            or (bool(image_ocr_enabled) and (ocr_remaining is None or ocr_remaining > 0))
+        )
+
+    @staticmethod
+    def _derive_caption(
+        *,
+        chunk: Document,
+        meta: dict[str, Any],
+        enabled: bool,
+        deps: _ChunkAssetDeps,
+    ) -> str:
+        if not enabled:
+            return ""
+        try:
+            return str(deps.derive_image_caption(chunk.page_content or "", meta) or "")
+        except Exception as exc:
+            _log_processor_fallback("run", exc)
+            return ""
+
+    @staticmethod
+    def _apply_code_info(meta: dict[str, Any], code_info: Any) -> str:
+        if not isinstance(code_info, dict):
+            return ""
+        image_code_text = str(code_info.get("text") or "").strip()
+        if image_code_text:
+            meta["image_code_text"] = image_code_text
+            raw_values = code_info.get("values")
+            if isinstance(raw_values, list):
+                meta["image_code_values"] = [str(item).strip() for item in raw_values if str(item).strip()]
+        visual_kind = str(code_info.get("visual_kind") or "").strip().lower()
+        if visual_kind:
+            meta["visual_kind"] = visual_kind
+        return image_code_text
+
+    @staticmethod
+    def _ensure_visual_kind(meta: dict[str, Any], img: Any, deps: _ChunkAssetDeps) -> None:
+        if str(meta.get("visual_kind") or "").strip():
+            return
+        try:
+            visual_kind = str(deps.infer_visual_kind_from_pixels(img) or "").strip().lower()
+        except Exception as exc:
+            _log_processor_fallback("run", exc)
+            visual_kind = ""
+        if visual_kind:
+            meta["visual_kind"] = visual_kind
+
+    @staticmethod
+    def _maybe_read_ocr(
+        *,
+        img: Any,
+        image_ocr_enabled: bool,
+        image_ocr_max_chars: int,
+        ocr_remaining: int | None,
+        deps: _ChunkAssetDeps,
+    ) -> tuple[str, int | None]:
+        if not image_ocr_enabled or (ocr_remaining is not None and ocr_remaining <= 0):
+            return "", ocr_remaining
+        ocr_text = str(deps.ocr_image(img, _max_chars=int(image_ocr_max_chars)) or "")
+        if ocr_remaining is None:
+            return ocr_text, None
+        return ocr_text, (ocr_remaining - 1)
+
+    def _inspect_image(
+        self,
+        *,
+        meta: dict[str, Any],
+        tenant_id: UUID,
+        image_ocr_enabled: bool,
+        image_ocr_max_chars: int,
+        ocr_remaining: int | None,
+        deps: _ChunkAssetDeps,
+    ) -> tuple[str, str, int | None]:
+        if not self._needs_image_inspection(
+            meta,
+            image_ocr_enabled=image_ocr_enabled,
+            ocr_remaining=ocr_remaining,
+        ):
+            return "", "", ocr_remaining
+
+        img, should_close = deps.load_image_for_ocr(meta, _tenant_id=str(tenant_id))
+        try:
+            if img is None:
+                return "", "", ocr_remaining
+            try:
+                code_info = deps.decode_image_codes(img)
+            except Exception as exc:
+                _log_processor_fallback("run", exc)
+                code_info = {}
+            image_code_text = self._apply_code_info(meta, code_info)
+            self._ensure_visual_kind(meta, img, deps)
+            ocr_text, next_remaining = self._maybe_read_ocr(
+                img=img,
+                image_ocr_enabled=image_ocr_enabled,
+                image_ocr_max_chars=image_ocr_max_chars,
+                ocr_remaining=ocr_remaining,
+                deps=deps,
             )
-
-            # Image understanding (best-effort): keep it off by default; never fail ingest.
-            caption = ""
-            ocr_text = ""
-            image_code_text = ""
-            doc_type = str(meta.get("doc_type_kwd") or "").strip().lower()
-            if doc_type == "image":
-                # Structural chunk roles: keep this lightweight and deterministic so downstream
-                # can filter/rerank image vs OCR chunks explicitly.
-                meta.setdefault("chunk_role", "image")
-                if bool(image_caption_enabled):
-                    try:
-                        caption = derive_image_caption(chunk.page_content or "", meta)
-                    except Exception as exc:
-                        _log_processor_fallback('run', exc)
-                        caption = ""
-                need_image_inspection = (
-                    not str(meta.get("visual_kind") or "").strip()
-                    or not str(meta.get("image_code_text") or "").strip()
-                    or (bool(image_ocr_enabled) and (ocr_remaining is None or ocr_remaining > 0))
-                )
-                if need_image_inspection:
-                    img, should_close = load_image_for_ocr(meta, _tenant_id=str(tenant_id))
-                    try:
-                        if img is not None:
-                            try:
-                                code_info = decode_image_codes(img)
-                            except Exception as exc:
-                                _log_processor_fallback('run', exc)
-                                code_info = {}
-                            if isinstance(code_info, dict):
-                                image_code_text = str(code_info.get("text") or "").strip()
-                                if image_code_text:
-                                    meta["image_code_text"] = image_code_text
-                                    raw_values = code_info.get("values")
-                                    if isinstance(raw_values, list):
-                                        meta["image_code_values"] = [str(item).strip() for item in raw_values if str(item).strip()]
-                                visual_kind = str(code_info.get("visual_kind") or "").strip().lower()
-                                if visual_kind:
-                                    meta["visual_kind"] = visual_kind
-                            if not str(meta.get("visual_kind") or "").strip():
-                                try:
-                                    visual_kind = str(infer_visual_kind_from_pixels(img) or "").strip().lower()
-                                except Exception as exc:
-                                    _log_processor_fallback('run', exc)
-                                    visual_kind = ""
-                                if visual_kind:
-                                    meta["visual_kind"] = visual_kind
-                            if bool(image_ocr_enabled) and (ocr_remaining is None or ocr_remaining > 0):
-                                ocr_text = ocr_image(img, _max_chars=int(image_ocr_max_chars))
-                                if ocr_remaining is not None:
-                                    ocr_remaining -= 1
-                    except Exception as exc:
-                        _log_processor_fallback('run', exc)
-                        ocr_text = ""
-                    finally:
-                        if should_close and img is not None:
-                            try:
-                                img.close()
-                            except Exception as exc:
-                                logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-
-                # Policy-driven safety: OCR/caption text is appended after governance cleaning, so apply
-                # PII/secret redactions here (best-effort).
-                if caption:
-                    try:
-                        caption, _pii_hits, _sec_hits = redact_ocr_text(
-                            caption,
-                            pii_anonymize=bool(pii_anonymize),
-                            pii_mode=str(pii_mode or "mask"),
-                            pii_mask=str(pii_mask or REDACTED_MASK),
-                            secrets_redact=bool(secrets_redact),
-                            secrets_mode=str(secrets_mode or "mask"),
-                            secrets_mask=str(secrets_mask or SECRET_MASK),
-                        )
-                    except Exception as exc:
-                        _log_processor_fallback('run', exc)
-                        # Fail-closed when redaction is enabled: do not emit raw caption.
-                        if bool(pii_anonymize) or bool(secrets_redact):
-                            caption = str(pii_mask or REDACTED_MASK) if bool(pii_anonymize) else str(secrets_mask or SECRET_MASK)
-                if caption:
-                    meta["image_caption"] = caption
-
-                if ocr_text:
-                    try:
-                        ocr_text, pii_hits, sec_hits = redact_ocr_text(
-                            ocr_text,
-                            pii_anonymize=bool(pii_anonymize),
-                            pii_mode=str(pii_mode or "mask"),
-                            pii_mask=str(pii_mask or REDACTED_MASK),
-                            secrets_redact=bool(secrets_redact),
-                            secrets_mode=str(secrets_mode or "mask"),
-                            secrets_mask=str(secrets_mask or SECRET_MASK),
-                        )
-                        if pii_hits:
-                            meta["image_ocr_pii_hits"] = {str(k): int(v) for k, v in pii_hits.items() if int(v or 0) > 0}
-                        if sec_hits:
-                            meta["image_ocr_secrets_hits"] = {str(k): int(v) for k, v in sec_hits.items() if int(v or 0) > 0}
-                    except Exception as exc:
-                        _log_processor_fallback('run', exc)
-                        # Fail-closed when redaction is enabled: do not emit raw OCR.
-                        if bool(pii_anonymize) or bool(secrets_redact):
-                            ocr_text = str(pii_mask or REDACTED_MASK) if bool(pii_anonymize) else str(secrets_mask or SECRET_MASK)
-                        else:
-                            ocr_text = ""
-                    if ocr_text:
-                        meta["image_ocr_text"] = ocr_text
-                        meta["image_ocr_chars"] = len(ocr_text)
-
-                # Keep OCR in the image chunk content for backwards compatibility (retrieval expects it),
-                # but also emit an OCR-only chunk (role="ocr") to enable dedup and explicit filtering.
-                if caption or ocr_text or image_code_text:
-                    chunk.page_content = append_image_understanding_text(
-                        chunk.page_content or "",
-                        caption=caption,
-                        ocr_text=ocr_text,
-                        code_text=image_code_text,
-                    )
-
-            content_norm = normalize_text(chunk.page_content or "", normalize_line_endings=True, remove_control_chars=True)
-            meta.setdefault("content_len", len(content_norm.strip()))
-            infer_chunk_structure(meta, content_norm)
-            # Per-chunk quality scoring (noise/boilerplate) for debug + downstream filtering.
-            try:
-                meta.setdefault("chunk_quality", score_chunk_quality(content_norm, meta=meta))
-            except Exception as exc:
-                logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-            # Lightweight semantic role labels (deterministic): helps filtering/reranking.
-            # Keep separate from existing `chunk_role` (parent/child/qa/etc).
-            try:
-                meta.setdefault(
-                    "chunk_semantic_role",
-                    classify_chunk_semantic_role(content=content_norm, meta=meta),
-                )
-            except Exception as exc:
-                logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-            try:
-                meta.setdefault(
-                    "chunk_type",
-                    classify_chunk_type(content=content_norm, meta=meta),
-                )
-            except Exception as exc:
-                logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-            if not isinstance(meta.get("content_hash"), str) or not str(meta.get("content_hash") or "").strip():
-                meta["content_hash"] = hashlib.sha256(content_norm.strip().encode("utf-8", "ignore")).hexdigest()
-                meta.setdefault("content_hash_algo", "sha256")
-            if not isinstance(meta.get("simhash64"), str) or not str(meta.get("simhash64") or "").strip():
+            return image_code_text, ocr_text, next_remaining
+        except Exception as exc:
+            _log_processor_fallback("run", exc)
+            return "", "", ocr_remaining
+        finally:
+            if should_close and img is not None:
                 try:
-                    meta["simhash64"] = simhash64_hex(simhash64(content_norm))
-                    meta.setdefault("simhash_algo", "simhash64_sha1")
+                    img.close()
                 except Exception as exc:
-                    _log_processor_fallback('run', exc)
-                    # Best-effort only.
-            chunk.metadata = meta
+                    logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
 
-            img_id = self._svc._extract_and_upload_image_to_minio(
-                meta,
-                tenant_id=str(tenant_id),
-                dataset_id=dataset_id,
-                document_id=str(document_id),
-                chunk_index=idx,
+    @staticmethod
+    def _redaction_kwargs(options: ChunkAssetOptions) -> dict[str, Any]:
+        return {
+            "pii_anonymize": bool(options.pii_anonymize),
+            "pii_mode": str(options.pii_mode or "mask"),
+            "pii_mask": str(options.pii_mask or REDACTED_MASK),
+            "secrets_redact": bool(options.secrets_redact),
+            "secrets_mode": str(options.secrets_mode or "mask"),
+            "secrets_mask": str(options.secrets_mask or SECRET_MASK),
+        }
+
+    def _redact_text(
+        self,
+        *,
+        text: str,
+        options: ChunkAssetOptions,
+        deps: _ChunkAssetDeps,
+        meta: dict[str, Any] | None = None,
+        pii_key: str | None = None,
+        secrets_key: str | None = None,
+    ) -> str:
+        if not text:
+            return ""
+        try:
+            redacted, pii_hits, secret_hits = deps.redact_ocr_text(text, **self._redaction_kwargs(options))
+            if meta is not None and pii_key and pii_hits:
+                meta[pii_key] = {str(key): int(value) for key, value in pii_hits.items() if int(value or 0) > 0}
+            if meta is not None and secrets_key and secret_hits:
+                meta[secrets_key] = {str(key): int(value) for key, value in secret_hits.items() if int(value or 0) > 0}
+            return str(redacted or "")
+        except Exception as exc:
+            _log_processor_fallback("run", exc)
+            if bool(options.pii_anonymize) or bool(options.secrets_redact):
+                return (
+                    str(options.pii_mask or REDACTED_MASK)
+                    if bool(options.pii_anonymize)
+                    else str(options.secrets_mask or SECRET_MASK)
+                )
+            return ""
+
+    def _image_understanding(
+        self,
+        *,
+        chunk: Document,
+        meta: dict[str, Any],
+        tenant_id: UUID,
+        options: ChunkAssetOptions,
+        deps: _ChunkAssetDeps,
+        runtime: _ChunkAssetRuntime,
+    ) -> _ImageUnderstandingResult:
+        if str(meta.get("doc_type_kwd") or "").strip().lower() != "image":
+            return _ImageUnderstandingResult()
+
+        meta.setdefault("chunk_role", "image")
+        caption = self._derive_caption(
+            chunk=chunk,
+            meta=meta,
+            enabled=bool(options.image_caption_enabled),
+            deps=deps,
+        )
+        image_code_text, ocr_text, runtime.ocr_remaining = self._inspect_image(
+            meta=meta,
+            tenant_id=tenant_id,
+            image_ocr_enabled=bool(options.image_ocr_enabled),
+            image_ocr_max_chars=int(options.image_ocr_max_chars),
+            ocr_remaining=runtime.ocr_remaining,
+            deps=deps,
+        )
+        caption = self._redact_text(text=caption, options=options, deps=deps)
+        if caption:
+            meta["image_caption"] = caption
+        ocr_text = self._redact_text(
+            text=ocr_text,
+            options=options,
+            deps=deps,
+            meta=meta,
+            pii_key="image_ocr_pii_hits",
+            secrets_key="image_ocr_secrets_hits",
+        )
+        if ocr_text:
+            meta["image_ocr_text"] = ocr_text
+            meta["image_ocr_chars"] = len(ocr_text)
+        return _ImageUnderstandingResult(caption=caption, ocr_text=ocr_text, image_code_text=image_code_text)
+
+    @staticmethod
+    def _append_understanding_text(
+        *,
+        content: str,
+        info: _ImageUnderstandingResult,
+        deps: _ChunkAssetDeps,
+    ) -> str:
+        if not (info.caption or info.ocr_text or info.image_code_text):
+            return content
+        return str(
+            deps.append_image_understanding_text(
+                content,
+                caption=info.caption,
+                ocr_text=info.ocr_text,
+                code_text=info.image_code_text,
             )
-            if not img_id:
-                img_id = self._svc._extract_img_id_from_content(chunk.page_content)
-            if img_id:
-                meta["img_id"] = img_id
-                normalize_image_metadata(meta)
-                chunk.metadata = meta
-                img_ids.append(img_id)
+            or ""
+        )
 
-            # Emit the (possibly enriched) base chunk.
-            out_chunks.append(Document(page_content=chunk.page_content or "", metadata=meta, id=getattr(chunk, "id", None)))
-            out_idx += 1
+    @staticmethod
+    def _populate_content_metadata(
+        *,
+        meta: dict[str, Any],
+        content_norm: str,
+        deps: _ChunkAssetDeps,
+        force_hashes: bool = False,
+    ) -> None:
+        meta.setdefault("content_len", len(content_norm.strip()))
+        infer_chunk_structure(meta, content_norm)
+        try:
+            meta.setdefault("chunk_quality", deps.score_chunk_quality(content_norm, meta=meta))
+        except Exception as exc:
+            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+        try:
+            meta.setdefault("chunk_semantic_role", classify_chunk_semantic_role(content=content_norm, meta=meta))
+        except Exception as exc:
+            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+        try:
+            meta.setdefault("chunk_type", classify_chunk_type(content=content_norm, meta=meta))
+        except Exception as exc:
+            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+        if force_hashes or not str(meta.get("content_hash") or "").strip():
+            meta["content_hash"] = hashlib.sha256(content_norm.strip().encode("utf-8", "ignore")).hexdigest()
+            meta.setdefault("content_hash_algo", "sha256")
+        if force_hashes or not str(meta.get("simhash64") or "").strip():
+            try:
+                meta["simhash64"] = simhash64_hex(simhash64(content_norm))
+                meta.setdefault("simhash_algo", "simhash64_sha1")
+            except Exception as exc:
+                _log_processor_fallback("run", exc)
 
-            # Optional: OCR child chunk (dedup by OCR text hash).
-            if doc_type == "image" and ocr_text:
-                ocr_norm = normalize_text(ocr_text, normalize_line_endings=True, remove_control_chars=True).strip()
-                ocr_hash = hashlib.sha256(ocr_norm.encode("utf-8", "ignore")).hexdigest() if ocr_norm else ""
-                if ocr_hash and ocr_hash not in seen_ocr_hashes:
-                    seen_ocr_hashes.add(ocr_hash)
-                    ocr_meta = dict(meta)
-                    ocr_meta["chunk_index"] = int(out_idx)
-                    ocr_meta["chunk_key"] = f"{str(document_id)}:{int(out_idx)}"
-                    ocr_meta["doc_type_kwd"] = "ocr"
-                    ocr_meta["content_type"] = "ocr"
-                    ocr_meta["chunk_role"] = "ocr"
-                    ocr_meta["image_parent_chunk_index"] = int(idx)
-                    ensure_hierarchy_overlay_metadata(
-                        ocr_meta,
-                        document_id=str(document_id),
-                        chunk_index=int(out_idx),
-                    )
-                    # Recompute content-derived fields for OCR chunk.
-                    for k in ("content_hash", "content_hash_algo", "content_len", "simhash64", "simhash_algo", "structure", "chunk_semantic_role", "chunk_type"):
-                        ocr_meta.pop(k, None)
-                    ocr_meta["ocr_text_hash"] = str(ocr_hash)
-                    ocr_meta.setdefault("ocr_text_hash_algo", "sha256")
+    def _attach_img_id(
+        self,
+        *,
+        meta: dict[str, Any],
+        content: str,
+        tenant_id: UUID,
+        document_id: UUID,
+        chunk_index: int,
+        runtime: _ChunkAssetRuntime,
+    ) -> None:
+        img_id = self._svc._extract_and_upload_image_to_minio(
+            meta,
+            tenant_id=str(tenant_id),
+            dataset_id=runtime.dataset_id,
+            document_id=str(document_id),
+            chunk_index=chunk_index,
+        )
+        if not img_id:
+            img_id = self._svc._extract_img_id_from_content(content)
+        if not img_id:
+            return
+        meta["img_id"] = img_id
+        normalize_image_metadata(meta)
+        runtime.img_ids.append(img_id)
 
-                    ocr_content_norm = normalize_text(ocr_text, normalize_line_endings=True, remove_control_chars=True)
-                    ocr_meta.setdefault("content_len", len(ocr_content_norm.strip()))
-                    infer_chunk_structure(ocr_meta, ocr_content_norm)
-                    try:
-                        ocr_meta.setdefault("chunk_quality", score_chunk_quality(ocr_content_norm, meta=ocr_meta))
-                    except Exception as exc:
-                        logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-                    try:
-                        ocr_meta.setdefault(
-                            "chunk_semantic_role",
-                            classify_chunk_semantic_role(content=ocr_content_norm, meta=ocr_meta),
-                        )
-                    except Exception as exc:
-                        logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-                    try:
-                        ocr_meta.setdefault(
-                            "chunk_type",
-                            classify_chunk_type(content=ocr_content_norm, meta=ocr_meta),
-                        )
-                    except Exception as exc:
-                        logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-                    ocr_meta["content_hash"] = hashlib.sha256(ocr_content_norm.strip().encode("utf-8", "ignore")).hexdigest()
-                    ocr_meta.setdefault("content_hash_algo", "sha256")
-                    try:
-                        ocr_meta["simhash64"] = simhash64_hex(simhash64(ocr_content_norm))
-                        ocr_meta.setdefault("simhash_algo", "simhash64_sha1")
-                    except Exception as exc:
-                        logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+    def _emit_base_chunk(
+        self,
+        *,
+        chunk: Document,
+        content: str,
+        meta: dict[str, Any],
+        tenant_id: UUID,
+        document_id: UUID,
+        idx: int,
+        runtime: _ChunkAssetRuntime,
+        deps: _ChunkAssetDeps,
+    ) -> None:
+        content_norm = normalize_text(content, normalize_line_endings=True, remove_control_chars=True)
+        self._populate_content_metadata(meta=meta, content_norm=content_norm, deps=deps)
+        self._attach_img_id(
+            meta=meta,
+            content=content,
+            tenant_id=tenant_id,
+            document_id=document_id,
+            chunk_index=idx,
+            runtime=runtime,
+        )
+        runtime.out_chunks.append(Document(page_content=content, metadata=meta, id=getattr(chunk, "id", None)))
+        runtime.out_idx += 1
 
-                    out_chunks.append(Document(page_content=ocr_text, metadata=ocr_meta))
-                    out_idx += 1
+    def _emit_ocr_chunk(
+        self,
+        *,
+        ocr_text: str,
+        parent_meta: dict[str, Any],
+        parent_idx: int,
+        document_id: UUID,
+        runtime: _ChunkAssetRuntime,
+        deps: _ChunkAssetDeps,
+    ) -> None:
+        if str(parent_meta.get("doc_type_kwd") or "").strip().lower() != "image" or not ocr_text:
+            return
 
-        # Adjacency graph (prev/next) for stitching + UI diagnostics:
-        # - Stored in chunk metadata so it survives persistence/indexing.
-        # - Computed on the final emitted chunk order (including OCR-only chunks).
+        ocr_norm = normalize_text(ocr_text, normalize_line_endings=True, remove_control_chars=True).strip()
+        ocr_hash = hashlib.sha256(ocr_norm.encode("utf-8", "ignore")).hexdigest() if ocr_norm else ""
+        if not ocr_hash or ocr_hash in runtime.seen_ocr_hashes:
+            return
+
+        runtime.seen_ocr_hashes.add(ocr_hash)
+        ocr_meta = dict(parent_meta)
+        ocr_meta["chunk_index"] = int(runtime.out_idx)
+        ocr_meta["chunk_key"] = f"{str(document_id)}:{int(runtime.out_idx)}"
+        ocr_meta["doc_type_kwd"] = "ocr"
+        ocr_meta["content_type"] = "ocr"
+        ocr_meta["chunk_role"] = "ocr"
+        ocr_meta["image_parent_chunk_index"] = int(parent_idx)
+        ensure_hierarchy_overlay_metadata(
+            ocr_meta,
+            document_id=str(document_id),
+            chunk_index=int(runtime.out_idx),
+        )
+        for key in (
+            "content_hash",
+            "content_hash_algo",
+            "content_len",
+            "simhash64",
+            "simhash_algo",
+            "structure",
+            "chunk_semantic_role",
+            "chunk_type",
+        ):
+            ocr_meta.pop(key, None)
+        ocr_meta["ocr_text_hash"] = str(ocr_hash)
+        ocr_meta.setdefault("ocr_text_hash_algo", "sha256")
+        ocr_content_norm = normalize_text(ocr_text, normalize_line_endings=True, remove_control_chars=True)
+        self._populate_content_metadata(meta=ocr_meta, content_norm=ocr_content_norm, deps=deps, force_hashes=True)
+        runtime.out_chunks.append(Document(page_content=ocr_text, metadata=ocr_meta))
+        runtime.out_idx += 1
+
+    @staticmethod
+    def _apply_adjacency_metadata(out_chunks: list[Document], *, document_id: UUID) -> None:
         total_out = len(out_chunks)
-        for i, doc in enumerate(out_chunks):
+        for index, doc in enumerate(out_chunks):
             meta = dict(getattr(doc, "metadata", None) or {})
-            prev_idx = (i - 1) if i > 0 else None
-            next_idx = (i + 1) if i < (total_out - 1) else None
+            prev_idx = (index - 1) if index > 0 else None
+            next_idx = (index + 1) if index < (total_out - 1) else None
+            doc_id = str(meta.get("document_id") or document_id)
             meta["prev_chunk_index"] = prev_idx
             meta["next_chunk_index"] = next_idx
-            doc_id = str(meta.get("document_id") or document_id)
             meta["prev_chunk_key"] = f"{doc_id}:{prev_idx}" if prev_idx is not None else None
             meta["next_chunk_key"] = f"{doc_id}:{next_idx}" if next_idx is not None else None
             ensure_hierarchy_overlay_metadata(
                 meta,
                 document_id=doc_id,
-                chunk_index=i,
+                chunk_index=index,
                 total_chunks=total_out,
             )
             doc.metadata = meta
@@ -1213,4 +1596,55 @@ class ChunkAssetStage:
             level="chunk",
         )
 
-        return ChunkAssetResult(chunks=out_chunks, img_ids=img_ids)
+    def run(
+        self,
+        *,
+        chunks: list[Document],
+        tenant_id: UUID,
+        document_id: UUID,
+        options: ChunkAssetOptions,
+    ) -> ChunkAssetResult:
+        deps = self._load_deps()
+        runtime = self._build_runtime(options)
+        for chunk in chunks:
+            idx = int(runtime.out_idx)
+            meta = self._base_chunk_metadata(
+                chunk=chunk,
+                document_id=document_id,
+                idx=idx,
+                runtime=runtime,
+            )
+            info = self._image_understanding(
+                chunk=chunk,
+                meta=meta,
+                tenant_id=tenant_id,
+                options=options,
+                deps=deps,
+                runtime=runtime,
+            )
+            content = self._append_understanding_text(
+                content=chunk.page_content or "",
+                info=info,
+                deps=deps,
+            )
+            self._emit_base_chunk(
+                chunk=chunk,
+                content=content,
+                meta=meta,
+                tenant_id=tenant_id,
+                document_id=document_id,
+                idx=idx,
+                runtime=runtime,
+                deps=deps,
+            )
+            self._emit_ocr_chunk(
+                ocr_text=info.ocr_text,
+                parent_meta=meta,
+                parent_idx=idx,
+                document_id=document_id,
+                runtime=runtime,
+                deps=deps,
+            )
+
+        self._apply_adjacency_metadata(runtime.out_chunks, document_id=document_id)
+        return ChunkAssetResult(chunks=runtime.out_chunks, img_ids=runtime.img_ids)

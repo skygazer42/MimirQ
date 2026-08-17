@@ -88,6 +88,93 @@ def _trace_retrieval_config_hash(trace_record: dict[str, Any]) -> str | None:
     return _safe_str(trace_record.get("retrieval_config_hash"), max_len=128)
 
 
+def _normalize_trace_citations(citations: list[Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    seen_chunks: set[str] = set()
+    for rank, citation in enumerate(citations, 1):
+        if not isinstance(citation, dict):
+            continue
+        chunk_id = _safe_str(citation.get("chunk_id"), max_len=200)
+        if not chunk_id or chunk_id in seen_chunks:
+            continue
+        seen_chunks.add(chunk_id)
+        rows.append(
+            {
+                "rank": rank,
+                "chunk_id": chunk_id,
+                "document_id": _safe_str(citation.get("document_id"), max_len=200),
+                "relevance_score": citation.get("relevance_score"),
+                "vector_score": citation.get("vector_score"),
+                "bm25_score": citation.get("bm25_score"),
+            }
+        )
+    return rows
+
+
+def _first_positive(
+    rows: list[dict[str, Any]],
+    reference_chunk_ids: set[str],
+) -> tuple[int | None, list[dict[str, Any]]]:
+    for row in rows:
+        chunk_id = row.get("chunk_id")
+        if chunk_id and chunk_id in reference_chunk_ids:
+            rank = int(row.get("rank") or 0)
+            return rank or None, [{"chunk_id": chunk_id, "rank": rank}]
+    return None, []
+
+
+def _hard_candidates_before_positive(
+    rows: list[dict[str, Any]],
+    reference_chunk_ids: set[str],
+    first_positive_rank: int | None,
+) -> list[dict[str, Any]]:
+    if first_positive_rank is None:
+        return []
+    candidates: list[dict[str, Any]] = []
+    for row in rows:
+        rank = int(row.get("rank") or 0)
+        chunk_id = row.get("chunk_id")
+        if rank >= first_positive_rank:
+            break
+        if chunk_id and chunk_id not in reference_chunk_ids:
+            candidates.append(row)
+    return candidates
+
+
+def _select_hard_candidates(
+    candidates: list[dict[str, Any]],
+    *,
+    max_hard_negatives: int,
+    max_negatives_per_document: int,
+) -> tuple[list[dict[str, Any]], int]:
+    selected: list[dict[str, Any]] = []
+    per_document_counts: dict[str, int] = {}
+    dropped = 0
+    for row in candidates:
+        document_id = row.get("document_id") or ""
+        used = int(per_document_counts.get(document_id, 0) or 0)
+        if max_negatives_per_document > 0 and document_id and used >= max_negatives_per_document:
+            dropped += 1
+            continue
+        if max_negatives_per_document > 0 and document_id:
+            per_document_counts[document_id] = used + 1
+        selected.append(row)
+        if max_hard_negatives > 0 and len(selected) >= max_hard_negatives:
+            break
+    return selected, dropped
+
+
+def _compact_hard_negative_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "chunk_id": row.get("chunk_id"),
+            "document_id": row.get("document_id"),
+            "rank": _coerce_nonneg_int(row.get("rank")),
+        }
+        for row in rows
+    ]
+
+
 def mine_hard_negatives_for_case_from_trace(
     *,
     case: dict[str, Any],
@@ -112,76 +199,15 @@ def mine_hard_negatives_for_case_from_trace(
 
     citations_raw = trace_record.get("citations") or []
     citations = citations_raw if isinstance(citations_raw, list) else []
-
-    # Normalize and dedupe by chunk_id (first occurrence wins).
-    rows: list[dict[str, Any]] = []
-    seen_chunks: set[str] = set()
-    for idx, c in enumerate(citations, 1):
-        if not isinstance(c, dict):
-            continue
-        cid = _safe_str(c.get("chunk_id"), max_len=200)
-        if not cid or cid in seen_chunks:
-            continue
-        seen_chunks.add(cid)
-
-        did = _safe_str(c.get("document_id"), max_len=200)
-        rows.append(
-            {
-                "rank": int(idx),
-                "chunk_id": cid,
-                "document_id": did,
-                # keep only numeric scores (PII-safe); helpful for inspection/debug.
-                "relevance_score": c.get("relevance_score"),
-                "vector_score": c.get("vector_score"),
-                "bm25_score": c.get("bm25_score"),
-            }
-        )
-
-    first_pos_rank: int | None = None
-    positives: list[dict[str, Any]] = []
-    for r in rows:
-        cid = r.get("chunk_id")
-        if cid and cid in ref_chunk_ids:
-            first_pos_rank = int(r.get("rank") or 0) or None
-            positives.append({"chunk_id": cid, "rank": int(r.get("rank") or 0)})
-            break
-
-    hard_candidates: list[dict[str, Any]] = []
-    if first_pos_rank is not None:
-        for r in rows:
-            rank = int(r.get("rank") or 0)
-            cid = r.get("chunk_id")
-            if not cid or cid in ref_chunk_ids:
-                continue
-            if rank >= int(first_pos_rank):
-                break
-            hard_candidates.append(r)
-
-    # "Clustering" / governance: cap negatives per document_id to avoid overfitting on one doc.
-    hard_selected: list[dict[str, Any]] = []
-    per_doc_counts: dict[str, int] = {}
-    dedup_dropped = 0
-    for r in hard_candidates:
-        did = r.get("document_id") or ""
-        if per_doc_cap > 0 and did:
-            used = int(per_doc_counts.get(did, 0) or 0)
-            if used >= per_doc_cap:
-                dedup_dropped += 1
-                continue
-            per_doc_counts[did] = used + 1
-        hard_selected.append(r)
-        if max_hard > 0 and len(hard_selected) >= max_hard:
-            break
-
-    hard_out: list[dict[str, Any]] = []
-    for r in hard_selected:
-        hard_out.append(
-            {
-                "chunk_id": r.get("chunk_id"),
-                "document_id": r.get("document_id"),
-                "rank": _coerce_nonneg_int(r.get("rank")),
-            }
-        )
+    rows = _normalize_trace_citations(citations)
+    first_pos_rank, positives = _first_positive(rows, ref_chunk_ids)
+    hard_candidates = _hard_candidates_before_positive(rows, ref_chunk_ids, first_pos_rank)
+    hard_selected, dedup_dropped = _select_hard_candidates(
+        hard_candidates,
+        max_hard_negatives=max_hard,
+        max_negatives_per_document=per_doc_cap,
+    )
+    hard_out = _compact_hard_negative_rows(hard_selected)
 
     out: dict[str, Any] = {
         "schema": HARD_NEGATIVES_SCHEMA_V1,
@@ -202,6 +228,69 @@ def mine_hard_negatives_for_case_from_trace(
     return out
 
 
+def _empty_merged_hard_negative_record() -> dict[str, Any]:
+    return {
+        "schema": HARD_NEGATIVES_SCHEMA_V1,
+        "query_hash": "",
+        "retrieval_config_hash": None,
+        "hard_negatives": [],
+        "stats": {"sources_merged": 0, "hard_negatives_selected": 0, "dedup_dropped": 0},
+    }
+
+
+def _first_safe_record_value(
+    rows: list[dict[str, Any]],
+    key: str,
+    *,
+    max_len: int,
+) -> str | None:
+    for row in rows:
+        value = _safe_str(row.get(key), max_len=max_len)
+        if value:
+            return value
+    return None
+
+
+def _collect_record_dicts(rows: list[dict[str, Any]], key: str) -> list[dict[str, Any]]:
+    collected: list[dict[str, Any]] = []
+    for row in rows:
+        values = row.get(key)
+        if isinstance(values, list):
+            collected.extend(value for value in values if isinstance(value, dict))
+    return collected
+
+
+def _sum_record_stats(rows: list[dict[str, Any]]) -> dict[str, int]:
+    totals = {
+        "citations_total": 0,
+        "candidates_before_first_positive": 0,
+        "hard_negatives_selected": 0,
+        "dedup_dropped": 0,
+    }
+    for row in rows:
+        stats = row.get("stats")
+        if not isinstance(stats, dict):
+            continue
+        for key in totals:
+            totals[key] += _coerce_nonneg_int(stats.get(key))
+    return totals
+
+
+def _dedupe_positive_rows(rows: list[dict[str, Any]], *, max_items: int = 5) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    output: list[dict[str, Any]] = []
+    for row in rows:
+        chunk_id = _safe_str(row.get("chunk_id"), max_len=200)
+        rank = _coerce_nonneg_int(row.get("rank"))
+        if not chunk_id or rank <= 0 or chunk_id in seen:
+            continue
+        seen.add(chunk_id)
+        output.append({"chunk_id": chunk_id, "rank": rank})
+        if len(output) >= max_items:
+            break
+    return output
+
+
 def merge_hard_negative_records(
     *,
     records: list[dict[str, Any]] | None,
@@ -217,66 +306,19 @@ def merge_hard_negative_records(
     """
     rows = [r for r in (records or []) if isinstance(r, dict)]
     if not rows:
-        return {
-            "schema": HARD_NEGATIVES_SCHEMA_V1,
-            "query_hash": "",
-            "retrieval_config_hash": None,
-            "hard_negatives": [],
-            "stats": {"sources_merged": 0, "hard_negatives_selected": 0, "dedup_dropped": 0},
-        }
+        return _empty_merged_hard_negative_record()
 
-    query_hash = ""
-    retrieval_config_hash: str | None = None
-    positives: list[dict[str, Any]] = []
-    hard_rows: list[dict[str, Any]] = []
-    stats_sum: dict[str, int] = {
-        "citations_total": 0,
-        "candidates_before_first_positive": 0,
-        "hard_negatives_selected": 0,
-        "dedup_dropped": 0,
-    }
-
-    for row in rows:
-        if not query_hash:
-            query_hash = _safe_str(row.get("query_hash"), max_len=64) or ""
-        if retrieval_config_hash is None:
-            retrieval_config_hash = _safe_str(row.get("retrieval_config_hash"), max_len=128)
-
-        hard = row.get("hard_negatives")
-        if isinstance(hard, list):
-            hard_rows.extend([x for x in hard if isinstance(x, dict)])
-
-        pos = row.get("positives")
-        if isinstance(pos, list):
-            for p in pos:
-                if not isinstance(p, dict):
-                    continue
-                cid = _safe_str(p.get("chunk_id"), max_len=200)
-                rank = _coerce_nonneg_int(p.get("rank"))
-                if cid and rank > 0:
-                    positives.append({"chunk_id": cid, "rank": rank})
-
-        rec_stats = row.get("stats")
-        if isinstance(rec_stats, dict):
-            for key in stats_sum:
-                stats_sum[key] += _coerce_nonneg_int(rec_stats.get(key))
+    query_hash = _first_safe_record_value(rows, "query_hash", max_len=64) or ""
+    retrieval_config_hash = _first_safe_record_value(rows, "retrieval_config_hash", max_len=128)
+    hard_rows = _collect_record_dicts(rows, "hard_negatives")
+    stats_sum = _sum_record_stats(rows)
 
     hard_merged, dedup_extra = _dedupe_chunk_rows(hard_rows, max_hard_negatives=max_hard_negatives)
     stats_sum["dedup_dropped"] += int(dedup_extra)
     stats_sum["hard_negatives_selected"] = int(len(hard_merged))
     stats_sum["sources_merged"] = int(len(rows))
 
-    # Keep at most 5 unique positives for debugging parity.
-    pos_seen: set[str] = set()
-    pos_out: list[dict[str, Any]] = []
-    for p in positives:
-        cid = str(p.get("chunk_id") or "")
-        if not cid or cid in pos_seen:
-            continue
-        pos_seen.add(cid)
-        pos_out.append({"chunk_id": cid, "rank": _coerce_nonneg_int(p.get("rank"))})
-        if len(pos_out) >= 5:
-            break
+    pos_out = _dedupe_positive_rows(_collect_record_dicts(rows, "positives"))
 
     out: dict[str, Any] = {
         "schema": HARD_NEGATIVES_SCHEMA_V1,
@@ -288,6 +330,45 @@ def merge_hard_negative_records(
     if pos_out:
         out["positives"] = pos_out
     return out
+
+
+def _parse_hard_negative_line(line: str) -> tuple[str, list[Any]] | None:
+    text = str(line or "").strip()
+    if not text:
+        return None
+    try:
+        payload = json.loads(text)
+    except Exception:
+        get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+        return None
+    if not isinstance(payload, dict) or str(payload.get("schema") or "") != HARD_NEGATIVES_SCHEMA_V1:
+        return None
+    query_hash = _safe_str(payload.get("query_hash"), max_len=64)
+    hard_negatives = payload.get("hard_negatives") or []
+    if not query_hash or not isinstance(hard_negatives, list) or not hard_negatives:
+        return None
+    return query_hash, hard_negatives
+
+
+def _append_loaded_hard_negatives(
+    output: dict[str, list[str]],
+    seen_by_query: dict[str, set[str]],
+    *,
+    query_hash: str,
+    rows: list[Any],
+) -> None:
+    seen = seen_by_query.setdefault(query_hash, set())
+    bucket = output.setdefault(query_hash, [])
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        chunk_id = _safe_str(row.get("chunk_id"), max_len=200)
+        if not chunk_id or chunk_id in seen:
+            continue
+        seen.add(chunk_id)
+        bucket.append(chunk_id)
+        if len(bucket) >= 200:
+            break
 
 
 def load_hard_negatives_jsonl(path: str | Path) -> dict[str, list[str]]:
@@ -309,39 +390,16 @@ def load_hard_negatives_jsonl(path: str | Path) -> dict[str, list[str]]:
 
     with p.open("r", encoding="utf-8", errors="replace") as f:
         for line in f:
-            line = (line or "").strip()
-            if not line:
+            parsed = _parse_hard_negative_line(line)
+            if parsed is None:
                 continue
-            try:
-                obj = json.loads(line)
-            except Exception:
-                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-                continue
-            if not isinstance(obj, dict):
-                continue
-            if str(obj.get("schema") or "") != HARD_NEGATIVES_SCHEMA_V1:
-                continue
-
-            qh = _safe_str(obj.get("query_hash"), max_len=64)
-            if not qh:
-                continue
-
-            hn_raw = obj.get("hard_negatives") or []
-            if not isinstance(hn_raw, list) or not hn_raw:
-                continue
-
-            seen = seen_by_query.setdefault(qh, set())
-            bucket = out.setdefault(qh, [])
-            for item in hn_raw:
-                if not isinstance(item, dict):
-                    continue
-                cid = _safe_str(item.get("chunk_id"), max_len=200)
-                if not cid or cid in seen:
-                    continue
-                seen.add(cid)
-                bucket.append(cid)
-                if len(bucket) >= 200:
-                    break
+            query_hash, rows = parsed
+            _append_loaded_hard_negatives(
+                out,
+                seen_by_query,
+                query_hash=query_hash,
+                rows=rows,
+            )
 
     return out
 

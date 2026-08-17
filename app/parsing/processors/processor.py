@@ -3,7 +3,6 @@ Document processing service - core processing flow.
 """
 import asyncio
 import base64
-import contextlib
 import datetime as dt
 import hashlib
 import re
@@ -23,7 +22,6 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentParsedContent
 from app.parsing.artifact_stats import POSITION_TAG_RE, compute_parsing_artifact_stats  # noqa: F401
@@ -33,18 +31,6 @@ from app.parsing.enrich.image_caption import add_image_captions  # noqa: F401
 from app.parsing.enrich.image_code import add_image_code_blocks  # noqa: F401
 from app.parsing.enrich.vlm_image_caption import add_vlm_image_captions  # noqa: F401
 from app.parsing.errors import ParsingError  # noqa: F401
-from app.parsing.preprocess.file_preprocessor import preprocess_file
-from app.parsing.preprocess.image_preprocess import preprocess_image_document
-from app.parsing.processors.cross_page_merge import merge_cross_page_documents
-from app.parsing.processors.parse_cache import (
-    LocalParseCacheStore,
-)
-from app.parsing.processors.parse_cache import (
-    ParseCacheEntry as LocalParseCacheEntry,
-)
-from app.parsing.processors.parse_cache import (
-    build_parse_cache_key as build_local_parse_cache_key,
-)
 from app.parsing.processors.parse_quality_gate import apply_parse_quality_gate_metadata
 from app.parsing.processors.support.assets import (  # noqa: F401
     _apply_inline_asset_audit_patch,
@@ -105,6 +91,14 @@ from app.parsing.processors.support.parse_io import (  # noqa: F401
     _logical_source_from_db_document,
     _serialize_documents_for_parse_cache,
 )
+from app.parsing.processors.support.process_document_flow import (
+    handle_asyncio_cancelled,
+    handle_document_cancelled,
+    handle_process_document_failure,
+    handle_retry_boundary_failure,
+    handle_tenant_quota_exceeded,
+    run_process_document_body,
+)
 from app.parsing.processors.support.quality import (  # noqa: F401
     _aggregate_governance_quality,
     _append_ocr_quality_candidate,
@@ -135,16 +129,17 @@ from app.parsing.processors.support.quality import (  # noqa: F401
 from app.parsing.processors.support.recovery import (
     CheckpointedRetryRequiredError,
     apply_pending_retry_cleanup,
-    audit_ingest_gate,
     checkpoint_stage,
     indexed_checkpoint_is_reusable,
-    maybe_enrich_document_questions,
     parsed_checkpoint_is_reusable,
     persist_retry_boundary_failure,
-    record_ingest_gate_outcome,
     resolve_ingestion_run_update_criticality,
-    run_post_completion_kg,
-    upsert_ingest_checkpoint,
+)
+from app.parsing.processors.support.recovery import (
+    maybe_enrich_document_questions as _maybe_enrich_document_questions,
+)
+from app.parsing.processors.support.recovery import (
+    run_post_completion_kg as _run_post_completion_kg,
 )
 from app.parsing.processors.support.results import (  # noqa: F401
     ChunkAssetOptions,
@@ -167,13 +162,8 @@ from app.parsing.processors.support.stages import (  # noqa: F401
     NormalizeStage,
     ParsingStage,
 )
-from app.parsing.processors.vlm_correction import apply_vlm_correction_async, should_apply_vlm_correction
-from app.parsing.quality.document_quality import score_document_parse_quality
-from app.parsing.quality.reading_order import score_reading_order
-from app.parsing.quality.text_quality import score_parsed_text_quality
 from app.parsing.routing import route_pdf_backend, should_attempt_pdf_fallback  # noqa: F401
 from app.parsing.subprocess_runner import SubprocessCancelled, run_parser_subprocess  # noqa: F401
-from app.rag.chunking.factory import chunker_factory
 from app.rag.chunking.roles import classify_chunk_semantic_role, classify_chunk_type  # noqa: F401
 from app.rag.chunking.strategies import SeparatorChunker  # noqa: F401
 from app.rag.chunking.utils.hierarchical import apply_sequence_hierarchy_metadata  # noqa: F401
@@ -187,13 +177,12 @@ from app.rag.core.metadata import (
 from app.rag.pipeline_plugins.registry import derive_registered_stage_plugin_ref
 from app.rag.pipeline_plugins.runtime import apply_chunk_python_plugin, apply_governance_python_plugin  # noqa: F401
 from app.rag.preprocessing.markdown_canonical import canonicalize_markdown  # noqa: F401
-from app.rag.preprocessing.near_dedup import add_simhashes, find_near_duplicate, with_near_dedup_index
 from app.rag.preprocessing.normalization import normalize_text
 from app.rag.preprocessing.processor import GovernanceStats, governance_processor  # noqa: F401
 from app.rag.preprocessing.rules import build_governance_rules
-from app.rag.preprocessing.simhash import simhash64, simhash64_hex
 from app.services.indexer import Indexer
-from app.services.metrics_logger import log_metrics, metrics_span, set_metrics_context
+from app.services.metrics_logger import log_metrics as _log_metrics
+from app.services.metrics_logger import metrics_span as _metrics_span
 from app.services.parse_cache import (
     ParseCacheEntry as RemoteParseCacheEntry,  # noqa: F401
 )
@@ -203,10 +192,8 @@ from app.services.parse_cache import (
 from app.services.parse_cache import (
     parse_cache_service,  # noqa: F401
 )
-from app.services.pipeline_config import (
-    build_indexing_options,
-    resolve_pipeline_effective,
-)
+from app.services.pipeline_config import build_indexing_options as _build_indexing_options
+from app.services.pipeline_config import resolve_pipeline_effective as _resolve_pipeline_effective
 from app.services.tenant_quota_service import TenantQuotaExceededError
 from app.storage.object.minio import minio_service
 from app.types.document_analytics import compute_document_analytics  # noqa: F401
@@ -221,6 +208,12 @@ AUDIT_ACTION_DOCUMENT_QUARANTINE = 'document.quarantine'
 
 _parsed_checkpoint_is_reusable = parsed_checkpoint_is_reusable
 _indexed_checkpoint_is_reusable = indexed_checkpoint_is_reusable
+metrics_span = _metrics_span
+log_metrics = _log_metrics
+resolve_pipeline_effective = _resolve_pipeline_effective
+build_indexing_options = _build_indexing_options
+maybe_enrich_document_questions = _maybe_enrich_document_questions
+run_post_completion_kg = _run_post_completion_kg
 
 
 def _build_combined_governance_rules(pipeline_effective: PipelineEffective):
@@ -414,2281 +407,76 @@ class DocumentProcessorService:
             db = SessionLocal()
             owns_db = True
 
-        preprocessed_temp_path: Path | None = None
+        runtime_state: dict[str, Any] = {"preprocessed_temp_path": None, "parse_state": None}
         try:
-            cancel_check = self._build_cancel_check(db=db, tenant_id=tenant_id, document_id=document_id)
-
-            stage_durations_ms: dict[str, int] = {}
-
-            def _add_stage_duration(stage: str, elapsed_ms: float) -> None:
-                try:
-                    key = str(stage or "").strip()
-                    if not key:
-                        return
-                    ms = int(round(float(elapsed_ms)))
-                except (TypeError, ValueError, AttributeError):
-                    return
-                if ms < 0:
-                    ms = 0
-                stage_durations_ms[key] = int(stage_durations_ms.get(key, 0) or 0) + ms
-
-            def _with_stage_durations(meta: dict[str, Any] | None) -> dict[str, Any]:
-                out = dict(meta or {})
-                if stage_durations_ms:
-                    out["ingest_stage_durations_ms"] = dict(stage_durations_ms)
-                return out
-
-            async def raise_if_cancelled(*, force: bool = False) -> None:
-                if await cancel_check(force=force):
-                    raise DocumentCancelledError("cancel_requested")
-
-            db_document = (
-                db.query(DBDocument)
-                .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-                .first()
-            )
-            if db_document is None:
-                logger.warning("Document not found for processing: tenant=%s document=%s", tenant_id, document_id)
-                return {"status": "skipped", "reason": "document_not_found"}
-
-            # If user already cancelled before the worker started, stop immediately.
-            await raise_if_cancelled(force=True)
-
-            retry_cleanup_status = self._apply_pending_retry_cleanup(
-                db,
-                db_document=db_document,
-                tenant_id=tenant_id,
+            return await run_process_document_body(
+                self,
+                db=db,
+                file_path=file_path,
                 document_id=document_id,
+                tenant_id=tenant_id,
+                parser_backend=parser_backend,
+                chunk_strategy=chunk_strategy,
+                runtime_state=runtime_state,
+                parsing_stage_factory=ParsingStage,
+                inline_asset_stage_factory=InlineAssetStage,
+                normalize_stage_factory=NormalizeStage,
+                governance_stage_factory=GovernanceStage,
+                chunking_stage_factory=ChunkingStage,
+                chunk_dedup_stage_factory=ChunkDedupStage,
+                chunk_asset_stage_factory=ChunkAssetStage,
+                index_stage_factory=IndexStage,
             )
-            if retry_cleanup_status == "invalid":
-                await self._update_status(
-                    db,
-                    tenant_id,
-                    document_id,
-                    "failed",
-                    0,
-                    "failed",
-                    error_message="invalid_retry_cleanup_intent",
-                )
-                return {"status": "failed", "reason": "invalid_retry_cleanup_intent"}
-            if retry_cleanup_status == "deferred":
-                await self._update_status(
-                    db,
-                    tenant_id,
-                    document_id,
-                    "failed",
-                    0,
-                    "failed",
-                    error_message="retry_cleanup_deferred",
-                )
-                return {"status": "failed", "reason": "retry_cleanup_deferred"}
-
-            # Step 1: update status to processing.
-            await self._update_status(
-                db, tenant_id, document_id, "processing", 0, "parsing"
-            )
-
-            # Resolve dataset_id early (MinerU ZIP / MinIO paths depend on it).
-            dataset_id = str(db_document.dataset_id) if db_document.dataset_id else str(tenant_id)
-
-            # Bind metrics context for this coroutine/task (best-effort; used only when ENABLE_METRICS_LOG=true).
-            set_metrics_context(tenant_id=tenant_id, document_id=document_id, dataset_id=dataset_id)
-
-            # Track all img_id values linked to this document (used for cleanup).
-            document_img_ids: set[str] = set()
-            artifact_dirs: set[str] = set()
-
-            dataset_meta: dict[str, Any] = {}
-            if db_document.dataset_id:
-                ds = (
-                    db.query(Dataset)
-                    .filter(Dataset.id == db_document.dataset_id, Dataset.tenant_id == tenant_id)
-                    .first()
-                )
-                if ds is not None and isinstance(getattr(ds, "dataset_metadata", None), dict):
-                    dataset_meta = dict(ds.dataset_metadata or {})
-
-            pipeline_effective = resolve_pipeline_effective(
-                dataset_metadata=dataset_meta,
-                document_metadata=(db_document.doc_metadata or {}),
-                request_overrides=None,
-            )
-            index_options = build_indexing_options(pipeline_effective)
-            self._record_pipeline_effective(db, tenant_id, document_id, pipeline_effective)
-            table_sidecar_tables_imported = 0
-            table_sidecar_routing_audit: dict[str, Any] | None = None
-
-            meta0 = dict(db_document.doc_metadata or {})
-            if indexed_checkpoint_is_reusable(meta0):
-                checkpoint = dict(meta0.get("ingest_checkpoint") or {})
-                doc_pipeline_key = str(
-                    checkpoint.get("doc_pipeline_key") or f"{document_id}:{str(meta0.get('pipeline_hash') or '').strip()}"
-                ).strip()
-                indexed_chunks_query = db.query(DocumentChunk).filter(
-                    DocumentChunk.document_id == document_id,
-                    DocumentChunk.tenant_id == tenant_id,
-                )
-                if doc_pipeline_key:
-                    indexed_chunks_query = indexed_chunks_query.filter(
-                        DocumentChunk.doc_metadata["doc_pipeline_key"].astext == doc_pipeline_key,  # type: ignore[attr-defined]
-                    )
-                indexed_chunks = list(indexed_chunks_query.order_by(DocumentChunk.chunk_index, DocumentChunk.id).all())
-                if indexed_chunks:
-                    logger.info(
-                        "Resuming ingest finalization from indexed checkpoint: tenant=%s document=%s checkpoint=%s",
-                        tenant_id,
-                        document_id,
-                        doc_pipeline_key or "document",
-                    )
-                    resolved_backend = (
-                        str(meta0.get("parser_backend") or meta0.get("parser_backend_requested") or parser_backend or "auto").strip()
-                        or "auto"
-                    )
-                    resolved_chunk_strategy = (
-                        str(meta0.get("chunk_strategy") or meta0.get("chunk_strategy_requested") or chunk_strategy or "auto").strip()
-                        or "auto"
-                    )
-                    total_chars = int(
-                        checkpoint.get("total_characters")
-                        or meta0.get("indexed_total_characters")
-                        or sum(len(str(getattr(chunk, "content", "") or "")) for chunk in indexed_chunks)
-                    )
-                    meta_patch = dict(db_document.doc_metadata or {})
-                    meta_patch.pop("ingest_resume_required", None)
-                    meta_patch = _with_stage_durations(meta_patch)
-                    await self._update_status(
-                        db,
-                        tenant_id,
-                        document_id,
-                        "completed",
-                        100,
-                        "completed",
-                        chunk_count=len(indexed_chunks),
-                        total_characters=total_chars,
-                        doc_metadata=meta_patch,
-                    )
-                    await run_post_completion_kg(
-                        db=db,
-                        db_document=db_document,
-                        tenant_id=tenant_id,
-                        document_id=document_id,
-                        chunk_ids=[chunk.id for chunk in indexed_chunks],
-                        db_chunks=indexed_chunks,
-                        index_options=index_options,
-                        pipeline_effective=pipeline_effective,
-                    )
-                    return {
-                        "status": "success",
-                        "reason": "indexed_checkpoint_resume",
-                        "chunk_count": len(indexed_chunks),
-                        "total_characters": total_chars,
-                        "parser_backend": resolved_backend,
-                        "chunk_strategy": resolved_chunk_strategy,
-                    }
-
-            if bool(getattr(pipeline_effective, "ingest_pre_poc_scanner_enabled", False)):
-                try:
-                    from app.services.ingest_pre_poc_quality_gate import evaluate_ingest_pre_poc_quality_gate
-
-                    t0 = time.perf_counter()
-                    with metrics_span("ingest.pre_poc_quality_gate", file_ext=file_path.suffix.lower()):
-                        pre_poc_gate = evaluate_ingest_pre_poc_quality_gate(
-                            file_path,
-                            enabled=True,
-                            mode=str(getattr(pipeline_effective, "ingest_pre_poc_quality_gate_mode", "warn") or "warn"),
-                        )
-                    _add_stage_duration("pre_poc_quality_gate", (time.perf_counter() - t0) * 1000)
-                    next_meta = dict(db_document.doc_metadata or {})
-                    next_meta["pre_poc_quality_gate"] = pre_poc_gate
-                    next_meta = apply_parse_quality_gate_metadata(next_meta)
-                    db_document.doc_metadata = next_meta
-                    db.commit()
-                    db.refresh(db_document)
-                    if bool(pre_poc_gate.get("blocked")):
-                        msg = "Document blocked by Pre-POC quality gate"
-                        await self._update_status(
-                            db,
-                            tenant_id,
-                            document_id,
-                            "failed",
-                            0,
-                            "failed",
-                            chunk_count=0,
-                            total_characters=0,
-                            error_message=msg,
-                            doc_metadata=_with_stage_durations(next_meta),
-                        )
-                        return {
-                            "status": "failed",
-                            "reason": "pre_poc_quality_gate_blocked",
-                            "chunk_count": 0,
-                            "total_characters": 0,
-                            "parser_backend": parser_backend or "auto",
-                            "chunk_strategy": chunk_strategy or "auto",
-                        }
-                except Exception as exc:  # noqa: BLE001
-                    _log_processor_fallback('process_document', exc)
-                    if str(getattr(pipeline_effective, "ingest_pre_poc_quality_gate_mode", "warn") or "warn").lower() == "strict":
-                        raise RuntimeError(f"pre_poc_quality_gate_failed: {str(exc)[:200]}") from exc
-
-            # Optional: file-level preprocessing before parsing (configured via ingestion policy).
-            try:
-                meta = db_document.doc_metadata or {}
-                ingestion = meta.get("ingestion") if isinstance(meta, dict) else None
-                preprocess_cfg = ingestion.get("preprocess") if isinstance(ingestion, dict) else None
-                steps = preprocess_cfg.get("steps") if isinstance(preprocess_cfg, dict) else None
-                if isinstance(steps, list) and steps:
-                    t0 = time.perf_counter()
-                    with metrics_span("ingest.preprocess", file_ext=file_path.suffix.lower()):
-                        result = preprocess_file(input_path=file_path, steps=steps)
-                    _add_stage_duration("preprocess", (time.perf_counter() - t0) * 1000)
-                    # Persist a lightweight audit record for debugging/tuning (best-effort).
-                    try:
-                        next_meta = dict(db_document.doc_metadata or {})
-                        next_meta["preprocess"] = result.to_dict()
-                        db_document.doc_metadata = next_meta
-                        db.commit()
-                        db.refresh(db_document)
-                    except Exception as exc:
-                        logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-                    if bool(getattr(result, "changed", False)):
-                        out_path = Path(str(getattr(result, "output_path", "") or "")).resolve(strict=False)
-                        preprocessed_temp_path = out_path
-                        file_path = out_path
-            except Exception as exc:  # noqa: BLE001
-                _log_processor_fallback('process_document', exc)
-                # Fail closed: when preprocessing is enabled, it is part of ingestion correctness.
-                raise RuntimeError(f"preprocess_failed: {str(exc)[:200]}") from exc
-
-            # Optional: image-level preprocessing before parsing (deskew/orientation/watermark).
-            # This is disabled by default to keep baseline ingest behavior unchanged.
-            try:
-                if bool(getattr(settings, "IMAGE_PREPROCESS_ENABLED", False)):
-                    ext = file_path.suffix.lower()
-                    if ext == ".pdf" or ext in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}:
-                        t0 = time.perf_counter()
-                        with metrics_span("ingest.image_preprocess", file_ext=ext):
-                            pdf_quality = None
-                            if ext == ".pdf":
-                                try:
-                                    from app.parsing.quality.scorer import score_pdf_quality
-
-                                    pdf_quality = score_pdf_quality(
-                                        file_path,
-                                        sample_pages=int(getattr(settings, "PREPROCESS_SAMPLE_PAGES", 3) or 3),
-                                        use_ocr_validation=False,
-                                    )
-                                    # Persist early so downstream routing can reuse it (best-effort).
-                                    try:
-                                        if isinstance(pdf_quality, dict) and pdf_quality.get("score") is not None:
-                                            next_meta = dict(db_document.doc_metadata or {})
-                                            next_meta["pdf_quality"] = pdf_quality
-                                            db_document.doc_metadata = next_meta
-                                            db.commit()
-                                            db.refresh(db_document)
-                                    except Exception as exc:
-                                        logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-                                except Exception as exc:
-                                    _log_processor_fallback('process_document', exc)
-                                    pdf_quality = None
-                            result = preprocess_image_document(
-                                input_path=file_path,
-                                document_id=str(document_id) if document_id else None,
-                                pdf_quality=pdf_quality,
-                            )
-                        _add_stage_duration("image_preprocess", (time.perf_counter() - t0) * 1000)
-                        # Persist a lightweight audit record for debugging/tuning (best-effort).
-                        try:
-                            next_meta = dict(db_document.doc_metadata or {})
-                            next_meta["image_preprocess"] = result.to_dict()
-                            db_document.doc_metadata = next_meta
-                            db.commit()
-                            db.refresh(db_document)
-                        except Exception as exc:
-                            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-                        if bool(getattr(result, "changed", False)):
-                            out_path = Path(str(getattr(result, "output_path", "") or "")).resolve(strict=False)
-                            preprocessed_temp_path = out_path
-                            file_path = out_path
-            except Exception as exc:  # noqa: BLE001
-                _log_processor_fallback('process_document', exc)
-                raise RuntimeError(f"image_preprocess_failed: {str(exc)[:200]}") from exc
-
-            # Structured Table Store (TAG): optionally import table-like documents and skip chunk/vector ingestion.
-            #
-            # Default behavior (table_store_auto_route=false):
-            # - table_store_enabled=true  => always import table docs into SQLite (TAG) and short-circuit RAG indexing
-            #
-            # Auto routing (table_store_auto_route=true):
-            # - small tables => fall back to normal parsing+chunking+indexing (RAG)
-            # - large/complex tables => import into SQLite store (TAG)
-            if (
-                bool(getattr(pipeline_effective, "table_store_enabled", False))
-                and db_document.dataset_id is not None
-                and file_path.suffix.lower() in {".csv", ".xls", ".xlsx"}
-            ):
-                # Decide whether this file should go to TAG or remain in the RAG pipeline.
-                table_decision = None
-                try:
-                    from app.services.table_routing import decide_table_route
-
-                    table_decision = decide_table_route(
-                        file_path=file_path,
-                        auto_route=bool(getattr(pipeline_effective, "table_store_auto_route", False)),
-                        file_bytes_threshold=int(getattr(pipeline_effective, "table_store_auto_file_bytes_threshold", 0) or 0),
-                        row_threshold=int(getattr(pipeline_effective, "table_store_auto_row_threshold", 0) or 0),
-                        col_threshold=int(getattr(pipeline_effective, "table_store_auto_col_threshold", 0) or 0),
-                        sheet_threshold=int(getattr(pipeline_effective, "table_store_auto_sheet_threshold", 0) or 0),
-                    )
-                except Exception as exc:
-                    _log_processor_fallback('process_document', exc)
-                    table_decision = None
-
-                # Persist routing decision for audit/debug (best-effort; never fail ingestion).
-                if table_decision is not None:
-                    try:
-                        next_meta = dict(db_document.doc_metadata or {})
-                        next_meta["table_routing"] = {
-                            "version": "1",
-                            "route": getattr(table_decision, "route", None),
-                            "reason": getattr(table_decision, "reason", None),
-                            "stats": dict(getattr(table_decision, "stats", None) or {}),
-                        }
-                        db_document.doc_metadata = next_meta
-                        db.commit()
-                        db.refresh(db_document)
-                    except Exception as exc:
-                        logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-
-                # When auto-route says "rag", continue the normal parsing+indexing pipeline.
-                should_tag = True
-                if table_decision is not None and str(getattr(table_decision, "route", "") or "").lower() == "rag":
-                    should_tag = False
-
-                if should_tag:
-                    await raise_if_cancelled(force=True)
-                    await self._update_status(db, tenant_id, document_id, "processing", 15, "table_import")
-                    try:
-                        from app.services.table_store_service import import_table_document
-
-                        t0 = time.perf_counter()
-                        assets = import_table_document(
-                            tenant_id=tenant_id,
-                            dataset_id=db_document.dataset_id,
-                            document_id=document_id,
-                            file_path=file_path,
-                            max_rows=int(getattr(pipeline_effective, "table_store_max_rows", 0) or 0),
-                            max_cols=int(getattr(pipeline_effective, "table_store_max_cols", 0) or 0),
-                            sample_rows=int(getattr(pipeline_effective, "table_store_sample_rows", 0) or 0),
-                        )
-                        _add_stage_duration("table_import", (time.perf_counter() - t0) * 1000)
-                    except Exception as exc:  # noqa: BLE001
-                        msg = f"table_import_failed: {(str(exc) or exc.__class__.__name__)[:200]}"
-                        logger.warning("Table import failed: %s document_id=%s", msg, document_id)
-                        meta_patch = _with_stage_durations(dict(db_document.doc_metadata or {}))
-                        await self._update_status(
-                            db,
-                            tenant_id,
-                            document_id,
-                            "failed",
-                            0,
-                            "failed",
-                            chunk_count=0,
-                            total_characters=0,
-                            error_message=msg,
-                            doc_metadata=meta_patch,
-                        )
-                        return {
-                            "status": "failed",
-                            "reason": "table_import_failed",
-                            "chunk_count": 0,
-                            "total_characters": 0,
-                            "parser_backend": "table_store",
-                            "chunk_strategy": "none",
-                        }
-
-                    await raise_if_cancelled(force=True)
-
-                    # Persist structured table metadata for listing/preview endpoints.
-                    try:
-                        now_iso = dt.datetime.now(dt.UTC).isoformat()
-                        tables_payload: list[dict[str, Any]] = []
-                        for a in assets or []:
-                            tables_payload.append(
-                                {
-                                    "table_id": str(getattr(a, "table_id", "")),
-                                    "sheet_index": int(getattr(a, "sheet_index", 0) or 0),
-                                    "sheet_name": getattr(a, "sheet_name", None),
-                                    "row_count": int(getattr(a, "row_count", 0) or 0),
-                                    "col_count": int(getattr(a, "col_count", 0) or 0),
-                                    "truncated": bool(getattr(a, "truncated", False)),
-                                    "columns": list(getattr(a, "columns", None) or []),
-                                    "sample_rows": list(getattr(a, "sample_rows", None) or []),
-                                }
-                            )
-
-                        next_meta = dict(db_document.doc_metadata or {})
-                        next_meta["table_store"] = {
-                            "version": "1",
-                            "source_ext": file_path.suffix.lower(),
-                            "imported_at": now_iso,
-                            "tables": tables_payload,
-                        }
-                        next_meta = apply_parse_quality_gate_metadata(next_meta)
-                        db_document.doc_metadata = next_meta
-                        db.commit()
-                        db.refresh(db_document)
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("Failed to persist table_store metadata (ignored): %s", str(exc)[:200])
-
-                    await self._update_status(
-                        db,
-                        tenant_id,
-                        document_id,
-                        "completed",
-                        100,
-                        "completed",
-                        chunk_count=0,
-                        total_characters=0,
-                        error_message=None,
-                        doc_metadata=_with_stage_durations(dict(db_document.doc_metadata or {})),
-                    )
-                    return {
-                        "status": "completed",
-                        "reason": "table_store",
-                        "chunk_count": 0,
-                        "total_characters": 0,
-                        "parser_backend": "table_store",
-                        "chunk_strategy": "none",
-                    }
-
-            # Structured Table Store (TAG) sidecar for DOCX: import tables into SQLite, but keep
-            # the normal parsing+chunking pipeline intact.
-            #
-            # Motivation:
-            # - DOCX often mixes narrative text + tables; short-circuiting would hurt RAG.
-            # - Still, having structured tables available improves TAG answers and UI previews.
-            if (
-                bool(getattr(pipeline_effective, "table_store_enabled", False))
-                and db_document.dataset_id is not None
-                and file_path.suffix.lower() == ".docx"
-            ):
-                await raise_if_cancelled(force=True)
-                try:
-                    from app.services.table_store_service import import_docx_tables
-
-                    assets = import_docx_tables(
-                        tenant_id=tenant_id,
-                        dataset_id=db_document.dataset_id,
-                        document_id=document_id,
-                        file_path=file_path,
-                        max_rows=int(getattr(pipeline_effective, "table_store_max_rows", 0) or 0),
-                        max_cols=int(getattr(pipeline_effective, "table_store_max_cols", 0) or 0),
-                        sample_rows=int(getattr(pipeline_effective, "table_store_sample_rows", 0) or 0),
-                    )
-                    await raise_if_cancelled(force=True)
-
-                    # Persist structured table metadata for listing/preview endpoints.
-                    #
-                    # If no tables were found, remove stale table_store metadata from previous ingests.
-                    try:
-                        next_meta = dict(db_document.doc_metadata or {})
-                        if assets:
-                            now_iso = dt.datetime.now(dt.UTC).isoformat()
-                            tables_payload: list[dict[str, Any]] = []
-                            for a in assets or []:
-                                tables_payload.append(
-                                    {
-                                        "table_id": str(getattr(a, "table_id", "")),
-                                        "sheet_index": int(getattr(a, "sheet_index", 0) or 0),
-                                        "sheet_name": getattr(a, "sheet_name", None),
-                                        "row_count": int(getattr(a, "row_count", 0) or 0),
-                                        "col_count": int(getattr(a, "col_count", 0) or 0),
-                                        "truncated": bool(getattr(a, "truncated", False)),
-                                        "columns": list(getattr(a, "columns", None) or []),
-                                        "sample_rows": list(getattr(a, "sample_rows", None) or []),
-                                    }
-                                )
-
-                            next_meta["table_store"] = {
-                                "version": "1",
-                                "source_ext": file_path.suffix.lower(),
-                                "imported_at": now_iso,
-                                "tables": tables_payload,
-                            }
-                        else:
-                            next_meta.pop("table_store", None)
-                        next_meta = apply_parse_quality_gate_metadata(next_meta)
-
-                        if next_meta != (db_document.doc_metadata or {}):
-                            db_document.doc_metadata = next_meta
-                            db.commit()
-                            db.refresh(db_document)
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("Failed to persist DOCX table_store metadata (ignored): %s", str(exc)[:200])
-                except Exception as exc:  # noqa: BLE001
-                    # Best-effort only: never fail ingestion for sidecar TAG import.
-                    logger.info("DOCX table import failed (ignored): %s document_id=%s", str(exc)[:200], document_id)
-
-            combined_rules = _build_combined_governance_rules(pipeline_effective)
-            governance_kwargs = {
-                **({"rules": combined_rules} if combined_rules else {}),
-                "remove_toc_lines": pipeline_effective.governance_remove_toc_lines,
-                "remove_noise_lines": pipeline_effective.governance_remove_noise_lines,
-                "unwrap_lines": pipeline_effective.governance_unwrap_lines,
-                "remove_common_lines": pipeline_effective.governance_remove_common_lines,
-                "remove_boilerplate": pipeline_effective.governance_remove_boilerplate,
-                "remove_images": pipeline_effective.governance_remove_images,
-                "extract_frontmatter": pipeline_effective.governance_extract_frontmatter,
-                "strip_frontmatter": pipeline_effective.governance_strip_frontmatter,
-                "detect_language": pipeline_effective.governance_detect_language,
-                "language_min_chars": pipeline_effective.governance_language_min_chars,
-                "normalize_urls": pipeline_effective.governance_normalize_urls,
-                "normalize_urls_strip_tracking": pipeline_effective.governance_normalize_urls_strip_tracking,
-                "drop_duplicate_paragraphs": pipeline_effective.governance_drop_duplicate_paragraphs,
-                "drop_duplicate_paragraphs_min_occurrences": pipeline_effective.governance_drop_duplicate_paragraphs_min_occurrences,
-                "drop_duplicate_paragraphs_min_chars": pipeline_effective.governance_drop_duplicate_paragraphs_min_chars,
-                "drop_duplicate_paragraphs_max_chars": pipeline_effective.governance_drop_duplicate_paragraphs_max_chars,
-                "trim_references": pipeline_effective.governance_trim_references,
-                "extract_keywords": pipeline_effective.governance_extract_keywords,
-                "keywords_provider": pipeline_effective.governance_keywords_provider,
-                "keywords_top_k": pipeline_effective.governance_keywords_top_k,
-                "keywords_max_chars": pipeline_effective.governance_keywords_max_chars,
-                "normalize_tables": pipeline_effective.governance_normalize_tables,
-                "strip_code_line_numbers": pipeline_effective.governance_strip_code_line_numbers,
-                "pii_anonymize": pipeline_effective.governance_pii_anonymize,
-                "pii_mode": pipeline_effective.governance_pii_mode,
-                "pii_mask": pipeline_effective.governance_pii_mask,
-                "pii_max_hits": pipeline_effective.governance_pii_max_hits,
-                "secrets_redact": pipeline_effective.governance_secrets_redact,
-                "secrets_mode": pipeline_effective.governance_secrets_mode,
-                "secrets_mask": pipeline_effective.governance_secrets_mask,
-                "secrets_max_hits": pipeline_effective.governance_secrets_max_hits,
-                "max_blank_lines": pipeline_effective.governance_max_blank_lines,
-                "drop_outline_only": pipeline_effective.governance_drop_outline_only,
-                "drop_outline_min_content_chars": pipeline_effective.governance_drop_outline_min_content_chars,
-                "drop_outline_max_heading_ratio": pipeline_effective.governance_drop_outline_max_heading_ratio,
-                "drop_low_density": pipeline_effective.governance_drop_low_density,
-                "drop_low_density_threshold": pipeline_effective.governance_drop_low_density_threshold,
-                "unwrap_max_line_length": pipeline_effective.governance_unwrap_max_line_length,
-                "noise_min_chars": pipeline_effective.governance_noise_min_chars,
-                "noise_ratio_threshold": pipeline_effective.governance_noise_ratio_threshold,
-                "common_lines_min_docs": pipeline_effective.governance_common_lines_min_docs,
-                "common_lines_min_ratio": pipeline_effective.governance_common_lines_min_ratio,
-            }
-
-            parsing_stage = ParsingStage(self)
-            inline_asset_stage = InlineAssetStage(self)
-            normalize_stage = NormalizeStage()
-            governance_stage = GovernanceStage()
-            chunking_stage = ChunkingStage()
-            chunk_dedup_stage = ChunkDedupStage()
-            chunk_asset_stage = ChunkAssetStage(self)
-            index_stage = IndexStage()
-
-            parsed_documents_before_governance: list[Document] | None = None
-            parsed_documents: list[Document] | None = None
-            governance_stats: GovernanceStats | None = None
-            governance_audit_patch: dict[str, Any] | None = None
-            resumed_from_checkpoint = False
-            resumed_from_parse_cache = False
-            parsed: ParseResult | None = None
-            parse_cache_store: LocalParseCacheStore | None = None
-            parse_cache_key: str | None = None
-
-            # Optional checkpoint/resume: if we previously persisted parsed markdown content
-            # for this same (file_sha256 + pipeline_hash), skip parsing and resume from it.
-            #
-            # This reduces wasted work on retries after downstream failures (embedding/vector writes).
-            try:
-                meta0 = dict(db_document.doc_metadata or {})
-                ck = meta0.get("ingest_checkpoint") if isinstance(meta0, dict) else None
-                ck_ok = parsed_checkpoint_is_reusable(meta0)
-                if ck_ok:
-                    pipeline_hash0 = str(meta0.get("pipeline_hash") or "").strip()
-                    file_sha0 = str(meta0.get("file_sha256") or "").strip().lower()
-                    ck_pipeline = str(ck.get("pipeline_hash") or "").strip()
-                    ck_sha = str(ck.get("file_sha256") or "").strip().lower()
-
-                    if (not pipeline_hash0 or ck_pipeline == pipeline_hash0) and (not file_sha0 or not ck_sha or ck_sha == file_sha0):
-                        rec = (
-                            db.query(DocumentParsedContent)
-                            .filter(DocumentParsedContent.document_id == document_id, DocumentParsedContent.tenant_id == tenant_id)
-                            .first()
-                        )
-                        cleaned_md = str(getattr(rec, "markdown_content", "") or "").strip() if rec is not None else ""
-                        original_md = str(getattr(rec, "original_markdown_content", "") or "").strip() if rec is not None else ""
-                        if cleaned_md:
-                            logger.info(
-                                "Resuming ingest from parsed checkpoint: tenant=%s document=%s pipeline_hash=%s",
-                                tenant_id,
-                                document_id,
-                                pipeline_hash0[:16] if pipeline_hash0 else "",
-                            )
-                            resolved_backend0 = (
-                                str(
-                                    meta0.get("parser_backend")
-                                    or meta0.get("parser_backend_requested")
-                                    or parser_backend
-                                    or "auto"
-                                ).strip()
-                                or "auto"
-                            )
-                            resolved_chunk_strategy0 = chunker_factory.resolve_strategy(chunk_strategy)
-                            resume_md = cleaned_md.strip()
-                            resume_meta: dict[str, Any] = {"page": 1}
-                            if original_md and original_md != resume_md:
-                                resume_meta["position_tagged_markdown"] = original_md
-                            parsed = ParseResult(
-                                resolved_backend=resolved_backend0,
-                                resolved_chunk_strategy=resolved_chunk_strategy0,
-                                documents=[Document(page_content=resume_md, metadata=resume_meta)],
-                            )
-                            resumed_from_checkpoint = True
-            except Exception as exc:
-                _log_processor_fallback('process_document', exc)
-                resumed_from_checkpoint = False
-
-            if not resumed_from_checkpoint:
-                try:
-                    meta0 = dict(db_document.doc_metadata or {})
-                    file_sha0 = str(meta0.get("file_sha256") or "").strip().lower()
-                    pipeline_hash0 = str(meta0.get("pipeline_hash") or "").strip()
-                    parser_backend_key = str(parser_backend or "").strip().lower() or "auto"
-                    if (
-                        bool(getattr(pipeline_effective, "parse_cache_enabled", False))
-                        and file_sha0
-                        and pipeline_hash0
-                    ):
-                        parse_cache_store = LocalParseCacheStore(
-                            root=Path(settings.UPLOAD_DIR) / str(tenant_id) / ".mimirq_parse_cache"
-                        )
-                        parse_cache_key = build_local_parse_cache_key(
-                            file_sha256=file_sha0,
-                            parser_backend=parser_backend_key,
-                            config_hash=pipeline_hash0,
-                        )
-                        cached_entry, cached_age_ms = parse_cache_store.get(
-                            parse_cache_key,
-                            ttl_sec=int(getattr(pipeline_effective, "parse_cache_ttl_sec", 0) or 0),
-                        )
-                        if cached_entry is not None and (cached_entry.documents is not None or cached_entry.chunks is not None):
-                            parsed = ParseResult(
-                                resolved_backend=str(cached_entry.resolved_backend or parser_backend_key),
-                                resolved_chunk_strategy=str(cached_entry.resolved_chunk_strategy or chunker_factory.resolve_strategy(chunk_strategy)),
-                                documents=_deserialize_documents_from_parse_cache(cached_entry.documents),
-                                chunks=_deserialize_documents_from_parse_cache(cached_entry.chunks),
-                            )
-                            resumed_from_parse_cache = True
-                            meta_hit = dict(db_document.doc_metadata or {})
-                            meta_hit["parse_cache"] = {
-                                "enabled": True,
-                                "hit": True,
-                                "age_ms": int(cached_age_ms or 0),
-                                "ttl_sec": int(getattr(pipeline_effective, "parse_cache_ttl_sec", 0) or 0),
-                            }
-                            db_document.doc_metadata = meta_hit
-                            db.commit()
-                            db.refresh(db_document)
-                except Exception as exc:
-                    _log_processor_fallback('process_document', exc)
-                    resumed_from_parse_cache = False
-
-            if not resumed_from_checkpoint and not resumed_from_parse_cache:
-                with metrics_span(
-                    "ingest.parse",
-                    parser_backend_requested=parser_backend,
-                    chunk_strategy_requested=chunk_strategy,
-                    otel_span_name="ingest.parse",
-                    otel_attributes={
-                        "ingest.stage": "parse",
-                        "document.file_type": str(file_path.suffix.lstrip(".") or "unknown").lower(),
-                        "parser.backend_requested": (
-                            str(
-                                (db_document.doc_metadata or {}).get("parser_backend_requested")
-                                or (db_document.doc_metadata or {}).get("parser_backend")
-                                or parser_backend
-                                or "auto"
-                            ).strip().lower()
-                            or "auto"
-                        ),
-                        "chunk.strategy_requested": (
-                            str(
-                                (db_document.doc_metadata or {}).get("chunk_strategy_requested")
-                                or (db_document.doc_metadata or {}).get("chunk_strategy")
-                                or chunk_strategy
-                                or ""
-                            ).strip().lower()
-                            or "default"
-                        ),
-                    },
-                ):
-                    t_parse0 = time.perf_counter()
-                    parsed = await parsing_stage.run(
-                        db=db,
-                        db_document=db_document,
-                        file_path=file_path,
-                        document_id=document_id,
-                        tenant_id=tenant_id,
-                        dataset_id=dataset_id,
-                        parser_backend=parser_backend,
-                        chunk_strategy=chunk_strategy,
-                        html_xpath=(
-                            pipeline_effective.governance_html_xpath
-                            if file_path.suffix.lower() in {".html", ".htm"}
-                            else None
-                        ),
-                    )
-
-                await raise_if_cancelled(force=True)
-
-            # Optional: retry parsing with an alternative backend when output quality is obviously low.
-            if (
-                bool(getattr(pipeline_effective, "parse_fallback_enabled", False))
-                and file_path.suffix.lower() == ".pdf"
-                and (str(parser_backend or "").strip().lower() in {"", "auto"})
-                and (not resumed_from_checkpoint)
-                and (not resumed_from_parse_cache)
-                and parsed.documents is not None
-            ):
-                try:
-                    min_chars = max(0, int(getattr(pipeline_effective, "parse_fallback_min_content_chars", 0) or 0))
-                    min_parse_score = max(
-                        0.0,
-                        float(getattr(pipeline_effective, "parse_fallback_min_parse_score", 0.0) or 0.0),
-                    )
-                    max_retries = max(0, int(getattr(pipeline_effective, "parse_fallback_max_retries", 0) or 0))
-                    if (min_chars > 0 or min_parse_score > 0.0) and max_retries > 0:
-                        joined = "\n\n".join([(d.page_content or "") for d in (parsed.documents or [])])
-                        q0 = score_parsed_text_quality(joined)
-                        q0_quality = score_document_parse_quality(
-                            pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
-                            parsed_text_quality=q0.to_dict(),
-                        )
-                        q0_score = float(q0_quality.get("score") or 0.0)
-                        q0_chars = int(getattr(q0, "content_chars", 0) or 0)
-                        if should_attempt_pdf_fallback(
-                            grade="fail" if q0_chars <= 0 else "warn",
-                            parse_score=q0_score,
-                            content_chars=q0_chars,
-                            min_content_chars=min_chars,
-                            min_parse_score=min_parse_score,
-                        ):
-                            from app.parsing.parsers.magic_pdf_parser import (
-                                magicpdf_service_configured,
-                                resolve_magicpdf_models_dir,
-                            )
-                            from app.parsing.utils.cli import resolve_cli_command
-
-                            def _magicpdf_available() -> bool:
-                                if not bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
-                                    return False
-                                if magicpdf_service_configured(getattr(settings, "MAGIC_PDF_API_URL", "")):
-                                    return True
-                                cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
-                                return bool(
-                                    resolve_cli_command(cli)
-                                    and resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
-                                )
-
-                            candidates: list[str] = []
-                            current = str(parsed.resolved_backend or "").strip().lower()
-
-                            if settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL):
-                                candidates.append("mineru")
-                            if bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False)) and bool(
-                                (getattr(settings, "SILICONFLOW_API_KEY", "") or "").strip()
-                            ):
-                                candidates.append("deepseek_ocr")
-                            if bool(getattr(settings, "QIANFAN_OCR_ENABLED", False)) and bool(
-                                (getattr(settings, "QIANFAN_OCR_API_URL", "") or "").strip()
-                            ):
-                                candidates.append("qianfan_ocr")
-                            if bool(getattr(settings, "ETL4LLM_ENABLED", False)) and bool(
-                                (getattr(settings, "ETL4LLM_API_URL", "") or "").strip()
-                            ):
-                                candidates.append("etl4llm")
-                            if settings.DEEPDOC_ENABLED:
-                                candidates.append("deepdoc")
-                            if getattr(settings, "DOCLING_ENABLED", False):
-                                candidates.append("docling")
-                            if _magicpdf_available():
-                                candidates.append("magicpdf")
-                            if settings.MARKITDOWN_ENABLED:
-                                candidates.append("markitdown")
-                            candidates.append("basic")
-
-                            # Remove current backend and keep order.
-                            filtered: list[str] = []
-                            for c in candidates:
-                                c_norm = (c or "").strip().lower()
-                                if not c_norm or c_norm == current:
-                                    continue
-                                if c_norm not in filtered:
-                                    filtered.append(c_norm)
-
-                            attempts: list[dict[str, object]] = []
-                            retries_left = max_retries
-                            for candidate in filtered:
-                                if retries_left <= 0:
-                                    break
-                                retries_left -= 1
-                                try:
-                                    with metrics_span("ingest.parse_fallback", backend=candidate):
-                                        alt = await parsing_stage.run(
-                                            db=db,
-                                            db_document=db_document,
-                                            file_path=file_path,
-                                            document_id=document_id,
-                                            tenant_id=tenant_id,
-                                            dataset_id=dataset_id,
-                                            parser_backend=candidate,
-                                            chunk_strategy=chunk_strategy,
-                                            html_xpath=None,
-                                        )
-                                except Exception as exc:  # noqa: BLE001
-                                    _log_processor_fallback('process_document', exc)
-                                    attempts.append(
-                                        {
-                                            "from": current,
-                                            "to": candidate,
-                                            "quality_before": q0.to_dict(),
-                                            "error": str(exc)[:200],
-                                            "accepted": False,
-                                        }
-                                    )
-                                    continue
-                                if alt.documents is None:
-                                    continue
-                                joined_alt = "\n\n".join([(d.page_content or "") for d in (alt.documents or [])])
-                                q1 = score_parsed_text_quality(joined_alt)
-                                q1_quality = score_document_parse_quality(
-                                    pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
-                                    parsed_text_quality=q1.to_dict(),
-                                )
-                                q1_score = float(q1_quality.get("score") or 0.0)
-                                q1_chars = int(getattr(q1, "content_chars", 0) or 0)
-                                accepted = not should_attempt_pdf_fallback(
-                                    grade="warn",
-                                    parse_score=q1_score,
-                                    content_chars=q1_chars,
-                                    min_content_chars=min_chars,
-                                    min_parse_score=min_parse_score,
-                                )
-                                attempts.append(
-                                    {
-                                        "from": current,
-                                        "to": candidate,
-                                        "quality_before": q0.to_dict(),
-                                        "quality_after": q1.to_dict(),
-                                        "accepted": bool(accepted),
-                                    }
-                                )
-                                if accepted:
-                                    parsed = alt
-                                    break
-
-                            if attempts:
-                                meta = dict(db_document.doc_metadata or {})
-                                meta["parse_fallback"] = {
-                                    "enabled": True,
-                                    "attempts": attempts,
-                                    "min_content_chars": int(min_chars),
-                                    "max_retries": int(max_retries),
-                                }
-                                db_document.doc_metadata = meta
-                                db.commit()
-                                db.refresh(db_document)
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("Parse fallback failed (ignored): %s", str(exc)[:200])
-
-            if resumed_from_checkpoint:
-                meta0 = dict(db_document.doc_metadata or {})
-                resolved_backend = str(meta0.get("parser_backend") or meta0.get("parser_backend_requested") or parser_backend or "auto").strip() or "auto"
-                resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
-            else:
-                if not resumed_from_parse_cache:
-                    _add_stage_duration("parse", (time.perf_counter() - t_parse0) * 1000)
-
-                resolved_backend = parsed.resolved_backend
-                resolved_chunk_strategy = parsed.resolved_chunk_strategy
-
-            if parsed is not None:
-                parsed = ParseResult(
-                    resolved_backend=parsed.resolved_backend,
-                    resolved_chunk_strategy=parsed.resolved_chunk_strategy,
-                    documents=_attach_logical_source_metadata(
-                        parsed.documents,
-                        db_document=db_document,
-                        file_path=file_path,
-                    )
-                    if parsed.documents is not None
-                    else None,
-                    chunks=_attach_logical_source_metadata(
-                        parsed.chunks,
-                        db_document=db_document,
-                        file_path=file_path,
-                    )
-                    if parsed.chunks is not None
-                    else None,
-                )
-
-            if (
-                not resumed_from_checkpoint
-                and not resumed_from_parse_cache
-                and parse_cache_store is not None
-                and parse_cache_key
-                and parsed is not None
-            ):
-                try:
-                    parse_cache_store.set(
-                        parse_cache_key,
-                        LocalParseCacheEntry(
-                            created_at_epoch=time.time(),
-                            file_sha256=str((db_document.doc_metadata or {}).get("file_sha256") or "").strip().lower(),
-                            parser_backend=str(parser_backend or "").strip().lower() or "auto",
-                            resolved_backend=str(parsed.resolved_backend or resolved_backend),
-                            resolved_chunk_strategy=str(parsed.resolved_chunk_strategy or resolved_chunk_strategy),
-                            documents=_serialize_documents_for_parse_cache(parsed.documents),
-                            chunks=_serialize_documents_for_parse_cache(parsed.chunks),
-                        ),
-                    )
-                    meta_cached = dict(db_document.doc_metadata or {})
-                    meta_cached["parse_cache"] = {
-                        "enabled": True,
-                        "hit": False,
-                        "ttl_sec": int(getattr(pipeline_effective, "parse_cache_ttl_sec", 0) or 0),
-                    }
-                    db_document.doc_metadata = meta_cached
-                    db.commit()
-                    db.refresh(db_document)
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("Persisted parse cache write failed (ignored): %s", str(exc)[:200])
-
-            # Parse quality gate: if fallback is enabled but we still don't have enough signal,
-            # route to failed/quarantined instead of indexing garbage.
-            #
-            # This is intentionally conservative and currently scoped to PDF+auto, matching the
-            # parse_fallback behavior/knobs.
-            if (
-                bool(getattr(pipeline_effective, "parse_fallback_enabled", False))
-                and file_path.suffix.lower() == ".pdf"
-                and (str(parser_backend or "").strip().lower() in {"", "auto"})
-                and (not resumed_from_checkpoint)
-                and (not resumed_from_parse_cache)
-                and parsed.documents is not None
-            ):
-                try:
-                    min_chars = max(0, int(getattr(pipeline_effective, "parse_fallback_min_content_chars", 0) or 0))
-                    min_parse_score = max(
-                        0.0,
-                        float(getattr(pipeline_effective, "parse_fallback_min_parse_score", 0.0) or 0.0),
-                    )
-                    if min_chars > 0 or min_parse_score > 0.0:
-                        joined_final = "\n\n".join([(d.page_content or "") for d in (parsed.documents or [])])
-                        q_final = score_parsed_text_quality(joined_final)
-                        final_chars = int(getattr(q_final, "content_chars", 0) or 0)
-
-                        # If parse_fallback attempted other backends, ensure the stored quality reflects
-                        # the final selected parse result (not a rejected candidate attempt).
-                        meta = dict(db_document.doc_metadata or {})
-                        attempted = bool(meta.get("parse_fallback"))
-                        if attempted or final_chars < min_chars:
-                            meta["parsed_text_quality"] = q_final.to_dict()
-                            specialty_signals = _seal_summary_to_specialty_signals(
-                                meta.get("seal_summary") if isinstance(meta.get("seal_summary"), dict) else None
-                            )
-                            with contextlib.suppress(Exception):
-                                meta["parse_quality"] = score_document_parse_quality(
-                                    pdf_quality=(meta.get("pdf_quality") if isinstance(meta.get("pdf_quality"), dict) else None),
-                                    parsed_text_quality=(meta.get("parsed_text_quality") if isinstance(meta.get("parsed_text_quality"), dict) else None),
-                                    specialty_signals=specialty_signals,
-                                )
-                            meta = apply_parse_quality_gate_metadata(meta)
-                            db_document.doc_metadata = meta
-                            db.commit()
-                            db.refresh(db_document)
-
-                        final_quality = score_document_parse_quality(
-                            pdf_quality=(meta.get("pdf_quality") if isinstance(meta.get("pdf_quality"), dict) else None),
-                            parsed_text_quality=q_final.to_dict(),
-                            specialty_signals=specialty_signals,
-                        )
-                        final_score = float(final_quality.get("score") or 0.0)
-                        if should_attempt_pdf_fallback(
-                            grade="warn",
-                            parse_score=final_score,
-                            content_chars=final_chars,
-                            min_content_chars=min_chars,
-                            min_parse_score=min_parse_score,
-                        ):
-                            quarantined = bool(getattr(pipeline_effective, "governance_quarantine_on_drop", False))
-                            status = "quarantined" if quarantined else "failed"
-                            reason = "quarantined_by_parse_quality" if quarantined else "dropped_by_parse_quality"
-                            msg = (
-                                f"Document {'quarantined' if quarantined else 'failed'} by parse quality gate "
-                                f"(content_chars={final_chars}, parse_score={round(final_score, 3)}). "
-                                "Consider enabling OCR/backends or lowering parse fallback thresholds."
-                            )
-                            logger.warning(LOG_DOC_ID_FMT, msg, document_id)
-                            meta_patch = record_ingest_gate_outcome(
-                                _with_stage_durations(dict(db_document.doc_metadata or {})),
-                                gate="parse_quality",
-                                outcome=("quarantine" if quarantined else "closed"),
-                                reason=reason,
-                                details={
-                                    "parser_backend": str(resolved_backend or ""),
-                                    "parsed_content_chars": int(final_chars),
-                                    "parse_score": round(float(final_score), 3),
-                                },
-                            )
-
-                            from app.core.pipeline_versions import should_preserve_existing_versions
-
-                            update_kwargs: dict[str, Any] = {
-                                "error_message": msg,
-                                "doc_metadata": meta_patch,
-                            }
-                            if not should_preserve_existing_versions(meta_patch):
-                                update_kwargs["chunk_count"] = 0
-                                update_kwargs["total_characters"] = 0
-
-                            await self._update_status(
-                                db,
-                                tenant_id,
-                                document_id,
-                                status,
-                                0,
-                                status,
-                                **update_kwargs,
-                            )
-                            with contextlib.suppress(Exception):
-                                from app.services.audit_log_service import audit_log_event
-
-                                audit_log_event(
-                                    db,
-                                    tenant_id=tenant_id,
-                                    actor_id=(getattr(db_document, "owner_id", None) or None),
-                                    action=(AUDIT_ACTION_DOCUMENT_QUARANTINE if quarantined else "document.parse_drop"),
-                                    resource_type="document",
-                                    resource_id=str(document_id),
-                                    details={
-                                        "reason": reason,
-                                        "parse_fallback_min_content_chars": int(min_chars),
-                                        "parsed_content_chars": int(final_chars),
-                                        "parser_backend": str(resolved_backend or ""),
-                                    },
-                                )
-                                db.commit()
-
-                            return {
-                                "status": status,
-                                "reason": reason,
-                                "chunk_count": 0,
-                                "total_characters": 0,
-                                "parser_backend": resolved_backend,
-                                "chunk_strategy": resolved_chunk_strategy,
-                            }
-                except Exception as exc:  # noqa: BLE001
-                    degraded_meta = record_ingest_gate_outcome(
-                        _with_stage_durations(dict(db_document.doc_metadata or {})),
-                        gate="parse_quality",
-                        outcome="degraded",
-                        reason="parse_quality_gate_failed",
-                        details={"error": str(exc)[:200]},
-                    )
-                    db_document.doc_metadata = degraded_meta
-                    db.commit()
-                    db.refresh(db_document)
-                    audit_ingest_gate(
-                        db,
-                        tenant_id=tenant_id,
-                        db_document=db_document,
-                        gate="parse_quality",
-                        outcome="degraded",
-                        reason="parse_quality_gate_failed",
-                        details={"error": str(exc)[:200]},
-                    )
-                    logger.warning("Parse quality gate degraded: %s", str(exc)[:200])
-
-            # Governance: normalize/clean documents or integrated chunks.
-            merge_small_min_chars = 0
-            merge_small_before = 0
-            merge_small_after = 0
-            merge_small_reduced = 0
-
-            _collect_parser_asset_refs(parsed, document_img_ids=document_img_ids, artifact_dirs=artifact_dirs)
-
-            if parsed.documents:
-                t0 = time.perf_counter()
-                with metrics_span("ingest.inline_assets"):
-                    inline_result = inline_asset_stage.run(
-                        documents=parsed.documents,
-                        tenant_id=tenant_id,
-                        dataset_id=dataset_id,
-                        document_id=document_id,
-                        origin_path=file_path,
-                        start_index=0,
-                        image_caption_enabled=bool(getattr(pipeline_effective, "image_caption_enabled", False)),
-                    )
-                _add_stage_duration("inline_assets", (time.perf_counter() - t0) * 1000)
-                parsed_documents = inline_result.documents
-                for iid in inline_result.uploaded_img_ids:
-                    if isinstance(iid, str) and iid.strip():
-                        document_img_ids.add(iid)
-                _apply_inline_asset_audit_patch(db, db_document, inline_result)
-            else:
-                parsed_documents = None
-
-            if parsed_documents and bool(getattr(pipeline_effective, "cross_page_merge_enabled", False)):
-                t0 = time.perf_counter()
-                with metrics_span("ingest.cross_page_merge"):
-                    parsed_documents = merge_cross_page_documents(
-                        parsed_documents,
-                        max_page_gap=int(getattr(pipeline_effective, "cross_page_merge_max_page_gap", 1) or 1),
-                    )
-                _add_stage_duration("cross_page_merge", (time.perf_counter() - t0) * 1000)
-
-            if parsed.chunks is not None and parsed_documents and file_path.suffix.lower() == ".pdf":
-                try:
-                    joined_for_ro = "\n\n".join([(d.page_content or "") for d in parsed_documents])
-                    ro = score_reading_order(joined_for_ro)
-                    meta_patch = dict(db_document.doc_metadata or {})
-                    meta_patch["reading_order"] = ro
-                    db_document.doc_metadata = meta_patch
-                    db.commit()
-                    db.refresh(db_document)
-                except Exception as exc:
-                    logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-
-            pdf_quality = (db_document.doc_metadata or {}).get("pdf_quality") if isinstance((db_document.doc_metadata or {}).get("pdf_quality"), dict) else None
-            if (
-                parsed_documents
-                and file_path.suffix.lower() == ".pdf"
-                and should_apply_vlm_correction(
-                    enabled=bool(getattr(pipeline_effective, "vlm_correction_enabled", False)),
-                    pdf_quality=pdf_quality,
-                    min_table_score=float(getattr(pipeline_effective, "vlm_correction_min_table_score", 0.6) or 0.6),
-                )
-            ):
-                t0 = time.perf_counter()
-                with metrics_span("ingest.vlm_correction"):
-                    corrected_docs, correction_meta = await apply_vlm_correction_async(
-                        documents=parsed_documents,
-                        file_path=file_path,
-                        max_pages=int(getattr(pipeline_effective, "vlm_correction_max_pages", 2) or 2),
-                    )
-                _add_stage_duration("vlm_correction", (time.perf_counter() - t0) * 1000)
-                parsed_documents = corrected_docs
-                if bool(correction_meta.get("applied")):
-                    meta_vlm = dict(db_document.doc_metadata or {})
-                    meta_vlm["vlm_correction"] = correction_meta
-                    db_document.doc_metadata = meta_vlm
-                    db.commit()
-                    db.refresh(db_document)
-
-            # Parsed table segments (e.g. PDF parsers) -> Table Store sidecar (TAG).
-            if parsed_documents and file_path.suffix.lower() == ".pdf":
-                table_sidecar_tables_imported = self._import_parsed_markdown_tables_to_store(
-                    db,
-                    db_document=db_document,
-                    tenant_id=tenant_id,
-                    documents=parsed_documents,
-                    pipeline_effective=pipeline_effective,
-                )
-
-            # Best-effort cleanup for parser artifact directories (e.g., MagicPDF output).
-            self._cleanup_parser_artifacts(artifact_dirs, tenant_id=tenant_id)
-
-            await raise_if_cancelled()
-
-            if parsed.chunks is not None:
-                t0 = time.perf_counter()
-                with metrics_span("ingest.normalize"):
-                    parsed_chunks = normalize_stage.run(items=parsed.chunks)
-                _add_stage_duration("normalize", (time.perf_counter() - t0) * 1000)
-
-                t0 = time.perf_counter()
-                with metrics_span(
-                    "ingest.governance",
-                    enabled=bool(pipeline_effective.governance_enabled),
-                    otel_span_name="ingest.governance",
-                    otel_attributes={
-                        "ingest.stage": "governance",
-                        "document.file_type": str(file_path.suffix.lstrip(".") or "unknown").lower(),
-                        "governance.enabled": bool(pipeline_effective.governance_enabled),
-                    },
-                ):
-                    gov = governance_stage.run(
-                        items=parsed_chunks,
-                        enabled=bool(pipeline_effective.governance_enabled),
-                        kwargs=governance_kwargs,
-                )
-                _add_stage_duration("governance", (time.perf_counter() - t0) * 1000)
-                chunks = gov.items
-                governance_stats = gov.stats
-
-                governance_plugin_ref = str(getattr(pipeline_effective, "governance_python_plugin", "") or "").strip()
-                if governance_plugin_ref:
-                    t0 = time.perf_counter()
-                    with metrics_span("ingest.governance_python_plugin", enabled=True):
-                        chunks = apply_governance_python_plugin(
-                            chunks,
-                            plugin_ref=governance_plugin_ref,
-                            params=dict(getattr(pipeline_effective, "governance_python_params", {}) or {}),
-                            context={
-                                "document_id": str(document_id),
-                                "tenant_id": str(tenant_id),
-                                "stage": "post_governance_chunks",
-                            },
-                        )
-                    _add_stage_duration("governance_python_plugin", (time.perf_counter() - t0) * 1000)
-
-                if bool(pipeline_effective.governance_enabled) or governance_plugin_ref:
-                    try:
-                        governance_audit_patch = self._build_governance_audit_metadata_patch(
-                            before_items=parsed_chunks,
-                            after_items=chunks,
-                        )
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("Failed to record governance audit metadata: %s", str(exc)[:200])
-                        governance_audit_patch = None
-
-                if chunks:
-                    llm_tagging_meta = await self._apply_llm_auto_tagging(
-                        chunks,
-                        pipeline_effective=pipeline_effective,
-                    )
-                    if llm_tagging_meta:
-                        audit_patch = dict(governance_audit_patch or {})
-                        audit_patch["governance_llm_auto_tagging"] = llm_tagging_meta
-                        governance_audit_patch = audit_patch
-
-                if (
-                    bool(pipeline_effective.governance_enabled)
-                    and governance_stats is not None
-                    and not chunks
-                    and int(getattr(governance_stats, "dropped", 0) or 0) > 0
-                ):
-                    self._record_governance_metadata(
-                        db,
-                        tenant_id,
-                        document_id,
-                        governance_stats,
-                        rule_packs=list(getattr(pipeline_effective, "governance_rule_packs", None) or []),
-                        audit_patch=governance_audit_patch,
-                    )
-                    quarantined = bool(getattr(pipeline_effective, "governance_quarantine_on_drop", False))
-                    reasons = getattr(governance_stats, "drop_reasons", {}) or {}
-                    reason_str = ", ".join([f"{k}:{v}" for k, v in sorted(reasons.items())]) if isinstance(reasons, dict) else ""
-                    hint = "You can disable outline/low-density filters or relax thresholds."
-                    if isinstance(reasons, dict) and any(k in reasons for k in ("pii_exceeded", "secrets_exceeded")):
-                        hint = "You can adjust PII/Secrets gates (pii_max_hits/secrets_max_hits) or disable them."
-                    msg = (
-                        ("Document quarantined by governance rules" if quarantined else "Document filtered by governance rules")
-                        + (f" ({reason_str})" if reason_str else "")
-                        + f". {hint}"
-                    )
-                    logger.warning(LOG_DOC_ID_FMT, msg, document_id)
-                    status = "quarantined" if quarantined else "failed"
-                    reason = "quarantined_by_governance" if quarantined else "filtered_by_governance"
-                    meta_patch = _with_stage_durations(dict(db_document.doc_metadata or {}))
-                    from app.core.pipeline_versions import should_preserve_existing_versions
-
-                    update_kwargs: dict[str, Any] = {
-                        "error_message": msg,
-                        "doc_metadata": meta_patch,
-                    }
-                    # When reprocessing a document, keep the currently-active version's stats visible.
-                    if not should_preserve_existing_versions(meta_patch):
-                        update_kwargs["chunk_count"] = 0
-                        update_kwargs["total_characters"] = 0
-                    await self._update_status(
-                        db,
-                        tenant_id,
-                        document_id,
-                        status,
-                        0,
-                        status,
-                        **update_kwargs,
-                    )
-                    with contextlib.suppress(Exception):
-                        from app.services.audit_log_service import audit_log_event
-
-                        pii_hits = getattr(governance_stats, "pii_hits", None) or {}
-                        secrets_hits = getattr(governance_stats, "secrets_hits", None) or {}
-                        audit_log_event(
-                            db,
-                            tenant_id=tenant_id,
-                            actor_id=(getattr(db_document, "owner_id", None) or None),
-                            action=(AUDIT_ACTION_DOCUMENT_QUARANTINE if quarantined else "document.governance_drop"),
-                            resource_type="document",
-                            resource_id=str(document_id),
-                            details={
-                                "reason": reason,
-                                "drop_reasons": reasons,
-                                "pii_hits_total": pii_hits,
-                                "secrets_hits_total": secrets_hits,
-                                "quarantine_on_drop": quarantined,
-                            },
-                        )
-                        db.commit()
-                    return {
-                        "status": status,
-                        "reason": reason,
-                        "chunk_count": 0,
-                        "total_characters": 0,
-                        "parser_backend": resolved_backend,
-                        "chunk_strategy": resolved_chunk_strategy,
-                    }
-
-                if (
-                    bool(pipeline_effective.governance_enabled)
-                    or governance_plugin_ref
-                    or bool(getattr(pipeline_effective, "governance_llm_auto_tagging_enabled", False))
-                ) and chunks:
-                    try:
-                        self._record_governance_enrichment_metadata(
-                            db,
-                            tenant_id=tenant_id,
-                            document_id=document_id,
-                            items=chunks,
-                        )
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("Failed to record governance enrichment: %s", str(exc)[:200])
-                    self._strip_doc_enrichment_fields(chunks)
-            else:
-                t0 = time.perf_counter()
-                with metrics_span("ingest.normalize"):
-                    parsed_documents = normalize_stage.run(items=parsed_documents or [])
-                _add_stage_duration("normalize", (time.perf_counter() - t0) * 1000)
-                parsed_documents_before_governance = parsed_documents
-                governance_plugin_ref = str(getattr(pipeline_effective, "governance_python_plugin", "") or "").strip()
-                if governance_plugin_ref:
-                    t0 = time.perf_counter()
-                    with metrics_span("ingest.governance_python_plugin", enabled=True):
-                        parsed_documents = apply_governance_python_plugin(
-                            parsed_documents,
-                            plugin_ref=governance_plugin_ref,
-                            params=dict(getattr(pipeline_effective, "governance_python_params", {}) or {}),
-                            context={
-                                "document_id": str(document_id),
-                                "tenant_id": str(tenant_id),
-                                "stage": "pre_builtin_governance_documents",
-                            },
-                        )
-                    _add_stage_duration("governance_python_plugin", (time.perf_counter() - t0) * 1000)
-
-                t0 = time.perf_counter()
-                with metrics_span(
-                    "ingest.governance",
-                    enabled=bool(pipeline_effective.governance_enabled),
-                    otel_span_name="ingest.governance",
-                    otel_attributes={
-                        "ingest.stage": "governance",
-                        "document.file_type": str(file_path.suffix.lstrip(".") or "unknown").lower(),
-                        "governance.enabled": bool(pipeline_effective.governance_enabled),
-                    },
-                ):
-                    gov = governance_stage.run(
-                        items=parsed_documents,
-                        enabled=bool(pipeline_effective.governance_enabled),
-                        kwargs=governance_kwargs,
-                    )
-                _add_stage_duration("governance", (time.perf_counter() - t0) * 1000)
-                parsed_documents = gov.items
-                governance_stats = gov.stats
-
-                if bool(pipeline_effective.governance_enabled) or governance_plugin_ref:
-                    try:
-                        governance_audit_patch = self._build_governance_audit_metadata_patch(
-                            before_items=parsed_documents_before_governance,
-                            after_items=parsed_documents,
-                        )
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("Failed to record governance audit metadata: %s", str(exc)[:200])
-                        governance_audit_patch = None
-
-                if parsed_documents:
-                    llm_tagging_meta = await self._apply_llm_auto_tagging(
-                        parsed_documents,
-                        pipeline_effective=pipeline_effective,
-                    )
-                    if llm_tagging_meta:
-                        audit_patch = dict(governance_audit_patch or {})
-                        audit_patch["governance_llm_auto_tagging"] = llm_tagging_meta
-                        governance_audit_patch = audit_patch
-
-                # Ensure stable per-doc indices so we can rebase chunk offsets into joined-text coordinates.
-                _ensure_ingest_page_indices(parsed_documents)
-
-                # Optional: persist parsed markdown (raw+clean) for audit/debug.
-                if bool(getattr(pipeline_effective, "persist_parsed_content", False)):
-                    try:
-                        original_md = _join_original_markdown_for_persistence(parsed_documents_before_governance)
-                        cleaned_md = _join_document_page_content(parsed_documents)
-                        persist_meta = self._persist_parsed_content(
-                            db,
-                            tenant_id=tenant_id,
-                            document_id=document_id,
-                            original_markdown=original_md,
-                            cleaned_markdown=cleaned_md,
-                            max_chars=int(getattr(pipeline_effective, "persist_parsed_content_max_chars", 0) or 0),
-                        )
-                        meta = dict(db_document.doc_metadata or {})
-                        meta["parsed_content_persisted"] = persist_meta
-                        # Truncated audit content is not a valid restart checkpoint.
-                        if bool((persist_meta.get("cleaned") or {}).get("truncated")):
-                            meta.pop("ingest_checkpoint", None)
-                        else:
-                            meta = upsert_ingest_checkpoint(
-                                meta,
-                                stage="parsed",
-                                source="document_parsed_contents",
-                            )
-                        db_document.doc_metadata = meta
-                        db.commit()
-                        db.refresh(db_document)
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("Failed to persist parsed content: %s", str(exc)[:200])
-
-                if (
-                    bool(pipeline_effective.governance_enabled)
-                    and governance_stats is not None
-                    and not parsed_documents
-                    and int(getattr(governance_stats, "dropped", 0) or 0) > 0
-                ):
-                    self._record_governance_metadata(
-                        db,
-                        tenant_id,
-                        document_id,
-                        governance_stats,
-                        rule_packs=list(getattr(pipeline_effective, "governance_rule_packs", None) or []),
-                        audit_patch=governance_audit_patch,
-                    )
-                    quarantined = bool(getattr(pipeline_effective, "governance_quarantine_on_drop", False))
-                    reasons = getattr(governance_stats, "drop_reasons", {}) or {}
-                    reason_str = ", ".join([f"{k}:{v}" for k, v in sorted(reasons.items())]) if isinstance(reasons, dict) else ""
-                    hint = "You can disable outline/low-density filters or relax thresholds."
-                    if isinstance(reasons, dict) and any(k in reasons for k in ("pii_exceeded", "secrets_exceeded")):
-                        hint = "You can adjust PII/Secrets gates (pii_max_hits/secrets_max_hits) or disable them."
-                    msg = (
-                        ("Document quarantined by governance rules" if quarantined else "Document filtered by governance rules")
-                        + (f" ({reason_str})" if reason_str else "")
-                        + f". {hint}"
-                    )
-                    logger.warning(LOG_DOC_ID_FMT, msg, document_id)
-                    status = "quarantined" if quarantined else "failed"
-                    reason = "quarantined_by_governance" if quarantined else "filtered_by_governance"
-                    meta_patch = _with_stage_durations(dict(db_document.doc_metadata or {}))
-                    from app.core.pipeline_versions import should_preserve_existing_versions
-
-                    update_kwargs: dict[str, Any] = {
-                        "error_message": msg,
-                        "doc_metadata": meta_patch,
-                    }
-                    # When reprocessing a document, keep the currently-active version's stats visible.
-                    if not should_preserve_existing_versions(meta_patch):
-                        update_kwargs["chunk_count"] = 0
-                        update_kwargs["total_characters"] = 0
-                    await self._update_status(
-                        db,
-                        tenant_id,
-                        document_id,
-                        status,
-                        0,
-                        status,
-                        **update_kwargs,
-                    )
-                    with contextlib.suppress(Exception):
-                        from app.services.audit_log_service import audit_log_event
-
-                        pii_hits = getattr(governance_stats, "pii_hits", None) or {}
-                        secrets_hits = getattr(governance_stats, "secrets_hits", None) or {}
-                        audit_log_event(
-                            db,
-                            tenant_id=tenant_id,
-                            actor_id=(getattr(db_document, "owner_id", None) or None),
-                            action=(AUDIT_ACTION_DOCUMENT_QUARANTINE if quarantined else "document.governance_drop"),
-                            resource_type="document",
-                            resource_id=str(document_id),
-                            details={
-                                "reason": reason,
-                                "drop_reasons": reasons,
-                                "pii_hits_total": pii_hits,
-                                "secrets_hits_total": secrets_hits,
-                                "quarantine_on_drop": quarantined,
-                            },
-                        )
-                        db.commit()
-                    return {
-                        "status": status,
-                        "reason": reason,
-                        "chunk_count": 0,
-                        "total_characters": 0,
-                        "parser_backend": resolved_backend,
-                        "chunk_strategy": resolved_chunk_strategy,
-                    }
-
-                if (
-                    bool(pipeline_effective.governance_enabled)
-                    or governance_plugin_ref
-                    or bool(getattr(pipeline_effective, "governance_llm_auto_tagging_enabled", False))
-                ) and parsed_documents:
-                    try:
-                        self._record_governance_enrichment_metadata(
-                            db,
-                            tenant_id=tenant_id,
-                            document_id=document_id,
-                            items=parsed_documents,
-                        )
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("Failed to record governance enrichment: %s", str(exc)[:200])
-                    # Avoid propagating large per-doc fields to all chunks.
-                    self._strip_doc_enrichment_fields(parsed_documents)
-
-                await raise_if_cancelled()
-
-                await self._update_status(db, tenant_id, document_id, "processing", 33, "chunking")
-                t0 = time.perf_counter()
-                with metrics_span(
-                    "ingest.chunking",
-                    chunk_strategy=resolved_chunk_strategy,
-                    chunk_size=int(pipeline_effective.chunk_size),
-                    chunk_overlap=int(pipeline_effective.chunk_overlap),
-                    otel_span_name="ingest.chunk",
-                    otel_attributes={
-                        "ingest.stage": "chunk",
-                        "document.file_type": str(file_path.suffix.lstrip(".") or "unknown").lower(),
-                        "chunk.strategy": str(resolved_chunk_strategy or "").strip().lower() or "default",
-                    },
-                ):
-                    chunked = chunking_stage.run(
-                        documents=parsed_documents,
-                        chunk_strategy=resolved_chunk_strategy,
-                        chunk_size=int(pipeline_effective.chunk_size),
-                        chunk_overlap=int(pipeline_effective.chunk_overlap),
-                        chunk_strategy_params=dict(getattr(pipeline_effective, "chunk_strategy_params", {}) or {}),
-                        chunk_python_plugin=str(getattr(pipeline_effective, "chunk_python_plugin", "") or ""),
-                        chunk_python_params=dict(getattr(pipeline_effective, "chunk_python_params", {}) or {}),
-                    )
-                chunks = _rebase_chunk_offsets_by_page_index(
-                    documents=parsed_documents,
-                    chunks=chunked.chunks,
-                    join_separator="\n\n",
-                )
-                _add_stage_duration("chunking", (time.perf_counter() - t0) * 1000)
-                merge_min = max(0, int(getattr(pipeline_effective, "chunk_merge_small_min_chars", 0) or 0))
-                merge_small_min_chars = int(merge_min)
-                merge_small_before = len(chunks)
-                merge_small_after = merge_small_before
-                merge_small_reduced = 0
-                if merge_min > 0 and chunks:
-                    t0 = time.perf_counter()
-                    with metrics_span("ingest.chunk_merge_small", min_chars=merge_min):
-                        merged = _merge_small_chunks_by_min_chars(
-                            documents=parsed_documents,
-                            chunks=chunks,
-                            min_chars=merge_min,
-                            join_separator="\n\n",
-                        )
-                    _add_stage_duration("chunk_merge_small", (time.perf_counter() - t0) * 1000)
-                    merge_small_after = len(merged)
-                    merge_small_reduced = max(0, merge_small_before - merge_small_after)
-                    chunks = merged
-
-            await raise_if_cancelled()
-
-            # Drop extremely short chunks to reduce retrieval noise (keep image-bearing chunks).
-            min_chars = max(0, int(getattr(settings, "CHUNK_MIN_CHARS", 0) or 0))
-            if min_chars > 0 and chunks:
-                before = len(chunks)
-                original_chunks = chunks
-                filtered = []
-                for c in original_chunks:
-                    content = (c.page_content or "").strip()
-                    if len(content) >= min_chars:
-                        filtered.append(c)
-                        continue
-                    meta = c.metadata or {}
-                    doc_type = str(meta.get("doc_type_kwd") or "").lower()
-                    # Keep image/table chunks even if caption is short: they carry important assets.
-                    if (
-                        doc_type in {"image", "table"}
-                        or meta.get("image") is not None
-                        or meta.get("img_id")
-                        or meta.get("image_id")
-                        or meta.get("image_url")
-                    ):
-                        filtered.append(c)
-                kept_short_fallback = False
-                if not filtered and original_chunks:
-                    # Avoid indexing an empty document: keep the longest chunk even if it's short.
-                    longest = max(original_chunks, key=lambda d: len((d.page_content or "").strip()))
-                    filtered = [longest]
-                    kept_short_fallback = True
-                chunks = filtered
-                dropped = before - len(chunks)
-                if kept_short_fallback:
-                    kept_len = len((chunks[0].page_content or "").strip()) if chunks else 0
-                    logger.info(
-                        "All chunks shorter than %s chars; kept 1 (%s chars) and dropped %s for document %s",
-                        min_chars,
-                        kept_len,
-                        dropped,
-                        document_id,
-                    )
-                elif dropped:
-                    logger.info("Dropped %s short chunks (<%s chars) for document %s", dropped, min_chars, document_id)
-
-            # Optional exact-duplicate text chunk drop (within document).
-            dedup_enabled = bool(getattr(settings, "CHUNK_DEDUP_ENABLED", False))
-            dedup_dropped = 0
-            if dedup_enabled and chunks:
-                t0 = time.perf_counter()
-                with metrics_span("ingest.chunk_dedup", enabled=True):
-                    deduped = chunk_dedup_stage.run(chunks=chunks, enabled=True)
-                _add_stage_duration("chunk_dedup", (time.perf_counter() - t0) * 1000)
-                chunks = deduped.chunks
-                dedup_dropped = int(deduped.duplicates_dropped)
-                if int(deduped.duplicates_dropped) > 0:
-                    logger.info(
-                        "Dropped %s duplicate chunks for document %s",
-                        int(deduped.duplicates_dropped),
-                        document_id,
-                    )
-                    log_metrics(
-                        {
-                            "event": "ingest.chunk_dedup",
-                            "duplicates_dropped": int(deduped.duplicates_dropped),
-                        }
-                    )
-
-            # Optional cross-document near-duplicate drop (SimHash bucket index; best-effort).
-            near_dedup_dropped = 0
-            if bool(getattr(pipeline_effective, "near_dedup_enabled", False)) and chunks:
-                t0 = time.perf_counter()
-                try:
-                    threshold = max(0, int(getattr(pipeline_effective, "near_dedup_hamming_threshold", 0) or 0))
-                    max_bucket_size = max(0, int(getattr(pipeline_effective, "near_dedup_max_bucket_size", 0) or 0))
-                    # Safety: keep the index per-tenant per-dataset to avoid unintended cross-pollution.
-                    safe_dataset = re.sub(r"[^A-Za-z0-9._-]+", "_", str(dataset_id or tenant_id))
-                    index_path = Path(settings.UPLOAD_DIR) / str(tenant_id) / ".mimirq_dedup" / f"{safe_dataset}.json"
-
-                    kept_chunks: list[Document] = []
-                    kept_hashes: list[str] = []
-                    sample_match: dict[str, Any] | None = None
-
-                    def update_fn(buckets: dict[str, list[str]]):
-                        nonlocal near_dedup_dropped, sample_match
-                        for c in chunks:
-                            meta = c.metadata if isinstance(getattr(c, "metadata", None), dict) else {}
-                            if _should_skip_near_dedup_for_chunk(c):
-                                kept_chunks.append(c)
-                                continue
-
-                            content_norm = normalize_text(c.page_content or "", normalize_line_endings=True, remove_control_chars=True)
-                            sh_hex = str(meta.get("simhash64") or "").strip().lower()
-                            if not sh_hex:
-                                sh_hex = simhash64_hex(simhash64(content_norm))
-                                meta = dict(meta)
-                                meta["simhash64"] = sh_hex
-                                meta.setdefault("simhash_algo", "simhash64_sha1")
-                                c.metadata = meta
-
-                            match = find_near_duplicate(
-                                buckets=buckets,
-                                simhash64_hex=sh_hex,
-                                hamming_threshold=threshold,
-                                max_bucket_size=max_bucket_size,
-                            )
-                            if match is not None:
-                                near_dedup_dropped += 1
-                                if sample_match is None:
-                                    sample_match = {
-                                        "simhash64": sh_hex,
-                                        "matched_simhash64": match.simhash64,
-                                        "distance": int(match.distance),
-                                    }
-                                continue
-
-                            kept_chunks.append(c)
-                            kept_hashes.append(sh_hex)
-
-                        if kept_hashes:
-                            add_simhashes(buckets=buckets, simhashes=kept_hashes, max_bucket_size=max_bucket_size)
-                        return buckets
-
-                    with metrics_span("ingest.near_dedup", enabled=True, threshold=threshold):
-                        with_near_dedup_index(path=index_path, fn=update_fn)
-
-                    if near_dedup_dropped > 0:
-                        original_chunks_for_fallback = list(chunks)
-                        chunks = kept_chunks
-                        if not chunks:
-                            # Avoid indexing an empty document: keep the longest chunk.
-                            longest = max(
-                                original_chunks_for_fallback,
-                                key=lambda d: len((d.page_content or "").strip()),
-                                default=None,
-                            )
-                            if longest is not None:
-                                chunks = [longest]
-                        logger.info(
-                            "Dropped %s near-duplicate chunks for document %s (threshold=%s)",
-                            int(near_dedup_dropped),
-                            document_id,
-                            int(threshold),
-                        )
-                        log_metrics(
-                            {
-                                "event": "ingest.near_dedup",
-                                "dropped": int(near_dedup_dropped),
-                                "threshold": int(threshold),
-                            }
-                        )
-                        meta = dict(db_document.doc_metadata or {})
-                        meta["near_dedup"] = {
-                            "enabled": True,
-                            "dropped": int(near_dedup_dropped),
-                            "threshold": int(threshold),
-                            "max_bucket_size": int(max_bucket_size),
-                            "sample_match": sample_match,
-                        }
-                        db_document.doc_metadata = meta
-                        db.commit()
-                        db.refresh(db_document)
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("Near-dup stage failed (ignored): %s", str(exc)[:200])
-                _add_stage_duration("near_dedup", (time.perf_counter() - t0) * 1000)
-
-            # Optional: TAG/RAG separation for parser-emitted table segments.
-            # When sidecar exclusive routing is enabled and sidecar import succeeded,
-            # keep table content in TAG only (exclude from RAG vectors/BM25).
-            table_sidecar_exclusive_enabled = bool(
-                getattr(pipeline_effective, "table_store_sidecar_exclusive_routing", False)
-            )
-            if chunks and table_sidecar_tables_imported >= 0:
-                chunks, table_sidecar_routing_audit = self._apply_table_sidecar_exclusive_routing(
-                    chunks=chunks,
-                    enabled=table_sidecar_exclusive_enabled,
-                    sidecar_tables_imported=table_sidecar_tables_imported,
-                )
-
-            # Guardrail: cap chunk count per document (0 disables).
-            max_chunks_per_document = max(0, int(getattr(settings, "MAX_CHUNKS_PER_DOCUMENT", 0) or 0))
-            truncation_strategy = str(getattr(settings, "MAX_CHUNKS_PER_DOCUMENT_STRATEGY", "head") or "head")
-            truncated_from = 0
-            truncated_to = 0
-            truncated_dropped = 0
-            truncated_asset_total = 0
-            truncated_asset_kept = 0
-            truncated_strategy_used = ""
-            if max_chunks_per_document > 0 and chunks and len(chunks) > max_chunks_per_document:
-                truncated_from = len(chunks)
-                chunks, truncation_info = _truncate_chunks_for_limit(
-                    chunks,
-                    max_chunks=max_chunks_per_document,
-                    strategy=truncation_strategy,
-                )
-                truncated_to = len(chunks)
-                truncated_dropped = max(0, truncated_from - truncated_to)
-                truncated_asset_total = int(truncation_info.get("asset_total") or 0)
-                truncated_asset_kept = int(truncation_info.get("asset_kept") or 0)
-                truncated_strategy_used = str(truncation_info.get("strategy") or "").strip() or str(truncation_strategy)
-                logger.info(
-                    "Truncated chunks for document %s: kept=%s dropped=%s assets=%s/%s strategy=%s (MAX_CHUNKS_PER_DOCUMENT=%s)",
-                    document_id,
-                    truncated_to,
-                    truncated_dropped,
-                    truncated_asset_kept,
-                    truncated_asset_total,
-                    truncated_strategy_used,
-                    max_chunks_per_document,
-                )
-                log_metrics(
-                    {
-                        "event": "ingest.chunk_truncate",
-                        "chunk_before": int(truncated_from),
-                        "chunk_after": int(truncated_to),
-                        "dropped": int(truncated_dropped),
-                        "max_chunks_per_document": int(max_chunks_per_document),
-                        "strategy": truncated_strategy_used,
-                        "asset_kept": int(truncated_asset_kept),
-                        "asset_total": int(truncated_asset_total),
-                    }
-                )
-
-            if merge_small_min_chars > 0 or dedup_enabled or max_chunks_per_document > 0:
-                self._record_chunk_postprocess_metadata(
-                    db,
-                    tenant_id=tenant_id,
-                    document_id=document_id,
-                    stats=ChunkPostprocessStats(
-                        merge_small_enabled=bool(merge_small_min_chars > 0),
-                        merge_small_min_chars=int(merge_small_min_chars),
-                        merge_small_before=int(merge_small_before),
-                        merge_small_after=int(merge_small_after),
-                        merge_small_reduced=int(merge_small_reduced),
-                        dedup_enabled=dedup_enabled,
-                        dedup_dropped=dedup_dropped,
-                        max_chunks_per_document=max_chunks_per_document,
-                        max_chunks_strategy=truncated_strategy_used or truncation_strategy,
-                        truncated_from=truncated_from,
-                        truncated_to=truncated_to,
-                        truncated_dropped=truncated_dropped,
-                        truncated_asset_total=truncated_asset_total,
-                        truncated_asset_kept=truncated_asset_kept,
-                    ),
-                )
-
-            if governance_stats is not None:
-                self._record_governance_metadata(
-                    db,
-                    tenant_id,
-                    document_id,
-                    governance_stats,
-                    rule_packs=list(getattr(pipeline_effective, "governance_rule_packs", None) or []),
-                    audit_patch=governance_audit_patch,
-                )
-
-            try:
-                maybe_enrich_document_questions(
-                    db,
-                    db_document=db_document,
-                    documents=(parsed_documents or chunks),
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Failed to persist document questions metadata: %s", str(exc)[:200])
-
-            await raise_if_cancelled()
-
-            if not chunks:
-                sidecar_excluded = int((table_sidecar_routing_audit or {}).get("table_chunks_excluded_from_rag") or 0)
-                sidecar_imported = int((table_sidecar_routing_audit or {}).get("sidecar_tables_imported") or 0)
-                if sidecar_excluded > 0 and sidecar_imported > 0:
-                    meta_patch = dict(db_document.doc_metadata or {})
-                    meta_patch["table_sidecar_routing"] = dict(table_sidecar_routing_audit or {})
-                    meta_patch = _with_stage_durations(meta_patch)
-                    await self._update_status(
-                        db,
-                        tenant_id,
-                        document_id,
-                        "completed",
-                        100,
-                        "completed",
-                        chunk_count=0,
-                        total_characters=0,
-                        error_message=None,
-                        doc_metadata=meta_patch,
-                    )
-                    return {
-                        "status": "completed",
-                        "reason": "table_sidecar_exclusive",
-                        "chunk_count": 0,
-                        "total_characters": 0,
-                        "parser_backend": resolved_backend,
-                        "chunk_strategy": resolved_chunk_strategy,
-                    }
-                msg = (
-                    "No chunks produced for document (empty or filtered by CHUNK_MIN_CHARS). "
-                    "Consider lowering CHUNK_MIN_CHARS or checking the parser output."
-                )
-                logger.warning(LOG_DOC_ID_FMT, msg, document_id)
-                meta_patch = _with_stage_durations(dict(db_document.doc_metadata or {}))
-                if table_sidecar_routing_audit:
-                    meta_patch["table_sidecar_routing"] = dict(table_sidecar_routing_audit)
-                await self._update_status(
-                    db,
-                    tenant_id,
-                    document_id,
-                    "failed",
-                    0,
-                    "failed",
-                    chunk_count=0,
-                    total_characters=0,
-                    error_message=msg,
-                    doc_metadata=meta_patch,
-                )
-                return {
-                    "status": "failed",
-                    "reason": "no_chunks",
-                    "chunk_count": 0,
-                    "total_characters": 0,
-                    "parser_backend": resolved_backend,
-                    "chunk_strategy": resolved_chunk_strategy,
-                }
-
-            # Best-effort: persist basic chunking stats for audit/debug (does not affect indexing).
-            try:
-                self._record_chunking_stats_metadata(
-                    db,
-                    tenant_id=tenant_id,
-                    document_id=document_id,
-                    chunks=chunks,
-                    total_characters=_joined_text_total_characters(parsed_documents, join_separator="\n\n"),
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Failed to record chunking stats: %s", str(exc)[:200])
-
-            # Chunk-level assets & metadata (image upload/binding).
-            await raise_if_cancelled()
-            t0 = time.perf_counter()
-            with metrics_span("ingest.chunk_assets"):
-                chunk_asset = chunk_asset_stage.run(
-                    chunks=chunks,
-                    tenant_id=tenant_id,
-                    document_id=document_id,
-                    options=ChunkAssetOptions(
-                        dataset_id=dataset_id,
-                        resolved_backend=resolved_backend,
-                        resolved_chunk_strategy=resolved_chunk_strategy,
-                        image_caption_enabled=bool(getattr(pipeline_effective, "image_caption_enabled", False)),
-                        image_ocr_enabled=bool(getattr(pipeline_effective, "image_ocr_enabled", False)),
-                        image_ocr_max_chars=int(getattr(pipeline_effective, "image_ocr_max_chars", 0) or 0),
-                        image_ocr_max_images=int(getattr(pipeline_effective, "image_ocr_max_images", 0) or 0),
-                        pii_anonymize=bool(getattr(pipeline_effective, "governance_pii_anonymize", False)),
-                        pii_mode=str(getattr(pipeline_effective, "governance_pii_mode", "mask") or "mask"),
-                        pii_mask=str(getattr(pipeline_effective, "governance_pii_mask", REDACTED_MASK) or REDACTED_MASK),
-                        secrets_redact=bool(getattr(pipeline_effective, "governance_secrets_redact", False)),
-                        secrets_mode=str(getattr(pipeline_effective, "governance_secrets_mode", "mask") or "mask"),
-                        secrets_mask=str(getattr(pipeline_effective, "governance_secrets_mask", SECRET_MASK) or SECRET_MASK),
-                    ),
-                )
-            _add_stage_duration("chunk_assets", (time.perf_counter() - t0) * 1000)
-            chunks = chunk_asset.chunks
-            # Ensure stable traceability metadata exists on each chunk (used by citations/filtering).
-            pipeline_hash = str((db_document.doc_metadata or {}).get("pipeline_hash") or "").strip()
-            file_type = str(getattr(db_document, "file_type", "") or "").strip().lower() or str(file_path.suffix.lstrip(".")).lower()
-            governance_version = (
-                str(getattr(governance_stats, "version", "") or "").strip()
-                if governance_stats is not None
-                else ""
-            )
-            for c in chunks:
-                meta = dict(c.metadata or {})
-                if pipeline_hash:
-                    meta.setdefault("pipeline_hash", pipeline_hash)
-                    meta.setdefault("doc_pipeline_key", f"{document_id}:{pipeline_hash}")
-                if file_type:
-                    meta.setdefault("file_type", file_type)
-                if governance_version:
-                    meta.setdefault("governance_version", governance_version)
-                c.metadata = meta
-            for iid in chunk_asset.img_ids:
-                if isinstance(iid, str) and iid.strip():
-                    document_img_ids.add(iid)
-
-            # If using auto chunking, persist the per-document selection stats for debugging/tuning.
-            if resolved_chunk_strategy == "auto" and chunks:
-                selected_counts: dict[str, int] = {}
-                for c in chunks:
-                    meta = c.metadata or {}
-                    selected = meta.get("chunk_strategy_selected")
-                    if isinstance(selected, str) and selected.strip():
-                        selected_counts[selected] = selected_counts.get(selected, 0) + 1
-                if selected_counts:
-                    self._record_auto_chunking_metadata(
-                        db,
-                        tenant_id=tenant_id,
-                        document_id=document_id,
-                        selected_counts=selected_counts,
-                    )
-
-            # Persist all image img_id values to document.metadata (for cleanup).
-            self._record_document_image_ids(db, tenant_id=tenant_id, document_id=document_id, img_ids=document_img_ids)
-
-            await raise_if_cancelled()
-
-            await self._update_status(db, tenant_id, document_id, "processing", 66, "embedding")
-
-            await raise_if_cancelled()
-
-            # Indexing performs embedding + vector persistence; surface this as a distinct stage so
-            # UI/progress polling isn't stuck on "embedding" for the entire index write.
-            await self._update_status(db, tenant_id, document_id, "processing", 80, "vector_write")
-
-            t0 = time.perf_counter()
-            with metrics_span(
-                "ingest.index",
-                chunk_count=len(chunks),
-                chunk_vector_enabled=bool(getattr(index_options, "chunk_vector_enabled", True)),
-                bm25_index_enabled=bool(getattr(index_options, "bm25_index_enabled", True)),
-                otel_span_name="ingest.index",
-                otel_attributes={
-                    "ingest.stage": "index",
-                    "document.file_type": str(file_path.suffix.lstrip(".") or "unknown").lower(),
-                    "index.chunk_vector_enabled": bool(getattr(index_options, "chunk_vector_enabled", True)),
-                    "index.bm25_index_enabled": bool(getattr(index_options, "bm25_index_enabled", True)),
-                },
-            ):
-                indexed = index_stage.run(
-                    db=db,
-                    tenant_id=tenant_id,
-                    document_id=document_id,
-                    file_path=file_path,
-                    default_source=str(getattr(db_document, "filename", "") or "").strip() or str(file_path.name),
-                    chunks=chunks,
-                    options=index_options,
-                )
-            _add_stage_duration("index", (time.perf_counter() - t0) * 1000)
-            chunk_ids = indexed.chunk_ids
-            total_chars = indexed.total_characters
-            log_metrics(
-                {
-                    "event": "ingest.index.result",
-                    "chunk_count": len(chunks),
-                    "total_characters": total_chars,
-                }
-            )
-
-            with metrics_span(
-                "ingest.finalize",
-                chunk_count=len(chunks),
-                total_characters=total_chars,
-                kg_enabled=bool(getattr(pipeline_effective, "kg_enabled", False)),
-                otel_span_name="ingest.finalize",
-                otel_attributes={
-                    "ingest.stage": "finalize",
-                    "document.file_type": str(file_path.suffix.lstrip(".") or "unknown").lower(),
-                    "pipeline.kg_enabled": bool(getattr(pipeline_effective, "kg_enabled", False)),
-                },
-            ):
-                checkpoint_meta = _with_stage_durations(dict(db_document.doc_metadata or {}))
-                checkpoint_meta["indexed_total_characters"] = int(total_chars)
-                checkpoint_meta = upsert_ingest_checkpoint(
-                    checkpoint_meta,
-                    stage="indexed",
-                    source="document_chunks",
-                    extra={
-                        "chunk_count": len(chunks),
-                        "total_characters": int(total_chars),
-                        "doc_pipeline_key": (
-                            f"{document_id}:{str(checkpoint_meta.get('pipeline_hash') or '').strip()}"
-                            if str(checkpoint_meta.get("pipeline_hash") or "").strip()
-                            else None
-                        ),
-                    },
-                )
-                db_document.doc_metadata = checkpoint_meta
-                db.commit()
-                db.refresh(db_document)
-
-                await raise_if_cancelled(force=True)
-
-                # Versioning: only switch the *active* pipeline after a successful completion,
-                # so ongoing reprocessing doesn't immediately "downgrade" retrieval quality.
-                meta_patch = dict(db_document.doc_metadata or {})
-                completed_pipeline_hash = str(meta_patch.get("pipeline_hash") or "").strip()
-                if completed_pipeline_hash:
-                    meta_patch["active_pipeline_hash"] = completed_pipeline_hash
-                    meta_patch["active_pipeline_ready"] = True
-                    # Best-effort: record per-version pipeline provenance for reproducibility/debug.
-                    try:
-                        from app.services.pipeline_provenance_service import (
-                            build_pipeline_version_snapshot,
-                            upsert_pipeline_provenance_version,
-                        )
-
-                        snap = build_pipeline_version_snapshot(meta=meta_patch, pipeline_hash=completed_pipeline_hash)
-                        meta_patch = upsert_pipeline_provenance_version(
-                            meta_patch,
-                            pipeline_hash=completed_pipeline_hash,
-                            snapshot=snap,
-                        )
-                    except Exception as exc:  # noqa: BLE001
-                        logger.info("Failed to record pipeline provenance (ignored): %s", str(exc)[:200])
-
-                if table_sidecar_routing_audit:
-                    meta_patch["table_sidecar_routing"] = dict(table_sidecar_routing_audit)
-
-                meta_patch = _with_stage_durations(meta_patch)
-                await self._update_status(
-                    db,
-                    tenant_id,
-                    document_id,
-                    "completed",
-                    100,
-                    "completed",
-                    chunk_count=len(chunks),
-                    total_characters=total_chars,
-                    doc_metadata=meta_patch,
-                )
-
-                logger.info(
-                    "Document processed: %s chunks (parser=%s, chunker=%s)",
-                    len(chunks),
-                    resolved_backend,
-                    resolved_chunk_strategy,
-                )
-                log_metrics(
-                    {
-                        "event": "ingest.completed",
-                        "chunk_count": len(chunks),
-                        "total_characters": total_chars,
-                        "parser_backend": resolved_backend,
-                        "chunk_strategy": resolved_chunk_strategy,
-                        "img_count": len(document_img_ids),
-                    }
-                )
-
-                await run_post_completion_kg(
-                    db=db,
-                    db_document=db_document,
-                    tenant_id=tenant_id,
-                    document_id=document_id,
-                    chunk_ids=chunk_ids,
-                    db_chunks=indexed.db_chunks,
-                    index_options=index_options,
-                    pipeline_effective=pipeline_effective,
-                )
-
-            return {
-                "status": "success",
-                "chunk_count": len(chunks),
-                "total_characters": total_chars,
-                "parser_backend": resolved_backend,
-                "chunk_strategy": resolved_chunk_strategy
-            }
 
         except DocumentCancelledError as e:
-            logger.info("Document processing cancelled: tenant=%s document=%s (%s)", tenant_id, document_id, str(e)[:120])
-            # Roll back any uncommitted DB work (e.g., flushed chunks) to avoid committing partial results.
-            self._rollback_and_cleanup_indexes(db, db_document=db_document, tenant_id=tenant_id, document_id=document_id)
-            await self._update_status(
-                db,
-                tenant_id,
-                document_id,
-                "cancelled",
-                0,
-                "cancelled",
-                error_message="cancelled",
-                doc_metadata=_with_stage_durations(dict(getattr(db_document, "doc_metadata", None) or {})),
+            return await handle_document_cancelled(
+                self,
+                db=db,
+                db_document=runtime_state.get("db_document"),
+                tenant_id=tenant_id,
+                document_id=document_id,
+                error=e,
+                with_stage_durations=runtime_state.get("with_stage_durations", lambda meta: dict(meta or {})),
             )
-            return {"status": "cancelled"}
         except asyncio.CancelledError:
-            # arq Job.abort cancels the coroutine; ensure we stop the child parser process and persist status.
-            self._rollback_and_cleanup_indexes(db, db_document=db_document, tenant_id=tenant_id, document_id=document_id)
-            try:
-                await asyncio.shield(
-                    self._update_status(
-                        db,
-                        tenant_id,
-                        document_id,
-                        "cancelled",
-                        0,
-                        "cancelled",
-                        error_message="cancelled",
-                        doc_metadata=_with_stage_durations(dict(getattr(db_document, "doc_metadata", None) or {})),
-                    )
-                )
-            except Exception as exc:
-                logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+            await handle_asyncio_cancelled(
+                self,
+                db=db,
+                db_document=runtime_state.get("db_document"),
+                tenant_id=tenant_id,
+                document_id=document_id,
+                with_stage_durations=runtime_state.get("with_stage_durations", lambda meta: dict(meta or {})),
+            )
             raise
         except CheckpointedRetryRequiredError as e:
-            logger.warning(
-                "Document finalization deferred to retry boundary: tenant=%s document=%s reason=%s",
-                tenant_id,
-                document_id,
-                str(e)[:160],
-            )
-            log_metrics(
-                {
-                    "event": "ingest.retry_boundary",
-                    "tenant_id": str(tenant_id),
-                    "document_id": str(document_id),
-                    "reason": str(e)[:160],
-                }
-            )
-            return {"status": "failed", "reason": str(e)}
+            return handle_retry_boundary_failure(tenant_id=tenant_id, document_id=document_id, error=e)
         except TenantQuotaExceededError as e:
-            # NOTE: Keep this block after asyncio.CancelledError so task cancellations propagate.
-            quota_key = str(getattr(e, "quota", "") or "").strip() or "quota"
-            logger.info(
-                "Tenant quota exceeded: tenant=%s document=%s quota=%s",
-                tenant_id,
-                document_id,
-                quota_key,
-            )
-            log_metrics(
-                {
-                    "event": "ingest.quota_exceeded",
-                    "quota": quota_key,
-                    "tenant_id": str(tenant_id),
-                    "document_id": str(document_id),
-                }
-            )
-            try:
-                db.rollback()
-            except Exception as exc:
-                logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-
-            meta_patch = dict(getattr(db_document, "doc_metadata", None) or {})
-            meta_patch["tenant_quota_exceeded"] = {
-                "quota": quota_key,
-                "meta": dict(getattr(e, "meta", None) or {}),
-            }
-            meta_patch = record_ingest_gate_outcome(
-                _with_stage_durations(meta_patch),
-                gate="tenant_quota",
-                outcome="closed",
-                reason=f"tenant_quota_exceeded:{quota_key}",
-                details=dict(getattr(e, "meta", None) or {}),
-            )
-
-            from app.core.pipeline_versions import should_preserve_existing_versions  # noqa: WPS433
-
-            update_kwargs: dict[str, Any] = {
-                "error_message": str(e)[:300],
-                "doc_metadata": meta_patch,
-            }
-            # When reprocessing a document, keep the currently-active version's stats visible.
-            if not should_preserve_existing_versions(meta_patch):
-                update_kwargs["chunk_count"] = 0
-                update_kwargs["total_characters"] = 0
-            await self._update_status(
-                db,
-                tenant_id,
-                document_id,
-                "failed",
-                0,
-                "failed",
-                **update_kwargs,
-            )
-            audit_ingest_gate(
-                db,
+            return await handle_tenant_quota_exceeded(
+                self,
+                db=db,
+                db_document=runtime_state.get("db_document"),
                 tenant_id=tenant_id,
-                db_document=db_document,
-                gate="tenant_quota",
-                outcome="closed",
-                reason=f"tenant_quota_exceeded:{quota_key}",
-                details=dict(getattr(e, "meta", None) or {}),
+                document_id=document_id,
+                error=e,
+                with_stage_durations=runtime_state.get("with_stage_durations", lambda meta: dict(meta or {})),
+                resolved_backend=(runtime_state.get("parse_state").resolved_backend if runtime_state.get("parse_state") is not None else None),
+                resolved_chunk_strategy=(
+                    runtime_state.get("parse_state").resolved_chunk_strategy if runtime_state.get("parse_state") is not None else None
+                ),
             )
-            return {
-                "status": "failed",
-                "reason": f"tenant_quota_exceeded:{quota_key}",
-                "chunk_count": 0,
-                "total_characters": 0,
-                "parser_backend": resolved_backend,
-                "chunk_strategy": resolved_chunk_strategy,
-            }
         except Exception as e:
-            # Error handling.
-            logger.exception("Error processing document %s: %s", document_id, e)
-            log_metrics({"event": "ingest.failed", "success": False, "error": str(e)[:200]})
-            self._rollback_and_cleanup_indexes(db, db_document=db_document, tenant_id=tenant_id, document_id=document_id)
-            await self._update_status(
-                db,
-                tenant_id,
-                document_id,
-                "failed",
-                0,
-                "failed",
-                error_message=str(e),
-                doc_metadata=_with_stage_durations(dict(getattr(db_document, "doc_metadata", None) or {})),
+            await handle_process_document_failure(
+                self,
+                db=db,
+                db_document=runtime_state.get("db_document"),
+                tenant_id=tenant_id,
+                document_id=document_id,
+                error=e,
+                with_stage_durations=runtime_state.get("with_stage_durations", lambda meta: dict(meta or {})),
             )
             raise
         finally:
+            preprocessed_temp_path = runtime_state.get("preprocessed_temp_path")
             if preprocessed_temp_path is not None:
                 try:
                     preprocessed_temp_path.unlink(missing_ok=True)
@@ -3654,16 +1442,8 @@ class DocumentProcessorService:
             DocumentProcessorService._update_governance_enrichment_state(state, doc.metadata or {})
         return DocumentProcessorService._build_governance_enrichment_payload(state)
 
-    async def _apply_llm_auto_tagging(
-        self,
-        items: list[Document] | None,
-        *,
-        pipeline_effective: PipelineEffective,
-    ) -> dict[str, Any] | None:
-        if not items or not bool(getattr(pipeline_effective, "governance_llm_auto_tagging_enabled", False)):
-            return None
-        max_chars = max(200, int(getattr(pipeline_effective, "governance_llm_auto_tagging_max_chars", 3000) or 3000))
-        max_items = max(1, int(getattr(pipeline_effective, "governance_llm_auto_tagging_max_items", 16) or 16))
+    @staticmethod
+    def _llm_auto_tagging_source_text(items: list[Document], *, max_chars: int) -> str:
         text_parts: list[str] = []
         remaining = max_chars
         for item in items:
@@ -3674,18 +1454,10 @@ class DocumentProcessorService:
             remaining -= min(len(content), remaining)
             if remaining <= 0:
                 break
-        source_text = "\n\n".join(text_parts).strip()
-        if not source_text:
-            return {"enabled": True, "used": False, "reason": "empty_text"}
+        return "\n\n".join(text_parts).strip()
 
-        try:
-            from app.rag.preprocessing.llm_tagger import extract_llm_tags
-
-            result = await extract_llm_tags(text=source_text, max_chars=max_chars, max_items=max_items)
-        except Exception as exc:  # noqa: BLE001
-            _log_processor_fallback('_apply_llm_auto_tagging', exc)
-            return {"enabled": True, "used": False, "error": str(exc)[:160]}
-
+    @staticmethod
+    def _collect_llm_auto_tagging_values(result: Any, *, max_items: int) -> tuple[list[str], list[str], list[dict[str, Any]]]:
         tag_values: list[str] = []
         keyword_values: list[str] = []
         structured_tags: list[dict[str, Any]] = []
@@ -3699,10 +1471,18 @@ class DocumentProcessorService:
             else:
                 tag_values.append(value)
             structured_tags.append(tag.model_dump() if hasattr(tag, "model_dump") else dict(tag))
-        if not tag_values and not keyword_values and not structured_tags:
-            return {"enabled": True, "used": False, "provider": getattr(result, "provider", "llm")}
+        return tag_values, keyword_values, structured_tags
 
-        first = items[0]
+    @staticmethod
+    def _apply_llm_auto_tagging_metadata(
+        first: Document,
+        *,
+        result: Any,
+        tag_values: list[str],
+        keyword_values: list[str],
+        structured_tags: list[dict[str, Any]],
+        max_items: int,
+    ) -> dict[str, Any]:
         meta = dict(first.metadata or {})
         existing_tags = [str(x).strip() for x in (meta.get("document_tags") or []) if isinstance(x, str) and str(x).strip()]
         existing_keywords = [
@@ -3726,6 +1506,44 @@ class DocumentProcessorService:
         }
         first.metadata = meta
         return dict(meta["document_llm_auto_tagging"])
+
+    async def _apply_llm_auto_tagging(
+        self,
+        items: list[Document] | None,
+        *,
+        pipeline_effective: PipelineEffective,
+    ) -> dict[str, Any] | None:
+        if not items or not bool(getattr(pipeline_effective, "governance_llm_auto_tagging_enabled", False)):
+            return None
+        max_chars = max(200, int(getattr(pipeline_effective, "governance_llm_auto_tagging_max_chars", 3000) or 3000))
+        max_items = max(1, int(getattr(pipeline_effective, "governance_llm_auto_tagging_max_items", 16) or 16))
+        source_text = self._llm_auto_tagging_source_text(items, max_chars=max_chars)
+        if not source_text:
+            return {"enabled": True, "used": False, "reason": "empty_text"}
+
+        try:
+            from app.rag.preprocessing.llm_tagger import extract_llm_tags
+
+            result = await extract_llm_tags(text=source_text, max_chars=max_chars, max_items=max_items)
+        except Exception as exc:  # noqa: BLE001
+            _log_processor_fallback('_apply_llm_auto_tagging', exc)
+            return {"enabled": True, "used": False, "error": str(exc)[:160]}
+
+        tag_values, keyword_values, structured_tags = self._collect_llm_auto_tagging_values(
+            result,
+            max_items=max_items,
+        )
+        if not tag_values and not keyword_values and not structured_tags:
+            return {"enabled": True, "used": False, "provider": getattr(result, "provider", "llm")}
+
+        return self._apply_llm_auto_tagging_metadata(
+            items[0],
+            result=result,
+            tag_values=tag_values,
+            keyword_values=keyword_values,
+            structured_tags=structured_tags,
+            max_items=max_items,
+        )
 
     def _record_governance_enrichment_metadata(
         self,

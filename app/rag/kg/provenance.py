@@ -101,6 +101,43 @@ def build_event_entity_provenance(
     return out
 
 
+def _normalized_key_entity_ids(key_entity_ids: set[str] | None) -> set[str] | None:
+    if not isinstance(key_entity_ids, set) or not key_entity_ids:
+        return None
+    cleaned = {str(value).strip() for value in key_entity_ids if str(value).strip()}
+    return cleaned or None
+
+
+def _path_entity_id_and_type(obj: Any) -> tuple[str | None, str | None]:
+    if obj is None:
+        return None, None
+    if isinstance(obj, dict):
+        entity_id = obj.get("entity_id") or obj.get("id")
+        entity_type = obj.get("type")
+    else:
+        entity_id = getattr(obj, "id", None)
+        entity_type = getattr(obj, "type", None)
+    entity_id_text = str(entity_id or "").strip()
+    entity_type_text = str(entity_type or "").strip()
+    return entity_id_text or None, entity_type_text or None
+
+
+def _dedup_path_entities(
+    entities: Any,
+    *,
+    key_entity_ids: set[str] | None,
+) -> dict[str, str]:
+    dedup: dict[str, str] = {}
+    for entity in _iter_items(entities):
+        entity_id, entity_type = _path_entity_id_and_type(entity)
+        if not entity_id:
+            continue
+        if key_entity_ids is not None and entity_id not in key_entity_ids:
+            continue
+        dedup.setdefault(entity_id, entity_type or "unknown")
+    return dedup
+
+
 def build_kg_path_provenance(
     *,
     entities: Any,
@@ -125,41 +162,222 @@ def build_kg_path_provenance(
     if lim <= 0:
         return []
 
-    key_set: set[str] | None = None
-    if isinstance(key_entity_ids, set) and key_entity_ids:
-        cleaned = {str(x).strip() for x in key_entity_ids if str(x).strip()}
-        key_set = cleaned if cleaned else None
-
-    def _entity_id_and_type(obj: Any) -> tuple[str | None, str | None]:
-        if obj is None:
-            return None, None
-        if isinstance(obj, dict):
-            ent_id = obj.get("entity_id") or obj.get("id")
-            ent_type = obj.get("type")
-        else:
-            ent_id = getattr(obj, "id", None)
-            ent_type = getattr(obj, "type", None)
-        ent_id_s = str(ent_id or "").strip()
-        ent_type_s = str(ent_type or "").strip()
-        return (ent_id_s or None), (ent_type_s or None)
-
-    dedup: dict[str, str] = {}
-    items = _iter_items(entities)
-    for ent in items:
-        ent_id_s, ent_type_s = _entity_id_and_type(ent)
-        if not ent_id_s:
-            continue
-        if key_set is not None and ent_id_s not in key_set:
-            continue
-        # Keep first seen type (best-effort).
-        if ent_id_s not in dedup:
-            dedup[ent_id_s] = ent_type_s or "unknown"
-
+    dedup = _dedup_path_entities(
+        entities,
+        key_entity_ids=_normalized_key_entity_ids(key_entity_ids),
+    )
     pairs = sorted(((eid, typ) for eid, typ in dedup.items()), key=lambda x: (x[1], x[0]))
-    out: list[dict[str, str]] = []
-    for eid, typ in pairs[:lim]:
-        out.append({"entity_id": str(eid), "type": str(typ or "unknown")})
-    return out
+    return [
+        {"entity_id": str(entity_id), "type": str(entity_type or "unknown")}
+        for entity_id, entity_type in pairs[:lim]
+    ]
+
+
+def _confidence_bucket(confidence: Any, *, low_max: float, mid_max: float) -> str:
+    try:
+        value = float(confidence or 0.0)
+    except Exception:
+        value = 0.0
+    low = float(low_max)
+    middle = float(mid_max)
+    if low >= middle:
+        low, middle = 0.4, 0.7
+    if value < low:
+        return "low"
+    if value < middle:
+        return "mid"
+    return "high"
+
+
+def _event_id_and_scope(obj: Any) -> tuple[str | None, str | None, str | None]:
+    if obj is None:
+        return None, None, None
+    if isinstance(obj, dict):
+        event_id = obj.get("event_id") or obj.get("id")
+        document_id = obj.get("document_id")
+        chunk_id = obj.get("chunk_id")
+    else:
+        event_id = getattr(obj, "id", None)
+        document_id = getattr(obj, "document_id", None)
+        chunk_id = getattr(obj, "chunk_id", None)
+    return _safe_uuid_str(event_id), _safe_uuid_str(document_id), _safe_uuid_str(chunk_id)
+
+
+def _shortest_path_entity_id_and_type(obj: Any) -> tuple[str | None, str | None]:
+    if obj is None:
+        return None, None
+    if isinstance(obj, dict):
+        entity_id = obj.get("entity_id") or obj.get("id")
+        entity_type = obj.get("type")
+    else:
+        entity_id = getattr(obj, "id", None) or getattr(obj, "entity_id", None)
+        entity_type = getattr(obj, "type", None)
+    entity_id_text = _safe_uuid_str(entity_id)
+    entity_type_text = _safe_str(entity_type, max_len=100)
+    return entity_id_text, (entity_type_text or "unknown") if entity_id_text else None
+
+
+def _shortest_path_entities(
+    entities: Any,
+    *,
+    key_entity_ids: set[str] | None,
+) -> list[tuple[str, str]]:
+    selected: list[tuple[str, str]] = []
+    for entity in _iter_items(entities):
+        entity_id, entity_type = _shortest_path_entity_id_and_type(entity)
+        if not entity_id or not entity_type:
+            continue
+        if key_entity_ids is not None and entity_id not in key_entity_ids:
+            continue
+        selected.append((entity_id, entity_type))
+    return sorted(set(selected), key=lambda item: (item[1], item[0]))
+
+
+def _relation_values(relation: Any) -> tuple[Any, ...] | None:
+    if relation is None:
+        return None
+    if isinstance(relation, dict):
+        return (
+            relation.get("subject_entity_id"),
+            relation.get("object_entity_id"),
+            relation.get("id"),
+            relation.get("predicate"),
+            relation.get("confidence"),
+            relation.get("document_id"),
+            relation.get("chunk_id"),
+            relation.get("event_id"),
+            relation.get("references"),
+        )
+    return (
+        getattr(relation, "subject_entity_id", None),
+        getattr(relation, "object_entity_id", None),
+        getattr(relation, "id", None),
+        getattr(relation, "predicate", None),
+        getattr(relation, "confidence", None),
+        getattr(relation, "document_id", None),
+        getattr(relation, "chunk_id", None),
+        getattr(relation, "event_id", None),
+        getattr(relation, "references", None),
+    )
+
+
+def _relation_path_entry(
+    relation: Any,
+    *,
+    bucket_low_max: float,
+    bucket_mid_max: float,
+) -> tuple[frozenset[str], dict[str, Any]] | None:
+    values = _relation_values(relation)
+    if values is None:
+        return None
+    subject_id, object_id, relation_id, predicate, confidence, document_id, chunk_id, event_id, references = values
+    subject_id_text = _safe_uuid_str(subject_id)
+    object_id_text = _safe_uuid_str(object_id)
+    if not subject_id_text or not object_id_text or subject_id_text == object_id_text:
+        return None
+    evidence_source = ""
+    if isinstance(references, dict):
+        evidence_source = str(references.get("evidence_source") or "").strip().casefold()
+    return frozenset({subject_id_text, object_id_text}), {
+        "relation_id": _safe_uuid_str(relation_id),
+        "predicate": _safe_str(predicate, max_len=200),
+        "confidence": confidence,
+        "confidence_bucket": _confidence_bucket(
+            confidence,
+            low_max=bucket_low_max,
+            mid_max=bucket_mid_max,
+        ),
+        "evidence_source": evidence_source or None,
+        "document_id": _safe_uuid_str(document_id),
+        "chunk_id": _safe_uuid_str(chunk_id),
+        "event_id": _safe_uuid_str(event_id),
+    }
+
+
+def _relation_path_map(
+    relations: Any,
+    *,
+    bucket_low_max: float,
+    bucket_mid_max: float,
+) -> dict[frozenset[str], dict[str, Any]]:
+    relation_map: dict[frozenset[str], dict[str, Any]] = {}
+    for relation in _iter_items(relations):
+        entry = _relation_path_entry(
+            relation,
+            bucket_low_max=bucket_low_max,
+            bucket_mid_max=bucket_mid_max,
+        )
+        if entry is not None:
+            relation_map.setdefault(*entry)
+    return relation_map
+
+
+def _direct_relation_provenance(
+    *,
+    first: tuple[str, str],
+    second: tuple[str, str],
+    relation: dict[str, Any],
+) -> dict[str, Any]:
+    first_id, first_type = first
+    second_id, second_type = second
+    return {
+        "schema": "mimirq.kg_path_provenance.v1",
+        "kind": "entity_relation",
+        "hops": 1,
+        "nodes": [
+            {"kind": "entity", "entity_id": str(first_id), "type": str(first_type)},
+            {"kind": "entity", "entity_id": str(second_id), "type": str(second_type)},
+        ],
+        "edges": [
+            {
+                "kind": "relation",
+                "relation_id": relation.get("relation_id"),
+                "predicate": relation.get("predicate"),
+                "confidence_bucket": relation.get("confidence_bucket"),
+                "evidence_source": relation.get("evidence_source"),
+                "document_id": relation.get("document_id"),
+                "chunk_id": relation.get("chunk_id"),
+                "event_id": relation.get("event_id"),
+            }
+        ],
+    }
+
+
+def _event_bridge_provenance(
+    *,
+    event_scope: tuple[str, str | None, str | None],
+    first: tuple[str, str],
+    second: tuple[str, str],
+) -> dict[str, Any]:
+    event_id, document_id, chunk_id = event_scope
+    first_id, first_type = first
+    second_id, second_type = second
+    return {
+        "schema": "mimirq.kg_path_provenance.v1",
+        "kind": "entity_event_entity",
+        "hops": 2,
+        "nodes": [
+            {"kind": "entity", "entity_id": str(first_id), "type": str(first_type)},
+            {"kind": "event", "event_id": str(event_id), "document_id": document_id, "chunk_id": chunk_id},
+            {"kind": "entity", "entity_id": str(second_id), "type": str(second_type)},
+        ],
+        "edges": [
+            {
+                "kind": "event_entity",
+                "entity_id": str(first_id),
+                "event_id": str(event_id),
+                "document_id": document_id,
+                "chunk_id": chunk_id,
+            },
+            {
+                "kind": "event_entity",
+                "entity_id": str(second_id),
+                "event_id": str(event_id),
+                "document_id": document_id,
+                "chunk_id": chunk_id,
+            },
+        ],
+    }
 
 
 def build_kg_shortest_path_provenance(
@@ -188,179 +406,30 @@ def build_kg_shortest_path_provenance(
       }
     """
 
-    def _bucket(conf: Any) -> str:
-        try:
-            c = float(conf or 0.0)
-        except Exception:
-            c = 0.0
-        lo = float(bucket_low_max)
-        mid = float(bucket_mid_max)
-        if lo >= mid:
-            lo, mid = 0.4, 0.7
-        if c < lo:
-            return "low"
-        if c < mid:
-            return "mid"
-        return "high"
-
-    def _event_id_and_scope(obj: Any) -> tuple[str | None, str | None, str | None]:
-        if obj is None:
-            return None, None, None
-        if isinstance(obj, dict):
-            ev_id = obj.get("event_id") or obj.get("id")
-            doc_id = obj.get("document_id")
-            ch_id = obj.get("chunk_id")
-        else:
-            ev_id = getattr(obj, "id", None)
-            doc_id = getattr(obj, "document_id", None)
-            ch_id = getattr(obj, "chunk_id", None)
-        return _safe_uuid_str(ev_id), _safe_uuid_str(doc_id), _safe_uuid_str(ch_id)
-
-    def _entity_id_and_type(obj: Any) -> tuple[str | None, str | None]:
-        if obj is None:
-            return None, None
-        if isinstance(obj, dict):
-            ent_id = obj.get("entity_id") or obj.get("id")
-            ent_type = obj.get("type")
-        else:
-            ent_id = getattr(obj, "id", None) or getattr(obj, "entity_id", None)
-            ent_type = getattr(obj, "type", None)
-        ent_id_s = _safe_uuid_str(ent_id)
-        ent_type_s = _safe_str(ent_type, max_len=100)
-        return ent_id_s, (ent_type_s or "unknown") if ent_id_s else None
-
     ev_id, ev_doc_id, ev_chunk_id = _event_id_and_scope(event)
     if not ev_id:
         return None
 
-    key_set: set[str] | None = None
-    if isinstance(key_entity_ids, set) and key_entity_ids:
-        cleaned = {str(x).strip() for x in key_entity_ids if str(x).strip()}
-        key_set = cleaned if cleaned else None
-
-    ent_items = _iter_items(entities)
-    ents: list[tuple[str, str]] = []
-    for e in ent_items:
-        ent_id_s, ent_type_s = _entity_id_and_type(e)
-        if not ent_id_s or not ent_type_s:
-            continue
-        if key_set is not None and ent_id_s not in key_set:
-            continue
-        ents.append((ent_id_s, ent_type_s))
-
-    # Need at least 2 endpoints to form an entity<->entity explanation.
+    ents = _shortest_path_entities(
+        entities,
+        key_entity_ids=_normalized_key_entity_ids(key_entity_ids),
+    )
     if len(ents) < 2:
         return None
-
-    ents = sorted(set(ents), key=lambda x: (x[1], x[0]))
-    a_id, a_type = ents[0]
-    b_id, b_type = ents[1]
-
-    rel_map: dict[frozenset[str], dict[str, Any]] = {}
-    rel_items = _iter_items(relations)
-    for r in rel_items:
-        if r is None:
-            continue
-        if isinstance(r, dict):
-            sid = r.get("subject_entity_id")
-            oid = r.get("object_entity_id")
-            rel_id = r.get("id")
-            predicate = r.get("predicate")
-            confidence = r.get("confidence")
-            r_doc = r.get("document_id")
-            r_chunk = r.get("chunk_id")
-            r_event = r.get("event_id")
-            refs = r.get("references")
-        else:
-            sid = getattr(r, "subject_entity_id", None)
-            oid = getattr(r, "object_entity_id", None)
-            rel_id = getattr(r, "id", None)
-            predicate = getattr(r, "predicate", None)
-            confidence = getattr(r, "confidence", None)
-            r_doc = getattr(r, "document_id", None)
-            r_chunk = getattr(r, "chunk_id", None)
-            r_event = getattr(r, "event_id", None)
-            refs = getattr(r, "references", None)
-
-        sid_s = _safe_uuid_str(sid)
-        oid_s = _safe_uuid_str(oid)
-        if not sid_s or not oid_s or sid_s == oid_s:
-            continue
-        key = frozenset({sid_s, oid_s})
-
-        evidence_source = ""
-        if isinstance(refs, dict):
-            evidence_source = str(refs.get("evidence_source") or "").strip().casefold()
-
-        rel_map.setdefault(
-            key,
-            {
-                "relation_id": _safe_uuid_str(rel_id),
-                "predicate": _safe_str(predicate, max_len=200),
-                "confidence": confidence,
-                "confidence_bucket": _bucket(confidence),
-                "evidence_source": evidence_source or None,
-                "document_id": _safe_uuid_str(r_doc),
-                "chunk_id": _safe_uuid_str(r_chunk),
-                "event_id": _safe_uuid_str(r_event),
-            },
-        )
-
-    direct = rel_map.get(frozenset({a_id, b_id}))
+    first, second = ents[:2]
+    relation_map = _relation_path_map(
+        relations,
+        bucket_low_max=bucket_low_max,
+        bucket_mid_max=bucket_mid_max,
+    )
+    direct = relation_map.get(frozenset({first[0], second[0]}))
     if direct and direct.get("relation_id"):
-        return {
-            "schema": "mimirq.kg_path_provenance.v1",
-            "kind": "entity_relation",
-            "hops": 1,
-            "nodes": [
-                {"kind": "entity", "entity_id": str(a_id), "type": str(a_type)},
-                {"kind": "entity", "entity_id": str(b_id), "type": str(b_type)},
-            ],
-            "edges": [
-                {
-                    "kind": "relation",
-                    "relation_id": direct.get("relation_id"),
-                    "predicate": direct.get("predicate"),
-                    "confidence_bucket": direct.get("confidence_bucket"),
-                    "evidence_source": direct.get("evidence_source"),
-                    "document_id": direct.get("document_id"),
-                    "chunk_id": direct.get("chunk_id"),
-                    "event_id": direct.get("event_id"),
-                }
-            ],
-        }
-
-    return {
-        "schema": "mimirq.kg_path_provenance.v1",
-        "kind": "entity_event_entity",
-        "hops": 2,
-        "nodes": [
-            {"kind": "entity", "entity_id": str(a_id), "type": str(a_type)},
-            {
-                "kind": "event",
-                "event_id": str(ev_id),
-                "document_id": ev_doc_id,
-                "chunk_id": ev_chunk_id,
-            },
-            {"kind": "entity", "entity_id": str(b_id), "type": str(b_type)},
-        ],
-        "edges": [
-            {
-                "kind": "event_entity",
-                "entity_id": str(a_id),
-                "event_id": str(ev_id),
-                "document_id": ev_doc_id,
-                "chunk_id": ev_chunk_id,
-            },
-            {
-                "kind": "event_entity",
-                "entity_id": str(b_id),
-                "event_id": str(ev_id),
-                "document_id": ev_doc_id,
-                "chunk_id": ev_chunk_id,
-            },
-        ],
-    }
+        return _direct_relation_provenance(first=first, second=second, relation=direct)
+    return _event_bridge_provenance(
+        event_scope=(ev_id, ev_doc_id, ev_chunk_id),
+        first=first,
+        second=second,
+    )
 
 
 __all__ = ["build_event_entity_provenance", "build_kg_path_provenance", "build_kg_shortest_path_provenance"]

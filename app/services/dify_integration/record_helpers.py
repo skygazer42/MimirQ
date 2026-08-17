@@ -76,6 +76,64 @@ def record_rank_score(
     )
 
 
+def _fast_metadata_fields(
+    metadata: dict[str, Any] | None,
+    *,
+    query: str,
+    policy_plugin_refs: tuple[str, ...],
+    response_hints_for_metadata: Callable[[dict[str, Any], tuple[str, ...]], dict[str, Any]],
+    metadata_answer_highlights: Callable[[dict[str, Any], dict[str, Any], str, tuple[str, ...]], list[str]],
+    structured_label_values_from_content: Callable[[str], dict[str, str]],
+) -> tuple[str, dict[str, str]]:
+    if not isinstance(metadata, dict) or not metadata:
+        return "", {}
+    response_hints = response_hints_for_metadata(metadata, policy_plugin_refs)
+    metadata_hints = metadata_answer_highlights(metadata, response_hints, query, policy_plugin_refs)
+    if not metadata_hints:
+        return "", {}
+    hint_text = "\n".join(metadata_hints)
+    return hint_text, structured_label_values_from_content(hint_text)
+
+
+def _append_unique_line(lines: list[str], seen: set[str], line: str) -> None:
+    value = str(line or "").strip()
+    if not value or value in seen:
+        return
+    seen.add(value)
+    lines.append(value)
+
+
+def _fast_compaction_lines(
+    fields: dict[str, str],
+    metadata_fields: dict[str, str],
+    labels: tuple[str, ...],
+    *,
+    policy_plugin_refs: tuple[str, ...],
+    max_chars: int,
+    fast_response_always_labels_for_policy_refs: Callable[[tuple[str, ...]], tuple[str, ...]],
+    requested_label_prefixes_for_policy_refs: Callable[[tuple[str, ...]], tuple[str, ...]],
+    clamp_hint_value: Callable[[str, int], str],
+) -> list[str]:
+    lines: list[str] = []
+    seen: set[str] = set()
+    always_labels = set(fast_response_always_labels_for_policy_refs(policy_plugin_refs))
+    requested_labels = [
+        label
+        for label in labels
+        if label not in always_labels and label not in {"问题", "答案"} and fields.get(label)
+    ]
+    for prefix in requested_label_prefixes_for_policy_refs(policy_plugin_refs):
+        value = metadata_fields.get(prefix)
+        if not value and requested_labels:
+            value = "、".join(requested_labels)
+        if value:
+            _append_unique_line(lines, seen, f"{prefix}：{clamp_hint_value(value, max_chars)}")
+    for label in labels:
+        if fields.get(label):
+            _append_unique_line(lines, seen, f"{label}：{clamp_hint_value(fields[label], max_chars)}")
+    return lines
+
+
 def compact_fast_record_content(
     content: str,
     *,
@@ -96,14 +154,14 @@ def compact_fast_record_content(
     if not body:
         return body
     fields = structured_label_values_from_content(body)
-    metadata_hint_text = ""
-    metadata_fields: dict[str, str] = {}
-    if isinstance(metadata, dict) and metadata:
-        response_hints = response_hints_for_metadata(metadata, policy_plugin_refs)
-        metadata_hints = metadata_answer_highlights(metadata, response_hints, query, policy_plugin_refs)
-        if metadata_hints:
-            metadata_hint_text = "\n".join(metadata_hints)
-            metadata_fields = structured_label_values_from_content(metadata_hint_text)
+    metadata_hint_text, metadata_fields = _fast_metadata_fields(
+        metadata,
+        query=query,
+        policy_plugin_refs=policy_plugin_refs,
+        response_hints_for_metadata=response_hints_for_metadata,
+        metadata_answer_highlights=metadata_answer_highlights,
+        structured_label_values_from_content=structured_label_values_from_content,
+    )
     if metadata_fields:
         combined_fields = dict(fields)
         combined_fields.update(metadata_fields)
@@ -113,31 +171,16 @@ def compact_fast_record_content(
         if "答案" in labels and fields.get("答案"):
             fields = dict(fields)
             fields["答案"] = compact_fast_answer_value(fields["答案"], query, max_chars)
-        lines: list[str] = []
-        seen_lines: set[str] = set()
-
-        def add_line(line: str) -> None:
-            value = str(line or "").strip()
-            if not value or value in seen_lines:
-                return
-            seen_lines.add(value)
-            lines.append(value)
-
-        always_labels = set(fast_response_always_labels_for_policy_refs(policy_plugin_refs))
-        requested_labels = [
-            label
-            for label in labels
-            if label not in always_labels and label not in {"问题", "答案"} and fields.get(label)
-        ]
-        for prefix in requested_label_prefixes_for_policy_refs(policy_plugin_refs):
-            value = metadata_fields.get(prefix)
-            if not value and requested_labels:
-                value = "、".join(requested_labels)
-            if value:
-                add_line(f"{prefix}：{clamp_hint_value(value, max_chars)}")
-        for label in labels:
-            if fields.get(label):
-                add_line(f"{label}：{clamp_hint_value(fields[label], max_chars)}")
+        lines = _fast_compaction_lines(
+            fields,
+            metadata_fields,
+            labels,
+            policy_plugin_refs=policy_plugin_refs,
+            max_chars=max_chars,
+            fast_response_always_labels_for_policy_refs=fast_response_always_labels_for_policy_refs,
+            requested_label_prefixes_for_policy_refs=requested_label_prefixes_for_policy_refs,
+            clamp_hint_value=clamp_hint_value,
+        )
         compacted = "\n".join(lines).strip()
         if compacted:
             return clamp_hint_value(compacted, max_chars)
@@ -236,6 +279,49 @@ def compact_exact_anchor_answer_record(
     return [candidates[0]]
 
 
+def _quoted_anchor_answer_records(
+    records: list[dict[str, Any]],
+    *,
+    query: str,
+    policy_plugin_refs: tuple[str, ...],
+    record_exact_query_anchor_terms: Callable[[dict[str, Any], str, tuple[str, ...]], tuple[str, ...]],
+    record_content_is_answerful: Callable[[dict[str, Any], tuple[str, ...]], bool],
+    records_have_confident_metadata_anchor: Callable[[list[dict[str, Any]], str, tuple[str, ...]], bool],
+) -> list[dict[str, Any]]:
+    return [
+        record
+        for record in records
+        if record_exact_query_anchor_terms(record, query, policy_plugin_refs)
+        and (
+            record_content_is_answerful(record, policy_plugin_refs)
+            or records_have_confident_metadata_anchor([record], query, policy_plugin_refs)
+        )
+    ]
+
+
+def _top_exact_anchor_record(
+    records: list[dict[str, Any]],
+    *,
+    query: str,
+    requested_slots: tuple[tuple[str, str], ...],
+    policy_plugin_refs: tuple[str, ...],
+    record_has_any_requested_slot_field: Callable[[dict[str, Any], tuple[tuple[str, str], ...]], bool],
+    record_exact_query_anchor_terms: Callable[[dict[str, Any], str, tuple[str, ...]], tuple[str, ...]],
+    record_content_is_answerful: Callable[[dict[str, Any], tuple[str, ...]], bool],
+    records_have_confident_metadata_anchor: Callable[[list[dict[str, Any]], str, tuple[str, ...]], bool],
+) -> list[dict[str, Any]]:
+    top_record = records[0]
+    if record_has_any_requested_slot_field(top_record, requested_slots):
+        return []
+    if not record_exact_query_anchor_terms(top_record, query, policy_plugin_refs):
+        return []
+    if record_content_is_answerful(top_record, policy_plugin_refs):
+        return [top_record]
+    if records_have_confident_metadata_anchor([top_record], query, policy_plugin_refs):
+        return [top_record]
+    return []
+
+
 def compact_mixed_intent_exact_anchor_records(
     records: list[dict[str, Any]],
     *,
@@ -265,15 +351,14 @@ def compact_mixed_intent_exact_anchor_records(
             return [composite]
 
     if query_has_quoted_anchor_candidate(query):
-        anchored_answer_records = [
-            record
-            for record in records
-            if record_exact_query_anchor_terms(record, query, policy_plugin_refs)
-            and (
-                record_content_is_answerful(record, policy_plugin_refs)
-                or records_have_confident_metadata_anchor([record], query, policy_plugin_refs)
-            )
-        ]
+        anchored_answer_records = _quoted_anchor_answer_records(
+            records,
+            query=query,
+            policy_plugin_refs=policy_plugin_refs,
+            record_exact_query_anchor_terms=record_exact_query_anchor_terms,
+            record_content_is_answerful=record_content_is_answerful,
+            records_have_confident_metadata_anchor=records_have_confident_metadata_anchor,
+        )
         if anchored_answer_records:
             return anchored_answer_records[:top_k_int]
 
@@ -283,19 +368,85 @@ def compact_mixed_intent_exact_anchor_records(
         if exact_anchor_answer:
             return exact_anchor_answer[:top_k_int]
 
-    top_record = records[0]
     if has_requested_slot_records:
         return []
-    if record_has_any_requested_slot_field(top_record, requested_slots):
-        return []
-    if not record_exact_query_anchor_terms(top_record, query, policy_plugin_refs):
-        return []
-    if not (
-        record_content_is_answerful(top_record, policy_plugin_refs)
-        or records_have_confident_metadata_anchor([top_record], query, policy_plugin_refs)
-    ):
-        return []
-    return [top_record][:top_k_int]
+    return _top_exact_anchor_record(
+        records,
+        query=query,
+        requested_slots=requested_slots,
+        policy_plugin_refs=policy_plugin_refs,
+        record_has_any_requested_slot_field=record_has_any_requested_slot_field,
+        record_exact_query_anchor_terms=record_exact_query_anchor_terms,
+        record_content_is_answerful=record_content_is_answerful,
+        records_have_confident_metadata_anchor=records_have_confident_metadata_anchor,
+    )[:top_k_int]
+
+
+def _mixed_intent_compaction(
+    records: list[dict[str, Any]],
+    *,
+    query: str,
+    top_k: int,
+    policy_plugin_refs: tuple[str, ...],
+    compact_mixed_intent_exact_anchor_records: Callable[
+        [list[dict[str, Any]], str, int, tuple[str, ...]],
+        list[dict[str, Any]],
+    ],
+    strong_question_anchor_records: Callable[
+        [list[dict[str, Any]], str, tuple[str, ...]],
+        list[dict[str, Any]],
+    ],
+    query_has_quoted_anchor_candidate: Callable[[str], bool],
+) -> list[dict[str, Any]] | None:
+    compacted = compact_mixed_intent_exact_anchor_records(records, query, top_k, policy_plugin_refs)
+    if not compacted:
+        return None
+    supplements = [
+        record
+        for record in strong_question_anchor_records(records, query, policy_plugin_refs)
+        if record not in compacted
+    ]
+    if len(compacted) == 1 and supplements and not query_has_quoted_anchor_candidate(query):
+        return None
+    return compacted
+
+
+def _apply_response_policy_compaction(
+    records: list[dict[str, Any]],
+    *,
+    query: str,
+    policy_plugin_refs: tuple[str, ...],
+    compaction_enabled: bool,
+    policy_compaction: dict[str, Any],
+    record_has_strong_question_anchor: Callable[[dict[str, Any], str, tuple[str, ...]], bool],
+    compact_by_strong_question_anchor: Callable[
+        [list[dict[str, Any]], str, tuple[str, ...]],
+        list[dict[str, Any]],
+    ],
+    filter_records_by_retrieval_policy_alignment: Callable[
+        [list[dict[str, Any]], str, tuple[str, ...]],
+        list[dict[str, Any]],
+    ],
+) -> list[dict[str, Any]]:
+    if not compaction_enabled or not bool(policy_compaction.get("enabled")):
+        return records
+    if record_has_strong_question_anchor(records[0], query, policy_plugin_refs):
+        return compact_by_strong_question_anchor(records, query, policy_plugin_refs)
+    aligned = filter_records_by_retrieval_policy_alignment(records, query, policy_plugin_refs)
+    return compact_by_strong_question_anchor(aligned, query, policy_plugin_refs)
+
+
+def _response_compaction_scores(
+    records: list[dict[str, Any]],
+    *,
+    query: str,
+    policy_plugin_refs: tuple[str, ...],
+    policy_enabled: bool,
+    record_rank_score: Callable[[dict[str, Any], str, tuple[str, ...]], float],
+) -> list[float]:
+    if policy_enabled:
+        return [record_rank_score(record, query, policy_plugin_refs) for record in records]
+    return [float(record.get("score") or 0.0) for record in records]
 
 
 def compact_records_for_response(
@@ -326,24 +477,17 @@ def compact_records_for_response(
     top_k_int = max(1, int(top_k or 1))
     mixed_intent_query = query_has_mixed_intent_for_policy(query, policy_plugin_refs)
     if mixed_intent_query:
-        exact_anchor_compacted = compact_mixed_intent_exact_anchor_records(
+        exact_anchor_compacted = _mixed_intent_compaction(
             list(records or []),
-            query,
-            top_k,
-            policy_plugin_refs,
+            query=query,
+            top_k=top_k,
+            policy_plugin_refs=policy_plugin_refs,
+            compact_mixed_intent_exact_anchor_records=compact_mixed_intent_exact_anchor_records,
+            strong_question_anchor_records=strong_question_anchor_records,
+            query_has_quoted_anchor_candidate=query_has_quoted_anchor_candidate,
         )
-        if exact_anchor_compacted:
-            strong_question_supplements = [
-                record
-                for record in strong_question_anchor_records(list(records or []), query, policy_plugin_refs)
-                if record not in exact_anchor_compacted
-            ]
-            if len(exact_anchor_compacted) == 1 and strong_question_supplements and not query_has_quoted_anchor_candidate(
-                query
-            ):
-                exact_anchor_compacted = []
-            else:
-                return exact_anchor_compacted
+        if exact_anchor_compacted is not None:
+            return exact_anchor_compacted
 
     limited = list(records or [])[:top_k_int]
     if not limited:
@@ -357,19 +501,25 @@ def compact_records_for_response(
     if exact_anchor_answer:
         return exact_anchor_answer
     policy_compaction = response_compaction_for_records(limited, policy_plugin_refs)
-    if compaction_enabled and bool(policy_compaction.get("enabled")):
-        if record_has_strong_question_anchor(limited[0], query, policy_plugin_refs):
-            limited = compact_by_strong_question_anchor(limited, query, policy_plugin_refs)
-        else:
-            limited = filter_records_by_retrieval_policy_alignment(limited, query, policy_plugin_refs)
-            limited = compact_by_strong_question_anchor(limited, query, policy_plugin_refs)
+    limited = _apply_response_policy_compaction(
+        limited,
+        query=query,
+        policy_plugin_refs=policy_plugin_refs,
+        compaction_enabled=compaction_enabled,
+        policy_compaction=policy_compaction,
+        record_has_strong_question_anchor=record_has_strong_question_anchor,
+        compact_by_strong_question_anchor=compact_by_strong_question_anchor,
+        filter_records_by_retrieval_policy_alignment=filter_records_by_retrieval_policy_alignment,
+    )
     if not limited:
         return []
     policy_compaction_enabled = bool(policy_compaction.get("enabled"))
-    compaction_scores = (
-        [record_rank_score(record, query, policy_plugin_refs) for record in limited]
-        if policy_compaction_enabled
-        else [float(record.get("score") or 0.0) for record in limited]
+    compaction_scores = _response_compaction_scores(
+        limited,
+        query=query,
+        policy_plugin_refs=policy_plugin_refs,
+        policy_enabled=policy_compaction_enabled,
+        record_rank_score=record_rank_score,
     )
     compacted = compact_high_confidence_items(
         limited,

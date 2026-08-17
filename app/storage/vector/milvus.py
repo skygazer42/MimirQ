@@ -433,60 +433,88 @@ def _indexed_metadata_filter_exprs(indexed_filters: Any) -> list[str]:
     return parts
 
 
+def _normalize_milvus_filter_field(field: str) -> str | None:
+    if "." in field:
+        return None
+    normalized = _MILVUS_FILTER_KEY_ALIASES.get(field, field)
+    if normalized not in _MILVUS_ALLOWED_FILTER_FIELDS:
+        return None
+    if not _MILVUS_FIELD_NAME_RE.match(normalized):
+        return None
+    return normalized
+
+
+def _milvus_scalar_clause_expr(field: str, value: Any) -> str | None:
+    rhs = _milvus_value_expr(field, value)
+    if rhs is None:
+        return None
+    return f"{field} == {rhs}"
+
+
+def _milvus_operator_clause_expr(field: str, op: str, expected: Any) -> str | None:
+    if op in ("$eq", "$ne"):
+        rhs = _milvus_value_expr(field, expected)
+        if rhs is None:
+            return None
+        operator = "==" if op == "$eq" else "!="
+        return f"{field} {operator} {rhs}"
+
+    if op in ("$gt", "$gte", "$lt", "$lte"):
+        if field not in _MILVUS_NUMERIC_FIELDS:
+            return None
+        rhs = _milvus_value_expr(field, expected)
+        if rhs is None:
+            return None
+        operator = {
+            "$gt": ">",
+            "$gte": ">=",
+            "$lt": "<",
+            "$lte": "<=",
+        }.get(op)
+        if operator is None:
+            return None
+        return f"{field} {operator} {rhs}"
+
+    if op in ("$in", "$nin"):
+        rhs = _milvus_in_list_expr(field, expected)
+        if rhs is None:
+            return None
+        operator = "in" if op == "$in" else "not in"
+        return f"{field} {operator} {rhs}"
+
+    return None
+
+
+def _milvus_condition_exprs(field: str, condition: Any) -> list[str]:
+    if not isinstance(condition, dict):
+        scalar_expr = _milvus_scalar_clause_expr(field, condition)
+        return [scalar_expr] if scalar_expr else []
+
+    parts: list[str] = []
+    for op, expected in condition.items():
+        clause = _milvus_operator_clause_expr(field, op, expected)
+        if clause:
+            parts.append(clause)
+    return parts
+
+
 def _build_milvus_metadata_expr(metadata_filter: dict[str, Any] | None) -> str | None:
     """Best-effort translation of metadata_filter into Milvus expr (AND semantics)."""
     if not metadata_filter or not isinstance(metadata_filter, dict):
         return None
 
     parts: list[str] = []
-    for key, condition in metadata_filter.items():
-        if not isinstance(key, str):
+    for raw_key, condition in metadata_filter.items():
+        if not isinstance(raw_key, str):
             continue
-        if key == _INDEXED_METADATA_FILTERS_KEY:
+        if raw_key == _INDEXED_METADATA_FILTERS_KEY:
             parts.extend(_indexed_metadata_filter_exprs(condition))
             continue
-        if "." in key:
-            continue
-        key = _MILVUS_FILTER_KEY_ALIASES.get(key, key)
-        if key not in _MILVUS_ALLOWED_FILTER_FIELDS:
-            continue
-        if not _MILVUS_FIELD_NAME_RE.match(key):
-            continue
 
-        if isinstance(condition, dict):
-            for op, expected in condition.items():
-                if op in ("$eq", "$ne"):
-                    rhs = _milvus_value_expr(key, expected)
-                    if rhs is None:
-                        continue
-                    parts.append(f"{key} {'==' if op == '$eq' else '!='} {rhs}")
-                elif op in ("$gt", "$gte", "$lt", "$lte"):
-                    if key not in _MILVUS_NUMERIC_FIELDS:
-                        continue
-                    rhs = _milvus_value_expr(key, expected)
-                    if rhs is None:
-                        continue
-                    cmp_op = {  # noqa: RUF027
-                        "$gt": ">",
-                        "$gte": ">=",
-                        "$lt": "<",
-                        "$lte": "<=",
-                    }.get(op)
-                    if cmp_op:
-                        parts.append(f"{key} {cmp_op} {rhs}")
-                elif op in ("$in", "$nin"):
-                    rhs = _milvus_in_list_expr(key, expected)
-                    if rhs is None:
-                        continue
-                    parts.append(f"{key} {'in' if op == '$in' else 'not in'} {rhs}")
-                else:
-                    # Unsupported op (e.g. $contains): skip pushdown for this clause.
-                    continue
-        else:
-            rhs = _milvus_value_expr(key, condition)
-            if rhs is None:
-                continue
-            parts.append(f"{key} == {rhs}")
+        key = _normalize_milvus_filter_field(raw_key)
+        if key is None:
+            continue
+        parts.extend(_milvus_condition_exprs(key, condition))
 
     if not parts:
         return None
@@ -542,6 +570,391 @@ def _get_langchain_milvus_cls():  # noqa: ANN202
     from langchain_community.vectorstores import Milvus as LCMilvus
 
     return LCMilvus
+
+
+def _milvus_store_field_name(store: Any, attr_name: str, default: str) -> str:
+    return str(getattr(store, attr_name, default) or default).strip() or default
+
+
+def _milvus_store_init_kwargs(store: Any) -> dict[str, Any]:
+    init_kwargs: dict[str, Any] = {}
+    partition_names = getattr(store, "partition_names", None)
+    if partition_names:
+        init_kwargs["partition_names"] = partition_names
+    replica_number = getattr(store, "replica_number", None)
+    if replica_number:
+        init_kwargs["replica_number"] = replica_number
+    store_timeout = getattr(store, "timeout", None)
+    if store_timeout:
+        init_kwargs["timeout"] = store_timeout
+    return init_kwargs
+
+
+def _prepare_adapter_vector_payload(
+    items: list[dict[str, Any]],
+    *,
+    reserved_fields: set[str],
+) -> tuple[list[str], list[str], list[dict[str, Any]]]:
+    texts: list[str] = []
+    metadatas: list[dict[str, Any]] = []
+    ids: list[str] = []
+    for item in items:
+        ids.append(str(item["id"]))
+        texts.append((item.get("content") or "")[:65_000])
+        meta = dict(item.get("metadata") or {})
+        for key in reserved_fields:
+            meta.pop(key, None)
+        meta.update(_flatten_indexed_metadata_slots(meta))
+        metadatas.append(meta)
+    return texts, ids, _normalize_milvus_metadata_batch(metadatas)
+
+
+def _ensure_adapter_write_collection(
+    store: Any,
+    *,
+    embeddings: list[list[float]],
+    metadatas: list[dict[str, Any]],
+) -> Any:
+    from pymilvus import Collection
+
+    collection = getattr(store, "col", None)
+    if isinstance(collection, Collection):
+        return collection
+
+    init_kwargs = _milvus_store_init_kwargs(store)
+    init_kwargs.update({"embeddings": embeddings, "metadatas": metadatas})
+    store._init(**init_kwargs)
+    return getattr(store, "col", None)
+
+
+def _append_store_metadata_columns(
+    insert_dict: dict[str, list[Any]],
+    *,
+    store: Any,
+    metadatas: list[dict[str, Any]],
+) -> None:
+    metadata_field = getattr(store, "_metadata_field", None)
+    if metadata_field is not None:
+        insert_dict[metadata_field] = metadatas
+        return
+
+    fields = list(getattr(store, "fields", []))
+    primary_field = _milvus_store_field_name(store, "_primary_field", "id")
+    allowed_fields = [field for field in fields if field != primary_field] if getattr(store, "auto_id", False) else fields
+    for metadata in metadatas:
+        for key, value in metadata.items():
+            if key in allowed_fields:
+                insert_dict.setdefault(key, []).append(value)
+
+
+def _build_adapter_insert_dict(
+    store: Any,
+    *,
+    texts: list[str],
+    embeddings: list[list[float]],
+    metadatas: list[dict[str, Any]],
+    ids: list[str],
+) -> dict[str, list[Any]]:
+    text_field = _milvus_store_field_name(store, "_text_field", "content")
+    vector_field = _milvus_store_field_name(store, "_vector_field", "embedding")
+    insert_dict: dict[str, list[Any]] = {
+        text_field: texts,
+        vector_field: embeddings,
+    }
+    if not getattr(store, "auto_id", False):
+        insert_dict[_milvus_store_field_name(store, "_primary_field", "id")] = ids
+    _append_store_metadata_columns(insert_dict, store=store, metadatas=metadatas)
+    return insert_dict
+
+
+def _invoke_milvus_batch_write(
+    collection: Any,
+    *,
+    insert_list: list[list[Any]],
+    timeout: float | None,
+    upsert: bool,
+    write_kwargs: dict[str, Any],
+) -> list[str]:
+    writer = getattr(collection, "upsert" if upsert else "insert")
+    result = writer(insert_list, timeout=timeout, **write_kwargs)
+    return [str(pk) for pk in result.primary_keys]
+
+
+def _iter_milvus_batch_ranges(total_count: int, batch_size: int) -> range:
+    return range(0, total_count, batch_size)
+
+
+def _tenant_scoped_milvus_expr(tenant_id: str) -> str:
+    expr = f'tenant_id == "{_escape_milvus_string(str(tenant_id))}"'
+    if len(expr) > _MILVUS_EXPR_MAX_CHARS:
+        raise MilvusMaintenanceError("semantic cache tenant scope expression exceeds Milvus limits")
+    return expr
+
+
+def _milvus_schema_field_names(collection: Any) -> set[str]:
+    field_names: set[str] = set()
+    schema = getattr(collection, "schema", None)
+    fields = getattr(schema, "fields", None)
+    if not isinstance(fields, (list, tuple)):
+        return field_names
+    for field in fields:
+        field_name = str(getattr(field, "name", "") or "").strip()
+        if field_name:
+            field_names.add(field_name)
+    return field_names
+
+
+def _milvus_semantic_cache_output_fields(primary_field: str, field_names: set[str]) -> list[str]:
+    output_fields = [primary_field]
+    for field_name in ("tenant_id", "expires_at_epoch", "created_at_epoch"):
+        if (not field_names) or field_name in field_names:
+            output_fields.append(field_name)
+    return output_fields
+
+
+def _open_milvus_query_iterator(
+    collection: Any,
+    *,
+    batch_size: int,
+    expr: str,
+    output_fields: list[str],
+    timeout: float | None,
+) -> Any:
+    query_iterator = collection.query_iterator
+    return query_iterator(
+        batch_size=batch_size,
+        limit=-1,
+        expr=expr,
+        output_fields=output_fields,
+        timeout=timeout,
+    )
+
+
+def _milvus_iterator_next_callable(iterator: Any) -> Any:
+    next_callable = getattr(iterator, "next", None)
+    if callable(next_callable):
+        return next_callable
+    if hasattr(iterator, "__next__"):
+        return iter(iterator).__next__
+    return None
+
+
+def _milvus_iterator_close_callable(iterator: Any) -> Any:
+    close_callable = getattr(iterator, "close", None)
+    return close_callable if callable(close_callable) else None
+
+
+def _effective_milvus_write_batch_size(texts: list[str]) -> int:
+    base = max(1, int(getattr(settings, "VECTOR_WRITE_BATCH_SIZE", 256) or 256))
+    if not bool(getattr(settings, "VECTOR_WRITE_ADAPTIVE_BATCHING_ENABLED", True)):
+        return base
+
+    max_chars_per_batch = int(getattr(settings, "VECTOR_WRITE_BATCH_MAX_CHARS", 200_000) or 200_000)
+    if max_chars_per_batch <= 0 or not texts:
+        return base
+
+    max_chunk_chars = max(len(text or "") for text in texts)
+    if max_chunk_chars <= 0:
+        return base
+
+    budgeted = max(1, int(max_chars_per_batch // max_chunk_chars))
+    return max(1, min(base, budgeted))
+
+
+def _drop_indexed_metadata_slots(metadatas: list[dict[str, Any]]) -> None:
+    for metadata in metadatas:
+        for slot_field in _INDEXED_METADATA_SLOT_FIELDS:
+            metadata.pop(slot_field, None)
+
+
+def _record_milvus_write_compat_fallback(exc: Exception) -> None:
+    global _MILVUS_WARNED_WRITE_COMPAT_FALLBACK
+    if not _MILVUS_WARNED_WRITE_COMPAT_FALLBACK:
+        logger.warning(
+            "Milvus add_texts failed; retrying without optional indexed metadata slots. "
+            "Legacy collections must be recreated if required routing fields are missing. err=%s",
+            str(exc)[:200],
+        )
+        _MILVUS_WARNED_WRITE_COMPAT_FALLBACK = True
+    try:
+        from app.storage.vector.milvus_prometheus_metrics import observe_milvus_write_compat_fallback
+
+        observe_milvus_write_compat_fallback(dropped_fields="indexed_meta_slots")
+    except Exception as fallback_exc:
+        logger.debug(_MILVUS_FALLBACK_LOG_MESSAGE, fallback_exc)
+
+
+def _add_texts_with_milvus_compat(
+    store: Any,
+    *,
+    texts: list[str],
+    metadatas: list[dict[str, Any]],
+    ids: list[str],
+) -> list[str]:
+    metadatas_norm = _normalize_milvus_metadata_batch(metadatas)
+    try:
+        pks = store.add_texts(texts=texts, metadatas=metadatas_norm, ids=ids)
+    except Exception as exc:
+        _record_milvus_write_compat_fallback(exc)
+        _drop_indexed_metadata_slots(metadatas_norm)
+        pks = store.add_texts(texts=texts, metadatas=metadatas_norm, ids=ids)
+    return [str(pk) for pk in pks]
+
+
+def _build_document_metadata(
+    *,
+    document_id: UUID,
+    tenant_id: UUID,
+    idx: int,
+    meta: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    chunk_id = meta.get("chunk_id")
+    vector_id = str(chunk_id) if chunk_id else f"{document_id}_{idx}"
+    img_id = meta.get("img_id") or meta.get("image_id") or ""
+    image_id = meta.get("image_id") or meta.get("img_id") or ""
+    image_url = meta.get("image_url") or meta.get("img_url") or ""
+    pipeline_hash = str(meta.get("pipeline_hash") or "")[:64]
+    doc_pipeline_key = str(
+        meta.get("doc_pipeline_key")
+        or (f"{document_id}:{pipeline_hash}" if pipeline_hash else str(document_id))
+    )[:256]
+    return vector_id, {
+        "tenant_id": str(tenant_id),
+        "dataset_id": str(meta.get("dataset_id") or "")[:_MILVUS_MAX_VARCHAR_BYTES],
+        "embedding_space_hash": str(meta.get("embedding_space_hash") or "")[:128],
+        "document_id": str(document_id),
+        "chunk_index": int(meta.get("chunk_index", idx)),
+        "chunk_id": str(chunk_id) if chunk_id else "",
+        "pipeline_hash": pipeline_hash,
+        "doc_pipeline_key": doc_pipeline_key,
+        "page_number": int(meta.get("page") or meta.get("page_number") or 0),
+        "source": str(meta.get("source", "unknown"))[:500],
+        "file_type": str(meta.get("file_type", "unknown"))[:20],
+        "img_id": str(img_id)[:500],
+        "image_id": str(image_id)[:500],
+        "image_url": str(image_url)[:2000],
+        **_flatten_indexed_metadata_slots(meta),
+    }
+
+
+def _prepare_document_write_payload(
+    documents: list[dict[str, Any]],
+    *,
+    document_id: UUID,
+    tenant_id: UUID,
+) -> tuple[list[str], list[dict[str, Any]], list[str]]:
+    texts: list[str] = []
+    metadatas: list[dict[str, Any]] = []
+    ids: list[str] = []
+    for idx, doc in enumerate(documents):
+        meta = doc.get("metadata") or {}
+        vector_id, metadata = _build_document_metadata(
+            document_id=document_id,
+            tenant_id=tenant_id,
+            idx=idx,
+            meta=meta,
+        )
+        ids.append(vector_id)
+        texts.append((doc.get("content") or "")[:65_535])
+        metadatas.append(metadata)
+    return texts, metadatas, ids
+
+
+def _write_document_batches(
+    store: Any,
+    *,
+    texts: list[str],
+    metadatas: list[dict[str, Any]],
+    ids: list[str],
+    batch_size: int,
+) -> list[str]:
+    if batch_size >= len(texts):
+        return _add_texts_with_milvus_compat(store, texts=texts, metadatas=metadatas, ids=ids)
+
+    pks: list[str] = []
+    for start in range(0, len(texts), batch_size):
+        end = start + batch_size
+        pks.extend(
+            _add_texts_with_milvus_compat(
+                store,
+                texts=texts[start:end],
+                metadatas=metadatas[start:end],
+                ids=ids[start:end],
+            )
+        )
+    return pks
+
+
+def _normalize_milvus_query_ids(ids: list[str]) -> list[str]:
+    return [str(value) for value in (ids or []) if isinstance(value, str) and value.strip()]
+
+
+def _dedupe_milvus_query_ids(ids: list[str]) -> list[str]:
+    seen: set[str] = set()
+    unique_ids: list[str] = []
+    for value in ids:
+        if value in seen:
+            continue
+        seen.add(value)
+        unique_ids.append(value)
+    return unique_ids
+
+
+def _milvus_in_expr(field: str, values: list[str]) -> str | None:
+    items = [f"\"{_escape_milvus_string(value)}\"" for value in values]
+    if not items:
+        return None
+    return f"{field} in [{', '.join(items)}]"
+
+
+def _query_milvus_rows_by_ids(
+    collection: Any,
+    *,
+    ids: list[str],
+    primary_field: str,
+    output_fields: list[str],
+    max_ids_per_query: int,
+    timeout: float | None,
+) -> list[dict[str, Any]] | None:
+    query = collection.query
+    rows_out: list[dict[str, Any]] = []
+    for batch in _chunk_in_list_values(
+        ids,
+        field=primary_field,
+        max_expr_chars=_MILVUS_EXPR_MAX_CHARS,
+        max_items=int(max_ids_per_query or 0),
+    ):
+        expr = _milvus_in_expr(primary_field, batch)
+        if expr is None:
+            continue
+        try:
+            rows = query(expr=expr, output_fields=output_fields, timeout=timeout)
+        except Exception:
+            return None
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if isinstance(row, dict):
+                rows_out.append(row)
+    return rows_out
+
+
+def _coerce_milvus_vector(vec: Any) -> list[float] | None:
+    if isinstance(vec, (list, tuple)):
+        if all(isinstance(value, (int, float)) for value in vec):
+            return [float(value) for value in vec]
+        return None
+
+    if not hasattr(vec, "tolist"):
+        return None
+
+    try:
+        as_list = vec.tolist()
+    except Exception:
+        return None
+    if isinstance(as_list, list) and all(isinstance(value, (int, float)) for value in as_list):
+        return [float(value) for value in as_list]
+    return None
 
 
 class MilvusMaintenanceError(RuntimeError):
@@ -695,30 +1108,17 @@ class MilvusAdapter:
         if not items:
             return []
 
-        self._require_store()
-
+        store = self._require_store()
         reserved_fields = {
-            getattr(self._store, "_primary_field", "id"),
-            getattr(self._store, "_text_field", self.text_field),
-            getattr(self._store, "_vector_field", self.vector_field),
+            _milvus_store_field_name(store, "_primary_field", "id"),
+            _milvus_store_field_name(store, "_text_field", self.text_field),
+            _milvus_store_field_name(store, "_vector_field", self.vector_field),
         }
-
-        texts: list[str] = []
-        metadatas: list[dict[str, Any]] = []
-        ids: list[str] = []
-        for item in items:
-            ids.append(str(item["id"]))
-            texts.append((item.get("content") or "")[:65_000])
-            meta = dict(item.get("metadata") or {})
-            for key in reserved_fields:
-                meta.pop(key, None)
-            meta.update(_flatten_indexed_metadata_slots(meta))
-            metadatas.append(meta)
-        metadatas = _normalize_milvus_metadata_batch(metadatas)
+        texts, ids, metadatas = _prepare_adapter_vector_payload(items, reserved_fields=reserved_fields)
 
         # Default path: let LangChain generate embeddings then insert.
         if embeddings is None:
-            pks = self._store.add_texts(
+            pks = store.add_texts(
                 texts=texts,
                 metadatas=metadatas,
                 ids=ids,
@@ -733,64 +1133,41 @@ class MilvusAdapter:
 
         from pymilvus import Collection, MilvusException
 
-        # Ensure collection initialized (schema/index/search params/load).
-        if not isinstance(getattr(self._store, "col", None), Collection):
-            init_kwargs: dict[str, Any] = {"embeddings": embeddings, "metadatas": metadatas}
-            partition_names = getattr(self._store, "partition_names", None)
-            if partition_names:
-                init_kwargs["partition_names"] = partition_names
-            replica_number = getattr(self._store, "replica_number", None)
-            if replica_number:
-                init_kwargs["replica_number"] = replica_number
-            store_timeout = getattr(self._store, "timeout", None)
-            if store_timeout:
-                init_kwargs["timeout"] = store_timeout
-            # `_init` is the internal LangChain helper used by `add_texts`.
-            self._store._init(**init_kwargs)  # type: ignore[attr-defined]
-
-        # Build insert columns (match LangChain Milvus.insert behavior).
-        insert_dict: dict[str, list[Any]] = {
-            self._store._text_field: texts,  # type: ignore[attr-defined]
-            self._store._vector_field: embeddings,  # type: ignore[attr-defined]
-        }
-        if not getattr(self._store, "auto_id", False):
-            insert_dict[self._store._primary_field] = ids  # type: ignore[attr-defined]
-
-        metadata_field = getattr(self._store, "_metadata_field", None)
-        if metadata_field is not None:
-            insert_dict[metadata_field] = metadatas
-        else:
-            fields = getattr(self._store, "fields", [])
-            for d in metadatas:
-                for key, value in d.items():
-                    keys = (
-                        [x for x in fields if x != self._store._primary_field]  # type: ignore[attr-defined]
-                        if getattr(self._store, "auto_id", False)
-                        else list(fields)
-                    )
-                    if key in keys:
-                        insert_dict.setdefault(key, []).append(value)
-
+        collection = _ensure_adapter_write_collection(
+            store,
+            embeddings=embeddings,
+            metadatas=metadatas,
+        )
+        insert_dict = _build_adapter_insert_dict(
+            store,
+            texts=texts,
+            embeddings=embeddings,
+            metadatas=metadatas,
+            ids=ids,
+        )
         total_count = len(embeddings)
         pks: list[str] = []
-        collection = getattr(self._store, "col", None)
         if not isinstance(collection, Collection):
             raise RuntimeError(f"Milvus collection is not initialized for collection={self.collection_name}")
-        for i in range(0, total_count, batch_size):
-            end = min(i + batch_size, total_count)
-            insert_list = [insert_dict[x][i:end] for x in self._store.fields if x in insert_dict]
+        field_order = list(getattr(store, "fields", []))
+        eff_timeout = getattr(store, "timeout", None) or timeout
+        for start in _iter_milvus_batch_ranges(total_count, batch_size):
+            end = min(start + batch_size, total_count)
+            insert_list = [insert_dict[field][start:end] for field in field_order if field in insert_dict]
             try:
-                eff_timeout = getattr(self._store, "timeout", None) or timeout
-                if upsert:
-                    res = collection.upsert(insert_list, timeout=eff_timeout, **kwargs)
-                    pks.extend([str(pk) for pk in res.primary_keys])
-                else:
-                    res = collection.insert(insert_list, timeout=eff_timeout, **kwargs)
-                    pks.extend([str(pk) for pk in res.primary_keys])
+                pks.extend(
+                    _invoke_milvus_batch_write(
+                        collection,
+                        insert_list=insert_list,
+                        timeout=eff_timeout,
+                        upsert=upsert,
+                        write_kwargs=kwargs,
+                    )
+                )
             except MilvusException:
                 logger.exception(
                     "Failed to write vectors batch: %s/%s collection=%s",
-                    i,
+                    start,
                     total_count,
                     self.collection_name,
                 )
@@ -998,44 +1375,28 @@ class MilvusAdapter:
         batch_size: int = 1000,
         timeout: float | None = None,
     ) -> MilvusSemanticCacheMaintenanceIterator:
-        self._require_store()
-
-        col = getattr(self._store, "col", None)
+        store = self._require_store()
+        col = getattr(store, "col", None)
         if col is None or not hasattr(col, "query_iterator"):
             raise MilvusMaintenanceError(
                 f"semantic cache maintenance requires Milvus query iterator support for collection={self.collection_name}"
             )
 
-        primary_field = str(getattr(self._store, "_primary_field", "id") or "id").strip() or "id"
+        primary_field = _milvus_store_field_name(store, "_primary_field", "id")
         batch_size_i = max(1, int(batch_size or 0))
-
-        field_names: set[str] = set()
-        schema = getattr(col, "schema", None)
-        fields = getattr(schema, "fields", None)
-        if isinstance(fields, (list, tuple)):
-            for field in fields:
-                field_name = str(getattr(field, "name", "") or "").strip()
-                if field_name:
-                    field_names.add(field_name)
-
+        field_names = _milvus_schema_field_names(col)
         if field_names and "tenant_id" not in field_names:
             raise MilvusMaintenanceError(
                 f"semantic cache maintenance requires tenant_id metadata in collection={self.collection_name}"
             )
 
-        output_fields = [primary_field]
-        for field_name in ("tenant_id", "expires_at_epoch", "created_at_epoch"):
-            if (not field_names) or field_name in field_names:
-                output_fields.append(field_name)
-
-        expr = f'tenant_id == "{_escape_milvus_string(str(tenant_id))}"'
-        if len(expr) > _MILVUS_EXPR_MAX_CHARS:
-            raise MilvusMaintenanceError("semantic cache tenant scope expression exceeds Milvus limits")
+        output_fields = _milvus_semantic_cache_output_fields(primary_field, field_names)
+        expr = _tenant_scoped_milvus_expr(tenant_id)
 
         try:
-            iterator = col.query_iterator(  # type: ignore[call-arg]
+            iterator = _open_milvus_query_iterator(
+                col,
                 batch_size=batch_size_i,
-                limit=-1,
                 expr=expr,
                 output_fields=output_fields,
                 timeout=timeout,
@@ -1045,18 +1406,13 @@ class MilvusAdapter:
                 f"semantic cache maintenance query iterator failed for collection={self.collection_name}: {type(exc).__name__}: {exc}"
             ) from exc
 
-        next_callable = getattr(iterator, "next", None)
-        if callable(next_callable):
-            next_batch = next_callable
-        elif hasattr(iterator, "__next__"):
-            iterator_obj = iter(iterator)
-            next_batch = iterator_obj.__next__
-        else:
+        next_batch = _milvus_iterator_next_callable(iterator)
+        if next_batch is None:
             raise MilvusMaintenanceError(
                 f"semantic cache maintenance iterator is unsupported for collection={self.collection_name}"
             )
-        close_callable = getattr(iterator, "close", None)
-        if not callable(close_callable):
+        close_callable = _milvus_iterator_close_callable(iterator)
+        if close_callable is None:
             raise MilvusMaintenanceError(
                 f"semantic cache maintenance iterator close is unsupported for collection={self.collection_name}"
             )
@@ -1218,108 +1574,20 @@ class MilvusVectorStore:
         tenant_id: UUID,
     ) -> list[str]:
         """Add document chunks to Milvus (returns vector id list)."""
-        self._require_store()
-
-        def _effective_write_batch_size(texts: list[str]) -> int:
-            base = max(1, int(getattr(settings, "VECTOR_WRITE_BATCH_SIZE", 256) or 256))
-            if not bool(getattr(settings, "VECTOR_WRITE_ADAPTIVE_BATCHING_ENABLED", True)):
-                return base
-            max_chars_per_batch = int(getattr(settings, "VECTOR_WRITE_BATCH_MAX_CHARS", 200_000) or 200_000)
-            if max_chars_per_batch <= 0:
-                return base
-            if not texts:
-                return base
-            max_chunk_chars = max(len(t or "") for t in texts)
-            if max_chunk_chars <= 0:
-                return base
-            budgeted = max(1, int(max_chars_per_batch // max_chunk_chars))
-            return max(1, min(base, budgeted))
-
-        def _add_texts_with_compat(*, texts: list[str], metadatas: list[dict[str, Any]], ids: list[str]) -> list[str]:
-            # Normalize per-batch (Milvus expects aligned keys for each insert call).
-            metadatas_norm = _normalize_milvus_metadata_batch(metadatas)
-            try:
-                pks = self._store.add_texts(texts=texts, metadatas=metadatas_norm, ids=ids)
-            except Exception as exc:
-                # Older collections may lack optional indexed metadata slots. Dataset and
-                # embedding-space fields are routing boundaries and must never be dropped.
-                global _MILVUS_WARNED_WRITE_COMPAT_FALLBACK
-                if not _MILVUS_WARNED_WRITE_COMPAT_FALLBACK:
-                    logger.warning(
-                        "Milvus add_texts failed; retrying without optional indexed metadata slots. "
-                        "Legacy collections must be recreated if required routing fields are missing. err=%s",
-                        str(exc)[:200],
-                    )
-                    _MILVUS_WARNED_WRITE_COMPAT_FALLBACK = True
-                try:
-                    from app.storage.vector.milvus_prometheus_metrics import observe_milvus_write_compat_fallback
-
-                    observe_milvus_write_compat_fallback(dropped_fields="indexed_meta_slots")
-                except Exception as exc:
-                    logger.debug(_MILVUS_FALLBACK_LOG_MESSAGE, exc)
-                for m in metadatas_norm:
-                    for slot_field in _INDEXED_METADATA_SLOT_FIELDS:
-                        m.pop(slot_field, None)
-                pks = self._store.add_texts(texts=texts, metadatas=metadatas_norm, ids=ids)
-            return [str(pk) for pk in pks]
-
-        texts: list[str] = []
-        metadatas: list[dict[str, Any]] = []
-        ids: list[str] = []
-
-        for idx, doc in enumerate(documents):
-            content = (doc.get("content") or "")[:65_535]
-            meta = doc.get("metadata") or {}
-
-            # Prefer stable chunk_id (UUID string) when available to avoid collisions on re-index.
-            chunk_id = meta.get("chunk_id")
-            vector_id = str(chunk_id) if chunk_id else f"{document_id}_{idx}"
-            ids.append(vector_id)
-            texts.append(content)
-
-            img_id = meta.get("img_id") or meta.get("image_id") or ""
-            image_id = meta.get("image_id") or meta.get("img_id") or ""
-            image_url = meta.get("image_url") or meta.get("img_url") or ""
-            pipeline_hash = str(meta.get("pipeline_hash") or "")[:64]
-            doc_pipeline_key = str(
-                meta.get("doc_pipeline_key")
-                or (f"{document_id}:{pipeline_hash}" if pipeline_hash else str(document_id))
-            )[:256]
-
-            metadatas.append(
-                {
-                    "tenant_id": str(tenant_id),
-                    "dataset_id": str(meta.get("dataset_id") or "")[:_MILVUS_MAX_VARCHAR_BYTES],
-                    "embedding_space_hash": str(meta.get("embedding_space_hash") or "")[:128],
-                    "document_id": str(document_id),
-                    "chunk_index": int(meta.get("chunk_index", idx)),
-                    "chunk_id": str(chunk_id) if chunk_id else "",
-                    "pipeline_hash": pipeline_hash,
-                    "doc_pipeline_key": doc_pipeline_key,
-                    "page_number": int(meta.get("page") or meta.get("page_number") or 0),
-                    "source": str(meta.get("source", "unknown"))[:500],
-                    "file_type": str(meta.get("file_type", "unknown"))[:20],
-                    "img_id": str(img_id)[:500],
-                    "image_id": str(image_id)[:500],
-                    "image_url": str(image_url)[:2000],
-                    **_flatten_indexed_metadata_slots(meta),
-                }
-            )
-
-        batch_size = _effective_write_batch_size(texts)
-        if batch_size >= len(texts):
-            return _add_texts_with_compat(texts=texts, metadatas=metadatas, ids=ids)
-
-        pks: list[str] = []
-        for start in range(0, len(texts), batch_size):
-            pks.extend(
-                _add_texts_with_compat(
-                    texts=texts[start : start + batch_size],
-                    metadatas=metadatas[start : start + batch_size],
-                    ids=ids[start : start + batch_size],
-                )
-            )
-        return pks
+        store = self._require_store()
+        texts, metadatas, ids = _prepare_document_write_payload(
+            documents,
+            document_id=document_id,
+            tenant_id=tenant_id,
+        )
+        batch_size = _effective_milvus_write_batch_size(texts)
+        return _write_document_batches(
+            store,
+            texts=texts,
+            metadatas=metadatas,
+            ids=ids,
+            batch_size=batch_size,
+        )
 
     def search(
         self,
@@ -1478,52 +1746,32 @@ class MilvusVectorStore:
         - Batches by both item count and expr length to reduce server-side rejects.
         - Returns an empty set on any failure (audit should degrade gracefully).
         """
-        raw_ids = [str(x) for x in (ids or []) if isinstance(x, str) and x.strip()]
+        raw_ids = _normalize_milvus_query_ids(ids)
         if not raw_ids:
             return set()
 
-        self._require_store()
-
-        col = getattr(self._store, "col", None)
+        store = self._require_store()
+        col = getattr(store, "col", None)
         if col is None or not hasattr(col, "query"):
             return set()
 
-        primary_field = str(getattr(self._store, "_primary_field", "id") or "id").strip() or "id"
-
-        # De-dup while preserving stable ordering (helps reproducible audits).
-        seen: set[str] = set()
-        uniq: list[str] = []
-        for rid in raw_ids:
-            if rid in seen:
-                continue
-            seen.add(rid)
-            uniq.append(rid)
+        primary_field = _milvus_store_field_name(store, "_primary_field", "id")
+        rows = _query_milvus_rows_by_ids(
+            col,
+            ids=_dedupe_milvus_query_ids(raw_ids),
+            primary_field=primary_field,
+            output_fields=[primary_field],
+            max_ids_per_query=max_ids_per_query,
+            timeout=timeout,
+        )
+        if rows is None:
+            return set()
 
         existing: set[str] = set()
-        for batch in _chunk_in_list_values(
-            uniq,
-            field=primary_field,
-            max_expr_chars=_MILVUS_EXPR_MAX_CHARS,
-            max_items=int(max_ids_per_query or 0),
-        ):
-            items = [f"\"{_escape_milvus_string(str(x))}\"" for x in batch]
-            if not items:
-                continue
-            expr = f"{primary_field} in [{', '.join(items)}]"
-            try:
-                rows = col.query(expr=expr, output_fields=[primary_field], timeout=timeout)  # type: ignore[call-arg]
-            except Exception:
-                return set()
-            if not isinstance(rows, list):
-                continue
-            for row in rows:
-                if not isinstance(row, dict):
-                    continue
-                val = row.get(primary_field)
-                if val is None:
-                    continue
+        for row in rows:
+            val = row.get(primary_field)
+            if val is not None:
                 existing.add(str(val))
-
         return existing
 
     def fetch_vectors_by_ids(
@@ -1543,73 +1791,38 @@ class MilvusVectorStore:
         - Uses Milvus `query()` with an `id in [...]` expr.
         - Batches by both item count and expr length to reduce server-side rejects.
         """
-        raw_ids = [str(x) for x in (ids or []) if isinstance(x, str) and x.strip()]
+        raw_ids = _normalize_milvus_query_ids(ids)
         if not raw_ids:
             return {}
 
-        self._require_store()
-
-        col = getattr(self._store, "col", None)
+        store = self._require_store()
+        col = getattr(store, "col", None)
         if col is None or not hasattr(col, "query"):
             return {}
 
-        primary_field = str(getattr(self._store, "_primary_field", "id") or "id").strip() or "id"
-        vector_field = str(getattr(self._store, "_vector_field", "embedding") or "embedding").strip() or "embedding"
-
-        # De-dup while preserving stable ordering (helps reproducible audits).
-        seen: set[str] = set()
-        uniq: list[str] = []
-        for rid in raw_ids:
-            if rid in seen:
-                continue
-            seen.add(rid)
-            uniq.append(rid)
+        primary_field = _milvus_store_field_name(store, "_primary_field", "id")
+        vector_field = _milvus_store_field_name(store, "_vector_field", "embedding")
+        rows = _query_milvus_rows_by_ids(
+            col,
+            ids=_dedupe_milvus_query_ids(raw_ids),
+            primary_field=primary_field,
+            output_fields=[primary_field, vector_field],
+            max_ids_per_query=max_ids_per_query,
+            timeout=timeout,
+        )
+        if rows is None:
+            return {}
 
         out: dict[str, list[float]] = {}
-        for batch in _chunk_in_list_values(
-            uniq,
-            field=primary_field,
-            max_expr_chars=_MILVUS_EXPR_MAX_CHARS,
-            max_items=int(max_ids_per_query or 0),
-        ):
-            items = [f"\"{_escape_milvus_string(str(x))}\"" for x in batch]
-            if not items:
-                continue
-            expr = f"{primary_field} in [{', '.join(items)}]"
-            try:
-                rows = col.query(  # type: ignore[call-arg]
-                    expr=expr,
-                    output_fields=[primary_field, vector_field],
-                    timeout=timeout,
-                )
-            except Exception:
-                return {}
-
-            if not isinstance(rows, list):
+        for row in rows:
+            pk = row.get(primary_field)
+            vec = row.get(vector_field)
+            if pk is None or vec is None:
                 continue
 
-            for row in rows:
-                if not isinstance(row, dict):
-                    continue
-                pk = row.get(primary_field)
-                vec = row.get(vector_field)
-                if pk is None or vec is None:
-                    continue
-
-                vector: list[float] | None = None
-                if isinstance(vec, (list, tuple)):
-                    if all(isinstance(v, (int, float)) for v in vec):
-                        vector = [float(v) for v in vec]
-                elif hasattr(vec, "tolist"):
-                    try:
-                        as_list = vec.tolist()  # type: ignore[attr-defined]
-                        if isinstance(as_list, list) and all(isinstance(v, (int, float)) for v in as_list):
-                            vector = [float(v) for v in as_list]
-                    except Exception:
-                        vector = None
-
-                if vector:
-                    out[str(pk)] = vector
+            vector = _coerce_milvus_vector(vec)
+            if vector:
+                out[str(pk)] = vector
 
         return out
 

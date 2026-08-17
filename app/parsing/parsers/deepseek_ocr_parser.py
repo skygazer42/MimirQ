@@ -93,6 +93,108 @@ class DeepSeekOCRParser:
         run_id = re.sub(r"[^a-zA-Z0-9._-]+", "_", run_id)[:120] or "deepseek_ocr"
         return (file_path.parent / ".deepseek_ocr" / run_id).absolute()
 
+    @staticmethod
+    def _normalize_image_ext(ext: str) -> str:
+        normalized = (ext or "").strip().lower()
+        return "jpg" if normalized == "jpeg" else normalized
+
+    @staticmethod
+    def _write_if_missing(path: Path, data: bytes) -> bool:
+        if path.exists():
+            return True
+        try:
+            path.write_bytes(data)
+        except Exception:
+            return False
+        return True
+
+    @staticmethod
+    def _unique_xrefs(doc: fitz.Document) -> list[int]:
+        seen_xrefs: set[int] = set()
+        xrefs: list[int] = []
+        for page in doc:
+            try:
+                imgs = page.get_images(full=True) or []
+            except Exception:
+                imgs = []
+            for img in imgs:
+                if not img:
+                    continue
+                xref = img[0]
+                if not isinstance(xref, int) or xref in seen_xrefs:
+                    continue
+                seen_xrefs.add(xref)
+                xrefs.append(xref)
+        return xrefs
+
+    def _extract_pdf_image_payload(self, doc: fitz.Document, *, xref: int) -> tuple[bytes | None, str]:
+        try:
+            extracted = doc.extract_image(xref) or {}
+        except Exception:
+            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+            return None, ""
+        raw = extracted.get("image")
+        if not raw:
+            return None, ""
+        return raw, self._normalize_image_ext(str(extracted.get("ext") or "")) or "bin"
+
+    def _persist_jpeg_aliases(self, *, images_dir: Path, digest: str, jpg_bytes: bytes) -> None:
+        for suffix in ("jpg", "jpeg"):
+            path = images_dir / f"{digest}.{suffix}"
+            if not self._write_if_missing(path, jpg_bytes):
+                logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, RuntimeError(f"write_failed:{path.name}"))
+
+    def _persist_converted_jpeg_variants(self, *, images_dir: Path, raw: bytes, ext: str, digest_raw: str) -> None:
+        if ext in {"jpg", "jpeg"}:
+            return
+        try:
+            img_obj = Image.open(BytesIO(raw))
+            try:
+                if getattr(img_obj, "mode", None) != "RGB":
+                    img_obj = img_obj.convert("RGB")
+                out = BytesIO()
+                img_obj.save(out, format="JPEG", quality=85, optimize=True)
+                jpg_bytes = out.getvalue()
+            finally:
+                try:
+                    img_obj.close()
+                except Exception as exc:
+                    logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
+        except Exception as exc:
+            logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
+            return
+
+        self._persist_jpeg_aliases(images_dir=images_dir, digest=digest_raw, jpg_bytes=jpg_bytes)
+        digest_jpg = hashlib.sha256(jpg_bytes).hexdigest()
+        self._persist_jpeg_aliases(images_dir=images_dir, digest=digest_jpg, jpg_bytes=jpg_bytes)
+
+    @staticmethod
+    def _digest_bytes(data: bytes) -> str | None:
+        try:
+            return hashlib.sha256(data).hexdigest()
+        except Exception:
+            return None
+
+    @staticmethod
+    def _page_image_config(total_pages: int) -> tuple[bool, int, str, int]:
+        include_page_images = bool(getattr(settings, "DEEPSEEK_OCR_INCLUDE_PAGE_IMAGES", True))
+        max_page_images = int(getattr(settings, "DEEPSEEK_OCR_PAGE_IMAGE_MAX_PAGES", 0) or 0)
+        page_image_format = (getattr(settings, "DEEPSEEK_OCR_PAGE_IMAGE_FORMAT", "jpg") or "jpg").strip().lower()
+        if page_image_format not in {"png", "jpg", "jpeg"}:
+            page_image_format = "jpg"
+        concurrency = int(getattr(settings, "DEEPSEEK_OCR_CONCURRENCY", 1) or 1)
+        concurrency = max(1, min(concurrency, max(1, total_pages)))
+        return include_page_images, max_page_images, page_image_format, concurrency
+
+    @staticmethod
+    def _validated_pdf_path(file_path: Path) -> Path:
+        path = Path(file_path)
+        if not path.exists():
+            raise FileNotFoundError(f"File not found: {path}")
+        if path.suffix.lower() != ".pdf":
+            raise ValueError("DeepSeek OCR currently supports PDF only")
+        return path
+
     def _extract_pdf_images(self, doc: fitz.Document, *, images_dir: Path) -> int:
         """
         Extract embedded PDF images into `images_dir`.
@@ -111,109 +213,22 @@ class DeepSeekOCRParser:
         max_images = int(getattr(settings, "ZIP_MAX_IMAGES", 0) or 0)
         max_images = max(0, max_images)
 
-        pil_image = Image
-        pillow_ok = True
-
-        def normalize_ext(ext: str) -> str:
-            e = (ext or "").strip().lower()
-            if e == "jpeg":
-                return "jpg"
-            return e
-
         written = 0
-        seen_xrefs: set[int] = set()
-
-        for page in doc:
-            try:
-                imgs = page.get_images(full=True) or []
-            except Exception:
-                imgs = []
-
-            for img in imgs:
-                if not img:
-                    continue
-                xref = img[0]
-                if not isinstance(xref, int):
-                    continue
-                if xref in seen_xrefs:
-                    continue
-                seen_xrefs.add(xref)
-
-                try:
-                    extracted = doc.extract_image(xref) or {}
-                except Exception:
-                    get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
-                    continue
-                raw = extracted.get("image")
-                if not raw:
-                    continue
-
-                ext = normalize_ext(str(extracted.get("ext") or "")) or "bin"
-                digest_raw = hashlib.sha256(raw).hexdigest()
-
-                # Write raw bytes with the original extension.
-                raw_path = images_dir / f"{digest_raw}.{ext}"
-                if not raw_path.exists():
-                    try:
-                        raw_path.write_bytes(raw)
-                    except Exception:
-                        get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
-                        continue
-
-                # Alias for jpg/jpeg to cover both reference styles.
-                if ext == "jpg":
-                    alias = images_dir / f"{digest_raw}.jpeg"
-                    if not alias.exists():
-                        try:
-                            alias.write_bytes(raw)
-                        except Exception as exc:
-                            logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
-
-                # Best-effort: also create a JPEG variant for non-JPEG formats.
-                if pillow_ok and ext not in {"jpg", "jpeg"}:
-                    try:
-                        img_obj = pil_image.open(BytesIO(raw))  # type: ignore[arg-type]
-                        try:
-                            if getattr(img_obj, "mode", None) != "RGB":
-                                img_obj = img_obj.convert("RGB")
-                            out = BytesIO()  # type: ignore[call-arg]
-                            img_obj.save(out, format="JPEG", quality=85, optimize=True)
-                            jpg_bytes = out.getvalue()
-                        finally:
-                            try:
-                                img_obj.close()
-                            except Exception as exc:
-                                logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
-
-                        # 1) Keep the original digest but `.jpg` extension (max compatibility with callers
-                        #    that hash pre-conversion but still reference `.jpg`).
-                        compat_path = images_dir / f"{digest_raw}.jpg"
-                        if not compat_path.exists():
-                            try:
-                                compat_path.write_bytes(jpg_bytes)
-                            except Exception as exc:
-                                logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
-
-                        # 2) Also save under the digest of the JPEG bytes.
-                        digest_jpg = hashlib.sha256(jpg_bytes).hexdigest()
-                        jpg_path = images_dir / f"{digest_jpg}.jpg"
-                        if not jpg_path.exists():
-                            try:
-                                jpg_path.write_bytes(jpg_bytes)
-                            except Exception as exc:
-                                logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
-                        jpg_alias = images_dir / f"{digest_jpg}.jpeg"
-                        if not jpg_alias.exists():
-                            try:
-                                jpg_alias.write_bytes(jpg_bytes)
-                            except Exception as exc:
-                                logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
-                    except Exception as exc:
-                        logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
-
-                written += 1
-                if max_images and written >= max_images:
-                    return written
+        for xref in self._unique_xrefs(doc):
+            raw, ext = self._extract_pdf_image_payload(doc, xref=xref)
+            if not raw:
+                continue
+            digest_raw = hashlib.sha256(raw).hexdigest()
+            raw_path = images_dir / f"{digest_raw}.{ext}"
+            if not self._write_if_missing(raw_path, raw):
+                get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+                continue
+            if ext == "jpg":
+                self._persist_jpeg_aliases(images_dir=images_dir, digest=digest_raw, jpg_bytes=raw)
+            self._persist_converted_jpeg_variants(images_dir=images_dir, raw=raw, ext=ext, digest_raw=digest_raw)
+            written += 1
+            if max_images and written >= max_images:
+                return written
 
         return written
 
@@ -231,55 +246,23 @@ class DeepSeekOCRParser:
         except Exception:
             return
 
-        try:
-            digest_png = hashlib.sha256(png_bytes).hexdigest()
-        except Exception:
+        digest_png = self._digest_bytes(png_bytes)
+        if digest_png is None:
             return
 
-        # 1) Exact PNG bytes (input to the model).
-        png_path = images_dir / f"{digest_png}.png"
-        if not png_path.exists():
-            try:
-                png_path.write_bytes(png_bytes)
-            except Exception as exc:
-                logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
-
-        # 2) A JPEG variant saved under both (a) the PNG digest (compat) and (b) the JPEG digest.
         try:
             jpg_bytes = pix.tobytes("jpg")
         except Exception:
+            jpg_bytes = None
+
+        self._write_if_missing(images_dir / f"{digest_png}.png", png_bytes)
+        if jpg_bytes is None:
             return
 
-        jpg_path_compat = images_dir / f"{digest_png}.jpg"
-        if not jpg_path_compat.exists():
-            try:
-                jpg_path_compat.write_bytes(jpg_bytes)
-            except Exception as exc:
-                logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
-        jpeg_path_compat = images_dir / f"{digest_png}.jpeg"
-        if not jpeg_path_compat.exists():
-            try:
-                jpeg_path_compat.write_bytes(jpg_bytes)
-            except Exception as exc:
-                logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
-
-        try:
-            digest_jpg = hashlib.sha256(jpg_bytes).hexdigest()
-        except Exception:
-            return
-
-        jpg_path = images_dir / f"{digest_jpg}.jpg"
-        if not jpg_path.exists():
-            try:
-                jpg_path.write_bytes(jpg_bytes)
-            except Exception as exc:
-                logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
-        jpeg_path = images_dir / f"{digest_jpg}.jpeg"
-        if not jpeg_path.exists():
-            try:
-                jpeg_path.write_bytes(jpg_bytes)
-            except Exception as exc:
-                logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
+        self._persist_jpeg_aliases(images_dir=images_dir, digest=digest_png, jpg_bytes=jpg_bytes)
+        digest_jpg = self._digest_bytes(jpg_bytes)
+        if digest_jpg is not None:
+            self._persist_jpeg_aliases(images_dir=images_dir, digest=digest_jpg, jpg_bytes=jpg_bytes)
 
     def _persist_named_page_images(
         self,
@@ -351,104 +334,328 @@ class DeepSeekOCRParser:
             return
 
         images_dir_resolved = images_dir.resolve(strict=False)
-
+        refs = self._referenced_image_refs(markdown_text)
         max_images = max(0, int(getattr(settings, "MAX_INLINE_IMAGES", 0) or 0))
-        supported_exts = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+        if max_images:
+            refs = refs[:max_images]
+        for ref in refs:
+            resolved = self._resolve_referenced_dest(
+                ref=ref,
+                images_dir=images_dir,
+                images_dir_resolved=images_dir_resolved,
+            )
+            if resolved is None:
+                continue
+            dest_path, prefer = resolved
+            self._copy_or_write_placeholder(
+                dest_path,
+                prefer=prefer,
+                page_png_path=page_png_path,
+                page_jpg_path=page_jpg_path,
+                page_png_bytes=page_png_bytes,
+                page_jpg_bytes=page_jpg_bytes,
+            )
 
+    def _referenced_image_refs(self, markdown_text: str) -> list[str]:
         found: list[str] = []
         seen: set[str] = set()
-        for pat in (_MARKDOWN_IMAGE_REF_RE, _HTML_IMAGE_REF_RE):
-            for m in pat.finditer(markdown_text):
-                ref = (m.group(1) or "").strip()
+        for pattern in (_MARKDOWN_IMAGE_REF_RE, _HTML_IMAGE_REF_RE):
+            for match in pattern.finditer(markdown_text):
+                ref = (match.group(1) or "").strip()
                 if not ref or ref in seen:
                     continue
                 seen.add(ref)
                 found.append(ref)
+        return found
 
-        if not found:
-            return
-        if max_images and len(found) > max_images:
-            found = found[:max_images]
+    def _resolve_referenced_dest(
+        self,
+        *,
+        ref: str,
+        images_dir: Path,
+        images_dir_resolved: Path,
+    ) -> tuple[Path, str] | None:
+        supported_exts = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+        ref_lower = ref.lower()
+        ref_scheme = ref.split(":", 1)[0].lower()
+        if ref_scheme in {"http", "https", "data", "blob"} or ref_lower.startswith("/api/"):
+            return None
 
-        def _copy_or_write_placeholder(dest: Path, *, prefer: str) -> None:
-            """
-            Best-effort placeholder writer.
-            - prefer="png": copy page_png_path or write page_png_bytes
-            - prefer="jpg": copy page_jpg_path or write page_jpg_bytes
-            """
-            if prefer == "jpg":
-                if page_jpg_path and page_jpg_path.exists():
-                    try:
-                        shutil.copyfile(page_jpg_path, dest)
-                        return
-                    except Exception as exc:
-                        logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
-                if page_jpg_bytes:
-                    try:
-                        dest.write_bytes(page_jpg_bytes)
-                    except Exception as exc:
-                        logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
-                return
+        ref_path = ref.split("?", 1)[0].split("#", 1)[0].strip()
+        if not ref_path:
+            return None
+        try:
+            ref_path = unquote(ref_path)
+        except Exception as exc:
+            logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
 
-            if page_png_path and page_png_path.exists():
+        rel = ref_path.lstrip("/")
+        if not rel.lower().startswith("images/"):
+            return None
+
+        leaf = rel[7:]
+        if not leaf or leaf.startswith(("/", "\\")):
+            return None
+
+        ext = Path(leaf).suffix.lower()
+        if ext and ext not in supported_exts:
+            return None
+
+        dest_path = (images_dir / leaf).resolve(strict=False)
+        try:
+            dest_path.relative_to(images_dir_resolved)
+        except Exception:
+            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+            return None
+        if dest_path.exists():
+            return None
+
+        try:
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+            return None
+        return dest_path, ("jpg" if ext in {".jpg", ".jpeg"} else "png")
+
+    def _copy_or_write_placeholder(
+        self,
+        dest: Path,
+        *,
+        prefer: str,
+        page_png_path: Path | None,
+        page_jpg_path: Path | None,
+        page_png_bytes: bytes | None,
+        page_jpg_bytes: bytes | None,
+    ) -> None:
+        if prefer == "jpg":
+            if page_jpg_path and page_jpg_path.exists():
                 try:
-                    shutil.copyfile(page_png_path, dest)
+                    shutil.copyfile(page_jpg_path, dest)
                     return
                 except Exception as exc:
                     logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
-            if page_png_bytes:
+            if page_jpg_bytes:
                 try:
-                    dest.write_bytes(page_png_bytes)
+                    dest.write_bytes(page_jpg_bytes)
                 except Exception as exc:
                     logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
+            return
 
-        for ref in found:
-            ref_stripped = ref.strip()
-            if not ref_stripped:
-                continue
-
-            ref_lower = ref_stripped.lower()
-            ref_scheme = ref_stripped.split(":", 1)[0].lower()
-            if ref_scheme in {"http", "https", "data", "blob"} or ref_lower.startswith("/api/"):
-                continue
-
-            ref_path = ref_stripped.split("?", 1)[0].split("#", 1)[0].strip()
-            if not ref_path:
-                continue
+        if page_png_path and page_png_path.exists():
             try:
-                ref_path = unquote(ref_path)
+                shutil.copyfile(page_png_path, dest)
+                return
+            except Exception as exc:
+                logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
+        if page_png_bytes:
+            try:
+                dest.write_bytes(page_png_bytes)
             except Exception as exc:
                 logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
 
-            rel = ref_path.lstrip("/")
-            if not rel.lower().startswith("images/"):
-                continue
+    @staticmethod
+    def _page_jpg_bytes(pix: fitz.Pixmap) -> bytes | None:
+        try:
+            return pix.tobytes("jpg")
+        except Exception:
+            return None
 
-            leaf = rel[7:]  # strip "images/"
-            if not leaf or leaf.startswith(("/", "\\")):
-                continue
+    def _persist_page_assets(self, *, page_idx: int, pix: fitz.Pixmap, images_dir: Path) -> tuple[bytes, Path, Path, bytes | None]:
+        img_bytes = pix.tobytes("png")
+        self._persist_page_image_variants(pix=pix, png_bytes=img_bytes, images_dir=images_dir)
+        png_path, jpg_path = self._persist_named_page_images(
+            page_idx=page_idx,
+            pix=pix,
+            png_bytes=img_bytes,
+            images_dir=images_dir,
+        )
+        return img_bytes, png_path, jpg_path, self._page_jpg_bytes(pix)
 
-            ext = Path(leaf).suffix.lower()
-            if ext and ext not in supported_exts:
-                continue
+    def _ensure_page_references(
+        self,
+        *,
+        text: str,
+        images_dir: Path,
+        png_path: Path | None,
+        jpg_path: Path | None,
+        png_bytes: bytes | None = None,
+        jpg_bytes: bytes | None = None,
+    ) -> None:
+        try:
+            self._ensure_referenced_images_exist(
+                markdown_text=text or "",
+                images_dir=images_dir,
+                page_png_path=png_path,
+                page_jpg_path=jpg_path,
+                page_png_bytes=png_bytes,
+                page_jpg_bytes=jpg_bytes,
+            )
+        except Exception as exc:
+            logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
 
-            dest_path = (images_dir / leaf).resolve(strict=False)
+    def _process_pages_sequential(
+        self,
+        *,
+        doc: fitz.Document,
+        file_path: Path,
+        total_pages: int,
+        images_dir: Path,
+    ) -> tuple[dict[int, str], list[str]]:
+        results: dict[int, str] = {}
+        for idx, page in enumerate(doc, start=1):
+            pix = page.get_pixmap(dpi=self._pdf_dpi)
+            img_bytes, png_path, jpg_path, page_jpg_bytes = self._persist_page_assets(
+                page_idx=idx,
+                pix=pix,
+                images_dir=images_dir,
+            )
+            logger.info("[deepseek_ocr] page %s/%s (%s)", idx, total_pages, file_path.name)
+            text = self._call_api(img_bytes, mime_type="image/png")
+            self._ensure_page_references(
+                text=text,
+                images_dir=images_dir,
+                png_path=png_path,
+                jpg_path=jpg_path,
+                png_bytes=img_bytes,
+                jpg_bytes=page_jpg_bytes,
+            )
+            results[idx] = text or ""
+        return results, []
+
+    def _submit_page(
+        self,
+        *,
+        executor: ThreadPoolExecutor,
+        idx: int,
+        page_obj: fitz.Page,
+        total_pages: int,
+        file_path: Path,
+        images_dir: Path,
+        inflight: dict,
+        page_named_images: dict[int, tuple[Path, Path]],
+    ) -> None:
+        pix = page_obj.get_pixmap(dpi=self._pdf_dpi)
+        img_bytes, png_path, jpg_path, _page_jpg_bytes = self._persist_page_assets(
+            page_idx=idx,
+            pix=pix,
+            images_dir=images_dir,
+        )
+        page_named_images[idx] = (png_path, jpg_path)
+        logger.info("[deepseek_ocr] page %s/%s (%s)", idx, total_pages, file_path.name)
+        inflight[executor.submit(self._call_api, img_bytes, mime_type="image/png")] = idx
+
+    def _collect_parallel_results(
+        self,
+        *,
+        done,
+        inflight: dict,
+        results: dict[int, str],
+        errors: list[str],
+        page_named_images: dict[int, tuple[Path, Path]],
+        images_dir: Path,
+    ) -> None:
+        for future in done:
+            page_idx = inflight.pop(future, None)
+            if page_idx is None:
+                continue
             try:
-                dest_path.relative_to(images_dir_resolved)
-            except Exception:
-                get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
-                continue
-            if dest_path.exists():
-                continue
+                text = future.result() or ""
+                results[page_idx] = text
+                png_path, jpg_path = page_named_images.get(page_idx, (None, None))
+                self._ensure_page_references(
+                    text=text,
+                    images_dir=images_dir,
+                    png_path=png_path,
+                    jpg_path=jpg_path,
+                )
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"page {page_idx}: {str(exc)[:200]}")
 
-            try:
-                dest_path.parent.mkdir(parents=True, exist_ok=True)
-            except Exception:
-                get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
-                continue
+    def _process_pages_parallel(
+        self,
+        *,
+        doc: fitz.Document,
+        file_path: Path,
+        total_pages: int,
+        images_dir: Path,
+        concurrency: int,
+    ) -> tuple[dict[int, str], list[str]]:
+        inflight: dict = {}
+        results: dict[int, str] = {}
+        errors: list[str] = []
+        page_named_images: dict[int, tuple[Path, Path]] = {}
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            for idx, page in enumerate(doc, start=1):
+                self._submit_page(
+                    executor=executor,
+                    idx=idx,
+                    page_obj=page,
+                    total_pages=total_pages,
+                    file_path=file_path,
+                    images_dir=images_dir,
+                    inflight=inflight,
+                    page_named_images=page_named_images,
+                )
+                if len(inflight) >= concurrency:
+                    done, _pending = wait(inflight.keys(), return_when=FIRST_COMPLETED)
+                    self._collect_parallel_results(
+                        done=done,
+                        inflight=inflight,
+                        results=results,
+                        errors=errors,
+                        page_named_images=page_named_images,
+                        images_dir=images_dir,
+                    )
+            if inflight:
+                done_all, _ = wait(inflight.keys())
+                self._collect_parallel_results(
+                    done=done_all,
+                    inflight=inflight,
+                    results=results,
+                    errors=errors,
+                    page_named_images=page_named_images,
+                    images_dir=images_dir,
+                )
+        return results, errors
 
-            prefer = "jpg" if ext in {".jpg", ".jpeg"} else "png"
-            _copy_or_write_placeholder(dest_path, prefer=prefer)
+    def _build_documents(
+        self,
+        *,
+        file_path: Path,
+        artifact_root: Path,
+        total_pages: int,
+        include_page_images: bool,
+        max_page_images: int,
+        page_image_format: str,
+        extracted_images: int,
+        concurrency: int,
+        results: dict[int, str],
+    ) -> list[Document]:
+        docs: list[Document] = []
+        ext = "png" if page_image_format == "png" else "jpg"
+        for idx in range(1, total_pages + 1):
+            text = (results.get(idx) or "").strip()
+            page_parts: list[str] = []
+            if include_page_images and (max_page_images <= 0 or idx <= max_page_images):
+                page_parts.append(f"![page {idx}](images/page_{idx:04d}.{ext})")
+            if text:
+                page_parts.append(text)
+            page_content = "\n\n".join(page_parts).strip()
+            if not page_content:
+                continue
+            meta = {
+                "source": file_path.name,
+                "file_type": "pdf",
+                "page": idx,
+                "total_pages": total_pages,
+                "parser_backend": "deepseek_ocr",
+                "asset_base_dir": str(artifact_root),
+                "artifact_dir": str(artifact_root),
+                "deepseek_ocr_extracted_images": int(extracted_images),
+                "deepseek_ocr_concurrency": int(concurrency),
+            }
+            docs.append(Document(page_content=page_content, metadata=meta))
+        return docs
 
     def parse(
         self,
@@ -460,11 +667,7 @@ class DeepSeekOCRParser:
         **_kwargs,
     ) -> list[Document]:
         _ = (dataset_id, tenant_id)
-        file_path = Path(file_path)
-        if not file_path.exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
-        if file_path.suffix.lower() != ".pdf":
-            raise ValueError("DeepSeek OCR currently supports PDF only")
+        file_path = self._validated_pdf_path(file_path)
 
         start = time.time()
         logger.info("[deepseek_ocr] start %s", file_path.name)
@@ -476,11 +679,7 @@ class DeepSeekOCRParser:
         doc = fitz.open(str(file_path))
         try:
             total_pages = int(len(doc))
-            include_page_images = bool(getattr(settings, "DEEPSEEK_OCR_INCLUDE_PAGE_IMAGES", True))
-            max_page_images = int(getattr(settings, "DEEPSEEK_OCR_PAGE_IMAGE_MAX_PAGES", 0) or 0)
-            page_image_format = (getattr(settings, "DEEPSEEK_OCR_PAGE_IMAGE_FORMAT", "jpg") or "jpg").strip().lower()
-            if page_image_format not in {"png", "jpg", "jpeg"}:
-                page_image_format = "jpg"
+            include_page_images, max_page_images, page_image_format, concurrency = self._page_image_config(total_pages)
 
             extracted_images = 0
             try:
@@ -488,143 +687,36 @@ class DeepSeekOCRParser:
             except Exception as exc:  # noqa: BLE001
                 logger.warning("[deepseek_ocr] failed extracting PDF images: %s", str(exc)[:200])
 
-            concurrency = int(getattr(settings, "DEEPSEEK_OCR_CONCURRENCY", 1) or 1)
-            concurrency = max(1, min(concurrency, max(1, total_pages)))
-
-            # Run per-page OCR (optionally in parallel).
-            results: dict[int, str] = {}
-            page_named_images: dict[int, tuple[Path, Path]] = {}
-            errors: list[str] = []
-
-            def submit_page(executor: ThreadPoolExecutor, idx: int, page_obj: fitz.Page) -> None:
-                pix = page_obj.get_pixmap(dpi=self._pdf_dpi)
-                img_bytes = pix.tobytes("png")
-                self._persist_page_image_variants(pix=pix, png_bytes=img_bytes, images_dir=images_dir)
-                try:
-                    page_named_images[idx] = self._persist_named_page_images(
-                        page_idx=idx,
-                        pix=pix,
-                        png_bytes=img_bytes,
-                        images_dir=images_dir,
-                    )
-                except Exception as exc:
-                    logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
-                logger.info("[deepseek_ocr] page %s/%s (%s)", idx, total_pages, file_path.name)
-                fut = executor.submit(self._call_api, img_bytes, mime_type="image/png")
-                inflight[fut] = idx
-
             if concurrency <= 1:
-                for idx, page in enumerate(doc, start=1):
-                    pix = page.get_pixmap(dpi=self._pdf_dpi)
-                    img_bytes = pix.tobytes("png")
-                    self._persist_page_image_variants(pix=pix, png_bytes=img_bytes, images_dir=images_dir)
-                    png_path, jpg_path = self._persist_named_page_images(
-                        page_idx=idx,
-                        pix=pix,
-                        png_bytes=img_bytes,
-                        images_dir=images_dir,
-                    )
-                    page_named_images[idx] = (png_path, jpg_path)
-                    logger.info("[deepseek_ocr] page %s/%s (%s)", idx, total_pages, file_path.name)
-                    text = self._call_api(img_bytes, mime_type="image/png")
-                    page_jpg_bytes: bytes | None = None
-                    try:
-                        page_jpg_bytes = pix.tobytes("jpg")
-                    except Exception:
-                        page_jpg_bytes = None
-                    try:
-                        self._ensure_referenced_images_exist(
-                            markdown_text=text or "",
-                            images_dir=images_dir,
-                            page_png_path=png_path,
-                            page_jpg_path=jpg_path,
-                            page_png_bytes=img_bytes,
-                            page_jpg_bytes=page_jpg_bytes,
-                        )
-                    except Exception as exc:
-                        logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
-                    results[idx] = text or ""
+                results, errors = self._process_pages_sequential(
+                    doc=doc,
+                    file_path=file_path,
+                    total_pages=total_pages,
+                    images_dir=images_dir,
+                )
             else:
-                inflight: dict = {}
-                with ThreadPoolExecutor(max_workers=concurrency) as executor:
-                    for idx, page in enumerate(doc, start=1):
-                        submit_page(executor, idx, page)
-                        if len(inflight) < concurrency:
-                            continue
-                        done, _pending = wait(inflight.keys(), return_when=FIRST_COMPLETED)
-                        for f in done:
-                            page_idx = inflight.pop(f)
-                            try:
-                                text = f.result() or ""
-                                results[page_idx] = text
-                                try:
-                                    png_path, jpg_path = page_named_images.get(page_idx, (None, None))
-                                    self._ensure_referenced_images_exist(
-                                        markdown_text=text or "",
-                                        images_dir=images_dir,
-                                        page_png_path=png_path,
-                                        page_jpg_path=jpg_path,
-                                    )
-                                except Exception as exc:
-                                    logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
-                            except Exception as exc:  # noqa: BLE001
-                                errors.append(f"page {page_idx}: {str(exc)[:200]}")
-
-                    # Drain remaining futures.
-                    if inflight:
-                        done_all, _ = wait(inflight.keys())
-                        for f in done_all:
-                            page_idx = inflight.pop(f, None)
-                            if page_idx is None:
-                                continue
-                            try:
-                                text = f.result() or ""
-                                results[page_idx] = text
-                                try:
-                                    png_path, jpg_path = page_named_images.get(page_idx, (None, None))
-                                    self._ensure_referenced_images_exist(
-                                        markdown_text=text or "",
-                                        images_dir=images_dir,
-                                        page_png_path=png_path,
-                                        page_jpg_path=jpg_path,
-                                    )
-                                except Exception as exc:
-                                    logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
-                            except Exception as exc:  # noqa: BLE001
-                                errors.append(f"page {page_idx}: {str(exc)[:200]}")
+                results, errors = self._process_pages_parallel(
+                    doc=doc,
+                    file_path=file_path,
+                    total_pages=total_pages,
+                    images_dir=images_dir,
+                    concurrency=concurrency,
+                )
 
             if errors:
                 raise RuntimeError(f"DeepSeek OCR failed: {errors[0]}")
 
-            docs: list[Document] = []
-            ext = "png" if page_image_format == "png" else "jpg"
-            for idx in range(1, total_pages + 1):
-                text = (results.get(idx) or "").strip()
-
-                page_parts: list[str] = []
-                if include_page_images and (max_page_images <= 0 or idx <= max_page_images):
-                    page_parts.append(f"![page {idx}](images/page_{idx:04d}.{ext})")
-                if text:
-                    page_parts.append(text)
-
-                page_content = "\n\n".join(page_parts).strip()
-                if not page_content:
-                    continue
-
-                meta = {
-                    "source": file_path.name,
-                    "file_type": "pdf",
-                    "page": idx,
-                    "total_pages": total_pages,
-                    "parser_backend": "deepseek_ocr",
-                    # Used by downstream stages to resolve relative image paths like "images/<sha>.jpg".
-                    "asset_base_dir": str(artifact_root),
-                    # Used for best-effort cleanup after ingestion/preview.
-                    "artifact_dir": str(artifact_root),
-                    "deepseek_ocr_extracted_images": int(extracted_images),
-                    "deepseek_ocr_concurrency": int(concurrency),
-                }
-                docs.append(Document(page_content=page_content, metadata=meta))
+            docs = self._build_documents(
+                file_path=file_path,
+                artifact_root=artifact_root,
+                total_pages=total_pages,
+                include_page_images=include_page_images,
+                max_page_images=max_page_images,
+                page_image_format=page_image_format,
+                extracted_images=extracted_images,
+                concurrency=concurrency,
+                results=results,
+            )
             logger.info("[deepseek_ocr] done %s in %.2fs", file_path.name, time.time() - start)
             return docs
         finally:

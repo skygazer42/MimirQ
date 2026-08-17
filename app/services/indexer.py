@@ -491,29 +491,42 @@ def _first_column_value(row: Any) -> Any:
         return row
 
 
-def _row_named_value(row: Any, key: str) -> Any:
-    if row is None:
-        return None
+_UNRESOLVED_ROW_VALUE = object()
+
+
+def _mapping_row_value(row: Any, key: str) -> Any:
     mapping = getattr(row, "_mapping", None)
-    if mapping is not None:
-        if key in mapping:
-            return mapping[key]
-        metadata = mapping.get("metadata")
-        if isinstance(metadata, dict) and key in metadata:
-            return metadata.get(key)
-    if isinstance(row, dict):
-        if key in row:
-            return row.get(key)
-        metadata = row.get("metadata")
-        if isinstance(metadata, dict) and key in metadata:
-            return metadata.get(key)
-    if hasattr(row, key):
-        return getattr(row, key)
-    if isinstance(row, (tuple, list)):
-        value = row[0] if row else None
-        if isinstance(value, dict):
-            return value.get(key)
-        return value
+    if mapping is None:
+        return _UNRESOLVED_ROW_VALUE
+    if key in mapping:
+        return mapping[key]
+    metadata = mapping.get("metadata")
+    if isinstance(metadata, dict) and key in metadata:
+        return metadata.get(key)
+    return _UNRESOLVED_ROW_VALUE
+
+
+def _dict_row_value(row: Any, key: str) -> Any:
+    if not isinstance(row, dict):
+        return _UNRESOLVED_ROW_VALUE
+    if key in row:
+        return row.get(key)
+    metadata = row.get("metadata")
+    if isinstance(metadata, dict) and key in metadata:
+        return metadata.get(key)
+    return _UNRESOLVED_ROW_VALUE
+
+
+def _sequence_row_value(row: Any, key: str) -> Any:
+    if not isinstance(row, (tuple, list)):
+        return _UNRESOLVED_ROW_VALUE
+    value = row[0] if row else None
+    if isinstance(value, dict):
+        return value.get(key)
+    return value
+
+
+def _indexed_row_value(row: Any, key: str) -> Any:
     try:
         value = row[key]
         if isinstance(value, dict):
@@ -521,6 +534,21 @@ def _row_named_value(row: Any, key: str) -> Any:
         return value
     except (IndexError, KeyError, TypeError):
         return row
+
+
+def _row_named_value(row: Any, key: str) -> Any:
+    if row is None:
+        return None
+    for resolver in (_mapping_row_value, _dict_row_value):
+        value = resolver(row, key)
+        if value is not _UNRESOLVED_ROW_VALUE:
+            return value
+    if hasattr(row, key):
+        return getattr(row, key)
+    sequence_value = _sequence_row_value(row, key)
+    if sequence_value is not _UNRESOLVED_ROW_VALUE:
+        return sequence_value
+    return _indexed_row_value(row, key)
 
 
 def _iter_query_rows(query: Any, *, batch_size: int) -> Iterable[Any]:
@@ -733,6 +761,27 @@ def _extract_heading_for_embedding(meta: dict[str, Any]) -> str | None:
     return header_str
 
 
+def _append_metadata_prefix_line(
+    *,
+    lines: list[str],
+    fields: list[str],
+    field_name: str,
+    label: str,
+    value: str | list[str] | None,
+    joiner: str | None = None,
+) -> None:
+    if isinstance(value, list):
+        if not value:
+            return
+        rendered = joiner.join(value) if joiner is not None else ""
+    else:
+        rendered = str(value or "").strip()
+    if not rendered:
+        return
+    lines.append(f"[{label}] {rendered}")
+    fields.append(field_name)
+
+
 def _build_retrieval_metadata_prefix(meta: dict[str, Any]) -> tuple[str, list[str]]:
     """Build a bounded, deterministic index-only prefix from existing metadata."""
     if not isinstance(meta, dict):
@@ -761,23 +810,28 @@ def _build_retrieval_metadata_prefix(meta: dict[str, Any]) -> tuple[str, list[st
     title = _extract_title_for_embedding(meta)
     if str(title or "").strip().casefold() in {"unknown", "untitled"}:
         title = None
-    if title:
-        lines.append(f"[Title] {title}")
-        fields.append("title")
-
-    section = _extract_heading_for_embedding(meta)
-    if section:
-        lines.append(f"[Section] {section}")
-        fields.append("section")
+    _append_metadata_prefix_line(lines=lines, fields=fields, field_name="title", label="Title", value=title)
+    _append_metadata_prefix_line(
+        lines=lines,
+        fields=fields,
+        field_name="section",
+        label="Section",
+        value=_extract_heading_for_embedding(meta),
+    )
 
     keywords = _values(
         meta.get("document_keywords") or meta.get("keywords"),
         max_items=12,
         max_chars=64,
     )
-    if keywords:
-        lines.append(f"[Keywords] {', '.join(keywords)}")
-        fields.append("keywords")
+    _append_metadata_prefix_line(
+        lines=lines,
+        fields=fields,
+        field_name="keywords",
+        label="Keywords",
+        value=keywords,
+        joiner=", ",
+    )
 
     questions = _values(
         meta.get("document_questions")
@@ -787,9 +841,14 @@ def _build_retrieval_metadata_prefix(meta: dict[str, Any]) -> tuple[str, list[st
         max_items=5,
         max_chars=200,
     )
-    if questions:
-        lines.append("[Questions] " + " | ".join(questions))
-        fields.append("questions")
+    _append_metadata_prefix_line(
+        lines=lines,
+        fields=fields,
+        field_name="questions",
+        label="Questions",
+        value=questions,
+        joiner=" | ",
+    )
 
     return "\n".join(lines), fields
 
@@ -1527,189 +1586,204 @@ class Indexer:
         if IndexKind.EVENT in active:
             self.rebuild_event_indexes(tenant_id=tenant_id, document_ids=document_ids)
 
-    def index_chunks(
-        self,
-        *,
-        document_id: UUID,
-        tenant_id: UUID,
-        chunks: list[ChunkInput],
-        default_source: str = "unknown",
-        commit: bool = True,
-        options: IndexingOptions | None = None,
-    ) -> PersistChunksResult:
-        dataset_id_str: str | None = None
-        dataset_uuid: UUID | None = None
-        file_type_str: str | None = None
-        document_title: str | None = None
-        document_retrieval_metadata: dict[str, Any] = {}
-        embedding_runtime = resolve_dataset_embedding_runtime(None)
-        embedding_space = embedding_runtime.embedding_space_hash
+    def _resolve_chunk_index_context(self, *, tenant_id: UUID, document_id: UUID) -> dict[str, Any]:
         try:
             embedding_runtime = self._embedding_runtime_for_document(
                 tenant_id=tenant_id,
                 document_id=document_id,
                 strict=True,
             )
-            embedding_space = embedding_runtime.embedding_space_hash
             db_document = self._load_document_for_channel_tracking(tenant_id=tenant_id, document_id=document_id)
             if db_document is None:
                 raise _dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id)
-
-            ds_id = db_document.dataset_id
-            ft = db_document.file_type
-            fn = db_document.filename
             doc_meta = db_document.doc_metadata
-            if ds_id is not None:
-                dataset_uuid = ds_id
-                dataset_id_str = str(ds_id)
-            if ft is not None:
-                file_type_str = str(ft)
-            if isinstance(doc_meta, dict):
-                document_retrieval_metadata = dict(doc_meta)
-            document_title = _derive_document_title(fn, doc_meta)
+            return {
+                "embedding_runtime": embedding_runtime,
+                "embedding_space": embedding_runtime.embedding_space_hash,
+                "db_document": db_document,
+                "dataset_uuid": db_document.dataset_id,
+                "dataset_id_str": str(db_document.dataset_id) if db_document.dataset_id is not None else None,
+                "file_type_str": str(db_document.file_type) if db_document.file_type is not None else None,
+                "document_title": _derive_document_title(db_document.filename, doc_meta),
+                "document_retrieval_metadata": dict(doc_meta) if isinstance(doc_meta, dict) else {},
+            }
         except ValueError:
             raise
         except DatasetScopedEmbeddingRuntimeResolutionError:
             raise
         except Exception as exc:
-            if dataset_uuid is not None:
-                raise _dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id) from exc
             raise _dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id) from exc
 
-        source = str(default_source or "").strip() or "unknown"
-        total_characters = sum(len(c.content or "") for c in chunks)
-        vector_enabled = self._resolve_chunk_vector_enabled(options)
-        bm25_enabled = self._resolve_bm25_enabled(options)
+    def _chunk_index_option_flags(self, options: IndexingOptions | None) -> dict[str, bool]:
+        return {
+            "embedding_prefix_enabled": bool(getattr(options, "embedding_context_prefix_enabled", False)) if options else False,
+            "contextual_retrieval_enabled": bool(getattr(options, "embedding_contextual_retrieval_enabled", False)) if options else False,
+            "contextual_retrieval_lazy_mode": bool(getattr(options, "embedding_contextual_retrieval_lazy_mode", False)) if options else False,
+            "field_aware_enabled": bool(getattr(options, "embedding_field_aware_enabled", False)) if options else False,
+        }
 
-        # Enforce tenant rolling caps right before vector/BM25 writes so every ingest path
-        # shares the same gate. When fail-closed is disabled, degraded checks remain explicit.
-        _enforce_embedding_quota_gate(
-            self._db,
-            tenant_id=tenant_id,
-            document_id=document_id,
-            additional_chars=int(total_characters or 0),
-        )
-
-        normalized_chunks: list[ChunkInput] = []
-        vector_docs: list[dict[str, Any]] = []
-        extra_vector_docs: list[dict[str, Any]] = []
-        chunk_ids: list[UUID] = []
+    def _prepare_chunk_index_inputs(
+        self,
+        *,
+        document_id: UUID,
+        tenant_id: UUID,
+        chunks: list[ChunkInput],
+        source: str,
+        context: dict[str, Any],
+        flags: dict[str, bool],
+    ) -> list[tuple[ChunkInput, dict[str, Any], UUID]]:
         prepared_chunks: list[tuple[ChunkInput, dict[str, Any], UUID]] = []
-        embedding_prefix_enabled = bool(getattr(options, "embedding_context_prefix_enabled", False)) if options else False
-        contextual_retrieval_enabled = bool(getattr(options, "embedding_contextual_retrieval_enabled", False)) if options else False
-        contextual_retrieval_lazy_mode = (
-            bool(getattr(options, "embedding_contextual_retrieval_lazy_mode", False)) if options else False
-        )
-        field_aware_enabled = bool(getattr(options, "embedding_field_aware_enabled", False)) if options else False
+        embedding_runtime = context["embedding_runtime"]
         total_chunks = len(chunks)
-        for idx, c in enumerate(chunks):
-            meta = dict(c.metadata or {})
+        for idx, chunk in enumerate(chunks):
+            meta = dict(chunk.metadata or {})
             meta.setdefault("index_kind", IndexKind.CHUNK.value)
             meta.setdefault("tenant_id", str(tenant_id))
             meta.setdefault("document_id", str(document_id))
-            meta.setdefault("embedding_space_hash", embedding_space)
+            meta.setdefault("embedding_space_hash", context["embedding_space"])
             meta.setdefault("dataset_scoped", bool(embedding_runtime.dataset_scoped))
             if embedding_runtime.dataset_scoped:
                 meta.setdefault("vector_collection_name", embedding_runtime.collection_name)
-            if dataset_id_str:
-                meta.setdefault("dataset_id", dataset_id_str)
+            if context["dataset_id_str"]:
+                meta.setdefault("dataset_id", context["dataset_id_str"])
             meta.setdefault("source", source)
-            if file_type_str and not meta.get("file_type"):
-                meta["file_type"] = file_type_str
-            if document_title and not meta.get("document_title"):
-                meta["document_title"] = document_title
+            if context["file_type_str"] and not meta.get("file_type"):
+                meta["file_type"] = context["file_type_str"]
+            if context["document_title"] and not meta.get("document_title"):
+                meta["document_title"] = context["document_title"]
             for metadata_key in ("document_keywords", "document_questions"):
-                value = document_retrieval_metadata.get(metadata_key)
+                value = context["document_retrieval_metadata"].get(metadata_key)
                 if value not in (None, "", [], {}) and meta.get(metadata_key) in (None, "", [], {}):
                     meta[metadata_key] = value
-            if embedding_prefix_enabled:
-                meta.setdefault("embedding_context_prefix_enabled", True)
-            if contextual_retrieval_enabled:
-                meta.setdefault("embedding_contextual_retrieval_enabled", True)
-            if contextual_retrieval_lazy_mode:
-                meta.setdefault("embedding_contextual_retrieval_lazy_mode", True)
-            if field_aware_enabled:
-                meta.setdefault("embedding_field_aware_enabled", True)
+            for flag_name in (
+                "embedding_prefix_enabled",
+                "contextual_retrieval_enabled",
+                "contextual_retrieval_lazy_mode",
+                "field_aware_enabled",
+            ):
+                if flags[flag_name]:
+                    meta.setdefault(flag_name, True)
             meta = _ensure_chunk_metadata(
                 meta,
-                content=c.content or "",
+                content=chunk.content or "",
                 document_id=document_id,
                 chunk_index=idx,
                 total_chunks=total_chunks,
             )
-            # Ensure every chunk has a stable UUID for cross-system linking.
             chunk_id = _safe_uuid(meta.get("chunk_id")) or uuid.uuid4()
             meta["chunk_id"] = str(chunk_id)
-            prepared_chunks.append((c, meta, chunk_id))
-
+            prepared_chunks.append((chunk, meta, chunk_id))
         apply_sequence_hierarchy_metadata(
             [meta for _, meta, _ in prepared_chunks],
             document_id=str(document_id),
             basis="chunk_sequence",
             level="chunk",
         )
+        return prepared_chunks
 
-        for c, meta, chunk_id in prepared_chunks:
+    def _chunk_embed_text(
+        self,
+        *,
+        raw_body: str,
+        embed_text: str,
+        meta: dict[str, Any],
+        document_title: str | None,
+        flags: dict[str, bool],
+    ) -> str:
+        if (
+            flags["contextual_retrieval_enabled"]
+            and raw_body
+            and _should_prefix_embedding(meta)
+            and _should_apply_contextual_retrieval_prefix(meta, lazy_mode=flags["contextual_retrieval_lazy_mode"])
+        ):
+            try:
+                title = document_title or _extract_title_for_embedding(meta)
+                prefix = _build_contextual_prefix_for_chunk(
+                    raw_body=raw_body,
+                    document_title=title,
+                    meta=meta,
+                )
+                if prefix:
+                    embed_text = prefix + "\n" + embed_text
+            except Exception as exc:
+                logger.debug("Failed to build contextual embedding prefix; continuing without prefix: %s", exc)
+        if flags["embedding_prefix_enabled"]:
+            embed_text = _build_embedding_text(embed_text, meta)
+        return normalize_query(embed_text).normalized_text
+
+    def _chunk_extra_vector_docs(self, *, meta: dict[str, Any], chunk_id: UUID, field_aware_enabled: bool) -> list[dict[str, Any]]:
+        if not field_aware_enabled or not _should_prefix_embedding(meta):
+            return []
+        out: list[dict[str, Any]] = []
+        title = _extract_title_for_embedding(meta)
+        if title:
+            meta_t = dict(meta)
+            meta_t["chunk_id"] = f"{chunk_id}:title"
+            out.append({"content": normalize_query(f"[Title] {title}").normalized_text, "metadata": meta_t})
+        heading = _extract_heading_for_embedding(meta)
+        if heading:
+            meta_h = dict(meta)
+            meta_h["chunk_id"] = f"{chunk_id}:heading"
+            out.append({"content": normalize_query(f"[Heading] {heading}").normalized_text, "metadata": meta_h})
+        return out
+
+    def _build_chunk_vector_payloads(
+        self,
+        *,
+        prepared_chunks: list[tuple[ChunkInput, dict[str, Any], UUID]],
+        document_title: str | None,
+        flags: dict[str, bool],
+    ) -> tuple[list[ChunkInput], list[dict[str, Any]], list[dict[str, Any]], list[UUID]]:
+        normalized_chunks: list[ChunkInput] = []
+        vector_docs: list[dict[str, Any]] = []
+        extra_vector_docs: list[dict[str, Any]] = []
+        chunk_ids: list[UUID] = []
+        for chunk, meta, chunk_id in prepared_chunks:
             chunk_ids.append(chunk_id)
-            raw_body = c.content or ""
-            embed_text, meta = _chunk_index_content(raw_body, meta)
+            raw_body = chunk.content or ""
+            embed_text, normalized_meta = _chunk_index_content(raw_body, meta)
             normalized_chunks.append(
                 ChunkInput(
-                    content=c.content,
-                    metadata=meta,
-                    page_number=c.page_number,
-                    start_char=c.start_char,
-                    end_char=c.end_char,
+                    content=chunk.content,
+                    metadata=normalized_meta,
+                    page_number=chunk.page_number,
+                    start_char=chunk.start_char,
+                    end_char=chunk.end_char,
                 )
             )
-            if (
-                contextual_retrieval_enabled
-                and raw_body
-                and _should_prefix_embedding(meta)
-                and _should_apply_contextual_retrieval_prefix(meta, lazy_mode=contextual_retrieval_lazy_mode)
-            ):
-                try:
-                    title = document_title or _extract_title_for_embedding(meta)
-                    prefix = _build_contextual_prefix_for_chunk(
+            vector_docs.append(
+                {
+                    "content": self._chunk_embed_text(
                         raw_body=raw_body,
-                        document_title=title,
-                        meta=meta,
-                    )
-                    if prefix:
-                        embed_text = prefix + "\n" + embed_text
-                except Exception as exc:
-                    # Fail open: contextual prefixes are best-effort.
-                    logger.debug("Failed to build contextual embedding prefix; continuing without prefix: %s", exc)
-            if embedding_prefix_enabled:
-                embed_text = _build_embedding_text(embed_text, meta)
-            embed_text = normalize_query(embed_text).normalized_text
-            vector_docs.append({"content": embed_text, "metadata": meta})
+                        embed_text=embed_text,
+                        meta=normalized_meta,
+                        document_title=document_title,
+                        flags=flags,
+                    ),
+                    "metadata": normalized_meta,
+                }
+            )
+            extra_vector_docs.extend(
+                self._chunk_extra_vector_docs(
+                    meta=normalized_meta,
+                    chunk_id=chunk_id,
+                    field_aware_enabled=flags["field_aware_enabled"],
+                )
+            )
+        return normalized_chunks, vector_docs, extra_vector_docs, chunk_ids
 
-            if field_aware_enabled and _should_prefix_embedding(meta):
-                # Index additional embeddings for title/heading "fields" that map back to the same
-                # (document_id, chunk_index) for retrieval-time collapse.
-                #
-                # These extra vectors deliberately use non-UUID chunk_id values so they don't collide
-                # with the primary body vector ID in Milvus. The retriever later resolves the canonical
-                # chunk UUID via DB enrichment and overrides chunk_id/content for citations.
-                title = _extract_title_for_embedding(meta)
-                if title:
-                    meta_t = dict(meta)
-                    meta_t["chunk_id"] = f"{chunk_id}:title"
-                    extra_vector_docs.append(
-                        {"content": normalize_query(f"[Title] {title}").normalized_text, "metadata": meta_t}
-                    )
-
-                heading = _extract_heading_for_embedding(meta)
-                if heading:
-                    meta_h = dict(meta)
-                    meta_h["chunk_id"] = f"{chunk_id}:heading"
-                    extra_vector_docs.append(
-                        {"content": normalize_query(f"[Heading] {heading}").normalized_text, "metadata": meta_h}
-                    )
-
+    def _index_chunk_vectors_with_tracking(
+        self,
+        *,
+        context: dict[str, Any],
+        document_id: UUID,
+        tenant_id: UUID,
+        vector_docs: list[dict[str, Any]],
+        extra_vector_docs: list[dict[str, Any]],
+        vector_enabled: bool,
+    ) -> list[str]:
         self._track_document_channel(
-            document=db_document,
+            document=context["db_document"],
             channel="vector",
             status=DOCUMENT_INDEX_CHANNEL_PROCESSING if vector_enabled else DOCUMENT_INDEX_CHANNEL_DISABLED,
             increment_attempt=vector_enabled,
@@ -1720,47 +1794,46 @@ class Indexer:
                 document_id=document_id,
                 tenant_id=tenant_id,
                 enable_vectors=vector_enabled,
-                embedding_runtime=embedding_runtime,
+                embedding_runtime=context["embedding_runtime"],
             )
         except Exception as exc:
             self._track_document_channel(
-                document=db_document,
+                document=context["db_document"],
                 channel="vector",
                 status=DOCUMENT_INDEX_CHANNEL_ERROR,
                 error=str(exc)[:2000],
             )
             raise
-
         if extra_vector_docs and vector_enabled:
-            # Best-effort: do not fail ingest if extra vectors can't be written (legacy collections,
-            # transient Milvus issues, etc.). The base body embedding is the compatibility path.
             try:
                 self._index_chunk_vectors(
                     extra_vector_docs,
                     document_id=document_id,
                     tenant_id=tenant_id,
                     enable_vectors=True,
-                    embedding_runtime=embedding_runtime,
+                    embedding_runtime=context["embedding_runtime"],
                 )
             except Exception as exc:
                 logger.debug(_INDEXER_FALLBACK_LOG_MESSAGE, exc)
-        db_chunks = self._persist_document_chunks(
-            document_id=document_id,
-            tenant_id=tenant_id,
-            dataset_id=dataset_uuid,
-            chunks=normalized_chunks,
-            vector_ids=vector_ids,
-            chunk_ids=chunk_ids,
-            commit=commit,
-        )
         self._track_document_channel(
-            document=db_document,
+            document=context["db_document"],
             channel="vector",
             status=DOCUMENT_INDEX_CHANNEL_READY if vector_enabled else DOCUMENT_INDEX_CHANNEL_DISABLED,
         )
+        return vector_ids
 
+    def _update_bm25_with_tracking(
+        self,
+        *,
+        context: dict[str, Any],
+        db_chunks: list[DocumentChunk],
+        tenant_id: UUID,
+        document_id: UUID,
+        default_source: str,
+        bm25_enabled: bool,
+    ) -> None:
         self._track_document_channel(
-            document=db_document,
+            document=context["db_document"],
             channel="bm25",
             status=DOCUMENT_INDEX_CHANNEL_PROCESSING if bm25_enabled else DOCUMENT_INDEX_CHANNEL_DISABLED,
             increment_attempt=bm25_enabled,
@@ -1775,18 +1848,79 @@ class Indexer:
             )
         except Exception as exc:
             self._track_document_channel(
-                document=db_document,
+                document=context["db_document"],
                 channel="bm25",
                 status=DOCUMENT_INDEX_CHANNEL_ERROR if bm25_enabled else DOCUMENT_INDEX_CHANNEL_DISABLED,
                 error=str(exc)[:2000] if bm25_enabled else None,
             )
             logger.warning("Failed to update BM25 index incrementally: %s", exc)
-        else:
-            self._track_document_channel(
-                document=db_document,
-                channel="bm25",
-                status=DOCUMENT_INDEX_CHANNEL_READY if bm25_enabled else DOCUMENT_INDEX_CHANNEL_DISABLED,
-            )
+            return
+        self._track_document_channel(
+            document=context["db_document"],
+            channel="bm25",
+            status=DOCUMENT_INDEX_CHANNEL_READY if bm25_enabled else DOCUMENT_INDEX_CHANNEL_DISABLED,
+        )
+
+    def index_chunks(
+        self,
+        *,
+        document_id: UUID,
+        tenant_id: UUID,
+        chunks: list[ChunkInput],
+        default_source: str = "unknown",
+        commit: bool = True,
+        options: IndexingOptions | None = None,
+    ) -> PersistChunksResult:
+        context = self._resolve_chunk_index_context(tenant_id=tenant_id, document_id=document_id)
+        source = str(default_source or "").strip() or "unknown"
+        total_characters = sum(len(c.content or "") for c in chunks)
+        vector_enabled = self._resolve_chunk_vector_enabled(options)
+        bm25_enabled = self._resolve_bm25_enabled(options)
+        _enforce_embedding_quota_gate(
+            self._db,
+            tenant_id=tenant_id,
+            document_id=document_id,
+            additional_chars=int(total_characters or 0),
+        )
+        flags = self._chunk_index_option_flags(options)
+        prepared_chunks = self._prepare_chunk_index_inputs(
+            document_id=document_id,
+            tenant_id=tenant_id,
+            chunks=chunks,
+            source=source,
+            context=context,
+            flags=flags,
+        )
+        normalized_chunks, vector_docs, extra_vector_docs, chunk_ids = self._build_chunk_vector_payloads(
+            prepared_chunks=prepared_chunks,
+            document_title=context["document_title"],
+            flags=flags,
+        )
+        vector_ids = self._index_chunk_vectors_with_tracking(
+            context=context,
+            document_id=document_id,
+            tenant_id=tenant_id,
+            vector_docs=vector_docs,
+            extra_vector_docs=extra_vector_docs,
+            vector_enabled=vector_enabled,
+        )
+        db_chunks = self._persist_document_chunks(
+            document_id=document_id,
+            tenant_id=tenant_id,
+            dataset_id=context["dataset_uuid"],
+            chunks=normalized_chunks,
+            vector_ids=vector_ids,
+            chunk_ids=chunk_ids,
+            commit=commit,
+        )
+        self._update_bm25_with_tracking(
+            context=context,
+            db_chunks=db_chunks,
+            tenant_id=tenant_id,
+            document_id=document_id,
+            default_source=default_source,
+            bm25_enabled=bm25_enabled,
+        )
 
         return PersistChunksResult(
             db_chunks=db_chunks,
@@ -1820,6 +1954,146 @@ class Indexer:
             "Use index_chunks(...) or the task-queue ingestion pipeline."
         )
 
+    def _tracked_document_for_events(self, *, tenant_id: UUID, events: Sequence[EventInput]) -> DBDocument | None:
+        document_ids = {item.document_id for item in events if item.document_id is not None}
+        if len(document_ids) != 1:
+            return None
+        return self._load_document_for_channel_tracking(tenant_id=tenant_id, document_id=next(iter(document_ids)))
+
+    def _normalized_event_pipeline_hash(self, refs: dict[str, Any]) -> str | None:
+        raw_pipeline_hash = refs.get("pipeline_hash")
+        if not isinstance(raw_pipeline_hash, str):
+            return None
+        pipeline_hash = raw_pipeline_hash.strip() or None
+        if pipeline_hash and len(pipeline_hash) > 200:
+            return pipeline_hash[:200]
+        return pipeline_hash
+
+    def _event_link_extra(self, *, ent: Any, link_extra_data: dict[str, Any]) -> dict[str, Any]:
+        link_extra = dict(link_extra_data or {})
+        evidence_quote = (ent.evidence_quote or "").strip() if hasattr(ent, "evidence_quote") else ""
+        if evidence_quote:
+            link_extra["evidence_quote"] = evidence_quote[:240]
+        evidence_source = (ent.evidence_source or "").strip() if hasattr(ent, "evidence_source") else ""
+        if evidence_source:
+            link_extra["evidence_source"] = evidence_source
+        for field_name in ("evidence_start_char", "evidence_end_char"):
+            value = getattr(ent, field_name, None) if hasattr(ent, field_name) else None
+            if value is None:
+                continue
+            try:
+                link_extra[field_name] = int(value)
+            except Exception as exc:
+                logger.debug(_INDEXER_FALLBACK_LOG_MESSAGE, exc)
+        return link_extra
+
+    def _entity_for_event(
+        self,
+        *,
+        tenant_id: UUID,
+        ent: Any,
+        entity_cache: dict[tuple[str, str, str], KgEntity],
+    ) -> KgEntity | None:
+        name = ent.name.strip()
+        if not name:
+            return None
+        normalized = (ent.normalized_name or name.lower()).strip()
+        ent_type = (ent.type or "unknown").strip() or "unknown"
+        cache_key = (str(tenant_id), normalized, ent_type)
+        entity_obj = entity_cache.get(cache_key)
+        if entity_obj is None:
+            entity_obj = self._get_or_create_entity(
+                tenant_id=tenant_id,
+                name=name,
+                normalized_name=normalized,
+                type_=ent_type,
+                description=ent.description,
+            )
+            entity_cache[cache_key] = entity_obj
+        if ent.vector and not getattr(entity_obj, "vector", None):
+            entity_obj.vector = ent.vector
+        return entity_obj
+
+    def _materialize_index_events(
+        self,
+        *,
+        tenant_id: UUID,
+        events: Sequence[EventInput],
+    ) -> tuple[list[KgSourceEvent], dict[tuple[str, str, str], KgEntity]]:
+        entity_cache: dict[tuple[str, str, str], KgEntity] = {}
+        db_events: list[KgSourceEvent] = []
+        for item in events:
+            refs = item.references if isinstance(getattr(item, "references", None), dict) else {}
+            event_obj = KgSourceEvent(
+                tenant_id=tenant_id,
+                pipeline_hash=self._normalized_event_pipeline_hash(refs),
+                document_id=item.document_id,
+                chunk_id=item.chunk_id,
+                title=item.title,
+                summary=item.summary,
+                content=item.content,
+                content_vector=item.vector,
+                references=refs or None,
+                extra_data=item.extra_data,
+            )
+            self._db.add(event_obj)
+            db_events.append(event_obj)
+            link_extra_data = build_event_entity_provenance(
+                document_id=item.document_id,
+                chunk_id=item.chunk_id,
+                references=refs,
+            )
+            for ent in item.entities:
+                entity_obj = self._entity_for_event(tenant_id=tenant_id, ent=ent, entity_cache=entity_cache)
+                if entity_obj is None:
+                    continue
+                self._db.add(
+                    KgEventEntity(
+                        event=event_obj,
+                        entity=entity_obj,
+                        weight=1.0,
+                        role=ent.role,
+                        extra_data=(self._event_link_extra(ent=ent, link_extra_data=link_extra_data) or None),
+                    )
+                )
+        return db_events, entity_cache
+
+    def _track_index_vector_channel(
+        self,
+        *,
+        document: DBDocument | None,
+        channel: str,
+        enabled: bool,
+        items: Sequence[Any],
+        candidates: Sequence[Any],
+        writer,
+        failure_error: str,
+        commit: bool,
+    ) -> list[str]:
+        if not commit:
+            return []
+        if not enabled:
+            self._track_document_channel(document=document, channel=channel, status=DOCUMENT_INDEX_CHANNEL_DISABLED)
+            return []
+        self._track_document_channel(
+            document=document,
+            channel=channel,
+            status=DOCUMENT_INDEX_CHANNEL_PROCESSING,
+            increment_attempt=True,
+        )
+        if not candidates:
+            self._track_document_channel(document=document, channel=channel, status=DOCUMENT_INDEX_CHANNEL_SKIPPED)
+            return []
+        vector_ids = writer(list(items))
+        success = len(vector_ids) == len(candidates)
+        self._track_document_channel(
+            document=document,
+            channel=channel,
+            status=DOCUMENT_INDEX_CHANNEL_READY if success else DOCUMENT_INDEX_CHANNEL_ERROR,
+            error=None if success else failure_error,
+        )
+        return vector_ids
+
     def index_events(
         self,
         *,
@@ -1837,168 +2111,36 @@ class Indexer:
                 event_vector_ids=[],
                 entity_vector_ids=[],
             )
-
-        entity_cache: dict[tuple[str, str, str], KgEntity] = {}
-        db_events: list[KgSourceEvent] = []
-        document_ids = {item.document_id for item in events if item.document_id is not None}
-        tracked_document = (
-            self._load_document_for_channel_tracking(tenant_id=tenant_id, document_id=next(iter(document_ids)))
-            if len(document_ids) == 1
-            else None
-        )
+        db_events, entity_cache = self._materialize_index_events(tenant_id=tenant_id, events=events)
+        tracked_document = self._tracked_document_for_events(tenant_id=tenant_id, events=events)
         event_vector_enabled = self._resolve_event_vector_enabled(options)
         entity_vector_enabled = self._resolve_entity_vector_enabled(options)
-
-        for item in events:
-            refs = item.references if isinstance(getattr(item, "references", None), dict) else {}
-            raw_ph = refs.get("pipeline_hash")
-            pipeline_hash = None
-            if isinstance(raw_ph, str):
-                pipeline_hash = raw_ph.strip() or None
-            if pipeline_hash and len(pipeline_hash) > 200:
-                pipeline_hash = pipeline_hash[:200]
-
-            event_obj = KgSourceEvent(
-                tenant_id=tenant_id,
-                pipeline_hash=pipeline_hash,
-                document_id=item.document_id,
-                chunk_id=item.chunk_id,
-                title=item.title,
-                summary=item.summary,
-                content=item.content,
-                content_vector=item.vector,
-                references=refs or None,
-                extra_data=item.extra_data,
-            )
-            self._db.add(event_obj)
-            db_events.append(event_obj)
-
-            link_extra_data = build_event_entity_provenance(
-                document_id=item.document_id,
-                chunk_id=item.chunk_id,
-                references=refs,
-            )
-
-            for ent in item.entities:
-                name = ent.name.strip()
-                if not name:
-                    continue
-                normalized = (ent.normalized_name or name.lower()).strip()
-                ent_type = (ent.type or "unknown").strip() or "unknown"
-                cache_key = (str(tenant_id), normalized, ent_type)
-
-                entity_obj = entity_cache.get(cache_key)
-                if entity_obj is None:
-                    entity_obj = self._get_or_create_entity(
-                        tenant_id=tenant_id,
-                        name=name,
-                        normalized_name=normalized,
-                        type_=ent_type,
-                        description=ent.description,
-                    )
-                    entity_cache[cache_key] = entity_obj
-
-                if ent.vector and not getattr(entity_obj, "vector", None):
-                    entity_obj.vector = ent.vector
-
-                # Attach entity-level evidence to the link (provenance is per event, evidence is per entity mention).
-                link_extra = dict(link_extra_data or {})
-                evidence_quote = (ent.evidence_quote or "").strip() if hasattr(ent, "evidence_quote") else ""
-                if evidence_quote:
-                    link_extra["evidence_quote"] = evidence_quote[:240]
-                evidence_source = (ent.evidence_source or "").strip() if hasattr(ent, "evidence_source") else ""
-                if evidence_source:
-                    link_extra["evidence_source"] = evidence_source
-                if hasattr(ent, "evidence_start_char") and ent.evidence_start_char is not None:
-                    try:
-                        link_extra["evidence_start_char"] = int(ent.evidence_start_char)
-                    except Exception as exc:
-                        logger.debug(_INDEXER_FALLBACK_LOG_MESSAGE, exc)
-                if hasattr(ent, "evidence_end_char") and ent.evidence_end_char is not None:
-                    try:
-                        link_extra["evidence_end_char"] = int(ent.evidence_end_char)
-                    except Exception as exc:
-                        logger.debug(_INDEXER_FALLBACK_LOG_MESSAGE, exc)
-
-                self._db.add(
-                    KgEventEntity(
-                        event=event_obj,
-                        entity=entity_obj,
-                        weight=1.0,
-                        role=ent.role,
-                        extra_data=(link_extra or None),
-                    )
-                )
 
         if commit:
             self._db.commit()
         else:
             self._db.flush()
 
-        event_vector_ids: list[str] = []
-        entity_vector_ids: list[str] = []
-        if commit:
-            if event_vector_enabled:
-                self._track_document_channel(
-                    document=tracked_document,
-                    channel="event_vector",
-                    status=DOCUMENT_INDEX_CHANNEL_PROCESSING,
-                    increment_attempt=True,
-                )
-                event_vector_candidates = [event for event in db_events if getattr(event, "content_vector", None)]
-                if not event_vector_candidates:
-                    self._track_document_channel(
-                        document=tracked_document,
-                        channel="event_vector",
-                        status=DOCUMENT_INDEX_CHANNEL_SKIPPED,
-                    )
-                else:
-                    event_vector_ids = self._index_event_vectors(db_events)
-                    self._track_document_channel(
-                        document=tracked_document,
-                        channel="event_vector",
-                        status=DOCUMENT_INDEX_CHANNEL_READY
-                        if len(event_vector_ids) == len(event_vector_candidates)
-                        else DOCUMENT_INDEX_CHANNEL_ERROR,
-                        error=None if len(event_vector_ids) == len(event_vector_candidates) else "event_vector_write_failed",
-                    )
-            else:
-                self._track_document_channel(
-                    document=tracked_document,
-                    channel="event_vector",
-                    status=DOCUMENT_INDEX_CHANNEL_DISABLED,
-                )
-
-            if entity_vector_enabled:
-                self._track_document_channel(
-                    document=tracked_document,
-                    channel="entity_vector",
-                    status=DOCUMENT_INDEX_CHANNEL_PROCESSING,
-                    increment_attempt=True,
-                )
-                entity_vector_candidates = [entity for entity in entity_cache.values() if getattr(entity, "vector", None)]
-                if not entity_vector_candidates:
-                    self._track_document_channel(
-                        document=tracked_document,
-                        channel="entity_vector",
-                        status=DOCUMENT_INDEX_CHANNEL_SKIPPED,
-                    )
-                else:
-                    entity_vector_ids = self._index_entity_vectors(list(entity_cache.values()))
-                    self._track_document_channel(
-                        document=tracked_document,
-                        channel="entity_vector",
-                        status=DOCUMENT_INDEX_CHANNEL_READY
-                        if len(entity_vector_ids) == len(entity_vector_candidates)
-                        else DOCUMENT_INDEX_CHANNEL_ERROR,
-                        error=None if len(entity_vector_ids) == len(entity_vector_candidates) else "entity_vector_write_failed",
-                    )
-            else:
-                self._track_document_channel(
-                    document=tracked_document,
-                    channel="entity_vector",
-                    status=DOCUMENT_INDEX_CHANNEL_DISABLED,
-                )
+        event_vector_ids = self._track_index_vector_channel(
+            document=tracked_document,
+            channel="event_vector",
+            enabled=event_vector_enabled,
+            items=db_events,
+            candidates=[event for event in db_events if getattr(event, "content_vector", None)],
+            writer=self._index_event_vectors,
+            failure_error="event_vector_write_failed",
+            commit=commit,
+        )
+        entity_vector_ids = self._track_index_vector_channel(
+            document=tracked_document,
+            channel="entity_vector",
+            enabled=entity_vector_enabled,
+            items=list(entity_cache.values()),
+            candidates=[entity for entity in entity_cache.values() if getattr(entity, "vector", None)],
+            writer=self._index_entity_vectors,
+            failure_error="entity_vector_write_failed",
+            commit=commit,
+        )
 
         return PersistEventsResult(
             events=db_events,
@@ -2214,6 +2356,39 @@ class Indexer:
             strict=strict,
         )
 
+    def _orphan_entity_query(self, *, tenant_id: UUID):
+        rel_as_subject = aliased(KgRelation)
+        rel_as_object = aliased(KgRelation)
+        return (
+            self._db.query(KgEntity.id)
+            .outerjoin(KgEventEntity, KgEventEntity.entity_id == KgEntity.id)
+            .outerjoin(rel_as_subject, rel_as_subject.subject_entity_id == KgEntity.id)
+            .outerjoin(rel_as_object, rel_as_object.object_entity_id == KgEntity.id)
+            .filter(KgEntity.tenant_id == tenant_id)
+            .filter(KgEventEntity.entity_id.is_(None))
+            .filter(rel_as_subject.id.is_(None))
+            .filter(rel_as_object.id.is_(None))
+            .distinct()
+        )
+
+    def _delete_orphan_entity_batch(self, *, orphan_ids: list[UUID], commit: bool, strict: bool) -> None:
+        try:
+            try:
+                self._entity_vector.delete([str(eid) for eid in orphan_ids])
+            except Exception as exc:
+                logger.warning("Failed to delete KG entity vectors: %s", exc)
+                if strict:
+                    raise
+            self._db.query(KgEntity).filter(KgEntity.id.in_(orphan_ids)).delete(synchronize_session=False)
+            if commit:
+                self._db.commit()
+            else:
+                self._db.flush()
+        except Exception:
+            if commit and hasattr(self._db, "rollback"):
+                self._db.rollback()
+            raise
+
     def prune_orphan_entities(
         self,
         *,
@@ -2234,26 +2409,12 @@ class Indexer:
         - Once `kg_relations` exists, pruning must consider both, otherwise we can
           delete Skill/SOP nodes or relation-only entities.
         """
-        rel_as_subject = aliased(KgRelation)
-        rel_as_object = aliased(KgRelation)
-        q = (
-            self._db.query(KgEntity.id)
-            .outerjoin(KgEventEntity, KgEventEntity.entity_id == KgEntity.id)
-            .outerjoin(rel_as_subject, rel_as_subject.subject_entity_id == KgEntity.id)
-            .outerjoin(rel_as_object, rel_as_object.object_entity_id == KgEntity.id)
-            .filter(KgEntity.tenant_id == tenant_id)
-            .filter(KgEventEntity.entity_id.is_(None))
-            .filter(rel_as_subject.id.is_(None))
-            .filter(rel_as_object.id.is_(None))
-            .distinct()
-        )
+        q = self._orphan_entity_query(tenant_id=tenant_id)
         if entity_ids:
             entity_ids_norm = [eid for eid in (_safe_uuid(x) for x in entity_ids) if eid is not None]
-            if entity_ids_norm:
-                q = q.filter(KgEntity.id.in_(entity_ids_norm))
-            else:
+            if not entity_ids_norm:
                 return 0
-
+            q = q.filter(KgEntity.id.in_(entity_ids_norm))
         batch_size = max(1, _vector_write_batch_size())
         last_entity_id: UUID | None = None
         deleted = 0
@@ -2265,29 +2426,77 @@ class Indexer:
             orphan_ids = [row[0] for row in batch_query.all() if row and row[0]]
             if not orphan_ids:
                 break
-
-            try:
-                try:
-                    self._entity_vector.delete([str(eid) for eid in orphan_ids])
-                except Exception as exc:
-                    logger.warning("Failed to delete KG entity vectors: %s", exc)
-                    if strict:
-                        raise
-
-                self._db.query(KgEntity).filter(KgEntity.id.in_(orphan_ids)).delete(synchronize_session=False)
-                if commit:
-                    self._db.commit()
-                else:
-                    self._db.flush()
-            except Exception:
-                if commit and hasattr(self._db, "rollback"):
-                    self._db.rollback()
-                raise
-
+            self._delete_orphan_entity_batch(orphan_ids=orphan_ids, commit=commit, strict=strict)
             deleted += len(orphan_ids)
             last_entity_id = orphan_ids[-1]
 
         return deleted
+
+    def _event_batch_ids(self, query: Any, *, last_id: UUID | None, batch_size: int) -> list[UUID]:
+        query_ids = query.with_entities(KgSourceEvent.id)
+        if last_id is not None:
+            query_ids = query_ids.filter(KgSourceEvent.id > last_id)
+        query_ids = query_ids.order_by(KgSourceEvent.id).limit(batch_size)
+        return [row[0] for row in query_ids.all() if row and row[0]]
+
+    def _candidate_entity_ids_for_events(self, *, event_ids: list[UUID], prune_orphan_entities: bool) -> list[UUID]:
+        if not prune_orphan_entities:
+            return []
+        return [
+            row[0]
+            for row in (
+                self._db.query(KgEventEntity.entity_id)
+                .filter(KgEventEntity.event_id.in_(event_ids))
+                .distinct()
+                .all()
+            )
+            if row and row[0]
+        ]
+
+    def _delete_event_index_batch(
+        self,
+        *,
+        tenant_id: UUID,
+        event_ids: list[UUID],
+        candidate_entity_ids: list[UUID],
+        commit: bool,
+        prune_orphan_entities: bool,
+        strict: bool,
+    ) -> tuple[int, int]:
+        try:
+            try:
+                self._event_vector.delete([str(ev_id) for ev_id in event_ids])
+            except Exception as exc:
+                logger.warning("Failed to delete KG event vectors: %s", exc)
+                if strict:
+                    raise
+            batch_deleted = int(
+                self._db.query(KgSourceEvent)
+                .filter(KgSourceEvent.id.in_(event_ids))
+                .delete(synchronize_session=False)
+                or 0
+            )
+            if commit or candidate_entity_ids:
+                self._db.flush()
+            batch_pruned = 0
+            if prune_orphan_entities and candidate_entity_ids:
+                batch_pruned = int(
+                    self.prune_orphan_entities(
+                        tenant_id=tenant_id,
+                        entity_ids=candidate_entity_ids,
+                        commit=False,
+                        strict=strict,
+                    )
+                )
+            if commit:
+                self._db.commit()
+            elif not candidate_entity_ids:
+                self._db.flush()
+            return batch_deleted, batch_pruned
+        except Exception:
+            if commit and hasattr(self._db, "rollback"):
+                self._db.rollback()
+            raise
 
     def _delete_event_indexes(
         self,
@@ -2304,64 +2513,21 @@ class Indexer:
         last_event_id: UUID | None = None
 
         while True:
-            batch_query = query.with_entities(KgSourceEvent.id)
-            if last_event_id is not None:
-                batch_query = batch_query.filter(KgSourceEvent.id > last_event_id)
-            batch_query = batch_query.order_by(KgSourceEvent.id).limit(batch_size)
-            event_ids = [row[0] for row in batch_query.all() if row and row[0]]
+            event_ids = self._event_batch_ids(query, last_id=last_event_id, batch_size=batch_size)
             if not event_ids:
                 break
-
-            candidate_entity_ids: list[UUID] = []
-            if prune_orphan_entities:
-                candidate_entity_ids = [
-                    row[0]
-                    for row in (
-                        self._db.query(KgEventEntity.entity_id)
-                        .filter(KgEventEntity.event_id.in_(event_ids))
-                        .distinct()
-                        .all()
-                    )
-                    if row and row[0]
-                ]
-
-            try:
-                try:
-                    self._event_vector.delete([str(ev_id) for ev_id in event_ids])
-                except Exception as exc:
-                    logger.warning("Failed to delete KG event vectors: %s", exc)
-                    if strict:
-                        raise
-
-                batch_deleted = int(
-                    self._db.query(KgSourceEvent)
-                    .filter(KgSourceEvent.id.in_(event_ids))
-                    .delete(synchronize_session=False)
-                    or 0
-                )
-                if commit or candidate_entity_ids:
-                    self._db.flush()
-
-                batch_pruned = 0
-                if prune_orphan_entities and candidate_entity_ids:
-                    batch_pruned = int(
-                        self.prune_orphan_entities(
-                            tenant_id=tenant_id,
-                            entity_ids=candidate_entity_ids,
-                            commit=False,
-                            strict=strict,
-                        )
-                    )
-
-                if commit:
-                    self._db.commit()
-                elif not candidate_entity_ids:
-                    self._db.flush()
-            except Exception:
-                if commit and hasattr(self._db, "rollback"):
-                    self._db.rollback()
-                raise
-
+            candidate_entity_ids = self._candidate_entity_ids_for_events(
+                event_ids=event_ids,
+                prune_orphan_entities=prune_orphan_entities,
+            )
+            batch_deleted, batch_pruned = self._delete_event_index_batch(
+                tenant_id=tenant_id,
+                event_ids=event_ids,
+                candidate_entity_ids=candidate_entity_ids,
+                commit=commit,
+                prune_orphan_entities=prune_orphan_entities,
+                strict=strict,
+            )
             deleted += batch_deleted
             pruned += batch_pruned
             last_event_id = event_ids[-1]

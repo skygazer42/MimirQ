@@ -166,6 +166,199 @@ def _flush_lookup_cleanup(
         logger.debug("Ignoring semantic cache lookup cleanup failure: %s", exc)
 
 
+def _semantic_cache_lookup_precheck(
+    *,
+    tenant_id: str,
+    account_id: str,
+    dataset_id: str | None,
+    corpus_cache_token: str,
+    document_ids: list[str],
+) -> tuple[dict[str, Any], int]:
+    meta: dict[str, Any] = {"enabled": bool(getattr(settings, "SEMANTIC_CACHE_ENABLED", False)), "hit": False}
+    if not meta["enabled"]:
+        meta["skip_reason"] = "disabled"
+        return meta, 0
+
+    ttl = int(getattr(settings, "SEMANTIC_CACHE_TTL_SEC", 300) or 0)
+    if ttl <= 0:
+        meta["skip_reason"] = "ttl_zero"
+        return meta, ttl
+    if not tenant_id or not str(tenant_id).strip():
+        meta["skip_reason"] = "missing_tenant"
+        return meta, ttl
+    if not account_id or not str(account_id).strip():
+        meta["skip_reason"] = "missing_account"
+        return meta, ttl
+    if (not document_ids) and not (dataset_id or "").strip():
+        meta["skip_reason"] = "missing_scope"
+        return meta, ttl
+    if not corpus_cache_token or not str(corpus_cache_token).strip():
+        meta["skip_reason"] = "missing_corpus_cache_token"
+        return meta, ttl
+    return meta, ttl
+
+
+def _semantic_cache_scope_hash_or_skip(meta: dict[str, Any], **kwargs: Any) -> str | None:
+    try:
+        scope_hash, _vector_id = build_semantic_cache_scope_hash(**kwargs)
+        return scope_hash
+    except Exception:
+        meta["skip_reason"] = "signature_error"
+        return None
+
+
+def _semantic_cache_embedding_or_skip(meta: dict[str, Any], *, query: str) -> list[float] | None:
+    try:
+        started_at = time.perf_counter()
+        vector = _get_embeddings().embed_query(query or "")
+        meta["embed_ms"] = round((time.perf_counter() - started_at) * 1000, 2)
+        return vector
+    except Exception:
+        meta["skip_reason"] = "embed_error"
+        return None
+
+
+def _semantic_cache_search_results_or_skip(meta: dict[str, Any], *, tenant_id: str, vector: list[float], top_k: int) -> tuple[Any, list[dict[str, Any]]] | None:
+    try:
+        started_at = time.perf_counter()
+        adapter = _get_adapter()
+        results = adapter.search(vector, top_k=top_k, metadata_filter={"tenant_id": str(tenant_id)})
+        meta["search_ms"] = round((time.perf_counter() - started_at) * 1000, 2)
+        return adapter, results
+    except Exception as exc:  # noqa: BLE001
+        meta["skip_reason"] = "search_error"
+        meta["error"] = str(exc)[:200]
+        return None
+
+
+def _maybe_queue_semantic_cache_cleanup(
+    *,
+    cleanup_ids: list[str],
+    cleanup_seen: set[str],
+    cleanup_budget: int,
+    vector_id: str,
+) -> None:
+    if len(cleanup_ids) >= cleanup_budget or vector_id in cleanup_seen:
+        return
+    cleanup_seen.add(vector_id)
+    cleanup_ids.append(vector_id)
+
+
+def _semantic_cache_result_matches(
+    result: dict[str, Any],
+    *,
+    tenant_id: str,
+    account_id: str,
+    scope_hash: str,
+    corpus_cache_token: str,
+    embedding_space_hash: str,
+) -> tuple[str, float, dict[str, Any]] | None:
+    try:
+        score = float(result.get("score") or 0.0)
+    except Exception:
+        score = 0.0
+    metadata = result.get("metadata") or {}
+    vector_id = str(result.get("id") or "").strip()
+    if not vector_id:
+        return None
+    checks = (
+        str(metadata.get("tenant_id") or "") == str(tenant_id),
+        str(metadata.get("account_id") or "") == str(account_id or ""),
+        str(metadata.get("scope_hash") or "") == str(scope_hash),
+        str(metadata.get("corpus_cache_token") or "") == str(corpus_cache_token),
+        str(metadata.get("embedding_space_hash") or "") == embedding_space_hash,
+    )
+    if not all(checks):
+        return None
+    return vector_id, score, metadata
+
+
+def _semantic_cache_payload_list(raw: Any) -> list[dict[str, Any]] | None:
+    try:
+        payload = json.loads(raw)
+    except Exception:  # noqa: BLE001
+        get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+        return None
+    if not isinstance(payload, list):
+        return None
+    return [item for item in payload if isinstance(item, dict)]
+
+
+def _cached_semantic_payload_from_results(
+    *,
+    results: list[dict[str, Any]],
+    meta: dict[str, Any],
+    adapter: Any,
+    client: Any,
+    tenant_id: str,
+    account_id: str,
+    scope_hash: str,
+    corpus_cache_token: str,
+    threshold: float,
+    embedding_space_hash: str,
+    now_epoch: int,
+    cleanup_budget: int,
+) -> tuple[list[dict[str, Any]] | None, dict[str, Any]]:
+    cleanup_ids: list[str] = []
+    cleanup_seen: set[str] = set()
+    meta["cleanup_budget"] = cleanup_budget
+    for result in results or []:
+        match = _semantic_cache_result_matches(
+            result,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            scope_hash=scope_hash,
+            corpus_cache_token=corpus_cache_token,
+            embedding_space_hash=embedding_space_hash,
+        )
+        if match is None:
+            continue
+        vector_id, score, metadata = match
+        if score < threshold:
+            continue
+        expires_at = _coerce_epoch(metadata.get("expires_at_epoch"))
+        if expires_at is not None and expires_at <= now_epoch:
+            meta["expired_vectors_skipped"] = int(meta.get("expired_vectors_skipped", 0) or 0) + 1
+            _maybe_queue_semantic_cache_cleanup(
+                cleanup_ids=cleanup_ids,
+                cleanup_seen=cleanup_seen,
+                cleanup_budget=cleanup_budget,
+                vector_id=vector_id,
+            )
+            continue
+        key = _redis_payload_key(tenant_id=str(tenant_id), vector_id=vector_id)
+        try:
+            raw = client.get(key)
+        except Exception as exc:  # noqa: BLE001
+            _flush_lookup_cleanup(adapter=adapter, cleanup_ids=cleanup_ids, meta=meta)
+            meta["skip_reason"] = "redis_read_error"
+            meta["error"] = str(exc)[:200]
+            _invalidate_redis_client()
+            return None, meta
+        if not raw:
+            meta["orphan_vectors_skipped"] = int(meta.get("orphan_vectors_skipped", 0) or 0) + 1
+            _maybe_queue_semantic_cache_cleanup(
+                cleanup_ids=cleanup_ids,
+                cleanup_seen=cleanup_seen,
+                cleanup_budget=cleanup_budget,
+                vector_id=vector_id,
+            )
+            continue
+
+        payload = _semantic_cache_payload_list(raw)
+        if payload is None:
+            continue
+
+        meta["hit"] = True
+        meta["score"] = float(score)
+        meta["vector_id"] = vector_id
+        _flush_lookup_cleanup(adapter=adapter, cleanup_ids=cleanup_ids, meta=meta)
+        return payload, meta
+
+    _flush_lookup_cleanup(adapter=adapter, cleanup_ids=cleanup_ids, meta=meta)
+    return None, meta
+
+
 def get_cached_semantic_payload(
     *,
     tenant_id: str,
@@ -185,49 +378,35 @@ def get_cached_semantic_payload(
 
     Returns: (payload_or_none, meta)
     """
-    meta: dict[str, Any] = {"enabled": bool(getattr(settings, "SEMANTIC_CACHE_ENABLED", False)), "hit": False}
-    if not meta["enabled"]:
-        meta["skip_reason"] = "disabled"
-        return None, meta
-
-    ttl = int(getattr(settings, "SEMANTIC_CACHE_TTL_SEC", 300) or 0)
-    if ttl <= 0:
-        meta["skip_reason"] = "ttl_zero"
-        return None, meta
-
-    if not tenant_id or not str(tenant_id).strip():
-        meta["skip_reason"] = "missing_tenant"
-        return None, meta
-    if not account_id or not str(account_id).strip():
-        meta["skip_reason"] = "missing_account"
-        return None, meta
-    if (not document_ids) and not (dataset_id or "").strip():
-        meta["skip_reason"] = "missing_scope"
-        return None, meta
-    if not corpus_cache_token or not str(corpus_cache_token).strip():
-        meta["skip_reason"] = "missing_corpus_cache_token"
+    meta, ttl = _semantic_cache_lookup_precheck(
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=dataset_id,
+        corpus_cache_token=corpus_cache_token,
+        document_ids=document_ids,
+    )
+    if meta.get("skip_reason"):
         return None, meta
 
     threshold = float(getattr(settings, "SEMANTIC_CACHE_SCORE_THRESHOLD", 0.95) or 0.95)
     search_k = int(getattr(settings, "SEMANTIC_CACHE_SEARCH_TOP_K", 5) or 5)
     search_k = max(1, min(20, search_k))
 
-    try:
-        scope_hash, _vector_id = build_semantic_cache_scope_hash(
-            tenant_id=tenant_id,
-            account_id=account_id,
-            dataset_id=dataset_id,
-            corpus_cache_token=corpus_cache_token,
-            behavior_hash=behavior_hash,
-            query=query,
-            top_k=top_k,
-            score_threshold=score_threshold,
-            retrieval_mode=retrieval_mode,
-            metadata_filter=metadata_filter,
-            document_ids=document_ids,
-        )
-    except Exception:
-        meta["skip_reason"] = "signature_error"
+    scope_hash = _semantic_cache_scope_hash_or_skip(
+        meta,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=dataset_id,
+        corpus_cache_token=corpus_cache_token,
+        behavior_hash=behavior_hash,
+        query=query,
+        top_k=top_k,
+        score_threshold=score_threshold,
+        retrieval_mode=retrieval_mode,
+        metadata_filter=metadata_filter,
+        document_ids=document_ids,
+    )
+    if scope_hash is None:
         return None, meta
 
     client = _get_redis_client()
@@ -235,97 +414,44 @@ def get_cached_semantic_payload(
         meta["skip_reason"] = "redis_unavailable"
         return None, meta
 
+    vector = _semantic_cache_embedding_or_skip(meta, query=query)
+    if vector is None:
+        return None, meta
+    search_result = _semantic_cache_search_results_or_skip(meta, tenant_id=tenant_id, vector=vector, top_k=search_k)
+    if search_result is None:
+        return None, meta
+    adapter, results = search_result
+
+    return _cached_semantic_payload_from_results(
+        results=results,
+        meta=meta,
+        adapter=adapter,
+        client=client,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        scope_hash=scope_hash,
+        corpus_cache_token=corpus_cache_token,
+        threshold=threshold,
+        embedding_space_hash=str(current_embedding_space_hash() or "") or "",
+        now_epoch=int(time.time()),
+        cleanup_budget=max(0, int(_LOOKUP_CLEANUP_MAX_DELETE)),
+    )
+
+
+def _semantic_cache_store_precheck() -> tuple[int, Any | None]:
+    if not bool(getattr(settings, "SEMANTIC_CACHE_ENABLED", False)):
+        return 0, None
+    ttl = int(getattr(settings, "SEMANTIC_CACHE_TTL_SEC", 300) or 0)
+    if ttl <= 0:
+        return ttl, None
+    return ttl, _get_redis_client()
+
+
+def _semantic_cache_store_key_and_scope(**kwargs: Any) -> tuple[str, str] | None:
     try:
-        t0 = time.perf_counter()
-        vec = _get_embeddings().embed_query(query or "")
-        vec_ms = (time.perf_counter() - t0) * 1000
-        meta["embed_ms"] = round(vec_ms, 2)
+        return build_semantic_cache_scope_hash(**kwargs)
     except Exception:
-        meta["skip_reason"] = "embed_error"
-        return None, meta
-
-    try:
-        t0 = time.perf_counter()
-        # Server-side pushdown is best-effort; we always re-check scope client-side.
-        adapter = _get_adapter()
-        results = adapter.search(vec, top_k=search_k, metadata_filter={"tenant_id": str(tenant_id)})
-        meta["search_ms"] = round((time.perf_counter() - t0) * 1000, 2)
-    except Exception as exc:  # noqa: BLE001
-        meta["skip_reason"] = "search_error"
-        meta["error"] = str(exc)[:200]
-        return None, meta
-
-    pipeline_key = str(current_embedding_space_hash() or "") or ""
-    now_epoch = int(time.time())
-    cleanup_budget = max(0, int(_LOOKUP_CLEANUP_MAX_DELETE))
-    cleanup_ids: list[str] = []
-    cleanup_seen: set[str] = set()
-    meta["cleanup_budget"] = cleanup_budget
-    for r in results or []:
-        try:
-            score = float(r.get("score") or 0.0)
-        except Exception:
-            score = 0.0
-        if score < threshold:
-            continue
-        md = r.get("metadata") or {}
-        if str(md.get("tenant_id") or "") != str(tenant_id):
-            continue
-        if str(md.get("account_id") or "") != str(account_id or ""):
-            continue
-        if str(md.get("scope_hash") or "") != str(scope_hash):
-            continue
-        if str(md.get("corpus_cache_token") or "") != str(corpus_cache_token):
-            continue
-        if str(md.get("embedding_space_hash") or "") != pipeline_key:
-            continue
-
-        rid = str(r.get("id") or "").strip()
-        if not rid:
-            continue
-        expires_at = _coerce_epoch(md.get("expires_at_epoch"))
-        if expires_at is not None and expires_at <= now_epoch:
-            meta["expired_vectors_skipped"] = int(meta.get("expired_vectors_skipped", 0) or 0) + 1
-            if len(cleanup_ids) < cleanup_budget and rid not in cleanup_seen:
-                cleanup_seen.add(rid)
-                cleanup_ids.append(rid)
-            continue
-        key = _redis_payload_key(tenant_id=str(tenant_id), vector_id=rid)
-        try:
-            raw = client.get(key)
-        except Exception as exc:  # noqa: BLE001
-            _flush_lookup_cleanup(adapter=adapter, cleanup_ids=cleanup_ids, meta=meta)
-            meta["skip_reason"] = "redis_read_error"
-            meta["error"] = str(exc)[:200]
-            _invalidate_redis_client()
-            return None, meta
-        if not raw:
-            meta["orphan_vectors_skipped"] = int(meta.get("orphan_vectors_skipped", 0) or 0) + 1
-            if len(cleanup_ids) < cleanup_budget and rid not in cleanup_seen:
-                cleanup_seen.add(rid)
-                cleanup_ids.append(rid)
-            continue
-
-        try:
-            payload = json.loads(raw)
-        except Exception:  # noqa: BLE001
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
-        if not isinstance(payload, list):
-            continue
-        out: list[dict[str, Any]] = []
-        for item in payload:
-            if isinstance(item, dict):
-                out.append(item)
-
-        meta["hit"] = True
-        meta["score"] = float(score)
-        meta["vector_id"] = rid
-        _flush_lookup_cleanup(adapter=adapter, cleanup_ids=cleanup_ids, meta=meta)
-        return out, meta
-
-    _flush_lookup_cleanup(adapter=adapter, cleanup_ids=cleanup_ids, meta=meta)
-    return None, meta
+        return None
 
 
 def set_cached_semantic_payload(
@@ -343,33 +469,26 @@ def set_cached_semantic_payload(
     document_ids: list[str],
     payload: list[dict[str, Any]],
 ) -> bool:
-    if not bool(getattr(settings, "SEMANTIC_CACHE_ENABLED", False)):
-        return False
-
-    ttl = int(getattr(settings, "SEMANTIC_CACHE_TTL_SEC", 300) or 0)
-    if ttl <= 0:
-        return False
-
-    client = _get_redis_client()
+    ttl, client = _semantic_cache_store_precheck()
     if client is None:
         return False
 
-    try:
-        scope_hash, vector_id = build_semantic_cache_scope_hash(
-            tenant_id=tenant_id,
-            account_id=account_id,
-            dataset_id=dataset_id,
-            corpus_cache_token=corpus_cache_token,
-            behavior_hash=behavior_hash,
-            query=query,
-            top_k=top_k,
-            score_threshold=score_threshold,
-            retrieval_mode=retrieval_mode,
-            metadata_filter=metadata_filter,
-            document_ids=document_ids,
-        )
-    except Exception:
+    scope_result = _semantic_cache_store_key_and_scope(
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=dataset_id,
+        corpus_cache_token=corpus_cache_token,
+        behavior_hash=behavior_hash,
+        query=query,
+        top_k=top_k,
+        score_threshold=score_threshold,
+        retrieval_mode=retrieval_mode,
+        metadata_filter=metadata_filter,
+        document_ids=document_ids,
+    )
+    if scope_result is None:
         return False
+    scope_hash, vector_id = scope_result
 
     max_bytes = int(getattr(settings, "SEMANTIC_CACHE_MAX_VALUE_BYTES", 400_000) or 0)
     try:
@@ -419,14 +538,7 @@ def set_cached_semantic_payload(
         return False
 
 
-def run_semantic_cache_retention(
-    *,
-    tenant_id: str | Any | None = None,
-    dry_run: bool,
-    max_delete: int,
-    max_scan: int | None = None,
-    now_epoch: int | None = None,
-) -> dict[str, Any]:
+def _semantic_cache_retention_limits(*, max_delete: int, max_scan: int | None, now_epoch: int | None) -> tuple[int, int, int]:
     now_epoch_i = int(now_epoch or time.time())
     try:
         max_delete_i = max(1, int(max_delete or 0))
@@ -436,15 +548,17 @@ def run_semantic_cache_retention(
         max_scan_i = max(1, int(max_scan or _RETENTION_MAX_SCAN_DEFAULT))
     except Exception:
         max_scan_i = _RETENTION_MAX_SCAN_DEFAULT
+    return now_epoch_i, max_delete_i, max_scan_i
 
-    tenant_id_s = None if tenant_id is None else str(tenant_id)
-    summary: dict[str, Any] = {
+
+def _semantic_cache_retention_summary(*, tenant_id: str | None, dry_run: bool, max_delete: int, max_scan: int, now_epoch: int) -> dict[str, Any]:
+    return {
         "job": "semantic-cache",
-        "tenant_id": tenant_id_s,
+        "tenant_id": tenant_id,
         "dry_run": bool(dry_run),
-        "max_delete": int(max_delete_i),
-        "max_scan": int(max_scan_i),
-        "ran_at_epoch": int(now_epoch_i),
+        "max_delete": int(max_delete),
+        "max_scan": int(max_scan),
+        "ran_at_epoch": int(now_epoch),
         "scanned": 0,
         "exhausted": False,
         "scan_limit_reached": False,
@@ -459,82 +573,93 @@ def run_semantic_cache_retention(
         "errors": [],
     }
 
-    try:
-        adapter = _get_adapter()
-    except Exception as exc:  # noqa: BLE001
-        summary["failed"] = True
-        summary["errors"].append(str(exc)[:200])
-        return summary
 
-    client = _get_redis_client()
+def _evaluate_retention_row(
+    *,
+    row: Any,
+    now_epoch: int,
+    client: Any,
+    delete_ids: list[str],
+    max_delete: int,
+    summary: dict[str, Any],
+) -> None:
+    if len(delete_ids) >= max_delete or not isinstance(row, dict):
+        return
+    row_id = str(row.get("id") or "").strip()
+    row_tenant_id = str(row.get("tenant_id") or "").strip()
+    if not row_id or not row_tenant_id:
+        summary["failed"] = True
+        summary["errors"].append("semantic cache maintenance row missing tenant scope")
+        return
+
+    expires_at = _coerce_epoch(row.get("expires_at_epoch"))
+    if expires_at is not None:
+        if expires_at <= now_epoch:
+            summary["expired_candidates"] += 1
+            delete_ids.append(row_id)
+        return
+
+    summary["legacy_rows_seen"] += 1
+    if client is None:
+        summary["legacy_rows_skipped"] += 1
+        return
+
+    key = _redis_payload_key(tenant_id=row_tenant_id, vector_id=row_id)
+    try:
+        raw = client.get(key)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Ignoring semantic cache retention redis check failure: %s", exc)
+        summary["legacy_rows_skipped"] += 1
+        return
+    if raw:
+        summary["legacy_rows_preserved"] += 1
+        return
+    summary["legacy_orphan_candidates"] += 1
+    delete_ids.append(row_id)
+
+
+def _collect_retention_delete_ids(
+    *,
+    adapter: Any,
+    client: Any,
+    tenant_id: str | None,
+    now_epoch: int,
+    max_delete: int,
+    max_scan: int,
+    summary: dict[str, Any],
+) -> tuple[list[str], bool]:
     delete_ids: list[str] = []
     exhausted = False
-    page_size = max(1, min(max_delete_i, 250))
+    page_size = max(1, min(max_delete, 250))
     iterator = None
-
     try:
         iterator = adapter.open_semantic_cache_maintenance_iterator(
-            tenant_id=str(tenant_id_s or ""),
-            batch_size=min(page_size, max_scan_i),
+            tenant_id=str(tenant_id or ""),
+            batch_size=min(page_size, max_scan),
         )
-        while (not exhausted) and summary["scanned"] < max_scan_i and len(delete_ids) < max_delete_i:
+        while (not exhausted) and summary["scanned"] < max_scan and len(delete_ids) < max_delete:
             rows = iterator.next_batch()
             if not rows:
                 exhausted = True
                 break
 
-            remaining_scan = max_scan_i - int(summary["scanned"] or 0)
+            remaining_scan = max_scan - int(summary["scanned"] or 0)
             batch_rows = rows[:remaining_scan]
             summary["scanned"] += len(batch_rows)
             if len(rows) > len(batch_rows):
                 exhausted = False
 
             for row in batch_rows:
-                if len(delete_ids) >= max_delete_i:
-                    break
-                if not isinstance(row, dict):
-                    continue
-                rid = str(row.get("id") or "").strip()
-                row_tenant_id = str(row.get("tenant_id") or "").strip()
-                if not rid or not row_tenant_id:
-                    summary["failed"] = True
-                    summary["errors"].append("semantic cache maintenance row missing tenant scope")
-                    break
-
-                expires_at = _coerce_epoch(row.get("expires_at_epoch"))
-                if expires_at is not None:
-                    if expires_at <= now_epoch_i:
-                        summary["expired_candidates"] += 1
-                        delete_ids.append(rid)
-                    continue
-
-                summary["legacy_rows_seen"] += 1
-                if client is None:
-                    summary["legacy_rows_skipped"] += 1
-                    continue
-
-                key = _redis_payload_key(tenant_id=row_tenant_id, vector_id=rid)
-                try:
-                    raw = client.get(key)
-                except Exception as exc:  # noqa: BLE001
-                    logger.debug("Ignoring semantic cache retention redis check failure: %s", exc)
-                    client = None
-                    summary["legacy_rows_skipped"] += 1
-                    continue
-                if raw:
-                    summary["legacy_rows_preserved"] += 1
-                    continue
-                summary["legacy_orphan_candidates"] += 1
-                delete_ids.append(rid)
-
+                _evaluate_retention_row(
+                    row=row,
+                    now_epoch=now_epoch,
+                    client=client,
+                    delete_ids=delete_ids,
+                    max_delete=max_delete,
+                    summary=summary,
+                )
             if summary["failed"]:
                 break
-    except MilvusMaintenanceError as exc:
-        summary["failed"] = True
-        summary["errors"].append(str(exc)[:200])
-    except Exception as exc:  # noqa: BLE001
-        summary["failed"] = True
-        summary["errors"].append(str(exc)[:200])
     finally:
         if iterator is not None:
             try:
@@ -542,6 +667,56 @@ def run_semantic_cache_retention(
             except MilvusMaintenanceError as exc:
                 summary["failed"] = True
                 summary["errors"].append(str(exc)[:200])
+    return delete_ids, exhausted
+
+
+def run_semantic_cache_retention(
+    *,
+    tenant_id: str | Any | None = None,
+    dry_run: bool,
+    max_delete: int,
+    max_scan: int | None = None,
+    now_epoch: int | None = None,
+) -> dict[str, Any]:
+    now_epoch_i, max_delete_i, max_scan_i = _semantic_cache_retention_limits(
+        max_delete=max_delete,
+        max_scan=max_scan,
+        now_epoch=now_epoch,
+    )
+    tenant_id_s = None if tenant_id is None else str(tenant_id)
+    summary = _semantic_cache_retention_summary(
+        tenant_id=tenant_id_s,
+        dry_run=dry_run,
+        max_delete=max_delete_i,
+        max_scan=max_scan_i,
+        now_epoch=now_epoch_i,
+    )
+
+    try:
+        adapter = _get_adapter()
+    except Exception as exc:  # noqa: BLE001
+        summary["failed"] = True
+        summary["errors"].append(str(exc)[:200])
+        return summary
+
+    delete_ids: list[str] = []
+    exhausted = False
+    try:
+        delete_ids, exhausted = _collect_retention_delete_ids(
+            adapter=adapter,
+            client=_get_redis_client(),
+            tenant_id=tenant_id_s,
+            now_epoch=now_epoch_i,
+            max_delete=max_delete_i,
+            max_scan=max_scan_i,
+            summary=summary,
+        )
+    except MilvusMaintenanceError as exc:
+        summary["failed"] = True
+        summary["errors"].append(str(exc)[:200])
+    except Exception as exc:  # noqa: BLE001
+        summary["failed"] = True
+        summary["errors"].append(str(exc)[:200])
 
     summary["exhausted"] = bool(exhausted)
     summary["scan_limit_reached"] = bool((not exhausted) and summary["scanned"] >= max_scan_i and len(delete_ids) < max_delete_i)

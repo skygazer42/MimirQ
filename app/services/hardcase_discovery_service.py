@@ -90,6 +90,46 @@ def _safe_rag_config_template(raw: Any) -> dict[str, Any] | None:
     return out or None
 
 
+def _read_jsonl_tail_bytes(path: Path, *, max_bytes: int) -> tuple[bytes | None, bool]:
+    try:
+        size = int(path.stat().st_size)
+    except Exception:
+        return None, False
+
+    start = max(0, size - max_bytes)
+    truncated = start > 0
+    try:
+        with path.open("rb") as handle:
+            if start:
+                handle.seek(start)
+            return handle.read(), truncated
+    except Exception:
+        return None, truncated
+
+
+def _drop_partial_first_jsonl_line(raw: bytes, *, truncated: bool) -> bytes:
+    if not truncated:
+        return raw
+    newline_index = raw.find(b"\n")
+    return raw[newline_index + 1 :] if newline_index >= 0 else raw
+
+
+def _parse_jsonl_dict_records(text: str) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for raw_line in text.splitlines():
+        line = (raw_line or "").strip()
+        if not line:
+            continue
+        try:
+            payload = json.loads(line)
+        except Exception:
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            continue
+        if isinstance(payload, dict):
+            records.append(payload)
+    return records
+
+
 def read_jsonl_tail(path: str | Path, *, max_bytes: int) -> tuple[list[dict[str, Any]], bool]:
     """
     Read the tail of a JSONL file (bounded) and parse dict records.
@@ -98,49 +138,15 @@ def read_jsonl_tail(path: str | Path, *, max_bytes: int) -> tuple[list[dict[str,
     `truncated=true` means we started reading from the middle of the file.
     """
     max_bytes = max(1, int(max_bytes or 0))
-    p = Path(path)
-
-    try:
-        st = p.stat()
-        size = int(st.st_size)
-    except Exception:
-        return [], False
-
-    start = max(0, size - max_bytes)
-    truncated = start > 0
-
-    try:
-        with p.open("rb") as f:
-            if start:
-                f.seek(start)
-            raw = f.read()
-    except Exception:
+    raw, truncated = _read_jsonl_tail_bytes(Path(path), max_bytes=max_bytes)
+    if raw is None:
         return [], truncated
-
-    if start:
-        # Drop partial first line when reading from the middle.
-        nl = raw.find(b"\n")
-        if nl >= 0:
-            raw = raw[nl + 1 :]
-
+    raw = _drop_partial_first_jsonl_line(raw, truncated=truncated)
     try:
         text = raw.decode("utf-8", errors="replace")
     except Exception:
         return [], truncated
-
-    records: list[dict[str, Any]] = []
-    for line in text.splitlines():
-        line = (line or "").strip()
-        if not line:
-            continue
-        try:
-            obj = json.loads(line)
-        except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
-        if isinstance(obj, dict):
-            records.append(obj)
-    return records, truncated
+    return _parse_jsonl_dict_records(text), truncated
 
 
 def build_rag_trace_index_from_records(
@@ -239,6 +245,111 @@ def _merge_counts(dst: MutableMapping[str, int], src: Any) -> None:
         dst[kk] = int(dst.get(kk, 0) or 0) + iv
 
 
+def _normalized_existing_ids(values: set[str]) -> set[str]:
+    return {str(value) for value in (values or set()) if str(value)}
+
+
+def _feedback_cluster_identity(
+    feedback: Mapping[str, Any],
+    *,
+    trace_index: Mapping[str, Mapping[str, Any]],
+    existing_feedback_ids: set[str],
+) -> tuple[str, str, str, Mapping[str, Any]] | None:
+    feedback_id = _safe_str(feedback.get("feedback_id") or feedback.get("id"), max_len=200)
+    if not feedback_id or feedback_id in existing_feedback_ids:
+        return None
+
+    request_id = _safe_str(feedback.get("request_id"), max_len=200)
+    if not request_id:
+        return None
+
+    trace = trace_index.get(request_id)
+    if not isinstance(trace, Mapping):
+        return None
+
+    question_hash = _safe_str(trace.get("question_hash") or trace.get("query_hash"), max_len=64)
+    if not question_hash:
+        return None
+    return feedback_id, request_id, question_hash, trace
+
+
+def _new_feedback_cluster(*, question_hash: str, trace: Mapping[str, Any], in_suite: bool) -> dict[str, Any]:
+    return {
+        "question_hash": question_hash,
+        "in_suite": in_suite,
+        "cluster_size": 0,
+        "feedback_ids": [],
+        "request_ids": [],
+        "retrieval_error_kinds": defaultdict(int),
+        "representative_trace": dict(trace),
+    }
+
+
+def _update_feedback_cluster(
+    cluster: dict[str, Any],
+    *,
+    feedback_id: str,
+    request_id: str,
+    trace: Mapping[str, Any],
+) -> None:
+    cluster["cluster_size"] = int(cluster.get("cluster_size") or 0) + 1
+
+    feedback_ids: list[str] = cluster.get("feedback_ids") or []
+    if feedback_id not in feedback_ids and len(feedback_ids) < 50:
+        feedback_ids.append(feedback_id)
+    cluster["feedback_ids"] = feedback_ids
+
+    request_ids: list[str] = cluster.get("request_ids") or []
+    added_new_request = False
+    if request_id not in request_ids and len(request_ids) < 50:
+        request_ids.append(request_id)
+        added_new_request = True
+    cluster["request_ids"] = request_ids
+    if added_new_request:
+        _merge_counts(cluster["retrieval_error_kinds"], trace.get("retrieval_error_kinds"))
+    _maybe_replace_representative_trace(cluster, trace=trace)
+
+
+def _maybe_replace_representative_trace(cluster: dict[str, Any], *, trace: Mapping[str, Any]) -> None:
+    representative = cluster.get("representative_trace") or {}
+    representative_ts = _to_int(representative.get("ts_ms"), default=0) if isinstance(representative, Mapping) else 0
+    trace_ts = _to_int(trace.get("ts_ms"), default=0)
+    if trace_ts > representative_ts:
+        cluster["representative_trace"] = dict(trace)
+        return
+    if trace_ts != representative_ts:
+        return
+    representative_request_id = str(representative.get("request_id") or "")
+    current_request_id = str(trace.get("request_id") or "")
+    if current_request_id and (not representative_request_id or current_request_id < representative_request_id):
+        cluster["representative_trace"] = dict(trace)
+
+
+def _cluster_error_counts(cluster: dict[str, Any]) -> dict[str, int]:
+    raw_counts = cluster.get("retrieval_error_kinds")
+    if not isinstance(raw_counts, Mapping):
+        return {}
+    return {str(key): int(value) for key, value in raw_counts.items() if key is not None}
+
+
+def _build_feedback_hardcase_candidate(question_hash: str, cluster: dict[str, Any]) -> dict[str, Any]:
+    representative = cluster.get("representative_trace") or {}
+    representative_map = representative if isinstance(representative, Mapping) else {}
+    candidate: dict[str, Any] = {
+        "question_hash": question_hash,
+        "cluster_size": int(cluster.get("cluster_size") or 0),
+        "in_suite": bool(cluster.get("in_suite") or False),
+        "feedback_ids": list(cluster.get("feedback_ids") or []),
+        "request_ids": list(cluster.get("request_ids") or []),
+        "retrieval_config_hash": representative_map.get("retrieval_config_hash"),
+        "citations_count": representative_map.get("citations_count"),
+        "retrieval_error_kinds": _cluster_error_counts(cluster),
+    }
+    if representative_map.get("rag_config_template") is not None:
+        candidate["rag_config_template"] = representative_map.get("rag_config_template")
+    return candidate
+
+
 def plan_feedback_hardcase_candidates(
     *,
     feedback_rows: Sequence[Mapping[str, Any]],
@@ -257,107 +368,28 @@ def plan_feedback_hardcase_candidates(
     if cap <= 0:
         return []
 
-    existing_fids = {str(x) for x in (existing_feedback_ids or set()) if str(x)}
-    existing_qh = {str(x) for x in (existing_question_hashes or set()) if str(x)}
-
+    existing_fids = _normalized_existing_ids(existing_feedback_ids)
+    existing_qh = _normalized_existing_ids(existing_question_hashes)
     clusters: dict[str, dict[str, Any]] = {}
 
     for fb in feedback_rows or []:
         if not isinstance(fb, Mapping):
             continue
-
-        feedback_id = _safe_str(fb.get("feedback_id") or fb.get("id"), max_len=200)
-        if not feedback_id or feedback_id in existing_fids:
+        cluster_identity = _feedback_cluster_identity(fb, trace_index=trace_index, existing_feedback_ids=existing_fids)
+        if cluster_identity is None:
             continue
-
-        request_id = _safe_str(fb.get("request_id"), max_len=200)
-        if not request_id:
-            continue
-
-        trace = trace_index.get(request_id)
-        if not isinstance(trace, Mapping):
-            continue
-
-        qh = _safe_str(trace.get("question_hash") or trace.get("query_hash"), max_len=64)
-        if not qh:
-            continue
-
-        cl = clusters.get(qh)
-        if cl is None:
-            cl = {
-                "question_hash": qh,
-                "in_suite": bool(qh in existing_qh),
-                "cluster_size": 0,
-                "feedback_ids": [],
-                "request_ids": [],
-                "retrieval_error_kinds": defaultdict(int),
-                "representative_trace": dict(trace),
-            }
-            clusters[qh] = cl
-
-        cl["cluster_size"] = int(cl.get("cluster_size") or 0) + 1
-
-        # Keep small samples for reviewers (bounded).
-        fb_ids: list[str] = cl.get("feedback_ids") or []
-        if feedback_id not in fb_ids and len(fb_ids) < 50:
-            fb_ids.append(feedback_id)
-        cl["feedback_ids"] = fb_ids
-
-        req_ids: list[str] = cl.get("request_ids") or []
-        added_new_request = False
-        if request_id not in req_ids and len(req_ids) < 50:
-            req_ids.append(request_id)
-            added_new_request = True
-        cl["request_ids"] = req_ids
-
-        # Aggregate error kinds per *unique trace* (request_id) to avoid double-counting
-        # when multiple feedback rows reference the same request.
-        if added_new_request:
-            _merge_counts(cl["retrieval_error_kinds"], trace.get("retrieval_error_kinds"))
-
-        # Representative trace: prefer latest ts_ms (deterministic tie-break by request_id).
-        rep = cl.get("representative_trace") or {}
-        rep_ts = _to_int(rep.get("ts_ms"), default=0) if isinstance(rep, Mapping) else 0
-        trace_ts = _to_int(trace.get("ts_ms"), default=0)
-        if trace_ts > rep_ts:
-            cl["representative_trace"] = dict(trace)
-        elif trace_ts == rep_ts:
-            rep_rid = str(rep.get("request_id") or "")
-            cur_rid = str(trace.get("request_id") or "")
-            if cur_rid and (not rep_rid or cur_rid < rep_rid):
-                cl["representative_trace"] = dict(trace)
+        feedback_id, request_id, question_hash, trace = cluster_identity
+        cluster = clusters.get(question_hash)
+        if cluster is None:
+            cluster = _new_feedback_cluster(question_hash=question_hash, trace=trace, in_suite=question_hash in existing_qh)
+            clusters[question_hash] = cluster
+        _update_feedback_cluster(cluster, feedback_id=feedback_id, request_id=request_id, trace=trace)
 
     candidates: list[dict[str, Any]] = []
-    for qh, cl in clusters.items():
-        in_suite = bool(cl.get("in_suite") or False)
-        if in_suite and not include_existing:
+    for question_hash, cluster in clusters.items():
+        if bool(cluster.get("in_suite") or False) and not include_existing:
             continue
-
-        rep = cl.get("representative_trace") or {}
-        rep_map = rep if isinstance(rep, Mapping) else {}
-
-        err_counts: dict[str, int]
-        raw_err = cl.get("retrieval_error_kinds")
-        if isinstance(raw_err, Mapping):
-            err_counts = {str(k): int(v) for k, v in raw_err.items() if k is not None}
-        else:
-            err_counts = {}
-
-        item: dict[str, Any] = {
-            "question_hash": qh,
-            "cluster_size": int(cl.get("cluster_size") or 0),
-            "in_suite": in_suite,
-            "feedback_ids": list(cl.get("feedback_ids") or []),
-            "request_ids": list(cl.get("request_ids") or []),
-            "retrieval_config_hash": rep_map.get("retrieval_config_hash"),
-            "citations_count": rep_map.get("citations_count"),
-            "retrieval_error_kinds": err_counts,
-        }
-
-        if rep_map.get("rag_config_template") is not None:
-            item["rag_config_template"] = rep_map.get("rag_config_template")
-
-        candidates.append(item)
+        candidates.append(_build_feedback_hardcase_candidate(question_hash, cluster))
 
     # Deterministic ordering: larger clusters first, then hash.
     candidates.sort(key=lambda x: (-int(x.get("cluster_size") or 0), str(x.get("question_hash") or "")))

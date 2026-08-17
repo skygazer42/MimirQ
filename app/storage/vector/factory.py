@@ -183,6 +183,64 @@ def _yield_refill_lock_handoff() -> None:
     time.sleep(0.001)
 
 
+def _similarity_hits(
+    *,
+    results: list[Any],
+    score_threshold: float,
+    allowed: set[str] | None,
+    metadata_filter: dict[str, Any] | None,
+    metadata_loader,
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for doc, score in results:
+        metadata = metadata_loader(doc)
+        if allowed and metadata.get("document_id") not in allowed:
+            continue
+        if metadata_filter and not _match_metadata_filter(metadata, metadata_filter):
+            continue
+        similarity = 1.0 / (1.0 + float(score))
+        if similarity < score_threshold:
+            continue
+        out.append(
+            {
+                "chunk_id": doc.id,
+                "content": doc.page_content,
+                "metadata": metadata,
+                "score": similarity,
+                "vector_score": similarity,
+            }
+        )
+    return out
+
+
+def _docstore_ids_matching_filter(docstore: Any, *, document_id: UUID, metadata_filter: dict[str, Any]) -> list[str]:
+    target = str(document_id)
+    ids_to_delete: list[str] = []
+    try:
+        for doc_id, doc in getattr(docstore, "_dict", {}).items():
+            metadata = getattr(doc, "metadata", None) or {}
+            if str(metadata.get("document_id") or "") != target:
+                continue
+            if _match_metadata_filter(metadata, metadata_filter):
+                ids_to_delete.append(str(doc_id))
+    except Exception:
+        return []
+    return ids_to_delete
+
+
+def _chroma_ids_matching_filter(collection: Any, *, document_id: UUID, metadata_filter: dict[str, Any]) -> list[str]:
+    got = collection.get(where={"document_id": str(document_id)}, include=["metadatas"])
+    ids = got.get("ids") or []
+    metadatas = got.get("metadatas") or []
+    ids_to_delete: list[str] = []
+    for chunk_id, metadata in zip(ids, metadatas, strict=False):
+        if not isinstance(metadata, dict):
+            continue
+        if _match_metadata_filter(_decode_chroma_metadata(metadata), metadata_filter):
+            ids_to_delete.append(str(chunk_id))
+    return ids_to_delete
+
+
 class BaseVectorStore:
     """Unified interface for future FAISS/Chroma/Memory extensions."""
 
@@ -542,25 +600,13 @@ class FAISSVectorStore(BaseVectorStore):
                 if requested_k <= 0:
                     return []
                 results = store.similarity_search_with_score(query, k=requested_k)
-            out = []
-            for doc, score in results:
-                meta = doc.metadata or {}
-                if allowed and meta.get("document_id") not in allowed:
-                    continue
-                if metadata_filter and not _match_metadata_filter(meta, metadata_filter):
-                    continue
-                similarity = 1.0 / (1.0 + float(score))
-                if similarity < score_threshold:
-                    continue
-                out.append(
-                    {
-                        "chunk_id": doc.id,
-                        "content": doc.page_content,
-                        "metadata": meta,
-                        "score": similarity,
-                        "vector_score": similarity,
-                    }
-                )
+            out = _similarity_hits(
+                results=results,
+                score_threshold=score_threshold,
+                allowed=allowed,
+                metadata_filter=metadata_filter,
+                metadata_loader=lambda doc: doc.metadata or {},
+            )
             if not _should_expand_candidate_window(
                 accepted_hits=len(out),
                 top_k=top_k,
@@ -624,18 +670,11 @@ class FAISSVectorStore(BaseVectorStore):
             if store is None:
                 return
 
-            target = str(document_id)
-            ids_to_delete: list[str] = []
-            try:
-                for doc_id, doc in getattr(store.docstore, "_dict", {}).items():
-                    meta = getattr(doc, "metadata", None) or {}
-                    if str(meta.get("document_id") or "") != target:
-                        continue
-                    if _match_metadata_filter(meta, metadata_filter):
-                        ids_to_delete.append(str(doc_id))
-            except Exception:
-                ids_to_delete = []
-
+            ids_to_delete = _docstore_ids_matching_filter(
+                getattr(store, "docstore", None),
+                document_id=document_id,
+                metadata_filter=metadata_filter,
+            )
             if not ids_to_delete:
                 return
 
@@ -754,25 +793,13 @@ class ChromaVectorStore(BaseVectorStore):
                 if requested_k <= 0:
                     return []
                 results = store.similarity_search_with_score(query, k=requested_k)
-            out = []
-            for doc, score in results:
-                meta = _decode_chroma_metadata(doc.metadata or {})
-                if allowed and meta.get("document_id") not in allowed:
-                    continue
-                if metadata_filter and not _match_metadata_filter(meta, metadata_filter):
-                    continue
-                similarity = 1.0 / (1.0 + float(score))
-                if similarity < score_threshold:
-                    continue
-                out.append(
-                    {
-                        "chunk_id": doc.id,
-                        "content": doc.page_content,
-                        "metadata": meta,
-                        "score": similarity,
-                        "vector_score": similarity,
-                    }
-                )
+            out = _similarity_hits(
+                results=results,
+                score_threshold=score_threshold,
+                allowed=allowed,
+                metadata_filter=metadata_filter,
+                metadata_loader=lambda doc: _decode_chroma_metadata(doc.metadata or {}),
+            )
             if not _should_expand_candidate_window(
                 accepted_hits=len(out),
                 top_k=top_k,
@@ -812,23 +839,17 @@ class ChromaVectorStore(BaseVectorStore):
                 return self.delete_by_document_id(document_id, tenant_id=tenant_id)
 
             _, store = self._get_store(tenant_id)
-            target = str(document_id)
 
             # Chroma's where spec isn't compatible with our generic filter syntax.
             # Instead: fetch all rows for this document_id (which is cheap for typical local-dev usage),
             # then filter in Python with our matcher and delete by explicit IDs.
             try:
                 collection = store._collection  # type: ignore[attr-defined]
-                # Note: Chroma's `include` does not accept "ids" (they are always returned).
-                got = collection.get(where={"document_id": target}, include=["metadatas"])
-                ids = got.get("ids") or []
-                metas = got.get("metadatas") or []
-                ids_to_delete: list[str] = []
-                for cid, meta in zip(ids, metas, strict=False):
-                    if not isinstance(meta, dict):
-                        continue
-                    if _match_metadata_filter(_decode_chroma_metadata(meta), metadata_filter):
-                        ids_to_delete.append(str(cid))
+                ids_to_delete = _chroma_ids_matching_filter(
+                    collection,
+                    document_id=document_id,
+                    metadata_filter=metadata_filter,
+                )
                 if not ids_to_delete:
                     return
                 collection.delete(ids=ids_to_delete)

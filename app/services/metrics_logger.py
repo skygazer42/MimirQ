@@ -168,22 +168,23 @@ def _json_default(value: Any) -> Any:
         return asdict(value)
     if isinstance(value, Exception):
         return str(value)
-
-    model_dump = getattr(value, "model_dump", None)
-    if callable(model_dump):
-        try:
-            return model_dump()
-        except Exception as exc:
-            logger.debug(_SERVICE_FALLBACK_LOG_MESSAGE, exc)
-
-    to_dict = getattr(value, "dict", None)
-    if callable(to_dict):
-        try:
-            return to_dict()
-        except Exception as exc:
-            logger.debug(_SERVICE_FALLBACK_LOG_MESSAGE, exc)
-
+    for method_name in ("model_dump", "dict"):
+        dumped = _maybe_json_dump_via_method(value, method_name)
+        if dumped is not None:
+            return dumped
     return str(value)
+
+
+def _maybe_json_dump_via_method(value: Any, method_name: str) -> Any:
+    method = getattr(value, method_name, None)
+    if not callable(method):
+        return None
+    try:
+        return method()
+    except Exception as exc:
+        logger.debug(_SERVICE_FALLBACK_LOG_MESSAGE, exc)
+        return None
+
 
 
 def _maybe_redact(obj: Any) -> Any:
@@ -233,6 +234,71 @@ _CITATION_SAFE_KEYS = {
 }
 
 
+def _trimmed_metric_text(value: Any, *, max_len: int) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    return text[:max_len]
+
+
+def _bounded_metric_int(value: Any) -> int | None:
+    try:
+        return int(value) if value is not None else None
+    except Exception as exc:
+        logger.debug(_SERVICE_FALLBACK_LOG_MESSAGE, exc)
+        return None
+
+
+def _sanitize_kg_path_node(raw: Any) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    node: dict[str, Any] = {}
+    kind = _trimmed_metric_text(raw.get("kind"), max_len=30)
+    if kind:
+        node["kind"] = kind
+    for key in ("entity_id", "type", "event_id", "document_id", "chunk_id"):
+        value = _trimmed_metric_text(raw.get(key), max_len=200)
+        if value:
+            node[key] = value
+    return node or None
+
+
+def _sanitize_kg_path_edge(raw: Any) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    edge: dict[str, Any] = {}
+    kind = _trimmed_metric_text(raw.get("kind"), max_len=30)
+    if kind:
+        edge["kind"] = kind
+    for key in (
+        "entity_id",
+        "event_id",
+        "document_id",
+        "chunk_id",
+        "relation_id",
+        "predicate",
+        "confidence_bucket",
+        "evidence_source",
+    ):
+        value = _trimmed_metric_text(raw.get(key), max_len=200)
+        if value:
+            edge[key] = value
+    return edge or None
+
+
+def _sanitize_kg_path_items(raw_items: Any, *, sanitizer) -> list[dict[str, Any]] | None:
+    if not isinstance(raw_items, list) or not raw_items:
+        return None
+    items: list[dict[str, Any]] = []
+    for raw in raw_items:
+        item = sanitizer(raw)
+        if item:
+            items.append(item)
+        if len(items) >= 10:
+            break
+    return items or None
+
+
 def _safe_kg_path_provenance(raw: Any) -> dict[str, Any] | None:
     """
     Sanitize shortest-path provenance payloads for JSONL metrics.
@@ -244,78 +310,48 @@ def _safe_kg_path_provenance(raw: Any) -> dict[str, Any] | None:
         return None
 
     out: dict[str, Any] = {}
-    schema = str(raw.get("schema") or "").strip()
+    schema = _trimmed_metric_text(raw.get("schema"), max_len=80)
     if schema:
-        out["schema"] = schema[:80]
-    kind = str(raw.get("kind") or "").strip()
+        out["schema"] = schema
+    kind = _trimmed_metric_text(raw.get("kind"), max_len=50)
     if kind:
-        out["kind"] = kind[:50]
-    try:
-        if raw.get("hops") is not None:
-            out["hops"] = int(raw.get("hops") or 0)
-    except Exception as exc:
-        logger.debug(_SERVICE_FALLBACK_LOG_MESSAGE, exc)
-
-    nodes_raw = raw.get("nodes")
-    if isinstance(nodes_raw, list) and nodes_raw:
-        nodes: list[dict[str, Any]] = []
-        for n in nodes_raw:
-            if not isinstance(n, dict):
-                continue
-            node: dict[str, Any] = {}
-            k = str(n.get("kind") or "").strip()
-            if k:
-                node["kind"] = k[:30]
-            for key in ("entity_id", "type", "event_id", "document_id", "chunk_id"):
-                v = n.get(key)
-                if v is None:
-                    continue
-                s = str(v).strip()
-                if not s:
-                    continue
-                node[key] = s[:200]
-            if node:
-                nodes.append(node)
-            if len(nodes) >= 10:
-                break
-        if nodes:
-            out["nodes"] = nodes
-
-    edges_raw = raw.get("edges")
-    if isinstance(edges_raw, list) and edges_raw:
-        edges: list[dict[str, Any]] = []
-        for e in edges_raw:
-            if not isinstance(e, dict):
-                continue
-            edge: dict[str, Any] = {}
-            k = str(e.get("kind") or "").strip()
-            if k:
-                edge["kind"] = k[:30]
-            for key in (
-                "entity_id",
-                "event_id",
-                "document_id",
-                "chunk_id",
-                "relation_id",
-                "predicate",
-                "confidence_bucket",
-                "evidence_source",
-            ):
-                v = e.get(key)
-                if v is None:
-                    continue
-                s = str(v).strip()
-                if not s:
-                    continue
-                edge[key] = s[:200]
-            if edge:
-                edges.append(edge)
-            if len(edges) >= 10:
-                break
-        if edges:
-            out["edges"] = edges
+        out["kind"] = kind
+    hops = _bounded_metric_int(raw.get("hops"))
+    if hops is not None:
+        out["hops"] = hops
+    nodes = _sanitize_kg_path_items(raw.get("nodes"), sanitizer=_sanitize_kg_path_node)
+    if nodes:
+        out["nodes"] = nodes
+    edges = _sanitize_kg_path_items(raw.get("edges"), sanitizer=_sanitize_kg_path_edge)
+    if edges:
+        out["edges"] = edges
 
     return out or None
+
+
+def _strip_metrics_text_field(out: dict[str, Any], *, source_key: str, hash_key: str, length_key: str) -> None:
+    raw = out.pop(source_key, None)
+    if not isinstance(raw, str) or not raw.strip():
+        return
+    text = raw.strip()
+    out.setdefault(hash_key, _hash_text(text))
+    out.setdefault(length_key, len(text))
+
+
+def _safe_metric_citation_item(citation: Any) -> dict[str, Any] | None:
+    if not isinstance(citation, dict):
+        return None
+    item: dict[str, Any] = {}
+    for key in _CITATION_SAFE_KEYS:
+        if key not in citation:
+            continue
+        if key == "kg_path_provenance":
+            provenance = _safe_kg_path_provenance(citation.get(key))
+            if provenance:
+                item[key] = provenance
+            continue
+        item[key] = citation.get(key)
+    return item
 
 
 def _strip_text_fields_for_metrics(record: dict[str, Any]) -> dict[str, Any]:
@@ -333,37 +369,18 @@ def _strip_text_fields_for_metrics(record: dict[str, Any]) -> dict[str, Any]:
         return record
 
     out = dict(record)
-
-    question = out.pop("question", None)
-    if isinstance(question, str) and question.strip():
-        q = question.strip()
-        out.setdefault("question_hash", _hash_text(q))
-        out.setdefault("question_chars", len(q))
-
-    query = out.pop("query_for_retrieval", None)
-    if isinstance(query, str) and query.strip():
-        q = query.strip()
-        out.setdefault("query_hash", _hash_text(q))
-        out.setdefault("query_chars", len(q))
+    _strip_metrics_text_field(out, source_key="question", hash_key="question_hash", length_key="question_chars")
+    _strip_metrics_text_field(
+        out,
+        source_key="query_for_retrieval",
+        hash_key="query_hash",
+        length_key="query_chars",
+    )
 
     # Citations can include document snippets; keep only numeric + identifiers.
     citations = out.get("citations")
     if isinstance(citations, list):
-        safe: list[dict[str, Any]] = []
-        for c in citations:
-            if not isinstance(c, dict):
-                continue
-            item: dict[str, Any] = {}
-            for k in _CITATION_SAFE_KEYS:
-                if k not in c:
-                    continue
-                if k == "kg_path_provenance":
-                    prov = _safe_kg_path_provenance(c.get(k))
-                    if prov:
-                        item[k] = prov
-                    continue
-                item[k] = c.get(k)
-            safe.append(item)
+        safe = [item for item in (_safe_metric_citation_item(citation) for citation in citations) if item is not None]
         out["citations"] = safe
 
     return out
@@ -620,6 +637,38 @@ def _sanitize_otel_attributes(attributes: Mapping[str, Any] | None) -> dict[str,
     return out
 
 
+def _start_optional_otel_span(tracer: Any, span_name: str) -> tuple[Any | None, Any | None]:
+    try:
+        span_cm = tracer.start_as_current_span(str(span_name or "").strip() or "span")
+        return span_cm, span_cm.__enter__()
+    except Exception as exc:
+        logger.debug(_SERVICE_FALLBACK_LOG_MESSAGE, exc)
+        return None, None
+
+
+def _set_optional_span_status(span: Any, status_cls: Any, status_code: Any, *, error: Exception | None = None) -> None:
+    if span is None or not getattr(span, "is_recording", lambda: False)():
+        return
+    if error is not None:
+        with contextlib.suppress(Exception):
+            span.record_exception(error)
+        with contextlib.suppress(Exception):
+            span.set_status(status_cls(status_code.ERROR, str(error)[:200]))
+        return
+    with contextlib.suppress(Exception):
+        span.set_status(status_cls(status_code.OK))
+
+
+def _close_optional_span(span_cm: Any, error: Exception | None) -> None:
+    if span_cm is None:
+        return
+    with contextlib.suppress(Exception):
+        if error is None:
+            span_cm.__exit__(None, None, None)
+        else:
+            span_cm.__exit__(type(error), error, error.__traceback__)
+
+
 @contextlib.contextmanager
 def _optional_otel_span(span_name: str, *, attributes: Mapping[str, Any] | None = None):
     tracer = _get_optional_otel_tracer()
@@ -629,16 +678,8 @@ def _optional_otel_span(span_name: str, *, attributes: Mapping[str, Any] | None 
         return
 
     _otel_trace, status_cls, status_code = api
-    span_cm = None
-    span = None
+    span_cm, span = _start_optional_otel_span(tracer, span_name)
     caught_exc: Exception | None = None
-    try:
-        span_cm = tracer.start_as_current_span(str(span_name or "").strip() or "span")
-        span = span_cm.__enter__()
-    except Exception as exc:
-        logger.debug(_SERVICE_FALLBACK_LOG_MESSAGE, exc)
-        span_cm = None
-        span = None
 
     if span is not None and getattr(span, "is_recording", lambda: False)():
         for key, value in _sanitize_otel_attributes(attributes).items():
@@ -649,23 +690,12 @@ def _optional_otel_span(span_name: str, *, attributes: Mapping[str, Any] | None 
         yield span
     except Exception as exc:  # noqa: BLE001
         caught_exc = exc
-        if span is not None and getattr(span, "is_recording", lambda: False)():
-            with contextlib.suppress(Exception):
-                span.record_exception(exc)
-            with contextlib.suppress(Exception):
-                span.set_status(status_cls(status_code.ERROR, str(exc)[:200]))
+        _set_optional_span_status(span, status_cls, status_code, error=exc)
         raise
     else:
-        if span is not None and getattr(span, "is_recording", lambda: False)():
-            with contextlib.suppress(Exception):
-                span.set_status(status_cls(status_code.OK))
+        _set_optional_span_status(span, status_cls, status_code)
     finally:
-        if span_cm is not None:
-            with contextlib.suppress(Exception):
-                if caught_exc is None:
-                    span_cm.__exit__(None, None, None)
-                else:
-                    span_cm.__exit__(type(caught_exc), caught_exc, caught_exc.__traceback__)
+        _close_optional_span(span_cm, caught_exc)
 
 
 @contextlib.contextmanager

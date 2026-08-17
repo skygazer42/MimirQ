@@ -100,6 +100,40 @@ def _normalize_tags(values: Sequence[Any] | None, *, prefixes: Sequence[str] | N
     return out
 
 
+def _normalized_reference_source_identity(item: dict[str, Any]) -> tuple[str, str] | None:
+    document_id = _safe_uuid_text(item.get("document_id"))
+    chunk_id = _safe_uuid_text(item.get("chunk_id"))
+    if not document_id or not chunk_id:
+        return None
+    return document_id, chunk_id
+
+
+def _normalized_reference_source_payload(item: dict[str, Any], *, document_id: str, chunk_id: str) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "document_id": document_id,
+        "chunk_id": chunk_id,
+    }
+    for field_name, min_value in (
+        ("page_number", 1),
+        ("start_char", 0),
+        ("end_char", 0),
+        ("chunk_index", 0),
+    ):
+        value_int = _safe_int(item.get(field_name), min_value=min_value)
+        if value_int is not None:
+            payload[field_name] = value_int
+    for field_name, max_len in (
+        ("doc_pipeline_key", 128),
+        ("pipeline_hash", 128),
+        ("quote", 2000),
+        ("label", 128),
+    ):
+        text = _safe_text(item.get(field_name), max_len=max_len)
+        if text:
+            payload[field_name] = text
+    return payload
+
+
 def normalize_reference_sources(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
@@ -108,38 +142,14 @@ def normalize_reference_sources(value: Any) -> list[dict[str, Any]]:
     for item in value:
         if not isinstance(item, dict):
             continue
-        document_id = _safe_uuid_text(item.get("document_id"))
-        chunk_id = _safe_uuid_text(item.get("chunk_id"))
-        if not document_id or not chunk_id:
+        identity = _normalized_reference_source_identity(item)
+        if identity is None:
             continue
-        key = (document_id, chunk_id)
+        key = identity
         if key in seen:
             continue
         seen.add(key)
-
-        payload: dict[str, Any] = {
-            "document_id": document_id,
-            "chunk_id": chunk_id,
-        }
-        for field_name, min_value in (
-            ("page_number", 1),
-            ("start_char", 0),
-            ("end_char", 0),
-            ("chunk_index", 0),
-        ):
-            value_int = _safe_int(item.get(field_name), min_value=min_value)
-            if value_int is not None:
-                payload[field_name] = value_int
-        for field_name, max_len in (
-            ("doc_pipeline_key", 128),
-            ("pipeline_hash", 128),
-            ("quote", 2000),
-            ("label", 128),
-        ):
-            text = _safe_text(item.get(field_name), max_len=max_len)
-            if text:
-                payload[field_name] = text
-        out.append(payload)
+        out.append(_normalized_reference_source_payload(item, document_id=key[0], chunk_id=key[1]))
         if len(out) >= 100:
             break
     return out
@@ -421,33 +431,43 @@ def _evaluate_gate_policy_decision(*, failed_checks: int, policy_profile: dict[s
     }
 
 
+def _comparison_metric_root_value(*, comparison: dict[str, Any], root: str, key: str) -> float | None:
+    metric_groups = {
+        "candidate": ("candidate_metrics", "candidate_eval_summary"),
+        "baseline": ("baseline_metrics", "baseline_eval_summary"),
+    }
+    if root in {"delta", "deltas"}:
+        return _as_float((comparison.get("deltas") or {}).get(key))
+    groups = metric_groups.get(root)
+    if groups is None:
+        return None
+    metrics_key, summary_key = groups
+    if key in {"hit", "mrr", "recall", "ndcg"}:
+        return _as_float((comparison.get(metrics_key) or {}).get(key))
+    if key.startswith("cases_"):
+        return _as_float((comparison.get(summary_key) or {}).get(key))
+    return None
+
+
+def _comparison_nested_metric_value(*, comparison: dict[str, Any], parts: list[str]) -> float | None:
+    current: Any = comparison
+    for part in parts:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(part)
+    return _as_float(current)
+
+
 def _comparison_metric_value(*, comparison: dict[str, Any], metric_key: str) -> float | None:
     parts = [p.strip() for p in str(metric_key or "").split(".") if p.strip()]
     if not parts:
         return None
     root = parts[0]
     key = ".".join(parts[1:])
-
-    if root in {"delta", "deltas"}:
-        return _as_float((comparison.get("deltas") or {}).get(key))
-    if root == "candidate":
-        if key in {"hit", "mrr", "recall", "ndcg"}:
-            return _as_float((comparison.get("candidate_metrics") or {}).get(key))
-        if key.startswith("cases_"):
-            return _as_float((comparison.get("candidate_eval_summary") or {}).get(key))
-    if root == "baseline":
-        if key in {"hit", "mrr", "recall", "ndcg"}:
-            return _as_float((comparison.get("baseline_metrics") or {}).get(key))
-        if key.startswith("cases_"):
-            return _as_float((comparison.get("baseline_eval_summary") or {}).get(key))
-
-    # Best-effort fallback for arbitrary nested fields.
-    cur: Any = comparison
-    for part in parts:
-        if not isinstance(cur, dict):
-            return None
-        cur = cur.get(part)
-    return _as_float(cur)
+    direct_value = _comparison_metric_root_value(comparison=comparison, root=root, key=key)
+    if direct_value is not None:
+        return direct_value
+    return _comparison_nested_metric_value(comparison=comparison, parts=parts)
 
 
 def evaluate_ltr_rollout_gate(

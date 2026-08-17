@@ -371,6 +371,39 @@ def _finalize_chunk_delete(
         _refresh_document_chunk_stats(db=db, document=document)
 
 
+def _replay_chunk_drift_delete(*, channel: str, item: IndexDriftItem) -> None:
+    if channel == "vector":
+        _replay_vector_delete(item=item)
+        return
+    if channel == "bm25":
+        _replay_bm25_delete(item=item)
+        return
+    raise ValueError(f"unsupported chunk drift channel: {channel}")
+
+
+def _finalize_chunk_drift_replay(
+    *,
+    db: Session,
+    item: IndexDriftItem,
+    operation: str,
+    document: Any,
+    chunk: Any,
+) -> str:
+    if _count_open_index_drift_siblings(db=db, item=item) != 0:
+        return "replayed disable drift item" if operation == "chunk.disable" else "replayed delete drift item"
+    if operation == "chunk.disable":
+        _finalize_chunk_disable(db=db, document=document, chunk=chunk)
+        return "replayed disable drift item"
+    _finalize_chunk_delete(
+        db=db,
+        tenant_id=item.tenant_id,
+        chunk_id=getattr(item, "chunk_id", None),
+        document=document,
+        chunk=chunk,
+    )
+    return "replayed delete drift item"
+
+
 def _replay_index_drift_item(
     *,
     db: Session,
@@ -391,35 +424,15 @@ def _replay_index_drift_item(
             return "replayed bm25 patch indexing"
         raise ValueError(f"unsupported chunk.patch drift channel: {channel}")
 
-    if operation == "chunk.disable":
-        if channel == "vector":
-            _replay_vector_delete(item=item)
-        elif channel == "bm25":
-            _replay_bm25_delete(item=item)
-        else:
-            raise ValueError(f"unsupported chunk.disable drift channel: {channel}")
-
-        if _count_open_index_drift_siblings(db=db, item=item) == 0:
-            _finalize_chunk_disable(db=db, document=document, chunk=chunk)
-        return "replayed disable drift item"
-
-    if operation == "chunk.delete":
-        if channel == "vector":
-            _replay_vector_delete(item=item)
-        elif channel == "bm25":
-            _replay_bm25_delete(item=item)
-        else:
-            raise ValueError(f"unsupported chunk.delete drift channel: {channel}")
-
-        if _count_open_index_drift_siblings(db=db, item=item) == 0:
-            _finalize_chunk_delete(
-                db=db,
-                tenant_id=item.tenant_id,
-                chunk_id=getattr(item, "chunk_id", None),
-                document=document,
-                chunk=chunk,
-            )
-        return "replayed delete drift item"
+    if operation in {"chunk.disable", "chunk.delete"}:
+        _replay_chunk_drift_delete(channel=channel, item=item)
+        return _finalize_chunk_drift_replay(
+            db=db,
+            item=item,
+            operation=operation,
+            document=document,
+            chunk=chunk,
+        )
 
     raise ValueError(f"unsupported index drift operation: {operation}")
 
@@ -602,11 +615,11 @@ def _row_index_channel_status(row: Any) -> dict[str, Any]:
     }
 
 
-def compute_index_channel_audit_summary(
+def _index_channel_rows_by_document(
     *,
     documents: list[Any],
     channel_rows: list[Any],
-) -> dict[str, Any]:
+) -> tuple[dict[str, dict[str, dict[str, Any]]], set[str]]:
     rows_by_document: dict[str, dict[str, dict[str, Any]]] = {}
     rows_seen_by_document: set[str] = set()
     pipeline_hash_by_document = {
@@ -623,108 +636,137 @@ def compute_index_channel_audit_summary(
             continue
         rows_seen_by_document.add(document_key)
         rows_by_document.setdefault(document_key, {})[str(getattr(row, "channel", "") or "")] = _row_index_channel_status(row)
+    return rows_by_document, rows_seen_by_document
 
-    status_counts: dict[str, int] = {}
-    status_counts_by_channel: dict[str, dict[str, int]] = {
-        channel: {} for channel in DOCUMENT_INDEX_CHANNELS
-    }
-    legacy_by_channel = {channel: 0 for channel in DOCUMENT_INDEX_CHANNELS}
-    required_pending_by_channel = {channel: 0 for channel in DOCUMENT_INDEX_CHANNELS}
-    required_error_by_channel = {channel: 0 for channel in DOCUMENT_INDEX_CHANNELS}
-    optional_disabled_by_channel = {channel: 0 for channel in DOCUMENT_INDEX_CHANNELS}
-    optional_skipped_by_channel = {channel: 0 for channel in DOCUMENT_INDEX_CHANNELS}
 
-    ready_documents = 0
-    required_pending_documents = 0
-    required_error_documents = 0
-    optional_disabled_documents = 0
-    optional_skipped_documents = 0
-    legacy_fallback_documents = 0
-
-    for document in documents:
-        document_key = str(getattr(document, "id", "") or "")
-        flags = _document_channel_flags(document)
-        statuses = dict(rows_by_document.get(document_key) or {})
-        if document_key not in rows_seen_by_document:
-            legacy_fallback_documents += 1
-        for channel in DOCUMENT_INDEX_CHANNELS:
-            if channel not in statuses:
-                statuses[channel] = _legacy_index_channel_status(
-                    document,
-                    channel=channel,
-                    enabled=bool(flags.get(channel, False)),
-                )
-
-        doc_required_pending = False
-        doc_required_error = False
-        doc_optional_disabled = False
-        doc_optional_skipped = False
-        for channel, payload in statuses.items():
-            status = str(payload.get("status") or "").strip().lower() or "pending"
-            enabled = bool(payload.get("enabled"))
-            status_counts[status] = int(status_counts.get(status, 0) or 0) + 1
-            channel_status_counts = status_counts_by_channel.setdefault(channel, {})
-            channel_status_counts[status] = int(channel_status_counts.get(status, 0) or 0) + 1
-            if bool(payload.get("legacy")):
-                legacy_by_channel[channel] = int(legacy_by_channel.get(channel, 0) or 0) + 1
-            if enabled and status in DOCUMENT_INDEX_CHANNEL_TERMINAL_ERROR:
-                required_error_by_channel[channel] = int(required_error_by_channel.get(channel, 0) or 0) + 1
-                doc_required_error = True
-            elif enabled and status not in DOCUMENT_INDEX_CHANNEL_TERMINAL_READY | DOCUMENT_INDEX_CHANNEL_TERMINAL_ERROR:
-                required_pending_by_channel[channel] = int(required_pending_by_channel.get(channel, 0) or 0) + 1
-                doc_required_pending = True
-            elif not enabled and status == "disabled":
-                optional_disabled_by_channel[channel] = int(optional_disabled_by_channel.get(channel, 0) or 0) + 1
-                doc_optional_disabled = True
-            elif not enabled and status == "skipped":
-                optional_skipped_by_channel[channel] = int(optional_skipped_by_channel.get(channel, 0) or 0) + 1
-                doc_optional_skipped = True
-
-        if doc_required_error:
-            required_error_documents += 1
-        if doc_required_pending:
-            required_pending_documents += 1
-        if doc_optional_disabled:
-            optional_disabled_documents += 1
-        if doc_optional_skipped:
-            optional_skipped_documents += 1
-        if not doc_required_pending and not doc_required_error:
-            ready_documents += 1
-
+def _empty_index_channel_audit_summary() -> dict[str, Any]:
     return {
-        "documents_with_channel_rows": int(len(rows_seen_by_document)),
-        "documents_using_legacy_fallback": int(legacy_fallback_documents),
-        "ready_documents": int(ready_documents),
-        "required_pending_documents": int(required_pending_documents),
-        "required_error_documents": int(required_error_documents),
-        "optional_disabled_documents": int(optional_disabled_documents),
-        "optional_skipped_documents": int(optional_skipped_documents),
-        "required_pending_channels": int(sum(required_pending_by_channel.values())),
-        "required_error_channels": int(sum(required_error_by_channel.values())),
-        "optional_disabled_channels": int(sum(optional_disabled_by_channel.values())),
-        "optional_skipped_channels": int(sum(optional_skipped_by_channel.values())),
-        "required_pending_by_channel": {
-            channel: int(count) for channel, count in required_pending_by_channel.items() if int(count or 0) > 0
-        },
-        "required_error_by_channel": {
-            channel: int(count) for channel, count in required_error_by_channel.items() if int(count or 0) > 0
-        },
-        "optional_disabled_by_channel": {
-            channel: int(count) for channel, count in optional_disabled_by_channel.items() if int(count or 0) > 0
-        },
-        "optional_skipped_by_channel": {
-            channel: int(count) for channel, count in optional_skipped_by_channel.items() if int(count or 0) > 0
-        },
-        "status_counts": dict(sorted(status_counts.items(), key=lambda item: item[0])),
+        "documents_with_channel_rows": 0,
+        "documents_using_legacy_fallback": 0,
+        "ready_documents": 0,
+        "required_pending_documents": 0,
+        "required_error_documents": 0,
+        "optional_disabled_documents": 0,
+        "optional_skipped_documents": 0,
+        "status_counts": {},
+        "status_counts_by_channel": {channel: {} for channel in DOCUMENT_INDEX_CHANNELS},
+        "legacy_by_channel": {channel: 0 for channel in DOCUMENT_INDEX_CHANNELS},
+        "required_pending_by_channel": {channel: 0 for channel in DOCUMENT_INDEX_CHANNELS},
+        "required_error_by_channel": {channel: 0 for channel in DOCUMENT_INDEX_CHANNELS},
+        "optional_disabled_by_channel": {channel: 0 for channel in DOCUMENT_INDEX_CHANNELS},
+        "optional_skipped_by_channel": {channel: 0 for channel in DOCUMENT_INDEX_CHANNELS},
+    }
+
+
+def _document_index_channel_statuses(
+    *,
+    document: Any,
+    statuses: dict[str, dict[str, Any]] | None,
+    has_rows: bool,
+) -> dict[str, dict[str, Any]]:
+    flags = _document_channel_flags(document)
+    resolved = dict(statuses or {})
+    for channel in DOCUMENT_INDEX_CHANNELS:
+        resolved.setdefault(
+            channel,
+            _legacy_index_channel_status(document, channel=channel, enabled=bool(flags.get(channel, False))),
+        )
+    if not has_rows:
+        return resolved
+    return resolved
+
+
+def _positive_channel_counts(values: dict[str, int]) -> dict[str, int]:
+    return {channel: int(count) for channel, count in values.items() if int(count or 0) > 0}
+
+
+def _accumulate_index_channel_summary(summary: dict[str, Any], *, statuses: dict[str, dict[str, Any]], used_legacy_fallback: bool) -> None:
+    doc_required_pending = False
+    doc_required_error = False
+    doc_optional_disabled = False
+    doc_optional_skipped = False
+    if used_legacy_fallback:
+        summary["documents_using_legacy_fallback"] += 1
+
+    for channel, payload in statuses.items():
+        status = str(payload.get("status") or "").strip().lower() or "pending"
+        enabled = bool(payload.get("enabled"))
+        summary["status_counts"][status] = int(summary["status_counts"].get(status, 0) or 0) + 1
+        channel_status_counts = summary["status_counts_by_channel"].setdefault(channel, {})
+        channel_status_counts[status] = int(channel_status_counts.get(status, 0) or 0) + 1
+        if bool(payload.get("legacy")):
+            summary["legacy_by_channel"][channel] = int(summary["legacy_by_channel"].get(channel, 0) or 0) + 1
+        if enabled and status in DOCUMENT_INDEX_CHANNEL_TERMINAL_ERROR:
+            summary["required_error_by_channel"][channel] = int(summary["required_error_by_channel"].get(channel, 0) or 0) + 1
+            doc_required_error = True
+            continue
+        if enabled and status not in DOCUMENT_INDEX_CHANNEL_TERMINAL_READY | DOCUMENT_INDEX_CHANNEL_TERMINAL_ERROR:
+            summary["required_pending_by_channel"][channel] = int(summary["required_pending_by_channel"].get(channel, 0) or 0) + 1
+            doc_required_pending = True
+            continue
+        if not enabled and status == "disabled":
+            summary["optional_disabled_by_channel"][channel] = int(summary["optional_disabled_by_channel"].get(channel, 0) or 0) + 1
+            doc_optional_disabled = True
+            continue
+        if not enabled and status == "skipped":
+            summary["optional_skipped_by_channel"][channel] = int(summary["optional_skipped_by_channel"].get(channel, 0) or 0) + 1
+            doc_optional_skipped = True
+
+    summary["required_error_documents"] += int(doc_required_error)
+    summary["required_pending_documents"] += int(doc_required_pending)
+    summary["optional_disabled_documents"] += int(doc_optional_disabled)
+    summary["optional_skipped_documents"] += int(doc_optional_skipped)
+    if not doc_required_pending and not doc_required_error:
+        summary["ready_documents"] += 1
+
+
+def _finalize_index_channel_audit_summary(summary: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "documents_with_channel_rows": int(summary["documents_with_channel_rows"]),
+        "documents_using_legacy_fallback": int(summary["documents_using_legacy_fallback"]),
+        "ready_documents": int(summary["ready_documents"]),
+        "required_pending_documents": int(summary["required_pending_documents"]),
+        "required_error_documents": int(summary["required_error_documents"]),
+        "optional_disabled_documents": int(summary["optional_disabled_documents"]),
+        "optional_skipped_documents": int(summary["optional_skipped_documents"]),
+        "required_pending_channels": int(sum(summary["required_pending_by_channel"].values())),
+        "required_error_channels": int(sum(summary["required_error_by_channel"].values())),
+        "optional_disabled_channels": int(sum(summary["optional_disabled_by_channel"].values())),
+        "optional_skipped_channels": int(sum(summary["optional_skipped_by_channel"].values())),
+        "required_pending_by_channel": _positive_channel_counts(summary["required_pending_by_channel"]),
+        "required_error_by_channel": _positive_channel_counts(summary["required_error_by_channel"]),
+        "optional_disabled_by_channel": _positive_channel_counts(summary["optional_disabled_by_channel"]),
+        "optional_skipped_by_channel": _positive_channel_counts(summary["optional_skipped_by_channel"]),
+        "status_counts": dict(sorted(summary["status_counts"].items(), key=lambda item: item[0])),
         "status_counts_by_channel": {
             channel: dict(sorted(counts.items(), key=lambda item: item[0]))
-            for channel, counts in status_counts_by_channel.items()
+            for channel, counts in summary["status_counts_by_channel"].items()
             if counts
         },
-        "legacy_by_channel": {
-            channel: int(count) for channel, count in legacy_by_channel.items() if int(count or 0) > 0
-        },
+        "legacy_by_channel": _positive_channel_counts(summary["legacy_by_channel"]),
     }
+
+
+def compute_index_channel_audit_summary(
+    *,
+    documents: list[Any],
+    channel_rows: list[Any],
+) -> dict[str, Any]:
+    rows_by_document, rows_seen_by_document = _index_channel_rows_by_document(documents=documents, channel_rows=channel_rows)
+    summary = _empty_index_channel_audit_summary()
+    summary["documents_with_channel_rows"] = int(len(rows_seen_by_document))
+    for document in documents:
+        document_key = str(getattr(document, "id", "") or "")
+        _accumulate_index_channel_summary(
+            summary,
+            statuses=_document_index_channel_statuses(
+                document=document,
+                statuses=rows_by_document.get(document_key),
+                has_rows=document_key in rows_seen_by_document,
+            ),
+            used_legacy_fallback=document_key not in rows_seen_by_document,
+        )
+    return _finalize_index_channel_audit_summary(summary)
 
 
 def get_index_audit_reconcile_document_state(
@@ -1068,6 +1110,85 @@ def run_dataset_index_audit_internal(
     )
 
 
+def _active_index_audit_documents(db: Session, *, tenant_id: UUID, dataset_id: UUID, doc_ready_clause: Any) -> tuple[list[Any], list[UUID]]:
+    docs_q = (
+        db.query(DBDocument)
+        .filter(
+            DBDocument.tenant_id == tenant_id,
+            DBDocument.dataset_id == dataset_id,
+            DBDocument.archived_at.is_(None),
+            DBDocument.disabled_at.is_(None),
+        )
+        .filter(doc_ready_clause)
+    )
+    active_documents_rows = [row for row in docs_q.all() if row and getattr(row, "id", None)]
+    return active_documents_rows, [row.id for row in active_documents_rows]
+
+
+def _milvus_existing_vector_ids(vector_ids_checked: list[str]) -> set[str] | None:
+    if not vector_ids_checked:
+        return None
+    try:
+        from app.storage.vector.milvus import milvus_store
+
+        return milvus_store.fetch_existing_ids(vector_ids_checked)
+    except Exception:
+        return None
+
+
+def _milvus_ids_sample(*, tenant_id: UUID, dataset_id: UUID, milvus_list_limit: int) -> list[str] | None:
+    if int(milvus_list_limit or 0) <= 0:
+        return None
+    try:
+        from app.storage.vector.milvus import milvus_store
+
+        return milvus_store.list_ids_by_dataset(
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            limit=max(0, int(milvus_list_limit or 0)),
+            offset=0,
+        )
+    except Exception:
+        return None
+
+
+def _active_chunk_ids_present(chunks_q: Any, milvus_ids_sample: list[str] | None) -> set[str] | None:
+    if not milvus_ids_sample:
+        return None
+    want: list[UUID] = []
+    for raw in milvus_ids_sample:
+        try:
+            want.append(UUID(str(raw)))
+        except Exception:
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+    if not want:
+        return set()
+    rows = chunks_q.filter(DocumentChunk.id.in_(want)).with_entities(DocumentChunk.id).all()
+    return {str(row[0]) for row in rows if row and row[0]}
+
+
+def _dataset_index_channel_summary(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    active_doc_ids: list[UUID],
+    active_documents_rows: list[Any],
+) -> dict[str, Any]:
+    if not active_doc_ids:
+        return {}
+    channel_rows = list(
+        db.query(DocumentIndexChannel)
+        .filter(
+            DocumentIndexChannel.tenant_id == tenant_id,
+            DocumentIndexChannel.dataset_id == dataset_id,
+            DocumentIndexChannel.document_id.in_(active_doc_ids),
+        )
+        .all()
+    )
+    return compute_index_channel_audit_summary(documents=active_documents_rows, channel_rows=channel_rows)
+
+
 def _run_dataset_index_audit_core(
     *,
     db: Session,
@@ -1082,19 +1203,12 @@ def _run_dataset_index_audit_core(
         DBDocument.status == "completed",
         (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true"),  # type: ignore[attr-defined]
     )
-    docs_q = (
-        db.query(DBDocument)
-        .filter(
-            DBDocument.tenant_id == tenant_id,
-            DBDocument.dataset_id == dataset_id,
-            DBDocument.archived_at.is_(None),
-            DBDocument.disabled_at.is_(None),
-        )
-        .filter(doc_ready_clause)
+    active_documents_rows, active_doc_ids = _active_index_audit_documents(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        doc_ready_clause=doc_ready_clause,
     )
-
-    active_documents_rows = [row for row in docs_q.all() if row and getattr(row, "id", None)]
-    active_doc_ids = [row.id for row in active_documents_rows]
     active_documents = len(active_doc_ids)
 
     # Active pipeline hash: chunks must match this version to be considered "active".
@@ -1153,64 +1267,17 @@ def _run_dataset_index_audit_core(
     )
     vector_ids_checked = [str(row[0]) for row in vec_rows if row and row[0]]
 
-    vector_ids_existing: set[str] | None = None
-    milvus_ids_sample: list[str] | None = None
-    active_chunk_ids_present: set[str] | None = None
-
     vector_backend = str(getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").strip().lower()
-    if vector_backend == "milvus" and vector_ids_checked:
-        try:
-            from app.storage.vector.milvus import milvus_store
-
-            vector_ids_existing = milvus_store.fetch_existing_ids(vector_ids_checked)
-        except Exception:
-            vector_ids_existing = None
-
-    # Orphan sample: list a bounded set of Milvus ids for the dataset and check if DB contains them.
-    if vector_backend == "milvus" and int(milvus_list_limit or 0) > 0:
-        try:
-            from app.storage.vector.milvus import milvus_store
-
-            milvus_ids_sample = milvus_store.list_ids_by_dataset(
-                tenant_id=tenant_id,
-                dataset_id=dataset_id,
-                limit=max(0, int(milvus_list_limit or 0)),
-                offset=0,
-            )
-        except Exception:
-            milvus_ids_sample = None
-
-    if milvus_ids_sample:
-        # Only UUID-like ids can map back to DocumentChunk.id.
-        want: list[UUID] = []
-        for raw in milvus_ids_sample:
-            try:
-                want.append(UUID(str(raw)))
-            except Exception:
-                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-                continue
-
-        if want:
-            rows = chunks_q.filter(DocumentChunk.id.in_(want)).with_entities(DocumentChunk.id).all()
-            active_chunk_ids_present = {str(r[0]) for r in rows if r and r[0]}
-        else:
-            active_chunk_ids_present = set()
-
-    index_channels: dict[str, Any] = {}
-    if active_doc_ids:
-        channel_rows = list(
-            db.query(DocumentIndexChannel)
-            .filter(
-                DocumentIndexChannel.tenant_id == tenant_id,
-                DocumentIndexChannel.dataset_id == dataset_id,
-                DocumentIndexChannel.document_id.in_(active_doc_ids),
-            )
-            .all()
-        )
-        index_channels = compute_index_channel_audit_summary(
-            documents=active_documents_rows,
-            channel_rows=channel_rows,
-        )
+    vector_ids_existing = _milvus_existing_vector_ids(vector_ids_checked) if vector_backend == "milvus" else None
+    milvus_ids_sample = _milvus_ids_sample(tenant_id=tenant_id, dataset_id=dataset_id, milvus_list_limit=milvus_list_limit) if vector_backend == "milvus" else None
+    active_chunk_ids_present = _active_chunk_ids_present(chunks_q, milvus_ids_sample)
+    index_channels = _dataset_index_channel_summary(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        active_doc_ids=active_doc_ids,
+        active_documents_rows=active_documents_rows,
+    )
 
     return compute_index_audit_summary(
         tenant_id=tenant_id,

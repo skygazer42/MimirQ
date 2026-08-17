@@ -38,125 +38,129 @@ class _Section:
     heading: LawHeading | None
 
 
-def _parse_en_article_heading(line: str) -> str | None:
+def _skip_spaces(text: str, idx: int) -> int:
+    while idx < len(text) and text[idx].isspace():
+        idx += 1
+    return idx
+
+
+def _parse_digit_segment(text: str, idx: int, *, max_digits: int = 4) -> int:
+    start = idx
+    while idx < len(text) and idx - start < max_digits and text[idx].isdigit():
+        idx += 1
+    return idx
+
+
+def _parse_dotted_number(text: str, idx: int, *, max_segments: int) -> tuple[int, int] | None:
+    start = idx
+    idx = _parse_digit_segment(text, idx)
+    if idx == start:
+        return None
+
+    segments = 1
+    while segments < max_segments and idx < len(text) and text[idx] == ".":
+        next_idx = _parse_digit_segment(text, idx + 1)
+        if next_idx == idx + 1:
+            break
+        idx = next_idx
+        segments += 1
+    return start, idx
+
+
+def _has_heading_boundary(text: str, idx: int) -> bool:
+    if idx >= len(text):
+        return True
+    if text[idx].isalnum() or text[idx] == "_":
+        return False
+    return not (idx + 1 < len(text) and text[idx] == "." and text[idx + 1].isdigit())
+
+
+def _parse_en_prefixed_heading(line: str, *, prefix: str, max_segments: int) -> str | None:
     s = (line or "").strip()
     if not s:
         return None
     low = s.lower()
-    if not low.startswith("article") or (len(low) > 7 and not low[7].isspace()):
+    prefix_len = len(prefix)
+    if not low.startswith(prefix) or (len(low) > prefix_len and not low[prefix_len].isspace()):
         return None
 
-    i = 7
-    n = len(s)
-    while i < n and s[i].isspace():
-        i += 1
-    start = i
-    while i < n and i - start < 4 and s[i].isdigit():
-        i += 1
-    if i == start:
+    number_start = _skip_spaces(s, prefix_len)
+    bounds = _parse_dotted_number(s, number_start, max_segments=max_segments)
+    if bounds is None:
         return None
-    # Require a boundary (space/punct/end) after the number.
-    if i < n and (s[i].isalnum() or s[i] == "_"):
+    start, end = bounds
+    if not _has_heading_boundary(s, end):
         return None
-    if i + 1 < n and s[i] == "." and s[i + 1].isdigit():
-        return None
-    return s[start:i]
+    return s[start:end]
+
+
+def _parse_en_article_heading(line: str) -> str | None:
+    return _parse_en_prefixed_heading(line, prefix="article", max_segments=1)
 
 
 def _parse_en_section_heading(line: str) -> str | None:
-    s = (line or "").strip()
-    if not s:
-        return None
-    low = s.lower()
-    if not low.startswith("section") or (len(low) > 7 and not low[7].isspace()):
+    return _parse_en_prefixed_heading(line, prefix="section", max_segments=4)
+
+
+def _heading_match(line: str) -> tuple[str, int, str] | None:
+    candidates = (
+        ("chapter", 1, parse_cn_prefixed_heading(line, suffixes="章")),
+        ("section", 2, parse_cn_prefixed_heading(line, suffixes="节")),
+        ("article", 3, parse_cn_prefixed_heading(line, suffixes="条")),
+        ("clause", 4, parse_cn_clause_marker(line)),
+        ("article", 3, _parse_en_article_heading(line)),
+        ("section", 2, _parse_en_section_heading(line)),
+    )
+    for kind, level, number in candidates:
+        if number is not None:
+            return kind, level, number
+    return None
+
+
+def _parse_heading(raw_line: str, *, line_start: int) -> LawHeading | None:
+    line = raw_line.strip()
+    if not line or len(line) > 200:
         return None
 
-    i = 7
-    n = len(s)
-    while i < n and s[i].isspace():
-        i += 1
-
-    def parse_segment(idx: int) -> int:
-        start = idx
-        while idx < n and idx - start < 4 and s[idx].isdigit():
-            idx += 1
-        return idx if idx > start else start
-
-    start = i
-    i = parse_segment(i)
-    if i == start:
+    match = _heading_match(line)
+    if match is None:
         return None
-    segs = 1
-    while segs < 4 and i < n and s[i] == ".":
-        nxt = parse_segment(i + 1)
-        if nxt == i + 1:
-            break
-        i = nxt
-        segs += 1
 
-    if i < n and (s[i].isalnum() or s[i] == "_"):
-        return None
-    if i + 1 < n and s[i] == "." and s[i + 1].isdigit():
-        return None
-    return s[start:i]
+    kind, level, number = match
+    return LawHeading(
+        start=line_start,
+        end=line_start + len(raw_line),
+        text=line,
+        level=level,
+        kind=kind,
+        number=number,
+    )
+
+
+def _dedupe_headings(headings: list[LawHeading]) -> list[LawHeading]:
+    deduped: list[LawHeading] = []
+    last_start = -1
+    for heading in headings:
+        if heading.start == last_start:
+            continue
+        deduped.append(heading)
+        last_start = heading.start
+    return deduped
 
 
 def _iter_headings(text: str) -> list[LawHeading]:
-    headings: list[LawHeading] = []
     if not text:
-        return headings
+        return []
 
+    headings: list[LawHeading] = []
     offset = 0
     for raw_line in text.splitlines(keepends=True):
         line_start = offset
         offset += len(raw_line)
-
-        line = raw_line.strip()
-        if not line:
-            continue
-        if len(line) > 200:
-            continue
-
-        kind: str | None = None
-        level: int | None = None
-        num: str | None = None
-
-        if (prefix := parse_cn_prefixed_heading(line, suffixes="章")) is not None:
-            kind, level, num = "chapter", 1, prefix
-        elif (prefix := parse_cn_prefixed_heading(line, suffixes="节")) is not None:
-            kind, level, num = "section", 2, prefix
-        elif (prefix := parse_cn_prefixed_heading(line, suffixes="条")) is not None:
-            kind, level, num = "article", 3, prefix
-        elif (prefix := parse_cn_clause_marker(line)) is not None:
-            kind, level, num = "clause", 4, prefix
-        elif (en_num := _parse_en_article_heading(line)) is not None:
-            kind, level, num = "article", 3, en_num
-        elif (en_num := _parse_en_section_heading(line)) is not None:
-            kind, level, num = "section", 2, en_num
-
-        if kind is None or level is None:
-            continue
-
-        headings.append(
-            LawHeading(
-                start=line_start,
-                end=line_start + len(raw_line),
-                text=line,
-                level=int(level),
-                kind=kind,
-                number=num,
-            )
-        )
-
-    # Best-effort de-dup.
-    deduped: list[LawHeading] = []
-    last_start = -1
-    for h in headings:
-        if h.start == last_start:
-            continue
-        deduped.append(h)
-        last_start = h.start
-    return deduped
+        heading = _parse_heading(raw_line, line_start=line_start)
+        if heading is not None:
+            headings.append(heading)
+    return _dedupe_headings(headings)
 
 
 def _build_sections(text: str, headings: list[LawHeading]) -> list[_Section]:
@@ -211,61 +215,88 @@ class LawsStructuredChunker(BaseChunker):
             add_start_index=True,
         )
 
+    def _section_path(self, stack: list[LawHeading], heading: LawHeading | None) -> tuple[list[str], str | None]:
+        if heading is not None:
+            _update_heading_stack(stack, heading=heading)
+        path = [item.text for item in stack]
+        return path, " / ".join(path) if path else None
+
+    def _build_chunk_metadata(
+        self,
+        base_meta: dict[str, Any],
+        *,
+        abs_start: int,
+        abs_end: int,
+        heading: LawHeading | None,
+        path: list[str],
+        path_str: str | None,
+    ) -> dict[str, Any]:
+        meta: dict[str, Any] = dict(base_meta)
+        meta["chunk_strategy"] = "laws_structured"
+        meta["start_char"] = abs_start
+        meta["end_char"] = abs_end
+        if heading is not None:
+            meta["law_heading"] = heading.text
+            meta["law_level"] = int(heading.level)
+            meta["law_kind"] = heading.kind
+            if heading.number:
+                meta["law_number"] = heading.number
+            if heading.kind == "article":
+                meta["law_article"] = heading.text
+        if path:
+            meta["law_path"] = path
+        if path_str:
+            meta["law_path_str"] = path_str
+        return meta
+
+    def _split_section_documents(
+        self,
+        section: _Section,
+        section_text: str,
+        base_meta: dict[str, Any],
+        path: list[str],
+        path_str: str | None,
+    ) -> list[Document]:
+        out: list[Document] = []
+        split_docs = self._fallback_splitter.create_documents(texts=[section_text], metadatas=[base_meta])
+        for split_doc in split_docs:
+            local_start = split_doc.metadata.pop("start_index", None) or 0
+            abs_start = section.start + int(local_start)
+            abs_end = abs_start + len(split_doc.page_content)
+            meta = self._build_chunk_metadata(
+                base_meta,
+                abs_start=abs_start,
+                abs_end=abs_end,
+                heading=section.heading,
+                path=path,
+                path_str=path_str,
+            )
+            meta.update(split_doc.metadata or {})
+            out.append(Document(page_content=split_doc.page_content, metadata=meta))
+        return out
+
+    def _split_document(self, doc: Document) -> list[Document]:
+        text = doc.page_content or ""
+        if not text.strip():
+            return []
+
+        base_meta = dict(doc.metadata or {})
+        sections = _build_sections(text, _iter_headings(text))
+        stack: list[LawHeading] = []
+        out: list[Document] = []
+        for section in sections:
+            section_text = text[section.start : section.end]
+            if not section_text.strip():
+                continue
+            path, path_str = self._section_path(stack, section.heading)
+            out.extend(self._split_section_documents(section, section_text, base_meta, path, path_str))
+        return out
+
     def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
-            base_meta = dict(doc.metadata or {})
-            if not text.strip():
-                continue
-
-            headings = _iter_headings(text)
-            sections = _build_sections(text, headings)
-
-            stack: list[LawHeading] = []
-
-            for section in sections:
-                sec_text = text[section.start : section.end]
-                if not sec_text.strip():
-                    continue
-
-                sec_heading = section.heading
-                if sec_heading is not None:
-                    _update_heading_stack(stack, heading=sec_heading)
-
-                path = [h.text for h in stack]
-                path_str = " / ".join(path) if path else None
-
-                split_docs = self._fallback_splitter.create_documents(
-                    texts=[sec_text],
-                    metadatas=[base_meta],
-                )
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = section.start + int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "laws_structured"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-
-                    if sec_heading is not None:
-                        meta["law_heading"] = sec_heading.text
-                        meta["law_level"] = int(sec_heading.level)
-                        meta["law_kind"] = sec_heading.kind
-                        if sec_heading.number:
-                            meta["law_number"] = sec_heading.number
-                        if sec_heading.kind == "article":
-                            meta["law_article"] = sec_heading.text
-                    if path:
-                        meta["law_path"] = path
-                    if path_str:
-                        meta["law_path_str"] = path_str
-
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+            out.extend(self._split_document(doc))
 
         for idx, chunk in enumerate(out):
             meta = dict(chunk.metadata or {})

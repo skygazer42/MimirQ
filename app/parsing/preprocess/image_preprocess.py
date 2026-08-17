@@ -272,6 +272,473 @@ class ImagePreprocessResult:
         }
 
 
+def _disabled_preprocess_result(input_path: Path) -> ImagePreprocessResult:
+    return ImagePreprocessResult(
+        input_path=str(input_path),
+        output_path=str(input_path),
+        changed=False,
+        steps=[ImagePreprocessStepLog(id="image_preprocess", applied=False, changed=False, note="disabled")],
+        warnings=[],
+        meta={"enabled": False},
+    )
+
+
+def _unsupported_preprocess_result(input_path: Path, *, meta: dict[str, Any]) -> ImagePreprocessResult:
+    return ImagePreprocessResult(
+        input_path=str(input_path),
+        output_path=str(input_path),
+        changed=False,
+        steps=[ImagePreprocessStepLog(id="image_preprocess", applied=False, changed=False, note="unsupported_ext")],
+        warnings=[],
+        meta=meta,
+    )
+
+
+def _high_quality_pdf_skip_result(input_path: Path, *, meta: dict[str, Any]) -> ImagePreprocessResult:
+    return ImagePreprocessResult(
+        input_path=str(input_path),
+        output_path=str(input_path),
+        changed=False,
+        steps=[
+            ImagePreprocessStepLog(
+                id="pdf_preprocess",
+                applied=False,
+                changed=False,
+                note="skip_high_quality",
+                elapsed_ms=0,
+            )
+        ],
+        warnings=[],
+        meta=meta,
+    )
+
+
+def _artifact_root(input_path: Path, *, document_id: str | None) -> Path:
+    run_id = _sanitize_run_id(document_id or input_path.stem or "preprocess")
+    root = (input_path.parent / ".mimirq_preprocess" / run_id).absolute()
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _append_orientation_step(
+    *,
+    current: Path,
+    artifact_root: Path,
+    input_path: Path,
+    sample_pages: int,
+    meta: dict[str, Any],
+    steps: list[ImagePreprocessStepLog],
+    is_pdf: bool,
+) -> tuple[Path, bool]:
+    t0 = time.perf_counter()
+    if not bool(getattr(settings, "ORIENTATION_ENABLED", False)):
+        steps.append(
+            ImagePreprocessStepLog(
+                id="orientation",
+                applied=False,
+                changed=False,
+                note="disabled",
+                elapsed_ms=int(round((time.perf_counter() - t0) * 1000)),
+            )
+        )
+        return current, False
+
+    if is_pdf:
+        out_path = artifact_root / f"{input_path.stem}.oriented.pdf"
+        changed, note, info = normalize_pdf_rotation(input_path=current, output_path=out_path, sample_pages=sample_pages)
+        meta["pdf_rotation"] = info
+    else:
+        out_path = artifact_root / f"{input_path.stem}.oriented{input_path.suffix.lower()}"
+        changed, note, info = fix_exif_orientation(input_path=current, output_path=out_path)
+        meta["image_orientation"] = info
+    steps.append(
+        ImagePreprocessStepLog(
+            id="orientation",
+            applied=True,
+            changed=bool(changed),
+            note=note,
+            elapsed_ms=int(round((time.perf_counter() - t0) * 1000)),
+        )
+    )
+    return (out_path if changed else current), bool(changed)
+
+
+def _append_deskew_step(
+    *,
+    current: Path,
+    artifact_root: Path,
+    input_path: Path,
+    steps: list[ImagePreprocessStepLog],
+    is_pdf: bool,
+) -> tuple[Path, bool]:
+    t0 = time.perf_counter()
+    if not bool(getattr(settings, "DESKEW_ENABLED", False)):
+        steps.append(
+            ImagePreprocessStepLog(
+                id="deskew",
+                applied=False,
+                changed=False,
+                note="disabled",
+                elapsed_ms=int(round((time.perf_counter() - t0) * 1000)),
+            )
+        )
+        return current, False
+
+    backend = str(getattr(settings, "DESKEW_BACKEND", "auto") or "auto").strip().lower()
+    url = str(getattr(settings, "DESKEW_PADDLE_URL", "") or "").strip()
+    timeout_sec = float(getattr(settings, "DESKEW_TIMEOUT_SEC", 60) or 60)
+    note = "missing_backend_or_url"
+    changed = False
+    if backend in {"auto", "paddle"} and url:
+        suffix = ".pdf" if is_pdf else input_path.suffix.lower()
+        out_path = artifact_root / f"{input_path.stem}.deskew{suffix}"
+        changed, note = deskew_via_http(
+            input_path=current,
+            output_path=out_path,
+            url=url,
+            timeout_sec=timeout_sec,
+        )
+        current = out_path if changed else current
+    steps.append(
+        ImagePreprocessStepLog(
+            id="deskew",
+            applied=True,
+            changed=bool(changed),
+            note=note if changed or note else "skipped",
+            elapsed_ms=int(round((time.perf_counter() - t0) * 1000)),
+        )
+    )
+    return current, bool(changed)
+
+
+def _append_pdf_watermark_steps(
+    *,
+    current: Path,
+    artifact_root: Path,
+    input_path: Path,
+    document_id: str | None,
+    sample_pages: int,
+    warnings: list[str],
+    steps: list[ImagePreprocessStepLog],
+    meta: dict[str, Any],
+) -> tuple[Path, bool]:
+    if not bool(getattr(settings, "WATERMARK_REMOVAL_ENABLED", False)):
+        t0 = time.perf_counter()
+        steps.append(
+            ImagePreprocessStepLog(
+                id="watermark_removal",
+                applied=False,
+                changed=False,
+                note="disabled",
+                elapsed_ms=int(round((time.perf_counter() - t0) * 1000)),
+            )
+        )
+        return current, False
+
+    changed_any = False
+    t0 = time.perf_counter()
+    if bool(getattr(settings, "WATERMARK_PDF_ANNOT_STRIP_ENABLED", True)):
+        annots_out = artifact_root / f"{input_path.stem}.dewatermark_annots.pdf"
+        changed, note, info = strip_pdf_watermark_annotations(
+            input_path=current,
+            output_path=annots_out,
+            sample_pages=sample_pages,
+        )
+        meta["pdf_watermark_annots"] = info
+        if changed:
+            current = annots_out
+            changed_any = True
+        steps.append(
+            ImagePreprocessStepLog(
+                id="watermark_annots",
+                applied=True,
+                changed=bool(changed),
+                note=note,
+                elapsed_ms=int(round((time.perf_counter() - t0) * 1000)),
+            )
+        )
+    else:
+        steps.append(
+            ImagePreprocessStepLog(
+                id="watermark_annots",
+                applied=False,
+                changed=False,
+                note="disabled",
+                elapsed_ms=int(round((time.perf_counter() - t0) * 1000)),
+            )
+        )
+
+    t1 = time.perf_counter()
+    api_url = str(getattr(settings, "WATERMARK_REMOVAL_API_URL", "") or "").strip()
+    timeout_sec = float(getattr(settings, "WATERMARK_TIMEOUT_SEC", 120) or 120)
+    backend = str(getattr(settings, "WATERMARK_REMOVAL_BACKEND", "auto") or "auto").strip().lower() or "auto"
+    model_path = str(getattr(settings, "WATERMARK_REMOVAL_MODEL_PATH", "") or "")
+    out_path = artifact_root / f"{input_path.stem}.dewatermark.pdf"
+    if backend in {"local", "auto"} and str(model_path or "").strip():
+        changed, note, info = _preprocess_pdf_pages_via_raster(
+            input_path=current,
+            output_path=out_path,
+            document_id=document_id,
+            warnings=warnings,
+        )
+    else:
+        changed, note, info = cleanup_watermark_document(
+            input_path=current,
+            output_path=out_path,
+            backend=backend,
+            model_path=model_path,
+            api_url=api_url,
+            timeout_sec=timeout_sec,
+        )
+    if isinstance(info, dict):
+        meta["watermark_removal"] = info
+    warning = _watermark_warning(note)
+    if warning:
+        warnings.append(warning)
+    if changed:
+        current = out_path
+        changed_any = True
+    steps.append(
+        ImagePreprocessStepLog(
+            id="watermark_removal",
+            applied=True,
+            changed=bool(changed),
+            note=note,
+            elapsed_ms=int(round((time.perf_counter() - t1) * 1000)),
+        )
+    )
+    return current, changed_any
+
+
+def _append_image_watermark_step(
+    *,
+    current: Path,
+    artifact_root: Path,
+    input_path: Path,
+    warnings: list[str],
+    steps: list[ImagePreprocessStepLog],
+    meta: dict[str, Any],
+) -> tuple[Path, bool]:
+    t0 = time.perf_counter()
+    if not bool(getattr(settings, "WATERMARK_REMOVAL_ENABLED", False)):
+        steps.append(
+            ImagePreprocessStepLog(
+                id="watermark_removal",
+                applied=False,
+                changed=False,
+                note="disabled",
+                elapsed_ms=int(round((time.perf_counter() - t0) * 1000)),
+            )
+        )
+        return current, False
+
+    api_url = str(getattr(settings, "WATERMARK_REMOVAL_API_URL", "") or "").strip()
+    timeout_sec = float(getattr(settings, "WATERMARK_TIMEOUT_SEC", 120) or 120)
+    backend = str(getattr(settings, "WATERMARK_REMOVAL_BACKEND", "auto") or "auto").strip().lower() or "auto"
+    model_path = str(getattr(settings, "WATERMARK_REMOVAL_MODEL_PATH", "") or "")
+    out_path = artifact_root / f"{input_path.stem}.dewatermark{input_path.suffix.lower()}"
+    changed, note, info = cleanup_watermark_document(
+        input_path=current,
+        output_path=out_path,
+        backend=backend,
+        model_path=model_path,
+        api_url=api_url,
+        timeout_sec=timeout_sec,
+    )
+    if isinstance(info, dict):
+        meta["watermark_removal"] = info
+    warning = _watermark_warning(note)
+    if warning:
+        warnings.append(warning)
+    if changed:
+        current = out_path
+    steps.append(
+        ImagePreprocessStepLog(
+            id="watermark_removal",
+            applied=True,
+            changed=bool(changed),
+            note=note,
+            elapsed_ms=int(round((time.perf_counter() - t0) * 1000)),
+        )
+    )
+    return current, bool(changed)
+
+
+def _finalize_preprocess_result(
+    *,
+    input_path: Path,
+    current: Path,
+    changed_any: bool,
+    artifact_root: Path,
+    steps: list[ImagePreprocessStepLog],
+    warnings: list[str],
+    meta: dict[str, Any],
+) -> ImagePreprocessResult:
+    if changed_any and current != input_path:
+        meta["artifact_dir"] = str(artifact_root.resolve(strict=False))
+    return ImagePreprocessResult(
+        input_path=str(input_path),
+        output_path=str(current),
+        changed=bool(changed_any and current != input_path),
+        steps=steps,
+        warnings=warnings[:50],
+        meta=meta,
+    )
+
+
+def _preprocess_pdf_document(
+    *,
+    input_path: Path,
+    document_id: str | None,
+    sample_pages: int,
+    meta: dict[str, Any],
+    warnings: list[str],
+    steps: list[ImagePreprocessStepLog],
+) -> ImagePreprocessResult:
+    artifact_root = _artifact_root(input_path, document_id=document_id)
+    current = input_path
+    changed_any = False
+
+    current, changed = _append_orientation_step(
+        current=current,
+        artifact_root=artifact_root,
+        input_path=input_path,
+        sample_pages=sample_pages,
+        meta=meta,
+        steps=steps,
+        is_pdf=True,
+    )
+    changed_any = changed_any or changed
+
+    current, changed, step, info = _run_paddle_doc_preprocess_stage(
+        current=current,
+        artifact_root=artifact_root,
+        output_stem=input_path.stem,
+        warnings=warnings,
+    )
+    if isinstance(info, dict):
+        meta["paddle_ocr_preprocess"] = info
+    changed_any = changed_any or changed
+    steps.append(step)
+
+    current, changed = _append_deskew_step(
+        current=current,
+        artifact_root=artifact_root,
+        input_path=input_path,
+        steps=steps,
+        is_pdf=True,
+    )
+    changed_any = changed_any or changed
+
+    current, changed, step, info = _run_handwriting_cleanup_stage(
+        current=current,
+        artifact_root=artifact_root,
+        output_stem=input_path.stem,
+        warnings=warnings,
+    )
+    if isinstance(info, dict):
+        meta["handwriting_cleanup"] = info
+    changed_any = changed_any or changed
+    steps.append(step)
+
+    current, changed = _append_pdf_watermark_steps(
+        current=current,
+        artifact_root=artifact_root,
+        input_path=input_path,
+        document_id=document_id,
+        sample_pages=sample_pages,
+        warnings=warnings,
+        steps=steps,
+        meta=meta,
+    )
+    changed_any = changed_any or changed
+
+    return _finalize_preprocess_result(
+        input_path=input_path,
+        current=current,
+        changed_any=changed_any,
+        artifact_root=artifact_root,
+        steps=steps,
+        warnings=warnings,
+        meta=meta,
+    )
+
+
+def _preprocess_raster_document(
+    *,
+    input_path: Path,
+    document_id: str | None,
+    meta: dict[str, Any],
+    warnings: list[str],
+    steps: list[ImagePreprocessStepLog],
+) -> ImagePreprocessResult:
+    artifact_root = _artifact_root(input_path, document_id=document_id)
+    current = input_path
+    changed_any = False
+
+    current, changed = _append_orientation_step(
+        current=current,
+        artifact_root=artifact_root,
+        input_path=input_path,
+        sample_pages=0,
+        meta=meta,
+        steps=steps,
+        is_pdf=False,
+    )
+    changed_any = changed_any or changed
+
+    current, changed, step, info = _run_paddle_doc_preprocess_stage(
+        current=current,
+        artifact_root=artifact_root,
+        output_stem=input_path.stem,
+        warnings=warnings,
+    )
+    if isinstance(info, dict):
+        meta["paddle_ocr_preprocess"] = info
+    changed_any = changed_any or changed
+    steps.append(step)
+
+    current, changed = _append_deskew_step(
+        current=current,
+        artifact_root=artifact_root,
+        input_path=input_path,
+        steps=steps,
+        is_pdf=False,
+    )
+    changed_any = changed_any or changed
+
+    current, changed, step, info = _run_handwriting_cleanup_stage(
+        current=current,
+        artifact_root=artifact_root,
+        output_stem=input_path.stem,
+        warnings=warnings,
+    )
+    if isinstance(info, dict):
+        meta["handwriting_cleanup"] = info
+    changed_any = changed_any or changed
+    steps.append(step)
+
+    current, changed = _append_image_watermark_step(
+        current=current,
+        artifact_root=artifact_root,
+        input_path=input_path,
+        warnings=warnings,
+        steps=steps,
+        meta=meta,
+    )
+    changed_any = changed_any or changed
+
+    return _finalize_preprocess_result(
+        input_path=input_path,
+        current=current,
+        changed_any=changed_any,
+        artifact_root=artifact_root,
+        steps=steps,
+        warnings=warnings,
+        meta=meta,
+    )
+
+
 def preprocess_image_document(
     *,
     input_path: Path,
@@ -292,14 +759,7 @@ def preprocess_image_document(
     enabled = bool(getattr(settings, "IMAGE_PREPROCESS_ENABLED", False))
 
     if not enabled:
-        return ImagePreprocessResult(
-            input_path=str(input_path),
-            output_path=str(input_path),
-            changed=False,
-            steps=[ImagePreprocessStepLog(id="image_preprocess", applied=False, changed=False, note="disabled")],
-            warnings=[],
-            meta={"enabled": False},
-        )
+        return _disabled_preprocess_result(input_path)
 
     warnings: list[str] = []
     steps: list[ImagePreprocessStepLog] = []
@@ -330,384 +790,24 @@ def preprocess_image_document(
             score = float(pdf_q.get("score", 0.0) or 0.0)
             is_scanned = bool(pdf_q.get("is_scanned", False))
             if score >= 0.8 and not is_scanned:
-                return ImagePreprocessResult(
-                    input_path=str(input_path),
-                    output_path=str(input_path),
-                    changed=False,
-                    steps=[
-                        ImagePreprocessStepLog(
-                            id="pdf_preprocess",
-                            applied=False,
-                            changed=False,
-                            note="skip_high_quality",
-                            elapsed_ms=0,
-                        )
-                    ],
-                    warnings=[],
-                    meta=meta,
-                )
+                return _high_quality_pdf_skip_result(input_path, meta=meta)
 
-        run_id = _sanitize_run_id(document_id or input_path.stem or "preprocess")
-        artifact_root = (input_path.parent / ".mimirq_preprocess" / run_id).absolute()
-        artifact_root.mkdir(parents=True, exist_ok=True)
-
-        current = input_path
-        changed_any = False
-
-        # Step: PDF rotation normalization (cheap metadata-only fix).
-        t0 = time.perf_counter()
-        if bool(getattr(settings, "ORIENTATION_ENABLED", False)):
-            out_path = artifact_root / f"{input_path.stem}.oriented.pdf"
-            changed, note, info = normalize_pdf_rotation(input_path=current, output_path=out_path, sample_pages=sample_pages)
-            meta["pdf_rotation"] = info
-            if changed:
-                current = out_path
-                changed_any = True
-            steps.append(
-                ImagePreprocessStepLog(
-                    id="orientation",
-                    applied=True,
-                    changed=bool(changed),
-                    note=note,
-                    elapsed_ms=int(round((time.perf_counter() - t0) * 1000)),
-                )
-            )
-        else:
-            steps.append(
-                ImagePreprocessStepLog(
-                    id="orientation",
-                    applied=False,
-                    changed=False,
-                    note="disabled",
-                    elapsed_ms=int(round((time.perf_counter() - t0) * 1000)),
-                )
-            )
-
-        current, changed, step, info = _run_paddle_doc_preprocess_stage(
-            current=current,
-            artifact_root=artifact_root,
-            output_stem=input_path.stem,
-            warnings=warnings,
-        )
-        if isinstance(info, dict):
-            meta["paddle_ocr_preprocess"] = info
-        if changed:
-            changed_any = True
-        steps.append(step)
-
-        # Step: deskew via external backend (optional).
-        t1 = time.perf_counter()
-        if bool(getattr(settings, "DESKEW_ENABLED", False)):
-            backend = str(getattr(settings, "DESKEW_BACKEND", "auto") or "auto").strip().lower()
-            url = str(getattr(settings, "DESKEW_PADDLE_URL", "") or "").strip()
-            timeout_sec = float(getattr(settings, "DESKEW_TIMEOUT_SEC", 60) or 60)
-            deskew_changed = False
-            note = "skipped"
-            if backend in {"auto", "paddle"} and url:
-                out_path = artifact_root / f"{input_path.stem}.deskew.pdf"
-                deskew_changed, note = deskew_via_http(
-                    input_path=current,
-                    output_path=out_path,
-                    url=url,
-                    timeout_sec=timeout_sec,
-                )
-                if deskew_changed:
-                    current = out_path
-                    changed_any = True
-            else:
-                note = "missing_backend_or_url"
-            steps.append(
-                ImagePreprocessStepLog(
-                    id="deskew",
-                    applied=True,
-                    changed=bool(deskew_changed),
-                    note=note,
-                    elapsed_ms=int(round((time.perf_counter() - t1) * 1000)),
-                )
-            )
-        else:
-            steps.append(
-                ImagePreprocessStepLog(
-                    id="deskew",
-                    applied=False,
-                    changed=False,
-                    note="disabled",
-                    elapsed_ms=int(round((time.perf_counter() - t1) * 1000)),
-                )
-            )
-
-        current, changed, step, info = _run_handwriting_cleanup_stage(
-            current=current,
-            artifact_root=artifact_root,
-            output_stem=input_path.stem,
-            warnings=warnings,
-        )
-        if isinstance(info, dict):
-            meta["handwriting_cleanup"] = info
-        if changed:
-            changed_any = True
-        steps.append(step)
-
-        # Step: watermark removal (annotation strip + optional external backend).
-        if bool(getattr(settings, "WATERMARK_REMOVAL_ENABLED", False)):
-            t2 = time.perf_counter()
-            if bool(getattr(settings, "WATERMARK_PDF_ANNOT_STRIP_ENABLED", True)):
-                out_path = artifact_root / f"{input_path.stem}.dewatermark_annots.pdf"
-                changed, note, info = strip_pdf_watermark_annotations(
-                    input_path=current,
-                    output_path=out_path,
-                    sample_pages=sample_pages,
-                )
-                meta["pdf_watermark_annots"] = info
-                if changed:
-                    current = out_path
-                    changed_any = True
-                steps.append(
-                    ImagePreprocessStepLog(
-                        id="watermark_annots",
-                        applied=True,
-                        changed=bool(changed),
-                        note=note,
-                        elapsed_ms=int(round((time.perf_counter() - t2) * 1000)),
-                    )
-                )
-            else:
-                steps.append(
-                    ImagePreprocessStepLog(
-                        id="watermark_annots",
-                        applied=False,
-                        changed=False,
-                        note="disabled",
-                        elapsed_ms=int(round((time.perf_counter() - t2) * 1000)),
-                    )
-                )
-
-            t3 = time.perf_counter()
-            api_url = str(getattr(settings, "WATERMARK_REMOVAL_API_URL", "") or "").strip()
-            timeout_sec = float(getattr(settings, "WATERMARK_TIMEOUT_SEC", 120) or 120)
-            backend = str(getattr(settings, "WATERMARK_REMOVAL_BACKEND", "auto") or "auto").strip().lower() or "auto"
-            model_path = str(getattr(settings, "WATERMARK_REMOVAL_MODEL_PATH", "") or "")
-            out_path = artifact_root / f"{input_path.stem}.dewatermark.pdf"
-            if backend in {"local", "auto"} and str(model_path or "").strip():
-                changed, note, info = _preprocess_pdf_pages_via_raster(
-                    input_path=current,
-                    output_path=out_path,
-                    document_id=document_id,
-                    warnings=warnings,
-                )
-            else:
-                changed, note, info = cleanup_watermark_document(
-                    input_path=current,
-                    output_path=out_path,
-                    backend=backend,
-                    model_path=model_path,
-                    api_url=api_url,
-                    timeout_sec=timeout_sec,
-                )
-            if isinstance(info, dict):
-                meta["watermark_removal"] = info
-            warning = _watermark_warning(note)
-            if warning:
-                warnings.append(warning)
-            if changed:
-                current = out_path
-                changed_any = True
-            steps.append(
-                ImagePreprocessStepLog(
-                    id="watermark_removal",
-                    applied=True,
-                    changed=bool(changed),
-                    note=note,
-                    elapsed_ms=int(round((time.perf_counter() - t3) * 1000)),
-                )
-            )
-        else:
-            t2 = time.perf_counter()
-            steps.append(
-                ImagePreprocessStepLog(
-                    id="watermark_removal",
-                    applied=False,
-                    changed=False,
-                    note="disabled",
-                    elapsed_ms=int(round((time.perf_counter() - t2) * 1000)),
-                )
-            )
-
-        if changed_any and current != input_path:
-            meta["artifact_dir"] = str(artifact_root.resolve(strict=False))
-
-        return ImagePreprocessResult(
-            input_path=str(input_path),
-            output_path=str(current),
-            changed=bool(changed_any and current != input_path),
-            steps=steps,
-            warnings=warnings[:50],
+        return _preprocess_pdf_document(
+            input_path=input_path,
+            document_id=document_id,
+            sample_pages=sample_pages,
             meta=meta,
+            warnings=warnings,
+            steps=steps,
         )
 
     if ext not in _IMAGE_EXTS:
-        return ImagePreprocessResult(
-            input_path=str(input_path),
-            output_path=str(input_path),
-            changed=False,
-            steps=[ImagePreprocessStepLog(id="image_preprocess", applied=False, changed=False, note="unsupported_ext")],
-            warnings=[],
-            meta=meta,
-        )
+        return _unsupported_preprocess_result(input_path, meta=meta)
 
-    run_id = _sanitize_run_id(document_id or input_path.stem or "preprocess")
-    artifact_root = (input_path.parent / ".mimirq_preprocess" / run_id).absolute()
-    artifact_root.mkdir(parents=True, exist_ok=True)
-
-    current = input_path
-    changed_any = False
-
-    # Step: EXIF orientation fix
-    t0 = time.perf_counter()
-    if bool(getattr(settings, "ORIENTATION_ENABLED", False)):
-        out_path = artifact_root / f"{input_path.stem}.oriented{input_path.suffix.lower()}"
-        changed, note, info = fix_exif_orientation(input_path=current, output_path=out_path)
-        meta["image_orientation"] = info
-        if changed:
-            current = out_path
-            changed_any = True
-        steps.append(
-            ImagePreprocessStepLog(
-                id="orientation",
-                applied=True,
-                changed=bool(changed),
-                note=note,
-                elapsed_ms=int(round((time.perf_counter() - t0) * 1000)),
-            )
-        )
-    else:
-        steps.append(
-            ImagePreprocessStepLog(
-                id="orientation",
-                applied=False,
-                changed=False,
-                note="disabled",
-                elapsed_ms=int(round((time.perf_counter() - t0) * 1000)),
-            )
-        )
-
-    current, changed, step, info = _run_paddle_doc_preprocess_stage(
-        current=current,
-        artifact_root=artifact_root,
-        output_stem=input_path.stem,
-        warnings=warnings,
-    )
-    if isinstance(info, dict):
-        meta["paddle_ocr_preprocess"] = info
-    if changed:
-        changed_any = True
-    steps.append(step)
-
-    # Step: deskew
-    t1 = time.perf_counter()
-    if bool(getattr(settings, "DESKEW_ENABLED", False)):
-        backend = str(getattr(settings, "DESKEW_BACKEND", "auto") or "auto").strip().lower()
-        url = str(getattr(settings, "DESKEW_PADDLE_URL", "") or "").strip()
-        timeout_sec = float(getattr(settings, "DESKEW_TIMEOUT_SEC", 60) or 60)
-        deskew_changed = False
-        note = "skipped"
-        if backend in {"auto", "paddle"} and url:
-            out_path = artifact_root / f"{input_path.stem}.deskew{input_path.suffix.lower()}"
-            deskew_changed, note = deskew_via_http(
-                input_path=current,
-                output_path=out_path,
-                url=url,
-                timeout_sec=timeout_sec,
-            )
-            if deskew_changed:
-                current = out_path
-                changed_any = True
-        else:
-            note = "missing_backend_or_url"
-        steps.append(
-            ImagePreprocessStepLog(
-                id="deskew",
-                applied=True,
-                changed=bool(deskew_changed),
-                note=note,
-                elapsed_ms=int(round((time.perf_counter() - t1) * 1000)),
-            )
-        )
-    else:
-        steps.append(
-            ImagePreprocessStepLog(
-                id="deskew",
-                applied=False,
-                changed=False,
-                note="disabled",
-                elapsed_ms=int(round((time.perf_counter() - t1) * 1000)),
-            )
-        )
-
-    current, changed, step, info = _run_handwriting_cleanup_stage(
-        current=current,
-        artifact_root=artifact_root,
-        output_stem=input_path.stem,
-        warnings=warnings,
-    )
-    if isinstance(info, dict):
-        meta["handwriting_cleanup"] = info
-    if changed:
-        changed_any = True
-    steps.append(step)
-
-    # Step: watermark removal (optional external backend).
-    t2 = time.perf_counter()
-    if bool(getattr(settings, "WATERMARK_REMOVAL_ENABLED", False)):
-        api_url = str(getattr(settings, "WATERMARK_REMOVAL_API_URL", "") or "").strip()
-        timeout_sec = float(getattr(settings, "WATERMARK_TIMEOUT_SEC", 120) or 120)
-        backend = str(getattr(settings, "WATERMARK_REMOVAL_BACKEND", "auto") or "auto").strip().lower() or "auto"
-        model_path = str(getattr(settings, "WATERMARK_REMOVAL_MODEL_PATH", "") or "")
-        out_path = artifact_root / f"{input_path.stem}.dewatermark{input_path.suffix.lower()}"
-        changed, note, info = cleanup_watermark_document(
-            input_path=current,
-            output_path=out_path,
-            backend=backend,
-            model_path=model_path,
-            api_url=api_url,
-            timeout_sec=timeout_sec,
-        )
-        if isinstance(info, dict):
-            meta["watermark_removal"] = info
-        warning = _watermark_warning(note)
-        if warning:
-            warnings.append(warning)
-        if changed:
-            current = out_path
-            changed_any = True
-        steps.append(
-            ImagePreprocessStepLog(
-                id="watermark_removal",
-                applied=True,
-                changed=bool(changed),
-                note=note,
-                elapsed_ms=int(round((time.perf_counter() - t2) * 1000)),
-            )
-        )
-    else:
-        steps.append(
-            ImagePreprocessStepLog(
-                id="watermark_removal",
-                applied=False,
-                changed=False,
-                note="disabled",
-                elapsed_ms=int(round((time.perf_counter() - t2) * 1000)),
-            )
-        )
-
-    if changed_any and current != input_path:
-        meta["artifact_dir"] = str(artifact_root.resolve(strict=False))
-
-    return ImagePreprocessResult(
-        input_path=str(input_path),
-        output_path=str(current),
-        changed=bool(changed_any and current != input_path),
-        steps=steps,
-        warnings=warnings[:50],
+    return _preprocess_raster_document(
+        input_path=input_path,
+        document_id=document_id,
         meta=meta,
+        warnings=warnings,
+        steps=steps,
     )

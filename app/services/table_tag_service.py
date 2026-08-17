@@ -32,6 +32,7 @@ _SCHEMA_TERM_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]+|[\u4e00-\u9fff]{2,}|\d+(?
 _QUOTED_LITERAL_RE = re.compile(r"[\"“”'‘’]([^\"“”'‘’]{1,80})[\"“”'‘’]")
 _NUMERIC_LITERAL_RE = re.compile(r"^-?\d+(?:\.\d+)?$")
 _NON_IDENT_RE = re.compile(r"[^a-z0-9]+")
+_NUMERIC_DTYPE_HINTS = ("int", "float", "double", "decimal", "number", "numeric", "real")
 _TABLE_PICK_SUM_INTENT_RE = re.compile(r"(?i)\b(sum|total|amount|gmv|revenue)\b|合计|总和|求和|金额|销售额")
 _TABLE_PICK_COUNT_INTENT_RE = re.compile(r"(?i)\b(count|how many)\b|多少|几条|几行|总数|数量")
 _QUESTION_REQUIRED = "question is required"
@@ -62,7 +63,7 @@ def _table_column_names(columns: list[dict[str, Any]]) -> list[str]:
 
 def _column_is_numeric(column: dict[str, Any]) -> bool:
     dtype = str(column.get("dtype") or "").lower()
-    return any(hint in dtype for hint in ("int", "float", "double", "decimal", "number", "numeric", "real"))
+    return any(hint in dtype for hint in _NUMERIC_DTYPE_HINTS)
 
 
 def _iter_named_columns(columns: list[dict[str, Any]]):
@@ -124,6 +125,28 @@ def _quote_literal(value: str) -> str:
 def _norm_key(value: str) -> str:
     s = str(value or "").strip()
     return s.casefold() if s.isascii() else s
+
+
+def _iter_filtered_named_columns(columns: list[dict[str, Any]], *, exclude: str | None = None):
+    excluded_key = _norm_key(exclude) if exclude else None
+    for column, name in _iter_named_columns(columns):
+        if excluded_key and _norm_key(name) == excluded_key:
+            continue
+        yield column, name
+
+
+def _iter_table_named_columns(tables: list[dict[str, Any]], *, numeric: bool | None = None):
+    for table in tables or []:
+        if not isinstance(table, dict):
+            continue
+        table_name = str(table.get("table_name") or "").strip()
+        for column, name in _iter_named_columns(table.get("columns") or []):
+            is_numeric = _column_is_numeric(column)
+            if numeric is True and not is_numeric:
+                continue
+            if numeric is False and is_numeric:
+                continue
+            yield table_name, column, name
 
 
 def _match_text(hay: str, needle: str) -> bool:
@@ -475,50 +498,21 @@ def _pick_join_group_column(question: str, tables: list[dict[str, Any]]) -> tupl
     q = str(question or "")
     if not q:
         return None, None
-    for t in tables:
-        tname = str(t.get("table_name") or "").strip()
-        for c in (t.get("columns") or []):
-            if not isinstance(c, dict):
-                continue
-            cname = str(c.get("name") or "").strip()
-            if not cname:
-                continue
-            dtype = str(c.get("dtype") or "").lower()
-            if any(k in dtype for k in ("int", "float", "double", "decimal", "number", "numeric", "real")):
-                continue
-            if _match_text(q, cname):
-                return tname, cname
+    for table_name, _column, column_name in _iter_table_named_columns(tables, numeric=False):
+        if _match_text(q, column_name):
+            return table_name, column_name
     return None, None
 
 
 def _pick_join_metric_column(question: str, tables: list[dict[str, Any]]) -> tuple[str | None, str | None]:
     q = str(question or "")
     # Prefer explicitly mentioned numeric columns first.
-    for t in tables:
-        tname = str(t.get("table_name") or "").strip()
-        for c in (t.get("columns") or []):
-            if not isinstance(c, dict):
-                continue
-            cname = str(c.get("name") or "").strip()
-            if not cname:
-                continue
-            dtype = str(c.get("dtype") or "").lower()
-            if not any(k in dtype for k in ("int", "float", "double", "decimal", "number", "numeric", "real")):
-                continue
-            if _match_text(q, cname):
-                return tname, cname
+    for table_name, _column, column_name in _iter_table_named_columns(tables, numeric=True):
+        if _match_text(q, column_name):
+            return table_name, column_name
     # Fallback: first numeric column.
-    for t in tables:
-        tname = str(t.get("table_name") or "").strip()
-        for c in (t.get("columns") or []):
-            if not isinstance(c, dict):
-                continue
-            cname = str(c.get("name") or "").strip()
-            if not cname:
-                continue
-            dtype = str(c.get("dtype") or "").lower()
-            if any(k in dtype for k in ("int", "float", "double", "decimal", "number", "numeric", "real")):
-                return tname, cname
+    for table_name, _column, column_name in _iter_table_named_columns(tables, numeric=True):
+        return table_name, column_name
     return None, None
 
 
@@ -603,116 +597,150 @@ def _dry_run_join_cardinality(
     }
 
 
-def plan_join_query_for_tables(
-    *,
-    question: str,
-    tables: list[dict[str, Any]],
-    max_rows: int,
-) -> dict[str, Any]:
-    """
-    Deterministic bounded JOIN planner for multi-table TAG.
+@dataclass(frozen=True)
+class _JoinPlanningState:
+    top_n: int
+    ambiguity_gap: float
+    strict_ambiguity: bool
+    max_join_tables: int
+    plan_candidates: dict[str, Any]
+    multi_plan_candidates: dict[str, Any]
+    candidate_rows: list[dict[str, Any]]
+    multi_candidate_rows: list[dict[str, Any]]
 
-    Returns: {"sql": "...", "planner": {...}}.
-    """
-    max_rows_i = max(1, int(max_rows or 1))
-    limit = min(max_rows_i, _extract_question_limit(question, default_limit=min(max_rows_i, 20)))
 
+@dataclass(frozen=True)
+class _JoinCandidateSelection:
+    candidate: dict[str, Any]
+    selected_from_multi: bool
+
+
+def _normalize_join_tables(tables: list[dict[str, Any]]) -> list[dict[str, Any]]:
     valid_tables: list[dict[str, Any]] = []
     for raw in tables or []:
         if not isinstance(raw, dict):
             continue
-        tname = str(raw.get("table_name") or "").strip()
-        cols = raw.get("columns")
-        if not tname or not isinstance(cols, list):
+        table_name = str(raw.get("table_name") or "").strip()
+        columns = raw.get("columns")
+        if not table_name or not isinstance(columns, list):
             continue
         try:
             row_count = int(raw.get("row_count") or 0)
         except Exception:
             row_count = 0
         sample_rows_raw = raw.get("sample_rows")
-        sample_rows = [r for r in sample_rows_raw if isinstance(r, dict)] if isinstance(sample_rows_raw, list) else []
+        sample_rows = [row for row in sample_rows_raw if isinstance(row, dict)] if isinstance(sample_rows_raw, list) else []
         valid_tables.append(
             {
-                "table_name": tname,
+                "table_name": table_name,
                 "table_aliases": [str(v) for v in (raw.get("table_aliases") or []) if str(v).strip()],
-                "columns": [c for c in cols if isinstance(c, dict)],
+                "columns": [column for column in columns if isinstance(column, dict)],
                 "row_count": max(0, int(row_count)),
                 "sample_rows": sample_rows[:50],
             }
         )
+    return valid_tables
 
-    if len(valid_tables) < 2:
-        raise ValueError("at least two tables are required for join planning")
 
+def _build_join_planning_state(valid_tables: list[dict[str, Any]]) -> _JoinPlanningState:
     top_n = max(1, int(getattr(settings, "TABLE_TAG_PLAN_CANDIDATES_TOP_N", 3) or 3))
     ambiguity_gap = float(getattr(settings, "TABLE_TAG_AMBIGUITY_SCORE_GAP", 0.03) or 0.03)
     strict_ambiguity = bool(getattr(settings, "TABLE_TAG_AMBIGUITY_STRICT_ENABLED", True))
+    max_join_tables = max(2, int(getattr(settings, "TABLE_QUERY_MAX_JOIN_TABLES", 4) or 4))
     plan_candidates = score_join_plan_candidates(
         tables=valid_tables,
         top_n=top_n,
         ambiguity_score_gap=ambiguity_gap,
     )
-    max_join_tables = max(2, int(getattr(settings, "TABLE_QUERY_MAX_JOIN_TABLES", 4) or 4))
     multi_plan_candidates = score_multi_join_plan_candidates(
         tables=valid_tables,
         top_n=top_n,
         ambiguity_score_gap=ambiguity_gap,
         max_states=max(8, max_join_tables * 8),
     )
-    candidate_rows = [c for c in (plan_candidates.get("candidates") or []) if isinstance(c, dict)]
+    candidate_rows = [candidate for candidate in (plan_candidates.get("candidates") or []) if isinstance(candidate, dict)]
     multi_candidate_rows = [
-        c for c in (multi_plan_candidates.get("candidates") or []) if isinstance(c, dict)
+        candidate for candidate in (multi_plan_candidates.get("candidates") or []) if isinstance(candidate, dict)
     ]
-    if not candidate_rows:
+    return _JoinPlanningState(
+        top_n=top_n,
+        ambiguity_gap=ambiguity_gap,
+        strict_ambiguity=strict_ambiguity,
+        max_join_tables=max_join_tables,
+        plan_candidates=plan_candidates,
+        multi_plan_candidates=multi_plan_candidates,
+        candidate_rows=candidate_rows,
+        multi_candidate_rows=multi_candidate_rows,
+    )
+
+
+def _select_join_candidate(
+    valid_tables: list[dict[str, Any]],
+    state: _JoinPlanningState,
+) -> _JoinCandidateSelection:
+    if not state.candidate_rows:
         raise ValueError("no_join_relationship_found")
+
     selected_candidate = (
-        plan_candidates.get("selected") if isinstance(plan_candidates.get("selected"), dict) else candidate_rows[0]
+        state.plan_candidates.get("selected")
+        if isinstance(state.plan_candidates.get("selected"), dict)
+        else state.candidate_rows[0]
     )
-    selected_from_multi = False
-    if len(valid_tables) > 2 and multi_candidate_rows:
-        multi_selected = (
-            multi_plan_candidates.get("selected")
-            if isinstance(multi_plan_candidates.get("selected"), dict)
-            else multi_candidate_rows[0]
-        )
-        if isinstance(multi_selected, dict):
-            multi_tables = [str(v) for v in (multi_selected.get("selected_tables") or []) if str(v).strip()]
-            pair_score = float(selected_candidate.get("score") or 0.0) if isinstance(selected_candidate, dict) else 0.0
-            multi_score = float(multi_selected.get("score") or 0.0)
-            if len(multi_tables) >= 3 and multi_score >= (pair_score * 0.9):
-                selected_candidate = multi_selected
-                selected_from_multi = True
+    if len(valid_tables) <= 2 or not state.multi_candidate_rows:
+        return _JoinCandidateSelection(candidate=selected_candidate, selected_from_multi=False)
 
-    if strict_ambiguity:
-        if selected_from_multi and bool(multi_plan_candidates.get("ambiguous")):
-            raise ValueError("ambiguous_join_plan")
-        if (not selected_from_multi) and bool(plan_candidates.get("ambiguous")):
-            raise ValueError("ambiguous_join_plan")
-
-    selected_score = float(selected_candidate.get("score") or 0.0) if isinstance(selected_candidate, dict) else 0.0
-    low_confidence_threshold = float(
-        getattr(settings, "TABLE_TAG_PLAN_LOW_CONFIDENCE_THRESHOLD", 0.55) or 0.55
+    multi_selected = (
+        state.multi_plan_candidates.get("selected")
+        if isinstance(state.multi_plan_candidates.get("selected"), dict)
+        else state.multi_candidate_rows[0]
     )
+    if not isinstance(multi_selected, dict):
+        return _JoinCandidateSelection(candidate=selected_candidate, selected_from_multi=False)
+
+    multi_tables = [str(v) for v in (multi_selected.get("selected_tables") or []) if str(v).strip()]
+    pair_score = float(selected_candidate.get("score") or 0.0) if isinstance(selected_candidate, dict) else 0.0
+    multi_score = float(multi_selected.get("score") or 0.0)
+    if len(multi_tables) >= 3 and multi_score >= (pair_score * 0.9):
+        return _JoinCandidateSelection(candidate=multi_selected, selected_from_multi=True)
+    return _JoinCandidateSelection(candidate=selected_candidate, selected_from_multi=False)
+
+
+def _selected_plan_candidates(
+    state: _JoinPlanningState,
+    selection: _JoinCandidateSelection,
+) -> dict[str, Any]:
+    return state.multi_plan_candidates if selection.selected_from_multi else state.plan_candidates
+
+
+def _join_confidence_state(selected_candidate: dict[str, Any]) -> tuple[float, float, bool, bool]:
+    selected_score = float(selected_candidate.get("score") or 0.0)
+    low_confidence_threshold = float(getattr(settings, "TABLE_TAG_PLAN_LOW_CONFIDENCE_THRESHOLD", 0.55) or 0.55)
     low_confidence_threshold = min(1.0, max(0.0, float(low_confidence_threshold)))
     low_confidence = float(selected_score) < float(low_confidence_threshold)
     low_confidence_strict = bool(getattr(settings, "TABLE_TAG_PLAN_LOW_CONFIDENCE_STRICT_ENABLED", False))
-    if low_confidence and low_confidence_strict:
-        raise ValueError("low_confidence_join_plan")
-    selected_join = selected_candidate.get("join") if isinstance(selected_candidate, dict) else None
-    if not isinstance(selected_join, dict):
-        joins_path = selected_candidate.get("joins") if isinstance(selected_candidate, dict) else None
-        joins_path = [j for j in (joins_path or []) if isinstance(j, dict)]
-        selected_join = joins_path[0] if joins_path else {}
-    if not isinstance(selected_join, dict):
-        selected_join = {}
+    return selected_score, low_confidence_threshold, low_confidence, low_confidence_strict
 
+
+def _selected_join_payload(selected_candidate: dict[str, Any]) -> dict[str, Any]:
+    selected_join = selected_candidate.get("join")
+    if isinstance(selected_join, dict):
+        return selected_join
+    joins_path = [join for join in (selected_candidate.get("joins") or []) if isinstance(join, dict)]
+    return joins_path[0] if joins_path else {}
+
+
+def _dedupe_join_relationships(
+    selected_candidate: dict[str, Any],
+    candidate_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     relationships: list[dict[str, Any]] = []
-    if isinstance(selected_candidate, dict) and isinstance(selected_candidate.get("joins"), list):
-        relationships = [j for j in (selected_candidate.get("joins") or []) if isinstance(j, dict)]
-    for c in candidate_rows:
-        join = c.get("join") if isinstance(c, dict) else None
+    if isinstance(selected_candidate.get("joins"), list):
+        relationships.extend(join for join in (selected_candidate.get("joins") or []) if isinstance(join, dict))
+    for candidate in candidate_rows:
+        join = candidate.get("join") if isinstance(candidate, dict) else None
         if isinstance(join, dict):
             relationships.append(join)
+
     dedupe_keys: set[str] = set()
     unique_relationships: list[dict[str, Any]] = []
     for rel in relationships:
@@ -726,39 +754,57 @@ def plan_join_query_for_tables(
             continue
         dedupe_keys.add(key)
         unique_relationships.append(rel)
-    relationships = unique_relationships
+    return unique_relationships
 
-    rel = selected_join
-    left_table = str(rel.get("left_table") or "").strip()
-    right_table = str(rel.get("right_table") or "").strip()
-    left_column = str(rel.get("left_column") or "").strip()
-    right_column = str(rel.get("right_column") or "").strip()
-    if not left_table or not right_table or not left_column or not right_column:
-        raise ValueError("invalid_join_relationship")
 
-    table_map = {str(t.get("table_name") or ""): t for t in valid_tables}
-    selected_tables = [
-        str(v)
-        for v in ((selected_candidate or {}).get("selected_tables") or [left_table, right_table])
-        if str(v).strip()
-    ]
-    if not selected_tables:
-        selected_tables = [left_table, right_table]
+def _join_group_expr(
+    *,
+    alias_map: dict[str, str],
+    group_table: str | None,
+    group_col: str,
+    right_alias: str,
+) -> str:
+    return f"{alias_map.get(str(group_table), right_alias)}.{_quote_ident(group_col)}"
 
-    alias_map = {left_table: "t0", right_table: "t1"}
-    left_alias = alias_map[left_table]
-    right_alias = alias_map[right_table]
 
-    group_table, group_col = _pick_join_group_column(question, [table_map[left_table], table_map[right_table]])
-    metric_table, metric_col = _pick_join_metric_column(question, [table_map[left_table], table_map[right_table]])
+def _join_metric_expr(
+    *,
+    alias_map: dict[str, str],
+    metric_table: str,
+    metric_col: str,
+    left_alias: str,
+) -> str:
+    return f"{alias_map.get(metric_table, left_alias)}.{_quote_ident(metric_col)}"
 
-    q_fold = str(question or "").casefold()
-    is_count = bool(_TABLE_PICK_COUNT_INTENT_RE.search(question or ""))
-    is_sum = bool(_TABLE_PICK_SUM_INTENT_RE.search(question or ""))
-    is_avg = any(k in q_fold for k in ("avg", "average", "均值", "平均"))
-    is_min = any(k in q_fold for k in (" min", "minimum", "最小"))
-    is_max = any(k in q_fold for k in (" max", "maximum", "最大"))
 
+def _join_metric_aggregation(question: str, *, question_fold: str, group_col: str | None) -> str | None:
+    if bool(_TABLE_PICK_SUM_INTENT_RE.search(question or "")) or (group_col is not None and "金额" in str(question or "")):
+        return "sum"
+    if any(k in question_fold for k in ("avg", "average", "均值", "平均")):
+        return "avg"
+    if any(k in question_fold for k in (" min", "minimum", "最小")):
+        return "min"
+    if any(k in question_fold for k in (" max", "maximum", "最大")):
+        return "max"
+    return None
+
+
+def _build_join_query_sql(
+    *,
+    question: str,
+    limit: int,
+    left_table: str,
+    right_table: str,
+    left_column: str,
+    right_column: str,
+    alias_map: dict[str, str],
+    left_alias: str,
+    right_alias: str,
+    group_table: str | None,
+    group_col: str | None,
+    metric_table: str | None,
+    metric_col: str | None,
+) -> tuple[str, str, str | None, str | None, dict[str, Any] | None]:
     sql = (
         f"SELECT {right_alias}.{_quote_ident(group_col or right_column)} AS {_quote_ident(group_col or right_column)} "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
         f"FROM {_quote_ident(left_table)} AS {left_alias} "
@@ -767,83 +813,18 @@ def plan_join_query_for_tables(
         f"LIMIT {int(limit)}"
     )
     reason = "join_projection"
-    aggregation: str | None = None
-    aggregation_column: str | None = None
-    order_by: dict[str, Any] | None = None
-
-    if metric_table and metric_col:
-        metric_expr = f"{alias_map.get(metric_table, left_alias)}.{_quote_ident(metric_col)}"
-        aggregation_column = metric_col
-        if is_sum or (group_col is not None and "金额" in str(question or "")):
-            aggregation = "sum"
-            if group_table and group_col:
-                group_expr = f"{alias_map.get(group_table, right_alias)}.{_quote_ident(group_col)}"
-                sql = (
-                    f"SELECT {group_expr} AS {_quote_ident(group_col)}, SUM({metric_expr}) AS total "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
-                    f"FROM {_quote_ident(left_table)} AS {left_alias} "
-                    f"JOIN {_quote_ident(right_table)} AS {right_alias} "
-                    f"ON {left_alias}.{_quote_ident(left_column)} = {right_alias}.{_quote_ident(right_column)} "
-                    f"GROUP BY {group_expr} ORDER BY total DESC LIMIT {int(limit)}"
-                )
-                reason = "join_aggregation_group"
-                order_by = {"column": "total", "direction": "desc"}
-            else:
-                sql = (
-                    f"SELECT SUM({metric_expr}) AS total "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
-                    f"FROM {_quote_ident(left_table)} AS {left_alias} "
-                    f"JOIN {_quote_ident(right_table)} AS {right_alias} "
-                    f"ON {left_alias}.{_quote_ident(left_column)} = {right_alias}.{_quote_ident(right_column)} "
-                    "LIMIT 1"
-                )
-                reason = "join_aggregation"
-                order_by = None
-        elif is_avg:
-            aggregation = "avg"
-        elif is_min:
-            aggregation = "min"
-        elif is_max:
-            aggregation = "max"
-
-    if aggregation in {"avg", "min", "max"} and metric_table and metric_col:
-        metric_expr = f"{alias_map.get(metric_table, left_alias)}.{_quote_ident(metric_col)}"
-        agg_sql = aggregation.upper()
-        alias_name = "value"
+    aggregation_column = metric_col if metric_table and metric_col else None
+    if bool(_TABLE_PICK_COUNT_INTENT_RE.search(question or "")):
         if group_table and group_col:
-            group_expr = f"{alias_map.get(group_table, right_alias)}.{_quote_ident(group_col)}"
+            group_expr = _join_group_expr(alias_map=alias_map, group_table=group_table, group_col=group_col, right_alias=right_alias)
             sql = (
-                f"SELECT {group_expr} AS {_quote_ident(group_col)}, {agg_sql}({metric_expr}) AS {alias_name} "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
+                f"SELECT {group_expr} AS {_quote_ident(group_col)}, COUNT(*) AS count "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
                 f"FROM {_quote_ident(left_table)} AS {left_alias} "
                 f"JOIN {_quote_ident(right_table)} AS {right_alias} "
                 f"ON {left_alias}.{_quote_ident(left_column)} = {right_alias}.{_quote_ident(right_column)} "
-                f"GROUP BY {group_expr} ORDER BY {alias_name} DESC LIMIT {int(limit)}"
+                f"GROUP BY {group_expr} ORDER BY count DESC LIMIT {int(limit)}"
             )
-            reason = "join_aggregation_group"
-            order_by = {"column": alias_name, "direction": "desc"}
-        else:
-            sql = (
-                f"SELECT {agg_sql}({metric_expr}) AS {alias_name} "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
-                f"FROM {_quote_ident(left_table)} AS {left_alias} "
-                f"JOIN {_quote_ident(right_table)} AS {right_alias} "
-                f"ON {left_alias}.{_quote_ident(left_column)} = {right_alias}.{_quote_ident(right_column)} "
-                "LIMIT 1"
-            )
-            reason = "join_aggregation"
-            order_by = None
-
-    if is_count and group_table and group_col:
-        group_expr = f"{alias_map.get(group_table, right_alias)}.{_quote_ident(group_col)}"
-        sql = (
-            f"SELECT {group_expr} AS {_quote_ident(group_col)}, COUNT(*) AS count "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
-            f"FROM {_quote_ident(left_table)} AS {left_alias} "
-            f"JOIN {_quote_ident(right_table)} AS {right_alias} "
-            f"ON {left_alias}.{_quote_ident(left_column)} = {right_alias}.{_quote_ident(right_column)} "
-            f"GROUP BY {group_expr} ORDER BY count DESC LIMIT {int(limit)}"
-        )
-        reason = "join_count_group"
-        aggregation = "count"
-        aggregation_column = None
-        order_by = {"column": "count", "direction": "desc"}
-    elif is_count:
+            return sql, "join_count_group", "count", None, {"column": "count", "direction": "desc"}
         sql = (
             f"SELECT COUNT(*) AS count "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
             f"FROM {_quote_ident(left_table)} AS {left_alias} "
@@ -851,48 +832,102 @@ def plan_join_query_for_tables(
             f"ON {left_alias}.{_quote_ident(left_column)} = {right_alias}.{_quote_ident(right_column)} "
             "LIMIT 1"
         )
-        reason = "join_count"
-        aggregation = "count"
-        aggregation_column = None
-        order_by = None
+        return sql, "join_count", "count", None, None
 
-    sql_fingerprint = fingerprint_sql(sql, length=16)
-    dry_run_cardinality = _dry_run_join_cardinality(
-        selected_candidate=(selected_candidate if isinstance(selected_candidate, dict) else None),
-        max_rows=max_rows_i,
+    if not metric_table or not metric_col:
+        return sql, reason, None, aggregation_column, None
+
+    aggregation = _join_metric_aggregation(
+        question,
+        question_fold=str(question or "").casefold(),
+        group_col=group_col,
     )
-    join_plan_risk = _build_join_plan_risk_contract(
-        selected_candidate=(selected_candidate if isinstance(selected_candidate, dict) else None),
-        dry_run_cardinality=dry_run_cardinality,
-    )
-    join_statistics_snapshot = build_join_statistics_snapshot(
-        tables=valid_tables,
-        top_n=top_n,
-        ambiguity_score_gap=ambiguity_gap,
-        max_states=max(8, max_join_tables * 8),
-    )
-    planner = {
+    if aggregation == "sum":
+        metric_expr = _join_metric_expr(alias_map=alias_map, metric_table=metric_table, metric_col=metric_col, left_alias=left_alias)
+        if group_table and group_col:
+            group_expr = _join_group_expr(alias_map=alias_map, group_table=group_table, group_col=group_col, right_alias=right_alias)
+            sql = (
+                f"SELECT {group_expr} AS {_quote_ident(group_col)}, SUM({metric_expr}) AS total "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
+                f"FROM {_quote_ident(left_table)} AS {left_alias} "
+                f"JOIN {_quote_ident(right_table)} AS {right_alias} "
+                f"ON {left_alias}.{_quote_ident(left_column)} = {right_alias}.{_quote_ident(right_column)} "
+                f"GROUP BY {group_expr} ORDER BY total DESC LIMIT {int(limit)}"
+            )
+            return sql, "join_aggregation_group", "sum", aggregation_column, {"column": "total", "direction": "desc"}
+        sql = (
+            f"SELECT SUM({metric_expr}) AS total "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
+            f"FROM {_quote_ident(left_table)} AS {left_alias} "
+            f"JOIN {_quote_ident(right_table)} AS {right_alias} "
+            f"ON {left_alias}.{_quote_ident(left_column)} = {right_alias}.{_quote_ident(right_column)} "
+            "LIMIT 1"
+        )
+        return sql, "join_aggregation", "sum", aggregation_column, None
+
+    if aggregation in {"avg", "min", "max"}:
+        metric_expr = _join_metric_expr(alias_map=alias_map, metric_table=metric_table, metric_col=metric_col, left_alias=left_alias)
+        agg_sql = aggregation.upper()
+        if group_table and group_col:
+            group_expr = _join_group_expr(alias_map=alias_map, group_table=group_table, group_col=group_col, right_alias=right_alias)
+            sql = (
+                f"SELECT {group_expr} AS {_quote_ident(group_col)}, {agg_sql}({metric_expr}) AS value "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
+                f"FROM {_quote_ident(left_table)} AS {left_alias} "
+                f"JOIN {_quote_ident(right_table)} AS {right_alias} "
+                f"ON {left_alias}.{_quote_ident(left_column)} = {right_alias}.{_quote_ident(right_column)} "
+                f"GROUP BY {group_expr} ORDER BY value DESC LIMIT {int(limit)}"
+            )
+            return sql, "join_aggregation_group", aggregation, aggregation_column, {"column": "value", "direction": "desc"}
+        sql = (
+            f"SELECT {agg_sql}({metric_expr}) AS value "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
+            f"FROM {_quote_ident(left_table)} AS {left_alias} "
+            f"JOIN {_quote_ident(right_table)} AS {right_alias} "
+            f"ON {left_alias}.{_quote_ident(left_column)} = {right_alias}.{_quote_ident(right_column)} "
+            "LIMIT 1"
+        )
+        return sql, "join_aggregation", aggregation, aggregation_column, None
+
+    return sql, reason, None, aggregation_column, None
+
+
+def _build_join_planner(
+    *,
+    state: _JoinPlanningState,
+    selection: _JoinCandidateSelection,
+    selected_score: float,
+    low_confidence_threshold: float,
+    low_confidence: bool,
+    low_confidence_strict: bool,
+    relationships: list[dict[str, Any]],
+    selected_tables: list[str],
+    join_plan_risk: dict[str, Any],
+    dry_run_cardinality: dict[str, Any],
+    join_statistics_snapshot: dict[str, Any],
+    aggregation: str | None,
+    aggregation_column: str | None,
+    group_table: str | None,
+    group_col: str | None,
+    order_by: dict[str, Any] | None,
+    limit: int,
+    sql_fingerprint: str,
+) -> dict[str, Any]:
+    selected_plan = _selected_plan_candidates(state, selection)
+    return {
         # Keep strategy stable for downstream compatibility; expose beam usage via mode.
         "strategy": "deterministic_join",
-        "planner_mode": ("beam" if selected_from_multi else "pairwise"),
-        "reason": reason,
-        "joins": relationships[: max(1, int(max_join_tables) - 1)],
+        "planner_mode": ("beam" if selection.selected_from_multi else "pairwise"),
+        "reason": (
+            "join_projection"
+            if aggregation is None and order_by is None and not bool(_TABLE_PICK_COUNT_INTENT_RE.search(""))
+            else None
+        ),
+        "joins": relationships[: max(1, int(state.max_join_tables) - 1)],
         "selected_tables": selected_tables,
-        "candidates": candidate_rows[:top_n],
-        "multi_candidates": multi_candidate_rows[:top_n],
-        "selected_candidate_id": str((selected_candidate or {}).get("candidate_id") or ""),
+        "candidates": state.candidate_rows[: state.top_n],
+        "multi_candidates": state.multi_candidate_rows[: state.top_n],
+        "selected_candidate_id": str((selection.candidate or {}).get("candidate_id") or ""),
         "selected_score": round(float(selected_score), 6),
-        "ambiguous": (
-            bool(multi_plan_candidates.get("ambiguous"))
-            if selected_from_multi
-            else bool(plan_candidates.get("ambiguous"))
-        ),
-        "ambiguity_gap": (
-            multi_plan_candidates.get("ambiguity_gap")
-            if selected_from_multi
-            else plan_candidates.get("ambiguity_gap")
-        ),
-        "strict_ambiguity": bool(strict_ambiguity),
+        "ambiguous": bool(selected_plan.get("ambiguous")),
+        "ambiguity_gap": selected_plan.get("ambiguity_gap"),
+        "strict_ambiguity": bool(state.strict_ambiguity),
         "low_confidence": bool(low_confidence),
         "low_confidence_threshold": round(float(low_confidence_threshold), 6),
         "strict_low_confidence": bool(low_confidence_strict),
@@ -914,6 +949,113 @@ def plan_join_query_for_tables(
         "limit": int(limit),
         "sql_fingerprint": sql_fingerprint,
     }
+
+
+def plan_join_query_for_tables(
+    *,
+    question: str,
+    tables: list[dict[str, Any]],
+    max_rows: int,
+) -> dict[str, Any]:
+    """
+    Deterministic bounded JOIN planner for multi-table TAG.
+
+    Returns: {"sql": "...", "planner": {...}}.
+    """
+    max_rows_i = max(1, int(max_rows or 1))
+    limit = min(max_rows_i, _extract_question_limit(question, default_limit=min(max_rows_i, 20)))
+    valid_tables = _normalize_join_tables(tables)
+    if len(valid_tables) < 2:
+        raise ValueError("at least two tables are required for join planning")
+
+    state = _build_join_planning_state(valid_tables)
+    selection = _select_join_candidate(valid_tables, state)
+    selected_plan = _selected_plan_candidates(state, selection)
+    if state.strict_ambiguity and bool(selected_plan.get("ambiguous")):
+        raise ValueError("ambiguous_join_plan")
+
+    selected_score, low_confidence_threshold, low_confidence, low_confidence_strict = _join_confidence_state(
+        selection.candidate
+    )
+    if low_confidence and low_confidence_strict:
+        raise ValueError("low_confidence_join_plan")
+
+    rel = _selected_join_payload(selection.candidate)
+    left_table = str(rel.get("left_table") or "").strip()
+    right_table = str(rel.get("right_table") or "").strip()
+    left_column = str(rel.get("left_column") or "").strip()
+    right_column = str(rel.get("right_column") or "").strip()
+    if not left_table or not right_table or not left_column or not right_column:
+        raise ValueError("invalid_join_relationship")
+
+    relationships = _dedupe_join_relationships(selection.candidate, state.candidate_rows)
+    table_map = {str(t.get("table_name") or ""): t for t in valid_tables}
+    selected_tables = [
+        str(v)
+        for v in ((selection.candidate or {}).get("selected_tables") or [left_table, right_table])
+        if str(v).strip()
+    ]
+    if not selected_tables:
+        selected_tables = [left_table, right_table]
+
+    alias_map = {left_table: "t0", right_table: "t1"}
+    left_alias = alias_map[left_table]
+    right_alias = alias_map[right_table]
+
+    group_table, group_col = _pick_join_group_column(question, [table_map[left_table], table_map[right_table]])
+    metric_table, metric_col = _pick_join_metric_column(question, [table_map[left_table], table_map[right_table]])
+    sql, reason, aggregation, aggregation_column, order_by = _build_join_query_sql(
+        question=question,
+        limit=limit,
+        left_table=left_table,
+        right_table=right_table,
+        left_column=left_column,
+        right_column=right_column,
+        alias_map=alias_map,
+        left_alias=left_alias,
+        right_alias=right_alias,
+        group_table=group_table,
+        group_col=group_col,
+        metric_table=metric_table,
+        metric_col=metric_col,
+    )
+
+    sql_fingerprint = fingerprint_sql(sql, length=16)
+    dry_run_cardinality = _dry_run_join_cardinality(
+        selected_candidate=selection.candidate,
+        max_rows=max_rows_i,
+    )
+    join_plan_risk = _build_join_plan_risk_contract(
+        selected_candidate=selection.candidate,
+        dry_run_cardinality=dry_run_cardinality,
+    )
+    join_statistics_snapshot = build_join_statistics_snapshot(
+        tables=valid_tables,
+        top_n=state.top_n,
+        ambiguity_score_gap=state.ambiguity_gap,
+        max_states=max(8, state.max_join_tables * 8),
+    )
+    planner = _build_join_planner(
+        state=state,
+        selection=selection,
+        selected_score=selected_score,
+        low_confidence_threshold=low_confidence_threshold,
+        low_confidence=low_confidence,
+        low_confidence_strict=low_confidence_strict,
+        relationships=relationships,
+        selected_tables=selected_tables,
+        join_plan_risk=join_plan_risk,
+        dry_run_cardinality=dry_run_cardinality,
+        join_statistics_snapshot=join_statistics_snapshot,
+        aggregation=aggregation,
+        aggregation_column=aggregation_column,
+        group_table=group_table,
+        group_col=group_col,
+        order_by=order_by,
+        limit=limit,
+        sql_fingerprint=sql_fingerprint,
+    )
+    planner["reason"] = reason
     return {"sql": sql, "planner": planner}
 
 
@@ -958,14 +1100,36 @@ def _pick_numeric_column(columns: list[dict[str, Any]]) -> str | None:
 def _pick_mentioned_column(question: str, columns: list[dict[str, Any]]) -> str | None:
     q = str(question or "")
     q_fold = q.casefold()
-    for c in (columns or []):
-        if not isinstance(c, dict):
-            continue
-        name = str(c.get("name") or "").strip()
-        if not name:
-            continue
+    for _column, name in _iter_named_columns(columns):
         key = name.casefold() if name.isascii() else name
         if key and key in q_fold:
+            return name
+    return None
+
+
+def _extract_group_terms(question: str) -> list[str]:
+    terms: list[str] = []
+    for pattern in (r"(?i)\bgroup\s+by\s+(\w+)", r"按\s*([A-Za-z0-9_\u4e00-\u9fff]+)\s*分组"):
+        match = re.search(pattern, question)
+        if match:
+            terms.append(str(match.group(1) or "").strip())
+    return terms
+
+
+def _find_group_term_match(question_terms: list[str], columns: list[dict[str, Any]], *, exclude: str | None = None) -> str | None:
+    for term in question_terms:
+        if not term:
+            continue
+        for _column, name in _iter_filtered_named_columns(columns, exclude=exclude):
+            if _match_text(name, term) or _match_text(term, name):
+                return name
+    return None
+
+
+def _match_group_requested_column(question: str, question_fold: str, columns: list[dict[str, Any]], *, exclude: str | None = None) -> str | None:
+    for _column, name in _iter_filtered_named_columns(columns, exclude=exclude):
+        key = name.casefold() if name.isascii() else name
+        if key and key in (question_fold if name.isascii() else question):
             return name
     return None
 
@@ -975,41 +1139,65 @@ def _pick_group_column(question: str, columns: list[dict[str, Any]], *, exclude:
     if not q:
         return None
     q_fold = q.casefold()
-
-    explicit_terms: list[str] = []
-    m_en = re.search(r"(?i)\bgroup\s+by\s+(\w+)", q)
-    if m_en:
-        explicit_terms.append(str(m_en.group(1) or "").strip())
-    m_zh = re.search(r"按\s*([A-Za-z0-9_\u4e00-\u9fff]+)\s*分组", q)
-    if m_zh:
-        explicit_terms.append(str(m_zh.group(1) or "").strip())
-
-    for t in explicit_terms:
-        if not t:
-            continue
-        for c in (columns or []):
-            if not isinstance(c, dict):
-                continue
-            name = str(c.get("name") or "").strip()
-            if not name or (exclude and _norm_key(name) == _norm_key(exclude)):
-                continue
-            if _match_text(name, t) or _match_text(t, name):
-                return name
+    group_match = _find_group_term_match(_extract_group_terms(q), columns, exclude=exclude)
+    if group_match:
+        return group_match
 
     group_requested = any(k in q_fold for k in ("group by", "分组", "每个", "各"))
     if not group_requested:
         return None
+    return _match_group_requested_column(q, q_fold, columns, exclude=exclude)
 
-    for c in (columns or []):
-        if not isinstance(c, dict):
+
+def _column_names(columns: list[dict[str, Any]]) -> list[str]:
+    return [name for _column, name in _iter_named_columns(columns)]
+
+
+def _match_explicit_filter_predicate(question: str, col_names: list[str]) -> tuple[str | None, str | None]:
+    for col in col_names:
+        pat = re.compile(
+            rf"{re.escape(col)}\s*(?:=|==|is|equals?|eq|为|是|等于)\s*['\"“”]?([A-Za-z0-9_./:\-]+|[\u4e00-\u9fff]{{1,40}})",
+            re.IGNORECASE,
+        )
+        match = pat.search(question)
+        if not match:
             continue
-        name = str(c.get("name") or "").strip()
-        if not name or (exclude and _norm_key(name) == _norm_key(exclude)):
+        value = str(match.group(1) or "").strip().strip(".,，。;；")
+        if value:
+            return col, value
+    return None, None
+
+
+def _sample_value_matches_preferred_column(col: str, col_names: list[str], preferred_column: str | None) -> bool:
+    if not preferred_column:
+        return True
+    if _norm_key(preferred_column) == _norm_key(col):
+        return True
+    return preferred_column not in col_names
+
+
+def _match_sample_value_filter(
+    question: str,
+    *,
+    col_names: list[str],
+    sample_rows: list[dict[str, Any]] | None,
+    preferred_column: str | None,
+) -> tuple[str | None, str | None]:
+    for row in (sample_rows or [])[:12]:
+        if not isinstance(row, dict):
             continue
-        key = name.casefold() if name.isascii() else name
-        if key and key in (q_fold if name.isascii() else q):
-            return name
-    return None
+        for key, value in list(row.items())[:40]:
+            col = str(key or "").strip()
+            if not col or (col_names and col not in col_names):
+                continue
+            if not _sample_value_matches_preferred_column(col, col_names, preferred_column):
+                continue
+            if value is None:
+                continue
+            sval = str(value).strip()
+            if sval and _match_text(question, sval):
+                return col, sval
+    return None, None
 
 
 def _infer_filter_predicate(
@@ -1023,24 +1211,12 @@ def _infer_filter_predicate(
     if not q:
         return None, None, "none"
 
-    col_names = [
-        str(c.get("name") or "").strip()
-        for c in (columns or [])
-        if isinstance(c, dict) and str(c.get("name") or "").strip()
-    ]
+    col_names = _column_names(columns)
 
     # Explicit predicate: `region = US` / `region 为 US` / `region is US`.
-    for col in col_names:
-        pat = re.compile(
-            rf"{re.escape(col)}\s*(?:=|==|is|equals?|eq|为|是|等于)\s*['\"“”]?([A-Za-z0-9_./:\-]+|[\u4e00-\u9fff]{{1,40}})",
-            re.IGNORECASE,
-        )
-        m = pat.search(q)
-        if not m:
-            continue
-        val = str(m.group(1) or "").strip().strip(".,，。;；")
-        if val:
-            return col, val, "explicit_predicate"
+    explicit_col, explicit_val = _match_explicit_filter_predicate(q, col_names)
+    if explicit_col and explicit_val is not None:
+        return explicit_col, explicit_val, "explicit_predicate"
 
     # Quoted literals can be used when a target column is already mentioned.
     quoted_vals = _extract_quoted_literals(q, max_values=6)
@@ -1048,23 +1224,14 @@ def _infer_filter_predicate(
         return preferred_column, quoted_vals[0], "quoted_literal"
 
     # Sample-value match fallback for unquoted values.
-    for row in (sample_rows or [])[:12]:
-        if not isinstance(row, dict):
-            continue
-        for k, v in list(row.items())[:40]:
-            col = str(k or "").strip()
-            if not col or (col_names and col not in col_names):
-                continue
-            if preferred_column and _norm_key(preferred_column) != _norm_key(col):
-                if preferred_column in col_names:
-                    continue
-            if v is None:
-                continue
-            sval = str(v).strip()
-            if not sval:
-                continue
-            if _match_text(q, sval):
-                return col, sval, "sample_value_match"
+    sample_col, sample_val = _match_sample_value_filter(
+        q,
+        col_names=col_names,
+        sample_rows=sample_rows,
+        preferred_column=preferred_column,
+    )
+    if sample_col and sample_val is not None:
+        return sample_col, sample_val, "sample_value_match"
 
     return None, None, "none"
 
@@ -1083,6 +1250,80 @@ def _infer_order_hint(
     is_desc = any(k in q_fold for k in (" desc", "descending", "降序", "最高", "最大", "最多", "top", "前"))
     direction = "asc" if is_asc and not is_desc else "desc"
     return default_column, direction
+
+
+def _infer_aggregation_plan(
+    *,
+    question_fold: str,
+    selected_col: str | None,
+    selected_col_q: str,
+) -> tuple[str | None, str, str]:
+    if any(k in question_fold for k in ("count", "how many", "多少", "几条", "几行", "总数", "数量")):
+        return "count", "COUNT(*)", "count"
+    if any(k in question_fold for k in ("sum", "total", "合计", "总和", "求和")) and selected_col:
+        return "sum", f"SUM({selected_col_q})", "total"
+    if any(k in question_fold for k in ("avg", "average", "均值", "平均")) and selected_col:
+        return "avg", f"AVG({selected_col_q})", "avg"
+    if any(k in question_fold for k in (" min", "minimum", "最小")) and selected_col:
+        return "min", f"MIN({selected_col_q})", "min_value"
+    if any(k in question_fold for k in (" max", "maximum", "最大")) and selected_col:
+        return "max", f"MAX({selected_col_q})", "max_value"
+    return None, "", ""
+
+
+def _resolve_order_clause(
+    *,
+    order_col: str | None,
+    order_dir: str | None,
+    agg_alias: str,
+) -> tuple[str, dict[str, Any] | None]:
+    if not order_col or not order_dir:
+        return "", None
+    if agg_alias and _norm_key(order_col) == _norm_key(agg_alias):
+        return f" ORDER BY {agg_alias} {order_dir.upper()}", {"column": agg_alias, "direction": order_dir}
+    return f" ORDER BY {_quote_ident(order_col)} {order_dir.upper()}", {"column": order_col, "direction": order_dir}
+
+
+def _render_single_table_sql(
+    *,
+    table_q: str,
+    selected_col_q: str,
+    where_clause: str,
+    group_col_q: str | None,
+    agg_kind: str | None,
+    agg_expr: str,
+    agg_alias: str,
+    order_clause: str,
+    order_diag: dict[str, Any] | None,
+    limit: int,
+) -> tuple[str, str, dict[str, Any] | None]:
+    reason = "projection"
+    if agg_kind and group_col_q:
+        resolved_order_clause = order_clause or f" ORDER BY {agg_alias} DESC"
+        resolved_order_diag = order_diag or {"column": agg_alias, "direction": "desc"}
+        sql = (
+            f"SELECT {group_col_q}, {agg_expr} AS {agg_alias} "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
+            f"FROM {table_q}{where_clause} GROUP BY {group_col_q}{resolved_order_clause} LIMIT {int(limit)}"
+        )
+        return sql, "aggregation_group", resolved_order_diag
+    if agg_kind:
+        sql = f"SELECT {agg_expr} AS {agg_alias} FROM {table_q}{where_clause} LIMIT 1"  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
+        return sql, "aggregation", order_diag
+    if group_col_q:
+        resolved_order_clause = order_clause or " ORDER BY count DESC"
+        resolved_order_diag = order_diag or {"column": "count", "direction": "desc"}
+        sql = (
+            f"SELECT {group_col_q}, COUNT(*) AS count "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
+            f"FROM {table_q}{where_clause} GROUP BY {group_col_q}{resolved_order_clause} LIMIT {int(limit)}"
+        )
+        return sql, "group_count", resolved_order_diag
+
+    sql = f"SELECT {selected_col_q} FROM {table_q}{where_clause}{order_clause} LIMIT {int(limit)}"  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
+    if where_clause:
+        reason = "filter_projection"
+    elif order_clause:
+        reason = "ordered_projection"
+    return sql, reason, order_diag
 
 
 def _generate_deterministic_sql_with_diagnostics(
@@ -1119,75 +1360,26 @@ def _generate_deterministic_sql_with_diagnostics(
     if filter_col and filter_val is not None:
         where_clause = f" WHERE {_quote_ident(filter_col)} = {_quote_literal(filter_val)}"
 
-    is_count = any(k in q_fold for k in ("count", "how many", "多少", "几条", "几行", "总数", "数量"))
-    is_sum = any(k in q_fold for k in ("sum", "total", "合计", "总和", "求和"))
-    is_avg = any(k in q_fold for k in ("avg", "average", "均值", "平均"))
-    is_min = any(k in q_fold for k in (" min", "minimum", "最小"))
-    is_max = any(k in q_fold for k in (" max", "maximum", "最大"))
-
-    agg_kind: str | None = None
-    agg_expr = ""
-    agg_alias = ""
-    if is_count:
-        agg_kind = "count"
-        agg_expr = "COUNT(*)"
-        agg_alias = "count"
-    elif is_sum and selected_col:
-        agg_kind = "sum"
-        agg_expr = f"SUM({selected_col_q})"
-        agg_alias = "total"
-    elif is_avg and selected_col:
-        agg_kind = "avg"
-        agg_expr = f"AVG({selected_col_q})"
-        agg_alias = "avg"
-    elif is_min and selected_col:
-        agg_kind = "min"
-        agg_expr = f"MIN({selected_col_q})"
-        agg_alias = "min_value"
-    elif is_max and selected_col:
-        agg_kind = "max"
-        agg_expr = f"MAX({selected_col_q})"
-        agg_alias = "max_value"
+    agg_kind, agg_expr, agg_alias = _infer_aggregation_plan(
+        question_fold=q_fold,
+        selected_col=selected_col,
+        selected_col_q=selected_col_q,
+    )
 
     order_col, order_dir = _infer_order_hint(question=q, default_column=agg_alias if agg_alias else selected_col)
-    order_clause = ""
-    order_diag: dict[str, Any] | None = None
-    if order_col and order_dir:
-        if agg_alias and _norm_key(order_col) == _norm_key(agg_alias):
-            order_clause = f" ORDER BY {agg_alias} {order_dir.upper()}"
-            order_diag = {"column": agg_alias, "direction": order_dir}
-        else:
-            order_clause = f" ORDER BY {_quote_ident(order_col)} {order_dir.upper()}"
-            order_diag = {"column": order_col, "direction": order_dir}
-
-    reason = "projection"
-    if agg_kind and group_col_q:
-        if not order_clause:
-            order_clause = f" ORDER BY {agg_alias} DESC"
-            order_diag = {"column": agg_alias, "direction": "desc"}
-        sql = (
-            f"SELECT {group_col_q}, {agg_expr} AS {agg_alias} "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
-            f"FROM {table_q}{where_clause} GROUP BY {group_col_q}{order_clause} LIMIT {int(limit)}"
-        )
-        reason = "aggregation_group"
-    elif agg_kind:
-        sql = f"SELECT {agg_expr} AS {agg_alias} FROM {table_q}{where_clause} LIMIT 1"  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
-        reason = "aggregation"
-    elif group_col_q:
-        if not order_clause:
-            order_clause = " ORDER BY count DESC"
-            order_diag = {"column": "count", "direction": "desc"}
-        sql = (
-            f"SELECT {group_col_q}, COUNT(*) AS count "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
-            f"FROM {table_q}{where_clause} GROUP BY {group_col_q}{order_clause} LIMIT {int(limit)}"
-        )
-        reason = "group_count"
-    else:
-        sql = f"SELECT {selected_col_q} FROM {table_q}{where_clause}{order_clause} LIMIT {int(limit)}"  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
-        if where_clause:
-            reason = "filter_projection"
-        elif order_clause:
-            reason = "ordered_projection"
+    order_clause, order_diag = _resolve_order_clause(order_col=order_col, order_dir=order_dir, agg_alias=agg_alias)
+    sql, reason, order_diag = _render_single_table_sql(
+        table_q=table_q,
+        selected_col_q=selected_col_q,
+        where_clause=where_clause,
+        group_col_q=group_col_q,
+        agg_kind=agg_kind,
+        agg_expr=agg_expr,
+        agg_alias=agg_alias,
+        order_clause=order_clause,
+        order_diag=order_diag,
+        limit=limit,
+    )
 
     planner: dict[str, Any] = {
         "strategy": "deterministic_heuristic",

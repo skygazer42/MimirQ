@@ -18,6 +18,7 @@ import re
 import time
 import unicodedata
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -202,6 +203,245 @@ _RE_SCRIPT_STYLE = re.compile(r"(?is)<(script|style)\b[^>]*>.*?</\1\s*>")
 _RE_HTML_COMMENT = re.compile(r"(?s)<!--.*?-->")
 _RE_HTML_BOILERPLATE_TAGS = re.compile(r"(?is)<(nav|header|footer|aside|noscript)\b[^>]*>.*?</\1\s*>")
 
+_HTML_EXTS = {_HTML_EXT, ".htm"}
+
+
+def _result_unchanged(
+    *,
+    input_path: Path,
+    size_before: int,
+    sha_before: str,
+    logs: list[PreprocessStepLog],
+    warnings: list[str],
+) -> FilePreprocessResult:
+    return FilePreprocessResult(
+        input_path=str(input_path),
+        output_path=str(input_path),
+        changed=False,
+        size_before=size_before,
+        size_after=size_before,
+        sha256_before=sha_before,
+        sha256_after=sha_before,
+        steps=logs,
+        warnings=warnings,
+    )
+
+
+def _skip_result(
+    *,
+    input_path: Path,
+    steps: list[dict[str, Any]],
+    size_before: int,
+    sha_before: str,
+    warnings: list[str],
+    note: str,
+) -> FilePreprocessResult:
+    logs = [
+        PreprocessStepLog(
+            id=str((step or {}).get("id") or ""),
+            applied=False,
+            changed=False,
+            note=note,
+        )
+        for step in steps
+    ]
+    return _result_unchanged(
+        input_path=input_path,
+        size_before=size_before,
+        sha_before=sha_before,
+        logs=logs,
+        warnings=warnings,
+    )
+
+
+def _output_path_for_preprocess(input_path: Path, output_path: Path | None) -> Path:
+    if output_path is not None:
+        return Path(output_path)
+    rand = uuid.uuid4().hex[:10]
+    return input_path.with_name(f"{input_path.stem}.pre.{rand}{input_path.suffix}")
+
+
+def _apply_transform(text: str, transform: Callable[[str], str]) -> tuple[str, bool]:
+    new_text = transform(text)
+    return new_text, new_text != text
+
+
+def _apply_html_transform(text: str, *, ext: str, transform: Callable[[str], str]) -> tuple[str, bool, str]:
+    if ext not in _HTML_EXTS:
+        return text, False, _SKIPPED_NOT_HTML_NOTE
+    new_text, changed = _apply_transform(text, transform)
+    return new_text, changed, ""
+
+
+def _step_reencode_utf8(text: str, *, ext: str, enc: str, conf: float) -> tuple[str, bool, bool, str]:
+    _ = ext
+    return text, True, False, f"encoding={enc} conf={conf:.2f}"
+
+
+def _step_strip_bom(text: str, *, ext: str, enc: str, conf: float) -> tuple[str, bool, bool, str]:
+    _ = (ext, enc, conf)
+    new_text = text.lstrip("\ufeff") if text.startswith("\ufeff") else text
+    return new_text, True, new_text != text, ""
+
+
+def _step_normalize_newlines(text: str, *, ext: str, enc: str, conf: float) -> tuple[str, bool, bool, str]:
+    _ = (ext, enc, conf)
+    new_text, changed = _apply_transform(text, lambda value: value.replace("\r\n", "\n").replace("\r", "\n"))
+    return new_text, True, changed, ""
+
+
+def _collapse_blank_lines(text: str) -> str:
+    new_text = text
+    while "\n\n\n" in new_text:
+        new_text = new_text.replace("\n\n\n", "\n\n")
+    return new_text
+
+
+def _step_collapse_blank_lines(text: str, *, ext: str, enc: str, conf: float) -> tuple[str, bool, bool, str]:
+    _ = (ext, enc, conf)
+    new_text, changed = _apply_transform(text, _collapse_blank_lines)
+    return new_text, True, changed, ""
+
+
+def _step_trim_trailing_whitespace(text: str, *, ext: str, enc: str, conf: float) -> tuple[str, bool, bool, str]:
+    _ = (ext, enc, conf)
+    new_text, changed = _apply_transform(text, lambda value: "\n".join(line.rstrip(" \t") for line in value.split("\n")))
+    return new_text, True, changed, ""
+
+
+def _step_remove_zero_width(text: str, *, ext: str, enc: str, conf: float) -> tuple[str, bool, bool, str]:
+    _ = (ext, enc, conf)
+    new_text, changed = _apply_transform(text, lambda value: re.sub(r"[\u200b\u200c\u200d\u2060\u00ad\ufeff]", "", value))
+    return new_text, True, changed, ""
+
+
+def _step_remove_control_chars(text: str, *, ext: str, enc: str, conf: float) -> tuple[str, bool, bool, str]:
+    _ = (ext, enc, conf)
+    new_text, changed = _apply_transform(text, lambda value: re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", value))
+    return new_text, True, changed, ""
+
+
+def _step_unicode_nfc(text: str, *, ext: str, enc: str, conf: float) -> tuple[str, bool, bool, str]:
+    _ = (ext, enc, conf)
+    new_text, changed = _apply_transform(text, lambda value: unicodedata.normalize("NFC", value))
+    return new_text, True, changed, ""
+
+
+def _step_unicode_nfkc(text: str, *, ext: str, enc: str, conf: float) -> tuple[str, bool, bool, str]:
+    _ = (ext, enc, conf)
+    new_text, changed = _apply_transform(text, lambda value: unicodedata.normalize("NFKC", value))
+    return new_text, True, changed, ""
+
+
+def _step_strip_scripts_styles(text: str, *, ext: str, enc: str, conf: float) -> tuple[str, bool, bool, str]:
+    _ = (enc, conf)
+    new_text, changed, note = _apply_html_transform(text, ext=ext, transform=lambda value: _RE_SCRIPT_STYLE.sub("", value))
+    return new_text, True, changed, note
+
+
+def _step_strip_comments(text: str, *, ext: str, enc: str, conf: float) -> tuple[str, bool, bool, str]:
+    _ = (enc, conf)
+    new_text, changed, note = _apply_html_transform(text, ext=ext, transform=lambda value: _RE_HTML_COMMENT.sub("", value))
+    return new_text, True, changed, note
+
+
+def _step_strip_boilerplate_tags(text: str, *, ext: str, enc: str, conf: float) -> tuple[str, bool, bool, str]:
+    _ = (enc, conf)
+    new_text, changed, note = _apply_html_transform(
+        text,
+        ext=ext,
+        transform=lambda value: _RE_HTML_BOILERPLATE_TAGS.sub("", value),
+    )
+    return new_text, True, changed, note
+
+
+_STEP_HANDLERS = {
+    "text.reencode_utf8": _step_reencode_utf8,
+    "text.strip_bom": _step_strip_bom,
+    "text.normalize_newlines": _step_normalize_newlines,
+    "text.collapse_blank_lines": _step_collapse_blank_lines,
+    "text.trim_trailing_whitespace": _step_trim_trailing_whitespace,
+    "text.remove_zero_width": _step_remove_zero_width,
+    "text.remove_control_chars": _step_remove_control_chars,
+    "text.normalize_unicode_nfc": _step_unicode_nfc,
+    "text.normalize_unicode_nfkc": _step_unicode_nfkc,
+    "html.strip_scripts_styles": _step_strip_scripts_styles,
+    "html.strip_comments": _step_strip_comments,
+    "html.strip_boilerplate_tags": _step_strip_boilerplate_tags,
+}
+
+
+def _apply_preprocess_step(
+    *,
+    text: str,
+    sid: str,
+    ext: str,
+    enc: str,
+    conf: float,
+) -> tuple[str, bool, bool, str]:
+    handler = _STEP_HANDLERS.get(sid)
+    if handler is None:
+        return text, False, False, "skipped (unknown)"
+    return handler(text, ext=ext, enc=enc, conf=conf)
+
+
+def _write_preprocessed_text(*, output_path: Path, text: str) -> tuple[int, str]:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    data_out = text.encode("utf-8", errors="replace")
+    with open(output_path, "wb") as f:
+        f.write(data_out)
+        f.flush()
+        os.fsync(f.fileno())
+    return int(output_path.stat().st_size), _sha256_file(output_path)
+
+
+def _utf8_byte_len(text: str) -> int:
+    try:
+        return len(text.encode("utf-8", errors="replace"))
+    except Exception:
+        return int(len(text or ""))
+
+
+def _apply_preprocess_steps(
+    *,
+    text: str,
+    steps: list[dict[str, Any]],
+    ext: str,
+    enc: str,
+    conf: float,
+) -> tuple[str, list[PreprocessStepLog], bool]:
+    changed_any = False
+    logs: list[PreprocessStepLog] = []
+    current_bytes = _utf8_byte_len(text)
+    for step in steps:
+        step_t0 = time.perf_counter()
+        sid = str((step or {}).get("id") or "").strip().lower()
+        bytes_before = int(current_bytes)
+        text, applied, changed, note = _apply_preprocess_step(
+            text=text,
+            sid=sid,
+            ext=ext,
+            enc=enc,
+            conf=conf,
+        )
+        if changed:
+            changed_any = True
+            current_bytes = _utf8_byte_len(text)
+        bytes_after = int(current_bytes)
+        elapsed_ms = max(0, int(round((time.perf_counter() - step_t0) * 1000)))
+        logs.append(
+            PreprocessStepLog(
+                id=sid,
+                applied=applied,
+                changed=changed,
+                note=note,
+                bytes_before=bytes_before,
+                bytes_after=bytes_after,
+                elapsed_ms=elapsed_ms,
+            )
+        )
+    return text, logs, changed_any
+
 
 def preprocess_file(
     *,
@@ -224,52 +464,35 @@ def preprocess_file(
     logs: list[PreprocessStepLog] = []
 
     if not steps:
-        return FilePreprocessResult(
-            input_path=str(input_path),
-            output_path=str(input_path),
-            changed=False,
+        return _result_unchanged(
+            input_path=input_path,
             size_before=size_before,
-            size_after=size_before,
-            sha256_before=sha_before,
-            sha256_after=sha_before,
-            steps=[],
+            sha_before=sha_before,
+            logs=[],
             warnings=[],
         )
 
     is_text_like = ext in TEXT_LIKE_EXTS
     if not is_text_like:
-        # For v1, only text-like preprocessing is supported.
-        for s in steps:
-            sid = str((s or {}).get("id") or "")
-            logs.append(PreprocessStepLog(id=sid, applied=False, changed=False, note="skipped (non-text file)"))
-        return FilePreprocessResult(
-            input_path=str(input_path),
-            output_path=str(input_path),
-            changed=False,
+        return _skip_result(
+            input_path=input_path,
+            steps=steps,
             size_before=size_before,
-            size_after=size_before,
-            sha256_before=sha_before,
-            sha256_after=sha_before,
-            steps=logs,
+            sha_before=sha_before,
             warnings=["non_text_file_skipped"],
+            note="skipped (non-text file)",
         )
 
     raw, truncated = _read_bytes_bounded(input_path, max_bytes=max_text_bytes)
     if truncated:
         warnings.append(f"text_too_large_skipped(max={max_text_bytes})")
-        for s in steps:
-            sid = str((s or {}).get("id") or "")
-            logs.append(PreprocessStepLog(id=sid, applied=False, changed=False, note="skipped (too large)"))
-        return FilePreprocessResult(
-            input_path=str(input_path),
-            output_path=str(input_path),
-            changed=False,
+        return _skip_result(
+            input_path=input_path,
+            steps=steps,
             size_before=size_before,
-            size_after=size_before,
-            sha256_before=sha_before,
-            sha256_after=sha_before,
-            steps=logs,
+            sha_before=sha_before,
             warnings=warnings,
+            note="skipped (too large)",
         )
 
     enc, conf = _detect_encoding(raw)
@@ -280,169 +503,29 @@ def preprocess_file(
         enc = "utf-8"
         conf = 0.0
 
-    changed_any = False
     original_text = text
-    # Bytes in/out for per-step audit (UTF-8 after decoding/normalization).
-    try:
-        current_bytes = len(text.encode("utf-8", errors="replace"))
-    except Exception:
-        current_bytes = int(len(text or ""))
-
-    for step in steps:
-        step_t0 = time.perf_counter()
-        sid = str((step or {}).get("id") or "").strip().lower()
-        applied = False
-        changed = False
-        note = ""
-        bytes_before = int(current_bytes)
-
-        if sid == "text.reencode_utf8":
-            applied = True
-            note = f"encoding={enc} conf={conf:.2f}"
-            # Re-encoding is always applied; changed only if bytes differ after normalization.
-            # (We decide final change after all steps.)
-        elif sid == "text.strip_bom":
-            applied = True
-            if text.startswith("\ufeff"):
-                text = text.lstrip("\ufeff")
-                changed = True
-        elif sid == "text.normalize_newlines":
-            applied = True
-            new = text.replace("\r\n", "\n").replace("\r", "\n")
-            if new != text:
-                text = new
-                changed = True
-        elif sid == "text.collapse_blank_lines":
-            applied = True
-            # Keep up to 2 consecutive newlines to avoid noisy whitespace inflation.
-            new = text
-            while "\n\n\n" in new:
-                new = new.replace("\n\n\n", "\n\n")
-            if new != text:
-                text = new
-                changed = True
-        elif sid == "text.trim_trailing_whitespace":
-            applied = True
-            # Trim spaces/tabs at EOL (keep newlines).
-            new = "\n".join(line.rstrip(" \t") for line in text.split("\n"))
-            if new != text:
-                text = new
-                changed = True
-        elif sid == "text.remove_zero_width":
-            applied = True
-            # Remove common zero-width / soft-hyphen artifacts from scraped/PDF-origin text.
-            new = re.sub(r"[\u200b\u200c\u200d\u2060\u00ad\ufeff]", "", text)
-            if new != text:
-                text = new
-                changed = True
-        elif sid == "text.remove_control_chars":
-            applied = True
-            # Drop ASCII control chars except TAB/LF/CR (CR can be normalized later).
-            new = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
-            if new != text:
-                text = new
-                changed = True
-        elif sid == "text.normalize_unicode_nfc":
-            applied = True
-            new = unicodedata.normalize("NFC", text)
-            if new != text:
-                text = new
-                changed = True
-        elif sid == "text.normalize_unicode_nfkc":
-            applied = True
-            # Normalize full-width forms / compatibility characters (best-effort).
-            new = unicodedata.normalize("NFKC", text)
-            if new != text:
-                text = new
-                changed = True
-        elif sid == "html.strip_scripts_styles":
-            applied = True
-            if ext in {_HTML_EXT, ".htm"}:
-                new = _RE_SCRIPT_STYLE.sub("", text)
-                if new != text:
-                    text = new
-                    changed = True
-            else:
-                note = _SKIPPED_NOT_HTML_NOTE
-        elif sid == "html.strip_comments":
-            applied = True
-            if ext in {_HTML_EXT, ".htm"}:
-                new = _RE_HTML_COMMENT.sub("", text)
-                if new != text:
-                    text = new
-                    changed = True
-            else:
-                note = _SKIPPED_NOT_HTML_NOTE
-        elif sid == "html.strip_boilerplate_tags":
-            applied = True
-            if ext in {_HTML_EXT, ".htm"}:
-                new = _RE_HTML_BOILERPLATE_TAGS.sub("", text)
-                if new != text:
-                    text = new
-                    changed = True
-            else:
-                note = _SKIPPED_NOT_HTML_NOTE
-        else:
-            # Unknown ids should have been rejected earlier; still keep safe.
-            note = "skipped (unknown)"
-
-        if changed:
-            changed_any = True
-        try:
-            if changed:
-                current_bytes = len(text.encode("utf-8", errors="replace"))
-            bytes_after = int(current_bytes)
-        except Exception:
-            bytes_after = int(bytes_before)
-            current_bytes = int(bytes_before)
-        elapsed_ms = int(round((time.perf_counter() - step_t0) * 1000))
-        if elapsed_ms < 0:
-            elapsed_ms = 0
-        logs.append(
-            PreprocessStepLog(
-                id=sid,
-                applied=applied,
-                changed=changed,
-                note=note,
-                bytes_before=bytes_before,
-                bytes_after=bytes_after,
-                elapsed_ms=elapsed_ms,
-            )
-        )
+    text, logs, changed_any = _apply_preprocess_steps(
+        text=text,
+        steps=steps,
+        ext=ext,
+        enc=enc,
+        conf=conf,
+    )
 
     if text == original_text:
         changed_any = False
 
     if not changed_any:
-        return FilePreprocessResult(
-            input_path=str(input_path),
-            output_path=str(input_path),
-            changed=False,
+        return _result_unchanged(
+            input_path=input_path,
             size_before=size_before,
-            size_after=size_before,
-            sha256_before=sha_before,
-            sha256_after=sha_before,
-            steps=logs,
+            sha_before=sha_before,
+            logs=logs,
             warnings=warnings,
         )
 
-    # Default output path: sibling file in same directory to preserve relative asset resolution.
-    if output_path is None:
-        rand = uuid.uuid4().hex[:10]
-        output_path = input_path.with_name(f"{input_path.stem}.pre.{rand}{input_path.suffix}")
-
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Write as UTF-8 (normalized).
-    data_out = text.encode("utf-8", errors="replace")
-    with open(output_path, "wb") as f:
-        f.write(data_out)
-        f.flush()
-        os.fsync(f.fileno())
-
-    size_after = int(output_path.stat().st_size)
-    sha_after = _sha256_file(output_path)
+    output_path = _output_path_for_preprocess(input_path, output_path)
+    size_after, sha_after = _write_preprocessed_text(output_path=output_path, text=text)
 
     return FilePreprocessResult(
         input_path=str(input_path),
