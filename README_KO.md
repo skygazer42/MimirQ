@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./images/logo.png" alt="MimirQ: 검사·회귀·거버넌스가 가능한 오픈소스 RAG 지식베이스" width="100%"/>
+<img src="./docs/images/banner.svg" alt="MimirQ: 검사·회귀·거버넌스가 가능한 오픈소스 RAG 지식베이스" width="100%"/>
 
 <p><b>풀스택 오픈소스, 중국어 우선 엔터프라이즈 RAG 지식베이스</b><br/>파싱, 거버넌스, 청킹, 검색, 리랭킹, 인용을 검사·교체·회귀 검증할 수 있는 지식 파이프라인으로 만듭니다.</p>
 

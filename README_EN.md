@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./images/logo.png" alt="MimirQ: an inspectable, regression-testable, governable open-source RAG knowledge base" width="100%"/>
+<img src="./docs/images/banner.svg" alt="MimirQ: an inspectable, regression-testable, governable open-source RAG knowledge base" width="100%"/>
 
 <p><b>Full-stack, open-source, Chinese-first enterprise RAG knowledge base</b><br/>Turns parsing, governance, chunking, retrieval, reranking, and citations into an inspectable, replaceable, regression-tested knowledge pipeline.</p>
 

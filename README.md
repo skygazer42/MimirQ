@@ -2,60 +2,56 @@
 
 <img src="./docs/images/banner.svg" alt="MimirQ：可检查、可回归、可治理的开源 RAG 知识库" width="100%"/>
 
-<p><b> 中文优先的企业 RAG 知识库</b><br/>把解析、治理、切块、检索、重排与引用做成可检查、可替换、可回归的知识流水线。</p>
+<p><strong>可观察、可替换、可回归的企业 RAG 基础设施</strong><br/><sub>中文优先 · 从文档解析到证据引用，每一步都能检查输入、输出与版本</sub></p>
 
 <p>
-  <a href="#为什么做-mimirq"><b>为什么 MimirQ</b></a> ·
-  <a href="#产品界面"><b>产品界面</b></a> ·
-  <a href="#快速开始"><b>快速开始</b></a> ·
-  <a href="#dify-接入"><b>Dify 接入</b></a> ·
-  <a href="#真实场景验证"><b>800 题实测</b></a> ·
-  <a href="./docs/releases/v1.0.1.md"><b>v1.0.1 发布说明</b></a>
+  <a href="#为什么做-mimirq">项目定位</a> ·
+  <a href="#产品界面">产品界面</a> ·
+  <a href="#快速开始">快速开始</a> ·
+  <a href="#与-difyragflowfastgptanythingllm-和-langchain-的功能对比">平台对比</a> ·
+  <a href="#真实场景验证">800 题实测</a> ·
+  <a href="./docs/user_guide.md">完整文档</a>
 </p>
 
 <p>
+  <a href="https://github.com/skygazer42/MimirQ/actions/workflows/ci.yml"><img src="https://github.com/skygazer42/MimirQ/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status"/></a>
+  <a href="https://github.com/skygazer42/MimirQ/actions/workflows/security.yml"><img src="https://github.com/skygazer42/MimirQ/actions/workflows/security.yml/badge.svg?branch=main" alt="Security status"/></a>
+  <a href="./docs/releases/v1.0.1.md"><img src="https://img.shields.io/badge/release-v1.0.1-2563EB.svg" alt="Release v1.0.1"/></a>
   <a href="https://www.apache.org/licenses/LICENSE-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"/></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+"/></a>
-  <img src="https://img.shields.io/badge/Dify-External_Knowledge_%2B_HTTP-1C64F2" alt="Dify External Knowledge and HTTP integration"/>
-  <img src="https://img.shields.io/badge/Benchmark-800_questions-0F766E" alt="800-question benchmark"/>
 </p>
 
-<p>
-  <a href="./README.md"><img src="https://img.shields.io/badge/简体中文-d9d9d9" alt="简体中文"/></a>
-  <a href="./README_EN.md"><img src="https://img.shields.io/badge/English-d9d9d9" alt="English"/></a>
-  <a href="./README_JA.md"><img src="https://img.shields.io/badge/日本語-d9d9d9" alt="日本語"/></a>
-  <a href="./README_KO.md"><img src="https://img.shields.io/badge/한국어-d9d9d9" alt="한국어"/></a>
-</p>
+<sub><a href="./README.md">简体中文</a> · <a href="./README_EN.md">English</a> · <a href="./README_JA.md">日本語</a> · <a href="./README_KO.md">한국어</a></sub>
 
 </div>
-
----
 
 ## 为什么做 MimirQ
 
 **企业知识库真正难的，不是把文档向量化，而是让错误可定位、策略可替换、质量可回归。**
 
-MimirQ 起源于一次真实的政务知识库交付。回答出错时，团队必须能判断：解析是否丢了表格，治理是否漏了规则，切块是否破坏了语义，召回是否漏掉了证据，重排是否排错，还是生成偏离了引用。把整条链路藏在一个“上传并开始问答”的按钮后面，原型很快，长期交付却难以估算、验收和治理。
+| 可检查 | 可替换 | 可回归 |
+|:---|:---|:---|
+| 查看解析、Chunk、召回、重排与引用证据 | 按文档和场景切换解析器、索引、检索与模型 | 用 Golden 题集、质量门禁和 Trace 守住版本质量 |
+
+MimirQ 起源于真实的政务知识库交付。回答出错时，团队需要快速判断问题究竟来自解析、治理、切块、召回、重排，还是生成偏离引用。把整条链路藏在一个“上传并开始问答”的按钮后面，原型很快，长期交付却难以估算、验收和治理。
 
 > **一条可控的企业知识流水线**
 >
 > `数据评估` → `场景化解析` → `清洗治理` → `业务切块`<br/>→ `向量 / 全文索引` → `混合召回` → `重排与引用` → `Golden 回归`
 
-真实项目先抽样评估数据：统计扫描页、图片、表格、公式和版式复杂度，验证解析质量并估算资源与人工成本；再按材料选择解析器。复杂版式或扫描件可优先评估 [MinerU](https://opendatalab.github.io/MinerU/) / [DeepDoc](https://github.com/infiniflow/ragflow/tree/main/deepdoc)，公式、表格与版面结构密集的材料可纳入 [Docling](https://docling-project.github.io/docling/)，数字原生 Office 或纯文本可从 [MarkItDown](https://github.com/microsoft/markitdown) 等轻量路径开始。高风险资料仍需人工校验。
+真实项目应先抽样评估数据，再按材料选择解析器：复杂版式或扫描件可比较 [MinerU](https://opendatalab.github.io/MinerU/) / [DeepDoc](https://github.com/infiniflow/ragflow/tree/main/deepdoc)，公式、表格与版面结构密集的资料可评估 [Docling](https://docling-project.github.io/docling/)，数字原生 Office 或纯文本可从 [MarkItDown](https://github.com/microsoft/markitdown) 等轻量路径开始。高风险资料仍需人工校验。
 
 解析结果经脚本、规则 DSL 或插件治理后，再按标题、章节、业务记录或父子关系切块，而不是统一套用固定长度和重叠窗口。索引层可使用 Milvus 等向量库，并组合 BM25、向量检索与重排；上层应用可以是 Dify、LangGraph、PydanticAI 或一个简单 API 服务。
 
-MimirQ 不试图取代所有平台：
-
-- **业务简单、流程稳定、低代码优先**：直接使用 Dify 或 RAGFlow 通常更快。
-- **希望一体化使用 DeepDoc 与 GraphRAG**：RAGFlow 是成熟选择。
-- **知识链路需要按业务替换、审计和回归**：MimirQ 将知识能力从具体聊天业务中解耦，也可作为 Dify 的外部知识层。
+| 你的目标 | 更合适的选择 |
+|:---|:---|
+| 业务简单、流程稳定、低代码优先 | Dify、FastGPT 等应用平台通常更快 |
+| 一体化使用 DeepDoc 与 GraphRAG | RAGFlow 是成熟选择 |
+| 知识链路需要按业务替换、审计和回归 | 使用 MimirQ，或把它作为 Dify 的外部知识层 |
 
 当前仓库覆盖 30 个解析后端、86 种切块策略、13 类重排器，并保留固定 800 题的实测证据。数字只是实现广度，核心是每一步都能检查输入输出、追溯引用与版本，并用 Golden 题集守住发布质量。完整方法见[企业知识流水线设计准则](./docs/guides/rag_platform_design_principles.md)。
 
 > 最新稳定版：v1.0.1。见 [发布说明](./docs/releases/v1.0.1.md) 与 [发布索引](./docs/releases/README.md)。
-
----
 
 ## 产品界面
 
@@ -76,21 +72,9 @@ MimirQ 不试图取代所有平台：
       <br/><sub>集中查看数据集、文档、Chunk 与入库状态。</sub>
     </td>
     <td width="50%" align="center">
-      <img src="./docs/images/screenshots/rag-evaluation.png" alt="MimirQ Golden 回归评测界面" width="100%"/>
-      <br/><strong>Golden 回归评测</strong>
-      <br/><sub>标准问答、运行记录与 Recall / MRR 等指标同屏可查。</sub>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" align="center">
-      <img src="./docs/images/screenshots/settings.png" alt="MimirQ 系统设置界面" width="100%"/>
-      <br/><strong>系统设置</strong>
-      <br/><sub>集中查看依赖状态、解析能力以及模型服务接入。</sub>
-    </td>
-    <td width="50%" align="center">
-      <img src="./docs/images/screenshots/chat-history.png" alt="MimirQ 问答历史与证据回看界面" width="100%"/>
-      <br/><strong>问答历史与证据回看</strong>
-      <br/><sub>检索历史会话，并回看完整回答、来源与反馈入口。</sub>
+      <img src="./docs/images/screenshots/data-governance.png" alt="MimirQ 数据治理工作台" width="100%"/>
+      <br/><strong>数据治理</strong>
+      <br/><sub>在同一工作台完成文档预览、质量检测、清洗与标注。</sub>
     </td>
   </tr>
   <tr>
@@ -100,14 +84,14 @@ MimirQ 不试图取代所有平台：
       <br/><sub>按数据集观察解析、切块、治理、导出和失败重试状态。</sub>
     </td>
     <td width="50%" align="center">
-      <img src="./docs/images/screenshots/data-governance.png" alt="MimirQ 数据治理工作台" width="100%"/>
-      <br/><strong>数据治理</strong>
-      <br/><sub>在同一工作台完成文档预览、质量检测、清洗与标注。</sub>
+      <img src="./docs/images/screenshots/rag-evaluation.png" alt="MimirQ Golden 回归评测界面" width="100%"/>
+      <br/><strong>Golden 回归评测</strong>
+      <br/><sub>标准问答、运行记录与 Recall / MRR 等指标同屏可查。</sub>
     </td>
   </tr>
 </table>
 
----
+更多界面与完整操作流程见[用户指南](./docs/user_guide.md)。
 
 ## 快速开始
 
@@ -172,45 +156,10 @@ make api-ping
 | 公式 / 表格 PDF 转 Markdown | MagicPDF | NVIDIA GPU | `make up-magicpdf` |
 | PDF / 图片走外部视觉 OCR | Qianfan-OCR | 上游 URL 与 API Key，本地无需 GPU | `make up-qianfanocr` |
 
-##### Docling 独立服务：CPU 还是 GPU
-
-Docling、PyTorch 与模型权重不会安装进 MimirQ API / Worker 镜像或源码开发用的
-Python venv。两种模式都通过 Docling Serve 稳定 v1 API 接入，MimirQ 侧仍统一选择
-`parser_backend=docling`：
-
-| 模式 | 全 Docker API / Worker | 本地 Python 后端 | 固定镜像 | 选择建议 |
-|:---|:---|:---|:---|:---|
-| **CPU** | `make up-docling` | `make infra-up-docling` | `docling-serve-cpu:v1.28.0` | 没有 NVIDIA GPU，或低频解析、希望节省显存 |
-| **NVIDIA GPU** | `make up-docling-gpu` | `make infra-up-docling-gpu` | `docling-serve-cu128:v1.28.0` | OCR、版面和表格任务较多，且可提供独立显存 |
-
-全 Docker 命令会自动给 API / Worker 注入 `http://mimirq-docling:5001`。使用“本地
-Python 后端 + Docker Docling”时，在 `.env` 中配置：
-
-```env
-DOCLING_ENABLED=true
-DOCLING_API_URL=http://127.0.0.1:5001
-DOCLING_HTTP_TRUST_ENV=false
-```
-
-CPU 与 GPU profile 共享 5001 端口和 `mimirq-docling` 网络别名，**不能同时启动**。
-GPU 镜像实际约 11.13 GB，首次拉取前应检查磁盘；默认使用单 worker 和保守 batch，
-适配 8 GiB 级显存。需要 CUDA 13.0 时可覆盖镜像：
-
-```bash
-DOCLING_GPU_IMAGE=quay.io/docling-project/docling-serve-cu130:v1.28.0 \
-  make infra-up-docling-gpu
-```
-
-> **本仓库实测（2026-08-18）**：RTX 3070 Ti 8 GiB、驱动 580.126.09、
-> PyTorch 2.11.0 + CUDA 12.8 环境下，容器健康检查、PDF、DOCX 和 Markdown 表格输出均通过；
-> MimirQ `ParserFactory` 最终选择 `docling`，未回退到 `basic`。16.7 MB 多语言 PDF
-> 首次 Docling 内部转换约 1.95 秒，热运行约 0.24 秒；测试后观察到约 2.1 GiB 显存常驻。
-> 这些是当前样例与机器上的观测值，不是通用吞吐或峰值显存承诺。RapidOCR 的部分
-> ONNX 阶段仍可能使用 CPU。
-
-完整参数、CUDA 前置条件和其他解析器说明见
-[Docling Serve 配置](./docs/quickstart.md#可选-启用-docling-serve独立-cpu-容器)与
-[Docker Compose 部署指南](./docs/deployment/docker_compose.md)。
+> **Docling 说明**：重依赖与模型只存在于独立容器；CPU / GPU profile 共享 5001
+> 端口，不能同时启动。GPU 镜像约 11.13 GB；本仓库已在 RTX 3070 Ti 8 GiB 上验证
+> PDF、DOCX、Markdown 表格和 `ParserFactory` 无回退链路。源码开发命令、实测边界与
+> CUDA 配置见 [Docling Serve 配置](./docs/quickstart.md#可选-启用-docling-serve独立-cpu-容器)。
 
 ### 方式二：本地源码运行（Python venv + pip + pnpm）
 
@@ -249,8 +198,6 @@ make api-ping
 
 高级模型、解析器和代理配置见 [`.env.example`](./.env.example)。更换 Embedding 模型后必须重建已有知识库索引；更多平台与 Windows 步骤见[开发文档](./docs/quickstart.md)，可选政务示例见[插件说明](./plugins/pipelines/changzhou-gov-service-knowledge/README.md)。
 
----
-
 ## Dify 接入
 
 MimirQ 可作为 Dify 的可治理 RAG 层接入现有应用，不重复实现工作流画布。当前支持两种方式：
@@ -282,11 +229,7 @@ MimirQ 可作为 Dify 的可治理 RAG 层接入现有应用，不重复实现�
 
 Dify 标准外部知识库端点为 `POST /api/v1/integrations/dify/retrieval`；可选用 `POST /api/v1/integrations/dify/conversation-turns` 回传答案、引用与会话标识。`knowledge_id` 默认必须显式配置在 `DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON` 中。配置见 [`.env.example`](./.env.example)，部署前校验见 [readiness gate](./scripts/README.md)，实测结果见[真实场景验证](#真实场景验证)。
 
----
-
-## 核心功能对比
-
-### 与 Dify、RAGFlow、FastGPT、AnythingLLM 和 LangChain 的功能对比
+## 与 Dify、RAGFlow、FastGPT、AnythingLLM 和 LangChain 的功能对比
 
 | 功能维度 | **MimirQ** | [Dify](https://github.com/langgenius/dify) | [RAGFlow](https://github.com/infiniflow/ragflow) | [FastGPT](https://github.com/labring/FastGPT) | [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) | [LangChain](https://github.com/langchain-ai/langchain) |
 |:---|:---|:---|:---|:---|:---|:---|
@@ -304,8 +247,6 @@ Dify 标准外部知识库端点为 `POST /api/v1/integrations/dify/retrieval`�
 | **开箱方式** | Docker Compose / Helm；完整企业 RAG 栈 | Docker Compose / Cloud | Docker Compose；官方建议 4C / 16 GB / 50 GB | Docker / Cloud | Desktop / Docker | Python / JS 库；需自行组装应用 |
 
 > 对比基于各项目公开版本与官方文档（2026-07），描述的是**仓库直接提供的能力表面**，不是统一 benchmark。插件、商业版和后续版本可能改变结果。
-
----
 
 ## 真实场景验证
 
@@ -327,8 +268,6 @@ MimirQ 已用于**市级政务智能问答助手**，覆盖 7 个区域级 + 1 �
 
 [完整方法、指标解释与历史复测](./docs/benchmarks/changzhou_dify.md) · [Dify 接入方式与真实工作流](#dify-接入)
 
----
-
 ## 部署方式
 
 支持以下部署方式：
@@ -343,8 +282,6 @@ MimirQ 已用于**市级政务智能问答助手**，覆盖 7 个区域级 + 1 �
 | **解析器扩展** | [Docker Compose 指南](./docs/deployment/docker_compose.md) | 按需启动 CPU / GPU profile |
 
 生产配置和升级顺序见 [Docker Compose 指南](./docs/deployment/docker_compose.md)、[Helm 部署文档](./docs/deployment/helm.md) 和 [运维手册](./docs/deployment/runbook.md)。
-
----
 
 ## 功能指南
 
@@ -362,8 +299,6 @@ MimirQ 已用于**市级政务智能问答助手**，覆盖 7 个区域级 + 1 �
 | [SAML SSO](./docs/guides/saml_sso.md) | SAML 单点登录集成 |
 | [快速开始](./docs/quickstart.md) | 从源码开发部署 |
 | [运维手册](./docs/deployment/runbook.md) | 生产运维与排障 |
-
----
 
 ## 开发自检
 
@@ -398,8 +333,6 @@ RAG_CONCURRENCY_CANDIDATE=/tmp/cN.json \
 make rag-concurrency-gate
 ```
 
----
-
 ## 路线图
 
 已交付能力见上方对比表。近期计划：
@@ -411,21 +344,15 @@ make rag-concurrency-gate
 
 > 路线图、功能请求与投票通过 [GitHub Issues](https://github.com/skygazer42/MimirQ/issues) 管理。
 
----
-
 ## 参与贡献
 
 贡献代码、报告问题或提交功能建议前，请阅读 [CONTRIBUTING.md](./.github/CONTRIBUTING.md)。本地开发流程见[快速开始](./docs/quickstart.md)，提交前运行 `make enterprise-checks`。
-
----
 
 ## 许可证
 
 本项目采用 [Apache License 2.0](LICENSE)。第三方组件（含 vendored 自 RAGFlow/DeepDoc 的代码及构建时下载的模型权重）的归属声明见 [NOTICE](NOTICE)。
 
 > **PyMuPDF (AGPL-3.0) 说明**：默认 PDF 解析可能使用 PyMuPDF，其协议为 AGPL-3.0 / 商业双授权。以 SaaS 形式提供服务时，AGPL 网络条款可能要求公开整个组合作品的源码。需要避免该约束时，请改用宽松协议的解析后端（pypdf / pdfplumber）。详见 NOTICE。
-
----
 
 ## 致谢
 
