@@ -1,6 +1,9 @@
 <div align="center">
 
-<img src="./docs/images/banner.svg" alt="MimirQ：可检查、可回归、可治理的开源 RAG 知识库" width="100%"/>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./web/public/brand/mimirq-lockup-image2-dark.png"/>
+  <img src="./web/public/brand/mimirq-lockup-image2.png" alt="MimirQ：可检查、可回归、可治理的开源 RAG 知识库" width="860"/>
+</picture>
 
 <p><strong>可观察、可替换、可回归的企业 RAG 基础设施</strong><br/><sub>中文优先 · 从文档解析到证据引用，每一步都能检查输入、输出与版本</sub></p>
 

@@ -531,14 +531,14 @@ export function Navbar({
           <Link href="/" className="flex items-center gap-3 group rounded-xl focus-ring">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.12))] shadow-lg shadow-[0_16px_28px_-22px_hsl(var(--info)/0.35)] ring-1 ring-info/18 transition-all duration-200 group-hover:scale-110 group-hover:shadow-xl group-hover:shadow-[0_18px_32px_-22px_hsl(var(--info)/0.45)] motion-reduce:transition-none">
               <Image
-                src="/brand/mimirq-mark-transparent-candidate.png"
+                src="/brand/mimirq-logo-image2-badge.png"
                 alt=""
                 aria-hidden="true"
                 width={40}
                 height={40}
                 priority
                 unoptimized
-                className="size-[34px] rounded-lg object-contain dark:invert dark:hue-rotate-180"
+                className="size-[34px] object-contain"
               />
             </div>
             <div className="flex flex-col">
@@ -707,14 +707,14 @@ export function Navbar({
                 <div className="absolute inset-0 rounded-xl border border-info/18 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.10))] shadow-md group-hover:border-info/28 group-hover:bg-[linear-gradient(135deg,hsl(var(--info)/0.08),hsl(var(--primary)/0.06))] group-hover:shadow-lg transition-all duration-200" />
                 <div className="absolute inset-0 flex items-center justify-center transition-transform duration-200 group-hover:scale-110 motion-reduce:transition-none">
                   <Image
-                    src="/brand/mimirq-mark-transparent-candidate.png"
+                    src="/brand/mimirq-logo-image2-badge.png"
                     alt=""
                     aria-hidden="true"
                     width={40}
                     height={40}
                     loading="eager"
                     unoptimized
-                    className="size-[38px] rounded-[10px] object-contain dark:invert dark:hue-rotate-180"
+                    className="size-[38px] object-contain"
                   />
                 </div>
                 {isAuthenticated && (

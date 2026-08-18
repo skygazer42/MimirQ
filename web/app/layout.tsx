@@ -31,10 +31,10 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [
-      { url: "/brand/mimirq-mark-badge.png", sizes: "512x512", type: "image/png", media: "(prefers-color-scheme: light)" },
-      { url: "/brand/mimirq-mark-badge.png", sizes: "512x512", type: "image/png", media: "(prefers-color-scheme: dark)" },
+      { url: "/brand/mimirq-logo-image2-badge.png", sizes: "512x512", type: "image/png", media: "(prefers-color-scheme: light)" },
+      { url: "/brand/mimirq-logo-image2-badge.png", sizes: "512x512", type: "image/png", media: "(prefers-color-scheme: dark)" },
     ],
-    apple: [{ url: "/brand/mimirq-mark-badge.png", sizes: "512x512", type: "image/png" }],
+    apple: [{ url: "/brand/mimirq-logo-image2-badge.png", sizes: "512x512", type: "image/png" }],
   },
 }
 

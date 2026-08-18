@@ -69,7 +69,7 @@ const config: Config = {
       title: 'MimirQ',
       logo: {
         alt: 'MimirQ',
-        src: 'img/logo.svg',
+        src: 'img/mimirq-logo-image2-badge.png',
       },
       items: [
         {

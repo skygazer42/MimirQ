@@ -1438,13 +1438,22 @@ function WelcomeScreen() {
       <div className="flex flex-col items-center text-center space-y-4 animate-fade-in-up">
         <div className="flex w-full justify-center">
           <Image
-            src="/brand/mimirq-wordmark.png"
+            src="/brand/mimirq-lockup-image2.png"
             alt="MimirQ"
-            width={543}
-            height={181}
+            width={1708}
+            height={504}
             priority
             unoptimized
-            className="h-auto w-[min(76vw,560px)] select-none object-contain dark:invert dark:hue-rotate-180"
+            className="h-auto w-[min(76vw,560px)] select-none object-contain dark:hidden"
+          />
+          <Image
+            src="/brand/mimirq-lockup-image2-dark.png"
+            alt="MimirQ"
+            width={1744}
+            height={524}
+            priority
+            unoptimized
+            className="hidden h-auto w-[min(76vw,560px)] select-none object-contain dark:block"
           />
         </div>
       </div>
