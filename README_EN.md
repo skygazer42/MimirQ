@@ -2,7 +2,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./web/public/brand/mimirq-lockup-image2-dark.png"/>
-  <img src="./web/public/brand/mimirq-lockup-image2.png" alt="MimirQ: an inspectable, regression-testable, governable open-source RAG knowledge base" width="860"/>
+  <img src="./web/public/brand/mimirq-lockup-image2.png" alt="MimirQ: an inspectable, regression-testable, governable open-source RAG knowledge base" width="680"/>
 </picture>
 
 <p><b>Full-stack, open-source, Chinese-first enterprise RAG knowledge base</b><br/>Turns parsing, governance, chunking, retrieval, reranking, and citations into an inspectable, replaceable, regression-tested knowledge pipeline.</p>
