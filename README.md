@@ -172,7 +172,45 @@ make api-ping
 | 公式 / 表格 PDF 转 Markdown | MagicPDF | NVIDIA GPU | `make up-magicpdf` |
 | PDF / 图片走外部视觉 OCR | Qianfan-OCR | 上游 URL 与 API Key，本地无需 GPU | `make up-qianfanocr` |
 
-完整参数和平台限制见 [Docker Compose 部署指南](./docs/deployment/docker_compose.md) 与 [解析器文档](./docs/quickstart.md#可选-启用-etl4llmbisheng-unstructured版面解析)。
+##### Docling 独立服务：CPU 还是 GPU
+
+Docling、PyTorch 与模型权重不会安装进 MimirQ API / Worker 镜像或源码开发用的
+Python venv。两种模式都通过 Docling Serve 稳定 v1 API 接入，MimirQ 侧仍统一选择
+`parser_backend=docling`：
+
+| 模式 | 全 Docker API / Worker | 本地 Python 后端 | 固定镜像 | 选择建议 |
+|:---|:---|:---|:---|:---|
+| **CPU** | `make up-docling` | `make infra-up-docling` | `docling-serve-cpu:v1.28.0` | 没有 NVIDIA GPU，或低频解析、希望节省显存 |
+| **NVIDIA GPU** | `make up-docling-gpu` | `make infra-up-docling-gpu` | `docling-serve-cu128:v1.28.0` | OCR、版面和表格任务较多，且可提供独立显存 |
+
+全 Docker 命令会自动给 API / Worker 注入 `http://mimirq-docling:5001`。使用“本地
+Python 后端 + Docker Docling”时，在 `.env` 中配置：
+
+```env
+DOCLING_ENABLED=true
+DOCLING_API_URL=http://127.0.0.1:5001
+DOCLING_HTTP_TRUST_ENV=false
+```
+
+CPU 与 GPU profile 共享 5001 端口和 `mimirq-docling` 网络别名，**不能同时启动**。
+GPU 镜像实际约 11.13 GB，首次拉取前应检查磁盘；默认使用单 worker 和保守 batch，
+适配 8 GiB 级显存。需要 CUDA 13.0 时可覆盖镜像：
+
+```bash
+DOCLING_GPU_IMAGE=quay.io/docling-project/docling-serve-cu130:v1.28.0 \
+  make infra-up-docling-gpu
+```
+
+> **本仓库实测（2026-08-18）**：RTX 3070 Ti 8 GiB、驱动 580.126.09、
+> PyTorch 2.11.0 + CUDA 12.8 环境下，容器健康检查、PDF、DOCX 和 Markdown 表格输出均通过；
+> MimirQ `ParserFactory` 最终选择 `docling`，未回退到 `basic`。16.7 MB 多语言 PDF
+> 首次 Docling 内部转换约 1.95 秒，热运行约 0.24 秒；测试后观察到约 2.1 GiB 显存常驻。
+> 这些是当前样例与机器上的观测值，不是通用吞吐或峰值显存承诺。RapidOCR 的部分
+> ONNX 阶段仍可能使用 CPU。
+
+完整参数、CUDA 前置条件和其他解析器说明见
+[Docling Serve 配置](./docs/quickstart.md#可选-启用-docling-serve独立-cpu-容器)与
+[Docker Compose 部署指南](./docs/deployment/docker_compose.md)。
 
 ### 方式二：本地源码运行（Python venv + pip + pnpm）
 
