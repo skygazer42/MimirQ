@@ -17,6 +17,7 @@ import { WebVitalsReporter } from "@/components/providers/web-vitals-reporter"
 import { RouteScrollReset } from "@/components/route-scroll-reset"
 import { AuthGuard } from "@/components/auth-guard"
 import { resolveRequestDocumentSettings } from '@/lib/document-language'
+import { MIMIRQ_MARK_PATH } from '@/lib/brand'
 import {
   getThemeColorTokens,
   normalizeSurfaceTheme,
@@ -26,15 +27,15 @@ import {
 } from '@/lib/theme-surface'
 
 export const metadata: Metadata = {
-  title: "MimirQ - AI 知识库助手",
-  description: "基于 RAG 的智能知识库问答系统",
+  title: "MimirQ - 可检查、可回归的 RAG 知识库",
+  description: "可观察、可替换、可回归的企业 RAG 基础设施",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [
-      { url: "/brand/mimirq-logo-image2-badge.png", sizes: "512x512", type: "image/png", media: "(prefers-color-scheme: light)" },
-      { url: "/brand/mimirq-logo-image2-badge.png", sizes: "512x512", type: "image/png", media: "(prefers-color-scheme: dark)" },
+      { url: MIMIRQ_MARK_PATH, sizes: "512x512", type: "image/png", media: "(prefers-color-scheme: light)" },
+      { url: MIMIRQ_MARK_PATH, sizes: "512x512", type: "image/png", media: "(prefers-color-scheme: dark)" },
     ],
-    apple: [{ url: "/brand/mimirq-logo-image2-badge.png", sizes: "512x512", type: "image/png" }],
+    apple: [{ url: MIMIRQ_MARK_PATH, sizes: "512x512", type: "image/png" }],
   },
 }
 

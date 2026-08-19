@@ -1,9 +1,8 @@
 <div align="center">
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./web/public/brand/mimirq-lockup-image2-dark.png"/>
-  <img src="./web/public/brand/mimirq-lockup-image2.png" alt="MimirQ: 검사·회귀·거버넌스가 가능한 오픈소스 RAG 지식베이스" width="680"/>
-</picture>
+<img src="./web/public/brand/mimirq-mark.png" alt="MimirQ Logo" width="136"/>
+
+<h1>MimirQ</h1>
 
 <p><b>풀스택 오픈소스, 중국어 우선 엔터프라이즈 RAG 지식베이스</b><br/>파싱, 거버넌스, 청킹, 검색, 리랭킹, 인용을 검사·교체·회귀 검증할 수 있는 지식 파이프라인으로 만듭니다.</p>
 

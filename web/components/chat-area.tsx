@@ -48,6 +48,7 @@ import { useRouter } from '@/i18n/navigation'
 import { coerceOneOf } from '@/lib/one-of'
 import { queryKeys } from '@/lib/query-keys'
 import { reportClientError } from '@/lib/client-logging'
+import { MIMIRQ_MARK_PATH } from '@/lib/brand'
 import { useDocumentView } from '@/store/document-view'
 import { ThemeCustomizer } from '@/components/theme-customizer'
 
@@ -1435,26 +1436,21 @@ export function ChatArea({
 function WelcomeScreen() {
   return (
     <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col items-center px-4 pb-8 pt-32 md:px-8 md:pt-48">
-      <div className="flex flex-col items-center text-center space-y-4 animate-fade-in-up">
-        <div className="flex w-full justify-center">
-          <Image
-            src="/brand/mimirq-lockup-image2.png"
-            alt="MimirQ"
-            width={1708}
-            height={504}
-            priority
-            unoptimized
-            className="h-auto w-[min(76vw,560px)] select-none object-contain dark:hidden"
-          />
-          <Image
-            src="/brand/mimirq-lockup-image2-dark.png"
-            alt="MimirQ"
-            width={1744}
-            height={524}
-            priority
-            unoptimized
-            className="hidden h-auto w-[min(76vw,560px)] select-none object-contain dark:block"
-          />
+      <div className="flex animate-fade-in-up flex-col items-center space-y-5 text-center">
+        <Image
+          src={MIMIRQ_MARK_PATH}
+          alt="MimirQ"
+          width={144}
+          height={144}
+          priority
+          unoptimized
+          className="size-28 select-none object-contain sm:size-32"
+        />
+        <div>
+          <h1 className="text-4xl font-semibold tracking-[-0.04em] text-foreground sm:text-5xl">MimirQ</h1>
+          <p className="mt-3 text-sm font-medium text-muted-foreground sm:text-base">
+            可检查、可替换、可回归的企业 RAG 基础设施
+          </p>
         </div>
       </div>
     </div>

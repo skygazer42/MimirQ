@@ -1,22 +1,18 @@
 import type { MetadataRoute } from 'next'
+import { MIMIRQ_MARK_PATH } from '@/lib/brand'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'MimirQ',
     short_name: 'MimirQ',
-    description: 'AI RAG knowledge base assistant',
+    description: 'Inspectable, replaceable, regression-tested enterprise RAG infrastructure',
     start_url: '/',
     display: 'standalone',
-    background_color: '#0b1020',
-    theme_color: '#0f172a',
+    background_color: '#f4fbff',
+    theme_color: '#55c7f3',
     icons: [
       {
-        src: '/brand/mimirq-logo-image2-badge.png',
-        sizes: '512x512',
-        type: 'image/png',
-      },
-      {
-        src: '/brand/mimirq-logo-image2-512.png',
+        src: MIMIRQ_MARK_PATH,
         sizes: '512x512',
         type: 'image/png',
       },

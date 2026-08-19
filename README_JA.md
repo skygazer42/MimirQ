@@ -1,9 +1,8 @@
 <div align="center">
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./web/public/brand/mimirq-lockup-image2-dark.png"/>
-  <img src="./web/public/brand/mimirq-lockup-image2.png" alt="MimirQ: 検査・回帰・ガバナンス可能なオープンソース RAG ナレッジベース" width="680"/>
-</picture>
+<img src="./web/public/brand/mimirq-mark.png" alt="MimirQ Logo" width="136"/>
+
+<h1>MimirQ</h1>
 
 <p><b>フルスタックでオープンソース、中国語ファーストのエンタープライズ RAG ナレッジベース</b><br/>パース、ガバナンス、チャンク分割、検索、リランク、引用を、検査・差し替え・回帰検証できるナレッジパイプラインにします。</p>
 

@@ -12,6 +12,7 @@ import { setAuthSession } from '@/lib/auth-storage'
 import { startOidcLogin } from '@/lib/oidc'
 import { getOidcPublicProvidersFromEnv } from '@/lib/oidc-providers'
 import { formatRequestId, toApiErrorInfo, type ApiErrorInfo } from '@/lib/api-errors'
+import { MIMIRQ_MARK_PATH } from '@/lib/brand'
 import { FullScreenFrame } from '@/components/full-screen-frame'
 import { cn, detachPromise } from '@/lib/utils'
 
@@ -206,7 +207,7 @@ export default function AuthPage() {
                 <div className="flex flex-col items-center mb-8 space-y-4">
                     <div className="flex size-20 items-center justify-center">
                       <Image
-                        src="/brand/mimirq-auth-mark-gpt-image.png"
+                        src={MIMIRQ_MARK_PATH}
                         alt="MimirQ"
                         width={80}
                         height={80}
