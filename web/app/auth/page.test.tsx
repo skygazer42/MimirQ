@@ -230,6 +230,54 @@ describe('auth page registration', () => {
     act(() => root.unmount())
   })
 
+  it('clears a login error when switching to first-time setup', async () => {
+    authApiMock.login.mockRejectedValue({
+      response: {
+        status: 401,
+        data: { detail: 'Invalid credentials' },
+      },
+    })
+
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    act(() => {
+      root.render(<AuthPage />)
+    })
+
+    setInputValue(container.querySelector('#identifier'), 'unknown-user')
+    setInputValue(container.querySelector('#password'), 'wrong-password')
+    await submitForm(container)
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain('Invalid credentials')
+    })
+
+    clickButtonByText(container, '首次设置')
+
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(container.textContent).not.toContain('Invalid credentials')
+
+    act(() => root.unmount())
+  })
+
+  it('keeps the auth frame vertically scrollable when setup content grows', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    act(() => {
+      root.render(<AuthPage />)
+    })
+
+    const frame = container.firstElementChild
+    expect(frame?.classList.contains('overflow-y-auto')).toBe(true)
+    expect(frame?.classList.contains('overflow-hidden')).toBe(false)
+
+    act(() => root.unmount())
+  })
+
   it('announces the active auth mode through pressed button state', () => {
     const container = document.createElement('div')
     document.body.appendChild(container)

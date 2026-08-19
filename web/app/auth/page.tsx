@@ -97,6 +97,12 @@ export default function AuthPage() {
 
     const isSsoSubmitting = ssoProviderWorkingId !== null
 
+    const handleModeChange = (nextMode: Mode) => {
+        if (nextMode === mode) return
+        setMode(nextMode)
+        setError(null)
+    }
+
     const handleSso = async (providerId: string) => {
         setError(null)
         setSsoProviderWorkingId(providerId)
@@ -193,7 +199,7 @@ export default function AuthPage() {
 
     return (
         <FullScreenFrame
-            className="relative w-full overflow-hidden"
+            className="relative w-full overflow-x-hidden"
         >
             <div className="relative z-10 w-full max-w-md p-6">
                 {/* Logo / Brand */}
@@ -241,7 +247,7 @@ export default function AuthPage() {
                                     ? "bg-card/60 text-foreground shadow-sm"
                                     : "text-muted-foreground hover:text-foreground hover:bg-[#CAF0F8]/55"
                             )}
-                            onClick={() => setMode('login')}
+                            onClick={() => handleModeChange('login')}
                         >
                             登录
                         </button>
@@ -254,7 +260,7 @@ export default function AuthPage() {
                                     ? "bg-card/60 text-foreground shadow-sm"
                                     : "text-muted-foreground hover:text-foreground hover:bg-[#CAF0F8]/55"
                             )}
-                            onClick={() => setMode('register')}
+                            onClick={() => handleModeChange('register')}
                         >
                             首次设置
                         </button>
