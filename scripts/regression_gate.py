@@ -2200,7 +2200,7 @@ def main() -> int:
     base_url = str(args.base_url).rstrip("/")
     timeout = httpx.Timeout(30.0)
 
-    with httpx.Client(headers=headers, timeout=timeout) as client:
+    with httpx.Client(headers=headers, timeout=timeout, trust_env=False) as client:
         matched_ids = _resolve_matched_case_ids(
             client,
             base_url=base_url,

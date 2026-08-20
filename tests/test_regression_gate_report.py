@@ -185,7 +185,13 @@ def test_main_refetches_completed_run_with_items_for_final_artifact(
                 )
             raise AssertionError(f"unexpected GET params: {params}")
 
-    monkeypatch.setattr(mod.httpx, "Client", lambda **_kwargs: _FakeClient())
+    client_kwargs: dict[str, object] = {}
+
+    def _client_factory(**kwargs: object) -> _FakeClient:
+        client_kwargs.update(kwargs)
+        return _FakeClient()
+
+    monkeypatch.setattr(mod.httpx, "Client", _client_factory)
     monkeypatch.setattr(
         sys,
         "argv",
@@ -208,6 +214,7 @@ def test_main_refetches_completed_run_with_items_for_final_artifact(
     assert mod.main() == 0  # type: ignore[attr-defined]
     artifact = json.loads(out_path.read_text(encoding="utf-8"))
 
+    assert client_kwargs["trust_env"] is False
     assert artifact["items"] == [{"id": "item-1", "meta": {"must_recall_passed": True}}]
     assert requests_seen[-1] == (
         "GET",
