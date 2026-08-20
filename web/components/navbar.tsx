@@ -528,9 +528,9 @@ export function Navbar({
         )}
       >
         {/* Logo 区域 */}
-        <div className="h-14 px-5 border-b border-info/12 bg-[linear-gradient(90deg,hsl(var(--background)/0.98),hsl(var(--info)/0.08),hsl(var(--background)/0.98))] flex items-center gap-3">
+        <div className="h-14 px-5 border-b border-info/12 bg-background/95 flex items-center gap-3">
           <Link href="/" className="flex items-center gap-3 group rounded-xl focus-ring">
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.12))] shadow-lg shadow-[0_16px_28px_-22px_hsl(var(--info)/0.35)] ring-1 ring-info/18 transition-all duration-200 group-hover:scale-110 group-hover:shadow-xl group-hover:shadow-[0_18px_32px_-22px_hsl(var(--info)/0.45)] motion-reduce:transition-none">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-card/90 shadow-lg shadow-[0_16px_28px_-22px_hsl(var(--info)/0.35)] ring-1 ring-info/18 transition-all duration-200 group-hover:scale-110 group-hover:shadow-xl group-hover:shadow-[0_18px_32px_-22px_hsl(var(--info)/0.45)] motion-reduce:transition-none">
               <Image
                 src={MIMIRQ_MARK_PATH}
                 alt=""
@@ -566,8 +566,8 @@ export function Navbar({
             variant="ghost"
             className={cn(
               "w-full justify-start gap-2.5 h-11 rounded-2xl border border-info/22 font-bold transition-all duration-200 shadow-sm",
-              "bg-[linear-gradient(90deg,hsl(var(--info)/0.16),hsl(var(--info)/0.08))] text-sidebar-foreground",
-              "hover:border-info/32 hover:bg-[linear-gradient(90deg,hsl(var(--info)/0.24),hsl(var(--info)/0.13))] hover:shadow-md hover:shadow-[0_16px_30px_-24px_hsl(var(--info)/0.32)]",
+              "bg-card/90 text-sidebar-foreground",
+              "hover:border-info/32 hover:bg-info/10 hover:shadow-md hover:shadow-[0_16px_30px_-24px_hsl(var(--info)/0.32)]",
               "active:scale-[0.98]"
             )}
             onClick={() => {
@@ -583,7 +583,7 @@ export function Navbar({
         <div className="px-4 pb-2">
           <button
             type="button"
-            className="group flex w-full items-center justify-between gap-3 rounded-2xl border border-info/16 bg-[linear-gradient(135deg,hsl(var(--card)/0.92),hsl(var(--info)/0.08))] px-3 py-3 text-left shadow-sm backdrop-blur-sm transition-all duration-200 hover:border-info/26 hover:bg-[linear-gradient(90deg,hsl(var(--card)),hsl(var(--info)/0.12))] hover:shadow-md focus-ring"
+            className="group flex w-full items-center justify-between gap-3 rounded-2xl border border-info/16 bg-card/90 px-3 py-3 text-left shadow-sm backdrop-blur-sm transition-all duration-200 hover:border-info/26 hover:bg-info/8 hover:shadow-md focus-ring"
             onClick={() => {
               setCommandMenuOpen(true)
               closeSidebarOnMobile()
@@ -625,7 +625,7 @@ export function Navbar({
                     type="button"
                     className={cn(
                       'flex w-full items-center justify-between gap-3 rounded-xl px-3 py-1.5 text-left transition-all duration-200 focus-ring',
-                      hasActiveItem ? 'text-info font-bold' : 'text-muted-foreground hover:bg-[linear-gradient(90deg,hsl(var(--info)/0.07),transparent)] hover:text-info'
+                      hasActiveItem ? 'text-info font-bold' : 'text-muted-foreground hover:bg-info/7 hover:text-info'
                     )}
                     onClick={() => toggleSection(section.id)}
                     aria-expanded={isOpen}
@@ -663,8 +663,8 @@ export function Navbar({
                                   'relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group focus-ring',
                                   'before:pointer-events-none before:absolute before:left-1 before:top-2 before:bottom-2 before:w-[3px] before:rounded-full before:transition-all before:duration-200',
                                   isActive
-                                    ? 'text-info font-bold bg-[linear-gradient(90deg,hsl(var(--info)/0.11),hsl(var(--card)/0.82))] border border-info/18 shadow-sm before:bg-info'
-                                    : 'text-muted-foreground hover:bg-[linear-gradient(90deg,hsl(var(--info)/0.07),transparent)] hover:text-info before:bg-transparent hover:before:bg-info/28'
+                                    ? 'text-info font-bold bg-card/92 border border-info/18 shadow-sm before:bg-info'
+                                    : 'text-muted-foreground hover:bg-info/7 hover:text-info before:bg-transparent hover:before:bg-info/28'
                                 )}
                               >
                                 <Icon
@@ -688,13 +688,13 @@ export function Navbar({
         </div>
 
         {/* 底部信息 */}
-        <div className="p-3 border-t border-info/12 bg-[linear-gradient(90deg,hsl(var(--background)/0.98),hsl(var(--info)/0.06),hsl(var(--background)/0.98))]">
+        <div className="p-3 border-t border-info/12 bg-background/95">
           <div className="flex items-center gap-2">
             <button
               type="button"
               aria-label={isAuthenticated ? t('user.openSettings') : t('auth.goToLogin')}
               title={isAuthenticated ? t('user.openSettings') : t('auth.goToLogin')}
-              className="flex-1 flex items-center gap-3 p-2 rounded-xl hover:bg-[linear-gradient(90deg,hsl(var(--info)/0.08),hsl(var(--card)/0.75))] transition-all duration-200 border border-transparent hover:border-info/18 hover:shadow-md group text-left focus-ring"
+              className="flex-1 flex items-center gap-3 p-2 rounded-xl hover:bg-info/7 transition-all duration-200 border border-transparent hover:border-info/18 hover:shadow-md group text-left focus-ring"
               onClick={() => {
                 if (isAuthenticated) {
                   router.push(canOpenSettings ? '/settings' : '/')
@@ -705,7 +705,7 @@ export function Navbar({
               }}
             >
               <div className="relative w-10 h-10 flex-shrink-0">
-                <div className="absolute inset-0 rounded-xl border border-info/18 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.10))] shadow-md group-hover:border-info/28 group-hover:bg-[linear-gradient(135deg,hsl(var(--info)/0.08),hsl(var(--card)/0.74))] group-hover:shadow-lg transition-all duration-200" />
+                <div className="absolute inset-0 rounded-xl border border-info/18 bg-card/90 shadow-md group-hover:border-info/28 group-hover:bg-info/8 group-hover:shadow-lg transition-all duration-200" />
                 <div className="absolute inset-0 flex items-center justify-center transition-transform duration-200 group-hover:scale-110 motion-reduce:transition-none">
                   <Image
                     src={MIMIRQ_MARK_PATH}
@@ -719,7 +719,7 @@ export function Navbar({
                   />
                 </div>
                 {isAuthenticated && (
-                  <div className="absolute -right-0.5 -bottom-0.5 size-3 bg-[linear-gradient(135deg,hsl(var(--success)),hsl(var(--info)))] border-2 border-background rounded-full shadow-sm" />
+                  <div className="absolute -right-0.5 -bottom-0.5 size-3 bg-success border-2 border-background rounded-full shadow-sm" />
                 )}
               </div>
               <div className="flex-1 min-w-0">
@@ -735,7 +735,7 @@ export function Navbar({
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-8 rounded-lg hover:bg-[linear-gradient(135deg,hsl(var(--destructive)/0.08),hsl(var(--background)))] hover:text-destructive transition-all duration-200"
+                className="size-8 rounded-lg hover:bg-destructive/8 hover:text-destructive transition-all duration-200"
                 onClick={() => {
                   if (isAuthenticated) {
                     logout()

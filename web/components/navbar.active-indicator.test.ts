@@ -8,5 +8,6 @@ describe('navbar active route indicator', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'navbar.tsx'), 'utf8')
     expect(src).toContain('before:bg-info')
     expect(src).not.toContain('before:bg-[linear-gradient(180deg,hsl(var(--info)),hsl(var(--primary)))]')
+    expect(src).not.toContain('bg-[linear-gradient')
   })
 })
