@@ -10,7 +10,7 @@
     --font-code: "Fira Code Variable", "Fira Code", var(--font-mono);
 
     /* Ocean light - Ice blue rather than neutral gray */
-    --background: 198 65% 98.2%;
+    --background: 203 38% 98.2%;
     --foreground: 217 46% 14%;
 
     /* Cards - White with subtle elevation */
@@ -20,28 +20,28 @@
     --popover: 0 0% 100%;
     --popover-foreground: 217 46% 14%;
 
-    /* Primary - Brand sky blue */
-    --primary: 199 84% 62%;
-    --primary-foreground: 220 20% 10%;
+    /* Primary - Deep navy anchor */
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 0 0% 100%;
 
     /* Primary color ramp (50–900) — use these instead of arbitrary /5 /8 /10 opacities */
-    --primary-50: 198 100% 97%;
-    --primary-100: 198 95% 93%;
-    --primary-200: 199 92% 86%;
-    --primary-300: 199 88% 75%;
-    --primary-400: 199 84% 66%;
-    --primary-500: 199 84% 62%;
-    --primary-600: 199 78% 52%;
-    --primary-700: 200 78% 42%;
-    --primary-800: 201 80% 34%;
-    --primary-900: 202 82% 26%;
+    --primary-50: 220 30% 97%;
+    --primary-100: 220 22% 92%;
+    --primary-200: 220 18% 84%;
+    --primary-300: 220 14% 68%;
+    --primary-400: 220 14% 42%;
+    --primary-500: 222 22% 24%;
+    --primary-600: 222.2 34% 18%;
+    --primary-700: 222.2 42% 14%;
+    --primary-800: 222.2 47.4% 11.2%;
+    --primary-900: 222.2 54% 8%;
 
-    /* Secondary - Soft ice blue */
-    --secondary: 199 55% 95%;
+    /* Secondary - Soft blue-white */
+    --secondary: 203 35% 96%;
     --secondary-foreground: 217 42% 18%;
 
-    /* Muted - Blue-tinted neutral for background/disabled text */
-    --muted: 200 45% 95.5%;
+    /* Muted - Barely blue neutral for background/disabled text */
+    --muted: 203 30% 96%;
     --muted-foreground: 209 22% 38%;
 
     /* Accent - Violet (reserved for retrieval / AI / vector semantic — not generic emphasis) */
@@ -81,8 +81,8 @@
     --chart-8: 262 66% 74%;     /* violet-light (gradient step) */
 
     /* Borders & Inputs - Pale ocean blue */
-    --border: 199 38% 88.5%;
-    --input: 199 34% 84.5%;
+    --border: 203 24% 90%;
+    --input: 203 22% 87.5%;
     --ring: 199 78% 48%;
 
     /* Radius - Consistent Curves */
@@ -92,12 +92,12 @@
     --radius-3xl: 1.5rem;
 
     /* Code block background */
-    --code-background: 198 42% 94%;
+    --code-background: 203 30% 95%;
 
     /* Sidebar - Clear ice-blue surface */
-    --sidebar-background: 198 75% 98.2%;
+    --sidebar-background: 199 55% 98%;
     --sidebar-foreground: 217 44% 16%;
-    --sidebar-border: 199 42% 87.5%;
+    --sidebar-border: 201 30% 89%;
 
     /* Custom Shadows for depth */
     --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.03);
@@ -107,16 +107,16 @@
     /* Surface hierarchy: 0=base, 1=card, 2=overlay, 3=popover */
     --surface-0: var(--background);
     --surface-1: var(--card);
-    --surface-2: 199 56% 96.5%;
+    --surface-2: 203 32% 97.2%;
     --surface-3: var(--popover);
 
     /* Global app backdrop: visible enough for theme personalization, but still low-noise for reading. */
-    --app-background-base: radial-gradient(circle at 18% 0%, hsl(var(--primary) / 0.08), transparent 32%),
-      radial-gradient(circle at 82% 8%, hsl(var(--info) / 0.05), transparent 34%),
-      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.78) 48%, hsl(var(--background)) 100%);
+    --app-background-base: radial-gradient(circle at 18% 0%, hsl(var(--primary) / 0.04), transparent 32%),
+      radial-gradient(circle at 82% 8%, hsl(var(--info) / 0.04), transparent 34%),
+      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.65) 48%, hsl(var(--background)) 100%);
     --app-orb-primary: var(--primary);
     --app-orb-secondary: var(--info);
-    --app-orb-primary-opacity: 0.10;
+    --app-orb-primary-opacity: 0.06;
     --app-orb-secondary-opacity: 0.08;
   }
 

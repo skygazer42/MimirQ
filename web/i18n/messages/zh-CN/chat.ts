@@ -8,6 +8,8 @@ Chat: {
     jumpToLatest: '回到最新',
     conversationTools: '对话工具',
     toolsHint: '模板、检索配置放在这里；输入框只保留提问本身。',
+    scopeAndRetrieval: '范围与检索',
+    collapseConversationTools: '收起范围与检索',
     defaultTemplate: '默认模板',
     selectPromptTemplate: '选择 Prompt 模板',
     selectDataset: '选择数据集',

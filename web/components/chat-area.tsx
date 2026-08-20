@@ -16,7 +16,7 @@ import {
 } from 'react'
 import Image from 'next/image'
 import { useTranslations } from 'next-intl'
-import { Send, StopCircle, Sparkles, Database, Wand2, Settings2, Mic, ArrowDown, Route, Keyboard, Palette } from 'lucide-react'
+import { Send, StopCircle, Sparkles, Database, Wand2, Settings2, Mic, ArrowDown, Route, Keyboard, Palette, ChevronDown } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
 import { useChat } from '@/hooks/use-chat'
@@ -106,6 +106,7 @@ export function ChatArea({
   const [inputValue, setInputValue] = useState(() => (initialPrompt || '').trim())
   const [promptTemplateId, setPromptTemplateId] = useState<string>('')
   const [selectedDatasetId, setSelectedDatasetId] = useState('')
+  const [showConversationTools, setShowConversationTools] = useState(Boolean(initialOpenRagSettings))
   const [showRagSettings, setShowRagSettings] = useState(Boolean(initialOpenRagSettings))
   const [deepReasoningEnabled, setDeepReasoningEnabled] = useState(false)
   const [hasSystemRagDefaults, setHasSystemRagDefaults] = useState(false)
@@ -497,6 +498,7 @@ export function ChatArea({
     }
 
     if (cmd === 'config') {
+      setShowConversationTools(true)
       setShowRagSettings(true)
       toast.info(t('openRagConfig'))
       return
@@ -712,7 +714,9 @@ export function ChatArea({
   }, [initialPrompt])
 
   useEffect(() => {
-    if (initialOpenRagSettings) setShowRagSettings(true)
+    if (!initialOpenRagSettings) return
+    setShowConversationTools(true)
+    setShowRagSettings(true)
   }, [initialOpenRagSettings])
 
   const selectedPromptTemplate = useMemo(
@@ -722,6 +726,9 @@ export function ChatArea({
   const hasDocumentScope = Boolean(activeDocumentIds?.length)
   const hasChatScope = hasDocumentScope || Boolean(selectedDatasetId)
   const datasetScopeReady = hasDocumentScope || !datasetsLoading
+  const conversationToolsScopeLabel = hasDocumentScope
+    ? t('currentDocumentScope')
+    : selectedDataset?.name || (datasetsLoading ? t('datasetScopeLoading') : t('selectDataset'))
 
   const hiddenCount = Math.max(0, messages.length - visibleCount)
   const visibleMessages = useMemo(
@@ -915,20 +922,13 @@ export function ChatArea({
             isWelcomeState ? 'max-w-[1040px]' : 'max-w-[48rem] space-y-2.5'
           )}
         >
-          <div
-            aria-label={t('conversationTools')}
-            className="flex flex-col gap-2 rounded-[1.5rem] border border-border/55 bg-background/60 px-2.5 py-2 shadow-sm backdrop-blur-xl supports-[backdrop-filter]:bg-background/55 md:flex-row md:flex-nowrap md:items-center md:justify-between"
-          >
-            <div className="flex min-w-0 items-center gap-2 px-1">
-              <div className="hidden size-7 shrink-0 items-center justify-center rounded-full border border-primary/15 bg-primary/10 text-primary sm:flex">
-                <Sparkles className="size-3.5 text-primary" />
-              </div>
-              <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground/70">
-                {t('conversationTools')}
-              </span>
-            </div>
-
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 md:flex-nowrap md:justify-end">
+          {showConversationTools ? (
+            <div
+              id="chat-conversation-tools"
+              aria-label={t('conversationTools')}
+              className="ml-auto flex w-fit max-w-full flex-wrap items-center justify-end gap-1.5 rounded-[1.5rem] border border-info/16 bg-card/92 px-2.5 py-2 shadow-sm backdrop-blur-xl supports-[backdrop-filter]:bg-card/86"
+            >
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 md:flex-nowrap md:justify-end">
               {promptTemplates.length > 0 && (
                 <Popover>
                   <PopoverTrigger asChild>
@@ -1011,7 +1011,13 @@ export function ChatArea({
                 </PopoverContent>
               </Popover>
 
-              <Popover open={showRagSettings} onOpenChange={setShowRagSettings}>
+              <Popover
+                open={showRagSettings}
+                onOpenChange={(open) => {
+                  setShowRagSettings(open)
+                  if (open) setShowConversationTools(true)
+                }}
+              >
                 <PopoverTrigger asChild>
                   <Button
                     variant="ghost"
@@ -1255,8 +1261,42 @@ export function ChatArea({
                 </div>
               </PopoverContent>
             </Popover>
-          </div>
-          </div>
+                {!isWelcomeState ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 shrink-0 rounded-full border border-info/18 bg-card text-info shadow-sm hover:bg-info/8"
+                    aria-label={t('collapseConversationTools')}
+                    title={t('collapseConversationTools')}
+                    onClick={() => {
+                      setShowRagSettings(false)
+                      setShowConversationTools(false)
+                    }}
+                  >
+                    <ChevronDown className="size-3.5 rotate-180" aria-hidden="true" />
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          ) : !isWelcomeState ? (
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 max-w-full gap-2 rounded-full border border-info/20 bg-card/92 px-3 text-info shadow-sm hover:bg-info/8"
+                aria-expanded="false"
+                aria-controls="chat-conversation-tools"
+                title={t('scopeAndRetrieval')}
+                onClick={() => setShowConversationTools(true)}
+              >
+                <Database className="size-3.5" aria-hidden="true" />
+                <span className="max-w-[13rem] truncate text-xs">{conversationToolsScopeLabel}</span>
+                <ChevronDown className="size-3.5" aria-hidden="true" />
+              </Button>
+            </div>
+          ) : null}
 
           <div
             className={cn(
@@ -1379,12 +1419,25 @@ export function ChatArea({
                 </div>
                 <Button
                   type="button"
-                  variant="secondary"
+                  variant="ghost"
                   size="sm"
-                  className="h-9 rounded-full bg-muted px-4 text-xs font-bold text-foreground shadow-sm hover:bg-primary/10 hover:text-primary"
-                  onClick={() => setShowRagSettings(true)}
+                  className="h-9 max-w-[16rem] gap-2 rounded-full border border-info/24 bg-card/92 px-3 text-xs font-semibold text-info shadow-sm hover:bg-info/8"
+                  aria-expanded={showConversationTools}
+                  aria-controls="chat-conversation-tools"
+                  title={showConversationTools ? t('collapseConversationTools') : t('scopeAndRetrieval')}
+                  onClick={() => {
+                    if (showConversationTools) setShowRagSettings(false)
+                    setShowConversationTools(!showConversationTools)
+                  }}
                 >
-                  RAG 检索
+                  <Database className="size-3.5 shrink-0" aria-hidden="true" />
+                  <span className="truncate">
+                    {showConversationTools ? t('collapseConversationTools') : conversationToolsScopeLabel}
+                  </span>
+                  <ChevronDown
+                    className={cn('size-3.5 shrink-0 transition-transform', showConversationTools && 'rotate-180')}
+                    aria-hidden="true"
+                  />
                 </Button>
               </div>
             ) : null}
@@ -1436,19 +1489,19 @@ export function ChatArea({
 function WelcomeScreen() {
   return (
     <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col items-center px-4 pb-8 pt-32 md:px-8 md:pt-48">
-      <div className="flex animate-fade-in-up flex-col items-center space-y-5 text-center">
+      <div className="flex animate-fade-in-up flex-col items-center space-y-4 text-center">
         <Image
           src={MIMIRQ_MARK_PATH}
           alt="MimirQ"
-          width={144}
-          height={144}
+          width={112}
+          height={112}
           priority
           unoptimized
-          className="size-28 select-none object-contain sm:size-32"
+          className="size-20 select-none object-contain sm:size-24"
         />
         <div>
-          <h1 className="text-4xl font-semibold tracking-[-0.04em] text-foreground sm:text-5xl">MimirQ</h1>
-          <p className="mt-3 text-sm font-medium text-muted-foreground sm:text-base">
+          <h1 className="text-3xl font-semibold tracking-[-0.04em] text-foreground sm:text-4xl">MimirQ</h1>
+          <p className="mt-2.5 text-sm font-medium text-muted-foreground sm:text-base">
             可检查、可替换、可回归的企业 RAG 基础设施
           </p>
         </div>

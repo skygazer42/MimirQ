@@ -47,8 +47,8 @@ export const SURFACE_THEMES: Array<{
   {
     key: 'ocean',
     label: 'Ocean',
-    description: '清透天蓝与冰蓝表面，突出开放、可信的海洋感。',
-    defaultPrimary: '#55c7f3',
+    description: '深海军蓝主色与清透冰蓝表面，保持克制的海洋层级。',
+    defaultPrimary: '#0f172a',
   },
   {
     key: 'deepsea',

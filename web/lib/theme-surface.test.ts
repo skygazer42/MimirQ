@@ -31,9 +31,9 @@ function hslTokenToColor(value: string) {
 }
 
 describe('theme surface appearance', () => {
-  it('keeps the default ocean accent aligned with the sky-blue brand mark', () => {
+  it('keeps the default ocean primary anchored in deep navy for hierarchy', () => {
     const ocean = getSurfaceThemeMeta('ocean')
-    expect(ocean.defaultPrimary).toBe('#55c7f3')
+    expect(ocean.defaultPrimary).toBe('#0f172a')
 
     const tokens = getThemeColorTokens(ocean.defaultPrimary)
     expect(
