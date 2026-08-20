@@ -1125,6 +1125,9 @@ test.describe('management surfaces smoke', () => {
     await captureGuideScreenshot(page, 'guide-retrieval-test.png')
 
     await page.goto('/')
+    const conversationTools = page.locator('button[aria-controls="chat-conversation-tools"]')
+    await expect(conversationTools).toBeVisible({ timeout: 60_000 })
+    await conversationTools.click()
     const datasetScope = page.getByRole('button', { name: '选择数据集', exact: true })
     await expect(datasetScope).toBeVisible({ timeout: 60_000 })
     await datasetScope.click()

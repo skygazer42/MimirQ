@@ -118,6 +118,11 @@ async function selectFullIndexExecutionMode(page: Page) {
 
 async function selectChatDatasetScope(page: Page, datasetName: string) {
   const scopeTrigger = page.getByRole('button', { name: '选择数据集', exact: true })
+  if (!(await scopeTrigger.isVisible())) {
+    const toolsTrigger = page.locator('button[aria-controls="chat-conversation-tools"]')
+    await expect(toolsTrigger).toBeVisible({ timeout: 60_000 })
+    await toolsTrigger.click()
+  }
   await expect(scopeTrigger).toBeVisible({ timeout: 60_000 })
   await scopeTrigger.click()
   await page.getByRole('button', { name: new RegExp(datasetName) }).last().click()
