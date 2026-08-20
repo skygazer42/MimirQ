@@ -9,40 +9,40 @@
     --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     --font-code: "Fira Code Variable", "Fira Code", var(--font-mono);
 
-    /* Base - Warm gray-white */
-    --background: 220 25% 97.5%;
-    --foreground: 222.2 84% 4.9%;
+    /* Ocean light - Ice blue rather than neutral gray */
+    --background: 198 65% 98.2%;
+    --foreground: 217 46% 14%;
 
     /* Cards - White with subtle elevation */
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 217 46% 14%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 217 46% 14%;
 
-    /* Primary - Carbon Black (深邃碳黑) */
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 0 0% 100%;
+    /* Primary - Brand sky blue */
+    --primary: 199 84% 62%;
+    --primary-foreground: 220 20% 10%;
 
     /* Primary color ramp (50–900) — use these instead of arbitrary /5 /8 /10 opacities */
-    --primary-50: 220 30% 97%;
-    --primary-100: 220 22% 92%;
-    --primary-200: 220 18% 84%;
-    --primary-300: 220 14% 68%;
-    --primary-400: 220 14% 42%;
-    --primary-500: 222 22% 24%;
-    --primary-600: 222.2 34% 18%;
-    --primary-700: 222.2 42% 14%;
-    --primary-800: 222.2 47.4% 11.2%;
-    --primary-900: 222.2 54% 8%;
+    --primary-50: 198 100% 97%;
+    --primary-100: 198 95% 93%;
+    --primary-200: 199 92% 86%;
+    --primary-300: 199 88% 75%;
+    --primary-400: 199 84% 66%;
+    --primary-500: 199 84% 62%;
+    --primary-600: 199 78% 52%;
+    --primary-700: 200 78% 42%;
+    --primary-800: 201 80% 34%;
+    --primary-900: 202 82% 26%;
 
-    /* Secondary - Soft Cool Gray */
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    /* Secondary - Soft ice blue */
+    --secondary: 199 55% 95%;
+    --secondary-foreground: 217 42% 18%;
 
-    /* Muted - For background/disabled text */
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215 16% 42%;
+    /* Muted - Blue-tinted neutral for background/disabled text */
+    --muted: 200 45% 95.5%;
+    --muted-foreground: 209 22% 38%;
 
     /* Accent - Violet (reserved for retrieval / AI / vector semantic — not generic emphasis) */
     --accent: 262 72% 58%;
@@ -56,8 +56,8 @@
     --success: 142 62% 30%;
     --success-foreground: 0 0% 100%;
     --warning: 38 82% 50%;
-    --warning-foreground: 222.2 84% 4.9%;
-    --info: 217 78% 50%;
+    --warning-foreground: 217 46% 14%;
+    --info: 199 82% 38%;
     --info-foreground: 0 0% 100%;
 
     /* Extended palette tokens for richer stat cards and badges */
@@ -80,10 +80,10 @@
     --chart-7: 192 74% 60%;     /* cyan-light (gradient step) */
     --chart-8: 262 66% 74%;     /* violet-light (gradient step) */
 
-    /* Borders & Inputs - Neutral Cool Gray */
-    --border: 220 20% 92%;
-    --input: 220 20% 92%;
-    --ring: 192 60% 50%;
+    /* Borders & Inputs - Pale ocean blue */
+    --border: 199 38% 88.5%;
+    --input: 199 34% 84.5%;
+    --ring: 199 78% 48%;
 
     /* Radius - Consistent Curves */
     --radius: 0.75rem;
@@ -92,12 +92,12 @@
     --radius-3xl: 1.5rem;
 
     /* Code block background */
-    --code-background: 220 25% 95%;
+    --code-background: 198 42% 94%;
 
-    /* Sidebar - Slightly distinct from main background */
-    --sidebar-background: 220 20% 99%;
-    --sidebar-foreground: 222.2 84% 4.9%;
-    --sidebar-border: 220 20% 92%;
+    /* Sidebar - Clear ice-blue surface */
+    --sidebar-background: 198 75% 98.2%;
+    --sidebar-foreground: 217 44% 16%;
+    --sidebar-border: 199 42% 87.5%;
 
     /* Custom Shadows for depth */
     --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.03);
@@ -107,17 +107,17 @@
     /* Surface hierarchy: 0=base, 1=card, 2=overlay, 3=popover */
     --surface-0: var(--background);
     --surface-1: var(--card);
-    --surface-2: 220 20% 98%;
+    --surface-2: 199 56% 96.5%;
     --surface-3: var(--popover);
 
     /* Global app backdrop: visible enough for theme personalization, but still low-noise for reading. */
-    --app-background-base: radial-gradient(circle at 18% 0%, hsl(var(--primary) / 0.10), transparent 32%),
-      radial-gradient(circle at 82% 8%, hsl(var(--info) / 0.08), transparent 34%),
-      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.70) 48%, hsl(var(--background)) 100%);
+    --app-background-base: radial-gradient(circle at 18% 0%, hsl(var(--primary) / 0.08), transparent 32%),
+      radial-gradient(circle at 82% 8%, hsl(var(--info) / 0.05), transparent 34%),
+      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.78) 48%, hsl(var(--background)) 100%);
     --app-orb-primary: var(--primary);
     --app-orb-secondary: var(--info);
-    --app-orb-primary-opacity: 0.14;
-    --app-orb-secondary-opacity: 0.12;
+    --app-orb-primary-opacity: 0.10;
+    --app-orb-secondary-opacity: 0.08;
   }
 
   html:not(.dark)[data-surface-theme="neutral"] {

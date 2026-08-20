@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   applyStoredThemeAppearance,
+  getSurfaceThemeMeta,
   getThemeColorTokens,
   normalizeSurfaceTheme,
   normalizeThemeColor,
@@ -30,6 +31,19 @@ function hslTokenToColor(value: string) {
 }
 
 describe('theme surface appearance', () => {
+  it('keeps the default ocean accent aligned with the sky-blue brand mark', () => {
+    const ocean = getSurfaceThemeMeta('ocean')
+    expect(ocean.defaultPrimary).toBe('#55c7f3')
+
+    const tokens = getThemeColorTokens(ocean.defaultPrimary)
+    expect(
+      chroma.contrast(
+        hslTokenToColor(tokens?.['--primary'] || ''),
+        hslTokenToColor(tokens?.['--primary-foreground'] || '')
+      )
+    ).toBeGreaterThanOrEqual(4.5)
+  })
+
   it('recognizes the professional neutral-white surface preset', () => {
     expect(normalizeSurfaceTheme('neutral')).toBe('neutral')
     expect(normalizeSurfaceTheme('deepsea')).toBe('deepsea')
