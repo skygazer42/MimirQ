@@ -310,7 +310,7 @@ def main() -> int:
     base = str(args.base_url).rstrip("/")
     timeout = httpx.Timeout(30.0)
 
-    with httpx.Client(headers=headers, timeout=timeout) as client:
+    with httpx.Client(headers=headers, timeout=timeout, trust_env=False) as client:
         if not args.skip_import:
             _import_cases(
                 client,

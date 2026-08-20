@@ -129,6 +129,7 @@ def test_main_lists_cases_runs_diagnostics_and_writes_report(
     }
     assert calls[0][0] == "init"
     assert calls[0][2]["headers"] == {"Content-Type": "application/json", "X-User-ID": "user-1"}
+    assert calls[0][2]["trust_env"] is False
     assert calls[1] == (
         "get",
         "http://example.test/api/v1/evaluations/ragas/regression/cases",
