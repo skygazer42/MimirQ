@@ -35,6 +35,7 @@ type WorkbenchScaffoldProps = {
   headerClassName?: string
   toolbarClassName?: string
   bodyClassName?: string
+  paneGroupClassName?: string
   mainPaneClassName?: string
   mainPaneBodyClassName?: string
 }
@@ -81,6 +82,7 @@ export function WorkbenchScaffold({
   headerClassName,
   toolbarClassName,
   bodyClassName,
+  paneGroupClassName,
   mainPaneClassName,
   mainPaneBodyClassName,
 }: Readonly<WorkbenchScaffoldProps>) {
@@ -146,7 +148,10 @@ export function WorkbenchScaffold({
         bodyClassName
       )}>
         <PageContainer size={size} className="h-full">
-          <div className="flex h-full min-h-0 gap-4">
+          <div
+            data-workbench-pane-group="true"
+            className={cn('flex h-full min-h-0 gap-4', paneGroupClassName)}
+          >
             {leftPanel ? (
               <aside className="hidden lg:flex w-[280px] min-h-0 overflow-hidden flex-col">
                 {leftPanel}

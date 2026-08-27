@@ -17,7 +17,7 @@ const Command = React.forwardRef<
   <CommandPrimitive
     ref={ref}
     className={cn(
-      "flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground",
+      "flex h-full w-full flex-col overflow-hidden rounded-md bg-background text-foreground",
       className
     )}
     {...props}
@@ -32,7 +32,10 @@ const CommandDialog = ({ children, ...props }: CommandDialogProps) => {
 
   return (
     <Dialog {...props}>
-      <DialogContent className="overflow-hidden border border-border/60 bg-popover/88 p-0 shadow-strong backdrop-blur-2xl">
+      <DialogContent
+        data-command-dialog="true"
+        className="overflow-hidden border border-foreground/15 bg-background p-0 shadow-none sm:max-w-[560px]"
+      >
         <DialogTitle className="sr-only">{t('command.title')}</DialogTitle>
         <DialogDescription className="sr-only">
           {t('command.description')}
@@ -49,12 +52,15 @@ const CommandInput = React.forwardRef<
   RadixRef<typeof CommandPrimitive.Input>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.Input>
 >(({ className, ...props }, ref) => (
-  <div className="flex items-center border-b border-border/40 px-3 [&:has(input:focus)_svg]:text-primary" data-cmdk-input-wrapper="">
-    <Search className="mr-2 h-4 w-4 shrink-0 opacity-50 transition-colors" />
+  <div
+    className="flex items-center border-b border-foreground/10 px-4 [&:has(input:focus)_svg]:text-foreground"
+    data-cmdk-input-wrapper=""
+  >
+    <Search className="mr-2 h-4 w-4 shrink-0 text-muted-foreground transition-colors" />
     <CommandPrimitive.Input
       ref={ref}
       className={cn(
-        "flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground/60 disabled:cursor-not-allowed disabled:opacity-50",
+        "flex h-11 w-full rounded-md bg-transparent py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 disabled:cursor-not-allowed disabled:opacity-50",
         className
       )}
       {...props}
@@ -70,7 +76,7 @@ const CommandList = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <CommandPrimitive.List
     ref={ref}
-    className={cn("max-h-[300px] overflow-y-auto overscroll-contain no-scrollbar overflow-x-hidden transition-[max-height] duration-220 ease-spring", className)}
+    className={cn("max-h-[min(420px,62dvh)] overflow-y-auto overscroll-contain no-scrollbar overflow-x-hidden transition-[max-height] duration-200 ease-out", className)}
     {...props}
   />
 ))
@@ -112,7 +118,7 @@ const CommandSeparator = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <CommandPrimitive.Separator
     ref={ref}
-    className={cn("-mx-1 h-px bg-border", className)}
+    className={cn("-mx-1 h-px bg-foreground/10", className)}
     {...props}
   />
 ))
@@ -125,7 +131,7 @@ const CommandItem = React.forwardRef<
   <CommandPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none aria-selected:bg-primary/10 aria-selected:text-primary aria-selected:before:absolute aria-selected:before:left-0 aria-selected:before:top-1 aria-selected:before:bottom-1 aria-selected:before:w-[2px] aria-selected:before:rounded-full aria-selected:before:bg-primary data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-200",
+      "relative flex cursor-default select-none items-center rounded-md px-2 py-1.5 text-sm outline-none aria-selected:bg-foreground/10 aria-selected:text-foreground aria-selected:before:absolute aria-selected:before:bottom-1 aria-selected:before:left-0 aria-selected:before:top-1 aria-selected:before:w-px aria-selected:before:bg-foreground/30 data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 transition-colors duration-200",
       className
     )}
     {...props}
@@ -141,7 +147,7 @@ const CommandShortcut = ({
   return (
     <span
       className={cn(
-        "ml-auto text-xs  text-muted-foreground",
+        "ml-auto inline-flex min-h-5 items-center rounded-md border border-foreground/10 bg-background px-1.5 font-mono text-[10px] font-semibold text-muted-foreground",
         className
       )}
       {...props}

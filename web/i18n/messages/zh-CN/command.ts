@@ -1,16 +1,17 @@
 const commandMessages = {
 CommandMenu: {
     header: {
-      title: 'Command Center',
-      hint: '输入 / 查看快捷动作 · 试试 ? / g d / g c / g g / g o / f s / g v',
+      title: '命令中心',
+      description: '搜索页面、数据与对话，或执行快捷动作',
+      hint: '查看快捷键',
     },
     search: {
-      placeholder: '输入命令或搜索...',
+      placeholder: '搜索页面、数据和对话，或输入 / 执行动作…',
       empty: '未找到相关结果',
     },
     groups: {
       slash: '快捷指令',
-      keyboardWorkflow: '键盘工作流',
+      keyboardWorkflow: '快捷工作流',
       viewerShortcuts: '文档查看器快捷键',
       shortcutMap: '工作流快捷键地图',
       navigation: '导航',
@@ -50,52 +51,52 @@ CommandMenu: {
     },
     keyChords: {
       documents: {
-        label: 'Go to Documents',
-        description: '跳到知识库文档工作台。',
+        label: '打开文档工作台',
+        description: '管理知识库文档与导入状态。',
       },
       chat: {
-        label: 'Go to Chat',
-        description: '返回主对话视图。',
+        label: '返回主对话',
+        description: '回到知识库问答工作区。',
       },
       graph: {
-        label: 'Go to Graph',
-        description: '打开图谱工作台。',
+        label: '打开知识图谱',
+        description: '查看实体、关系与路径分析。',
       },
       observability: {
-        label: 'Go to Observability',
-        description: '打开可观测中心，继续排查指标、日志和链路异常。',
+        label: '打开可观测中心',
+        description: '排查指标、日志与链路异常。',
       },
       slice: {
-        label: 'Find Slice',
-        description: '进入切片工作台，继续检索与诊断。',
+        label: '查找切片',
+        description: '进入切片工作台继续检索与诊断。',
       },
       resume: {
-        label: 'Resume Viewer Context',
-        description: '恢复最近一次文档/引用定位。',
+        label: '恢复文档位置',
+        description: '回到最近查看的文档与引用位置。',
         emptyDescription: '最近没有可恢复的文档定位。',
       },
     },
     shortcutGuide: {
       open: {
-        label: '打开 Command Center',
-        description: '全局呼出命令中心，并继续搜索页面、数据集、对话与快捷动作。',
+        label: '打开命令中心',
+        description: '搜索页面、数据集、对话与快捷动作。',
       },
       help: {
         label: '查看快捷键地图',
         description: '当光标不在输入框时，直接打开当前这份快捷键说明。',
       },
-      chordPrefix: '导航 Chord ·',
+      chordPrefix: '连续按键 ·',
       stagePrevNext: {
-        label: '切换 Trace Stage',
-        description: 'RAG Trace 时间线聚焦后，在 pipeline stages 之间左右切换。',
+        label: '切换追踪阶段',
+        description: '聚焦 RAG 追踪时间线后，在前后阶段间切换。',
       },
       stageArrows: {
-        label: '切换 Trace Stage',
-        description: '和 h/l 等价，用方向键快速浏览 pipeline inspector。',
+        label: '切换追踪阶段',
+        description: '使用方向键快速浏览前后处理阶段。',
       },
       sliceFocus: {
         label: '切片焦点跳转',
-        description: 'Document Viewer 内在检索命中或已加载切片之间循环切换。',
+        description: '在文档查看器中循环切换检索命中或已加载切片。',
       },
     },
     slash: {

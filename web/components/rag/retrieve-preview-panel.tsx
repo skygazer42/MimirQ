@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useMemo, useRef, useState } from 'react'
+import Image from 'next/image'
 import {
   ArrowRight,
   ChevronRight,
@@ -145,83 +146,26 @@ const seedRecentQueries: RecentQueryItem[] = [
 const RETRIEVAL_ADVANCED_PANEL_ID = 'retrieval-advanced-params'
 const RETRIEVAL_HISTORY_PANEL_ID = 'retrieval-query-history'
 const RETRIEVAL_RANGE_INPUT_CLASS =
-  'relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-0 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-info/40 [&::-webkit-slider-thumb]:bg-card [&::-webkit-slider-thumb]:shadow-[0_6px_14px_-8px_hsl(var(--info)/0.55)] dark:[&::-webkit-slider-thumb]:border-border dark:[&::-webkit-slider-thumb]:bg-card [&::-moz-range-track]:h-5 [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:h-5 [&::-moz-range-progress]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-info/40 [&::-moz-range-thumb]:bg-card'
+  'relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-0 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-info/40 [&::-webkit-slider-thumb]:bg-background dark:[&::-webkit-slider-thumb]:border-foreground/10 dark:[&::-webkit-slider-thumb]:bg-background [&::-moz-range-track]:h-5 [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:h-5 [&::-moz-range-progress]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-info/40 [&::-moz-range-thumb]:bg-background'
 const RETRIEVAL_PANEL_SURFACE_CLASS =
-  'border-info/20 bg-card/[0.94] shadow-[0_14px_26px_-24px_hsl(var(--info)/0.18)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62'
+  'border-foreground/10 bg-background shadow-none backdrop-blur-none dark:border-foreground/10 dark:bg-background'
 const RETRIEVAL_CONTROL_SURFACE_CLASS =
-  'border-info/20 bg-card/[0.92] shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-border/70 dark:bg-background/58'
+  'border-foreground/10 bg-background shadow-none dark:border-foreground/10 dark:bg-background'
 
 function SemanticRetrievalMark() {
   return (
-    <div className="relative flex size-14 items-center justify-center rounded-[22px] border border-info/30 bg-[radial-gradient(circle_at_30%_18%,hsl(var(--card)/0.92),transparent_34%),linear-gradient(145deg,hsl(var(--info)/0.08)_0%,hsl(var(--info)/0.14)_58%,hsl(var(--info)/0.10)_100%)] text-primary shadow-[0_18px_32px_-24px_hsl(var(--info)/0.52)]">
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-1 rounded-[18px] border border-border/70"
+    <div
+      data-semantic-retrieval-mark="true"
+      className="flex size-14 items-center justify-center rounded-xl border border-foreground/10 bg-background/70 shadow-none dark:border-foreground/10 dark:bg-background/70"
+    >
+      <Image
+        src="/brand/mimirq-retrieval-mark.png"
+        alt="MimirQ 语义检索标记"
+        width={164}
+        height={150}
+        loading="eager"
+        className="size-12 scale-110 object-contain"
       />
-      <svg
-        aria-label="语义检索图标"
-        role="img"
-        viewBox="0 0 40 40"
-        className="relative size-8"
-        fill="none"
-      >
-        <path
-          d="M11 14.5L19.5 10.5L29 16M11 14.5L18 24.5M29 16L23.5 27"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          opacity="0.42"
-        />
-        <circle
-          data-semantic-node="query"
-          cx="11"
-          cy="14.5"
-          r="4.5"
-          fill="white"
-          stroke="currentColor"
-          strokeWidth="1.7"
-        />
-        <circle
-          data-semantic-node="evidence"
-          cx="29"
-          cy="16"
-          r="4.5"
-          fill="white"
-          stroke="currentColor"
-          strokeWidth="1.7"
-        />
-        <circle
-          data-semantic-node="ranked-hit"
-          cx="18"
-          cy="24.5"
-          r="3.6"
-          fill="#DBEAFE"
-          stroke="currentColor"
-          strokeWidth="1.5"
-        />
-        <path
-          d="M22.8 26.8C24.2 24.4 27.3 23.5 29.7 24.9C32.2 26.3 33 29.4 31.6 31.8C30.2 34.2 27.1 35 24.7 33.7C22.3 32.3 21.4 29.2 22.8 26.8Z"
-          fill="white"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M31.1 31.2L35 35"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-        />
-        <path
-          d="M8.8 14.5H13.2M27 16H31M16.3 24.5H19.7"
-          stroke="currentColor"
-          strokeWidth="1.4"
-          strokeLinecap="round"
-          opacity="0.68"
-        />
-      </svg>
     </div>
   )
 }
@@ -392,9 +336,9 @@ export function RetrievePreviewPanel({
   const renderComposer = (compact = false) => (
     <div
       className={cn(
-        'rounded-[22px] border',
+        'rounded-xl border',
         RETRIEVAL_PANEL_SURFACE_CLASS,
-        compact ? 'sticky top-0 z-20 rounded-[24px]' : ''
+        compact ? 'sticky top-0 z-20 rounded-xl' : ''
       )}
     >
       <div className={cn('flex flex-col gap-3.5', compact ? 'p-3.5' : 'p-4')}>
@@ -412,7 +356,7 @@ export function RetrievePreviewPanel({
               type="button"
               variant="ghost"
               size="sm"
-              className="h-8 rounded-[12px] border border-info/20 bg-card/90 px-3 text-[12px] font-medium hover:bg-info/5 dark:border-border/70 dark:bg-background/62"
+              className="h-8 rounded-md border border-foreground/10 bg-background/70 px-3 text-[12px] font-medium hover:bg-muted/20 dark:border-foreground/10 dark:bg-background/70"
               onClick={handleReset}
             >
               <RotateCcw className="mr-2 size-3.5" />
@@ -431,7 +375,7 @@ export function RetrievePreviewPanel({
           </div>
         )}
 
-        <div className={cn('rounded-[18px] border', RETRIEVAL_CONTROL_SURFACE_CLASS)}>
+        <div className={cn('rounded-lg border', RETRIEVAL_CONTROL_SURFACE_CLASS)}>
           <div className="flex gap-3 px-4 pt-4">
             <Search className="mt-1 size-[18px] shrink-0 text-muted-foreground/42" />
             <textarea
@@ -452,9 +396,9 @@ export function RetrievePreviewPanel({
             />
           </div>
 
-          <div className="mt-2 flex flex-col gap-2.5 border-t border-info/20 px-4 py-3 lg:flex-row lg:items-center lg:justify-between dark:border-border/60">
+          <div className="mt-2 flex flex-col gap-2.5 border-t border-foreground/10 px-4 py-3 lg:flex-row lg:items-center lg:justify-between dark:border-foreground/10">
             <div className="flex flex-wrap items-center gap-3 text-[12px] text-muted-foreground/72">
-              <span className="inline-flex h-8 items-center rounded-full border border-info/20 bg-card/90 px-3 dark:border-border/70 dark:bg-background/62">
+              <span className="inline-flex h-8 items-center rounded-md border border-foreground/10 bg-background/70 px-3 dark:border-foreground/10 dark:bg-background/70">
                 <Database className="mr-2 size-3.5 text-primary" />
                 {selectedDatasetId ||
                   (availableDatasetIds.length
@@ -467,7 +411,7 @@ export function RetrievePreviewPanel({
 
             <Button
               type="button"
-              className="h-9 rounded-[14px] bg-primary px-[18px] text-[13px] font-medium text-primary-foreground shadow-[0_14px_22px_-18px_hsl(var(--primary)/0.52)]"
+              className="h-9 rounded-lg bg-primary px-[18px] text-[13px] font-medium text-primary-foreground shadow-none"
               disabled={!searchQuery.trim() || isSearching || !hasRetrievalScope}
               onClick={() => detachPromise(handleSearch())}
             >
@@ -485,7 +429,7 @@ export function RetrievePreviewPanel({
       {renderComposer(false)}
 
       <div className="grid gap-3.5 xl:grid-cols-[1.1fr_0.88fr_1fr]">
-        <Panel padding="none" className={cn('rounded-[20px] border', RETRIEVAL_PANEL_SURFACE_CLASS)}>
+        <Panel padding="none" className={cn('rounded-xl border', RETRIEVAL_PANEL_SURFACE_CLASS)}>
           <div className="p-[18px]">
             <div className="flex items-center justify-between">
               <div className="text-[15px] font-semibold tracking-[-0.03em] text-foreground">推荐测试问题</div>
@@ -499,7 +443,7 @@ export function RetrievePreviewPanel({
                     handleApplySuggestedQuery(question)
                     searchInputRef.current?.focus()
                   }}
-                  className="flex w-full items-center justify-between rounded-[14px] border border-info/20 bg-card/86 px-3 py-2.5 text-left transition-colors hover:border-primary/30 hover:bg-info/5 dark:border-border/70 dark:bg-background/58 dark:hover:bg-primary/[0.03]"
+                  className="flex w-full items-center justify-between rounded-lg border border-foreground/10 bg-background/70 px-3 py-2.5 text-left transition-colors hover:border-foreground/15 hover:bg-muted/20 dark:border-foreground/10 dark:bg-background/70"
                 >
                   <span className="pr-4 text-[12px] leading-5 text-foreground/86">{question}</span>
                   <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/55" />
@@ -509,7 +453,7 @@ export function RetrievePreviewPanel({
           </div>
         </Panel>
 
-        <Panel padding="none" className={cn('rounded-[20px] border', RETRIEVAL_PANEL_SURFACE_CLASS)}>
+        <Panel padding="none" className={cn('rounded-xl border', RETRIEVAL_PANEL_SURFACE_CLASS)}>
           <div className="p-[18px]">
             <div className="flex items-center gap-2 text-[15px] font-semibold tracking-[-0.03em] text-foreground">
               <SlidersHorizontal className="size-3.5 text-primary" />
@@ -519,7 +463,7 @@ export function RetrievePreviewPanel({
               <div className="space-y-2">
                 <div className="text-[12px] text-muted-foreground/74">Top K（返回结果数）</div>
                 <Select value={topK} onValueChange={setTopK}>
-                  <SelectTrigger className="h-9 rounded-[14px] border-info/20 bg-card/90 text-[12px] font-medium dark:border-border/70 dark:bg-background/62">
+                  <SelectTrigger className="h-9 rounded-lg border-foreground/10 bg-background/70 text-[12px] font-medium dark:border-foreground/10 dark:bg-background/70">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -534,7 +478,7 @@ export function RetrievePreviewPanel({
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="text-[12px] text-muted-foreground/74">相似度阈值</div>
-                  <div className="rounded-[12px] border border-info/20 bg-info/5 px-2 py-1 font-mono text-[12px] text-foreground dark:border-border/70 dark:bg-background/62">
+                  <div className="rounded-md border border-foreground/10 bg-background/70 px-2 py-1 font-mono text-[12px] text-foreground dark:border-foreground/10 dark:bg-background/70">
                     {scoreThreshold.toFixed(2)}
                   </div>
                 </div>
@@ -572,12 +516,12 @@ export function RetrievePreviewPanel({
                 {advancedParamsOpen ? (
                   <div
                     id={RETRIEVAL_ADVANCED_PANEL_ID}
-                    className="space-y-3 rounded-[16px] border border-info/20 bg-card/86 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-border/70 dark:bg-background/55"
+                    className="space-y-3 rounded-lg border border-foreground/10 bg-background/70 p-3 dark:border-foreground/10 dark:bg-background/70"
                   >
                     <div className="space-y-1.5">
                       <div className="text-[11px] text-muted-foreground/70">检索模式</div>
                       <Select value={retrievalMode} onValueChange={setRetrievalMode}>
-                        <SelectTrigger className="h-8 rounded-[12px] border-info/20 bg-card/90 text-[12px] font-medium dark:border-border/70 dark:bg-background/62">
+                        <SelectTrigger className="h-8 rounded-md border-foreground/10 bg-background/70 text-[12px] font-medium dark:border-foreground/10 dark:bg-background/70">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -614,7 +558,7 @@ export function RetrievePreviewPanel({
                       <div className="space-y-1.5">
                         <div className="text-[11px] text-muted-foreground/70">上下文预算</div>
                         <Select value={maxTokens} onValueChange={setMaxTokens}>
-                          <SelectTrigger className="h-8 rounded-[12px] border-info/20 bg-card/90 text-[12px] font-medium dark:border-border/70 dark:bg-background/62">
+                          <SelectTrigger className="h-8 rounded-md border-foreground/10 bg-background/70 text-[12px] font-medium dark:border-foreground/10 dark:bg-background/70">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -631,7 +575,7 @@ export function RetrievePreviewPanel({
                           'mt-5 h-8 rounded-[12px] border px-3 text-[11px] font-medium transition-colors',
                           enableWeightRerank
                             ? 'border-success/25 bg-success/10 text-success'
-                            : 'border-info/20 bg-card/88 text-muted-foreground dark:border-border/70 dark:bg-background/58'
+                            : 'border-foreground/10 bg-background/70 text-muted-foreground dark:border-foreground/10 dark:bg-background/70'
                         )}
                       >
                         权重重排 {enableWeightRerank ? '开启' : '关闭'}
@@ -644,7 +588,7 @@ export function RetrievePreviewPanel({
           </div>
         </Panel>
 
-        <Panel padding="none" className={cn('rounded-[20px] border', RETRIEVAL_PANEL_SURFACE_CLASS)}>
+        <Panel padding="none" className={cn('rounded-xl border', RETRIEVAL_PANEL_SURFACE_CLASS)}>
           <div className="p-[18px]">
             <div className="flex items-center justify-between">
               <div className="text-[15px] font-semibold tracking-[-0.03em] text-foreground">最近检索</div>
@@ -676,7 +620,7 @@ export function RetrievePreviewPanel({
                 </button>
               ))}
               {visibleRecentQueries.length === 0 ? (
-                <div className="rounded-[14px] border border-dashed border-info/20 bg-card/70 px-3 py-3 text-[12px] text-muted-foreground/70 dark:border-border/70 dark:bg-background/50">
+                <div className="rounded-lg border border-dashed border-foreground/10 bg-background/70 px-3 py-3 text-[12px] text-muted-foreground/70 dark:border-foreground/10 dark:bg-background/70">
                   暂无检索历史
                 </div>
               ) : null}
@@ -701,7 +645,7 @@ export function RetrievePreviewPanel({
             {fullHistoryOpen ? (
               <div
                 id={RETRIEVAL_HISTORY_PANEL_ID}
-                className="mt-3 rounded-[16px] border border-info/20 bg-card/86 p-3 dark:border-border/70 dark:bg-background/55"
+                className="mt-3 rounded-lg border border-foreground/10 bg-background/70 p-3 dark:border-foreground/10 dark:bg-background/70"
               >
                 <div className="text-[11px] font-medium text-foreground">当前会话历史</div>
                 <div className="mt-2 space-y-2">
@@ -714,14 +658,14 @@ export function RetrievePreviewPanel({
                           handleApplySuggestedQuery(item.query)
                           searchInputRef.current?.focus()
                         }}
-                        className="flex w-full items-center justify-between gap-3 rounded-[12px] border border-info/20 bg-card/88 px-3 py-2 text-left transition-colors hover:border-primary/30 hover:bg-info/5 dark:border-border/60 dark:bg-background/58 dark:hover:bg-primary/[0.03]"
+                        className="flex w-full items-center justify-between gap-3 rounded-md border border-foreground/10 bg-background/70 px-3 py-2 text-left transition-colors hover:border-foreground/15 hover:bg-muted/20 dark:border-foreground/10 dark:bg-background/70"
                       >
                         <span className="line-clamp-1 text-[12px] text-foreground/86">{item.query}</span>
                         <span className="shrink-0 text-[10px] text-muted-foreground/60">{item.timestampLabel}</span>
                       </button>
                     ))
                   ) : (
-                    <div className="rounded-[12px] border border-dashed border-border/70 px-3 py-2 text-[12px] text-muted-foreground/70">
+                    <div className="rounded-md border border-dashed border-foreground/10 px-3 py-2 text-[12px] text-muted-foreground/70">
                       暂无检索历史
                     </div>
                   )}
@@ -735,7 +679,7 @@ export function RetrievePreviewPanel({
   )
 
   const renderNoResults = () => (
-    <Panel padding="none" className={cn('rounded-[24px] border', RETRIEVAL_PANEL_SURFACE_CLASS)}>
+    <Panel padding="none" className={cn('rounded-xl border', RETRIEVAL_PANEL_SURFACE_CLASS)}>
       <div className="p-6">
         <div className="text-[20px] font-semibold tracking-[-0.03em] text-foreground">Top-K 排序为空</div>
         <div className="mt-3 text-[14px] leading-6 text-muted-foreground/76">
@@ -753,7 +697,7 @@ export function RetrievePreviewPanel({
                   handleApplySuggestedQuery(label)
                   searchInputRef.current?.focus()
                 }}
-                className="rounded-full border border-info/20 bg-card/88 px-3 py-1.5 text-[12px] text-foreground/80 transition-colors hover:border-primary/30 hover:bg-info/5 dark:border-border/70 dark:bg-background/58 dark:hover:bg-primary/[0.04]"
+                className="rounded-full border border-foreground/10 bg-background/70 px-3 py-1.5 text-[12px] text-foreground/80 transition-colors hover:border-foreground/15 hover:bg-muted/20 dark:border-foreground/10 dark:bg-background/70"
               >
                 {label}
               </button>
@@ -765,7 +709,7 @@ export function RetrievePreviewPanel({
           <div className="text-[13px] font-medium text-foreground">排查方向</div>
           <div className="mt-3 grid gap-3 md:grid-cols-3">
             {noResultDiagnosticTips.map((item) => (
-              <div key={item.title} className="rounded-[18px] border border-info/20 bg-card/88 px-4 py-4 dark:border-border/70 dark:bg-background/58">
+              <div key={item.title} className="rounded-lg border border-foreground/10 bg-background/70 px-4 py-4 dark:border-foreground/10 dark:bg-background/70">
                 <div className="text-[13px] font-medium text-foreground">{item.title}</div>
                 <div className="mt-2 text-[12px] leading-5 text-muted-foreground/72">{item.description}</div>
               </div>
@@ -809,7 +753,7 @@ export function RetrievePreviewPanel({
         </div>
 
         {hasImage ? (
-          <div className="overflow-hidden rounded-[20px] border border-info/20 bg-card/88 dark:border-border/70 dark:bg-background/58">
+          <div className="overflow-hidden rounded-xl border border-foreground/10 bg-background/70 dark:border-foreground/10 dark:bg-background/70">
             {imageUrl ? (
               <AuthImage src={imageUrl} alt="命中图像缩略图" className="h-44 w-full object-cover" />
             ) : (
@@ -820,32 +764,32 @@ export function RetrievePreviewPanel({
           </div>
         ) : null}
 
-        <div className="rounded-[20px] border border-info/20 bg-card/88 px-4 py-4 dark:border-border/70 dark:bg-background/58">
+        <div className="rounded-xl border border-foreground/10 bg-background/70 px-4 py-4 dark:border-foreground/10 dark:bg-background/70">
           <div className="text-[12px] leading-6 text-foreground/86">{previewChunkContent(hit.chunk_content)}</div>
         </div>
 
         <div className="grid gap-3 md:grid-cols-2">
-          <div className="rounded-[18px] border border-info/20 bg-card/88 px-4 py-4 dark:border-border/70 dark:bg-background/58">
+          <div className="rounded-lg border border-foreground/10 bg-background/70 px-4 py-4 dark:border-foreground/10 dark:bg-background/70">
             <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/62">Chunk ID</div>
             <div className="mt-2 break-all font-mono text-[12px] text-foreground/84">{chunkId || '—'}</div>
           </div>
-          <div className="rounded-[18px] border border-info/20 bg-card/88 px-4 py-4 dark:border-border/70 dark:bg-background/58">
+          <div className="rounded-lg border border-foreground/10 bg-background/70 px-4 py-4 dark:border-foreground/10 dark:bg-background/70">
             <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/62">Clause</div>
             <div className="mt-2 text-[12px] text-foreground/84">{clause || '—'}</div>
           </div>
         </div>
 
-        <div className="rounded-[18px] border border-info/20 bg-card/88 px-4 py-4 dark:border-border/70 dark:bg-background/58">
+        <div className="rounded-lg border border-foreground/10 bg-background/70 px-4 py-4 dark:border-foreground/10 dark:bg-background/70">
           <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/62">Path</div>
           <div className="mt-2 break-all text-[12px] text-foreground/84">{pathStr || '—'}</div>
         </div>
 
         {terms.length ? (
-          <div className="rounded-[18px] border border-info/20 bg-card/88 px-4 py-4 dark:border-border/70 dark:bg-background/58">
+          <div className="rounded-lg border border-foreground/10 bg-background/70 px-4 py-4 dark:border-foreground/10 dark:bg-background/70">
             <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/62">Matched Terms</div>
             <div className="mt-3 flex flex-wrap gap-2">
               {terms.map((term) => (
-                <span key={term} className="rounded-full border border-info/20 bg-info/5 px-2.5 py-1 text-[11px] text-foreground/82 dark:border-border/70 dark:bg-muted/30">
+                <span key={term} className="rounded-full border border-foreground/10 bg-background/70 px-2.5 py-1 text-[11px] text-foreground/82 dark:border-foreground/10 dark:bg-background/70">
                   {term}
                 </span>
               ))}
@@ -884,7 +828,7 @@ export function RetrievePreviewPanel({
       {renderComposer(true)}
 
       {searchError ? (
-        <Panel padding="none" className="rounded-[22px] border border-destructive/20 bg-destructive/[0.04]">
+        <Panel padding="none" className="rounded-xl border border-destructive/20 bg-destructive/[0.04]">
           <div className="p-5 text-[14px] text-destructive">{searchError}</div>
         </Panel>
       ) : null}
@@ -893,8 +837,8 @@ export function RetrievePreviewPanel({
 
       {searchResults.length > 0 ? (
         <div className="grid min-h-0 gap-5 2xl:grid-cols-[minmax(0,1fr)_21rem]">
-          <div className={cn('min-h-0 rounded-[24px] border', RETRIEVAL_PANEL_SURFACE_CLASS)}>
-            <div className="border-b border-info/20 px-5 py-4 dark:border-border/60">
+          <div className={cn('min-h-0 rounded-xl border', RETRIEVAL_PANEL_SURFACE_CLASS)}>
+            <div className="border-b border-foreground/15 px-5 py-4 dark:border-foreground/15">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground/62">检索结果</div>
@@ -903,13 +847,13 @@ export function RetrievePreviewPanel({
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2 text-[12px] text-muted-foreground/72">
-                  <span className="rounded-full border border-info/20 bg-card/88 px-3 py-1 dark:border-border/70 dark:bg-background/58">Family {resultStats.familyHits}</span>
-                  <span className="rounded-full border border-info/20 bg-card/88 px-3 py-1 dark:border-border/70 dark:bg-background/58">Hierarchy {resultStats.hierarchyHits}</span>
+                  <span className="rounded-full border border-foreground/10 bg-background/70 px-3 py-1 dark:border-foreground/10 dark:bg-background/70">Family {resultStats.familyHits}</span>
+                  <span className="rounded-full border border-foreground/10 bg-background/70 px-3 py-1 dark:border-foreground/10 dark:bg-background/70">Hierarchy {resultStats.hierarchyHits}</span>
                 </div>
               </div>
             </div>
 
-            <div aria-label="检索结果排名列表" className="min-h-0 divide-y divide-info/20 dark:divide-border/60">
+            <div aria-label="检索结果排名列表" className="min-h-0 divide-y divide-foreground/10 dark:divide-foreground/10">
               {searchResults.map((hit, idx) => {
                 const key = toHitKey(hit)
                 const expandedHit = Boolean(expanded[key])
@@ -948,7 +892,7 @@ export function RetrievePreviewPanel({
                         handlePrefetchHitDocument(hit)
                       }}
                     >
-                      <div className="flex size-9 shrink-0 items-center justify-center rounded-[14px] border border-primary/20 bg-primary/8 text-primary">
+                      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-foreground/10 bg-background/70 text-primary">
                         <span className="font-mono text-[12px] font-semibold">{idx + 1}</span>
                       </div>
 
@@ -976,7 +920,7 @@ export function RetrievePreviewPanel({
                         {expandedHit && terms.length ? (
                           <div className="mt-3 flex flex-wrap gap-2">
                             {terms.map((term) => (
-                               <span key={term} className="rounded-full border border-info/20 bg-card/88 px-2.5 py-1 text-[11px] text-foreground/82 dark:border-border/70 dark:bg-background/58">
+                               <span key={term} className="rounded-full border border-foreground/10 bg-background/70 px-2.5 py-1 text-[11px] text-foreground/82 dark:border-foreground/10 dark:bg-background/70">
                                 {term}
                               </span>
                             ))}
@@ -990,7 +934,7 @@ export function RetrievePreviewPanel({
                       <IconButton
                         label="在文档查看器中打开"
                         variant="ghost"
-                        className="h-8 w-8 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/8"
+                        className="h-8 w-8 rounded-md text-muted-foreground hover:bg-muted/20 hover:text-primary"
                         onClick={() => handleOpenHitInDocumentViewer(hit)}
                       >
                         <ExternalLink className="size-4" />
@@ -1011,8 +955,8 @@ export function RetrievePreviewPanel({
             </div>
           </div>
 
-          <div className={cn('min-h-0 rounded-[24px] border', RETRIEVAL_PANEL_SURFACE_CLASS)}>
-            <div className="border-b border-info/20 px-5 py-4 dark:border-border/60">
+          <div className={cn('min-h-0 rounded-xl border', RETRIEVAL_PANEL_SURFACE_CLASS)}>
+            <div className="border-b border-foreground/15 px-5 py-4 dark:border-foreground/15">
               <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground/62">命中细节</div>
               <div className="mt-1 text-[16px] font-semibold text-foreground">Active Hit</div>
             </div>
@@ -1026,8 +970,7 @@ export function RetrievePreviewPanel({
   )
 
   return (
-    <div className={cn(className, 'relative flex h-full min-h-0 flex-col overflow-hidden bg-[#F8FBFF]/75 dark:bg-background/30')}>
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.09),transparent_42%),linear-gradient(180deg,hsl(var(--card)/0.48),transparent_40%)] dark:bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.08),transparent_44%)]" />
+    <div className={cn(className, 'relative flex h-full min-h-0 flex-col overflow-hidden bg-background')}>
       <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4">
         {!hasSearched && !isSearching ? renderInitialWorkbench() : renderResultsWorkbench()}
       </div>

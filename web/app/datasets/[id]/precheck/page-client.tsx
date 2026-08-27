@@ -702,11 +702,12 @@ export default function DatasetPrecheckPage() {
   const latestRunProgress = selectedRun?.progress ?? 0
   const hasPrecheckRuns = runs.length > 0
   const showPrecheckEmptyState = !loading && !hasPrecheckRuns
-  const precheckHeroCard = 'precheckHeroCard relative overflow-hidden rounded-2xl border border-border/60 bg-[linear-gradient(135deg,hsl(var(--card)/0.98),hsl(var(--background)/0.9)_58%,hsl(var(--card)/0.76))] shadow-[0_18px_50px_rgba(15,23,42,0.08)] ring-1 ring-info/20 before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_18%_12%,hsl(var(--info)/0.14),transparent_28%),linear-gradient(90deg,hsl(var(--info)/0.035)_1px,transparent_1px),linear-gradient(0deg,hsl(var(--info)/0.035)_1px,transparent_1px)] before:bg-[length:auto,28px_28px,28px_28px] dark:border-border/60 dark:bg-card/95'
-  const precheckToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-2xl border border-border/60 bg-card/70 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.055)] ring-1 ring-border/50 backdrop-blur dark:border-border/60 dark:bg-card/70 dark:ring-white/5'
+  const precheckHeroCard = 'precheckHeroCard relative overflow-hidden border-b border-border/60 bg-transparent px-1 py-2 shadow-none dark:border-border/70'
+  const precheckToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-lg border border-border/60 bg-card p-1 shadow-none dark:border-border/70 dark:bg-card'
   const precheckToolbarButtonClass = 'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-muted-foreground shadow-none hover:bg-card/95 hover:text-foreground hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
-  const precheckToolbarExportButtonClass = 'h-8 gap-1.5 rounded-xl border-border/60 bg-card/75 px-2.5 text-[12px] font-medium text-foreground/85 shadow-[0_8px_20px_rgba(15,23,42,0.045)] hover:bg-card hover:text-foreground dark:border-border/60 dark:bg-card/70 dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
-  const precheckToolbarPrimaryButtonClass = 'h-8 min-w-[96px] gap-1.5 rounded-xl bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] px-3 text-[12px] font-semibold text-primary-foreground shadow-[0_10px_24px_hsl(var(--info)/0.24)] hover:bg-[linear-gradient(90deg,hsl(var(--primary)/0.92),hsl(var(--info)/0.92))] [&_svg]:size-3.5'
+  const precheckToolbarExportButtonClass = 'h-8 gap-1.5 rounded-md border border-border/60 bg-card px-2.5 text-[12px] font-medium text-foreground/85 shadow-none hover:bg-muted/40 hover:text-foreground dark:border-border/70 dark:bg-card dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
+  const precheckToolbarPrimaryButtonClass = 'h-8 min-w-[96px] gap-1.5 rounded-md border border-primary/20 bg-primary px-3 text-[12px] font-semibold text-primary-foreground shadow-none hover:bg-primary/90 dark:border-primary/30 [&_svg]:size-3.5'
+  const precheckPanelClass = 'h-full overflow-hidden border border-border/60 bg-card p-0 shadow-none dark:border-border/70 dark:bg-card'
   const runRootPath =
     readStringField(selectedRun?.config, 'root_path') ||
     readStringField(selectedRun?.artifacts, 'root_path') ||
@@ -739,15 +740,14 @@ export default function DatasetPrecheckPage() {
         bodyContainerClassName="h-full min-h-full"
         top={
           <div className={precheckHeroCard}>
-            <div className="absolute inset-y-4 left-3 w-1 rounded-full bg-[linear-gradient(180deg,hsl(var(--primary)),hsl(var(--info)/0.78),hsl(var(--primary)/0.36))]" />
-            <div className="relative flex flex-col gap-3 px-5 py-3.5 pl-8 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex min-w-0 items-start gap-3.5">
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-info/30 bg-card/82 text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_26px_hsl(var(--info)/0.14)] dark:bg-info/10">
-                  <FileSearch className="size-5" />
+            <div className="relative flex flex-col gap-2 px-1 py-1 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-info/10 text-primary shadow-none">
+                  <FileSearch className="size-3.5" />
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="truncate text-[22px] font-bold leading-none tracking-[-0.03em] text-foreground">预检扫描</h1>
+                    <h1 className="truncate text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground">预检扫描</h1>
                     <Badge variant="outline" className="h-5 border-border bg-card/70 px-2 text-[10px] font-semibold leading-none text-muted-foreground">
                       未入库
                     </Badge>
@@ -755,12 +755,12 @@ export default function DatasetPrecheckPage() {
                       PRECHECK
                     </Badge>
                   </div>
-                  <div className="mt-1.5 text-[13px] leading-tight text-muted-foreground">
+                  <div className="text-[12px] leading-5 text-muted-foreground">
                     <span className="font-semibold text-foreground">数据集：</span>
                     <span className="font-medium text-foreground">{dataset?.name || datasetId || '--'}</span>
                     <span> · 文件摸底 / 质量画像 / 不入库不切片</span>
                   </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] leading-none text-muted-foreground">
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] leading-none text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
                       <Database className="size-3.5 text-muted-foreground/80" />
                       <span>数据源</span>
@@ -842,7 +842,7 @@ export default function DatasetPrecheckPage() {
                 生成策略
               </Button>
               </div>
-              <div className="flex overflow-hidden rounded-xl border border-border/60 bg-card/75 shadow-[0_8px_20px_rgba(15,23,42,0.045)] dark:border-border/60 dark:bg-card/70">
+              <div className="flex overflow-hidden rounded-lg border border-border/60 bg-card shadow-none dark:border-border/70 dark:bg-card">
                 <Button size="sm" variant="ghost" className={cn(precheckToolbarExportButtonClass, 'rounded-none border-0 shadow-none')} onClick={() => detachPromise(exportJson())} disabled={isExporting || !selectedRun?.id || !summary}>
                   {isExporting ? <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" /> : <Download className="size-3.5" />}
                   导出
@@ -874,7 +874,7 @@ export default function DatasetPrecheckPage() {
             style={{ height: 790, minHeight: 560 }}
           >
             <Panel
-              className="h-full overflow-hidden border-border/60 bg-[linear-gradient(180deg,hsl(var(--card)/0.98),hsl(var(--background)/0.92))] p-0 shadow-[0_16px_45px_rgba(15,23,42,0.07)] ring-1 ring-border/50 dark:border-border/60 dark:bg-card/95 dark:ring-white/5"
+              className={precheckPanelClass}
               style={{ height: 790, minHeight: 560 }}
             >
               <div className="space-y-3.5 p-4">
@@ -913,7 +913,7 @@ export default function DatasetPrecheckPage() {
                   </div>
                 ) : null}
 
-                <div className="flex items-start gap-2 rounded-xl border border-info/30 bg-[linear-gradient(90deg,hsl(var(--info)/0.08),hsl(var(--success)/0.05))] px-3 py-2 text-[11px] leading-4 text-info/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:bg-info/10">
+                <div className="flex items-start gap-2 rounded-lg border border-info/30 bg-info/5 px-3 py-2 text-[11px] leading-4 text-info/70 shadow-none dark:bg-info/10">
                   <Info className="mt-0.5 size-3.5 shrink-0" />
                   <span>当前数据源为 LOCAL_SCAN_ENABLED，允许远程根目录 / uploads，仅生成质量画像，不入库、不切片。</span>
                 </div>
@@ -981,7 +981,7 @@ export default function DatasetPrecheckPage() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-2.5 lg:grid-cols-3">
-                  <div className="rounded-2xl border border-info/20 bg-[linear-gradient(135deg,hsl(var(--card)/0.92),hsl(var(--info)/0.08))] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.86),0_8px_24px_rgba(15,23,42,0.035)]">
+                  <div className="rounded-lg border border-info/20 bg-card p-2.5 shadow-none">
                     <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                       <FileDigit className="size-3.5" />
                       基础画像
@@ -1004,7 +1004,7 @@ export default function DatasetPrecheckPage() {
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-warning/20 bg-[linear-gradient(135deg,hsl(var(--card)/0.92),hsl(var(--warning)/0.10))] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.86),0_8px_24px_rgba(15,23,42,0.035)] dark:from-card">
+                  <div className="rounded-lg border border-warning/20 bg-card p-2.5 shadow-none">
                     <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                       <Shield className="size-3.5" />
                       风险扫描
@@ -1034,7 +1034,7 @@ export default function DatasetPrecheckPage() {
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-success/20 bg-[linear-gradient(135deg,hsl(var(--card)/0.92),hsl(var(--success)/0.10))] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.86),0_8px_24px_rgba(15,23,42,0.035)] dark:from-card">
+                  <div className="rounded-lg border border-success/20 bg-card p-2.5 shadow-none">
                     <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                       <Database className="size-3.5" />
                       复用策略
@@ -1058,7 +1058,7 @@ export default function DatasetPrecheckPage() {
                   </div>
                 </div>
 
-                <div className="grid overflow-hidden rounded-xl border border-border/50 bg-card/55 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] sm:grid-cols-4 dark:bg-background/30">
+                <div className="grid overflow-hidden rounded-lg border border-border/50 bg-card shadow-none sm:grid-cols-4 dark:bg-card">
                   <div className="flex min-h-14 gap-2 border-b border-border/50 p-2.5 sm:border-b-0 sm:border-r">
                     <Archive className="mt-0.5 size-3.5 text-muted-foreground/70" />
                     <div className="min-w-0">
@@ -1092,7 +1092,7 @@ export default function DatasetPrecheckPage() {
             </Panel>
 
             <Panel
-              className="h-full overflow-hidden border-border/60 bg-[linear-gradient(180deg,hsl(var(--card)/0.96),hsl(var(--background)/0.9))] p-0 shadow-[0_16px_45px_rgba(15,23,42,0.065)] ring-1 ring-border/50 dark:border-border/60 dark:bg-card/95 dark:ring-white/5"
+              className={precheckPanelClass}
               style={{ height: 790, minHeight: 560 }}
             >
               <div className="flex items-center justify-between border-b border-border/50 px-4 py-3.5">
@@ -1116,7 +1116,7 @@ export default function DatasetPrecheckPage() {
 
               {!hasRunOutput && !scanRunning ? (
                 <div className="p-4">
-                  <div className="rounded-2xl border border-dashed border-info/30 bg-[radial-gradient(circle_at_18%_0%,hsl(var(--info)/0.10),transparent_35%),linear-gradient(135deg,hsl(var(--card)/0.92),hsl(var(--background)/0.94)_48%,hsl(var(--warning)/0.05))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]">
+                  <div className="rounded-lg border border-dashed border-info/30 bg-card p-4 shadow-none">
                     <div className="flex items-start gap-3">
                       <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-info/30 bg-card/82 text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_8px_20px_hsl(var(--info)/0.12)] dark:bg-background/60">
                         <Clock3 className="size-4" />
@@ -1135,21 +1135,21 @@ export default function DatasetPrecheckPage() {
                     </div>
 
                     <div className="mt-4 grid grid-cols-3 gap-2 text-[12px]">
-                      <div className="rounded-xl border border-border/45 bg-card/60 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:bg-background/35">
+                      <div className="rounded-lg border border-border/45 bg-card px-2.5 py-2 shadow-none dark:bg-card">
                         <div className="text-[11px] text-muted-foreground">当前批次</div>
                         <div className="mt-1 font-mono text-foreground/80">{runBatchLabel}</div>
                       </div>
-                      <div className="rounded-xl border border-border/45 bg-card/60 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:bg-background/35">
+                      <div className="rounded-lg border border-border/45 bg-card px-2.5 py-2 shadow-none dark:bg-card">
                         <div className="text-[11px] text-muted-foreground">预计产物</div>
                         <div className="mt-1 text-foreground/80">质量画像</div>
                       </div>
-                      <div className="rounded-xl border border-border/45 bg-card/60 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:bg-background/35">
+                      <div className="rounded-lg border border-border/45 bg-card px-2.5 py-2 shadow-none dark:bg-card">
                         <div className="text-[11px] text-muted-foreground">不执行</div>
                         <div className="mt-1 text-foreground/80">入库 / 切片 / KG</div>
                       </div>
                     </div>
 
-                    <div className="mt-3 flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-[11px] text-warning/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]">
+                    <div className="mt-3 flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-[11px] text-warning/70 shadow-none">
                       <AlertCircle className="size-3.5 shrink-0" />
                       尚未运行扫描，以上信息将在执行后更新。
                     </div>
@@ -1228,7 +1228,7 @@ export default function DatasetPrecheckPage() {
             </Panel>
           </div>
 
-          <Panel data-precheck-bottom-strip="true" className="overflow-hidden border-border/50 bg-card/45 p-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-sm dark:border-border/40 dark:bg-card/35">
+          <Panel data-precheck-bottom-strip="true" className="overflow-hidden border border-border/50 bg-card p-0 shadow-none dark:border-border/60 dark:bg-card">
             <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1.5 px-4 py-2.5 text-[11px] leading-none text-muted-foreground">
               <span className="inline-flex items-center gap-2 text-foreground/75">
                 <Clock3 className="size-3 text-primary" />

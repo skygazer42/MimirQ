@@ -693,7 +693,7 @@ function AblationDatasetCard({
   const version = compactValue(pipeline.version ?? 'v1', 20)
 
   return (
-    <div className="rounded-xl border border-border bg-card p-3 shadow-[0_8px_24px_hsl(var(--foreground)/0.05)]">
+    <div className="rounded-xl border border-border bg-card p-3 shadow-none">
       <div className="flex items-start gap-3">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/20">
           <Database className="h-5 w-5" aria-hidden="true" />
@@ -728,17 +728,17 @@ function AblationDatasetCard({
 function AblationLeaderboardEmptyState() {
   return (
     <div className="flex min-h-[530px] flex-col items-center justify-center px-8 text-center">
-      <div className="ablation-empty-illustration relative h-40 w-56">
-        <div className="absolute left-4 top-10 h-24 w-36 -rotate-6 rounded-2xl border border-primary/20 bg-card shadow-[0_16px_42px_hsl(var(--primary)/0.12)]" />
+      <div className="relative h-40 w-56">
+        <div className="absolute left-4 top-10 h-24 w-36 -rotate-6 rounded-2xl border border-primary/20 bg-card" />
         <div className="absolute left-11 top-16 h-2 w-20 rounded-full bg-border/70" />
         <div className="absolute left-11 top-[108px] h-2 w-14 rounded-full bg-muted" />
         <div className="absolute left-24 top-24 h-8 w-3 rounded bg-primary/30" />
         <div className="absolute left-32 top-[72px] h-14 w-3 rounded bg-primary" />
         <div className="absolute left-40 top-12 h-20 w-3 rounded bg-primary" />
-        <div className="absolute bottom-8 left-12 h-8 w-12 rounded bg-border/70 shadow-sm" />
-        <div className="absolute bottom-8 left-24 h-14 w-12 rounded bg-primary shadow-[0_14px_30px_hsl(var(--primary)/0.22)]" />
-        <div className="absolute bottom-8 left-36 h-10 w-12 rounded bg-border/70 shadow-sm" />
-        <div className="absolute right-9 top-11 flex h-20 w-20 items-center justify-center rounded-full bg-warning text-warning-foreground shadow-[0_18px_44px_hsl(var(--warning)/0.32)]">
+        <div className="absolute bottom-8 left-12 h-8 w-12 rounded bg-border/70" />
+        <div className="absolute bottom-8 left-24 h-14 w-12 rounded bg-primary" />
+        <div className="absolute bottom-8 left-36 h-10 w-12 rounded bg-border/70" />
+        <div className="absolute right-9 top-11 flex h-20 w-20 items-center justify-center rounded-2xl border border-warning/30 bg-warning/10 text-warning">
           <Trophy className="h-10 w-10 fill-current opacity-70" aria-hidden="true" />
         </div>
       </div>
@@ -825,8 +825,8 @@ function AblationDiffEmptyState({
 
   return (
     <div className="flex min-h-[530px] flex-col items-center justify-center px-6 py-8 text-center">
-      <div className="ablation-empty-illustration relative h-36 w-[360px]">
-        <div className="absolute left-10 top-8 h-20 w-32 rounded-xl border border-primary/20 bg-card shadow-[0_16px_42px_hsl(var(--primary)/0.10)]">
+      <div className="relative h-36 w-[360px]">
+        <div className="absolute left-10 top-8 h-20 w-32 rounded-xl border border-primary/20 bg-card">
           <div className="border-b border-primary/15 px-3 py-2 text-left text-[10px] font-semibold text-primary">
             基线
           </div>
@@ -835,7 +835,7 @@ function AblationDiffEmptyState({
             <div className="h-2 w-20 rounded bg-muted" />
           </div>
         </div>
-        <div className="absolute right-10 top-8 h-20 w-32 rounded-xl border border-success/20 bg-success/5 shadow-[0_16px_42px_hsl(var(--success)/0.10)]">
+        <div className="absolute right-10 top-8 h-20 w-32 rounded-xl border border-success/20 bg-success/5">
           <div className="border-b border-success/20 px-3 py-2 text-left text-[10px] font-semibold text-success">
             候选
           </div>
@@ -844,7 +844,7 @@ function AblationDiffEmptyState({
             <div className="h-2 w-20 rounded bg-muted" />
           </div>
         </div>
-        <div className="absolute left-1/2 top-12 flex h-16 w-16 -translate-x-1/2 items-center justify-center rounded-full bg-card text-primary shadow-[0_16px_42px_hsl(var(--primary)/0.16)] ring-1 ring-primary/20">
+        <div className="absolute left-1/2 top-12 flex h-16 w-16 -translate-x-1/2 items-center justify-center rounded-2xl border border-primary/20 bg-card text-primary ring-1 ring-primary/20">
           <GitCompare className="h-7 w-7" aria-hidden="true" />
         </div>
         <div className="absolute left-[88px] top-3 h-8 w-[184px] rounded-t-2xl border-x border-t border-dashed border-success/40" />
@@ -1004,7 +1004,7 @@ function JsonCodeViewer({ code }: Readonly<{ code: string }>) {
   const lines = useMemo(() => splitCodeLines(code), [code])
 
   return (
-    <div className="h-full min-h-0 overflow-auto bg-[linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--muted)/0.35)_40%,hsl(var(--background))_100%)]">
+    <div className="h-full min-h-0 overflow-auto bg-background">
       <div className="min-w-max">
         {lines.map((line, index) => (
           <JsonCodeLine
@@ -1474,7 +1474,7 @@ function AblationComparisonWorkspace({
             </div>
             <div className="flex items-center gap-1.5">
               <Button
-                className="h-9 gap-1.5 rounded-xl bg-info px-4 text-[13px] text-primary-foreground shadow-[0_10px_24px_hsl(var(--info)/0.22)] hover:bg-info/90"
+                className="h-9 gap-1.5 rounded-xl bg-info px-4 text-[13px] text-primary-foreground shadow-none hover:bg-info/90"
                 disabled={diffLoading || !canGenerateDiff}
                 onClick={() => detachPromise(computeDiff())}
               >

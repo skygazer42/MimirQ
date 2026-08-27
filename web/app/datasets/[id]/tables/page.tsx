@@ -219,15 +219,15 @@ export default function DatasetTablesPage() {
     )
   }, [selected])
 
-  const tablesHeroCard = 'relative overflow-hidden rounded-[26px] border border-border/60 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(246,248,251,0.94)_45%,rgba(232,246,250,0.72))] shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-white/80 before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_16%_10%,rgba(8,145,178,0.16),transparent_26%),radial-gradient(circle_at_82%_0%,rgba(15,23,42,0.075),transparent_24%),linear-gradient(90deg,rgba(15,23,42,0.035)_1px,transparent_1px)] before:bg-[length:auto,auto,34px_34px] dark:border-border/60 dark:bg-none dark:bg-card/95 dark:ring-white/5'
-  const tablePanelClass = 'overflow-hidden rounded-[24px] border-border/60 bg-card/88 shadow-[0_18px_54px_rgba(15,23,42,0.08)] ring-1 ring-white/75 backdrop-blur-xl dark:border-border/60 dark:bg-card/82 dark:ring-white/5'
-  const tablePanelHeaderClass = 'border-b border-border/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.78))] px-5 py-4 dark:border-border/60 dark:bg-none dark:bg-muted/20'
+  const tablesHeroCard = 'relative overflow-hidden border-b border-border/60 bg-transparent px-1 py-2 shadow-none dark:border-border/70'
+  const tablePanelClass = 'overflow-hidden border border-border/60 bg-card shadow-none dark:border-border/70 dark:bg-card'
+  const tablePanelHeaderClass = 'border-b border-border/60 bg-card px-5 py-4 dark:border-border/70 dark:bg-card'
   const sectionTitleClass = 'text-[15px] font-bold tracking-[-0.015em] text-foreground dark:text-foreground'
   const mutedHintClass = 'text-[12px] leading-5 text-muted-foreground dark:text-muted-foreground'
-  const tableToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-2xl border border-border/60 bg-card/82 p-1 shadow-[0_12px_34px_rgba(15,23,42,0.07)] ring-1 ring-white/75 backdrop-blur dark:border-border/60 dark:bg-card/70 dark:ring-white/5'
+  const tableToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-lg border border-border/60 bg-card p-1 shadow-none dark:border-border/70 dark:bg-card'
   const tableToolbarButtonClass = 'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-semibold text-muted-foreground shadow-none hover:bg-card hover:text-foreground hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
-  const tableMetricCardClass = 'relative overflow-hidden rounded-2xl border border-border/60 bg-card/90 px-4 py-3 shadow-[0_12px_32px_rgba(15,23,42,0.055)] ring-1 ring-white/80 transition-colors hover:border-border dark:border-border/60 dark:bg-card/80 dark:ring-white/5'
-  const tableIconPillClass = 'flex size-9 shrink-0 items-center justify-center rounded-2xl border border-border/60 bg-card text-foreground/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_8px_22px_rgba(15,23,42,0.08)] dark:border-border/60 dark:bg-muted/30 dark:text-foreground'
+  const tableMetricCardClass = 'relative overflow-hidden rounded-lg border border-border/60 bg-card px-4 py-3 shadow-none transition-colors hover:border-border dark:border-border/70 dark:bg-card'
+  const tableIconPillClass = 'flex size-9 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/20 text-foreground/85 shadow-none dark:border-border/70 dark:bg-muted/30 dark:text-foreground'
   const totalRows = items.reduce((sum, item) => sum + (Number(item.row_count) || 0), 0)
   const totalColumns = items.reduce((sum, item) => sum + (Number(item.col_count) || 0), 0)
 
@@ -243,15 +243,14 @@ export default function DatasetTablesPage() {
         bodyContainerClassName="h-full min-h-0 overflow-hidden"
         top={
           <div className={tablesHeroCard}>
-            <div className="absolute inset-y-4 left-3 w-1 rounded-full bg-[linear-gradient(180deg,hsl(var(--primary)),hsl(var(--info)/0.78),hsl(var(--primary)/0.36))]" />
-            <div className="relative flex flex-col gap-3 px-5 py-3.5 pl-8 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex min-w-0 items-start gap-3.5">
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-info/30 bg-card/82 text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_26px_hsl(var(--info)/0.14)] dark:bg-info/10">
-                  <Table2 className="size-5" />
+            <div className="relative flex flex-col gap-2 px-1 py-1 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-info/10 text-primary shadow-none">
+                  <Table2 className="size-3.5" />
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="truncate text-[22px] font-semibold leading-none tracking-[-0.035em] text-foreground dark:text-foreground">表格资产工作台</h1>
+                    <h1 className="truncate text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground dark:text-foreground">表格资产工作台</h1>
                     <span className="inline-flex h-5 items-center rounded-full border border-border bg-card/82 px-2 text-[10px] font-bold uppercase leading-none tracking-[0.12em] text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-border/60 dark:bg-muted/30 dark:text-muted-foreground">
                       table intelligence
                     </span>
@@ -259,12 +258,12 @@ export default function DatasetTablesPage() {
                       TAG / SQL
                     </Badge>
                   </div>
-                  <div className="mt-1.5 text-[13px] leading-tight text-muted-foreground dark:text-muted-foreground">
+                  <div className="text-[12px] leading-5 text-muted-foreground dark:text-muted-foreground">
                     <span className="font-semibold text-foreground">数据集：</span>
                     <span className="font-medium text-foreground">{dataset?.name || datasetId}</span>
                     <span> · 结构化表格资产、SQL 查询、TAG 问答与语义过滤</span>
                   </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] font-medium leading-none text-muted-foreground dark:text-muted-foreground">
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] font-medium leading-none text-muted-foreground dark:text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
                       <Database className="size-3.5 text-muted-foreground/80" />
                       <span>表格</span>
@@ -295,13 +294,13 @@ export default function DatasetTablesPage() {
                     ['02', 'SQL / TAG'],
                     ['03', '语义过滤'],
                   ].map(([step, label]) => (
-                    <div key={step} className="rounded-2xl border border-border/60 bg-card/72 px-3 py-2 shadow-[0_10px_26px_rgba(15,23,42,0.07)] ring-1 ring-border/60 backdrop-blur">
+                    <div key={step} className="rounded-lg border border-border/60 bg-card px-3 py-2 shadow-none">
                       <div className="font-mono text-[10px] font-black leading-none text-info">{step}</div>
                       <div className="mt-1 truncate text-[11px] font-bold leading-none text-foreground">{label}</div>
                     </div>
                   ))}
                 </div>
-                <div className="inline-flex h-9 items-center gap-2 rounded-xl border border-success/30 bg-success/5 px-3 text-[12px] font-semibold text-success shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_10px_24px_rgba(5,150,105,0.10)]">
+                <div className="inline-flex h-9 items-center gap-2 rounded-lg border border-success/30 bg-success/5 px-3 text-[12px] font-semibold text-success shadow-none">
                   <span className="size-2 rounded-full bg-success" />
                   {selected ? '已选择表格' : '等待表格资产'}
                 </div>
@@ -377,9 +376,9 @@ export default function DatasetTablesPage() {
               </div>
             </div>
 
-            <div className={cn('min-h-0 flex-1 bg-[linear-gradient(180deg,rgba(248,250,252,0.72),rgba(255,255,255,0.92))] p-4 pr-3 dark:bg-none dark:bg-muted/5', items.length ? 'space-y-2 overflow-auto no-scrollbar' : '')}>
+            <div className={cn('min-h-0 flex-1 bg-muted/15 p-4 pr-3 dark:bg-muted/10', items.length ? 'space-y-2 overflow-auto no-scrollbar' : '')}>
               {items.length === 0 && !isLoading ? (
-                <div className="rounded-[22px] border border-dashed border-info/30 bg-card/72 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+                <div className="rounded-lg border border-dashed border-info/30 bg-card p-4 shadow-none">
                   <div className="flex items-start gap-3">
                     <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-info/10 text-info">
                       <Table2 className="size-5" />
@@ -410,13 +409,12 @@ export default function DatasetTablesPage() {
                     type="button"
                     onClick={() => selectTable(t)}
                     className={cn(
-                      'group relative w-full overflow-hidden rounded-[18px] border px-3 py-3 text-left transition-all duration-200',
+                      'group relative w-full overflow-hidden rounded-lg border px-3 py-3 text-left transition-all duration-200',
                       active
-                        ? 'border-info/40 bg-info/5 shadow-[0_14px_30px_hsl(var(--info)/0.14)]'
+                        ? 'border-info/40 bg-info/5'
                         : 'border-border/60 bg-card/78 hover:border-info/30 hover:bg-info/5 dark:bg-card/35'
                     )}
                   >
-                    {active ? <div className="absolute inset-y-3 left-0 w-1 rounded-r-full bg-[linear-gradient(180deg,hsl(var(--primary)),hsl(var(--info)/0.78),hsl(var(--success)/0.76))]" /> : null}
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
                         <div className="truncate font-mono text-[11px] font-semibold text-foreground dark:text-foreground">
@@ -446,8 +444,8 @@ export default function DatasetTablesPage() {
           <div className="min-h-0 space-y-3 overflow-y-auto pr-1 no-scrollbar">
             {!selected ? (
               <Panel className={cn(tablePanelClass, 'min-h-[360px] p-4')}>
-                <div className="flex min-h-[330px] flex-col items-center justify-center rounded-[24px] border border-dashed border-info/30 bg-[radial-gradient(circle_at_50%_0%,hsl(var(--info)/0.14),transparent_38%),linear-gradient(180deg,hsl(var(--card)/0.82),hsl(var(--background)/0.62))] p-7 text-center">
-                  <div className="flex size-14 items-center justify-center rounded-[22px] border border-info/20 bg-card/86 text-info shadow-[0_14px_30px_hsl(var(--info)/0.12)]">
+                <div className="flex min-h-[330px] flex-col items-center justify-center rounded-lg border border-dashed border-info/30 bg-card p-7 text-center">
+                  <div className="flex size-14 items-center justify-center rounded-lg border border-info/20 bg-card text-info shadow-none">
                     <Table2 className="size-6" />
                   </div>
                   <div className="mt-4 text-[18px] font-bold tracking-[-0.02em] text-foreground">
@@ -462,7 +460,7 @@ export default function DatasetTablesPage() {
                       ['TAG', '自然语言转 SQL 并执行'],
                       ['语义过滤', 'LOTUS 或 fallback NL→SQL'],
                     ].map(([name, desc]) => (
-                      <div key={name} className="rounded-2xl border border-border/60 bg-card/72 px-4 py-3 text-left shadow-[0_10px_24px_rgba(15,23,42,0.055)]">
+                      <div key={name} className="rounded-lg border border-border/60 bg-card px-4 py-3 text-left shadow-none">
                         <div className="text-[13px] font-bold text-foreground">{name}</div>
                         <div className="mt-1 text-[11px] leading-4 text-muted-foreground">{desc}</div>
                       </div>

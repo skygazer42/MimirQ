@@ -70,4 +70,18 @@ describe('history route source', () => {
     expect(client).toContain('getUTCMonth')
     expect(client).toContain('getUTCDate')
   })
+
+  it('keeps the history workspace on a flat ruled boundary system', () => {
+    const client = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
+
+    expect(client).toContain('data-history-shell="ruled"')
+    expect(client).toContain('data-history-sidebar="true"')
+    expect(client).toContain('data-history-detail-header="true"')
+    expect(client).toContain('border-r border-foreground/15 bg-background')
+    expect(client).toContain('border-b border-foreground/15 bg-background')
+    expect(client).toContain('rounded-md border border-foreground/10 bg-background')
+    expect(client).not.toContain('backdrop-blur')
+    expect(client).not.toContain('rounded-3xl')
+    expect(client).not.toContain('shadow-soft')
+  })
 })

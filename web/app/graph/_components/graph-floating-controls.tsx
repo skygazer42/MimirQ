@@ -85,7 +85,7 @@ export function GraphFloatingControls({
         type="button"
         variant="ghost"
         size="icon"
-        className="h-10 w-10 rounded-xl border border-border/60 bg-card/92 text-muted-foreground shadow-soft backdrop-blur-sm hover:bg-card hover:text-foreground"
+        className="h-10 w-10 rounded-xl border border-border/60 bg-card text-muted-foreground shadow-none hover:bg-card hover:text-foreground"
         title={isCollapsed ? '展开工具栏' : '收起工具栏'}
         aria-label={isCollapsed ? '展开工具栏' : '收起工具栏'}
         aria-expanded={!isCollapsed}
@@ -105,7 +105,7 @@ export function GraphFloatingControls({
           isCollapsed ? 'w-0 translate-x-2 opacity-0 pointer-events-none' : 'w-[3.125rem] translate-x-0 opacity-100'
         )}
       >
-        <div className="flex w-[3.125rem] flex-col gap-1 rounded-xl border border-border/60 bg-card/92 p-1.5 shadow-soft backdrop-blur-sm">
+        <div className="flex w-[3.125rem] flex-col gap-1 rounded-xl border border-border/60 bg-card p-1.5 shadow-none">
           <Button variant="ghost" size="icon" onClick={onZoomIn} className="rounded-lg" title="放大" aria-label="放大">
             <ZoomIn className="w-5 h-5" />
           </Button>

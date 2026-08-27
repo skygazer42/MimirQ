@@ -3,18 +3,16 @@
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import {
-  AlertCircle, BarChart3, CheckCircle2, ChevronRight, Clock3, Database, FileSearch,
-  Filter, FolderOpen, Layers, Loader2, MoreHorizontal, Pencil, RefreshCw, Search, Settings2,
+  AlertCircle, BarChart3, ChevronRight, Clock3, Database, FileSearch,
+  FolderOpen, Layers, Loader2, MoreHorizontal, Pencil, RefreshCw, Search, Settings2,
   ShieldCheck, Table2, Trash2, Users, type LucideIcon,
 } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
 import { useRouter } from '@/i18n/navigation'
 import { PageScaffold } from '@/components/ui/page-scaffold'
-import { PageTitleIcon } from '@/components/ui/page-title-icon'
-import { KNOWLEDGE_OPS_HERO_PANEL_CLASS } from '@/components/ui/knowledge-ops-hero'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -283,7 +281,7 @@ function getDatasetIconTone(icon: LucideIcon) {
     }
   }
 
-  if (icon === BarChart3 || icon === CheckCircle2) {
+  if (icon === BarChart3) {
     return {
       iconClassName: 'text-success',
       softIconClassName: 'text-success',
@@ -448,6 +446,7 @@ export default function DatasetsPage() {
     pending: '处理中集合',
     testing: '测试集合',
   }[collectionFilter]
+  const hasActiveFilters = Boolean(searchQuery.trim() || selectedCategoryId || collectionFilter !== 'all')
 
   const replaceDataset = useCallback((next: Dataset) => {
     updateDatasetListCache((current) =>
@@ -614,171 +613,84 @@ export default function DatasetsPage() {
     <AppFrame>
       <PageScaffold
         title="数据集"
-        iconImage="dataset"
-        icon={Layers}
-        iconColor="text-primary"
         size="full"
         compact
         density="system-dense"
         showHeader={false}
-        bodyClassName="pt-2 pb-4"
-        description={<span>管理知识库集合与访问权限</span>}
-        topClassName="px-4 md:px-5 lg:px-6 pt-4 pb-2.5 bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.04),transparent_34rem)]"
+        bodyGutter="none"
+        bodyClassName="bg-sidebar/20 px-3 pt-0 pb-3"
+        topClassName="bg-sidebar/20 px-3 pt-2 pb-2 md:px-3 lg:px-3"
         top={
-          <div className={KNOWLEDGE_OPS_HERO_PANEL_CLASS}>
-            <div className="pointer-events-none absolute -right-10 -top-14 size-44 rounded-full bg-info/10 blur-3xl dark:bg-info/[0.08]" aria-hidden="true" />
-            <div className="pointer-events-none absolute bottom-0 left-8 right-8 h-px bg-[linear-gradient(90deg,transparent,hsl(var(--info)/0.28),transparent)]" aria-hidden="true" />
-            <div className="relative flex min-w-0 flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-              <div className="flex min-w-0 items-center gap-4">
-                <div className="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-info/20 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.14))] text-info shadow-lg shadow-[0_18px_32px_-24px_hsl(var(--info)/0.55)]">
-                  <span className="absolute inset-x-2 top-1.5 h-px bg-card/80" aria-hidden="true" />
-                  <PageTitleIcon name="dataset" className="size-9" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-info/20 bg-[linear-gradient(90deg,hsl(var(--background)/0.92),hsl(var(--info)/0.14))] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-info shadow-sm dark:border-info/16 dark:bg-info/12 dark:text-info">
-                      <Database className="size-3.5" />
-                      Dataset Ops
-                    </span>
-                    <span className="inline-flex items-center rounded-full border border-success/20 bg-[linear-gradient(90deg,hsl(var(--background)/0.92),hsl(var(--success)/0.14))] px-3 py-1.5 text-[10px] font-bold text-success shadow-sm dark:border-success/16 dark:bg-success/12 dark:text-success">
-                      <ShieldCheck className="mr-1.5 size-3.5" />
-                      权限与资产编排
-                    </span>
-                  </div>
-                  <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                    <h1 className="text-[26px] font-black tracking-[-0.025em] text-foreground">
-                      <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">
-                        数据集
-                      </span>
-                    </h1>
-                    <p className="text-[13px] font-semibold leading-5 text-info/90">
-                      <span>管理知识库集合与访问权限</span>
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] xl:min-w-[560px]">
-                <div className="flex min-w-0 items-center justify-between gap-2 rounded-2xl border border-info/18 bg-[linear-gradient(135deg,hsl(var(--background)/0.9),hsl(var(--info)/0.07))] px-4 py-3 text-[12px] shadow-md shadow-[0_14px_28px_-22px_hsl(var(--info)/0.35)] backdrop-blur-sm dark:border-info/16 dark:bg-[linear-gradient(135deg,hsl(var(--background)/0.42),hsl(var(--info)/0.12))]">
-                  <span className="inline-flex items-center gap-2 font-bold text-foreground/85">
-                    <Layers className="size-4 text-info" />
-                    集合
-                  </span>
-                  <ChevronRight className="size-4 shrink-0 text-info" />
-                  <span className="inline-flex items-center gap-2 font-bold text-foreground/85">
-                    <ShieldCheck className="size-4 text-info" />
-                    权限
-                  </span>
-                  <ChevronRight className="size-4 shrink-0 text-info" />
-                  <span className="inline-flex items-center gap-2 font-bold text-foreground/85">
-                    <FileSearch className="size-4 text-info" />
-                    检索验证
-                  </span>
-                </div>
-                <div className="flex items-center justify-end gap-2">
-                  <div className="flex items-center gap-2 rounded-2xl border border-info/18 bg-[linear-gradient(135deg,hsl(var(--background)/0.9),hsl(var(--info)/0.07))] px-3 py-2 shadow-md shadow-[0_14px_28px_-22px_hsl(var(--info)/0.35)] backdrop-blur-sm dark:border-info/16 dark:bg-[linear-gradient(135deg,hsl(var(--background)/0.42),hsl(var(--info)/0.12))]">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-10 rounded-xl border-info/18 bg-background/90 px-4 text-[13px] font-bold text-info shadow-sm hover:bg-[linear-gradient(90deg,hsl(var(--info)/0.08),hsl(var(--primary)/0.06))] hover:shadow-md dark:bg-background/55"
-                      onClick={() => { detachPromise(refreshDatasets()) }}
-                      disabled={isRefreshing}
-                    >
-                      <RefreshCw className={cn('mr-2 size-4', isRefreshing && 'animate-spin motion-reduce:animate-none')} />
-                      刷新
-                    </Button>
-                    <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (open) resetForm() }}>
-                      <DialogTrigger asChild>
-                        <CreateDatasetButton
-                          variant="outline"
-                          className="h-10 border-info/18 bg-background/90 text-[13px] font-bold text-info shadow-sm hover:bg-[linear-gradient(90deg,hsl(var(--info)/0.08),hsl(var(--primary)/0.06))] hover:text-info hover:shadow-md dark:bg-background/55"
-                        />
-                      </DialogTrigger>
-                      <DialogContent className="max-w-xl p-0 sm:rounded-2xl">
-                        <div className="flex max-h-[min(88vh,860px)] flex-col">
-                          <DialogHeader className="border-b border-border/60 px-6 pt-6 pb-4">
-                            <DialogTitle>新建数据集</DialogTitle>
-                            <DialogDescription>为文档分组并设置访问权限</DialogDescription>
-                          </DialogHeader>
-                          <div className="flex-1 overflow-y-auto custom-scrollbar px-6 py-5">
-                            <DatasetForm form={form} setForm={setForm} />
-                          </div>
-                          <DialogFooter className="border-t border-border/60 px-6 py-4">
-                            <Button variant="ghost" onClick={() => setCreateOpen(false)}>取消</Button>
-                            <Button onClick={handleCreate} disabled={!canSubmit}>确认创建</Button>
-                          </DialogFooter>
-                        </div>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
-                </div>
+          <header
+            data-testid="datasets-page-toolbar"
+            className="relative flex min-h-14 flex-col gap-2 border-b border-foreground/15 px-1 py-2 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <span className="absolute -bottom-px left-1 h-px w-8 bg-info/55" aria-hidden="true" />
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background/70 text-info" aria-hidden="true">
+                <Layers className="size-3.5" />
+              </span>
+              <div className="min-w-0 sm:flex sm:items-center sm:gap-2.5">
+                <h1 className="text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground">数据集</h1>
+                <span className="hidden h-3.5 w-px bg-border/80 sm:block" aria-hidden="true" />
+                <p className="truncate text-[12px] leading-5 text-muted-foreground/80">管理知识库集合与访问权限</p>
               </div>
             </div>
-          </div>
+
+            <div className="flex shrink-0 items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 rounded-md px-2.5 text-[12px] text-muted-foreground shadow-none hover:bg-info/8 hover:text-info"
+                onClick={() => { detachPromise(refreshDatasets()) }}
+                disabled={isRefreshing}
+              >
+                <RefreshCw className={cn('size-4', isRefreshing && 'animate-spin motion-reduce:animate-none')} />
+                刷新
+              </Button>
+              <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (open) resetForm() }}>
+                <DialogTrigger asChild>
+                  <CreateDatasetButton
+                    variant="info"
+                    className="h-8 rounded-md px-3 py-0 text-[12px] font-semibold shadow-none sm:h-8"
+                  />
+                </DialogTrigger>
+                <DialogContent className="max-w-xl p-0 sm:rounded-xl">
+                  <div className="flex max-h-[min(88vh,860px)] flex-col">
+                    <DialogHeader className="border-b border-border/60 px-6 pt-6 pb-4">
+                      <DialogTitle>新建数据集</DialogTitle>
+                      <DialogDescription>为文档分组并设置访问权限</DialogDescription>
+                    </DialogHeader>
+                    <div className="flex-1 overflow-y-auto custom-scrollbar px-6 py-5">
+                      <DatasetForm form={form} setForm={setForm} />
+                    </div>
+                    <DialogFooter className="border-t border-border/60 px-6 py-4">
+                      <Button variant="ghost" onClick={() => setCreateOpen(false)}>取消</Button>
+                      <Button onClick={handleCreate} disabled={!canSubmit}>确认创建</Button>
+                    </DialogFooter>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </header>
         }
       >
-        <div className="flex min-h-[calc(100vh-11.5rem)] flex-col overflow-hidden rounded-3xl border border-border/60 bg-card/90 shadow-soft xl:h-[calc(100vh-9.25rem)] xl:min-h-0">
-          <div className="border-b border-border/60 bg-background/80 px-3 py-2.5 backdrop-blur">
-            <div className="grid gap-1.5 xl:grid-cols-[minmax(0,1fr)_276px] xl:items-start">
-              <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
-                <DatasetSummaryCard title="全部数据集" value={String(scopeTotal)} icon={Layers} tone="neutral" />
-                <DatasetSummaryCard title="活跃" value={String(statusCounts.active)} icon={CheckCircle2} tone="green" />
-                <DatasetSummaryCard title="异常" value={String(statusCounts.anomaly)} icon={AlertCircle} tone="red" />
-                <DatasetSummaryCard title="待处理" value={String(statusCounts.pending)} icon={Clock3} tone="amber" />
+        <div className="flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-lg border border-foreground/15 bg-sidebar/18 xl:h-[calc(100vh-5.5rem)] xl:min-h-0">
+          <div
+            data-testid="datasets-workspace"
+            className={cn(
+              'grid min-h-0 flex-1 bg-sidebar/22 lg:grid-cols-[216px_minmax(0,1fr)]',
+              selectedDataset && 'xl:grid-cols-[216px_minmax(0,1fr)_300px]'
+            )}
+          >
+            <aside className="min-h-0 overflow-hidden border-b border-foreground/10 bg-sidebar/28 p-3 lg:border-b-0 lg:border-r">
+              <div className="pb-2">
+                <div className="text-[12px] font-semibold text-foreground">分类与筛选</div>
+                <div className="mt-0.5 text-[10px] text-muted-foreground/65">按状态或目录缩小范围</div>
               </div>
 
-              <div className="flex flex-col gap-1.5">
-                <div className="flex flex-wrap items-center gap-1 text-[10px] font-medium text-muted-foreground/72">
-                  <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background px-2 py-0.5 text-foreground/76">
-                    <Filter className="size-3 text-primary/70" />
-                    {collectionFilterLabel}
-                  </span>
-                  <span className="inline-flex items-center rounded-full border border-border/60 bg-background px-2 py-0.5">
-                    {selectedCategoryId ? '分类已筛选' : '全部分类'}
-                  </span>
-                  <span className="inline-flex items-center rounded-full border border-border/60 bg-background px-2 py-0.5">
-                    当前显示 {displayedTotal} / {filteredTotal}
-                  </span>
-                  {isLoading ? <Loader2 className="size-3.5 animate-spin text-primary motion-reduce:animate-none" /> : null}
-                </div>
-
-                <div className="flex flex-col gap-1.5 sm:flex-row">
-                  <div className="relative min-w-0 flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-                    <Input
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      maxLength={DATASET_SEARCH_MAX_LENGTH}
-                      placeholder="搜索数据集、描述或 ID..."
-                      className="h-8 rounded-2xl border-border/60 bg-background pl-8.5 text-[11px] shadow-none"
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-8 rounded-2xl border-border/60 bg-background px-2.5 text-[10px] font-medium"
-                    onClick={() => {
-                      setSearchQuery('')
-                      setCollectionFilter('all')
-                      setSelectedCategoryId(null)
-                    }}
-                  >
-                    重置视图
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid min-h-0 flex-1 gap-2.5 px-2.5 py-2.5 xl:grid-cols-[208px_minmax(0,1.2fr)_284px]">
-            <aside className="min-h-0 overflow-hidden rounded-[22px] border border-border/60 bg-background/88 p-2.5 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.12)]">
-              <div className="border-b border-border/60 pb-2">
-                <div className="text-[9px] font-semibold uppercase tracking-[0.18em] text-primary/70">Collections</div>
-                <div className="mt-0.5 text-[11px] font-semibold text-foreground">分类与筛选</div>
-              </div>
-
-              <div className="mt-2">
-                <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-foreground/54">状态视图</div>
+              <div className="mt-1 border-t border-border/50 pt-2">
+                <div className="mb-1.5 text-[10px] font-medium text-muted-foreground">状态</div>
                 <div className="space-y-1">
                 <DatasetFilterButton
                   label="全部数据集"
@@ -819,30 +731,47 @@ export default function DatasetsPage() {
               </div>
 
               <div className="mt-3 border-t border-border/60 pt-2">
-                <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-foreground/54">分类树</div>
+                <div className="mb-1.5 text-[10px] font-medium text-muted-foreground">目录</div>
                 <DatasetCategoryTree
-                  className="max-h-[420px] overflow-y-auto pr-1 xl:max-h-[calc(100vh-23.5rem)]"
+                  className="max-h-[420px] overflow-y-auto pr-1 xl:max-h-[calc(100vh-17rem)]"
                   selectedId={selectedCategoryId}
                   onSelect={(id) => setSelectedCategoryId(id)}
                 />
               </div>
             </aside>
 
-            <section className="min-h-0 min-w-0">
-              <div className="flex h-full min-h-0 flex-col rounded-[24px] border border-border/60 bg-background/88 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.12)]">
-                <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
+            <section className="min-h-0 min-w-0 bg-transparent">
+              <div className="flex h-full min-h-0 flex-col">
+                <div className="flex flex-col gap-2.5 border-b border-foreground/10 px-4 py-2.5 lg:flex-row lg:items-center lg:justify-between">
                   <div className="min-w-0">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary/70">Dataset Catalog</div>
-                    <div className="mt-1 flex items-center gap-2 text-[13px] font-semibold text-foreground">
-                      <span className="truncate">{selectedCategoryId ? '当前分类数据集' : '全部数据集'}</span>
-                      <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                    <div className="flex items-center gap-2 text-[13px] font-semibold text-foreground">
+                      <h2 className="truncate">{selectedCategoryId ? '当前分类数据集' : '全部数据集'}</h2>
+                      <span className="tabular-nums text-[11px] font-medium text-muted-foreground">
                         {displayedTotal}
                       </span>
+                      {isLoading ? <Loader2 className="size-3.5 animate-spin text-info motion-reduce:animate-none" /> : null}
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground/65">
+                      {collectionFilter !== 'all' ? <span>{collectionFilterLabel} ·</span> : null}
+                      {selectedCategoryId ? <span>当前分类 ·</span> : null}
+                      <span>显示 {displayedTotal} / {filteredTotal}</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+
+                  <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+                    <div className="relative min-w-0 sm:w-[260px] xl:w-[320px]">
+                      <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/70" />
+                      <Input
+                        aria-label="搜索数据集"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        maxLength={DATASET_SEARCH_MAX_LENGTH}
+                        placeholder="搜索名称、描述或 ID"
+                        className="h-8 rounded-lg border-border/60 bg-muted/30 pl-8 text-[11px] shadow-none"
+                      />
+                    </div>
                     <Select value={sortBy} onValueChange={(value) => setSortBy(value as 'default' | 'name_asc')}>
-                      <SelectTrigger className="h-9 w-[132px] rounded-xl border-border/60 bg-background px-3 text-[11px] font-medium" aria-label="排序方式">
+                      <SelectTrigger className="h-8 w-full rounded-lg border-border/60 bg-background px-2.5 text-[11px] font-medium sm:w-[112px]" aria-label="排序方式">
                         <SelectValue placeholder="排序方式" />
                       </SelectTrigger>
                       <SelectContent>
@@ -850,6 +779,21 @@ export default function DatasetsPage() {
                         <SelectItem value="name_asc">按名称</SelectItem>
                       </SelectContent>
                     </Select>
+                    {hasActiveFilters ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 rounded-lg px-2.5 text-[11px] text-muted-foreground"
+                        onClick={() => {
+                          setSearchQuery('')
+                          setCollectionFilter('all')
+                          setSelectedCategoryId(null)
+                        }}
+                      >
+                        清除筛选
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
 
@@ -862,7 +806,7 @@ export default function DatasetsPage() {
                       icon={Layers}
                       title={searchQuery ? '未找到匹配的数据集' : '暂无数据集'}
                       description={searchQuery ? '尝试更换关键词或清空筛选。' : '点击“新建数据集”开始构建知识库。'}
-                      className="min-h-full rounded-[22px] border-dashed border-border/60 bg-background/40"
+                      className="min-h-full rounded-none border-0 bg-transparent shadow-none"
                     />
                   ) : (
                     <motion.div
@@ -895,10 +839,10 @@ export default function DatasetsPage() {
                             }}
                             whileHover={{ y: -2 }}
                             className={cn(
-                              'focus-ring group w-full cursor-pointer rounded-[20px] border px-4 py-3 text-left transition-all duration-200 active:scale-[0.998]',
+                              'focus-ring group w-full cursor-pointer rounded-lg border px-4 py-3 text-left transition-colors duration-200 active:scale-[0.998]',
                               isActive
-                                ? 'border-primary/30 bg-primary/5 shadow-[0_14px_26px_-20px_hsl(var(--primary)/0.22)] ring-2 ring-primary/15'
-                                : 'border-border/60 bg-background/80 shadow-[0_10px_18px_-18px_rgba(15,23,42,0.1)] hover:border-border hover:bg-background hover:shadow-[0_16px_28px_-22px_rgba(15,23,42,0.12)]'
+                                ? 'border-foreground/10 bg-info/[0.04] ring-1 ring-info/15'
+                                : 'border-foreground/10 bg-background/70 hover:border-foreground/15 hover:bg-background'
                             )}
                           >
                             <div className={cn(
@@ -908,7 +852,7 @@ export default function DatasetsPage() {
                               <div className="flex min-w-0 items-start gap-3.5">
                                 <div
                                   className={cn(
-                                    'flex size-10 shrink-0 items-center justify-center rounded-[14px] border',
+                                    'flex size-10 shrink-0 items-center justify-center rounded-lg border',
                                     isActive
                                       ? statusIcon.activeClassName
                                       : statusIcon.defaultClassName
@@ -931,7 +875,7 @@ export default function DatasetsPage() {
                               </div>
 
                               {isActive ? (
-                                <div className="inline-flex shrink-0 items-center gap-1 rounded-full border border-primary/20 bg-primary/10 p-0.5">
+                                <div className="inline-flex w-fit shrink-0 justify-self-start items-center gap-1 rounded-md border border-foreground/10 bg-background/70 p-0.5 xl:justify-self-end">
                                   <button
                                     type="button"
                                     aria-label={`查看 ${dataset.name} 详情`}
@@ -940,7 +884,7 @@ export default function DatasetsPage() {
                                       e.stopPropagation()
                                       router.push(`/datasets/${dataset.id}/profile`)
                                     }}
-                                    className="rounded-full bg-card px-2.5 py-1 text-[11px] font-medium text-primary shadow-sm transition-all duration-200 hover:bg-primary/10 hover:text-primary active:scale-[0.98]"
+                                    className="rounded-md bg-background px-2.5 py-1 text-[11px] font-medium text-primary shadow-none transition-colors duration-200 hover:bg-muted/20 hover:text-primary active:scale-[0.98]"
                                   >
                                     详情
                                   </button>
@@ -950,13 +894,13 @@ export default function DatasetsPage() {
                                       e.stopPropagation()
                                       router.push(`/knowledge?tab=retrieval&dataset=${dataset.id}`)
                                     }}
-                                    className="rounded-full bg-card px-2.5 py-1 text-[11px] font-medium text-primary shadow-sm transition-all duration-200 hover:bg-primary/10 hover:text-primary active:scale-[0.98]"
+                                    className="rounded-md bg-background px-2.5 py-1 text-[11px] font-medium text-primary shadow-none transition-colors duration-200 hover:bg-muted/20 hover:text-primary active:scale-[0.98]"
                                   >
                                     检索
                                   </button>
                                   <Button
                                     size="sm"
-                                    className="h-8 rounded-full bg-primary px-3 text-[11px] font-medium text-primary-foreground shadow-[0_10px_20px_-14px_hsl(var(--primary)/0.65)] transition-transform duration-200 hover:bg-primary/90 active:scale-[0.98]"
+                                    className="h-8 rounded-md bg-primary px-3 text-[11px] font-medium text-primary-foreground shadow-none transition-transform duration-200 hover:bg-primary/90 active:scale-[0.98]"
                                     onClick={(e) => {
                                       e.stopPropagation()
                                       router.push(`/datasets/${dataset.id}/ingestion`)
@@ -969,7 +913,7 @@ export default function DatasetsPage() {
                                     size="icon"
                                     aria-label="编辑数据集"
                                     title="编辑数据集"
-                                    className="size-8 rounded-full bg-card/90 transition-all duration-200 hover:bg-card hover:shadow-sm active:scale-[0.96]"
+                                    className="size-8 rounded-md border border-foreground/10 bg-background/70 transition-colors duration-200 hover:bg-background active:scale-[0.96]"
                                     onClick={(e) => {
                                       e.stopPropagation()
                                       openEdit(dataset)
@@ -1041,21 +985,22 @@ export default function DatasetsPage() {
               </div>
             </section>
 
-            <aside className="min-h-0 overflow-hidden rounded-[24px] border border-border/60 bg-background/88 p-3 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.12)]">
-              <AnimatePresence mode="wait" initial={false}>
-                {selectedDataset ? (
-                  <motion.div
-                    key={selectedDataset.id}
-                    initial={{ opacity: 0, x: 12 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -12 }}
-                    transition={{ duration: 0.22 }}
-                    className="flex h-full flex-col gap-1.5 overflow-y-auto pr-1 custom-scrollbar"
-                  >
+            {selectedDataset ? (
+              <aside
+                data-testid="dataset-inspector"
+                className="min-h-0 overflow-hidden border-t border-foreground/10 bg-sidebar/28 p-3 lg:col-span-2 xl:col-span-1 xl:border-l xl:border-t-0"
+              >
+                <motion.div
+                  key={selectedDataset.id}
+                  initial={{ opacity: 0, x: 12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.18 }}
+                  className="flex h-full flex-col gap-1.5 overflow-y-auto pr-1 custom-scrollbar"
+                >
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary/70">Dataset Inspector</div>
-                        <div className="mt-0.5 text-[11px] font-semibold text-foreground">当前选中数据集</div>
+                        <div className="text-[12px] font-semibold text-foreground">数据集详情</div>
+                        <div className="mt-0.5 text-[10px] text-muted-foreground/65">访问权限与治理入口</div>
                       </div>
                       <div className="flex items-center gap-2">
                         <Button variant="ghost" size="icon" aria-label="编辑数据集" title="编辑数据集" className="size-7 rounded-full border border-border/60 bg-muted/50 text-muted-foreground transition-all duration-200 hover:border-border hover:bg-card hover:text-foreground active:scale-[0.96]" onClick={() => openEdit(selectedDataset)}>
@@ -1078,7 +1023,7 @@ export default function DatasetsPage() {
                       </div>
                     </div>
 
-                    <div className="rounded-[18px] border border-border/60 bg-background px-2 py-1.5">
+                    <div className="rounded-lg border border-foreground/10 bg-background/70 px-2 py-1.5">
                       <div className="flex items-start gap-1.5">
                         <div className={cn(
                           'flex size-7 shrink-0 items-center justify-center rounded-[10px] border',
@@ -1119,7 +1064,7 @@ export default function DatasetsPage() {
                       </div>
                     </div>
 
-                    <div className="space-y-0.5 rounded-[18px] border border-border/60 bg-background px-2 py-1.5">
+                    <div className="space-y-0.5 rounded-lg border border-foreground/10 bg-background/70 px-2 py-1.5">
                       <InspectorRow icon={Database} label="数据集 ID">
                         <span className="font-mono text-accent">{selectedDataset.id.slice(0, 8)}</span>
                       </InspectorRow>
@@ -1245,23 +1190,9 @@ export default function DatasetsPage() {
                         />
                       </div>
                     </div>
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    key="empty"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="flex h-full min-h-[320px] flex-col items-center justify-center rounded-[22px] border border-dashed border-border/60 bg-background/40 p-6 text-center"
-                  >
-                    <Layers className="mb-3 size-9 text-muted-foreground/30" />
-                    <div className="text-sm font-semibold text-foreground/80">检视器就绪</div>
-                    <div className="mt-2 max-w-[220px] text-[11px] leading-relaxed text-muted-foreground/60">
-                      选择一个数据集以查看快捷入口与访问配置
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </aside>
+                </motion.div>
+              </aside>
+            ) : null}
           </div>
         </div>
       </PageScaffold>
@@ -1328,7 +1259,7 @@ export default function DatasetsPage() {
         setEditOpen(open)
         if (!open) { setEditing(null); resetForm() }
       }}>
-        <DialogContent className="max-w-xl p-0 sm:rounded-2xl">
+        <DialogContent className="max-w-xl p-0 sm:rounded-xl">
           <div className="flex max-h-[min(88vh,860px)] flex-col">
             <DialogHeader className="border-b border-border/60 px-6 pt-6 pb-4">
               <DialogTitle>编辑数据集</DialogTitle>
@@ -1376,40 +1307,6 @@ function DatasetMetaPill({
   )
 }
 
-function DatasetSummaryCard({
-  title,
-  value,
-  icon: Icon,
-  tone,
-}: Readonly<{
-  title: string
-  value: string
-  icon: LucideIcon
-  tone: 'neutral' | 'green' | 'red' | 'amber'
-}>) {
-  return (
-    <div className="rounded-[16px] border border-border/60 bg-card/95 px-3 py-2 shadow-[0_8px_16px_-16px_rgba(15,23,42,0.12)] transition-all duration-200 hover:border-border hover:shadow-[0_12px_20px_-18px_rgba(15,23,42,0.14)]">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/62">{title}</div>
-          <div className="mt-0.5 text-[20px] font-semibold tracking-[-0.04em] text-foreground">{value}</div>
-        </div>
-        <div
-          className={cn(
-            'flex size-7 items-center justify-center rounded-[10px] border shadow-[inset_0_1px_0_hsl(var(--background)/0.5),0_8px_14px_-14px_rgba(15,23,42,0.22)]',
-            tone === 'neutral' && 'border-border/60 bg-muted/50 text-muted-foreground',
-            tone === 'green' && 'border-success/30 bg-success/10 text-success',
-            tone === 'red' && 'border-destructive/30 bg-destructive/10 text-destructive',
-            tone === 'amber' && 'border-warning/30 bg-warning/10 text-warning'
-          )}
-        >
-          <Icon className="size-3.5" />
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function DatasetFilterButton({
   label,
   count,
@@ -1430,9 +1327,9 @@ function DatasetFilterButton({
       type="button"
       onClick={onClick}
       className={cn(
-        'flex w-full items-center justify-between rounded-[12px] border px-2.5 py-1.5 text-left transition-colors',
+        'flex w-full items-center justify-between rounded-md border px-2.5 py-1.5 text-left transition-colors',
         active
-          ? 'border-primary/15 bg-primary/10 text-primary shadow-inner-soft'
+          ? 'border-foreground/10 bg-info/[0.06] text-info shadow-none'
           : 'border-transparent text-foreground/78 hover:border-border/60 hover:bg-muted/40'
       )}
     >
@@ -1448,7 +1345,7 @@ function DatasetFilterButton({
       </span>
       <span className={cn(
         'rounded-full px-1.5 py-0.5 text-[9px] font-semibold',
-        active ? 'bg-card text-primary shadow-sm' : 'bg-background/80 text-foreground/76'
+        active ? 'bg-background/90 text-info' : 'bg-background/80 text-foreground/76'
       )}>
         {count}
       </span>
@@ -1498,7 +1395,7 @@ function DatasetOperationTile({
   return (
     <button
       type="button"
-      className="focus-ring group relative flex min-h-[70px] flex-col items-start justify-between rounded-[14px] border border-border/60 bg-muted/40 px-2 py-1.5 transition-all duration-200 hover:border-primary/20 hover:bg-primary/[0.03] hover:shadow-[0_12px_22px_-18px_rgba(15,23,42,0.14)] active:scale-[0.98]"
+      className="focus-ring group relative flex min-h-[70px] flex-col items-start justify-between rounded-lg border border-foreground/10 bg-background/70 px-2 py-1.5 transition-colors duration-200 hover:border-foreground/15 hover:bg-muted/20 active:scale-[0.98]"
       onClick={onClick}
       aria-label={`${title}：${description}`}
     >
@@ -1534,7 +1431,7 @@ function DatasetCapabilityItem({
       type="button"
       onClick={onClick}
       title={description}
-      className="focus-ring group relative flex min-h-[38px] items-center gap-1.5 rounded-[12px] border border-border/60 bg-muted/40 px-2 py-1.5 transition-all duration-200 hover:border-primary/20 hover:bg-primary/[0.03] active:scale-[0.98]"
+      className="focus-ring group relative flex min-h-[38px] items-center gap-1.5 rounded-md border border-foreground/10 bg-background/70 px-2 py-1.5 transition-colors duration-200 hover:border-foreground/15 hover:bg-muted/20 active:scale-[0.98]"
     >
       <div className={cn('flex size-4 shrink-0 items-center justify-center rounded-md border transition-colors duration-200 group-hover:text-primary', tone.containerClassName)}>
         <Icon className="size-2.5" />
@@ -1542,9 +1439,6 @@ function DatasetCapabilityItem({
       <span className="truncate text-[10px] font-medium text-foreground/84 transition-colors duration-200 group-hover:text-primary">
         {title}
       </span>
-      <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 w-32 -translate-x-1/2 translate-y-1 rounded-lg border border-border/60 bg-popover/95 px-2 py-1 text-center opacity-0 shadow-lg backdrop-blur transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100">
-        <div className="text-[10px] leading-[1.05rem] text-foreground/84">{description}</div>
-      </div>
     </button>
   )
 }
@@ -1561,7 +1455,7 @@ function DetailStat({
   tone: 'success' | 'warning' | 'danger' | 'neutral'
 }>) {
   return (
-    <div className="rounded-[12px] border border-border/60 bg-muted/40 px-2 py-1.5 transition-colors duration-200 hover:border-border hover:bg-card">
+    <div className="rounded-md border border-foreground/10 bg-background/70 px-2 py-1.5 transition-colors duration-200 hover:border-foreground/15 hover:bg-background">
       <div className="flex items-center gap-1">
         <span
           className={cn(
@@ -1650,8 +1544,8 @@ function DatasetForm({
         </div>
       )}
 
-      <Panel variant="muted" padding="none" className="rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-border/60 flex items-start gap-3 bg-background/40">
+      <Panel variant="muted" padding="none" className="rounded-lg overflow-hidden border border-foreground/10">
+        <div className="flex items-start gap-3 border-b border-foreground/15 bg-background/70 px-4 py-3">
           <Checkbox
             checked={form.pipelineEnabled}
             onCheckedChange={(v) => setForm({ ...form, pipelineEnabled: v === true })}
@@ -1665,7 +1559,7 @@ function DatasetForm({
           </div>
         </div>
         {form.pipelineEnabled && (
-          <div className="p-4 bg-card/60">
+          <div className="bg-background/70 p-4">
             <div className="mb-4">
               <div className="text-xs font-medium text-muted-foreground mb-2">治理预设</div>
               <GovernanceProfileSelector

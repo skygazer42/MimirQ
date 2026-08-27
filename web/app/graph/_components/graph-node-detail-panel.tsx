@@ -515,18 +515,7 @@ export function GraphNodeDetailPanel({
 
   const shouldLiftCard = isDragging || isHovered
   const innerCardStyle: CSSProperties = {
-    transformStyle: 'preserve-3d',
-    transform: shouldLiftCard ? 'rotateY(-5deg) rotateX(1.2deg) scale(1.018)' : 'rotateY(0deg) rotateX(0deg) scale(1)',
-  }
-  const backCardStyle: CSSProperties = {
-    backfaceVisibility: 'hidden',
-    transform: shouldLiftCard
-      ? 'translateZ(-16px) translateX(6px) translateY(5px) rotateY(8deg)'
-      : 'translateZ(-12px) translateX(4px) translateY(4px) rotateY(6deg)',
-  }
-  const frontCardStyle: CSSProperties = {
-    backfaceVisibility: 'hidden',
-    transform: shouldLiftCard ? 'translateZ(10px)' : 'translateZ(7px)',
+    transform: shouldLiftCard ? 'translateY(-1px)' : 'none',
   }
   const undoActionLabel = undoSubmitting ? '撤销中…' : '撤销上次变更'
   const selectedNodeSourceLabel =
@@ -569,7 +558,7 @@ export function GraphNodeDetailPanel({
           <button
             type="button"
             onClick={() => setIsKgDetailExpanded((value) => !value)}
-            className="flex w-full items-center justify-between rounded-xl border border-border/60 bg-[linear-gradient(180deg,hsl(var(--card)/0.82),hsl(var(--muted)/0.4))] px-3 py-2 text-left transition-colors hover:bg-[linear-gradient(180deg,hsl(var(--card)/0.92),hsl(var(--muted)/0.5))] focus-ring"
+            className="flex w-full items-center justify-between rounded-xl border border-border/60 bg-card px-3 py-2 text-left transition-colors hover:bg-muted/30 focus-ring"
           >
             <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
               <Layers className="w-3 h-3 text-warning/80" />
@@ -591,28 +580,11 @@ export function GraphNodeDetailPanel({
     }
 
     detailContent = (
-      <div className="relative transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]" style={innerCardStyle}>
-        <div
-          aria-hidden="true"
-          className={cn(
-            'pointer-events-none absolute inset-0 -z-20 rounded-[1.45rem] bg-[radial-gradient(circle_at_top_left,hsl(var(--info)/0.28),hsl(var(--info)/0.12)_34%,transparent_66%),radial-gradient(circle_at_bottom_right,hsl(var(--primary)/0.1),transparent_48%)] blur-xl transition-all duration-300',
-            isDragging ? 'scale-[1.02] opacity-95' : 'opacity-70 group-hover:opacity-90'
-          )}
-        />
-        <div
-          aria-hidden="true"
-          className={cn(
-            'pointer-events-none absolute inset-0 -z-10 rounded-[1.35rem] border border-border/55 bg-[linear-gradient(145deg,hsl(var(--card)/0.5),hsl(var(--muted)/0.3)_55%,hsl(var(--info)/0.12))] shadow-[12px_17px_51px_hsl(var(--foreground)/0.16)] backdrop-blur-[10px] transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]'
-          )}
-          style={backCardStyle}
-        />
-        <div
-          className="overflow-hidden rounded-2xl border border-border/70 bg-[linear-gradient(180deg,hsl(var(--card)/0.9)_0%,hsl(var(--muted)/0.4)_100%)] shadow-[12px_17px_51px_hsl(var(--foreground)/0.18)] backdrop-blur-[16px] transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
-          style={frontCardStyle}
-        >
+      <div className="relative transition-transform duration-300 ease-out" style={innerCardStyle}>
+        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-none transition-transform duration-300 ease-out">
         <div
           className={cn(
-            'border-b border-border/55 bg-[linear-gradient(180deg,hsl(var(--card)/0.6)_0%,hsl(var(--card)/0.3)_100%)] px-3.5 py-3 select-none',
+            'border-b border-border/55 bg-muted/20 px-3.5 py-3 select-none',
             isDragging ? 'cursor-grabbing' : 'cursor-grab'
           )}
           onPointerDown={handleDragStart}
@@ -647,7 +619,7 @@ export function GraphNodeDetailPanel({
               type="button"
               onClick={onClose}
               aria-label="关闭详情面板"
-              className="rounded-xl border border-transparent bg-card/30 p-1 text-muted-foreground transition-all hover:border-black/5 hover:bg-card/55 hover:text-foreground"
+              className="rounded-xl border border-border/60 bg-card p-1 text-muted-foreground transition-all hover:bg-muted/40 hover:text-foreground"
               onPointerDown={(event) => event.stopPropagation()}
             >
               <X className="w-4 h-4" />
@@ -800,11 +772,10 @@ export function GraphNodeDetailPanel({
         'group absolute z-20 flex w-[18.25rem] max-h-[min(31rem,calc(100vh-5.5rem))] transform flex-col overflow-visible rounded-2xl transition-transform duration-200 ease-out',
         open && selectedNode ? 'translate-x-0' : 'translate-x-[120%]'
       )}
-      style={{
-        left: panelPosition?.x ?? undefined,
-        top: panelPosition?.y ?? PANEL_TOP_OFFSET,
-        perspective: '1400px',
-      }}
+       style={{
+         left: panelPosition?.x ?? undefined,
+         top: panelPosition?.y ?? PANEL_TOP_OFFSET,
+       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >

@@ -810,15 +810,15 @@ export default function DatasetIngestionPolicyPage() {
     }
   }, [previewFile, datasetId])
 
-  const ingestionHeroCard = 'relative overflow-hidden rounded-[26px] border border-border/60 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(246,248,251,0.94)_45%,rgba(232,246,250,0.72))] shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-white/80 before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_16%_10%,rgba(8,145,178,0.16),transparent_26%),radial-gradient(circle_at_82%_0%,rgba(15,23,42,0.075),transparent_24%),linear-gradient(90deg,rgba(15,23,42,0.035)_1px,transparent_1px)] before:bg-[length:auto,auto,34px_34px] dark:border-border/60 dark:bg-none dark:bg-card/95 dark:ring-white/5'
-  const ingestionToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-2xl border border-border/60 bg-card/82 p-1 shadow-[0_12px_34px_rgba(15,23,42,0.07)] ring-1 ring-white/75 backdrop-blur dark:border-border/60 dark:bg-card/70 dark:ring-white/5'
+  const ingestionHeroCard = 'relative overflow-hidden border-b border-border/60 bg-transparent px-1 py-2 shadow-none dark:border-border/70'
+  const ingestionToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-lg border border-border/60 bg-card p-1 shadow-none dark:border-border/70 dark:bg-card'
   const ingestionToolbarButtonClass = 'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-semibold text-muted-foreground shadow-none hover:bg-card hover:text-foreground hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
-  const ingestionToolbarPrimaryButtonClass = 'h-8 min-w-[104px] gap-1.5 rounded-xl bg-primary px-3.5 text-[12px] font-semibold text-primary-foreground shadow-[0_12px_26px_rgba(15,23,42,0.22)] hover:bg-primary/90 dark:bg-primary dark:text-primary-foreground dark:hover:bg-primary/90 [&_svg]:size-3.5'
-  const ingestionPanelClass = 'rounded-[24px] border-border/60 bg-card/88 shadow-[0_18px_54px_rgba(15,23,42,0.08)] ring-1 ring-white/75 backdrop-blur-xl dark:border-border/60 dark:bg-card/82 dark:ring-white/5'
-  const ingestionPanelHeaderClass = 'shrink-0 border-b border-border/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.78))] px-5 py-4 dark:border-border/60 dark:bg-none dark:bg-muted/20'
-  const ingestionIconPillClass = 'flex size-9 shrink-0 items-center justify-center rounded-2xl border border-border/60 bg-card text-foreground/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_8px_22px_rgba(15,23,42,0.08)] dark:border-border/60 dark:bg-muted/30 dark:text-foreground'
-  const ingestionActionButtonClass = 'h-9 rounded-xl px-3 text-[12px] font-semibold shadow-sm [&_svg]:size-4'
-  const ingestionMetricCardClass = 'group relative overflow-hidden rounded-2xl border border-border/60 bg-card/90 px-4 py-3 shadow-[0_12px_32px_rgba(15,23,42,0.055)] ring-1 ring-white/80 transition-colors hover:border-border dark:border-border/60 dark:bg-card/80 dark:ring-white/5'
+  const ingestionToolbarPrimaryButtonClass = 'h-8 min-w-[104px] gap-1.5 rounded-md border border-primary/20 bg-primary px-3.5 text-[12px] font-semibold text-primary-foreground shadow-none hover:bg-primary/90 dark:border-primary/30 dark:bg-primary dark:text-primary-foreground dark:hover:bg-primary/90 [&_svg]:size-3.5'
+  const ingestionPanelClass = 'border border-border/60 bg-card shadow-none dark:border-border/70 dark:bg-card'
+  const ingestionPanelHeaderClass = 'shrink-0 border-b border-border/60 bg-card px-5 py-4 dark:border-border/70 dark:bg-card'
+  const ingestionIconPillClass = 'flex size-9 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/20 text-foreground/85 shadow-none dark:border-border/70 dark:bg-muted/30 dark:text-foreground'
+  const ingestionActionButtonClass = 'h-9 rounded-md px-3 text-[12px] font-semibold shadow-none [&_svg]:size-4'
+  const ingestionMetricCardClass = 'group relative overflow-hidden rounded-lg border border-border/60 bg-card px-4 py-3 shadow-none transition-colors hover:border-border dark:border-border/70 dark:bg-card'
   const activeRuleCount = rules.filter((rule) => rule.enabled !== false).length
   const parserBackendCount = new Set(rules.map((rule) => rule.parser_backend).filter(Boolean)).size
 
@@ -834,15 +834,14 @@ export default function DatasetIngestionPolicyPage() {
         bodyContainerClassName="h-full min-h-0 overflow-hidden"
         top={
           <div className={ingestionHeroCard}>
-            <div className="absolute inset-y-4 left-3 w-1 rounded-full bg-[linear-gradient(180deg,hsl(var(--primary)),hsl(var(--info)/0.78),hsl(var(--primary)/0.36))]" />
-            <div className="relative flex flex-col gap-3 px-5 py-3.5 pl-8 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex min-w-0 items-start gap-3.5">
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-info/30 bg-card/82 text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_26px_hsl(var(--info)/0.14)] dark:bg-info/10">
-                  <Settings2 className="size-5" />
+            <div className="relative flex flex-col gap-2 px-1 py-1 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-info/10 text-primary shadow-none">
+                  <Settings2 className="size-3.5" />
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="truncate text-[22px] font-semibold leading-none tracking-[-0.035em] text-foreground dark:text-foreground">入库策略工作台</h1>
+                    <h1 className="truncate text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground dark:text-foreground">入库策略工作台</h1>
                     <span className="inline-flex h-5 items-center rounded-full border border-border bg-card/82 px-2 text-[10px] font-bold uppercase leading-none tracking-[0.12em] text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-border/60 dark:bg-muted/30 dark:text-muted-foreground">
                       pipeline policy
                     </span>
@@ -850,12 +849,12 @@ export default function DatasetIngestionPolicyPage() {
                       POLICY
                     </Badge>
                   </div>
-                  <div className="mt-1.5 text-[13px] leading-tight text-muted-foreground dark:text-muted-foreground">
+                  <div className="text-[12px] leading-5 text-muted-foreground dark:text-muted-foreground">
                     <span className="font-semibold text-foreground">数据集：</span>
                     <span className="font-medium text-foreground">{dataset?.name || datasetId}</span>
                     <span> · 按文件类型配置预处理、解析、治理与切块入口</span>
                   </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] font-medium leading-none text-muted-foreground dark:text-muted-foreground">
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] font-medium leading-none text-muted-foreground dark:text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
                       <Database className="size-3.5 text-muted-foreground/80" />
                       <span>规则</span>
@@ -886,13 +885,13 @@ export default function DatasetIngestionPolicyPage() {
                     ['02', '解析治理'],
                     ['03', '切块入库'],
                   ].map(([step, label]) => (
-                    <div key={step} className="rounded-2xl border border-border/60 bg-card/72 px-3 py-2 shadow-[0_10px_26px_rgba(15,23,42,0.07)] ring-1 ring-border/60 backdrop-blur">
+                    <div key={step} className="rounded-lg border border-border/60 bg-card px-3 py-2 shadow-none">
                       <div className="font-mono text-[10px] font-black leading-none text-info">{step}</div>
                       <div className="mt-1 truncate text-[11px] font-bold leading-none text-foreground">{label}</div>
                     </div>
                   ))}
                 </div>
-                <div className="inline-flex h-9 items-center gap-2 rounded-xl border border-success/30 bg-success/5 px-3 text-[12px] font-semibold text-success shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_10px_24px_rgba(5,150,105,0.10)]">
+                <div className="inline-flex h-9 items-center gap-2 rounded-lg border border-success/30 bg-success/5 px-3 text-[12px] font-semibold text-success shadow-none">
                   <span className="size-2 rounded-full bg-success" />
                   策略可编辑
                 </div>
@@ -1011,7 +1010,7 @@ export default function DatasetIngestionPolicyPage() {
           ) : null}
 
           <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_440px]">
-          <Panel variant="glass" className={cn(ingestionPanelClass, 'flex min-h-0 flex-col overflow-hidden')}>
+          <Panel variant="default" className={cn(ingestionPanelClass, 'flex min-h-0 flex-col overflow-hidden')}>
             <div className={cn(ingestionPanelHeaderClass, 'flex items-center justify-between gap-4')}>
               <div className="flex min-w-0 items-start gap-3">
                 <div className={ingestionIconPillClass}>
@@ -1031,20 +1030,20 @@ export default function DatasetIngestionPolicyPage() {
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <Button variant="outline" onClick={() => setTemplatesOpen(true)} className={cn(ingestionActionButtonClass, 'border-border bg-card/90 hover:bg-muted/50')}>
+                <Button variant="outline" onClick={() => setTemplatesOpen(true)} className={cn(ingestionActionButtonClass, 'border-border/60 bg-card hover:bg-muted/40')}>
                   <Sparkles className="size-4" />
                   从模板添加
                 </Button>
-                <Button onClick={openCreate} className={cn(ingestionActionButtonClass, 'bg-primary text-primary-foreground shadow-[0_12px_24px_rgba(2,132,199,0.24)] hover:bg-primary/90')}>
+                <Button onClick={openCreate} className={cn(ingestionActionButtonClass, 'border border-primary/20 bg-primary text-primary-foreground hover:bg-primary/90')}>
                   <Plus className="size-4" />
                   新增规则
                 </Button>
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto bg-[linear-gradient(180deg,rgba(248,250,252,0.72),rgba(255,255,255,0.92))] p-4 no-scrollbar dark:bg-none dark:bg-muted/5">
+            <div className="min-h-0 flex-1 overflow-y-auto bg-muted/15 p-4 no-scrollbar dark:bg-muted/10">
               {(rules || []).length === 0 ? (
-                <div className="flex min-h-[260px] flex-col justify-center rounded-[22px] border border-dashed border-border bg-card/72 px-6 py-8 text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-border dark:bg-muted/20 dark:text-muted-foreground">
+                <div className="flex min-h-[260px] flex-col justify-center rounded-lg border border-dashed border-border px-6 py-8 text-muted-foreground shadow-none dark:border-border dark:bg-muted/20 dark:text-muted-foreground">
                   <div className="flex items-start gap-4">
                     <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-muted text-muted-foreground dark:bg-muted/40">
                       <Sparkles className="size-5" />
@@ -1069,8 +1068,7 @@ export default function DatasetIngestionPolicyPage() {
                 </div>
               ) : (
                 (rules || []).map((r, idx) => (
-                  <div key={r.id} className="group relative mb-3 overflow-hidden rounded-[22px] border border-border/60 bg-card/96 p-4 pl-5 shadow-[0_16px_38px_rgba(15,23,42,0.07)] ring-1 ring-white/85 transition-colors last:mb-0 hover:border-info/30 dark:border-border/60 dark:bg-card/72 dark:ring-white/5">
-                    <div className="absolute inset-y-4 left-0 w-1 rounded-r-full bg-[linear-gradient(180deg,hsl(var(--primary)),hsl(var(--info)/0.78),hsl(var(--success)/0.76))] opacity-85" />
+                  <div key={r.id} className="group relative mb-3 overflow-hidden rounded-lg border border-border/60 border-l-2 border-l-info/35 bg-card p-4 transition-colors last:mb-0 hover:border-info/30 dark:border-border/70 dark:bg-card">
                     <div className="min-w-0 flex-1 space-y-2">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -1142,7 +1140,7 @@ export default function DatasetIngestionPolicyPage() {
             </div>
           </Panel>
 
-          <Panel variant="glass" className={cn(ingestionPanelClass, 'flex min-h-0 flex-col overflow-hidden')}>
+          <Panel variant="default" className={cn(ingestionPanelClass, 'flex min-h-0 flex-col overflow-hidden')}>
             <div className={cn(ingestionPanelHeaderClass, 'space-y-3')}>
               <div className="flex items-start gap-3">
                 <div className={ingestionIconPillClass}>
@@ -1155,7 +1153,7 @@ export default function DatasetIngestionPolicyPage() {
                   </div>
                 </div>
               </div>
-              <div className="rounded-[22px] border border-info/20 bg-[linear-gradient(135deg,rgba(240,249,255,0.95),rgba(255,255,255,0.9))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_14px_32px_rgba(2,132,199,0.10)] dark:border-border/60 dark:bg-none dark:bg-muted/20">
+              <div className="rounded-lg border border-info/20 bg-card p-3 shadow-none dark:border-border/70 dark:bg-card">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground/70 dark:text-muted-foreground">sample file</span>
                   {previewFile ? <span className="truncate font-mono text-[11px] text-muted-foreground dark:text-muted-foreground">{previewFile.name}</span> : null}
@@ -1163,10 +1161,10 @@ export default function DatasetIngestionPolicyPage() {
                 <div className="flex flex-col gap-2">
                   <Input
                     type="file"
-                    className="h-10 w-full min-w-0 rounded-2xl border-border bg-card text-[11px] shadow-sm"
+                    className="h-10 w-full min-w-0 rounded-lg border-border bg-card text-[11px] shadow-none"
                     onChange={(e) => setPreviewFile(e.target.files?.[0] || null)}
                   />
-                  <Button onClick={runPreview} disabled={!previewFile || previewing} className="h-10 w-full shrink-0 gap-2 rounded-2xl bg-primary px-3 text-xs font-bold text-primary-foreground shadow-[0_14px_28px_rgba(15,23,42,0.24)] hover:bg-primary/90">
+                  <Button onClick={runPreview} disabled={!previewFile || previewing} className="h-10 w-full shrink-0 gap-2 rounded-lg border border-primary/20 bg-primary px-3 text-xs font-bold text-primary-foreground shadow-none hover:bg-primary/90">
                     {previewing ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <Sparkles className="size-4" />}
                     生成预览
                   </Button>
@@ -1175,7 +1173,7 @@ export default function DatasetIngestionPolicyPage() {
             </div>
 
             {preview ? (
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[linear-gradient(180deg,rgba(248,250,252,0.62),rgba(255,255,255,0.92))] p-4 no-scrollbar dark:bg-none dark:bg-muted/5">
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-muted/15 p-4 no-scrollbar dark:bg-muted/10">
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                   <Badge variant={preview.rule?.matched ? 'soft' : 'outline'} className="rounded-lg font-mono">
                     matched: {preview.rule?.matched ? 'true' : 'false'}
@@ -1206,13 +1204,13 @@ export default function DatasetIngestionPolicyPage() {
                 ) : null}
 
                 <div className="grid grid-cols-1 gap-3">
-                  <Panel variant="muted" className="overflow-hidden rounded-2xl border-border/60 bg-card/78 p-0 shadow-none dark:border-border/60 dark:bg-card/60">
+                  <Panel variant="muted" className="overflow-hidden rounded-lg border-border/60 bg-card p-0 shadow-none dark:border-border/70 dark:bg-card">
                     <div className="border-b border-border/60 px-4 py-3 text-sm font-bold">解析后 Markdown（raw）</div>
                     <pre className="max-h-[260px] overflow-y-auto whitespace-pre-wrap p-4 text-xs leading-relaxed no-scrollbar">
                       {preview.parse?.markdown || ''}
                     </pre>
                   </Panel>
-                  <Panel variant="muted" className="overflow-hidden rounded-2xl border-border/60 bg-card/78 p-0 shadow-none dark:border-border/60 dark:bg-card/60">
+                  <Panel variant="muted" className="overflow-hidden rounded-lg border-border/60 bg-card p-0 shadow-none dark:border-border/70 dark:bg-card">
                     <div className="border-b border-border/60 px-4 py-3 text-sm font-bold">治理后 Markdown（clean）</div>
                     <pre className="max-h-[260px] overflow-y-auto whitespace-pre-wrap p-4 text-xs leading-relaxed no-scrollbar">
                       {preview.clean?.markdown || ''}
@@ -1230,8 +1228,8 @@ export default function DatasetIngestionPolicyPage() {
                 ) : null}
               </div>
             ) : (
-              <div className="flex min-h-0 flex-1 flex-col justify-between bg-[linear-gradient(180deg,rgba(248,250,252,0.62),rgba(255,255,255,0.92))] p-4 dark:bg-none dark:bg-muted/5">
-                <div className="rounded-2xl border border-dashed border-border bg-card/68 px-4 py-5 text-[12px] leading-6 text-muted-foreground dark:border-border dark:bg-muted/20 dark:text-muted-foreground">
+              <div className="flex min-h-0 flex-1 flex-col justify-between bg-muted/15 p-4 dark:bg-muted/10">
+                <div className="rounded-lg border border-dashed border-border bg-card px-4 py-5 text-[12px] leading-6 text-muted-foreground dark:border-border dark:bg-muted/20 dark:text-muted-foreground">
                   可选：选择 HTML / PDF / DOCX / CSV 样例后生成预览，用于检查策略命中和治理 diff。
                 </div>
                 <div className="mt-4 grid gap-2 text-[11px] text-muted-foreground dark:text-muted-foreground">

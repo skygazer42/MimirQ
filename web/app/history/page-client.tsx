@@ -4,6 +4,7 @@
 'use client'
 
 import { useState, useEffect, useLayoutEffect, useRef, Suspense, useCallback, useDeferredValue, useMemo } from 'react'
+import Image from 'next/image'
 import { useLocale, useTranslations } from 'next-intl'
 import { useSearchParams } from 'next/navigation'
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
@@ -517,17 +518,15 @@ function HistoryPageContent({
         showHeader={false}
         size="full"
         bodyClassName="p-0 overflow-hidden"
+        bodyGutter="none"
         bodyContainerClassName="h-full max-w-none"
       >
         <div className="h-full overflow-hidden">
-          <section className="relative flex h-full min-h-0 overflow-hidden bg-background">
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-primary/[0.04]"
-            />
+          <section data-history-shell="ruled" className="relative flex h-full min-h-0 overflow-hidden bg-background">
 
             {/* 侧边栏 - 对话列表 */}
             <motion.aside 
+              data-history-sidebar="true"
               initial={false}
               animate={{ 
                 opacity: isSidebarCollapsed ? 0 : 1,
@@ -535,15 +534,15 @@ function HistoryPageContent({
               }}
               transition={{ type: 'spring', stiffness: 300, damping: 30, mass: 0.8 }}
               className={cn(
-                "relative z-10 flex shrink-0 flex-col overflow-hidden border-r border-border/60 bg-muted/30 transition-[width] duration-200",
+                "relative z-10 flex shrink-0 flex-col overflow-hidden border-r border-foreground/15 bg-background transition-[width] duration-200",
                 isSidebarCollapsed ? "w-0" : "w-full md:w-[19.5rem] xl:w-[20.75rem]"
               )}
             >
               {/* 头部 - 已扁平化 */}
-              <div className="sticky top-0 z-20 min-w-0 space-y-1 border-b border-border/50 bg-background/80 px-2 pb-1.5 pt-2 backdrop-blur-md md:min-w-[19.5rem]">
+              <div className="sticky top-0 z-20 min-w-0 space-y-1 border-b border-foreground/15 bg-background px-2 pb-2 pt-2 md:min-w-[19.5rem]">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <div className="flex size-9 shrink-0 items-center justify-center rounded-2xl border border-border/65 bg-background/92 text-foreground shadow-[0_8px_18px_rgba(15,23,42,0.05)] ring-1 ring-background">
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background text-foreground">
                       <PageTitleIcon name="qa-history" className="size-7" />
                     </div>
                     <h2 className="text-sm font-medium text-foreground  uppercase">历史记录</h2>
@@ -552,7 +551,7 @@ function HistoryPageContent({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-8 rounded-full hover:bg-muted text-muted-foreground"
+                      className="size-8 rounded-md border border-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
                       onClick={() => setIsSidebarCollapsed(true)}
                       aria-label="收起侧边栏"
                       title="收起侧边栏"
@@ -569,7 +568,7 @@ function HistoryPageContent({
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder={t('searchPlaceholder')}
-                    className="w-full h-9 pl-8 pr-3 rounded-xl border border-border/60 bg-background/60 backdrop-blur-sm text-xs font-medium outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary/40 focus:bg-background transition-all"
+                    className="h-9 w-full rounded-md border border-foreground/10 bg-background pl-8 pr-3 text-xs font-medium outline-none transition-all focus:border-primary/30 focus:bg-background focus:ring-1 focus:ring-primary/30"
                   />
                 </div>
 
@@ -588,10 +587,10 @@ function HistoryPageContent({
                         )
                       }}
                       className={cn(
-                        'rounded-full px-3 py-1 text-[11px] font-medium transition-colors',
+                        'rounded-md border border-transparent px-3 py-1 text-[11px] font-medium transition-colors',
                         historyView === value
-                          ? 'border border-primary/15 bg-primary/10 text-primary shadow-sm'
-                          : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                          ? 'border-foreground/10 bg-background text-foreground'
+                          : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground'
                       )}
                     >
                       {label}
@@ -646,7 +645,7 @@ function HistoryPageContent({
                     size="sm"
                     onClick={loadMoreConversations}
                     disabled={isLoadingMoreConversations}
-                    className="h-8 rounded-full px-3 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                    className="h-8 rounded-md px-3 text-[11px] font-medium text-muted-foreground hover:bg-muted/40 hover:text-foreground"
                   >
                     {isLoadingMoreConversations ? (
                       <>
@@ -687,7 +686,7 @@ function HistoryPageContent({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-10 rounded-2xl bg-background/80 backdrop-blur-md border border-border/40 hover:bg-muted text-muted-foreground shadow-soft transition-all active:scale-95"
+                      className="size-10 rounded-md border border-foreground/10 bg-background text-muted-foreground transition-all hover:bg-muted hover:text-foreground active:scale-95"
                       onClick={() => setIsSidebarCollapsed(false)}
                       aria-label="展开侧边栏"
                       title="展开侧边栏"
@@ -701,7 +700,7 @@ function HistoryPageContent({
               {displayConversation ? (
                 <>
                   {/* 对话头部 - 极简重构版 */}
-                  <div className="border-b border-border/40 bg-background/80 backdrop-blur sticky top-0 z-20 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+                  <div data-history-detail-header="true" className="sticky top-0 z-20 border-b border-foreground/15 bg-background">
                     <motion.div 
                       layout
                       className={cn(
@@ -713,10 +712,10 @@ function HistoryPageContent({
                         <div className="min-w-0 flex items-center gap-3">
                           {!isSidebarCollapsed && (
                             <>
-                              <div className="size-10 shrink-0 rounded-2xl bg-primary/5 border border-primary/10 flex items-center justify-center text-primary shadow-[0_2px_8px_-3px_rgba(var(--primary),0.08)]">
+                              <div className="flex size-10 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background text-foreground">
                                 <MessageSquare className="size-5" />
                               </div>
-                              <div className="w-px h-6 bg-border/40 mx-1 hidden md:block" />
+                              <div className="mx-1 hidden h-6 w-px bg-foreground/10 md:block" />
                             </>
                           )}
                           
@@ -729,11 +728,11 @@ function HistoryPageContent({
                               {displayConversation.title || t("untitledConversation")}
                             </h2>
                             <div className="flex items-center gap-1 mt-0.5 tabular-nums">
-                              <span className="inline-flex items-center rounded-md bg-muted/30 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground/50 border border-border/10">
+                              <span className="inline-flex items-center rounded-md border border-foreground/10 bg-background/70 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
                                 {t("messageCount", { count: displayConversation.message_count })}
                               </span>
                               <span className="text-muted-foreground/20 text-[11px] leading-none px-0.5">•</span>
-                              <span suppressHydrationWarning className="inline-flex items-center gap-1 rounded-md bg-muted/30 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground/50 border border-border/10">
+                              <span suppressHydrationWarning className="inline-flex items-center gap-1 rounded-md border border-foreground/10 bg-background/70 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
                                 {formatDate(displayConversation.created_at, locale)}
                               </span>
                             </div>
@@ -766,7 +765,7 @@ function HistoryPageContent({
                             size="sm"
                             onClick={handleContinueChat}
                             aria-label="继续当前对话"
-                            className="h-8 gap-1.5 rounded-lg px-3.5 text-[11px] font-medium shadow-sm"
+                            className="h-8 gap-1.5 rounded-md px-3.5 text-[11px] font-medium"
                           >
                             <Send className="size-3.5" />
                             继续对话
@@ -779,7 +778,7 @@ function HistoryPageContent({
                   {/* 消息列表 */}
                   <div
                     ref={messagesContainerRef}
-                    className="flex-1 overflow-y-auto overscroll-contain no-scrollbar bg-muted/[0.12] px-4 pt-0 pb-6 md:px-6 md:pb-8 xl:px-8"
+                    className="flex-1 overflow-y-auto overscroll-contain no-scrollbar bg-background px-4 pb-6 pt-0 md:px-6 md:pb-8 xl:px-8"
                   >
                     {(() => {
     if (isLoadingMessages) {
@@ -789,7 +788,7 @@ function HistoryPageContent({
     }
     else if (messages.length === 0) {
             return (<div className="flex h-full items-center justify-center">
-                          <div className="rounded-3xl border border-dashed border-border/70 bg-background/80 px-8 py-12 text-center text-muted-foreground shadow-sm">
+                          <div className="rounded-lg border border-dashed border-foreground/10 bg-background px-8 py-12 text-center text-muted-foreground">
                             <MessageSquare className="mx-auto mb-4 h-12 w-12 opacity-10"/>
                             <p>{t('noMessageRecords')}</p>
                           </div>
@@ -818,17 +817,17 @@ function HistoryPageContent({
                         >
                           <ConversationOpsPanel conversationId={displayConversation.id} />
                           {hasMoreMessages ? (<div className="flex justify-center mb-4">
-                              <Button variant="ghost" size="sm" onClick={loadOlderMessages} disabled={isLoadingOlder} className="rounded-full text-[11px] font-bold uppercase  text-muted-foreground/60 hover:text-foreground">
+                              <Button variant="ghost" size="sm" onClick={loadOlderMessages} disabled={isLoadingOlder} className="rounded-md text-[11px] font-bold uppercase text-muted-foreground/60 hover:bg-muted/40 hover:text-foreground">
                                 {isLoadingOlder ? t('loading') : t('loadOlderMessages')}
                               </Button>
                             </div>) : null}
                           {groupedMessages.map((group) => (<div key={group.key} className="space-y-6">
                               <div className="flex items-center gap-6 py-1">
-                                <div className="h-px flex-1 bg-border/30" />
-                                <div suppressHydrationWarning className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground/28 whitespace-nowrap">
+                                <div className="h-px flex-1 bg-foreground/10" />
+                                <div suppressHydrationWarning className="whitespace-nowrap text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground/60">
                                   {group.label}
                                 </div>
-                                <div className="h-px flex-1 bg-border/30" />
+                                <div className="h-px flex-1 bg-foreground/10" />
                               </div>
                               <div className="space-y-6">
                                 {group.messages.map((message) => (<HistoryMessageEntry key={message.id} message={message} locale={locale} />))}
@@ -842,7 +841,7 @@ function HistoryPageContent({
                   </div>
                 </>
               ) : (
-                <HistoryMainEmptyState />
+                <HistoryMainEmptyState hasConversations={conversations.length > 0} />
               )}
             </motion.div>
           </section>
@@ -858,81 +857,50 @@ function HistoryPageContent({
   )
 }
 
-function HistoryMainEmptyState() {
+function HistoryMainEmptyState({
+  hasConversations,
+}: Readonly<{
+  hasConversations: boolean
+}>) {
   const t = useTranslations('History')
-  const descriptionLines = t('noConversationSelectedDescription').split('\n')
+  const title = hasConversations ? t('noConversationSelected') : t('startFirstConversation')
+  const description = hasConversations
+    ? t('noConversationSelectedDescription').replace('\n', ' ')
+    : t('startFirstConversationDescription')
 
   return (
-    <div className="flex-1 bg-muted/[0.12] p-4 md:p-6">
+    <div className="flex-1 bg-muted/[0.1] p-2 md:p-3">
       <section
         data-history-main-empty="true"
-        className="relative isolate flex min-h-full items-center justify-center overflow-hidden rounded-[32px] border border-border/60 bg-background/96 px-8 py-12 text-center shadow-[inset_0_1px_0_hsl(var(--background)),0_18px_40px_rgba(15,23,42,0.04)]"
+        className="relative flex min-h-full items-center justify-center rounded-lg border border-foreground/15 bg-background px-6 py-10 text-center"
       >
-        <div className="relative mx-auto flex max-w-xl flex-col items-center">
-          <div className="mb-5 grid size-[72px] place-items-center rounded-[26px] border border-border/70 bg-muted/55 text-foreground shadow-[0_14px_30px_rgba(15,23,42,0.06)]">
-            <History className="size-8" />
-          </div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-muted-foreground/70">
+        <div className="relative mx-auto flex max-w-md -translate-y-3 flex-col items-center">
+          <Image
+            src="/brand/mimirq-history-archive.png"
+            alt=""
+            aria-hidden="true"
+            width={96}
+            height={96}
+            loading="eager"
+            className="mb-1.5 size-24 object-contain"
+          />
+          <p className="text-[10px] font-semibold tracking-[0.2em] text-info/72">
             {t('historyEmptyKicker')}
           </p>
-          <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-foreground">
-            {t('noConversationSelected')}
+          <h2 className="mt-2.5 text-lg font-semibold tracking-[-0.035em] text-foreground">
+            {title}
           </h2>
-          <p className="mt-3 max-w-md text-sm leading-7 text-muted-foreground/78">
-            {descriptionLines[0]}<br />
-            {descriptionLines[1]}
+          <p className="mt-2 max-w-sm text-[13px] leading-6 text-muted-foreground/75">
+            {description}
           </p>
 
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-            <Button asChild className="h-10 rounded-full bg-foreground px-5 text-[13px] font-semibold text-background hover:bg-foreground/92">
+          <div className="mt-5 flex items-center justify-center">
+            <Button asChild className="h-9 rounded-md bg-foreground px-4 text-[12px] font-semibold text-background hover:bg-foreground/92">
               <Link href="/">
-                <Plus className="h-4 w-4" />
+                <Plus className="size-3.5" />
                 {t('startNewConversation')}
               </Link>
             </Button>
-            <Button
-              asChild
-              variant="outline"
-              size="sm"
-              className="h-10 rounded-full border-border/70 bg-background/90 px-4 text-xs font-semibold text-foreground shadow-none hover:bg-muted/70 hover:text-foreground"
-            >
-              <Link href="/evaluations">
-                <BarChart3 className="h-3.5 w-3.5" />
-                {t('evaluateConversation')}
-              </Link>
-            </Button>
-            <Button
-              asChild
-              variant="outline"
-              size="sm"
-              className="h-10 rounded-full border-border/70 bg-background/90 px-4 text-xs font-semibold text-foreground shadow-none hover:bg-muted/70 hover:text-foreground"
-            >
-              <Link href="/observability">
-                <Route className="h-3.5 w-3.5" />
-                {t('ragTrace')}
-              </Link>
-            </Button>
-          </div>
-
-          <div className="mt-7 grid w-full max-w-lg gap-2 text-left sm:grid-cols-3">
-            {[
-              ['答案留存', '保存对话结论'],
-              ['证据回看', '追溯引用来源'],
-              ['评测追踪', '连接质量诊断'],
-            ].map(([title, desc]) => (
-              <div
-                key={title}
-                className="rounded-2xl border border-border/75 bg-background/92 px-3.5 py-3 shadow-[0_8px_18px_rgba(15,23,42,0.035)]"
-              >
-                <div className="flex items-center gap-2 text-[12px] font-semibold text-foreground/82">
-                  <span className="size-1.5 rounded-full bg-foreground/80" />
-                  {title}
-                </div>
-                <p className="mt-1 text-[11px] leading-4 text-muted-foreground/70">
-                  {desc}
-                </p>
-              </div>
-            ))}
           </div>
         </div>
       </section>
@@ -949,7 +917,7 @@ function HistorySidebarEmptyState({
 
   if (isSearching) {
     return (
-      <div className="mx-2 mt-3 rounded-[22px] border border-dashed border-border/70 bg-background/75 px-5 py-8 text-center text-sm text-muted-foreground shadow-sm">
+      <div className="mx-2 mt-3 rounded-lg border border-dashed border-foreground/10 bg-background px-5 py-8 text-center text-sm text-muted-foreground">
         <Search className="mx-auto mb-3 size-7 text-muted-foreground/35" />
         <p className="font-medium text-foreground/70">{t('noMatchedConversation')}</p>
       </div>
@@ -961,33 +929,23 @@ function HistorySidebarEmptyState({
       data-history-empty-archive="true"
       data-history-empty-inline="true"
       aria-live="polite"
-      className="mx-2 mt-4 px-4 text-center"
+      className="mx-2 mt-5 px-4 text-center"
     >
-      <div className="relative mx-auto mb-4 grid size-14 place-items-center rounded-[22px] bg-info/5 text-primary">
-        <History className="size-6" />
-        <span className="absolute -right-1 top-2 size-2 rounded-full bg-info/30" />
-        <span className="absolute -left-1.5 bottom-4 size-1.5 rounded-full bg-primary/20" />
-      </div>
-      <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-info/75">
-        {t('historyEmptyKicker')}
-      </p>
-      <h3 className="mt-2 text-[15px] font-semibold tracking-[-0.03em] text-foreground">
+      <Image
+        src="/brand/mimirq-history-archive.png"
+        alt=""
+        aria-hidden="true"
+        width={64}
+        height={64}
+        loading="eager"
+        className="mx-auto mb-1 size-16 object-contain"
+      />
+      <h3 className="text-sm font-semibold tracking-[-0.025em] text-foreground">
         {t('noConversationRecords')}
       </h3>
-      <p className="mx-auto mt-2 max-w-[14rem] text-[12px] leading-5 text-muted-foreground/75">
+      <p className="mx-auto mt-1.5 max-w-[13rem] text-[11px] leading-[1.125rem] text-muted-foreground/70">
         {t('historyEmptyDescription')}
       </p>
-
-      <Button
-        asChild
-        size="sm"
-        className="mt-5 h-9 rounded-full bg-foreground px-4 text-[12px] font-semibold text-background hover:bg-foreground/92"
-      >
-        <Link href="/">
-          <Plus className="size-3.5" />
-          {t('startNewConversation')}
-        </Link>
-      </Button>
     </div>
   )
 }
@@ -1021,17 +979,17 @@ export function ConversationItem({
         whileHover={{ scale: 1.01, y: -0.5 }}
         whileTap={{ scale: 0.99 }}
         className={cn(
-          'w-full flex flex-col gap-0.5 px-3 py-1.5 text-left transition-all duration-200 rounded-xl relative overflow-hidden border border-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
+          'relative flex w-full flex-col gap-0.5 overflow-hidden rounded-md border border-transparent px-3 py-1.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
           isSelected 
-            ? 'bg-primary/10 text-primary border-primary/10 shadow-[0_2px_12px_-3px_rgba(var(--primary),0.1)]' 
-            : 'bg-transparent text-foreground/80 hover:bg-muted/60 hover:text-foreground'
+            ? 'border-primary/20 bg-primary/[0.08] text-foreground'
+            : 'bg-transparent text-foreground/80 hover:bg-muted/40 hover:text-foreground'
         )}
       >
         {/* 选中时的左侧指示条 */}
         {isSelected && (
           <motion.div 
             layoutId="active-indicator"
-            className="absolute left-0 top-3 bottom-3 w-1 bg-primary rounded-r-full shadow-[0_0_8px_rgba(var(--primary),0.3)]" 
+            className="absolute bottom-3 left-0 top-3 w-px bg-primary/50"
           />
         )}
 
@@ -1068,7 +1026,7 @@ export function ConversationItem({
             <IconButton
               label={t('confirmDeleteConversation')}
               variant="ghost"
-              className="size-8 text-destructive hover:bg-destructive/10 active:bg-destructive/20 rounded-full transition-all border border-transparent hover:border-destructive/10"
+              className="size-8 rounded-md border border-transparent text-destructive transition-all hover:border-destructive/10 hover:bg-destructive/10 active:bg-destructive/20"
               onClick={(e) => { e.stopPropagation(); onConfirmDelete() }}
             >
               <Trash2 className="size-4" />
@@ -1076,7 +1034,7 @@ export function ConversationItem({
             <IconButton
               label={t('cancelDelete')}
               variant="ghost"
-              className="size-8 text-muted-foreground/40 hover:text-foreground hover:bg-muted/80 active:bg-muted rounded-full transition-all"
+              className="size-8 rounded-md text-muted-foreground/40 transition-all hover:bg-muted hover:text-foreground active:bg-muted"
               onClick={(e) => { e.stopPropagation(); onCancelDelete() }}
             >
               <X className="size-4" />
@@ -1087,7 +1045,7 @@ export function ConversationItem({
             <IconButton
               label={t('deleteConversation')}
               variant="ghost"
-              className="size-8 text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 active:bg-destructive/20 rounded-full transition-all"
+              className="size-8 rounded-md text-muted-foreground/30 transition-all hover:bg-destructive/10 hover:text-destructive active:bg-destructive/20"
               onClick={(e) => { e.stopPropagation(); onDelete() }}
             >
               <Trash2 className="size-4" />
@@ -1187,13 +1145,13 @@ function HistoryMessageRoleBadge({
   return (
     <div
       className={cn(
-        'inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-semibold shadow-sm',
+        'inline-flex items-center gap-2 rounded-md border px-2.5 py-1 text-[11px] font-semibold',
         isUser
           ? 'border-primary/15 bg-primary/10 text-primary'
-          : 'border-border/60 bg-background/90 text-foreground/80'
+          : 'border-foreground/10 bg-background text-foreground/80'
       )}
     >
-      <span className={cn('h-1.5 w-1.5 rounded-full', isUser ? 'bg-primary' : 'bg-info')} />
+      <span className={cn('h-1.5 w-1.5 rounded-sm', isUser ? 'bg-primary' : 'bg-info')} />
       <span>{isUser ? t('speakerQuestion') : t('speakerAnswer')}</span>
     </div>
   )
@@ -1211,40 +1169,40 @@ function getConversationGroupTone(
 ) {
   if (group === labels.today) {
     return {
-      chipClass: 'border-success/30 bg-success/10 text-success',
-      countClass: 'bg-success/15 text-success',
-      lineClass: 'bg-success/25',
+      chipClass: 'border-foreground/10 bg-background text-foreground/80',
+      countClass: 'border border-foreground/10 bg-background text-muted-foreground',
+      lineClass: 'bg-foreground/10',
     }
   }
 
   if (group === labels.yesterday) {
     return {
-      chipClass: 'border-info/30 bg-info/10 text-info',
-      countClass: 'bg-info/15 text-info',
-      lineClass: 'bg-info/25',
+      chipClass: 'border-foreground/10 bg-background text-foreground/80',
+      countClass: 'border border-foreground/10 bg-background text-muted-foreground',
+      lineClass: 'bg-foreground/10',
     }
   }
 
   if (group === labels.last7Days) {
     return {
-      chipClass: 'border-destructive/30 bg-destructive/10 text-destructive',
-      countClass: 'bg-destructive/15 text-destructive',
-      lineClass: 'bg-destructive/25',
+      chipClass: 'border-foreground/10 bg-background text-foreground/80',
+      countClass: 'border border-foreground/10 bg-background text-muted-foreground',
+      lineClass: 'bg-foreground/10',
     }
   }
 
   if (group === labels.last30Days) {
     return {
-      chipClass: 'border-warning/30 bg-warning/10 text-warning',
-      countClass: 'bg-warning/15 text-warning',
-      lineClass: 'bg-warning/25',
+      chipClass: 'border-foreground/10 bg-background text-foreground/80',
+      countClass: 'border border-foreground/10 bg-background text-muted-foreground',
+      lineClass: 'bg-foreground/10',
     }
   }
 
   return {
-    chipClass: 'border-border/60 bg-muted/60 text-muted-foreground dark:bg-muted/10 dark:border-border/20',
-    countClass: 'bg-muted text-muted-foreground dark:bg-muted/20',
-    lineClass: 'bg-border dark:bg-border/20',
+    chipClass: 'border-foreground/10 bg-background text-muted-foreground',
+    countClass: 'border border-foreground/10 bg-background text-muted-foreground',
+    lineClass: 'bg-foreground/10',
   }
 }
 

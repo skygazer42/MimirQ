@@ -13,14 +13,13 @@ import { formatApiError } from '@/lib/api-errors'
 import { readClientStorage } from '@/lib/client-storage'
 import { cn, detachPromise } from '@/lib/utils'
 
-const SETTINGS_IDENTITY_PANEL_CLASS =
-  'overflow-hidden rounded-[1.25rem] border border-border/60 bg-card/88 shadow-[0_12px_30px_hsl(var(--primary)/0.05)]'
+const SCIM_PANEL_CLASS = 'overflow-hidden rounded-xl border border-foreground/10 bg-background shadow-none'
 const SETTINGS_IDENTITY_LABEL_CLASS =
   'text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground'
 const SETTINGS_IDENTITY_INPUT_CLASS =
   'h-9 rounded-xl border-border/60 bg-background/76 font-mono text-[12px] shadow-none transition-colors focus-visible:border-primary/35 focus-visible:ring-2 focus-visible:ring-primary/10'
 const SETTINGS_IDENTITY_ICON_CLASS =
-  'relative flex size-9 shrink-0 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-inner'
+  'flex size-9 shrink-0 items-center justify-center rounded-lg border border-foreground/10 bg-muted/18 text-primary'
 const SETTINGS_IDENTITY_META_CLASS =
   'rounded-full border border-border/60 bg-muted/42 px-2 py-0.5 text-[10px] font-medium text-muted-foreground'
 
@@ -57,12 +56,11 @@ export function ScimProvisioningPanel() {
   return (
     <Panel
       padding="sm"
-      className={SETTINGS_IDENTITY_PANEL_CLASS}
+      className={SCIM_PANEL_CLASS}
     >
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex items-start gap-3">
           <div className={SETTINGS_IDENTITY_ICON_CLASS}>
-            <span className="absolute inset-1 rounded-xl bg-primary/5" />
             <Users className="h-4 w-4" />
           </div>
           <div>
@@ -89,7 +87,7 @@ export function ScimProvisioningPanel() {
             </div>
           </div>
         </div>
-        <div className="flex min-h-7 items-center gap-2 rounded-full border border-border/60 bg-muted/35 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+        <div className="flex min-h-7 items-center gap-2 rounded-full border border-border/60 bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
           {busy ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
           ) : (
@@ -104,7 +102,7 @@ export function ScimProvisioningPanel() {
         </div>
       </div>
 
-      <div className="mt-3 rounded-2xl border border-border/55 bg-muted/22 p-3">
+      <div className="mt-3 rounded-xl border border-foreground/10 bg-muted/15 p-3">
         <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_minmax(260px,1.4fr)_auto] lg:items-end">
           <Field
             label="租户 ID"
@@ -184,7 +182,7 @@ function ActionButton({
   return (
     <Button
       variant="outline"
-      className="h-9 gap-1.5 rounded-full border-primary/20 bg-primary/10 px-3 text-[12px] font-semibold text-primary shadow-none transition-colors hover:border-primary/35 hover:bg-primary/15 disabled:border-border/60 disabled:bg-muted/50 disabled:text-muted-foreground"
+      className="h-9 gap-1.5 rounded-lg border-border/70 bg-background px-3 text-[12px] font-semibold text-foreground shadow-none transition-colors hover:bg-muted/18 hover:text-primary disabled:border-border/60 disabled:bg-muted/50 disabled:text-muted-foreground"
       disabled={disabled}
       onClick={() => detachPromise(onClick())}
     >

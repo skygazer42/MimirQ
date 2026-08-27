@@ -54,10 +54,9 @@ const FILTER_LABELS: Record<string, string> = {
   since: '开始时间',
   until: '结束时间',
 }
-const AUDIT_RETENTION_PANEL_CLASS =
-  'mt-3 overflow-hidden rounded-[1.1rem] border border-border/60 bg-card/84 shadow-[0_10px_28px_hsl(var(--primary)/0.045)]'
+const AUDIT_RETENTION_PANEL_CLASS = 'mt-3 overflow-hidden rounded-xl border border-foreground/10 bg-background shadow-none'
 const AUDIT_RETENTION_HEADER_CLASS =
-  'flex flex-col gap-3 border-b border-border/50 bg-[linear-gradient(90deg,hsl(var(--card)/0.9),hsl(var(--primary)/0.04),hsl(var(--card)/0.9))] px-4 py-3 lg:flex-row lg:items-center lg:justify-between'
+  'flex flex-col gap-3 border-b border-foreground/10 bg-muted/18 px-4 py-3 lg:flex-row lg:items-center lg:justify-between'
 const AUDIT_RETENTION_PILL_CLASS =
   'rounded-full border border-border/60 bg-background/72 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground'
 
@@ -211,7 +210,7 @@ export function AuditRetentionPanel({
           <span className={AUDIT_RETENTION_PILL_CLASS}>
             当前结果 {typeof total === 'number' ? total : '-'} 条
           </span>
-          <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">
+          <span className="rounded-full border border-border/60 bg-background px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
             筛选 {filterCount} 项
           </span>
         </div>
@@ -299,7 +298,7 @@ export function AuditRetentionPanel({
           <Button
             size="sm"
             variant="outline"
-            className="h-9 gap-2 rounded-full border-primary/20 bg-primary/10 px-3 text-[11px] font-semibold text-primary hover:bg-primary/15 hover:text-primary"
+            className="h-9 gap-2 rounded-lg border-border/70 bg-background px-3 text-[11px] font-semibold text-foreground hover:bg-muted/18 hover:text-primary"
             disabled={Boolean(busy)}
             onClick={() => detachPromise(exportLogs())}
           >
@@ -337,11 +336,11 @@ export function AuditRetentionPanel({
       </div>
 
       {purgeScope === 'filtered' && hasFilterScope && (
-        <div className="mx-4 mb-3 flex flex-wrap gap-1.5 rounded-xl border border-primary/20 bg-primary/[0.07] p-2">
+        <div className="mx-4 mb-3 flex flex-wrap gap-1.5 rounded-xl border border-foreground/10 bg-muted/15 p-2">
           {filterEntries.map(([key, value]) => (
             <span
               key={key}
-              className="rounded-full border border-primary/20 bg-card/80 px-2 py-1 font-mono text-[10px] font-semibold text-primary"
+              className="rounded-full border border-border/60 bg-background px-2 py-1 font-mono text-[10px] font-semibold text-foreground"
             >
               {FILTER_LABELS[key] || key}: {String(value)}
             </span>
@@ -390,15 +389,15 @@ function SegmentButton({
       type="button"
       aria-pressed={active}
       className={cn(
-        'h-8 rounded-lg px-3 text-[11px] font-semibold transition-colors',
+        'h-8 rounded-lg border px-3 text-[11px] font-semibold transition-colors',
         active &&
           tone === 'primary' &&
-          'bg-primary text-primary-foreground shadow-sm shadow-[0_10px_22px_hsl(var(--primary)/0.16)]',
+          'border-primary/25 bg-primary/10 text-primary',
         active &&
           tone === 'danger' &&
-          'bg-destructive text-destructive-foreground shadow-sm shadow-[0_10px_22px_hsl(var(--destructive)/0.16)]',
+          'border-destructive/25 bg-destructive/10 text-destructive',
         !active &&
-          'bg-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground'
+          'border-transparent bg-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground'
       )}
       onClick={onClick}
     >
@@ -451,7 +450,7 @@ function PurgeButton({
     <Button
       size="sm"
       variant="outline"
-      className="h-9 gap-2 rounded-full border-destructive/20 bg-destructive/10 px-3 text-[11px] font-semibold text-destructive hover:bg-destructive/15 hover:text-destructive disabled:bg-muted disabled:text-muted-foreground"
+      className="h-9 gap-2 rounded-lg border-destructive/20 bg-background px-3 text-[11px] font-semibold text-destructive hover:bg-destructive/10 hover:text-destructive disabled:bg-muted disabled:text-muted-foreground"
       disabled={disabled}
       onClick={onClick}
     >

@@ -35,8 +35,8 @@ export function DangerZonePanel({
       className={cn(
         'group rounded-xl p-0',
         isNeutral
-          ? 'border border-border/70 bg-card/70 shadow-[0_8px_24px_hsl(var(--foreground)/0.04)]'
-          : 'border border-destructive/20 bg-destructive/[0.035] shadow-[0_8px_24px_hsl(var(--destructive)/0.035)]',
+          ? 'border border-foreground/10 bg-background shadow-none'
+          : 'border border-destructive/20 bg-background shadow-none',
         className
       )}
     >
@@ -51,8 +51,8 @@ export function DangerZonePanel({
             className={cn(
               'shrink-0 items-center justify-center rounded-lg',
               isNeutral
-                ? 'border border-primary/20 bg-primary/10 text-primary'
-                : 'border border-destructive/20 bg-destructive/10 text-destructive',
+                ? 'border border-foreground/10 bg-muted/18 text-primary'
+                : 'border border-destructive/20 bg-destructive/[0.08] text-destructive',
               compact ? 'mt-0 flex size-6' : 'mt-0.5 flex size-7'
             )}
           >
@@ -84,8 +84,8 @@ export function DangerZonePanel({
         className={cn(
           'px-3 pb-3 pt-3',
           isNeutral
-            ? 'border-t border-border/60 bg-background/55'
-            : 'border-t border-destructive/10 bg-background/55'
+            ? 'border-t border-foreground/10 bg-muted/15'
+            : 'border-t border-destructive/10 bg-muted/15'
         )}
       >
         {children}

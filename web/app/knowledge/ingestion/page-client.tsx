@@ -10,7 +10,6 @@ import {
 import { useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Activity,
   CheckCircle2,
   CircleDashed,
   ChevronRight,
@@ -18,13 +17,11 @@ import {
   Clock3,
   FileDigit,
   FileCheck2,
-  FileSearch,
   Gauge,
   Radar,
   RefreshCcw,
   ShieldAlert,
   ShieldCheck,
-  Workflow,
 } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import type { EChartsOption } from 'echarts'
@@ -67,7 +64,6 @@ import {
   buildThroughputAreaRows,
   computeDocsPerMinute,
   computeDurationPercentiles,
-  computeMegabytesPerSecond,
   matchesReasonFilter,
 } from '@/components/ingestion/monitor-utils'
 
@@ -131,9 +127,9 @@ const PRECHECK_SAMPLE_NUMERATOR = 3
 const PRECHECK_SAMPLE_DENOMINATOR = 1000
 const PRECHECK_SAMPLE_MAX = 2000
 const INGESTION_BACKGROUND_CLASS =
-  'bg-background bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.10),transparent_34rem)] dark:bg-background'
+  'bg-background bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.05),transparent_30rem)] dark:bg-background'
 const INGESTION_HERO_PANEL_CLASS =
-  'relative overflow-hidden rounded-[28px] border border-info/30 bg-[linear-gradient(135deg,hsl(var(--card)/0.92),hsl(var(--info)/0.10)_45%,hsl(var(--background)/0.82))] shadow-[0_24px_70px_-48px_hsl(var(--info)/0.55)] backdrop-blur-2xl'
+  'relative overflow-hidden border-b border-border/60 bg-transparent shadow-none dark:border-border/70'
 
 const EMPTY_INGESTION_SUMMARY: IngestionDashboardSummaryResponse = {
   window_hours: 0,
@@ -463,39 +459,6 @@ export default function KnowledgeIngestionPageClient() {
     ),
     [throughputRows]
   )
-  const megabytesPerSecond = useMemo(
-    () => computeMegabytesPerSecond(executionDocuments),
-    [executionDocuments]
-  )
-  const recentThroughputDetail = useMemo(() => {
-    if (throughputRowsSource === 'documents') {
-      return '按文档更新时间聚合'
-    }
-
-    const recentBuckets = throughputRows
-      .filter((row) => row.ts > 0)
-      .slice(-5)
-
-    if (recentBuckets.length >= 2) {
-      const first = recentBuckets[0]?.ts ?? 0
-      const last = recentBuckets.at(-1)?.ts ?? 0
-      const spanMinutes = Math.round((last - first) / 60_000)
-
-      if (spanMinutes >= 60) {
-        return `最近 ${Math.max(1, Math.round(spanMinutes / 60))} 小时桶均值`
-      }
-      if (spanMinutes > 0) {
-        return `最近 ${spanMinutes} 分钟桶均值`
-      }
-    }
-
-    return '后端时间桶均值'
-  }, [throughputRows, throughputRowsSource])
-  const throughputTrendWindowLabel = useMemo(() => {
-    if (throughputRowsSource === 'documents') return '文档历史时序'
-    const hours = Number(summary.window_hours || 0)
-    return hours > 0 ? `近 ${hours} 小时` : '后端时间窗'
-  }, [summary.window_hours, throughputRowsSource])
   const durationPercentiles = useMemo(
     () => computeDurationPercentiles(executionDocuments),
     [executionDocuments]
@@ -636,111 +599,6 @@ export default function KnowledgeIngestionPageClient() {
     const value = durationPercentiles.p50 || durationPercentiles.p90 || 0
     return value ? `${value.toFixed(1)} min / 文件` : '-- / 文件'
   }, [durationPercentiles.p50, durationPercentiles.p90])
-
-  const executionProcessingMode = useMemo(() => {
-    if (demoMode) {
-      return {
-        value: '演示运行',
-        detail: 'Demo 运行态',
-        tone: 'text-info',
-      }
-    }
-
-    if (!taskQueueSnapshot) {
-      return {
-        value: '观测中',
-        detail: taskQueueStatusLabel,
-        tone: 'text-muted-foreground',
-      }
-    }
-
-    if (!taskQueueSnapshot.enabled) {
-      return {
-        value: '直连处理',
-        detail: '队列未启用',
-        tone: 'text-warning',
-      }
-    }
-
-    if (!taskQueueSnapshot.broker_up) {
-      return {
-        value: '队列异常',
-        detail: taskQueueSnapshot.error || 'Broker 异常',
-        tone: 'text-rose',
-      }
-    }
-
-    const queueDepth =
-      taskQueueSnapshot.queue_depth == null
-        ? '--'
-        : `${taskQueueSnapshot.queue_depth}`
-    const workersActive =
-      taskQueueSnapshot.workers_active == null
-        ? '--'
-        : `${taskQueueSnapshot.workers_active}`
-
-    return {
-      value: '异步队列',
-      detail: `深度 ${queueDepth} · Worker ${workersActive}`,
-      tone: 'text-success',
-    }
-  }, [
-    demoMode,
-    taskQueueSnapshot,
-    taskQueueStatusLabel,
-  ])
-
-  const executionCharacterFootprint = useMemo(() => {
-    const totalCharacters = executionDocuments.reduce(
-      (sum, document) => sum + Number(document.total_characters || 0),
-      0
-    )
-    if (totalCharacters > 0) {
-      return `${totalCharacters.toLocaleString('zh-CN')} 字符`
-    }
-    if (executionDocuments.length > 0) return '字数待统计'
-    return '暂无字数'
-  }, [executionDocuments])
-
-  const executionRunStateCards = useMemo(
-    () => [
-      {
-        label: '监控范围',
-        value: selectedDatasetLabel,
-        suffix: '',
-        icon: FileSearch,
-        tone: 'text-info',
-        detail: `${selectedDatasetId ? '当前数据集' : '跨数据集'} · ${executionCharacterFootprint}`,
-      },
-      {
-        label: '处理模式',
-        value: executionProcessingMode.value,
-        suffix: '',
-        icon: Workflow,
-        tone: executionProcessingMode.tone,
-        detail: executionProcessingMode.detail,
-      },
-      {
-        label: '当前吞吐',
-        value: `${docsPerMinute?.toFixed(1) ?? '0.0'} docs/min`,
-        suffix: '',
-        icon: Activity,
-        tone: 'text-accent',
-        detail: `${recentThroughputDetail} · ${megabytesPerSecond?.toFixed(2) ?? '0.00'} MB/s`,
-      },
-    ],
-    [
-      docsPerMinute,
-      executionCharacterFootprint,
-      executionProcessingMode.detail,
-      executionProcessingMode.tone,
-      executionProcessingMode.value,
-      megabytesPerSecond,
-      recentThroughputDetail,
-      selectedDatasetId,
-      selectedDatasetLabel,
-    ]
-  )
 
   const executionFileTypeDistributionRows = useMemo(() => {
     const palette = [
@@ -946,12 +804,12 @@ export default function KnowledgeIngestionPageClient() {
       waiting: number
       failed?: number
     }) => {
-      if (!total) return { label: '未开始', tone: 'bg-muted', cardTone: 'border-border bg-background/75' }
-      if (failed > 0) return { label: '有失败', tone: 'bg-rose', cardTone: 'border-rose/25 bg-rose/[0.04]' }
-      if (running > 0) return { label: '进行中', tone: 'bg-info', cardTone: 'border-info/28 bg-info/[0.04]' }
-      if (done >= total && waiting <= 0) return { label: '已完成', tone: 'bg-success', cardTone: 'border-success/28 bg-success/[0.04]' }
-      if (waiting > 0) return { label: '等待中', tone: 'bg-warning', cardTone: 'border-warning/24 bg-warning/[0.04]' }
-      return { label: '未开始', tone: 'bg-muted', cardTone: 'border-border bg-background/75' }
+      if (!total) return { label: '未开始', tone: 'bg-muted' }
+      if (failed > 0) return { label: '有失败', tone: 'bg-rose' }
+      if (running > 0) return { label: '进行中', tone: 'bg-info' }
+      if (done >= total && waiting <= 0) return { label: '已完成', tone: 'bg-success' }
+      if (waiting > 0) return { label: '等待中', tone: 'bg-warning' }
+      return { label: '未开始', tone: 'bg-muted' }
     }
 
     const parserStatus = resolveStatus({
@@ -1000,12 +858,11 @@ export default function KnowledgeIngestionPageClient() {
       overallProgress,
       cards: [
         {
-          key: 'parser',
-          label: 'Parser',
+          key: 'parser' as const,
+          label: '解析',
           progress: parserProgress,
           statusLabel: parserStatus.label,
           statusTone: parserStatus.tone,
-          tone: parserStatus.cardTone,
           metrics: [
             ['完成文档', `${parserDone}`],
             ['失败', `${parserFailures}`],
@@ -1013,12 +870,11 @@ export default function KnowledgeIngestionPageClient() {
           ],
         },
         {
-          key: 'chunker',
-          label: 'Chunker',
+          key: 'chunker' as const,
+          label: '切块',
           progress: chunkerProgress,
           statusLabel: chunkerStatus.label,
           statusTone: chunkerStatus.tone,
-          tone: chunkerStatus.cardTone,
           metrics: [
             ['完成文档', `${chunkerDone}`],
             ['分块数', totalChunks ? `${totalChunks}` : '预估'],
@@ -1026,12 +882,11 @@ export default function KnowledgeIngestionPageClient() {
           ],
         },
         {
-          key: 'governance',
-          label: 'Governance',
+          key: 'governance' as const,
+          label: '治理',
           progress: governanceProgress,
           statusLabel: governanceStatus.label,
           statusTone: governanceStatus.tone,
-          tone: governanceStatus.cardTone,
           metrics: [
             ['自动通过', `${governanceDone}`],
             ['待复核', `${governanceQueue}`],
@@ -1039,16 +894,15 @@ export default function KnowledgeIngestionPageClient() {
           ],
         },
         {
-          key: 'export',
-          label: '导出',
+          key: 'export' as const,
+          label: '索引',
           progress: exportProgress,
           statusLabel: exportStatus.label,
           statusTone: exportStatus.tone,
-          tone: exportStatus.cardTone,
           metrics: [
-            ['可导出', `${exportReady}`],
+            ['可入索引', `${exportReady}`],
             ['待同步', `${exportWaiting}`],
-            ['模式', selectedDatasetId ? '单数据集' : '跨数据集'],
+            ['范围', selectedDatasetId ? '单库' : '跨库'],
           ],
         },
       ],
@@ -1066,7 +920,6 @@ export default function KnowledgeIngestionPageClient() {
 
   const executionKpiCards = useMemo(
     () => [
-      ...executionRunStateCards,
       {
         label: '平均处理耗时',
         value: executionAverageDuration.replace(' / 文件', ''),
@@ -1102,7 +955,6 @@ export default function KnowledgeIngestionPageClient() {
     ],
     [
       executionAverageDuration,
-      executionRunStateCards,
       executionOcrUsageRate,
       executionProcessedTotal,
       executionRetryRate,
@@ -1226,6 +1078,7 @@ export default function KnowledgeIngestionPageClient() {
 
   const predictionOption = useMemo<EChartsOption>(() => {
     const actualSeries = throughputRows.map((row) => [row.ts, row.total])
+    const hasActualSeries = actualSeries.length > 0
     const lastActualPoint = actualSeries.at(-1)
     const forecastSeries = lastActualPoint
       ? [
@@ -1247,21 +1100,35 @@ export default function KnowledgeIngestionPageClient() {
         top: 24,
         bottom: 28,
       },
-      xAxis: {
-        type: 'time',
-        axisLabel: {
-          color: '#64748b',
-          formatter: (value: number) =>
-            throughputRowsSource === 'documents'
-              ? formatMonthDayLabel(Number(value))
-              : formatClockLabel(Number(value)),
-        },
-        axisLine: {
-          lineStyle: { color: 'rgba(100,116,139,0.35)' },
-        },
-      },
+      xAxis: hasActualSeries
+        ? {
+            type: 'time',
+            axisLabel: {
+              color: '#64748b',
+              formatter: (value: number) =>
+                throughputRowsSource === 'documents'
+                  ? formatMonthDayLabel(Number(value))
+                  : formatClockLabel(Number(value)),
+            },
+            axisLine: {
+              lineStyle: { color: 'rgba(100,116,139,0.35)' },
+            },
+          }
+        : {
+            type: 'category',
+            boundaryGap: false,
+            data: ['-60m', '-45m', '-30m', '-15m', '现在'],
+            axisLabel: { color: '#64748b', fontSize: 9 },
+            axisLine: {
+              lineStyle: { color: 'rgba(100,116,139,0.35)' },
+            },
+            axisTick: { show: false },
+          },
       yAxis: {
         type: 'value',
+        min: 0,
+        max: hasActualSeries ? undefined : 4,
+        interval: hasActualSeries ? undefined : 1,
         axisLabel: { color: '#64748b' },
         splitLine: {
           lineStyle: { color: 'rgba(148,163,184,0.18)' },
@@ -1275,12 +1142,19 @@ export default function KnowledgeIngestionPageClient() {
               : '当前处理效率',
           type: 'line',
           smooth: true,
-          showSymbol: false,
-          lineStyle: { color: '#0f766e', width: 2.5 },
-          areaStyle: {
-            color: 'rgba(15,118,110,0.14)',
+          showSymbol: !hasActualSeries,
+          symbolSize: hasActualSeries ? 0 : 4,
+          lineStyle: {
+            color: '#0284c7',
+            opacity: hasActualSeries ? 1 : 0.42,
+            width: hasActualSeries ? 2.5 : 1.5,
           },
-          data: actualSeries,
+          areaStyle: {
+            color: hasActualSeries
+              ? 'rgba(2,132,199,0.14)'
+              : 'rgba(2,132,199,0.035)',
+          },
+          data: hasActualSeries ? actualSeries : [0, 0, 0, 0, 0],
         },
         {
           name: '预测',
@@ -1371,7 +1245,7 @@ export default function KnowledgeIngestionPageClient() {
           splitLine: { lineStyle: { color: 'rgba(148,163,184,0.22)' } },
           splitArea: {
             areaStyle: {
-              color: ['rgba(248,250,252,0.82)', 'rgba(241,245,249,0.46)'],
+              color: ['rgba(148,163,184,0.08)', 'rgba(148,163,184,0.025)'],
             },
           },
           indicator: [
@@ -1628,7 +1502,7 @@ export default function KnowledgeIngestionPageClient() {
               value: item.score,
             })),
             label: {
-              color: '#0f172a',
+              color: '#64748b',
               fontSize: 10,
               formatter: (params: { dataIndex: number }) =>
                 executionBatchAnalysis.distributionBars[params.dataIndex]?.value ?? '',
@@ -1965,7 +1839,7 @@ export default function KnowledgeIngestionPageClient() {
         splitLine: { lineStyle: { color: 'rgba(148,163,184,0.22)' } },
         splitArea: {
           areaStyle: {
-            color: ['rgba(248,250,252,0.82)', 'rgba(241,245,249,0.48)'],
+            color: ['rgba(148,163,184,0.08)', 'rgba(148,163,184,0.025)'],
           },
         },
       },
@@ -2279,8 +2153,6 @@ export default function KnowledgeIngestionPageClient() {
     executionTaskRows.length === 0
   const showDesktopAuditRail =
     mode === 'execution-monitor' && !showEmptyState && !desktopScopeCollapsed
-  const showDesktopAuditRailToggle =
-    mode === 'execution-monitor' && !showEmptyState
   const headerAnimation = getHeaderAnimation({
     headerCollapsed,
     mode,
@@ -2297,7 +2169,7 @@ export default function KnowledgeIngestionPageClient() {
       data-page-scroll-container="true"
       className={cn(
         'flex-1 h-full min-h-0 overflow-y-auto overscroll-contain no-scrollbar scroll-fade-bottom text-foreground',
-        INGESTION_BACKGROUND_CLASS
+        mode === 'execution-monitor' ? 'bg-info/[0.025] dark:bg-background' : INGESTION_BACKGROUND_CLASS
       )}
     >
       <DropZone
@@ -2314,8 +2186,10 @@ export default function KnowledgeIngestionPageClient() {
 
       <div
         className={cn(
-          'flex w-full max-w-none gap-0 px-3 pt-3 md:px-5 lg:px-6 xl:px-7 2xl:px-8',
-          mode === 'sales-audit' ? 'pb-2' : 'pb-8'
+          'flex w-full max-w-none gap-0',
+          mode === 'sales-audit'
+            ? 'px-3 pb-2 pt-3 md:px-5 lg:px-6 xl:px-7 2xl:px-8'
+            : 'px-2 pb-5 pt-1.5 md:px-3'
         )}
       >
         <div
@@ -2329,13 +2203,11 @@ export default function KnowledgeIngestionPageClient() {
             auditRailCounts={auditRailCounts}
             datasetScope={datasetScope}
             datasets={datasets}
-            desktopScopeCollapsed={desktopScopeCollapsed}
             resolvedSampleDispositions={resolvedSampleDispositions}
             scopeLabel={selectedDatasetId ? '单库' : '全部'}
             selectedAuditIds={selectedAuditIds}
             selectedReason={selectedReason}
             showDesktopAuditRail={showDesktopAuditRail}
-            showDesktopAuditRailToggle={showDesktopAuditRailToggle}
             visibleAuditSamples={visibleAuditSamples}
             onClearSelectedReason={() => setSelectedReason(null)}
             onDatasetScopeChange={handleDatasetScopeChange}
@@ -2344,13 +2216,10 @@ export default function KnowledgeIngestionPageClient() {
             onSelectAudit={handleSelectAudit}
             onSetAuditDispositionFilter={setAuditDispositionFilter}
             onSetDesktopScopeCollapsed={setDesktopScopeCollapsed}
-            onToggleDesktopScope={() =>
-              setDesktopScopeCollapsed((previous) => !previous)
-            }
           />
 
           <div className="min-w-0 flex-1">
-            <div className="sticky top-3 z-30">
+            <div className={cn(mode === 'execution-monitor' ? 'relative z-20' : 'sticky top-3 z-30')}>
               <motion.div
                 className={cn(
                   'relative overflow-hidden',
@@ -2360,19 +2229,12 @@ export default function KnowledgeIngestionPageClient() {
                 transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
               >
                 <div
-                  className="pointer-events-none absolute inset-y-3 left-0 w-1 rounded-r-full bg-[linear-gradient(180deg,hsl(var(--info)),hsl(var(--primary)))]"
-                  aria-hidden="true"
-                />
-                <div
-                  className="pointer-events-none absolute -right-10 -top-14 size-44 rounded-full bg-info/30 blur-3xl"
-                  aria-hidden="true"
-                />
-                <div
-                  className="pointer-events-none absolute bottom-0 left-8 right-8 h-px bg-[linear-gradient(90deg,transparent,hsl(var(--info)/0.38),transparent)]"
+                  className="pointer-events-none absolute -bottom-px left-1 h-px w-12 bg-info/70"
                   aria-hidden="true"
                 />
                 <IngestionHeroPanel
                   demoMode={demoMode}
+                  desktopScopeCollapsed={desktopScopeCollapsed}
                   headerBodyVisibilityClass={getHeaderBodyVisibilityClass(
                     mode,
                     headerCollapsed
@@ -2384,6 +2246,9 @@ export default function KnowledgeIngestionPageClient() {
                   }
                   salesAuditPocSampleLabel={salesAuditPocSampleLabel}
                   selectedDatasetLabel={selectedDatasetLabel}
+                  showDesktopScopeControl={
+                    mode === 'execution-monitor' && !showEmptyState
+                  }
                   showSalesPolicyBadge={showSalesPolicyBadge}
                   summaryStripClassName={SALES_SUMMARY_STRIP_CLASS}
                   taskQueueStatusLabel={taskQueueStatusLabel}
@@ -2391,6 +2256,9 @@ export default function KnowledgeIngestionPageClient() {
                   onDownloadReport={handleDownloadReport}
                   onExitDemoMode={handleExitDemoMode}
                   onExportSalesAuditReport={handleExportSalesAuditReport}
+                  onToggleDesktopScope={() =>
+                    setDesktopScopeCollapsed((previous) => !previous)
+                  }
                   onUploadFormalIngest={handleUploadFormalIngest}
                   onUploadSampleAssessment={handleUploadSampleAssessment}
                 />
@@ -2403,7 +2271,7 @@ export default function KnowledgeIngestionPageClient() {
               advisories={salesAuditEmbeddingAdvisories}
             />
 
-            <div className={cn(mode === 'sales-audit' ? 'mt-5' : 'mt-2.5')}>
+            <div className={cn(mode === 'sales-audit' ? 'mt-5' : 'mt-1.5')}>
               {mode === 'sales-audit' && showEmptyState && (
                   <EmptyState
                     mode="truly-empty"
@@ -2467,9 +2335,16 @@ export default function KnowledgeIngestionPageClient() {
                       executionBatchAnalysis={executionBatchAnalysis}
                       executionDocuments={executionDocuments}
                       executionKpiCards={executionKpiCards}
+                      executionOverallProgress={executionOverallProgress}
+                      executionPipelineCards={executionPipelineCards}
+                      executionPipelineEstimateLabel={executionPipelineState.estimateLabel}
+                      executionPipelineWarning={
+                        taskQueueSnapshot?.enabled && !taskQueueSnapshot.broker_up
+                          ? taskQueueSnapshot.error || 'Broker 异常'
+                          : null
+                      }
                       executionProcessedTotal={executionProcessedTotal}
                       executionRecentLogs={executionRecentLogs}
-                      executionRunStateCards={executionRunStateCards}
                       executionSuccessRate={executionSuccessRate}
                       executionTaskPage={executionTaskPage}
                       executionTaskPageCount={executionTaskPageCount}
@@ -2521,5 +2396,4 @@ export default function KnowledgeIngestionPageClient() {
  h-9 rounded-xl
  rounded-[1.6rem]
  p-3.5 md:p-4
- showDesktopAuditRailToggle ? 'lg:flex' : 'lg:hidden'
  */

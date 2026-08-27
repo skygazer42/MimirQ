@@ -71,16 +71,16 @@ const PIE_COLORS = [
 const EMPTY_SCAN_RUNS: DatasetProfileScanRunOut[] = []
 const PROFILE_DOCUMENT_PAGE_SIZE = 50
 const PROFILE_BUCKET_PREVIEW_MAX_CHARS = 360
-const profileHeroCard = 'relative overflow-hidden rounded-2xl border border-border/60 bg-[radial-gradient(circle_at_0%_0%,hsl(var(--info)/0.18),transparent_34%),linear-gradient(135deg,hsl(var(--card)/0.96),hsl(var(--background)/0.92))] p-4 shadow-[0_18px_55px_rgba(15,23,42,0.08)] ring-1 ring-border/50 dark:border-border/60 dark:bg-card dark:ring-white/5'
-const profilePanelClass = 'overflow-hidden border-border/60 bg-[linear-gradient(180deg,hsl(var(--card)/0.98),hsl(var(--background)/0.92))] p-3 shadow-[0_16px_45px_rgba(15,23,42,0.07)] ring-1 ring-border/50 dark:border-border/60 dark:bg-card/95 dark:ring-white/5'
+const profileHeroCard = 'relative overflow-hidden border-b border-border/60 bg-transparent px-1 py-2 shadow-none dark:border-border/70'
+const profilePanelClass = 'overflow-hidden border border-border/60 bg-card p-3 shadow-none dark:border-border/70 dark:bg-card'
 const profileChartProps = { className: 'h-[176px]', minHeight: 176 } as const
 const profileEmptyChartClass = 'h-[176px] flex items-center justify-center text-[11px] text-muted-foreground/60'
 const profileSectionTitleClass = 'text-[13px] font-semibold leading-none text-foreground/85'
 const profileSectionCaptionClass = 'mt-1 text-[11px] leading-4 text-muted-foreground/62'
-const profileToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-2xl border border-border/60 bg-card/70 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.055)] ring-1 ring-border/50 backdrop-blur dark:border-border/60 dark:bg-card/70 dark:ring-white/5'
+const profileToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-lg border border-border/60 bg-card p-1 shadow-none dark:border-border/70 dark:bg-card'
 const profileToolbarButtonClass = 'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-muted-foreground shadow-none hover:bg-card/95 hover:text-foreground hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
-const profileToolbarExportButtonClass = 'h-8 gap-1.5 rounded-xl border-border/60 bg-card/75 px-2.5 text-[12px] font-medium text-foreground/85 shadow-[0_8px_20px_rgba(15,23,42,0.045)] hover:bg-card/95 hover:text-foreground dark:border-border/60 dark:bg-card/70 dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
-const profileToolbarPrimaryButtonClass = 'h-8 gap-1.5 rounded-xl bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] px-3 text-[12px] font-semibold text-primary-foreground shadow-[0_10px_24px_hsl(var(--info)/0.24)] hover:bg-[linear-gradient(90deg,hsl(var(--primary)/0.92),hsl(var(--info)/0.92))] [&_svg]:size-3.5'
+const profileToolbarExportButtonClass = 'h-8 gap-1.5 rounded-md border border-border/60 bg-card px-2.5 text-[12px] font-medium text-foreground/85 shadow-none hover:bg-muted/40 hover:text-foreground dark:border-border/70 dark:bg-card dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
+const profileToolbarPrimaryButtonClass = 'h-8 gap-1.5 rounded-md border border-primary/20 bg-primary px-3 text-[12px] font-semibold text-primary-foreground shadow-none hover:bg-primary/90 dark:border-primary/30 [&_svg]:size-3.5'
 
 function ProfileCardHeader({
   title,
@@ -177,7 +177,7 @@ function ProfileAnchorNav() {
   }, [])
 
   return (
-    <div className="mb-3 flex items-center gap-1 overflow-x-auto rounded-2xl border border-border/60 bg-card/70 p-1.5 shadow-[0_12px_35px_rgba(15,23,42,0.06)] ring-1 ring-border/50 no-scrollbar backdrop-blur dark:border-border/60 dark:bg-card/70 dark:ring-white/5">
+    <div className="mb-3 flex items-center gap-1 overflow-x-auto rounded-lg border border-border/60 bg-card p-1.5 shadow-none no-scrollbar dark:border-border/70 dark:bg-card">
       {PROFILE_SECTIONS.map((sec) => (
         <button
           key={sec.id}
@@ -186,7 +186,7 @@ function ProfileAnchorNav() {
           className={cn(
             'shrink-0 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap',
             activeId === sec.id
-              ? 'bg-info/15 text-info shadow-sm'
+              ? 'bg-info/10 text-info shadow-none'
               : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground dark:text-muted-foreground dark:hover:bg-muted/50 dark:hover:text-foreground',
           )}
         >
@@ -817,27 +817,26 @@ export default function DatasetProfilePage() {
         bodyContainerClassName="h-full min-h-0 overflow-hidden"
         top={
           <div className={profileHeroCard}>
-            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(hsl(var(--info)/0.045)_1px,transparent_1px),linear-gradient(90deg,hsl(var(--info)/0.045)_1px,transparent_1px)] bg-[size:28px_28px]" />
             <div className="relative flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex min-w-0 items-start gap-3.5">
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-info/20 bg-info/5 text-info shadow-inner">
-                  <BarChart3 className="size-5" />
+              <div className="flex min-w-0 items-center gap-2.5">
+                <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-info/10 text-info shadow-none">
+                  <BarChart3 className="size-3.5" />
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="truncate text-[20px] font-medium leading-none tracking-[-0.01em] text-foreground dark:text-foreground">
+                    <h1 className="truncate text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground dark:text-foreground">
                       数据画像
                     </h1>
                     <Badge variant="soft" className="h-5 border-info/30 bg-info/10 px-2 text-[10px] font-medium leading-none text-info">
                       PROFILE
                     </Badge>
                   </div>
-                  <p className="mt-1.5 max-w-4xl text-[13px] leading-tight text-muted-foreground">
+                  <p className="max-w-4xl text-[12px] leading-5 text-muted-foreground">
                     数据集：<span className="font-semibold text-foreground dark:text-foreground">{dataset?.name || datasetId || '未选择'}</span>
                     <span className="mx-2 text-muted-foreground/60">·</span>
                     格式、长度、扫描件、PII、重复与切片指标的质量画像
                   </p>
-                  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] leading-none text-muted-foreground">
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] leading-none text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
                       <Database className="size-3.5 text-info" />
                       文档 <strong className="font-mono text-foreground dark:text-foreground">{summary?.total_documents ?? (isLoading ? '…' : 0)}</strong>

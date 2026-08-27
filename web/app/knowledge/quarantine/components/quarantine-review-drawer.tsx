@@ -57,14 +57,14 @@ export function QuarantineReviewDrawer({
 }: Readonly<QuarantineReviewDrawerProps>) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="left-auto right-0 top-0 h-dvh w-[min(520px,100vw)] max-w-[520px] translate-x-0 translate-y-0 rounded-none p-0 overflow-hidden border-l border-border/60 bg-background/95 shadow-strong backdrop-blur-xl">
+      <DialogContent className="left-auto right-0 top-0 h-dvh w-[min(520px,100vw)] max-w-[520px] translate-x-0 translate-y-0 overflow-hidden rounded-none border-l border-foreground/15 bg-background p-0 shadow-none backdrop-blur-none">
         <DialogHeader className="sr-only">
           <DialogTitle>{selected?.filename || '隔离记录审核'}</DialogTitle>
           <DialogDescription>{selected?.id || ''}</DialogDescription>
         </DialogHeader>
 
         <div className="flex h-full min-h-0 flex-col">
-          <div className="border-b border-border/40 bg-card/30 px-6 py-6 backdrop-blur-sm">
+          <div className="border-b border-foreground/15 bg-background px-6 py-6">
             <div className="flex items-start justify-between gap-3 pr-8">
               <div className="min-w-0">
                 <div className={TYPO_EYEBROW}>Audit Inspection</div>
@@ -100,12 +100,12 @@ export function QuarantineReviewDrawer({
           </div>
 
           {selected ? (
-            <div className="border-t border-border/40 bg-card/50 p-6 backdrop-blur-md">
+            <div className="border-t border-foreground/15 bg-background p-6">
               <div className="flex flex-col gap-4">
                 <div className="grid grid-cols-2 gap-2">
                   <Button
                     size="sm"
-                    className="h-10 rounded-xl bg-warning font-medium text-primary-foreground shadow-sm hover:bg-warning"
+                    className="h-10 rounded-lg bg-warning font-medium text-primary-foreground shadow-none hover:bg-warning"
                     disabled={acting?.id === selected.id}
                     onClick={() => onRelease(selected)}
                   >
@@ -121,7 +121,7 @@ export function QuarantineReviewDrawer({
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-10 rounded-xl border-border/40 bg-background/50 font-medium"
+                    className="h-10 rounded-lg border border-foreground/10 bg-background font-medium shadow-none"
                     disabled={acting?.id === selected.id}
                     onClick={() => onRetry(selected)}
                   >
@@ -140,7 +140,7 @@ export function QuarantineReviewDrawer({
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-9 rounded-xl text-xs font-medium"
+                    className="h-9 rounded-md text-xs font-medium"
                     disabled={acting?.id === selected.id}
                     onClick={() => onTune(selected)}
                   >
@@ -150,7 +150,7 @@ export function QuarantineReviewDrawer({
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-9 rounded-xl text-xs font-medium"
+                    className="h-9 rounded-md text-xs font-medium"
                     disabled={acting?.id === selected.id}
                     onClick={() => onPreview(selected.id)}
                   >
@@ -160,7 +160,7 @@ export function QuarantineReviewDrawer({
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-9 rounded-xl text-xs font-medium"
+                    className="h-9 rounded-md text-xs font-medium"
                     onClick={() => onShowDetails(selected.id)}
                   >
                     <Layers className="mr-1.5 size-3.5" />
@@ -174,7 +174,7 @@ export function QuarantineReviewDrawer({
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-9 flex-1 rounded-xl border-success/25 bg-success/[0.06] text-[11px] font-medium text-success hover:bg-success/[0.12]"
+                    className="h-9 flex-1 rounded-md border border-success/25 bg-success/[0.06] text-[11px] font-medium text-success hover:bg-success/[0.12]"
                     disabled={
                       acting?.id === selected.id || isReviewed(selected)
                     }
@@ -201,7 +201,7 @@ export function QuarantineReviewDrawer({
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-9 w-9 p-0 rounded-xl text-destructive/50 hover:bg-destructive/10 hover:text-destructive"
+                      className="h-9 w-9 rounded-md p-0 text-destructive/50 hover:bg-destructive/10 hover:text-destructive"
                       disabled={acting?.id === selected.id}
                     >
                       <Trash2 className="size-4" />

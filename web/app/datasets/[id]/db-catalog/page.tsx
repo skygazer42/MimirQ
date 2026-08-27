@@ -36,9 +36,9 @@ import type {
 
 const ENGINE_OPTIONS: ReadonlyArray<'all' | 'mysql' | 'sqlserver'> = ['all', 'mysql', 'sqlserver']
 const DB_CATALOG_LIST_LIMIT = 200
-const dbCatalogHeroCard = 'relative overflow-hidden rounded-2xl border border-border/60 bg-[radial-gradient(circle_at_0%_0%,hsl(var(--info)/0.16),transparent_34%),linear-gradient(135deg,hsl(var(--card)/0.97),hsl(var(--background)/0.92))] shadow-[0_18px_55px_rgba(15,23,42,0.08)] ring-1 ring-border/50 dark:border-border/60 dark:bg-card dark:ring-white/5'
-const dbCatalogPanelClass = 'overflow-hidden border-border/60 bg-[linear-gradient(180deg,hsl(var(--card)/0.98),hsl(var(--background)/0.92))] shadow-[0_16px_45px_rgba(15,23,42,0.07)] ring-1 ring-border/50 dark:border-border/60 dark:bg-card/95 dark:ring-white/5'
-const dbCatalogActionButtonClass = 'h-9 gap-1.5 rounded-xl bg-card/70 px-3 text-[13px] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]'
+const dbCatalogHeroCard = 'relative overflow-hidden border-b border-border/60 bg-transparent px-1 py-2 shadow-none dark:border-border/70'
+const dbCatalogPanelClass = 'overflow-hidden border border-border/60 bg-card shadow-none dark:border-border/70 dark:bg-card'
+const dbCatalogActionButtonClass = 'h-9 gap-1.5 rounded-md border border-border/60 bg-card px-3 text-[13px] shadow-none dark:border-border/70 dark:bg-card'
 
 type DbCatalogSyncConfig = {
   host: string
@@ -472,15 +472,14 @@ export default function DatasetDbCatalogPage() {
         bodyContainerClassName="h-full min-h-0 overflow-hidden"
         top={
           <div className={dbCatalogHeroCard}>
-            <div className="absolute inset-y-4 left-3 w-1 rounded-full bg-[linear-gradient(180deg,hsl(var(--primary)),hsl(var(--info)/0.82),hsl(var(--success)/0.72))]" />
-            <div className="relative flex flex-col gap-3 px-5 py-3.5 pl-8 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex min-w-0 items-start gap-3.5">
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-info/30 bg-card/82 text-info shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_26px_hsl(var(--info)/0.14)] dark:bg-info/10">
-                  <Database className="size-5" />
+            <div className="relative flex flex-col gap-2 px-1 py-1 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-info/10 text-info shadow-none">
+                  <Database className="size-3.5" />
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="truncate text-[20px] font-medium leading-none tracking-[-0.01em] text-foreground dark:text-foreground">数据库目录</h1>
+                    <h1 className="truncate text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground dark:text-foreground">数据库目录</h1>
                     <span className="inline-flex h-5 items-center rounded-full border border-border/60 bg-card/70 px-2 text-[10px] font-medium leading-none text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-border/60 dark:bg-muted/30 dark:text-muted-foreground">
                       结构同步 / 安全画像
                     </span>
@@ -488,12 +487,12 @@ export default function DatasetDbCatalogPage() {
                       DB CATALOG
                     </Badge>
                   </div>
-                  <div className="mt-1.5 text-[13px] leading-tight text-muted-foreground">
+                  <div className="text-[12px] leading-5 text-muted-foreground">
                     <span className="font-semibold text-foreground">数据集：</span>
                     <span className="font-medium text-foreground">{datasetName}</span>
                     <span> · 同步表结构、列类型、schema diff 与 profile 聚合统计，不读取原始行</span>
                   </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] leading-none text-muted-foreground">
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] leading-none text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
                       <Table2 className="size-3.5 text-info" />
                       <span>表</span>
@@ -560,7 +559,7 @@ export default function DatasetDbCatalogPage() {
             </div>
             {datasetId ? (
               <Button
-                className="h-10 min-w-[118px] gap-2 rounded-xl bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] text-[13px] text-primary-foreground shadow-[0_14px_30px_hsl(var(--info)/0.24)] hover:bg-[linear-gradient(90deg,hsl(var(--primary)/0.92),hsl(var(--info)/0.92))]"
+                className="h-10 min-w-[118px] gap-2 rounded-md border border-primary/20 bg-primary text-[13px] text-primary-foreground shadow-none hover:bg-primary/90 dark:border-primary/30"
                 onClick={() => {
                   setSyncError(null)
                   setSyncOpen(true)

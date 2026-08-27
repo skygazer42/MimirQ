@@ -27,7 +27,7 @@ export function GraphExplainabilityPanel({
   if (!open) return null
 
   return (
-    <div className="absolute bottom-8 left-8 z-20 w-80 bg-card rounded-2xl shadow-strong border border-border overflow-hidden">
+    <div className="absolute bottom-8 left-8 z-20 w-80 rounded-2xl border border-border bg-card overflow-hidden shadow-none">
       <div className="p-4 border-b border-border bg-muted/30 flex items-center gap-2">
         <Lightbulb className="w-4 h-4 text-primary" />
         <h3 className="font-bold text-foreground text-sm">RAG 推理过程</h3>

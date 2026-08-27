@@ -330,7 +330,7 @@ export function GraphLinkDetailPanel({
   return (
     <div
       className={cn(
-        'absolute top-4 right-4 bottom-24 w-80 bg-card rounded-2xl shadow-strong border border-border transform transition-transform duration-200 ease-out z-20 flex flex-col overflow-hidden',
+        'absolute top-4 right-4 bottom-24 z-20 flex w-80 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-none transition-transform duration-200 ease-out',
         open && selectedLink ? 'translate-x-0' : 'translate-x-[120%]'
       )}
     >

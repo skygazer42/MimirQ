@@ -16,33 +16,28 @@ interface PageHeaderProps {
 }
 
 function getPageHeaderPadding(compact: boolean): string {
-  if (compact) return "px-4 py-3"
-  return "px-5 py-5 md:px-6"
+  if (compact) return "px-1 py-2"
+  return "px-1 py-3"
 }
 
 function getPageHeaderGap(compact: boolean): string {
-  if (compact) return "gap-3"
-  return "gap-4"
+  if (compact) return "gap-2.5"
+  return "gap-3"
 }
 
 function getPageHeaderIconShellClass(compact: boolean): string {
-  if (compact) return "size-14 rounded-2xl"
-  return "size-14 rounded-[22px]"
+  if (compact) return "size-7 rounded-md"
+  return "size-9 rounded-lg"
 }
 
 function getPageHeaderTitleClass(compact: boolean): string {
-  if (compact) return "text-[26px] leading-tight tracking-[-0.025em]"
-  return "text-4xl md:text-5xl leading-[1.02] tracking-[-0.03em]"
+  if (compact) return "text-[19px] leading-6 tracking-[-0.02em]"
+  return "text-[22px] leading-7 tracking-[-0.025em]"
 }
 
 function getPageHeaderDescriptionClass(compact: boolean): string {
-  if (compact) return "mt-0.5 text-[13px] leading-relaxed md:text-sm"
-  return "mt-2 text-sm leading-[1.75] md:text-[15px]"
-}
-
-function getPageHeaderActionsClass(compact: boolean): string {
-  if (compact) return "pt-0"
-  return "pt-1"
+  if (compact) return "text-[12px] leading-5"
+  return "text-[13px] leading-5"
 }
 
 function renderPageHeaderIcon({
@@ -61,13 +56,13 @@ function renderPageHeaderIcon({
       <PageTitleIcon
         name={iconImage}
         compact={compact}
-        className={compact ? "size-9" : undefined}
+        className={compact ? "size-6" : "size-7"}
       />
     )
   }
   if (Icon) {
     return (
-      <Icon className={cn(compact ? "size-5" : "size-6", iconColor)} />
+      <Icon className={cn(compact ? "size-3.5" : "size-4", iconColor)} />
     )
   }
   return null
@@ -97,46 +92,39 @@ export function PageHeader({
         data-testid="page-title-shell"
         className={cn(
           MANAGEMENT_HERO_PANEL_CLASS,
-          compact && "min-h-[95px]",
-          "flex flex-col gap-3 @3xl:flex-row @3xl:items-center @3xl:justify-between",
+          "flex min-h-14 flex-col gap-2 @3xl:flex-row @3xl:items-center @3xl:justify-between",
           getPageHeaderPadding(compact)
         )}
       >
         <div
-          className="pointer-events-none absolute bottom-0 left-8 right-8 h-px bg-[linear-gradient(90deg,transparent,hsl(var(--info)/0.28),transparent)]"
-          aria-hidden="true"
-        />
-        <div
-          className="pointer-events-none absolute -right-10 -top-14 size-44 rounded-full bg-info/10 blur-3xl dark:bg-info/[0.08]"
+          className="pointer-events-none absolute -bottom-px left-1 h-px w-12 bg-info/70"
           aria-hidden="true"
         />
         <div className={cn("relative flex min-w-0 items-center", children && "@3xl:flex-1", getPageHeaderGap(compact))}>
           {headerIcon ? (
             <div className={cn(
-              "shrink-0 flex items-center justify-center border border-info/18 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.10))] shadow-[inset_0_1px_0_hsl(var(--background)),0_14px_30px_-24px_hsl(var(--info)/0.75)]",
+              "flex shrink-0 items-center justify-center border border-foreground/10 bg-background/70 text-info shadow-none",
               getPageHeaderIconShellClass(compact)
             )}>
               {headerIcon}
             </div>
           ) : null}
 
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 @2xl:flex @2xl:items-center @2xl:gap-2.5">
             <div className={cn("flex flex-wrap items-center", compact ? "gap-x-2.5 gap-y-1" : "gap-x-3 gap-y-2")}>
               {typeof title === 'string' ? (
                 <h1 className={cn(
                   "text-balance text-foreground",
-                  compact ? "font-black" : "font-semibold",
+                  "font-semibold",
                   getPageHeaderTitleClass(compact)
                 )}>
-                  <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">
-                    {title}
-                  </span>
+                  {title}
                 </h1>
               ) : (
                 <div className="w-full">{title}</div>
               )}
               {badge ? (
-                <span className="inline-flex items-center rounded-full border border-info/18 bg-info/[0.08] px-2.5 py-1 text-[11px] font-mono uppercase tracking-[0.14em] text-info tabular-nums backdrop-blur-xl">
+                <span className="inline-flex items-center rounded-md border border-foreground/10 bg-background/70 px-2.5 py-1 text-[11px] font-mono uppercase tracking-[0.14em] text-info tabular-nums">
                   {badge}
                 </span>
               ) : null}
@@ -144,7 +132,7 @@ export function PageHeader({
 
             {description ? (
               <div className={cn(
-                "max-w-[72ch] text-pretty text-muted-foreground",
+                "max-w-[72ch] text-pretty text-muted-foreground/85",
                 getPageHeaderDescriptionClass(compact)
               )}>
                 <span>{description}</span>
@@ -154,7 +142,7 @@ export function PageHeader({
         </div>
 
         {children ? (
-          <div className={cn("relative flex min-w-0 flex-wrap items-center justify-start gap-2 @3xl:justify-end", getPageHeaderActionsClass(compact))}>
+          <div className="relative flex min-w-0 flex-wrap items-center justify-start gap-2 @3xl:justify-end">
             {children}
           </div>
         ) : null}

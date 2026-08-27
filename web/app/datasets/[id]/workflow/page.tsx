@@ -56,9 +56,9 @@ function normalizeImportedBundle(raw: unknown): DatasetConfigBundle | null {
   return raw
 }
 
-const workflowHeroCard = 'relative overflow-hidden rounded-2xl border border-border/60 bg-[radial-gradient(circle_at_0%_0%,hsl(var(--primary)/0.16),transparent_34%),linear-gradient(135deg,hsl(var(--card)/0.97),hsl(var(--background)/0.92))] shadow-[0_18px_55px_rgba(15,23,42,0.08)] ring-1 ring-border/50 dark:border-border/60 dark:bg-card dark:ring-white/5'
-const workflowActionButtonClass = 'h-9 gap-1.5 rounded-xl bg-card/70 px-3 text-[13px] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]'
-const workflowPanelClass = 'overflow-hidden border-border/60 bg-[linear-gradient(180deg,hsl(var(--card)/0.98),hsl(var(--background)/0.92))] shadow-[0_16px_45px_rgba(15,23,42,0.07)] ring-1 ring-border/50 dark:border-border/60 dark:bg-card/95 dark:ring-white/5'
+const workflowHeroCard = 'relative overflow-hidden border-b border-border/60 bg-transparent px-1 py-2 shadow-none dark:border-border/70'
+const workflowActionButtonClass = 'h-9 gap-1.5 rounded-md border border-border/60 bg-card px-3 text-[13px] shadow-none dark:border-border/70 dark:bg-card'
+const workflowPanelClass = 'overflow-hidden border border-border/60 bg-card shadow-none dark:border-border/70 dark:bg-card'
 
 export default function DatasetWorkflowPage() {
   const router = useRouter()
@@ -272,15 +272,14 @@ export default function DatasetWorkflowPage() {
         bodyContainerClassName="h-full min-h-0 overflow-hidden"
         top={
           <div className={workflowHeroCard}>
-            <div className="absolute inset-y-4 left-3 w-1 rounded-full bg-[linear-gradient(180deg,hsl(var(--primary)),hsl(var(--info)/0.82),hsl(var(--primary)/0.42))]" />
-            <div className="relative flex flex-col gap-3 px-5 py-3.5 pl-8 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex min-w-0 items-start gap-3.5">
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-success/30 bg-card/82 text-success shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_26px_rgba(20,184,166,0.14)]">
-                  <Layers className="size-5" />
+            <div className="relative flex flex-col gap-2 px-1 py-1 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-success/10 text-success shadow-none">
+                  <Layers className="size-3.5" />
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="truncate text-[20px] font-medium leading-none tracking-[-0.01em] text-foreground dark:text-foreground">工作流配置</h1>
+                    <h1 className="truncate text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground dark:text-foreground">工作流配置</h1>
                     <span className="inline-flex h-5 items-center rounded-full border border-border/60 bg-card/70 px-2 text-[10px] font-medium leading-none text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-border/60 dark:bg-muted/30 dark:text-muted-foreground">
                       DatasetConfigBundle
                     </span>
@@ -288,12 +287,12 @@ export default function DatasetWorkflowPage() {
                       CONFIG GRAPH
                     </Badge>
                   </div>
-                  <div className="mt-1.5 text-[13px] leading-tight text-muted-foreground">
+                  <div className="text-[12px] leading-5 text-muted-foreground">
                     <span className="font-semibold text-foreground">数据集：</span>
                     <span className="font-medium text-foreground">{datasetName}</span>
                     <span> · 可视化查看配置链路、节点 JSON 与布局持久化</span>
                   </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] leading-none text-muted-foreground">
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] leading-none text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
                       <Layers className="size-3.5 text-success" />
                       <span>节点</span>
@@ -361,7 +360,7 @@ export default function DatasetWorkflowPage() {
               <Button
                 onClick={() => detachPromise(doSaveLayout())}
                 disabled={saving || !datasetId || !workingConfig || !hasUnsavedLayoutChanges}
-                className="h-10 min-w-[118px] gap-2 rounded-xl bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] text-[13px] text-primary-foreground shadow-[0_14px_30px_rgba(20,184,166,0.24)] hover:bg-[linear-gradient(90deg,hsl(var(--primary)/0.92),hsl(var(--info)/0.92))]"
+                className="h-10 min-w-[118px] gap-2 rounded-md border border-primary/20 bg-primary text-[13px] text-primary-foreground shadow-none hover:bg-primary/90 dark:border-primary/30"
               >
                 {saving ? <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" /> : <Save className="size-3.5" />}
                 保存布局

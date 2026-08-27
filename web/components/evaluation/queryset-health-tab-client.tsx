@@ -180,7 +180,7 @@ function deltaState(value: unknown, lowerIsBetter: boolean) {
 function QuerysetChartEmptyState() {
   return (
     <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-      <div className="rounded-2xl bg-card/80 px-4 py-3 text-center shadow-sm ring-1 ring-border/60 backdrop-blur-sm">
+      <div className="rounded-2xl bg-card px-4 py-3 text-center shadow-none ring-1 ring-border/60">
         <div className="mx-auto mb-1.5 flex h-9 w-9 items-center justify-center rounded-xl bg-muted text-muted-foreground/70">
           <ChartLine className="h-4 w-4" aria-hidden="true" />
         </div>
@@ -329,11 +329,7 @@ export function QuerysetHealthTab({
         </div>
       )}
 
-      <Panel
-        variant="glass"
-        padding="sm"
-        className="rounded-2xl border-border/60 bg-card shadow-sm"
-      >
+      <Panel padding="sm" className="rounded-2xl border-border/60 bg-card shadow-none">
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="text-sm font-semibold text-foreground">
@@ -415,9 +411,8 @@ export function QuerysetHealthTab({
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <Panel
-          variant="glass"
           padding="sm"
-          className="rounded-2xl min-h-[205px] border-border/60 bg-card shadow-sm"
+          className="rounded-2xl min-h-[205px] border-border/60 bg-card shadow-none"
         >
           <div className="flex items-center justify-between mb-2">
             <div className="text-sm font-semibold text-foreground">
@@ -465,9 +460,8 @@ export function QuerysetHealthTab({
         </Panel>
 
         <Panel
-          variant="glass"
           padding="sm"
-          className="rounded-2xl min-h-[205px] border-border/60 bg-card shadow-sm"
+          className="rounded-2xl min-h-[205px] border-border/60 bg-card shadow-none"
         >
           <div className="flex items-center justify-between mb-2">
             <div className="text-sm font-semibold text-foreground">
@@ -515,11 +509,7 @@ export function QuerysetHealthTab({
         </Panel>
       </div>
 
-      <Panel
-        variant="glass"
-        padding="sm"
-        className="rounded-2xl border-border/60 bg-card shadow-sm"
-      >
+      <Panel padding="sm" className="rounded-2xl border-border/60 bg-card shadow-none">
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.72fr)]">
           <div>
             <div className="flex items-center justify-between gap-4">
@@ -635,11 +625,7 @@ export function QuerysetHealthTab({
         </div>
       </Panel>
 
-      <Panel
-        variant="glass"
-        padding="sm"
-        className="rounded-2xl border-border/60 bg-card shadow-sm"
-      >
+      <Panel padding="sm" className="rounded-2xl border-border/60 bg-card shadow-none">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-sm font-semibold text-foreground">

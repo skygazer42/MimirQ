@@ -115,7 +115,7 @@ export function ReportsControlPanel({
   onRefresh: () => void
 }>) {
   return (
-    <section className="space-y-3 rounded-[1.2rem] border border-border/60 bg-card/88 p-3.5 shadow-[0_18px_44px_-36px_rgba(15,23,42,0.35)] backdrop-blur">
+    <section className="space-y-3 rounded-[1.2rem] border border-border/60 bg-card p-3.5">
       <div className="grid gap-3 xl:grid-cols-[1.25fr_1.1fr_0.85fr_auto] xl:items-end">
         <div className="space-y-1.5">
           <Label
@@ -284,7 +284,7 @@ export function ReportsControlPanel({
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
-              className="w-64 rounded-2xl border-border/60 bg-popover/95 p-1.5 shadow-[0_24px_70px_-28px_rgba(15,23,42,0.38)] backdrop-blur-xl"
+              className="w-64 rounded-2xl border-border/60 bg-popover p-1.5 shadow-none"
             >
               <DropdownMenuLabel className="px-2.5 pb-1 pt-2 text-[11px] font-semibold tracking-[0.08em] text-muted-foreground/70">
                 基础与完整数据

@@ -131,7 +131,7 @@ const KnowledgeGraph3D = dynamic(
     ssr: false,
     loading: () => (
       <div className="absolute inset-0 z-10 flex items-center justify-center">
-        <div className="flex w-full max-w-lg flex-col items-center gap-3 rounded-2xl border border-border/60 bg-card/90 p-6 shadow-soft backdrop-blur-sm">
+        <div className="flex w-full max-w-lg flex-col items-center gap-3 rounded-2xl border border-border/60 bg-card p-6 shadow-none">
           <GraphLoadingIndicator
             className="min-h-0"
             message="正在构建 3D 图谱..."
@@ -586,8 +586,6 @@ export function GraphCanvas({
         className="absolute inset-0 z-0"
         style={getCanvasBackdropStyle(isDark)}
       />
-      <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_center,transparent_52%,hsl(var(--info)/0.025)_100%)] dark:bg-[radial-gradient(circle_at_center,transparent_42%,hsl(var(--background)/0.36)_100%)]" />
-
       {graphRenderData.nodes.length > 0 ? (
         <>
           {viewMode === '3d' ? (
@@ -612,7 +610,7 @@ export function GraphCanvas({
             ) : (
               <div className="absolute inset-0 z-10 flex items-center justify-center">
                 <GraphLoadingIndicator
-                  className="rounded-2xl border border-border/60 bg-card/82 px-6 py-5 shadow-soft backdrop-blur-sm"
+                  className="rounded-2xl border border-border/60 bg-card px-6 py-5 shadow-none"
                   message="正在准备图谱画布..."
                   srMessage="Loading graph viewport"
                 />
@@ -645,7 +643,7 @@ export function GraphCanvas({
           >
             <div
               ref={semanticPanelRef}
-              className={`pointer-events-auto overflow-hidden border border-border/60 bg-card/88 shadow-[12px_18px_46px_-28px_rgba(15,23,42,0.44)] backdrop-blur-xl supports-[backdrop-filter]:bg-card/78 ${
+              className={`pointer-events-auto overflow-hidden border border-border/60 bg-card shadow-none ${
                 isSemanticListVisible ? 'w-[min(16.75rem,calc(100vw-2rem))] rounded-[1.35rem]' : 'rounded-[1.35rem]'
               }`}
             >
@@ -671,7 +669,7 @@ export function GraphCanvas({
                 {isSemanticListVisible ? (
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <div className="flex h-7 w-7 items-center justify-center rounded-xl border border-border/70 bg-card/60 shadow-[0_10px_20px_-16px_rgba(15,23,42,0.45)]">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-xl border border-border/70 bg-card shadow-none">
                         <div className="grid grid-cols-2 gap-1">
                           {SEMANTIC_NODE_TONES.slice(0, 4).map((tone) => (
                             <span
@@ -759,7 +757,7 @@ export function GraphCanvas({
                                   <button
                                      ref={(element) => setSemanticNodeButtonRef(node.id, element)}
                                      type="button"
-                                     className="group/node relative flex h-7 w-7 items-center justify-center rounded-xl border border-border/65 bg-card/52 shadow-[0_10px_22px_-18px_rgba(15,23,42,0.45)] backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.04] hover:border-foreground/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+                                     className="group/node relative flex h-7 w-7 items-center justify-center rounded-xl border border-border/65 bg-card transition-all duration-200 hover:border-foreground/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
                                      aria-label={`聚焦节点：${node.label}`}
                                      aria-pressed={selectedNodeId === node.id}
                                     onFocus={() => {
@@ -790,7 +788,7 @@ export function GraphCanvas({
                                 <TooltipContent
                                   side="left"
                                   align="center"
-                                  className="rounded-2xl border-border/55 bg-popover/95 px-3 py-2 text-[11px] text-foreground shadow-[12px_18px_42px_-24px_rgba(15,23,42,0.38)] backdrop-blur-xl"
+                                  className="rounded-2xl border-border/55 bg-popover px-3 py-2 text-[11px] text-foreground shadow-none"
                                 >
                                   <div className="flex items-start gap-2">
                                     <span className="mt-1 h-2.5 w-2.5 rounded-full" style={{ backgroundColor: tone }} />
@@ -821,7 +819,7 @@ export function GraphCanvas({
                         {semanticRelationSummary.map((item) => (
                           <span
                             key={item.relation}
-                            className="inline-flex items-center gap-1 rounded-full border border-border/65 bg-card/58 px-2 py-1 text-[11px] text-muted-foreground shadow-[0_8px_20px_-18px_rgba(15,23,42,0.35)]"
+                            className="inline-flex items-center gap-1 rounded-full border border-border/65 bg-card px-2 py-1 text-[11px] text-muted-foreground shadow-none"
                           >
                             <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/80" />
                             {item.relation}
@@ -836,7 +834,7 @@ export function GraphCanvas({
                       </div>
                     </section>
                     {keyboardRovingIndex >= 0 && semanticNodes[keyboardRovingIndex] ? (
-                      <div className="rounded-2xl border border-border/60 bg-card/48 px-2.5 py-2 text-[11px] text-muted-foreground shadow-[0_10px_26px_-22px_rgba(15,23,42,0.38)]">
+                      <div className="rounded-2xl border border-border/60 bg-card px-2.5 py-2 text-[11px] text-muted-foreground shadow-none">
                         当前聚焦：<span className="font-semibold text-foreground">{semanticNodes[keyboardRovingIndex].label}</span>
                       </div>
                     ) : null}
@@ -849,7 +847,7 @@ export function GraphCanvas({
       ) : (
         <div className="absolute inset-x-0 bottom-0 top-16 z-10 flex items-center justify-center px-6 py-6 pr-28">
           {isLoading ? (
-            <div className="w-full max-w-2xl rounded-2xl border border-border/60 bg-card/70 p-6 shadow-soft">
+            <div className="w-full max-w-2xl rounded-2xl border border-border/60 bg-card p-6 shadow-none">
               <div className="flex items-center gap-3">
                 <Skeleton className="h-11 w-11 rounded-xl" />
                 <div className="flex-1 space-y-2">
@@ -905,7 +903,7 @@ export function GraphCanvas({
               <div className="mx-auto mt-7 flex w-full max-w-[30rem] flex-wrap items-center justify-center gap-3">
                 <Button
                   size="lg"
-                  className="h-10 rounded-lg px-4 text-[13px] font-semibold shadow-soft hover:bg-primary hover:opacity-96"
+                  className="h-10 rounded-lg px-4 text-[13px] font-semibold shadow-none hover:bg-primary hover:opacity-96"
                   onClick={onTriggerManualKgUpload}
                 >
                   <Network className="h-4 w-4" />
@@ -914,7 +912,7 @@ export function GraphCanvas({
                 <Button
                   size="lg"
                   variant="outline"
-                  className="h-10 rounded-lg px-4 text-[13px] font-semibold shadow-soft hover:bg-primary hover:opacity-96"
+                  className="h-10 rounded-lg px-4 text-[13px] font-semibold shadow-none hover:bg-primary hover:opacity-96"
                   onClick={onOpenGraphPicker}
                 >
                   选择图谱

@@ -44,16 +44,14 @@ import type {
 
 // --- Advanced Style Tokens ---
 
-const USAGE_PANEL_CLASS =
-  'overflow-hidden rounded-[1.35rem] border border-border/60 bg-card/88 shadow-[0_12px_34px_hsl(var(--primary)/0.055)] backdrop-blur-xl'
-const USAGE_SURFACE_CLASS =
-  'rounded-[1.15rem] border border-border/60 bg-background/76 shadow-[0_10px_28px_hsl(var(--primary)/0.045)]'
-const GLASS_CARD = `${USAGE_SURFACE_CLASS} backdrop-blur-md overflow-hidden transition-all duration-300`
+const USAGE_PANEL_CLASS = 'overflow-hidden rounded-xl border border-foreground/10 bg-background shadow-none'
+const USAGE_SURFACE_CLASS = 'rounded-xl border border-foreground/10 bg-background/80'
+const GLASS_CARD = `${USAGE_SURFACE_CLASS} overflow-hidden transition-colors duration-200`
 const GLOW_CARD =
-  'group relative overflow-hidden rounded-[1.1rem] border border-border/60 bg-card/86 p-4 shadow-[0_1px_0_hsl(var(--primary)/0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/20 hover:shadow-[0_16px_32px_hsl(var(--primary)/0.075)]'
+  'group relative overflow-hidden rounded-xl border border-foreground/10 bg-background p-4 shadow-none transition-colors duration-200 hover:border-primary/18 hover:bg-muted/18'
 const NUMBER_ACCENT =
   'font-mono text-[22px] font-semibold leading-none tracking-[-0.04em] text-foreground bg-clip-text'
-const USAGE_TABLE_HEAD_CLASS = 'bg-muted/38 border-b border-border/50'
+const USAGE_TABLE_HEAD_CLASS = 'border-b border-foreground/10 bg-muted/18'
 const USAGE_TABLE_HEADER_CLASS =
   'px-5 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-[0.18em]'
 const USAGE_LINK_CLASS =
@@ -127,9 +125,9 @@ function StylizedMetricCard({
   tone?: string
 }>) {
   const accentMap = {
-    blue: 'bg-primary',
-    green: 'bg-success',
-    indigo: 'bg-accent',
+    blue: 'bg-primary/60',
+    green: 'bg-success/60',
+    indigo: 'bg-accent/60',
     slate: 'bg-muted-foreground/45',
   }
   return (
@@ -143,14 +141,14 @@ function StylizedMetricCard({
 
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-background/70 text-muted-foreground shadow-sm transition-all duration-200 group-hover:bg-primary group-hover:text-primary-foreground">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-foreground/10 bg-muted/18 text-muted-foreground transition-colors duration-200 group-hover:border-primary/18 group-hover:text-primary">
             <Icon className="size-4" />
           </div>
           <span className="truncate text-[11px] font-bold text-muted-foreground">
             {label}
           </span>
         </div>
-        <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted/50 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="flex size-6 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background opacity-0 transition-opacity group-hover:opacity-100">
           <ArrowUpRight className="size-3 text-primary" />
         </div>
       </div>
@@ -159,7 +157,7 @@ function StylizedMetricCard({
         <span className={NUMBER_ACCENT}>{value}</span>
         {detail && (
           <div className="mt-2 flex items-center gap-1.5">
-            <span className="rounded-md bg-muted px-1.5 py-0.5 text-[9px] font-bold uppercase text-muted-foreground">
+            <span className="rounded-md border border-foreground/10 bg-muted/18 px-1.5 py-0.5 text-[9px] font-bold uppercase text-muted-foreground">
               {detail}
             </span>
             <TrendingUp className="size-3 text-success opacity-50" />
@@ -180,15 +178,15 @@ function OverviewStat({
   tone?: 'blue' | 'green' | 'red' | 'slate'
 }>) {
   const toneClass = {
-    blue: 'border-primary/20 bg-primary/10 text-primary',
-    green: 'border-success/20 bg-success/10 text-success',
-    red: 'border-destructive/20 bg-destructive/10 text-destructive',
-    slate: 'border-border/60 bg-card/72 text-foreground',
+    blue: 'border-primary/18 bg-primary/[0.08] text-primary',
+    green: 'border-success/18 bg-success/[0.08] text-success',
+    red: 'border-destructive/18 bg-destructive/[0.08] text-destructive',
+    slate: 'border-foreground/10 bg-background/80 text-foreground',
   }[tone]
   return (
     <div
       className={cn(
-        'min-w-[98px] rounded-2xl border px-3 py-2 shadow-[0_1px_0_rgba(15,23,42,0.03)]',
+        'min-w-[98px] rounded-lg border px-3 py-2 shadow-none',
         toneClass
       )}
     >
@@ -366,12 +364,6 @@ function UsagePageContent() {
         size="full"
         bodyClassName="bg-transparent relative"
       >
-        {/* Ambient background glow */}
-        <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
-          <div className="absolute -left-[10%] -top-[10%] size-[40%] rounded-full bg-primary/5 blur-[120px]" />
-          <div className="absolute -right-[5%] top-[20%] size-[30%] rounded-full bg-accent/5 blur-[100px]" />
-        </div>
-
         <div className="relative z-10 flex flex-col gap-4 pb-12">
           <section
             data-usage-overview="compact"
@@ -384,7 +376,7 @@ function UsagePageContent() {
             )}
             <div className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-[220px] items-center gap-3">
-                <div className="flex size-9 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-inner">
+                <div className="flex size-9 items-center justify-center rounded-lg border border-foreground/10 bg-muted/18 text-primary">
                   <Coins className="size-4" />
                 </div>
                 <div className="min-w-0">
@@ -431,7 +423,7 @@ function UsagePageContent() {
                   value={String(windowDays)}
                   onValueChange={(v) => setWindowDays(Number(v))}
                 >
-                  <SelectTrigger className="h-9 w-[92px] rounded-2xl border-border/60 bg-background/70 text-[12px] font-semibold shadow-sm transition-all hover:bg-primary/10">
+                  <SelectTrigger className="h-9 w-[92px] rounded-lg border-border/70 bg-background text-[12px] font-semibold shadow-none transition-colors hover:bg-muted/18">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -445,7 +437,7 @@ function UsagePageContent() {
                 <Button
                   variant="outline"
                   size="icon"
-                  className="size-9 rounded-2xl border-border/60 bg-background/70 shadow-sm transition-all hover:bg-primary/10 hover:text-primary"
+                  className="size-9 rounded-lg border-border/70 bg-background shadow-none transition-colors hover:bg-muted/18 hover:text-primary"
                   aria-label="刷新用量数据"
                   onClick={() => {
                     summaryQuery.refetch()
@@ -533,7 +525,7 @@ function UsagePageContent() {
                 'flex flex-col border-primary/10 2xl:col-span-5'
               )}
             >
-              <div className="flex items-center justify-between border-b border-border/50 bg-primary/[0.025] px-5 py-4">
+              <div className="flex items-center justify-between border-b border-foreground/10 bg-muted/18 px-5 py-4">
                 <div>
                   <h3 className="flex items-center gap-2 text-[14px] font-semibold text-foreground">
                     <TrendingUp className="size-4 text-primary" />
@@ -543,7 +535,7 @@ function UsagePageContent() {
                     按 dataset_id 归因 · {formatWindow(summary?.window_start, summary?.window_end)}
                   </p>
                 </div>
-                <div className="flex size-8 items-center justify-center rounded-lg border border-border/60 bg-background/70 text-muted-foreground/55">
+                <div className="flex size-8 items-center justify-center rounded-lg border border-foreground/10 bg-background text-muted-foreground/55">
                   <LayoutGrid className="size-4" />
                 </div>
               </div>
@@ -617,7 +609,7 @@ function UsagePageContent() {
                 'flex flex-col border-accent/10 2xl:col-span-7'
               )}
             >
-              <div className="flex items-center justify-between border-b border-border/50 bg-accent/[0.025] px-5 py-4">
+              <div className="flex items-center justify-between border-b border-foreground/10 bg-muted/18 px-5 py-4">
                 <div>
                   <h3 className="flex items-center gap-2 text-[14px] font-semibold text-foreground">
                     <Zap className="size-4 text-accent fill-current" />
@@ -627,7 +619,7 @@ function UsagePageContent() {
                     聊天与检索链路聚合 · {formatWindow(cost?.window_start, cost?.window_end)}
                   </p>
                 </div>
-                <div className="flex size-8 items-center justify-center rounded-lg border border-border/60 bg-background/70 text-muted-foreground/55">
+                <div className="flex size-8 items-center justify-center rounded-lg border border-foreground/10 bg-background text-muted-foreground/55">
                   <BarChart3 className="size-4" />
                 </div>
               </div>
@@ -705,10 +697,7 @@ function UsagePageContent() {
           </div>
 
           {/* Bottom Custom Panel */}
-          <div className="relative">
-            <div className="absolute inset-0 rounded-3xl pointer-events-none bg-[radial-gradient(circle_at_50%_0%,hsl(var(--primary)/0.05),transparent_58%)]" />
-            <TenantQuotaPanel />
-          </div>
+          <TenantQuotaPanel />
         </div>
       </PageScaffold>
     </AppFrame>

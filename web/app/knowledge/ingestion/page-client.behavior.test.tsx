@@ -729,11 +729,11 @@ describe('knowledge ingestion page behavior', () => {
 
     await act(async () => {
       await vi.waitFor(() => expect(container.textContent).toContain('执行监控'))
-      await vi.waitFor(() => expect(container.textContent).toContain('队列异常'))
+      await vi.waitFor(() => expect(container.textContent).toContain('Broker 异常'))
       await vi.waitFor(() => expect(container.textContent).toContain('Run 1.pdf'))
     })
 
-    expect(container.textContent).toContain('队列异常')
+    expect(container.textContent).toContain('Broker 异常')
     expect(container.textContent).toContain('queue offline')
     expect(container.textContent).toContain('第 1 / 2 页')
 

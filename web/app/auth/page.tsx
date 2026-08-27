@@ -226,7 +226,10 @@ export default function AuthPage() {
                     </div>
                 </div>
 
-	                <div className="rounded-3xl border border-border bg-card p-8 shadow-strong">
+	                <div
+                    data-auth-panel="ruled"
+                    className="rounded-lg border border-foreground/15 bg-background p-8"
+                  >
 	                    {oidcEnabled && (
 	                        <div className="mb-7 space-y-3">
                               {ssoSectionContent}
@@ -238,15 +241,18 @@ export default function AuthPage() {
                         </div>
                     )}
                     {/* Tab Switcher */}
-                    <div className="flex p-1 bg-background/40 rounded-xl mb-8 border border-border/50">
+                    <div
+                        data-auth-mode-switch="true"
+                        className="mb-8 flex rounded-md border border-foreground/10 bg-background p-1"
+                    >
                         <button
                             type="button"
                             aria-pressed={mode === 'login'}
                             className={cn(
-                                "focus-ring flex-1 py-2 text-sm font-medium rounded-lg transition-colors duration-200 motion-reduce:transition-none",
+                                "focus-ring flex-1 rounded-sm border border-transparent py-2 text-sm font-medium transition-colors duration-200 motion-reduce:transition-none",
                                 mode === 'login'
-                                    ? "bg-card/60 text-foreground shadow-sm"
-                                    : "text-muted-foreground hover:text-foreground hover:bg-[#CAF0F8]/55"
+                                    ? "border-foreground/10 bg-background text-foreground"
+                                    : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
                             )}
                             onClick={() => handleModeChange('login')}
                         >
@@ -256,10 +262,10 @@ export default function AuthPage() {
                             type="button"
                             aria-pressed={mode === 'register'}
                             className={cn(
-                                "focus-ring flex-1 py-2 text-sm font-medium rounded-lg transition-colors duration-200 motion-reduce:transition-none",
+                                "focus-ring flex-1 rounded-sm border border-transparent py-2 text-sm font-medium transition-colors duration-200 motion-reduce:transition-none",
                                 mode === 'register'
-                                    ? "bg-card/60 text-foreground shadow-sm"
-                                    : "text-muted-foreground hover:text-foreground hover:bg-[#CAF0F8]/55"
+                                    ? "border-foreground/10 bg-background text-foreground"
+                                    : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
                             )}
                             onClick={() => handleModeChange('register')}
                         >
@@ -400,7 +406,7 @@ export default function AuthPage() {
 
                         <Button
                             type="submit"
-                            className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl transition-colors duration-200 motion-reduce:transition-none"
+                            className="h-11 w-full rounded-md bg-primary text-primary-foreground font-semibold transition-colors duration-200 motion-reduce:transition-none hover:bg-primary/90"
                             disabled={isSubmitting}
                         >
 	                            {getAuthSubmitContent(isSubmitting, mode)}

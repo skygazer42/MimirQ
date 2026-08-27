@@ -42,36 +42,42 @@ export const SURFACE_THEMES: Array<{
   key: SurfaceThemeKey
   label: string
   description: string
+  previewSurface: string
   defaultPrimary: string
 }> = [
   {
     key: 'ocean',
     label: 'Ocean',
     description: '深海军蓝主色与清透冰蓝表面，保持克制的海洋层级。',
+    previewSurface: '#f6fafc',
     defaultPrimary: '#0f172a',
   },
   {
     key: 'deepsea',
     label: 'Deep Sea',
     description: '雾白蓝灰表面与克制的深海蓝强调。',
+    previewSurface: '#f7f9ff',
     defaultPrimary: '#405BD8',
   },
   {
     key: 'neutral',
     label: 'Neutral',
     description: '瓷白表面与石墨层级，仅让必要的业务状态着色。',
+    previewSurface: '#ffffff',
     defaultPrimary: '#18181b',
   },
   {
     key: 'classic',
     label: 'Classic',
     description: '经典白灰，浅灰白背景配深灰正文与蓝色强调。',
+    previewSurface: '#f8f9fa',
     defaultPrimary: '#0062cc',
   },
   {
     key: 'earth',
     label: 'Earth',
     description: '暖米白背景，阅读更柔和，适合长时间停留。',
+    previewSurface: '#f5f0e8',
     defaultPrimary: '#8C6A43',
   },
 ]

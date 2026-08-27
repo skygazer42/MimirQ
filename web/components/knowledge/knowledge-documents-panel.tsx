@@ -5,12 +5,14 @@ import type { Dataset, Document } from '@/types'
 import {
   Activity,
   ChevronDown,
+  ChevronRight,
   Database,
   Eye,
   Filter,
   Layers,
   Loader2,
   MoreVertical,
+  Plus,
   RefreshCw,
   RotateCcw,
   Trash2,
@@ -427,9 +429,8 @@ export function KnowledgeDocumentsPanel({
   const canGoNext = page < pageCount
   const isDatasetEmpty = documents.length === 0
   const showEmptyState = visibleDocumentsCount === 0
-  const compactEmptyInventory = embedded && showEmptyState
   const iconShellClassName =
-    'relative overflow-hidden shadow-[inset_0_1px_0_hsl(var(--card)/0.72),0_10px_20px_-18px_hsl(var(--foreground)/0.18)] backdrop-blur-[6px]'
+    'relative overflow-hidden shadow-none'
   const inventoryStatCardClassName =
     'group relative overflow-hidden rounded-none border-0 border-l border-border/45 bg-transparent px-3 py-1.5 shadow-none transition-colors hover:bg-muted/40 dark:border-border/60 dark:bg-transparent dark:hover:bg-muted/10'
   const checkboxCellClassName =
@@ -798,8 +799,6 @@ export function KnowledgeDocumentsPanel({
         )}
       >
         <div className="relative overflow-hidden border-b border-border/45 bg-background px-4 pb-2.5 pt-3.5 dark:border-border/60 dark:bg-background">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,hsl(var(--primary)/0.42),transparent)]" />
-          <div className="pointer-events-none absolute right-8 top-4 h-20 w-40 rounded-full bg-info/10 blur-3xl" />
           <div className="relative z-10 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="min-w-0 space-y-1.5">
               <div className="inline-flex items-center gap-2 text-[11px] font-semibold text-muted-foreground/76">
@@ -809,7 +808,6 @@ export function KnowledgeDocumentsPanel({
                     iconShellClassName
                   )}
                 >
-                  <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,rgba(255,255,255,0.3),transparent_52%)] opacity-80" />
                   <Database className="size-3.5" />
                 </div>
                 文档资产
@@ -829,7 +827,6 @@ export function KnowledgeDocumentsPanel({
                 transition={{ type: 'spring', stiffness: 340, damping: 24 }}
                 className={inventoryStatCardClassName}
               >
-                <span className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-[linear-gradient(90deg,hsl(var(--primary)/0.16),hsl(var(--info)/0.46),hsl(var(--primary)/0.10))]" />
                 <div className="text-[10px] font-medium leading-none text-muted-foreground/68">
                   当前可见
                 </div>
@@ -846,7 +843,6 @@ export function KnowledgeDocumentsPanel({
                 transition={{ type: 'spring', stiffness: 340, damping: 24 }}
                 className={inventoryStatCardClassName}
               >
-                <span className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-[linear-gradient(90deg,hsl(var(--primary)/0.10),hsl(var(--info)/0.42),hsl(var(--primary)/0.12))]" />
                 <div className="text-[10px] font-medium leading-none text-muted-foreground/68">
                   已选择
                 </div>
@@ -863,7 +859,6 @@ export function KnowledgeDocumentsPanel({
                 transition={{ type: 'spring', stiffness: 340, damping: 24 }}
                 className={inventoryStatCardClassName}
               >
-                <span className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-[linear-gradient(90deg,hsl(var(--primary)/0.10),hsl(var(--success)/0.34),hsl(var(--info)/0.18))]" />
                 <div className="text-[10px] font-medium leading-none text-muted-foreground/68">
                   展示模式
                 </div>
@@ -883,23 +878,17 @@ export function KnowledgeDocumentsPanel({
         <div
           className={cn(
             'flex min-h-0 flex-1 flex-col',
-            embedded && 'bg-transparent p-0 dark:bg-transparent',
-            compactEmptyInventory && 'p-2'
+            embedded && 'bg-transparent p-0 dark:bg-transparent'
           )}
         >
-          <div
-            className={cn(
-              'flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 bg-transparent shadow-none',
-              compactEmptyInventory && 'overflow-visible'
-            )}
-          >
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 bg-transparent shadow-none">
             <div className="border-b border-border/45 bg-background px-3 py-2 dark:border-border/60 dark:bg-background">
               {inventoryToolbar}
             </div>
             <div
               ref={onScrollContainerChange}
               data-knowledge-documents-scroll-container="true"
-              className="min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar [scrollbar-gutter:stable]"
+              className="h-full min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar [scrollbar-gutter:stable]"
             >
               {(() => {
             if (isLoading && isDatasetEmpty) {
@@ -922,15 +911,13 @@ export function KnowledgeDocumentsPanel({
               return (
                 <div
                   data-knowledge-empty-shelf-dock="integrated-canvas"
-                  className="flex min-h-0 flex-1 px-2 pb-2 pt-1.5"
+                  className="flex h-full min-h-0 flex-1"
                 >
                   <div
                     data-knowledge-empty-shelf="true"
-                    className="relative flex min-h-[clamp(220px,30vh,320px)] w-full flex-1 overflow-hidden rounded-[20px] border border-dashed border-info/18 bg-[radial-gradient(circle_at_50%_0%,hsl(var(--info)/0.12),transparent_44%)]"
+                    className="relative flex h-full min-h-[360px] w-full flex-1 overflow-hidden bg-background/40"
                   >
-                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(hsl(var(--info)/0.055)_1px,transparent_1px),linear-gradient(90deg,hsl(var(--info)/0.055)_1px,transparent_1px)] bg-[size:34px_34px]" />
-                    <div className="pointer-events-none absolute -left-12 top-16 size-44 rounded-full bg-info/10 blur-3xl" />
-                    <div className="pointer-events-none absolute -right-10 bottom-8 size-52 rounded-full bg-info/10 blur-3xl" />
+                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(hsl(var(--border)/0.24)_1px,transparent_1px),linear-gradient(90deg,hsl(var(--border)/0.24)_1px,transparent_1px)] bg-[size:48px_48px] opacity-60" />
                     <div className="absolute right-4 top-4 z-10">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -938,7 +925,7 @@ export function KnowledgeDocumentsPanel({
                             type="button"
                             variant="outline"
                             size="sm"
-                            className="h-9 rounded-full border-info/15 bg-background/82 px-3 text-[11px] font-medium text-foreground/82 shadow-[0_12px_28px_-22px_hsl(var(--primary)/0.55)] backdrop-blur-md hover:border-info/25 hover:bg-background"
+                            className="h-8 rounded-md border-border/55 bg-background/80 px-2.5 text-[11px] font-medium text-foreground/80 shadow-none hover:border-border hover:bg-background"
                             aria-label="查看入库指引"
                           >
                             入库指引
@@ -992,29 +979,53 @@ export function KnowledgeDocumentsPanel({
                       </DropdownMenu>
                     </div>
                     <div className="relative mx-auto flex h-full max-w-5xl flex-col items-center justify-center px-4 py-8 text-center">
-                      <div className="relative mb-3 flex h-[72px] w-24 items-end justify-center">
-                        <div className="absolute bottom-0 h-12 w-20 rounded-[20px] border border-info/20 bg-background/80 shadow-[0_20px_44px_-34px_hsl(var(--primary)/0.7)]" />
-                        <div className="absolute bottom-3.5 h-10 w-[68px] rounded-[15px] border border-info/20 bg-info/10" />
-                        <div className="absolute bottom-5 flex size-11 items-center justify-center rounded-[17px] border border-info/20 bg-background text-info shadow-[0_15px_26px_-20px_hsl(var(--primary)/0.6)]">
-                          {isDatasetEmpty ? (
-                            <Database className="size-5" />
-                          ) : (
-                            <Filter className="size-5" />
-                          )}
+                      {isDatasetEmpty ? (
+                        <div
+                          data-knowledge-empty-shelf-mark="true"
+                          className="relative mb-5 flex h-14 w-20 items-end justify-center"
+                          aria-hidden="true"
+                        >
+                          <span className="absolute bottom-1.5 left-2 right-2 h-0.5 bg-border/80" />
+                          <span className="absolute bottom-0 left-3 h-1.5 w-px bg-border/80" />
+                          <span className="absolute bottom-0 right-3 h-1.5 w-px bg-border/80" />
+                          <span className="mb-2 flex h-7 w-2.5 items-start justify-center rounded-sm border border-info/40 bg-info/[0.10] pt-1.5">
+                            <span className="h-px w-1 bg-info/45" />
+                          </span>
+                          <span className="mb-2 ml-1 flex h-9 w-3 items-start justify-center rounded-sm border border-info/45 bg-info/[0.15] pt-2">
+                            <span className="h-px w-1.5 bg-info/50" />
+                          </span>
+                          <span className="mb-2 ml-1 flex h-6 w-2.5 items-start justify-center rounded-sm border border-border bg-muted/35 pt-1.5">
+                            <span className="h-px w-1 bg-muted-foreground/35" />
+                          </span>
+                          <span className="mb-2 ml-1 flex h-8 w-2.5 rotate-6 items-start justify-center rounded-sm border border-primary/35 bg-primary/[0.08] pt-1.5">
+                            <span className="h-px w-1 bg-primary/40" />
+                          </span>
+                          <span className="absolute right-0 top-0 flex size-6 items-center justify-center rounded-full border border-info/35 bg-background text-info">
+                            <Plus className="size-3.5" />
+                          </span>
                         </div>
-                        <span className="absolute left-4 top-2 size-1.5 rounded-full bg-info/50" />
-                        <span className="absolute right-3 top-7 size-1.5 rounded-full bg-info/50" />
-                      </div>
+                      ) : (
+                        <div className="mb-4 flex size-12 items-center justify-center rounded-xl border border-border/55 bg-background text-info shadow-none">
+                          <Filter className="size-5" />
+                        </div>
+                      )}
 
-                      <div className="inline-flex items-center rounded-full border border-info/15 bg-background/78 px-3 py-1 text-[10px] font-medium text-info/72 dark:text-info/78">
-                        文档货架
-                      </div>
-                      <h3 className="mt-2.5 text-[21px] font-semibold text-foreground">
+                      <h3 className="text-[19px] font-semibold text-foreground">
                         {emptyTitle}
                       </h3>
                       <p className="mt-1.5 max-w-2xl text-[13px] leading-5 text-muted-foreground/78">
                         {emptyDescription}
                       </p>
+
+                      {isDatasetEmpty ? (
+                        <div className="mt-4 flex items-center gap-2 text-[10px] font-medium text-muted-foreground/72">
+                          <span>导入文档</span>
+                          <ChevronRight className="size-3 text-muted-foreground/40" />
+                          <span>自动解析</span>
+                          <ChevronRight className="size-3 text-muted-foreground/40" />
+                          <span>建立索引</span>
+                        </div>
+                      ) : null}
 
                       <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                         {isDatasetEmpty ? null : (

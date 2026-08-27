@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Image from 'next/image'
 import { useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -20,7 +21,6 @@ import {
   Settings2,
   ShieldAlert,
   ShieldCheck,
-  Sparkles,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -28,7 +28,6 @@ import { AppFrame } from '@/components/app-frame'
 import { QuarantineAuditCanvas } from '@/components/knowledge/quarantine/quarantine-audit-canvas'
 import { QuarantineTuneDialog } from '@/components/knowledge/quarantine/quarantine-tune-dialog'
 import { PageScaffold } from '@/components/ui/page-scaffold'
-import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import {
   KNOWLEDGE_OPS_HERO_PANEL_CLASS,
   KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS,
@@ -764,45 +763,36 @@ export default function QuarantineQueuePage() {
           <div className="space-y-2.5">
             <div
               className={cn(
-                'flex min-h-[95px] min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between',
+                'flex min-h-14 min-w-0 flex-col gap-2 lg:flex-row lg:items-center lg:justify-between',
                 KNOWLEDGE_OPS_HERO_PANEL_CLASS
               )}
             >
-              <div className="pointer-events-none absolute -right-10 -top-14 size-44 rounded-full bg-info/10 blur-3xl dark:bg-info/[0.08]" aria-hidden="true" />
-              <div className="pointer-events-none absolute bottom-0 left-8 right-8 h-px bg-[linear-gradient(90deg,transparent,hsl(var(--info)/0.28),transparent)]" aria-hidden="true" />
-              <div className="relative flex min-w-0 items-center gap-3">
-                <div className="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-info/20 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.12))] text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_18px_36px_-24px_hsl(var(--info)/0.9)]">
-                  <span
-                    className="absolute inset-x-2 top-1 h-px bg-card/70"
-                    aria-hidden="true"
+              <span className="pointer-events-none absolute -bottom-px left-1 h-px w-12 bg-info/70" aria-hidden="true" />
+              <div className="relative flex min-w-0 items-center gap-2.5">
+                <div
+                  data-quarantine-title-mark="true"
+                  className="relative flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-md border-0 bg-info/10 text-info shadow-none dark:bg-info/[0.14]"
+                >
+                  <Image
+                    src="/brand/mimirq-quarantine-mark.png"
+                    alt="MimirQ 隔离审核标记"
+                    width={160}
+                    height={160}
+                    loading="eager"
+                    className="size-6 scale-110 object-contain"
                   />
-                  <PageTitleIcon name="quarantine-queue" className="size-9" />
                 </div>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-info/30 bg-info/5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-info">
-                      <Sparkles className="size-3" />
-                      Quarantine Ops
-                    </span>
-                    <span className="inline-flex items-center rounded-full border border-warning/30 bg-warning/5 px-2.5 py-1 text-[10px] font-medium text-warning">
-                      <ShieldCheck className="mr-1.5 size-3" />
-                      样本复核与规则回放
-                    </span>
-                  </div>
-                  <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <h1 className="text-[26px] font-black tracking-[-0.025em] text-foreground">
-                      <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">
-                        隔离审核中心
-                      </span>
-                    </h1>
-                    <p className="text-[13px] leading-5 text-muted-foreground/85">
-                      集中复核隔离样本，支持原文预览、规则调参与回放。
-                    </p>
-                  </div>
+                <div className="min-w-0 sm:flex sm:items-center sm:gap-2.5">
+                  <h1 className="text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground">
+                    隔离审核中心
+                  </h1>
+                  <p className="text-[12px] leading-5 text-muted-foreground/85">
+                    集中复核隔离样本，支持原文预览、规则调参与回放。
+                  </p>
                 </div>
               </div>
-              <div className="relative flex min-w-0 flex-col gap-1.5 lg:min-w-[500px]">
-                <div className="grid gap-2 sm:grid-cols-2">
+              <div className="relative flex min-w-0 flex-col gap-1.5 xl:min-w-[700px] xl:flex-row xl:items-center xl:justify-end">
+                <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
                   <div className={cn(KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS, 'py-1.5')}>
                     <span className="inline-flex items-center gap-1.5">
                       <span
@@ -837,12 +827,12 @@ export default function QuarantineQueuePage() {
                     </span>
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center justify-end gap-2">
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                   {demoMode ? (
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-8 gap-2 rounded-xl border-primary/35 bg-background px-4 text-[12px] font-medium text-primary shadow-[0_16px_30px_-26px_hsl(var(--primary)/0.55)] hover:bg-primary/10"
+                      className="h-8 gap-2 rounded-lg border border-foreground/10 bg-background px-4 text-[12px] font-medium text-primary shadow-none hover:bg-primary/10"
                       onClick={handleExitDemoMode}
                     >
                       <Play className="size-4 fill-current" />
@@ -852,7 +842,7 @@ export default function QuarantineQueuePage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-8 gap-2 rounded-xl border-info/25 bg-info/[0.06] px-3.5 text-[12px] font-medium text-info shadow-[0_12px_24px_-22px_hsl(var(--info)/0.5)] hover:border-info/40 hover:bg-info/[0.12] hover:text-info"
+                    className="h-8 gap-2 rounded-lg border border-foreground/10 bg-background px-3.5 text-[12px] font-medium text-info shadow-none hover:bg-info/[0.08]"
                     onClick={() => {
                       if (demoMode) {
                         toast.success('Demo 数据已刷新')
@@ -872,7 +862,7 @@ export default function QuarantineQueuePage() {
                     同步数据
                   </Button>
 
-                  <div className="flex h-8 items-center gap-2 rounded-xl border border-transparent bg-background/70 px-2.5">
+                  <div className="flex h-8 items-center gap-2 rounded-md border border-foreground/10 bg-background/70 px-2.5">
                     <span className="text-[11px] font-medium text-muted-foreground">
                       自动刷新
                     </span>
@@ -1041,7 +1031,7 @@ export default function QuarantineQueuePage() {
               ]}
             />
 
-            <div className="flex h-full flex-col rounded-[1.2rem] border border-border/60 bg-background/92 p-4 shadow-[0_20px_48px_-40px_rgba(15,23,42,0.2)] backdrop-blur-sm">
+            <div className="flex h-full flex-col rounded-lg border border-foreground/10 bg-background p-4 shadow-none">
               <div className="text-[0.95rem] font-medium text-foreground">
                 快捷操作
               </div>

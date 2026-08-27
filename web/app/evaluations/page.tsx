@@ -370,7 +370,7 @@ function EvaluationInlineStat({
   value: ReactNode
 }>) {
   return (
-    <div className="inline-flex items-center gap-2 rounded-full border border-info/20 bg-[linear-gradient(90deg,hsl(var(--card)),hsl(var(--info)/0.08))] px-3 py-1.5 shadow-sm backdrop-blur-sm">
+    <div className="inline-flex items-center gap-2 rounded-full border border-info/20 bg-card px-3 py-1.5 shadow-none">
       <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-info/80">
         {label}
       </span>
@@ -425,7 +425,7 @@ function EvaluationStageStat({
   helper: string
 }>) {
   return (
-    <div className="rounded-2xl border border-info/20 bg-[linear-gradient(135deg,hsl(var(--card)),hsl(var(--muted)/0.55),hsl(var(--info)/0.12))] px-3.5 py-3 shadow-sm backdrop-blur-sm">
+    <div className="rounded-2xl border border-info/20 bg-card px-3.5 py-3 shadow-none">
       <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
         {label}
       </div>
@@ -473,10 +473,10 @@ function EvaluationResultsStage({
   })
   const readinessLabelClassName =
     readiness.tone === 'ready'
-      ? 'bg-[linear-gradient(90deg,hsl(var(--success)/0.18),hsl(var(--success)/0.10))] text-success'
+      ? 'bg-success/10 text-success'
       : readiness.tone === 'checking'
-        ? 'bg-[linear-gradient(90deg,hsl(var(--info)/0.18),hsl(var(--primary)/0.12))] text-info'
-        : 'bg-[linear-gradient(90deg,hsl(var(--warning)/0.18),hsl(var(--warning)/0.10))] text-warning'
+        ? 'bg-info/10 text-info'
+        : 'bg-warning/10 text-warning'
   const isDeterministicEvaluation =
     String(summary.mode || '') === 'deterministic_conversation'
   const deterministicReason = String(summary.ragas_skipped_reason || '')
@@ -488,13 +488,13 @@ function EvaluationResultsStage({
   return (
     <section
       className={cn(
-        'overflow-hidden rounded-[28px] border border-info/20 bg-card/85 shadow-lg backdrop-blur-sm',
+        'overflow-hidden rounded-[28px] border border-info/20 bg-card shadow-none',
         'flex flex-col',
         fillAvailableHeight && 'min-h-0 flex-1',
         className
       )}
     >
-      <div className="border-b border-info/20 bg-[linear-gradient(90deg,hsl(var(--info)/0.08),hsl(var(--card)/0.96),hsl(var(--primary)/0.08))] px-4 py-4">
+      <div className="border-b border-info/20 bg-muted/20 px-4 py-4">
         <div className="flex flex-wrap items-center gap-2.5">
           <span className="inline-flex h-7 items-center rounded-full border border-info/30 bg-card/85 px-3 text-[11px] font-semibold text-info shadow-sm">
             运行详情
@@ -571,7 +571,7 @@ function EvaluationResultsStage({
           {!displayMetrics.length ? (
             <div
               className={cn(
-                'rounded-2xl border border-dashed border-info/30 bg-[linear-gradient(135deg,hsl(var(--muted)/0.55),hsl(var(--card)/0.96),hsl(var(--info)/0.12))] p-4',
+                'rounded-2xl border border-dashed border-info/30 bg-muted/30 p-4',
                 fillAvailableHeight && 'flex flex-1 flex-col justify-between'
               )}
             >
@@ -582,7 +582,7 @@ function EvaluationResultsStage({
                 {emptyRunState.description}
               </p>
               <div className="mt-4 grid gap-2.5 sm:grid-cols-3">
-                <div className="rounded-xl border border-info/20 bg-card/90 px-3 py-2.5 shadow-sm">
+                <div className="rounded-xl border border-info/20 bg-card px-3 py-2.5 shadow-none">
                   <div className="text-[11px] font-bold text-info">
                     1 选择会话来源
                   </div>
@@ -590,7 +590,7 @@ function EvaluationResultsStage({
                     从已有会话或查询中选择
                   </div>
                 </div>
-                <div className="rounded-xl border border-info/20 bg-card/90 px-3 py-2.5 shadow-sm">
+                <div className="rounded-xl border border-info/20 bg-card px-3 py-2.5 shadow-none">
                   <div className="text-[11px] font-bold text-info">
                     2 配置评测参数
                   </div>
@@ -598,7 +598,7 @@ function EvaluationResultsStage({
                     选择指标与过滤规则
                   </div>
                 </div>
-                <div className="rounded-xl border border-info/20 bg-card/90 px-3 py-2.5 shadow-sm">
+                <div className="rounded-xl border border-info/20 bg-card px-3 py-2.5 shadow-none">
                   <div className="text-[11px] font-bold text-info">
                     3 开始评测
                   </div>
@@ -631,7 +631,7 @@ function EvaluationResultsStage({
       </div>
 
       {displayMetrics.length ? (
-        <div className="border-t border-info/20 bg-[linear-gradient(180deg,hsl(var(--muted)/0.34),hsl(var(--card)))] px-4 py-4">
+        <div className="border-t border-info/20 bg-muted/20 px-4 py-4">
           <div className="mb-3 flex flex-wrap items-center gap-2.5">
             <div className="inline-flex items-center gap-2 text-[14px] font-bold text-foreground">
               <BarChart3 className="h-4 w-4 text-info" aria-hidden="true" />
@@ -645,7 +645,7 @@ function EvaluationResultsStage({
             {displayMetrics.map((metric) => (
               <div
                 key={metric.key}
-                className="rounded-2xl border border-info/20 bg-card/90 px-3.5 py-3 shadow-sm"
+                className="rounded-2xl border border-info/20 bg-card px-3.5 py-3 shadow-none"
               >
                 <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-info">
                   {metricLabel(metric.key)}
@@ -683,12 +683,12 @@ function EvaluationHeroEmptyState({
       )}
     >
       {compact ? (
-        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-card text-primary shadow-[0_8px_20px_hsl(var(--primary)/0.10)]">
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-card text-primary shadow-none">
           <BarChart3 className="h-4 w-4" aria-hidden="true" />
         </span>
       ) : (
         <div className="relative mb-3 h-16 w-20">
-          <div className="absolute left-5 top-1 h-14 w-12 rounded-xl border border-primary/20 bg-card shadow-[0_10px_28px_hsl(var(--primary)/0.12)]" />
+          <div className="absolute left-5 top-1 h-14 w-12 rounded-xl border border-primary/20 bg-card" />
           <div className="absolute left-8 top-0 h-4 w-6 rounded-md bg-primary/15 ring-1 ring-primary/30" />
           <div className="absolute left-9 top-9 h-3 w-2 rounded-sm bg-primary/30" />
           <div className="absolute left-12 top-7 h-5 w-2 rounded-sm bg-primary" />
@@ -743,40 +743,30 @@ function EvaluationHeroCard({
   showAblationsEntry: boolean
 }>) {
   return (
-    <section className={cn(MANAGEMENT_HERO_PANEL_CLASS, 'min-h-[95px]')}>
+    <section className={cn(MANAGEMENT_HERO_PANEL_CLASS, 'min-h-14')}>
       <div
-        className="pointer-events-none absolute -right-10 -top-14 size-44 rounded-full bg-info/10 blur-3xl dark:bg-info/[0.08]"
-        aria-hidden="true"
-      />
-      <div
-        className="pointer-events-none absolute bottom-0 left-8 right-8 h-px bg-[linear-gradient(90deg,transparent,hsl(var(--info)/0.28),transparent)]"
+        className="pointer-events-none absolute -bottom-px left-1 h-px w-12 bg-info/70"
         aria-hidden="true"
       />
 
-      <div className="relative flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex min-w-0 items-center gap-4">
-          <div className="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-info/30 bg-[linear-gradient(135deg,hsl(var(--card)),hsl(var(--info)/0.16))] text-info shadow-lg shadow-info/20">
-            <span
-              className="absolute inset-x-2 top-1.5 h-px bg-card/80"
-              aria-hidden="true"
-            />
-            <PageTitleIcon name="ragas-evaluation" className="size-10" />
+      <div className="relative flex min-w-0 flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <div className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-md bg-info/10 text-info shadow-none">
+            <PageTitleIcon name="ragas-evaluation" className="size-6" />
           </div>
 
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-[26px] font-black tracking-[-0.025em] text-foreground">
-                <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">
-                  {title}
-                </span>
+          <div className="min-w-0 sm:flex sm:items-center sm:gap-2.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <h1 className="text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground">
+                {title}
               </h1>
-              <span className="inline-flex items-center rounded-full border border-success/20 bg-success/10 px-2.5 py-1 text-[10px] font-bold text-success shadow-sm">
-                <Icon className="mr-1.5 size-3.5" aria-hidden="true" />
-                评测中心 · {label}
+              <span className="inline-flex items-center rounded-md border border-success/20 bg-success/5 px-1.5 py-0.5 text-[9px] font-medium text-success">
+                <Icon className="mr-1 size-2.5" aria-hidden="true" />
+                {label}
               </span>
             </div>
             <p
-              className="mt-0.5 truncate text-[13px] leading-5 text-muted-foreground"
+              className="truncate text-[12px] leading-5 text-muted-foreground/85"
               title={description}
             >
               {description}
@@ -784,26 +774,26 @@ function EvaluationHeroCard({
           </div>
         </div>
 
-        <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] xl:min-w-[520px]">
-          <div className={cn(KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS, 'gap-2.5 px-4 py-2.5 text-[12px]')}>
-            <span className="inline-flex items-center gap-2 font-bold text-foreground/85">
+        <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] xl:min-w-[520px]">
+          <div className={cn(KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS, 'gap-2 text-[11px]')}>
+            <span className="inline-flex items-center gap-2 font-medium text-foreground/85">
               <span
                 className="size-1.5 rounded-full bg-info shadow-sm shadow-info/20"
                 aria-hidden="true"
               />
               会话
             </span>
-            <span className="font-mono font-black tabular-nums text-foreground">
+            <span className="font-mono font-semibold tabular-nums text-foreground">
               {conversationsCount}
             </span>
             <span className="h-4 w-px bg-info/15" />
-            <span className="font-bold text-muted-foreground">运行</span>
-            <span className="font-mono font-black tabular-nums text-info">
+            <span className="font-medium text-muted-foreground">运行</span>
+            <span className="font-mono font-semibold tabular-nums text-info">
               {runsCount}
             </span>
             <span className="h-4 w-px bg-info/15" />
-            <span className="font-bold text-muted-foreground">{focusLabel}</span>
-            <span className="font-mono font-black tabular-nums text-success">
+            <span className="font-medium text-muted-foreground">{focusLabel}</span>
+            <span className="font-mono font-semibold tabular-nums text-success">
               {focusValue}
             </span>
           </div>
@@ -814,7 +804,7 @@ function EvaluationHeroCard({
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-10 flex-1 rounded-xl border-info/30 bg-card/90 px-4 text-[13px] font-bold text-foreground/85 shadow-sm hover:bg-info/[0.08] hover:text-info sm:flex-none"
+                  className="h-10 flex-1 rounded-xl border-info/30 bg-card px-4 text-[13px] font-bold text-foreground/85 shadow-none hover:bg-info/[0.08] hover:text-info sm:flex-none"
                 >
                   <SlidersHorizontal className="mr-2 h-4 w-4" />
                   高级诊断
@@ -823,7 +813,7 @@ function EvaluationHeroCard({
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"
-                className="w-72 rounded-xl border-info/30 bg-popover/95 p-1.5 shadow-xl backdrop-blur-xl"
+                className="w-72 rounded-xl border-info/30 bg-popover p-1.5 shadow-none"
               >
                 <DropdownMenuLabel className="px-2.5 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-info">
                   召回与向量诊断
@@ -871,7 +861,7 @@ function EvaluationHeroCard({
             <Button
               type="button"
               variant="outline"
-              className="h-10 flex-1 rounded-xl border-info/30 bg-card/90 px-4 text-[13px] font-bold text-info shadow-sm hover:bg-[linear-gradient(90deg,hsl(var(--info)/0.10),hsl(var(--primary)/0.08))] hover:shadow-md sm:flex-none"
+              className="h-10 flex-1 rounded-xl border-info/30 bg-card px-4 text-[13px] font-bold text-info shadow-none hover:bg-info/10 sm:flex-none"
               onClick={onRefresh}
             >
               <RefreshCw
@@ -906,7 +896,7 @@ function CollapsedWorkspaceRail({
   const ExpandIcon = side === 'left' ? ChevronRight : ChevronLeft
 
   return (
-    <aside className="hidden xl:flex min-h-0 flex-col items-center rounded-2xl border border-info/20 bg-card/80 px-2 py-3 shadow-lg backdrop-blur-sm">
+    <aside className="hidden xl:flex min-h-0 flex-col items-center rounded-2xl border border-info/20 bg-card px-2 py-3 shadow-none">
       <Button
         type="button"
         variant="ghost"
@@ -927,7 +917,7 @@ function CollapsedWorkspaceRail({
         {badgeItems.map((item) => (
           <div
             key={item.label}
-            className="rounded-xl border border-info/20 bg-[linear-gradient(135deg,hsl(var(--card)),hsl(var(--info)/0.10))] px-1.5 py-2 text-center shadow-sm"
+            className="rounded-xl border border-info/20 bg-card px-1.5 py-2 text-center shadow-none"
           >
             <div className="text-[11px] font-bold leading-none tabular-nums text-foreground">
               {item.value}
@@ -980,8 +970,8 @@ function RunRecordCard({
       type="button"
       onClick={onClick}
       className={cn(
-        'w-full rounded-xl border bg-card/80 p-3 text-left shadow-sm backdrop-blur-sm transition-all duration-200 hover:shadow-md hover:scale-[1.02] focus-ring',
-        active ? 'border-info/40 bg-[linear-gradient(135deg,hsl(var(--info)/0.12),hsl(var(--primary)/0.10))] ring-2 ring-info/20 shadow-info/20' : 'border-info/20 hover:border-info/30'
+        'w-full rounded-xl border bg-card p-3 text-left shadow-none transition-all duration-200 hover:border-info/30 focus-ring',
+        active ? 'border-info/40 bg-info/5 ring-2 ring-info/20' : 'border-info/20'
       )}
     >
       <div className="flex items-start justify-between gap-2">
@@ -1009,7 +999,7 @@ function RunRecordCard({
         <div className="mt-2.5 flex items-center gap-2">
           <div className="h-2 flex-1 overflow-hidden rounded-full bg-info/10">
             <div
-              className="h-full rounded-full bg-[linear-gradient(90deg,hsl(var(--info)),hsl(var(--primary)))] transition-all duration-300"
+              className="h-full rounded-full bg-info transition-all duration-300"
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -1039,15 +1029,15 @@ function ScoreDetailsCard({
   rows: ReturnType<typeof scoreRowsFor>
 }>) {
   return (
-    <section className="rounded-2xl border border-info/20 bg-card/80 shadow-md backdrop-blur-sm">
-      <div className="flex items-center gap-2.5 border-b border-info/20 bg-[linear-gradient(90deg,hsl(var(--info)/0.08),hsl(var(--primary)/0.08))] px-4 py-3">
+    <section className="rounded-2xl border border-info/20 bg-card shadow-none">
+      <div className="flex items-center gap-2.5 border-b border-info/20 bg-muted/20 px-4 py-3">
         <div className="text-[14px] font-bold text-foreground">评分明细</div>
         <Info className="h-4 w-4 text-info" aria-hidden="true" />
       </div>
       {rows.length ? (
         <div className="overflow-auto">
           <table className="w-full text-left text-[12.5px]">
-            <thead className="bg-[linear-gradient(90deg,hsl(var(--info)/0.10),hsl(var(--primary)/0.08))] text-foreground/85">
+            <thead className="bg-info/5 text-foreground/85">
               <tr>
                 <th className="px-4 py-2.5 font-bold">指标</th>
                 <th className="px-4 py-2.5 font-bold">平均分</th>
@@ -1614,7 +1604,7 @@ function EvaluationsPageContent() {
       : runStatusCounts.failed
 
   return (
-    <div className="relative flex flex-1 flex-col overflow-hidden bg-[linear-gradient(135deg,hsl(var(--info)/0.08),hsl(var(--primary)/0.07),hsl(var(--info)/0.10))]">
+    <div className="relative flex flex-1 flex-col overflow-hidden bg-background">
       <AnalysisPageShell
         title="评测中心"
         description="把实时会话评测、回归测试与检索集健康度放到同一个工作台里，减少来回切页。"
@@ -1644,9 +1634,9 @@ function EvaluationsPageContent() {
         bodyContainerClassName="max-w-none"
       >
         <div className="flex min-h-0 flex-1 flex-col gap-3 px-6 pb-4">
-          <section className="overflow-hidden rounded-2xl border border-info/20 bg-card/80 shadow-md backdrop-blur-sm">
-            <div className="flex items-center gap-3 bg-[linear-gradient(90deg,hsl(var(--info)/0.08),hsl(var(--primary)/0.06))] px-4 py-3">
-              <nav className="flex items-center gap-1 rounded-xl bg-card/65 p-1 shadow-sm backdrop-blur-sm">
+          <section className="overflow-hidden rounded-2xl border border-info/20 bg-card shadow-none">
+            <div className="flex items-center gap-3 bg-muted/20 px-4 py-3">
+              <nav className="flex items-center gap-1 rounded-xl bg-card p-1 shadow-none">
                 {TAB_META.map((tab) => (
                   <button
                     key={tab.id}
@@ -1655,7 +1645,7 @@ function EvaluationsPageContent() {
                     className={cn(
                       'relative inline-flex h-8 items-center gap-2 rounded-lg px-3.5 text-[12px] font-medium transition-all duration-200',
                       isActiveTab(tab.id)
-                        ? 'bg-[linear-gradient(90deg,hsl(var(--info)),hsl(var(--primary)))] text-primary-foreground shadow-md shadow-info/20'
+                        ? 'bg-info text-primary-foreground shadow-none'
                         : 'text-muted-foreground hover:bg-info/5 hover:text-info'
                     )}
                   >
@@ -1689,8 +1679,8 @@ function EvaluationsPageContent() {
                   side="left"
                 />
               ) : (
-                <aside className="flex min-h-0 max-h-[calc(100vh-246px)] flex-col rounded-2xl border border-info/20 bg-card/80 shadow-lg backdrop-blur-sm">
-                  <div className="flex items-center justify-between border-b border-info/20 bg-[linear-gradient(90deg,hsl(var(--info)/0.10),hsl(var(--primary)/0.08))] px-4 py-3">
+                <aside className="flex min-h-0 max-h-[calc(100vh-246px)] flex-col rounded-2xl border border-info/20 bg-card shadow-none">
+                  <div className="flex items-center justify-between border-b border-info/20 bg-muted/20 px-4 py-3">
                     <div className="inline-flex items-center gap-2.5 text-[14px] font-bold text-foreground">
                       <SlidersHorizontal
                         className="h-4.5 w-4.5 text-info"
@@ -1792,7 +1782,7 @@ function EvaluationsPageContent() {
                           })}
                         </SelectContent>
                       </Select>
-                      <div className="mt-2.5 grid grid-cols-3 gap-1.5 rounded-xl border border-info/30 bg-[linear-gradient(135deg,hsl(var(--info)/0.10),hsl(var(--primary)/0.08))] p-1.5">
+                      <div className="mt-2.5 grid grid-cols-3 gap-1.5 rounded-xl border border-info/30 bg-info/5 p-1.5">
                         {CONVERSATION_EVIDENCE_FILTERS.map((filter) => {
                           const count =
                             filter.id === 'ready'
@@ -1809,7 +1799,7 @@ function EvaluationsPageContent() {
                               className={cn(
                                 'rounded-lg px-2 py-1.5 text-[11.5px] font-bold transition-all duration-200',
                                 active
-                                  ? 'bg-card text-info shadow-md ring-1 ring-info/20'
+                                  ? 'bg-card text-info shadow-none ring-1 ring-info/20'
                                   : 'text-muted-foreground hover:bg-card/70 hover:text-foreground'
                               )}
                             >
@@ -1914,7 +1904,7 @@ function EvaluationsPageContent() {
                     </EvaluationConfigSection>
                   </div>
 
-                  <div className="shrink-0 border-t border-info/20 bg-[linear-gradient(90deg,hsl(var(--info)/0.06),hsl(var(--primary)/0.05))] p-3">
+                  <div className="shrink-0 border-t border-info/20 bg-muted/20 p-3">
                     <div className="mb-2 flex flex-wrap items-center gap-2">
                       <EvaluationInlineStat
                         label="指标数"
@@ -1927,7 +1917,7 @@ function EvaluationsPageContent() {
                       />
                     </div>
                     <Button
-                      className="h-10 w-full rounded-full bg-[linear-gradient(90deg,hsl(var(--info)),hsl(var(--primary)))] text-[13px] font-bold text-primary-foreground shadow-lg shadow-info/20 transition-all duration-200 hover:bg-[linear-gradient(90deg,hsl(var(--info)/0.92),hsl(var(--primary)/0.92))] hover:shadow-xl hover:shadow-info/20"
+                      className="h-10 w-full rounded-full bg-info text-[13px] font-bold text-primary-foreground shadow-none transition-all duration-200 hover:bg-info/90"
                       disabled={
                         isStarting ||
                         !scopedConversationId ||
@@ -1945,7 +1935,7 @@ function EvaluationsPageContent() {
                     </Button>
                     <Button
                       variant="outline"
-                      className="mt-2 h-8 w-full rounded-full border-info/30 bg-card/80 text-[12px] font-semibold text-info shadow-sm backdrop-blur-sm hover:bg-info/[0.08]"
+                      className="mt-2 h-8 w-full rounded-full border-info/30 bg-card text-[12px] font-semibold text-info shadow-none hover:bg-info/[0.08]"
                       onClick={() => refreshEvaluationWorkspace()}
                     >
                       <RefreshCw
@@ -2013,7 +2003,7 @@ function EvaluationsPageContent() {
                   side="right"
                 />
               ) : (
-                <aside className="flex max-h-[calc(100vh-246px)] min-h-0 flex-col overflow-hidden rounded-2xl border border-info/20 bg-card/80 p-3 shadow-lg backdrop-blur-sm">
+                <aside className="flex max-h-[calc(100vh-246px)] min-h-0 flex-col overflow-hidden rounded-2xl border border-info/20 bg-card p-3 shadow-none">
                   <div className="mb-2.5 flex shrink-0 items-center justify-between gap-3">
                     <button
                       type="button"
@@ -2027,7 +2017,7 @@ function EvaluationsPageContent() {
                         aria-hidden="true"
                       />
                       <span className="truncate">运行记录</span>
-                      <span className="rounded-full border border-info/30 bg-[linear-gradient(90deg,hsl(var(--info)/0.10),hsl(var(--primary)/0.08))] px-2 py-0.5 text-[11px] font-bold text-info">
+                      <span className="rounded-full border border-info/30 bg-info/10 px-2 py-0.5 text-[11px] font-bold text-info">
                         {runs.length}
                       </span>
                       <ChevronDown
@@ -2099,7 +2089,7 @@ function EvaluationsPageContent() {
                   </div>
 
                   {isRunRecordsCollapsed ? (
-                    <div className="rounded-xl border border-info/30 bg-[linear-gradient(135deg,hsl(var(--info)/0.08),hsl(var(--primary)/0.06))] px-3 py-2.5 text-[11px] font-medium text-muted-foreground">
+                    <div className="rounded-xl border border-info/30 bg-info/5 px-3 py-2.5 text-[11px] font-medium text-muted-foreground">
                       已收起 {runs.length}{' '}
                       条运行记录，点击标题展开后在列表内上滑查看。
                     </div>

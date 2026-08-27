@@ -55,31 +55,31 @@ const iconTextStyles: Record<NonNullable<StatCardProps['color']>, string> = {
 }
 
 const colorStyles = {
-  amber: 'border-warning/20 bg-[linear-gradient(135deg,hsl(var(--background)/0.94),hsl(var(--warning)/0.12))] text-warning group-hover:border-warning/30 group-hover:bg-[linear-gradient(135deg,hsl(var(--background)/0.98),hsl(var(--warning)/0.18))]',
-  blue: 'border-info/20 bg-[linear-gradient(135deg,hsl(var(--background)/0.94),hsl(var(--info)/0.12))] text-info group-hover:border-info/30 group-hover:bg-[linear-gradient(135deg,hsl(var(--background)/0.98),hsl(var(--info)/0.18))]',
-  green: 'border-success/20 bg-[linear-gradient(135deg,hsl(var(--background)/0.94),hsl(var(--success)/0.12))] text-success group-hover:border-success/30 group-hover:bg-[linear-gradient(135deg,hsl(var(--background)/0.98),hsl(var(--success)/0.18))]',
-  teal: 'border-success/20 bg-[linear-gradient(135deg,hsl(var(--background)/0.94),hsl(var(--success)/0.10))] text-success group-hover:border-success/30 group-hover:bg-[linear-gradient(135deg,hsl(var(--background)/0.98),hsl(var(--success)/0.16))]',
-  orange: 'border-warning/20 bg-[linear-gradient(135deg,hsl(var(--background)/0.94),hsl(var(--warning)/0.10))] text-warning group-hover:border-warning/30 group-hover:bg-[linear-gradient(135deg,hsl(var(--background)/0.98),hsl(var(--warning)/0.16))]',
-  red: 'border-destructive/18 bg-[linear-gradient(135deg,hsl(var(--background)/0.94),hsl(var(--destructive)/0.10))] text-destructive group-hover:border-destructive/28 group-hover:bg-[linear-gradient(135deg,hsl(var(--background)/0.98),hsl(var(--destructive)/0.16))]',
-  gray: 'border-border/60 bg-[linear-gradient(135deg,hsl(var(--background)/0.94),hsl(var(--muted)/0.42))] text-foreground group-hover:border-border/70 group-hover:bg-[linear-gradient(135deg,hsl(var(--background)/0.98),hsl(var(--muted)/0.52))]',
-  cyan: 'border-info/20 bg-[linear-gradient(135deg,hsl(var(--background)/0.94),hsl(var(--info)/0.12))] text-info group-hover:border-info/30 group-hover:bg-[linear-gradient(135deg,hsl(var(--background)/0.98),hsl(var(--info)/0.18))]',
-  sky: 'border-info/20 bg-[linear-gradient(135deg,hsl(var(--background)/0.94),hsl(var(--info)/0.12))] text-info group-hover:border-info/30 group-hover:bg-[linear-gradient(135deg,hsl(var(--background)/0.98),hsl(var(--info)/0.18))]',
-  rose: 'border-destructive/18 bg-[linear-gradient(135deg,hsl(var(--background)/0.94),hsl(var(--destructive)/0.10))] text-destructive group-hover:border-destructive/28 group-hover:bg-[linear-gradient(135deg,hsl(var(--background)/0.98),hsl(var(--destructive)/0.16))]',
-  indigo: 'border-primary/20 bg-[linear-gradient(135deg,hsl(var(--background)/0.94),hsl(var(--primary)/0.12))] text-primary group-hover:border-primary/30 group-hover:bg-[linear-gradient(135deg,hsl(var(--background)/0.98),hsl(var(--primary)/0.18))]',
+  amber: 'border-warning/20 bg-background text-warning group-hover:border-warning/30 group-hover:bg-warning/[0.06]',
+  blue: 'border-info/20 bg-background text-info group-hover:border-info/30 group-hover:bg-info/[0.06]',
+  green: 'border-success/20 bg-background text-success group-hover:border-success/30 group-hover:bg-success/[0.06]',
+  teal: 'border-success/20 bg-background text-success group-hover:border-success/30 group-hover:bg-success/[0.05]',
+  orange: 'border-warning/20 bg-background text-warning group-hover:border-warning/30 group-hover:bg-warning/[0.05]',
+  red: 'border-destructive/18 bg-background text-destructive group-hover:border-destructive/28 group-hover:bg-destructive/[0.05]',
+  gray: 'border-foreground/10 bg-background text-foreground group-hover:border-foreground/15 group-hover:bg-muted/18',
+  cyan: 'border-info/20 bg-background text-info group-hover:border-info/30 group-hover:bg-info/[0.06]',
+  sky: 'border-info/20 bg-background text-info group-hover:border-info/30 group-hover:bg-info/[0.06]',
+  rose: 'border-destructive/18 bg-background text-destructive group-hover:border-destructive/28 group-hover:bg-destructive/[0.05]',
+  indigo: 'border-primary/20 bg-background text-primary group-hover:border-primary/30 group-hover:bg-primary/[0.06]',
 }
 
 const iconBgStyles = {
-  amber: 'bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--warning)/0.16))] text-warning',
-  blue: 'bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.16))] text-info',
-  green: 'bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--success)/0.16))] text-success',
-  teal: 'bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--success)/0.14))] text-success',
-  orange: 'bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--warning)/0.14))] text-warning',
-  red: 'bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--destructive)/0.14))] text-destructive',
-  gray: 'bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.44))] text-muted-foreground',
-  cyan: 'bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.16))] text-info',
-  sky: 'bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.16))] text-info',
-  rose: 'bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--destructive)/0.14))] text-destructive',
-  indigo: 'bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--primary)/0.16))] text-primary',
+  amber: 'border border-warning/20 bg-warning/[0.08] text-warning',
+  blue: 'border border-info/20 bg-info/[0.08] text-info',
+  green: 'border border-success/20 bg-success/[0.08] text-success',
+  teal: 'border border-success/20 bg-success/[0.07] text-success',
+  orange: 'border border-warning/20 bg-warning/[0.07] text-warning',
+  red: 'border border-destructive/20 bg-destructive/[0.07] text-destructive',
+  gray: 'border border-foreground/10 bg-muted/18 text-muted-foreground',
+  cyan: 'border border-info/20 bg-info/[0.08] text-info',
+  sky: 'border border-info/20 bg-info/[0.08] text-info',
+  rose: 'border border-destructive/20 bg-destructive/[0.07] text-destructive',
+  indigo: 'border border-primary/20 bg-primary/[0.08] text-primary',
 }
 
 export function StatCard({
@@ -103,28 +103,28 @@ export function StatCard({
   if (variant === 'minimal') {
     const Wrapper = onClick ? 'button' : 'div'
     const statusColorStyle = isDimmed
-      ? "bg-muted/60 text-muted-foreground border-border/60"
+      ? "bg-muted/18 text-muted-foreground border-foreground/10"
       : active
-        ? "bg-[linear-gradient(90deg,hsl(var(--background)/0.92),hsl(var(--info)/0.18))] text-info border-info/28 shadow-md shadow-[0_12px_24px_-18px_hsl(var(--info)/0.45)]"
-        : (colorStyles[color] || colorStyles.sky) + " border-info/30 shadow-sm"
+        ? "bg-info/[0.08] text-info border-info/28"
+        : (colorStyles[color] || colorStyles.sky) + " border-info/30"
 
     return (
       <Wrapper
         onClick={onClick}
         type={onClick ? 'button' : undefined}
         className={cn(
-          "inline-flex items-center gap-2.5 h-9 px-3 rounded-full group/stat transition-all duration-200 text-left whitespace-nowrap border backdrop-blur-sm",
-          onClick && "cursor-pointer hover:shadow-md hover:scale-105",
+          "inline-flex items-center gap-2.5 h-9 px-3 rounded-full group/stat transition-colors duration-200 text-left whitespace-nowrap border bg-background",
+          onClick && "cursor-pointer hover:border-primary/18 hover:bg-muted/18",
           statusColorStyle,
           className,
         )}
       >
         <div className={cn(
-          "relative flex size-6 shrink-0 items-center justify-center rounded-lg transition-all duration-200",
+          "relative flex size-6 shrink-0 items-center justify-center rounded-md transition-colors duration-200",
           isDimmed
-            ? "bg-muted text-muted-foreground/70"
+            ? "border border-foreground/10 bg-muted/18 text-muted-foreground/70"
             : active
-              ? "bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.22))] text-info"
+              ? "border border-info/20 bg-info/[0.08] text-info"
               : (iconBgStyles[color] || iconBgStyles.sky)
         )}>
           <Icon className="size-4" />
@@ -157,17 +157,17 @@ export function StatCard({
     )
   }
 
-  const silentColorStyle = 'border-border/60 bg-muted/40 text-muted-foreground'
-  const silentIconStyle = 'bg-muted/60 text-muted-foreground/70'
+  const silentColorStyle = 'border-foreground/10 bg-muted/18 text-muted-foreground'
+  const silentIconStyle = 'border border-foreground/10 bg-muted/18 text-muted-foreground/70'
 
   if (dense) {
     return (
       <div className={cn(
-        'group flex items-center gap-3 rounded-2xl border px-3 py-2 shadow-sm backdrop-blur-sm transition-all duration-200 hover:shadow-md',
+        'group flex items-center gap-3 rounded-xl border border-foreground/10 bg-background px-3 py-2 shadow-none transition-colors duration-200 hover:border-primary/18 hover:bg-muted/18',
         isDimmed ? silentColorStyle : colorStyles[color] || colorStyles.sky,
         className
       )}>
-        <div className={cn('flex size-8 items-center justify-center rounded-xl shadow-sm transition-all duration-200 group-hover:scale-110', isDimmed ? silentIconStyle : (iconBgStyles[color] || iconBgStyles.sky))}>
+        <div className={cn('flex size-8 items-center justify-center rounded-lg transition-colors duration-200', isDimmed ? silentIconStyle : (iconBgStyles[color] || iconBgStyles.sky))}>
           <Icon className="size-4" />
         </div>
         <div className="min-w-0">
@@ -181,11 +181,11 @@ export function StatCard({
   return (
     <div className={cn(
       'group relative overflow-hidden transition-all duration-200',
-      'flex items-center gap-4 rounded-2xl border px-5 py-4 shadow-md backdrop-blur-sm hover:shadow-lg hover:scale-[1.02]',
+      'flex items-center gap-4 rounded-xl border border-foreground/10 bg-background px-5 py-4 shadow-none hover:border-primary/18',
       isDimmed ? silentColorStyle : (colorStyles[color] || colorStyles.sky),
       className
     )}>
-      <div className={cn('relative flex items-center justify-center transition-all duration-200 size-12 rounded-xl p-3 shadow-sm group-hover:scale-110', isDimmed ? silentIconStyle : (iconBgStyles[color] || iconBgStyles.sky))}>
+      <div className={cn('relative flex size-12 items-center justify-center rounded-lg p-3 transition-colors duration-200', isDimmed ? silentIconStyle : (iconBgStyles[color] || iconBgStyles.sky))}>
         <Icon className="size-6" />
       </div>
       <div className="relative min-w-0 flex-1">

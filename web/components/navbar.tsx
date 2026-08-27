@@ -522,13 +522,13 @@ export function Navbar({
         aria-label={t('toolbar.navLabel')}
         aria-hidden={!isSidebarOpen}
         className={cn(
-          'peer flex-shrink-0 border-r border-sidebar-border/80 bg-sidebar/85 text-sidebar-foreground backdrop-blur-xl supports-[backdrop-filter]:bg-sidebar/72 flex flex-col transition-transform duration-200 ease-out z-50',
+          'peer flex-shrink-0 border-r border-sidebar-border/80 bg-sidebar/96 text-sidebar-foreground backdrop-blur-xl supports-[backdrop-filter]:bg-sidebar/92 flex flex-col transition-transform duration-200 ease-out z-50',
           'fixed inset-y-0 left-0 md:relative', // Mobile: fixed, Desktop: relative
           isSidebarOpen ? 'w-[264px] translate-x-0' : 'w-[264px] -translate-x-full md:w-0 md:translate-x-0 md:overflow-hidden'
         )}
       >
         {/* Logo 区域 */}
-        <div className="h-14 px-5 border-b border-info/12 bg-background/95 flex items-center gap-3">
+        <div className="h-14 px-5 border-b border-info/12 bg-sidebar/96 flex items-center gap-3">
           <Link href="/" className="flex items-center gap-3 group rounded-xl focus-ring">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-card/90 shadow-lg shadow-[0_16px_28px_-22px_hsl(var(--info)/0.35)] ring-1 ring-info/18 transition-all duration-200 group-hover:scale-110 group-hover:shadow-xl group-hover:shadow-[0_18px_32px_-22px_hsl(var(--info)/0.45)] motion-reduce:transition-none">
               <Image
@@ -560,14 +560,13 @@ export function Navbar({
         </div>
 
         {/* 新对话按钮 */}
-        <div className="p-4 pb-2">
+        <div className="px-3 pb-2 pt-4">
           <Button
             ref={firstActionRef}
             variant="ghost"
             className={cn(
-              "w-full justify-start gap-2.5 h-11 rounded-2xl border border-info/22 font-bold transition-all duration-200 shadow-sm",
-              "bg-card/90 text-sidebar-foreground",
-              "hover:border-info/32 hover:bg-info/10 hover:shadow-md hover:shadow-[0_16px_30px_-24px_hsl(var(--info)/0.32)]",
+              "h-10 w-full justify-start gap-2.5 rounded-xl border border-info/12 bg-transparent px-3 font-medium text-sidebar-foreground transition-colors duration-150 shadow-none sm:h-10",
+              "hover:border-info/20 hover:bg-info/6",
               "active:scale-[0.98]"
             )}
             onClick={() => {
@@ -580,10 +579,10 @@ export function Navbar({
           </Button>
         </div>
 
-        <div className="px-4 pb-2">
+        <div className="px-3 pb-2">
           <button
             type="button"
-            className="group flex w-full items-center justify-between gap-3 rounded-2xl border border-info/16 bg-card/90 px-3 py-3 text-left shadow-sm backdrop-blur-sm transition-all duration-200 hover:border-info/26 hover:bg-info/8 hover:shadow-md focus-ring"
+            className="group flex h-10 w-full items-center justify-between gap-2.5 rounded-lg border border-transparent bg-transparent px-3 text-left shadow-none transition-colors duration-150 hover:border-info/10 hover:bg-info/7 focus-ring"
             onClick={() => {
               setCommandMenuOpen(true)
               closeSidebarOnMobile()
@@ -595,15 +594,12 @@ export function Navbar({
             title={t('command.triggerLabel')}
           >
             <div className="flex min-w-0 items-center gap-3">
-              <div className="flex size-9 items-center justify-center rounded-xl border border-info/12 bg-info/10 text-info transition-all duration-200 group-hover:scale-110 group-hover:bg-info/15 group-hover:text-info">
-                <Search className="size-4" />
-              </div>
+              <Search className="size-4 shrink-0 text-info" />
               <div className="min-w-0">
-                <p className="text-sm font-bold text-sidebar-foreground">{t('command.triggerLabel')}</p>
-                <p className="text-[11px] font-medium text-info/80">{t('command.triggerHint')}</p>
+                <p className="truncate text-[13px] font-medium text-sidebar-foreground">{t('command.triggerLabel')}</p>
               </div>
             </div>
-            <span className="rounded-lg border border-info/14 bg-card/80 px-2 py-0.5 text-[11px] font-bold text-info/85 shadow-sm">⌘K</span>
+            <span className="shrink-0 rounded-md border border-info/10 bg-info/6 px-1.5 py-0.5 text-[10px] font-semibold text-info/75">⌘K</span>
           </button>
         </div>
 
@@ -660,11 +656,11 @@ export function Navbar({
                                 onClick={closeSidebarOnMobile}
                                 aria-current={isActive ? 'page' : undefined}
                                 className={cn(
-                                  'relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group focus-ring',
+                                  'relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group focus-ring',
                                   'before:pointer-events-none before:absolute before:left-1 before:top-2 before:bottom-2 before:w-[3px] before:rounded-full before:transition-all before:duration-200',
                                   isActive
-                                    ? 'text-info font-bold bg-card/92 border border-info/18 shadow-sm before:bg-info'
-                                    : 'text-muted-foreground hover:bg-info/7 hover:text-info before:bg-transparent hover:before:bg-info/28'
+                                    ? 'text-info font-bold bg-info/7 shadow-none before:bg-info'
+                                    : 'text-muted-foreground hover:bg-info/6 hover:text-info before:bg-transparent hover:before:bg-info/28'
                                 )}
                               >
                                 <Icon
@@ -688,7 +684,7 @@ export function Navbar({
         </div>
 
         {/* 底部信息 */}
-        <div className="p-3 border-t border-info/12 bg-background/95">
+        <div className="p-3 border-t border-info/12 bg-sidebar/96">
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -761,7 +757,7 @@ export function Navbar({
               trigger={
                 <Button
                   variant="ghost"
-                  className="h-9 w-full justify-start gap-2 rounded-xl border border-border/60 bg-card/60 px-3 text-xs font-semibold text-foreground shadow-sm transition-colors duration-200 hover:border-primary/20 hover:bg-muted"
+                  className="h-9 w-full justify-start gap-2 rounded-xl border border-info/8 bg-info/3 px-3 text-xs font-semibold text-foreground shadow-none transition-colors duration-150 hover:border-info/16 hover:bg-info/7"
                   title={t('toolbar.appearance')}
                   aria-label={t('toolbar.appearance')}
                 >

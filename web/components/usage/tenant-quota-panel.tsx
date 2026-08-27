@@ -21,10 +21,9 @@ import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
 import type { TenantQuotaSummary } from '@/types'
 
-const TENANT_QUOTA_PANEL_CLASS =
-  'overflow-hidden rounded-[1.15rem] border border-border/60 bg-card/86 shadow-[0_10px_28px_hsl(var(--primary)/0.045)]'
+const TENANT_QUOTA_PANEL_CLASS = 'overflow-hidden rounded-xl border border-foreground/10 bg-background shadow-none'
 const QUOTA_CARD_CLASS =
-  'rounded-[1rem] border border-border/60 bg-background/72 px-3 py-2.5 shadow-[0_1px_0_hsl(var(--primary)/0.04)] transition-colors hover:border-primary/18 hover:bg-card/90'
+  'rounded-lg border border-foreground/10 bg-background/80 px-3 py-2.5 shadow-none transition-colors hover:border-primary/18 hover:bg-muted/18'
 const QUOTA_DISABLED_TONE =
   'border-border/60 bg-muted/55 text-muted-foreground'
 const QUOTA_ENABLED_TONE =
@@ -269,7 +268,7 @@ export function TenantQuotaPanel() {
         <Button
           size="sm"
           variant="outline"
-          className="h-8 gap-2 rounded-full border-border/60 bg-background/72 px-3 text-[11px] font-semibold text-foreground shadow-sm hover:bg-primary/10 hover:text-primary"
+          className="h-8 gap-2 rounded-lg border-border/70 bg-background px-3 text-[11px] font-semibold text-foreground shadow-none hover:bg-muted/18 hover:text-primary"
           disabled={quotaQuery.isFetching}
           onClick={() => detachPromise(refreshQuota())}
         >

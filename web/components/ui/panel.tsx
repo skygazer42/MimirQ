@@ -4,15 +4,15 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const panelVariants = cva(
-  "flex flex-col rounded-xl border border-border/50 text-card-foreground shadow-soft",
+  "flex flex-col text-card-foreground",
   {
     variants: {
       variant: {
-        default: "bg-card/95 transition-shadow duration-200 hover:shadow-md motion-reduce:transition-none",
-        muted: "bg-muted/35",
-        glass: "border-border/40 bg-card/50 backdrop-blur-xl",
+        default: "rounded-lg border border-foreground/10 bg-background shadow-none",
+        muted: "rounded-lg border border-foreground/10 bg-muted/20 shadow-none",
+        glass: "rounded-xl border border-border/40 bg-card/50 shadow-soft backdrop-blur-xl",
         seamless:
-          "rounded-none border-x-0 border-t-0 border-b border-border/70 bg-background shadow-none transition-none",
+          "rounded-none border-x-0 border-t-0 border-b border-foreground/15 bg-background shadow-none transition-none",
       },
       padding: {
         none: "p-0",

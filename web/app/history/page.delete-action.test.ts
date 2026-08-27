@@ -117,8 +117,9 @@ describe('history page delete action', () => {
       )
     })
 
-    expect(container.querySelector('a[href="/evaluations"]')?.textContent).toContain('evaluateConversation')
-    expect(container.querySelector('a[href="/observability"]')?.textContent).toContain('ragTrace')
+    expect(container.querySelector('[data-history-main-empty="true"] a[href="/"]')?.textContent).toContain('startNewConversation')
+    expect(container.querySelector('[data-history-main-empty="true"] a[href="/evaluations"]')).toBeNull()
+    expect(container.querySelector('[data-history-main-empty="true"] a[href="/observability"]')).toBeNull()
 
     act(() => root.unmount())
   })

@@ -15,6 +15,7 @@ import {
   History,
   RefreshCw,
   Settings,
+  Search,
   Sparkles,
   Workflow,
   Keyboard,
@@ -81,6 +82,7 @@ type KeyChordCommand = {
   key: string
   label: string
   description: string
+  icon: React.ComponentType<{ className?: string }>
   visibilityKey?: AdminControlledNavigationModule
   run: () => void
 }
@@ -348,15 +350,16 @@ export function CommandMenu() {
   const keyChordCommands = React.useMemo<KeyChordCommand[]>(
     () =>
       ([
-        { id: "documents", key: "g d", visibilityKey: undefined, run: () => router.push("/knowledge") },
-        { id: "chat", key: "g c", visibilityKey: undefined, run: () => router.push("/") },
-        { id: "graph", key: "g g", visibilityKey: 'knowledgeGraph', run: () => router.push("/graph") },
-        { id: "observability", key: "g o", visibilityKey: undefined, run: () => router.push("/observability") },
-        { id: "slice", key: "f s", visibilityKey: undefined, run: () => router.push("/chunk-preview") },
-        { id: "resume", key: "g v", visibilityKey: undefined, run: resumeLastDocumentContext },
-      ] as const).filter((command) => canShowNavigationModule(command.visibilityKey)).map(({ id, key, visibilityKey, run }) => ({
+        { id: "documents", key: "g d", icon: FileText, visibilityKey: undefined, run: () => router.push("/knowledge") },
+        { id: "chat", key: "g c", icon: MessageSquare, visibilityKey: undefined, run: () => router.push("/") },
+        { id: "graph", key: "g g", icon: Workflow, visibilityKey: 'knowledgeGraph', run: () => router.push("/graph") },
+        { id: "observability", key: "g o", icon: Activity, visibilityKey: undefined, run: () => router.push("/observability") },
+        { id: "slice", key: "f s", icon: Search, visibilityKey: undefined, run: () => router.push("/chunk-preview") },
+        { id: "resume", key: "g v", icon: History, visibilityKey: undefined, run: resumeLastDocumentContext },
+      ] as const).filter((command) => canShowNavigationModule(command.visibilityKey)).map(({ id, key, icon, visibilityKey, run }) => ({
         id,
         key,
+        icon,
         visibilityKey,
         label: t(`keyChords.${id}.label`),
         description:
@@ -713,11 +716,18 @@ export function CommandMenu() {
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
       <div
+        data-command-menu-header="true"
         id="mimirq-command-menu"
-        className="flex items-center justify-between border-b border-border/50 bg-card/95 px-3 py-2 text-[11px] text-muted-foreground"
+        className="flex items-start justify-between gap-4 border-b border-foreground/10 bg-background px-4 py-3 pr-11"
       >
-        <span className="font-medium text-foreground/80">{t("header.title")}</span>
-        <span>{t("header.hint")}</span>
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-foreground">{t("header.title")}</div>
+          <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{t("header.description")}</div>
+        </div>
+        <div className="mt-0.5 flex shrink-0 items-center gap-1.5 text-[10px] text-muted-foreground">
+          <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-foreground/10 bg-background px-1 font-mono font-semibold text-foreground">?</kbd>
+          <span>{t("header.hint")}</span>
+        </div>
       </div>
       <CommandInput
         maxLength={COMMAND_MENU_SEARCH_MAX_LENGTH}
@@ -758,17 +768,27 @@ export function CommandMenu() {
 
         {showBaseCommandGroups ? (
           <>
-            <CommandGroup heading={t("groups.keyboardWorkflow")}>
-              {keyChordCommands.map((command) => (
-                <CommandItem key={command.key} onSelect={() => runCommand(command.run)}>
-                  <Workflow className="mr-2 size-4" />
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <span>{command.label}</span>
-                    <span className="truncate text-xs text-muted-foreground">{command.description}</span>
-                  </div>
-                  <CommandShortcut>{command.key}</CommandShortcut>
-                </CommandItem>
-              ))}
+            <CommandGroup data-command-workflow-group="true" heading={t("groups.keyboardWorkflow")}>
+              {keyChordCommands.map((command) => {
+                const Icon = command.icon
+                return (
+                  <CommandItem
+                    key={command.key}
+                    className="gap-3 rounded-md border border-foreground/10 bg-background px-3 py-2.5 aria-selected:bg-foreground/10 aria-selected:text-foreground"
+                    disabled={command.id === "resume" && !hasResumeTarget}
+                    onSelect={() => runCommand(command.run)}
+                  >
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background text-foreground">
+                      <Icon className="size-4" />
+                    </div>
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <span className="text-sm font-medium text-foreground">{command.label}</span>
+                      <span className="truncate text-xs leading-5 text-muted-foreground">{command.description}</span>
+                    </div>
+                    <CommandShortcut>{command.key.toUpperCase()}</CommandShortcut>
+                  </CommandItem>
+                )
+              })}
             </CommandGroup>
 
             <CommandSeparator />

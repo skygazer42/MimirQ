@@ -288,7 +288,7 @@ export function GraphContextMenu({
       onMouseDown={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <div className="w-64 overflow-hidden rounded-xl border border-border/60 bg-card/95 shadow-strong backdrop-blur-sm">
+      <div className="w-64 overflow-hidden rounded-xl border border-border/60 bg-card shadow-none">
         {menuContent}
       </div>
     </div>

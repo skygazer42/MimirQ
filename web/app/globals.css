@@ -10,7 +10,7 @@
     --font-code: "Fira Code Variable", "Fira Code", var(--font-mono);
 
     /* Ocean light - Ice blue rather than neutral gray */
-    --background: 203 38% 98.2%;
+    --background: 200 50% 97.6%;
     --foreground: 217 46% 14%;
 
     /* Cards - White with subtle elevation */
@@ -37,11 +37,11 @@
     --primary-900: 222.2 54% 8%;
 
     /* Secondary - Soft blue-white */
-    --secondary: 203 35% 96%;
+    --secondary: 199 42% 96.2%;
     --secondary-foreground: 217 42% 18%;
 
     /* Muted - Barely blue neutral for background/disabled text */
-    --muted: 203 30% 96%;
+    --muted: 199 38% 96%;
     --muted-foreground: 209 22% 38%;
 
     /* Accent - Violet (reserved for retrieval / AI / vector semantic — not generic emphasis) */
@@ -80,9 +80,9 @@
     --chart-7: 192 74% 60%;     /* cyan-light (gradient step) */
     --chart-8: 262 66% 74%;     /* violet-light (gradient step) */
 
-    /* Borders & Inputs - Pale ocean blue */
-    --border: 203 24% 90%;
-    --input: 203 22% 87.5%;
+    /* Borders & Inputs - readable ocean structure */
+    --border: 203 22% 84%;
+    --input: 203 22% 82%;
     --ring: 199 78% 48%;
 
     /* Radius - Consistent Curves */
@@ -92,12 +92,12 @@
     --radius-3xl: 1.5rem;
 
     /* Code block background */
-    --code-background: 203 30% 95%;
+    --code-background: 199 34% 95%;
 
     /* Sidebar - Clear ice-blue surface */
-    --sidebar-background: 199 55% 98%;
+    --sidebar-background: 199 54% 97.3%;
     --sidebar-foreground: 217 44% 16%;
-    --sidebar-border: 201 30% 89%;
+    --sidebar-border: 203 22% 84%;
 
     /* Custom Shadows for depth */
     --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.03);
@@ -107,17 +107,15 @@
     /* Surface hierarchy: 0=base, 1=card, 2=overlay, 3=popover */
     --surface-0: var(--background);
     --surface-1: var(--card);
-    --surface-2: 203 32% 97.2%;
+    --surface-2: 198 40% 96.7%;
     --surface-3: var(--popover);
 
-    /* Global app backdrop: visible enough for theme personalization, but still low-noise for reading. */
-    --app-background-base: radial-gradient(circle at 18% 0%, hsl(var(--primary) / 0.04), transparent 32%),
-      radial-gradient(circle at 82% 8%, hsl(var(--info) / 0.04), transparent 34%),
-      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.65) 48%, hsl(var(--background)) 100%);
+    /* Global app backdrop stays uniform; hierarchy comes from ruled surfaces. */
+    --app-background-base: hsl(var(--background));
     --app-orb-primary: var(--primary);
     --app-orb-secondary: var(--info);
-    --app-orb-primary-opacity: 0.06;
-    --app-orb-secondary-opacity: 0.08;
+    --app-orb-primary-opacity: 0;
+    --app-orb-secondary-opacity: 0;
   }
 
   html:not(.dark)[data-surface-theme="neutral"] {
@@ -137,15 +135,15 @@
     --accent-foreground: 240 5.9% 10%;
     --info: 240 3.8% 28%;
     --info-foreground: 0 0% 100%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 87%;
+    --border: 240 5.9% 84%;
+    --input: 240 5.9% 82%;
     --ring: 240 3.8% 34%;
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 240 5.9% 10%;
-    --sidebar-border: 240 5.9% 90%;
+    --sidebar-border: 240 5.9% 84%;
     --code-background: 240 4.8% 95.9%;
     --surface-2: 240 4.8% 98%;
-    --app-background-base: linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.58) 52%, hsl(var(--background)) 100%);
+    --app-background-base: hsl(var(--background));
     --app-orb-primary-opacity: 0;
     --app-orb-secondary-opacity: 0;
     --chart-1: 240 6% 22%;
@@ -185,21 +183,19 @@
     --accent-foreground: 229.5 57.3% 43.1%;
     --info: 229.3 66.1% 54.9%;
     --info-foreground: 0 0% 100%;
-    --border: 220 44.7% 90.8%;
-    --input: 220 38.5% 84.7%;
+    --border: 220 28% 84%;
+    --input: 220 28% 81%;
     --ring: 229.3 66.1% 54.9%;
     --sidebar-background: 228 100% 99%;
     --sidebar-foreground: 224.1 36.2% 18.4%;
-    --sidebar-border: 220 44.7% 90.8%;
+    --sidebar-border: 220 28% 84%;
     --code-background: 220 50% 95.3%;
     --surface-2: 222 62.5% 96.9%;
-    --app-background-base: radial-gradient(circle at 18% -4%, hsl(var(--primary) / 0.11), transparent 34%),
-      radial-gradient(circle at 84% 6%, hsl(207 100% 57% / 0.08), transparent 36%),
-      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.88) 52%, hsl(var(--background)) 100%);
+    --app-background-base: hsl(var(--background));
     --app-orb-primary: 229.3 66.1% 54.9%;
     --app-orb-secondary: 207 100% 57%;
-    --app-orb-primary-opacity: 0.11;
-    --app-orb-secondary-opacity: 0.08;
+    --app-orb-primary-opacity: 0;
+    --app-orb-secondary-opacity: 0;
     --chart-1: 229.3 66.1% 54.9%;
     --chart-2: 207 88% 54%;
     --chart-3: 218 34% 48%;
@@ -237,19 +233,17 @@
     --accent-foreground: 0 0% 100%;
     --info: 211.2 100% 40%;
     --info-foreground: 0 0% 100%;
-    --border: 210 16% 88%;
-    --input: 210 16% 88%;
+    --border: 210 14% 84%;
+    --input: 210 14% 82%;
     --ring: 211.2 100% 40%;
     --sidebar-background: 210 18% 99%;
     --sidebar-foreground: 210 10.8% 14.5%;
-    --sidebar-border: 210 16% 88%;
+    --sidebar-border: 210 14% 84%;
     --code-background: 210 18% 95%;
     --surface-2: 210 18% 96.2%;
-    --app-background-base: radial-gradient(circle at 16% -4%, hsl(var(--primary) / 0.08), transparent 32%),
-      radial-gradient(circle at 86% 4%, hsl(var(--primary) / 0.05), transparent 34%),
-      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.84) 50%, hsl(var(--background)) 100%);
-    --app-orb-primary-opacity: 0.10;
-    --app-orb-secondary-opacity: 0.08;
+    --app-background-base: hsl(var(--background));
+    --app-orb-primary-opacity: 0;
+    --app-orb-secondary-opacity: 0;
     --chart-1: 211 72% 42%;
     --chart-2: 211 46% 58%;
     --chart-3: 210 12% 46%;
@@ -287,19 +281,17 @@
     --accent-foreground: 0 0% 100%;
     --info: 32.1 35.3% 40.6%;
     --info-foreground: 0 0% 100%;
-    --border: 34 20% 80%;
-    --input: 34 20% 80%;
+    --border: 34 20% 76%;
+    --input: 34 20% 74%;
     --ring: 32.1 40% 48%;
     --sidebar-background: 40 36% 95.5%;
     --sidebar-foreground: 36 19.6% 20%;
-    --sidebar-border: 34 20% 82%;
+    --sidebar-border: 34 20% 76%;
     --code-background: 35 24% 88%;
     --surface-2: 38 24% 90.5%;
-    --app-background-base: radial-gradient(circle at 18% -2%, hsl(var(--primary) / 0.12), transparent 34%),
-      radial-gradient(circle at 84% 4%, hsl(var(--accent) / 0.12), transparent 36%),
-      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.86) 52%, hsl(var(--background)) 100%);
-    --app-orb-primary-opacity: 0.14;
-    --app-orb-secondary-opacity: 0.11;
+    --app-background-base: hsl(var(--background));
+    --app-orb-primary-opacity: 0;
+    --app-orb-secondary-opacity: 0;
   }
 
   html.dark[data-surface-theme="ocean"] {
@@ -308,9 +300,7 @@
     --info: 199 84% 62%;
     --info-foreground: 220 20% 10%;
     --ring: 199 78% 58%;
-    --app-background-base: radial-gradient(circle at 18% -4%, hsl(var(--primary) / 0.13), transparent 34%),
-      radial-gradient(circle at 82% 2%, hsl(var(--info) / 0.10), transparent 36%),
-      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.52) 52%, hsl(var(--background)) 100%);
+    --app-background-base: hsl(var(--background));
   }
 
   html.dark[data-surface-theme="deepsea"] {
@@ -340,21 +330,19 @@
     --accent-foreground: 228 100% 93.1%;
     --info: 230.7 100% 78.4%;
     --info-foreground: 228 42.4% 11.6%;
-    --border: 224.2 30.6% 24.3%;
-    --input: 222.9 28.4% 29%;
+    --border: 224.2 28% 30%;
+    --input: 222.9 28% 32%;
     --ring: 230.7 100% 78.4%;
     --sidebar-background: 224.2 42.2% 8.8%;
     --sidebar-foreground: 228 100% 97.1%;
-    --sidebar-border: 224.2 30.6% 24.3%;
+    --sidebar-border: 224.2 28% 29%;
     --code-background: 225 36.4% 12.9%;
     --surface-2: 224 34.9% 16.9%;
-    --app-background-base: radial-gradient(circle at 18% -4%, hsl(var(--primary) / 0.14), transparent 34%),
-      radial-gradient(circle at 84% 4%, hsl(207 100% 68% / 0.09), transparent 36%),
-      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.62) 52%, hsl(var(--background)) 100%);
+    --app-background-base: hsl(var(--background));
     --app-orb-primary: 230.7 100% 78.4%;
     --app-orb-secondary: 207 100% 68%;
-    --app-orb-primary-opacity: 0.13;
-    --app-orb-secondary-opacity: 0.08;
+    --app-orb-primary-opacity: 0;
+    --app-orb-secondary-opacity: 0;
     --chart-1: 230.7 100% 78.4%;
     --chart-2: 207 86% 70%;
     --chart-3: 218 42% 68%;
@@ -382,15 +370,15 @@
     --accent-foreground: 0 0% 96%;
     --info: 240 4.8% 72%;
     --info-foreground: 240 5.9% 10%;
-    --border: 240 4.2% 22%;
-    --input: 240 4.2% 24%;
+    --border: 240 4.2% 27%;
+    --input: 240 4.2% 29%;
     --ring: 240 4.8% 72%;
     --sidebar-background: 240 5.9% 7%;
     --sidebar-foreground: 0 0% 96%;
-    --sidebar-border: 240 4.2% 20%;
+    --sidebar-border: 240 4.2% 26%;
     --code-background: 240 4.8% 12%;
     --surface-2: 240 4.4% 14%;
-    --app-background-base: linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.48) 52%, hsl(var(--background)) 100%);
+    --app-background-base: hsl(var(--background));
     --app-orb-primary-opacity: 0;
     --app-orb-secondary-opacity: 0;
     --chart-1: 240 6% 84%;
@@ -415,13 +403,11 @@
     --accent-foreground: 216 15% 12%;
     --info: 211.1 90% 62%;
     --info-foreground: 216 15% 12%;
-    --border: 216 10% 23%;
-    --input: 216 10% 23%;
+    --border: 216 10% 27%;
+    --input: 216 10% 29%;
     --sidebar-background: 216 16% 10%;
-    --sidebar-border: 216 10% 20%;
-    --app-background-base: radial-gradient(circle at 18% -4%, hsl(var(--primary) / 0.13), transparent 34%),
-      radial-gradient(circle at 82% 2%, hsl(var(--accent) / 0.10), transparent 36%),
-      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.52) 52%, hsl(var(--background)) 100%);
+    --sidebar-border: 216 10% 26%;
+    --app-background-base: hsl(var(--background));
     --chart-1: 211 72% 62%;
     --chart-2: 211 46% 70%;
     --chart-3: 210 12% 60%;
@@ -444,14 +430,12 @@
     --accent-foreground: 0 0% 100%;
     --info: 32.1 42% 56%;
     --info-foreground: 28 18% 12%;
-    --border: 30 10% 24%;
-    --input: 30 10% 24%;
+    --border: 30 10% 28%;
+    --input: 30 10% 30%;
     --sidebar-background: 30 20% 10%;
-    --sidebar-border: 30 10% 22%;
+    --sidebar-border: 30 10% 27%;
     --code-background: 30 14% 14%;
-    --app-background-base: radial-gradient(circle at 16% -4%, hsl(var(--primary) / 0.15), transparent 34%),
-      radial-gradient(circle at 84% 4%, hsl(var(--accent) / 0.10), transparent 36%),
-      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.48) 52%, hsl(var(--background)) 100%);
+    --app-background-base: hsl(var(--background));
   }
 
   html.dark {
@@ -527,8 +511,8 @@
     --chart-8: 262 68% 80%;
 
     /* Borders & Inputs */
-    --border: 220 10% 20%;
-    --input: 220 10% 20%;
+    --border: 220 10% 25%;
+    --input: 220 10% 28%;
     --ring: 192 60% 56%;
 
     /* Code block background */
@@ -537,7 +521,7 @@
     /* Sidebar - Slightly darker to recede */
     --sidebar-background: 220 14% 8%;
     --sidebar-foreground: 210 20% 97%;
-    --sidebar-border: 220 10% 18%;
+    --sidebar-border: 220 10% 24%;
 
     /* Shadows */
     --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.18);
@@ -549,13 +533,11 @@
     --surface-1: var(--card);
     --surface-2: 220 12% 17%;
     --surface-3: var(--popover);
-    --app-background-base: radial-gradient(circle at 18% 0%, hsl(var(--primary) / 0.10), transparent 34%),
-      radial-gradient(circle at 82% 8%, hsl(var(--info) / 0.08), transparent 36%),
-      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.52) 48%, hsl(var(--background)) 100%);
+    --app-background-base: hsl(var(--background));
     --app-orb-primary: var(--primary);
     --app-orb-secondary: var(--info);
-    --app-orb-primary-opacity: 0.12;
-    --app-orb-secondary-opacity: 0.10;
+    --app-orb-primary-opacity: 0;
+    --app-orb-secondary-opacity: 0;
   }
 }
 
@@ -574,7 +556,7 @@
     @apply bg-background text-foreground antialiased selection:bg-primary/25 selection:text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
     line-height: 1.55;
-    background-image: linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.4) 100%);
+    background-image: none;
     background-attachment: fixed;
   }
 

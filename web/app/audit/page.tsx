@@ -55,10 +55,9 @@ import { useTenantAccess } from '@/hooks/use-tenant-access'
 const FIELD_LABEL =
   'mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground'
 const AUDIT_SURFACE_CLASS =
-  'border-border/60 bg-background/74 text-foreground'
-const AUDIT_PANEL_CLASS = `rounded-[1.15rem] ${AUDIT_SURFACE_CLASS} bg-card/86 shadow-[0_10px_28px_hsl(var(--primary)/0.045)]`
-const AUDIT_TABLE_HEAD_CLASS =
-  'border-b border-border/50 bg-muted/38 text-left backdrop-blur'
+  'border border-foreground/10 bg-background text-foreground'
+const AUDIT_PANEL_CLASS = `rounded-xl ${AUDIT_SURFACE_CLASS} bg-background shadow-none`
+const AUDIT_TABLE_HEAD_CLASS = 'border-b border-foreground/10 bg-muted/18 text-left'
 const AUDIT_TABLE_HEADER_CLASS =
   'px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground'
 const AUDIT_MUTED_CHIP_CLASS =
@@ -265,7 +264,7 @@ function HUDTile({
   const toneClasses = HUD_TONE_CLASSES[tone] || HUD_TONE_CLASSES.slate
 
   return (
-    <div className="flex items-center gap-3 rounded-[1rem] border border-border/60 bg-card/88 px-4 py-3 shadow-[0_1px_0_hsl(var(--primary)/0.04)] transition-colors hover:border-primary/18 hover:bg-card">
+    <div className="flex items-center gap-3 rounded-xl border border-foreground/10 bg-background px-4 py-3 shadow-none transition-colors hover:border-primary/18 hover:bg-muted/18">
       <div
         className={cn(
           'flex size-8 shrink-0 items-center justify-center rounded-xl border',
@@ -300,10 +299,10 @@ function PresetButton({
       variant="outline"
       size="sm"
       className={cn(
-        'h-7 rounded-full px-3 text-[11px] font-semibold shadow-none transition-all',
+        'h-7 rounded-full px-3 text-[11px] font-semibold shadow-none transition-colors',
         active
           ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
-          : 'border-primary/20 bg-primary/[0.06] text-muted-foreground hover:border-primary/30 hover:bg-primary/10 hover:text-primary'
+          : 'border-border/60 bg-background text-muted-foreground hover:border-primary/20 hover:bg-muted/18 hover:text-primary'
       )}
       onClick={onClick}
     >
@@ -666,7 +665,7 @@ function AuditLogsPageContent() {
             <Button
               variant="outline"
               size="sm"
-              className="h-8 gap-2 rounded-full border-border/60 bg-card/86 px-3 text-[11px] font-semibold shadow-sm hover:bg-primary/10 hover:text-primary"
+              className="h-8 gap-2 rounded-lg border-border/70 bg-background px-3 text-[11px] font-semibold shadow-none hover:bg-muted/18 hover:text-primary"
               onClick={() => {
                 logsQuery.refetch()
                 filterOptionsQuery.refetch()
@@ -680,7 +679,7 @@ function AuditLogsPageContent() {
             <Button
               variant="outline"
               size="icon"
-              className="size-8 rounded-full border-border/60 bg-card/86 shadow-sm hover:bg-primary/10 hover:text-primary"
+              className="size-8 rounded-lg border-border/70 bg-background shadow-none hover:bg-muted/18 hover:text-primary"
               aria-label="清空审计筛选"
               onClick={() => {
                 setFilters({ ...EMPTY_AUDIT_FILTERS })
@@ -748,7 +747,7 @@ function AuditLogsPageContent() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 gap-1.5 self-start rounded-full px-2.5 text-[11px] font-semibold text-muted-foreground hover:bg-primary/10 hover:text-primary lg:self-auto"
+              className="h-7 gap-1.5 self-start rounded-full border border-border/60 bg-background px-2.5 text-[11px] font-semibold text-muted-foreground hover:bg-muted/18 hover:text-primary lg:self-auto"
                 onClick={() => setShowAdvanced(!showAdvanced)}
               >
                 {showAdvanced ? t('filters.more') : '更多筛选'}
@@ -1043,7 +1042,7 @@ function AuditLogsPageContent() {
           </div>
 
           {/* Detailed Response Collapsible */}
-          <details className="group rounded-[1.15rem] border border-border/60 bg-card/74 px-4 py-3 shadow-[0_1px_0_hsl(var(--primary)/0.04)]">
+          <details className="group rounded-xl border border-foreground/10 bg-background px-4 py-3 shadow-none">
             <summary className="flex cursor-pointer list-none items-center justify-between text-muted-foreground transition-colors hover:text-foreground">
               <div className="flex items-center gap-3">
                 <FileJson className="size-4" />

@@ -83,18 +83,20 @@ CommonUi: {
     themeCustomizer: {
       openLabel: '打开主题定制',
       title: '主题定制',
-      description: '自定义界面颜色与风格',
+      description: '选择界面风格与强调主色',
       resetAppearance: '重置外观',
-      surfaceLabel: '背景风格',
-      surfacePresetLabel: '选择背景风格：{name}',
+      surfaceLabel: '界面风格',
+      surfacePresetLabel: '选择界面风格：{name}',
+      surfaceSwatch: '底色',
+      primarySwatch: '主色',
       surfacePresets: {
         ocean: {
           title: '默认海洋',
-          description: '冷静蓝绿，保持当前默认观感。',
+          description: '清透冰蓝表面与深海军蓝主色，保持 MimirQ 默认层级。',
         },
         deepsea: {
           title: '深海留白',
-          description: '雾白蓝灰表面、深海蓝焦点与轻柔光晕，简洁但保留清晰层级。',
+          description: '雾白蓝灰表面与克制的深海蓝焦点，留白充足、层级清晰。',
         },
         neutral: {
           title: '中性白',
@@ -102,7 +104,7 @@ CommonUi: {
         },
         classic: {
           title: '经典白灰',
-          description: '背景 #F8F9FA，正文深灰，强调蓝色，干净现代且阅读友好。',
+          description: '浅灰白背景、深灰正文与经典蓝主色，清爽且阅读友好。',
         },
         earth: {
           title: '米白大地',
@@ -110,9 +112,10 @@ CommonUi: {
         },
       },
       colorLabel: '主色调',
-      useSurfaceColor: '跟随背景风格',
-      surfaceColorActive: '当前跟随背景风格（{color}），切换明暗模式时会自动保持对比度。',
-      customColorActive: '当前使用自定义强调色。',
+      useSurfaceColor: '使用当前界面风格的自动主色',
+      autoColor: '自动',
+      surfaceColorActive: '当前：{style} · 自动主色 {color}',
+      customColorActive: '当前：{style} · 自定义主色 {color}',
       modeLabel: '模式',
       presetLabel: '选择主色调：{name}',
       selected: '已选中',

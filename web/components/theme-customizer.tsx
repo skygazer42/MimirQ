@@ -47,7 +47,9 @@ export function ThemeCustomizer({ trigger }: Readonly<ThemeCustomizerProps> = {}
   const { theme, setTheme } = useTheme()
   const [colorOverride, setColorOverride] = React.useState<string | null>(null)
   const [surfaceTheme, setSurfaceTheme] = React.useState<SurfaceThemeKey>('ocean')
-  const effectiveColor = colorOverride ?? getSurfaceThemeMeta(surfaceTheme).defaultPrimary
+  const surfaceMeta = getSurfaceThemeMeta(surfaceTheme)
+  const effectiveColor = colorOverride ?? surfaceMeta.defaultPrimary
+  const surfaceTitle = t(`themeCustomizer.surfacePresets.${surfaceTheme}.title`)
   const triggerNode = trigger ?? (
     <IconButton
       label={t('themeCustomizer.openLabel')}
@@ -124,38 +126,33 @@ export function ThemeCustomizer({ trigger }: Readonly<ThemeCustomizerProps> = {}
                   className={cn(
                     'rounded-xl border px-3 py-3 text-left transition-colors duration-200 motion-reduce:transition-none',
                     surfaceTheme === preset.key
-                      ? 'border-primary bg-primary/5 ring-2 ring-primary/15'
+                      ? 'border-primary bg-primary/5 ring-1 ring-primary/15'
                       : 'border-border bg-card hover:border-primary/40 hover:bg-muted/60'
                   )}
                   aria-label={t('themeCustomizer.surfacePresetLabel', { name: preset.label })}
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <div>
+                    <div className="min-w-0 flex-1">
                       <div className="text-sm font-medium text-foreground">{t(`themeCustomizer.surfacePresets.${preset.key}.title`)}</div>
                       <div className="mt-1 text-xs leading-relaxed text-muted-foreground">
                         {t(`themeCustomizer.surfacePresets.${preset.key}.description`)}
                       </div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      <span
-                        className="size-4 rounded-full border border-black/5"
-                        style={{
-                          backgroundColor:
-                            preset.key === 'deepsea'
-                              ? '#F7F9FF'
-                              : preset.key === 'neutral'
-                              ? '#FFFFFF'
-                              : preset.key === 'classic'
-                                ? '#F8F9FA'
-                                : preset.key === 'earth'
-                                  ? '#F5F0E8'
-                                  : '#F7FBFC',
-                        }}
-                      />
-                      <span
-                        className="size-4 rounded-full border border-black/5"
-                        style={{ backgroundColor: preset.defaultPrimary }}
-                      />
+                    <div className="grid shrink-0 gap-1.5 text-[9px] font-medium text-muted-foreground">
+                      <span className="flex items-center gap-1.5">
+                        <span
+                          className="size-3.5 rounded-full border border-black/10"
+                          style={{ backgroundColor: preset.previewSurface }}
+                        />
+                        {t('themeCustomizer.surfaceSwatch')}
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span
+                          className="size-3.5 rounded-full border border-black/10"
+                          style={{ backgroundColor: preset.defaultPrimary }}
+                        />
+                        {t('themeCustomizer.primarySwatch')}
+                      </span>
                     </div>
                   </div>
                 </button>
@@ -173,17 +170,14 @@ export function ThemeCustomizer({ trigger }: Readonly<ThemeCustomizerProps> = {}
                 aria-label={t('themeCustomizer.useSurfaceColor')}
                 title={t('themeCustomizer.useSurfaceColor')}
                 className={cn(
-                  "relative flex h-9 w-full items-center justify-center rounded-lg border border-border bg-card shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/45 hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 motion-reduce:transition-none motion-reduce:hover:translate-y-0",
+                  "relative flex h-9 w-full items-center justify-center gap-1 rounded-lg border border-border bg-card shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/45 hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 motion-reduce:transition-none motion-reduce:hover:translate-y-0",
                   colorOverride === null && "border-primary bg-primary/5 ring-2 ring-primary/25"
                 )}
               >
-                <Sparkles className="size-4 text-muted-foreground" aria-hidden="true" />
-                {colorOverride === null && (
-                  <span className="absolute right-1 top-1 inline-flex size-3.5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm">
-                    <Check className="size-2.5" aria-hidden="true" />
-                    <span className="sr-only">{t('themeCustomizer.selected')}</span>
-                  </span>
-                )}
+                <Sparkles className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                <span className="text-[10px] font-semibold text-foreground">
+                  {t('themeCustomizer.autoColor')}
+                </span>
               </button>
               {PRESET_COLORS.map((preset) => (
                 <button
@@ -213,8 +207,8 @@ export function ThemeCustomizer({ trigger }: Readonly<ThemeCustomizerProps> = {}
             </div>
             <p className="text-[11px] leading-relaxed text-muted-foreground">
               {colorOverride
-                ? t('themeCustomizer.customColorActive')
-                : t('themeCustomizer.surfaceColorActive', { color: effectiveColor })}
+                ? t('themeCustomizer.customColorActive', { style: surfaceTitle, color: effectiveColor })
+                : t('themeCustomizer.surfaceColorActive', { style: surfaceTitle, color: effectiveColor })}
             </p>
           </div>
 

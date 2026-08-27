@@ -957,11 +957,11 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         )}
       </DialogTrigger>
 
-      <DialogContent className="!max-w-5xl h-[80vh] !p-0 !gap-0 overflow-hidden">
+      <DialogContent className="!max-w-5xl h-[80vh] overflow-hidden rounded-lg border border-foreground/10 bg-background !p-0 !gap-0">
         {/* Header */}
-        <header className="flex items-start justify-between gap-6 border-b border-border bg-muted/20 px-6 py-4">
+        <header className="flex items-start justify-between gap-6 border-b border-foreground/15 bg-background px-6 py-4">
           <div className="flex items-start gap-4 min-w-0">
-            <div className="grid h-12 w-12 place-items-center rounded-2xl border border-border bg-primary/10 text-primary">
+            <div className="grid h-12 w-12 place-items-center rounded-xl border border-foreground/10 bg-background/70 text-primary">
               <Database className="h-6 w-6" />
             </div>
             <div className="min-w-0">
@@ -991,16 +991,16 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
             <StatusBadge status={status} />
             <div className="flex flex-wrap justify-end gap-2">
               {parserLabel ? (
-                <span className="rounded-full border border-border/60 bg-muted/60 px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                <span className="rounded-full border border-foreground/10 bg-background/70 px-2.5 py-1 text-xs font-medium text-muted-foreground">
                   {t('header.parserChip', { label: parserLabel })}
                 </span>
               ) : null}
               {chunkStrategyLabel ? (
-                <span className="rounded-full border border-border/60 bg-muted/60 px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                <span className="rounded-full border border-foreground/10 bg-background/70 px-2.5 py-1 text-xs font-medium text-muted-foreground">
                   {t('header.chunkingChip', { label: chunkStrategyLabel })}
                 </span>
               ) : null}
-              <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/60 px-2.5 py-1 text-xs font-medium text-muted-foreground">
+              <span className="inline-flex items-center gap-1 rounded-full border border-foreground/10 bg-background/70 px-2.5 py-1 text-xs font-medium text-muted-foreground">
                 <Shield className="h-3.5 w-3.5" />
                 {accessModeLabel}
               </span>
@@ -1130,7 +1130,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         </main>
 
         {/* Footer */}
-        <footer className="border-t border-border bg-muted/20 px-6 py-4">
+        <footer className="border-t border-foreground/15 bg-background px-6 py-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col gap-2 sm:flex-row">
               <DocumentVersionsDialog

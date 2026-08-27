@@ -76,12 +76,11 @@ const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
 const SETTINGS_SECTION_BY_ID = Object.fromEntries(
   SETTINGS_SECTIONS.map((section) => [section.id, section])
 ) as Record<string, SettingsSectionDefinition>
-const SETTINGS_CARD_CLASS =
-  'rounded-[16px] border border-border/60 bg-card/82 shadow-sm'
+const SETTINGS_CARD_CLASS = 'rounded-xl border border-foreground/10 bg-background shadow-none'
 const SETTINGS_OUTLINE_BUTTON =
-  'h-8 rounded-[12px] border-border/60 bg-card/82 px-3 text-[12px] font-medium text-foreground shadow-sm hover:bg-muted/45'
+  'h-8 rounded-lg border-border/70 bg-background px-3 text-[12px] font-medium text-foreground shadow-none hover:bg-muted/18'
 const SETTINGS_PRIMARY_BUTTON =
-  'h-8 rounded-[12px] bg-primary px-3 text-[12px] font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:bg-primary/55 disabled:opacity-80 disabled:text-primary-foreground'
+  'h-8 rounded-lg bg-primary px-3 text-[12px] font-medium text-primary-foreground shadow-none hover:bg-primary/90 disabled:bg-primary/55 disabled:opacity-80 disabled:text-primary-foreground'
 
 type SettingsPageState = ReturnType<typeof useSettingsPageState>
 type ParserBackendPreference = ReturnType<typeof useParserBackendPreference>
@@ -108,10 +107,10 @@ type SettingsMetricItem = {
 }
 
 const SETTINGS_METRIC_TONE_CLASS: Record<SettingsMetricTone, string> = {
-  blue: 'bg-primary/10 text-primary',
-  green: 'bg-success/10 text-success',
-  indigo: 'bg-accent/10 text-accent',
-  slate: 'bg-muted text-muted-foreground',
+  blue: 'text-primary',
+  green: 'text-success',
+  indigo: 'text-accent',
+  slate: 'text-muted-foreground',
 }
 
 function getSaveStatusLabel(
@@ -145,18 +144,18 @@ function SettingsMetricStrip({
   return (
     <div
       data-testid="settings-metric-strip"
-      className="flex flex-wrap items-center gap-1.5 rounded-[16px] border border-border/60 bg-card/82 p-1.5 shadow-[0_8px_24px_hsl(var(--foreground)/0.03)]"
+      className="flex flex-wrap items-center gap-1.5 rounded-xl border border-foreground/10 bg-background p-1.5"
     >
       {items.map((item) => {
         const Icon = item.icon
         return (
           <div
             key={item.label}
-            className="flex min-h-9 flex-1 basis-[150px] items-center gap-2 rounded-[12px] border border-border/50 bg-muted/28 px-2.5 py-1.5"
+            className="flex min-h-9 flex-1 basis-[150px] items-center gap-2 rounded-lg border border-foreground/10 bg-muted/15 px-2.5 py-1.5"
           >
             <div
               className={cn(
-                'flex size-6 shrink-0 items-center justify-center rounded-[9px]',
+                'flex size-6 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background',
                 SETTINGS_METRIC_TONE_CLASS[item.tone]
               )}
             >
@@ -210,7 +209,7 @@ function SettingsSaveFeedback({
   const extraCount = Math.max(0, updatedKeys.length - visibleKeys.length)
 
   return (
-    <div className="rounded-[16px] border border-success/25 bg-[linear-gradient(135deg,hsl(var(--success)/0.12),hsl(var(--card)/0.90))] px-3.5 py-3 shadow-[0_10px_30px_hsl(var(--success)/0.06)]">
+    <div className="rounded-xl border border-success/25 bg-success/[0.08] px-3.5 py-3 shadow-none">
       <div className="flex items-start gap-3">
         <div className="flex size-8 shrink-0 items-center justify-center rounded-[11px] border border-success/25 bg-success/15 text-success">
           <CheckCircle2 className="size-4" />
@@ -327,7 +326,7 @@ function EnhancementCard({
               {tags.map((tag) => (
                 <span
                   key={tag}
-                  className="rounded-md border border-border/60 bg-card/80 px-1.5 py-0.5 text-[10px] font-medium leading-[14px] text-muted-foreground"
+                  className="rounded-md border border-border/60 bg-background px-1.5 py-0.5 text-[10px] font-medium leading-[14px] text-muted-foreground"
                 >
                   {tag}
                 </span>
@@ -346,7 +345,7 @@ function RetrievalEnhancementSection({ state }: Readonly<{ state: SettingsPageSt
   const kgEnabled = state.getFeatureValue('kg_enabled')
 
   return (
-    <section className="rounded-[16px] border border-border/60 bg-card/82 p-3.5 shadow-sm">
+    <section className="rounded-xl border border-foreground/10 bg-background p-3.5 shadow-none">
       <div className="mb-2.5">
         <h2 className="text-[13px] font-semibold text-foreground">
           关键词增强配置
@@ -436,14 +435,13 @@ function SettingsSectionFrame({
       id={section.id}
       aria-labelledby={`${section.id}-title`}
       className={cn(
-        'relative scroll-mt-24 overflow-visible rounded-[20px] border border-border/60 bg-card/82 shadow-[0_14px_34px_hsl(var(--foreground)/0.035)]',
-        'before:absolute before:-left-3 before:top-4 before:bottom-4 before:w-px before:rounded-full before:bg-primary/25',
+        'relative scroll-mt-24 overflow-visible rounded-xl border border-foreground/10 bg-background shadow-none',
         className
       )}
     >
-      <div className="rounded-t-[20px] border-b border-border/50 bg-[linear-gradient(90deg,hsl(var(--muted)/0.38),hsl(var(--card)/0.88),hsl(var(--primary)/0.06))] px-4 py-3 ring-1 ring-inset ring-border/40">
+      <div className="border-b border-foreground/10 bg-muted/18 px-4 py-3">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-7 w-9 shrink-0 items-center justify-center rounded-[12px] border border-primary/20 bg-primary/10 text-[11px] font-black text-primary">
+          <span className="flex h-7 w-9 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background text-[11px] font-black text-primary">
             {String(index + 1).padStart(2, '0')}
           </span>
           <div className="min-w-0">
@@ -459,7 +457,7 @@ function SettingsSectionFrame({
           </div>
         </div>
       </div>
-      <div className="space-y-3 border-t border-border/35 p-3.5">{children}</div>
+      <div className="space-y-3 p-3.5">{children}</div>
     </section>
   )
 }
@@ -536,7 +534,7 @@ function SettingsPageContent() {
         size="full"
         compact
         density="system-dense"
-        headerClassName="[&_[class*='rounded-full']]:border-primary/20 [&_[class*='rounded-full']]:bg-primary/10 [&_[class*='rounded-full']]:font-medium [&_[class*='rounded-full']]:normal-case [&_[class*='rounded-full']]:text-primary"
+        headerClassName="[&_[class*='rounded-full']]:border-border/60 [&_[class*='rounded-full']]:bg-background [&_[class*='rounded-full']]:font-medium [&_[class*='rounded-full']]:normal-case [&_[class*='rounded-full']]:text-muted-foreground"
         topClassName="pb-2.5"
         bodyClassName="pt-0.5"
         top={
@@ -672,11 +670,11 @@ function SettingsContent({
                 type="button"
                 onClick={() => scrollTo(sec.id)}
                 className={cn(
-                  'relative w-full rounded-[12px] px-3 py-2 text-left transition-colors',
+                  'relative w-full rounded-lg border border-transparent px-3 py-2 text-left transition-colors',
                   'text-[12px] font-semibold leading-[18px]',
                   activeId === sec.id
-                    ? 'bg-primary/10 text-primary before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[3px] before:rounded-full before:bg-primary'
-                    : 'text-foreground/78 hover:bg-muted/45 hover:text-foreground'
+                    ? 'border-foreground/10 bg-muted/18 text-primary'
+                    : 'text-foreground/78 hover:bg-muted/18 hover:text-foreground'
                 )}
               >
                 {sec.label}

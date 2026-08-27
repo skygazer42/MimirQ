@@ -195,21 +195,16 @@ export function GraphPageHeader({
   }
 
   return (
-    <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex h-16 items-center gap-2 border-b border-border/60 bg-[linear-gradient(135deg,hsl(var(--card)/0.98),hsl(var(--muted)/0.34))] pl-14 pr-3 shadow-[0_18px_46px_-40px_rgba(15,23,42,0.46)] md:gap-3 md:px-4 lg:px-6">
-      <div
-        className="pointer-events-none absolute inset-y-3 left-0 w-1 rounded-r-full bg-[linear-gradient(180deg,hsl(var(--info)),hsl(var(--primary)))]"
-        aria-hidden="true"
-      />
+    <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex h-16 items-center gap-2 border-b border-border/60 bg-background px-3 shadow-none md:gap-3 md:px-4 lg:px-6">
+      <span className="pointer-events-none absolute -bottom-px left-4 h-px w-12 bg-info/70" aria-hidden="true" />
       <div className="pointer-events-auto flex shrink-0 items-center gap-2.5">
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-[15px] border border-info/18 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.10))] text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_14px_30px_-24px_hsl(var(--info)/0.75)]">
-          <PageTitleIcon name="knowledge-graph" className="size-7" />
+        <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-info/10 text-info shadow-none">
+          <PageTitleIcon name="knowledge-graph" className="size-6" />
         </div>
-        <h1 className="text-lg font-semibold tracking-[-0.02em] text-foreground sm:text-[22px]">
-          <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">
-            知识图谱
-          </span>
+        <h1 className="shrink-0 whitespace-nowrap text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground">
+          知识图谱
         </h1>
-        <span className="hidden shrink-0 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary shadow-sm sm:inline-flex">
+        <span className="hidden shrink-0 rounded-md border border-primary/20 bg-primary/5 px-2 py-0.5 text-[10px] font-medium text-primary sm:inline-flex">
           {viewMode === '3d' ? '3D 图谱' : '2D 图谱'}
         </span>
       </div>

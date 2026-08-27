@@ -20,16 +20,8 @@ export function QuarantineEmptyState({
 }>) {
   return (
     <div className="flex min-h-[10.5rem] flex-col items-center justify-center px-6 py-3.5 text-center">
-      <div className="relative mb-2 h-[58px] w-[92px]">
-        <div className="absolute inset-x-2 bottom-2 h-14 rounded-[1.35rem] bg-primary/15 blur-2xl" />
-        <div className="absolute left-4 top-4 h-8 w-14 rounded-[0.8rem] border border-primary/20 bg-primary/10 shadow-[0_14px_30px_-24px_hsl(var(--primary)/0.55)]" />
-        <div className="absolute left-4 top-2.5 h-4 w-8 rounded-t-xl bg-primary/15" />
-        <div className="absolute left-7 top-6 flex size-9 items-center justify-center rounded-full border-[3px] border-primary/40 bg-background/80 shadow-sm">
-          <Search className="size-4 text-primary" />
-        </div>
-        <span className="absolute left-1 top-7 size-1.5 rounded-full bg-primary/30" />
-        <span className="absolute right-6 top-2 size-2 rounded-full bg-primary/30" />
-        <span className="absolute right-2 top-10 size-1.5 rounded-full bg-primary/20" />
+      <div className="mb-2 flex size-11 items-center justify-center rounded-lg border border-foreground/10 bg-background/70">
+        <Search className="size-4 text-primary" />
       </div>
 
       <div className="text-[0.98rem] font-semibold text-foreground">
@@ -47,7 +39,7 @@ export function QuarantineEmptyState({
         <Button
           type="button"
           variant="outline"
-          className="h-8 rounded-xl border-border/60 bg-background px-3.5 text-[11px] font-medium"
+          className="h-8 rounded-md border border-foreground/10 bg-background px-3.5 text-[11px] font-medium shadow-none"
           onClick={onResetFilters}
         >
           <RotateCcw className="size-4" />
@@ -55,7 +47,7 @@ export function QuarantineEmptyState({
         </Button>
         <Button
           type="button"
-          className="h-8 rounded-xl bg-primary px-3.5 text-[11px] font-semibold text-primary-foreground shadow-[0_16px_30px_-22px_hsl(var(--primary)/0.8)] hover:bg-primary/90"
+          className="h-8 rounded-md bg-primary px-3.5 text-[11px] font-semibold text-primary-foreground shadow-none hover:bg-primary/90"
           onClick={onRefresh}
         >
           <RefreshCw

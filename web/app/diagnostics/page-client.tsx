@@ -857,7 +857,7 @@ function MetricInfoTooltip({
 
 function DiagnosticUseGuide() {
   return (
-    <div className="rounded-2xl border border-primary/15 bg-[linear-gradient(135deg,hsl(var(--primary)/0.10),hsl(var(--card))_48%,hsl(var(--accent)/0.08))] p-3 shadow-[0_10px_24px_hsl(var(--primary)/0.05)]">
+    <div className="rounded-2xl border border-primary/15 bg-card p-3 shadow-none">
       <div className="grid gap-2 lg:grid-cols-[1.1fr_1fr_1fr]">
         <DiagnosticUseStep
           icon={Search}
@@ -1646,7 +1646,7 @@ export default function DiagnosticsPage() {
                 <div className="flex gap-2">
                   <Button
                     data-rag-preview-action="true"
-                    className="h-9 flex-1 bg-primary text-primary-foreground hover:bg-primary/90 text-[13px] font-semibold shadow-[0_10px_24px_hsl(var(--primary)/0.18)] disabled:bg-muted disabled:text-muted-foreground"
+                    className="h-9 flex-1 bg-primary text-primary-foreground hover:bg-primary/90 text-[13px] font-semibold shadow-none disabled:bg-muted disabled:text-muted-foreground"
                     onClick={runPromptPreviewProbe}
                     disabled={probeRunning || !activeDatasetId}
                   >

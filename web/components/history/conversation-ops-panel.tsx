@@ -89,29 +89,27 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
 
   return (
     <Panel
+      data-history-ops-panel="true"
+      data-history-ops-boundary="ruled"
       padding="md"
       className={cn(
-        'relative overflow-hidden border-border/60 shadow-[0_12px_36px_rgba(15,23,42,0.08)] transition-all duration-200 motion-reduce:transition-none',
-        'bg-[linear-gradient(135deg,hsl(var(--card)/0.98),hsl(var(--info)/0.08)_48%,hsl(var(--success)/0.06))]',
-        panelOpen ? 'rounded-2xl' : 'rounded-[1.35rem] py-3'
+        'relative border border-foreground/15 bg-background transition-all duration-200 motion-reduce:transition-none',
+        panelOpen ? 'rounded-lg' : 'rounded-lg py-3'
       )}
     >
-      <div className="pointer-events-none absolute inset-y-2 left-0 w-1 rounded-r-full bg-[linear-gradient(180deg,hsl(var(--info)/0.6),hsl(var(--primary)/0.72),hsl(var(--success)/0.6))]" />
-      <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-info/16 blur-2xl dark:bg-info/10" />
-      <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-[linear-gradient(90deg,transparent,hsl(var(--info)/0.56),transparent)]" />
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <button
           type="button"
-          className="group flex min-w-0 flex-1 items-center gap-3 rounded-2xl py-0.5 pl-1 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-info/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          className="group flex min-w-0 flex-1 items-center gap-3 rounded-md py-0.5 pl-1 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-info/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           aria-expanded={panelOpen}
           onClick={() => setPanelOpen((open) => !open)}
         >
           <span
             className={cn(
-              'flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border shadow-sm transition-all',
+              'flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background text-foreground transition-colors',
               panelOpen
-                ? 'border-info/30 bg-info/14 text-info dark:text-info'
-                : 'border-info/18 bg-background/85 text-info group-hover:-translate-y-0.5 group-hover:border-info/28 group-hover:bg-info/10 dark:text-info'
+                ? 'text-foreground'
+                : 'text-muted-foreground group-hover:border-foreground/15 group-hover:text-foreground'
             )}
           >
             <ChevronDown className={cn('h-4 w-4 transition-transform', panelOpen ? 'rotate-0' : '-rotate-90')} />
@@ -119,7 +117,7 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
           <span className="min-w-0">
             <span className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-semibold tracking-[-0.01em] text-foreground">对话运维工具箱</span>
-              <span className="rounded-full border border-info/15 bg-info/10 px-2 py-0.5 text-[10px] font-semibold text-info dark:text-info">
+              <span className="rounded-md border border-foreground/10 bg-background/70 px-2 py-0.5 text-[10px] font-semibold text-foreground/80">
                 导出 · 检查点
               </span>
             </span>
@@ -133,7 +131,7 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
                 {QUICK_ACTIONS.map((label) => (
                   <span
                     key={label}
-                    className="rounded-full border border-border/55 bg-background/78 px-2.5 py-1 text-[11px] font-medium text-muted-foreground shadow-[0_1px_0_hsl(var(--background)/0.9)_inset] backdrop-blur dark:border-border/20 dark:bg-background/20"
+                    className="rounded-md border border-foreground/10 bg-background/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground"
                   >
                     {label}
                   </span>
@@ -145,10 +143,10 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
         <div className="flex items-center gap-2 sm:justify-end">
           <span
             className={cn(
-              'w-fit rounded-full border px-2.5 py-1 text-[11px] font-semibold shadow-sm',
+              'w-fit rounded-md border px-2.5 py-1 text-[11px] font-semibold',
               hasConversation
-                ? 'border-success/25 bg-success/10 text-success'
-                : 'border-muted-foreground/15 bg-muted/40 text-muted-foreground'
+                ? 'border-success/20 bg-success/[0.08] text-success'
+                : 'border-foreground/10 bg-background/70 text-muted-foreground'
             )}
           >
             {hasConversation ? '已绑定' : '未选择'}
@@ -158,10 +156,10 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
             variant="outline"
             size="sm"
             className={cn(
-              'h-8 rounded-full border-info/22 px-3 text-xs font-semibold shadow-sm transition',
+              'h-8 rounded-md border-foreground/10 px-3 text-xs font-semibold transition',
               panelOpen
-                ? 'bg-background/75 hover:border-info/38 hover:bg-info/10'
-                : 'bg-foreground text-background hover:border-foreground hover:bg-foreground/86 dark:bg-info/80 dark:text-background dark:hover:bg-info/70'
+                ? 'bg-background hover:border-foreground/15 hover:bg-muted/30'
+                : 'bg-foreground text-background hover:border-foreground hover:bg-foreground/86'
             )}
             onClick={() => setPanelOpen((open) => !open)}
           >
@@ -173,7 +171,7 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
 
       {panelOpen ? (
         <>
-          <div className="mt-3 rounded-2xl border border-info bg-background/70 p-3 shadow-[0_1px_0_rgba(255,255,255,0.7)_inset]">
+          <div className="mt-3 rounded-md border border-foreground/10 bg-background/70 p-3">
             <div className="text-xs font-semibold text-foreground">当前对话自动绑定</div>
             <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
               {hasConversation

@@ -8,15 +8,15 @@ import { PageTitleIcon, type PageTitleIconName } from '@/components/ui/page-titl
 import { cn } from '@/lib/utils'
 
 export const KNOWLEDGE_OPS_BACKGROUND_CLASS =
-  'flex min-h-0 flex-1 flex-col overflow-hidden bg-background bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.04),transparent_34rem)]'
+  'flex min-h-0 flex-1 flex-col overflow-hidden bg-background'
 
 export const MANAGEMENT_HERO_PANEL_CLASS =
-  'relative overflow-hidden rounded-[28px] border border-border/70 bg-[linear-gradient(135deg,hsl(var(--card)/0.98),hsl(var(--info)/0.045)_52%,hsl(var(--primary)/0.035))] px-4 py-3 shadow-[0_24px_70px_-50px_hsl(var(--info)/0.16)] backdrop-blur-2xl dark:border-border/80 dark:bg-[linear-gradient(135deg,hsl(var(--card)/0.96),hsl(var(--info)/0.07)_52%,hsl(var(--primary)/0.05))]'
+  'relative overflow-hidden rounded-none border-x-0 border-t-0 border-b border-foreground/15 bg-transparent px-1 py-2 shadow-none dark:bg-transparent'
 
 export const KNOWLEDGE_OPS_HERO_PANEL_CLASS = MANAGEMENT_HERO_PANEL_CLASS
 
 export const KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS =
-  'flex min-w-0 flex-wrap items-center gap-2 rounded-2xl border border-info/14 bg-[linear-gradient(135deg,hsl(var(--card)/0.94),hsl(var(--info)/0.04))] px-3 py-2 text-[11px] text-muted-foreground shadow-[0_12px_28px_-24px_hsl(var(--info)/0.18)] backdrop-blur dark:border-info/12 dark:bg-[linear-gradient(135deg,hsl(var(--card)/0.78),hsl(var(--info)/0.06))]'
+  'flex min-w-0 flex-wrap items-center gap-2 rounded-md border border-foreground/10 bg-background/70 px-2.5 py-1.5 text-[11px] text-muted-foreground shadow-none'
 
 type KnowledgeOpsHeroProps = {
   iconImage: PageTitleIconName
@@ -35,8 +35,8 @@ export function KnowledgeOpsHero({
   iconImage,
   title,
   description,
-  eyebrow = 'Knowledge Ops',
-  badge = '文档资产治理中枢',
+  eyebrow,
+  badge,
   summary,
   actions,
   className,
@@ -46,62 +46,56 @@ export function KnowledgeOpsHero({
   return (
     <div
       className={cn(
-        'flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between',
+        'flex min-h-14 min-w-0 flex-col gap-2 lg:flex-row lg:items-center lg:justify-between',
         KNOWLEDGE_OPS_HERO_PANEL_CLASS,
         className
       )}
     >
       <div
-        className="pointer-events-none absolute -right-10 -top-14 size-44 rounded-full bg-info/10 blur-3xl dark:bg-info/[0.08]"
+        className="pointer-events-none absolute -bottom-px left-1 h-px w-12 bg-info/70"
         aria-hidden="true"
       />
-      <div
-        className="pointer-events-none absolute bottom-0 left-8 right-8 h-px bg-[linear-gradient(90deg,transparent,hsl(var(--info)/0.28),transparent)]"
-        aria-hidden="true"
-      />
-      <div className="relative flex min-w-0 items-center gap-3">
-        <div className="relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-[22px] border border-info/20 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.12))] text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_18px_36px_-24px_hsl(var(--info)/0.9)]">
-          <span
-            className="absolute inset-x-2 top-1 h-px bg-card/70"
-            aria-hidden="true"
-          />
-          <PageTitleIcon name={iconImage} className="size-9" />
+      <div className="relative flex min-w-0 items-center gap-2.5">
+        <div className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-md border border-foreground/10 bg-background/70 text-info shadow-none">
+          <PageTitleIcon name={iconImage} className="size-6" />
         </div>
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-info/30 bg-info/5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-info">
-              <Sparkles className="size-3" />
-              {eyebrow}
-            </span>
-            <span className="inline-flex items-center rounded-full border border-success/30 bg-success/5 px-2.5 py-1 text-[10px] font-medium text-success">
-              <ShieldCheck className="mr-1.5 size-3" />
-              {badge}
-            </span>
-          </div>
-          <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h1
-              className={cn(
-                'text-[22px] font-semibold tracking-[-0.025em] text-foreground',
-                titleClassName
-              )}
-            >
-              <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">
-                {title}
-              </span>
-            </h1>
-            <p
-              className={cn(
-                'text-[13px] leading-5 text-muted-foreground/85',
-                descriptionClassName
-              )}
-            >
-              {description}
-            </p>
-          </div>
+        <div className="min-w-0 lg:flex lg:items-center lg:gap-2.5">
+          <h1
+            className={cn(
+              'text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground',
+              titleClassName
+            )}
+          >
+            {title}
+          </h1>
+          <p
+            className={cn(
+              'text-[12px] leading-5 text-muted-foreground/85',
+              descriptionClassName
+            )}
+          >
+            {description}
+          </p>
+          {eyebrow || badge ? (
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 lg:mt-0">
+              {eyebrow ? (
+                <span className="inline-flex items-center gap-1 rounded-md border border-info/20 bg-info/5 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-info">
+                  <Sparkles className="size-2.5" />
+                  {eyebrow}
+                </span>
+              ) : null}
+              {badge ? (
+                <span className="inline-flex items-center rounded-md border border-success/20 bg-success/5 px-1.5 py-0.5 text-[9px] font-medium text-success">
+                  <ShieldCheck className="mr-1 size-2.5" />
+                  {badge}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
       {summary || actions ? (
-        <div className="relative flex min-w-0 flex-col gap-2 lg:min-w-[470px]">
+        <div className="relative flex min-w-0 flex-col gap-1.5 lg:max-w-[58%]">
           {summary}
           {actions ? (
             <div className="flex flex-wrap items-center justify-end gap-2">

@@ -20,7 +20,7 @@ type RadarTooltipProps = {
 const CustomTooltip = ({ active, payload, label }: RadarTooltipProps) => {
   if (active && payload?.length) {
     return (
-      <div className="bg-popover/95 backdrop-blur-md border border-primary/30 p-3 rounded-lg shadow-strong">
+      <div className="rounded-lg border border-primary/30 bg-popover p-3 shadow-none">
         <p className="text-primary font-semibold text-xs uppercase mb-1">{toTrimmedPrimitiveString(label)}</p>
         <div className="flex items-baseline gap-1">
             <span className="text-2xl font-mono text-foreground font-bold">{toTrimmedPrimitiveString(payload[0].value)}</span>
@@ -40,9 +40,6 @@ export function HolographicRadar({ data, className }: Readonly<HolographicRadarP
 
   return (
     <div className={cn("relative aspect-square w-full max-w-[400px] mx-auto", className)}>
-      {/* Background Glow */}
-      <div className="absolute inset-0 bg-primary/5 rounded-full blur-2xl -z-10" />
-      
       {/* Scanning Animation */}
       <div className="absolute inset-0 rounded-full border border-primary/10 overflow-hidden pointer-events-none">
          {reduceMotion ? (

@@ -30,12 +30,10 @@ type DesktopAuditRailProps = {
   auditRailCounts: AuditRailCounts
   datasetScope: string
   datasets: Dataset[]
-  desktopScopeCollapsed: boolean
   selectedAuditIds: string[]
   selectedReason: string | null
   scopeLabel: string
   showDesktopAuditRail: boolean
-  showDesktopAuditRailToggle: boolean
   visibleAuditSamples: Document[]
   onClearSelectedReason: () => void
   onDatasetScopeChange: (value: string) => void
@@ -48,7 +46,6 @@ type DesktopAuditRailProps = {
   onSelectAudit: (documentId: string) => void
   onSetAuditDispositionFilter: (value: AuditDispositionFilter) => void
   onSetDesktopScopeCollapsed: (value: boolean) => void
-  onToggleDesktopScope: () => void
 }
 
 export function DesktopAuditRail({
@@ -56,12 +53,10 @@ export function DesktopAuditRail({
   auditRailCounts,
   datasetScope,
   datasets,
-  desktopScopeCollapsed,
   scopeLabel,
   selectedAuditIds,
   selectedReason,
   showDesktopAuditRail,
-  showDesktopAuditRailToggle,
   visibleAuditSamples,
   onClearSelectedReason,
   onDatasetScopeChange,
@@ -71,29 +66,9 @@ export function DesktopAuditRail({
   onSelectAudit,
   onSetAuditDispositionFilter,
   onSetDesktopScopeCollapsed,
-  onToggleDesktopScope,
 }: Readonly<DesktopAuditRailProps>) {
   return (
-    <>
-      <button
-        type="button"
-        aria-label="展开运行范围侧栏"
-        onClick={onToggleDesktopScope}
-        className={cn(
-          'absolute left-0 top-7 z-40 hidden h-16 w-8 items-center justify-center gap-1 rounded-r-[0.9rem] border border-border/35 bg-background/78 text-[8px] font-semibold uppercase tracking-[0.16em] text-muted-foreground opacity-0 hover:opacity-100 focus-visible:opacity-100 shadow-none backdrop-blur-xl transition-all duration-200 hover:border-info/25 hover:bg-background/94 hover:text-info focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/30',
-          showDesktopAuditRailToggle && desktopScopeCollapsed
-            ? 'translate-x-0 pointer-events-auto lg:flex'
-            : 'pointer-events-none -translate-x-3 opacity-0 lg:hidden'
-        )}
-      >
-        <span
-          aria-hidden="true"
-          className="h-7 w-px rounded-full bg-info/35"
-        />
-        <span className="[writing-mode:vertical-rl]">范围</span>
-      </button>
-
-      <aside
+    <aside
         className={cn(
           'hidden shrink-0 overflow-hidden pr-3 transition-all duration-300 ease-out lg:block',
           showDesktopAuditRail
@@ -338,7 +313,6 @@ export function DesktopAuditRail({
             </div>
           </div>
         </div>
-      </aside>
-    </>
+    </aside>
   )
 }

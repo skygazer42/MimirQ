@@ -34,8 +34,8 @@ type PageScaffoldProps = {
 }
 
 function getHeaderSpacingClass(isSystemDense: boolean, compact: boolean): string {
-  if (isSystemDense || compact) return "px-4 md:px-5 lg:px-6 pt-4 pb-2.5"
-  return "px-6 md:px-8 pt-6 md:pt-8 pb-5 md:pb-6"
+  if (isSystemDense || compact) return "px-4 py-2 md:px-5 lg:px-6"
+  return "px-6 py-3 md:px-8"
 }
 
 function getTopSpacingClass(isSystemDense: boolean, compact: boolean): string {

@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 
+import fs from 'node:fs'
+import path from 'node:path'
 import chroma from 'chroma-js'
 import { describe, expect, it } from 'vitest'
 
@@ -12,6 +14,7 @@ import {
   normalizeThemeColorCookie,
   persistThemeAppearance,
   readThemeColorOverride,
+  SURFACE_THEMES,
   SURFACE_THEME_COOKIE_KEY,
   SURFACE_THEME_STORAGE_KEY,
   THEME_COLOR_COOKIE_KEY,
@@ -31,6 +34,21 @@ function hslTokenToColor(value: string) {
 }
 
 describe('theme surface appearance', () => {
+  it('keeps the default Ocean app canvas calm with a readable structure border', () => {
+    const css = fs.readFileSync(path.resolve(__dirname, '../app/globals.css'), 'utf8')
+
+    expect(css).toContain('--background: 200 50% 97.6%')
+    expect(css).toContain('--secondary: 199 42% 96.2%')
+    expect(css).toContain('--muted: 199 38% 96%')
+    expect(css).toContain('--surface-2: 198 40% 96.7%')
+    expect(css).toContain('--border: 203 22% 84%')
+    expect(css).toContain('--sidebar-border: 203 22% 84%')
+    expect(css).toContain('--app-background-base: hsl(var(--background))')
+    expect(css).toContain('--app-orb-primary-opacity: 0')
+    expect(css).toContain('--app-orb-secondary-opacity: 0')
+    expect(css).toContain('background-image: none')
+  })
+
   it('keeps the default ocean primary anchored in deep navy for hierarchy', () => {
     const ocean = getSurfaceThemeMeta('ocean')
     expect(ocean.defaultPrimary).toBe('#0f172a')
@@ -47,6 +65,16 @@ describe('theme surface appearance', () => {
   it('recognizes the professional neutral-white surface preset', () => {
     expect(normalizeSurfaceTheme('neutral')).toBe('neutral')
     expect(normalizeSurfaceTheme('deepsea')).toBe('deepsea')
+  })
+
+  it('keeps theme previews aligned with valid surface and primary colors', () => {
+    expect(SURFACE_THEMES).toHaveLength(5)
+    for (const theme of SURFACE_THEMES) {
+      expect(chroma.valid(theme.previewSurface)).toBe(true)
+      expect(chroma.valid(theme.defaultPrimary)).toBe(true)
+    }
+    expect(getSurfaceThemeMeta('ocean').previewSurface).toBe('#f6fafc')
+    expect(getSurfaceThemeMeta('deepsea').previewSurface).toBe('#f7f9ff')
   })
 
   it('keeps surface defaults free from stale inline accent overrides', () => {

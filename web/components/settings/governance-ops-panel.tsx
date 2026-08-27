@@ -41,7 +41,7 @@ export function GovernanceOpsPanel() {
   }
 
   return (
-    <Panel padding="md" className="border-border/70 bg-card/95">
+    <Panel padding="md" className="border-foreground/10 bg-background shadow-none">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className={cn(settingsTextTokens.sectionTitle, 'flex items-center gap-1.5')}>
@@ -54,7 +54,7 @@ export function GovernanceOpsPanel() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+          <span className="rounded-full border border-border/60 bg-background px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
             {datasetId ? '已绑定数据集' : '等待数据集'}
           </span>
           {busy ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground motion-reduce:animate-none" /> : null}

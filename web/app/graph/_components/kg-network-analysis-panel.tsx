@@ -277,7 +277,7 @@ export function KgNetworkAnalysisPanel({
         <Button
           type="button"
           variant="outline"
-          className="h-10 gap-2 rounded-full border-border/60 bg-card/90 px-3 text-xs font-semibold shadow-soft backdrop-blur-md"
+          className="h-10 gap-2 rounded-full border-border/60 bg-card px-3 text-xs font-semibold shadow-none"
           aria-label="展开图谱统计栏"
           aria-expanded="false"
           aria-controls="kg-network-analysis-panel"
@@ -300,7 +300,7 @@ export function KgNetworkAnalysisPanel({
       className="absolute right-[6.75rem] top-24 z-20 w-[286px] space-y-3 will-change-transform"
       style={panelDragStyle}
     >
-      <section className="rounded-2xl border border-border/60 bg-card/92 p-4 shadow-soft backdrop-blur-md">
+      <section className="rounded-2xl border border-border/60 bg-card p-4 shadow-none">
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-foreground text-info-foreground shadow-sm">
@@ -370,7 +370,7 @@ export function KgNetworkAnalysisPanel({
         </div>
       </section>
 
-      <section className="rounded-2xl border border-border/60 bg-card/92 p-4 shadow-soft backdrop-blur-md">
+      <section className="rounded-2xl border border-border/60 bg-card p-4 shadow-none">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-muted-foreground" />
@@ -412,7 +412,7 @@ export function KgNetworkAnalysisPanel({
           <Button
             type="button"
             variant="outline"
-            className="h-9 w-full gap-2 rounded-xl border-border/60 bg-card/92 text-xs font-semibold shadow-soft backdrop-blur-sm"
+            className="h-9 w-full gap-2 rounded-xl border-border/60 bg-card text-xs font-semibold shadow-none"
             disabled={edges.length === 0}
           >
             <Network className="h-4 w-4" />

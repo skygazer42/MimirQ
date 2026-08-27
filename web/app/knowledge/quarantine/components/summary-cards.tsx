@@ -24,29 +24,14 @@ export function SummaryStatCard({
   return (
     <div
       className={cn(
-        'relative flex h-full min-h-[104px] flex-col justify-between overflow-hidden rounded-[1.15rem] border bg-background/92 px-3.5 py-3 shadow-[0_18px_44px_-38px_hsl(var(--foreground)/0.20)] backdrop-blur-sm',
-        tone === 'neutral' && 'border-primary/12',
-        tone === 'success' && 'border-success/12',
-        tone === 'warning' && 'border-warning/14',
-        tone === 'danger' && 'border-destructive/12',
-        tone === 'info' && 'border-accent/12'
+        'relative flex h-full min-h-[104px] flex-col justify-between rounded-lg border bg-background px-3.5 py-3 shadow-none',
+        tone === 'neutral' && 'border-foreground/10',
+        tone === 'success' && 'border-foreground/10',
+        tone === 'warning' && 'border-foreground/10',
+        tone === 'danger' && 'border-foreground/10',
+        tone === 'info' && 'border-foreground/10'
       )}
     >
-      <div
-        className={cn(
-          'pointer-events-none absolute inset-0 opacity-95',
-          tone === 'neutral' &&
-            'bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.12),transparent_58%)]',
-          tone === 'success' &&
-            'bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.14),transparent_58%)]',
-          tone === 'warning' &&
-            'bg-[radial-gradient(circle_at_top_right,rgba(245,158,11,0.18),transparent_58%)]',
-          tone === 'danger' &&
-            'bg-[radial-gradient(circle_at_top_right,rgba(239,68,68,0.14),transparent_58%)]',
-          tone === 'info' &&
-            'bg-[radial-gradient(circle_at_top_right,rgba(124,58,237,0.14),transparent_58%)]'
-        )}
-      />
       <div className="relative flex items-start justify-between gap-4">
         <div className="space-y-1">
           <div className="text-[10px] font-medium uppercase tracking-[0.14em] leading-none text-muted-foreground/80">
@@ -58,16 +43,16 @@ export function SummaryStatCard({
         </div>
         <div
           className={cn(
-            'flex size-9 shrink-0 items-center justify-center rounded-[0.9rem] border shadow-[0_14px_30px_-22px_currentColor]',
+            'flex size-9 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background/70 shadow-none',
             tone === 'neutral' &&
-              'border-primary/10 bg-primary/10 text-primary',
+              'text-primary',
             tone === 'success' &&
-              'border-success/10 bg-success/10 text-success',
+              'text-success',
             tone === 'warning' &&
-              'border-warning/10 bg-warning/10 text-warning',
+              'text-warning',
             tone === 'danger' && 'border-destructive/10 bg-destructive/10 text-destructive',
             tone === 'info' &&
-              'border-accent/10 bg-accent/10 text-accent'
+              'text-accent'
           )}
         >
           <Icon className="size-4" />
@@ -129,7 +114,7 @@ export function DonutSummaryCard({
   const total = values.reduce((sum, value) => sum + value, 0)
 
   return (
-    <div className="h-full min-h-[178px] rounded-[1.1rem] border border-border/60 bg-background/92 p-3.5 shadow-[0_18px_44px_-38px_rgba(15,23,42,0.18)] backdrop-blur-sm">
+    <div className="h-full min-h-[178px] rounded-lg border border-foreground/10 bg-background p-3.5 shadow-none">
       <div className="text-[0.9rem] font-medium text-foreground">{title}</div>
       {subtitle ? (
         <div className="mt-1 text-[11px] text-muted-foreground">{subtitle}</div>
@@ -188,7 +173,7 @@ export function DonutSummaryCard({
               </div>
             ))
           ) : (
-            <div className="rounded-2xl border border-dashed border-border/70 bg-muted/20 px-4 py-4 text-center text-[12px] text-muted-foreground">
+            <div className="rounded-lg border border-dashed border-foreground/10 bg-muted/20 px-4 py-4 text-center text-[12px] text-muted-foreground">
               暂无数据
             </div>
           )}
@@ -213,9 +198,9 @@ export function QuickActionCard({
     <button
       type="button"
       onClick={onClick}
-      className="flex min-h-[62px] items-start gap-2.5 rounded-[0.9rem] border border-border/60 bg-background/88 px-3 py-2 text-left transition-all hover:-translate-y-0.5 hover:border-primary/25 hover:bg-primary/10 hover:shadow-[0_18px_35px_-30px_hsl(var(--primary)/0.5)]"
+      className="flex min-h-[62px] items-start gap-2.5 rounded-lg border border-foreground/10 bg-background px-3 py-2 text-left transition-colors hover:border-foreground/15 hover:bg-muted/20"
     >
-      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[0.8rem] border border-primary/10 bg-primary/10 text-primary">
+      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background/70 text-primary">
         <Icon className="size-3.5" />
       </span>
       <span className="min-w-0">

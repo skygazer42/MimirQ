@@ -93,7 +93,7 @@ export function DatasetFolderTreeView({
       toggleControl = (
         <button
           type="button"
-          className="p-0.5 rounded hover:bg-muted/50 focus-ring z-10"
+          className="z-10 rounded-sm p-0.5 hover:bg-muted/50 focus-ring"
           aria-label={isExpanded ? labels.collapse : labels.expand}
           onClick={(e) => {
             e.stopPropagation()
@@ -109,8 +109,10 @@ export function DatasetFolderTreeView({
       <div key={node.path} className="select-none relative">
         <div
           className={cn(
-            'w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-all duration-200 group/node',
-            isSelected ? 'bg-primary/10 text-primary shadow-[inset_0_0_12px_-6px_rgba(var(--primary),0.3)]' : 'hover:bg-muted/40'
+            'w-full flex items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-sm transition-colors group/node',
+            isSelected
+              ? 'border-foreground/10 bg-primary/[0.06] text-primary'
+              : 'hover:bg-muted/40'
           )}
           style={{ paddingLeft: 8 + depth * 12 }}
         >
@@ -140,7 +142,7 @@ export function DatasetFolderTreeView({
           <div className="mt-0.5 relative">
             {/* Vertical Guide Line */}
             <div 
-              className="absolute left-[15px] top-0 bottom-2 w-px bg-border/20 pointer-events-none" 
+              className="pointer-events-none absolute bottom-2 top-0 left-[15px] w-px bg-foreground/10"
               style={{ left: 15 + depth * 12 }}
             />
             {children.map(renderNode)}
@@ -156,8 +158,10 @@ export function DatasetFolderTreeView({
         type="button"
         onClick={() => onSelect(null)}
         className={cn(
-          'w-full flex items-center justify-between rounded-lg px-2 py-1.5 text-sm transition-colors focus-ring',
-          selectedPath ? 'hover:bg-muted/40' : 'bg-primary/10 text-primary'
+          'w-full flex items-center justify-between rounded-md border border-transparent px-2 py-1.5 text-sm transition-colors focus-ring',
+          selectedPath
+            ? 'hover:bg-muted/40'
+            : 'border-foreground/10 bg-primary/[0.06] text-primary'
         )}
       >
         <span className="flex items-center gap-2 min-w-0">

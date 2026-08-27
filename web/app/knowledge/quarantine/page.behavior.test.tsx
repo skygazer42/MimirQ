@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 
+import fs from 'node:fs'
+import path from 'node:path'
 import React, { act } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRoot } from 'react-dom/client'
@@ -41,6 +43,10 @@ vi.mock('@/store/document-view', () => ({
 }))
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
+}))
+vi.mock('next/image', () => ({
+  default: (props: React.ImgHTMLAttributes<HTMLImageElement>) =>
+    React.createElement('img', props),
 }))
 
 vi.mock('@/components/app-frame', () => ({
@@ -244,6 +250,23 @@ function renderPage() {
 }
 
 describe('QuarantineQueuePage behavior', () => {
+  it('uses the project quarantine raster mark instead of PageTitleIcon', () => {
+    const pagePath = path.resolve(__dirname, 'page.tsx')
+    const assetPath = path.resolve(
+      __dirname,
+      '../../../public/brand/mimirq-quarantine-mark.png'
+    )
+    const src = fs.readFileSync(pagePath, 'utf8')
+
+    expect(fs.existsSync(assetPath)).toBe(true)
+    expect(src).toContain("import Image from 'next/image'")
+    expect(src).toContain('data-quarantine-title-mark="true"')
+    expect(src).toContain('src="/brand/mimirq-quarantine-mark.png"')
+    expect(src).toContain('size-7 shrink-0 items-center justify-center')
+    expect(src).toContain('dark:bg-info/[0.14]')
+    expect(src).not.toContain('<PageTitleIcon name="quarantine-queue"')
+  })
+
   beforeEach(() => {
     ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     routerMock.replace.mockReset()

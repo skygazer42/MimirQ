@@ -24,7 +24,7 @@ export function QuarantineDetailPanel({
     <div className="space-y-6">
       <div className="min-w-0">
         <div className={TYPO_EYEBROW}>Audit Abstract</div>
-        <div className="mt-2 grid grid-cols-2 gap-3 rounded-xl border border-border/40 bg-card/40 p-4">
+        <div className="mt-2 grid grid-cols-2 gap-3 rounded-lg border border-foreground/10 bg-background/70 p-4">
           {[
             { label: '文档 ID', value: selected.id.slice(0, 12) + '...' },
             { label: '数据集', value: selected.dataset_id || '-' },
@@ -44,7 +44,7 @@ export function QuarantineDetailPanel({
       </div>
 
       {selected.error_message && (
-        <div className="rounded-xl border border-warning/20 bg-warning/5 p-4">
+        <div className="rounded-lg border border-warning/30 bg-warning/5 p-4">
           <div className="text-[10px] font-medium uppercase text-warning">
             隔离原因 / RISKS
           </div>
@@ -54,7 +54,7 @@ export function QuarantineDetailPanel({
         </div>
       )}
 
-      <div className="rounded-xl border border-border/40 bg-card/40 p-4">
+      <div className="rounded-lg border border-foreground/10 bg-background/70 p-4">
         <div className={TYPO_EYEBROW}>处置建议 / ADVICE</div>
         <div className="mt-3 space-y-3">
           {buildReviewAdvice(selected).map((tip) => (
@@ -62,7 +62,7 @@ export function QuarantineDetailPanel({
               key={tip}
               className="flex items-start gap-3 text-[13px] font-medium text-foreground/80 leading-relaxed"
             >
-              <div className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-warning shadow-[0_0_8px_rgba(245,158,11,0.5)]" />
+              <div className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-sm bg-warning" />
               <div>{tip}</div>
             </div>
           ))}
@@ -70,7 +70,7 @@ export function QuarantineDetailPanel({
       </div>
 
       {getDropReasons(selected).length > 0 ? (
-        <div className="rounded-xl border border-border/40 bg-muted/30 p-4">
+        <div className="rounded-lg border border-foreground/10 bg-muted/30 p-4">
           <div className="text-[10px] font-medium uppercase text-muted-foreground/60">
             命中规则 / RULES
           </div>

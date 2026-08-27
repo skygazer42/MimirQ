@@ -133,18 +133,22 @@ export function TaskCenter() {
   return (
 	      <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end supports-[padding:env(safe-area-inset-bottom)]:bottom-[calc(env(safe-area-inset-bottom)+1rem)] supports-[padding:env(safe-area-inset-right)]:right-[calc(env(safe-area-inset-right)+1rem)]">
 	        {isOpen && (
-	            <div className="mb-2 w-[26rem] bg-popover/90 text-popover-foreground backdrop-blur-md border border-border/60 rounded-2xl shadow-strong ring-1 ring-border/40 overflow-hidden animate-in slide-in-from-bottom-5 fade-in motion-reduce:animate-none motion-reduce:transition-none">
-                <div className="px-4 py-3 border-b border-border/60 bg-muted/35 flex justify-between items-center">
+	            <div
+                data-task-center-panel="true"
+                data-task-center-boundary="ruled"
+                className="mb-2 w-[26rem] overflow-hidden rounded-lg border border-foreground/15 bg-background text-foreground animate-in slide-in-from-bottom-5 fade-in motion-reduce:animate-none motion-reduce:transition-none"
+              >
+                <div className="flex items-center justify-between border-b border-foreground/10 bg-background px-4 py-3">
                     <div className="min-w-0">
                       <h4 className="text-sm font-semibold leading-none text-balance">{t('title')}</h4>
                       <div className="mt-2 flex items-center gap-2">
                         {totalActive > 0 && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs font-medium ring-1 ring-primary/20">
+                          <span className="inline-flex items-center gap-1 rounded-md border border-info/20 bg-info/[0.08] px-2 py-0.5 text-xs font-medium text-info">
                             {t('activeBadge')} <span className="tabular-nums">{totalActive}</span>
                           </span>
                         )}
                         {totalFailed > 0 && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 text-destructive px-2 py-0.5 text-xs font-medium ring-1 ring-destructive/20">
+                          <span className="inline-flex items-center gap-1 rounded-md border border-destructive/20 bg-destructive/[0.08] px-2 py-0.5 text-xs font-medium text-destructive">
                             {t('failedBadge')} <span className="tabular-nums">{totalFailed}</span>
                           </span>
                         )}
@@ -190,9 +194,9 @@ export function TaskCenter() {
                                 return (
                                   <div
                                     key={doc.id}
-                                    className="group flex items-start gap-3 p-3 rounded-xl border border-border/50 bg-background/50 hover:bg-muted/20 transition-colors"
+                                    className="group flex items-start gap-3 rounded-md border border-foreground/10 bg-background px-3 py-3 transition-colors hover:bg-muted/20"
                                   >
-	                                    <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+	                                    <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-md border border-foreground/10 bg-background text-info">
 	                                      <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
 	                                    </div>
                                     <div className="flex-1 min-w-0">
@@ -207,7 +211,7 @@ export function TaskCenter() {
                                       <div className="mt-1 text-xs text-muted-foreground truncate">
                                         {stageLabel}
                                       </div>
-                                      <div className="mt-2 w-full h-1.5 bg-secondary rounded-full overflow-hidden">
+                                      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-sm bg-secondary">
                                         <div
                                           className="h-full bg-primary origin-left transition-transform duration-200 ease-out motion-reduce:transition-none"
                                           style={{ transform: `scaleX(${progress / 100})` }}
@@ -242,14 +246,14 @@ export function TaskCenter() {
                               {failedTasks.map((doc) => {
                                 const isQuarantine = doc.status === 'quarantined'
                                 const containerClass = cn(
-                                  "group flex items-start gap-3 p-3 rounded-xl transition-colors",
+                                  "group flex items-start gap-3 rounded-md border px-3 py-3 transition-colors",
                                   isQuarantine
-                                    ? "border border-warning/20 bg-warning/5 hover:bg-warning/10"
-                                    : "border border-destructive/20 bg-destructive/5 hover:bg-destructive/10"
+                                    ? "border-warning/20 bg-warning/[0.06] hover:bg-warning/[0.1]"
+                                    : "border-destructive/20 bg-destructive/[0.06] hover:bg-destructive/[0.1]"
                                 )
                                 const iconClass = cn(
-                                  "mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg",
-                                  isQuarantine ? "bg-warning/10 text-warning" : "bg-destructive/10 text-destructive"
+                                  "mt-0.5 flex h-9 w-9 items-center justify-center rounded-md border bg-background",
+                                  isQuarantine ? "border-warning/20 text-warning" : "border-destructive/20 text-destructive"
                                 )
                                 const titleClass = cn(
                                   "text-sm font-medium truncate leading-snug",
@@ -305,8 +309,8 @@ export function TaskCenter() {
           variant="outline"
           size="icon"
           className={cn(
-            "group relative rounded-full size-12 shadow-strong bg-background/90 border-primary/20 hover:border-primary transition-colors transition-shadow duration-200 motion-reduce:transition-none",
-            isOpen && "bg-primary/10"
+            "group relative size-12 rounded-md border-foreground/15 bg-background transition-colors duration-200 motion-reduce:transition-none hover:border-foreground/30",
+            isOpen && "bg-muted/40"
           )}
           onClick={() => setIsOpen(v => !v)}
           aria-label={t('title')}
@@ -315,20 +319,15 @@ export function TaskCenter() {
           <Settings2 className="h-6 w-6 text-primary transition-transform duration-200 motion-reduce:transition-none group-hover:rotate-90" />
           <span
             className={cn(
-              "absolute -top-2 -right-2 inline-flex min-w-5 h-5 items-center justify-center rounded-full text-[11px] px-1 tabular-nums",
+              "absolute -right-2 -top-2 inline-flex h-5 min-w-5 items-center justify-center rounded-md border px-1 text-[11px] tabular-nums",
               totalFailed > 0 && totalActive === 0
-                ? "bg-destructive text-destructive-foreground"
-                : "bg-primary text-primary-foreground"
+                ? "border-destructive/20 bg-destructive text-destructive-foreground"
+                : "border-primary/20 bg-primary text-primary-foreground"
             )}
           >
             {totalCount}
           </span>
-          {totalActive > 0 && (
-            <span className="absolute -top-1 -left-1 flex h-2 w-2">
-              <span className="animate-ping motion-reduce:animate-none absolute inline-flex h-full w-full rounded-full bg-primary/60 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-            </span>
-          )}
+          {totalActive > 0 ? <span className="absolute -left-1 -top-1 h-2 w-2 rounded-sm bg-primary" /> : null}
         </Button>
     </div>
   )

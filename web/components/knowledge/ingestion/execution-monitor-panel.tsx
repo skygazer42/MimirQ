@@ -5,34 +5,27 @@ import {
   Activity,
   ChevronLeft,
   ChevronRight,
+  CircleAlert,
+  Database,
+  FileText,
   FileSearch,
   Radar,
+  Scissors,
+  ShieldCheck,
   Workflow,
   type LucideIcon,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { EChart } from '@/components/ui/echart'
-import { SalesPanelHeader } from '@/app/knowledge/ingestion/components/sales-panel-header'
 import { cn, formatFileSize } from '@/lib/utils'
 import {
-  SALES_PANEL_CLASS,
-  SALES_PANEL_INSET_CLASS,
   getDocumentStatusLabel,
   getDocumentStatusTone,
   getTaskProgress,
 } from '@/app/knowledge/ingestion/presentation'
 import { formatDurationClock } from '@/app/knowledge/ingestion/document-signals'
 import type { Document } from '@/types'
-
-type ExecutionRunStateCard = {
-  label: string
-  value: string
-  suffix: string
-  icon: LucideIcon
-  tone: string
-  detail: string
-}
 
 type ExecutionKpiCard = {
   label: string
@@ -62,14 +55,33 @@ type ExecutionRecentLog = {
   tone: string
 }
 
+type ExecutionPipelineCard = {
+  key: 'parser' | 'chunker' | 'governance' | 'export'
+  label: string
+  metrics: string[][]
+  progress: number
+  statusLabel: string
+  statusTone: string
+}
+
+const PIPELINE_STAGE_ICONS: Record<ExecutionPipelineCard['key'], LucideIcon> = {
+  parser: FileText,
+  chunker: Scissors,
+  governance: ShieldCheck,
+  export: Database,
+}
+
 type ExecutionMonitorPanelProps = {
   batchProfileBarOption: EChartsOption
   executionBatchAnalysis: ExecutionBatchAnalysis
   executionDocuments: Document[]
   executionKpiCards: ExecutionKpiCard[]
+  executionOverallProgress: number
+  executionPipelineCards: ExecutionPipelineCard[]
+  executionPipelineEstimateLabel: string
+  executionPipelineWarning: string | null
   executionProcessedTotal: number
   executionRecentLogs: ExecutionRecentLog[]
-  executionRunStateCards: ExecutionRunStateCard[]
   executionSuccessRate: number
   executionTaskPage: number
   executionTaskPageCount: number
@@ -87,14 +99,38 @@ type ExecutionMonitorPanelProps = {
   onScopeAllProjects: () => void
 }
 
+function CompactEmptyVisual({
+  message,
+  className,
+}: Readonly<{
+  message: string
+  className?: string
+}>) {
+  return (
+    <div
+      data-execution-empty-visual="true"
+      className={cn(
+        'flex min-h-12 items-center justify-center gap-2 border-l-2 border-info/25 bg-muted/[0.05] px-3 py-2.5 text-center text-[11px] leading-4 text-muted-foreground',
+        className
+      )}
+    >
+      <Workflow className="size-4 text-info/70" />
+      <span>{message}</span>
+    </div>
+  )
+}
+
 export function ExecutionMonitorPanel({
   batchProfileBarOption,
   executionBatchAnalysis,
   executionDocuments,
   executionKpiCards,
+  executionOverallProgress,
+  executionPipelineCards,
+  executionPipelineEstimateLabel,
+  executionPipelineWarning,
   executionProcessedTotal,
   executionRecentLogs,
-  executionRunStateCards,
   executionSuccessRate,
   executionTaskPage,
   executionTaskPageCount,
@@ -111,157 +147,251 @@ export function ExecutionMonitorPanel({
   showEmptyShell,
   visibleExecutionTaskRows,
 }: Readonly<ExecutionMonitorPanelProps>) {
+  const fileTypeSummary = Object.entries(
+    executionDocuments.reduce<Record<string, number>>((summary, document) => {
+      const fileType = String(document.file_type || '其他').trim().toUpperCase()
+      summary[fileType] = (summary[fileType] ?? 0) + 1
+      return summary
+    }, {})
+  ).sort(([, left], [, right]) => right - left)
+  const hasExecutionData = executionDocuments.length > 0
+  const fileTypePalette = ['#0ea5e9', '#14b8a6', '#8b5cf6', '#f59e0b', '#64748b']
+  const fileTypeDonutData = fileTypeSummary.length
+    ? fileTypeSummary.slice(0, 5).map(([name, value], index) => ({
+        name,
+        value,
+        itemStyle: { color: fileTypePalette[index] },
+      }))
+    : [
+        {
+          name: '暂无数据',
+          value: 1,
+          itemStyle: { color: 'rgba(148,163,184,0.22)' },
+        },
+      ]
+  const fileTypeDonutOption: EChartsOption = {
+    animationDuration: 280,
+    tooltip: fileTypeSummary.length
+      ? { trigger: 'item', formatter: '{b}<br/>{c} 个 · {d}%' }
+      : { show: false },
+    legend: {
+      show: fileTypeSummary.length > 0,
+      orient: 'vertical',
+      right: 0,
+      top: 'center',
+      itemWidth: 8,
+      itemHeight: 8,
+      itemGap: 6,
+      textStyle: {
+        color: 'hsl(var(--muted-foreground))',
+        fontSize: 10,
+      },
+      formatter: (name: string) => {
+        const count = fileTypeSummary.find(([fileType]) => fileType === name)?.[1] ?? 0
+        return `${name}  ${count}`
+      },
+    },
+    series: [
+      {
+        type: 'pie',
+        radius: ['52%', '76%'],
+        center: fileTypeSummary.length ? ['34%', '52%'] : ['50%', '52%'],
+        avoidLabelOverlap: true,
+        label: { show: false },
+        labelLine: { show: false },
+        emphasis: { scale: true, scaleSize: 3 },
+        data: fileTypeDonutData,
+      },
+    ],
+  }
+
   return (
     <div
+      data-monitor-flat-canvas="true"
+      data-monitor-boundary-system="ruled"
+      data-monitor-visual-tone="enterprise"
       title="入库预检报告"
-      className={cn(
-        'relative overflow-hidden rounded-[1.45rem] border border-border/60 bg-background/86 p-3 shadow-[0_28px_72px_-46px_rgba(15,23,42,0.32)] md:p-3.5'
-      )}
+      className="bg-transparent"
     >
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-70"
-        style={{
-          background:
-            'radial-gradient(circle at 36% 24%, rgba(255,255,255,0.48), transparent 28%)',
-        }}
-      />
-      <div className="relative z-10 space-y-3">
-        <div className="grid gap-2 xl:grid-cols-[0.72fr_1.28fr]">
-          <section className="rounded-[1.05rem] border border-border/55 bg-background/90 p-2.5 shadow-[0_16px_36px_-30px_rgba(15,23,42,0.18)]">
+      <div>
+        <div data-monitor-overview-band="true" className="grid items-stretch border-y border-foreground/15 xl:grid-cols-[minmax(18rem,0.64fr)_minmax(0,1.36fr)]">
+          <section data-execution-file-type-summary="true" className="border-b border-foreground/10 px-3 py-3 xl:border-b-0 xl:border-r">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <span className="inline-flex size-6 items-center justify-center rounded-full border border-info/18 bg-info/8 text-info">
-                  <Activity className="size-3.5" />
-                </span>
+                <Activity className="size-5 shrink-0 text-info" />
                 <div>
-                  <div className="text-[10px] font-semibold text-foreground">
+                  <div className="text-[13px] font-semibold text-foreground text-balance">
                     文件类型分布
                   </div>
-                  <div className="mt-0.5 text-[8px] text-muted-foreground">
+                  <div className="mt-0.5 text-[10px] text-muted-foreground">
                     按文件格式统计
                   </div>
                 </div>
               </div>
-              <span className="rounded-full border border-border/45 bg-muted/20 px-2 py-0.5 font-mono text-[9px] text-foreground">
+              <span className="rounded-md border border-border/45 bg-muted/15 px-2 py-0.5 font-mono text-[10px] text-foreground">
                 {executionDocuments.length} 个
               </span>
             </div>
-            <div className="mt-2 grid grid-cols-[6.6rem_minmax(0,1fr)] items-center gap-2">
-              <div className="relative h-[6.35rem]">
-                <EChart option={batchProfileBarOption} />
-                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                  <div className="font-mono text-[15px] font-semibold text-foreground tabular-nums">
-                    {executionDocuments.length}
-                  </div>
-                  <div className="text-[7px] text-muted-foreground">
-                    文件
-                  </div>
+            <div data-monitor-chart="file-type-donut" className="relative mt-1 h-20">
+              <EChart option={fileTypeDonutOption} />
+              <div
+                className={cn(
+                  'pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2 text-center',
+                  fileTypeSummary.length ? 'left-[34%]' : 'left-1/2'
+                )}
+              >
+                <div className="font-mono text-[13px] font-semibold text-foreground tabular-nums">
+                  {executionDocuments.length}
                 </div>
-              </div>
-              <div className="rounded-[0.78rem] border border-dashed border-border/55 bg-muted/10 px-2 py-4 text-center text-[9px] text-muted-foreground">
-                文件分布图已抽离，数据仍由页面查询编排。
+                <div className="text-[9px] text-muted-foreground">文件</div>
               </div>
             </div>
           </section>
 
-          <section className="rounded-[1.05rem] border border-border/55 bg-background/90 p-2.5 shadow-[0_16px_36px_-30px_rgba(15,23,42,0.18)]">
+          <section data-monitor-run-strip="true" data-monitor-pipeline-visual="true" className="px-3 py-3">
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2">
-                <div className="text-[10px] font-semibold text-foreground">
+                <div className="text-[13px] font-semibold text-foreground text-balance">
                   处理流水线
                 </div>
-                <span className="rounded-full border border-info/20 bg-info/10 px-2 py-0.5 text-[8px] font-medium text-info">
-                  自动估算
+                <span className="rounded-md border border-info/20 bg-info/8 px-1.5 py-0.5 text-[10px] font-medium text-info">
+                  {executionPipelineEstimateLabel}
+                </span>
+                {executionPipelineWarning ? (
+                  <span className="inline-flex max-w-48 items-center gap-1 truncate rounded-md border border-warning/20 bg-warning/8 px-1.5 py-0.5 text-[9px] text-warning">
+                    <CircleAlert className="size-3 shrink-0" />
+                    <span className="truncate">{executionPipelineWarning}</span>
+                  </span>
+                ) : null}
+              </div>
+              <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                <span>总体进度</span>
+                <span className="font-mono text-[12px] font-semibold text-foreground tabular-nums">
+                  {executionOverallProgress}%
                 </span>
               </div>
-              <div className="text-[8px] text-muted-foreground">
-                已处理{' '}
-                <span className="font-mono text-foreground tabular-nums">
-                  {executionProcessedTotal}
-                </span>{' '}
-                / {executionDocuments.length}
-              </div>
             </div>
-            <div className="mt-2 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
-              {executionRunStateCards.map((card) => {
-                const Icon = card.icon
+
+            <div className="mt-1.5 flex items-center gap-2">
+              <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted/45">
+                <div
+                  className="h-full rounded-full bg-info transition-[width] duration-300"
+                  style={{ width: `${executionOverallProgress}%` }}
+                />
+              </div>
+              <span className="font-mono text-[9px] text-muted-foreground tabular-nums">
+                {executionProcessedTotal}/{executionDocuments.length}
+              </span>
+            </div>
+
+            <div className="relative mt-2 grid gap-px overflow-hidden border-y border-foreground/10 bg-foreground/10 sm:grid-cols-2 xl:grid-cols-4">
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute left-[12%] right-[12%] top-4 hidden h-px bg-foreground/15 xl:block"
+              />
+              {executionPipelineCards.map((card) => {
+                const Icon = PIPELINE_STAGE_ICONS[card.key]
                 return (
-                  <div
-                    key={card.label}
-                    className="rounded-[0.82rem] border border-border/45 bg-background/82 px-2 py-1.5"
+                  <article
+                    data-monitor-pipeline-stage="true"
+                    key={card.key}
+                    className="relative z-10 min-w-0 bg-background px-2 py-2"
                   >
-                    <div className="flex items-center justify-between gap-1.5">
-                      <div className="text-[10px] font-medium text-foreground">
-                        {card.label}
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-sm border border-foreground/10 bg-background/80 text-info">
+                        <Icon className="size-4" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate text-[11px] font-semibold text-foreground">
+                            {card.label}
+                          </span>
+                          <span className="inline-flex items-center gap-1 text-[9px] text-muted-foreground">
+                            <span className={cn('size-1.5 rounded-full', card.statusTone)} />
+                            {card.statusLabel}
+                          </span>
+                        </div>
+                        <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted/50">
+                          <div
+                            className="h-full rounded-full bg-info transition-[width] duration-300"
+                            style={{ width: `${card.progress}%` }}
+                          />
+                        </div>
                       </div>
-                      <Icon className={cn('size-3.5 shrink-0', card.tone)} />
+                      <span className="font-mono text-[10px] font-semibold text-foreground tabular-nums">
+                        {card.progress}%
+                      </span>
                     </div>
-                    <div className="mt-1 font-mono text-[12px] font-semibold text-foreground tabular-nums">
-                      {card.value}
+
+                    <div className="mt-2 grid grid-cols-3 gap-1 border-t border-foreground/10 pt-1.5">
+                      {card.metrics.map(([label, value]) => (
+                        <div key={label} className="min-w-0 text-center">
+                          <div className="truncate font-mono text-[10px] font-semibold text-foreground tabular-nums">
+                            {value}
+                          </div>
+                          <div className="truncate text-[9px] text-muted-foreground">
+                            {label}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <div className="mt-1 truncate text-[7.5px] text-muted-foreground">
-                      {card.detail}
-                    </div>
-                  </div>
+                  </article>
                 )
               })}
             </div>
           </section>
         </div>
 
-        <section className="overflow-hidden rounded-[1.05rem] border border-border/55 bg-card/92 p-2.5 shadow-sm">
+        <section data-monitor-quality-kpis="true" data-monitor-flat-section="quality" className="border-b border-foreground/15 px-3 py-3">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-2">
-              <span className="inline-flex size-6 items-center justify-center rounded-full border border-info/20 bg-info/10 text-info">
-                <Activity className="size-3.5" />
-              </span>
+              <Activity className="size-5 shrink-0 text-info" />
               <div>
-                <div className="text-[10px] font-semibold text-foreground">
-                  运行信息汇聚
+                <div className="text-[13px] font-semibold text-foreground text-balance">
+                  质量与耗时
                 </div>
-                <div className="mt-0.5 text-[8px] text-muted-foreground text-pretty">
-                  范围、模式、吞吐与质量读数
+                <div className="mt-0.5 text-[10px] text-muted-foreground text-pretty">
+                  解析质量、处理耗时与失败重试
                 </div>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-1.5 text-[8px] text-muted-foreground">
-              <span className="rounded-full border border-border/55 bg-background/80 px-2 py-0.5 tabular-nums">
+            <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
+              <span className="rounded-md border border-border/50 bg-background/75 px-2 py-0.5 tabular-nums">
                 已处理 {executionProcessedTotal} / {executionDocuments.length}
               </span>
-              <span className="rounded-full border border-success/20 bg-success/10 px-2 py-0.5 text-success tabular-nums">
+              <span className="rounded-md border border-success/20 bg-success/8 px-2 py-0.5 text-success tabular-nums">
                 成功率 {executionSuccessRate}%
               </span>
             </div>
           </div>
 
-          <div className="mt-2 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
+          <div className="mt-2 grid gap-px overflow-hidden border-y border-foreground/10 bg-foreground/10 sm:grid-cols-2 xl:grid-cols-4">
             {executionKpiCards.map((item) => {
               const Icon = item.icon
               return (
                 <div
                   key={item.label}
-                  className="rounded-[0.82rem] border border-border/45 bg-background/82 px-2 py-1.5"
+                  className="bg-background/90 px-3 py-2"
                 >
                   <div className="flex items-center justify-between gap-1.5">
                     <div className="min-w-0">
-                      <div className="truncate text-[8px] text-muted-foreground">
+                      <div className="truncate text-[10px] text-muted-foreground">
                         {item.label}
                       </div>
                       <div className="mt-0.5 flex items-baseline gap-1">
-                        <span className="truncate font-mono text-[12px] font-semibold text-foreground tabular-nums">
+                        <span className="truncate font-mono text-[14px] font-semibold text-foreground tabular-nums">
                           {item.value}
                         </span>
                         {item.suffix ? (
-                          <span className="text-[7.5px] text-muted-foreground">
+                          <span className="text-[10px] text-muted-foreground">
                             {item.suffix}
                           </span>
                         ) : null}
                       </div>
                     </div>
-                    <Icon className={cn('size-3.5 shrink-0', item.tone)} />
+                    <Icon className={cn('size-4 shrink-0', item.tone)} />
                   </div>
-                  <div className="mt-1 truncate text-[7.5px] text-muted-foreground">
+                  <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
                     {item.detail}
                   </div>
                 </div>
@@ -270,138 +400,158 @@ export function ExecutionMonitorPanel({
           </div>
         </section>
 
-        <section className="rounded-[1.3rem] border border-border/55 bg-background/92 p-3 shadow-sm">
+        <section className="border-b border-foreground/15 px-3 py-3">
           <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
             <div className="flex items-center gap-2">
-              <span className="inline-flex size-7 items-center justify-center rounded-full border border-info/20 bg-info/10 text-info">
-                <FileSearch className="size-3.5" />
-              </span>
+              <FileSearch className="size-5 shrink-0 text-info" />
               <div>
-                <div className="text-[11px] font-semibold text-foreground">
+                <div className="text-[13px] font-semibold text-foreground">
                   批次数据画像
                 </div>
-                <div className="mt-0.5 text-[9px] text-muted-foreground text-pretty">
+                <div className="mt-0.5 text-[11px] text-muted-foreground text-pretty">
                   按 3/1000 抽代表样本，已出现的文件类型每类至少覆盖 1 个
                 </div>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-1.5 text-[9px]">
-              <span className="rounded-full border border-border/55 bg-muted/25 px-2 py-1 text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+              <span className="rounded-md border border-border/50 bg-muted/15 px-2 py-0.5 text-muted-foreground">
                 {executionBatchAnalysis.sourceLabel}
               </span>
-              <span className="rounded-full border border-info/20 bg-info/10 px-2 py-1 font-medium text-info">
+              <span className="rounded-md border border-info/20 bg-info/8 px-2 py-0.5 font-medium text-info">
                 难度 {executionBatchAnalysis.complexity}
               </span>
-              <span className="rounded-full border border-warning/20 bg-warning/10 px-2 py-1 font-medium text-warning">
+              <span className="rounded-md border border-warning/20 bg-warning/8 px-2 py-0.5 font-medium text-warning">
                 {executionBatchAnalysis.pricingMode}
               </span>
             </div>
           </div>
-          <div className="mt-3 grid gap-3 xl:grid-cols-[1fr_210px]">
-            <div className="h-[15rem] rounded-[1rem] border border-border/45 bg-card/86 p-2">
-              <EChart option={batchProfileBarOption} />
+          {hasExecutionData ? (
+            <div className="mt-2 grid gap-2 xl:grid-cols-[1fr_220px]">
+              <div className="h-[15rem] border-y border-foreground/10 bg-muted/[0.04] p-2">
+                <EChart option={batchProfileBarOption} />
+              </div>
+              <div className="divide-y divide-foreground/10 border-y border-foreground/10">
+                <div className="px-3 py-2.5">
+                  <div className="text-[10px] text-muted-foreground">
+                    预检样本
+                  </div>
+                  <div className="mt-1 text-[18px] font-semibold text-foreground tabular-nums">
+                    {executionBatchAnalysis.sampleTarget ?? 0} 个
+                  </div>
+                  <div className="mt-1 text-[10px] text-muted-foreground">
+                    {executionBatchAnalysis.sampleTargetDetail}
+                  </div>
+                </div>
+                <div className="px-3 py-2.5">
+                  <div className="text-[10px] text-muted-foreground">
+                    批次体量
+                  </div>
+                  <div className="mt-1 font-mono text-[14px] font-semibold text-foreground tabular-nums">
+                    {executionBatchAnalysis.totalSizeLabel}
+                  </div>
+                  <div className="mt-1 text-[10px] text-muted-foreground">
+                    {executionBatchAnalysis.samplePoolLabel}
+                  </div>
+                </div>
+                <div className="px-3 py-2.5 text-[10px] leading-4 text-muted-foreground text-pretty">
+                  {executionBatchAnalysis.imageProxyNote}
+                </div>
+              </div>
             </div>
-            <div className="grid gap-2">
-              <div className="rounded-[1rem] border border-border/45 bg-muted/18 px-3 py-2.5">
-                <div className="text-[8px] text-muted-foreground">
-                  预检样本
-                </div>
-                <div className="mt-1 text-[18px] font-semibold text-foreground tabular-nums">
-                  {executionBatchAnalysis.sampleTarget || '--'} 个
-                </div>
-                <div className="mt-1 text-[8px] text-muted-foreground">
-                  {executionBatchAnalysis.sampleTargetDetail}
-                </div>
-              </div>
-              <div className="rounded-[1rem] border border-border/45 bg-muted/18 px-3 py-2.5">
-                <div className="text-[8px] text-muted-foreground">
-                  批次体量
-                </div>
-                <div className="mt-1 font-mono text-[13px] font-semibold text-foreground tabular-nums">
-                  {executionBatchAnalysis.totalSizeLabel}
-                </div>
-                <div className="mt-1 text-[8px] text-muted-foreground">
-                  {executionBatchAnalysis.samplePoolLabel}
-                </div>
-              </div>
-              <div className="rounded-[1rem] border border-border/45 bg-muted/18 px-3 py-2.5 text-[8px] leading-3.5 text-muted-foreground text-pretty">
-                {executionBatchAnalysis.imageProxyNote}
-              </div>
+          ) : (
+            <div data-monitor-empty-batch="true" className="mt-2">
+              <CompactEmptyVisual message="暂无批次画像；文件进入处理后将显示抽样规模、体量与结构特征。" />
             </div>
-          </div>
+          )}
         </section>
 
-        <div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-[1.1fr_0.9fr_0.9fr]">
-          <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
+        <div data-monitor-analytics-grid="true" className="grid min-w-0 border-b border-foreground/15 xl:grid-cols-2 2xl:grid-cols-[1.1fr_0.9fr_0.9fr]">
+          <section className="min-w-0 border-b border-foreground/10 px-3 py-3 xl:border-b-0 xl:border-r">
             <div className="flex items-center justify-between gap-3">
-              <div className="text-[11px] font-medium text-foreground">
+              <div className="text-[13px] font-semibold text-foreground text-balance">
                 处理吞吐趋势
               </div>
+              {!hasExecutionData ? (
+                <span className="rounded-md bg-muted/25 px-1.5 py-0.5 text-[9px] text-muted-foreground">
+                  暂无真实数据
+                </span>
+              ) : null}
             </div>
-            <div className="mt-3 h-[12rem]">
+            <div data-monitor-chart="throughput-line" className="mt-1 h-36">
               <EChart option={predictionOption} />
             </div>
           </section>
 
-          <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
+          <section className="min-w-0 border-b border-foreground/10 px-3 py-3 xl:border-b-0 2xl:border-r">
             <div className="flex items-center justify-between gap-3">
-              <div className="text-[11px] font-medium text-foreground">
+              <div className="text-[13px] font-semibold text-foreground text-balance">
                 成本雷达
               </div>
-              <Radar className="h-4 w-4 text-accent" />
+              <div className="flex items-center gap-2">
+                {!hasExecutionData ? (
+                  <span className="rounded-md bg-muted/25 px-1.5 py-0.5 text-[9px] text-muted-foreground">
+                    暂无真实数据
+                  </span>
+                ) : null}
+                <Radar className="h-4 w-4 text-accent" />
+              </div>
             </div>
-            <div className="mt-3 h-[13rem]">
+            <div data-monitor-chart="cost-radar" className="mt-1 h-36">
               <EChart option={radarOption} />
             </div>
           </section>
 
-          <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)] xl:col-span-2 2xl:col-span-1">
+          <section className="min-w-0 px-3 py-3 xl:col-span-2 xl:border-t xl:border-foreground/10 2xl:col-span-1 2xl:border-t-0">
             <div className="flex items-center justify-between gap-3">
-              <div className="text-[11px] font-medium text-foreground">
+              <div className="text-[13px] font-semibold text-foreground text-balance">
                 运行日志（最近）
               </div>
-              <span className="text-[9px] text-muted-foreground">
+              <span className="text-[10px] text-muted-foreground">
                 {recentQueueOutcomesCount ? '来自任务队列' : '来自文档状态'}
               </span>
             </div>
-            <div className="mt-3 space-y-2">
-              {executionRecentLogs.map((log) => (
-                <div
-                  key={log.id}
-                  className="flex items-start gap-2.5 rounded-[0.9rem] border border-border/50 bg-background/78 px-2.5 py-2"
-                >
-                  <span
-                    className={cn(
-                      'mt-1 h-2.5 w-2.5 shrink-0 rounded-full',
-                      log.tone
-                    )}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 text-[9px] text-muted-foreground">
-                      <span className="font-mono">{log.time}</span>
-                      <span>{log.stage}</span>
-                    </div>
-                    <div className="mt-0.5 truncate text-[10px] text-foreground">
-                      {log.detail}
+            {executionRecentLogs.length ? (
+              <div className="mt-2 space-y-2">
+                {executionRecentLogs.map((log) => (
+                  <div
+                    key={log.id}
+                    className="flex items-start gap-2.5 rounded-md border border-foreground/10 bg-background/78 px-2.5 py-2"
+                  >
+                    <span
+                      className={cn(
+                        'mt-1 h-2.5 w-2.5 shrink-0 rounded-full',
+                        log.tone
+                      )}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                        <span className="font-mono">{log.time}</span>
+                        <span>{log.stage}</span>
+                      </div>
+                      <div className="mt-0.5 truncate text-[11px] text-foreground">
+                        {log.detail}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <CompactEmptyVisual className="mt-2" message="暂无最近运行日志" />
+            )}
           </section>
         </div>
 
-        <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
+        <section className="px-3 py-3">
           <div className="flex items-center justify-between gap-3">
-            <div className="text-[11px] font-medium text-foreground">
+            <div className="text-[13px] font-semibold text-foreground text-balance">
               任务列表
             </div>
-            <div className="text-[9px] text-muted-foreground">
+            <div className="text-[10px] text-muted-foreground">
               {executionTaskRows.length} 个任务
             </div>
           </div>
-          <div className="mt-3 overflow-hidden rounded-[1rem] border border-border/50">
-            <table className="w-full text-left text-[9px]">
+          <div className="mt-2 overflow-hidden border-y border-foreground/10">
+            <table className="w-full text-left text-[11px]">
               <thead className="bg-muted/20 text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 font-medium">文件名</th>
@@ -416,20 +566,20 @@ export function ExecutionMonitorPanel({
               </thead>
               <tbody>
                 {showEmptyShell ? (
-                  <tr className="border-t border-border/40">
-                    <td colSpan={8} className="px-3 py-8">
-                      <div className="mx-auto flex max-w-xl flex-col items-center rounded-[1rem] border border-dashed border-border/65 bg-background/74 px-4 py-5 text-center">
-                        <div className="text-[11px] font-semibold text-foreground">
+                  <tr className="border-t border-foreground/10">
+                    <td colSpan={8} className="px-3 py-3">
+                      <div className="mx-auto flex max-w-xl flex-col items-center px-4 py-1 text-center">
+                        <div className="text-[12px] font-semibold text-foreground">
                           当前范围暂无执行任务
                         </div>
-                        <div className="mt-1 max-w-md text-[9px] leading-4 text-muted-foreground">
+                        <div className="mt-1 max-w-md text-[11px] leading-4 text-muted-foreground">
                           这个监控范围可以直接打开，但当前知识库还没有解析任务。可以切到入库操作提交解析，或查看全部项目的运行态。
                         </div>
-                        <div className="mt-3 flex flex-wrap justify-center gap-2">
+                        <div className="mt-2 flex flex-wrap justify-center gap-2">
                           <Button
                             type="button"
                             size="sm"
-                            className="h-7 rounded-lg px-2 text-[9px]"
+                            className="h-8 rounded-md px-2.5 text-[11px]"
                             onClick={onOpenIngestionOperation}
                           >
                             去入库操作
@@ -439,7 +589,7 @@ export function ExecutionMonitorPanel({
                               type="button"
                               variant="outline"
                               size="sm"
-                              className="h-7 rounded-lg px-2 text-[9px]"
+                              className="h-8 rounded-md px-2.5 text-[11px]"
                               onClick={onScopeAllProjects}
                             >
                               查看全部项目
@@ -471,7 +621,7 @@ export function ExecutionMonitorPanel({
                     const statusTone = getDocumentStatusTone(document.status)
 
                     return (
-                      <tr key={document.id} className="border-t border-border/40">
+                      <tr key={document.id} className="border-t border-foreground/10">
                         <td className="px-3 py-2 font-medium text-foreground">
                           {document.filename}
                         </td>
@@ -502,7 +652,7 @@ export function ExecutionMonitorPanel({
                                 }}
                               />
                             </div>
-                            <span className="font-mono text-[8px] text-foreground">
+                            <span className="font-mono text-[10px] text-foreground">
                               {progress}%
                             </span>
                           </div>
@@ -513,7 +663,7 @@ export function ExecutionMonitorPanel({
                         <td className="px-3 py-2">
                           <button
                             type="button"
-                            className="text-[9px] font-medium text-info transition-colors hover:text-info"
+                            className="text-[11px] font-medium text-info transition-colors hover:text-info"
                             onClick={() => onOpenAuditSnapshot(document.id)}
                           >
                             详情
@@ -526,7 +676,7 @@ export function ExecutionMonitorPanel({
               </tbody>
             </table>
           </div>
-          <div className="mt-2.5 flex flex-col gap-2 border-t border-border/45 pt-2.5 text-[9px] text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+          <div className="mt-2 flex flex-col gap-2 border-t border-foreground/10 pt-2 text-[10px] text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
             <span className="font-mono tabular-nums">
               共 {executionTaskRows.length} 条
             </span>
@@ -535,21 +685,21 @@ export function ExecutionMonitorPanel({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-7 rounded-lg px-2 text-[9px]"
+                className="h-8 rounded-md px-2.5 text-[10px]"
                 disabled={executionTaskPage <= 1}
                 onClick={onPrevPage}
               >
                 <ChevronLeft className="mr-1 h-3 w-3" />
                 上一页
               </Button>
-              <span className="min-w-[4.5rem] rounded-lg border border-border/50 bg-background/70 px-2 py-1 text-center font-mono tabular-nums text-foreground">
+              <span className="min-w-[4.5rem] rounded-md border border-foreground/10 bg-background/70 px-2 py-1 text-center font-mono tabular-nums text-foreground">
                 第 {executionTaskPage} / {executionTaskPageCount} 页
               </span>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-7 rounded-lg px-2 text-[9px]"
+                className="h-8 rounded-md px-2.5 text-[10px]"
                 disabled={executionTaskPage >= executionTaskPageCount}
                 onClick={onNextPage}
               >
