@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
+import Image from 'next/image'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { motion } from 'framer-motion'
@@ -627,8 +628,21 @@ export default function DatasetsPage() {
           >
             <span className="absolute -bottom-px left-1 h-px w-8 bg-info/55" aria-hidden="true" />
             <div className="flex min-w-0 items-center gap-2.5">
-              <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background/70 text-info" aria-hidden="true">
-                <Layers className="size-3.5" />
+              <span
+                data-dataset-title-mark="true"
+                className="flex size-8 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background/70"
+                aria-hidden="true"
+              >
+                <Image
+                  src="/brand/mimirq-dataset-mark.png"
+                  alt=""
+                  aria-hidden="true"
+                  draggable={false}
+                  width={64}
+                  height={64}
+                  loading="eager"
+                  className="size-7 scale-110 object-contain"
+                />
               </span>
               <div className="min-w-0 sm:flex sm:items-center sm:gap-2.5">
                 <h1 className="text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground">数据集</h1>

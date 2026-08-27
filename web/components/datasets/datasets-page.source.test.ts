@@ -47,6 +47,13 @@ describe('datasets-page header action contract', () => {
     expect(src).toContain('topClassName="bg-sidebar/20 px-3 pt-2 pb-2 md:px-3 lg:px-3"')
     expect(src).toContain('className="relative flex min-h-14 flex-col gap-2 border-b border-foreground/15 px-1 py-2 sm:flex-row sm:items-center sm:justify-between"')
     expect(src).toContain('left-1 h-px w-8 bg-info/55')
+    expect(src).toContain('data-dataset-title-mark="true"')
+    expect(src).toContain('src="/brand/mimirq-dataset-mark.png"')
+    expect(
+      fs.existsSync(
+        path.resolve(__dirname, '../../public/brand/mimirq-dataset-mark.png')
+      )
+    ).toBe(true)
     expect(src).toContain('<h1 className="text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground">数据集</h1>')
     expect(src).toContain('<p className="truncate text-[12px] leading-5 text-muted-foreground/80">管理知识库集合与访问权限</p>')
     expect(src).toContain('DialogContent className="max-w-xl p-0 sm:rounded-xl"')
