@@ -378,13 +378,6 @@ jobs:
           } >> "$GITHUB_ENV"
           python scripts/select_free_docker_subnet.py --seed "$GITHUB_RUN_ID" >> "$GITHUB_ENV"
 
-      - name: Set up Docker Buildx
-        id: backend_buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
-        with:
-          driver-opts: |
-            network=host
-
       - name: Validate Helm chart
         run: |
           docker run --rm -v "$PWD:/work" -w /work alpine/helm@sha256:aef9b56f64e866207d9591d0abd8f6d767b36aadd12edf68f8a719716d9d29c9 lint deploy/helm/mimirq
@@ -395,21 +388,10 @@ jobs:
           done
 
       - name: Build backend image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
-        with:
-          builder: ${{ steps.backend_buildx.outputs.name }}
-          context: .
-          file: docker/Dockerfile
-          load: true
-          network: host
-          allow: network.host
-          tags: mimirq-backend
-          build-args: |
-            HTTP_PROXY
-            HTTPS_PROXY
-            NO_PROXY
-          cache-from: type=gha,scope=mimirq-backend
-          cache-to: type=gha,mode=max,scope=mimirq-backend
+        run: |
+          docker build --network host \
+            --build-arg HTTP_PROXY --build-arg HTTPS_PROXY --build-arg NO_PROXY \
+            -t mimirq-backend -f docker/Dockerfile .
 
       - name: Build web image
         run: |

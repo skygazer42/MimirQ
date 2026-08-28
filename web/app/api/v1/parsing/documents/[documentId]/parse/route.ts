@@ -35,7 +35,7 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
-export function resolveParsingBackendBase(env: NodeJS.ProcessEnv = process.env): string {
+function resolveParsingBackendBase(env: NodeJS.ProcessEnv = process.env): string {
   const candidates = [env.API_INTERNAL_URL, env.NEXT_PUBLIC_API_URL, DEFAULT_BACKEND_BASE_URL]
   for (const candidate of candidates) {
     const normalized = trimTrailingSlashes(candidate || '')
@@ -44,7 +44,7 @@ export function resolveParsingBackendBase(env: NodeJS.ProcessEnv = process.env):
   return DEFAULT_BACKEND_BASE_URL
 }
 
-export function resolveParsingProxyTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+function resolveParsingProxyTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
   const parsed = Number(String(env.NEXT_PUBLIC_API_LONG_TIMEOUT_MS || '').trim())
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_LONG_TIMEOUT_MS
 }

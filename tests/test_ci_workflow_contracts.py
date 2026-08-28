@@ -378,9 +378,9 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     assert "/data/actions-runner" not in workflow
     assert "127.0.0.1:35983" not in workflow
     assert "docker build --network host" in workflow
-    assert workflow.count("docker build --network host") == 1
-    assert "uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4" in workflow
-    assert "uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7" in workflow
+    assert workflow.count("docker build --network host") == 2
+    assert "docker/setup-buildx-action" not in workflow
+    assert "docker/build-push-action" not in workflow
     assert "Prepare Docker build proxy" in workflow
     assert '"${SELF_HOSTED_HTTP_PROXY:-${HTTP_PROXY:-}}"' in workflow
     assert '"${SELF_HOSTED_HTTPS_PROXY:-${HTTPS_PROXY:-}}"' in workflow
@@ -659,17 +659,9 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     assert "PNPM_REGISTRY: ${PNPM_REGISTRY:-https://registry.npmmirror.com}" in web_compose
     assert 'python scripts/select_free_docker_subnet.py --seed "$GITHUB_RUN_ID"' in docker_job
     assert "printf 'DOCKER_BUILD_NETWORK=host\\n'" in docker_job
-    assert "Set up Docker Buildx" in docker_job
-    assert "uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4" in docker_job
-    assert "id: backend_buildx" in docker_job
-    assert "network=host" in docker_job
-    assert "uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7" in docker_job
-    assert "builder: ${{ steps.backend_buildx.outputs.name }}" in docker_job
-    assert "load: true" in docker_job
-    assert "allow: network.host" in docker_job
-    assert "cache-from: type=gha,scope=mimirq-backend" in docker_job
-    assert "cache-to: type=gha,mode=max,scope=mimirq-backend" in docker_job
-    assert "build-args: |\n            HTTP_PROXY\n            HTTPS_PROXY\n            NO_PROXY" in docker_job
+    assert "Set up Docker Buildx" not in docker_job
+    assert docker_job.count("docker build --network host") == 2
+    assert "--build-arg HTTP_PROXY --build-arg HTTPS_PROXY --build-arg NO_PROXY" in docker_job
     assert "--build-arg NEXT_PUBLIC_API_URL=/" in docker_job
     assert "README docker quickstart smoke" in docker_job
     assert 'API_HEALTHCHECK_START_PERIOD: "420s"' in docker_job
