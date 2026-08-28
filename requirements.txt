@@ -78,7 +78,7 @@ shapely==2.1.2
 tqdm==4.67.3
 beartype==0.22.9
 hanziconv==0.3.2
-nltk==3.10.0
+nltk==3.10.2
 accelerate==1.13.0
 tencentcloud-sdk-python==3.1.72
 html-text==0.7.1
