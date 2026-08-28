@@ -376,6 +376,13 @@ def test_production_docs_call_out_strong_compose_credentials_and_proxy_boundary(
     assert "生产环境禁止设为 *" in env_example
 
 
+def test_env_example_documents_image_embedding_opt_in_default() -> None:
+    env_example = _read(".env.example")
+
+    assert "IMAGE_EMBEDDING_ENABLED=false" in env_example
+    assert "默认关闭，避免最小部署额外拉取重量级 ML 依赖" in env_example
+
+
 def test_production_make_targets_validate_and_propagate_environment() -> None:
     compose = yaml.safe_load(_read("docker/docker-compose.yml"))
     assert compose["x-backend-env"]["ENV"] == "${ENV:-development}"

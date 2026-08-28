@@ -101,8 +101,8 @@ describe('navbar source', () => {
       src.indexOf("labelKey: 'items.ragas'")
     )
 
-    expect(chatMessages).toContain("datasets: '知识库'")
-    expect(chatMessages).toContain("knowledgeBase: '数据集'")
+    expect(chatMessages).toContain("datasets: '数据集'")
+    expect(chatMessages).toContain("knowledgeBase: '知识库'")
     expect(chatMessages).toContain("ragas: 'RAG评测'")
   })
 })

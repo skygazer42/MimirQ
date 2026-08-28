@@ -104,6 +104,7 @@ describe('knowledge route entry', () => {
     expect(pageSrc).toContain("'gap-0 overflow-hidden rounded-lg border border-foreground/10 bg-background shadow-none dark:border-foreground/10 dark:bg-background'")
     expect(pageSrc).toContain("'flex h-full flex-col overflow-hidden rounded-none border-r border-y-0 border-l-0'")
     expect(pageSrc).toContain("'flex h-full flex-col overflow-hidden rounded-none border-l border-y-0 border-r-0'")
+    expect(pageSrc).toContain("withDocumentViewerPadding={activeTab !== 'retrieval'}")
     expect(pageSrc).not.toContain('border-border/45 bg-background shadow-none')
   })
 

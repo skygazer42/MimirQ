@@ -272,8 +272,13 @@ describe('auth page registration', () => {
     })
 
     const frame = container.firstElementChild
+    const main = container.querySelector('#main-content')
     expect(frame?.classList.contains('overflow-y-auto')).toBe(true)
     expect(frame?.classList.contains('overflow-hidden')).toBe(false)
+    expect(main?.classList.contains('items-start')).toBe(true)
+    expect(main?.className).toContain('sm:items-center')
+    expect(main?.classList.contains('py-6')).toBe(true)
+    expect(main?.className).toContain('sm:py-10')
 
     act(() => root.unmount())
   })

@@ -4,6 +4,7 @@ import React, { act } from 'react'
 import { createRoot, hydrateRoot } from 'react-dom/client'
 import { renderToString } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import chatMessages from '@/i18n/messages/zh-CN/chat'
 
 const routerMocks = vi.hoisted(() => ({
   pathname: '/knowledge/similarity',
@@ -53,8 +54,9 @@ const messages: Record<
   'deps.openStatus': 'deps.openStatus',
   'deps.ready': 'deps.ready',
   'deps.unavailable': 'deps.unavailable',
+  'items.datasets': chatMessages.Navbar.items.datasets,
   'items.ragVisualization': 'items.ragVisualization',
-  'items.knowledgeBase': 'items.knowledgeBase',
+  'items.knowledgeBase': chatMessages.Navbar.items.knowledgeBase,
   'sections.analysis': 'sections.analysis',
   'sections.core': 'sections.core',
   'sections.current': 'sections.current',
@@ -218,9 +220,7 @@ describe('Navbar behavior', () => {
     const analysisSection = view.container.querySelector(
       'button[aria-controls="sidebar-section-analysis"]'
     )
-    const knowledgeBaseLink = Array.from(
-      view.container.querySelectorAll('a')
-    ).find((node) => node.textContent?.includes('items.knowledgeBase'))
+    const knowledgeBaseLink = view.container.querySelector('a[href="/knowledge"]')
     const evaluationsLink = Array.from(view.container.querySelectorAll('a')).find(
       (node) => node.textContent?.includes('items.ragas')
     )
@@ -236,6 +236,22 @@ describe('Navbar behavior', () => {
     expect(knowledgeBaseLink?.getAttribute('aria-current')).toBeNull()
     expect(evaluationsLink?.getAttribute('aria-current')).toBe('page')
     expect(ragVisualizationLink).toBeUndefined()
+
+    view.unmount()
+  })
+
+  it('maps dataset and knowledge labels to the intended routes', () => {
+    const view = renderComponent(React.createElement(Navbar))
+
+    const datasetsLink = Array.from(view.container.querySelectorAll('a')).find(
+      (node) => node.textContent?.includes(chatMessages.Navbar.items.datasets)
+    )
+    const knowledgeLink = Array.from(view.container.querySelectorAll('a')).find(
+      (node) => node.textContent?.includes(chatMessages.Navbar.items.knowledgeBase)
+    )
+
+    expect(datasetsLink?.getAttribute('href')).toBe('/datasets')
+    expect(knowledgeLink?.getAttribute('href')).toBe('/knowledge')
 
     view.unmount()
   })

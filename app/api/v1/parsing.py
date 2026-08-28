@@ -27,6 +27,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -685,12 +686,30 @@ def _get_workspace_document(db: Session, *, tenant_id: UUID, account_id: str, do
         # Should not happen for workspace docs, but keep safe default.
         raise HTTPException(status_code=403, detail="Workspace access denied")
 
+    owner_id = str(getattr(doc, "owner_id", "") or "").strip()
+    if owner_id and owner_id != str(account_id or "").strip():
+        raise HTTPException(status_code=404, detail="Document not found")
+
     return doc
 
 
 def _filter_parsing_workspace_documents(query):
     """Keep parsing workspace list semantics aligned with workspace detail endpoints."""
     return query.filter(DBDocument.doc_metadata["workspace"].astext == "parsing")  # type: ignore[attr-defined]
+
+
+def _parsing_workspace_visibility_clause(*, workspace_dataset_id: UUID, account_id: str):
+    return or_(
+        DBDocument.dataset_id == workspace_dataset_id,
+        DBDocument.owner_id == str(account_id or "").strip(),
+    )
+
+
+def _parsing_workspace_target_dataset_clause(*, dataset_id: UUID):
+    return or_(
+        DBDocument.dataset_id == dataset_id,
+        DBDocument.doc_metadata["target_dataset_id"].astext == str(dataset_id),  # type: ignore[attr-defined]
+    )
 
 
 @router.get("/documents", response_model=DocumentList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -707,19 +726,21 @@ def list_parsing_documents(
     """
     List parsing workspace documents (persistent across restarts).
     """
-    dataset = _get_or_create_workspace_dataset(db, tenant_id, account_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    workspace_dataset = _get_or_create_workspace_dataset(db, tenant_id, account_id)
+    DatasetService.assert_dataset_readable(db, workspace_dataset, account_id)
+
+    query = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id)
+    query = query.filter(
+        _parsing_workspace_visibility_clause(
+            workspace_dataset_id=workspace_dataset.id,
+            account_id=account_id,
+        )
+    )
 
     if dataset_id is not None:
         target_dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
         DatasetService.assert_dataset_readable(db, target_dataset, account_id)
-        query = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id)
-        query = query.filter(DBDocument.doc_metadata["target_dataset_id"].astext == str(dataset_id))  # type: ignore[attr-defined]
-    else:
-        query = db.query(DBDocument).filter(
-            DBDocument.tenant_id == tenant_id,
-            DBDocument.dataset_id == dataset.id,
-        )
+        query = query.filter(_parsing_workspace_target_dataset_clause(dataset_id=dataset_id))
     query = _filter_parsing_workspace_documents(query)
 
     if status and status != "all":
@@ -753,12 +774,14 @@ async def upload_parsing_document(
             detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}",
         )
 
-    dataset = _get_or_create_workspace_dataset(db, tenant_id, account_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
     target_dataset: Dataset | None = None
     if dataset_id is not None:
         target_dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
         DatasetService.assert_dataset_writable(db, target_dataset, account_id)
+        dataset = target_dataset
+    else:
+        dataset = _get_or_create_workspace_dataset(db, tenant_id, account_id)
+        DatasetService.assert_dataset_writable(db, dataset, account_id)
 
     document_id = uuid.uuid4()
 
@@ -812,6 +835,7 @@ async def upload_parsing_document(
         file_type=file_ext.lstrip("."),
         file_size=file_size,
         file_path=stored_path,
+        owner_id=account_id,
         status="pending",
         processing_progress=0,
         current_stage="parsing",

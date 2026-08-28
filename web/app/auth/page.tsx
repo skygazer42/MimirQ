@@ -201,6 +201,7 @@ export default function AuthPage() {
     return (
         <FullScreenFrame
             className="relative w-full overflow-x-hidden"
+            mainClassName="items-start py-6 sm:items-center sm:py-10"
         >
             <div className="relative z-10 w-full max-w-md p-6">
                 {/* Logo / Brand */}

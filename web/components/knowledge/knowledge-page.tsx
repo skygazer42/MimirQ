@@ -602,7 +602,10 @@ export default function KnowledgePage() {
   )
 
   return (
-    <AppFrame rightPanel={<DocumentViewerPanel />} withDocumentViewerPadding>
+    <AppFrame
+      rightPanel={<DocumentViewerPanel />}
+      withDocumentViewerPadding={activeTab !== 'retrieval'}
+    >
       <div
         data-knowledge-page-root="true"
         className={cn(
