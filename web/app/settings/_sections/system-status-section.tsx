@@ -18,7 +18,7 @@ function StatusCard({
   return (
     <div
       className={cn(
-        'rounded-lg border bg-card px-3 py-2.5 transition-colors',
+        'rounded-lg border bg-info/[0.025] px-3 py-2.5 transition-colors',
         connected
           ? 'border-success/20'
           : 'border-destructive/20'
@@ -97,11 +97,11 @@ export function SystemStatusSection({
       </div>
 
       {backendMeta || parserEntries.length ? (
-        <div className="rounded-lg border border-border/70 bg-card p-3.5 shadow-none">
+        <div className="rounded-lg border border-info/15 bg-info/[0.025] p-3.5 shadow-none">
           <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <div className={cn(systemPageTokens.microLabel, 'flex items-center gap-1.5 text-foreground/80')}>
-                <Server className="h-3.5 w-3.5 text-primary" />
+                <Server className="h-3.5 w-3.5 text-info" />
                 运行能力
               </div>
               <div className="mt-1 text-[11px] font-medium leading-5 text-muted-foreground">

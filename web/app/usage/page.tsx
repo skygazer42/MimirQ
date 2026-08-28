@@ -3,16 +3,16 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
-  BarChart3,
   Clock3,
   Coins,
+  ChevronLeft,
+  ChevronRight,
   Database,
   MessageSquareText,
   RefreshCw,
   Timer,
   UserRound,
   ArrowUpRight,
-  LayoutGrid,
   Zap,
   TrendingUp,
   type LucideIcon,
@@ -41,21 +41,31 @@ import type {
   ChatTokenQuotaStatus,
   ChatTokenUsageSummary,
 } from '@/types'
+import {
+  COST_ATTRIBUTION_PAGE_SIZE,
+  paginateUsageRows,
+} from './usage-pagination'
 
 // --- Advanced Style Tokens ---
 
-const USAGE_PANEL_CLASS = 'overflow-hidden rounded-xl border border-foreground/10 bg-background shadow-none'
-const USAGE_SURFACE_CLASS = 'rounded-xl border border-foreground/10 bg-background/80'
+const USAGE_PANEL_CLASS = 'overflow-hidden rounded-xl border border-info/20 bg-background/78 shadow-none'
+const USAGE_SURFACE_CLASS = 'rounded-xl border border-info/20 bg-background/70'
 const GLASS_CARD = `${USAGE_SURFACE_CLASS} overflow-hidden transition-colors duration-200`
 const GLOW_CARD =
-  'group relative overflow-hidden rounded-xl border border-foreground/10 bg-background p-4 shadow-none transition-colors duration-200 hover:border-primary/18 hover:bg-muted/18'
+  'group relative overflow-hidden rounded-xl border border-border/70 bg-background/72 p-4 shadow-none transition-colors duration-200 hover:border-info/25 hover:bg-info/[0.04]'
 const NUMBER_ACCENT =
-  'font-mono text-[22px] font-semibold leading-none tracking-[-0.04em] text-foreground bg-clip-text'
-const USAGE_TABLE_HEAD_CLASS = 'border-b border-foreground/10 bg-muted/18'
+  'font-mono text-[22px] font-semibold leading-none tracking-[-0.04em]'
+const METRIC_VALUE_TONE_CLASSES = {
+  blue: 'text-info',
+  green: 'text-success',
+  indigo: 'text-info',
+  slate: 'text-foreground/80',
+} as const
+const USAGE_TABLE_HEAD_CLASS = 'border-b border-border/60 bg-info/[0.035]'
 const USAGE_TABLE_HEADER_CLASS =
-  'px-5 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-[0.18em]'
+  'px-5 py-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-[0.18em]'
 const USAGE_LINK_CLASS =
-  'inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary transition-colors hover:border-primary/35 hover:bg-primary/15'
+  'inline-flex items-center gap-1.5 rounded-full border border-info/25 bg-info/10 px-2.5 py-1 text-[11px] font-medium text-info transition-colors hover:border-info/35 hover:bg-info/15'
 const USAGE_MUTED_CHIP_CLASS =
   'inline-flex items-center rounded-full border border-border/60 bg-muted/45 px-2.5 py-1 text-[11px] font-medium text-muted-foreground'
 const WINDOW_PRESETS = [
@@ -122,12 +132,12 @@ function StylizedMetricCard({
   label: string
   value: string | number
   detail?: string
-  tone?: string
+  tone?: keyof typeof METRIC_VALUE_TONE_CLASSES
 }>) {
   const accentMap = {
-    blue: 'bg-primary/60',
+    blue: 'bg-info/60',
     green: 'bg-success/60',
-    indigo: 'bg-accent/60',
+    indigo: 'bg-info/60',
     slate: 'bg-muted-foreground/45',
   }
   return (
@@ -141,26 +151,27 @@ function StylizedMetricCard({
 
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-foreground/10 bg-muted/18 text-muted-foreground transition-colors duration-200 group-hover:border-primary/18 group-hover:text-primary">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-info/18 bg-info/[0.06] text-info transition-colors duration-200 group-hover:border-info/30 group-hover:bg-info/10">
             <Icon className="size-4" />
           </div>
-          <span className="truncate text-[11px] font-bold text-muted-foreground">
+          <span className="truncate text-[11px] font-medium text-muted-foreground">
             {label}
           </span>
         </div>
-        <div className="flex size-6 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background opacity-0 transition-opacity group-hover:opacity-100">
-          <ArrowUpRight className="size-3 text-primary" />
+        <div className="flex size-6 shrink-0 items-center justify-center rounded-md border border-info/18 bg-background/72 opacity-0 transition-opacity group-hover:opacity-100">
+          <ArrowUpRight className="size-3 text-info" />
         </div>
       </div>
 
       <div className="flex flex-col pl-1.5">
-        <span className={NUMBER_ACCENT}>{value}</span>
+        <span className={cn(NUMBER_ACCENT, METRIC_VALUE_TONE_CLASSES[tone])}>
+          {value}
+        </span>
         {detail && (
           <div className="mt-2 flex items-center gap-1.5">
-            <span className="rounded-md border border-foreground/10 bg-muted/18 px-1.5 py-0.5 text-[9px] font-bold uppercase text-muted-foreground">
+            <span className="rounded-md border border-border/60 bg-muted/35 px-1.5 py-0.5 text-[9px] font-medium uppercase text-muted-foreground">
               {detail}
             </span>
-            <TrendingUp className="size-3 text-success opacity-50" />
           </div>
         )}
       </div>
@@ -175,13 +186,14 @@ function OverviewStat({
 }: Readonly<{
   label: string
   value: string | number
-  tone?: 'blue' | 'green' | 'red' | 'slate'
+  tone?: 'blue' | 'green' | 'red' | 'slate' | 'info'
 }>) {
   const toneClass = {
-    blue: 'border-primary/18 bg-primary/[0.08] text-primary',
+    blue: 'border-info/25 bg-info/[0.09] text-info',
     green: 'border-success/18 bg-success/[0.08] text-success',
     red: 'border-destructive/18 bg-destructive/[0.08] text-destructive',
-    slate: 'border-foreground/10 bg-background/80 text-foreground',
+    slate: 'border-border/65 bg-background/62 text-foreground/80',
+    info: 'border-border/65 bg-background/62 text-info',
   }[tone]
   return (
     <div
@@ -212,7 +224,7 @@ function OverviewMeta({
       <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         {label}
       </span>
-      <span className="truncate text-[12px] font-medium text-foreground">
+      <span className="truncate text-[12px] font-medium text-foreground/80">
         {value}
       </span>
     </div>
@@ -236,7 +248,7 @@ function UsageDatasetCell({
   return (
     <div className="min-w-0">
       <div className="flex min-w-0 items-center gap-2">
-        <p className="min-w-0 max-w-[260px] truncate text-[13px] font-semibold text-foreground transition-colors group-hover:text-primary">
+        <p className="min-w-0 max-w-[260px] truncate text-[13px] font-semibold text-foreground/88 transition-colors group-hover:text-info">
           {displayName}
         </p>
         <span
@@ -259,6 +271,25 @@ function UsageDatasetCell({
   )
 }
 
+function UsageEmptyTableRow({
+  colSpan,
+  detail,
+  title,
+}: Readonly<{
+  colSpan: number
+  detail: string
+  title: string
+}>) {
+  return (
+    <tr>
+      <td colSpan={colSpan} className="h-40 px-5 text-center">
+        <p className="text-[12px] font-medium text-foreground/75">{title}</p>
+        <p className="mt-1 text-[10px] text-muted-foreground">{detail}</p>
+      </td>
+    </tr>
+  )
+}
+
 // --- Main Page ---
 
 export default function UsagePage() {
@@ -274,6 +305,7 @@ export default function UsagePage() {
 
 function UsagePageContent() {
   const [windowDays, setWindowDays] = useState<number>(7)
+  const [costPage, setCostPage] = useState(1)
 
   const windowParams = useMemo(
     () => ({ window_days: windowDays }),
@@ -338,8 +370,23 @@ function UsagePageContent() {
     const list = cost?.by_dataset || []
     return [...list]
       .sort((a, b) => (b.llm_total_tokens || 0) - (a.llm_total_tokens || 0))
-      .slice(0, 10)
   }, [cost])
+  const {
+    items: paginatedCostRows,
+    page: safeCostPage,
+    pageCount: costPageCount,
+  } = useMemo(
+    () => paginateUsageRows(costRows, costPage),
+    [costPage, costRows]
+  )
+  const costPageStart =
+    costRows.length === 0
+      ? 0
+      : (safeCostPage - 1) * COST_ATTRIBUTION_PAGE_SIZE + 1
+  const costPageEnd = Math.min(
+    safeCostPage * COST_ATTRIBUTION_PAGE_SIZE,
+    costRows.length
+  )
 
   const avgRetrieve = cost
     ? cost.total_retrieval_elapsed_sec /
@@ -362,9 +409,9 @@ function UsagePageContent() {
         icon={Coins}
         iconColor="text-primary"
         size="full"
-        bodyClassName="bg-transparent relative"
+        bodyClassName="bg-info/[0.035] !pb-3"
       >
-        <div className="relative z-10 flex flex-col gap-4 pb-12">
+        <div className="relative z-10 flex flex-col gap-4 pb-0">
           <section
             data-usage-overview="compact"
             className={USAGE_PANEL_CLASS}
@@ -376,7 +423,7 @@ function UsagePageContent() {
             )}
             <div className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-[220px] items-center gap-3">
-                <div className="flex size-9 items-center justify-center rounded-lg border border-foreground/10 bg-muted/18 text-primary">
+                <div className="flex size-9 items-center justify-center rounded-lg border border-info/20 bg-info/10 text-info">
                   <Coins className="size-4" />
                 </div>
                 <div className="min-w-0">
@@ -395,10 +442,15 @@ function UsagePageContent() {
                   value={windowDays === 1 ? '24小时' : `${windowDays}天`}
                   tone="blue"
                 />
-                <OverviewStat label="归因数据集" value={rows.length} />
+                <OverviewStat
+                  label="归因数据集"
+                  value={summary?.by_dataset?.length ?? 0}
+                  tone="info"
+                />
                 <OverviewStat
                   label="模型令牌"
                   value={formatNumber(cost?.total_llm_total_tokens)}
+                  tone="info"
                 />
                 <OverviewStat
                   label="聊天配额"
@@ -421,9 +473,12 @@ function UsagePageContent() {
               <div className="flex shrink-0 items-center gap-2">
                 <Select
                   value={String(windowDays)}
-                  onValueChange={(v) => setWindowDays(Number(v))}
+                  onValueChange={(v) => {
+                    setWindowDays(Number(v))
+                    setCostPage(1)
+                  }}
                 >
-                  <SelectTrigger className="h-9 w-[92px] rounded-lg border-border/70 bg-background text-[12px] font-semibold shadow-none transition-colors hover:bg-muted/18">
+                  <SelectTrigger className="h-9 w-[92px] rounded-lg border-border/70 bg-background/72 text-[12px] font-medium shadow-none transition-colors hover:border-info/30 hover:bg-info/[0.06]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -437,7 +492,7 @@ function UsagePageContent() {
                 <Button
                   variant="outline"
                   size="icon"
-                  className="size-9 rounded-lg border-border/70 bg-background shadow-none transition-colors hover:bg-muted/18 hover:text-primary"
+                  className="size-9 rounded-lg border-border/70 bg-background/72 shadow-none transition-colors hover:border-info/30 hover:bg-info/[0.06] hover:text-info"
                   aria-label="刷新用量数据"
                   onClick={() => {
                     summaryQuery.refetch()
@@ -456,7 +511,7 @@ function UsagePageContent() {
               </div>
             </div>
 
-            <div className="border-t border-border/50 bg-muted/24 px-4 py-2">
+            <div className="border-t border-border/60 bg-info/[0.025] px-4 py-2">
               <div className="grid gap-2 md:grid-cols-3">
                 <OverviewMeta label="统计范围" value="当前租户总量" />
                 <OverviewMeta
@@ -522,22 +577,22 @@ function UsagePageContent() {
             <div
               className={cn(
                 GLASS_CARD,
-                'flex flex-col border-primary/10 2xl:col-span-5'
+                'flex flex-col 2xl:col-span-5'
               )}
             >
               <div className="flex items-center justify-between border-b border-foreground/10 bg-muted/18 px-5 py-4">
                 <div>
                   <h3 className="flex items-center gap-2 text-[14px] font-semibold text-foreground">
-                    <TrendingUp className="size-4 text-primary" />
+                    <TrendingUp className="size-4 text-info" />
                     数据集用量排行
                   </h3>
                   <p className="mt-1 text-[10px] font-semibold uppercase text-muted-foreground">
                     按 dataset_id 归因 · {formatWindow(summary?.window_start, summary?.window_end)}
                   </p>
                 </div>
-                <div className="flex size-8 items-center justify-center rounded-lg border border-foreground/10 bg-background text-muted-foreground/55">
-                  <LayoutGrid className="size-4" />
-                </div>
+                <span className="rounded-full border border-info/20 bg-info/[0.07] px-2.5 py-1 font-mono text-[10px] font-medium text-info">
+                  TOP 10
+                </span>
               </div>
               <div className="max-h-[430px] overflow-auto">
                 <table className="w-full text-left">
@@ -565,7 +620,7 @@ function UsagePageContent() {
 	                      return (
 	                        <tr
 	                          key={datasetId || 'unbound'}
-	                          className="hover:bg-primary/[0.04] transition-all duration-200 group"
+	                        className="group transition-colors duration-200 hover:bg-info/[0.04]"
 	                        >
                           <td className="px-5 py-3.5">
                             <UsageDatasetCell
@@ -576,7 +631,7 @@ function UsagePageContent() {
                           <td className="px-5 py-3.5 text-right font-mono text-[12px] text-muted-foreground">
                             {formatNumber(r.assistant_messages)}
                           </td>
-                          <td className="px-5 py-3.5 text-right font-mono text-[12px] font-semibold text-foreground">
+                          <td className="px-5 py-3.5 text-right font-mono text-[12px] font-semibold text-info/90">
                             {formatNumber(r.assistant_tokens)}
                           </td>
                           <td className="px-5 py-3.5 text-right">
@@ -597,6 +652,13 @@ function UsagePageContent() {
 	                        </tr>
 	                      )
 	                    })}
+	                    {rows.length === 0 ? (
+	                      <UsageEmptyTableRow
+	                        colSpan={4}
+	                        title="暂无数据集用量记录"
+	                        detail="当前时间窗口内尚未产生可归因的助手消息。"
+	                      />
+	                    ) : null}
 	                  </tbody>
 	                </table>
 	              </div>
@@ -606,22 +668,22 @@ function UsagePageContent() {
             <div
               className={cn(
                 GLASS_CARD,
-                'flex flex-col border-accent/10 2xl:col-span-7'
+                'flex flex-col 2xl:col-span-7'
               )}
             >
               <div className="flex items-center justify-between border-b border-foreground/10 bg-muted/18 px-5 py-4">
                 <div>
                   <h3 className="flex items-center gap-2 text-[14px] font-semibold text-foreground">
-                    <Zap className="size-4 text-accent fill-current" />
+                    <Zap className="size-4 text-info" />
                     数据集成本归因（估算）
                   </h3>
                   <p className="mt-1 text-[10px] font-semibold uppercase text-muted-foreground">
                     聊天与检索链路聚合 · {formatWindow(cost?.window_start, cost?.window_end)}
                   </p>
                 </div>
-                <div className="flex size-8 items-center justify-center rounded-lg border border-foreground/10 bg-background text-muted-foreground/55">
-                  <BarChart3 className="size-4" />
-                </div>
+                <span className="rounded-full border border-border/60 bg-background/65 px-2.5 py-1 text-[10px] font-medium text-muted-foreground">
+                  共 {costRows.length} 个数据集
+                </span>
               </div>
               <div className="max-h-[430px] overflow-auto">
                 <table className="w-full text-left">
@@ -645,14 +707,14 @@ function UsagePageContent() {
 	                    </tr>
 	                  </thead>
 	                  <tbody className="divide-y divide-border/40">
-	                    {costRows.map((r) => {
+	                    {paginatedCostRows.map((r) => {
 	                      const datasetId = r.dataset_id || ''
 	                      const datasetName = datasetNameById[datasetId] || ''
 	                      const canOpenDataset = Boolean(datasetId && datasetName)
 	                      return (
 	                        <tr
 	                          key={datasetId || 'unbound-cost'}
-	                          className="hover:bg-accent/[0.04] transition-all duration-200 group"
+	                        className="group transition-colors duration-200 hover:bg-info/[0.04]"
 	                        >
                           <td className="px-5 py-3.5">
                             <UsageDatasetCell
@@ -660,10 +722,10 @@ function UsagePageContent() {
                               datasetName={datasetName}
                             />
                           </td>
-                          <td className="px-5 py-3.5 text-right font-mono text-[12px] font-semibold text-foreground">
+                          <td className="px-5 py-3.5 text-right font-mono text-[12px] font-semibold text-info">
                             {formatNumber(r.llm_total_tokens)}
                           </td>
-                          <td className="px-5 py-3.5 text-right font-mono text-[12px] text-muted-foreground">
+                          <td className="px-5 py-3.5 text-right font-mono text-[12px] text-info/75">
                             {formatNumber(r.embedding_query_tokens)}
                           </td>
                           <td className="px-5 py-3.5 text-right font-mono text-[12px] text-muted-foreground">
@@ -690,9 +752,50 @@ function UsagePageContent() {
 	                        </tr>
 	                      )
 	                    })}
+	                    {costRows.length === 0 ? (
+	                      <UsageEmptyTableRow
+	                        colSpan={5}
+	                        title="暂无成本归因记录"
+	                        detail="当前时间窗口内尚未产生聊天或检索成本。"
+	                      />
+	                    ) : null}
 	                  </tbody>
 	                </table>
               </div>
+              {costRows.length > 0 ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 bg-info/[0.025] px-4 py-2.5">
+                  <p className="text-[10px] text-muted-foreground">
+                    显示 {costPageStart}-{costPageEnd} · 共 {costRows.length} 条
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[10px] text-muted-foreground">
+                      {COST_ATTRIBUTION_PAGE_SIZE} 条/页 · {safeCostPage} / {costPageCount}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      aria-label="成本归因上一页"
+                      className="size-7 rounded-lg border-border/70 bg-background/70 shadow-none hover:border-info/30 hover:bg-info/[0.07] hover:text-info"
+                      disabled={safeCostPage <= 1}
+                      onClick={() => setCostPage(Math.max(1, safeCostPage - 1))}
+                    >
+                      <ChevronLeft className="size-3.5" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      aria-label="成本归因下一页"
+                      className="size-7 rounded-lg border-border/70 bg-background/70 shadow-none hover:border-info/30 hover:bg-info/[0.07] hover:text-info"
+                      disabled={safeCostPage >= costPageCount}
+                      onClick={() =>
+                        setCostPage(Math.min(costPageCount, safeCostPage + 1))
+                      }
+                    >
+                      <ChevronRight className="size-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
 

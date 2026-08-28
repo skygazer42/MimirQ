@@ -42,4 +42,98 @@ describe('analysis and observability surfaces stay crisp', () => {
     expect(diagnosticsSrc).not.toContain('shadow-[0_10px_24px_hsl(var(--primary)/0.05)]')
     expect(diagnosticsSrc).not.toContain('shadow-[0_10px_24px_hsl(var(--primary)/0.18)]')
   })
+
+  it('keeps evaluation workspace surfaces in the Ocean color family', () => {
+    const src = readSource('./page.tsx')
+
+    expect(src).toContain(
+      'relative flex flex-1 flex-col overflow-hidden bg-info/[0.035]'
+    )
+    expect(src).toContain(
+      'overflow-hidden rounded-2xl border border-info/15 bg-background/72 shadow-none'
+    )
+    expect(src).toContain(
+      'overflow-hidden rounded-[28px] border border-info/15 bg-background/78 shadow-none'
+    )
+    expect(src).toContain(
+      'rounded-2xl border border-info/15 bg-background/70 px-3.5 py-3 shadow-none'
+    )
+    expect(src).toContain(
+      'flex min-h-[620px] flex-col rounded-2xl border border-info/15 bg-background/78 shadow-none xl:h-full xl:min-h-0'
+    )
+    expect(src).toContain(
+      'flex min-h-[420px] flex-col overflow-hidden rounded-2xl border border-info/15 bg-background/78 p-3 shadow-none xl:h-full xl:min-h-0'
+    )
+    expect(src).toContain(
+      'rounded-2xl border border-dashed border-info/20 bg-info/[0.025] p-4'
+    )
+    expect(src).not.toContain(
+      'overflow-hidden rounded-[28px] border border-info/20 bg-card shadow-none'
+    )
+    expect(src).not.toContain(
+      'flex min-h-0 max-h-[calc(100vh-246px)] flex-col rounded-2xl border border-info/20 bg-card shadow-none'
+    )
+  })
+
+  it('extends every evaluation workbench to the remaining viewport height', () => {
+    const src = readSource('./page.tsx')
+
+    expect(src).toContain('bodyClassName="flex flex-col !pt-0 !pb-0"')
+    expect(src).toContain(
+      'bodyContainerClassName="flex min-h-0 max-w-none flex-1 flex-col"'
+    )
+    expect(src).toContain(
+      "cn('grid min-h-[610px] gap-3 xl:flex-1', conversationDesktopGridClass)"
+    )
+    expect(src).toContain(
+      'flex min-h-[610px] min-w-0 flex-col gap-3 xl:min-h-0'
+    )
+    expect(src).toContain(
+      'flex min-h-[610px] flex-1 flex-col overflow-hidden rounded-xl border border-info/15 bg-background/78 p-2.5 shadow-none'
+    )
+    expect(src).toContain(
+      'flex min-h-[610px] flex-1 flex-col rounded-xl border border-info/15 bg-background/78 p-3 shadow-none'
+    )
+    expect(src).not.toContain('h-[calc(100vh-255px)]')
+    expect(src).not.toContain('max-h-[calc(100vh-246px)]')
+  })
+
+  it('aligns Golden and queryset-health workbenches with Ocean surfaces', () => {
+    const pageSrc = readSource('./page.tsx')
+    const regressionSrc = readSource('../../components/evaluation/regression-tab.tsx')
+    const healthSrc = readSource('../../components/evaluation/queryset-health-tab-client.tsx')
+    const testCaseManagerSrc = readSource('../../components/test-case-manager.tsx')
+
+    expect(pageSrc).toContain("badge: '回归基线'")
+    expect(pageSrc).toContain("badge: '健康监测'")
+    expect(pageSrc).toContain('label={activeTabMeta.badge}')
+
+    expect(regressionSrc).toContain(
+      'rounded-[28px] border border-info/15 bg-background/72 shadow-none'
+    )
+    expect(regressionSrc).toContain(
+      'flex flex-col bg-background/72 rounded-2xl border border-info/15'
+    )
+    expect(regressionSrc).toContain(
+      "embedded && 'rounded-[28px] border-info/15 bg-background/72'"
+    )
+    expect(regressionSrc).not.toContain('bg-[radial-gradient(')
+    expect(regressionSrc).not.toContain(
+      'shadow-[0_16px_40px_rgba(15,23,42,0.04)]'
+    )
+    expect(testCaseManagerSrc).not.toContain('bg-[#fffef9]')
+    expect(testCaseManagerSrc).toContain(
+      "dense\n            ? 'border-info/15 bg-info/[0.025] px-3 py-3'"
+    )
+
+    expect(healthSrc).toContain(
+      'rounded-2xl border-info/15 bg-background/72 shadow-none'
+    )
+    expect(healthSrc).toContain(
+      'rounded-2xl bg-background/70 px-4 py-3 text-center shadow-none ring-1 ring-info/15'
+    )
+    expect(healthSrc).not.toContain(
+      'rounded-2xl border-border/60 bg-card shadow-none'
+    )
+  })
 })

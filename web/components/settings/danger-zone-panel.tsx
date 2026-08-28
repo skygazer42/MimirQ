@@ -35,8 +35,8 @@ export function DangerZonePanel({
       className={cn(
         'group rounded-xl p-0',
         isNeutral
-          ? 'border border-foreground/10 bg-background shadow-none'
-          : 'border border-destructive/20 bg-background shadow-none',
+          ? 'border border-info/15 bg-info/[0.025] shadow-none'
+          : 'border border-destructive/20 bg-destructive/[0.025] shadow-none',
         className
       )}
     >
@@ -51,7 +51,7 @@ export function DangerZonePanel({
             className={cn(
               'shrink-0 items-center justify-center rounded-lg',
               isNeutral
-                ? 'border border-foreground/10 bg-muted/18 text-primary'
+                ? 'border border-info/15 bg-info/[0.06] text-info'
                 : 'border border-destructive/20 bg-destructive/[0.08] text-destructive',
               compact ? 'mt-0 flex size-6' : 'mt-0.5 flex size-7'
             )}
@@ -63,10 +63,10 @@ export function DangerZonePanel({
               <span className={cn('font-medium tracking-[-0.005em] text-foreground', compact ? 'text-[11.5px]' : 'text-[12px]')}>{title}</span>
               <span
                 className={cn(
-                  'rounded-full bg-background/80 font-semibold',
+                  'rounded-full font-semibold',
                   isNeutral
-                    ? 'border border-border/60 text-muted-foreground'
-                    : 'border border-destructive/20 text-destructive',
+                    ? 'border border-info/15 bg-info/[0.04] text-muted-foreground'
+                    : 'border border-destructive/20 bg-destructive/[0.04] text-destructive',
                   compact ? 'px-1.5 py-0.5 text-[9px]' : 'px-1.5 py-0.5 text-[10px]'
                 )}
               >
@@ -84,8 +84,8 @@ export function DangerZonePanel({
         className={cn(
           'px-3 pb-3 pt-3',
           isNeutral
-            ? 'border-t border-foreground/10 bg-muted/15'
-            : 'border-t border-destructive/10 bg-muted/15'
+            ? 'border-t border-info/15 bg-info/[0.025]'
+            : 'border-t border-destructive/10 bg-destructive/[0.025]'
         )}
       >
         {children}

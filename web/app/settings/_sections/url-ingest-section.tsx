@@ -44,7 +44,7 @@ export function UrlIngestSection({
         icon="help"
       >
         <div className="space-y-3">
-          <div className="flex items-start justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
+          <div className="flex items-start justify-between gap-3 rounded-lg border border-info/15 bg-info/[0.025] px-3 py-2.5">
             <div>
               <div className={settingsTextTokens.panelTitle}>网页采集入口</div>
               <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
@@ -94,7 +94,7 @@ export function UrlIngestSection({
                 type="number"
                 min={0}
                 value={urlIngest.max_bytes}
-                className="h-8 text-[12px]"
+                className="h-8 border-info/15 bg-info/[0.025] text-[12px]"
                 onChange={(event) =>
                   updateUrlIngest({
                     max_bytes: Math.max(0, Number.parseInt(event.target.value || '0', 10)),
@@ -111,7 +111,7 @@ export function UrlIngestSection({
                 min={0}
                 step="0.5"
                 value={urlIngest.timeout_sec}
-                className="h-8 text-[12px]"
+                className="h-8 border-info/15 bg-info/[0.025] text-[12px]"
                 onChange={(event) =>
                   updateUrlIngest({
                     timeout_sec: Math.max(0, Number.parseFloat(event.target.value || '0')),
@@ -122,7 +122,7 @@ export function UrlIngestSection({
           </div>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <div className="flex items-start justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
+            <div className="flex items-start justify-between gap-3 rounded-lg border border-info/15 bg-info/[0.025] px-3 py-2.5">
               <div>
                 <div className={settingsTextTokens.panelTitle}>允许访问内网/私网 IP</div>
                 <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
@@ -163,7 +163,7 @@ export function UrlIngestSection({
               )}
             </div>
 
-            <div className="flex items-start justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
+            <div className="flex items-start justify-between gap-3 rounded-lg border border-info/15 bg-info/[0.025] px-3 py-2.5">
               <div>
                 <div className={settingsTextTokens.panelTitle}>跟随重定向</div>
                 <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>

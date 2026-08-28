@@ -44,7 +44,7 @@ export function ModelProvidersSection({
           return (
             <div
               key={category}
-              className={cn(systemWorkbenchTokens.panel, 'p-3.5')}
+              className={cn(systemWorkbenchTokens.panel, 'border-info/15 bg-info/[0.025] p-3.5')}
             >
               <div className="mb-3 flex items-start gap-3">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/35">
@@ -56,7 +56,7 @@ export function ModelProvidersSection({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {groupedProviders[category].map((provider) => (
                   <ModelProviderCard
                     key={provider.id}

@@ -21,9 +21,9 @@ import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
 import type { TenantQuotaSummary } from '@/types'
 
-const TENANT_QUOTA_PANEL_CLASS = 'overflow-hidden rounded-xl border border-foreground/10 bg-background shadow-none'
+const TENANT_QUOTA_PANEL_CLASS = 'overflow-hidden rounded-xl border border-info/20 bg-background/72 shadow-none'
 const QUOTA_CARD_CLASS =
-  'rounded-lg border border-foreground/10 bg-background/80 px-3 py-2.5 shadow-none transition-colors hover:border-primary/18 hover:bg-muted/18'
+  'rounded-lg border border-border/70 bg-background/62 px-3 py-2.5 shadow-none transition-colors hover:border-info/25 hover:bg-info/[0.04]'
 const QUOTA_DISABLED_TONE =
   'border-border/60 bg-muted/55 text-muted-foreground'
 const QUOTA_ENABLED_TONE =
@@ -153,7 +153,7 @@ function QuotaCard({
             <Icon className="size-3.5" />
           </div>
           <div className="min-w-0">
-            <p className="truncate text-[12px] font-semibold text-foreground">
+            <p className="truncate text-[12px] font-semibold text-foreground/90">
               {title}
             </p>
             <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
@@ -172,7 +172,12 @@ function QuotaCard({
       </div>
       <div className="mt-2 flex min-h-5 items-end justify-between gap-3">
         {enabled ? (
-          <p className="text-[15px] font-semibold tabular-nums text-foreground">
+          <p
+            className={cn(
+              'text-[15px] font-semibold tabular-nums',
+              exceeded ? 'text-destructive' : 'text-success'
+            )}
+          >
             {primary}
           </p>
         ) : (
@@ -268,7 +273,7 @@ export function TenantQuotaPanel() {
         <Button
           size="sm"
           variant="outline"
-          className="h-8 gap-2 rounded-lg border-border/70 bg-background px-3 text-[11px] font-semibold text-foreground shadow-none hover:bg-muted/18 hover:text-primary"
+          className="h-8 gap-2 rounded-lg border-border/70 bg-background/72 px-3 text-[11px] font-medium text-foreground shadow-none hover:border-info/30 hover:bg-info/[0.07] hover:text-info"
           disabled={quotaQuery.isFetching}
           onClick={() => detachPromise(refreshQuota())}
         >
@@ -353,7 +358,7 @@ export function TenantQuotaPanel() {
           <Button
             variant="ghost"
             size="icon"
-            className="absolute right-3 top-3 z-10 size-8 rounded-lg border border-border/60 bg-card text-muted-foreground shadow-sm hover:bg-muted/45"
+            className="absolute right-3 top-3 z-10 size-8 rounded-lg border border-border/60 bg-background/80 text-muted-foreground shadow-none hover:border-info/30 hover:bg-info/[0.07] hover:text-info"
             onClick={() => detachPromise(copyText(json))}
             aria-label="复制租户配额 JSON"
           >
@@ -371,7 +376,7 @@ export function TenantQuotaPanel() {
                 <code
                   className={cn(
                     'pl-4 font-mono text-foreground',
-                    line.includes('"message"') && 'text-primary'
+                    line.includes('"message"') && 'text-info'
                   )}
                 >
                   {line || ' '}

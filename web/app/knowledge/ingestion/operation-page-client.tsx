@@ -980,11 +980,13 @@ export default function KnowledgeIngestionOperationPage() {
 
         <div
           data-ingestion-operation-workspace="true"
-          className="grid xl:grid-cols-[300px_minmax(0,1fr)]"
+          className={cn(
+            'grid min-h-[calc(100vh-6.5rem)] xl:grid-cols-[300px_minmax(0,1fr)]'
+          )}
         >
           <aside
             data-ingestion-context-panel="true"
-            className="border-b border-border/70 xl:border-b-0 xl:border-r"
+            className="h-full border-b border-border/70 xl:border-b-0 xl:border-r"
             aria-label="入库任务上下文"
           >
             <section className="border-b border-border/70 px-5 py-4">
@@ -1078,7 +1080,7 @@ export default function KnowledgeIngestionOperationPage() {
             />
           </aside>
 
-          <main className="min-w-0">
+          <main className="flex min-h-0 min-w-0 flex-col">
             <section data-ingestion-pipeline="true" className="border-b border-border/70">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/65 px-5 py-2.5">
                 <div>
@@ -1150,6 +1152,10 @@ export default function KnowledgeIngestionOperationPage() {
                 rows={fileRows}
                 totalBytes={selectedTotalBytes}
                 sourceName={activeSource.label}
+                dragging={dragging}
+                onDragState={setDragging}
+                onFiles={addFiles}
+                onChoose={() => inputRef.current?.click()}
                 onClear={clearFiles}
                 onRemove={removeFile}
               />
@@ -1429,81 +1435,140 @@ function SelectedFilesTable({
   rows,
   totalBytes,
   sourceName,
+  dragging,
+  onDragState,
+  onFiles,
+  onChoose,
   onClear,
   onRemove,
 }: Readonly<{
   rows: Array<{ file: File; Icon: LucideIcon; key: string }>
   totalBytes: number
   sourceName: string
+  dragging: boolean
+  onDragState: (dragging: boolean) => void
+  onFiles: (files: File[]) => void
+  onChoose: () => void
   onClear: () => void
   onRemove: (key: string) => void
 }>) {
-  if (!rows.length) return null
+  const hasRows = rows.length > 0
 
   return (
     <div
+      data-ingestion-file-staging-workspace="true"
       data-selected-files-table="stable"
-      className={cn('flex max-h-[13rem] flex-col', TABLE_SHELL_CLASS)}
+      className={cn('flex min-h-0 flex-1 flex-col', TABLE_SHELL_CLASS)}
     >
       <div className="flex h-10 shrink-0 items-center justify-between border-b border-border/50 px-3 py-1.5">
-        <div className="text-[12px] font-semibold leading-none text-foreground">本次文件 · {rows.length}</div>
-        <Button variant="ghost" className="h-8 rounded-md px-2 text-[10px] text-muted-foreground/72 hover:bg-muted/35" onClick={onClear} disabled={!rows.length}>
-          <Trash2 className="size-3.5" />
-          清空
-        </Button>
+        <div className="flex items-center gap-2 text-[12px] font-semibold leading-none text-foreground">
+          <span>本次任务文件</span>
+          <span className="rounded-md border border-foreground/10 bg-muted/20 px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground tabular-nums">
+            {rows.length}
+          </span>
+        </div>
+        {hasRows ? (
+          <Button variant="ghost" className="h-8 rounded-md px-2 text-[10px] text-muted-foreground/72 hover:bg-muted/35" onClick={onClear}>
+            <Trash2 className="size-3.5" />
+            清空
+          </Button>
+        ) : (
+          <span className="text-[10px] text-muted-foreground">等待文件</span>
+        )}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]">
-        <table className="w-full table-fixed text-left text-[12px]">
-          <colgroup>
-            <col className="w-[46%]" />
-            <col className="w-[16%]" />
-            <col className="w-[12%]" />
-            <col className="w-[16%]" />
-            <col className="w-[10%]" />
-          </colgroup>
-          <thead className={cn('sticky top-0', TABLE_HEAD_CLASS)}>
-            <tr>
-              <th className="px-3 py-1.5 font-medium">文件名</th>
-              <th className="px-2.5 py-1.5 font-medium">大小</th>
-              <th className="px-2.5 py-1.5 font-medium">类型</th>
-              <th className="px-2.5 py-1.5 font-medium">来源</th>
-              <th className="px-2.5 py-1.5 font-medium">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(({ file, Icon, key }) => (
-              <tr key={key} className={TABLE_ROW_CLASS}>
-                <td className="px-3 py-1.5">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="flex size-6 shrink-0 items-center justify-center rounded-[0.8rem] border border-border/60 bg-primary/10 text-primary">
-                      <Icon className="size-3.5" />
-                    </span>
-                    <span className="min-w-0 truncate font-medium text-foreground" title={file.name}>{file.name}</span>
-                  </div>
-                </td>
-                <td className="truncate px-2.5 py-1.5 font-mono text-muted-foreground">{formatFileSize(file.size)}</td>
-                <td className="truncate px-2.5 py-1.5 text-muted-foreground">{formatFileType(file)}</td>
-                <td className="px-2.5 py-1.5 text-muted-foreground">{sourceName}</td>
-                <td className="px-2.5 py-1.5">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`移除文件 ${file.name}`}
-                    title={`移除文件 ${file.name}`}
-                    className="size-7 rounded-[0.85rem] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                    onClick={() => onRemove(key)}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="h-8 shrink-0 border-t border-border/50 px-3 py-1.5 text-xs text-muted-foreground">
-        共 {rows.length} 个文件，合计 {formatFileSize(totalBytes)}
-      </div>
+      {hasRows ? (
+        <>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]">
+            <table className="w-full table-fixed text-left text-[12px]">
+              <colgroup>
+                <col className="w-[46%]" />
+                <col className="w-[16%]" />
+                <col className="w-[12%]" />
+                <col className="w-[16%]" />
+                <col className="w-[10%]" />
+              </colgroup>
+              <thead className={cn('sticky top-0', TABLE_HEAD_CLASS)}>
+                <tr>
+                  <th className="px-3 py-1.5 font-medium">文件名</th>
+                  <th className="px-2.5 py-1.5 font-medium">大小</th>
+                  <th className="px-2.5 py-1.5 font-medium">类型</th>
+                  <th className="px-2.5 py-1.5 font-medium">来源</th>
+                  <th className="px-2.5 py-1.5 font-medium">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(({ file, Icon, key }) => (
+                  <tr key={key} className={TABLE_ROW_CLASS}>
+                    <td className="px-3 py-1.5">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="flex size-6 shrink-0 items-center justify-center rounded-[0.8rem] border border-border/60 bg-primary/10 text-primary">
+                          <Icon className="size-3.5" />
+                        </span>
+                        <span className="min-w-0 truncate font-medium text-foreground" title={file.name}>{file.name}</span>
+                      </div>
+                    </td>
+                    <td className="truncate px-2.5 py-1.5 font-mono text-muted-foreground">{formatFileSize(file.size)}</td>
+                    <td className="truncate px-2.5 py-1.5 text-muted-foreground">{formatFileType(file)}</td>
+                    <td className="px-2.5 py-1.5 text-muted-foreground">{sourceName}</td>
+                    <td className="px-2.5 py-1.5">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`移除文件 ${file.name}`}
+                        title={`移除文件 ${file.name}`}
+                        className="size-7 rounded-[0.85rem] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => onRemove(key)}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="h-8 shrink-0 border-t border-border/50 px-3 py-1.5 text-xs text-muted-foreground">
+            共 {rows.length} 个文件，合计 {formatFileSize(totalBytes)}
+          </div>
+        </>
+      ) : (
+        <button
+          type="button"
+          data-ingestion-empty-file-drop="true"
+          onClick={onChoose}
+          onDragEnter={(event) => {
+            event.preventDefault()
+            onDragState(true)
+          }}
+          onDragOver={(event) => {
+            event.preventDefault()
+            onDragState(true)
+          }}
+          onDragLeave={() => onDragState(false)}
+          onDrop={(event) => {
+            event.preventDefault()
+            onDragState(false)
+            onFiles(Array.from(event.dataTransfer.files ?? []))
+          }}
+          className={cn(
+            'flex min-h-[20rem] flex-1 flex-col items-center justify-center px-6 py-10 text-center transition-colors focus-ring',
+            dragging
+              ? 'bg-info/[0.08] ring-2 ring-inset ring-info/30'
+              : 'bg-transparent hover:bg-info/[0.025]'
+          )}
+        >
+          <UploadCloud className="size-7 text-info" />
+          <span className="mt-3 text-[14px] font-semibold text-foreground">
+            将文件拖到这里
+          </span>
+          <span className="mt-1 text-[11px] leading-5 text-muted-foreground">
+            点击选择文件，或直接拖放到当前暂存区
+          </span>
+          <span className="mt-3 text-[10px] leading-5 text-muted-foreground/75">
+            支持 PDF、Word、Markdown、表格、文本与压缩包 · 单文件 ≤ 2GB
+          </span>
+        </button>
+      )}
     </div>
   )
 }

@@ -197,7 +197,7 @@ function TestCaseRow({
                   className={cn(
                     'inline-flex items-center gap-1 rounded-full border text-muted-foreground',
                     dense
-                      ? 'border-border/60 bg-[#fffef9] px-1.5 py-0.5 text-[9px]'
+                      ? 'border-info/15 bg-background/70 px-1.5 py-0.5 text-[9px]'
                       : 'border-border/60 bg-muted px-2 py-0.5 text-[11px]'
                   )}
                 >
@@ -942,7 +942,7 @@ export function TestCaseManager({
         className={cn(
           'border-b',
           dense
-            ? 'border-border/60 bg-[#fffef9] px-3 py-3'
+            ? 'border-info/15 bg-info/[0.025] px-3 py-3'
             : 'border-border p-4'
         )}
       >
@@ -1421,7 +1421,7 @@ export function TestCaseManager({
           className={cn(
             'border-t',
             dense
-              ? 'border-border/60 bg-[#fffef9] px-3 py-2.5'
+              ? 'border-info/15 bg-info/[0.025] px-3 py-2.5'
               : 'border-border bg-muted/30 p-3'
           )}
         >

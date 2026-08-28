@@ -58,32 +58,15 @@ function primitiveText(value: unknown, fallback = ''): string {
 }
 
 function getCanvasBackdropStyle(isDark: boolean) {
-  if (isDark) {
-    return {
-      backgroundColor: '#0f1722',
-      backgroundImage: [
-        'radial-gradient(circle at 18% 16%, rgba(56, 189, 248, 0.08), transparent 26%)',
-        'radial-gradient(circle at 82% 20%, rgba(59, 130, 246, 0.07), transparent 24%)',
-        'linear-gradient(rgba(148, 163, 184, 0.055) 1px, transparent 1px)',
-        'linear-gradient(90deg, rgba(148, 163, 184, 0.055) 1px, transparent 1px)',
-        'linear-gradient(rgba(96, 165, 250, 0.11) 1px, transparent 1px)',
-        'linear-gradient(90deg, rgba(96, 165, 250, 0.11) 1px, transparent 1px)',
-      ].join(','),
-      backgroundSize: '100% 100%, 100% 100%, 22px 22px, 22px 22px, 110px 110px, 110px 110px',
-      backgroundPosition: '0 0, 0 0, -1px -1px, -1px -1px, -1px -1px, -1px -1px',
-    } as const
-  }
-
+  const gridOpacity = isDark ? 0.06 : 0.035
   return {
-    backgroundColor: '#f8faff',
+    backgroundColor: 'hsl(var(--background))',
     backgroundImage: [
-      'radial-gradient(circle at 44% 38%, rgba(96, 165, 250, 0.105), transparent 34%)',
-      'radial-gradient(circle at 72% 18%, rgba(139, 92, 246, 0.055), transparent 30%)',
-      'radial-gradient(circle at 22% 18%, rgba(255, 255, 255, 0.92), transparent 28%)',
-      'linear-gradient(180deg, rgba(250, 252, 255, 0.98) 0%, rgba(245, 248, 253, 0.98) 100%)',
+      `linear-gradient(hsl(var(--info) / ${gridOpacity}) 1px, transparent 1px)`,
+      `linear-gradient(90deg, hsl(var(--info) / ${gridOpacity}) 1px, transparent 1px)`,
     ].join(','),
-    backgroundSize: '100% 100%, 100% 100%, 100% 100%, 100% 100%',
-    backgroundPosition: '0 0, 0 0, 0 0, 0 0',
+    backgroundSize: '32px 32px, 32px 32px',
+    backgroundPosition: '-1px -1px, -1px -1px',
   } as const
 }
 
@@ -575,7 +558,7 @@ export function GraphCanvas({
   return (
     <div
       ref={viewportRef}
-      className="relative h-full min-h-0 w-full flex-1 overflow-hidden bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+      className="relative h-full min-h-0 w-full flex-1 overflow-hidden bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/40"
       tabIndex={0}
       role="grid"
       aria-label="知识图谱画布，按 Tab 浏览节点"
@@ -876,18 +859,18 @@ export function GraphCanvas({
                   <path
                     d="M36 46H90M90 46H144M90 46V22"
                     fill="none"
-                    stroke="hsl(var(--border) / 0.85)"
+                    stroke="hsl(var(--info) / 0.24)"
                     strokeWidth="1.6"
                     strokeLinecap="round"
                   />
-                  <circle cx="36" cy="46" r="8.7" fill="hsl(var(--background))" stroke="hsl(var(--border) / 0.9)" strokeWidth="1.5" />
-                  <circle cx="144" cy="46" r="8.7" fill="hsl(var(--background))" stroke="hsl(var(--border) / 0.9)" strokeWidth="1.5" />
-                  <circle cx="90" cy="22" r="10.2" fill="hsl(var(--primary) / 0.08)" stroke="hsl(var(--primary) / 0.45)" strokeWidth="1.6" />
-                  <circle cx="90" cy="46" r="8.7" fill="hsl(var(--background))" stroke="hsl(var(--border) / 0.9)" strokeWidth="1.5" />
-                  <circle cx="36" cy="46" r="2" fill="hsl(var(--foreground) / 0.45)" />
-                  <circle cx="90" cy="46" r="2" fill="hsl(var(--foreground) / 0.45)" />
-                  <circle cx="144" cy="46" r="2" fill="hsl(var(--foreground) / 0.45)" />
-                  <circle cx="90" cy="22" r="2.7" fill="hsl(var(--primary))" />
+                  <circle cx="36" cy="46" r="8.7" fill="hsl(var(--background) / 0.92)" stroke="hsl(var(--info) / 0.32)" strokeWidth="1.5" />
+                  <circle cx="144" cy="46" r="8.7" fill="hsl(var(--background) / 0.92)" stroke="hsl(var(--info) / 0.32)" strokeWidth="1.5" />
+                  <circle cx="90" cy="22" r="10.2" fill="hsl(var(--info) / 0.10)" stroke="hsl(var(--info) / 0.62)" strokeWidth="1.6" />
+                  <circle cx="90" cy="46" r="8.7" fill="hsl(var(--background) / 0.92)" stroke="hsl(var(--info) / 0.32)" strokeWidth="1.5" />
+                  <circle cx="36" cy="46" r="2" fill="hsl(var(--info) / 0.48)" />
+                  <circle cx="90" cy="46" r="2" fill="hsl(var(--info) / 0.48)" />
+                  <circle cx="144" cy="46" r="2" fill="hsl(var(--info) / 0.48)" />
+                  <circle cx="90" cy="22" r="2.7" fill="hsl(var(--info))" />
                 </svg>
               </div>
               <h2 className="mx-auto w-full max-w-[19rem] text-balance text-[1.42rem] font-semibold  text-foreground md:text-[1.56rem]">
@@ -902,17 +885,15 @@ export function GraphCanvas({
               </div>
               <div className="mx-auto mt-7 flex w-full max-w-[30rem] flex-wrap items-center justify-center gap-3">
                 <Button
-                  size="lg"
-                  className="h-10 rounded-lg px-4 text-[13px] font-semibold shadow-none hover:bg-primary hover:opacity-96"
+                  className="h-9 gap-1.5 rounded-md bg-info px-3.5 text-[12px] font-medium text-info-foreground shadow-none hover:bg-info/90"
                   onClick={onTriggerManualKgUpload}
                 >
                   <Network className="h-4 w-4" />
                   导入 KG JSON / JSONL
                 </Button>
                 <Button
-                  size="lg"
                   variant="outline"
-                  className="h-10 rounded-lg px-4 text-[13px] font-semibold shadow-none hover:bg-primary hover:opacity-96"
+                  className="h-9 gap-1.5 rounded-md border-info/25 bg-background/75 px-3.5 text-[12px] font-medium text-foreground shadow-none hover:bg-info/[0.08] hover:text-info"
                   onClick={onOpenGraphPicker}
                 >
                   选择图谱

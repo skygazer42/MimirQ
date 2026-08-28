@@ -24,7 +24,6 @@ import {
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { EmptyState } from '@/components/ui/empty-state'
 import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 import { cn, formatFileSize } from '@/lib/utils'
 
@@ -161,7 +160,7 @@ export function RiskMetricPanel({
       <div className={cn('mb-2', REPORT_PANEL_TITLE_CLASS)}>
         风险概览
       </div>
-      <div className="space-y-1">
+      <div className="grid grid-cols-2 gap-1.5">
         <ReportSignalRow
           label="缺失字段"
           value={formatPct(missingFindingCount, totalDocs)}
@@ -223,11 +222,11 @@ export function RetrievalAuditPanel({
 
   return (
     <div className={REPORT_PANEL_CLASS}>
-      <div className="mb-2 overflow-hidden rounded-xl border border-border/60 bg-[linear-gradient(120deg,hsl(var(--info)/0.08),hsl(var(--card))_54%,hsl(var(--accent)/0.06))] px-2.5 py-2">
+      <div className="mb-2 overflow-hidden rounded-xl border border-info/15 bg-info/[0.025] px-2.5 py-1.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-info/10 text-info ring-1 ring-info/20">
-              <FileSearch className="size-4" />
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-info/10 text-info ring-1 ring-info/20">
+              <FileSearch className="size-3.5" />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
@@ -306,7 +305,7 @@ export function RetrievalAuditPanel({
           <span className="text-right">数值</span>
         </div>
         {metricRows.length === 0 ? (
-          <div className="border-t border-border/50 bg-[linear-gradient(180deg,hsl(var(--card)),hsl(var(--muted)/0.4))] px-2.5 py-2">
+          <div className="border-t border-info/15 bg-info/[0.025] px-2.5 py-1.5">
             <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
               <AuditMetricPlaceholder
                 label="Hit@K"
@@ -403,7 +402,7 @@ export function TopDocumentPanel({
         </Button>
       </div>
       {topDocumentRows.length === 0 ? (
-        <EmptyState
+        <ReportInlineEmpty
           title="暂无分布数据"
           description="当前报告没有目录或文件类型分布。"
         />
@@ -463,7 +462,7 @@ export function ContentHealthPanel({
       <div className={cn('mb-2', REPORT_PANEL_TITLE_CLASS)}>
         内容健康
       </div>
-      <div className="space-y-1">
+      <div className="grid grid-cols-2 gap-1.5">
         <ReportSignalRow
           label="可疑链接"
           value={governanceAuditUrlValue}
@@ -505,7 +504,7 @@ export function CategoryChartPanel({
           description="当前数据集还没有分类计数；绑定分类或同步分类树后，这里会展示分布。"
         />
       ) : (
-        <SafeResponsiveChart className="h-[220px]" minHeight={220}>
+        <SafeResponsiveChart className="h-[180px]" minHeight={180}>
           <BarChart
             data={categoryBarData.slice(0, 8)}
             margin={{ left: 0, right: 8, top: 4, bottom: 4 }}
@@ -551,14 +550,14 @@ export function PipelineVersionsPanel({
         />
       ) : (
         <div className="grid gap-2.5 lg:grid-cols-[1fr_1fr] xl:grid-cols-1 2xl:grid-cols-[1fr_1fr]">
-          <SafeResponsiveChart className="h-[180px]" minHeight={180}>
+          <SafeResponsiveChart className="h-[160px]" minHeight={160}>
             <PieChart>
               <Pie
                 data={pipelineVersionsWithFill}
                 dataKey="documents"
                 nameKey="display_label"
-                innerRadius={44}
-                outerRadius={72}
+                innerRadius={38}
+                outerRadius={64}
               />
               <Tooltip
                 cursor={CHART_TOOLTIP_CURSOR}
@@ -663,7 +662,7 @@ export function ReportSectionHeading({
   description: string
 }>) {
   return (
-    <div className="flex items-end gap-3 border-b border-border/60 pb-2.5">
+    <div className="flex items-end gap-3 border-b border-info/15 pb-2">
       <span className="pb-0.5 font-mono text-[11px] font-semibold tracking-[0.16em] text-info">
         {index}
       </span>
@@ -674,7 +673,7 @@ export function ReportSectionHeading({
         <p className="mt-0.5 text-xs leading-4 text-muted-foreground">{description}</p>
       </div>
       <span
-        className="mb-1 hidden h-px w-20 bg-[linear-gradient(90deg,hsl(var(--info)/0.5),transparent)] sm:block"
+        className="mb-1 hidden h-px w-16 bg-info/30 sm:block"
         aria-hidden="true"
       />
     </div>

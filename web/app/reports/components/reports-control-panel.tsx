@@ -115,9 +115,9 @@ export function ReportsControlPanel({
   onRefresh: () => void
 }>) {
   return (
-    <section className="space-y-3 rounded-[1.2rem] border border-border/60 bg-card p-3.5">
-      <div className="grid gap-3 xl:grid-cols-[1.25fr_1.1fr_0.85fr_auto] xl:items-end">
-        <div className="space-y-1.5">
+    <section className="space-y-2 rounded-2xl border border-info/15 bg-background/72 p-2.5">
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[1.25fr_1.1fr_0.85fr_auto] xl:items-end">
+        <div className="space-y-1">
           <Label
             htmlFor="dataset-select"
             className={REPORT_FILTER_LABEL_CLASS}
@@ -147,7 +147,7 @@ export function ReportsControlPanel({
           </Select>
         </div>
 
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           <Label
             htmlFor="pipeline-hash"
             className={REPORT_FILTER_LABEL_CLASS}
@@ -193,7 +193,7 @@ export function ReportsControlPanel({
           </Select>
         </div>
 
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           <Label
             htmlFor="connector-limit"
             className={REPORT_FILTER_LABEL_CLASS}
@@ -230,7 +230,7 @@ export function ReportsControlPanel({
           </Select>
         </div>
 
-        <div className="flex h-9 items-center gap-2 rounded-xl border border-border/60 bg-muted/40 px-3">
+        <div className="flex h-8 items-center gap-2 rounded-lg border border-info/15 bg-info/[0.025] px-2.5">
           <Switch
             id="only-issues-switch"
             checked={showOnlyIssues}
@@ -245,8 +245,8 @@ export function ReportsControlPanel({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3">
-        <div className="flex h-9 items-center gap-2 rounded-xl bg-muted/45 px-3 ring-1 ring-inset ring-border/60">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-info/15 pt-2">
+        <div className="flex h-8 items-center gap-2 rounded-lg bg-info/[0.025] px-2.5 ring-1 ring-inset ring-info/15">
           <Switch
             id="redact-switch"
             checked={redact}
@@ -284,7 +284,7 @@ export function ReportsControlPanel({
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
-              className="w-64 rounded-2xl border-border/60 bg-popover p-1.5 shadow-none"
+              className="w-64 rounded-xl border-info/15 bg-popover/95 p-1.5 shadow-none"
             >
               <DropdownMenuLabel className="px-2.5 pb-1 pt-2 text-[11px] font-semibold tracking-[0.08em] text-muted-foreground/70">
                 基础与完整数据

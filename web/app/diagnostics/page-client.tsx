@@ -78,7 +78,7 @@ import type {
 // --- Constants & Styles ---
 
 const CARD_BASE =
-  'bg-card rounded-2xl border border-border/60 shadow-[0_1px_3px_rgba(15,23,42,0.03)] p-4'
+  'rounded-2xl border border-info/20 bg-background/78 p-4 shadow-none'
 const SECTION_TITLE =
   'text-[14px] font-semibold text-foreground flex items-center gap-2 mb-4'
 const FIELD_LABEL = 'text-[12px] font-medium text-muted-foreground mb-1.5 block'
@@ -537,10 +537,10 @@ function recommendationItems(recommendations: string[]) {
 function resourceStatusClass(status: string) {
   const normalized = status.toLowerCase()
   if (['connected', 'ok', 'ready'].includes(normalized)) {
-    return 'border-success/20 bg-success/10 text-success'
+    return 'border-success/25 bg-success/10 text-success'
   }
   if (['checking', 'pending'].includes(normalized)) {
-    return 'border-primary/20/70 bg-primary/10 text-primary'
+    return 'border-info/25 bg-info/10 text-info'
   }
   if (['disabled', 'off'].includes(normalized)) {
     return 'border-border/50 bg-muted/50 text-muted-foreground'
@@ -572,27 +572,21 @@ async function copyToClipboard(text = ''): Promise<void> {
 // --- Reusable UI Parts ---
 
 const TOP_HUD_TONE_CLASSES = {
-  slate: 'bg-muted/50 text-muted-foreground/80 border-border/50',
-  green: 'bg-success/10 text-success border-success/20',
-  amber: 'bg-warning/10 text-warning border-warning/20',
-  red: 'bg-destructive/10 text-destructive border-destructive/20',
-  blue: 'bg-primary/10 text-primary border-primary/20',
-  purple: 'bg-accent/10 text-accent border-accent/20',
+  slate: 'border-border/70 bg-muted/55 text-muted-foreground',
+  green: 'border-success/25 bg-success/10 text-success',
+  amber: 'border-warning/25 bg-warning/10 text-warning',
+  red: 'border-destructive/25 bg-destructive/10 text-destructive',
+  blue: 'border-info/25 bg-info/10 text-info',
+  purple: 'border-accent/25 bg-accent/10 text-accent',
 } as const
 
 const STATUS_PILL_TONE_CLASSES = {
-  slate:
-    'border-border bg-card/80 text-muted-foreground shadow-[0_1px_2px_rgba(15,23,42,0.04)]',
-  green:
-    'border-success/20 bg-card/85 text-success shadow-[0_1px_2px_rgba(5,150,105,0.08)]',
-  amber:
-    'border-warning/20 bg-card/85 text-warning shadow-[0_1px_2px_rgba(217,119,6,0.08)]',
-  red:
-    'border-destructive/20 bg-card/85 text-destructive shadow-[0_1px_2px_rgba(220,38,38,0.08)]',
-  blue:
-    'border-primary/20 bg-card/85 text-primary shadow-[0_1px_2px_hsl(var(--primary)/0.08)]',
-  purple:
-    'border-accent/20 bg-card/85 text-accent shadow-[0_1px_2px_rgba(126,34,206,0.08)]',
+  slate: 'border-border/70 bg-muted/55 text-muted-foreground',
+  green: 'border-success/25 bg-success/10 text-success',
+  amber: 'border-warning/25 bg-warning/10 text-warning',
+  red: 'border-destructive/25 bg-destructive/10 text-destructive',
+  blue: 'border-info/25 bg-info/10 text-info',
+  purple: 'border-accent/25 bg-accent/10 text-accent',
 } as const
 
 function statusPillTone(value: string, fallback: MetricTone = 'slate'): MetricTone {
@@ -654,14 +648,14 @@ function TopHUDTile({
   const valueTone = statusPillTone(value, tone)
 
   return (
-    <div className="flex min-h-[78px] items-center gap-3 rounded-xl border border-border/60 bg-card px-3 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.02)]">
+    <div className="flex min-h-[76px] items-center gap-3 rounded-xl border border-border/70 bg-background/82 px-3 py-3 shadow-none">
       <div
         className={cn(
-          'flex size-10 shrink-0 items-center justify-center rounded-full border shadow-inner',
+          'flex size-9 shrink-0 items-center justify-center rounded-xl border',
           toneClasses
         )}
       >
-        <Icon className="size-5" />
+        <Icon className="size-4" />
       </div>
       <div className="min-w-0">
         <span className="block truncate text-[11px] font-medium text-muted-foreground">
@@ -700,7 +694,7 @@ function DimensionMatrixItem({
   onToggle: () => void
 }>) {
   const colorMap: Record<MetricTone, string> = {
-    blue: 'bg-primary/10 text-primary border-primary/20',
+    blue: 'border-info/25 bg-info/10 text-info',
     green: 'bg-success/10 text-success border-success/20',
     amber: 'bg-warning/10 text-warning border-warning/20',
     red: 'bg-destructive/10 text-destructive border-destructive/20',
@@ -717,8 +711,8 @@ function DimensionMatrixItem({
         'group flex min-h-[68px] w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-all',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25',
         selected
-          ? 'border-primary/30 bg-primary/[0.06] shadow-[0_1px_6px_hsl(var(--primary)/0.08)]'
-          : 'border-border/60 bg-card hover:border-border hover:bg-muted/50'
+          ? 'border-info/30 bg-info/[0.075]'
+          : 'border-border/70 bg-background/58 hover:border-info/25 hover:bg-info/[0.045]'
       )}
     >
       <div
@@ -743,7 +737,7 @@ function DimensionMatrixItem({
             className={cn(
               'shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold',
               selected
-                ? 'border-primary/20 bg-card text-primary'
+                ? 'border-info/25 bg-background/80 text-info'
                 : 'border-border/50 bg-muted/50 text-muted-foreground/80'
             )}
           >
@@ -756,7 +750,7 @@ function DimensionMatrixItem({
             tone={isPendingMetricLabel(value) ? 'slate' : tone}
             className="h-5 max-w-[96px] px-1.5 text-[10px]"
           />
-          <span className="truncate rounded-full bg-card/70 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-muted-foreground/60">
+          <span className="truncate rounded-full bg-muted/55 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-muted-foreground/70">
             {source}
           </span>
         </div>
@@ -790,7 +784,7 @@ function MainMetricCard({
     }[tone] || 'bg-muted/50 text-muted-foreground/80 border-border/50'
 
   return (
-    <div className="group flex min-h-[48px] items-center gap-2 rounded-xl border border-border/60 bg-card px-2 py-1.5 shadow-[0_1px_2px_rgba(15,23,42,0.02)] transition-all hover:border-border hover:bg-muted/40">
+    <div className="group flex min-h-[48px] items-center gap-2 rounded-xl border border-border/70 bg-background/68 px-2 py-1.5 shadow-none transition-colors hover:border-info/25 hover:bg-info/[0.04]">
       <div
         className={cn(
           'flex size-7 shrink-0 items-center justify-center rounded-lg border transition-colors',
@@ -839,7 +833,7 @@ function MetricInfoTooltip({
         <button
           type="button"
           aria-label={label}
-          className="inline-flex size-4 items-center justify-center rounded-full border border-border bg-card text-muted-foreground/80 transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+          className="inline-flex size-4 items-center justify-center rounded-full border border-border/70 bg-background/70 text-muted-foreground transition-colors hover:border-info/30 hover:bg-info/10 hover:text-info focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/25"
         >
           <Info className="size-3" aria-hidden="true" />
         </button>
@@ -857,8 +851,8 @@ function MetricInfoTooltip({
 
 function DiagnosticUseGuide() {
   return (
-    <div className="rounded-2xl border border-primary/15 bg-card p-3 shadow-none">
-      <div className="grid gap-2 lg:grid-cols-[1.1fr_1fr_1fr]">
+    <div className="rounded-2xl border border-info/20 bg-background/68 p-2 shadow-none">
+      <div className="grid divide-y divide-border/60 lg:grid-cols-[1.1fr_1fr_1fr] lg:divide-x lg:divide-y-0">
         <DiagnosticUseStep
           icon={Search}
           title="RAG 预览看召回"
@@ -894,13 +888,13 @@ function DiagnosticUseStep({
   text: string
 }>) {
   return (
-    <div className="flex gap-3 rounded-xl border border-border/80 bg-card/75 px-3 py-2.5">
-      <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary/10 text-primary">
+    <div className="flex gap-3 px-3 py-2.5 lg:first:pl-2 lg:last:pr-2">
+      <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-info/20 bg-info/10 text-info">
         <Icon className="size-4" />
       </div>
       <div className="min-w-0">
         <p className="text-[12px] font-semibold text-foreground">{title}</p>
-        <p className="mt-0.5 text-[10px] font-semibold text-primary">
+        <p className="mt-0.5 text-[10px] font-medium text-info">
           {action}
         </p>
         <p className="mt-1 text-[11px] leading-5 text-muted-foreground">{text}</p>
@@ -1423,7 +1417,7 @@ export default function DiagnosticsPage() {
         iconColor="text-primary"
         size="full"
         bodyGutter="dense"
-        bodyClassName="bg-muted/40 pt-4 pb-6"
+        bodyClassName="bg-info/[0.035] pt-4 pb-6"
         actions={
           <div className="flex shrink-0 items-center gap-3">
             <Button
@@ -1445,7 +1439,7 @@ export default function DiagnosticsPage() {
               variant="outline"
               size="icon"
               aria-label="刷新诊断状态"
-              className="h-8 w-8 rounded-lg border-border bg-card"
+              className="h-8 w-8 rounded-lg border-border/70 bg-background/75 shadow-none hover:border-info/30 hover:bg-info/[0.07]"
               onClick={() => {
                 health.refetch()
                 meta.refetch()
@@ -1519,9 +1513,9 @@ export default function DiagnosticsPage() {
             <DiagnosticUseGuide />
 
             {/* Main Config Section */}
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
             {/* 1. 诊断配置 */}
-            <div className={cn(CARD_BASE, 'lg:col-span-4')}>
+            <div className={cn(CARD_BASE, 'xl:col-span-4')}>
               <h3 className={SECTION_TITLE}>
                 <FileJson className="size-4 text-primary" /> 诊断配置
               </h3>
@@ -1538,7 +1532,7 @@ export default function DiagnosticsPage() {
                   >
                     <SelectTrigger
                       id="diagnostics-dataset"
-                      className="h-9 rounded-lg border-border bg-muted/40 text-[13px]"
+                      className="h-9 rounded-lg border-border/70 bg-muted/65 text-[13px]"
                     >
                       <span className="truncate">
                         {datasetSelectLabel(datasetsLoading, selectedDataset)}
@@ -1573,7 +1567,7 @@ export default function DiagnosticsPage() {
                   >
                     <SelectTrigger
                       id="diagnostics-documents"
-                      className="h-9 rounded-lg border-border bg-muted/40 text-[13px]"
+                      className="h-9 rounded-lg border-border/70 bg-muted/65 text-[13px]"
                     >
                       <span className="truncate">{selectedDocumentLabel}</span>
                     </SelectTrigger>
@@ -1640,7 +1634,7 @@ export default function DiagnosticsPage() {
                     value={probeQuery}
                     onChange={(e) => setProbeQuery(e.target.value)}
                     placeholder="请输入要检索的问题或说明诊断目标..."
-                    className="min-h-[72px] bg-muted/40 border-border resize-none text-[13px]"
+                    className="min-h-[72px] resize-none border-border/70 bg-muted/65 text-[13px]"
                   />
                 </div>
                 <div className="flex gap-2">
@@ -1654,7 +1648,7 @@ export default function DiagnosticsPage() {
                   </Button>
                   <Button
                     variant="outline"
-                    className="h-9 flex-none gap-2 border-border text-[13px] font-semibold"
+                    className="h-9 flex-none gap-2 border-border/70 bg-background/55 text-[13px] font-medium hover:border-info/30 hover:bg-info/[0.06]"
                     onClick={() => {
                       setProbeDatasetId(datasets[0]?.id || '')
                       setSelectedDocumentIds([])
@@ -1668,7 +1662,7 @@ export default function DiagnosticsPage() {
             </div>
 
             {/* 2. 诊断维度矩阵 */}
-            <div className={cn(CARD_BASE, 'lg:col-span-5')}>
+            <div className={cn(CARD_BASE, 'xl:col-span-5')}>
               <div className="mb-4 flex items-center justify-between gap-3">
                 <h3 className="m-0 flex items-center gap-2 text-[14px] font-semibold text-foreground">
                   <LayoutGrid className="size-4 text-primary" /> 诊断维度
@@ -1698,7 +1692,7 @@ export default function DiagnosticsPage() {
             </div>
 
             {/* 3. 参数配置 */}
-            <div className={cn(CARD_BASE, 'lg:col-span-3')}>
+            <div className={cn(CARD_BASE, 'xl:col-span-3')}>
               <h3 className={SECTION_TITLE}>
                 <Settings2 className="size-4 text-primary" /> 参数配置
               </h3>
@@ -1713,7 +1707,7 @@ export default function DiagnosticsPage() {
                       onChange={(e) =>
                         setDriftThreshold(Number(e.target.value))
                       }
-                      className="h-9 bg-muted/40 border-border text-[13px]"
+                      className="h-9 border-border/70 bg-muted/65 text-[13px]"
                     />
                   </div>
                   <div>
@@ -1722,7 +1716,7 @@ export default function DiagnosticsPage() {
                       type="number"
                       value={driftSampleN}
                       onChange={(e) => setDriftSampleN(Number(e.target.value))}
-                      className="h-9 bg-muted/40 border-border text-[13px]"
+                      className="h-9 border-border/70 bg-muted/65 text-[13px]"
                     />
                   </div>
                 </div>
@@ -1735,7 +1729,7 @@ export default function DiagnosticsPage() {
                       onChange={(e) =>
                         setPerfSuiteIterations(Number(e.target.value))
                       }
-                      className="h-9 bg-muted/40 border-border text-[13px]"
+                      className="h-9 border-border/70 bg-muted/65 text-[13px]"
                     />
                   </div>
                   <div>
@@ -1747,14 +1741,14 @@ export default function DiagnosticsPage() {
                       onChange={(e) =>
                         setPerfSuiteTimeoutSec(Number(e.target.value))
                       }
-                      className="h-9 bg-muted/40 border-border text-[13px]"
+                      className="h-9 border-border/70 bg-muted/65 text-[13px]"
                     />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 pt-2">
                   <Button
                     variant="outline"
-                    className="h-9 w-full gap-2 border-border text-[13px] font-semibold"
+                    className="h-9 w-full gap-2 border-border/70 bg-background/55 text-[13px] font-medium hover:border-info/30 hover:bg-info/[0.06]"
                     onClick={runEmbeddingDriftProbe}
                     disabled={driftRunning}
                   >
@@ -1765,7 +1759,7 @@ export default function DiagnosticsPage() {
                   </Button>
                   <Button
                     variant="outline"
-                    className="h-9 w-full gap-2 border-border text-[13px] font-semibold"
+                    className="h-9 w-full gap-2 border-border/70 bg-background/55 text-[13px] font-medium hover:border-info/30 hover:bg-info/[0.06]"
                     onClick={runPerfSuiteProbe}
                     disabled={perfSuiteRunning}
                   >
@@ -1867,7 +1861,7 @@ export default function DiagnosticsPage() {
             </div>
 
             {!probeResult && !probeRunning ? (
-              <div className="rounded-xl border border-dashed border-border/60 bg-card/50 px-4 py-5 text-[12px] text-muted-foreground">
+              <div className="rounded-xl border border-dashed border-info/20 bg-info/[0.025] px-4 py-5 text-[12px] text-muted-foreground">
                 运行一次 RAG 预览后，这里会展示 profile、config hash、通道候选、过滤/融合/reranker/耗时，以及 degraded/fallback 信号。
               </div>
             ) : (
@@ -1951,9 +1945,9 @@ export default function DiagnosticsPage() {
           </div>
 
           {/* 5. 底层分析网格 */}
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
             {/* 执行结果 */}
-            <div className={cn(CARD_BASE, 'lg:col-span-3')}>
+            <div className={cn(CARD_BASE, 'xl:col-span-3')}>
               <h3 className={SECTION_TITLE}>
                 <LayoutGrid className="size-4 text-primary" /> 执行结果
                 <MetricInfoTooltip label="执行结果说明" side="right">
@@ -1981,7 +1975,7 @@ export default function DiagnosticsPage() {
             {/* 依赖资源 */}
             <div
               id="diagnostics-dependency-card"
-              className={cn(CARD_BASE, 'lg:col-span-3 scroll-mt-24')}
+              className={cn(CARD_BASE, 'xl:col-span-3 scroll-mt-24')}
             >
               <h3 className={SECTION_TITLE}>
                 <Database className="size-4 text-primary" /> 依赖资源
@@ -2002,7 +1996,7 @@ export default function DiagnosticsPage() {
             </div>
 
             {/* 排障摘要 */}
-            <div className={cn(CARD_BASE, 'lg:col-span-3 flex flex-col')}>
+            <div className={cn(CARD_BASE, 'xl:col-span-3 flex flex-col')}>
               <div className="mb-3 flex items-start justify-between gap-3">
                 <h3 className="m-0 flex items-center gap-2 text-[14px] font-semibold text-foreground">
                   <Terminal className="size-4 text-primary" /> 排障摘要
@@ -2047,7 +2041,7 @@ export default function DiagnosticsPage() {
             </div>
 
             {/* 后端建议 */}
-            <div className={cn(CARD_BASE, 'lg:col-span-3')}>
+            <div className={cn(CARD_BASE, 'xl:col-span-3')}>
               <h3 className={SECTION_TITLE}>
                 <Zap className="size-4 text-primary" /> 后端建议
               </h3>
@@ -2088,7 +2082,7 @@ export default function DiagnosticsPage() {
 
 function ConclusionItem({ label, status }: Readonly<{ label: string; status: string }>) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-card px-2.5 py-2">
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/35 px-2.5 py-2">
       <div className="flex items-center gap-3">
         <div className="size-5 rounded bg-muted/50 border border-border/50 flex items-center justify-center">
           <LayoutGrid className="size-3 text-muted-foreground/80" />
@@ -2109,7 +2103,7 @@ function ResourceItem({ label, status }: Readonly<{ label: string; status: strin
   const displayLabel = resourceStatusLabel(normalized)
 
   return (
-    <div className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-card px-2.5 py-2">
+    <div className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-muted/35 px-2.5 py-2">
       <span className="text-[12px] font-medium text-muted-foreground">{label}</span>
       <span
         className={cn(
@@ -2138,13 +2132,13 @@ function DiagnosticsSummaryItem({
     {
       slate: 'border-border/50 bg-muted/50 text-muted-foreground',
       green: 'border-success/20 bg-success/10 text-success',
-      blue: 'border-primary/20 bg-primary/10 text-primary',
+      blue: 'border-info/25 bg-info/10 text-info',
       red: 'border-destructive/20 bg-destructive/10 text-destructive',
       amber: 'border-warning/20 bg-warning/10 text-warning',
     }[tone] || 'border-border/50 bg-muted/50 text-muted-foreground'
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/40 px-3 py-2">
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-muted/35 px-3 py-2">
       <div className="min-w-0">
         <p className="truncate text-[11px] font-medium text-muted-foreground">
           {label}
@@ -2171,8 +2165,8 @@ function RawDiagnosticsDetails({
   onCopy: () => void
 }>) {
   return (
-    <details className="group mt-3 rounded-xl border border-border/60 bg-card">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-[12px] font-semibold text-foreground transition-colors hover:bg-primary/[0.06] [&::-webkit-details-marker]:hidden">
+    <details className="group mt-3 rounded-xl border border-border/60 bg-background/52">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-[12px] font-medium text-foreground transition-colors hover:bg-info/[0.06] [&::-webkit-details-marker]:hidden">
         <span className="flex items-center gap-2">
           <FileJson className="size-3.5 text-primary" />
           查看原始响应
@@ -2188,7 +2182,7 @@ function RawDiagnosticsDetails({
             variant="outline"
             size="sm"
             aria-label="复制原始响应 JSON"
-            className="h-7 gap-1.5 rounded-lg border-border bg-card text-[11px] font-semibold text-muted-foreground hover:bg-primary/10 hover:text-primary"
+            className="h-7 gap-1.5 rounded-lg border-border/70 bg-background/70 text-[11px] font-medium text-muted-foreground hover:border-info/30 hover:bg-info/10 hover:text-info"
             onClick={onCopy}
           >
             <Copy className="size-3" /> 复制
@@ -2212,7 +2206,7 @@ function PreviewInfoCard({
   value: string
 }>) {
   return (
-    <div className="rounded-xl border border-border/60 bg-card/70 px-3 py-2.5">
+    <div className="rounded-xl border border-border/60 bg-muted/35 px-3 py-2.5">
       <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/80">
         {label}
       </div>
@@ -2239,14 +2233,14 @@ function PreviewListCard({
   title: string
 }>) {
   return (
-    <div className="rounded-xl border border-border/60 bg-card/60 p-3">
+    <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
       <div className="text-[12px] font-semibold text-foreground">{title}</div>
       {items.length > 0 ? (
         <div className="mt-2 space-y-2">
           {items.map((item) => (
             <div
               key={`${title}-${item.label}-${item.value}`}
-              className="rounded-lg border border-border/50 bg-background/70 px-2.5 py-2"
+              className="rounded-lg border border-border/60 bg-background/65 px-2.5 py-2"
             >
               <div className="text-[10px] uppercase tracking-[0.1em] text-muted-foreground/75">
                 {item.label}

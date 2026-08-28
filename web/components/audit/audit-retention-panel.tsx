@@ -54,9 +54,9 @@ const FILTER_LABELS: Record<string, string> = {
   since: '开始时间',
   until: '结束时间',
 }
-const AUDIT_RETENTION_PANEL_CLASS = 'mt-3 overflow-hidden rounded-xl border border-foreground/10 bg-background shadow-none'
+const AUDIT_RETENTION_PANEL_CLASS = 'mt-3 overflow-hidden rounded-xl border border-info/20 bg-background/70 shadow-none'
 const AUDIT_RETENTION_HEADER_CLASS =
-  'flex flex-col gap-3 border-b border-foreground/10 bg-muted/18 px-4 py-3 lg:flex-row lg:items-center lg:justify-between'
+  'flex flex-col gap-3 border-b border-border/60 bg-info/[0.025] px-4 py-3 lg:flex-row lg:items-center lg:justify-between'
 const AUDIT_RETENTION_PILL_CLASS =
   'rounded-full border border-border/60 bg-background/72 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground'
 
@@ -194,7 +194,7 @@ export function AuditRetentionPanel({
     <div className={AUDIT_RETENTION_PANEL_CLASS}>
       <div className={AUDIT_RETENTION_HEADER_CLASS}>
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-info/20 bg-info/10 text-info">
             <Settings2 className="size-4" />
           </div>
           <div className="min-w-0">
@@ -210,7 +210,7 @@ export function AuditRetentionPanel({
           <span className={AUDIT_RETENTION_PILL_CLASS}>
             当前结果 {typeof total === 'number' ? total : '-'} 条
           </span>
-          <span className="rounded-full border border-border/60 bg-background px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
+          <span className="rounded-full border border-border/60 bg-background/65 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
             筛选 {filterCount} 项
           </span>
         </div>
@@ -260,7 +260,7 @@ export function AuditRetentionPanel({
         </ControlBlock>
       </div>
 
-      <div className="grid gap-3 border-t border-border/50 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_150px_150px_auto] lg:items-end">
+      <div className="grid gap-3 border-t border-border/60 px-4 py-3 xl:grid-cols-[minmax(0,1fr)_150px_150px_auto] xl:items-end">
         <div className="rounded-xl border border-border/60 bg-muted/32 px-3 py-2 text-[11px] font-medium leading-5 text-muted-foreground">
           {purgeScope === 'retention' ? (
             <>
@@ -294,11 +294,11 @@ export function AuditRetentionPanel({
           onChange={setMaxDelete}
         />
 
-        <div className="flex flex-wrap gap-2 lg:justify-end">
+        <div className="flex flex-wrap gap-2 xl:justify-end">
           <Button
             size="sm"
             variant="outline"
-            className="h-9 gap-2 rounded-lg border-border/70 bg-background px-3 text-[11px] font-semibold text-foreground hover:bg-muted/18 hover:text-primary"
+            className="h-9 gap-2 rounded-lg border-border/70 bg-background/68 px-3 text-[11px] font-medium text-foreground hover:border-info/30 hover:bg-info/[0.06] hover:text-info"
             disabled={Boolean(busy)}
             onClick={() => detachPromise(exportLogs())}
           >
@@ -392,12 +392,12 @@ function SegmentButton({
         'h-8 rounded-lg border px-3 text-[11px] font-semibold transition-colors',
         active &&
           tone === 'primary' &&
-          'border-primary/25 bg-primary/10 text-primary',
+          'border-info/25 bg-info/10 text-info',
         active &&
           tone === 'danger' &&
           'border-destructive/25 bg-destructive/10 text-destructive',
         !active &&
-          'border-transparent bg-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground'
+          'border-transparent bg-transparent text-muted-foreground hover:bg-info/[0.05] hover:text-info'
       )}
       onClick={onClick}
     >
@@ -478,7 +478,7 @@ function Toggle({
       <Switch
         checked={checked}
         onCheckedChange={onCheckedChange}
-        className={checked ? 'bg-primary' : 'bg-muted'}
+        className={checked ? 'bg-info' : 'bg-muted'}
       />
       <span className="text-[11px] font-semibold text-muted-foreground">{label}</span>
     </label>

@@ -6,6 +6,7 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import Image from 'next/image'
 import {
   ShieldCheck,
   Sparkles,
@@ -56,7 +57,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { PipelineRail, WorkbenchScaffold } from '@/components/workbench'
+import { WorkbenchScaffold } from '@/components/workbench'
 import { useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { useRouter } from '@/i18n/navigation'
@@ -1433,49 +1434,24 @@ export function DataGovernancePanel() {
             summary={governanceHeroSummary}
           />
         }
-        pipelineRail={<PipelineRail />}
         mainPanel={
           <div className="flex-1 flex flex-col min-h-0">
-            <div className="relative flex flex-1 items-center justify-center overflow-hidden p-4 md:p-6">
+            <div className="relative flex flex-1 items-start justify-center overflow-x-hidden overflow-y-auto p-4 md:p-6 xl:items-center xl:overflow-hidden">
               <div
                 aria-hidden
-                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_16%_12%,hsl(var(--primary)/0.14),transparent_30%),radial-gradient(circle_at_82%_18%,hsl(var(--teal)/0.12),transparent_28%),linear-gradient(135deg,hsl(var(--background)),hsl(var(--surface-2)/0.62))]"
-              />
-              <div
-                aria-hidden
-                className="pointer-events-none absolute inset-x-8 top-8 h-px bg-[linear-gradient(90deg,transparent,hsl(var(--primary)/0.32),transparent)]"
+                className="pointer-events-none absolute inset-0 bg-background"
               />
               <div
                 data-governance-empty-workbench="true"
                 className={cn(
-                  'group relative w-full max-w-6xl px-1 transition-all duration-200 motion-reduce:transition-none md:px-2 xl:px-4',
+                  'group relative w-full max-w-[1440px] px-1 transition-all duration-200 motion-reduce:transition-none md:px-2 xl:px-4',
                   isDragging
                     ? 'bg-primary/8'
                     : 'bg-transparent'
                 )}
               >
-                <div
-                  aria-hidden
-                  className="pointer-events-none absolute inset-0 bg-[url('/grid.svg')] opacity-[0.045]"
-                />
-                <div
-                  aria-hidden
-                  className="pointer-events-none absolute -left-24 top-16 h-64 w-64 rounded-full bg-primary/12 blur-3xl"
-                />
-                <div
-                  aria-hidden
-                  className="pointer-events-none absolute -right-24 -top-16 h-72 w-72 rounded-full bg-teal/12 blur-3xl"
-                />
-
-                <div className="relative z-10 grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
-                  <div className="relative min-h-[520px] overflow-hidden border-y border-dashed border-primary/24 bg-transparent px-2 py-6 md:px-4 md:py-8">
-                    <div
-                      aria-hidden
-                      className={cn(
-                        'absolute inset-x-4 top-4 h-px bg-primary/18 opacity-70',
-                        isDragging && 'bg-primary/45'
-                      )}
-                    />
+                <div className="relative z-10 grid min-h-[clamp(600px,68vh,650px)] items-stretch gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+                  <div className="relative flex h-full min-h-[560px] flex-col justify-center overflow-hidden bg-transparent px-2 py-6 md:px-4 md:py-8">
                     <div
                       aria-hidden
                       className="absolute left-1/2 top-10 h-40 w-40 -translate-x-1/2 rounded-full border border-primary/12 bg-[conic-gradient(from_140deg,hsl(var(--primary)/0.08),hsl(var(--teal)/0.18),hsl(var(--primary)/0.08))] blur-[0.2px]"
@@ -1507,13 +1483,23 @@ export function DataGovernancePanel() {
                             uploading && 'animate-spin motion-reduce:animate-none'
                           )}
                         />
-                        <span className="relative grid size-16 place-items-center rounded-3xl border border-primary/18 bg-card/90 text-primary shadow-[0_18px_42px_-28px_hsl(var(--primary)/0.8)]">
-                          {uploading ? (
+                        {uploading ? (
+                          <span className="relative grid size-16 place-items-center rounded-3xl border border-primary/18 bg-card/90 text-primary shadow-[0_18px_42px_-28px_hsl(var(--primary)/0.8)]">
                             <Sparkles className="size-7 animate-spin motion-reduce:animate-none" />
-                          ) : (
-                            <Upload className="size-7" />
-                          )}
-                        </span>
+                          </span>
+                        ) : (
+                          <Image
+                            src="/page-title-icons/data-governance.png"
+                            alt=""
+                            aria-hidden="true"
+                            draggable={false}
+                            width={96}
+                            height={96}
+                            priority
+                            unoptimized
+                            className="relative size-24 object-contain"
+                          />
+                        )}
                       </div>
 
                       <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/12 bg-primary/8 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">
@@ -1611,7 +1597,7 @@ export function DataGovernancePanel() {
                     </div>
                   </div>
 
-                  <div className="space-y-5 py-2 lg:py-4">
+                  <div className="flex h-full flex-col justify-center gap-7 py-6 lg:py-8">
                     <EmptyStructurePreview t={t} />
                     <div className="border-l border-border/70 pl-4">
                       <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -1858,7 +1844,6 @@ export function DataGovernancePanel() {
       }
       size="full"
       bodyClassName="px-0 pb-0"
-      pipelineRail={<PipelineRail />}
       mainPanel={
         <div className="flex-1 flex flex-col bg-background text-foreground min-h-0">
           <div className="flex-1 flex overflow-hidden min-h-0 relative bg-background">

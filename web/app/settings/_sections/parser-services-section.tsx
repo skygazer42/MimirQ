@@ -41,14 +41,14 @@ const SECTION_TITLE =
   'mb-2 flex items-center gap-2 text-[13px] font-semibold text-foreground'
 const CARD = cn(
   systemWorkbenchTokens.panel,
-  'space-y-3 rounded-[16px] border border-border/60 bg-card/82 p-3 shadow-sm'
+  'space-y-3 rounded-xl border border-info/15 bg-info/[0.025] p-3 shadow-none'
 )
 const GRID = 'grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3'
 const FIELD_LABEL = 'text-[11px] font-semibold text-muted-foreground'
 const FIELD_HINT = systemPageTokens.subtle
-const DENSE_INPUT = 'h-8 rounded-md border-border/70 bg-background text-[12px]'
+const DENSE_INPUT = 'h-8 rounded-md border-info/15 bg-info/[0.025] text-[12px]'
 const DENSE_SELECT =
-  'w-full rounded-md border border-border/70 bg-background px-2.5 py-1.5 text-[12px]'
+  'w-full rounded-md border border-info/15 bg-info/[0.025] px-2.5 py-1.5 text-[12px]'
 
 function TogglePill({
   enabled,
@@ -91,12 +91,12 @@ export function ParserServicesSection({
     <>
       <section>
         <h2 className={SECTION_TITLE}>
-          <ScanLine className="h-4 w-4 text-primary" />
+          <ScanLine className="h-4 w-4 text-info" />
           MinerU 配置
         </h2>
 
         <div className={CARD}>
-          <div className="rounded-[14px] border border-primary/20 bg-primary/8 px-3 py-2.5">
+          <div className="rounded-[14px] border border-info/20 bg-info/[0.06] px-3 py-2.5">
             <div className="text-[12px] font-semibold text-foreground">本地部署优先</div>
             <div className={cn(FIELD_HINT, 'mt-0.5')}>
               配置本地 MinerU 服务地址后，解析会走本地 ZIP 模式；未配置时再使用在线 API 令牌
@@ -218,7 +218,7 @@ export function ParserServicesSection({
 
       <section>
         <h2 className={SECTION_TITLE}>
-          <LayoutGrid className="h-4 w-4 text-success" />
+          <LayoutGrid className="h-4 w-4 text-info" />
           ETL4LLM 配置
         </h2>
 
@@ -339,12 +339,12 @@ export function ParserServicesSection({
 
       <section>
         <h2 className={SECTION_TITLE}>
-          <LayoutGrid className="h-4 w-4 text-primary" />
+          <LayoutGrid className="h-4 w-4 text-info" />
           Docling Serve 配置
         </h2>
 
         <div className={CARD}>
-          <div className="rounded-[14px] border border-primary/20 bg-primary/8 px-3 py-2.5">
+          <div className="rounded-[14px] border border-info/20 bg-info/[0.07] px-3 py-2.5">
             <div className="text-[12px] font-semibold text-foreground">独立服务模式</div>
             <div className={cn(FIELD_HINT, 'mt-0.5')}>
               Docling 依赖与模型只运行在独立容器中，不会增加 MimirQ API / worker 镜像体积
@@ -435,7 +435,7 @@ export function ParserServicesSection({
 
       <section>
         <h2 className={SECTION_TITLE}>
-          <LayoutGrid className="h-4 w-4 text-success" />
+          <LayoutGrid className="h-4 w-4 text-info" />
           Marker 配置
         </h2>
 
@@ -478,7 +478,7 @@ export function ParserServicesSection({
 
       <section>
         <h2 className={SECTION_TITLE}>
-          <ScanLine className="h-4 w-4 text-warning" />
+          <ScanLine className="h-4 w-4 text-info" />
           PaddleOCR-VL 配置
         </h2>
 

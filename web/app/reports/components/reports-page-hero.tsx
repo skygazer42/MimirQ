@@ -43,7 +43,7 @@ export function ReportsHeaderPills({
   dataProvenance: DatasetReportDataProvenance | null
 }>) {
   return (
-    <div className="grid min-w-0 gap-px overflow-hidden rounded-2xl border border-info/25 bg-info/20 shadow-[0_16px_38px_-30px_rgba(14,116,144,0.5)] sm:grid-cols-2 xl:grid-cols-[1.35fr_0.86fr_0.9fr_0.88fr_1.15fr]">
+    <div className="grid min-w-0 gap-px overflow-hidden rounded-xl border border-info/15 bg-info/15 shadow-none sm:grid-cols-2 xl:grid-cols-[1.35fr_0.86fr_0.9fr_0.88fr_1.15fr]">
       <DataPill
         icon={Database}
         label="数据集"
@@ -72,13 +72,15 @@ export function ReportsHeaderPills({
         sub={report ? '报告快照时间' : '暂无'}
         tone="slate"
       />
-      <DataPill
-        icon={ShieldCheck}
-        label="来源"
-        value={dataSourceLabel}
-        sub={dataSourceSub}
-        tone={dataProvenance?.mocked === false ? 'green' : 'amber'}
-      />
+      <div className="sm:col-span-2 xl:col-span-1">
+        <DataPill
+          icon={ShieldCheck}
+          label="来源"
+          value={dataSourceLabel}
+          sub={dataSourceSub}
+          tone={dataProvenance?.mocked === false ? 'green' : 'amber'}
+        />
+      </div>
     </div>
   )
 }
@@ -112,6 +114,7 @@ export function ReportsPageHero({
       title="数据报告"
       description="汇总数据集画像、召回门禁与治理风险，形成可导出的审计快照。"
       className="lg:flex-col lg:items-stretch 2xl:flex-row 2xl:items-start"
+      titleClassName="whitespace-nowrap"
       summary={
         <ReportsHeaderPills
           selectedDatasetName={selectedDatasetName}

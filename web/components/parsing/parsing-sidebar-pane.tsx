@@ -41,7 +41,6 @@ import {
 } from '@/components/ui/popover'
 import { Switch } from '@/components/ui/switch'
 import { ROOT_FOLDER_ID } from '@/store/use-parsed-files-store'
-import { cn } from '@/lib/utils'
 
 type ParsingSidebarPaneProps = {
   collapsed: boolean
@@ -198,11 +197,7 @@ export function ParsingSidebarPane({
       onToggleCollapsed={onToggleCollapsed}
       className={className}
     >
-      <div
-        className={cn(
-          'sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-border/55 bg-card/96 px-4 py-3.5'
-        )}
-      >
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-border/55 bg-background px-3 py-2">
         <button
           type="button"
           className="group flex min-w-0 flex-1 items-center gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/40"
@@ -211,26 +206,17 @@ export function ParsingSidebarPane({
           onDragLeave={onFolderDragLeave}
           onDrop={(event) => onFolderDrop(event, currentFolderId)}
           title={t('sidebar.uploadCurrentFolderTitle')}
+          aria-label={`${t('sidebar.uploadCurrentFolderTitle')} · ${activeFolderPathLabel}`}
         >
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-info/20 bg-info/[0.10] text-info shadow-[0_6px_16px_-14px_hsl(var(--info))]">
+          <div className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-info/20 bg-info/[0.08] text-info">
             <FileText className="size-3.5" />
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-baseline gap-1.5">
-              <span className="truncate text-[13px] font-semibold text-foreground">
-                {t('sidebar.documentList')}
-              </span>
-              <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/75">
-                {currentFolderFileCount}
-              </span>
-            </div>
-            <div
-              className="mt-0.5 truncate text-[11px] text-muted-foreground/65"
-              title={activeFolderPathLabel}
-            >
-              {activeFolderPathLabel}
-            </div>
-          </div>
+          <span className="truncate text-[13px] font-semibold text-foreground">
+            {t('sidebar.documentList')}
+          </span>
+          <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70">
+            {currentFolderFileCount}
+          </span>
         </button>
 
         <div className="flex shrink-0 items-center gap-0.5">
@@ -251,7 +237,7 @@ export function ParsingSidebarPane({
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-8 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="size-7 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
                 title={t('sidebar.defaultParser')}
                 aria-label={t('sidebar.defaultParser')}
               >
@@ -363,7 +349,7 @@ export function ParsingSidebarPane({
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-8 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="size-7 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
                 aria-label={t('sidebar.uploadActions')}
                 title={t('sidebar.uploadActions')}
               >
@@ -393,29 +379,11 @@ export function ParsingSidebarPane({
       </div>
 
       {collapsed ? null : (
-        <div className="relative border-b border-border/60">
-          <div
-            aria-hidden
-            className="absolute left-0 top-2 bottom-2 w-[2px] rounded-full bg-info/70"
-          />
-          <div className="space-y-2 bg-[linear-gradient(90deg,hsl(var(--info)/0.07),transparent)] py-3 pl-3.5 pr-2.5 dark:from-info/[0.10]">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-info/85 dark:text-info">
-                {t('sidebar.datasetScope')}
-              </span>
-              <span
-                className={cn(
-                  'rounded-full border px-1.5 py-0.5 text-[10px] font-medium tabular-nums transition-colors',
-                  selectedDatasetId
-                    ? 'border-info/30 bg-info/15 text-info'
-                    : 'border-border/60 bg-muted/60 text-muted-foreground'
-                )}
-              >
-                {selectedDatasetId
-                  ? t('sidebar.datasetScoped')
-                  : t('sidebar.datasetAll')}
-              </span>
-            </div>
+        <div className="flex items-center gap-2 border-b border-border/55 bg-background px-3 py-2">
+          <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+            {t('sidebar.datasetScope')}
+          </span>
+          <div className="min-w-0 flex-1">
             <Select
               value={selectedDatasetId || DATASET_ALL_VALUE}
               onValueChange={(value) =>
@@ -423,18 +391,17 @@ export function ParsingSidebarPane({
               }
             >
               <SelectTrigger
-                className={cn(
-                  'h-9 rounded-xl text-[12px] font-medium bg-card border-border/60 text-foreground shadow-[inset_0_1px_0_hsl(var(--background))] transition-colors duration-200 motion-reduce:transition-none',
-                  'hover:border-info/40 focus:border-info/60 data-[state=open]:border-info/60',
-                  'focus-visible:ring-2 focus-visible:ring-info/20 focus-visible:ring-offset-0'
-                )}
+                aria-label={t('sidebar.datasetScope')}
+                className="h-8 min-w-0 flex-1 rounded-lg border-border/55 bg-muted/25 px-2.5 text-[11px] font-medium text-foreground shadow-none transition-colors duration-200 hover:border-info/40 focus:border-info/60 focus-visible:ring-2 focus-visible:ring-info/20 focus-visible:ring-offset-0 data-[state=open]:border-info/60 motion-reduce:transition-none"
               >
-                <div className="flex items-center gap-1.5 truncate">
-                  <Database className="size-3.5 shrink-0 text-info/80" />
-                  <SelectValue placeholder={t('sidebar.allDatasetScope')} />
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <Database className="size-3 shrink-0 text-info/80" />
+                  <span className="min-w-0 truncate">
+                    <SelectValue placeholder={t('sidebar.allDatasetScope')} />
+                  </span>
                 </div>
               </SelectTrigger>
-              <SelectContent className="bg-card border-border/60 text-foreground">
+              <SelectContent className="border-border/60 bg-popover text-foreground">
                 <SelectItem value={DATASET_ALL_VALUE} className="text-[12px]">
                   <span className="flex items-center gap-1.5">
                     <span
@@ -470,7 +437,7 @@ export function ParsingSidebarPane({
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar bg-background/35 px-3 py-3 dark:bg-card">
+      <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar bg-background px-2.5 py-2">
         {isLibraryLoaded ? (
           <DocumentFolderTree
             className="pb-1"

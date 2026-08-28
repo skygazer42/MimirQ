@@ -162,7 +162,7 @@ export function ParsingLeftPanel({
   return (
     <aside
       className={cn(
-        'group/sidebar relative z-10 flex min-h-0 flex-shrink-0 flex-col overflow-visible rounded-[24px] border border-border/70 bg-card/96 shadow-[0_24px_60px_-46px_rgba(15,23,42,0.42)] backdrop-blur-sm dark:bg-card/95',
+        'group/sidebar relative z-10 flex min-h-0 flex-shrink-0 flex-col overflow-visible rounded-[24px] border border-foreground/10 bg-background/90 shadow-none dark:bg-background',
         collapsed ? 'w-0 border-0 shadow-none' : '',
         className
       )}
@@ -172,7 +172,7 @@ export function ParsingLeftPanel({
         variant="ghost"
         size="icon"
         className={cn(
-          'absolute top-2 z-30 h-6 w-6 rounded-lg border border-border/60 bg-card text-muted-foreground shadow-none backdrop-blur-sm transition-[opacity,background-color,color,box-shadow] duration-200 hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-info/35 motion-reduce:transition-none',
+          'absolute top-2 z-30 h-6 w-6 rounded-lg border border-foreground/10 bg-background text-muted-foreground shadow-none transition-[opacity,background-color,color,box-shadow] duration-200 hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-info/35 motion-reduce:transition-none',
           'opacity-0 hover:opacity-100 focus-visible:opacity-100',
           collapsed ? 'right-[-2.25rem]' : 'right-2'
         )}

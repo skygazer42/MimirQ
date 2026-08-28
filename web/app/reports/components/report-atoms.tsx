@@ -46,20 +46,24 @@ export function DataPill({
   }[tone]
 
   return (
-    <div className="flex min-w-0 items-center gap-2.5 bg-card/88 px-3 py-2.5 shadow-[inset_0_1px_0_hsl(var(--background)/0.6)]">
+    <div className="flex h-full min-w-0 items-center gap-2 bg-background/72 px-2.5 py-1.5">
       <div
         className={cn(
-          'flex size-8 shrink-0 items-center justify-center rounded-xl ring-1',
+          'flex size-7 shrink-0 items-center justify-center rounded-lg ring-1',
           toneClass
         )}
       >
-        <Icon className="size-4" />
+        <Icon className="size-3.5" />
       </div>
-      <div className="min-w-0">
-        <div className={REPORT_LABEL_CLASS}>{label}</div>
-        <div className={cn(REPORT_VALUE_CLASS, valueToneClass)}>{value}</div>
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-baseline gap-1.5">
+          <div className={cn('shrink-0', REPORT_LABEL_CLASS)}>{label}</div>
+          <div className={cn('min-w-0', REPORT_VALUE_CLASS, valueToneClass)}>
+            {value}
+          </div>
+        </div>
         {sub ? (
-          <div className={cn('mt-0.5 truncate', REPORT_SUBTEXT_CLASS)}>
+          <div className={cn('truncate', REPORT_SUBTEXT_CLASS)}>
             {sub}
           </div>
         ) : null}
@@ -91,22 +95,22 @@ export function AuditMetricCard({
   }[tone]
 
   return (
-    <article className="min-w-0 bg-card/95 px-4 py-3.5">
-      <div className="flex items-center gap-3">
+    <article className="min-w-0 bg-background/72 px-3 py-2">
+      <div className="flex items-center gap-2">
         <div
           className={cn(
-            'flex size-9 shrink-0 items-center justify-center rounded-[0.85rem] ring-1',
+            'flex size-8 shrink-0 items-center justify-center rounded-lg ring-1',
             toneClass
           )}
         >
-          <Icon className="size-[1.05rem]" />
+          <Icon className="size-4" />
         </div>
         <div className="min-w-0 flex-1">
           <div className={REPORT_LABEL_CLASS}>{label}</div>
           <div className={cn('mt-0.5', REPORT_METRIC_VALUE_CLASS)}>
             {value}
           </div>
-          <div className={cn('mt-1 truncate', REPORT_SUBTEXT_CLASS)} title={sub}>
+          <div className={cn('mt-0.5 truncate', REPORT_SUBTEXT_CLASS)} title={sub}>
             {sub}
           </div>
         </div>
@@ -144,7 +148,7 @@ export function ReportSignalRow({
   }[tone]
 
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-card/70 px-2.5 py-1.5 shadow-[inset_0_1px_0_hsl(var(--background)/0.5)]">
+    <div className="flex items-center gap-2 rounded-lg border border-info/15 bg-info/[0.025] px-2 py-1.5">
       <span className={cn('size-2 shrink-0 rounded-full', dotClass)} />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
@@ -176,7 +180,7 @@ export function ReportInlineEmpty({
   description,
 }: Readonly<{ title: string; description: string }>) {
   return (
-    <div className="rounded-xl border border-dashed border-border bg-muted/40 px-3 py-3">
+    <div className="rounded-xl border border-dashed border-info/20 bg-info/[0.025] px-3 py-2">
       <div className="text-[0.8125rem] font-semibold tracking-[-0.01em] text-foreground/85">
         {title}
       </div>
@@ -206,49 +210,49 @@ export function CompactAuditFact({
       icon: 'bg-info/15 text-info ring-info/30',
       rail: 'bg-info/100',
       value:
-        'border-info/20 bg-card/80 text-info shadow-[0_1px_2px_hsl(var(--info)/0.08)]',
+        'border-info/20 bg-background/70 text-info',
     },
     green: {
       shell: 'border-success/20 bg-success/5',
       icon: 'bg-success/15 text-success ring-success/30',
       rail: 'bg-success/100',
       value:
-        'border-success/20 bg-card/80 text-success shadow-[0_1px_2px_rgba(5,150,105,0.08)]',
+        'border-success/20 bg-background/70 text-success',
     },
     amber: {
       shell: 'border-warning/20 bg-warning/5',
       icon: 'bg-warning/15 text-warning ring-warning/30',
       rail: 'bg-warning/100',
       value:
-        'border-warning/20 bg-card/85 text-warning shadow-[0_1px_2px_rgba(217,119,6,0.08)]',
+        'border-warning/20 bg-background/70 text-warning',
     },
     rose: {
       shell: 'border-destructive/20 bg-destructive/5',
       icon: 'bg-destructive/15 text-destructive ring-destructive/30',
       rail: 'bg-destructive/100',
       value:
-        'border-destructive/20 bg-card/85 text-destructive shadow-[0_1px_2px_rgba(225,29,72,0.08)]',
+        'border-destructive/20 bg-background/70 text-destructive',
     },
     violet: {
       shell: 'border-accent/20 bg-accent/5',
       icon: 'bg-accent/15 text-accent ring-accent/30',
       rail: 'bg-accent/100',
       value:
-        'border-accent/20 bg-card/80 text-accent shadow-[0_1px_2px_rgba(124,58,237,0.08)]',
+        'border-accent/20 bg-background/70 text-accent',
     },
     slate: {
       shell: 'border-border/60 bg-muted/40',
       icon: 'bg-muted text-muted-foreground ring-border',
       rail: 'bg-border',
       value:
-        'border-border bg-card/80 text-muted-foreground shadow-[0_1px_2px_rgba(15,23,42,0.04)]',
+        'border-border bg-background/70 text-muted-foreground',
     },
   }[tone]
 
   return (
     <div
       className={cn(
-        'relative min-w-0 overflow-hidden rounded-xl border px-2.5 py-2',
+        'relative min-w-0 overflow-hidden rounded-xl border px-2.5 py-1.5',
         toneClass.shell
       )}
     >
@@ -259,11 +263,11 @@ export function CompactAuditFact({
       <div className="flex min-w-0 items-center gap-2 pl-1">
         <div
           className={cn(
-            'flex size-7 shrink-0 items-center justify-center rounded-lg ring-1',
+            'flex size-6 shrink-0 items-center justify-center rounded-md ring-1',
             toneClass.icon
           )}
         >
-          <Icon className="size-3.5" />
+          <Icon className="size-3" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="truncate text-[0.75rem] font-semibold tracking-[-0.01em] text-foreground">
@@ -292,7 +296,7 @@ export function AuditMetricPlaceholder({
   hint,
 }: Readonly<{ label: string; hint: string }>) {
   return (
-    <div className="rounded-lg border border-dashed border-border bg-background/65 px-2.5 py-2">
+    <div className="rounded-lg border border-dashed border-info/15 bg-info/[0.025] px-2.5 py-1.5">
       <div className="flex items-center justify-between gap-2">
         <span className="truncate text-[0.75rem] font-semibold tracking-[-0.01em] text-foreground/85">
           {label}

@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <path
+    d="M9 20v-7a4 4 0 0 1 4-4h7"
+    stroke="#38BDF8"
+    stroke-width="3.2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M44 55h7a4 4 0 0 0 4-4v-7"
+    stroke="#38BDF8"
+    stroke-width="3.2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+
+  <path
+    d="M18 8.5h20.5L49.5 19v31.5a5 5 0 0 1-5 5H18a5 5 0 0 1-5-5v-37a5 5 0 0 1 5-5Z"
+    fill="#E8F7FD"
+    stroke="#0F3B66"
+    stroke-width="2.8"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M38.5 8.5v7.2a3.3 3.3 0 0 0 3.3 3.3h7.7"
+    fill="#7DD3FC"
+    stroke="#0F3B66"
+    stroke-width="2.8"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M17.5 22.5h27"
+    stroke="#7DD3FC"
+    stroke-width="1.6"
+    stroke-linecap="round"
+    opacity="0.72"
+  />
+
+  <g data-chunk-boundary="true">
+    <path
+      d="M16.5 29h29"
+      stroke="#0F3B66"
+      stroke-width="3"
+      stroke-linecap="round"
+    />
+    <path
+      d="M16.5 42h29"
+      stroke="#0F3B66"
+      stroke-width="3"
+      stroke-linecap="round"
+    />
+  </g>
+
+  <rect
+    x="28.5"
+    y="25.5"
+    width="7"
+    height="7"
+    rx="1.2"
+    fill="#F6C445"
+    stroke="#0F3B66"
+    stroke-width="1.6"
+    transform="rotate(45 32 29)"
+  />
+  <rect
+    data-chunk-overlap="true"
+    x="25"
+    y="39.25"
+    width="14"
+    height="5.5"
+    rx="2.75"
+    fill="#5EEAD4"
+    fill-opacity="0.82"
+    stroke="#0F766E"
+    stroke-width="1.2"
+  />
+</svg>

@@ -76,11 +76,11 @@ const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
 const SETTINGS_SECTION_BY_ID = Object.fromEntries(
   SETTINGS_SECTIONS.map((section) => [section.id, section])
 ) as Record<string, SettingsSectionDefinition>
-const SETTINGS_CARD_CLASS = 'rounded-xl border border-foreground/10 bg-background shadow-none'
+const SETTINGS_CARD_CLASS = 'rounded-xl border border-info/20 bg-info/[0.025] shadow-none'
 const SETTINGS_OUTLINE_BUTTON =
-  'h-8 rounded-lg border-border/70 bg-background px-3 text-[12px] font-medium text-foreground shadow-none hover:bg-muted/18'
+  'h-8 rounded-lg border-info/15 bg-info/[0.025] px-3 text-[12px] font-medium text-foreground shadow-none hover:border-info/30 hover:bg-info/[0.07] hover:text-info'
 const SETTINGS_PRIMARY_BUTTON =
-  'h-8 rounded-lg bg-primary px-3 text-[12px] font-medium text-primary-foreground shadow-none hover:bg-primary/90 disabled:bg-primary/55 disabled:opacity-80 disabled:text-primary-foreground'
+  'h-8 rounded-lg bg-info px-3 text-[12px] font-medium text-info-foreground shadow-none hover:bg-info/90 disabled:bg-info/55 disabled:opacity-80 disabled:text-info-foreground'
 
 type SettingsPageState = ReturnType<typeof useSettingsPageState>
 type ParserBackendPreference = ReturnType<typeof useParserBackendPreference>
@@ -107,9 +107,9 @@ type SettingsMetricItem = {
 }
 
 const SETTINGS_METRIC_TONE_CLASS: Record<SettingsMetricTone, string> = {
-  blue: 'text-primary',
+  blue: 'text-info',
   green: 'text-success',
-  indigo: 'text-accent',
+  indigo: 'text-info',
   slate: 'text-muted-foreground',
 }
 
@@ -135,7 +135,7 @@ function getSaveStatusValueClassName(
   if (saveMessageType === 'error') return 'text-destructive'
   if (saving) return 'text-warning'
   if (saveMessageType === 'success') return 'text-success'
-  return 'text-foreground'
+  return 'text-foreground/80'
 }
 
 function SettingsMetricStrip({
@@ -144,18 +144,18 @@ function SettingsMetricStrip({
   return (
     <div
       data-testid="settings-metric-strip"
-      className="flex flex-wrap items-center gap-1.5 rounded-xl border border-foreground/10 bg-background p-1.5"
+      className="flex flex-wrap items-center gap-1.5 rounded-xl border border-info/20 bg-info/[0.025] p-1.5"
     >
       {items.map((item) => {
         const Icon = item.icon
         return (
           <div
             key={item.label}
-            className="flex min-h-9 flex-1 basis-[150px] items-center gap-2 rounded-lg border border-foreground/10 bg-muted/15 px-2.5 py-1.5"
+            className="flex min-h-9 flex-1 basis-[150px] items-center gap-2 rounded-lg border border-info/15 bg-info/[0.025] px-2.5 py-1.5"
           >
             <div
               className={cn(
-                'flex size-6 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background',
+                'flex size-6 shrink-0 items-center justify-center rounded-md border border-info/15 bg-info/[0.06]',
                 SETTINGS_METRIC_TONE_CLASS[item.tone]
               )}
             >
@@ -220,7 +220,7 @@ function SettingsSaveFeedback({
               已保存
             </p>
             {message.detail ? (
-              <span className="rounded-full border border-success/25 bg-card/85 px-2 py-0.5 text-[10px] font-medium text-success">
+              <span className="rounded-full border border-success/25 bg-success/[0.04] px-2 py-0.5 text-[10px] font-medium text-success">
                 少量配置需重启服务
               </span>
             ) : null}
@@ -239,7 +239,7 @@ function SettingsSaveFeedback({
               {visibleKeys.map((key) => (
                 <span
                   key={key}
-                  className="rounded-full border border-border/60 bg-card/85 px-2 py-0.5 font-mono text-[10px] text-muted-foreground"
+                  className="rounded-full border border-info/15 bg-info/[0.035] px-2 py-0.5 font-mono text-[10px] text-muted-foreground"
                 >
                   {key}
                 </span>
@@ -263,7 +263,6 @@ type EnhancementCardProps = {
   icon: LucideIcon
   checked: boolean
   onToggle: () => void
-  tone: 'blue' | 'emerald'
   tags: string[]
 }
 
@@ -273,27 +272,16 @@ function EnhancementCard({
   icon: Icon,
   checked,
   onToggle,
-  tone,
   tags,
 }: Readonly<EnhancementCardProps>) {
-  const toneClass =
-    tone === 'emerald'
-      ? {
-          card: checked
-            ? 'border-success/30 bg-success/10'
-            : 'border-border/60 bg-card',
-          icon: checked
-            ? 'bg-success/15 text-success'
-            : 'bg-muted text-muted-foreground',
-        }
-      : {
-          card: checked
-            ? 'border-primary/30 bg-primary/10'
-            : 'border-border/60 bg-card',
-          icon: checked
-            ? 'bg-primary/15 text-primary'
-            : 'bg-muted text-muted-foreground',
-        }
+  const toneClass = {
+    card: checked
+      ? 'border-info/30 bg-info/10'
+      : 'border-info/15 bg-info/[0.025]',
+    icon: checked
+      ? 'bg-info/15 text-info'
+      : 'bg-info/[0.06] text-muted-foreground',
+  }
 
   return (
     <button
@@ -301,7 +289,7 @@ function EnhancementCard({
       aria-pressed={checked}
       onClick={onToggle}
       className={cn(
-        'group flex min-h-[54px] w-full items-center justify-between gap-3 rounded-[13px] border px-3 py-2 text-left transition-[border-color,background-color,box-shadow] duration-150 focus-ring hover:border-primary/30 motion-reduce:transition-none',
+        'group flex min-h-[54px] w-full items-center justify-between gap-3 rounded-[13px] border px-3 py-2 text-left transition-[border-color,background-color] duration-150 focus-ring hover:border-info/30 motion-reduce:transition-none',
         toneClass.card
       )}
     >
@@ -326,7 +314,7 @@ function EnhancementCard({
               {tags.map((tag) => (
                 <span
                   key={tag}
-                  className="rounded-md border border-border/60 bg-background px-1.5 py-0.5 text-[10px] font-medium leading-[14px] text-muted-foreground"
+                  className="rounded-md border border-info/15 bg-info/[0.035] px-1.5 py-0.5 text-[10px] font-medium leading-[14px] text-muted-foreground"
                 >
                   {tag}
                 </span>
@@ -345,7 +333,7 @@ function RetrievalEnhancementSection({ state }: Readonly<{ state: SettingsPageSt
   const kgEnabled = state.getFeatureValue('kg_enabled')
 
   return (
-    <section className="rounded-xl border border-foreground/10 bg-background p-3.5 shadow-none">
+    <section className="rounded-xl border border-info/15 bg-info/[0.025] p-3.5 shadow-none">
       <div className="mb-2.5">
         <h2 className="text-[13px] font-semibold text-foreground">
           关键词增强配置
@@ -361,7 +349,6 @@ function RetrievalEnhancementSection({ state }: Readonly<{ state: SettingsPageSt
           icon={Search}
           checked={bm25Enabled}
           onToggle={() => state.updateRag({ bm25_index_enabled: !bm25Enabled })}
-          tone="blue"
           tags={['RAG 配置', '真实后端字段']}
         />
         <EnhancementCard
@@ -370,7 +357,6 @@ function RetrievalEnhancementSection({ state }: Readonly<{ state: SettingsPageSt
           icon={Network}
           checked={kgEnabled}
           onToggle={() => state.toggleFeature('kg_enabled')}
-          tone="emerald"
           tags={['Feature Flag', 'KG_ENABLED']}
         />
       </div>
@@ -435,13 +421,13 @@ function SettingsSectionFrame({
       id={section.id}
       aria-labelledby={`${section.id}-title`}
       className={cn(
-        'relative scroll-mt-24 overflow-visible rounded-xl border border-foreground/10 bg-background shadow-none',
+        'relative scroll-mt-24 overflow-visible rounded-xl border border-info/20 bg-info/[0.018] shadow-none',
         className
       )}
     >
-      <div className="border-b border-foreground/10 bg-muted/18 px-4 py-3">
+      <div className="border-b border-border/60 bg-info/[0.025] px-4 py-3">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-7 w-9 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background text-[11px] font-black text-primary">
+          <span className="flex h-7 w-9 shrink-0 items-center justify-center rounded-md border border-info/20 bg-info/[0.08] text-[11px] font-semibold text-info">
             {String(index + 1).padStart(2, '0')}
           </span>
           <div className="min-w-0">
@@ -534,9 +520,9 @@ function SettingsPageContent() {
         size="full"
         compact
         density="system-dense"
-        headerClassName="[&_[class*='rounded-full']]:border-border/60 [&_[class*='rounded-full']]:bg-background [&_[class*='rounded-full']]:font-medium [&_[class*='rounded-full']]:normal-case [&_[class*='rounded-full']]:text-muted-foreground"
+        headerClassName="[&_[class*='rounded-full']]:border-info/20 [&_[class*='rounded-full']]:bg-info/[0.06] [&_[class*='rounded-full']]:font-medium [&_[class*='rounded-full']]:normal-case [&_[class*='rounded-full']]:text-info"
         topClassName="pb-2.5"
-        bodyClassName="pt-0.5"
+        bodyClassName="bg-info/[0.035] !pb-3 pt-0.5"
         top={
           <div className="space-y-2">
             <SettingsMetricStrip items={statusMetricItems} />
@@ -656,11 +642,11 @@ function SettingsContent({
   }, [])
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[176px_minmax(0,1fr)]">
+    <div className="grid gap-4 xl:grid-cols-[176px_minmax(0,1fr)]">
       <nav
         className={cn(
           SETTINGS_CARD_CLASS,
-          'sticky top-4 hidden shrink-0 self-start p-1.5 lg:block'
+          'sticky top-4 hidden shrink-0 self-start p-1.5 xl:block'
         )}
       >
         <ul className="space-y-0.5">
@@ -673,8 +659,8 @@ function SettingsContent({
                   'relative w-full rounded-lg border border-transparent px-3 py-2 text-left transition-colors',
                   'text-[12px] font-semibold leading-[18px]',
                   activeId === sec.id
-                    ? 'border-foreground/10 bg-muted/18 text-primary'
-                    : 'text-foreground/78 hover:bg-muted/18 hover:text-foreground'
+                    ? 'border-info/25 bg-info/[0.08] text-info'
+                    : 'text-foreground/78 hover:bg-info/[0.05] hover:text-info'
                 )}
               >
                 {sec.label}

@@ -32,8 +32,8 @@ export function ObservabilitySection({
         </div>
       </div>
 
-      <div className={cn(systemWorkbenchTokens.panel, 'space-y-3 p-3.5')}>
-        <div className="space-y-2.5 rounded-lg border border-border/70 bg-muted/10 p-3">
+      <div className={cn(systemWorkbenchTokens.panel, 'space-y-3 border-info/15 bg-info/[0.025] p-3.5')}>
+        <div className="space-y-2.5 rounded-lg border border-info/15 bg-info/[0.025] p-3">
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className={cn(settingsTextTokens.panelTitle, 'flex items-center gap-1.5')}>
@@ -44,10 +44,10 @@ export function ObservabilitySection({
                 用于排查“某个工具为什么慢、为什么失败”会记录调用耗时、是否成功，以及常用入参字段名；需要时可附带截断后的结果摘要
               </div>
               <div className="mt-1 flex flex-wrap gap-1">
-                <span className="rounded-md border border-border/60 bg-background/85 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                <span className="rounded-md border border-info/15 bg-info/[0.035] px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                   适合排查工具失败
                 </span>
-                <span className="rounded-md border border-border/60 bg-background/85 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                <span className="rounded-md border border-info/15 bg-info/[0.035] px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                   低频开启
                 </span>
               </div>
@@ -62,7 +62,7 @@ export function ObservabilitySection({
 
           {isToolCallLogEnabled ? (
             <div className="grid grid-cols-1 gap-3 pt-1 md:grid-cols-3">
-              <div className="flex items-center justify-between gap-3 rounded-md border border-border/70 bg-background/70 px-2.5 py-2">
+              <div className="flex items-center justify-between gap-3 rounded-md border border-info/15 bg-info/[0.035] px-2.5 py-2">
                 <span className="text-[11px] font-semibold text-foreground/78">记录结果摘要</span>
                 <SettingsSwitch
                   checked={observability.tool_call_log_include_preview ?? false}
@@ -79,7 +79,7 @@ export function ObservabilitySection({
                   min={0}
                   max={5000}
                   value={observability.tool_call_log_max_preview_chars ?? 500}
-                  className="h-8 text-[12px]"
+                  className="h-8 border-info/15 bg-info/[0.025] text-[12px]"
                   onChange={(event) =>
                     updateObservability({
                       tool_call_log_max_preview_chars: Number.parseInt(event.target.value || '0', 10),
@@ -91,7 +91,7 @@ export function ObservabilitySection({
           ) : null}
         </div>
 
-        <div className="space-y-2.5 rounded-lg border border-border/70 bg-muted/10 p-3">
+        <div className="space-y-2.5 rounded-lg border border-info/15 bg-info/[0.025] p-3">
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className={cn(settingsTextTokens.panelTitle, 'flex items-center gap-1.5')}>
@@ -102,10 +102,10 @@ export function ObservabilitySection({
                 用于排查“一次任务卡在哪一步”会记录总耗时、步骤节点和成功/失败，必要时可把运行路径一起带上
               </div>
               <div className="mt-1 flex flex-wrap gap-1">
-                <span className="rounded-md border border-border/60 bg-background/85 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                <span className="rounded-md border border-info/15 bg-info/[0.035] px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                   适合排查流程卡点
                 </span>
-                <span className="rounded-md border border-border/60 bg-background/85 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                <span className="rounded-md border border-info/15 bg-info/[0.035] px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                   记录运行路径
                 </span>
               </div>
@@ -120,7 +120,7 @@ export function ObservabilitySection({
 
           {isAgentLogEnabled ? (
             <div className="grid grid-cols-1 gap-3 pt-1 md:grid-cols-3">
-              <div className="flex items-center justify-between gap-3 rounded-md border border-border/70 bg-background/70 px-2.5 py-2">
+              <div className="flex items-center justify-between gap-3 rounded-md border border-info/15 bg-info/[0.035] px-2.5 py-2">
                 <span className="text-[11px] font-semibold text-foreground/78">记录步骤路径</span>
                 <SettingsSwitch
                   checked={observability.agent_log_include_execution_path ?? false}
@@ -137,7 +137,7 @@ export function ObservabilitySection({
                   min={0}
                   max={5000}
                   value={observability.agent_log_max_preview_chars ?? 500}
-                  className="h-8 text-[12px]"
+                  className="h-8 border-info/15 bg-info/[0.025] text-[12px]"
                   onChange={(event) =>
                     updateObservability({
                       agent_log_max_preview_chars: Number.parseInt(event.target.value || '0', 10),
@@ -149,7 +149,7 @@ export function ObservabilitySection({
           ) : null}
         </div>
 
-        <div className="space-y-2.5 rounded-lg border border-border/70 bg-muted/10 p-3">
+        <div className="space-y-2.5 rounded-lg border border-info/15 bg-info/[0.025] p-3">
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className={cn(settingsTextTokens.panelTitle, 'flex items-center gap-1.5')}>
@@ -160,10 +160,10 @@ export function ObservabilitySection({
                 用于观察检索和生成是否稳定会把每次问答的关键指标写入日志文件，适合做趋势分析、问题复盘和离线审计
               </div>
               <div className="mt-1 flex flex-wrap gap-1">
-                <span className="rounded-md border border-border/60 bg-background/85 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                <span className="rounded-md border border-info/15 bg-info/[0.035] px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                   适合趋势分析
                 </span>
-                <span className="rounded-md border border-border/60 bg-background/85 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                <span className="rounded-md border border-info/15 bg-info/[0.035] px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                   日志文件：logs/rag_metrics.jsonl
                 </span>
               </div>
@@ -178,7 +178,7 @@ export function ObservabilitySection({
 
           {isMetricsLogEnabled ? (
             <div className="grid grid-cols-1 gap-3 pt-1 md:grid-cols-3">
-              <div className="flex items-center justify-between gap-3 rounded-md border border-border/70 bg-background/70 px-2.5 py-2">
+              <div className="flex items-center justify-between gap-3 rounded-md border border-info/15 bg-info/[0.035] px-2.5 py-2">
                 <span className="text-[11px] font-semibold text-foreground/78">写入问题与答案原文</span>
                 <SettingsSwitch
                   checked={observability.metrics_log_include_text ?? false}

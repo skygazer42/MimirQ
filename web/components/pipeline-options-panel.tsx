@@ -870,8 +870,8 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
               )}
             >
               <div className={cn("flex items-center gap-2 border-b border-border/50 bg-muted/20", compact ? "px-2.5 py-1.5" : "px-3 py-2")}>
-                <div className={cn("p-1 rounded-md", group.bgColor)}>
-                  <Icon className={cn("h-3.5 w-3.5", group.color)} />
+                <div className={cn("grid shrink-0 place-items-center rounded-md", compact ? "size-6" : "size-7", group.bgColor)}>
+                  <Icon className={cn(compact ? "size-3.5" : "size-4", group.color)} />
                 </div>
                 <span className={cn("font-medium text-foreground/75", titleClasses)}>{group.title}</span>
               </div>

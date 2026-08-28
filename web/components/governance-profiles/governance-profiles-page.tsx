@@ -187,7 +187,7 @@ export function GovernanceProfilesPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="flex-1 flex flex-col overflow-hidden bg-background">
       <AlertDialog
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
@@ -360,7 +360,7 @@ export function GovernanceProfilesPage() {
           ) : null}
 
         <Panel
-          className="mt-4 overflow-hidden rounded-2xl border-border/50 bg-card shadow-none"
+          className="mt-4 overflow-hidden rounded-2xl border-border/50 bg-background shadow-none"
           padding="md"
         >
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -418,7 +418,7 @@ export function GovernanceProfilesPage() {
         </Panel>
 
         <Panel
-          className="mt-3 border-border/50 bg-card shadow-none"
+          className="mt-3 border-border/50 bg-background shadow-none"
           padding="md"
         >
           <div className="flex flex-col gap-2 md:flex-row md:items-center">
@@ -491,7 +491,7 @@ export function GovernanceProfilesPage() {
                   key={p.key}
                   padding="md"
                   className={cn(
-                    'group relative overflow-hidden rounded-2xl border-border/60 bg-card shadow-none transition-[border-color,box-shadow,transform] duration-200 motion-reduce:transition-none',
+                    'group relative overflow-hidden rounded-2xl border-border/60 bg-background shadow-none transition-[border-color,box-shadow,transform] duration-200 motion-reduce:transition-none',
                     toneHoverBorderClass,
                     'hover:shadow-soft'
                   )}
@@ -657,7 +657,7 @@ export function GovernanceProfilesPage() {
           </div>
         ) : (
           <EmptyState
-            className="mt-6 border-border/60 bg-card"
+            className="mt-6 border-border/60 bg-background"
             title={loading ? '正在加载…' : '暂无 Profiles'}
             description={
               loading

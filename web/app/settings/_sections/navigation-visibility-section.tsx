@@ -119,17 +119,17 @@ export function NavigationVisibilitySection({
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="flex items-center gap-2 text-[13px] font-semibold text-foreground">
-            <Eye className="h-3.5 w-3.5 text-primary" />
+            <Eye className="h-3.5 w-3.5 text-info" />
             普通用户入口显示
             <span className="group/nav-entry-help relative inline-flex">
               <button
                 type="button"
                 aria-label="查看普通用户入口显示说明"
-                className="inline-flex size-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+                className="inline-flex size-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-info/10 hover:text-info focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/25"
               >
                 <HelpCircle className="h-3.5 w-3.5" />
               </button>
-              <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 hidden w-[min(360px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-primary/20 bg-popover px-3 py-2 text-[11px] font-medium leading-relaxed text-popover-foreground shadow-[0_14px_34px_hsl(var(--foreground)/0.14)] group-hover/nav-entry-help:block group-focus-within/nav-entry-help:block md:left-full md:top-1/2 md:mt-0 md:ml-2 md:-translate-x-0 md:-translate-y-1/2">
+              <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 hidden w-[min(360px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-info/20 bg-popover px-3 py-2 text-[11px] font-medium leading-relaxed text-popover-foreground shadow-[0_14px_34px_hsl(var(--foreground)/0.14)] group-hover/nav-entry-help:block group-focus-within/nav-entry-help:block md:left-full md:top-1/2 md:mt-0 md:ml-2 md:-translate-x-0 md:-translate-y-1/2">
                 管理员始终可见；这里通过后端 /settings 持久化普通用户左侧导航和直接访问页的入口策略
               </span>
             </span>
@@ -137,12 +137,12 @@ export function NavigationVisibilitySection({
         </div>
       </div>
 
-      <div className="rounded-[16px] border border-border/60 bg-card/82 p-3.5 shadow-sm">
+      <div className="rounded-xl border border-info/15 bg-info/[0.025] p-3.5 shadow-none">
         <div className="grid gap-3 xl:grid-cols-3">
           {MODULE_GROUPS.map((group) => (
             <div
               key={group.title}
-              className="rounded-[14px] border border-border/60 bg-card/80 p-3 shadow-[0_8px_20px_hsl(var(--foreground)/0.025)]"
+              className="rounded-xl border border-info/15 bg-info/[0.035] p-3 shadow-none"
             >
               <div className="mb-2.5">
                 <div className="text-[12px] font-semibold text-foreground">{group.title}</div>
@@ -158,15 +158,15 @@ export function NavigationVisibilitySection({
                       className={cn(
                         'flex items-center justify-between gap-3 rounded-[12px] border px-3 py-2 transition-colors',
                         checked
-                          ? 'border-primary/25 bg-primary/10'
-                          : 'border-border/60 bg-card hover:border-muted-foreground/30'
+                          ? 'border-info/25 bg-info/10'
+                          : 'border-info/15 bg-info/[0.025] hover:border-info/25 hover:bg-info/[0.055]'
                       )}
                     >
                       <div className="flex min-w-0 items-center gap-2.5">
                         <span
                           className={cn(
                             'flex size-7 shrink-0 items-center justify-center rounded-[10px]',
-                            checked ? 'bg-primary/12 text-primary' : 'bg-muted text-muted-foreground'
+                            checked ? 'bg-info/12 text-info' : 'bg-info/[0.06] text-muted-foreground'
                           )}
                         >
                           <Icon className="size-3.5" />

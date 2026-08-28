@@ -972,7 +972,7 @@ export function RegressionTestTab({
       >
         {embedded ? (
           isConfigPanelCollapsed ? (
-            <aside className="group relative flex min-h-0 items-center justify-center rounded-[28px] border border-border/60 bg-card shadow-[0_16px_40px_rgba(15,23,42,0.04)] xl:min-h-[560px] 2xl:min-h-0">
+            <aside className="group relative flex min-h-0 items-center justify-center rounded-[28px] border border-info/15 bg-background/72 shadow-none xl:min-h-[560px] 2xl:min-h-0">
               <button
                 type="button"
                 className="focus-ring relative h-full w-2.5 rounded-full transition-colors hover:bg-border/60"
@@ -993,8 +993,8 @@ export function RegressionTestTab({
               </button>
             </aside>
           ) : (
-            <aside className="flex min-h-0 flex-col overflow-hidden rounded-[28px] border border-border/60 bg-card shadow-[0_16px_40px_rgba(15,23,42,0.04)] xl:min-h-[560px] 2xl:min-h-0">
-              <div className="shrink-0 border-b border-border/60 bg-[radial-gradient(circle_at_15%_0%,hsl(var(--primary)/0.14),transparent_30%),linear-gradient(180deg,hsl(var(--muted)/0.38)_0%,hsl(var(--card)/0.94)_100%)] px-3 py-3">
+            <aside className="flex min-h-0 flex-col overflow-hidden rounded-[28px] border border-info/15 bg-background/72 shadow-none xl:min-h-[560px] 2xl:min-h-0">
+              <div className="shrink-0 border-b border-info/15 bg-info/[0.025] px-3 py-3">
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
@@ -1012,7 +1012,7 @@ export function RegressionTestTab({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-7 gap-1.5 rounded-lg border-border/60 bg-card/90 px-2 text-[11px]"
+                      className="h-7 gap-1.5 rounded-lg border-info/15 bg-background/70 px-2 text-[11px]"
                       onClick={() => setShowGenerationDialog(true)}
                     >
                       <Sparkles className="h-3.5 w-3.5" />
@@ -1030,7 +1030,7 @@ export function RegressionTestTab({
                   </div>
                 </div>
 
-                <div className="mt-3 rounded-2xl border border-border/60 bg-card/90 p-2.5 shadow-sm">
+                <div className="mt-3 rounded-2xl border border-info/15 bg-background/70 p-2.5 shadow-none">
                   <div className="mb-1.5 flex items-center justify-between gap-2">
                     <span className="text-[11px] font-medium text-muted-foreground">
                       数据集
@@ -1051,7 +1051,7 @@ export function RegressionTestTab({
                     onValueChange={setSelectedDatasetId}
                     disabled={isLoadingDatasets || !datasets.length}
                   >
-                    <SelectTrigger className="h-9 rounded-xl border-border/60 bg-card/95 text-[13px]">
+                    <SelectTrigger className="h-9 rounded-xl border-info/20 bg-info/[0.025] text-[13px]">
                       <SelectValue
                         placeholder={
                           isLoadingDatasets ? '加载中...' : '选择数据集'
@@ -1096,7 +1096,7 @@ export function RegressionTestTab({
                 <EmbeddedSection
                   title="运行当前 RAG"
                   description="当前数据集的标准问答会作为固定标尺，问题重新走 RAG 后再和标准答案、标准证据比较。"
-                  className="bg-[linear-gradient(180deg,hsl(var(--success)/0.08)_0%,hsl(var(--card)/0.94)_100%)]"
+                  className="bg-success/[0.04]"
                 >
                   <div className="space-y-2">
                     <EmbeddedToggleCard
@@ -1131,7 +1131,7 @@ export function RegressionTestTab({
                   badge={
                     retrievalOnly ? '检索-only' : `${metricKeys.length} 已选`
                   }
-                  className="bg-[linear-gradient(180deg,hsl(var(--muted)/0.34)_0%,hsl(var(--card)/0.94)_100%)]"
+                  className="bg-info/[0.025]"
                 >
                   <RegressionMetricPicker
                     metricKeys={metricKeys}
@@ -1147,9 +1147,9 @@ export function RegressionTestTab({
         {/* 左侧：测试用例管理 */}
         <div
           className={cn(
-            'flex flex-col bg-card rounded-2xl border border-border',
+            'flex flex-col bg-background/72 rounded-2xl border border-info/15',
             embedded
-              ? 'min-w-0 rounded-[28px] border-border/60 bg-card shadow-[0_16px_40px_rgba(15,23,42,0.04)] xl:min-h-[560px] 2xl:min-h-0'
+              ? 'min-w-0 rounded-[28px] border-info/15 bg-background/72 shadow-none xl:min-h-[560px] 2xl:min-h-0'
               : 'w-1/3'
           )}
         >
@@ -1174,14 +1174,14 @@ export function RegressionTestTab({
           {/* 运行历史列表 */}
           <div
             className={cn(
-              'shrink-0 bg-card border border-border rounded-2xl overflow-hidden',
-              embedded && 'rounded-[28px] border-border/60 bg-card'
+              'shrink-0 bg-background/72 border border-info/15 rounded-2xl overflow-hidden',
+              embedded && 'rounded-[28px] border-info/15 bg-background/72'
             )}
           >
             <div
               className={cn(
                 'p-3 border-b border-border flex items-center justify-between',
-                embedded && 'border-border/60 bg-muted/20'
+                embedded && 'border-info/15 bg-info/[0.025]'
               )}
             >
               <div>
@@ -1270,9 +1270,9 @@ export function RegressionTestTab({
           {/* 运行详情 */}
           <div
             className={cn(
-              'flex-1 bg-card border border-border rounded-2xl p-2.5 overflow-y-auto overscroll-contain custom-scrollbar',
+              'flex-1 bg-background/72 border border-info/15 rounded-2xl p-2.5 overflow-y-auto overscroll-contain custom-scrollbar',
               embedded &&
-                'min-h-[180px] rounded-[28px] border-border/60 bg-card'
+                'min-h-[180px] rounded-[28px] border-info/15 bg-background/72'
             )}
           >
             <div className="mb-3">
@@ -1330,7 +1330,7 @@ export function RegressionTestTab({
                   ) : null}
                 </div>
                 {hasExpectedMetadataSummary ? (
-                  <div className="mt-3 rounded-2xl border border-success/30 bg-[linear-gradient(180deg,hsl(var(--success)/0.10)_0%,hsl(var(--card)/0.96)_100%)] p-3">
+                  <div className="mt-3 rounded-2xl border border-success/25 bg-success/[0.04] p-3">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <div className="text-sm font-semibold text-foreground">
@@ -1365,7 +1365,7 @@ export function RegressionTestTab({
                   </div>
                 ) : null}
                 {shouldShowMultimodalSlicePanel ? (
-                  <div className="mt-3 rounded-2xl border border-border/60 bg-[linear-gradient(180deg,hsl(var(--muted)/0.34)_0%,hsl(var(--card)/0.96)_100%)] p-3">
+                  <div className="mt-3 rounded-2xl border border-info/15 bg-info/[0.025] p-3">
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <div className="text-sm font-semibold text-foreground">

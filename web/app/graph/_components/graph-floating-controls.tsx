@@ -85,7 +85,7 @@ export function GraphFloatingControls({
         type="button"
         variant="ghost"
         size="icon"
-        className="h-10 w-10 rounded-xl border border-border/60 bg-card text-muted-foreground shadow-none hover:bg-card hover:text-foreground"
+        className="h-10 w-10 rounded-xl border border-info/15 bg-background/88 text-muted-foreground shadow-none hover:bg-background hover:text-info"
         title={isCollapsed ? '展开工具栏' : '收起工具栏'}
         aria-label={isCollapsed ? '展开工具栏' : '收起工具栏'}
         aria-expanded={!isCollapsed}
@@ -105,7 +105,7 @@ export function GraphFloatingControls({
           isCollapsed ? 'w-0 translate-x-2 opacity-0 pointer-events-none' : 'w-[3.125rem] translate-x-0 opacity-100'
         )}
       >
-        <div className="flex w-[3.125rem] flex-col gap-1 rounded-xl border border-border/60 bg-card p-1.5 shadow-none">
+        <div className="flex w-[3.125rem] flex-col gap-1 rounded-xl border border-info/15 bg-background/88 p-1.5 shadow-none">
           <Button variant="ghost" size="icon" onClick={onZoomIn} className="rounded-lg" title="放大" aria-label="放大">
             <ZoomIn className="w-5 h-5" />
           </Button>
@@ -120,7 +120,7 @@ export function GraphFloatingControls({
             variant="ghost"
             size="icon"
             onClick={onToggleViewMode}
-            className={cn('rounded-lg', viewMode === '3d' && 'bg-primary/10 text-primary ring-1 ring-primary/20')}
+            className={cn('rounded-lg', viewMode === '3d' && 'bg-info/[0.08] text-info ring-1 ring-info/20')}
             title={viewMode === '3d' ? '切换至 2D 平面' : '切换至 3D 空间'}
             aria-label={viewMode === '3d' ? '切换至 2D 平面' : '切换至 3D 空间'}
           >
@@ -131,7 +131,7 @@ export function GraphFloatingControls({
             variant="ghost"
             size="icon"
             onClick={onStartExplainMode}
-            className={cn('rounded-lg', isExplainMode && 'bg-primary/10 text-primary ring-1 ring-primary/20')}
+            className={cn('rounded-lg', isExplainMode && 'bg-info/[0.08] text-info ring-1 ring-info/20')}
             title="推理演示 (Explain)"
             aria-label="推理演示"
           >
@@ -154,7 +154,7 @@ export function GraphFloatingControls({
             variant="ghost"
             size="icon"
             onClick={onTogglePathMode}
-            className={cn('rounded-lg', isPathMode && 'bg-primary/10 text-primary ring-1 ring-primary/20')}
+            className={cn('rounded-lg', isPathMode && 'bg-info/[0.08] text-info ring-1 ring-info/20')}
             title="路径发现 (Shortest Path)"
             aria-label="路径发现"
           >
@@ -165,7 +165,7 @@ export function GraphFloatingControls({
             variant="ghost"
             size="icon"
             onClick={onToggleShowEdgeLabels}
-            className={cn('rounded-lg', showEdgeLabels && 'bg-primary/10 text-primary ring-1 ring-primary/20')}
+            className={cn('rounded-lg', showEdgeLabels && 'bg-info/[0.08] text-info ring-1 ring-info/20')}
             title="显示/隐藏连线标签"
             aria-label="显示或隐藏连线标签"
           >
@@ -177,7 +177,7 @@ export function GraphFloatingControls({
             variant="ghost"
             size="icon"
             onClick={onToggleFullscreen}
-            className={cn('rounded-lg', isFullscreen && 'bg-primary/10 text-primary ring-1 ring-primary/20')}
+            className={cn('rounded-lg', isFullscreen && 'bg-info/[0.08] text-info ring-1 ring-info/20')}
             title={isFullscreen ? '退出全屏' : '全屏模式'}
             aria-label={isFullscreen ? '退出全屏模式' : '进入全屏模式'}
           >
@@ -190,7 +190,7 @@ export function GraphFloatingControls({
               <Button
                 variant="ghost"
                 size="icon"
-                className={cn('rounded-lg', exportOpen && 'bg-primary/10 text-primary ring-1 ring-primary/20')}
+                className={cn('rounded-lg', exportOpen && 'bg-info/[0.08] text-info ring-1 ring-info/20')}
                 title="导出 PNG/SVG"
                 aria-label="导出图谱"
               >

@@ -747,7 +747,7 @@ export default function QuarantineQueuePage() {
       <div
         data-quarantine-page-root="true"
         className={cn(
-          'relative h-full overflow-hidden',
+          'relative flex h-full min-h-0 flex-col overflow-hidden',
           QUARANTINE_BACKGROUND_CLASS
         )}
       >
@@ -948,10 +948,12 @@ export default function QuarantineQueuePage() {
             </div>
           </div>
         }
-          bodyClassName="relative z-10 w-full max-w-none px-2 pb-5 md:px-3 xl:px-4"
+          bodyClassName="relative z-10 flex w-full max-w-none flex-1 flex-col px-2 pb-4 md:px-3 xl:px-4"
+          bodyContainerClassName="flex min-h-0 max-w-none flex-1 flex-col"
         >
-        <div className="space-y-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
           <QuarantineAuditCanvas
+            className="min-h-[25.5rem] flex-1"
             autoRefresh={autoRefresh}
             dateFrom={dateFrom}
             dateTo={dateTo}
@@ -1003,7 +1005,7 @@ export default function QuarantineQueuePage() {
             onSourceChange={setSelectedSource}
           />
 
-          <div className="grid gap-4 xl:grid-cols-[1fr_1fr_1fr_1.05fr] xl:items-stretch">
+          <div className="grid shrink-0 gap-4 xl:grid-cols-[1fr_1fr_1fr_1.05fr] xl:items-stretch">
             <DonutSummaryCard
               title="规则命中分布 TOP5"
               items={reasonTopItems}

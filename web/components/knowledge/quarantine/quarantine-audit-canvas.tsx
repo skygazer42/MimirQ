@@ -38,6 +38,7 @@ type DatasetOption = {
 }
 
 type QuarantineAuditCanvasProps = {
+  className?: string
   autoRefresh: boolean
   dateFrom: string
   dateTo: string
@@ -87,6 +88,7 @@ function triggerRefresh(action: () => Promise<boolean> | void) {
 }
 
 export function QuarantineAuditCanvas({
+  className,
   autoRefresh,
   dateFrom,
   dateTo,
@@ -130,7 +132,10 @@ export function QuarantineAuditCanvas({
   return (
     <div
       aria-label="审计主画布"
-      className="overflow-hidden rounded-[1.2rem] border border-border/60 bg-background/94 shadow-[0_20px_48px_-40px_rgba(15,23,42,0.18)] backdrop-blur-sm"
+      className={cn(
+        'flex min-h-0 flex-col overflow-hidden rounded-[1.2rem] border border-border/60 bg-background/94 shadow-[0_20px_48px_-40px_rgba(15,23,42,0.18)] backdrop-blur-sm',
+        className
+      )}
     >
       <div className="border-b border-border/60 px-4.5 py-3.5">
         <div className="flex flex-col gap-2.5 xl:flex-row xl:items-start xl:justify-between">
@@ -376,8 +381,8 @@ export function QuarantineAuditCanvas({
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full table-fixed text-left border-collapse">
+      <div className="min-h-[10.5rem] flex-1 overflow-x-auto">
+        <table className="h-full w-full table-fixed border-collapse text-left">
           <colgroup>
             <col className="w-10" />
             <col className="w-[22%]" />

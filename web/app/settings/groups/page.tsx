@@ -67,13 +67,13 @@ const PAGE_SIZE_OPTIONS = [10, 20, 50] as const
 type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number]
 const GROUP_PAGE_LIST_PARAMS = { limit: 500 } as const
 const OUTLINE_BUTTON =
-  'h-9 rounded-full border-border/60 bg-card/88 px-3.5 text-[12px] font-semibold text-foreground shadow-[0_6px_16px_hsl(var(--primary)/0.04)] hover:bg-muted/45'
+  'h-9 rounded-full border-border/60 bg-background/70 px-3.5 text-[12px] font-medium text-foreground shadow-none hover:border-info/25 hover:bg-info/[0.07] hover:text-info'
 const PRIMARY_BUTTON =
-  'h-9 rounded-full bg-info px-3.5 text-[12px] font-semibold text-primary-foreground shadow-[0_8px_20px_hsl(var(--info)/0.24)] hover:bg-info/90'
+  'h-9 rounded-full bg-info px-3.5 text-[12px] font-semibold text-info-foreground shadow-none hover:bg-info/90'
 const INPUT_CLASS =
-  'h-10 rounded-xl border-border/60 bg-background/76 text-[13px] shadow-none placeholder:text-muted-foreground/60 focus-visible:border-primary/35 focus-visible:ring-2 focus-visible:ring-primary/10'
+  'h-10 rounded-xl border-border/70 bg-muted/60 text-[13px] shadow-none placeholder:text-muted-foreground/60 focus-visible:border-info/35 focus-visible:ring-2 focus-visible:ring-info/10'
 const CARD_CLASS =
-  'rounded-[1.35rem] border border-border/60 bg-card/90 shadow-[0_14px_36px_hsl(var(--primary)/0.05)]'
+  'rounded-xl border border-info/20 bg-background/72 shadow-none'
 const ICON_BUTTON =
   'size-8 rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive'
 
@@ -92,10 +92,17 @@ type SummaryItem = {
 }
 
 const SUMMARY_TONE_CLASS: Record<SummaryTone, string> = {
-  primary: 'border-primary/20 bg-primary/10 text-primary',
-  info: 'border-info/20 bg-info/10 text-info',
-  success: 'border-success/20 bg-success/10 text-success',
+  primary: 'border-info/25 bg-info/10 text-info',
+  info: 'border-info/25 bg-info/10 text-info',
+  success: 'border-success/25 bg-success/10 text-success',
   muted: 'border-border/70 bg-muted/45 text-muted-foreground',
+}
+
+const SUMMARY_VALUE_TONE_CLASS: Record<SummaryTone, string> = {
+  primary: 'text-info',
+  info: 'text-info',
+  success: 'text-success',
+  muted: 'text-foreground/80',
 }
 
 function getCreateStatusLabel(creating: boolean, createOpen: boolean): string {
@@ -116,7 +123,7 @@ function getListStatusValueClassName(
 ): string {
   if (loading) return 'text-warning'
   if (groupCount > 0) return 'text-success'
-  return 'text-foreground'
+  return 'text-muted-foreground'
 }
 
 export default function SettingsGroupsPage() {
@@ -133,7 +140,7 @@ export default function SettingsGroupsPage() {
 function GroupSummaryStrip({ items }: Readonly<{ items: SummaryItem[] }>) {
   return (
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-      {items.map((item, index) => {
+      {items.map((item) => {
         const Icon = item.icon
         const isTextValue = typeof item.value === 'string'
         return (
@@ -141,11 +148,9 @@ function GroupSummaryStrip({ items }: Readonly<{ items: SummaryItem[] }>) {
             key={item.label}
             className={cn(
               CARD_CLASS,
-              'group relative min-h-[92px] overflow-hidden px-4 py-3.5',
-              index === 0 && 'ring-1 ring-primary/5'
+              'group min-h-[78px] px-4 py-3'
             )}
           >
-            <div className="pointer-events-none absolute inset-x-4 top-0 h-px bg-[linear-gradient(90deg,transparent,hsl(var(--primary)/0.25),transparent)]" />
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
@@ -157,6 +162,7 @@ function GroupSummaryStrip({ items }: Readonly<{ items: SummaryItem[] }>) {
                     isTextValue
                       ? 'inline-flex rounded-full border border-border/60 bg-muted/45 px-2.5 py-1 text-[12px] font-semibold tracking-[0em]'
                       : 'text-[24px] font-semibold',
+                    SUMMARY_VALUE_TONE_CLASS[item.tone],
                     item.valueClassName
                   )}
                 >
@@ -165,30 +171,12 @@ function GroupSummaryStrip({ items }: Readonly<{ items: SummaryItem[] }>) {
               </div>
               <div
                 className={cn(
-                  'flex size-9 shrink-0 items-center justify-center rounded-2xl border shadow-inner',
+                  'flex size-9 shrink-0 items-center justify-center rounded-xl border',
                   SUMMARY_TONE_CLASS[item.tone]
                 )}
               >
                 <Icon className="size-4" />
               </div>
-            </div>
-            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted/50">
-              <div
-                className={cn(
-                  'h-full rounded-full transition-all',
-                  item.tone === 'success'
-                    ? 'bg-success/55'
-                    : item.tone === 'muted'
-                      ? 'bg-muted-foreground/35'
-                      : 'bg-primary/55'
-                )}
-                style={{
-                  width:
-                    typeof item.value === 'number'
-                      ? `${Math.max(10, Math.min(100, item.value || 0))}%`
-                      : '42%',
-                }}
-              />
             </div>
           </div>
         )
@@ -338,7 +326,7 @@ function SettingsGroupsPageContent() {
         size="full"
         compact
         topClassName="pb-2.5"
-        bodyClassName="pt-1.5"
+        bodyClassName="bg-info/[0.035] !pb-3 pt-1.5"
         bodyContainerClassName="flex min-h-full flex-col"
         top={<GroupSummaryStrip items={summaryItems} />}
         actions={
@@ -450,10 +438,10 @@ function SettingsGroupsPageContent() {
             'flex min-h-[calc(100dvh-22rem)] flex-1 flex-col overflow-hidden p-4'
           )}
         >
-          <div className="mb-4 flex flex-col gap-3.5 rounded-2xl border border-border/55 bg-muted/18 p-3">
+          <div className="mb-4 flex flex-col gap-3.5 rounded-xl border border-info/15 bg-info/[0.025] p-3">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div className="flex size-9 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-inner">
+                <div className="flex size-9 items-center justify-center rounded-xl border border-info/20 bg-info/10 text-info">
                   <Users className="size-4" />
                 </div>
                 <div>
@@ -475,7 +463,7 @@ function SettingsGroupsPageContent() {
                   }
                 }}
               >
-                <SelectTrigger className="h-9 w-[122px] rounded-xl border-border/60 bg-card/88 text-[12px] font-semibold shadow-none">
+                <SelectTrigger className="h-9 w-[122px] rounded-xl border-border/60 bg-background/70 text-[12px] font-medium shadow-none">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent align="end">
@@ -499,18 +487,18 @@ function SettingsGroupsPageContent() {
                 />
               </div>
               <div className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground">
-                <span className="rounded-full border border-border/60 bg-card/70 px-2.5 py-1">
+                <span className="rounded-full border border-border/60 bg-background/65 px-2.5 py-1">
                   可见 {visibleGroups.length} / {filtered.length}
                 </span>
-                <span className="rounded-full border border-border/60 bg-card/70 px-2.5 py-1">
+                <span className="rounded-full border border-border/60 bg-background/65 px-2.5 py-1">
                   每页 {pageSize}
                 </span>
               </div>
             </div>
           </div>
 
-          <div className="flex min-h-[440px] flex-1 flex-col overflow-hidden rounded-2xl border border-border/55 bg-background/42">
-            <div className="grid grid-cols-12 bg-muted/38 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+          <div className="flex min-h-[440px] flex-1 flex-col overflow-hidden rounded-xl border border-info/15 bg-background/45">
+            <div className="grid grid-cols-12 bg-info/[0.035] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
               <div className="col-span-5 flex items-center gap-2">
                 <span>名称</span>
               </div>
@@ -533,7 +521,7 @@ function SettingsGroupsPageContent() {
                   return (
                     <div
                       key={gid}
-                      className="grid grid-cols-12 items-center gap-3 border-t border-border/45 px-4 py-2.5 text-[12px] transition-colors hover:bg-primary/5"
+                      className="grid grid-cols-12 items-center gap-3 border-t border-border/45 px-4 py-2.5 text-[12px] transition-colors hover:bg-info/[0.04]"
                     >
                       <button
                         type="button"
@@ -544,7 +532,7 @@ function SettingsGroupsPageContent() {
                           )
                         }
                       >
-                        <span className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary/8 text-[12px] font-semibold text-primary">
+                        <span className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-info/20 bg-info/10 text-[12px] font-semibold text-info">
                           {initial}
                         </span>
                         <div className="min-w-0">
@@ -624,10 +612,10 @@ function SettingsGroupsPageContent() {
               ) : null}
               {!hasVisibleGroups && !loading ? (
                 <div className="flex min-h-[360px] flex-1 flex-col items-center justify-center border-t border-border/45 px-6 text-center">
-                  <div className="relative mb-4 flex size-[72px] items-center justify-center rounded-[22px] border border-primary/15 bg-primary/10 text-primary shadow-inner">
+                  <div className="relative mb-4 flex size-[72px] items-center justify-center rounded-[20px] border border-info/20 bg-info/10 text-info">
                     <UsersRound className="size-9" />
-                    <span className="absolute -right-1 top-2 size-2 rounded-full bg-primary/35" />
-                    <span className="absolute -left-2 top-8 size-1.5 rounded-full bg-primary/25" />
+                    <span className="absolute -right-1 top-2 size-2 rounded-full bg-info/35" />
+                    <span className="absolute -left-2 top-8 size-1.5 rounded-full bg-info/25" />
                   </div>
                   <h3 className="text-lg font-semibold tracking-[-0.03em] text-foreground">
                     暂无组
@@ -647,26 +635,26 @@ function SettingsGroupsPageContent() {
               ) : null}
             </div>
 
-            <div className="flex items-center justify-between border-t border-border/45 bg-muted/18 px-4 py-3 text-[13px] text-muted-foreground">
+            <div className="flex items-center justify-between border-t border-border/45 bg-info/[0.025] px-4 py-3 text-[13px] text-muted-foreground">
               <span>共 {filtered.length} 条</span>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="icon"
-                  className="size-8 rounded-xl border-border/60 bg-card/88"
+                  className="size-8 rounded-xl border-border/60 bg-background/70 hover:border-info/25 hover:bg-info/[0.07] hover:text-info"
                   disabled={page <= 1}
                   onClick={() => setPage((current) => Math.max(1, current - 1))}
                   aria-label="上一页"
                 >
                   <ChevronLeft className="size-4" />
                 </Button>
-                <span className="flex h-8 min-w-8 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 px-3 text-[13px] font-semibold text-primary">
+                <span className="flex h-8 min-w-8 items-center justify-center rounded-xl bg-info px-3 py-1.5 text-[13px] font-semibold text-info-foreground">
                   {page}
                 </span>
                 <Button
                   variant="outline"
                   size="icon"
-                  className="size-8 rounded-xl border-border/60 bg-card/88"
+                  className="size-8 rounded-xl border-border/60 bg-background/70 hover:border-info/25 hover:bg-info/[0.07] hover:text-info"
                   disabled={page >= pageCount}
                   onClick={() =>
                     setPage((current) => Math.min(pageCount, current + 1))

@@ -50,7 +50,7 @@ ParsingWorkbench: {
     sidebar: {
       uploadCurrentFolderTitle: '拖拽文件到当前目录，或点击上传',
       documentList: '文档列表',
-      datasetScope: 'Dataset Scope',
+      datasetScope: '数据范围',
       datasetAll: '全部来源',
       datasetScoped: '数据集绑定',
       allDatasetScope: '全部数据集与解析工作台',

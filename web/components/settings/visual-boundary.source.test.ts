@@ -13,7 +13,7 @@ describe('settings domain visual boundary contract', () => {
   it('keeps governance operations on the shared flat baseline', () => {
     const src = readLocal('governance-ops-panel.tsx')
 
-    expectSourceToContain(src, '<Panel padding="md" className="border-foreground/10 bg-background shadow-none">')
+    expectSourceToContain(src, '<Panel padding="md" className="border-info/15 bg-info/[0.025] shadow-none">')
     expectSourceNotToContain(src, 'rounded-full border border-primary/20 bg-primary/10')
   })
 
@@ -25,11 +25,13 @@ describe('settings domain visual boundary contract', () => {
     expectSourceNotToContain(dangerZone, 'shadow-[0_8px_24px_hsl(var(--foreground)/0.04)]')
     expectSourceNotToContain(dangerZone, 'shadow-[0_8px_24px_hsl(var(--destructive)/0.035)]')
     expectSourceToContain(saml,
-      "const SAML_PANEL_CLASS = 'overflow-hidden rounded-xl border border-foreground/10 bg-background shadow-none'"
+      "const SAML_PANEL_CLASS = 'overflow-hidden rounded-xl border border-info/20 bg-background/70 shadow-none'"
     )
     expectSourceToContain(scim,
-      "const SCIM_PANEL_CLASS = 'overflow-hidden rounded-xl border border-foreground/10 bg-background shadow-none'"
+      "const SCIM_PANEL_CLASS = 'overflow-hidden rounded-xl border border-info/20 bg-background/70 shadow-none'"
     )
+    expectSourceToContain(saml, 'border border-info/20 bg-info/10 text-info')
+    expectSourceToContain(scim, 'border border-info/20 bg-info/10 text-info')
     expectSourceNotToContain(saml, 'rounded-[1.25rem]')
     expectSourceNotToContain(scim, 'rounded-[1.25rem]')
   })

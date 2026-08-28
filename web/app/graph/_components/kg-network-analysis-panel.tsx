@@ -157,8 +157,17 @@ export function KgNetworkAnalysisPanel({
   const dragStateRef = useRef<PanelDragState>(null)
 
   useEffect(() => {
-    if (globalThis.window.matchMedia('(max-width: 767px)').matches) {
-      setCollapsed(true)
+    const narrowViewport = globalThis.window.matchMedia('(max-width: 1279px)')
+    const collapseForNarrowViewport = () => {
+      if (narrowViewport.matches) {
+        setCollapsed(true)
+      }
+    }
+
+    collapseForNarrowViewport()
+    narrowViewport.addEventListener('change', collapseForNarrowViewport)
+    return () => {
+      narrowViewport.removeEventListener('change', collapseForNarrowViewport)
     }
   }, [])
 
@@ -277,13 +286,13 @@ export function KgNetworkAnalysisPanel({
         <Button
           type="button"
           variant="outline"
-          className="h-10 gap-2 rounded-full border-border/60 bg-card px-3 text-xs font-semibold shadow-none"
+          className="h-10 gap-2 rounded-full border-info/15 bg-background/88 px-3 text-xs font-semibold shadow-none"
           aria-label="展开图谱统计栏"
           aria-expanded="false"
           aria-controls="kg-network-analysis-panel"
           onClick={() => setCollapsed(false)}
         >
-          <PanelRightOpen className="h-4 w-4 text-primary" />
+          <PanelRightOpen className="h-4 w-4 text-info" />
           <span>统计</span>
           <span className="rounded-full bg-muted/60 px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
             {nodes.length}/{links.length}
@@ -300,10 +309,10 @@ export function KgNetworkAnalysisPanel({
       className="absolute right-[6.75rem] top-24 z-20 w-[286px] space-y-3 will-change-transform"
       style={panelDragStyle}
     >
-      <section className="rounded-2xl border border-border/60 bg-card p-4 shadow-none">
+      <section className="rounded-xl border border-info/15 bg-background/88 p-4 shadow-none">
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-foreground text-info-foreground shadow-sm">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-info/20 bg-info/[0.08] text-info shadow-none">
               <BarChart3 className="h-4 w-4" />
             </div>
             <div className="min-w-0">
@@ -318,7 +327,7 @@ export function KgNetworkAnalysisPanel({
           <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
-              className="flex h-8 w-8 cursor-grab items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary active:cursor-grabbing"
+              className="flex h-8 w-8 cursor-grab items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-info/[0.08] hover:text-info active:cursor-grabbing"
               aria-label="拖动图谱统计栏"
               title="拖动图谱统计栏"
               aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home"
@@ -345,9 +354,9 @@ export function KgNetworkAnalysisPanel({
           </div>
         </div>
 
-        <div className="rounded-xl border border-dashed border-border/70 bg-background/72 p-3">
+        <div className="rounded-lg border border-dashed border-info/20 bg-info/[0.025] p-3">
           <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-foreground">
-            <MousePointer2 className="h-3.5 w-3.5 text-primary" />
+            <MousePointer2 className="h-3.5 w-3.5 text-info" />
             选中单元
           </div>
           {selectedNode ? (
@@ -363,14 +372,14 @@ export function KgNetworkAnalysisPanel({
               </div>
             </div>
           ) : (
-            <div className="flex min-h-[92px] items-center justify-center rounded-lg bg-muted/30 px-3 text-center text-xs leading-5 text-muted-foreground">
+            <div className="flex min-h-[92px] items-center justify-center rounded-md bg-info/[0.035] px-3 text-center text-xs leading-5 text-muted-foreground">
               点击任意图谱节点后，在这里查看节点类型、关系和后续分析入口。
             </div>
           )}
         </div>
       </section>
 
-      <section className="rounded-2xl border border-border/60 bg-card p-4 shadow-none">
+      <section className="rounded-xl border border-info/15 bg-background/88 p-4 shadow-none">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-muted-foreground" />
@@ -378,7 +387,7 @@ export function KgNetworkAnalysisPanel({
               筛选器控制
             </div>
           </div>
-          <div className="rounded-full bg-muted/55 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+          <div className="rounded-full bg-info/[0.06] px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
             {nodes.length} / {links.length}
           </div>
         </div>
@@ -412,7 +421,7 @@ export function KgNetworkAnalysisPanel({
           <Button
             type="button"
             variant="outline"
-            className="h-9 w-full gap-2 rounded-xl border-border/60 bg-card text-xs font-semibold shadow-none"
+            className="h-9 w-full gap-2 rounded-lg border-info/15 bg-background/88 text-xs font-semibold shadow-none"
             disabled={edges.length === 0}
           >
             <Network className="h-4 w-4" />

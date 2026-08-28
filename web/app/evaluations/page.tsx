@@ -106,6 +106,7 @@ const CONVERSATION_EVIDENCE_FILTERS: Array<{
 const TAB_META: Array<{
   id: TabType
   label: string
+  badge: string
   title: string
   description: string
   icon: typeof MessageSquare
@@ -113,6 +114,7 @@ const TAB_META: Array<{
   {
     id: 'conversation',
     label: '对话评测',
+    badge: '会话评测',
     title: '实时会话评分',
     description: '基于已有对话和引用上下文，快速拉起一轮 RAGAS 评测。',
     icon: MessageSquare,
@@ -120,6 +122,7 @@ const TAB_META: Array<{
   {
     id: 'regression',
     label: 'Golden 评测集',
+    badge: '回归基线',
     title: 'Golden 回归评测',
     description: '用数据集级标准问答和标准证据持续评估当前 RAG pipeline。',
     icon: TestTube2,
@@ -127,6 +130,7 @@ const TAB_META: Array<{
   {
     id: 'queryset_health',
     label: '检索集健康度',
+    badge: '健康监测',
     title: '检索集健康度',
     description: '查看趋势、差异与退化标记，定位检索集层面的异常波动。',
     icon: BarChart3,
@@ -370,7 +374,7 @@ function EvaluationInlineStat({
   value: ReactNode
 }>) {
   return (
-    <div className="inline-flex items-center gap-2 rounded-full border border-info/20 bg-card px-3 py-1.5 shadow-none">
+    <div className="inline-flex items-center gap-2 rounded-full border border-info/15 bg-background/70 px-3 py-1.5 shadow-none">
       <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-info/80">
         {label}
       </span>
@@ -425,7 +429,7 @@ function EvaluationStageStat({
   helper: string
 }>) {
   return (
-    <div className="rounded-2xl border border-info/20 bg-card px-3.5 py-3 shadow-none">
+    <div className="rounded-2xl border border-info/15 bg-background/70 px-3.5 py-3 shadow-none">
       <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
         {label}
       </div>
@@ -488,15 +492,15 @@ function EvaluationResultsStage({
   return (
     <section
       className={cn(
-        'overflow-hidden rounded-[28px] border border-info/20 bg-card shadow-none',
+        'overflow-hidden rounded-[28px] border border-info/15 bg-background/78 shadow-none',
         'flex flex-col',
         fillAvailableHeight && 'min-h-0 flex-1',
         className
       )}
     >
-      <div className="border-b border-info/20 bg-muted/20 px-4 py-4">
+      <div className="border-b border-info/15 bg-info/[0.025] px-4 py-4">
         <div className="flex flex-wrap items-center gap-2.5">
-          <span className="inline-flex h-7 items-center rounded-full border border-info/30 bg-card/85 px-3 text-[11px] font-semibold text-info shadow-sm">
+          <span className="inline-flex h-7 items-center rounded-full border border-info/20 bg-background/75 px-3 text-[11px] font-semibold text-info shadow-none">
             运行详情
           </span>
           {statusBadge}
@@ -571,7 +575,7 @@ function EvaluationResultsStage({
           {!displayMetrics.length ? (
             <div
               className={cn(
-                'rounded-2xl border border-dashed border-info/30 bg-muted/30 p-4',
+                'rounded-2xl border border-dashed border-info/20 bg-info/[0.025] p-4',
                 fillAvailableHeight && 'flex flex-1 flex-col justify-between'
               )}
             >
@@ -582,7 +586,7 @@ function EvaluationResultsStage({
                 {emptyRunState.description}
               </p>
               <div className="mt-4 grid gap-2.5 sm:grid-cols-3">
-                <div className="rounded-xl border border-info/20 bg-card px-3 py-2.5 shadow-none">
+                <div className="rounded-xl border border-info/15 bg-background/70 px-3 py-2.5 shadow-none">
                   <div className="text-[11px] font-bold text-info">
                     1 选择会话来源
                   </div>
@@ -590,7 +594,7 @@ function EvaluationResultsStage({
                     从已有会话或查询中选择
                   </div>
                 </div>
-                <div className="rounded-xl border border-info/20 bg-card px-3 py-2.5 shadow-none">
+                <div className="rounded-xl border border-info/15 bg-background/70 px-3 py-2.5 shadow-none">
                   <div className="text-[11px] font-bold text-info">
                     2 配置评测参数
                   </div>
@@ -598,7 +602,7 @@ function EvaluationResultsStage({
                     选择指标与过滤规则
                   </div>
                 </div>
-                <div className="rounded-xl border border-info/20 bg-card px-3 py-2.5 shadow-none">
+                <div className="rounded-xl border border-info/15 bg-background/70 px-3 py-2.5 shadow-none">
                   <div className="text-[11px] font-bold text-info">
                     3 开始评测
                   </div>
@@ -631,7 +635,7 @@ function EvaluationResultsStage({
       </div>
 
       {displayMetrics.length ? (
-        <div className="border-t border-info/20 bg-muted/20 px-4 py-4">
+        <div className="border-t border-info/15 bg-info/[0.025] px-4 py-4">
           <div className="mb-3 flex flex-wrap items-center gap-2.5">
             <div className="inline-flex items-center gap-2 text-[14px] font-bold text-foreground">
               <BarChart3 className="h-4 w-4 text-info" aria-hidden="true" />
@@ -645,7 +649,7 @@ function EvaluationResultsStage({
             {displayMetrics.map((metric) => (
               <div
                 key={metric.key}
-                className="rounded-2xl border border-info/20 bg-card px-3.5 py-3 shadow-none"
+                className="rounded-2xl border border-info/15 bg-background/70 px-3.5 py-3 shadow-none"
               >
                 <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-info">
                   {metricLabel(metric.key)}
@@ -676,23 +680,23 @@ function EvaluationHeroEmptyState({
   return (
     <div
       className={cn(
-        'flex rounded-xl border border-dashed border-border bg-muted/40',
+        'flex rounded-xl border border-dashed border-info/15 bg-info/[0.025]',
         compact
           ? 'min-h-[148px] flex-row items-center justify-start gap-3 px-3 py-2.5 text-left'
           : 'min-h-[188px] flex-col items-center justify-center px-6 py-8 text-center'
       )}
     >
       {compact ? (
-        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-card text-primary shadow-none">
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-info/20 bg-background/75 text-info shadow-none">
           <BarChart3 className="h-4 w-4" aria-hidden="true" />
         </span>
       ) : (
         <div className="relative mb-3 h-16 w-20">
-          <div className="absolute left-5 top-1 h-14 w-12 rounded-xl border border-primary/20 bg-card" />
-          <div className="absolute left-8 top-0 h-4 w-6 rounded-md bg-primary/15 ring-1 ring-primary/30" />
-          <div className="absolute left-9 top-9 h-3 w-2 rounded-sm bg-primary/30" />
-          <div className="absolute left-12 top-7 h-5 w-2 rounded-sm bg-primary" />
-          <div className="absolute left-[60px] top-5 h-7 w-2 rounded-sm bg-primary" />
+          <div className="absolute left-5 top-1 h-14 w-12 rounded-xl border border-info/20 bg-background/75" />
+          <div className="absolute left-8 top-0 h-4 w-6 rounded-md bg-info/15 ring-1 ring-info/30" />
+          <div className="absolute left-9 top-9 h-3 w-2 rounded-sm bg-info/30" />
+          <div className="absolute left-12 top-7 h-5 w-2 rounded-sm bg-info" />
+          <div className="absolute left-[60px] top-5 h-7 w-2 rounded-sm bg-info" />
         </div>
       )}
       <div className={cn(compact && 'min-w-0')}>
@@ -896,7 +900,7 @@ function CollapsedWorkspaceRail({
   const ExpandIcon = side === 'left' ? ChevronRight : ChevronLeft
 
   return (
-    <aside className="hidden xl:flex min-h-0 flex-col items-center rounded-2xl border border-info/20 bg-card px-2 py-3 shadow-none">
+    <aside className="hidden xl:flex min-h-0 flex-col items-center rounded-2xl border border-info/15 bg-background/78 px-2 py-3 shadow-none">
       <Button
         type="button"
         variant="ghost"
@@ -917,7 +921,7 @@ function CollapsedWorkspaceRail({
         {badgeItems.map((item) => (
           <div
             key={item.label}
-            className="rounded-xl border border-info/20 bg-card px-1.5 py-2 text-center shadow-none"
+            className="rounded-xl border border-info/15 bg-background/70 px-1.5 py-2 text-center shadow-none"
           >
             <div className="text-[11px] font-bold leading-none tabular-nums text-foreground">
               {item.value}
@@ -970,7 +974,7 @@ function RunRecordCard({
       type="button"
       onClick={onClick}
       className={cn(
-        'w-full rounded-xl border bg-card p-3 text-left shadow-none transition-all duration-200 hover:border-info/30 focus-ring',
+        'w-full rounded-xl border bg-background/70 p-3 text-left shadow-none transition-all duration-200 hover:border-info/30 focus-ring',
         active ? 'border-info/40 bg-info/5 ring-2 ring-info/20' : 'border-info/20'
       )}
     >
@@ -1029,8 +1033,8 @@ function ScoreDetailsCard({
   rows: ReturnType<typeof scoreRowsFor>
 }>) {
   return (
-    <section className="rounded-2xl border border-info/20 bg-card shadow-none">
-      <div className="flex items-center gap-2.5 border-b border-info/20 bg-muted/20 px-4 py-3">
+    <section className="rounded-2xl border border-info/15 bg-background/78 shadow-none">
+      <div className="flex items-center gap-2.5 border-b border-info/15 bg-info/[0.025] px-4 py-3">
         <div className="text-[14px] font-bold text-foreground">评分明细</div>
         <Info className="h-4 w-4 text-info" aria-hidden="true" />
       </div>
@@ -1604,7 +1608,7 @@ function EvaluationsPageContent() {
       : runStatusCounts.failed
 
   return (
-    <div className="relative flex flex-1 flex-col overflow-hidden bg-background">
+    <div className="relative flex flex-1 flex-col overflow-hidden bg-info/[0.035]">
       <AnalysisPageShell
         title="评测中心"
         description="把实时会话评测、回归测试与检索集健康度放到同一个工作台里，减少来回切页。"
@@ -1617,7 +1621,7 @@ function EvaluationsPageContent() {
           <EvaluationHeroCard
             title={activeTabMeta.title}
             description={activeTabMeta.description}
-            label={activeTabMeta.label}
+            label={activeTabMeta.badge}
             icon={ActiveTabIcon}
             conversationsCount={conversations.length}
             runsCount={runs.length}
@@ -1630,13 +1634,13 @@ function EvaluationsPageContent() {
         }
         topClassName="pt-4"
         bodyGutter="none"
-        bodyClassName="!pt-0 !pb-0"
-        bodyContainerClassName="max-w-none"
+        bodyClassName="flex flex-col !pt-0 !pb-0"
+        bodyContainerClassName="flex min-h-0 max-w-none flex-1 flex-col"
       >
         <div className="flex min-h-0 flex-1 flex-col gap-3 px-6 pb-4">
-          <section className="overflow-hidden rounded-2xl border border-info/20 bg-card shadow-none">
-            <div className="flex items-center gap-3 bg-muted/20 px-4 py-3">
-              <nav className="flex items-center gap-1 rounded-xl bg-card p-1 shadow-none">
+          <section className="overflow-hidden rounded-2xl border border-info/15 bg-background/72 shadow-none">
+            <div className="flex items-center gap-3 bg-info/[0.025] px-4 py-3">
+              <nav className="flex items-center gap-1 rounded-xl bg-background/78 p-1 shadow-none">
                 {TAB_META.map((tab) => (
                   <button
                     key={tab.id}
@@ -1658,7 +1662,7 @@ function EvaluationsPageContent() {
           </section>
 
           {activeTab === 'conversation' ? (
-            <div className={cn('grid min-h-[610px] gap-3', conversationDesktopGridClass)}>
+            <div className={cn('grid min-h-[610px] gap-3 xl:flex-1', conversationDesktopGridClass)}>
               {setupRailCollapsed ? (
                 <CollapsedWorkspaceRail
                   title="参数栏"
@@ -1679,8 +1683,8 @@ function EvaluationsPageContent() {
                   side="left"
                 />
               ) : (
-                <aside className="flex min-h-0 max-h-[calc(100vh-246px)] flex-col rounded-2xl border border-info/20 bg-card shadow-none">
-                  <div className="flex items-center justify-between border-b border-info/20 bg-muted/20 px-4 py-3">
+                <aside className="flex min-h-[620px] flex-col rounded-2xl border border-info/15 bg-background/78 shadow-none xl:h-full xl:min-h-0">
+                  <div className="flex items-center justify-between border-b border-info/15 bg-info/[0.025] px-4 py-3">
                     <div className="inline-flex items-center gap-2.5 text-[14px] font-bold text-foreground">
                       <SlidersHorizontal
                         className="h-4.5 w-4.5 text-info"
@@ -1727,7 +1731,7 @@ function EvaluationsPageContent() {
                         value={scopedConversationId}
                         onValueChange={handleConversationChange}
                       >
-                        <SelectTrigger className="h-10 rounded-xl border-info/30 bg-card text-[13px] shadow-sm">
+                        <SelectTrigger className="h-10 rounded-xl border-info/25 bg-info/[0.025] text-[13px] shadow-none">
                           <SelectValue placeholder="请选择会话或查询" />
                         </SelectTrigger>
                         <SelectContent>
@@ -1799,8 +1803,8 @@ function EvaluationsPageContent() {
                               className={cn(
                                 'rounded-lg px-2 py-1.5 text-[11.5px] font-bold transition-all duration-200',
                                 active
-                                  ? 'bg-card text-info shadow-none ring-1 ring-info/20'
-                                  : 'text-muted-foreground hover:bg-card/70 hover:text-foreground'
+                                  ? 'bg-background/75 text-info shadow-none ring-1 ring-info/20'
+                                  : 'text-muted-foreground hover:bg-background/65 hover:text-foreground'
                               )}
                             >
                               {filter.label}
@@ -1853,7 +1857,7 @@ function EvaluationsPageContent() {
                         onMetricKeysChange={setMetricKeys}
                         scope="conversation"
                         className="space-y-1.5"
-                        itemClassName="rounded-lg border border-border bg-card px-2 py-1 shadow-sm"
+                        itemClassName="rounded-lg border border-info/15 bg-background/70 px-2 py-1 shadow-none"
                         labelClassName="text-[11px]"
                         hintClassName="text-[10px] leading-3"
                       />
@@ -1880,11 +1884,11 @@ function EvaluationsPageContent() {
                             max={200}
                             value={maxTurns}
                             onChange={(e) => setMaxTurns(Number(e.target.value))}
-                            className="h-9 rounded-lg border-border bg-card text-xs"
+                            className="h-9 rounded-lg border-info/15 bg-info/[0.025] text-xs"
                           />
                         </div>
 
-                        <label className="flex items-start gap-2.5 rounded-lg border border-border bg-card px-2.5 py-2 shadow-sm">
+                        <label className="flex items-start gap-2.5 rounded-lg border border-info/15 bg-background/70 px-2.5 py-2 shadow-none">
                           <Checkbox
                             checked={skipEmptyContexts}
                             onCheckedChange={(value) =>
@@ -1904,7 +1908,7 @@ function EvaluationsPageContent() {
                     </EvaluationConfigSection>
                   </div>
 
-                  <div className="shrink-0 border-t border-info/20 bg-muted/20 p-3">
+                  <div className="shrink-0 border-t border-info/15 bg-info/[0.025] p-3">
                     <div className="mb-2 flex flex-wrap items-center gap-2">
                       <EvaluationInlineStat
                         label="指标数"
@@ -1935,7 +1939,7 @@ function EvaluationsPageContent() {
                     </Button>
                     <Button
                       variant="outline"
-                      className="mt-2 h-8 w-full rounded-full border-info/30 bg-card text-[12px] font-semibold text-info shadow-none hover:bg-info/[0.08]"
+                      className="mt-2 h-8 w-full rounded-full border-info/25 bg-background/70 text-[12px] font-semibold text-info shadow-none hover:bg-info/[0.08]"
                       onClick={() => refreshEvaluationWorkspace()}
                     >
                       <RefreshCw
@@ -1950,7 +1954,7 @@ function EvaluationsPageContent() {
                 </aside>
               )}
 
-              <main className="flex min-h-0 min-w-0 flex-col gap-3">
+              <main className="flex min-h-[610px] min-w-0 flex-col gap-3 xl:min-h-0">
                 <EvaluationResultsStage
                   selectedRunTitle={selectedRunTitle}
                   statusBadge={statusBadge}
@@ -2003,7 +2007,7 @@ function EvaluationsPageContent() {
                   side="right"
                 />
               ) : (
-                <aside className="flex max-h-[calc(100vh-246px)] min-h-0 flex-col overflow-hidden rounded-2xl border border-info/20 bg-card p-3 shadow-none">
+                <aside className="flex min-h-[420px] flex-col overflow-hidden rounded-2xl border border-info/15 bg-background/78 p-3 shadow-none xl:h-full xl:min-h-0">
                   <div className="mb-2.5 flex shrink-0 items-center justify-between gap-3">
                     <button
                       type="button"
@@ -2098,11 +2102,11 @@ function EvaluationsPageContent() {
               )}
             </div>
           ) : activeTab === 'regression' ? (
-            <div className="flex h-[calc(100vh-255px)] min-h-[610px] flex-col overflow-hidden rounded-xl border border-border bg-card p-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="flex min-h-[610px] flex-1 flex-col overflow-hidden rounded-xl border border-info/15 bg-background/78 p-2.5 shadow-none">
               <RegressionTestTab embedded />
             </div>
           ) : (
-            <div className="rounded-xl border border-border bg-card p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="flex min-h-[610px] flex-1 flex-col rounded-xl border border-info/15 bg-background/78 p-3 shadow-none">
               <QuerysetHealthTab embedded />
             </div>
           )}

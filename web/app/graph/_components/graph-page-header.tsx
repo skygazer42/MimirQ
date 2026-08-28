@@ -147,7 +147,7 @@ export function GraphPageHeader({
     liveControls = (
       <>
         <div className="hidden shrink-0 items-center gap-2 2xl:flex">
-          <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/76 px-2.5 py-1.5 shadow-none">
+          <div className="flex items-center gap-2 rounded-full border border-info/15 bg-background/76 px-2.5 py-1.5 shadow-none">
             <div className="flex items-center gap-1.5 text-xs font-medium text-foreground/88">
               <LinkIcon className={cn('h-3.5 w-3.5', includeEntityLinks ? 'text-info' : 'text-muted-foreground')} />
               <span>实体</span>
@@ -159,16 +159,16 @@ export function GraphPageHeader({
               className="scale-[0.82] data-[state=checked]:bg-info"
             />
           </div>
-          <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/76 px-2.5 py-1.5 shadow-none">
+          <div className="flex items-center gap-2 rounded-full border border-info/15 bg-background/76 px-2.5 py-1.5 shadow-none">
             <div className="flex items-center gap-1.5 text-xs font-medium text-foreground/88">
-              <Network className={cn('h-3.5 w-3.5', includeRelationLinks ? 'text-success' : 'text-muted-foreground')} />
+              <Network className={cn('h-3.5 w-3.5', includeRelationLinks ? 'text-info' : 'text-muted-foreground')} />
               <span>关系</span>
             </div>
             <Switch
               checked={includeRelationLinks}
               onCheckedChange={() => onToggleRelationLinks()}
               aria-label="切换关系连线"
-              className="scale-[0.82] data-[state=checked]:bg-success"
+              className="scale-[0.82] data-[state=checked]:bg-info"
             />
           </div>
         </div>
@@ -195,7 +195,7 @@ export function GraphPageHeader({
   }
 
   return (
-    <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex h-16 items-center gap-2 border-b border-border/60 bg-background px-3 shadow-none md:gap-3 md:px-4 lg:px-6">
+    <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex h-16 items-center gap-2 border-b border-info/15 bg-background/95 px-3 shadow-none md:gap-3 md:px-4 lg:px-6">
       <span className="pointer-events-none absolute -bottom-px left-4 h-px w-12 bg-info/70" aria-hidden="true" />
       <div className="pointer-events-auto flex shrink-0 items-center gap-2.5">
         <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-info/10 text-info shadow-none">
@@ -204,7 +204,7 @@ export function GraphPageHeader({
         <h1 className="shrink-0 whitespace-nowrap text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground">
           知识图谱
         </h1>
-        <span className="hidden shrink-0 rounded-md border border-primary/20 bg-primary/5 px-2 py-0.5 text-[10px] font-medium text-primary sm:inline-flex">
+        <span className="hidden shrink-0 rounded-md border border-info/20 bg-info/[0.06] px-2 py-0.5 text-[10px] font-medium text-info sm:inline-flex">
           {viewMode === '3d' ? '3D 图谱' : '2D 图谱'}
         </span>
       </div>
@@ -259,7 +259,7 @@ export function GraphPageHeader({
             <Button
               variant="outline"
               size="sm"
-              className="size-9 shrink-0 gap-2 border-border/60 bg-background/78 px-0 text-foreground/88 shadow-none hover:bg-background hover:text-foreground active:bg-background sm:h-9 sm:w-auto sm:px-3"
+              className="size-9 shrink-0 gap-2 border-info/15 bg-background/78 px-0 text-foreground/88 shadow-none hover:bg-info/[0.06] hover:text-info active:bg-info/[0.08] sm:h-9 sm:w-auto sm:px-3"
             >
               <MoreHorizontal className="h-4 w-4" />
               <span className="hidden sm:inline">图谱工具</span>

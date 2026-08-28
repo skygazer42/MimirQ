@@ -45,7 +45,6 @@ import {
   KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS,
 } from '@/components/ui/knowledge-ops-hero'
 import {
-  PipelineRail,
   WorkbenchPanelDialog,
   WorkbenchScaffold,
 } from '@/components/workbench'
@@ -349,7 +348,7 @@ function ParsingMetricGrid({
   items: Array<{ label: string; value: string | number }>
 }>) {
   return (
-    <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-border/55 bg-card/80">
+    <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-border/55 bg-muted/15">
       {items.map((item) => (
         <div key={item.label} className="border-b border-r border-border/50 px-3 py-2 last:border-r-0">
           <div className="text-[11px] text-muted-foreground">{item.label}</div>
@@ -612,7 +611,7 @@ function ParsingInspectorPanel({
   )
 
   return (
-    <aside className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto overscroll-contain rounded-[24px] border border-border/70 bg-card/96 p-4 shadow-[0_24px_60px_-46px_rgba(15,23,42,0.42)] backdrop-blur-sm">
+    <aside className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto overscroll-contain rounded-[24px] border border-foreground/10 bg-background/90 p-4 shadow-none">
       {readyGovernanceCount > 0 ? (
         <ParsingInspectorCard title="批量提交" icon={ShieldCheck}>
           <div className="space-y-3">
@@ -645,7 +644,7 @@ function ParsingInspectorPanel({
           <details
             open
             data-testid="parsing-selected-file-summary"
-            className="group rounded-[18px] border border-border/70 bg-card/96 shadow-[0_18px_42px_-34px_rgba(15,23,42,0.36)]"
+            className="group rounded-[18px] border border-foreground/10 bg-background/75 shadow-none"
           >
             <summary className="flex cursor-pointer list-none items-start justify-between gap-3 px-4 py-4 [&::-webkit-details-marker]:hidden">
               <div className="min-w-0 flex-1">
@@ -934,7 +933,7 @@ function ResizableParsingInspectorRail({
         aria-label={inspectorCollapsed ? '展开解析信息侧栏' : '收起解析信息侧栏'}
         title={inspectorCollapsed ? '展开解析信息侧栏' : '收起解析信息侧栏'}
         className={cn(
-          'absolute top-3 z-30 size-8 rounded-xl border border-border/60 bg-card/95 text-muted-foreground shadow-[0_14px_28px_-22px_rgba(15,23,42,0.50)] backdrop-blur-sm transition-[left,opacity,background-color,color,box-shadow] duration-200 hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-info/35',
+          'absolute top-3 z-30 size-8 rounded-xl border border-foreground/10 bg-background text-muted-foreground shadow-sm transition-[left,opacity,background-color,color,box-shadow] duration-200 hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-info/35',
           'opacity-0 hover:opacity-100 focus-visible:opacity-100',
           inspectorCollapsed ? 'left-0' : 'left-[-0.875rem]'
         )}
@@ -1259,7 +1258,7 @@ export function ParsingWorkbenchShell({
   ])
 
   return (
-    <AppFrame mainClassName="bg-[radial-gradient(circle_at_82%_0%,hsl(var(--info)/0.12),transparent_30%),radial-gradient(circle_at_18%_6%,hsl(var(--primary)/0.06),transparent_24%),linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--muted)/0.18)_48%,hsl(var(--background))_100%)]">
+    <AppFrame mainClassName="bg-background">
       <WorkbenchScaffold
         title={t('title')}
         description={t('description')}
@@ -1324,7 +1323,6 @@ export function ParsingWorkbenchShell({
         }
         size="full"
         bodyClassName="pb-5"
-        pipelineRail={<PipelineRail />}
         mainPanel={
           <div
             data-testid="parsing-workbench-grid"
@@ -1410,13 +1408,13 @@ export function ParsingWorkbenchShell({
             <ParsingMainPanel
               data-testid="parsing-main-panel"
               className={cn(
-                'relative overflow-hidden rounded-[24px] border bg-card/96 shadow-[0_24px_64px_-48px_rgba(15,23,42,0.42)] backdrop-blur-sm',
+                'relative overflow-hidden rounded-[24px] border bg-background shadow-none',
                 activeFile || activeLibraryFile
-                  ? 'border-border/70'
-                  : 'border-dashed border-info/30'
+                  ? 'border-foreground/10'
+                  : 'border-dashed border-info/20'
               )}
             >
-              <div className="flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden bg-card dark:bg-background">
+              <div className="flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden bg-background">
                 {activeFile || activeLibraryFile ? (
                   <>
                     {!activeFile && activeLibraryFile ? (
@@ -1498,7 +1496,7 @@ export function ParsingWorkbenchShell({
                 ) : (
                   <button
                     type="button"
-                    className="relative flex flex-1 items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_50%_38%,hsl(var(--info)/0.10),transparent_24%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.05)_48%,hsl(var(--background)))]"
+                    className="relative flex flex-1 items-center justify-center overflow-hidden bg-background"
                     onClick={() => requestUploadToFolder(currentFolderId)}
                     onDragOver={(event) =>
                       handleFolderDragOver(event, currentFolderId)
@@ -1508,11 +1506,11 @@ export function ParsingWorkbenchShell({
                   >
                     <div
                       aria-hidden="true"
-                      className="absolute inset-0 bg-[linear-gradient(hsl(var(--info)/0.055)_1px,transparent_1px),linear-gradient(90deg,hsl(var(--info)/0.055)_1px,transparent_1px)] bg-[size:42px_42px]"
+                      className="absolute inset-0 bg-[linear-gradient(hsl(var(--foreground)/0.035)_1px,transparent_1px),linear-gradient(90deg,hsl(var(--foreground)/0.035)_1px,transparent_1px)] bg-[size:42px_42px]"
                     />
                     <div className="relative max-w-md px-8 text-center">
-                      <div className="mx-auto mb-6 flex size-28 items-center justify-center rounded-[30px] border border-info/20 bg-card shadow-[0_24px_58px_-40px_hsl(var(--info)/0.75)]">
-                        <div className="relative flex h-20 w-16 items-center justify-center rounded-[18px] bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.55))] shadow-[0_14px_30px_-20px_rgba(15,23,42,0.45)]">
+                      <div className="mx-auto mb-6 flex size-28 items-center justify-center rounded-[30px] border border-foreground/10 bg-background/80 shadow-none">
+                        <div className="relative flex h-20 w-16 items-center justify-center rounded-[18px] bg-muted/30 shadow-none">
                           <div className="absolute right-0 top-0 size-7 rounded-bl-2xl bg-info/15" />
                           <div className="space-y-2">
                             <div className="h-1 w-8 rounded-full bg-info" />

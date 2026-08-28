@@ -28,7 +28,6 @@ import {
   KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS,
 } from '@/components/ui/knowledge-ops-hero'
 import {
-  PipelineRail,
   WorkbenchPane,
   WorkbenchPanelDialog,
   WorkbenchScaffold,
@@ -102,21 +101,21 @@ function ChunkPreviewEmptyCanvas() {
       title: t('emptyState.exampleTitle'),
       description: t('emptyState.exampleDescription'),
       action: loadExample,
-      accent: 'primary',
+      accent: 'text-info',
     },
     {
       icon: ScanLine,
       title: t('emptyState.previewTitle'),
       description: t('emptyState.previewDescription'),
       action: null,
-      accent: 'info',
+      accent: 'text-info',
     },
     {
       icon: Cpu,
       title: t('emptyState.tipsTitle'),
       description: t('emptyState.tipsDescription'),
       action: null,
-      accent: 'amber',
+      accent: 'text-info/70',
     },
   ]
   const visualSteps: Array<{
@@ -127,17 +126,17 @@ function ChunkPreviewEmptyCanvas() {
     {
       icon: BookOpen,
       label: t('emptyState.visual.steps.parse'),
-      tone: 'border-primary/20 bg-primary/10 text-primary',
+      tone: 'text-info',
     },
     {
       icon: ScanLine,
       label: t('emptyState.visual.steps.chunk'),
-      tone: 'border-info/20 bg-info/10 text-info',
+      tone: 'text-info',
     },
     {
       icon: Layers,
       label: t('emptyState.visual.steps.review'),
-      tone: 'border-success/20 bg-success/10 text-success',
+      tone: 'text-info/70',
     },
   ]
 
@@ -145,39 +144,29 @@ function ChunkPreviewEmptyCanvas() {
     <main
       data-chunk-preview-empty-canvas="true"
       className={cn(
-        'relative flex h-full min-h-0 flex-1 items-start overflow-hidden transition-colors duration-500',
-        'bg-[radial-gradient(circle_at_18%_12%,hsl(var(--primary)/0.12),transparent_35%),radial-gradient(circle_at_84%_18%,hsl(var(--info)/0.12),transparent_30%),linear-gradient(135deg,hsl(var(--background)),hsl(var(--muted)/0.3))]',
-        isDragging && 'bg-primary/10'
+        'relative flex h-full min-h-0 flex-1 items-start overflow-y-auto overscroll-contain bg-info/[0.035] transition-colors duration-500',
+        isDragging && 'bg-info/[0.08]'
       )}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-10 top-10 h-px bg-[linear-gradient(90deg,transparent,hsl(var(--primary)/0.4),transparent)]"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[url('/grid.svg')] opacity-[0.045] [mask-image:radial-gradient(ellipse_at_center,black,transparent_80%)]"
-      />
-
       <div className="relative z-10 mx-auto flex w-full max-w-6xl flex-col px-6 py-6">
         <div
           data-chunk-empty-intake-panel
-          className="rounded-3xl border border-border/45 bg-background/72 p-4 shadow-[0_10px_30px_-24px_rgba(15,23,42,0.35)] backdrop-blur-sm"
+          className="border-b border-foreground/10 pb-5"
         >
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch lg:justify-between">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-stretch xl:justify-between">
             <div className="flex min-w-0 flex-1 flex-col justify-between gap-3">
-              <div className="inline-flex w-fit items-center gap-2 rounded-full border border-primary/20 bg-primary/8 px-3 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-primary antialiased">
-                <Layers className="size-3.5" strokeWidth={2.5} />
+              <div className="inline-flex w-fit items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-info">
+                <Layers className="size-3.5" strokeWidth={2.2} />
                 {t('emptyState.badge')}
               </div>
               <div>
-                <h2 className="max-w-2xl text-2xl font-black tracking-[-0.01em] text-foreground md:text-3xl antialiased">
+                <h2 className="max-w-2xl text-xl font-medium tracking-[-0.02em] text-foreground md:text-[22px]">
                   {t('emptyState.title')}
                 </h2>
-                <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-muted-foreground/78 antialiased">
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
                   {t('emptyState.description')}
                 </p>
               </div>
@@ -185,18 +174,18 @@ function ChunkPreviewEmptyCanvas() {
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-8 w-fit rounded-full border-border/70 bg-background/70 px-3 text-[11px] font-bold shadow-none antialiased hover:bg-background"
+                className="h-8 w-fit rounded-lg border-foreground/10 bg-background/70 px-3 text-[11px] font-medium shadow-none hover:bg-background"
                 onClick={() => setHelpOpen(true)}
               >
-                <HelpCircle className="mr-1.5 size-3.5 text-primary" strokeWidth={2.5} />
+                <HelpCircle className="mr-1.5 size-3.5 text-info" strokeWidth={2.2} />
                 {t('emptyState.help')}
               </Button>
             </div>
 
             <div
               className={cn(
-                'relative w-full overflow-hidden rounded-2xl border border-dashed border-primary/25 bg-muted/10 p-1 transition-all duration-300 lg:w-[24rem]',
-                isDragging ? 'border-primary bg-primary/6' : 'hover:border-primary/40 hover:bg-muted/16'
+                'relative w-full overflow-hidden rounded-xl border border-dashed border-info/30 bg-background/60 transition-colors duration-200 xl:w-[24rem]',
+                isDragging ? 'border-info bg-info/[0.06]' : 'hover:border-info/50 hover:bg-background/80'
               )}
             >
               <input
@@ -214,18 +203,16 @@ function ChunkPreviewEmptyCanvas() {
               <label
                 htmlFor="chunk-empty-file-input"
                 className={cn(
-                  'group flex min-h-[9rem] cursor-pointer items-center gap-4 rounded-[1rem] px-4 py-4 text-left focus-ring transition-all',
-                  isDragging ? 'bg-primary/6' : 'bg-background/50 hover:bg-background/70'
+                  'group flex min-h-[9rem] cursor-pointer items-center gap-4 px-4 py-4 text-left focus-ring',
+                  isDragging && 'bg-info/[0.04]'
                 )}
               >
-                <span className="grid size-12 shrink-0 place-items-center rounded-xl border border-primary/18 bg-primary/8 text-primary">
-                  <FileUp className="size-5" strokeWidth={2.5} />
-                </span>
+                <FileUp className="size-5 shrink-0 text-info" strokeWidth={2.2} />
                 <span className="min-w-0">
-                  <span className="block text-sm font-black tracking-[-0.01em] text-foreground antialiased">
+                  <span className="block text-sm font-semibold tracking-[-0.01em] text-foreground">
                     {isDragging ? t('emptyState.draggingTitle') : t('emptyState.idleTitle')}
                   </span>
-                  <span className="mt-1 block text-xs font-semibold leading-5 text-muted-foreground/70 antialiased">
+                  <span className="mt-1 block text-xs leading-5 text-muted-foreground">
                     {t('emptyState.uploadHint')}
                   </span>
                 </span>
@@ -234,37 +221,23 @@ function ChunkPreviewEmptyCanvas() {
           </div>
         </div>
 
-        <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,0.82fr)_minmax(24rem,1fr)]">
-          <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-1">
+        <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,0.82fr)_minmax(24rem,1fr)]">
+          <div className="divide-y divide-foreground/10 border-y border-foreground/10">
             {processCards.map((item) => {
               const Icon = item.icon
               const content = (
-                <div className="group/card relative h-full space-y-3 rounded-2xl border border-border/35 bg-background/45 p-4 transition-all hover:bg-background/65 antialiased">
-                  <div
-                    className={cn(
-                      'flex size-9 items-center justify-center rounded-xl border transition-all duration-300 group-hover/card:scale-105 shadow-none',
-                      item.accent === 'primary' && 'border-primary/20 bg-primary/10 text-primary',
-                      item.accent === 'info' && 'border-info/20 bg-info/10 text-info',
-                      item.accent === 'amber' &&
-                        'border-warning/20 bg-warning/10 text-warning'
-                    )}
-                  >
-                    <Icon className="size-4.5" strokeWidth={2.5} />
-                  </div>
-                  <div>
-                    <div className="text-xs font-black uppercase tracking-[0.12em] text-foreground">
+                <div className="relative flex items-start gap-3 py-3 pr-6">
+                  <Icon className={cn('mt-0.5 size-4 shrink-0', item.accent)} strokeWidth={2.2} />
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-foreground">
                       {item.title}
                     </div>
-                    <div className="mt-1 text-[11px] font-bold leading-5 text-muted-foreground/75">
+                    <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
                       {item.description}
                     </div>
                   </div>
                   {item.action && (
-                    <div className="absolute bottom-4 right-4 opacity-0 transition-opacity group-hover/card:opacity-100">
-                      <div className="grid size-5 place-items-center rounded-full bg-primary/10 text-primary">
-                        <Check className="size-3" strokeWidth={3} />
-                      </div>
-                    </div>
+                    <Check className="absolute right-0 top-3.5 size-3.5 text-info" strokeWidth={2.4} />
                   )}
                 </div>
               )
@@ -274,12 +247,12 @@ function ChunkPreviewEmptyCanvas() {
                   key={item.title}
                   type="button"
                   onClick={item.action}
-                  className="h-full text-left focus-ring"
+                  className="block w-full text-left focus-ring"
                 >
                   {content}
                 </button>
               ) : (
-                <div key={item.title} className="h-full">
+                <div key={item.title}>
                   {content}
                 </div>
               )
@@ -288,39 +261,27 @@ function ChunkPreviewEmptyCanvas() {
 
           <section
             data-chunk-empty-visual-map
-            className="relative min-h-[18rem] overflow-hidden rounded-3xl border border-border/35 bg-background/50 p-4 shadow-[0_16px_44px_-34px_rgba(15,23,42,0.45)] antialiased"
+            className="relative border-t border-foreground/10 pt-5 xl:border-l xl:border-t-0 xl:pl-5 xl:pt-0"
           >
-            <div
-              aria-hidden
-              className="absolute -right-16 -top-20 size-56 rounded-full bg-info/12 blur-3xl"
-            />
-            <div
-              aria-hidden
-              className="absolute -bottom-20 left-1/4 size-48 rounded-full bg-primary/10 blur-3xl"
-            />
-
-            <div className="relative z-10 flex h-full flex-col gap-4">
+            <div className="flex h-full flex-col gap-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h3 className="text-sm font-black tracking-[-0.01em] text-foreground">
+                  <h3 className="text-sm font-semibold tracking-[-0.01em] text-foreground">
                     {t('emptyState.visual.title')}
                   </h3>
-                  <p className="mt-1 max-w-md text-[11px] font-semibold leading-5 text-muted-foreground/72">
+                  <p className="mt-1 max-w-md text-[11px] leading-5 text-muted-foreground">
                     {t('emptyState.visual.description')}
                   </p>
                 </div>
-                <div className="hidden rounded-full border border-border/45 bg-background/60 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-muted-foreground/65 sm:block">
-                  Preview
-                </div>
               </div>
 
-              <div className="grid flex-1 gap-4 md:grid-cols-[0.9fr_1.1fr] md:items-stretch">
-                <div className="relative overflow-hidden rounded-2xl border border-border/35 bg-background/58 p-4">
+              <div className="grid flex-1 gap-4 xl:grid-cols-[0.9fr_1.1fr] xl:items-stretch">
+                <div className="relative xl:border-r xl:border-foreground/10 xl:pr-4">
                   <div className="mb-4 flex items-center justify-between">
-                    <span className="text-[10px] font-black uppercase tracking-[0.14em] text-muted-foreground/65">
+                    <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">
                       Source
                     </span>
-                    <span className="rounded-full bg-primary/8 px-2 py-0.5 text-[9px] font-black text-primary">
+                    <span className="text-[10px] font-medium text-info">
                       TXT / PDF
                     </span>
                   </div>
@@ -330,32 +291,24 @@ function ChunkPreviewEmptyCanvas() {
                     <div className="h-2.5 w-5/6 rounded-full bg-muted-foreground/16" />
                     <div className="h-2.5 w-2/3 rounded-full bg-muted-foreground/14" />
                   </div>
-                  <div className="mt-6 rounded-xl border border-dashed border-primary/22 bg-primary/6 p-3">
-                    <div className="h-2 w-2/5 rounded-full bg-primary/24" />
-                    <div className="mt-2 h-2 w-11/12 rounded-full bg-primary/16" />
+                  <div className="mt-6 rounded-lg border border-dashed border-info/25 bg-info/[0.04] p-3">
+                    <div className="h-2 w-2/5 rounded-full bg-info/24" />
+                    <div className="mt-2 h-2 w-11/12 rounded-full bg-info/16" />
                   </div>
                 </div>
 
-                <div className="relative rounded-2xl border border-border/35 bg-background/48 p-4">
-                  <div className="absolute left-5 top-1/2 hidden h-px w-[calc(100%-2.5rem)] -translate-y-1/2 bg-[linear-gradient(90deg,hsl(var(--primary)/0.35),hsl(var(--info)/0.35),hsl(142_70%_45%/0.35))] md:block" />
-                  <div className="relative grid gap-3">
+                <div className="relative xl:pl-1">
+                  <div>
                     {visualSteps.map((step, index) => {
                       const StepIcon = step.icon
                       return (
                         <div
                           key={step.label}
-                          className="relative flex items-center gap-3 rounded-2xl border border-border/40 bg-background/72 p-3 shadow-[0_8px_24px_-22px_rgba(15,23,42,0.45)]"
+                          className="relative flex items-center gap-3 border-b border-foreground/10 py-3 last:border-b-0"
                         >
-                          <div
-                            className={cn(
-                              'grid size-9 shrink-0 place-items-center rounded-xl border',
-                              step.tone
-                            )}
-                          >
-                            <StepIcon className="size-4" strokeWidth={2.5} />
-                          </div>
+                          <StepIcon className={cn('size-4 shrink-0', step.tone)} strokeWidth={2.2} />
                           <div className="min-w-0 flex-1">
-                            <div className="text-xs font-black tracking-[-0.01em] text-foreground">
+                            <div className="text-xs font-semibold tracking-[-0.01em] text-foreground">
                               {step.label}
                             </div>
                             <div className="mt-1 flex gap-1.5">
@@ -363,7 +316,7 @@ function ChunkPreviewEmptyCanvas() {
                               <span className="h-1.5 w-8 rounded-full bg-muted-foreground/12" />
                             </div>
                           </div>
-                          <span className="rounded-full bg-muted/60 px-2 py-0.5 text-[10px] font-black text-muted-foreground/70">
+                          <span className="text-[10px] font-medium tabular-nums text-muted-foreground/80">
                             0{index + 1}
                           </span>
                         </div>
@@ -373,24 +326,24 @@ function ChunkPreviewEmptyCanvas() {
                 </div>
               </div>
 
-              <div className="grid gap-2 sm:grid-cols-2">
-                <div className="rounded-2xl border border-border/30 bg-background/45 px-3 py-2">
-                  <div className="text-[10px] font-black uppercase tracking-[0.14em] text-muted-foreground/60">
+              <div className="grid gap-4 border-t border-foreground/10 pt-3 sm:grid-cols-2">
+                <div className="px-1">
+                  <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">
                     {t('emptyState.visual.metrics.chunks')}
                   </div>
                   <div className="mt-1 flex items-end gap-2">
-                    <span className="text-xl font-black text-foreground">12</span>
-                    <span className="pb-1 text-[10px] font-bold text-muted-foreground/62">
+                    <span className="text-xl font-semibold text-foreground">12</span>
+                    <span className="pb-1 text-[10px] text-muted-foreground/80">
                       preview
                     </span>
                   </div>
                 </div>
-                <div className="rounded-2xl border border-border/30 bg-background/45 px-3 py-2">
-                  <div className="text-[10px] font-black uppercase tracking-[0.14em] text-muted-foreground/60">
+                <div className="border-l border-foreground/10 pl-4">
+                  <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">
                     {t('emptyState.visual.metrics.coverage')}
                   </div>
                   <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
-                    <div className="h-full w-3/4 rounded-full bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))]" />
+                    <div className="h-full w-3/4 rounded-full bg-info" />
                   </div>
                 </div>
               </div>
@@ -425,8 +378,8 @@ export function Workbench() {
         iconColor="text-primary"
         header={<ChunkPreviewWorkbenchHeader />}
         size="full"
-        pipelineRail={<PipelineRail />}
         toolbar={toolbar}
+        paneGroupClassName="gap-5 xl:gap-6"
         leftPanel={
           <WorkbenchPane bodyClassName="p-0">
             <Sidebar variant="pane" />

@@ -36,6 +36,10 @@ export const PAGE_TITLE_ICON_NAMES = [
 
 export type PageTitleIconName = (typeof PAGE_TITLE_ICON_NAMES)[number]
 
+const PAGE_TITLE_ICON_SOURCES: Partial<Record<PageTitleIconName, string>> = {
+  "chunk-preview": "/page-title-icons/chunk-preview.svg",
+}
+
 type PageTitleIconProps = {
   name: PageTitleIconName
   compact?: boolean
@@ -49,7 +53,7 @@ export function PageTitleIcon({
 }: Readonly<PageTitleIconProps>) {
   return (
     <Image
-      src={`/page-title-icons/${name}.png`}
+      src={PAGE_TITLE_ICON_SOURCES[name] ?? `/page-title-icons/${name}.png`}
       alt=""
       aria-hidden="true"
       data-theme-illustration="page-title"

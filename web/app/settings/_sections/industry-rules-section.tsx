@@ -119,13 +119,13 @@ export function IndustryRulesSection() {
 
   return (
     <section>
-      <div className={cn(systemWorkbenchTokens.panel, 'space-y-3.5 p-3.5')}>
-        <div className="rounded-lg border border-primary/20 bg-[linear-gradient(135deg,hsl(var(--primary)/0.10),hsl(var(--background)/0.90),hsl(var(--accent)/0.08))] p-3">
+      <div className={cn(systemWorkbenchTokens.panel, 'space-y-3.5 border-info/15 bg-info/[0.025] p-3.5')}>
+        <div className="rounded-lg border border-info/20 bg-info/[0.04] p-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <div className={cn(settingsTextTokens.panelTitle, 'flex items-center gap-1.5')}>
-                  <WandSparkles className="h-4 w-4 text-primary" />
+                  <WandSparkles className="h-4 w-4 text-info" />
                   查询改写规则
                 </div>
                 <div className={settingsTextTokens.sectionBadge}>
@@ -193,8 +193,8 @@ export function IndustryRulesSection() {
                     className={cn(
                       'rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors',
                       item.name === trimmedRulesetName
-                        ? 'border-primary/25 bg-primary/10 text-primary'
-                        : 'border-border/60 bg-background/70 text-muted-foreground hover:border-primary/25 hover:text-primary'
+                        ? 'border-info/25 bg-info/10 text-info'
+                        : 'border-info/15 bg-info/[0.025] text-muted-foreground hover:border-info/25 hover:text-info'
                     )}
                     onClick={() => setRulesetName(item.name)}
                   >
@@ -243,7 +243,7 @@ export function IndustryRulesSection() {
               </Button>
             </div>
             {previewResult ? (
-              <div className="rounded-lg border border-primary/20 bg-background/85 p-2.5">
+              <div className="rounded-lg border border-info/20 bg-info/[0.035] p-2.5">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground/78">
                     <CheckCircle2 className={cn('h-3.5 w-3.5', previewResult.changed ? 'text-success' : 'text-muted-foreground')} />
@@ -265,7 +265,7 @@ export function IndustryRulesSection() {
 
         <div className="grid gap-3 lg:grid-cols-3">
           <JsonField
-            icon={<BookOpenText className="h-3.5 w-3.5 text-primary" />}
+            icon={<BookOpenText className="h-3.5 w-3.5 text-info" />}
             label="术语词库"
             meta="设备别名、缩写、行业词同义扩展"
             value={glossaryJson}
@@ -317,7 +317,7 @@ export function IndustryRulesSection() {
             }
           />
           <JsonField
-            icon={<GitBranch className="h-3.5 w-3.5 text-success" />}
+            icon={<GitBranch className="h-3.5 w-3.5 text-info" />}
             label="意图规则"
             meta="把问题归到诊断、查询、对比等场景"
             value={intentsJson}
@@ -352,7 +352,7 @@ export function IndustryRulesSection() {
 
 function RuleMetric({ label, value }: Readonly<{ label: string; value: number | string }>) {
   return (
-    <div className="rounded-lg border border-primary/20 bg-card/75 px-2 py-1.5">
+    <div className="rounded-lg border border-info/20 bg-info/[0.035] px-2 py-1.5">
       <div className="text-[14px] font-semibold text-foreground">{value}</div>
       <div className="text-[10px] font-medium text-muted-foreground">{label}</div>
     </div>
@@ -369,7 +369,7 @@ function PreviewText({
   accent?: boolean
 }>) {
   return (
-    <div className={cn('rounded-md border px-2 py-1.5', accent ? 'border-primary/20 bg-primary/8' : 'border-border/60 bg-muted/20')}>
+    <div className={cn('rounded-md border px-2 py-1.5', accent ? 'border-info/20 bg-info/[0.07]' : 'border-info/15 bg-info/[0.025]')}>
       <div className="mb-0.5 text-[10px] font-semibold text-muted-foreground">{label}</div>
       <div className="break-words text-[11px] leading-4 text-foreground/82">{value}</div>
     </div>
@@ -404,7 +404,7 @@ function JsonField({
           <Label className={cn(settingsTextTokens.panelTitle, 'flex items-center gap-1.5')}>
             {icon}
             {label}
-            <span className="rounded-full border border-border/60 bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+            <span className="rounded-full border border-info/15 bg-info/[0.035] px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
               JSON
             </span>
           </Label>

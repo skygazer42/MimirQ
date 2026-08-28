@@ -38,13 +38,6 @@ CommonUi: {
         dbCatalog: '数据目录',
       },
     },
-    ingestionWorkflow: {
-      navLabel: '入库流程',
-      parsing: '解析',
-      governance: '治理',
-      chunk: '切块',
-      chat: '对话',
-    },
     searchInput: {
       placeholder: '搜索…',
       clearLabel: '清除搜索',

@@ -156,9 +156,9 @@ function rtbfModeButtonClass(isActive: boolean, tone: 'info' | 'destructive') {
     return 'border-destructive/35 bg-destructive/10 text-destructive shadow-[0_8px_22px_hsl(var(--destructive)/0.08)]'
   }
   if (tone === 'info') {
-    return 'border-border/60 bg-background/70 text-muted-foreground hover:border-info/25 hover:bg-info/5 hover:text-foreground/78'
+    return 'border-info/15 bg-info/[0.025] text-muted-foreground hover:border-info/25 hover:bg-info/[0.055] hover:text-foreground/78'
   }
-  return 'border-border/60 bg-background/70 text-muted-foreground hover:border-destructive/25 hover:bg-destructive/5 hover:text-foreground/78'
+  return 'border-info/15 bg-info/[0.025] text-muted-foreground hover:border-destructive/25 hover:bg-destructive/5 hover:text-foreground/78'
 }
 
 function buildRtbfResultView(value: unknown): RtbfResultView {
@@ -249,7 +249,7 @@ function RtbfResultSummary({ value }: Readonly<{ value: unknown }>) {
   return (
     <div
       data-testid="rtbf-result-summary"
-      className="mt-3 rounded-xl border border-border/60 bg-background/85 p-3 shadow-[0_8px_18px_hsl(var(--foreground)/0.025)]"
+      className="mt-3 rounded-xl border border-info/15 bg-info/[0.025] p-3 shadow-none"
     >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
@@ -267,7 +267,7 @@ function RtbfResultSummary({ value }: Readonly<{ value: unknown }>) {
           <div key={metric.label} className="rounded-lg border border-border/50 bg-muted/10 px-2.5 py-2">
             <div className="flex items-center justify-between gap-2">
               <div className="truncate text-[10px] font-medium text-muted-foreground/85">{metric.label}</div>
-              <div className="rounded-full bg-background px-1.5 py-0.5 text-[10px] font-medium text-foreground/78">{metric.value}</div>
+              <div className="rounded-full bg-info/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-foreground/78">{metric.value}</div>
             </div>
             {metric.hint ? <div className="mt-1.5 truncate text-[10px] leading-3 text-muted-foreground/72">{metric.hint}</div> : null}
           </div>
@@ -278,15 +278,15 @@ function RtbfResultSummary({ value }: Readonly<{ value: unknown }>) {
         data-testid="rtbf-raw-response"
         className="group mt-2.5 rounded-lg border border-border/60 bg-muted/15 px-2.5 py-2 text-[11px] text-muted-foreground"
       >
-        <summary className="cursor-pointer select-none font-medium text-muted-foreground transition-colors hover:text-primary">
+        <summary className="cursor-pointer select-none font-medium text-muted-foreground transition-colors hover:text-info">
           原始响应（排障时展开）
         </summary>
         {result.rawText ? (
-          <pre className="mt-2 max-h-44 overflow-auto rounded-md border border-border/50 bg-background/95 p-2 font-mono text-[11px] leading-4 text-muted-foreground whitespace-pre-wrap break-words">
+          <pre className="mt-2 max-h-44 overflow-auto rounded-md border border-info/15 bg-muted/35 p-2 font-mono text-[11px] leading-4 text-muted-foreground whitespace-pre-wrap break-words">
             {result.rawText}
           </pre>
         ) : (
-          <div className="mt-2 rounded-md border border-dashed border-border/60 bg-background/70 px-2 py-1.5 text-[11px] text-muted-foreground">
+          <div className="mt-2 rounded-md border border-dashed border-info/15 bg-info/[0.025] px-2 py-1.5 text-[11px] text-muted-foreground">
             暂无后端响应提交请求或查询状态后，这里会保留原始材料
           </div>
         )}
@@ -380,7 +380,7 @@ export function GovernanceSection({
 
   return (
     <section>
-      <div className={cn(systemWorkbenchTokens.panel, 'space-y-3 p-3.5')}>
+      <div className={cn(systemWorkbenchTokens.panel, 'space-y-3 border-info/15 bg-info/[0.025] p-3.5')}>
         <div className="flex items-start justify-between gap-3">
           <Alert className="flex-1 p-3 shadow-none [&>svg]:left-3 [&>svg]:top-3 [&>svg~*]:pl-6">
             <AlertCircle className="h-3.5 w-3.5" />
@@ -391,7 +391,7 @@ export function GovernanceSection({
               </AlertDescription>
             </div>
           </Alert>
-          <div className="inline-flex shrink-0 items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+          <div className="inline-flex shrink-0 items-center gap-1 rounded-full border border-info/20 bg-info/10 px-2 py-0.5 text-[11px] font-semibold text-info">
             保存后通常可立即生效
           </div>
         </div>
@@ -491,7 +491,7 @@ export function GovernanceSection({
             </button>
           </div>
 
-          <div className="mt-3 rounded-xl border border-border/60 bg-background/75 p-3">
+          <div className="mt-3 rounded-xl border border-info/15 bg-info/[0.025] p-3">
             <div className="grid gap-3 md:grid-cols-4">
               <div className="space-y-1.5 md:col-span-2">
                 <div className="flex items-center justify-between gap-2">
@@ -516,7 +516,7 @@ export function GovernanceSection({
                     setRtbfAccountId(value)
                   }}
                 >
-                  <SelectTrigger className="h-8 rounded-md border-border/70 bg-background text-[12px]">
+                  <SelectTrigger className="h-8 rounded-md border-info/15 bg-info/[0.025] text-[12px]">
                     <SelectValue placeholder="自动绑定当前账号" />
                   </SelectTrigger>
                   <SelectContent>
@@ -550,7 +550,7 @@ export function GovernanceSection({
                     setRtbfSubjectSource('manual')
                     setRtbfAccountId(event.target.value)
                   }}
-                  className="h-8 rounded-md border-border/70 bg-background text-[12px]"
+                  className="h-8 rounded-md border-info/15 bg-info/[0.025] text-[12px]"
                   placeholder="例如 user-123 / acct-1 / 用户 UUID"
                 />
                 <div className={settingsTextTokens.microText}>
@@ -562,7 +562,7 @@ export function GovernanceSection({
                 <Input
                   value={String(rtbfMaxDocs)}
                   onChange={(event) => setRtbfMaxDocs(Number.parseInt(event.target.value || '0', 10) || 100)}
-                  className="h-8 rounded-md border-border/70 bg-background text-[12px]"
+                  className="h-8 rounded-md border-info/15 bg-info/[0.025] text-[12px]"
                   inputMode="numeric"
                 />
                 <div className={settingsTextTokens.microText}>保护阈值，后端允许 1-1000</div>
@@ -572,7 +572,7 @@ export function GovernanceSection({
                 <Input
                   value={String(rtbfMaxRetries)}
                   onChange={(event) => setRtbfMaxRetries(Number.parseInt(event.target.value || '0', 10) || 1)}
-                  className="h-8 rounded-md border-border/70 bg-background text-[12px]"
+                  className="h-8 rounded-md border-info/15 bg-info/[0.025] text-[12px]"
                   inputMode="numeric"
                 />
                 <div className={settingsTextTokens.microText}>删除失败时重试，后端允许 0-10</div>
@@ -582,7 +582,7 @@ export function GovernanceSection({
                 <Input
                   value={rtbfTicketId}
                   onChange={(event) => setRtbfTicketId(event.target.value)}
-                  className="h-8 rounded-md border-border/70 bg-background font-mono text-[12px]"
+                  className="h-8 rounded-md border-info/15 bg-info/[0.025] font-mono text-[12px]"
                   placeholder="提交请求后自动回填；也可粘贴已有工单 ID"
                 />
               </div>

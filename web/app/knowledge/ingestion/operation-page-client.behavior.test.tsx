@@ -490,7 +490,11 @@ describe('knowledge ingestion operation page behavior', () => {
       await vi.waitFor(() => expect(getSubmitButton(container).disabled).toBe(false))
     })
 
-    expect(container.textContent).toContain('本次文件 · 1')
+    const stagingWorkspace = container.querySelector(
+      '[data-ingestion-file-staging-workspace="true"]'
+    )
+    expect(stagingWorkspace?.textContent).toContain('本次任务文件')
+    expect(stagingWorkspace?.textContent).toContain('1')
     expect(container.textContent).toContain('manual.pdf')
 
     act(() => root.unmount())

@@ -55,9 +55,9 @@ import { useTenantAccess } from '@/hooks/use-tenant-access'
 const FIELD_LABEL =
   'mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground'
 const AUDIT_SURFACE_CLASS =
-  'border border-foreground/10 bg-background text-foreground'
-const AUDIT_PANEL_CLASS = `rounded-xl ${AUDIT_SURFACE_CLASS} bg-background shadow-none`
-const AUDIT_TABLE_HEAD_CLASS = 'border-b border-foreground/10 bg-muted/18 text-left'
+  'border border-info/20 bg-background/72 text-foreground'
+const AUDIT_PANEL_CLASS = `rounded-xl ${AUDIT_SURFACE_CLASS} shadow-none`
+const AUDIT_TABLE_HEAD_CLASS = 'border-b border-border/60 bg-info/[0.035] text-left'
 const AUDIT_TABLE_HEADER_CLASS =
   'px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground'
 const AUDIT_MUTED_CHIP_CLASS =
@@ -212,8 +212,8 @@ const AUDIT_ACTION_TONE_DOT_CLASSES = {
   destructive: 'bg-destructive',
   warning: 'bg-warning',
   success: 'bg-success',
-  accent: 'bg-accent',
-  neutral: 'bg-primary/60',
+  accent: 'bg-info',
+  neutral: 'bg-info/55',
 } as const
 
 type AuditActionTone = keyof typeof AUDIT_ACTION_TONE_DOT_CLASSES
@@ -244,10 +244,17 @@ function formatAuditDateTime(value: string) {
 // --- Helper Components ---
 
 const HUD_TONE_CLASSES = {
-  slate: 'bg-muted/55 text-muted-foreground border-border/60',
-  green: 'bg-success/10 text-success border-success/20',
-  blue: 'bg-primary/10 text-primary border-primary/20',
-  purple: 'bg-accent/10 text-accent border-accent/20',
+  slate: 'border-border/70 bg-muted/55 text-muted-foreground',
+  green: 'border-success/25 bg-success/10 text-success',
+  blue: 'border-info/25 bg-info/10 text-info',
+  purple: 'border-info/25 bg-info/10 text-info',
+} as const
+
+const HUD_VALUE_TONE_CLASSES = {
+  slate: 'text-foreground/80',
+  green: 'text-success',
+  blue: 'text-info',
+  purple: 'text-info',
 } as const
 
 function HUDTile({
@@ -264,7 +271,7 @@ function HUDTile({
   const toneClasses = HUD_TONE_CLASSES[tone] || HUD_TONE_CLASSES.slate
 
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-foreground/10 bg-background px-4 py-3 shadow-none transition-colors hover:border-primary/18 hover:bg-muted/18">
+    <div className="flex items-center gap-3 rounded-xl border border-border/70 bg-background/72 px-4 py-3 shadow-none transition-colors hover:border-info/25 hover:bg-info/[0.04]">
       <div
         className={cn(
           'flex size-8 shrink-0 items-center justify-center rounded-xl border',
@@ -277,7 +284,12 @@ function HUDTile({
         <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
           {label}
         </p>
-        <h4 className="font-mono text-[18px] font-semibold leading-none tracking-[-0.04em] text-foreground">
+        <h4
+          className={cn(
+            'font-mono text-[18px] font-semibold leading-none tracking-[-0.04em]',
+            HUD_VALUE_TONE_CLASSES[tone]
+          )}
+        >
           {value}
         </h4>
       </div>
@@ -302,7 +314,7 @@ function PresetButton({
         'h-7 rounded-full px-3 text-[11px] font-semibold shadow-none transition-colors',
         active
           ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
-          : 'border-border/60 bg-background text-muted-foreground hover:border-primary/20 hover:bg-muted/18 hover:text-primary'
+          : 'border-border/60 bg-background/65 text-muted-foreground hover:border-info/25 hover:bg-info/[0.06] hover:text-info'
       )}
       onClick={onClick}
     >
@@ -350,7 +362,7 @@ function BoundFilterSelect({
         <SelectTrigger
           id={id}
           aria-label={label}
-          className="h-9 rounded-xl border-border/60 bg-background/72 text-left text-xs font-medium text-foreground shadow-none hover:border-primary/30 hover:bg-card focus-visible:ring-primary/20"
+          className="h-9 rounded-xl border-border/70 bg-muted/60 text-left text-xs font-medium text-foreground shadow-none hover:border-info/30 hover:bg-info/[0.04] focus-visible:ring-info/20"
         >
           <span className="truncate">{currentLabel}</span>
         </SelectTrigger>
@@ -659,13 +671,13 @@ function AuditLogsPageContent() {
         icon={ShieldCheck}
         iconColor="text-primary"
         size="full"
-        bodyClassName="bg-transparent"
+        bodyClassName="bg-info/[0.035] !pb-3"
         actions={
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
-              className="h-8 gap-2 rounded-lg border-border/70 bg-background px-3 text-[11px] font-semibold shadow-none hover:bg-muted/18 hover:text-primary"
+              className="h-8 gap-2 rounded-lg border-border/70 bg-background/72 px-3 text-[11px] font-medium shadow-none hover:border-info/30 hover:bg-info/[0.06] hover:text-info"
               onClick={() => {
                 logsQuery.refetch()
                 filterOptionsQuery.refetch()
@@ -679,7 +691,7 @@ function AuditLogsPageContent() {
             <Button
               variant="outline"
               size="icon"
-              className="size-8 rounded-lg border-border/70 bg-background shadow-none hover:bg-muted/18 hover:text-primary"
+              className="size-8 rounded-lg border-border/70 bg-background/72 shadow-none hover:border-info/30 hover:bg-info/[0.06] hover:text-info"
               aria-label="清空审计筛选"
               onClick={() => {
                 setFilters({ ...EMPTY_AUDIT_FILTERS })
@@ -691,7 +703,7 @@ function AuditLogsPageContent() {
           </div>
         }
       >
-        <div className="flex flex-col gap-4 pb-12">
+        <div className="flex flex-col gap-4 pb-0">
           {/* Top HUD Cards */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
             <HUDTile
@@ -747,7 +759,7 @@ function AuditLogsPageContent() {
               <Button
                 variant="ghost"
                 size="sm"
-              className="h-7 gap-1.5 self-start rounded-full border border-border/60 bg-background px-2.5 text-[11px] font-semibold text-muted-foreground hover:bg-muted/18 hover:text-primary lg:self-auto"
+              className="h-7 gap-1.5 self-start rounded-full border border-border/60 bg-background/65 px-2.5 text-[11px] font-medium text-muted-foreground hover:border-info/25 hover:bg-info/[0.06] hover:text-info lg:self-auto"
                 onClick={() => setShowAdvanced(!showAdvanced)}
               >
                 {showAdvanced ? t('filters.more') : '更多筛选'}
@@ -844,7 +856,7 @@ function AuditLogsPageContent() {
 
           {/* Table Canvas */}
           <div className={cn(AUDIT_PANEL_CLASS, 'overflow-hidden')}>
-            <div className="flex flex-col gap-3 border-b border-border/50 bg-card/82 px-5 py-3.5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-3 border-b border-border/60 bg-info/[0.025] px-5 py-3.5 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-foreground">
                   审计事件
@@ -983,7 +995,7 @@ function AuditLogsPageContent() {
                 </tbody>
               </table>
             </div>
-            <div className="flex flex-col gap-3 border-t border-border/50 bg-muted/30 px-6 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 border-t border-border/60 bg-info/[0.025] px-6 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2 text-[12px] font-medium text-muted-foreground">
                 <span>共 {total} 条</span>
                 <span className="text-muted-foreground/45">/</span>
@@ -992,7 +1004,7 @@ function AuditLogsPageContent() {
                   value={String(limit)}
                   onValueChange={handlePageSizeChange}
                 >
-                  <SelectTrigger className="h-8 w-[88px] rounded-full border-border/60 bg-card text-[12px] font-semibold text-foreground shadow-none">
+                  <SelectTrigger className="h-8 w-[88px] rounded-full border-border/60 bg-background/70 text-[12px] font-medium text-foreground shadow-none">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="rounded-xl border-border/60 bg-card">
@@ -1012,19 +1024,19 @@ function AuditLogsPageContent() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 gap-1 rounded-full border-border/60 bg-card px-3 text-[11px] font-semibold shadow-none hover:bg-primary/10 hover:text-primary"
+                  className="h-8 gap-1 rounded-full border-border/60 bg-background/70 px-3 text-[11px] font-medium shadow-none hover:border-info/25 hover:bg-info/[0.07] hover:text-info"
                   onClick={() => setSkip(Math.max(0, skip - limit))}
                   disabled={skip <= 0}
                 >
                   <ChevronLeft className="size-3.5" /> 上一页
                 </Button>
-                <span className="min-w-[88px] rounded-full border border-border/60 bg-card px-3 py-1.5 text-center text-[12px] font-semibold text-foreground">
+                <span className="min-w-[88px] rounded-full border border-border/60 bg-background/70 px-3 py-1.5 text-center text-[12px] font-medium text-foreground/85">
                   第 {displayPage} / {totalPages} 页
                 </span>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 gap-1 rounded-full border-border/60 bg-card px-3 text-[11px] font-semibold shadow-none hover:bg-primary/10 hover:text-primary"
+                  className="h-8 gap-1 rounded-full border-border/60 bg-background/70 px-3 text-[11px] font-medium shadow-none hover:border-info/25 hover:bg-info/[0.07] hover:text-info"
                   onClick={() =>
                     setSkip(
                       Math.min(
@@ -1042,7 +1054,7 @@ function AuditLogsPageContent() {
           </div>
 
           {/* Detailed Response Collapsible */}
-          <details className="group rounded-xl border border-foreground/10 bg-background px-4 py-3 shadow-none">
+          <details className="group rounded-xl border border-info/20 bg-background/70 px-4 py-3 shadow-none">
             <summary className="flex cursor-pointer list-none items-center justify-between text-muted-foreground transition-colors hover:text-foreground">
               <div className="flex items-center gap-3">
                 <FileJson className="size-4" />
@@ -1053,7 +1065,7 @@ function AuditLogsPageContent() {
               <ChevronDown className="size-4 transition-transform group-open:rotate-180" />
             </summary>
             <div className="mt-3">
-              <pre className="max-h-[300px] overflow-auto rounded-2xl border border-border/60 bg-foreground p-4 font-mono text-[11px] text-background/85 shadow-strong custom-scrollbar">
+              <pre className="max-h-[300px] overflow-auto rounded-xl border border-border/60 bg-foreground p-4 font-mono text-[11px] text-background/85 shadow-none custom-scrollbar">
                 {JSON.stringify(resp, null, 2)}
               </pre>
             </div>
@@ -1105,9 +1117,9 @@ function AuditRow({
     <>
       <tr
         className={cn(
-          'group cursor-pointer transition-colors hover:bg-primary/[0.035]',
-          expanded && 'bg-primary/[0.045]',
-          selected && 'bg-primary/[0.065]'
+          'group cursor-pointer transition-colors hover:bg-info/[0.035]',
+          expanded && 'bg-info/[0.045]',
+          selected && 'bg-info/[0.065]'
         )}
       >
         <td className="px-4 py-3 align-middle">
@@ -1230,9 +1242,9 @@ function AuditRow({
         </td>
       </tr>
       {expanded && (
-        <tr className="bg-primary/[0.025]">
+        <tr className="bg-info/[0.025]">
           <td colSpan={6} className="px-4 pb-5 pt-1">
-            <div className="rounded-xl border border-primary/15 bg-card p-4 shadow-inner">
+            <div className="rounded-xl border border-info/20 bg-background/72 p-4 shadow-none">
               <div className="mb-3 flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-border/40 pb-3">
                 {detailFields.map(([key, value]) => (
                   <div

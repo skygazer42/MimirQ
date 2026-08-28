@@ -48,4 +48,18 @@ describe('ingestion operation production layout', () => {
     expect(src).toContain("uploadFiles(draft.executionMode === 'upload_only' ? 'upload_only' : 'ingest')")
     expect(src).toContain('buildPipeline(draft)')
   })
+
+  it('uses the remaining workspace as a real file staging surface', () => {
+    const src = readOperationSource()
+
+    expect(src).toContain("'grid min-h-[calc(100vh-6.5rem)] xl:grid-cols-[300px_minmax(0,1fr)]'")
+    expect(src).toContain('className="flex min-h-0 min-w-0 flex-col"')
+    expect(src).toContain('data-ingestion-file-staging-workspace="true"')
+    expect(src).toContain('data-ingestion-empty-file-drop="true"')
+    expect(src).toContain('将文件拖到这里')
+    expect(src).toContain('支持 PDF、Word、Markdown、表格、文本与压缩包')
+    expect(src).toContain('dragging={dragging}')
+    expect(src).toContain('onDragState={setDragging}')
+    expect(src).not.toContain('if (!rows.length) return null')
+  })
 })

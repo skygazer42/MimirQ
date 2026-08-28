@@ -180,8 +180,8 @@ function deltaState(value: unknown, lowerIsBetter: boolean) {
 function QuerysetChartEmptyState() {
   return (
     <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-      <div className="rounded-2xl bg-card px-4 py-3 text-center shadow-none ring-1 ring-border/60">
-        <div className="mx-auto mb-1.5 flex h-9 w-9 items-center justify-center rounded-xl bg-muted text-muted-foreground/70">
+      <div className="rounded-2xl bg-background/70 px-4 py-3 text-center shadow-none ring-1 ring-info/15">
+        <div className="mx-auto mb-1.5 flex h-9 w-9 items-center justify-center rounded-xl bg-info/[0.04] text-info/70">
           <ChartLine className="h-4 w-4" aria-hidden="true" />
         </div>
         <div className="text-[12px] font-semibold text-foreground">暂无数据</div>
@@ -329,7 +329,7 @@ export function QuerysetHealthTab({
         </div>
       )}
 
-      <Panel padding="sm" className="rounded-2xl border-border/60 bg-card shadow-none">
+      <Panel padding="sm" className="rounded-2xl border-info/15 bg-background/72 shadow-none">
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="text-sm font-semibold text-foreground">
@@ -412,7 +412,7 @@ export function QuerysetHealthTab({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <Panel
           padding="sm"
-          className="rounded-2xl min-h-[205px] border-border/60 bg-card shadow-none"
+          className="rounded-2xl min-h-[205px] border-info/15 bg-background/72 shadow-none"
         >
           <div className="flex items-center justify-between mb-2">
             <div className="text-sm font-semibold text-foreground">
@@ -461,7 +461,7 @@ export function QuerysetHealthTab({
 
         <Panel
           padding="sm"
-          className="rounded-2xl min-h-[205px] border-border/60 bg-card shadow-none"
+          className="rounded-2xl min-h-[205px] border-info/15 bg-background/72 shadow-none"
         >
           <div className="flex items-center justify-between mb-2">
             <div className="text-sm font-semibold text-foreground">
@@ -509,7 +509,7 @@ export function QuerysetHealthTab({
         </Panel>
       </div>
 
-      <Panel padding="sm" className="rounded-2xl border-border/60 bg-card shadow-none">
+      <Panel padding="sm" className="rounded-2xl border-info/15 bg-background/72 shadow-none">
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.72fr)]">
           <div>
             <div className="flex items-center justify-between gap-4">
@@ -583,7 +583,7 @@ export function QuerysetHealthTab({
                   return (
                     <div
                       key={metric.key}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-2"
+                      className="flex items-center justify-between gap-3 rounded-lg border border-info/15 bg-info/[0.025] px-3 py-2"
                     >
                       <span className="font-medium text-muted-foreground">
                         {metric.label}
@@ -608,8 +608,8 @@ export function QuerysetHealthTab({
             ) : null}
           </div>
 
-          <div className="flex items-center gap-3 rounded-2xl border border-border bg-muted/40 px-4 py-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20">
+          <div className="flex items-center gap-3 rounded-2xl border border-info/15 bg-info/[0.025] px-4 py-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-info/[0.08] text-info ring-1 ring-info/20">
               <Scale className="h-5 w-5" aria-hidden="true" />
             </span>
             <div className="min-w-0">
@@ -625,7 +625,7 @@ export function QuerysetHealthTab({
         </div>
       </Panel>
 
-      <Panel padding="sm" className="rounded-2xl border-border/60 bg-card shadow-none">
+      <Panel padding="sm" className="rounded-2xl border-info/15 bg-background/72 shadow-none">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-sm font-semibold text-foreground">
@@ -666,7 +666,7 @@ export function QuerysetHealthTab({
                 <tr>
                   <td colSpan={7} className="py-4 text-center">
                     <div className="mx-auto flex w-fit flex-col items-center text-muted-foreground">
-                      <div className="mb-1.5 flex h-8 w-8 items-center justify-center rounded-xl bg-muted text-muted-foreground/70">
+                      <div className="mb-1.5 flex h-8 w-8 items-center justify-center rounded-xl bg-info/[0.04] text-info/70">
                         <ShieldAlert className="h-4 w-4" aria-hidden="true" />
                       </div>
                       <div className="text-sm font-medium text-muted-foreground">

@@ -19,17 +19,17 @@ export function ModelProviderCard({ provider, onConfigure }: Readonly<ModelProvi
     <button
       type="button"
       className={cn(
-        'group relative flex h-full w-full flex-col rounded-lg border bg-card p-3.5 text-left text-[12px] leading-4 text-foreground/78 shadow-none transition-colors duration-150 motion-reduce:transition-none focus-ring',
+        'group relative flex h-full w-full flex-col rounded-lg border border-info/15 bg-info/[0.025] p-3.5 text-left text-[12px] leading-4 text-foreground/78 shadow-none transition-colors duration-150 hover:bg-info/[0.055] motion-reduce:transition-none focus-ring',
         provider.isConfigured
-          ? 'border-primary/25 ring-1 ring-primary/10 hover:border-primary/35 hover:shadow-strong'
-          : 'border-border/70 hover:border-primary/25'
+          ? 'border-info/30 ring-1 ring-info/10 hover:border-info/40'
+          : 'hover:border-info/25'
       )}
       onClick={() => onConfigure(provider)}
     >
       {/* 头部：Logo 和状态 */}
       <div className="flex items-start justify-between gap-2.5">
         <div className="flex min-w-0 items-start gap-2.5">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/30 transition-colors duration-150 motion-reduce:transition-none group-hover:bg-muted/55">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-info/15 bg-info/[0.05] transition-colors duration-150 motion-reduce:transition-none group-hover:bg-info/[0.09]">
             <ProviderIcon providerId={provider.id} className="size-7 object-contain" />
           </div>
 
@@ -66,13 +66,13 @@ export function ModelProviderCard({ provider, onConfigure }: Readonly<ModelProvi
         {provider.models.slice(0, 3).map((model) => (
           <span
             key={model.id}
-            className="inline-flex items-center rounded-md border border-border/60 bg-muted/35 px-1.5 py-0.5 text-[11px] font-medium leading-4 text-foreground/78"
+            className="inline-flex items-center rounded-md border border-info/15 bg-info/[0.035] px-1.5 py-0.5 text-[11px] font-medium leading-4 text-foreground/78"
           >
             {model.displayName}
           </span>
         ))}
         {provider.models.length > 3 && (
-          <span className="inline-flex items-center rounded-md border border-border/60 bg-muted/35 px-1.5 py-0.5 text-[11px] font-medium leading-4 text-muted-foreground">
+          <span className="inline-flex items-center rounded-md border border-info/15 bg-info/[0.035] px-1.5 py-0.5 text-[11px] font-medium leading-4 text-muted-foreground">
             +{provider.models.length - 3}
           </span>
         )}
@@ -83,7 +83,7 @@ export function ModelProviderCard({ provider, onConfigure }: Readonly<ModelProvi
         <span
           className={cn(
             'flex items-center gap-1 font-semibold transition-colors motion-reduce:transition-none',
-            provider.isConfigured ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'
+            provider.isConfigured ? 'text-info' : 'text-muted-foreground group-hover:text-info'
           )}
         >
           <Settings className="size-3.5" />

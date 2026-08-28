@@ -52,7 +52,7 @@ const ROLE_OPTIONS = [
   {
     key: 'admin',
     label: '管理员',
-    cn: 'border-accent/20 bg-accent/10 text-accent',
+    cn: 'border-info/25 bg-info/10 text-info',
   },
   {
     key: 'auditor',
@@ -75,18 +75,18 @@ const ROLE_OPTIONS = [
 const PAGE_SIZE_OPTIONS = [7, 10, 20, 50]
 const RBAC_MEMBERS_PARAMS = { limit: 500 } as const
 const CARD_CLASS =
-  'rounded-[1.15rem] border border-border/60 bg-card/86 shadow-[0_10px_28px_hsl(var(--primary)/0.045)]'
+  'rounded-xl border border-info/20 bg-background/72 shadow-none'
 const RBAC_FIELD_LABEL_CLASS =
   'text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground'
 const RBAC_INPUT_CLASS =
-  'h-9 rounded-xl border-border/60 bg-background/72 text-[12px] shadow-none'
+  'h-9 rounded-xl border-border/70 bg-muted/60 text-[12px] shadow-none focus-visible:border-info/35 focus-visible:ring-info/15'
 const RBAC_SOFT_BUTTON_CLASS =
-  'h-8 rounded-full border-border/60 bg-card/86 px-3 text-[11px] font-semibold text-foreground shadow-sm hover:bg-primary/10 hover:text-primary'
+  'h-8 rounded-full border-border/60 bg-background/70 px-3 text-[11px] font-medium text-foreground shadow-none hover:border-info/25 hover:bg-info/[0.07] hover:text-info'
 const RBAC_MUTED_CHIP_CLASS =
-  'h-9 w-fit rounded-full border border-border/60 bg-muted/45 px-3 text-[11px] font-semibold text-muted-foreground'
+  'h-9 w-fit rounded-full border border-border/60 bg-background/65 px-3 text-[11px] font-medium text-muted-foreground'
 const ROLE_DOT_TONES: Record<string, string> = {
   owner: 'bg-primary',
-  admin: 'bg-accent',
+  admin: 'bg-info',
   auditor: 'bg-warning',
   editor: 'bg-info',
   dataset_operator: 'bg-success',
@@ -119,7 +119,7 @@ function avatarTone(userId?: string | null) {
     'border-primary/20 bg-primary/10 text-primary',
     'border-success/20 bg-success/10 text-success',
     'border-warning/20 bg-warning/10 text-warning',
-    'border-accent/20 bg-accent/10 text-accent',
+    'border-info/25 bg-info/10 text-info',
     'border-border/60 bg-muted/55 text-muted-foreground',
   ]
   const raw = String(userId || '')
@@ -366,7 +366,7 @@ function SettingsRbacPageContent() {
         size="full"
         compact
         bodyGutter="dense"
-        bodyClassName="bg-transparent pb-6"
+        bodyClassName="bg-info/[0.035] !pb-3"
         headerClassName="[&_.text-muted-foreground]:text-muted-foreground"
         top={
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -431,7 +431,7 @@ function SettingsRbacPageContent() {
           <section className={cn(CARD_CLASS, 'overflow-hidden')}>
             <div className="flex flex-col gap-3 border-b border-border/50 px-5 py-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex items-center gap-3">
-                <div className="flex size-9 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+                <div className="flex size-9 items-center justify-center rounded-xl border border-info/20 bg-info/10 text-info">
                   <Users className="size-4" />
                 </div>
                 <div>
@@ -463,7 +463,7 @@ function SettingsRbacPageContent() {
             </div>
 
             <div className="px-5 py-3">
-              <div className="grid gap-3 lg:grid-cols-[minmax(260px,1.1fr)_220px_220px_auto] lg:items-end">
+              <div className="grid gap-3 xl:grid-cols-[minmax(260px,1.1fr)_220px_220px_auto] xl:items-end">
                 <div className="space-y-1.5">
                   <Label className={RBAC_FIELD_LABEL_CLASS}>
                     搜索成员
@@ -539,7 +539,7 @@ function SettingsRbacPageContent() {
                 <div className="overflow-x-auto">
                   <table className="min-w-[900px] w-full table-fixed border-collapse text-left">
                     <thead>
-                      <tr className="border-b border-border/60 bg-muted/38 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      <tr className="border-b border-border/60 bg-info/[0.035] text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                         <th className="w-[31%] px-3 py-2.5">成员</th>
                         <th className="w-[28%] px-3 py-2.5">邮箱 / ID</th>
                         <th className="w-[15%] px-3 py-2.5">角色</th>
@@ -548,7 +548,7 @@ function SettingsRbacPageContent() {
                         <th className="w-[7%] px-3 py-2.5 text-right">操作</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-border/40 bg-card/72">
+                    <tbody className="divide-y divide-border/40 bg-background/45">
                       {pagedMembers.length ? (
                         pagedMembers.map((m) => {
                           const uid = String(m.user_id || '').trim()
@@ -572,7 +572,7 @@ function SettingsRbacPageContent() {
                           return (
                             <tr
                               key={key}
-                              className="text-[13px] text-foreground transition-colors hover:bg-primary/[0.035]"
+                              className="text-[13px] text-foreground transition-colors hover:bg-info/[0.04]"
                             >
                               <td className="px-3 py-2">
                                 <div className="flex items-center gap-3">
@@ -614,7 +614,7 @@ function SettingsRbacPageContent() {
                                   }}
                                   disabled={!uid}
                                 >
-                                  <SelectTrigger className="h-8 min-w-0 rounded-full border-border/60 bg-card text-[12px] shadow-none">
+                                  <SelectTrigger className="h-8 min-w-0 rounded-full border-border/60 bg-background/70 text-[12px] shadow-none hover:border-info/25">
                                     <SelectValue placeholder="选择角色" />
                                   </SelectTrigger>
                                   <SelectContent>
@@ -639,7 +639,7 @@ function SettingsRbacPageContent() {
                                   className={cn(
                                     'rounded-full border px-2 py-0.5 text-[11px] font-semibold shadow-none',
                                     isSelf
-                                      ? 'border-primary/20 bg-primary/10 text-primary'
+                                      ? 'border-info/25 bg-info/10 text-info'
                                       : 'border-success/20 bg-success/10 text-success'
                                   )}
                                 >
@@ -655,7 +655,7 @@ function SettingsRbacPageContent() {
                                     size="sm"
                                     data-rbac-save-role-action="true"
                                     aria-label={`保存 ${display.primary} 的角色`}
-                                    className="h-8 rounded-full bg-info px-3 text-[12px] font-semibold text-primary-foreground shadow-sm hover:bg-info/90 disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
+                                    className="h-8 rounded-full bg-info px-3 text-[12px] font-semibold text-info-foreground shadow-none hover:bg-info/90 disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
                                     disabled={!uid || saving || removing}
                                     onClick={() => saveRole(uid)}
                                   >
@@ -710,7 +710,7 @@ function SettingsRbacPageContent() {
                   </table>
                 </div>
 
-                <div className="flex flex-col gap-3 border-t border-border/60 bg-card/78 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col gap-3 border-t border-border/60 bg-info/[0.025] px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
                   <div className="text-[12px] font-medium text-muted-foreground">
                     共 {filtered.length} 条
                   </div>
@@ -722,7 +722,7 @@ function SettingsRbacPageContent() {
                         setPage(1)
                       }}
                     >
-                      <SelectTrigger className="h-8 w-[116px] rounded-full border-border/60 bg-card text-[12px] shadow-none">
+                      <SelectTrigger className="h-8 w-[116px] rounded-full border-border/60 bg-background/70 text-[12px] shadow-none">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -737,20 +737,20 @@ function SettingsRbacPageContent() {
                       variant="outline"
                       size="icon"
                       aria-label="上一页"
-                      className="size-8 rounded-full border-border/60 bg-card hover:bg-primary/10 hover:text-primary"
+                      className="size-8 rounded-full border-border/60 bg-background/70 hover:border-info/25 hover:bg-info/[0.07] hover:text-info"
                       disabled={safePage <= 1}
                       onClick={() => setPage((value) => Math.max(1, value - 1))}
                     >
                       <ChevronLeft className="size-4" />
                     </Button>
-                    <span className="rounded-full bg-primary px-3 py-1.5 text-[12px] font-semibold text-primary-foreground">
+                    <span className="rounded-full bg-info px-3 py-1.5 text-[12px] font-semibold text-info-foreground">
                       {safePage}
                     </span>
                     <Button
                       variant="outline"
                       size="icon"
                       aria-label="下一页"
-                      className="size-8 rounded-full border-border/60 bg-card hover:bg-primary/10 hover:text-primary"
+                      className="size-8 rounded-full border-border/60 bg-background/70 hover:border-info/25 hover:bg-info/[0.07] hover:text-info"
                       disabled={safePage >= pageCount}
                       onClick={() =>
                         setPage((value) => Math.min(pageCount, value + 1))
@@ -791,10 +791,16 @@ function StatCard({
   variant?: 'metric' | 'status'
 }>) {
   const toneClass = {
-    blue: 'border-primary/20 bg-primary/10 text-primary',
-    green: 'border-success/20 bg-success/10 text-success',
-    orange: 'border-warning/20 bg-warning/10 text-warning',
-    purple: 'border-accent/20 bg-accent/10 text-accent',
+    blue: 'border-info/25 bg-info/10 text-info',
+    green: 'border-success/25 bg-success/10 text-success',
+    orange: 'border-warning/25 bg-warning/10 text-warning',
+    purple: 'border-info/25 bg-info/10 text-info',
+  }[tone]
+  const valueToneClass = {
+    blue: 'text-info',
+    green: 'text-success',
+    orange: 'text-warning',
+    purple: 'text-info',
   }[tone]
   const statusClass =
     value === '已就绪'
@@ -833,7 +839,12 @@ function StatCard({
             </span>
           </div>
         ) : (
-          <p className="mt-1 font-mono text-[22px] font-semibold leading-none tracking-[-0.045em] text-foreground tabular-nums">
+          <p
+            className={cn(
+              'mt-1 font-mono text-[22px] font-semibold leading-none tracking-[-0.045em] tabular-nums',
+              valueToneClass
+            )}
+          >
             {value}
           </p>
         )}

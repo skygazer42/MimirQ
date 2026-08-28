@@ -96,10 +96,10 @@ export function LtrModelRegistrySection({
       </div>
 
       <div className="grid gap-3 xl:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.15fr)]">
-        <Panel padding="none" className={cn(systemWorkbenchTokens.panel, 'p-3.5')}>
+        <Panel padding="none" className={cn(systemWorkbenchTokens.panel, 'border-info/15 bg-info/[0.025] p-3.5')}>
           <div className="mb-3 flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-info/20 bg-info/10 px-2 py-0.5 text-[10px] font-semibold text-info">
                 <UploadCloud className="h-3 w-3" />
                 注册入口
               </div>
@@ -112,7 +112,7 @@ export function LtrModelRegistrySection({
           <div className="space-y-3">
             <div className="space-y-1.5">
               <div className="text-[11px] font-semibold text-foreground/80">模型文件</div>
-              <label className="flex h-8 cursor-pointer items-center justify-center rounded-lg border border-border/60 bg-background px-3 text-[11px] font-semibold text-muted-foreground transition-colors hover:border-primary/25 hover:bg-primary/8 hover:text-primary">
+              <label className="flex h-8 cursor-pointer items-center justify-center rounded-lg border border-info/15 bg-info/[0.025] px-3 text-[11px] font-semibold text-muted-foreground transition-colors hover:border-info/25 hover:bg-info/[0.07] hover:text-info">
                 选择模型 JSON
                 <Input
                   key={`ltr-model-${ltrUploadResetKey}`}
@@ -125,7 +125,7 @@ export function LtrModelRegistrySection({
             </div>
             <div className="space-y-1.5">
               <div className="text-[11px] font-semibold text-foreground/80">清单文件</div>
-              <label className="flex h-8 cursor-pointer items-center justify-center rounded-lg border border-border/60 bg-background px-3 text-[11px] font-semibold text-muted-foreground transition-colors hover:border-primary/25 hover:bg-primary/8 hover:text-primary">
+              <label className="flex h-8 cursor-pointer items-center justify-center rounded-lg border border-info/15 bg-info/[0.025] px-3 text-[11px] font-semibold text-muted-foreground transition-colors hover:border-info/25 hover:bg-info/[0.07] hover:text-info">
                 选择清单 JSON
                 <Input
                   key={`ltr-manifest-${ltrUploadResetKey}`}
@@ -151,7 +151,7 @@ export function LtrModelRegistrySection({
 
         <Panel
           padding="none"
-          className={cn(systemWorkbenchTokens.panel, 'space-y-3 p-3.5')}
+          className={cn(systemWorkbenchTokens.panel, 'space-y-3 border-info/15 bg-info/[0.025] p-3.5')}
         >
           <div className="flex items-start justify-between gap-2.5">
             <div>

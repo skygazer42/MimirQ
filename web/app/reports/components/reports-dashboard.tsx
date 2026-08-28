@@ -88,7 +88,7 @@ export function ReportsDashboard({
   issueRows: IssueRow[]
 }>) {
   return (
-    <section className="space-y-4">
+    <section className="space-y-3">
       <ReportSectionHeading
         index="01"
         title="报告摘要"
@@ -113,7 +113,7 @@ export function ReportsDashboard({
         title="数据质量"
         description="从风险、字段覆盖、内容规模和治理痕迹四个维度检查当前快照。"
       />
-      <div className="grid gap-3 xl:grid-cols-2 2xl:grid-cols-[1.05fr_1.2fr_1.05fr_0.95fr]">
+      <div className="grid items-start gap-2.5 xl:grid-cols-2 2xl:grid-cols-[1.05fr_1.2fr_1.05fr_0.95fr]">
         <RiskMetricPanel
           missingFindingCount={missingFindingCount}
           duplicateFindingCount={duplicateFindingCount}
@@ -149,7 +149,7 @@ export function ReportsDashboard({
         title="结构与风险"
         description="查看分类分布、处理版本与可追溯的风险命中记录。"
       />
-      <div className="grid gap-3 xl:grid-cols-2 2xl:grid-cols-[1.2fr_0.9fr_1.4fr]">
+      <div className="grid items-start gap-2.5 xl:grid-cols-2 2xl:grid-cols-[1.2fr_0.9fr_1.4fr]">
         <CategoryChartPanel categoryBarData={categoryBarData} />
         <PipelineVersionsPanel
           pipelineVersions={pipelineVersions}

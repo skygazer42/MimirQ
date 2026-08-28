@@ -23,7 +23,6 @@ type FeatureFlagDescriptor = {
   name: string
   description: string
   icon: LucideIcon
-  color: 'teal' | 'orange' | 'cyan' | 'green'
   dependencies: string[]
 }
 
@@ -33,7 +32,6 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
     name: 'KG 知识抽取',
     description: '启用知识图谱抽取，自动抽取文档中的实体和事件',
     icon: Sparkles,
-    color: 'teal',
     dependencies: ['向量数据库（Milvus）', '大语言模型（LLM）'],
   },
   {
@@ -42,7 +40,6 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
     description:
       '启用视觉 + OCR 解析能力，适合扫描件/图文混排 PDF（自动选择时生效）',
     icon: ScanLine,
-    color: 'orange',
     dependencies: [],
   },
   {
@@ -51,7 +48,6 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
     description:
       '启用 Docling 解析，对版面/表格结构抽取更友好（自动选择时生效）',
     icon: FileSearch,
-    color: 'cyan',
     dependencies: [],
   },
   {
@@ -60,7 +56,6 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
     description:
       '启用 ETL4LLM 版面/表格/图片解析（需自建服务，自动选择时生效）',
     icon: LayoutGrid,
-    color: 'green',
     dependencies: ['ETL4LLM 服务地址（API URL）'],
   },
   {
@@ -69,7 +64,6 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
     description:
       '启用 Marker 启发式 PDF→Markdown 解析服务（可在解析器下拉中选择）',
     icon: LayoutGrid,
-    color: 'green',
     dependencies: ['Marker 服务地址（API URL）'],
   },
   {
@@ -78,7 +72,6 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
     description:
       '启用 PaddleOCR-VL 外部 OCR/版面解析服务（适合扫描件 PDF，可在解析器下拉中选择）',
     icon: ScanLine,
-    color: 'orange',
     dependencies: ['PaddleOCR-VL 服务地址（API URL）'],
   },
   {
@@ -87,7 +80,6 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
     description:
       '启用 TextIn 文档解析 API（可用于 PDF/Office/图片等文档转 Markdown）',
     icon: CloudCog,
-    color: 'cyan',
     dependencies: ['TextIn API 地址', 'TextIn APP ID', 'TextIn Secret Code'],
   },
   {
@@ -96,7 +88,6 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
     description:
       '启用多格式转 Markdown（Office/表格/PDF），自动选择与解析工作台会使用',
     icon: FileCode,
-    color: 'teal',
     dependencies: [],
   },
   {
@@ -104,7 +95,6 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
     name: 'LlamaIndex 分块',
     description: '启用 LlamaIndex 高级分块策略',
     icon: Network,
-    color: 'orange',
     dependencies: [],
   },
   {
@@ -112,7 +102,6 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
     name: 'MinerU 解析',
     description: '启用 MinerU 本地服务或在线 API 进行复杂 PDF 解析',
     icon: CloudCog,
-    color: 'cyan',
     dependencies: ['本地 MinerU 服务地址或 API 令牌'],
   },
   {
@@ -120,50 +109,16 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
     name: 'MagicPDF 本地解析',
     description: '启用 magic-pdf 本地高级解析后端（可在解析器下拉中选择）',
     icon: Wand2,
-    color: 'teal',
     dependencies: ['magic-pdf'],
   },
 ]
 
-function getColorClasses(color: FeatureFlagDescriptor['color']) {
-  const styles = {
-    primary: {
-      bg: 'bg-primary/10',
-      border: 'border-primary/25',
-      text: 'text-primary',
-      iconBg: 'bg-primary/12',
-    },
-    info: {
-      bg: 'bg-info/10',
-      border: 'border-info/25',
-      text: 'text-info',
-      iconBg: 'bg-info/10',
-    },
-    success: {
-      bg: 'bg-success/10',
-      border: 'border-success/25',
-      text: 'text-success',
-      iconBg: 'bg-success/12',
-    },
-    warning: {
-      bg: 'bg-warning/10',
-      border: 'border-warning/25',
-      text: 'text-warning',
-      iconBg: 'bg-warning/12',
-    },
-  }
-
-  const key =
-    color === 'green'
-      ? 'success'
-      : color === 'orange'
-        ? 'warning'
-        : color === 'cyan'
-          ? 'primary'
-          : 'info'
-
-  return styles[key]
-}
+const FEATURE_FLAG_ACTIVE_STYLE = {
+  bg: 'bg-info/10',
+  border: 'border-info/25',
+  text: 'text-info',
+  iconBg: 'bg-info/12',
+} as const
 
 type FeatureFlagsSectionProps = {
   editedFeatureFlags?: Partial<FeatureFlags>
@@ -177,18 +132,18 @@ export function FeatureFlagsSection({
   toggleFeature,
 }: Readonly<FeatureFlagsSectionProps>) {
   return (
-    <section className="rounded-[16px] border border-border/60 bg-card/82 p-3.5 shadow-sm">
+    <section className="rounded-xl border border-info/15 bg-info/[0.025] p-3.5 shadow-none">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="flex items-center gap-2 text-[13px] font-semibold text-foreground">
-            <Zap className="h-3.5 w-3.5 text-warning" />
+            <Zap className="h-3.5 w-3.5 text-info" />
             功能开关
           </h2>
           <p className="mt-0.5 text-[11.5px] font-medium leading-[18px] text-muted-foreground">
             按需启用各项能力模块，保存后会影响后续请求；外部解析器仍需对应服务已启动
           </p>
         </div>
-        <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary">
+        <div className="inline-flex items-center gap-1.5 rounded-full border border-info/20 bg-info/10 px-2.5 py-1 text-[11px] font-medium text-info">
           <AlertCircle className="h-3 w-3" />
           <span>保存后影响后续请求</span>
         </div>
@@ -197,7 +152,7 @@ export function FeatureFlagsSection({
       <div className="mt-3.5 grid grid-cols-1 gap-2 xl:grid-cols-2">
         {FEATURE_FLAGS_CONFIG.map((feature) => {
           const Icon = feature.icon
-          const colors = getColorClasses(feature.color)
+          const colors = FEATURE_FLAG_ACTIVE_STYLE
           const isEnabled = getFeatureValue(feature.key)
           const isEdited = Boolean(
             editedFeatureFlags && feature.key in editedFeatureFlags
@@ -210,9 +165,9 @@ export function FeatureFlagsSection({
               className={cn(
                 'group relative w-full rounded-[13px] border px-3 py-2 text-left transition-[border-color,background-color,box-shadow] duration-150 focus-ring motion-reduce:transition-none',
                 isEnabled
-                  ? `${colors.border} ${colors.bg} shadow-[inset_0_0_0_1px_hsl(var(--card)/0.55)]`
-                  : 'border-border/60 bg-card hover:border-primary/20 hover:bg-muted/30',
-                isEdited && 'ring-2 ring-primary/55 ring-offset-1'
+                  ? `${colors.border} ${colors.bg}`
+                  : 'border-info/15 bg-info/[0.025] hover:border-info/25 hover:bg-info/[0.055]',
+                isEdited && 'ring-2 ring-info/45 ring-offset-1'
               )}
               aria-pressed={isEnabled}
               onClick={() => toggleFeature(feature.key)}
@@ -222,7 +177,7 @@ export function FeatureFlagsSection({
                   <div
                     className={cn(
                       'mt-0.5 flex size-[23px] shrink-0 items-center justify-center rounded-[9px] transition-colors',
-                      isEnabled ? colors.iconBg : 'bg-muted'
+                      isEnabled ? colors.iconBg : 'bg-info/[0.06]'
                     )}
                   >
                     <Icon
@@ -254,7 +209,7 @@ export function FeatureFlagsSection({
                         {feature.dependencies.map((dependency) => (
                           <span
                             key={dependency}
-                            className="rounded-md border border-border/60 bg-card/75 px-1.5 py-0.5 text-[10px] font-medium leading-[14px] text-muted-foreground"
+                            className="rounded-md border border-info/15 bg-info/[0.035] px-1.5 py-0.5 text-[10px] font-medium leading-[14px] text-muted-foreground"
                           >
                             需要: {dependency}
                           </span>

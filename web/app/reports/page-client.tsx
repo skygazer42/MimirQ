@@ -12,7 +12,7 @@ import { datasetApi, datasetCategoryApi } from '@/lib/api/datasets'
 import { reportApi } from '@/lib/api/reports'
 import { formatApiError } from '@/lib/api-errors'
 import { queryKeys } from '@/lib/query-keys'
-import { formatDate, detachPromise } from '@/lib/utils'
+import { cn, formatDate, detachPromise } from '@/lib/utils'
 
 import type { DatasetCategoryNode } from '@/types'
 
@@ -648,7 +648,9 @@ export default function ReportsCenterPage() {
 
   return (
     <AppFrame>
-      <div className={KNOWLEDGE_OPS_BACKGROUND_CLASS}>
+      <div
+        className={cn(KNOWLEDGE_OPS_BACKGROUND_CLASS, 'bg-info/[0.035]')}
+      >
         <AnalysisPageShell
           title="数据报告与审计概览"
           description="一键导出数据报告与审计结果，支持多种格式与指标视图，便于数据治理与合规审查。"
@@ -663,7 +665,7 @@ export default function ReportsCenterPage() {
         >
           <div
             data-reports-dossier="true"
-            className="space-y-4 px-4 py-4 md:px-6 md:py-5"
+            className="space-y-3 px-4 py-3 md:px-6 md:py-4"
           >
             <ReportsPageHero
               selectedDatasetName={selectedDatasetName}

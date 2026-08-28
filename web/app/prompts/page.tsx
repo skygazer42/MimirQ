@@ -121,6 +121,11 @@ const SCENARIO_DEFINITIONS: Array<{
   },
 ]
 
+const PROMPT_SURFACE_CLASS =
+  'rounded-xl border border-info/15 bg-background/72 shadow-none'
+const PROMPT_CONTROL_CLASS =
+  'rounded-lg border-info/15 bg-info/[0.025] shadow-none'
+
 export default function PromptsPage() {
   return (
     <NavigationVisibilityGate moduleKey="prompts" pageName="提示词">
@@ -467,16 +472,16 @@ function PromptsPageContent() {
               <div
                 key={item.label}
                 className={cn(
-                  'rounded-xl border bg-card/80 px-3 py-2 shadow-sm',
+                  'rounded-lg border bg-background/72 px-3 py-2 shadow-none',
                   item.tone === 'blue'
-                    ? 'border-primary/30'
-                    : 'border-border/60'
+                    ? 'border-info/30 bg-info/[0.05]'
+                    : 'border-info/15'
                 )}
               >
                 <div
                   className={cn(
                     'text-[11px] font-semibold',
-                    item.tone === 'blue' ? 'text-primary' : 'text-muted-foreground'
+                    item.tone === 'blue' ? 'text-info' : 'text-muted-foreground'
                   )}
                 >
                   {item.label}
@@ -489,26 +494,31 @@ function PromptsPageContent() {
           </div>
         }
         bodyGutter="none"
-        bodyClassName="!pb-0"
+        bodyClassName="bg-info/[0.035] !pb-0"
         bodyContainerClassName="max-w-none"
       >
-        <div className="min-h-0 space-y-4 bg-transparent px-6 pb-4">
+        <div className="min-h-0 space-y-3 bg-transparent px-6 pb-4">
           <Tabs
             value={scenarioFilter}
             onValueChange={setScenarioFilter}
             className="w-full"
           >
-            <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 rounded-xl border border-border/60 bg-card p-1.5 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
+            <TabsList
+              className={cn(
+                PROMPT_SURFACE_CLASS,
+                'flex h-auto w-full flex-wrap justify-start gap-1 p-1.5'
+              )}
+            >
               {SCENARIO_DEFINITIONS.map((def) => (
                 <TabsTrigger
                   key={def.value}
                   value={def.value}
-                  className="h-9 gap-1.5 rounded-lg px-3 text-[13px] font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-sm"
+                  className="h-9 gap-1.5 rounded-lg px-3 text-[13px] font-medium data-[state=active]:bg-info/[0.08] data-[state=active]:text-info data-[state=active]:shadow-none"
                 >
                   <span>{def.label}</span>
                   <Badge
                     variant="secondary"
-                    className="h-5 min-w-[1.5rem] justify-center rounded-md bg-muted px-1.5 text-[11px] font-semibold text-muted-foreground data-[active=true]:bg-primary/15 data-[active=true]:text-primary"
+                    className="h-5 min-w-[1.5rem] justify-center rounded-md bg-info/[0.04] px-1.5 text-[11px] font-semibold text-muted-foreground data-[active=true]:bg-info/15 data-[active=true]:text-info"
                     data-active={scenarioFilter === def.value}
                   >
                     {scenarioCounts[def.value] ?? 0}
@@ -518,21 +528,26 @@ function PromptsPageContent() {
             </TabsList>
           </Tabs>
 
-          <section className="rounded-xl border border-border/60 bg-card shadow-[0_1px_0_rgba(15,23,42,0.03)]">
-            <div className="flex flex-col gap-3 border-b border-border/60 p-4 xl:flex-row xl:items-center">
+          <section className={PROMPT_SURFACE_CLASS}>
+            <div className="flex flex-col gap-3 border-b border-info/15 bg-info/[0.025] p-4 xl:flex-row xl:items-center">
               <SearchInput
                 value={searchQuery}
                 onValueChange={setSearchQuery}
                 placeholder="搜索模板名称、描述、内容或标签..."
                 containerClassName="min-w-0 flex-1"
-                inputClassName="h-10 rounded-lg border-border/60 bg-card text-[13px]"
+                inputClassName={cn('h-10 text-[13px]', PROMPT_CONTROL_CLASS)}
               />
               <div className="grid grid-cols-2 gap-3 md:flex md:items-center">
                 <Select
                   value={categoryFilter}
                   onValueChange={setCategoryFilter}
                 >
-                  <SelectTrigger className="h-10 w-full rounded-lg border-border/60 bg-card text-[13px] md:w-[150px]">
+                  <SelectTrigger
+                    className={cn(
+                      'h-10 w-full text-[13px] md:w-[150px]',
+                      PROMPT_CONTROL_CLASS
+                    )}
+                  >
                     <SelectValue placeholder="所有分类" />
                   </SelectTrigger>
                   <SelectContent>
@@ -545,7 +560,12 @@ function PromptsPageContent() {
                   </SelectContent>
                 </Select>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="h-10 w-full rounded-lg border-border/60 bg-card text-[13px] md:w-[150px]">
+                  <SelectTrigger
+                    className={cn(
+                      'h-10 w-full text-[13px] md:w-[150px]',
+                      PROMPT_CONTROL_CLASS
+                    )}
+                  >
                     <SelectValue placeholder="所有状态" />
                   </SelectTrigger>
                   <SelectContent>
@@ -556,7 +576,7 @@ function PromptsPageContent() {
                 </Select>
                 <Button
                   onClick={handleCreate}
-                  className="h-10 gap-1.5 rounded-lg bg-primary px-4 text-[13px] font-semibold text-info-foreground hover:bg-primary"
+                  className="h-10 gap-1.5 rounded-lg bg-info px-4 text-[13px] font-semibold text-info-foreground shadow-none hover:bg-info/90"
                 >
                   <Plus className="size-4" />
                   创建模板
@@ -566,7 +586,7 @@ function PromptsPageContent() {
                   variant="outline"
                   onClick={handleSyncBuiltins}
                   disabled={syncingBuiltins}
-                  className="h-10 gap-1.5 rounded-lg border-primary/20 bg-primary/10 px-3 text-[13px] font-semibold text-primary hover:bg-primary/15 hover:text-primary disabled:opacity-60"
+                  className="h-10 gap-1.5 rounded-lg border-info/20 bg-info/[0.06] px-3 text-[13px] font-semibold text-info shadow-none hover:bg-info/10 hover:text-info disabled:opacity-60"
                 >
                   <Wand2 className="size-4" />
                   {syncingBuiltins ? '同步中' : '同步内置模板'}
@@ -575,9 +595,12 @@ function PromptsPageContent() {
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
-                      className="group h-10 justify-between rounded-lg border-border/60 !bg-[linear-gradient(180deg,hsl(var(--card)),hsl(var(--muted)/0.55))] px-2.5 text-left !text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:!bg-[linear-gradient(180deg,hsl(var(--card)),hsl(var(--muted)/0.78))] hover:!text-foreground data-[state=open]:border-primary/30 data-[state=open]:!bg-[linear-gradient(180deg,hsl(var(--card)),hsl(var(--muted)/0.78))] data-[state=open]:!text-foreground md:w-[286px]"
+                      className={cn(
+                        PROMPT_CONTROL_CLASS,
+                        'group h-10 justify-between px-2.5 text-left text-foreground transition-colors hover:border-info/30 hover:bg-info/[0.06] hover:text-foreground data-[state=open]:border-info/30 data-[state=open]:bg-info/[0.06] md:w-[286px]'
+                      )}
                     >
-                      <span className="mr-2 flex size-7 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary transition-colors group-hover:bg-primary/10">
+                      <span className="mr-2 flex size-7 shrink-0 items-center justify-center rounded-lg border border-info/20 bg-info/[0.08] text-info transition-colors group-hover:bg-info/10">
                         <Wand2 className="size-3.5" />
                       </span>
                       <span className="min-w-0 flex-1">
@@ -585,7 +608,7 @@ function PromptsPageContent() {
                           <span className="truncate text-[13px] font-semibold text-foreground">
                             场景绑定
                           </span>
-                          <span className="rounded-full border border-primary/20 bg-primary/10 px-1.5 py-0 text-[9px] font-semibold leading-4 text-primary">
+                          <span className="rounded-full border border-info/20 bg-info/[0.08] px-1.5 py-0 text-[9px] font-semibold leading-4 text-info">
                             KG
                           </span>
                         </span>
@@ -593,14 +616,14 @@ function PromptsPageContent() {
                           抽取 · 召回 · 关系治理
                         </span>
                       </span>
-                      <ChevronDown className="ml-2 size-4 shrink-0 text-muted-foreground/70 transition-transform group-data-[state=open]:rotate-180 group-data-[state=open]:text-primary" />
+                      <ChevronDown className="ml-2 size-4 shrink-0 text-muted-foreground/70 transition-transform group-data-[state=open]:rotate-180 group-data-[state=open]:text-info" />
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent
                     align="end"
-                    className="max-h-[76vh] w-[540px] overflow-y-auto rounded-2xl border-border bg-card p-0 shadow-[0_18px_50px_rgba(15,23,42,0.14)]"
+                    className="max-h-[76vh] w-[540px] overflow-y-auto rounded-2xl border-info/15 bg-popover/95 p-0 shadow-none"
                   >
-                    <div className="border-b border-border/50 bg-[linear-gradient(180deg,hsl(var(--muted)/0.6),hsl(var(--card)))] px-4 py-3">
+                    <div className="border-b border-info/15 bg-info/[0.025] px-4 py-3">
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <div className="text-[13px] font-semibold text-foreground">
@@ -610,12 +633,12 @@ function PromptsPageContent() {
                             把提示词模板绑定到 KG 抽取、对话召回和关系治理。
                           </div>
                         </div>
-                        <span className="rounded-full border border-border bg-card px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">
+                        <span className="rounded-full border border-info/15 bg-background/70 px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">
                           低频配置
                         </span>
                       </div>
                     </div>
-                    <div className="space-y-3 bg-muted/40 p-3">
+                    <div className="space-y-3 bg-background/70 p-3">
                       <KgExtractPromptSettings templates={templates} />
                       <KgPredicateOntologySettings />
                     </div>
@@ -636,7 +659,7 @@ function PromptsPageContent() {
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-7 rounded-md border-info/30 bg-card px-2.5 text-[11px] text-info hover:bg-info/10"
+                    className="h-7 rounded-md border-info/30 bg-background/70 px-2.5 text-[11px] text-info hover:bg-info/10"
                     onClick={() => handleBatchActivate(true)}
                   >
                     批量启用
@@ -644,7 +667,7 @@ function PromptsPageContent() {
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-7 rounded-md border-border bg-card px-2.5 text-[11px] text-foreground/85 hover:bg-muted/50"
+                    className="h-7 rounded-md border-info/15 bg-background/70 px-2.5 text-[11px] text-foreground/85 hover:bg-info/[0.05]"
                     onClick={() => handleBatchActivate(false)}
                   >
                     批量停用
@@ -724,7 +747,7 @@ function PromptsPageContent() {
                 <>
                   <div className="overflow-x-auto">
                     <div className="min-w-[1080px]">
-                      <div className="grid grid-cols-[40px_minmax(220px,1fr)_78px_62px_130px_136px_350px] items-center border-b border-border/60 bg-muted/40 px-4 py-3 text-[12px] font-semibold text-muted-foreground">
+                      <div className="grid grid-cols-[40px_minmax(220px,1fr)_78px_62px_130px_136px_350px] items-center border-b border-info/15 bg-info/[0.035] px-4 py-3 text-[12px] font-semibold text-muted-foreground">
                         <Checkbox
                           checked={allCurrentPageSelected}
                           onCheckedChange={handleSelectAll}
@@ -741,8 +764,8 @@ function PromptsPageContent() {
                           <div
                             key={template.id}
                             className={cn(
-                              'grid grid-cols-[40px_minmax(220px,1fr)_78px_62px_130px_136px_350px] items-center px-4 py-2 text-[13px] transition-colors hover:bg-muted/40',
-                              selectedIds.has(template.id) && 'bg-info/5'
+                              'grid grid-cols-[40px_minmax(220px,1fr)_78px_62px_130px_136px_350px] items-center px-4 py-2 text-[13px] transition-colors hover:bg-info/[0.025]',
+                              selectedIds.has(template.id) && 'bg-info/[0.05]'
                             )}
                           >
                             <div>
@@ -793,7 +816,7 @@ function PromptsPageContent() {
                                       <Badge
                                         key={variable}
                                         variant="secondary"
-                                        className="h-6 rounded-md bg-muted px-2 font-mono text-[11px] font-medium text-foreground/85"
+                                        className="h-6 rounded-md bg-info/[0.05] px-2 font-mono text-[11px] font-medium text-foreground/85"
                                       >
                                         {`{${variable}}`}
                                       </Badge>
@@ -815,7 +838,7 @@ function PromptsPageContent() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-7 rounded-lg border-border px-2 text-[11px]"
+                                className="h-7 rounded-lg border-info/15 bg-background/65 px-2 text-[11px]"
                                 onClick={() => handlePreview(template)}
                               >
                                 <Eye className="mr-1 size-3" />
@@ -825,7 +848,7 @@ function PromptsPageContent() {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="h-7 rounded-lg border-border px-2 text-[11px]"
+                                  className="h-7 rounded-lg border-info/15 bg-background/65 px-2 text-[11px]"
                                   onClick={() => handleEdit(template)}
                                 >
                                   <Edit className="mr-1 size-3" />
@@ -835,7 +858,7 @@ function PromptsPageContent() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-7 rounded-lg border-border px-2 text-[11px]"
+                                className="h-7 rounded-lg border-info/15 bg-background/65 px-2 text-[11px]"
                                 onClick={() => handleDuplicate(template)}
                               >
                                 <Copy className="mr-1 size-3" />
@@ -844,7 +867,7 @@ function PromptsPageContent() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-7 rounded-lg border-border px-2 text-[11px]"
+                                className="h-7 rounded-lg border-info/15 bg-background/65 px-2 text-[11px]"
                                 onClick={() => handleToggleActive(template)}
                               >
                                 {template.is_active ? (
@@ -874,14 +897,14 @@ function PromptsPageContent() {
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-3 border-t border-border/60 px-4 py-3 text-[13px] text-muted-foreground md:flex-row md:items-center md:justify-between">
+                  <div className="flex flex-col gap-3 border-t border-info/15 bg-info/[0.02] px-4 py-3 text-[13px] text-muted-foreground md:flex-row md:items-center md:justify-between">
                     <div>共 {filteredTemplates.length} 条</div>
                     <div className="flex flex-wrap items-center justify-end gap-3">
                       <Select
                         value={String(pageSize)}
                         onValueChange={(value) => setPageSize(Number(value))}
                       >
-                        <SelectTrigger className="h-9 w-[112px] rounded-lg border-border bg-card text-[13px]">
+                        <SelectTrigger className="h-9 w-[112px] rounded-lg border-info/15 bg-info/[0.025] text-[13px]">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -917,7 +940,7 @@ function PromptsPageContent() {
                             'h-9 w-9 rounded-lg p-0 text-[13px]',
                             safeCurrentPage === page
                               ? 'bg-primary text-info-foreground hover:bg-primary'
-                              : 'border-border bg-card text-muted-foreground'
+                              : 'border-info/15 bg-background/70 text-muted-foreground'
                           )}
                           onClick={() => setCurrentPage(page)}
                         >
@@ -949,7 +972,7 @@ function PromptsPageContent() {
                           )
                             setCurrentPage(value)
                         }}
-                        className="h-9 w-16 rounded-lg border-border text-center text-[13px]"
+                        className="h-9 w-16 rounded-lg border-info/15 bg-info/[0.025] text-center text-[13px]"
                       />
                       <span>页</span>
                     </div>
@@ -994,7 +1017,7 @@ function PromptsPageContent() {
 
         {/* Preview Dialog */}
         <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
-          <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto overscroll-contain rounded-2xl border border-border/60 bg-card no-scrollbar">
+          <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto overscroll-contain rounded-2xl border border-info/15 bg-popover/95 no-scrollbar">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 {previewTemplate?.name}
@@ -1071,7 +1094,7 @@ function PromptsPageContent() {
 
                 <div>
                   <Label className="text-sm font-medium">模板内容</Label>
-                  <div className="mt-2 p-4 bg-muted/60 rounded-lg">
+                  <div className="mt-2 rounded-lg border border-info/15 bg-info/[0.035] p-4">
                     <pre className="text-sm whitespace-pre-wrap font-mono">
                       {previewTemplate.content}
                     </pre>
@@ -1105,7 +1128,7 @@ function PromptsPageContent() {
 
         {/* Create/Edit Dialog */}
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto overscroll-contain rounded-2xl border border-border/60 bg-card no-scrollbar">
+          <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto overscroll-contain rounded-2xl border border-info/15 bg-popover/95 no-scrollbar">
             <DialogHeader>
               <DialogTitle className="text-[15px] font-semibold">
                 {editingTemplate ? '编辑模板' : '创建新模板'}

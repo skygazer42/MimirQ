@@ -5,7 +5,6 @@ import { useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import {
   ArrowUpRight,
-  CalendarDays,
   CheckCheck,
   ChevronLeft,
   ChevronRight,
@@ -1392,7 +1391,7 @@ export default function FeedbackTriagePage() {
       >
         <div className="grid gap-3 xl:h-[calc(100vh-14.25rem)] xl:min-h-0 xl:grid-cols-[minmax(0,1.72fr)_minmax(320px,0.78fr)]">
           <div className="xl:flex xl:min-h-0 xl:flex-col">
-            <div data-feedback-list-board="true" className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-soft xl:flex xl:min-h-0 xl:flex-1 xl:flex-col">
+            <div data-feedback-list-board="true" className="overflow-hidden rounded-2xl border border-border/60 bg-background shadow-soft xl:flex xl:min-h-0 xl:flex-1 xl:flex-col">
               <div className="border-b border-border/60 px-5 py-3.5">
                 <div className="space-y-3">
                   <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
@@ -1535,11 +1534,8 @@ export default function FeedbackTriagePage() {
                       }
                     >
                       <SelectTrigger className="h-9 w-full rounded-xl border-border/60 bg-background/75 px-3 shadow-none [&>svg]:text-muted-foreground/65">
-                        <span className="inline-flex items-center gap-2 truncate pr-2 text-[12px] font-medium text-foreground">
-                          <CalendarDays className="size-4 shrink-0 text-muted-foreground" />
-                          <span className="truncate">
-                            {TIME_RANGE_SHORT_LABELS[timeRange]}
-                          </span>
+                        <span className="truncate pr-2 text-[12px] font-medium text-foreground">
+                          {TIME_RANGE_SHORT_LABELS[timeRange]}
                         </span>
                       </SelectTrigger>
                       <SelectContent>

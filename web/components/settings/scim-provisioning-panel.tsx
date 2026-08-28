@@ -13,13 +13,13 @@ import { formatApiError } from '@/lib/api-errors'
 import { readClientStorage } from '@/lib/client-storage'
 import { cn, detachPromise } from '@/lib/utils'
 
-const SCIM_PANEL_CLASS = 'overflow-hidden rounded-xl border border-foreground/10 bg-background shadow-none'
+const SCIM_PANEL_CLASS = 'overflow-hidden rounded-xl border border-info/20 bg-background/70 shadow-none'
 const SETTINGS_IDENTITY_LABEL_CLASS =
   'text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground'
 const SETTINGS_IDENTITY_INPUT_CLASS =
-  'h-9 rounded-xl border-border/60 bg-background/76 font-mono text-[12px] shadow-none transition-colors focus-visible:border-primary/35 focus-visible:ring-2 focus-visible:ring-primary/10'
+  'h-9 rounded-xl border-border/70 bg-muted/60 font-mono text-[12px] shadow-none transition-colors focus-visible:border-info/35 focus-visible:ring-2 focus-visible:ring-info/10'
 const SETTINGS_IDENTITY_ICON_CLASS =
-  'flex size-9 shrink-0 items-center justify-center rounded-lg border border-foreground/10 bg-muted/18 text-primary'
+  'flex size-9 shrink-0 items-center justify-center rounded-lg border border-info/20 bg-info/10 text-info'
 const SETTINGS_IDENTITY_META_CLASS =
   'rounded-full border border-border/60 bg-muted/42 px-2 py-0.5 text-[10px] font-medium text-muted-foreground'
 
@@ -87,7 +87,7 @@ export function ScimProvisioningPanel() {
             </div>
           </div>
         </div>
-        <div className="flex min-h-7 items-center gap-2 rounded-full border border-border/60 bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+        <div className="flex min-h-7 items-center gap-2 rounded-full border border-border/60 bg-background/65 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
           {busy ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
           ) : (
@@ -102,7 +102,7 @@ export function ScimProvisioningPanel() {
         </div>
       </div>
 
-      <div className="mt-3 rounded-xl border border-foreground/10 bg-muted/15 p-3">
+      <div className="mt-3 rounded-xl border border-info/15 bg-info/[0.025] p-3">
         <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_minmax(260px,1.4fr)_auto] lg:items-end">
           <Field
             label="租户 ID"
@@ -182,7 +182,7 @@ function ActionButton({
   return (
     <Button
       variant="outline"
-      className="h-9 gap-1.5 rounded-lg border-border/70 bg-background px-3 text-[12px] font-semibold text-foreground shadow-none transition-colors hover:bg-muted/18 hover:text-primary disabled:border-border/60 disabled:bg-muted/50 disabled:text-muted-foreground"
+      className="h-9 gap-1.5 rounded-lg border-border/70 bg-background/68 px-3 text-[12px] font-medium text-foreground shadow-none transition-colors hover:border-info/30 hover:bg-info/[0.06] hover:text-info disabled:border-border/60 disabled:bg-muted/50 disabled:text-muted-foreground"
       disabled={disabled}
       onClick={() => detachPromise(onClick())}
     >

@@ -86,9 +86,15 @@ interface ChunkStrategyDropdownProps {
   value: string
   onChange: (value: string) => void
   className?: string
+  surface?: 'default' | 'ocean'
 }
 
-export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<ChunkStrategyDropdownProps>) {
+export function ChunkStrategyDropdown({
+  value,
+  onChange,
+  className,
+  surface = 'default',
+}: Readonly<ChunkStrategyDropdownProps>) {
   const [isOpen, setIsOpen] = useState(false)
   const [openUpward, setOpenUpward] = useState(false)
   const [menuMaxHeight, setMenuMaxHeight] = useState(420)
@@ -113,6 +119,10 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
   const selectedRecommendationLabel =
     selectedCatalogItem?.recommendationLabel || '主流推荐'
   const selectedRecommendationStyle = RECOMMENDATION_STYLES[selectedRecommendation]
+  const resolvedSelectedRecommendationStyle =
+    surface === 'ocean'
+      ? { chip: 'bg-info/[0.08] text-info', section: 'text-info' }
+      : selectedRecommendationStyle
   const selectedView: ChunkStrategyCatalogItem = selectedCatalogItem || {
     ...selectedOption,
     recommendation: selectedRecommendation,
@@ -120,6 +130,11 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
   }
   const SelectedIcon = ICON_MAP[selectedView.icon]
   const selectedColor = COLOR_MAP[selectedView.icon]
+  const resolvedSelectedColor =
+    surface === 'ocean'
+      ? { bg: 'bg-info/[0.08]', text: 'text-info' }
+      : selectedColor
+  const resolvedIconFrameSize = surface === 'ocean' ? 'size-6' : 'size-8'
   const normalizedValue = String(value || '').trim().toLowerCase()
 
   // 点击外部关闭
@@ -191,7 +206,12 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
     menu = createPortal(
         <div
           ref={menuRef}
-          className="fixed z-[1000] overflow-hidden rounded-lg border border-border bg-card shadow-lg"
+          className={cn(
+            'fixed z-[1000] overflow-hidden rounded-lg border',
+            surface === 'ocean'
+              ? 'border-info/30 bg-[linear-gradient(hsl(var(--info)/0.10),hsl(var(--info)/0.10)),linear-gradient(hsl(var(--popover)),hsl(var(--popover)))] text-popover-foreground shadow-strong'
+              : 'border-border bg-card shadow-lg'
+          )}
           style={{
             left: menuRect.left,
             width: menuRect.width,
@@ -204,11 +224,15 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
           >
             {groupedOptions.map((section) => {
               const sectionStyle = RECOMMENDATION_STYLES[section.recommendation]
+              const resolvedSectionStyle =
+                surface === 'ocean'
+                  ? { chip: 'bg-info/[0.06] text-info', section: 'text-info' }
+                  : sectionStyle
               const sectionLabel = section.items[0]?.recommendationLabel || ''
               return (
                 <div key={section.recommendation} className="py-1">
                   <div className="flex items-center justify-between px-3 py-1.5">
-                    <span className={cn('text-[10px] font-semibold tracking-[0.08em]', sectionStyle.section)}>
+                    <span className={cn('text-[10px] font-semibold tracking-[0.08em]', resolvedSectionStyle.section)}>
                       {sectionLabel}
                     </span>
                     <span className="text-[10px] text-muted-foreground">{section.items.length}</span>
@@ -216,9 +240,17 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
                   {section.items.map((option: ChunkStrategyCatalogItem) => {
                     const Icon = ICON_MAP[option.icon]
                     const color = COLOR_MAP[option.icon]
+                    const resolvedColor =
+                      surface === 'ocean'
+                        ? { bg: 'bg-info/[0.08]', text: 'text-info' }
+                        : color
                     const isSelected = option.value === normalizedValue
                     const isDisabled = !!option.disabled || chunkStrategyAvailable(option.value) === false
                     const recommendationStyle = RECOMMENDATION_STYLES[option.recommendation]
+                    const resolvedRecommendationStyle =
+                      surface === 'ocean'
+                        ? { chip: 'bg-info/[0.06] text-info', section: 'text-info' }
+                        : recommendationStyle
 
                     return (
                       <button
@@ -232,28 +264,32 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
                         }}
                         className={cn(
                           'h-[72px] w-full flex items-center gap-2.5 px-3 transition-colors',
-                          isSelected ? 'bg-primary/10' : 'hover:bg-muted',
+                          isSelected
+                            ? surface === 'ocean' ? 'bg-info/[0.10]' : 'bg-primary/10'
+                            : surface === 'ocean' ? 'hover:bg-info/[0.06]' : 'hover:bg-muted',
                           isDisabled && 'opacity-50 cursor-not-allowed hover:bg-transparent'
                         )}
                       >
-                        <div className={cn('grid size-8 shrink-0 place-items-center rounded-md', color.bg)}>
-                          <Icon className={cn('size-3.5', color.text)} />
+                        <div className={cn('grid shrink-0 place-items-center rounded-md', resolvedIconFrameSize, resolvedColor.bg)}>
+                          <Icon className={cn('size-3.5', resolvedColor.text)} />
                         </div>
                         <div className="min-w-0 flex-1 text-left">
                           <div className="flex h-5 min-w-0 items-center gap-1.5">
                             <span
                               className={cn(
                                 'min-w-0 flex-1 truncate text-[11px] font-medium',
-                                isSelected ? 'text-primary' : 'text-foreground'
+                                isSelected
+                                  ? surface === 'ocean' ? 'text-info' : 'text-primary'
+                                  : 'text-foreground'
                               )}
                             >
                               {option.label}
                             </span>
-                            <span className={cn('shrink-0 rounded px-1.5 py-0.5 text-[9px] font-medium', recommendationStyle.chip)}>
+                            <span className={cn('shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium', resolvedRecommendationStyle.chip)}>
                               {option.recommendationLabel}
                             </span>
                             {option.badge ? (
-                              <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-medium bg-muted text-muted-foreground">
+                              <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground">
                                 {option.badge}
                               </span>
                             ) : null}
@@ -261,7 +297,12 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
                           <p className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-muted-foreground">{option.description}</p>
                         </div>
                         {isSelected ? (
-                          <Check className="size-4 flex-shrink-0 text-primary" />
+                          <Check
+                            className={cn(
+                              'size-4 flex-shrink-0',
+                              surface === 'ocean' ? 'text-info' : 'text-primary'
+                            )}
+                          />
                         ) : null}
                       </button>
                     )
@@ -287,14 +328,20 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
         }}
         className={cn(
           'h-[60px] w-full flex items-center gap-2.5 rounded-lg border px-2.5 transition-colors duration-150 motion-reduce:transition-none',
-          'bg-card hover:bg-muted',
+          surface === 'ocean'
+            ? 'bg-info/[0.045] hover:bg-info/[0.075]'
+            : 'bg-card hover:bg-muted',
           isOpen
-            ? 'border-primary/30 ring-2 ring-primary/10'
-            : 'border-border hover:border-border'
+            ? surface === 'ocean'
+              ? 'border-info/35 ring-2 ring-info/10'
+              : 'border-primary/30 ring-2 ring-primary/10'
+            : surface === 'ocean'
+              ? 'border-info/20 hover:border-info/30'
+              : 'border-border hover:border-border'
         )}
       >
-        <div className={cn('grid size-8 shrink-0 place-items-center rounded-md', selectedColor.bg)}>
-          <SelectedIcon className={cn('size-3.5', selectedColor.text)} />
+        <div className={cn('grid shrink-0 place-items-center rounded-md', resolvedIconFrameSize, resolvedSelectedColor.bg)}>
+          <SelectedIcon className={cn('size-3.5', resolvedSelectedColor.text)} />
         </div>
         <div className="min-w-0 flex-1 text-left">
           <div className="flex h-5 min-w-0 items-center gap-2">
@@ -303,14 +350,21 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
             </span>
             <span
               className={cn(
-                'shrink-0 rounded px-1.5 py-px text-[9px] font-medium leading-4',
-                selectedRecommendationStyle.chip
+                'shrink-0 rounded px-1.5 py-px text-[10px] font-medium leading-4',
+                resolvedSelectedRecommendationStyle.chip
               )}
             >
               {selectedRecommendationLabel}
             </span>
             {selectedView.badge && (
-              <span className="shrink-0 rounded bg-primary/10 px-1.5 py-px text-[9px] font-medium leading-4 text-primary">
+              <span
+                className={cn(
+                  'shrink-0 rounded px-1.5 py-px text-[10px] font-medium leading-4',
+                  surface === 'ocean'
+                    ? 'bg-info/[0.08] text-info'
+                    : 'bg-primary/10 text-primary'
+                )}
+              >
                 {selectedView.badge}
               </span>
             )}

@@ -49,4 +49,36 @@ describe('quarantine visual contract', () => {
     expect(detailPanel).toContain('rounded-lg border border-warning/30 bg-warning/5 p-4')
     expect(detailPanel).not.toContain('shadow-[0_0_8px_rgba(245,158,11,0.5)]')
   })
+
+  it('keeps the bottom panels flush by assigning spare height to the audit canvas', () => {
+    const page = readComponent('page.tsx')
+    const auditCanvas = readComponent(
+      '../../../components/knowledge/quarantine/quarantine-audit-canvas.tsx'
+    )
+
+    expect(page).toContain(
+      "'relative flex h-full min-h-0 flex-col overflow-hidden'"
+    )
+    expect(page).toContain(
+      'bodyClassName="relative z-10 flex w-full max-w-none flex-1 flex-col px-2 pb-4 md:px-3 xl:px-4"'
+    )
+    expect(page).toContain(
+      'bodyContainerClassName="flex min-h-0 max-w-none flex-1 flex-col"'
+    )
+    expect(page).toContain(
+      '<div className="flex min-h-0 flex-1 flex-col gap-4">'
+    )
+    expect(page).toContain('className="min-h-[25.5rem] flex-1"')
+
+    expect(auditCanvas).toContain('className?: string')
+    expect(auditCanvas).toContain(
+      "'flex min-h-0 flex-col overflow-hidden rounded-[1.2rem]"
+    )
+    expect(auditCanvas).toContain(
+      'className="min-h-[10.5rem] flex-1 overflow-x-auto"'
+    )
+    expect(auditCanvas).toContain(
+      'className="h-full w-full table-fixed border-collapse text-left"'
+    )
+  })
 })

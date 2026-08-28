@@ -24,9 +24,9 @@ export const systemWorkbenchTokens = {
 
 export const settingsTextTokens = {
   sectionTitle: 'text-[15px] font-semibold tracking-[-0.01em] text-foreground',
-  sectionIcon: 'h-4 w-4 text-primary',
+  sectionIcon: 'h-4 w-4 text-info',
   sectionBadge:
-    'rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary',
+    'rounded-full border border-info/20 bg-info/10 px-2 py-0.5 text-[11px] font-semibold text-info',
   panelTitle: 'text-[12px] font-semibold tracking-[-0.005em] text-foreground',
   panelTitleIcon: 'h-4 w-4 text-muted-foreground',
   fieldLabel: 'text-[11px] font-semibold text-muted-foreground',
