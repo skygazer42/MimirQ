@@ -108,12 +108,16 @@ async function expectHealthEndpoints(page: Page) {
 }
 
 async function selectFullIndexExecutionMode(page: Page) {
-  const executionField = page.getByText('执行阶段', { exact: true }).locator('..')
-  const executionMode = executionField.getByRole('combobox')
-  await expect(executionMode).toBeVisible({ timeout: 60_000 })
-  await executionMode.click()
-  await page.getByRole('option', { name: /解析 \+ 索引/ }).click()
-  await expect(executionMode).toContainText('解析 + 索引')
+  const executionGroup = page.getByRole('group', { name: '执行终点' })
+  const fullIndexMode = executionGroup.locator(
+    'input[name="ingestion-execution-mode"][value="full_index"]'
+  )
+
+  await expect(executionGroup).toBeVisible({ timeout: 60_000 })
+  await expect(executionGroup.getByText('解析 + 索引', { exact: true })).toBeVisible()
+  await expect(fullIndexMode).toBeVisible()
+  await fullIndexMode.check()
+  await expect(fullIndexMode).toBeChecked()
 }
 
 async function selectChatDatasetScope(page: Page, datasetName: string) {

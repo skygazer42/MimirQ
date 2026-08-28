@@ -179,9 +179,33 @@ def test_repo_checks_enforce_api_type_drift_and_shared_python_audit_policy() -> 
         "PYSEC-2026-311",
         "PYSEC-2026-3046",
         "PYSEC-2026-2447",
+        "CVE-2026-45830",
+        "CVE-2026-45831",
+        "CVE-2026-45833",
         "PYSEC-2026-1325",
     ):
         assert f"--ignore-vuln {advisory}" in python_audit
+
+
+def test_python_audit_chroma_exception_stays_bound_to_the_embedded_local_backend() -> None:
+    makefile = _read("Makefile")
+    vector_factory = _read("app/storage/vector/factory.py")
+    helm_validation = _read("deploy/helm/mimirq/templates/validate-runtime.yaml")
+    chroma_backend = vector_factory.split("class ChromaVectorStore(BaseVectorStore):", 1)[1].split(
+        "\n\n_VECTOR_STORE_SINGLETONS:", 1
+    )[0]
+
+    assert "embedded local LangChain Chroma path" in makefile
+    assert "Chroma HTTP or RBAC APIs" in makefile
+    assert '"collection_name": key' in chroma_backend
+    assert 'kwargs["persist_directory"] = self.persist_path' in chroma_backend
+    assert "HttpClient" not in chroma_backend
+    assert "host=" not in chroma_backend
+    assert "port=" not in chroma_backend
+    assert "headers=" not in chroma_backend
+    assert "Distributed MimirQ deployments cannot use VECTOR_BACKEND=faiss or VECTOR_BACKEND=chroma." in (
+        helm_validation
+    )
 
 
 def test_dependency_audit_covers_web_and_handbook_with_shared_policy() -> None:
@@ -354,7 +378,9 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     assert "/data/actions-runner" not in workflow
     assert "127.0.0.1:35983" not in workflow
     assert "docker build --network host" in workflow
-    assert workflow.count("docker build --network host") == 2
+    assert workflow.count("docker build --network host") == 1
+    assert "uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4" in workflow
+    assert "uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7" in workflow
     assert "Prepare Docker build proxy" in workflow
     assert '"${SELF_HOSTED_HTTP_PROXY:-${HTTP_PROXY:-}}"' in workflow
     assert '"${SELF_HOSTED_HTTPS_PROXY:-${HTTPS_PROXY:-}}"' in workflow
@@ -623,7 +649,7 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     web_dockerfile = _read("web/Dockerfile.prod")
     web_compose = _read("docker/docker-compose.web.yml")
 
-    assert "timeout-minutes: 60" in docker_job
+    assert "timeout-minutes: 90" in docker_job
     assert "docker compose -f docker/docker-compose.retrieval-dev.yml config --quiet" in workflow
     assert "target=/root/.local/share/pnpm/store" in web_dockerfile
     assert "https://registry.npmmirror.com" in web_dockerfile
@@ -633,6 +659,17 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     assert "PNPM_REGISTRY: ${PNPM_REGISTRY:-https://registry.npmmirror.com}" in web_compose
     assert 'python scripts/select_free_docker_subnet.py --seed "$GITHUB_RUN_ID"' in docker_job
     assert "printf 'DOCKER_BUILD_NETWORK=host\\n'" in docker_job
+    assert "Set up Docker Buildx" in docker_job
+    assert "uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4" in docker_job
+    assert "id: backend_buildx" in docker_job
+    assert "network=host" in docker_job
+    assert "uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7" in docker_job
+    assert "builder: ${{ steps.backend_buildx.outputs.name }}" in docker_job
+    assert "load: true" in docker_job
+    assert "allow: network.host" in docker_job
+    assert "cache-from: type=gha,scope=mimirq-backend" in docker_job
+    assert "cache-to: type=gha,mode=max,scope=mimirq-backend" in docker_job
+    assert "build-args: |\n            HTTP_PROXY\n            HTTPS_PROXY\n            NO_PROXY" in docker_job
     assert "--build-arg NEXT_PUBLIC_API_URL=/" in docker_job
     assert "README docker quickstart smoke" in docker_job
     assert 'API_HEALTHCHECK_START_PERIOD: "420s"' in docker_job
@@ -831,6 +868,21 @@ def test_live_browser_smoke_never_bootstraps_a_persistent_admin() -> None:
     assert "PLAYWRIGHT_LIVE_PASSWORD" in live_spec
     assert "JWT live smoke requires" in live_spec
     assert "getByRole('button', { name: '首次设置' })" not in live_spec
+
+
+def test_live_browser_smoke_targets_the_current_full_index_execution_controls() -> None:
+    live_spec = _read("web/e2e/live-stack.smoke.spec.ts")
+
+    assert "getByRole('group', { name: '执行终点' })" in live_spec
+    assert 'input[name="ingestion-execution-mode"][value="full_index"]' in live_spec
+    assert "await fullIndexMode.check()" in live_spec
+    assert "await expect(fullIndexMode).toBeChecked()" in live_spec
+    assert "getByText('执行阶段', { exact: true })" not in live_spec
+    assert "getByRole('combobox')" not in live_spec
+    assert "getByRole('option', { name: /解析 \\+ 索引/ })" not in live_spec
+    assert "/api/v1/documents/upload-batch" in live_spec
+    assert "选择数据集" in live_spec
+    assert "来源与证据" in live_spec
 
 
 def test_dockerfiles_bypass_broken_docker_hub_mirror() -> None:

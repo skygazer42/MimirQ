@@ -35,6 +35,11 @@ logs/
 runs/
 chroma_db/
 data/
+docs-site/
+work/
+.tmp/
+.playwright-cli/
+.playwright-mcp/
 # Runtime images download and verify this pinned bundle during the build.
 app/deepdoc/resources/models/
 docs/

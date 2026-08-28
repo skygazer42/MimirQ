@@ -499,7 +499,9 @@ compileall-docker:
 
 # No patched releases exist for these advisories yet. Keep the exceptions explicit
 # and centralized while still resolving and auditing every transitive dependency:
-# - Chroma: MimirQ does not expose Chroma's affected HTTP collection endpoint.
+# - Chroma: MimirQ only reaches the embedded local LangChain Chroma path
+#   (`collection_name` + optional local `persist_directory`); it does not configure
+#   Chroma HTTP or RBAC APIs, and distributed deployments reject VECTOR_BACKEND=chroma.
 # - Ragas: MimirQ does not call the affected multimodal URL evaluator.
 # - DiskCache: exploitation requires prior write access to the private cache directory.
 # - ecdsa: JWT signing uses the cryptography backend; verification is unaffected.
@@ -511,6 +513,9 @@ audit-py:
 		--ignore-vuln PYSEC-2026-311 \
 		--ignore-vuln PYSEC-2026-3046 \
 		--ignore-vuln PYSEC-2026-2447 \
+		--ignore-vuln CVE-2026-45830 \
+		--ignore-vuln CVE-2026-45831 \
+		--ignore-vuln CVE-2026-45833 \
 		--ignore-vuln PYSEC-2026-1325
 
 audit-web:
