@@ -1244,16 +1244,18 @@ export default function DatasetIngestionPolicyPage() {
         </div>
 
         <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
-          <DialogContent className="max-w-3xl border-border bg-background/95 shadow-strong sm:rounded-2xl">
-            <DialogHeader>
+          {/* Bound the dialog to the viewport; only the form body scrolls so actions stay reachable. */}
+          <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-3xl flex-col gap-0 overflow-hidden border-border bg-background/95 p-0 shadow-strong sm:rounded-2xl">
+            <DialogHeader className="shrink-0 border-b border-border/60 px-6 py-5 pr-12">
               <DialogTitle className="text-xl font-bold text-foreground">{editingIndex == null ? '新增规则' : '编辑规则'}</DialogTitle>
               <DialogDescription className="text-muted-foreground">
                 提示：规则从上到下匹配。扩展名支持 .pdf / pdf 两种写法；filename_regex 为可选。
               </DialogDescription>
             </DialogHeader>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="space-y-4">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-4">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <div className="min-w-0 space-y-4">
                 <div className="space-y-2">
                   <Label>规则 ID（唯一）</Label>
                   <Input value={draft.id} onChange={(e) => setDraft({ ...draft, id: e.target.value })} />
@@ -1320,7 +1322,7 @@ export default function DatasetIngestionPolicyPage() {
                 </Panel>
               </div>
 
-              <div className="space-y-4">
+              <div className="min-w-0 space-y-4">
                 <div className="space-y-2">
                   <Label>解析后端（可选覆盖）</Label>
                   <Select value={draft.parserBackend || NONE} onValueChange={(v) => setDraft({ ...draft, parserBackend: v === NONE ? '' : v })}>
@@ -1393,7 +1395,9 @@ export default function DatasetIngestionPolicyPage() {
               </div>
             </div>
 
-            <DialogFooter className="mt-4">
+            </div>
+
+            <DialogFooter className="shrink-0 gap-2 border-t border-border/60 px-6 py-4">
               <Button variant="ghost" onClick={() => setEditorOpen(false)}>取消</Button>
               <Button onClick={applyDraft}>保存规则</Button>
             </DialogFooter>
@@ -1401,8 +1405,9 @@ export default function DatasetIngestionPolicyPage() {
         </Dialog>
 
         <Dialog open={templatesOpen} onOpenChange={setTemplatesOpen}>
-          <DialogContent className="max-w-3xl border-border bg-background/95 shadow-strong sm:rounded-2xl">
-            <DialogHeader>
+          {/* Keep the template list scrollable without moving the dialog title or close controls. */}
+          <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-3xl flex-col gap-0 overflow-hidden border-border bg-background/95 p-0 shadow-strong sm:rounded-2xl">
+            <DialogHeader className="shrink-0 border-b border-border/60 px-6 py-5 pr-12">
               <DialogTitle className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-primary" />
                 入库策略模板
@@ -1412,10 +1417,10 @@ export default function DatasetIngestionPolicyPage() {
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-3">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-6 py-4">
               {INGESTION_POLICY_TEMPLATES.map((tpl) => (
                 <div key={tpl.key} className="rounded-xl border border-border/60 p-4 hover:bg-muted/20 transition-colors">
-                  <div className="flex items-start justify-between gap-4">
+                  <div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
                     <div className="min-w-0">
                       <div className="font-semibold">{tpl.name}</div>
                       <div className="text-xs text-muted-foreground mt-1">{tpl.description}</div>
@@ -1430,7 +1435,7 @@ export default function DatasetIngestionPolicyPage() {
                         </Badge>
                       </div>
                     </div>
-                    <div className="flex flex-col gap-2 flex-shrink-0">
+                    <div className="flex shrink-0 flex-wrap gap-2 sm:flex-col">
                       <Button size="sm" onClick={() => applyTemplate(tpl, 'prepend')}>
                         追加到顶部
                       </Button>
@@ -1446,7 +1451,7 @@ export default function DatasetIngestionPolicyPage() {
               ))}
             </div>
 
-            <DialogFooter className="mt-2">
+            <DialogFooter className="shrink-0 border-t border-border/60 px-6 py-4">
               <Button variant="ghost" onClick={() => setTemplatesOpen(false)}>
                 关闭
               </Button>
