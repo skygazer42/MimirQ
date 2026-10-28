@@ -7,7 +7,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
-  Layers,
+  Chunking,
   Rows3,
   Loader2,
   AlertCircle,
@@ -21,7 +21,7 @@ import {
   EyeOff,
   SlidersHorizontal,
   CheckCircle2,
-} from 'lucide-react'
+} from '@/components/icons'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -35,6 +35,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useChunkPreview } from '@/components/chunk-preview/context'
+import styles from '../compare.module.css'
 import { ChunkCard } from '../../chunk-card'
 import { ChunkInspectorDialog } from '../../chunk-inspector-dialog'
 import { chunkIsReviewed, chunkNeedsReview, isChunkOverrideDisabled, isChunkOverrideEdited, isJsonObject } from '@/components/chunk-preview/utils/metadata'
@@ -44,7 +45,7 @@ import { getChunkSectionPath } from '@/components/chunk-preview/utils/sections'
 import { buildChunkSearchIndex, searchChunkIndex, type ChunkSearchResult } from '@/components/chunk-preview/utils/retrieval-search'
 import { rerankChunkSearchResults, type RerankedChunkSearchResult } from '@/components/chunk-preview/utils/reranker-sim'
 import { writeClientStorage } from '@/lib/client-storage'
-import { detachPromise } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 import {
   ORIGINAL_PREVIEW_MODE_STORAGE_KEY,
   getStoredOriginalPreviewMode,
@@ -99,10 +100,11 @@ function toSignalMap(values: ChunkPreviewReviewSignals['gap_before_by_index']): 
   return out
 }
 
-export function ChunkList() {
+export function ChunkList({ mobileView }: Readonly<{ mobileView?: 'original' | 'chunks' }>) {
   const t = useTranslations('ChunkPreview')
   const {
     previewData,
+    gapReviewRequest,
     chunkOverrides,
     currentFile,
     hoveredChunkIndex,
@@ -147,6 +149,7 @@ export function ChunkList() {
   const [inspectorIndex, setInspectorIndex] = useState<number | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const consumedGapRequest = useRef(gapReviewRequest)
 
   const isParentChildStrategy = previewData?.chunk_strategy === 'parent_child'
   const isHierarchyView = isParentChildStrategy && viewMode === 'hierarchy'
@@ -190,6 +193,8 @@ export function ChunkList() {
   }, [queryInput])
 
   useEffect(() => {
+    const focusGaps = gapReviewRequest !== consumedGapRequest.current
+    consumedGapRequest.current = gapReviewRequest
     setPageFilter(PAGE_ALL_VALUE)
     setSectionFilter(SECTION_ALL_VALUE)
     setQueryInput('')
@@ -197,7 +202,7 @@ export function ChunkList() {
     setSortMode('index')
     setViewMode('flat')
     setGroupMode('none')
-    setFiltersOpen(false)
+    setFiltersOpen(focusGaps)
     setRetrieveOpen(false)
     setRetrieveQuery('')
     setRerankEnabled(false)
@@ -209,12 +214,16 @@ export function ChunkList() {
     setOnlyDuplicate(false)
     setOnlyEdited(false)
     setOnlyDisabled(false)
-    setOnlyGap(false)
+    setOnlyGap(focusGaps)
     setOnlyOverlap(false)
     setOnlyNeedsReview(false)
     setInspectorOpen(false)
     setInspectorIndex(null)
-  }, [previewData?.filename])
+    if (focusGaps) {
+      setSelectedChunkIndex(null)
+      scrollRef.current?.scrollTo({ top: 0 })
+    }
+  }, [gapReviewRequest, previewData?.filename, setSelectedChunkIndex])
 
   const pageOptions = useMemo(() => {
     const chunks = previewData?.chunks || []
@@ -655,9 +664,13 @@ export function ChunkList() {
     if (selectedChunkIndex == null) return
     const pos = displayRows.findIndex((item) => item.kind === 'chunk' && item.index === selectedChunkIndex)
     if (pos >= 0) {
-      rowVirtualizer.scrollToIndex(pos, { align: 'center' })
+      // Wait for the mobile pane to be visible and measured before restoring its selected row.
+      const frame = requestAnimationFrame(() => {
+        if (scrollRef.current?.clientHeight) rowVirtualizer.scrollToIndex(pos, { align: 'start' })
+      })
+      return () => cancelAnimationFrame(frame)
     }
-  }, [displayRows, rowVirtualizer, selectedChunkIndex])
+  }, [displayRows, mobileView, rowVirtualizer, selectedChunkIndex])
 
   const matchesLabel = useMemo(() => {
     const hasFilter =
@@ -862,25 +875,23 @@ export function ChunkList() {
     : supportsPdfDocking
       ? t('chunkList.keyboardHints.withPdfDocking')
       : t('chunkList.keyboardHints.hiddenOriginal')
-  const chunkListToolbarButtonClass =
-    'h-7 rounded-full border-border/45 px-2 text-[10.5px] font-medium text-muted-foreground shadow-none transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-primary'
-  const chunkListToolbarActiveButtonClass =
-    'h-7 rounded-full border-primary/20 bg-primary/10 px-2 text-[10.5px] font-semibold text-primary shadow-none transition-colors hover:bg-primary/20'
+  const chunkListToolbarButtonClass = styles.listButton
+  const chunkListToolbarActiveButtonClass = `${styles.listButton} ${styles.listButtonActive}`
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 bg-background">
-      <div className="border-b border-border/55 bg-card px-3 py-2 shrink-0">
-        <div className="flex flex-col gap-1.5">
-          <div className="flex min-w-0 items-center justify-between gap-2">
+    <div className={styles.pane}>
+      <div className="shrink-0 border-b border-border bg-card">
+        <div className="flex flex-col">
+          <div className={styles.paneHead}>
             <div className="flex min-w-0 items-center gap-1.5">
               <span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-[13px] font-semibold text-foreground">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full border border-primary/20 bg-primary/10 text-primary">
+                <span className="inline-flex items-center text-muted-foreground">
                   <Rows3 className="h-3.5 w-3.5" />
                 </span>
                 {t('chunkList.title')}
               </span>
               {previewData?.total_chunks ? (
-                <span className="rounded-full border border-primary/20 bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-primary">
+                <span className={styles.metadata}>
                   {previewData.total_chunks}
                 </span>
               ) : null}
@@ -890,11 +901,11 @@ export function ChunkList() {
 
           <div
             data-chunk-list-toolbar
-            className="flex min-w-0 flex-wrap items-center gap-1 rounded-[18px] border border-border/45 bg-muted/20 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]"
+            className={cn(styles.listToolRow, "px-6 py-2.5")}
           >
             <div
               data-chunk-list-search
-              className="relative flex h-7 min-w-[150px] flex-1 items-center rounded-full border border-border/40 bg-background/90 px-2 shadow-sm"
+              className={cn(styles.listSearch, "relative")}
             >
                 <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                 <Input
@@ -902,7 +913,7 @@ export function ChunkList() {
                   value={queryInput}
                   onChange={(e) => setQueryInput(e.target.value)}
                   placeholder={t('chunkList.searchPlaceholder')}
-                  className="h-full min-w-0 flex-1 border-0 bg-transparent px-1.5 pr-5 text-[11px] shadow-none placeholder:text-muted-foreground/65 focus-visible:ring-1 focus-visible:ring-primary/30"
+                  className="h-full min-w-0 flex-1 border-0 bg-transparent px-0 pr-5 text-[13px] shadow-none focus-visible:ring-1 focus-visible:ring-ring" aria-label="搜索切块内容"
                 />
                 {queryInput ? (
                   <button
@@ -925,7 +936,7 @@ export function ChunkList() {
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className={chunkListToolbarButtonClass}
+                    className={cn(chunkListToolbarButtonClass, styles.desktopListAction)}
                     onClick={() => detachPromise(copySelectedChunk())}
                   >
                     {t('chunkList.actions.copySelected')}
@@ -934,7 +945,7 @@ export function ChunkList() {
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className={chunkListToolbarButtonClass}
+                    className={cn(chunkListToolbarButtonClass, styles.desktopListAction)}
                     onClick={() => selectChunkIndex(null)}
                   >
                     {t('chunkList.actions.clearSelection')}
@@ -980,7 +991,12 @@ export function ChunkList() {
               </Button>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-1.5 rounded-2xl border border-border/40 bg-background/70 px-2 py-1">
+          {filtersOpen ? (
+            <div
+              id="chunk-list-filter-panel"
+              className={cn(styles.listFilters, "px-6 pb-3")}
+            >
+          <div className={styles.qualityTools}>
             <div className="flex min-w-0 flex-wrap items-center gap-1.5">
               {effectiveChunks.length > 0 ? (
                 <>
@@ -992,7 +1008,7 @@ export function ChunkList() {
                       type="button"
                       variant={item.active ? 'secondary' : 'ghost'}
                       size="sm"
-                      className="h-6 rounded-md px-1.5 text-[10px]"
+                      className="h-8 rounded px-2 text-[13px]"
                       onClick={item.toggle}
                       title={item.title}
                     >
@@ -1002,14 +1018,14 @@ export function ChunkList() {
                   )
                   })}
                   {healthyQualitySummaryCount > 0 ? (
-                    <span className="inline-flex h-6 items-center gap-1 rounded-md border border-success/25 bg-success/10 px-1.5 text-[10px] font-medium text-success">
+                    <span className="inline-flex h-6 items-center gap-1 rounded-md border border-success/25 bg-success/10 px-1.5 text-[13px] font-medium text-success">
                       <CheckCircle2 className="h-3 w-3" />
                       {t('chunkList.filters.healthySummary', { count: healthyQualitySummaryCount })}
                     </span>
                   ) : null}
                 </>
               ) : (
-                <span className="text-[11px] text-muted-foreground">{t('chunkList.toolbar.noQualitySignals')}</span>
+                <span className="text-[13px] text-muted-foreground">{t('chunkList.toolbar.noQualitySignals')}</span>
               )}
             </div>
             <span className="sr-only">
@@ -1017,11 +1033,7 @@ export function ChunkList() {
             </span>
           </div>
 
-          {filtersOpen ? (
-            <div
-              id="chunk-list-filter-panel"
-              className="rounded-lg border border-border/50 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.18))] p-2"
-            >
+
               <div className="flex flex-wrap items-center gap-1.5">
             {isParentChildStrategy ? (
               <Select
@@ -1036,7 +1048,7 @@ export function ChunkList() {
                   if (next !== 'hierarchy') setCollapsedGroups({})
                 }}
               >
-                <SelectTrigger className="h-[28px] w-[112px] rounded-lg border-border/60 bg-background text-[11px]">
+                <SelectTrigger className="h-[28px] w-[112px] rounded-lg border-border/60 bg-background text-[13px]">
                   <SelectValue placeholder={t('chunkList.view.placeholder')} />
                 </SelectTrigger>
                 <SelectContent>
@@ -1055,7 +1067,7 @@ export function ChunkList() {
                   if (next === 'section') setSortMode('index')
                 }}
               >
-                <SelectTrigger className="h-[28px] w-[112px] rounded-lg border-border/60 bg-background text-[11px]">
+                <SelectTrigger className="h-[28px] w-[112px] rounded-lg border-border/60 bg-background text-[13px]">
                   <SelectValue placeholder={t('chunkList.group.placeholder')} />
                 </SelectTrigger>
                 <SelectContent>
@@ -1069,7 +1081,7 @@ export function ChunkList() {
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-[28px] rounded-lg px-2 text-[11px]"
+                className="h-[28px] rounded-lg px-2 text-[13px]"
                 onClick={() => {
                   if (allGroupsCollapsed) {
                     setCollapsedGroups({})
@@ -1085,7 +1097,7 @@ export function ChunkList() {
               </Button>
             ) : null}
             <Select value={sortMode} onValueChange={(value) => setSortMode(value as SortMode)} disabled={isHierarchyView || isSectionView}>
-              <SelectTrigger className="h-[28px] w-[122px] rounded-lg border-border/60 bg-background text-[11px]">
+              <SelectTrigger className="h-[28px] w-[122px] rounded-lg border-border/60 bg-background text-[13px]">
                 <SelectValue placeholder={t('chunkList.sort.placeholder')} />
               </SelectTrigger>
               <SelectContent>
@@ -1095,7 +1107,7 @@ export function ChunkList() {
               </SelectContent>
             </Select>
             <Select value={pageFilter} onValueChange={(value) => setPageFilter(value)}>
-              <SelectTrigger className="h-[28px] w-[98px] rounded-lg border-border/60 bg-background text-[11px]">
+              <SelectTrigger className="h-[28px] w-[98px] rounded-lg border-border/60 bg-background text-[13px]">
                 <SelectValue placeholder={t('chunkList.page.placeholder')} />
               </SelectTrigger>
               <SelectContent>
@@ -1110,7 +1122,7 @@ export function ChunkList() {
             </Select>
             {sectionOptions.list.length > 0 || sectionOptions.hasNone ? (
               <Select value={sectionFilter} onValueChange={(value) => setSectionFilter(value)}>
-                <SelectTrigger className="h-[28px] w-[138px] rounded-lg border-border/60 bg-background text-[11px]">
+                <SelectTrigger className="h-[28px] w-[138px] rounded-lg border-border/60 bg-background text-[13px]">
                   <SelectValue placeholder={t('chunkList.section.placeholder')} />
                 </SelectTrigger>
                 <SelectContent>
@@ -1126,7 +1138,7 @@ export function ChunkList() {
                 </SelectContent>
               </Select>
             ) : null}
-            <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            <div className="flex items-center gap-1 text-[13px] text-muted-foreground">
               <span className="mr-1">{lengthFilterLabel}</span>
               <Input
                 value={minLen > 0 ? String(minLen) : ''}
@@ -1136,7 +1148,7 @@ export function ChunkList() {
                   if (raw) { if (Number.isFinite(n)) setMinLen(Math.max(0, Math.trunc(n))) } else { setMinLen(0) }
                 }}
                 placeholder={t('chunkList.lengthFilter.minPlaceholder')}
-                className="h-[28px] w-[58px] rounded-lg border-border/60 bg-background px-2 text-[11px] font-mono"
+                className="h-[28px] w-[58px] rounded-lg border-border/60 bg-background px-2 text-[13px] font-mono"
                 inputMode="numeric"
                 aria-label={minLengthFilterAria}
               />
@@ -1149,7 +1161,7 @@ export function ChunkList() {
                   if (raw) { if (Number.isFinite(n)) setMaxLen(Math.max(0, Math.trunc(n))) } else { setMaxLen(0) }
                 }}
                 placeholder={t('chunkList.lengthFilter.maxPlaceholder')}
-                className="h-[28px] w-[58px] rounded-lg border-border/60 bg-background px-2 text-[11px] font-mono"
+                className="h-[28px] w-[58px] rounded-lg border-border/60 bg-background px-2 text-[13px] font-mono"
                 inputMode="numeric"
                 aria-label={maxLengthFilterAria}
               />
@@ -1158,7 +1170,7 @@ export function ChunkList() {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-[28px] rounded-lg px-2 text-[11px]"
+                  className="h-[28px] rounded-lg px-2 text-[13px]"
                   onClick={() => {
                     setMinLen(0)
                     setMaxLen(0)
@@ -1173,7 +1185,7 @@ export function ChunkList() {
               <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-border/45 pt-2">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button type="button" variant="outline" size="sm" className="h-[28px] rounded-lg px-2 text-[11px]">
+                  <Button type="button" variant="outline" size="sm" className="h-[28px] rounded-lg px-2 text-[13px]">
                     {t('chunkList.batch.trigger')}
                   </Button>
                 </DropdownMenuTrigger>
@@ -1273,7 +1285,7 @@ export function ChunkList() {
                 type="button"
                 variant={onlyShort ? 'secondary' : 'ghost'}
                 size="sm"
-                className="h-[28px] rounded-lg px-2 text-[11px]"
+                className="h-[28px] rounded-lg px-2 text-[13px]"
                 onClick={() => setOnlyShort((v) => !v)}
                 title={t('chunkList.filters.onlyShortTitle')}
               >
@@ -1284,7 +1296,7 @@ export function ChunkList() {
                 type="button"
                 variant={onlyDuplicate ? 'secondary' : 'ghost'}
                 size="sm"
-                className="h-[28px] rounded-lg px-2 text-[11px]"
+                className="h-[28px] rounded-lg px-2 text-[13px]"
                 onClick={() => setOnlyDuplicate((v) => !v)}
                 title={t('chunkList.filters.onlyDuplicateTitle')}
               >
@@ -1295,7 +1307,7 @@ export function ChunkList() {
                 type="button"
                 variant={onlyGap ? 'secondary' : 'ghost'}
                 size="sm"
-                className="h-[28px] rounded-lg px-2 text-[11px]"
+                className="h-[28px] rounded-lg px-2 text-[13px]"
                 onClick={() => setOnlyGap((v) => !v)}
                 title={coverageSignals.basis === 'child'
                   ? t('chunkList.filters.onlyGapTitleChildCoverage')
@@ -1307,7 +1319,7 @@ export function ChunkList() {
                 type="button"
                 variant={onlyOverlap ? 'secondary' : 'ghost'}
                 size="sm"
-                className="h-[28px] rounded-lg px-2 text-[11px]"
+                className="h-[28px] rounded-lg px-2 text-[13px]"
                 onClick={() => setOnlyOverlap((v) => !v)}
                 title={coverageSignals.basis === 'child'
                   ? t('chunkList.filters.onlyOverlapTitleChildCoverage')
@@ -1319,7 +1331,7 @@ export function ChunkList() {
                 type="button"
                 variant={onlyNeedsReview ? 'secondary' : 'ghost'}
                 size="sm"
-                className="h-[28px] rounded-lg px-2 text-[11px]"
+                className="h-[28px] rounded-lg px-2 text-[13px]"
                 onClick={() => setOnlyNeedsReview((v) => !v)}
                 title={t('chunkList.filters.onlyNeedsReviewTitle')}
               >
@@ -1330,7 +1342,7 @@ export function ChunkList() {
                 type="button"
                 variant={onlyEdited ? 'secondary' : 'ghost'}
                 size="sm"
-                className="h-[28px] rounded-lg px-2 text-[11px]"
+                className="h-[28px] rounded-lg px-2 text-[13px]"
                 onClick={() => setOnlyEdited((v) => !v)}
                 title={t('chunkList.filters.onlyEditedTitle')}
               >
@@ -1341,7 +1353,7 @@ export function ChunkList() {
                 type="button"
                 variant={onlyDisabled ? 'secondary' : 'ghost'}
                 size="sm"
-                className="h-[28px] rounded-lg px-2 text-[11px]"
+                className="h-[28px] rounded-lg px-2 text-[13px]"
                 onClick={() => setOnlyDisabled((v) => !v)}
                 title={t('chunkList.filters.onlySkippedTitle')}
               >
@@ -1366,14 +1378,14 @@ export function ChunkList() {
                 if (v.trim()) setRetrieveOpen(true)
               }}
               placeholder={t('chunkList.retrieve.queryPlaceholder')}
-              className="h-8 text-[11px] bg-background"
+              className="h-8 text-[13px] bg-background"
             />
             {retrieveQuery ? (
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-8 px-2 text-[11px]"
+                className="h-8 px-2 text-[13px]"
                 onClick={() => setRetrieveQuery('')}
               >
                 {t('chunkList.retrieve.clear')}
@@ -1383,7 +1395,7 @@ export function ChunkList() {
               type="button"
               variant={rerankEnabled ? 'secondary' : 'ghost'}
               size="sm"
-              className="h-8 px-2 text-[11px]"
+              className="h-8 px-2 text-[13px]"
               onClick={() => setRerankEnabled((v) => !v)}
               title={t('chunkList.retrieve.rerankTitle')}
             >
@@ -1391,7 +1403,7 @@ export function ChunkList() {
             </Button>
             {rerankEnabled ? (
               <div className="flex items-center gap-2">
-                <span className="text-[11px] text-muted-foreground font-mono" title={t('chunkList.retrieve.alphaTitle')}>
+                <span className="text-[13px] text-muted-foreground font-mono" title={t('chunkList.retrieve.alphaTitle')}>
                   {rerankAlphaPct}%
                 </span>
                 <input
@@ -1419,25 +1431,25 @@ export function ChunkList() {
                     title={r.section}
                   >
                     <div className="flex items-center gap-2">
-                      <span className="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                      <span className="text-[13px] font-mono font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
                         #{r.index + 1}
                       </span>
                       {disabledIndices.has(r.index) ? (
-                        <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground border border-border/60">
+                        <span className="text-[13px] font-mono px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground border border-border/60">
                           {t('chunkList.retrieve.skippedBadge')}
                         </span>
                       ) : null}
                       {r.page_number == null ? null : (
-                        <span className="text-[11px] text-muted-foreground">P.{r.page_number}</span>
+                        <span className="text-[13px] text-muted-foreground">P.{r.page_number}</span>
                       )}
                       {r.section ? (
-                        <span className="min-w-0 flex-1 text-[11px] text-muted-foreground truncate">{r.section}</span>
+                        <span className="min-w-0 flex-1 text-[13px] text-muted-foreground truncate">{r.section}</span>
                       ) : (
                         <span className="min-w-0 flex-1" />
                       )}
                       {'combined_score' in r ? (
                         <span
-                          className="text-[11px] text-muted-foreground font-mono"
+                          className="text-[13px] text-muted-foreground font-mono"
                           title={t('chunkList.retrieve.combinedScoreTitle', {
                             retrieval: r.retrieval_score.toFixed(2),
                             rerank: Math.round(r.rerank_score * 100),
@@ -1447,20 +1459,20 @@ export function ChunkList() {
                           {t('chunkList.retrieve.combinedScoreLabel', { score: r.combined_score.toFixed(2) })}
                         </span>
                       ) : (
-                        <span className="text-[11px] text-muted-foreground font-mono">
+                        <span className="text-[13px] text-muted-foreground font-mono">
                           {t('chunkList.retrieve.retrievalScoreLabel', { score: r.score.toFixed(2) })}
                         </span>
                       )}
                     </div>
-                    <div className="mt-1 text-[11px] text-muted-foreground line-clamp-2">{r.snippet}</div>
+                    <div className="mt-1 text-[13px] text-muted-foreground line-clamp-2">{r.snippet}</div>
                   </button>
                 ))
               ) : (
-                <div className="text-[11px] text-muted-foreground">{t('chunkList.retrieve.noResults')}</div>
+                <div className="text-[13px] text-muted-foreground">{t('chunkList.retrieve.noResults')}</div>
               )}
             </div>
           ) : (
-            <div className="mt-2 text-[11px] text-muted-foreground">
+            <div className="mt-2 text-[13px] text-muted-foreground">
               {t('chunkList.retrieve.hint')}
             </div>
           )}
@@ -1469,9 +1481,10 @@ export function ChunkList() {
 
       <section
         ref={scrollRef}
+        tabIndex={0}
         data-page-scroll-container="true"
         aria-label={t('chunkList.ariaLabel')}
-        className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-4"
+        className={styles.chunkScroll}
       >
         <AnimatePresence initial={false} mode="wait">
           <motion.div
@@ -1481,7 +1494,7 @@ export function ChunkList() {
             animate={{ opacity: 1, y: 0 }}
             exit={reduceMotion ? undefined : { opacity: 0, y: -6 }}
             transition={surfaceTransition}
-            className="min-h-full rounded-2xl border border-border/60 bg-card p-3 shadow-sm ring-1 ring-border/40"
+            className={styles.chunkSurface}
             style={{
               height: showVirtualized ? `${rowVirtualizer.getTotalSize()}px` : undefined,
               position: showVirtualized ? 'relative' : undefined,
@@ -1513,10 +1526,10 @@ export function ChunkList() {
                         >
                           {isCollapsed ? <ChevronRight className="h-4 w-4"/> : <ChevronDown className="h-4 w-4"/>}
                         </button>
-                        <span className="min-w-0 flex-1 text-[11px] font-semibold truncate" title={item.label}>
+                        <span className="min-w-0 flex-1 text-[13px] font-semibold truncate" title={item.label}>
                           {item.label}
                         </span>
-                        <span className="text-[11px] text-muted-foreground font-mono">{item.count}</span>
+                        <span className="text-[13px] text-muted-foreground font-mono">{item.count}</span>
                       </div>
                     </div>);
             }
@@ -1543,7 +1556,7 @@ export function ChunkList() {
                     left: 0,
                     width: '100%',
                     transform: `translateY(${virtualRow.start}px)`,
-                }} className={isHierarchyView ? 'pb-3 flex gap-2 items-start' : 'pb-3'}>
+                }} className={isHierarchyView ? 'flex gap-2 items-start' : ''}>
                     {isHierarchyView ? (<div className="w-6 shrink-0 pt-3 flex justify-center">
                         {(() => {
                         if (canCollapse) {
@@ -1597,13 +1610,13 @@ export function ChunkList() {
                   </div>);
         })) : (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2 py-12">
                 <Search className="w-10 h-10 opacity-20"/>
-                <p className="text-xs text-muted-foreground">{t('chunkList.states.noMatches')}</p>
+                <p className="text-[13px] text-muted-foreground">{t('chunkList.states.noMatches')}</p>
               </div>));
     }
     else if (isLoading) {
             return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2 py-12">
               <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none opacity-20"/>
-              <p className="text-xs">{t('chunkList.states.loading')}</p>
+              <p className="text-[13px]">{t('chunkList.states.loading')}</p>
             </div>);
         }
         else if (error) {
@@ -1613,17 +1626,17 @@ export function ChunkList() {
                   <AlertCircle className="size-5"/>
                 </span>
                 <p className="mt-3 text-sm font-semibold text-foreground">{t('chunkList.states.error')}</p>
-                <p className="mt-2 max-w-[30rem] break-words text-xs leading-5 text-muted-foreground">{error}</p>
+                <p className="mt-2 max-w-[30rem] break-words text-[13px] leading-5 text-muted-foreground">{error}</p>
               </div>
-              <Button variant="outline" size="sm" className="h-8 px-3 text-[11px]" onClick={() => runPreview()}>
+              <Button variant="outline" size="sm" className="h-8 px-3 text-[13px]" onClick={() => runPreview()}>
                 {t('chunkList.states.retry')}
               </Button>
             </div>);
             }
             else {
                 return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2 py-12">
-              <Layers className="w-12 h-12 opacity-10"/>
-              <p className="text-xs">{t('chunkList.states.waiting')}</p>
+              <Chunking appearance="color" className="size-12" />
+              <p className="text-[13px]">{t('chunkList.states.waiting')}</p>
             </div>);
             }
 })()}

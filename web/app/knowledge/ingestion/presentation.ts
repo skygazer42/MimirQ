@@ -3,11 +3,11 @@ import {
   CircleDashed,
   FileDigit,
   FileSearch,
-  LucideIcon,
+  PlatformIcon,
   ShieldAlert,
   TableProperties,
   Workflow,
-} from 'lucide-react'
+} from '@/components/icons'
 
 import type { DatasetPrecheckFileOut, Document } from '@/types'
 
@@ -33,13 +33,13 @@ export type SalesEvidenceTableRow = {
   primaryRisk: string
   riskDescription: string
   actionLabel: string
-  icon: LucideIcon
+  icon: PlatformIcon
   iconTone: string
 }
 
 export type RiskTagPresentation = {
   actionLabel: string
-  icon: LucideIcon
+  icon: PlatformIcon
   iconTone: string
   primaryRisk: string
 }
@@ -226,7 +226,7 @@ export function getPdfSplitColor(name: string): string {
   }
 }
 
-export function getSalesCoreIcon(index: number): LucideIcon {
+export function getSalesCoreIcon(index: number): PlatformIcon {
   switch (index) {
     case 0:
       return FileSearch
@@ -347,8 +347,12 @@ export function getDocumentStatusLabel(status: string | null | undefined): strin
       return '已完成'
     case 'failed':
       return '失败'
+    case 'quarantined':
+      return '已隔离'
+    case 'cancelled':
+      return '已取消'
     case 'processing':
-      return '进行中'
+      return '处理中'
     case 'pending':
       return '等待中'
     default:
@@ -363,7 +367,9 @@ export function getDocumentStatusTone(status: string | null | undefined): string
     case 'failed':
       return 'text-rose'
     case 'processing':
-      return 'text-info'
+      return 'text-info dark:text-foreground'
+    case 'quarantined':
+      return 'text-warning'
     default:
       return 'text-muted-foreground'
   }

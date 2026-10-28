@@ -333,6 +333,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showOriginalPanel, setShowOriginalPanel] = useState(true)
   const [showSettingsPanel, setShowSettingsPanel] = useState(false)
+  const [gapReviewRequest, setGapReviewRequest] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [createdDocumentId, setCreatedDocumentId] = useState<string | null>(null)
 
@@ -788,6 +789,10 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
   }, [])
 
   const selectFile = useCallback((index: number) => {
+    previewRequestIdRef.current += 1
+    previewAbortRef.current?.abort()
+    previewAbortRef.current = null
+    setIsLoading(false)
     setCurrentFileIndex(index)
     setPreviewData(null)
     setChunkOverrides({})
@@ -796,6 +801,9 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     setHoveredChunkIndex(null)
     setSelectedChunkIndex(null)
     setCreatedDocumentId(null)
+    setLastPreviewAt(null)
+    setLastPreviewDurationMs(null)
+    setCacheHit(false)
   }, [])
 
   const toggleIngestFileSelection = useCallback((fileId: string) => {
@@ -1162,6 +1170,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
   ])
 
   const cancelPreview = useCallback(() => {
+    previewRequestIdRef.current += 1
     previewAbortRef.current?.abort()
     previewAbortRef.current = null
     setIsLoading(false)
@@ -1254,6 +1263,11 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
   // Actions: 提交入库
   const submitChunks = useCallback(async () => {
     if (!previewData || !file || !currentFileItem) return
+    if (isSubmitting) return
+    if (isLoading || isPreviewDirty) {
+      setError(isLoading ? '请等待预览完成后再入库。' : '参数已变更，请先生成预览后再入库。')
+      return
+    }
 
     setIsSubmitting(true)
     setError(null)
@@ -1291,6 +1305,9 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     chunkOverrides,
     file,
     currentFileItem,
+    isSubmitting,
+    isLoading,
+    isPreviewDirty,
     createDocumentFromPreview,
     chunkSize,
     chunkOverlap,
@@ -1643,6 +1660,12 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     setShowSettingsPanel((prev) => !prev)
   }, [])
 
+  const focusGapReview = useCallback(() => {
+    setGapReviewRequest(request => request + 1)
+    setShowSettingsPanel(false)
+    setShowOriginalPanel(true)
+  }, [])
+
   const selectDatasetId = useCallback((value: string) => {
     const nextDatasetId = (value || '').trim()
     setDatasetId(nextDatasetId)
@@ -1675,6 +1698,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     isSubmitting,
     showOriginalPanel,
     showSettingsPanel,
+    gapReviewRequest,
     error,
     createdDocumentId,
     previewData,
@@ -1726,6 +1750,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     toggleOriginalPanel,
     setOriginalPanelVisible,
     toggleSettingsPanel,
+    focusGapReview,
     runPreview,
     cancelPreview,
     submitChunks,
@@ -1769,6 +1794,8 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     error,
     file,
     fileList,
+    focusGapReview,
+    gapReviewRequest,
     getCachedPreview,
     handleDragLeave,
     handleDragOver,

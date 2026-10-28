@@ -19,7 +19,6 @@ export { healthApi } from './health'
 export { industryRulesApi } from './industry-rules'
 export { integrationApi } from './integrations'
 export { lineageApi } from './lineage'
-export { ltrApi } from './ltr'
 export { metaApi } from './meta'
 export { observabilityApi } from './observability'
 export { parsingApi } from './parsing'
@@ -66,7 +65,6 @@ export type { PromptTemplate, PromptTemplateCreate, PromptTemplateNewVersion, Pr
 export type { BackendMeta, BackendMetaDetails } from './meta'
 export type { TenantMember } from './access'
 export type { TenantAccess, TenantPermission } from '../tenant-permissions'
-export type { LTRModelInfo } from './ltr'
 export type { KGNetworkEdge, KGNetworkRequest, KGNetworkResponse } from './graph'
 export type {
   IndustryRulesGlossaryUpdateRequest,

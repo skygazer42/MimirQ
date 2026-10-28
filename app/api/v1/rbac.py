@@ -33,6 +33,7 @@ from app.models.dataset import DatasetPermission
 from app.models.document import DocumentPermission
 from app.models.tenant import TenantMember
 from app.models.tenant_group import TenantGroupMember
+from app.models.user import User
 from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import DatasetService
 from app.services.navigation_visibility import navigation_user_visible_modules_from_settings
@@ -53,6 +54,27 @@ def _lock_active_admin_members(db: Session, tenant_id: UUID) -> list[TenantMembe
         .with_for_update()
         .all()
     )
+
+
+def _member_outputs(db: Session, members: list[TenantMember]) -> list[TenantMemberOut]:
+    # Local IDs are UUIDs; external IdP subjects may be arbitrary strings. Batch
+    # the identity lookup without casting a UUID column to database-specific text.
+    user_ids = []
+    for member in members:
+        try:
+            user_ids.append(UUID(str(member.user_id)))
+        except ValueError:
+            continue
+    users = db.query(User).filter(User.id.in_(user_ids)).all() if user_ids else []
+    identities = {str(user.id): user for user in users}
+    output = []
+    for member in members:
+        identity = identities.get(str(member.user_id))
+        output.append(TenantMemberOut.model_validate(member).model_copy(update={
+            "username": identity.username if identity else None,
+            "email": identity.email if identity else None,
+        }))
+    return output
 
 
 @router.get("/me", response_model=TenantAccessOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -105,7 +127,7 @@ def list_tenant_members(
         .limit(limit)
         .all()
     )
-    return TenantMemberListResponse(total=total, items=[TenantMemberOut.model_validate(it) for it in items])
+    return TenantMemberListResponse(total=total, items=_member_outputs(db, items))
 
 
 @router.patch("/members/{user_id}", response_model=TenantMemberOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -147,7 +169,7 @@ def patch_tenant_member_role(
     member.role = next_role
     db.commit()
     db.refresh(member)
-    return TenantMemberOut.model_validate(member)
+    return _member_outputs(db, [member])[0]
 
 
 @router.delete(

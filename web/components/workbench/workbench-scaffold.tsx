@@ -1,4 +1,4 @@
-import type { LucideIcon } from 'lucide-react'
+import type { PlatformIcon } from '@/components/icons'
 import type { ComponentProps } from 'react'
 
 import { cn } from '@/lib/utils'
@@ -11,7 +11,7 @@ import { WorkbenchPane } from './workbench-pane'
 type WorkbenchScaffoldProps = {
   title: React.ReactNode
   description?: React.ReactNode
-  icon?: LucideIcon
+  icon?: PlatformIcon
   iconImage?: PageTitleIconName
   iconColor?: string
   badge?: string

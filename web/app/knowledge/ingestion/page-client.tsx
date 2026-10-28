@@ -22,7 +22,7 @@ import {
   RefreshCcw,
   ShieldAlert,
   ShieldCheck,
-} from 'lucide-react'
+} from '@/components/icons'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import type { EChartsOption } from 'echarts'
 import { toast } from 'sonner'
@@ -45,6 +45,10 @@ import { usePathname, useRouter } from '@/i18n/navigation'
 import { EChart } from '@/components/ui/echart'
 import { DropZone, type DropZoneHandle } from '@/components/ingestion/drop-zone'
 import { EmptyState } from '@/components/ingestion/empty-state'
+import { OperationalWorkspace, WorkspaceNotice } from '@/components/ui/operational-workspace'
+import { PageLoading } from '@/components/ui/page-loading'
+import { Button } from '@/components/ui/button'
+import { formatApiError } from '@/lib/api-errors'
 import { ExecutionMonitorPanel } from '@/components/knowledge/ingestion/execution-monitor-panel'
 import { IngestionDetailSurface } from '@/components/knowledge/ingestion/ingestion-detail-surface'
 import { IngestionHeroPanel } from '@/components/knowledge/ingestion/ingestion-hero-panel'
@@ -205,17 +209,11 @@ export default function KnowledgeIngestionPageClient() {
 
   const summaryQuery = useQuery<IngestionDashboardSummaryResponse | null>({
     queryKey: ['knowledge-ingestion-summary', selectedDatasetId],
-    queryFn: async () => {
-      try {
-        return await observabilityApi.getIngestionDashboardSummary({
-          window_hours: 12,
-          bucket_minutes: 20,
-          dataset_id: selectedDatasetId ?? undefined,
-        })
-      } catch {
-        return null
-      }
-    },
+    queryFn: () => observabilityApi.getIngestionDashboardSummary({
+      window_hours: 12,
+      bucket_minutes: 20,
+      dataset_id: selectedDatasetId ?? undefined,
+    }),
     staleTime: 10_000,
     refetchInterval: demoMode ? false : 25_000,
   })
@@ -223,13 +221,7 @@ export default function KnowledgeIngestionPageClient() {
   const taskQueueQuery =
     useQuery<TaskQueueObservabilitySnapshotResponse | null>({
       queryKey: ['knowledge-ingestion-task-queue'],
-      queryFn: async () => {
-        try {
-          return await observabilityApi.getTaskQueueSnapshot()
-        } catch {
-          return null
-        }
-      },
+      queryFn: () => observabilityApi.getTaskQueueSnapshot(),
       enabled: mode === 'execution-monitor' && !demoMode,
       staleTime: 10_000,
       refetchInterval: demoMode ? false : 25_000,
@@ -2162,6 +2154,51 @@ export default function KnowledgeIngestionPageClient() {
     ? `${salesAuditProfile.pocSampleCount} 份`
     : '待预检'
 
+  if (mode === 'execution-monitor') return <OperationalWorkspace title="入库执行监控" icon="ingestion-monitor" context={selectedDatasetLabel} actions={<><Button variant="outline" onClick={() => { void documentsQuery.refetch(); void summaryQuery.refetch(); void taskQueueQuery.refetch() }} disabled={documentsQuery.isFetching}><RefreshCcw />重新读取</Button><Button onClick={handleOpenIngestionOperation}>入库操作</Button></>} toolbar={<><label htmlFor="execution-dataset" className="text-sm text-muted-foreground">数据集</label><select id="execution-dataset" value={datasetScope} onChange={event => handleDatasetScopeChange(event.target.value)} className="h-10 max-w-full rounded-md border border-border bg-background px-3 text-sm"><option value={DATASET_ALL}>全部数据集</option>{datasets.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select><span className="text-sm text-muted-foreground">最近载入的任务 · 每 25 秒更新</span></>}>
+    {documentsQuery.isError ? <WorkspaceNotice retry={() => { void documentsQuery.refetch() }}>{formatApiError(documentsQuery.error, '任务读取失败')}</WorkspaceNotice> : documentsQuery.isLoading ? <PageLoading message="正在读取执行任务…" className="min-h-48" /> :                     <ExecutionMonitorPanel
+                      batchProfileBarOption={batchProfileBarOption}
+                      executionBatchAnalysis={executionBatchAnalysis}
+                      executionDocuments={executionDocuments}
+                      executionKpiCards={executionKpiCards}
+                      executionOverallProgress={executionOverallProgress}
+                      executionPipelineCards={executionPipelineCards}
+                      executionPipelineEstimateLabel={executionPipelineState.estimateLabel}
+                      executionPipelineWarning={
+                        taskQueueSnapshot?.enabled && !taskQueueSnapshot.broker_up
+                          ? taskQueueSnapshot.error || 'Broker 异常'
+                          : null
+                      }
+                      executionProcessedTotal={executionProcessedTotal}
+                      executionRecentLogs={executionRecentLogs}
+                      executionSuccessRate={executionSuccessRate}
+                      executionTaskPage={executionTaskPage}
+                      executionTaskPageCount={executionTaskPageCount}
+                      executionTaskRows={executionTaskRows}
+                      predictionOption={predictionOption}
+                      radarOption={radarOption}
+                      recentQueueOutcomesCount={recentQueueOutcomes.length}
+                      selectedDatasetId={selectedDatasetId}
+                      showEmptyShell={showExecutionMonitorEmptyShell}
+                      visibleExecutionTaskRows={visibleExecutionTaskRows}
+                      onNextPage={() =>
+                        setExecutionTaskPage((page) =>
+                          Math.min(executionTaskPageCount, page + 1)
+                        )
+                      }
+                      onOpenAuditSnapshot={handleOpenAuditSnapshot}
+                      onOpenIngestionOperation={handleOpenIngestionOperation}
+                      onPrevPage={() =>
+                        setExecutionTaskPage((page) => Math.max(1, page - 1))
+                      }
+                      onScopeAllProjects={() =>
+                        handleDatasetScopeChange(DATASET_ALL)
+                      }
+                    />}
+    {summaryQuery.isError ? <WorkspaceNotice retry={() => { void summaryQuery.refetch() }}>{formatApiError(summaryQuery.error, '运行统计暂不可用')}</WorkspaceNotice> : null}
+    {taskQueueQuery.isError ? <WorkspaceNotice retry={() => { void taskQueueQuery.refetch() }}>{formatApiError(taskQueueQuery.error, '任务队列状态暂不可用')}</WorkspaceNotice> : null}
+    <IngestionDetailSurface activeAuditDocument={activeAuditDocument} activeAuditIsDemo={activeAuditIsDemo} activeDetailId={activeDetailId} selectedEvidenceFile={null} onCloseActiveDetail={() => setActiveDetailId(null)} onCloseEvidenceFile={() => setSelectedEvidenceFile(null)} onSampleDisposition={handleSampleDisposition} />
+  </OperationalWorkspace>
+
   return (
     <div
       ref={scrollContainerRef}
@@ -2169,7 +2206,7 @@ export default function KnowledgeIngestionPageClient() {
       data-page-scroll-container="true"
       className={cn(
         'flex-1 h-full min-h-0 overflow-y-auto overscroll-contain no-scrollbar scroll-fade-bottom text-foreground',
-        mode === 'execution-monitor' ? 'bg-info/[0.025] dark:bg-background' : INGESTION_BACKGROUND_CLASS
+        INGESTION_BACKGROUND_CLASS
       )}
     >
       <DropZone
@@ -2219,7 +2256,7 @@ export default function KnowledgeIngestionPageClient() {
           />
 
           <div className="min-w-0 flex-1">
-            <div className={cn(mode === 'execution-monitor' ? 'relative z-20' : 'sticky top-3 z-30')}>
+            <div className={'sticky top-3 z-30'}>
               <motion.div
                 className={cn(
                   'relative overflow-hidden',
@@ -2247,7 +2284,7 @@ export default function KnowledgeIngestionPageClient() {
                   salesAuditPocSampleLabel={salesAuditPocSampleLabel}
                   selectedDatasetLabel={selectedDatasetLabel}
                   showDesktopScopeControl={
-                    mode === 'execution-monitor' && !showEmptyState
+                    false
                   }
                   showSalesPolicyBadge={showSalesPolicyBadge}
                   summaryStripClassName={SALES_SUMMARY_STRIP_CLASS}

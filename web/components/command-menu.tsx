@@ -2,6 +2,13 @@
 
 import * as React from "react"
 import {
+  Chunking,
+  DataGovernance,
+  Dataset as DatasetIcon,
+  Diagnostics,
+  KnowledgeGraph,
+  Parsing,
+  Reports,
   Upload,
   Activity,
   Coins,
@@ -9,7 +16,7 @@ import {
   Sun,
   Laptop,
   MessageSquare,
-  Database,
+  KnowledgeBase as Database,
   Home,
   FileText,
   History,
@@ -19,7 +26,9 @@ import {
   Sparkles,
   Workflow,
   Keyboard,
-} from "lucide-react"
+  CornerDownLeft,
+} from "@/components/icons"
+import { useCommandState } from "cmdk"
 import { useTheme } from "next-themes"
 import { useTranslations } from 'next-intl'
 import { useQuery } from '@tanstack/react-query'
@@ -44,6 +53,8 @@ import {
   CommandShortcut,
   CommandSeparator,
 } from "@/components/ui/command"
+import { Button } from "@/components/ui/button"
+import { FileTypeIcon } from "@/components/ui/file-type-icon"
 
 type SlashCommandId =
   | "resume"
@@ -122,6 +133,58 @@ type ModuleWorkbenchItem = {
 
 type CommandMenuTranslationGetter = (key: string) => string
 
+type CommandActionKind = "open" | "run" | "ask" | "switch"
+type CommandAction = {
+  label: string
+  kind: CommandActionKind
+  disabled?: boolean
+  run: () => void
+}
+
+function CommandExecutionBar({
+  actions,
+  onExecute,
+}: {
+  actions: Map<string, CommandAction>
+  onExecute: (value: string) => void
+}) {
+  const selectedValue = useCommandState((state) => state.value)
+  const onlyAction = actions.size === 1 ? actions.values().next().value : undefined
+  const action = actions.get(selectedValue) || (onlyAction?.disabled ? onlyAction : undefined)
+  const t = useTranslations('CommandMenu')
+  const verb = t(`execution.${action?.kind || "run"}`)
+
+  return (
+    <div data-command-execution-bar className="flex shrink-0 items-center justify-between gap-3 border-t border-foreground/10 bg-muted/20 px-5 py-2.5">
+      <div className="min-w-0 flex-1" aria-live="polite" aria-atomic="true">
+        <div className="text-xs leading-5 text-muted-foreground">{t("execution.current")}</div>
+        <div className="truncate text-[15px] font-medium leading-[22px] text-foreground">
+          {action?.label || t("execution.choose")}
+        </div>
+      </div>
+      <Button
+        type="button"
+        size="lg"
+        data-command-execute
+        disabled={!action || action.disabled}
+        aria-label={action ? `${verb}：${action.label}` : t("execution.choose")}
+        className="h-11 shrink-0 gap-3 rounded-lg px-4 text-sm active:scale-[0.98] motion-reduce:transform-none"
+        onKeyDown={(event) => {
+          // Keep cmdk's Enter handler from also executing the selected row.
+          if (event.key === "Enter" || event.key === " ") event.stopPropagation()
+        }}
+        onClick={() => onExecute(selectedValue)}
+      >
+        {verb}
+        <span className="inline-flex items-center gap-1 text-xs opacity-80" aria-hidden="true">
+          <span className="hidden sm:inline">Enter</span>
+          <CornerDownLeft className="size-3.5" />
+        </span>
+      </Button>
+    </div>
+  )
+}
+
 const KEY_CHORD_TIMEOUT_MS = 1600
 const COMMAND_MENU_SEARCH_DEBOUNCE_MS = 220
 const COMMAND_MENU_SEARCH_MAX_LENGTH = 200
@@ -191,6 +254,7 @@ export function CommandMenu() {
   const [query, setQuery] = React.useState("")
   const [debouncedSearchQuery, setDebouncedSearchQuery] = React.useState("")
   const [pendingChordPrefix, setPendingChordPrefix] = React.useState<string | null>(null)
+  const [showShortcutHelp, setShowShortcutHelp] = React.useState(false)
   const chordTimerRef = React.useRef<number | null>(null)
   const router = useRouter()
   const pathname = usePathname()
@@ -205,7 +269,7 @@ export function CommandMenu() {
   const trimmedQuery = query.trim().slice(0, COMMAND_MENU_SEARCH_MAX_LENGTH)
   const isSlashMode = trimmedQuery.startsWith("/")
   const slashNeedle = trimmedQuery.slice(1).toLowerCase()
-  const shouldShowShortcutReference = trimmedQuery.length === 0
+  const shouldShowShortcutReference = trimmedQuery.length === 0 && showShortcutHelp
   const hasTypedSearchQuery = trimmedQuery.length >= 2 && !isSlashMode
   const isTypedSearchActive = open && hasTypedSearchQuery
   const isSearchDebouncing = isTypedSearchActive && debouncedSearchQuery !== trimmedQuery
@@ -321,7 +385,10 @@ export function CommandMenu() {
   }, [setOpen, toggleOpen])
 
   React.useEffect(() => {
-    if (!open) setQuery("")
+    if (!open) {
+      setQuery("")
+      setShowShortcutHelp(false)
+    }
   }, [open])
 
   React.useEffect(() => {
@@ -352,8 +419,8 @@ export function CommandMenu() {
       ([
         { id: "documents", key: "g d", icon: FileText, visibilityKey: undefined, run: () => router.push("/knowledge") },
         { id: "chat", key: "g c", icon: MessageSquare, visibilityKey: undefined, run: () => router.push("/") },
-        { id: "graph", key: "g g", icon: Workflow, visibilityKey: 'knowledgeGraph', run: () => router.push("/graph") },
-        { id: "observability", key: "g o", icon: Activity, visibilityKey: undefined, run: () => router.push("/observability") },
+        { id: "graph", key: "g g", icon: KnowledgeGraph, visibilityKey: 'knowledgeGraph', run: () => router.push("/graph") },
+        { id: "observability", key: "g o", icon: Diagnostics, visibilityKey: undefined, run: () => router.push("/observability") },
         { id: "slice", key: "f s", icon: Search, visibilityKey: undefined, run: () => router.push("/chunk-preview") },
         { id: "resume", key: "g v", icon: History, visibilityKey: undefined, run: resumeLastDocumentContext },
       ] as const).filter((command) => canShowNavigationModule(command.visibilityKey)).map(({ id, key, icon, visibilityKey, run }) => ({
@@ -423,20 +490,20 @@ export function CommandMenu() {
         { id: "resume", shortcut: "/resume", icon: FileText, visibilityKey: undefined },
         { id: "upload", shortcut: "/upload", icon: Upload, visibilityKey: undefined },
         { id: "analyze", shortcut: "/analyze", icon: Sparkles, visibilityKey: undefined },
-        { id: "report", shortcut: "/report", icon: FileText, visibilityKey: undefined },
+        { id: "report", shortcut: "/report", icon: Reports, visibilityKey: undefined },
         { id: "stats", shortcut: "/stats", icon: Coins, visibilityKey: undefined },
         { id: "retryFailed", shortcut: "/retry-failed", icon: RefreshCw, visibilityKey: undefined },
         { id: "pauseActive", shortcut: "/pause-active", icon: Activity, visibilityKey: undefined },
         { id: "precheck", shortcut: "/precheck", icon: Workflow, visibilityKey: undefined },
-        { id: "datasets", shortcut: "/datasets", icon: Database, visibilityKey: undefined },
+        { id: "datasets", shortcut: "/datasets", icon: DatasetIcon, visibilityKey: undefined },
         { id: "history", shortcut: "/history", icon: History, visibilityKey: undefined },
-        { id: "graph", shortcut: "/graph", icon: Workflow, visibilityKey: 'knowledgeGraph' },
-        { id: "diagnostics", shortcut: "/diagnostics", icon: Activity, visibilityKey: undefined },
+        { id: "graph", shortcut: "/graph", icon: KnowledgeGraph, visibilityKey: 'knowledgeGraph' },
+        { id: "diagnostics", shortcut: "/diagnostics", icon: Diagnostics, visibilityKey: undefined },
         { id: "settings", shortcut: "/settings", icon: Settings, visibilityKey: undefined },
-        { id: "parsing", shortcut: "/parsing", icon: FileText, visibilityKey: undefined },
-        { id: "reports", shortcut: "/reports", icon: FileText, visibilityKey: 'reports' },
-        { id: "observability", shortcut: "/observability", icon: Activity, visibilityKey: undefined },
-        { id: "governance", shortcut: "/governance", icon: Database, visibilityKey: undefined },
+        { id: "parsing", shortcut: "/parsing", icon: Parsing, visibilityKey: undefined },
+        { id: "reports", shortcut: "/reports", icon: Reports, visibilityKey: 'reports' },
+        { id: "observability", shortcut: "/observability", icon: Diagnostics, visibilityKey: undefined },
+        { id: "governance", shortcut: "/governance", icon: DataGovernance, visibilityKey: undefined },
       ] as const).map(({ id, shortcut, icon, visibilityKey }) => ({
         id,
         visibilityKey,
@@ -592,12 +659,12 @@ export function CommandMenu() {
     () =>
       ([
         { id: "knowledge", icon: Database, visibilityKey: undefined, run: () => router.push("/knowledge") },
-        { id: "graph", icon: Workflow, visibilityKey: 'knowledgeGraph', run: () => router.push("/graph") },
-        { id: "slices", icon: FileText, visibilityKey: undefined, run: () => router.push("/chunk-preview") },
-        { id: "parsing", icon: FileText, visibilityKey: undefined, run: () => router.push("/parsing") },
-        { id: "reports", icon: FileText, visibilityKey: 'reports', run: () => router.push("/reports") },
-        { id: "observability", icon: Activity, visibilityKey: undefined, run: () => router.push("/observability") },
-        { id: "governance", icon: Database, visibilityKey: undefined, run: () => router.push("/data-governance") },
+        { id: "graph", icon: KnowledgeGraph, visibilityKey: 'knowledgeGraph', run: () => router.push("/graph") },
+        { id: "slices", icon: Chunking, visibilityKey: undefined, run: () => router.push("/chunk-preview") },
+        { id: "parsing", icon: Parsing, visibilityKey: undefined, run: () => router.push("/parsing") },
+        { id: "reports", icon: Reports, visibilityKey: 'reports', run: () => router.push("/reports") },
+        { id: "observability", icon: Diagnostics, visibilityKey: undefined, run: () => router.push("/observability") },
+        { id: "governance", icon: DataGovernance, visibilityKey: undefined, run: () => router.push("/data-governance") },
       ] as const)
         .filter((item) => canShowNavigationModule(item.visibilityKey))
         .map(({ id, icon, visibilityKey, run }) => ({
@@ -627,7 +694,7 @@ export function CommandMenu() {
       { icon: Home, label: t("navigation.home"), run: () => router.push("/") },
       { icon: MessageSquare, label: t("navigation.newConversation"), run: () => router.push("/") },
       { icon: Database, label: t("navigation.knowledge"), run: () => router.push("/knowledge") },
-      { icon: FileText, label: t("navigation.parsing"), run: () => router.push("/parsing") },
+      { icon: Parsing, label: t("navigation.parsing"), run: () => router.push("/parsing") },
       { icon: History, label: t("navigation.history"), run: () => router.push("/history") },
       { icon: Settings, label: t("navigation.settings"), run: () => router.push("/settings") },
     ],
@@ -651,6 +718,88 @@ export function CommandMenu() {
     [setTheme, t]
   )
 
+  // Both row selection and the footer resolve the same currently visible action.
+  const commandActions = new Map<string, CommandAction>()
+  if (isSlashMode) {
+    for (const command of filteredSlashCommands) {
+      const runsInCurrentView = pathname.startsWith("/knowledge/ingestion") &&
+        ["report", "retryFailed", "pauseActive", "precheck"].includes(command.id)
+      commandActions.set(`slash:${command.id}`, {
+        label: command.label,
+        kind: command.id === "analyze" ? "ask" : runsInCurrentView ? "run" : "open",
+        disabled: command.id === "resume" && !hasResumeTarget,
+        run: command.run,
+      })
+    }
+  }
+  if (showBaseCommandGroups) {
+    for (const command of keyChordCommands) {
+      commandActions.set(`workflow:${command.id}`, {
+        label: command.label,
+        kind: "open",
+        disabled: command.id === "resume" && !hasResumeTarget,
+        run: command.run,
+      })
+    }
+    for (const item of navigationItems) {
+      commandActions.set(`navigation:${item.label}`, { ...item, kind: "open" })
+    }
+    for (const item of actionItems) {
+      commandActions.set(`action:${item.label}`, { ...item, kind: "open" })
+    }
+    for (const item of themeItems) {
+      commandActions.set(`theme:${item.label}`, { ...item, kind: "switch" })
+    }
+  }
+  if (hasTypedSearchQuery) {
+    commandActions.set(`ai ${trimmedQuery}`, {
+      label: t("aiAction.label"),
+      kind: "ask",
+      run: () => {
+        const params = new URLSearchParams({ prompt: trimmedQuery, autorun: "1" })
+        router.push(`/?${params.toString()}`)
+      },
+    })
+    for (const item of moduleWorkbenchResults) {
+      commandActions.set(`module:${item.id}`, { ...item, kind: "open" })
+    }
+    if (!docLoading) {
+      for (const doc of docResults) {
+        commandActions.set(`document:${doc.id}`, {
+          label: doc.filename,
+          kind: "open",
+          run: () => {
+            openDocument(doc.id)
+            router.push("/")
+          },
+        })
+      }
+    }
+    if (!datasetLoading) {
+      for (const dataset of datasetResults) {
+        commandActions.set(`dataset:${dataset.id}`, {
+          label: dataset.name,
+          kind: "open",
+          run: () => router.push(`/datasets/${dataset.id}/profile`),
+        })
+      }
+    }
+    if (!conversationLoading) {
+      for (const conversation of conversationResults) {
+        commandActions.set(`conversation:${conversation.id}`, {
+          label: conversation.title || t("results.untitledConversation"),
+          kind: "open",
+          run: () => router.push(`/history?id=${conversation.id}`),
+        })
+      }
+    }
+  }
+
+  const executeAction = (value: string) => {
+    const action = commandActions.get(value)
+    if (action && !action.disabled) runCommand(action.run)
+  }
+
   React.useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
@@ -662,6 +811,7 @@ export function CommandMenu() {
 
       if (e.key === "?" && !e.metaKey && !e.ctrlKey && !e.altKey && !isEditableTarget(e.target)) {
         e.preventDefault()
+        setShowShortcutHelp(true)
         setOpen(true)
         clearPendingChord()
         return
@@ -718,24 +868,38 @@ export function CommandMenu() {
       <div
         data-command-menu-header="true"
         id="mimirq-command-menu"
-        className="flex items-start justify-between gap-4 border-b border-foreground/10 bg-background px-4 py-3 pr-11"
+        className="flex min-h-14 shrink-0 items-center justify-between gap-3 bg-background px-5 py-1.5 pr-14"
       >
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-foreground">{t("header.title")}</div>
-          <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{t("header.description")}</div>
+          <div className="text-base font-medium leading-6 text-foreground">{t("header.title")}</div>
         </div>
-        <div className="mt-0.5 flex shrink-0 items-center gap-1.5 text-[10px] text-muted-foreground">
-          <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-foreground/10 bg-background px-1 font-mono font-semibold text-foreground">?</kbd>
-          <span>{t("header.hint")}</span>
-        </div>
+        {trimmedQuery.length === 0 ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="lg"
+            className="h-11 shrink-0 gap-1.5 px-2 text-[13px] font-normal text-muted-foreground"
+            aria-expanded={showShortcutHelp}
+            aria-controls="command-shortcut-reference"
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") event.stopPropagation()
+            }}
+            onClick={() => setShowShortcutHelp((shown) => !shown)}
+          >
+            <Keyboard className="size-4" aria-hidden="true" />
+            {t("header.hint")}
+          </Button>
+        ) : null}
       </div>
       <CommandInput
+        className="h-14 text-base"
+        aria-label={t('search.label')}
         maxLength={COMMAND_MENU_SEARCH_MAX_LENGTH}
         placeholder={t('search.placeholder')}
         value={query}
         onValueChange={setQuery}
       />
-      <CommandList>
+      <CommandList className="min-h-0 flex-1 p-2">
         <CommandEmpty>{t('search.empty')}</CommandEmpty>
 
         {isSlashMode ? (
@@ -746,18 +910,17 @@ export function CommandMenu() {
                 return (
                   <CommandItem
                     key={command.id}
-                    value={`${command.shortcut} ${command.label} ${command.keywords.join(" ")}`}
-                    className="gap-3 rounded-lg px-3 py-2.5"
-                    onSelect={() => runCommand(command.run)}
+                    value={`slash:${command.id}`}
+                    keywords={[command.shortcut, command.label, command.description, ...command.keywords]}
+                    disabled={command.id === "resume" && !hasResumeTarget}
+                    onSelect={() => executeAction(`slash:${command.id}`)}
                   >
-                    <div className="flex size-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                      <Icon className="size-4" />
-                    </div>
+                    <Icon className="size-4" aria-hidden="true" />
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium text-foreground">{command.label}</div>
-                      <div className="truncate text-xs text-muted-foreground">{command.description}</div>
+                      <div className="break-words font-medium leading-[22px] text-foreground">{command.label}</div>
+                      <div className="mt-0.5 break-words text-[13px] leading-5 text-muted-foreground">{command.description}</div>
                     </div>
-                    <CommandShortcut>{command.shortcut}</CommandShortcut>
+                    <CommandShortcut className="shrink-0 self-start rounded-none border-0 bg-transparent px-0 text-xs font-normal leading-[22px]">{command.shortcut}</CommandShortcut>
                   </CommandItem>
                 )
               })}
@@ -774,18 +937,17 @@ export function CommandMenu() {
                 return (
                   <CommandItem
                     key={command.key}
-                    className="gap-3 rounded-md border border-foreground/10 bg-background px-3 py-2.5 aria-selected:bg-foreground/10 aria-selected:text-foreground"
+                    value={`workflow:${command.id}`}
+                    keywords={[command.label, command.description, command.key]}
                     disabled={command.id === "resume" && !hasResumeTarget}
-                    onSelect={() => runCommand(command.run)}
+                    onSelect={() => executeAction(`workflow:${command.id}`)}
                   >
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background text-foreground">
-                      <Icon className="size-4" />
-                    </div>
+                    <Icon className="size-4" aria-hidden="true" />
                     <div className="flex min-w-0 flex-1 flex-col">
-                      <span className="text-sm font-medium text-foreground">{command.label}</span>
-                      <span className="truncate text-xs leading-5 text-muted-foreground">{command.description}</span>
+                      <span className="font-medium text-foreground">{command.label}</span>
+                      <span className="mt-0.5 text-[13px] leading-5 text-muted-foreground">{command.description}</span>
                     </div>
-                    <CommandShortcut>{command.key.toUpperCase()}</CommandShortcut>
+                    <CommandShortcut className="shrink-0 self-start text-xs font-normal leading-5">{command.key.toUpperCase()}</CommandShortcut>
                   </CommandItem>
                 )
               })}
@@ -794,16 +956,16 @@ export function CommandMenu() {
             <CommandSeparator />
 
             {shouldShowShortcutReference ? (
-              <>
+              <div id="command-shortcut-reference">
                 <CommandGroup heading={t('groups.viewerShortcuts')}>
                   {viewerShortcutDocs.map((shortcut) => (
                     <CommandItem key={shortcut.key} value={`viewer-shortcut ${shortcut.key} ${shortcut.label}`} disabled>
                       <FileText className="mr-2 size-4" />
                       <div className="flex min-w-0 flex-1 flex-col">
                         <span>{shortcut.label}</span>
-                        <span className="truncate text-xs text-muted-foreground">{shortcut.description}</span>
+                        <span className="break-words text-[13px] leading-5 text-muted-foreground">{shortcut.description}</span>
                       </div>
-                      <CommandShortcut>{shortcut.key}</CommandShortcut>
+                      <CommandShortcut className="shrink-0 text-[11px] font-normal">{shortcut.key}</CommandShortcut>
                     </CommandItem>
                   ))}
                 </CommandGroup>
@@ -816,20 +978,20 @@ export function CommandMenu() {
                       <Keyboard className="mr-2 size-4" />
                       <div className="flex min-w-0 flex-1 flex-col">
                         <span>{item.label}</span>
-                        <span className="truncate text-xs text-muted-foreground">{item.description}</span>
+                        <span className="break-words text-[13px] leading-5 text-muted-foreground">{item.description}</span>
                       </div>
-                      <CommandShortcut>{item.shortcut}</CommandShortcut>
+                      <CommandShortcut className="shrink-0 text-[11px] font-normal">{item.shortcut}</CommandShortcut>
                     </CommandItem>
                   ))}
                 </CommandGroup>
 
                 <CommandSeparator />
-              </>
+              </div>
             ) : null}
 
             <CommandGroup heading={t('groups.navigation')}>
               {navigationItems.map((item) => (
-                <CommandItem key={item.label} onSelect={() => runCommand(item.run)}>
+                <CommandItem key={item.label} value={`navigation:${item.label}`} keywords={[item.label]} onSelect={() => executeAction(`navigation:${item.label}`)}>
                   <item.icon className="mr-2 size-4" />
                   <span>{item.label}</span>
                 </CommandItem>
@@ -842,32 +1004,21 @@ export function CommandMenu() {
 
         {hasTypedSearchQuery ? (
           <>
-            {trimmedQuery.length >= 4 ? (
-              <>
-                <CommandGroup heading={t('groups.aiActions')}>
-                  <CommandItem
-                    value={`ai ${trimmedQuery}`}
-                    onSelect={() =>
-                      runCommand(() => {
-                        const params = new URLSearchParams({
-                          prompt: trimmedQuery,
-                          autorun: "1",
-                        })
-                        router.push(`/?${params.toString()}`)
-                      })
-                    }
-                  >
-                    <Sparkles className="mr-2 size-4" />
-                    <div className="flex min-w-0 flex-1 flex-col">
-                      <span>{t("aiAction.label")}</span>
-                      <span className="truncate text-xs text-muted-foreground">{t("aiAction.description")}</span>
-                    </div>
-                  </CommandItem>
-                </CommandGroup>
+            <CommandGroup heading={t('groups.aiActions')}>
+              <CommandItem
+                value={`ai ${trimmedQuery}`}
+                keywords={[trimmedQuery, t("aiAction.label")]}
+                onSelect={() => executeAction(`ai ${trimmedQuery}`)}
+              >
+                <MessageSquare className="size-4" aria-hidden="true" />
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <span className="font-medium">{t("aiAction.label")}</span>
+                  <span className="mt-0.5 line-clamp-2 break-words text-[13px] leading-5 text-muted-foreground">{trimmedQuery}</span>
+                </div>
+              </CommandItem>
+            </CommandGroup>
 
-                <CommandSeparator />
-              </>
-            ) : null}
+            <CommandSeparator />
 
             <CommandGroup heading={t('groups.modules')}>
               {moduleWorkbenchResults.length ? (
@@ -876,13 +1027,14 @@ export function CommandMenu() {
                   return (
                     <CommandItem
                       key={item.id}
-                      value={`${item.label} ${item.description} ${item.keywords.join(" ")}`}
-                      onSelect={() => runCommand(item.run)}
+                      value={`module:${item.id}`}
+                      keywords={[item.label, item.description, ...item.keywords]}
+                      onSelect={() => executeAction(`module:${item.id}`)}
                     >
                       <Icon className="mr-2 size-4" />
                       <div className="flex min-w-0 flex-1 flex-col">
                         <span>{item.label}</span>
-                        <span className="truncate text-xs text-muted-foreground">{item.description}</span>
+                        <span className="truncate text-[13px] leading-5 text-muted-foreground">{item.description}</span>
                       </div>
                     </CommandItem>
                   )
@@ -907,15 +1059,11 @@ export function CommandMenu() {
                 docResults.map((doc) => (
                   <CommandItem
                     key={doc.id}
-                    value={doc.filename}
-                    onSelect={() =>
-                      runCommand(() => {
-                        openDocument(doc.id)
-                        router.push("/")
-                      })
-                    }
+                    value={`document:${doc.id}`}
+                    keywords={[doc.filename]}
+                    onSelect={() => executeAction(`document:${doc.id}`)}
                   >
-                    <FileText className="mr-2 size-4" />
+                    <FileTypeIcon type={doc.file_type} filename={doc.filename} className="mr-2 size-4" />
                     <span className="truncate">{doc.filename}</span>
                   </CommandItem>
                 ))
@@ -939,14 +1087,15 @@ export function CommandMenu() {
                 datasetResults.map((dataset) => (
                   <CommandItem
                     key={dataset.id}
-                    value={`${dataset.name} ${dataset.description || ""}`}
-                    onSelect={() => runCommand(() => router.push(`/datasets/${dataset.id}/profile`))}
+                    value={`dataset:${dataset.id}`}
+                    keywords={[dataset.name, dataset.description || ""]}
+                    onSelect={() => executeAction(`dataset:${dataset.id}`)}
                   >
                     <Database className="mr-2 size-4" />
                     <div className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate">{dataset.name}</span>
                       {dataset.description ? (
-                        <span className="truncate text-xs text-muted-foreground">{dataset.description}</span>
+                        <span className="truncate text-[13px] leading-5 text-muted-foreground">{dataset.description}</span>
                       ) : null}
                     </div>
                   </CommandItem>
@@ -971,14 +1120,15 @@ export function CommandMenu() {
                 conversationResults.map((conversation) => (
                   <CommandItem
                     key={conversation.id}
-                    value={`${conversation.title || ""} ${conversation.last_message || ""}`}
-                    onSelect={() => runCommand(() => router.push(`/history?id=${conversation.id}`))}
+                    value={`conversation:${conversation.id}`}
+                    keywords={[conversation.title || "", conversation.last_message || ""]}
+                    onSelect={() => executeAction(`conversation:${conversation.id}`)}
                   >
                     <MessageSquare className="mr-2 size-4" />
                     <div className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate">{conversation.title || t("results.untitledConversation")}</span>
                       {conversation.last_message ? (
-                        <span className="truncate text-xs text-muted-foreground">{conversation.last_message}</span>
+                        <span className="truncate text-[13px] leading-5 text-muted-foreground">{conversation.last_message}</span>
                       ) : null}
                     </div>
                   </CommandItem>
@@ -999,7 +1149,7 @@ export function CommandMenu() {
           <>
             <CommandGroup heading={t("groups.actions")}>
               {actionItems.map((item) => (
-                <CommandItem key={item.label} onSelect={() => runCommand(item.run)}>
+                <CommandItem key={item.label} value={`action:${item.label}`} keywords={[item.label]} onSelect={() => executeAction(`action:${item.label}`)}>
                   <item.icon className="mr-2 size-4" />
                   <span>{item.label}</span>
                 </CommandItem>
@@ -1010,7 +1160,7 @@ export function CommandMenu() {
 
             <CommandGroup heading={t('groups.theme')}>
               {themeItems.map((item) => (
-                <CommandItem key={item.label} onSelect={() => runCommand(item.run)}>
+                <CommandItem key={item.label} value={`theme:${item.label}`} keywords={[item.label]} onSelect={() => executeAction(`theme:${item.label}`)}>
                   <item.icon className="mr-2 size-4" />
                   <span>{item.label}</span>
                 </CommandItem>
@@ -1019,6 +1169,7 @@ export function CommandMenu() {
           </>
         ) : null}
       </CommandList>
+      <CommandExecutionBar actions={commandActions} onExecute={executeAction} />
     </CommandDialog>
   )
 }

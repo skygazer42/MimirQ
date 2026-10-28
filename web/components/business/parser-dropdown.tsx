@@ -4,7 +4,8 @@
  * Integrated pipeline 风格的解析器下拉选择组件
  * 带图标、描述和徽章的下拉菜单
  */
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Sparkles,
@@ -18,13 +19,15 @@ import {
   Wand2,
   ChevronDown,
   Check,
-} from 'lucide-react'
+} from '@/components/icons'
 import { cn, detachPromise } from '@/lib/utils'
 import { PARSER_BACKEND_OPTIONS, getParserOption } from '@/lib/parser-options'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 import { normalizeParserBackendName, resolveParserBackendForFilename } from '@/lib/parser-compat'
 import { settingsApi } from '@/lib/api/settings'
 import { queryKeys } from '@/lib/query-keys'
+import { useDropdownPlacement, type DropdownSide } from '@/hooks/use-dropdown-placement'
+import { pipelinePickerTokens } from '@/components/ui/system-page-tokens'
 
 // 图标映射
 const ICON_MAP = {
@@ -39,19 +42,6 @@ const ICON_MAP = {
   magicpdf: Wand2,
 }
 
-// 颜色映射
-const COLOR_MAP = {
-  auto: { bg: 'bg-primary/10', text: 'text-primary' },
-  basic: { bg: 'bg-muted', text: 'text-muted-foreground' },
-  docling: { bg: 'bg-info/10', text: 'text-info' },
-  layout: { bg: 'bg-success/10', text: 'text-success' },
-  mineru: { bg: 'bg-primary/10', text: 'text-primary' },
-  deepdoc: { bg: 'bg-warning/10', text: 'text-warning' },
-  deepseekocr: { bg: 'bg-destructive/10', text: 'text-destructive' },
-  markitdown: { bg: 'bg-accent/10', text: 'text-accent' },
-  magicpdf: { bg: 'bg-accent/10', text: 'text-accent' },
-}
-
 interface ParserDropdownProps {
   value: string
   onChange: (value: string) => void
@@ -59,6 +49,7 @@ interface ParserDropdownProps {
   filename?: string
   compact?: boolean
   surface?: 'default' | 'ocean'
+  side?: DropdownSide
 }
 
 type ParserStatusWithHealth = {
@@ -75,9 +66,19 @@ export function ParserDropdown({
   filename,
   compact = false,
   surface = 'default',
+  side = 'bottom',
 }: Readonly<ParserDropdownProps>) {
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const placement = useDropdownPlacement(isOpen && side === 'top', triggerRef, {
+    side,
+    align: compact ? 'end' : 'start',
+    minWidth: compact ? 420 : 360,
+    maxHeight: 440,
+    onOpenChange: setIsOpen,
+  })
   const { capabilities, loading, error, refresh, parserBackendAvailable } = usePipelineCapabilities()
   const isPaddleVlAvailable = parserBackendAvailable('paddle_vl') === true
 
@@ -98,11 +99,10 @@ export function ParserDropdown({
 
   const selectedOption = getParserOption(value)
   const SelectedIcon = ICON_MAP[selectedOption.icon]
-  const selectedColor = COLOR_MAP[selectedOption.icon]
   const resolvedSelectedColor =
     surface === 'ocean'
       ? { bg: 'bg-info/[0.08]', text: 'text-info' }
-      : selectedColor
+      : { bg: pipelinePickerTokens.iconFrame, text: 'text-muted-foreground' }
 
   const paddleVlVersionBadge = useMemo(() => {
     if (!isPaddleVlAvailable) return null
@@ -120,36 +120,41 @@ export function ParserDropdown({
   // 点击外部关闭
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (event.target instanceof Node && dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsOpen(false)
-      }
+      if (!(event.target instanceof Node)) return
+      if (dropdownRef.current?.contains(event.target) || menuRef.current?.contains(event.target)) return
+      setIsOpen(false)
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  // 常规菜单保留在原容器内，兼容对话框的焦点与点击范围。
+  const renderMenu = (content: ReactNode) => side === 'top' ? createPortal(content, document.body) : content
+
   return (
-    <div ref={dropdownRef} className={cn('relative', className)}>
+    <div ref={dropdownRef} className={cn('relative select-none', className)}>
       {/* 触发按钮 */}
       <button
+        ref={triggerRef}
         type="button"
+        aria-expanded={isOpen}
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          'w-full flex items-center border transition-colors duration-150 motion-reduce:transition-none',
-          compact ? 'gap-2 px-2.5 py-1.5 rounded-full' : 'gap-2.5 px-2.5 py-2 rounded-xl',
+          'w-full flex items-center border transition-colors duration-150 motion-reduce:transition-none focus-ring',
+          compact ? 'gap-2 px-2.5 py-1.5 rounded-full' : 'h-[60px] gap-2.5 rounded-lg px-3 py-2',
           surface === 'ocean'
             ? 'bg-info/[0.045] hover:bg-info/[0.075]'
-            : 'bg-card hover:bg-muted',
+            : pipelinePickerTokens.trigger,
           isOpen
             ? surface === 'ocean'
               ? 'border-info/35 ring-2 ring-info/10'
-              : 'border-primary/30 ring-2 ring-primary/10'
+              : 'border-input ring-2 ring-foreground/10'
             : surface === 'ocean'
               ? 'border-info/20 hover:border-info/30'
-              : 'border-border hover:border-border'
+              : 'hover:border-border'
         )}
       >
-        <div className={cn(compact ? 'rounded-md p-1' : 'rounded-md p-1.5', resolvedSelectedColor.bg)}>
+        <div className={cn('grid shrink-0 place-items-center rounded-md', compact ? 'size-6' : 'size-7', resolvedSelectedColor.bg)}>
           <SelectedIcon className={cn('size-3.5', resolvedSelectedColor.text)} />
         </div>
         <div className="flex-1 text-left min-w-0">
@@ -157,18 +162,6 @@ export function ParserDropdown({
             <span className={cn('font-medium text-foreground truncate', compact ? 'text-xs' : 'text-[13px]')}>
               {selectedOption.label}
             </span>
-            {selectedOption.badge && (
-              <span
-                className={cn(
-                  'rounded px-1.5 py-px text-[9px] font-medium leading-4',
-                  surface === 'ocean'
-                    ? 'bg-info/[0.08] text-info'
-                    : 'bg-primary/10 text-primary'
-                )}
-              >
-                {selectedOption.badge}
-              </span>
-            )}
             {selectedOption.value === 'paddle_vl' && paddleVlVersionBadge ? (
               <span className="rounded bg-success/10 px-1.5 py-px text-[9px] font-medium leading-4 text-success">
                 {paddleVlVersionBadge}
@@ -176,7 +169,7 @@ export function ParserDropdown({
             ) : null}
           </div>
           {!compact && (
-            <p className="mt-0.5 truncate text-[11px] leading-4 text-muted-foreground">{selectedOption.description}</p>
+            <p title={selectedOption.description} className="mt-0.5 truncate text-xs leading-4 text-muted-foreground">{selectedOption.description}</p>
           )}
         </div>
         <ChevronDown
@@ -188,14 +181,19 @@ export function ParserDropdown({
       </button>
 
       {/* 下拉菜单 */}
-      {isOpen && (
+      {isOpen && (side === 'bottom' || placement) && renderMenu(
         <div
+          ref={menuRef}
+          data-dropdown-menu="parser"
+          data-side={side === 'top' ? placement?.side : 'bottom'}
+          style={side === 'top' ? placement?.style : undefined}
           className={cn(
-            'absolute z-50 mt-2 max-h-[min(440px,70vh)] overflow-y-auto overscroll-contain border no-scrollbar',
+            'select-none overflow-y-auto overscroll-contain border no-scrollbar',
+            side === 'top' ? 'fixed z-[1000]' : 'absolute z-50 mt-2 max-h-[min(440px,70vh)]',
             surface === 'ocean'
               ? 'rounded-lg border-info/30 bg-[linear-gradient(hsl(var(--info)/0.10),hsl(var(--info)/0.10)),linear-gradient(hsl(var(--popover)),hsl(var(--popover)))] text-popover-foreground shadow-strong'
-              : 'rounded-2xl border-border bg-card shadow-strong',
-            compact ? 'right-0 w-[min(420px,calc(100vw-2rem))]' : 'w-full min-w-[360px]'
+              : pipelinePickerTokens.menu,
+            side === 'bottom' && (compact ? 'right-0 w-[min(420px,calc(100vw-2rem))]' : 'w-full min-w-[360px]')
           )}
         >
           {(loading || error) && (
@@ -230,14 +228,13 @@ export function ParserDropdown({
               ) : null}
             </div>
           )}
-          <div className="py-1">
+          <div className="p-1">
             {PARSER_BACKEND_OPTIONS.map((option) => {
               const Icon = ICON_MAP[option.icon]
-              const color = COLOR_MAP[option.icon]
               const resolvedColor =
                 surface === 'ocean'
                   ? { bg: 'bg-info/[0.08]', text: 'text-info' }
-                  : color
+                  : { bg: pipelinePickerTokens.iconFrame, text: 'text-muted-foreground' }
               const isSelected = option.value === selectedOption.value
               const availability = parserBackendAvailable(option.value)
               const isDisabledByFile =
@@ -264,24 +261,22 @@ export function ParserDropdown({
                     setIsOpen(false)
                   }}
                   className={cn(
-                    'w-full flex items-center gap-3 px-3 py-2.5 transition-colors',
+                    pipelinePickerTokens.row,
                     isSelected
-                      ? surface === 'ocean' ? 'bg-info/[0.10]' : 'bg-primary/10'
-                      : surface === 'ocean' ? 'hover:bg-info/[0.06]' : 'hover:bg-muted',
-                    isDisabled && 'opacity-50 cursor-not-allowed hover:bg-transparent'
+                      ? surface === 'ocean' ? 'bg-info/[0.10]' : pipelinePickerTokens.selectedRow
+                      : !isDisabled && (surface === 'ocean' ? 'hover:bg-info/[0.06]' : pipelinePickerTokens.idleRow),
+                    isDisabled && 'cursor-not-allowed'
                   )}
                 >
-                  <div className={cn('p-1.5 rounded-lg', resolvedColor.bg)}>
-                    <Icon className={cn('size-4', resolvedColor.text)} />
+                  <div className={cn('grid size-7 shrink-0 place-items-center rounded-md', resolvedColor.bg)}>
+                    <Icon className={cn('size-3.5', resolvedColor.text)} />
                   </div>
                   <div className="flex-1 text-left min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <span
                         className={cn(
-                          'text-sm font-medium truncate',
-                          isSelected
-                            ? surface === 'ocean' ? 'text-info' : 'text-primary'
-                            : 'text-foreground'
+                          'text-[13px] font-medium leading-5',
+                          isDisabled ? 'text-muted-foreground' : isSelected && surface === 'ocean' ? 'text-info' : 'text-foreground'
                         )}
                       >
                         {option.label}
@@ -289,14 +284,8 @@ export function ParserDropdown({
                       {option.badge && (
                         <span
                           className={cn(
-                            'text-[11px] font-medium px-1.5 py-0.5 rounded',
-                            isSelected
-                              ? surface === 'ocean'
-                                ? 'bg-info/[0.08] text-info'
-                                : 'bg-primary/10 text-primary'
-                              : surface === 'ocean'
-                                ? 'bg-info/[0.04] text-muted-foreground'
-                                : 'bg-muted text-muted-foreground'
+                            'rounded px-1.5 py-px text-[10px] font-medium leading-4',
+                            surface === 'ocean' ? 'bg-info/[0.08] text-info' : pipelinePickerTokens.badge
                           )}
                         >
                           {option.badge}
@@ -315,10 +304,10 @@ export function ParserDropdown({
                         </span>
                       ) : null}
                     </div>
-                    <p className="text-xs leading-5 text-muted-foreground">{option.description}</p>
+                    <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{option.description}</p>
                   </div>
                   {isDisabled && (
-                    <span className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground flex-shrink-0">
+                    <span className="shrink-0 text-[11px] leading-5 text-muted-foreground">
                       {disabledLabel}
                     </span>
                   )}
@@ -326,7 +315,7 @@ export function ParserDropdown({
                     <Check
                       className={cn(
                         'size-4 flex-shrink-0',
-                        surface === 'ocean' ? 'text-info' : 'text-primary'
+                        surface === 'ocean' ? 'text-info' : 'text-foreground'
                       )}
                     />
                   )}

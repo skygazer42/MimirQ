@@ -5,7 +5,7 @@ Design goals:
 - Deterministic: model ids are content-addressed (sha256).
 - Safe defaults: activation requires a validated manifest.
 - Reproducible: active selection is persisted in a small active.json record.
-- Fail-closed for activation/validation; fail-open for reads/listing.
+- Fail-closed for activation/validation; fail-open for reads.
 """
 
 import hashlib
@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import Any
 
 from app.core.config import settings
-from app.rag.core.logging import get_logger
 from app.rag.core.retrieval_config_fingerprint import build_retrieval_config_fingerprint
 from app.rag.reranker.ltr import LTRFeatureSpec, build_ltr_feature_spec_fingerprint
 
@@ -414,39 +413,6 @@ def register_model(
         )
 
 
-def list_models() -> list[LTRRegisteredModel]:
-    """List registered LTR models (best-effort)."""
-    root = _models_root()
-    if not root.exists():
-        return []
-    out: list[LTRRegisteredModel] = []
-    for p in sorted(root.iterdir()):
-        if not p.is_dir():
-            continue
-        meta = _read_json(p / "meta.json") or {}
-        if str(meta.get("schema") or "") != _MODEL_META_SCHEMA_V1:
-            continue
-        try:
-            out.append(
-                LTRRegisteredModel(
-                    model_id=str(meta.get("model_id") or p.name),
-                    model_sha256=str(meta.get("model_sha256") or ""),
-                    size_bytes=int(meta.get("size_bytes") or 0),
-                    created_at=str(meta.get("created_at") or ""),
-                    created_by=(str(meta.get("created_by")) if meta.get("created_by") is not None else None),
-                    feature_spec_version=int(meta.get("feature_spec_version") or 1),
-                    feature_schema=str(meta.get("feature_schema") or ""),
-                    feature_names=list(meta.get("feature_names") or []),
-                    has_manifest=bool(_manifest_path(str(meta.get("model_id") or p.name)).exists()),
-                )
-            )
-        except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
-    out.sort(key=lambda m: (m.created_at or "", m.model_id))
-    return out
-
-
 def _load_active() -> dict[str, Any]:
     return _read_json(_active_path()) or {}
 
@@ -640,7 +606,6 @@ __all__ = [
     "activate_model",
     "apply_canary_activation",
     "evaluate_online_rollback_trigger",
-    "list_models",
     "register_model",
     "resolve_active_model_paths",
     "rollback_active_model",

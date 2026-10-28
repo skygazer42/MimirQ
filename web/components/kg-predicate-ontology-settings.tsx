@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Edit, Plus, RefreshCw, Save, Trash2 } from 'lucide-react'
+import { Edit, Plus, RefreshCw, Save, Trash2 } from '@/components/icons'
 
 import { kgApi, settingsApi } from '@/lib/api'
 import { formatApiError, toApiErrorInfo } from '@/lib/api-errors'

@@ -333,7 +333,7 @@ export function useParsingLibraryActions({
         setActiveLibraryFileId(null)
         setActiveBlockId(null)
         setHoveredBlockId(null)
-        setRightPanelMode(blocks.length ? 'blocks' : 'markdown')
+        setRightPanelMode('markdown')
       }
 
       if (autoParse) setAutoParseFileId(queueId)

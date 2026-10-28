@@ -12,6 +12,8 @@ const routerMocks = vi.hoisted(() => ({
   push: vi.fn(),
 }))
 
+const linkStatusMock = vi.hoisted(() => ({ pending: false }))
+
 const commandMenuStore = vi.hoisted(() => ({
   open: false,
   setOpen: vi.fn(),
@@ -68,6 +70,7 @@ const messages: Record<
   'toolbar.navLabel': 'toolbar.navLabel',
   'toolbar.appearance': '界面外观',
   'toolbar.appearanceHint': (values) => `${String(values?.count ?? '')} 种风格`,
+  'toolbar.opening': (values) => `正在打开${String(values?.label ?? '')}…`,
   'toolbar.sidebarClose': 'toolbar.sidebarClose',
   'user.offlineEnvironment': 'user.offlineEnvironment',
   'user.openSettings': 'user.openSettings',
@@ -97,6 +100,10 @@ vi.mock('@/i18n/navigation', () => ({
     prefetch: routerMocks.prefetch,
     push: routerMocks.push,
   }),
+}))
+
+vi.mock('next/link', () => ({
+  useLinkStatus: () => linkStatusMock,
 }))
 
 vi.mock('@/hooks/use-auth', () => ({
@@ -159,6 +166,8 @@ vi.mock('@/components/ui/popover', () => ({
 
 import { Navbar } from './navbar'
 
+type NavbarProps = NonNullable<React.ComponentProps<typeof Navbar>>
+
 function renderComponent(element: React.ReactElement) {
   ;(
     globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -174,6 +183,9 @@ function renderComponent(element: React.ReactElement) {
 
   return {
     container,
+    rerender(nextElement: React.ReactElement) {
+      act(() => root.render(nextElement))
+    },
     unmount() {
       act(() => {
         root.unmount()
@@ -186,6 +198,7 @@ function renderComponent(element: React.ReactElement) {
 describe('Navbar behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    linkStatusMock.pending = false
     routerMocks.pathname = '/knowledge/similarity'
     commandMenuStore.open = false
     commandMenuStore.setOpen = vi.fn()
@@ -256,6 +269,21 @@ describe('Navbar behavior', () => {
     view.unmount()
   })
 
+  it('keeps the settings rail compact even when a previous sidebar was open', () => {
+    const view = renderComponent(React.createElement<NonNullable<React.ComponentProps<typeof Navbar>>>(Navbar, {
+      variant: 'rail',
+      isSidebarOpen: true,
+      setSidebarOpen: vi.fn(),
+    }))
+
+    expect(view.container.querySelector('#mimirq-sidebar')).toBeNull()
+    expect(view.container.querySelector('button[aria-label="toolbar.expand"]')).toBeNull()
+    expect(view.container.querySelector('a[href="/settings"]')?.getAttribute('aria-current')).toBe('page')
+    expect(view.container.querySelector('a[href="/datasets"]')).not.toBeNull()
+
+    view.unmount()
+  })
+
   it('offers appearance customization from the global navigation', () => {
     const view = renderComponent(React.createElement(Navbar))
 
@@ -267,6 +295,32 @@ describe('Navbar behavior', () => {
     expect(appearanceButton?.getAttribute('aria-label')).toBe('界面外观')
     expect(appearanceButton?.getAttribute('title')).toBe('界面外观')
     expect(view.container.querySelector('[data-testid="mode-toggle"]')).not.toBeNull()
+
+    view.unmount()
+  })
+
+  it('offers the shared appearance controls from the settings rail', () => {
+    const view = renderComponent(React.createElement<NavbarProps>(Navbar, { variant: 'rail' }))
+
+    const appearance = view.container.querySelector('[data-testid="appearance-customizer"]')
+    expect(appearance?.querySelector('button')?.getAttribute('aria-label')).toBe('界面外观')
+    expect(view.container.querySelector('[data-testid="mode-toggle"]')).not.toBeNull()
+
+    view.unmount()
+  })
+
+  it('announces a pending rail navigation while retaining its destination', () => {
+    linkStatusMock.pending = true
+    const element = React.createElement<NavbarProps>(Navbar, { variant: 'rail' })
+    const view = renderComponent(element)
+    const datasetLink = () => view.container.querySelector('a[href="/datasets"]')
+
+    expect(datasetLink()?.querySelector('[role="status"]')?.textContent).toContain(chatMessages.Navbar.items.datasets)
+    expect(datasetLink()?.getAttribute('href')).toBe('/datasets')
+
+    linkStatusMock.pending = false
+    view.rerender(React.createElement<NavbarProps>(Navbar, { variant: 'rail' }))
+    expect(datasetLink()?.querySelector('[role="status"]')).toBeNull()
 
     view.unmount()
   })

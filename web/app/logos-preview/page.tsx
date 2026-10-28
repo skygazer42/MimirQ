@@ -5,7 +5,7 @@ import { AppFrame } from '@/components/app-frame'
 import { ProviderIcon } from '@/components/provider-icon'
 import { Card, CardContent } from '@/components/ui/card'
 import { PageScaffold } from '@/components/ui/page-scaffold'
-import { Grid3X3 } from 'lucide-react'
+import { Grid3X3 } from '@/components/icons'
 
 const providers = [
   { id: 'openai', name: 'OpenAI', color: '#10A37F' },

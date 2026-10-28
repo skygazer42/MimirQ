@@ -1,7 +1,9 @@
 'use client'
 
+
+import { workspaceStyles as ws } from '@/components/ui/operational-workspace'
 import type { ReactNode, RefObject } from 'react'
-import { FileUp, Loader2, Search } from 'lucide-react'
+import { FileUp, Loader2, Search } from '@/components/icons'
 
 import type { Citation } from '@/types'
 import type { RankedEvidenceCitation } from '@/lib/evidence-suggestions'
@@ -9,6 +11,7 @@ import { coerceOneOf } from '@/lib/one-of'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { FeedbackToast } from '@/components/feedback-toast'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -251,15 +254,16 @@ export function CreateItemDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
+      <DialogContent  className={ws.dialog}>
+<DialogHeader  className={ws.dialogHeader}>
           <DialogTitle>新建 Evidence Item</DialogTitle>
           <DialogDescription className="text-pretty">
             先用检索找到证据切片，再将选中的引用保存为 <span className="font-mono">reference_sources</span>。
           </DialogDescription>
         </DialogHeader>
+<div className={ws.dialogBody}>
 
-        <div className="space-y-4">
+<div className="space-y-4">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div className="space-y-1">
               <Label htmlFor="item-query">Query</Label>
@@ -338,7 +342,7 @@ export function CreateItemDialog({
                 <div className="ml-auto text-xs text-muted-foreground font-mono tabular-nums">已选 {selectedChunkIds.length}</div>
               </div>
 
-              {retrieveError ? <div className="text-xs text-destructive text-pretty">{retrieveError}</div> : null}
+              <FeedbackToast type="error" message={retrieveError} id="evidence-retrieve-feedback" />
 
               {expectedNeedles.length ? (
                 <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
@@ -381,7 +385,7 @@ export function CreateItemDialog({
                 <div className="ml-auto text-xs text-muted-foreground font-mono tabular-nums">已选 {importSelectedChunkIds.length}</div>
               </div>
 
-              {importError ? <div className="text-xs text-destructive text-pretty">{importError}</div> : null}
+              <FeedbackToast type="error" message={importError} id="evidence-import-feedback" />
 
               <Panel className="p-3">
                 <ScrollArea className="h-[320px] pr-2">
@@ -394,7 +398,8 @@ export function CreateItemDialog({
           </Tabs>
         </div>
 
-        <DialogFooter>
+</div>
+<DialogFooter  className={ws.dialogFooter}>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             取消
           </Button>
@@ -403,7 +408,7 @@ export function CreateItemDialog({
             创建 Item（draft）
           </Button>
         </DialogFooter>
-      </DialogContent>
+</DialogContent>
     </Dialog>
   )
 }

@@ -1,0 +1,69 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ragvia · 检查记录</title><link rel="stylesheet" href="fonts.css"><style>
+*{box-sizing:border-box}body{margin:0;background:#f5f6f7;color:#20262e;font:14px/1.85 "Ragvia Manrope","Ragvia Sans SC",sans-serif}main{max-width:1100px;margin:auto;padding:28px}a{color:inherit;text-underline-offset:3px}h1{font-size:25px;line-height:1.5;margin:24px 0}h2{font-size:19px;line-height:1.5;margin:32px 0 14px}p{margin:12px 0}code{font-size:12px;overflow-wrap:anywhere}.table{max-width:100%;overflow:auto;margin:18px 0}table{border-collapse:collapse;min-width:680px;width:100%;font-size:13px;text-align:left}th,td{border-bottom:1px solid #d9dee3;padding:10px 12px;vertical-align:top}th{background:#e8ecef;font-weight:600}.item{padding-left:18px;position:relative}.item:before{content:'·';position:absolute;left:2px}a:focus-visible{outline:2px solid #9d654f;outline-offset:3px}@media(max-width:700px){main{padding:20px}h1{font-size:22px}}
+</style><main><a href="index.html">← 返回 20 项页面对照</a><h1>Ragvia 20 项页面迁移 · 验证记录</h1>
+<p>按用户 2026-10-27 批准的计划实施。20 项均已替换到原正式入口，设计、原始源码、截图和检查记录保存在本目录。前端、可用本地接口及记录中的受影响回归已通过；外部模型、解析、数据库连接和真实 SSO 联调单独列在下文。</p>
+<h2>设计与实现</h2>
+<p>沿用 Ragvia、Manrope／Noto Sans SC、雾灰／墨色、语义文件与状态颜色。复用现有React、Radix、React Query、图表和编辑器。连续工作面承载主要内容，设置／详情按需打开。手机目录和详情原地切换，表格在自身区域滚动，状态文字和操作同时可见。</p>
+<p>具体方向、候选差异和选型理由见 <code>design.md</code>；第二、三、四批比较页分别在 <code>web/public/brand/explorations/remaining-batch-two-v1/</code>、<code>remaining-batch-three-v1/</code>、<code>remaining-final-batch-v1/</code>。设计稿中的事实与数据用于对比，未写入正式组件。实际实现继续通过原API获取数据。</p>
+<div class="table"><table><thead><tr><th>页项</th><th>正式入口</th><th>构图／行为</th></tr></thead><tbody>
+<tr><td>数据画像</td><td><code>/datasets/[id]/profile</code></td><td>问题和读数优先的连续报告，保留原分布、扫描、历史和比较</td></tr>
+<tr><td>数据集健康</td><td><code>/datasets/[id]/health</code></td><td>实际读数与异常，分布按需查看</td></tr>
+<tr><td>工作流</td><td><code>/datasets/[id]/workflow</code></td><td>画布与节点详情，拖动只改变布局</td></tr>
+<tr><td>表格资产</td><td><code>/datasets/[id]/tables</code></td><td>目录与数据／SQL／问答／语义工具</td></tr>
+<tr><td>数据库目录</td><td><code>/datasets/[id]/db-catalog</code></td><td>表目录与字段、画像、同步记录，连接表单按需打开</td></tr>
+<tr><td>数据集证据库</td><td><code>/datasets/[id]/evidence</code></td><td>证据集目录与条目表，保留导入、审核、回归同步等动作</td></tr>
+<tr><td>数据集KG</td><td><code>/datasets/[id]/kg</code></td><td>文档目录与图谱，抽取配置和对象详情按需打开</td></tr>
+<tr><td>执行监控</td><td><code>/knowledge/ingestion?mode=execution-monitor</code></td><td>任务宽表、状态、日志和阶段详情</td></tr>
+<tr><td>重复内容规则</td><td><code>/data-governance/common-lines</code></td><td>配置目录、候选／已存规则与表达式预览</td></tr>
+<tr><td>行业规则</td><td><code>/governance/industry-rules</code></td><td>分类管理表、编辑和查询预览</td></tr>
+<tr><td>图谱快照</td><td><code>/graph/snapshots</code></td><td>A／B、变更表、原始对照、图谱与统计</td></tr>
+<tr><td>图谱诊断</td><td><code>/graph/diagnostics</code></td><td>配置与报告、质量、历史比较</td></tr>
+<tr><td>检索调参</td><td><code>/evaluations/ablations</code></td><td>完整排行与实验表、参数窗口、A／B与样本差异</td></tr>
+<tr><td>相似度</td><td><code>/knowledge/similarity</code></td><td>主矩阵、按需来源／筛选／单元与统计</td></tr>
+<tr><td>文档审计</td><td><code>/knowledge/[id]/health</code></td><td>文档身份及解析、切片、KG、检索四链路</td></tr>
+<tr><td>可观测性</td><td><code>/observability</code></td><td>范围与指标／查询分析，运维工具按需打开</td></tr>
+<tr><td>证据调试</td><td><code>/knowledge/evidence</code></td><td>问题与引用，区分有证据、拒答和请求失败</td></tr>
+<tr><td>语义星云</td><td><code>/knowledge/nebula</code></td><td>实际切片3D画布，主题、取景、图例和详情</td></tr>
+<tr><td>OIDC回调</td><td><code>/auth/oidc/callback</code></td><td>共享认证状态和失败恢复</td></tr>
+<tr><td>SAML回调</td><td><code>/auth/saml/callback</code></td><td>同一认证状态；保留原会话与返回目标</td></tr>
+</tbody></table></div>
+<h2>已修复的问题</h2>
+<p class="item">开发资源发布曾出现JSON／JS部分写入；使用原子发布与限于共享layout的内容版本，保留最终文件占用错误。未加浏览器自动刷新来遮盖问题。一次前端/API进程同时停止没有致命日志，作为独立环境事件记录，恢复了最小服务。</p>
+<p class="item">工作流测量与选择不再误标布局变更；保存不改变业务链路。表格工具和各工作区读结果归属当前对象，错误保留输入。</p>
+<p class="item">共享受控弹窗返回打开它的实际按钮；标题与操作区固定，正文滚动。成功反馈沿用短暂Sonner，修正性错误保留在操作附近。</p>
+<p class="item">排行不再依赖最近80条窗口过滤旧高分实验。读取旧记录真实详情后可选作A／B；比较器新选择撤销同角色的旧详情请求。</p>
+<p class="item">证据库读取、仪表板和相关操作按数据集／证据集／条目意图回写，迟到旧结果不能覆盖新对象。保存后的刷新使用当前筛选，并保留用户后选对象。</p>
+<p class="item">仅比较快照摘要时，不把未取得的A／B总量或比例当零。保留实际delta，读取完整快照后才绘制比例。</p>
+<p class="item">星云空切片不生成文件名节点，不拿元数据计数冒充已载入切片；读取失败明确显示。相机按实际中心、节点／光晕半径、纵横比拟合，手机已载入4点完整入画。</p>
+<h2>验证与评审</h2>
+<p>运行命令及完整输出保存在对应 <code>.log</code>，浏览器失败保留trace与截图。未运行生产构建或全量测试。检查环境为Chrome：桌面1600×1000、窄工作区1120×850深色、手机390×844；减少动态效果使用实际媒体设置与持续时间验证。</p>
+<div class="table"><table><thead><tr><th>检查</th><th>结果</th><th>记录</th></tr></thead><tbody>
+<tr><td>专用数据集实际读取、布局保存／读回、证据集创建／刷新、治理草稿保存及三视口</td><td>8／8 通过</td><td><code>final-dataset-live.log</code></td></tr>
+<tr><td>第三、四批正常／空／失败／保存保留／关键阅读流程</td><td>16／16 通过</td><td><code>final-scenarios2.log</code></td></tr>
+<tr><td>旧排行读取、实验参数及快照功能定点复核</td><td>7／7 通过</td><td><code>important-browser-final.log</code></td></tr>
+<tr><td>比较器后选覆盖旧请求</td><td>2／2 通过；随后连续三轮再次通过</td><td><code>ranking-selection-green.log</code>、<code>completion-async-three.log</code></td></tr>
+<tr><td>证据集／数据集／仪表板／保存后刷新归属</td><td>7／7 通过</td><td><code>evidence-scope-final2.log</code></td></tr>
+<tr><td>摘要对比不虚构总量，读取完整快照后恢复真实数值</td><td>1／1 通过</td><td><code>summary-only-final.log</code></td></tr>
+<tr><td>客户端导航、旧证据响应隔离、比较器竞态，各连续三轮</td><td>9／9 通过</td><td><code>completion-async-three.log</code></td></tr>
+<tr><td>认证、证据归属、相机、图数据、工作流、开发发布及已有回归单测</td><td>35／35 通过，10 个测试文件</td><td><code>completion-units-final2.log</code></td></tr>
+<tr><td>最终 TypeScript 检查</td><td>退出码 0</td><td><code>completion-typecheck-final.log</code></td></tr>
+<tr><td>49 个正式源文件范围 lint</td><td>退出码 0</td><td><code>completion-lint-final.log</code>、<code>lint-scope.json</code></td></tr>
+<tr><td>范围 diff 空白检查</td><td>退出码 0；仅既有 CRLF→LF 提示</td><td><code>completion-diff-check.log</code></td></tr>
+<tr><td>受影响主导航／设置标题与溢出</td><td>2／2 通过</td><td><code>completion-main-regression2.log</code>；该次余下网络中断不计通过</td></tr>
+<tr><td>深色、五种配色、跨页同步及快照窄屏</td><td>4／4 通过；与前两项合计 6 项受影响回归通过</td><td><code>completion-main-regression3.log</code></td></tr>
+<tr><td>本轮更新的两份浏览器测试 lint</td><td>退出码 0</td><td><code>completion-test-lint.log</code></td></tr>
+<tr><td>统一预览导航、所有图片与四视图切换、键盘、手机滚动和报告返回</td><td>20 项／80 次切换通过；无脚本错误或失败资源</td><td><code>preview-verification.json</code>、<code>preview-verification.log</code>、<code>preview-final/</code></td></tr>
+</tbody></table></div>
+<p>所有浏览器命令均使用仓库 Playwright、Chrome、现有 3000 服务、单 worker、<code>retries=0</code>。连续三轮明确使用 <code>--repeat-each=3</code>，没有将自动重试计入通过。类型命令为 <code>pnpm typecheck</code>；范围 lint 为 <code>pnpm exec eslint</code> 加清单中的 49 个路径；单测为上述 10 个指定文件加 <code>--maxWorkers=1</code>。</p>
+<p>独立视觉：第一批30张、第二批20张及定点复核，第三批23张、第四批24张与22张新图复核；不打分。主要可见问题已修复，报告明确未看边界。独立UX按自选任务操作，第三批四页和第四批六页均有实际路径、截图和材料限制记录；不推断真人效率。最后独立代码审查曾发现3项Important，均有定点修复与检查；审查结论见 <code>completion-code-review.md</code>。</p>
+<p>静态比较页最初有父目录资源和1440px视口问题，已改用正式本机URL、1600px重拍；两套最终比较图未出现资源失败或横向溢出。正式页面截图使用仓库Playwright；未用缺失的Oil screenshot lint推断可读性提示清零。图表色阶、文件／风险／运行颜色保留其业务含义。动效沿用现有按钮、窗口和轻量视图过渡，减少动态效果不会关闭功能。</p>
+<p>保留失败记录的解释：第一轮主页面回归使用改版前“实时会话评分”等名称和旧容器定位，实际截图已正常呈现“RAG 评测”；只更新测试定位后，主导航与设置标题检查通过。随后浏览器报告 <code>ERR_NETWORK_IO_SUSPENDED</code>，同一时间窗口单测出现超过 100 分钟的计时与线程／清理超时，该轮不计通过；服务仍在，重新执行的 35 项单测通过。未据此改生产代码或增加页面自动重载。早期证据归属测试曾误读非公开 <code>.items</code>，快照摘要测试曾假定操作后窗口仍打开；这些探针错误不当作业务回归 RED，修正后的有效检查另有记录。</p>
+<h2>真实接口边界</h2>
+<p>只运行前端、API和必要PostgreSQL。使用专用 <code>ui-redesign-verification-20261027</code> 数据集，保存和读回只操作它的布局、证据集及专用治理配置；未修改现有业务文档，也未运行模型、解析器或外部数据库同步。</p>
+<p>主服务真实读取：实验列表、排行、用例、相似度来源、观测汇总／查询、专用文档范围与缺鉴权拒绝均有记录。KG相关5个读取返回503，原因是现有 <code>KG_ENABLED=false</code>。未改变主服务开关；临时ASGI测试进程只启用此现有开关，使用真实路由、鉴权和PostgreSQL，7/7正向读取／纯快照diff／缺鉴权检查通过，未执行应用lifespan或外部任务。见 <code>final-real-api.json</code> 与 <code>isolated-kg-real-api.json</code>。</p>
+<p>真实数据库连接／同步、模型检索与评测、解析执行、真实OIDC/SAML身份提供方未联调。专用数据集没有已处理文档，因此填充文档审计、切片、SQL／问答、图谱与证据结果使用隔离接口；不能当成真实推理或真实解析成功。SSO单测检查原完成函数、会话设置先于返回、失败不建立会话；真实身份提供方仍需另行集成验证。</p>
+<h2>留档与交付限制</h2>
+<p><code>before/</code> 保存原始实现，<code>screens/</code> 保存 20 张改版前基线及新版桌面、深色窄屏、手机与关键状态。已移除失效快照组件和相似度侧栏辅助代码；历史比较稿只作记录，原正式入口使用新实现。新共享组件为现有系统内的工作区／认证状态组合，不引入另一套组件库或字体。</p>
+<p>统一预览：<code>http://127.0.0.1:3000/brand/explorations/remaining-pages-20-review/index.html</code>。由本目录 <code>make-review-preview.py</code> 生成；静态预览不复制用户凭据、原始 API 响应或业务文档。文档审计入口指向知识库以选择真实文档，回调入口说明无有效授权会话时展示恢复状态。浏览器验收结果另存 <code>preview-verification.json</code>。</p>
+<p>主 Agent 已查看预览桌面／手机、报告桌面／手机和快照深色窄屏原尺寸截图；快照最终归档等待成功提示自动消失后再截取。所有 20 项都具备前后基线、新版桌面、深色窄屏、手机图，80 次视图切换逐张完成解码；图片可打开查看原尺寸。</p>
+<p>数据画像最初的改版前截图停在加载态；此限制在预览页单独标注，没有伪造填充前图。桌面/窄屏/手机截图并未穷尽每一张弹窗或长页的所有滚动位置；具体已看范围以各独立报告为准。解析质量状态在总览与局部链路均保留，供两种阅读位置识别同一实际评分，属于非阻断的可进一步精简项。</p></main></html>

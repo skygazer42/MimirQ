@@ -98,6 +98,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Auth Policy
+         * @description Advertise usable local account entry points without exposing credentials.
+         */
+        get: operations["get_auth_policy_api_v1_auth_policy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/signup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Signup User
+         * @description Register an ordinary local account with viewer access in the default workspace.
+         */
+        post: operations["signup_user_api_v1_auth_signup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/register": {
         parameters: {
             query?: never;
@@ -2994,9 +3034,9 @@ export interface paths {
         put?: never;
         /**
          * Import Manual Kg
-         * @description Import a manually governed KG payload into MimirQ.
+         * @description Import a manually governed KG payload into Ragvia.
          *
-         *     Domain-specific extraction/rule building should happen outside MimirQ and
+         *     Domain-specific extraction/rule building should happen outside Ragvia and
          *     produce this stable import format.
          */
         post: operations["import_manual_kg_api_v1_kg_imports_post"];
@@ -3897,74 +3937,6 @@ export interface paths {
         put?: never;
         /** Verify Evidence Capsule Payload */
         post: operations["verify_evidence_capsule_payload_api_v1_evidence_capsules_verify_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/ltr/models": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Ltr Models */
-        get: operations["list_ltr_models_api_v1_ltr_models_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/ltr/models/register": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Register Ltr Model */
-        post: operations["register_ltr_model_api_v1_ltr_models_register_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/ltr/models/activate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Activate Ltr Model */
-        post: operations["activate_ltr_model_api_v1_ltr_models_activate_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/ltr/models/rollback": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Rollback Ltr Model */
-        post: operations["rollback_ltr_model_api_v1_ltr_models_rollback_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6038,7 +6010,7 @@ export interface paths {
         put?: never;
         /**
          * Ingest Conversation History
-         * @description Import externally generated chat turns into the standard MimirQ history.
+         * @description Import externally generated chat turns into the standard Ragvia history.
          */
         post: operations["ingest_conversation_history_api_v1_integrations_conversations_ingest_post"];
         delete?: never;
@@ -7600,6 +7572,19 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** AuthPolicy */
+        AuthPolicy: {
+            /** Initialized */
+            initialized: boolean;
+            /** Registration Enabled */
+            registration_enabled: boolean;
+            /** Bootstrap Enabled */
+            bootstrap_enabled: boolean;
+            /** Bootstrap Token Required */
+            bootstrap_token_required: boolean;
+            /** Password Min Length */
+            password_min_length: number;
+        };
         /** AuthResponse */
         AuthResponse: {
             user: components["schemas"]["UserPublic"];
@@ -8040,19 +8025,6 @@ export interface components {
             governance_common_lines_min_docs?: number | null;
             /** Governance Common Lines Min Ratio */
             governance_common_lines_min_ratio?: number | null;
-        };
-        /** Body_register_ltr_model_api_v1_ltr_models_register_post */
-        Body_register_ltr_model_api_v1_ltr_models_register_post: {
-            /**
-             * Model File
-             * @description XGBoost model bytes (JSON)
-             */
-            model_file: string;
-            /**
-             * Manifest File
-             * @description LTR manifest JSON (validated)
-             */
-            manifest_file: string;
         };
         /** Body_upload_document_api_v1_documents_upload_post */
         Body_upload_document_api_v1_documents_upload_post: {
@@ -15982,7 +15954,7 @@ export interface components {
         };
         /**
          * ExternalConversationIngestRequest
-         * @description Import conversation turns from any external chat system into MimirQ history.
+         * @description Import conversation turns from any external chat system into Ragvia history.
          */
         ExternalConversationIngestRequest: {
             /**
@@ -15994,7 +15966,7 @@ export interface components {
             source_conversation_id: string;
             /**
              * Conversation Id
-             * @description Append to an existing MimirQ conversation
+             * @description Append to an existing Ragvia conversation
              */
             conversation_id?: string | null;
             /** Title */
@@ -18411,7 +18383,7 @@ export interface components {
          * @description Manual KG import payload.
          *
          *     The payload is intentionally domain-neutral. Business-specific extraction
-         *     should happen outside MimirQ; this endpoint only imports governed graph rows.
+         *     should happen outside Ragvia; this endpoint only imports governed graph rows.
          */
         KGManualImportRequest: {
             /**
@@ -19092,68 +19064,6 @@ export interface components {
              * @default 3
              */
             max_retries: number;
-        };
-        /** LTRModelActivateRequest */
-        LTRModelActivateRequest: {
-            /** Model Id */
-            model_id: string;
-        };
-        /** LTRModelActivateResponse */
-        LTRModelActivateResponse: {
-            /** Active */
-            active: {
-                [key: string]: unknown;
-            };
-        };
-        /** LTRModelInfo */
-        LTRModelInfo: {
-            /** Model Id */
-            model_id: string;
-            /** Model Sha256 */
-            model_sha256: string;
-            /**
-             * Size Bytes
-             * @default 0
-             */
-            size_bytes: number;
-            /**
-             * Created At
-             * @default
-             */
-            created_at: string;
-            /** Created By */
-            created_by?: string | null;
-            /**
-             * Feature Spec Version
-             * @default 1
-             */
-            feature_spec_version: number;
-            /**
-             * Feature Schema
-             * @default
-             */
-            feature_schema: string;
-            /** Feature Names */
-            feature_names?: string[];
-            /**
-             * Has Manifest
-             * @default true
-             */
-            has_manifest: boolean;
-            /**
-             * Active
-             * @default false
-             */
-            active: boolean;
-        };
-        /** LTRModelListResponse */
-        LTRModelListResponse: {
-            /** Items */
-            items?: components["schemas"]["LTRModelInfo"][];
-        };
-        /** LTRModelRegisterResponse */
-        LTRModelRegisterResponse: {
-            model: components["schemas"]["LTRModelInfo"];
         };
         /**
          * LangGraphConfig
@@ -23592,6 +23502,21 @@ export interface components {
             /** Bridge Code */
             bridge_code?: string | null;
         };
+        /**
+         * SignupRequest
+         * @description Ordinary signup never accepts caller-selected roles or tenant IDs.
+         */
+        SignupRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Username */
+            username: string;
+            /** Password */
+            password: string;
+        };
         /** SimilarityCalculateResponse */
         SimilarityCalculateResponse: {
             /**
@@ -23875,7 +23800,7 @@ export interface components {
             minio: components["schemas"]["MinioConfig"];
             rag: components["schemas"]["RAGConfig"];
             cache: components["schemas"]["CacheConfig"];
-            url_ingest: components["schemas"]["UrlIngestConfig"];
+            url_ingest: components["schemas"]["UrlIngestStatus"];
             governance: components["schemas"]["GovernanceConfig"];
             mineru: components["schemas"]["MinerUConfig"];
             etl4llm: components["schemas"]["Etl4LlmConfig"];
@@ -24241,6 +24166,10 @@ export interface components {
             tenant_id: string;
             /** User Id */
             user_id?: string | null;
+            /** Username */
+            username?: string | null;
+            /** Email */
+            email?: string | null;
             /**
              * Role
              * @description owner|admin|auditor|editor|dataset_operator|viewer
@@ -24591,7 +24520,6 @@ export interface components {
             minio?: components["schemas"]["MinioConfig"] | null;
             rag?: components["schemas"]["RAGConfig"] | null;
             cache?: components["schemas"]["CacheConfig"] | null;
-            url_ingest?: components["schemas"]["UrlIngestConfig"] | null;
             governance?: components["schemas"]["GovernanceConfig"] | null;
             mineru?: components["schemas"]["MinerUConfig"] | null;
             etl4llm?: components["schemas"]["Etl4LlmConfig"] | null;
@@ -24608,35 +24536,15 @@ export interface components {
             dify_external_knowledge?: components["schemas"]["DifyExternalKnowledgeConfig"] | null;
         };
         /**
-         * UrlIngestConfig
-         * @description URL ingestion config (server-side fetch; connectors).
+         * UrlIngestStatus
+         * @description Read-only URL import availability for the ingestion workbench.
          */
-        UrlIngestConfig: {
+        UrlIngestStatus: {
             /**
              * Enabled
              * @default false
              */
             enabled: boolean;
-            /**
-             * Max Bytes
-             * @default 50000000
-             */
-            max_bytes: number;
-            /**
-             * Timeout Sec
-             * @default 30
-             */
-            timeout_sec: number;
-            /**
-             * Allow Private Ips
-             * @default false
-             */
-            allow_private_ips: boolean;
-            /**
-             * Follow Redirects
-             * @default false
-             */
-            follow_redirects: boolean;
         };
         /**
          * UrlUploadRequest
@@ -24993,6 +24901,129 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MetaDetailsResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_auth_policy_api_v1_auth_policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthPolicy"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    signup_user_api_v1_auth_signup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignupRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResponse"];
                 };
             };
             /** @description Bad Request */
@@ -41044,286 +41075,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EvidenceCapsuleVerifyResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_ltr_models_api_v1_ltr_models_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LTRModelListResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    register_ltr_model_api_v1_ltr_models_register_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_register_ltr_model_api_v1_ltr_models_register_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LTRModelRegisterResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    activate_ltr_model_api_v1_ltr_models_activate_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LTRModelActivateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LTRModelActivateResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    rollback_ltr_model_api_v1_ltr_models_rollback_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LTRModelActivateResponse"];
                 };
             };
             /** @description Bad Request */

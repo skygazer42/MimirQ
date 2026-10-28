@@ -25,7 +25,8 @@ import type {
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
-import { Sparkles, Loader2, FileText, MessageSquare, CheckCircle2, AlertCircle, ChevronRight, Trash2 } from 'lucide-react'
+import { Sparkles, Loader2, FileText, MessageSquare, CheckCircle2, ChevronRight, Trash2 } from '@/components/icons'
+import { FeedbackToast } from '@/components/feedback-toast'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
@@ -239,13 +240,11 @@ export function TestGenerationDialog({
         }
       } else {
         setError(result.error_message || '生成失败')
-        toast.error('生成失败')
       }
     } catch (error: unknown) {
       console.error('生成问题失败:', error)
       const msg = formatApiError(error, '生成问题失败')
       setError(msg)
-      toast.error(msg)
     } finally {
       setIsGenerating(false)
     }
@@ -519,13 +518,7 @@ export function TestGenerationDialog({
                 <Switch checked={autoSave} onCheckedChange={setAutoSave} />
               </div>
 
-              {/* 错误提示 */}
-              {error && (
-                <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
-                  <AlertCircle className="w-4 h-4 text-destructive mt-0.5" />
-                  <div className="text-sm text-destructive">{error}</div>
-                </div>
-              )}
+              <FeedbackToast type="error" message={error} id="test-generation-feedback" />
             </div>
           </div>
         )}

@@ -286,7 +286,7 @@ export function useGraphPageActions({
     const base =
       stripFilenameExtension(fileName || '') ||
       (datasetId ? `dataset-${datasetId}` : '') ||
-      'mimirq-kg'
+      'ragvia-kg'
     return sanitizeFilename(`${base}-${viewMode}`)
   }, [datasetId, fileName, viewMode])
 
@@ -379,7 +379,7 @@ export function useGraphPageActions({
       const url = URL.createObjectURL(blob)
       const anchor = document.createElement('a')
       anchor.href = url
-      anchor.download = 'mimirq-kg.graphml'
+      anchor.download = 'ragvia-kg.graphml'
       anchor.click()
       URL.revokeObjectURL(url)
       toast.success('已导出 GraphML')

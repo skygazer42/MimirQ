@@ -7,6 +7,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy import desc, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -52,7 +53,41 @@ class UserService:
         return user
 
     @staticmethod
-    def create_user(db: Session, *, email: str, username: str, password: str) -> User:
+    def create_user(
+        db: Session, *, email: str, username: str, password: str, initial_owner: bool = True,
+    ) -> User:
+        """Create an owner only for bootstrap; ordinary signup always creates a viewer.
+
+        `initial_owner` is selected by the server endpoint, never from request data.
+        Lock the tenant before checking identities so registrations for that tenant
+        cannot race across the shared email/username login namespace.
+        """
+        try:
+            tenant = UserService._registration_tenant(db, initial_owner=initial_owner)
+            user = UserService._new_user(db, email=email, username=username, password=password)
+            db.add(user)
+            db.flush()
+            db.add(
+                TenantMember(
+                    tenant_id=tenant.id,
+                    user_id=str(user.id),
+                    role=UserRoles.OWNER if initial_owner else UserRoles.VIEWER,
+                    is_active=True,
+                    is_current=True,
+                )
+            )
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            raise HTTPException(status_code=409, detail="Account registration conflicted; please try again") from exc
+        except Exception:
+            db.rollback()
+            raise
+        db.refresh(user)
+        return user
+
+    @staticmethod
+    def _new_user(db: Session, *, email: str, username: str, password: str) -> User:
         normalized_email = (email or "").strip().lower()
         normalized_username = (username or "").strip()
 
@@ -77,33 +112,32 @@ class UserService:
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        user = User(
+        return User(
             email=normalized_email,
             username=normalized_username,
             password_hash=password_hash,
             is_active=True,
         )
-        db.add(user)
-        db.flush()
-
-        UserService.ensure_default_membership(db, user_id=str(user.id))
-
-        db.commit()
-        db.refresh(user)
-        return user
 
     @staticmethod
-    def ensure_default_membership(db: Session, *, user_id: str) -> None:
+    def _default_tenant_id() -> UUID:
         raw_tenant = str(getattr(settings, "DEFAULT_TENANT_ID", "") or "").strip()
         if not raw_tenant:
             raise HTTPException(status_code=500, detail="DEFAULT_TENANT_ID is not configured")
         try:
-            tenant_id = UUID(raw_tenant)
+            return UUID(raw_tenant)
         except ValueError as exc:
             raise HTTPException(status_code=500, detail="DEFAULT_TENANT_ID is invalid") from exc
 
+    @staticmethod
+    def _registration_tenant(db: Session, *, initial_owner: bool) -> Tenant:
+        if not initial_owner and not settings.LOCAL_ACCOUNT_REGISTRATION_ENABLED:
+            raise HTTPException(status_code=403, detail="Account registration is disabled; contact an administrator")
+        tenant_id = UserService._default_tenant_id()
         tenant = db.query(Tenant).filter(Tenant.id == tenant_id).with_for_update().first()
         if not tenant:
+            if not initial_owner:
+                raise HTTPException(status_code=409, detail="Workspace setup is incomplete; contact an administrator")
             tenant = Tenant(
                 id=tenant_id,
                 name=f"tenant-{tenant_id}",
@@ -113,30 +147,27 @@ class UserService:
             db.add(tenant)
             db.flush()
 
-        if db.query(TenantMember.id).filter(TenantMember.tenant_id == tenant_id).first() is not None:
+        if str(tenant.status or "").strip().lower() != "active":
+            raise HTTPException(status_code=403, detail="Workspace is inactive; contact an administrator")
+        has_members = db.query(TenantMember.id).filter(TenantMember.tenant_id == tenant_id).first() is not None
+        if initial_owner and has_members:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Initial registration is closed; contact an administrator",
             )
-        db.add(
-            TenantMember(
-                tenant_id=tenant_id,
-                user_id=user_id,
-                role=UserRoles.OWNER,
-                is_active=True,
-                is_current=True,
-            )
-        )
+        if not initial_owner and not has_members:
+            raise HTTPException(status_code=409, detail="Workspace setup is incomplete; contact an administrator")
+        return tenant
+
+    @staticmethod
+    def is_default_tenant_active(db: Session) -> bool:
+        return db.query(Tenant.id).filter(
+            Tenant.id == UserService._default_tenant_id(), func.lower(Tenant.status) == "active",
+        ).first() is not None
 
     @staticmethod
     def get_default_tenant_member_count(db: Session) -> int:
-        raw_tenant = str(getattr(settings, "DEFAULT_TENANT_ID", "") or "").strip()
-        if not raw_tenant:
-            raise HTTPException(status_code=500, detail="DEFAULT_TENANT_ID is not configured")
-        try:
-            tenant_id = UUID(raw_tenant)
-        except ValueError as exc:
-            raise HTTPException(status_code=500, detail="DEFAULT_TENANT_ID is invalid") from exc
+        tenant_id = UserService._default_tenant_id()
         return int(
             db.query(TenantMember)
             .filter(TenantMember.tenant_id == tenant_id)

@@ -1,6 +1,6 @@
 'use client'
 
-import { Layers3 } from 'lucide-react'
+import { Layers3 } from '@/components/icons'
 
 import { cn } from '@/lib/utils'
 import type { RagasRegressionRunDiffResponse, RegressionRunMetricDiff, RegressionRunSliceBucketDiff } from '@/types'

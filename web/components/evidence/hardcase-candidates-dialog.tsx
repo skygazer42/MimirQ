@@ -1,7 +1,9 @@
 'use client'
 
+
+import { workspaceStyles as ws } from '@/components/ui/operational-workspace'
 import type { ReactNode } from 'react'
-import { Copy, Loader2, RefreshCw } from 'lucide-react'
+import { Copy, Loader2, RefreshCw } from '@/components/icons'
 
 import type { EvidenceHardcaseDiscovery } from '@/types'
 import { cn } from '@/lib/utils'
@@ -305,15 +307,16 @@ export function HardcaseCandidatesDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl overflow-hidden">
-        <DialogHeader>
+      <DialogContent  className={`${ws.dialog} ${ws.wideDialog}`}>
+<DialogHeader  className={ws.dialogHeader}>
           <DialogTitle>Hardcase Candidates</DialogTitle>
           <DialogDescription className="text-pretty">
             从低分反馈 + rag_trace 聚类得到的候选（PII-safe）。选择一个 <span className="font-mono">feedback_id</span> 转为 draft EvidenceItem。
           </DialogDescription>
         </DialogHeader>
+<div className={ws.dialogBody}>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+<div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2 text-xs">
               <span className="text-muted-foreground">max rating</span>
@@ -362,17 +365,19 @@ export function HardcaseCandidatesDialog({
           </div>
         </div>
 
-        <div className="space-y-1">
+<div className="space-y-1">
           <Label>Convert tags</Label>
           <TagInput value={tags} onValueChange={onTagsChange} placeholder="回车添加 tag…" />
         </div>
 
-        {error ? <div className="text-xs text-destructive text-pretty">{error}</div> : null}
+{error ? <div className="text-xs text-destructive text-pretty">{error}</div> : null}
 
-        <ScrollArea className="max-h-[70vh] pr-3">
+<ScrollArea className="max-h-[70vh] pr-3">
           {discoveryContent}
         </ScrollArea>
-      </DialogContent>
+</div>
+
+</DialogContent>
     </Dialog>
   )
 }

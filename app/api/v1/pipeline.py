@@ -759,7 +759,7 @@ def create_governance_profile(
         name=name[:200],
         description=(str(body.description).strip()[:2000] if body.description is not None else None),
         is_system=False,
-        payload=payload.model_dump(),
+        payload=payload.model_dump(mode="json"),
     )
     db.add(row)
     db.commit()
@@ -859,7 +859,7 @@ def update_governance_profile(
             raise HTTPException(status_code=400, detail=exc.to_detail()) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        row.payload = payload.model_dump()
+        row.payload = payload.model_dump(mode="json")
 
     db.commit()
     db.refresh(row)

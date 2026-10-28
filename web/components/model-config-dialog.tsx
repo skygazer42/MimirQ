@@ -4,7 +4,8 @@
 'use client'
 
 import { useEffect, useId, useState } from 'react'
-import { Eye, EyeOff, AlertCircle, CheckCircle2, FlaskConical, Save, ChevronRight } from 'lucide-react'
+import { toast } from 'sonner'
+import { Eye, EyeOff, FlaskConical, Save, ChevronRight } from '@/components/icons'
 import {
   Dialog,
   DialogContent,
@@ -15,7 +16,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { FeedbackToast } from '@/components/feedback-toast'
 import {
   Select,
   SelectContent,
@@ -41,6 +42,7 @@ interface ModelConfigDialogProps {
 function getDefaultApiBase(providerId: string): string {
   const defaults: Record<string, string> = {
     openai: 'https://api.openai.com/v1',
+    'openai-embedding': 'https://api.openai.com/v1',
     anthropic: 'https://api.anthropic.com',
     deepseek: 'https://api.deepseek.com/v1',
     zhipu: 'https://open.bigmodel.cn/api/paas/v4',
@@ -174,15 +176,15 @@ export function ModelConfigDialog({
     try {
       if (!provider) return
       if (provider.category !== 'model') {
-        setTestResult({ success: false, message: '目前仅支持测试聊天模型连接' })
+        toast.error('目前仅支持测试聊天模型连接')
         return
       }
       if (!config.apiKey) {
-        setTestResult({ success: false, message: '请先填写 API Key' })
+        toast.error('请先填写 API Key')
         return
       }
       if (!config.model) {
-        setTestResult({ success: false, message: '请选择或输入模型 ID' })
+        toast.error('请选择或输入模型 ID')
         return
       }
 
@@ -206,6 +208,15 @@ export function ModelConfigDialog({
 
   const modelOptions = getProviderModelOptions(provider)
   const selectedPresetModel = modelOptions.find((model) => model.name === config.model)
+  let apiKeyRequired = true
+  if (provider.category === 'embedding') {
+    if (provider.id === 'local-embedding') apiKeyRequired = false
+    else if (provider.id === 'openai-embedding') {
+      try {
+        apiKeyRequired = new URL(config.apiBase || getDefaultApiBase(provider.id)).hostname === 'api.openai.com'
+      } catch { /* Keep API Key required until a valid custom endpoint is entered. */ }
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -230,7 +241,7 @@ export function ModelConfigDialog({
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
               <Label htmlFor={apiKeyId} className="text-sm font-medium text-foreground">
-                API Key <span className="text-destructive ml-1">*</span>
+                API Key {apiKeyRequired ? <span className="text-destructive ml-1">*</span> : <span className="ml-1 font-normal text-muted-foreground">（可选）</span>}
               </Label>
               <a
                 href={getProviderDocsUrl(provider.id)}
@@ -247,7 +258,8 @@ export function ModelConfigDialog({
                 type={showApiKey ? 'text' : 'password'}
                 value={config.apiKey}
                 onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
-                placeholder={`输入 ${provider.name} API Key`}
+                placeholder={apiKeyRequired ? `输入 ${provider.name} API Key` : '服务需要认证时填写'}
+                required={apiKeyRequired}
                 className="pr-10 font-mono"
               />
               <button
@@ -435,24 +447,7 @@ export function ModelConfigDialog({
             )}
           </div>
 
-          {/* 测试结果 */}
-          {testResult && (
-            <Alert
-              variant={testResult.success ? "success" : "destructive"}
-              className="animate-in fade-in zoom-in-95 duration-200 motion-reduce:animate-none"
-            >
-              {testResult.success ? (
-                <CheckCircle2 className="size-5" />
-              ) : (
-                <AlertCircle className="size-5" />
-              )}
-              <div>
-                <AlertDescription className="text-foreground font-medium">
-                  {testResult.message}
-                </AlertDescription>
-              </div>
-            </Alert>
-          )}
+          <FeedbackToast type={testResult?.success ? 'success' : 'error'} message={testResult?.message} id="model-connection-feedback" />
         </div>
 
         <DialogFooter className="p-6 pt-2 bg-card">
@@ -474,7 +469,7 @@ export function ModelConfigDialog({
             </Button>
             <Button 
               onClick={handleSave} 
-              disabled={!config.apiKey || !config.model}
+              disabled={(apiKeyRequired && !config.apiKey?.trim()) || !config.model?.trim()}
               className="flex-1 rounded-xl h-11"
             >
               <Save className="size-4 mr-2" />

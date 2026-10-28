@@ -124,6 +124,53 @@ describe('history page delete action', () => {
     act(() => root.unmount())
   })
 
+  it('returns to the active conversation when it is selected again from the mobile list', async () => {
+    const conversation = {
+      id: 'conversation-mobile',
+      title: 'Mobile conversation',
+      message_count: 0,
+      created_at: '2026-10-20T08:00:00Z',
+      updated_at: '2026-10-20T08:00:00Z',
+    }
+    const originalMatchMedia = window.matchMedia
+    const matchMedia = vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
+      ...originalMatchMedia(query),
+      matches: query === '(max-width: 767px)',
+    }))
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    try {
+      act(() => root.render(
+        React.createElement(QueryClientProvider, { client: queryClient },
+          React.createElement(HistoryPageClient, {
+            initialConversationId: conversation.id,
+            initialSelectedConversation: conversation,
+            initialConversations: [conversation],
+            initialConversationsLoaded: true,
+          })
+        )
+      ))
+      const sidebar = container.querySelector('[data-history-sidebar="true"]')
+      expect(sidebar?.hasAttribute('inert')).toBe(true)
+      const expandButton = container.querySelector<HTMLButtonElement>('[aria-label="expandHistory"]')
+      expect(expandButton).not.toBeNull()
+      act(() => expandButton?.click())
+      expect(sidebar?.hasAttribute('inert')).toBe(false)
+      const activeRow = Array.from(container.querySelectorAll('button')).find(
+        (button) => button.textContent?.includes(conversation.title)
+      )
+      expect(activeRow).not.toBeUndefined()
+      act(() => activeRow?.click())
+      expect(sidebar?.hasAttribute('inert')).toBe(true)
+    } finally {
+      act(() => root.unmount())
+      matchMedia.mockRestore()
+    }
+  })
+
   it('searches the complete server-side history and renders zero-match semantics', async () => {
     const selectedConversation = {
       id: 'conversation-current',
@@ -193,7 +240,7 @@ describe('history page delete action', () => {
     expect(input).not.toBeNull()
     expect(input?.maxLength).toBe(500)
     const recentButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(
-      (button) => button.textContent === '最近'
+      (button) => button.textContent === 'recentConversations'
     )
     expect(recentButton).not.toBeUndefined()
     act(() => recentButton?.click())

@@ -1,0 +1,278 @@
+{
+  "members": [
+    {
+      "id": "c5f421b0-2521-4a0f-9d37-000000000001",
+      "tenant_id": "tenant-demo",
+      "user_id": "member-owner",
+      "username": "林澈",
+      "email": "lin.che@example.com",
+      "role": "owner",
+      "is_active": true,
+      "is_current": true,
+      "updated_at": "2026-10-25 16:20",
+      "created_at": "2026-09-12 09:10"
+    },
+    {
+      "id": "c5f421b0-2521-4a0f-9d37-000000000002",
+      "tenant_id": "tenant-demo",
+      "user_id": "member-admin-a",
+      "username": "陈宁",
+      "email": "chen.ning@example.com",
+      "role": "admin",
+      "is_active": true,
+      "is_current": false,
+      "updated_at": "2026-10-25 14:08",
+      "created_at": "2026-09-15 10:20"
+    },
+    {
+      "id": "c5f421b0-2521-4a0f-9d37-000000000003",
+      "tenant_id": "tenant-demo",
+      "user_id": "member-admin-b",
+      "username": "周遥",
+      "email": "zhou.yao@example.com",
+      "role": "admin",
+      "is_active": true,
+      "is_current": false,
+      "updated_at": "2026-10-24 18:42",
+      "created_at": "2026-09-18 15:30"
+    },
+    {
+      "id": "c5f421b0-2521-4a0f-9d37-000000000004",
+      "tenant_id": "tenant-demo",
+      "user_id": "member-auditor",
+      "username": "许文",
+      "email": "xu.wen@example.com",
+      "role": "auditor",
+      "is_active": true,
+      "is_current": false,
+      "updated_at": "2026-10-24 10:36",
+      "created_at": "2026-09-20 11:15"
+    },
+    {
+      "id": "c5f421b0-2521-4a0f-9d37-000000000005",
+      "tenant_id": "tenant-demo",
+      "user_id": "member-editor-a",
+      "username": "苏晴",
+      "email": "su.qing@example.com",
+      "role": "editor",
+      "is_active": true,
+      "is_current": false,
+      "updated_at": "2026-10-23 17:12",
+      "created_at": "2026-09-24 08:40"
+    },
+    {
+      "id": "c5f421b0-2521-4a0f-9d37-000000000006",
+      "tenant_id": "tenant-demo",
+      "user_id": "member-editor-b",
+      "username": "陆远",
+      "email": "lu.yuan@example.com",
+      "role": "editor",
+      "is_active": true,
+      "is_current": false,
+      "updated_at": "2026-10-23 15:26",
+      "created_at": "2026-10-01 14:10"
+    },
+    {
+      "id": "c5f421b0-2521-4a0f-9d37-000000000007",
+      "tenant_id": "tenant-demo",
+      "user_id": "member-operator-a",
+      "username": "江屿",
+      "email": "jiang.yu@example.com",
+      "role": "dataset_operator",
+      "is_active": true,
+      "is_current": false,
+      "updated_at": "2026-10-22 11:04",
+      "created_at": "2026-10-02 10:20"
+    },
+    {
+      "id": "c5f421b0-2521-4a0f-9d37-000000000008",
+      "tenant_id": "tenant-demo",
+      "user_id": "member-viewer-a",
+      "username": "季禾",
+      "email": "ji.he@example.com",
+      "role": "viewer",
+      "is_active": true,
+      "is_current": false,
+      "updated_at": "2026-10-25 15:54",
+      "created_at": "2026-10-25 15:54"
+    },
+    {
+      "id": "c5f421b0-2521-4a0f-9d37-000000000009",
+      "tenant_id": "tenant-demo",
+      "user_id": "member-viewer-b",
+      "username": "顾言",
+      "email": "gu.yan@example.com",
+      "role": "viewer",
+      "is_active": true,
+      "is_current": false,
+      "updated_at": "2026-10-25 11:20",
+      "created_at": "2026-10-25 11:20"
+    },
+    {
+      "id": "c5f421b0-2521-4a0f-9d37-000000000010",
+      "tenant_id": "tenant-demo",
+      "user_id": "member-viewer-c",
+      "username": "宋予",
+      "email": "song.yu@example.com",
+      "role": "viewer",
+      "is_active": true,
+      "is_current": false,
+      "updated_at": "2026-10-24 16:32",
+      "created_at": "2026-10-24 16:32"
+    },
+    {
+      "id": "c5f421b0-2521-4a0f-9d37-000000000011",
+      "tenant_id": "tenant-demo",
+      "user_id": "member-viewer-d",
+      "username": "唐溪",
+      "email": "tang.xi@example.com",
+      "role": "viewer",
+      "is_active": true,
+      "is_current": false,
+      "updated_at": "2026-10-24 09:18",
+      "created_at": "2026-10-24 09:18"
+    },
+    {
+      "id": "c5f421b0-2521-4a0f-9d37-000000000012",
+      "tenant_id": "tenant-demo",
+      "user_id": "member-viewer-e",
+      "username": "叶舟",
+      "email": "ye.zhou@example.com",
+      "role": "viewer",
+      "is_active": true,
+      "is_current": false,
+      "updated_at": "2026-10-22 13:40",
+      "created_at": "2026-10-22 13:40"
+    }
+  ],
+  "roles": [
+    {
+      "key": "owner",
+      "label": "所有者",
+      "description": "完整管理租户设置、成员与运行配置。",
+      "tone": "violet"
+    },
+    {
+      "key": "admin",
+      "label": "管理员",
+      "description": "管理租户设置、成员与运行配置。",
+      "tone": "blue"
+    },
+    {
+      "key": "auditor",
+      "label": "审计员",
+      "description": "读取审计日志与表格 SQL。",
+      "tone": "amber"
+    },
+    {
+      "key": "editor",
+      "label": "编辑者",
+      "description": "可参与内容编辑与反馈质检。",
+      "tone": "teal"
+    },
+    {
+      "key": "dataset_operator",
+      "label": "数据集运维",
+      "description": "可参与内容写入与数据集运维。",
+      "tone": "green"
+    },
+    {
+      "key": "viewer",
+      "label": "查看者",
+      "description": "新注册账号默认角色，内容访问按授权。",
+      "tone": "neutral"
+    }
+  ],
+  "role_counts": {
+    "owner": 1,
+    "admin": 2,
+    "auditor": 1,
+    "editor": 2,
+    "dataset_operator": 1,
+    "viewer": 5
+  },
+  "permissions": [
+    {
+      "key": "settings.read",
+      "label": "查看租户设置",
+      "roles": [
+        "owner",
+        "admin"
+      ]
+    },
+    {
+      "key": "settings.write",
+      "label": "管理设置与成员",
+      "roles": [
+        "owner",
+        "admin"
+      ]
+    },
+    {
+      "key": "observability.read",
+      "label": "读取运行诊断",
+      "roles": [
+        "owner",
+        "admin"
+      ]
+    },
+    {
+      "key": "usage.read",
+      "label": "读取用量与配额",
+      "roles": [
+        "owner",
+        "admin"
+      ]
+    },
+    {
+      "key": "audit.read",
+      "label": "读取审计日志",
+      "roles": [
+        "owner",
+        "admin",
+        "auditor"
+      ]
+    },
+    {
+      "key": "audit.manage",
+      "label": "清理审计日志",
+      "roles": [
+        "owner",
+        "admin"
+      ]
+    },
+    {
+      "key": "table_sql.read",
+      "label": "读取表格 SQL",
+      "roles": [
+        "owner",
+        "admin",
+        "auditor"
+      ]
+    },
+    {
+      "key": "lifecycle.manage",
+      "label": "管理数据生命周期",
+      "roles": [
+        "owner",
+        "admin"
+      ]
+    },
+    {
+      "key": "feedback_triage.write",
+      "label": "处理反馈质检",
+      "roles": [
+        "owner",
+        "admin",
+        "editor",
+        "dataset_operator"
+      ]
+    }
+  ],
+  "selected_id": "member-viewer-a",
+  "current_account_id": "member-owner",
+  "total": 12,
+  "scim_status": "未测试",
+  "saml_status": "未读取",
+  "note": "五版共享12名设计排版成员，不是真实成员；均使用example.com。六种角色及权限来自当前后端常量。没有邀请/创建账号、停用/启用写接口、团队部门/成员组归因、最近登录、批量角色变更、自定义角色/权限或在线状态。不展示这些能力。SCIM只测试服务配置，SAML只读取元数据，未测试不可标已连接。权限矩阵只读，不代表数据集/文档ACL的完整有效权限。当前用户不能移除、最后一个有效管理员受后端保护。"
+}

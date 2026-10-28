@@ -1,38 +1,20 @@
 'use client'
-
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
-import { AppFrame } from '@/components/app-frame'
-import { PageScaffold } from '@/components/ui/page-scaffold'
-import { Panel } from '@/components/ui/panel'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
-import { EmptyState } from '@/components/ui/empty-state'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
-import { StatCard, StatsGrid } from '@/components/ui/stats-card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { observabilityApi } from '@/lib/api'
-import { formatApiError } from '@/lib/api-errors'
-import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
-import { cn, detachPromise } from '@/lib/utils'
-import { toast } from 'sonner'
-import { ObservabilityOpsPanel } from '@/components/observability/observability-ops-panel'
-import {
-  BarChart3,
-  RefreshCw,
-  AlertTriangle,
-  Timer,
-  Quote,
-  Zap,
-  Hash,
-  SearchX,
-  TriangleAlert,
-  Copy,
-} from 'lucide-react'
-import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar } from 'recharts'
+import { useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import Link from 'next/link';
+import { AppFrame } from '@/components/app-frame';
+import { OperationalWorkspace, WorkspaceMetrics, WorkspaceNotice, WorkspaceTableScroll, workspaceStyles as ws } from '@/components/ui/operational-workspace';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { observabilityApi } from '@/lib/api';
+import { formatApiError } from '@/lib/api-errors';
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text';
+import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+import { ObservabilityOpsPanel } from '@/components/observability/observability-ops-panel';
+import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar } from 'recharts';
 
 const WINDOW_PRESETS = [
     { label: '15 分钟', value: 15 },
@@ -101,15 +83,6 @@ function fmtSec(v?: number | null, digits = 3) {
   return `${Number(v).toFixed(digits)}s`
 }
 
-function shortHash(value: string, opts?: { head?: number; tail?: number }) {
-  const v = String(value || '').trim()
-  if (!v) return ''
-  const head = Math.max(1, Number(opts?.head ?? 8) || 8)
-  const tail = Math.max(0, Number(opts?.tail ?? 4) || 4)
-  if (v.length <= head + tail + 1) return v
-  return `${v.slice(0, head)}...${v.slice(-tail)}`
-}
-
 async function copyText(text: string, okMsg: string) {
   const value = (text || '').trim()
   if (!value) return
@@ -122,6 +95,8 @@ async function copyText(text: string, okMsg: string) {
 }
 
 export default function ObservabilityPage() {
+  const [opsOpen, setOpsOpen] = useState(false)
+  const [selectedQuery, setSelectedQuery] = useState<{ query: string; kind: string; count: number; elapsed: number | null } | null>(null)
   const [tab, setTab] = useState<'summary' | 'query_analytics'>('summary')
   const [windowMinutes, setWindowMinutes] = useState<number>(60)
   const [slowThresholdSec, setSlowThresholdSec] = useState<number>(2)
@@ -130,7 +105,6 @@ export default function ObservabilityPage() {
     queryKey: ['observability', 'summary', windowMinutes],
     queryFn: () => observabilityApi.getRagMetricsSummary({ window_minutes: windowMinutes }),
     enabled: tab === 'summary',
-    placeholderData: keepPreviousData,
   })
 
   const analyticsQuery = useQuery({
@@ -141,7 +115,6 @@ export default function ObservabilityPage() {
         slow_threshold_sec: slowThresholdSec,
       }),
     enabled: tab === 'query_analytics',
-    placeholderData: keepPreviousData,
   })
 
   const summary = summaryQuery.data ?? null
@@ -150,15 +123,7 @@ export default function ObservabilityPage() {
   const loadingAnalytics = analyticsQuery.isFetching
   const loading = tab === 'summary' ? loadingSummary : loadingAnalytics
 
-  useEffect(() => {
-    if (!summaryQuery.error) return
-    toast.error(formatApiError(summaryQuery.error, '加载监控数据失败'))
-  }, [summaryQuery.error, summaryQuery.errorUpdatedAt])
 
-  useEffect(() => {
-    if (!analyticsQuery.error) return
-    toast.error(formatApiError(analyticsQuery.error, '加载 Query Analytics 失败'))
-  }, [analyticsQuery.error, analyticsQuery.errorUpdatedAt])
 
   const chartData = useMemo(() => {
     if (!summary?.timeseries) return []
@@ -239,413 +204,45 @@ export default function ObservabilityPage() {
       .slice(0, 20)
   }, [analytics?.top_slow_queries])
 
-  return (
-    <AppFrame>
-      <div className="flex-1 flex flex-col overflow-hidden relative">
-        <PageScaffold
-          title="监控面板"
-          description="检索 / 重排 / 引用的全链路指标（来自 metrics JSONL）"
-          icon={BarChart3}
-          iconColor="text-info"
-          size="7xl"
-          actions={
-            <div className="flex items-center gap-2">
-              <div className="w-[140px]">
-                <Select
-                  value={String(windowMinutes)}
-                  onValueChange={(v) => {
-                    const next = Number.parseInt(v, 10)
-                    setWindowMinutes(next)
-                  }}
-                >
-                  <SelectTrigger className="h-9 rounded-xl">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {WINDOW_PRESETS.map((p) => (
-                      <SelectItem key={p.value} value={String(p.value)}>
-                        {p.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {tab === 'query_analytics' ? (
-                <div className="w-[110px]">
-                  <Select
-                    value={String(slowThresholdSec)}
-                    onValueChange={(v) => {
-                      const next = Number(v)
-                      setSlowThresholdSec(next)
-                    }}
-                  >
-                    <SelectTrigger className="h-9 rounded-xl">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SLOW_PRESETS.map((p) => (
-                        <SelectItem key={p.value} value={String(p.value)}>
-                          {p.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : null}
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-2 rounded-xl"
-                onClick={() => {
-                  if (tab === 'summary') summaryQuery.refetch()
-                  else analyticsQuery.refetch()
-                }}
-                disabled={loading}
-              >
-                <RefreshCw className={cn('size-4', loading && 'animate-spin motion-reduce:animate-none')} />
-                刷新
-              </Button>
-              <Link
-                href="/settings"
-                className="inline-flex h-9 items-center justify-center rounded-xl border border-input bg-background px-3 text-xs font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
-              >
-                去设置开启/配置
-              </Link>
-            </div>
-          }
-        >
-          <ObservabilityOpsPanel />
 
-          <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)} className="space-y-4">
-            <TabsList className="rounded-xl bg-muted/40">
-              <TabsTrigger value="summary" className="rounded-lg text-xs">
-                Summary
-              </TabsTrigger>
-              <TabsTrigger value="query_analytics" className="rounded-lg text-xs">
-                Query Analytics
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="summary">
-              {summary ? (
-                <div className="space-y-6">
-                  {!summary.enabled && (
-                    <Alert className="mt-4">
-                      <AlertTriangle className="size-4" />
-                      <AlertTitle>Metrics 日志未开启</AlertTitle>
-                      <AlertDescription>
-                        当前 ENABLE_METRICS_LOG=false。你仍可能看到少量历史数据，但建议到“设置 → 观测与调试”开启。
-                      </AlertDescription>
-                    </Alert>
-                  )}
-
-                  {summary.truncated && (
-                    <Alert className="mt-4">
-                      <AlertTriangle className="size-4" />
-                      <AlertTitle>数据可能不完整</AlertTitle>
-                      <AlertDescription>
-                        本次查询仅读取 metrics 文件尾部（max_bytes）。若窗口内数据量过大，请缩短时间窗口或调整后端 max_bytes。
-                      </AlertDescription>
-                    </Alert>
-                  )}
-
-                  <StatsGrid className="mt-2">
-                    <StatCard
-                      icon={Zap}
-                      label="RAG Trace"
-                      value={summary.rag_trace_count}
-                      subValue={`${summary.window_minutes} 分钟`}
-                      color="sky"
-                    />
-                    <StatCard
-                      icon={Timer}
-                      label="检索平均耗时"
-                      value={summary.retrieval_avg_elapsed_sec == null ? '-' : `${summary.retrieval_avg_elapsed_sec.toFixed(3)}s`}
-                      subValue={summary.retrieval_p95_elapsed_sec == null ? undefined : `p95 ${summary.retrieval_p95_elapsed_sec.toFixed(3)}s`}
-                      color="teal"
-                    />
-                    <StatCard
-                      icon={Timer}
-                      label="重排平均耗时"
-                      value={summary.rerank_avg_elapsed_sec == null ? '-' : `${summary.rerank_avg_elapsed_sec.toFixed(3)}s`}
-                      subValue={`${summary.reranker_api_count} 次 reranker_api`}
-                      color="amber"
-                    />
-                    <StatCard
-                      icon={Quote}
-                      label="平均引用数"
-                      value={summary.citations_avg_count == null ? '-' : summary.citations_avg_count.toFixed(2)}
-                      subValue="每次回答"
-                      color="green"
-                    />
-                  </StatsGrid>
-
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <Panel padding="lg" className="min-h-[320px]">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="text-sm font-semibold text-foreground">请求量（rag_trace）</div>
-                        <div className="text-xs text-muted-foreground">按分钟聚合</div>
-                      </div>
-                      <SafeResponsiveChart className="h-[260px]" minHeight={260}>
-                        <BarChart data={chartData}>
-                          <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                          <XAxis dataKey="time" tick={{ fontSize: 10 }} />
-                          <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-                          <Tooltip />
-                          <Bar dataKey="rag_trace" fill="hsl(var(--primary))" opacity={0.85} />
-                        </BarChart>
-                      </SafeResponsiveChart>
-                    </Panel>
-
-                    <Panel padding="lg" className="min-h-[320px]">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="text-sm font-semibold text-foreground">检索平均耗时</div>
-                        <div className="text-xs text-muted-foreground">每分钟均值</div>
-                      </div>
-                      <SafeResponsiveChart className="h-[260px]" minHeight={260}>
-                        <LineChart data={chartData}>
-                          <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                          <XAxis dataKey="time" tick={{ fontSize: 10 }} />
-                          <YAxis tick={{ fontSize: 10 }} />
-                          <Tooltip />
-                          <Line
-                            type="monotone"
-                            dataKey="retrieval_avg_elapsed_sec"
-                            stroke="hsl(var(--info))"
-                            strokeWidth={2}
-                            dot={false}
-                          />
-                        </LineChart>
-                      </SafeResponsiveChart>
-                    </Panel>
-                  </div>
-
-                  <Panel padding="lg" variant="muted">
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                      <div>
-                        <div className="text-sm font-semibold text-foreground mb-2">检索模式分布</div>
-                        <pre className="text-[11px] font-mono text-muted-foreground whitespace-pre-wrap">
-                          {JSON.stringify(summary.retrieval_mode_counts || {}, null, 2)}
-                        </pre>
-                      </div>
-                      <div>
-                        <div className="text-sm font-semibold text-foreground mb-2">命中类型分布</div>
-                        <pre className="text-[11px] font-mono text-muted-foreground whitespace-pre-wrap">
-                          {JSON.stringify(summary.hit_type_counts || {}, null, 2)}
-                        </pre>
-                      </div>
-                      <div>
-                        <div className="text-sm font-semibold text-foreground mb-2">Top Errors</div>
-                        {topErrors.length ? (
-                          <div className="space-y-2">
-                            {topErrors.map(([k, v]) => (
-                              <div key={k} className="flex items-center justify-between gap-3 text-xs">
-                                <span className="font-mono text-muted-foreground truncate" title={k}>
-                                  {k}
-                                </span>
-                                <span className="text-muted-foreground tabular-nums">{v}</span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="text-xs text-muted-foreground">无错误</div>
-                        )}
-                      </div>
-                    </div>
-                  </Panel>
-                </div>
-              ) : (
-                <Alert variant="destructive" className="mt-4">
-                  <AlertTriangle className="size-4" />
-                  <AlertTitle>无法加载监控数据</AlertTitle>
-                  <AlertDescription>
-                    请确认你是 owner/admin，并且后端已更新到包含 /api/v1/observability 的版本。
-                  </AlertDescription>
-                </Alert>
-              )}
-            </TabsContent>
-
-            <TabsContent value="query_analytics">
-              {(() => {
-    if (loadingAnalytics && !analytics) {
-        return (<div className="space-y-6">
-                  <StatsGrid className="mt-2">
-                    {['stat-1', 'stat-2', 'stat-3', 'stat-4', 'stat-5'].map((key) => (<div key={key} className="rounded-xl border border-border bg-muted/20 px-4 py-3">
-                        <Skeleton className="h-3 w-28"/>
-                        <Skeleton className="mt-2 h-6 w-24"/>
-                        <Skeleton className="mt-2 h-3 w-20"/>
-                      </div>))}
-                  </StatsGrid>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <Panel padding="lg" className="min-h-[320px]">
-                      <Skeleton className="h-4 w-48"/>
-                      <Skeleton className="mt-3 h-[260px] w-full"/>
-                    </Panel>
-                    <Panel padding="lg" className="min-h-[320px]">
-                      <Skeleton className="h-4 w-56"/>
-                      <Skeleton className="mt-3 h-[260px] w-full"/>
-                    </Panel>
-                  </div>
-                </div>);
-    }
-    else if (analytics) {
-            if (analytics.enabled) {
-                if (analytics.rag_trace_count <= 0) {
-                    return (<EmptyState title="暂无 Query Analytics 数据" description="提示：只有走到检索链路（rag_trace）时才会计入统计；可尝试先发起一次检索请求再刷新。" icon={TriangleAlert} iconClassName="text-info">
-                  <Button variant="outline" className="rounded-xl" onClick={() => analyticsQuery.refetch()} disabled={loadingAnalytics}>
-                    <RefreshCw className={cn('size-4', loadingAnalytics && 'animate-spin motion-reduce:animate-none')}/>
-                    刷新
-                  </Button>
-                </EmptyState>);
-                }
-                else {
-                    return (<div className="space-y-6">
-                  {analytics.truncated ? (<Alert className="mt-4">
-                      <AlertTriangle className="size-4"/>
-                      <AlertTitle>数据可能不完整</AlertTitle>
-                      <AlertDescription>
-                        本次查询仅读取 metrics 文件尾部（max_bytes）。若窗口内数据量过大，请缩短时间窗口或调整后端 max_bytes。
-                      </AlertDescription>
-                    </Alert>) : null}
-
-                  <StatsGrid className="mt-2">
-                    <StatCard icon={Zap} label="Requests" value={analytics.rag_trace_count} subValue={`${analytics.window_minutes} 分钟`} color="sky"/>
-                    <StatCard icon={Hash} label="Unique query_hash" value={analytics.unique_query_hashes} subValue="16-char stable hash" color="teal"/>
-                    <StatCard icon={SearchX} label="Zero-hit rate" value={fmtPercent(analytics.zero_hit_rate)} subValue={`${analytics.zero_hit_count} 次（citations=0）`} color="amber"/>
-                    <StatCard icon={Timer} label="Slow rate" value={fmtPercent(analytics.slow_rate)} subValue={`${analytics.slow_count} 次（≥ ${analytics.slow_threshold_sec}s）`} color="orange"/>
-                    <StatCard icon={Timer} label="Retrieval p95 / p99" value={`${fmtSec(analytics.retrieval_p95_elapsed_sec, 3)} · ${fmtSec(analytics.retrieval_p99_elapsed_sec, 3)}`} subValue={`p50 ${fmtSec(analytics.retrieval_p50_elapsed_sec, 3)}`} color="green"/>
-                  </StatsGrid>
-
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <Panel padding="lg" className="min-h-[320px]">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="text-sm font-semibold text-foreground">Zero-hit / Slow（rate）</div>
-                        <div className="text-xs text-muted-foreground">按分钟聚合</div>
-                      </div>
-                      <SafeResponsiveChart className="h-[260px]" minHeight={260}>
-                        <LineChart data={analyticsChartData}>
-                          <CartesianGrid strokeDasharray="3 3" opacity={0.2}/>
-                          <XAxis dataKey="time" tick={{ fontSize: 10 }}/>
-                          <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${Math.round(Number(v || 0) * 100)}%`} domain={[0, 1]}/>
-                          <Tooltip formatter={(v: unknown, name: unknown) => {
-                            const label = toTrimmedPrimitiveString(name)
-                            if (label === 'zero-hit rate' || label === 'slow rate')
-                                return [fmtPercent(Number(v), 2), label];
-                            return [toTrimmedPrimitiveString(v), label];
-                        }}/>
-                          <Line type="monotone" dataKey="zero_hit_rate" name="zero-hit rate" stroke="hsl(var(--warning))" strokeWidth={2} dot={false}/>
-                          <Line type="monotone" dataKey="slow_rate" name="slow rate" stroke="hsl(var(--info))" strokeWidth={2} dot={false}/>
-                        </LineChart>
-                      </SafeResponsiveChart>
-                    </Panel>
-
-                    <Panel padding="lg" className="min-h-[320px]">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="text-sm font-semibold text-foreground">Requests / zero-hit / slow / errors（count）</div>
-                        <div className="text-xs text-muted-foreground">按分钟聚合</div>
-                      </div>
-                      <SafeResponsiveChart className="h-[260px]" minHeight={260}>
-                        <LineChart data={analyticsChartData}>
-                          <CartesianGrid strokeDasharray="3 3" opacity={0.2}/>
-                          <XAxis dataKey="time" tick={{ fontSize: 10 }}/>
-                          <YAxis tick={{ fontSize: 10 }} allowDecimals={false}/>
-                          <Tooltip />
-                          <Line type="monotone" dataKey="requests" name="requests" stroke="hsl(var(--muted-foreground))" strokeWidth={2} dot={false}/>
-                          <Line type="monotone" dataKey="zero_hit" name="zero-hit" stroke="hsl(var(--warning))" strokeWidth={2} dot={false}/>
-                          <Line type="monotone" dataKey="slow" name="slow" stroke="hsl(var(--info))" strokeWidth={2} dot={false}/>
-                          <Line type="monotone" dataKey="errors" name="errors" stroke="hsl(var(--destructive))" strokeWidth={2} dot={false}/>
-                        </LineChart>
-                      </SafeResponsiveChart>
-                    </Panel>
-                  </div>
-
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <Panel padding="lg" className="overflow-hidden">
-                      <div className="flex items-center justify-between gap-3 mb-3">
-                        <div className="text-sm font-semibold text-foreground">Top Zero-hit query_hash</div>
-                        <div className="text-xs text-muted-foreground tabular-nums">top {topZeroHits.length}</div>
-                      </div>
-                      {topZeroHits.length ? (<div className="divide-y divide-border/60 rounded-xl border border-border/60 overflow-hidden">
-                          {topZeroHits.map((it) => (<div key={it.query_hash} className="flex items-center justify-between gap-3 px-3 py-2 text-xs">
-                              <div className="min-w-0">
-                                <div className="font-mono text-muted-foreground truncate" title={it.query_hash}>
-                                  {shortHash(it.query_hash, { head: 10, tail: 6 })}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <div className="tabular-nums text-muted-foreground">{it.count}</div>
-                                <Button size="icon" variant="ghost" className="size-8 rounded-lg" aria-label="复制 query_hash" onClick={() => detachPromise(copyText(it.query_hash, '已复制 query_hash'))}>
-                                  <Copy className="size-4"/>
-                                </Button>
-                              </div>
-                            </div>))}
-                        </div>) : (<div className="text-xs text-muted-foreground">暂无 zero-hit（citations=0）记录</div>)}
-                    </Panel>
-
-                    <Panel padding="lg" className="overflow-hidden">
-                      <div className="flex items-center justify-between gap-3 mb-3">
-                        <div className="text-sm font-semibold text-foreground">Top Slow query_hash</div>
-                        <div className="text-xs text-muted-foreground tabular-nums">top {topSlowQueries.length}</div>
-                      </div>
-                      {topSlowQueries.length ? (<div className="divide-y divide-border/60 rounded-xl border border-border/60 overflow-hidden">
-                          {topSlowQueries.map((it) => (<div key={it.query_hash} className="flex items-center justify-between gap-3 px-3 py-2 text-xs">
-                              <div className="min-w-0">
-                                <div className="font-mono text-muted-foreground truncate" title={it.query_hash}>
-                                  {shortHash(it.query_hash, { head: 10, tail: 6 })}
-                                </div>
-                                <div className="mt-0.5 text-[11px] text-muted-foreground/80 tabular-nums">
-                                  max {it.max_elapsed_sec != null && Number.isFinite(Number(it.max_elapsed_sec)) ? `${Number(it.max_elapsed_sec).toFixed(3)}s` : '—'}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <div className="tabular-nums text-muted-foreground">{it.count}</div>
-                                <Button size="icon" variant="ghost" className="size-8 rounded-lg" aria-label="复制 query_hash" onClick={() => detachPromise(copyText(it.query_hash, '已复制 query_hash'))}>
-                                  <Copy className="size-4"/>
-                                </Button>
-                              </div>
-                            </div>))}
-                        </div>) : (<div className="text-xs text-muted-foreground">暂无 slow（≥ threshold）记录</div>)}
-                    </Panel>
-
-                    <Panel padding="lg" variant="muted">
-                      <div className="text-sm font-semibold text-foreground mb-3">Top Error Kinds</div>
-                      {topErrorKinds.length ? (<div className="space-y-2">
-                          {topErrorKinds.map(([k, v]) => (<div key={k} className="flex items-center justify-between gap-3 text-xs">
-                              <span className="font-mono text-muted-foreground truncate" title={k}>
-                                {k}
-                              </span>
-                              <span className="text-muted-foreground tabular-nums">{v}</span>
-                            </div>))}
-                        </div>) : (<div className="text-xs text-muted-foreground">无错误</div>)}
-                    </Panel>
-                  </div>
-                </div>);
-                }
-            }
-            else {
-                return (<Alert className="mt-4">
-                  <AlertTriangle className="size-4"/>
-                  <AlertTitle>Metrics 日志未开启</AlertTitle>
-                  <AlertDescription>
-                    当前 ENABLE_METRICS_LOG=false。Query Analytics 只基于 rag_trace 指标聚合。
-                  </AlertDescription>
-                </Alert>);
-            }
-        }
-        else {
-            return (<Alert variant="destructive" className="mt-4">
-                  <AlertTriangle className="size-4"/>
-                  <AlertTitle>无法加载 Query Analytics</AlertTitle>
-                  <AlertDescription>
-                    请确认你是 owner/admin，并且后端已更新到包含 /api/v1/observability/rag-metrics/query-analytics 的版本。
-                  </AlertDescription>
-                </Alert>);
-        }
-})()}
-            </TabsContent>
-          </Tabs>
-        </PageScaffold>
-      </div>
-    </AppFrame>
-  )
+  const currentQuery = tab === 'summary' ? summaryQuery : analyticsQuery
+  const queryRows = [
+    ...topZeroHits.map(item => ({ query: item.query_hash, kind: '零命中', count: item.count, elapsed: null as number | null })),
+    ...topSlowQueries.map(item => ({ query: item.query_hash, kind: '慢查询', count: item.count, elapsed: item.max_elapsed_sec })),
+  ]
+  return <AppFrame showBackground={false}><OperationalWorkspace title="可观测性" icon="diagnostics" context={`最近 ${windowMinutes} 分钟`} actions={<><Button variant="outline" onClick={() => setOpsOpen(true)}>运维操作</Button><Button variant="ghost" disabled={loading} onClick={() => { void currentQuery.refetch() }}>{loading ? '正在读取…' : '重新读取'}</Button></>} toolbar={<>
+    <label className="flex items-center gap-2 text-[13px]">时间范围<select aria-label="观测时间范围" value={windowMinutes} onChange={event => { setSelectedQuery(null); setWindowMinutes(Number(event.target.value)) }} className="h-10 rounded-md border border-input bg-background px-3">{WINDOW_PRESETS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+    {tab === 'query_analytics' ? <label className="flex items-center gap-2 text-[13px]">慢查询阈值<select value={slowThresholdSec} onChange={event => { setSelectedQuery(null); setSlowThresholdSec(Number(event.target.value)) }} className="h-10 rounded-md border border-input bg-background px-3">{SLOW_PRESETS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label> : null}
+  </>}>
+    <Tabs value={tab} onValueChange={value => { setSelectedQuery(null); setTab(value as typeof tab) }}><TabsList className={ws.tabList}><TabsTrigger value="summary">指标总览</TabsTrigger><TabsTrigger value="query_analytics">查询分析</TabsTrigger></TabsList>
+      {currentQuery.isError ? <WorkspaceNotice retry={() => { void currentQuery.refetch() }} pending={loading}>{formatApiError(currentQuery.error, '观测数据读取失败')}</WorkspaceNotice> : null}
+      {loading && !currentQuery.data ? <p role="status" className="py-12 text-sm text-muted-foreground">正在读取当前时间范围的观测数据…</p> : null}
+      <TabsContent value="summary" className={ws.tabContent}>
+        {summary ? <>
+          {!summary.enabled ? <div className={ws.empty}><h2>指标记录未开启</h2><p>当前接口未启用指标记录，可在设置中配置观测选项。</p><Button asChild variant="outline"><Link href="/settings">前往设置</Link></Button></div> : null}
+          {summary.truncated ? <p role="status" className="border-b border-border py-3 text-[13px] text-muted-foreground">当前数据已截断；可缩短时间范围查看更完整的记录。</p> : null}
+          <WorkspaceMetrics items={[{ label: '检索请求', value: summary.rag_trace_count }, { label: '检索平均耗时', value: fmtSec(summary.retrieval_avg_elapsed_sec), detail: `P95 ${fmtSec(summary.retrieval_p95_elapsed_sec)}` }, { label: '重排平均耗时', value: fmtSec(summary.rerank_avg_elapsed_sec), detail: `${summary.reranker_api_count} 次调用` }, { label: '平均引用数', value: summary.citations_avg_count?.toFixed(2) ?? '—' }]} />
+          {summary.record_count === 0 ? <div className={ws.empty}><h2>当前时间范围暂无观测记录</h2><p>有检索请求后，可在这里查看耗时、引用和异常。</p></div> : <>
+            {chartData.length ? <div className="grid gap-x-10 lg:grid-cols-2"><section className={ws.section}><h2 className={ws.sectionTitle}>请求量</h2>{chartData.length ? <SafeResponsiveChart className="mt-5 h-[260px]" minHeight={260}><BarChart data={chartData}><CartesianGrid strokeDasharray="3 3" opacity={0.2} /><XAxis dataKey="time" tick={{ fontSize: 12 }} /><YAxis tick={{ fontSize: 12 }} allowDecimals={false} /><Tooltip /><Bar name="检索" dataKey="rag_trace" fill="hsl(var(--primary))" /><Bar name="重排" dataKey="reranker_api" fill="hsl(var(--muted-foreground))" /></BarChart></SafeResponsiveChart> : <p className="py-8 text-sm text-muted-foreground">接口未返回分钟趋势</p>}</section>
+            <section className={ws.section}><h2 className={ws.sectionTitle}>检索耗时趋势</h2>{chartData.length ? <SafeResponsiveChart className="mt-5 h-[260px]" minHeight={260}><LineChart data={chartData}><CartesianGrid strokeDasharray="3 3" opacity={0.2} /><XAxis dataKey="time" tick={{ fontSize: 12 }} /><YAxis tick={{ fontSize: 12 }} /><Tooltip /><Line name="平均耗时（秒）" dataKey="retrieval_avg_elapsed_sec" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} /></LineChart></SafeResponsiveChart> : <p className="py-8 text-sm text-muted-foreground">接口未返回耗时趋势</p>}</section></div> : <p className="border-b border-border py-4 text-[13px] text-muted-foreground">当前范围未返回分钟趋势</p>}
+            <div className="grid gap-x-10 lg:grid-cols-3">{[['检索模式', Object.entries(summary.retrieval_mode_counts)], ['命中类型', Object.entries(summary.hit_type_counts)], ['错误记录', topErrors]].map(([title, entries]) => <section key={String(title)} className={ws.section}><h2 className={ws.sectionTitle}>{String(title)}</h2><dl className="mt-4 divide-y divide-border">{(entries as Array<[string, number]>).map(([name, count]) => <div className="flex items-center justify-between gap-3 py-3 text-[13px]" key={name}><dt className="break-words">{name}</dt><dd className="tabular-nums">{count}</dd></div>)}</dl>{!(entries as unknown[]).length ? <p className="py-5 text-sm text-muted-foreground">当前范围未记录此类数据</p> : null}</section>)}</div>
+          </>}
+          <details className="py-5 text-[13px]"><summary className="cursor-pointer font-medium">完整指标数据</summary><pre tabIndex={0} className="mt-4 max-h-96 overflow-auto bg-muted/30 p-4 text-xs leading-6">{JSON.stringify(summary, null, 2)}</pre></details>
+        </> : !loadingSummary && !summaryQuery.isError ? <div className={ws.empty}><h2>暂无指标汇总</h2><p>重新读取当前时间范围后查看。</p></div> : null}
+      </TabsContent>
+      <TabsContent value="query_analytics" className={ws.tabContent}>
+        {analytics ? <>
+          {!analytics.enabled ? <p className="border-b border-border py-4 text-sm text-muted-foreground">查询指标记录未开启</p> : null}
+          {analytics.truncated ? <p role="status" className="py-3 text-[13px] text-muted-foreground">当前查询分析已截断，可缩短时间范围。</p> : null}
+          <WorkspaceMetrics items={[{ label: '检索请求', value: analytics.rag_trace_count }, { label: '查询标识', value: analytics.unique_query_hashes }, { label: '零命中率', value: fmtPercent(analytics.zero_hit_rate), detail: `${analytics.zero_hit_count} 次` }, { label: '慢查询比例', value: fmtPercent(analytics.slow_rate), detail: `${analytics.slow_count} 次` }, { label: 'P50 / P95 / P99', value: fmtSec(analytics.retrieval_p50_elapsed_sec), detail: `${fmtSec(analytics.retrieval_p95_elapsed_sec)} / ${fmtSec(analytics.retrieval_p99_elapsed_sec)}` }]} />
+          <section className={ws.section}><h2 className={cn(ws.sectionTitle, 'mb-5')}>需要检查的查询</h2>{queryRows.length ? <WorkspaceTableScroll label="查询分析表格" stickyActions><table className={cn(ws.table, 'min-w-[620px]')} aria-label="查询分析"><thead><tr><th>查询标识</th><th>记录类型</th><th>次数</th><th>最长耗时</th><th>操作</th></tr></thead><tbody>{queryRows.map(row => <tr key={`${row.kind}:${row.query}`}><td className="max-w-[340px] truncate font-mono text-xs" title={row.query}>{row.query}</td><td className="whitespace-nowrap">{row.kind}</td><td className="tabular-nums">{row.count}</td><td className="tabular-nums">{fmtSec(row.elapsed)}</td><td><Button variant="ghost" aria-label={`查看统计 ${row.query}`} onClick={() => setSelectedQuery(row)}>查看统计</Button></td></tr>)}</tbody></table></WorkspaceTableScroll> : <p className="py-8 text-sm text-muted-foreground">当前窗口未返回零命中或慢查询记录</p>}</section>
+          {analyticsChartData.length ? <div className="grid gap-x-10 lg:grid-cols-2"><section className={ws.section}><h2 className={ws.sectionTitle}>请求与异常趋势</h2><SafeResponsiveChart className="mt-5 h-[260px]" minHeight={260}><LineChart data={analyticsChartData}><CartesianGrid strokeDasharray="3 3" opacity={0.2} /><XAxis dataKey="time" tick={{ fontSize: 12 }} /><YAxis tick={{ fontSize: 12 }} allowDecimals={false} /><Tooltip /><Line name="请求" dataKey="requests" stroke="hsl(var(--primary))" dot={false} /><Line name="零命中" dataKey="zero_hit" stroke="hsl(var(--warning))" dot={false} /><Line name="慢查询" dataKey="slow" stroke="hsl(var(--muted-foreground))" dot={false} /><Line name="错误" dataKey="errors" stroke="hsl(var(--destructive))" dot={false} /></LineChart></SafeResponsiveChart></section><section className={ws.section}><h2 className={ws.sectionTitle}>零命中与慢查询比例</h2><SafeResponsiveChart className="mt-5 h-[260px]" minHeight={260}><LineChart data={analyticsChartData}><CartesianGrid strokeDasharray="3 3" opacity={0.2} /><XAxis dataKey="time" tick={{ fontSize: 12 }} /><YAxis tickFormatter={value => fmtPercent(Number(value), 0)} tick={{ fontSize: 12 }} /><Tooltip /><Line name="零命中比例" dataKey="zero_hit_rate" stroke="hsl(var(--warning))" dot={false} /><Line name="慢查询比例" dataKey="slow_rate" stroke="hsl(var(--primary))" dot={false} /></LineChart></SafeResponsiveChart></section></div> : null}
+          <section className={ws.section}><h2 className={ws.sectionTitle}>错误类型</h2><dl className="mt-4 divide-y divide-border">{topErrorKinds.map(([name, count]) => <div key={name} className="flex justify-between gap-4 py-3 text-[13px]"><dt>{name}</dt><dd>{count}</dd></div>)}</dl>{!topErrorKinds.length ? <p className="py-5 text-sm text-muted-foreground">当前窗口未记录错误类型</p> : null}</section>
+          <details className="py-5 text-[13px]"><summary className="cursor-pointer font-medium">完整查询分析数据</summary><pre tabIndex={0} className="mt-4 max-h-96 overflow-auto bg-muted/30 p-4 text-xs leading-6">{JSON.stringify(analytics, null, 2)}</pre></details>
+        </> : !loadingAnalytics && !analyticsQuery.isError ? <div className={ws.empty}><h2>当前范围暂无查询分析</h2><p>有检索记录后可查看零命中、慢查询与错误。</p></div> : null}
+      </TabsContent>
+    </Tabs>
+    <Dialog open={opsOpen} onOpenChange={setOpsOpen}><DialogContent className={cn(ws.dialog, ws.wideDialog)} aria-describedby={undefined}><DialogHeader className={ws.dialogHeader}><DialogTitle>观测运维操作</DialogTitle></DialogHeader><div className={ws.dialogBody}><ObservabilityOpsPanel initialWindowMinutes={windowMinutes} /></div><DialogFooter className={ws.dialogFooter}><Button variant="outline" onClick={() => setOpsOpen(false)}>完成</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={selectedQuery !== null} onOpenChange={open => { if (!open) setSelectedQuery(null) }}><DialogContent className={ws.dialog} aria-describedby={undefined}><DialogHeader className={ws.dialogHeader}><DialogTitle>查询统计</DialogTitle></DialogHeader><div className={ws.dialogBody}>{selectedQuery ? <dl className="space-y-5 text-sm leading-6"><div><dt className="text-muted-foreground">查询标识</dt><dd className="mt-1 break-all font-mono text-xs">{selectedQuery.query}</dd></div><div><dt className="text-muted-foreground">记录类型</dt><dd>{selectedQuery.kind}</dd></div><div><dt className="text-muted-foreground">次数</dt><dd>{selectedQuery.count}</dd></div><div><dt className="text-muted-foreground">最长耗时</dt><dd>{fmtSec(selectedQuery.elapsed)}</dd></div></dl> : null}</div><DialogFooter className={ws.dialogFooter}><Button variant="outline" onClick={() => { if (selectedQuery) void copyText(selectedQuery.query, '已复制查询标识') }}>复制标识</Button><Button onClick={() => setSelectedQuery(null)}>完成</Button></DialogFooter></DialogContent></Dialog>
+  </OperationalWorkspace></AppFrame>
 }

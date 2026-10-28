@@ -1,6 +1,6 @@
 'use client'
 
-import { Loader2, Shield } from 'lucide-react'
+import { Loader2, Shield } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 import { useFormStatus } from 'react-dom'
 

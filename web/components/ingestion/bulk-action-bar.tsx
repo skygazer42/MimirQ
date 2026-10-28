@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Download, RotateCcw, Trash2, XCircle } from 'lucide-react'
+import { Download, RotateCcw, Trash2, XCircle } from '@/components/icons'
 
 import { Button } from '@/components/ui/button'
 import {

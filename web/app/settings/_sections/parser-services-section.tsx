@@ -12,10 +12,9 @@ import type {
   TextInConfig,
 } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { LayoutGrid, ScanLine, Wand2 } from 'lucide-react'
+import { LayoutGrid, ScanLine, Wand2 } from '@/components/icons'
 import {
-  systemPageTokens,
-  systemWorkbenchTokens,
+  settingsTextTokens,
 } from '@/components/ui/system-page-tokens'
 
 type DoclingConfig = NonNullable<SystemSettings['docling']>
@@ -40,15 +39,14 @@ type ParserServicesSectionProps = {
 const SECTION_TITLE =
   'mb-2 flex items-center gap-2 text-[13px] font-semibold text-foreground'
 const CARD = cn(
-  systemWorkbenchTokens.panel,
-  'space-y-3 rounded-xl border border-info/15 bg-info/[0.025] p-3 shadow-none'
+  'space-y-5'
 )
 const GRID = 'grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3'
-const FIELD_LABEL = 'text-[11px] font-semibold text-muted-foreground'
-const FIELD_HINT = systemPageTokens.subtle
-const DENSE_INPUT = 'h-8 rounded-md border-info/15 bg-info/[0.025] text-[12px]'
+const FIELD_LABEL = 'text-[13px] font-semibold text-muted-foreground'
+const FIELD_HINT = settingsTextTokens.helpText
+const DENSE_INPUT = 'h-11 sm:h-9 rounded-md border-input bg-background text-[13px]'
 const DENSE_SELECT =
-  'w-full rounded-md border border-info/15 bg-info/[0.025] px-2.5 py-1.5 text-[12px]'
+  'w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-[13px]'
 
 function TogglePill({
   enabled,
@@ -91,13 +89,13 @@ export function ParserServicesSection({
     <>
       <section>
         <h2 className={SECTION_TITLE}>
-          <ScanLine className="h-4 w-4 text-info" />
+          <ScanLine className="h-4 w-4 text-foreground" />
           MinerU 配置
         </h2>
 
         <div className={CARD}>
-          <div className="rounded-[14px] border border-info/20 bg-info/[0.06] px-3 py-2.5">
-            <div className="text-[12px] font-semibold text-foreground">本地部署优先</div>
+          <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2.5">
+            <div className="text-[13px] font-semibold text-foreground">本地部署优先</div>
             <div className={cn(FIELD_HINT, 'mt-0.5')}>
               配置本地 MinerU 服务地址后，解析会走本地 ZIP 模式；未配置时再使用在线 API 令牌
             </div>
@@ -122,11 +120,11 @@ export function ParserServicesSection({
 
               <details
                 open={mineruBackend === 'vlm-http-client'}
-                className="group rounded-[14px] border border-dashed border-border/70 bg-muted/35 px-3 py-2"
+                className="group rounded-md border border-dashed border-border/70 bg-muted/35 px-3 py-2"
               >
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[12px] font-semibold text-foreground/78">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[13px] font-semibold text-foreground/78">
                   <span>VLM HTTP 后端</span>
-                  <span className="text-[11px] font-medium text-muted-foreground">
+                  <span className="text-[13px] font-medium text-muted-foreground">
                     {mineruBackend === 'vlm-http-client'
                       ? '当前会使用'
                       : '默认不会使用'}
@@ -218,7 +216,7 @@ export function ParserServicesSection({
 
       <section>
         <h2 className={SECTION_TITLE}>
-          <LayoutGrid className="h-4 w-4 text-info" />
+          <LayoutGrid className="h-4 w-4 text-foreground" />
           ETL4LLM 配置
         </h2>
 
@@ -273,7 +271,7 @@ export function ParserServicesSection({
 
           <div className="flex items-center justify-between border-t border-border/70 pt-3">
             <div>
-              <div className="text-[12px] font-medium text-foreground/80">
+              <div className="text-[13px] font-medium text-foreground/80">
                 强制 OCR
               </div>
               <div className={FIELD_HINT}>扫描件/图片型 PDF 建议开启</div>
@@ -287,7 +285,7 @@ export function ParserServicesSection({
 
           <div className="flex items-center justify-between border-t border-border/70 pt-3">
             <div>
-              <div className="text-[12px] font-medium text-foreground/80">
+              <div className="text-[13px] font-medium text-foreground/80">
                 提取图片
               </div>
               <div className={FIELD_HINT}>输出图片引用用于预览/入库</div>
@@ -303,7 +301,7 @@ export function ParserServicesSection({
 
           <div className="flex items-center justify-between border-t border-border/70 pt-3">
             <div>
-              <div className="text-[12px] font-medium text-foreground/80">
+              <div className="text-[13px] font-medium text-foreground/80">
                 公式识别
               </div>
               <div className={FIELD_HINT}>尽量保留公式/LaTeX 输出</div>
@@ -319,7 +317,7 @@ export function ParserServicesSection({
 
           <div className="flex items-center justify-between border-t border-border/70 pt-3">
             <div>
-              <div className="text-[12px] font-medium text-foreground/80">
+              <div className="text-[13px] font-medium text-foreground/80">
                 过滤页眉页脚
               </div>
               <div className={FIELD_HINT}>减少检索噪音（若服务支持）</div>
@@ -339,15 +337,15 @@ export function ParserServicesSection({
 
       <section>
         <h2 className={SECTION_TITLE}>
-          <LayoutGrid className="h-4 w-4 text-info" />
+          <LayoutGrid className="h-4 w-4 text-foreground" />
           Docling Serve 配置
         </h2>
 
         <div className={CARD}>
-          <div className="rounded-[14px] border border-info/20 bg-info/[0.07] px-3 py-2.5">
-            <div className="text-[12px] font-semibold text-foreground">独立服务模式</div>
+          <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2.5">
+            <div className="text-[13px] font-semibold text-foreground">独立服务模式</div>
             <div className={cn(FIELD_HINT, 'mt-0.5')}>
-              Docling 依赖与模型只运行在独立容器中，不会增加 MimirQ API / worker 镜像体积
+              Docling 依赖与模型只运行在独立容器中，不会增加 Ragvia API / worker 镜像体积
             </div>
           </div>
 
@@ -409,7 +407,7 @@ export function ParserServicesSection({
 
           <div className="flex items-center justify-between border-t border-border/70 pt-3">
             <div>
-              <div className="text-[12px] font-medium text-foreground/80">启用 OCR</div>
+              <div className="text-[13px] font-medium text-foreground/80">启用 OCR</div>
               <div className={FIELD_HINT}>扫描件建议开启；数字原生文档可关闭以降低耗时</div>
             </div>
             <TogglePill
@@ -421,7 +419,7 @@ export function ParserServicesSection({
 
           <div className="flex items-center justify-between border-t border-border/70 pt-3">
             <div>
-              <div className="text-[12px] font-medium text-foreground/80">继承系统代理</div>
+              <div className="text-[13px] font-medium text-foreground/80">继承系统代理</div>
               <div className={FIELD_HINT}>内网容器保持关闭；只有远程服务必须走代理时才开启</div>
             </div>
             <TogglePill
@@ -435,7 +433,7 @@ export function ParserServicesSection({
 
       <section>
         <h2 className={SECTION_TITLE}>
-          <LayoutGrid className="h-4 w-4 text-info" />
+          <LayoutGrid className="h-4 w-4 text-foreground" />
           Marker 配置
         </h2>
 
@@ -478,7 +476,7 @@ export function ParserServicesSection({
 
       <section>
         <h2 className={SECTION_TITLE}>
-          <ScanLine className="h-4 w-4 text-info" />
+          <ScanLine className="h-4 w-4 text-foreground" />
           PaddleOCR-VL 配置
         </h2>
 
@@ -521,7 +519,7 @@ export function ParserServicesSection({
 
       <section>
         <h2 className={SECTION_TITLE}>
-          <LayoutGrid className="h-4 w-4 text-info dark:text-info" />
+          <LayoutGrid className="h-4 w-4 text-foreground dark:text-foreground" />
           TextIn xParse 配置
         </h2>
 
@@ -649,7 +647,7 @@ export function ParserServicesSection({
 
           <div className="flex items-center justify-between border-t border-border/70 pt-3">
             <div>
-              <div className="text-[12px] font-medium text-foreground/80">
+              <div className="text-[13px] font-medium text-foreground/80">
                 应用文档树
               </div>
               <div className={FIELD_HINT}>尽量保留标题层级 / 文档结构</div>
@@ -667,7 +665,7 @@ export function ParserServicesSection({
 
           <div className="flex items-center justify-between border-t border-border/70 pt-3">
             <div>
-              <div className="text-[12px] font-medium text-foreground/80">
+              <div className="text-[13px] font-medium text-foreground/80">
                 Markdown 细节增强
               </div>
               <div className={FIELD_HINT}>返回更丰富的 Markdown 结构</div>
@@ -766,7 +764,7 @@ export function ParserServicesSection({
 
           <div className="flex items-center justify-between border-t border-border/70 pt-3">
             <div>
-              <div className="text-[12px] font-medium text-foreground/80">
+              <div className="text-[13px] font-medium text-foreground/80">
                 保留解析产物
               </div>
               <div className={FIELD_HINT}>

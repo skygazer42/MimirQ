@@ -1,382 +1,49 @@
 'use client'
 
-import {
-  Archive,
-  BarChart3,
-  ChevronDown,
-  Download,
-  FileText,
-  Loader2,
-  PlayCircle,
-  RefreshCw,
-  ShieldCheck,
-  type LucideIcon,
-} from 'lucide-react'
-
+import { Archive, BarChart3, ChevronDown, Clock3, Download, FileText, Loader2, RefreshCw, ShieldCheck } from '@/components/icons'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
-
+import { PageTitleIcon } from '@/components/ui/page-title-icon'
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { DatasetReport } from '@/types'
-
-import { shortPipelineHash } from '../report-format'
-import {
-  DEFAULT_PIPELINE_VERSION_VALUE,
-  REPORT_FILTER_LABEL_CLASS,
-  REPORT_PRIMARY_ACTION_CLASS,
-  REPORT_SECONDARY_ACTION_CLASS,
-  REPORT_SELECT_ITEM_CLASS,
-  REPORT_SELECT_TRIGGER_CLASS,
-} from '../report-tokens'
-
+import { formatDate } from '@/lib/utils'
+import { DEFAULT_PIPELINE_VERSION_VALUE } from '../report-tokens'
+import { reportDataSourceLabel, shortPipelineHash } from '../report-format'
 import type { DatasetOption, PipelineVersionOption } from '../types'
+import styles from '../reports.module.css'
 
-export function LoadingButtonIcon({
-  loading,
-  icon: Icon,
-}: Readonly<{ loading: boolean; icon: LucideIcon }>) {
-  if (loading) {
-    return <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
-  }
-  return <Icon className="size-3.5" />
-}
-
-export function ReportsControlPanel({
-  datasetId,
-  datasets,
-  isLoadingDatasets,
-  pipelineVersionSelectValue,
-  pipelineVersionOptions,
-  connectorRunsLimit,
-  showOnlyIssues,
-  redact,
-  isExportingJson,
-  isExportingHtml,
-  isExportingRagAuditHtml,
-  isExportingBundle,
-  report,
-  isLoadingReport,
-  onDatasetChange,
-  onPipelineHashChange,
-  onConnectorRunsLimitChange,
-  onShowOnlyIssuesChange,
-  onRedactChange,
-  onExportJson,
-  onExportCompleteJson,
-  onExportChartsJson,
-  onExportRagAuditHtml,
-  onExportBundleZip,
-  onExportHtml,
-  onRegenerateReport,
-  onRefresh,
-}: Readonly<{
-  datasetId: string
-  datasets: DatasetOption[]
-  isLoadingDatasets: boolean
-  pipelineVersionSelectValue: string
-  pipelineVersionOptions: PipelineVersionOption[]
-  connectorRunsLimit: number
-  showOnlyIssues: boolean
-  redact: boolean
-  isExportingJson: boolean
-  isExportingHtml: boolean
-  isExportingRagAuditHtml: boolean
-  isExportingBundle: boolean
-  report: DatasetReport | null
-  isLoadingReport: boolean
-  onDatasetChange: (value: string) => void
-  onPipelineHashChange: (value: string) => void
-  onConnectorRunsLimitChange: (value: number) => void
-  onShowOnlyIssuesChange: (value: boolean) => void
-  onRedactChange: (value: boolean) => void
-  onExportJson: () => void
-  onExportCompleteJson: () => void
-  onExportChartsJson: () => void
-  onExportRagAuditHtml: () => void
-  onExportBundleZip: () => void
-  onExportHtml: () => void
-  onRegenerateReport: () => void
-  onRefresh: () => void
+export function ReportsControlPanel(props: Readonly<{
+  datasetId:string;datasets:DatasetOption[];isLoadingDatasets:boolean;pipelineVersionSelectValue:string;pipelineVersionOptions:PipelineVersionOption[];connectorRunsLimit:number;redact:boolean;
+  isExportingJson:boolean;isExportingHtml:boolean;isExportingRagAuditHtml:boolean;isExportingBundle:boolean;report:DatasetReport|null;isLoadingReport:boolean;
+  onDatasetChange:(value:string)=>void;onPipelineHashChange:(value:string)=>void;onConnectorRunsLimitChange:(value:number)=>void;onRedactChange:(value:boolean)=>void;
+  onExportJson:()=>void;onExportCompleteJson:()=>void;onExportChartsJson:()=>void;onExportRagAuditHtml:()=>void;onExportBundleZip:()=>void;onExportHtml:()=>void;onRefresh:()=>void;
 }>) {
-  return (
-    <section className="space-y-2 rounded-2xl border border-info/15 bg-background/72 p-2.5">
-      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[1.25fr_1.1fr_0.85fr_auto] xl:items-end">
-        <div className="space-y-1">
-          <Label
-            htmlFor="dataset-select"
-            className={REPORT_FILTER_LABEL_CLASS}
-          >
-            数据集
-          </Label>
-          <Select value={datasetId} onValueChange={onDatasetChange}>
-            <SelectTrigger
-              id="dataset-select"
-              className={REPORT_SELECT_TRIGGER_CLASS}
-            >
-              <SelectValue
-                placeholder={isLoadingDatasets ? '加载中...' : '请选择数据集'}
-              />
-            </SelectTrigger>
-            <SelectContent>
-              {datasets.map((ds) => (
-                <SelectItem
-                  key={ds.id}
-                  value={ds.id}
-                  className={REPORT_SELECT_ITEM_CLASS}
-                >
-                  {ds.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-1">
-          <Label
-            htmlFor="pipeline-hash"
-            className={REPORT_FILTER_LABEL_CLASS}
-          >
-            处理版本
-          </Label>
-          <Select
-            value={pipelineVersionSelectValue}
-            onValueChange={onPipelineHashChange}
-          >
-            <SelectTrigger
-              id="pipeline-hash"
-              className={REPORT_SELECT_TRIGGER_CLASS}
-            >
-              <SelectValue placeholder="选择处理版本" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem
-                value={DEFAULT_PIPELINE_VERSION_VALUE}
-                className={REPORT_SELECT_ITEM_CLASS}
-              >
-                当前版本（默认）
-              </SelectItem>
-              {pipelineVersionOptions.map((v) => (
-                <SelectItem
-                  key={v.pipeline_hash}
-                  value={v.pipeline_hash}
-                  className={REPORT_SELECT_ITEM_CLASS}
-                >
-                  {shortPipelineHash(v.pipeline_hash)} · {v.documents} 个文档
-                </SelectItem>
-              ))}
-              {pipelineVersionOptions.length === 0 ? (
-                <SelectItem
-                  value="__mimirq_no_pipeline_versions__"
-                  disabled
-                  className={REPORT_SELECT_ITEM_CLASS}
-                >
-                  暂无可选历史版本
-                </SelectItem>
-              ) : null}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-1">
-          <Label
-            htmlFor="connector-limit"
-            className={REPORT_FILTER_LABEL_CLASS}
-          >
-            运行记录
-          </Label>
-          <Select
-            value={String(connectorRunsLimit)}
-            onValueChange={(value) => onConnectorRunsLimitChange(Number(value || 20))}
-          >
-            <SelectTrigger
-              id="connector-limit"
-              className={REPORT_SELECT_TRIGGER_CLASS}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="0" className={REPORT_SELECT_ITEM_CLASS}>
-                不附带记录
-              </SelectItem>
-              <SelectItem value="10" className={REPORT_SELECT_ITEM_CLASS}>
-                10 条记录
-              </SelectItem>
-              <SelectItem value="20" className={REPORT_SELECT_ITEM_CLASS}>
-                20 条记录（默认）
-              </SelectItem>
-              <SelectItem value="50" className={REPORT_SELECT_ITEM_CLASS}>
-                50 条记录
-              </SelectItem>
-              <SelectItem value="100" className={REPORT_SELECT_ITEM_CLASS}>
-                100 条记录
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex h-8 items-center gap-2 rounded-lg border border-info/15 bg-info/[0.025] px-2.5">
-          <Switch
-            id="only-issues-switch"
-            checked={showOnlyIssues}
-            onCheckedChange={onShowOnlyIssuesChange}
-          />
-          <Label
-            htmlFor="only-issues-switch"
-            className="whitespace-nowrap text-xs font-medium text-muted-foreground"
-          >
-            只看异常
-          </Label>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-info/15 pt-2">
-        <div className="flex h-8 items-center gap-2 rounded-lg bg-info/[0.025] px-2.5 ring-1 ring-inset ring-info/15">
-          <Switch
-            id="redact-switch"
-            checked={redact}
-            onCheckedChange={onRedactChange}
-          />
-          <Label
-            htmlFor="redact-switch"
-            className="text-xs font-medium text-muted-foreground"
-          >
-            导出脱敏
-          </Label>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                className={REPORT_SECONDARY_ACTION_CLASS}
-                disabled={!datasetId}
-                aria-label="打开报告导出菜单"
-              >
-                <LoadingButtonIcon
-                  loading={
-                    isExportingJson ||
-                    isExportingHtml ||
-                    isExportingRagAuditHtml ||
-                    isExportingBundle
-                  }
-                  icon={Download}
-                />
-                <span>导出报告</span>
-                <ChevronDown className="size-3.5 text-muted-foreground/70" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="w-64 rounded-xl border-info/15 bg-popover/95 p-1.5 shadow-none"
-            >
-              <DropdownMenuLabel className="px-2.5 pb-1 pt-2 text-[11px] font-semibold tracking-[0.08em] text-muted-foreground/70">
-                基础与完整数据
-              </DropdownMenuLabel>
-              <DropdownMenuGroup>
-                <DropdownMenuItem
-                  onSelect={onExportJson}
-                  disabled={!datasetId || isExportingJson}
-                  className="rounded-xl px-2.5 py-2 text-xs focus:bg-info/10 focus:text-info"
-                  aria-label="导出 JSON"
-                >
-                  <LoadingButtonIcon loading={isExportingJson} icon={Download} />
-                  <span>标准 JSON 报告</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={onExportCompleteJson}
-                  disabled={!datasetId || !report}
-                  className="rounded-xl px-2.5 py-2 text-xs focus:bg-info/10 focus:text-info"
-                  aria-label="导出完整 JSON"
-                >
-                  <Archive className="size-3.5" />
-                  <span>完整 JSON 快照</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={onExportChartsJson}
-                  disabled={!datasetId || !report}
-                  className="rounded-xl px-2.5 py-2 text-xs focus:bg-info/10 focus:text-info"
-                  aria-label="导出 RAG 统计"
-                >
-                  <BarChart3 className="size-3.5" />
-                  <span>RAG 统计数据</span>
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator className="my-1.5" />
-              <DropdownMenuLabel className="px-2.5 pb-1 pt-1 text-[11px] font-semibold tracking-[0.08em] text-muted-foreground/70">
-                审计与交付物
-              </DropdownMenuLabel>
-              <DropdownMenuGroup>
-                <DropdownMenuItem
-                  onSelect={onExportRagAuditHtml}
-                  disabled={!datasetId || isExportingRagAuditHtml}
-                  className="rounded-xl px-2.5 py-2 text-xs focus:bg-info/10 focus:text-info"
-                  aria-label="导出 RAG 审计报告"
-                >
-                  <LoadingButtonIcon
-                    loading={isExportingRagAuditHtml}
-                    icon={ShieldCheck}
-                  />
-                  <span>RAG 审计报告</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={onExportBundleZip}
-                  disabled={!datasetId || isExportingBundle}
-                  className="rounded-xl px-2.5 py-2 text-xs focus:bg-info/10 focus:text-info"
-                  aria-label="导出数据包 ZIP"
-                >
-                  <LoadingButtonIcon loading={isExportingBundle} icon={Archive} />
-                  <span>数据包 Bundle ZIP</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={onExportHtml}
-                  disabled={!datasetId || isExportingHtml}
-                  className="rounded-xl px-2.5 py-2 text-xs focus:bg-info/10 focus:text-info"
-                  aria-label="导出 HTML"
-                >
-                  <LoadingButtonIcon loading={isExportingHtml} icon={FileText} />
-                  <span>HTML 阅读版</span>
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button
-            className={REPORT_PRIMARY_ACTION_CLASS}
-            onClick={onRegenerateReport}
-            disabled={!datasetId || isLoadingReport}
-            aria-label="重新生成报告"
-          >
-            <LoadingButtonIcon loading={isLoadingReport} icon={PlayCircle} />
-            <span>重新生成</span>
-          </Button>
-          <Button
-            variant="outline"
-            className={REPORT_SECONDARY_ACTION_CLASS}
-            onClick={onRefresh}
-            disabled={isLoadingDatasets}
-            aria-label="刷新"
-          >
-            <LoadingButtonIcon loading={isLoadingDatasets} icon={RefreshCw} />
-            <span>刷新</span>
-          </Button>
-        </div>
-      </div>
-    </section>
-  )
+  const exporting=props.isExportingJson||props.isExportingHtml||props.isExportingRagAuditHtml||props.isExportingBundle
+  const disabled=!props.datasetId||!props.report||props.isLoadingReport||exporting
+  const selectedVersion=props.pipelineVersionOptions.find(version=>version.pipeline_hash===props.pipelineVersionSelectValue)
+  const versionLabel=props.pipelineVersionSelectValue===DEFAULT_PIPELINE_VERSION_VALUE?'全部处理版本':shortPipelineHash(props.pipelineVersionSelectValue)
+  return <>
+    <header className={styles.header}><div className={styles.heading}><PageTitleIcon name="report-export"/><h1>数据报告</h1></div><div className={styles.headerActions}>
+      <Button variant="ghost" onClick={props.onRefresh} disabled={props.isLoadingReport||props.isLoadingDatasets} aria-label="刷新报告"><RefreshCw className={props.isLoadingReport?'animate-spin motion-reduce:animate-none':undefined}/><span>刷新报告</span></Button>
+      <DropdownMenu><DropdownMenuTrigger asChild><Button className={styles.primary} disabled={disabled} aria-label="导出报告" aria-busy={exporting}>{exporting?<Loader2 className="animate-spin motion-reduce:animate-none"/>:<Download/>}<span>{exporting?'导出中…':'导出报告'}</span><ChevronDown/></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className={styles.exportMenu}>
+        <DropdownMenuLabel>阅读与审计</DropdownMenuLabel>
+        <DropdownMenuItem disabled={disabled} onSelect={props.onExportHtml} aria-label="导出 HTML"><FileText/>HTML 阅读版</DropdownMenuItem>
+        <DropdownMenuItem disabled={disabled} onSelect={props.onExportRagAuditHtml} aria-label="导出 RAG 审计报告"><ShieldCheck/>RAG 审计报告</DropdownMenuItem>
+        <DropdownMenuItem disabled={disabled} onSelect={props.onExportBundleZip} aria-label="导出数据包 ZIP"><Archive/>Bundle ZIP 归档</DropdownMenuItem>
+        <DropdownMenuSeparator/>
+        <DropdownMenuCheckboxItem checked={props.redact} onCheckedChange={props.onRedactChange} onSelect={event=>event.preventDefault()} aria-label="HTML／ZIP 脱敏">HTML／ZIP 脱敏</DropdownMenuCheckboxItem>
+        <DropdownMenuSeparator/><DropdownMenuLabel>原始数据</DropdownMenuLabel>
+        <DropdownMenuItem disabled={disabled} onSelect={props.onExportJson} aria-label="导出 JSON"><Download/>标准 JSON 报告</DropdownMenuItem>
+        <DropdownMenuItem disabled={disabled} onSelect={props.onExportCompleteJson} aria-label="导出完整 JSON"><Archive/>完整 JSON 快照</DropdownMenuItem>
+        <DropdownMenuItem disabled={disabled} onSelect={props.onExportChartsJson} aria-label="导出 RAG 统计"><BarChart3/>RAG 统计数据</DropdownMenuItem>
+      </DropdownMenuContent></DropdownMenu>
+    </div></header>
+    <div className={styles.scopeBar}>
+      <label><span>数据集</span><Select value={props.datasetId} onValueChange={props.onDatasetChange} disabled={props.isLoadingDatasets&&!props.datasets.length}><SelectTrigger aria-label="数据集" className={styles.datasetSelect}><SelectValue placeholder={props.isLoadingDatasets?'加载中…':'选择数据集'}/></SelectTrigger><SelectContent>{props.datasets.map(dataset=><SelectItem key={dataset.id} value={dataset.id}>{dataset.name||dataset.id}</SelectItem>)}</SelectContent></Select></label>
+      <label><span>处理版本</span><Select value={props.pipelineVersionSelectValue} onValueChange={props.onPipelineHashChange} disabled={!props.datasetId}><SelectTrigger aria-label="处理版本" className={styles.versionSelect}><SelectValue>{versionLabel}</SelectValue></SelectTrigger><SelectContent><SelectItem value={DEFAULT_PIPELINE_VERSION_VALUE}>全部处理版本</SelectItem>{!selectedVersion&&props.pipelineVersionSelectValue!==DEFAULT_PIPELINE_VERSION_VALUE&&<SelectItem value={props.pipelineVersionSelectValue}>{versionLabel}</SelectItem>}{props.pipelineVersionOptions.map(version=><SelectItem key={version.pipeline_hash} value={version.pipeline_hash}>{shortPipelineHash(version.pipeline_hash)} · {version.documents} 个文档</SelectItem>)}</SelectContent></Select></label>
+      <label><span>附带运行</span><Select value={String(props.connectorRunsLimit)} onValueChange={value=>props.onConnectorRunsLimitChange(Number(value))} disabled={!props.datasetId}><SelectTrigger aria-label="附带运行记录" className={styles.runSelect}><SelectValue/></SelectTrigger><SelectContent>{[0,10,20,50,100].map(value=><SelectItem key={value} value={String(value)}>{value===0?'不附带记录':`${value} 条记录`}</SelectItem>)}</SelectContent></Select></label>
+      <Popover><PopoverTrigger asChild><button className={styles.reportTime} type="button" aria-label="查看报告信息"><Clock3/><span>{props.isLoadingReport?'正在更新…':props.report?`生成于 ${formatDate(props.report.generated_at)}`:'等待报告'}</span></button></PopoverTrigger><PopoverContent align="end" className={styles.reportInfo}><h2>报告信息</h2><dl><dt>数据来源</dt><dd>{reportDataSourceLabel(props.report?.data_provenance)}</dd><dt>生成时间</dt><dd>{props.report?.generated_at?formatDate(props.report.generated_at):'—'}</dd><dt>数据集标识</dt><dd>{props.datasetId||'—'}</dd></dl></PopoverContent></Popover>
+    </div>
+  </>
 }

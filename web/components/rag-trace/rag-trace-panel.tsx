@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import * as React from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Loader2, Route, Quote, Timer, Database, ExternalLink, Download, GitCompare } from 'lucide-react'
+import { Loader2, Route, Quote, Timer, Database, ExternalLink, Download, GitCompare } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
@@ -1471,7 +1471,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
       zip.file(
         'README.txt',
         [
-          'MimirQ Incident Bundle (PII-safe)',
+          'Ragvia Incident Bundle (PII-safe)',
           `exported_at: ${new Date().toISOString()}`,
           `request_id: ${rid}`,
           '',

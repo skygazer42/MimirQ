@@ -9,7 +9,7 @@ import {
   Activity,
   AlertCircle,
   Check,
-  Database,
+  Dataset as DatasetIcon,
   FileStack,
   Fingerprint,
   Loader2,
@@ -20,7 +20,7 @@ import {
   Layers3,
   Scan,
   ShieldCheck,
-} from 'lucide-react'
+} from '@/components/icons'
 import { useTranslations } from 'next-intl'
 import { motion } from 'framer-motion'
 
@@ -697,7 +697,7 @@ export function KnowledgeRetrievalPanel({
                 {t('header.currentDataset')}
               </div>
               <div className="inline-flex items-center rounded-full border border-border/70 bg-background px-3 py-1.5 text-[13px] font-medium text-foreground">
-                <Database className="mr-2 size-3.5 text-info" />
+                <DatasetIcon className="mr-2 size-3.5 text-info" />
                 {overviewDatasetLabel || t("header.noneSelected")}
               </div>
             </div>

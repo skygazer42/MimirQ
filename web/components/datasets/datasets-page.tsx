@@ -1,19 +1,18 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
-import Image from 'next/image'
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
+import { Dataset as DatasetIcon } from '@/components/icons'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { motion } from 'framer-motion'
 import {
-  AlertCircle, BarChart3, ChevronRight, Clock3, Database, FileSearch,
-  FolderOpen, Layers, Loader2, MoreHorizontal, Pencil, RefreshCw, Search, Settings2,
-  ShieldCheck, Table2, Trash2, Users, type LucideIcon,
-} from 'lucide-react'
+  AlertCircle, BarChart3, Check, CheckCircle, ChevronDown, ChevronLeft, ChevronRight,
+  Clock3, Database, FileSearch, FlaskConical, FolderOpen, FolderTree, Globe,
+  Ingestion, Layers, Loader2, Lock, MoreHorizontal, Pencil, RefreshCw, Search,
+  Settings2, Table2, Trash2, Users, type PlatformIcon,
+} from '@/components/icons'
 
 import { AppFrame } from '@/components/app-frame'
-import { useRouter } from '@/i18n/navigation'
-import { PageScaffold } from '@/components/ui/page-scaffold'
+import { Link, useRouter } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -25,13 +24,18 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader,
   DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Panel } from '@/components/ui/panel'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { datasetApi } from '@/lib/api'
+import { datasetApi, datasetCategoryApi } from '@/lib/api'
 import type { DatasetListParams } from '@/lib/api/datasets'
 import { formatApiError } from '@/lib/api-errors'
 import { reportClientError } from '@/lib/client-logging'
@@ -39,6 +43,7 @@ import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
 import type {
   Dataset,
+  DatasetCategoryNode,
   DatasetIngestionSummary,
   DatasetListResponse,
   PermissionEnum,
@@ -51,6 +56,7 @@ import { DatasetCategoryTree } from '@/components/dataset-categories/category-tr
 import { DatasetCategoryMultiSelect } from '@/components/dataset-categories/category-multi-select'
 import { CreateDatasetButton } from '@/components/datasets/create-dataset-button'
 import { GroupChipsInput } from '@/components/groups/group-chips-input'
+import styles from './datasets-page.module.css'
 
 type DatasetOperationalStatus = 'active' | 'anomaly' | 'pending' | 'testing'
 const DATASET_SEARCH_DEBOUNCE_MS = 220
@@ -75,30 +81,10 @@ type DatasetSavePayload = {
   pipeline?: DocumentPipelineOptions
 }
 
-const PERMISSION_CONFIG: Record<PermissionEnum, {
-  label: string
-  className: string
-  metricClassName: string
-  dotClassName: string
-}> = {
-  all_team_members: {
-    label: '全员',
-    className: 'border-accent/20 bg-accent/10 text-accent dark:text-accent',
-    metricClassName: 'text-accent dark:text-accent',
-    dotClassName: 'bg-accent dark:bg-accent',
-  },
-  only_me: {
-    label: '仅自己',
-    className: 'border-info/20 bg-info/10 text-info dark:text-info',
-    metricClassName: 'text-info dark:text-info',
-    dotClassName: 'bg-info dark:bg-info',
-  },
-  partial_members: {
-    label: '部分成员',
-    className: 'border-warning/20 bg-warning/10 text-warning dark:text-warning',
-    metricClassName: 'text-warning dark:text-warning',
-    dotClassName: 'bg-warning dark:bg-warning',
-  },
+const PERMISSION_CONFIG: Record<PermissionEnum, { label: string; icon: PlatformIcon }> = {
+  all_team_members: { label: '全员', icon: Globe },
+  only_me: { label: '仅自己', icon: Lock },
+  partial_members: { label: '部分成员', icon: Users },
 }
 
 function parseMembers(text: string): string[] {
@@ -173,130 +159,26 @@ function formatRelativeTime(value?: string | null): string {
   return `${diffDays} 天前`
 }
 
-function getDatasetStatusBadgeConfig(status: 'active' | 'anomaly' | 'pending' | 'testing') {
+function getDatasetStatusBadgeConfig(status: DatasetOperationalStatus) {
   switch (status) {
-    case 'active':
-      return {
-        label: '正常',
-        className: 'border-success/25 bg-success/10 text-success',
-        dotClassName: 'bg-success',
-      }
-    case 'anomaly':
-      return {
-        label: '异常',
-        className: 'border-destructive/25 bg-destructive/10 text-destructive',
-        dotClassName: 'bg-destructive',
-      }
-    case 'pending':
-      return {
-        label: '处理中',
-        className: 'border-warning/25 bg-warning/10 text-warning',
-        dotClassName: 'bg-warning',
-      }
-    case 'testing':
-      return {
-        label: '测试集',
-        className: 'border-info/20 bg-info/10 text-info',
-        dotClassName: 'bg-info',
-      }
+    case 'active': return { label: '正常', icon: CheckCircle }
+    case 'anomaly': return { label: '异常', icon: AlertCircle }
+    case 'pending': return { label: '待处理', icon: Clock3 }
+    case 'testing': return { label: '测试集', icon: FlaskConical }
   }
 }
 
-function getDatasetStatusIconConfig(status: 'active' | 'anomaly' | 'pending' | 'testing') {
-  switch (status) {
-    case 'active':
-      return {
-        defaultClassName: 'border-success/30 bg-success/10 text-success',
-        activeClassName: 'border-success/40 bg-success/15 text-success',
-      }
-    case 'anomaly':
-      return {
-        defaultClassName: 'border-destructive/30 bg-destructive/10 text-destructive',
-        activeClassName: 'border-destructive/40 bg-destructive/15 text-destructive',
-      }
-    case 'pending':
-      return {
-        defaultClassName: 'border-warning/30 bg-warning/10 text-warning',
-        activeClassName: 'border-warning/40 bg-warning/15 text-warning',
-      }
-    case 'testing':
-      return {
-        defaultClassName: 'border-info/20 bg-info/10 text-info',
-        activeClassName: 'border-info/30 bg-info/15 text-info',
-      }
-  }
-}
-
-function getDatasetIconTone(icon: LucideIcon) {
-  if (icon === Database) {
-    return {
-      iconClassName: 'text-accent',
-      softIconClassName: 'text-accent',
-      containerClassName: 'border-accent/30 bg-accent/10 text-accent',
-      chipClassName: 'text-accent',
-    }
-  }
-
-  if (icon === FolderOpen || icon === FileSearch || icon === Search) {
-    return {
-      iconClassName: 'text-info',
-      softIconClassName: 'text-info/80',
-      containerClassName: 'border-info/20 bg-info/10 text-info',
-      chipClassName: 'text-info',
-    }
-  }
-
-  if (icon === Layers || icon === Table2) {
-    return {
-      iconClassName: 'text-primary',
-      softIconClassName: 'text-primary',
-      containerClassName: 'border-primary/30 bg-primary/10 text-primary',
-      chipClassName: 'text-primary',
-    }
-  }
-
-  if (icon === ShieldCheck || icon === Users) {
-    return {
-      iconClassName: 'text-primary',
-      softIconClassName: 'text-primary/80',
-      containerClassName: 'border-primary/20 bg-primary/10 text-primary',
-      chipClassName: 'text-primary',
-    }
-  }
-
-  if (icon === Settings2 || icon === Clock3) {
-    return {
-      iconClassName: 'text-warning',
-      softIconClassName: 'text-warning',
-      containerClassName: 'border-warning/30 bg-warning/10 text-warning',
-      chipClassName: 'text-warning',
-    }
-  }
-
-  if (icon === AlertCircle) {
-    return {
-      iconClassName: 'text-destructive',
-      softIconClassName: 'text-destructive',
-      containerClassName: 'border-destructive/30 bg-destructive/10 text-destructive',
-      chipClassName: 'text-destructive',
-    }
-  }
-
-  if (icon === BarChart3) {
-    return {
-      iconClassName: 'text-success',
-      softIconClassName: 'text-success',
-      containerClassName: 'border-success/30 bg-success/10 text-success',
-      chipClassName: 'text-success',
-    }
-  }
-
-  return {
-    iconClassName: 'text-muted-foreground',
-    softIconClassName: 'text-muted-foreground',
-    containerClassName: 'border-border/60 bg-muted/50 text-muted-foreground',
-    chipClassName: 'text-muted-foreground',
-  }
+function DatasetStatus({ dataset }: Readonly<{ dataset: Dataset }>) {
+  const status = getDatasetOperationalStatus(dataset, dataset.ingestion_summary)
+  const { label, icon: Icon } = getDatasetStatusBadgeConfig(status)
+  const count = status === 'anomaly' ? getDatasetAnomalyCount(dataset.ingestion_summary) : 0
+  return (
+    <span className={styles.status} data-state={status}>
+      <Icon className="size-3.5" />
+      {label}
+      {count > 0 ? <span className={styles.anomalyCount}>{count}</span> : null}
+    </span>
+  )
 }
 
 export default function DatasetsPage() {
@@ -311,6 +193,9 @@ export default function DatasetsPage() {
   const [collectionFilter, setCollectionFilter] = useState<'all' | 'active' | 'anomaly' | 'pending' | 'testing'>('all')
   const [sortBy, setSortBy] = useState<'default' | 'name_asc'>('default')
   const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null)
+  const [inspectorOpen, setInspectorOpen] = useState(false)
+  const rowButtons = useRef(new Map<string, HTMLButtonElement>())
+  const returnDatasetId = useRef<string | null>(null)
   const [pageSize, setPageSize] = useState(20)
   const [currentPage, setCurrentPage] = useState(1)
   const [deleteTarget, setDeleteTarget] = useState<Dataset | null>(null)
@@ -374,7 +259,6 @@ export default function DatasetsPage() {
   const response = datasetsQuery.data ?? null
   const items = useMemo(() => response?.items || [], [response?.items])
   const scopeTotal = Number(response?.facets?.scope_total || 0)
-  const filteredTotal = Number(response?.facets?.filtered_total || 0)
   const displayedTotal = Number(response?.total || 0)
   const statusCounts = useMemo(
     () => ({
@@ -411,11 +295,12 @@ export default function DatasetsPage() {
   }, [searchQuery, collectionFilter, selectedCategoryId, sortBy])
 
   useEffect(() => {
+    if (!response) return
     const nextTotalPages = displayedTotal === 0 ? 1 : Math.ceil(displayedTotal / pageSize)
     if (currentPage > nextTotalPages) {
       setCurrentPage(nextTotalPages)
     }
-  }, [currentPage, displayedTotal, pageSize])
+  }, [currentPage, displayedTotal, pageSize, response])
 
   useEffect(() => {
     if (items.length === 0) {
@@ -434,19 +319,9 @@ export default function DatasetsPage() {
     [items, selectedDatasetId]
   )
   const selectedDatasetStats = selectedDataset?.ingestion_summary ?? undefined
-  const selectedDatasetStatus = selectedDataset ? getDatasetOperationalStatus(selectedDataset, selectedDatasetStats) : 'active'
-  const selectedStatusBadge = getDatasetStatusBadgeConfig(selectedDatasetStatus)
-  const selectedStatusIcon = getDatasetStatusIconConfig(selectedDatasetStatus)
   const deleteTargetStats = deleteTarget?.ingestion_summary ?? undefined
   const deleteTargetDocumentCount = Math.max(0, Number(deleteDocumentCountHint ?? deleteTargetStats?.total_documents ?? 0))
   const deleteRequiresDocumentPurge = deleteTargetDocumentCount > 0
-  const collectionFilterLabel = {
-    all: '全部数据集',
-    active: '活跃集合',
-    anomaly: '异常集合',
-    pending: '处理中集合',
-    testing: '测试集合',
-  }[collectionFilter]
   const hasActiveFilters = Boolean(searchQuery.trim() || selectedCategoryId || collectionFilter !== 'all')
 
   const replaceDataset = useCallback((next: Dataset) => {
@@ -504,6 +379,7 @@ export default function DatasetsPage() {
   }
 
   const openEdit = useCallback((ds: Dataset, permissionOverride?: PermissionEnum) => {
+    returnDatasetId.current = ds.id
     setEditing(ds)
     const mergedPipeline = mergePipelineOptions(defaultPipelineOptions, ds.pipeline)
     setForm({
@@ -589,6 +465,7 @@ export default function DatasetsPage() {
   const handleInspectorPermissionChange = useCallback(async (dataset: Dataset, nextPermission: PermissionEnum) => {
     if (nextPermission === dataset.permission) return
     if (nextPermission === 'partial_members') {
+      setInspectorOpen(false)
       openEdit(dataset, 'partial_members')
       return
     }
@@ -608,608 +485,349 @@ export default function DatasetsPage() {
   const pipelineTogglePending = selectedDataset ? pipelineTogglePendingId === selectedDataset.id : false
   const permissionUpdatePending = selectedDataset ? permissionUpdatePendingId === selectedDataset.id : false
 
-  const perm = (ds: Dataset) => PERMISSION_CONFIG[ds.permission] || PERMISSION_CONFIG.all_team_members
+  const openDetails = (dataset: Dataset) => {
+    returnDatasetId.current = dataset.id
+    setSelectedDatasetId(dataset.id)
+    setInspectorOpen(true)
+  }
+
+  const restoreRowFocus = (event: Event) => {
+    event.preventDefault()
+    if (editOpen || deleteTarget) return
+    const target = rowButtons.current.get(returnDatasetId.current || '') || rowButtons.current.get(selectedDataset?.id || '')
+    target?.focus()
+  }
+
+  const clearFilters = () => {
+    setSearchQuery('')
+    setCollectionFilter('all')
+    setSelectedCategoryId(null)
+  }
+
+  const requestDelete = (dataset: Dataset) => {
+    returnDatasetId.current = dataset.id
+    setInspectorOpen(false)
+    setDeleteIncludingDocuments(false)
+    setDeleteDocumentCountHint(null)
+    setDeleteTarget(dataset)
+  }
 
   return (
     <AppFrame>
-      <PageScaffold
-        title="数据集"
-        size="full"
-        compact
-        density="system-dense"
-        showHeader={false}
-        bodyGutter="none"
-        bodyClassName="bg-sidebar/20 px-3 pt-0 pb-3"
-        topClassName="bg-sidebar/20 px-3 pt-2 pb-2 md:px-3 lg:px-3"
-        top={
-          <header
-            data-testid="datasets-page-toolbar"
-            className="relative flex min-h-14 flex-col gap-2 border-b border-foreground/15 px-1 py-2 sm:flex-row sm:items-center sm:justify-between"
-          >
-            <span className="absolute -bottom-px left-1 h-px w-8 bg-info/55" aria-hidden="true" />
-            <div className="flex min-w-0 items-center gap-2.5">
-              <span
-                data-dataset-title-mark="true"
-                className="flex size-8 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background/70"
-                aria-hidden="true"
-              >
-                <Image
-                  src="/brand/mimirq-dataset-mark.png"
-                  alt=""
-                  aria-hidden="true"
-                  draggable={false}
-                  width={64}
-                  height={64}
-                  loading="eager"
-                  className="size-7 scale-110 object-contain"
-                />
-              </span>
-              <div className="min-w-0 sm:flex sm:items-center sm:gap-2.5">
-                <h1 className="text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground">数据集</h1>
-                <span className="hidden h-3.5 w-px bg-border/80 sm:block" aria-hidden="true" />
-                <p className="truncate text-[12px] leading-5 text-muted-foreground/80">管理知识库集合与访问权限</p>
+      <section className={styles.shell} data-datasets-shell="true">
+        <header data-testid="datasets-page-toolbar" className={styles.pageHeader}>
+          <div className={styles.pageHeading}>
+            <DatasetIcon appearance="color" className="size-6" data-dataset-title-mark="true" />
+            <h1>数据集</h1>
+          </div>
+          <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (open) resetForm() }}>
+            <DialogTrigger asChild>
+              <CreateDatasetButton className={styles.createButton} />
+            </DialogTrigger>
+            <DialogContent className="max-w-xl p-0 sm:rounded-xl">
+              <div className="flex max-h-[min(88dvh,860px)] flex-col">
+                <DialogHeader className="border-b border-border/60 px-6 pt-6 pb-4">
+                  <DialogTitle>新建数据集</DialogTitle>
+                  <DialogDescription>为文档分组并设置访问权限</DialogDescription>
+                </DialogHeader>
+                <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar px-6 py-5">
+                  <DatasetForm form={form} setForm={setForm} />
+                </div>
+                <DialogFooter className="border-t border-border/60 px-6 py-4">
+                  <Button variant="ghost" onClick={() => setCreateOpen(false)}>取消</Button>
+                  <Button onClick={handleCreate} disabled={!canSubmit}>确认创建</Button>
+                </DialogFooter>
               </div>
-            </div>
+            </DialogContent>
+          </Dialog>
+        </header>
 
-            <div className="flex shrink-0 items-center gap-1">
+        <div className={styles.toolbar}>
+          <DatasetCategoryFilter selectedId={selectedCategoryId} onSelect={setSelectedCategoryId} />
+          <div className={styles.filters} role="group" aria-label="数据集状态">
+            {([
+              { value: 'all', label: '全部', count: scopeTotal },
+              { value: 'active', label: '正常', count: statusCounts.active },
+              { value: 'anomaly', label: '异常', count: statusCounts.anomaly },
+              { value: 'pending', label: '待处理', count: statusCounts.pending },
+              { value: 'testing', label: '测试集', count: statusCounts.testing },
+            ] as const).map((filter) => (
               <Button
+                key={filter.value}
                 variant="ghost"
                 size="sm"
-                className="h-8 rounded-md px-2.5 text-[12px] text-muted-foreground shadow-none hover:bg-info/8 hover:text-info"
-                onClick={() => { detachPromise(refreshDatasets()) }}
-                disabled={isRefreshing}
+                className={styles.filter}
+                aria-pressed={collectionFilter === filter.value}
+                aria-label={filter.label}
+                onClick={() => setCollectionFilter(filter.value)}
               >
-                <RefreshCw className={cn('size-4', isRefreshing && 'animate-spin motion-reduce:animate-none')} />
-                刷新
+                {filter.label}
+                <span className={styles.filterCount}>{isLoading ? '—' : filter.count.toLocaleString()}</span>
               </Button>
-              <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (open) resetForm() }}>
-                <DialogTrigger asChild>
-                  <CreateDatasetButton
-                    variant="info"
-                    className="h-8 rounded-md px-3 py-0 text-[12px] font-semibold shadow-none sm:h-8"
-                  />
-                </DialogTrigger>
-                <DialogContent className="max-w-xl p-0 sm:rounded-xl">
-                  <div className="flex max-h-[min(88vh,860px)] flex-col">
-                    <DialogHeader className="border-b border-border/60 px-6 pt-6 pb-4">
-                      <DialogTitle>新建数据集</DialogTitle>
-                      <DialogDescription>为文档分组并设置访问权限</DialogDescription>
-                    </DialogHeader>
-                    <div className="flex-1 overflow-y-auto custom-scrollbar px-6 py-5">
-                      <DatasetForm form={form} setForm={setForm} />
-                    </div>
-                    <DialogFooter className="border-t border-border/60 px-6 py-4">
-                      <Button variant="ghost" onClick={() => setCreateOpen(false)}>取消</Button>
-                      <Button onClick={handleCreate} disabled={!canSubmit}>确认创建</Button>
-                    </DialogFooter>
-                  </div>
-                </DialogContent>
-              </Dialog>
+            ))}
+          </div>
+          <div className={styles.toolsEnd}>
+            <div className={styles.search}>
+              <Search className="size-4" aria-hidden="true" />
+              <Input
+                aria-label="搜索数据集"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                maxLength={DATASET_SEARCH_MAX_LENGTH}
+                placeholder="搜索数据集"
+                className={styles.searchInput}
+              />
             </div>
-          </header>
-        }
-      >
-        <div className="flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-lg border border-foreground/15 bg-sidebar/18 xl:h-[calc(100vh-5.5rem)] xl:min-h-0">
-          <div
-            data-testid="datasets-workspace"
-            className={cn(
-              'grid min-h-0 flex-1 bg-sidebar/22 lg:grid-cols-[216px_minmax(0,1fr)]',
-              selectedDataset && 'xl:grid-cols-[216px_minmax(0,1fr)_300px]'
-            )}
-          >
-            <aside className="min-h-0 overflow-hidden border-b border-foreground/10 bg-sidebar/28 p-3 lg:border-b-0 lg:border-r">
-              <div className="pb-2">
-                <div className="text-[12px] font-semibold text-foreground">分类与筛选</div>
-                <div className="mt-0.5 text-[10px] text-muted-foreground/65">按状态或目录缩小范围</div>
-              </div>
-
-              <div className="mt-1 border-t border-border/50 pt-2">
-                <div className="mb-1.5 text-[10px] font-medium text-muted-foreground">状态</div>
-                <div className="space-y-1">
-                <DatasetFilterButton
-                  label="全部数据集"
-                  count={scopeTotal}
-                  active={collectionFilter === 'all'}
-                  onClick={() => setCollectionFilter('all')}
-                  icon={Layers}
-                />
-                <DatasetFilterButton
-                  label="活跃"
-                  count={statusCounts.active}
-                  active={collectionFilter === 'active'}
-                  onClick={() => setCollectionFilter('active')}
-                  dotClassName="bg-success"
-                />
-                <DatasetFilterButton
-                  label="异常"
-                  count={statusCounts.anomaly}
-                  active={collectionFilter === 'anomaly'}
-                  onClick={() => setCollectionFilter('anomaly')}
-                  dotClassName="bg-destructive"
-                />
-                <DatasetFilterButton
-                  label="待处理"
-                  count={statusCounts.pending}
-                  active={collectionFilter === 'pending'}
-                  onClick={() => setCollectionFilter('pending')}
-                  dotClassName="bg-warning"
-                />
-                <DatasetFilterButton
-                  label="测试集"
-                  count={statusCounts.testing}
-                  active={collectionFilter === 'testing'}
-                  onClick={() => setCollectionFilter('testing')}
-                  icon={FileSearch}
-                />
-                </div>
-              </div>
-
-              <div className="mt-3 border-t border-border/60 pt-2">
-                <div className="mb-1.5 text-[10px] font-medium text-muted-foreground">目录</div>
-                <DatasetCategoryTree
-                  className="max-h-[420px] overflow-y-auto pr-1 xl:max-h-[calc(100vh-17rem)]"
-                  selectedId={selectedCategoryId}
-                  onSelect={(id) => setSelectedCategoryId(id)}
-                />
-              </div>
-            </aside>
-
-            <section className="min-h-0 min-w-0 bg-transparent">
-              <div className="flex h-full min-h-0 flex-col">
-                <div className="flex flex-col gap-2.5 border-b border-foreground/10 px-4 py-2.5 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 text-[13px] font-semibold text-foreground">
-                      <h2 className="truncate">{selectedCategoryId ? '当前分类数据集' : '全部数据集'}</h2>
-                      <span className="tabular-nums text-[11px] font-medium text-muted-foreground">
-                        {displayedTotal}
-                      </span>
-                      {isLoading ? <Loader2 className="size-3.5 animate-spin text-info motion-reduce:animate-none" /> : null}
-                    </div>
-                    <div className="mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground/65">
-                      {collectionFilter !== 'all' ? <span>{collectionFilterLabel} ·</span> : null}
-                      {selectedCategoryId ? <span>当前分类 ·</span> : null}
-                      <span>显示 {displayedTotal} / {filteredTotal}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
-                    <div className="relative min-w-0 sm:w-[260px] xl:w-[320px]">
-                      <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/70" />
-                      <Input
-                        aria-label="搜索数据集"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        maxLength={DATASET_SEARCH_MAX_LENGTH}
-                        placeholder="搜索名称、描述或 ID"
-                        className="h-8 rounded-lg border-border/60 bg-muted/30 pl-8 text-[11px] shadow-none"
-                      />
-                    </div>
-                    <Select value={sortBy} onValueChange={(value) => setSortBy(value as 'default' | 'name_asc')}>
-                      <SelectTrigger className="h-8 w-full rounded-lg border-border/60 bg-background px-2.5 text-[11px] font-medium sm:w-[112px]" aria-label="排序方式">
-                        <SelectValue placeholder="排序方式" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="default">默认排序</SelectItem>
-                        <SelectItem value="name_asc">按名称</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {hasActiveFilters ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 rounded-lg px-2.5 text-[11px] text-muted-foreground"
-                        onClick={() => {
-                          setSearchQuery('')
-                          setCollectionFilter('all')
-                          setSelectedCategoryId(null)
-                        }}
-                      >
-                        清除筛选
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div
-                  data-dataset-catalog-scroll="true"
-                  className="min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar px-3.5 py-3"
-                >
-                  {items.length === 0 && !isLoading ? (
-                    <EmptyState
-                      icon={Layers}
-                      title={searchQuery ? '未找到匹配的数据集' : '暂无数据集'}
-                      description={searchQuery ? '尝试更换关键词或清空筛选。' : '点击“新建数据集”开始构建知识库。'}
-                      className="min-h-full rounded-none border-0 bg-transparent shadow-none"
-                    />
-                  ) : (
-                    <motion.div
-                      initial="hidden"
-                      animate="visible"
-                      variants={{ hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.04 } } }}
-                      className="space-y-3"
-                    >
-                      {items.map((dataset) => {
-                        const stats = dataset.ingestion_summary
-                        const isActive = selectedDataset?.id === dataset.id
-                        const memberCount = dataset.partial_member_list?.length ?? 0
-                        const status = getDatasetOperationalStatus(dataset, stats)
-                        const statusBadge = getDatasetStatusBadgeConfig(status)
-                        const statusIcon = getDatasetStatusIconConfig(status)
-                        const anomalyCount = getDatasetAnomalyCount(stats)
-
-                        return (
-                          <motion.div
-                            key={dataset.id}
-                            variants={{ hidden: { opacity: 0, y: 10 }, visible: { opacity: 1, y: 0 } }}
-                            role="button"
-                            tabIndex={0}
-                            onClick={() => setSelectedDatasetId(dataset.id)}
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter' || event.key === ' ') {
-                                event.preventDefault()
-                                setSelectedDatasetId(dataset.id)
-                              }
-                            }}
-                            whileHover={{ y: -2 }}
-                            className={cn(
-                              'focus-ring group w-full cursor-pointer rounded-lg border px-4 py-3 text-left transition-colors duration-200 active:scale-[0.998]',
-                              isActive
-                                ? 'border-foreground/10 bg-info/[0.04] ring-1 ring-info/15'
-                                : 'border-foreground/10 bg-background/70 hover:border-foreground/15 hover:bg-background'
-                            )}
-                          >
-                            <div className={cn(
-                              'grid gap-3 xl:items-start',
-                              isActive && 'xl:grid-cols-[minmax(0,1fr)_auto]'
-                            )}>
-                              <div className="flex min-w-0 items-start gap-3.5">
-                                <div
-                                  className={cn(
-                                    'flex size-10 shrink-0 items-center justify-center rounded-lg border',
-                                    isActive
-                                      ? statusIcon.activeClassName
-                                      : statusIcon.defaultClassName
-                                  )}
-                                >
-                                  <Layers className="size-4" />
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <div className="truncate text-[13px] font-semibold text-foreground">{dataset.name}</div>
-                                    <span className={cn('inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold', statusBadge.className)}>
-                                      <span className={cn('size-1.5 rounded-full', statusBadge.dotClassName)} />
-                                      {statusBadge.label}
-                                    </span>
-                                  </div>
-                                  <div className="mt-1 text-[11px] leading-[1.25rem] text-muted-foreground/72">
-                                    {dataset.description || '暂无描述。可在右侧继续配置预检、画像与入库策略。'}
-                                  </div>
-                                </div>
-                              </div>
-
-                              {isActive ? (
-                                <div className="inline-flex w-fit shrink-0 justify-self-start items-center gap-1 rounded-md border border-foreground/10 bg-background/70 p-0.5 xl:justify-self-end">
-                                  <button
-                                    type="button"
-                                    aria-label={`查看 ${dataset.name} 详情`}
-                                    title="查看数据集详情"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      router.push(`/datasets/${dataset.id}/profile`)
-                                    }}
-                                    className="rounded-md bg-background px-2.5 py-1 text-[11px] font-medium text-primary shadow-none transition-colors duration-200 hover:bg-muted/20 hover:text-primary active:scale-[0.98]"
-                                  >
-                                    详情
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      router.push(`/knowledge?tab=retrieval&dataset=${dataset.id}`)
-                                    }}
-                                    className="rounded-md bg-background px-2.5 py-1 text-[11px] font-medium text-primary shadow-none transition-colors duration-200 hover:bg-muted/20 hover:text-primary active:scale-[0.98]"
-                                  >
-                                    检索
-                                  </button>
-                                  <Button
-                                    size="sm"
-                                    className="h-8 rounded-md bg-primary px-3 text-[11px] font-medium text-primary-foreground shadow-none transition-transform duration-200 hover:bg-primary/90 active:scale-[0.98]"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      router.push(`/datasets/${dataset.id}/ingestion`)
-                                    }}
-                                  >
-                                    入库
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    aria-label="编辑数据集"
-                                    title="编辑数据集"
-                                    className="size-8 rounded-md border border-foreground/10 bg-background/70 transition-colors duration-200 hover:bg-background active:scale-[0.96]"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      openEdit(dataset)
-                                    }}
-                                  >
-                                    <MoreHorizontal className="size-3.5" />
-                                  </Button>
-                                </div>
-                              ) : null}
-                            </div>
-
-                            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border/50 pt-2">
-                              <DatasetMetaPill icon={Database} label="ID" value={dataset.id.slice(0, 8)} className="font-mono text-accent" valueClassName="text-accent" />
-                              <DatasetMetaPill icon={Clock3} label="更新" value={formatRelativeTime(stats?.last_processed_at)} />
-                              <DatasetMetaPill icon={FileSearch} label="文档" value={String(Number(stats?.total_documents || 0))} />
-                              <DatasetMetaPill icon={Layers} label="Chunk" value={Number(stats?.total_chunks || 0).toLocaleString()} />
-                              <DatasetMetaPill icon={AlertCircle} label="异常" value={String(anomalyCount)} className={anomalyCount > 0 ? 'text-destructive' : undefined} />
-                              <DatasetMetaPill icon={Users} label="成员" value={memberCount > 0 ? String(memberCount) : '0'} />
-                            </div>
-                          </motion.div>
-                        )
-                      })}
-                    </motion.div>
-                  )}
-                </div>
-
-                <div className="flex items-center justify-between border-t border-border/60 px-4 py-3 text-[11px] text-muted-foreground/72">
-                  <span>共 {displayedTotal} 条 · 共 {totalPages} 页</span>
-                  <div className="flex items-center gap-2">
-                    <Select
-                      value={String(pageSize)}
-                      onValueChange={(value) => {
-                        setPageSize(Number(value))
-                        setCurrentPage(1)
-                      }}
-                    >
-                      <SelectTrigger className="h-8 w-[98px] rounded-[11px] border border-border/60 bg-muted/40 px-2.5 text-[11px] font-medium shadow-none transition-all duration-200 hover:border-border hover:bg-card">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="10">10 条/页</SelectItem>
-                        <SelectItem value="20">20 条/页</SelectItem>
-                        <SelectItem value="50">50 条/页</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <div className="inline-flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        disabled={currentPage <= 1}
-                        onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                        className="size-8 rounded-[11px] border border-border/60 bg-muted/40 text-muted-foreground/50 transition-all duration-200 hover:border-border hover:bg-card hover:text-foreground active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-45"
-                      >
-                        ‹
-                      </button>
-                      <span className="inline-flex min-w-[60px] items-center justify-center rounded-[11px] bg-primary px-2.5 text-[11px] font-semibold text-primary-foreground shadow-[0_10px_18px_-16px_hsl(var(--primary)/0.6)]">
-                        {totalPages === 0 ? '0 / 0' : `${currentPage} / ${totalPages}`}
-                      </span>
-                      <button
-                        type="button"
-                        disabled={totalPages === 0 || currentPage >= totalPages}
-                        onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
-                        className="size-8 rounded-[11px] border border-border/60 bg-muted/40 text-muted-foreground/50 transition-all duration-200 hover:border-border hover:bg-card hover:text-foreground active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-45"
-                      >
-                        ›
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            {selectedDataset ? (
-              <aside
-                data-testid="dataset-inspector"
-                className="min-h-0 overflow-hidden border-t border-foreground/10 bg-sidebar/28 p-3 lg:col-span-2 xl:col-span-1 xl:border-l xl:border-t-0"
-              >
-                <motion.div
-                  key={selectedDataset.id}
-                  initial={{ opacity: 0, x: 12 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.18 }}
-                  className="flex h-full flex-col gap-1.5 overflow-y-auto pr-1 custom-scrollbar"
-                >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-[12px] font-semibold text-foreground">数据集详情</div>
-                        <div className="mt-0.5 text-[10px] text-muted-foreground/65">访问权限与治理入口</div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="icon" aria-label="编辑数据集" title="编辑数据集" className="size-7 rounded-full border border-border/60 bg-muted/50 text-muted-foreground transition-all duration-200 hover:border-border hover:bg-card hover:text-foreground active:scale-[0.96]" onClick={() => openEdit(selectedDataset)}>
-                          <Pencil className="size-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="删除数据集"
-                          title="删除数据集"
-                          className="size-7 rounded-full border border-destructive/20 bg-destructive/10 text-destructive/70 transition-all duration-200 hover:border-destructive/30 hover:bg-destructive/15 active:scale-[0.96]"
-                          onClick={() => {
-                            setDeleteIncludingDocuments(false)
-                            setDeleteDocumentCountHint(null)
-                            setDeleteTarget(selectedDataset)
-                          }}
-                        >
-                          <Trash2 className="size-3" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="rounded-lg border border-foreground/10 bg-background/70 px-2 py-1.5">
-                      <div className="flex items-start gap-1.5">
-                        <div className={cn(
-                          'flex size-7 shrink-0 items-center justify-center rounded-[10px] border',
-                          selectedStatusIcon.activeClassName
-                        )}>
-                          <Layers className="size-3" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <div className="truncate text-[12px] font-semibold text-foreground">{selectedDataset.name}</div>
-                            <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold', selectedStatusBadge.className)}>
-                              <span className={cn('size-1.5 rounded-full', selectedStatusBadge.dotClassName)} />
-                              {selectedStatusBadge.label}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-1 grid grid-cols-3 gap-1">
-                        <DetailStat
-                          label="文档数"
-                          value={Number(selectedDatasetStats?.total_documents || 0).toLocaleString()}
-                          meta=""
-                          tone="neutral"
-                        />
-                        <DetailStat
-                          label="状态"
-                          value={getDatasetStatusBadgeConfig(selectedDatasetStatus).label}
-                          meta=""
-                          tone={selectedDatasetStatus === 'anomaly' ? 'danger' : selectedDatasetStatus === 'pending' ? 'warning' : 'success'}
-                        />
-                        <DetailStat
-                          label="最近更新"
-                          value={formatRelativeTime(selectedDatasetStats?.last_processed_at)}
-                          meta=""
-                          tone="neutral"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-0.5 rounded-lg border border-foreground/10 bg-background/70 px-2 py-1.5">
-                      <InspectorRow icon={Database} label="数据集 ID">
-                        <span className="font-mono text-accent">{selectedDataset.id.slice(0, 8)}</span>
-                      </InspectorRow>
-                      <InspectorRow icon={FolderOpen} label="当前范围">
-                        <span>{selectedCategoryId ? '当前分类范围' : '全部分类范围'}</span>
-                      </InspectorRow>
-                      <InspectorRow icon={ShieldCheck} label="访问权限">
-                        <div className="ml-3 flex items-center gap-2">
-                          {permissionUpdatePending ? <Loader2 className="size-3 animate-spin text-muted-foreground/50" /> : null}
-                          <div className="w-[116px]">
-                            <Select
-                              value={selectedDataset.permission}
-                              disabled={permissionUpdatePending}
-                              onValueChange={(value) => detachPromise(handleInspectorPermissionChange(selectedDataset, value as PermissionEnum))}
-                            >
-                              {/* keep source-test anchor: <div className="w-[132px]"> */}
-                              {/* keep source-test anchor: ml-auto h-8 w-auto min-w-[88px] max-w-full justify-end */}
-                              <SelectTrigger
-                                aria-label="访问权限"
-                                className={cn(
-                                  'ml-auto h-7 w-auto min-w-[80px] max-w-full justify-end gap-1 rounded-lg border pl-1.5 pr-1.5 text-[10px] font-semibold shadow-none [&>span]:truncate [&>span]:text-right [&>svg]:h-3 [&>svg]:w-3 [&>svg]:shrink-0',
-                                  perm(selectedDataset).className
-                                )}
-                              >
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="only_me">仅自己</SelectItem>
-                                <SelectItem value="all_team_members">全员可见</SelectItem>
-                                <SelectItem value="partial_members">部分成员</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                      </InspectorRow>
-                      <InspectorRow icon={Settings2} label="默认嵌入模型">
-                        <div className="ml-3 flex items-center gap-2">
-                          <span className="text-[10px] font-medium text-foreground/80">{selectedDataset.pipeline ? '已启用' : '未启用'}</span>
-                          {pipelineTogglePending ? <Loader2 className="size-3 animate-spin text-muted-foreground/50" /> : null}
-                          <Switch
-                            checked={Boolean(selectedDataset.pipeline)}
-                            disabled={pipelineTogglePending}
-                            onCheckedChange={(nextChecked) => detachPromise(handleToggleDefaultPipeline(selectedDataset, nextChecked))}
-                            aria-label={selectedDataset.pipeline ? '关闭默认管线' : '启用默认管线'}
-                            title={selectedDataset.pipeline ? '关闭默认管线' : '启用默认管线'}
-                          />
-                        </div>
-                      </InspectorRow>
-                      <div className="space-y-0.5 border-t border-border/60 pt-1.5">
-                        <InspectorRow icon={FileSearch} label="文档数">
-                          <span>{String(Number(selectedDatasetStats?.total_documents || 0))}</span>
-                        </InspectorRow>
-                        <InspectorRow icon={Layers} label="Chunk 数">
-                          <span>{String(Number(selectedDatasetStats?.total_chunks || 0).toLocaleString())}</span>
-                        </InspectorRow>
-                        <InspectorRow icon={Users} label="活跃成员">
-                          <span>{`${selectedDataset.partial_member_list?.length ?? 0} 人`}</span>
-                        </InspectorRow>
-                        <InspectorRow icon={AlertCircle} label="异常项">
-                          <span className={getDatasetAnomalyCount(selectedDatasetStats) > 0 ? 'text-destructive' : undefined}>
-                            {`${getDatasetAnomalyCount(selectedDatasetStats)} 项`}
-                          </span>
-                        </InspectorRow>
-                      </div>
-                    </div>
-
-                    <div className="border-t border-border/60 pt-2">
-                      <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground/72">操作中心</div>
-                      <div className="grid grid-cols-2 gap-1">
-                        <DatasetOperationTile
-                          icon={FileSearch}
-                          title="预检扫描"
-                          description="检查文档质量、重复与结构风险"
-                          onClick={() => router.push(`/datasets/${selectedDataset.id}/precheck`)}
-                        />
-                        <DatasetOperationTile
-                          icon={BarChart3}
-                          title="数据画像"
-                          description="查看规模、分布和结构特征"
-                          onClick={() => router.push(`/datasets/${selectedDataset.id}/profile`)}
-                        />
-                        <DatasetOperationTile
-                          icon={Search}
-                          title="检索测试"
-                          description="验证检索召回与命中质量"
-                          onClick={() => router.push(`/knowledge?tab=retrieval&dataset=${selectedDataset.id}`)}
-                        />
-                        <DatasetOperationTile
-                          icon={Settings2}
-                          title="入库策略"
-                          description="调整默认入库与治理配置"
-                          onClick={() => router.push(`/datasets/${selectedDataset.id}/ingestion`)}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="border-t border-border/60 pt-2">
-                      <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground/72">扩展能力</div>
-                      <div className="grid grid-cols-4 gap-1">
-                        <DatasetCapabilityItem
-                          icon={Layers}
-                          title="Workflow"
-                          description="查看流程编排与阶段状态"
-                          onClick={() => router.push(`/datasets/${selectedDataset.id}/workflow`)}
-                        />
-                        <DatasetCapabilityItem
-                          icon={Table2}
-                          title="标签 / TAG"
-                          description="管理结构化标签与表格资产"
-                          onClick={() => router.push(`/datasets/${selectedDataset.id}/tables`)}
-                        />
-                        <DatasetCapabilityItem
-                          icon={Database}
-                          title="DB 目录"
-                          description="浏览数据库映射与资产目录"
-                          onClick={() => router.push(`/datasets/${selectedDataset.id}/db-catalog`)}
-                        />
-                        <DatasetCapabilityItem
-                          icon={ChevronRight}
-                          title="更多"
-                          description="进入更多数据集扩展入口"
-                          onClick={() => router.push(`/datasets/${selectedDataset.id}/profile`)}
-                        />
-                      </div>
-                    </div>
-                </motion.div>
-              </aside>
-            ) : null}
+            <Select value={sortBy} onValueChange={(value) => setSortBy(value as 'default' | 'name_asc')}>
+              <SelectTrigger className={styles.sort} aria-label="排序方式">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">最近创建</SelectItem>
+                <SelectItem value="name_asc">名称 A–Z</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={styles.refresh}
+              aria-label="刷新数据集"
+              title="刷新数据集"
+              onClick={() => { detachPromise(refreshDatasets()) }}
+              disabled={isRefreshing}
+            >
+              <RefreshCw className={cn('size-4', isRefreshing && 'animate-spin motion-reduce:animate-none')} />
+            </Button>
           </div>
         </div>
-      </PageScaffold>
+
+        {hasActiveFilters ? (
+          <div className={styles.filterSummary} role="status">
+            <span>{isLoading ? '正在筛选…' : `找到 ${displayedTotal.toLocaleString()} 个数据集`}</span>
+            <Button variant="ghost" size="sm" onClick={clearFilters}>清除筛选</Button>
+          </div>
+        ) : null}
+
+        <div className={styles.workspace} data-testid="datasets-workspace">
+          <div className={cn(styles.tableScroll, 'custom-scrollbar')} data-dataset-catalog-scroll="true" tabIndex={0} role="region" aria-label="数据集列表">
+            <table className={styles.table} aria-label="数据集" aria-busy={isRefreshing}>
+              <colgroup>
+                <col className={styles.nameColumn} />
+                <col className={styles.statusColumn} />
+                <col className={styles.numericColumn} />
+                <col className={styles.chunksColumn} />
+                <col className={styles.accessColumn} />
+                <col className={styles.updatedColumn} />
+                <col className={styles.actionsColumn} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th scope="col">数据集名称</th>
+                  <th scope="col">状态</th>
+                  <th scope="col" className={cn(styles.numeric, styles.desktopColumn)}>文档量</th>
+                  <th scope="col" className={cn(styles.numeric, styles.chunks, styles.desktopColumn)}>切块量</th>
+                  <th scope="col" className={styles.desktopColumn}>访问权限</th>
+                  <th scope="col" className={cn(styles.updated, styles.desktopColumn)}>最近处理</th>
+                  <th scope="col" className={styles.actionHeading}><span className={styles.actionLabel}>操作</span><span className="sr-only md:hidden">操作</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  <tr className={styles.stateRow}><td colSpan={7}>
+                    <div className={styles.loading} role="status">
+                      <Loader2 className="size-5 animate-spin motion-reduce:animate-none" />
+                      加载数据集…
+                    </div>
+                  </td></tr>
+                ) : datasetsQuery.isError ? (
+                  <tr className={styles.stateRow}><td colSpan={7}>
+                    <EmptyState icon={AlertCircle} iconClassName="text-destructive" title="数据集加载失败" description="请稍后重试。" className={styles.empty}>
+                      <Button variant="outline" onClick={() => { detachPromise(refreshDatasets()) }} disabled={isRefreshing}>重新加载</Button>
+                    </EmptyState>
+                  </td></tr>
+                ) : items.length === 0 ? (
+                  <tr className={styles.stateRow}><td colSpan={7}>
+                    <EmptyState
+                      icon={DatasetIcon}
+                      title={hasActiveFilters ? '未找到匹配的数据集' : '暂无数据集'}
+                      description={hasActiveFilters ? '试试其他关键词，或清除筛选。' : '新建数据集，开始整理文档。'}
+                      className={styles.empty}
+                    >
+                      {hasActiveFilters
+                        ? <Button variant="outline" onClick={clearFilters}>清除筛选</Button>
+                        : <Button onClick={() => { resetForm(); setCreateOpen(true) }}>新建数据集</Button>}
+                    </EmptyState>
+                  </td></tr>
+                ) : items.map((dataset) => {
+                  const stats = dataset.ingestion_summary
+                  const permission = PERMISSION_CONFIG[dataset.permission] || PERMISSION_CONFIG.all_team_members
+                  const PermissionIcon = permission.icon
+                  const isActive = selectedDataset?.id === dataset.id
+                  return (
+                    <tr
+                      key={dataset.id}
+                      data-dataset-row={dataset.id}
+                      data-selected={isActive}
+                      onClick={() => setSelectedDatasetId(dataset.id)}
+                    >
+                      <td>
+                        <div className={styles.dataset}>
+                          <DatasetIcon appearance="color" className={styles.datasetIcon} />
+                          <div className={styles.datasetCopy}>
+                            <button
+                              ref={(node) => { if (node) rowButtons.current.set(dataset.id, node); else rowButtons.current.delete(dataset.id) }}
+                              type="button"
+                              className={cn('focus-ring', styles.datasetName)}
+                              aria-label={`查看 ${dataset.name} 详情`}
+                              aria-haspopup="dialog"
+                              aria-expanded={inspectorOpen && isActive}
+                              title={dataset.name}
+                              onClick={() => openDetails(dataset)}
+                            >
+                              <span>{dataset.name}</span>
+                              {isActive ? <Check className={styles.selectedCheck} /> : null}
+                            </button>
+                            {dataset.description ? <p className={styles.description} title={dataset.description}>{dataset.description}</p> : null}
+                            <span className={styles.mobileMeta}>{Number(stats?.total_documents || 0).toLocaleString()} 篇文档</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td><DatasetStatus dataset={dataset} /></td>
+                      <td className={cn(styles.numeric, styles.desktopColumn)}>{Number(stats?.total_documents || 0).toLocaleString()}</td>
+                      <td className={cn(styles.numeric, styles.chunks, styles.desktopColumn)}>{Number(stats?.total_chunks || 0).toLocaleString()}</td>
+                      <td className={styles.desktopColumn}>
+                        <span className={styles.permission}><PermissionIcon className="size-3.5" />{permission.label}</span>
+                      </td>
+                      <td className={cn(styles.updated, styles.desktopColumn)}>
+                        <time dateTime={stats?.last_processed_at || undefined} title={stats?.last_processed_at ? new Date(stats.last_processed_at).toLocaleString() : '尚无处理记录'}>
+                          {formatRelativeTime(stats?.last_processed_at)}
+                        </time>
+                      </td>
+                      <td>
+                        <div className={styles.rowActions}>
+                          <Button asChild variant="ghost" size="sm" className={styles.rowAction}>
+                            <Link href={`/datasets/${dataset.id}/ingestion`} aria-label={`向 ${dataset.name} 入库`}><Ingestion className="size-3.5" />入库</Link>
+                          </Button>
+                          <Button asChild variant="ghost" size="sm" className={styles.rowAction}>
+                            <Link href={`/knowledge?tab=retrieval&dataset=${dataset.id}`} aria-label={`在 ${dataset.name} 中检索`}><FileSearch className="size-3.5" />检索</Link>
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className={styles.more} aria-label={`${dataset.name}的更多操作`} title="更多操作">
+                                <MoreHorizontal className="size-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className={styles.menu}>
+                              <DropdownMenuItem onSelect={() => openDetails(dataset)}><DatasetIcon className="size-4" />数据集详情</DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => openEdit(dataset)}><Pencil className="size-4" />编辑设置</DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem className={styles.mobileMenuAction} onSelect={() => router.push(`/datasets/${dataset.id}/ingestion`)}><Ingestion className="size-4" />入库管理</DropdownMenuItem>
+                              <DropdownMenuItem className={styles.mobileMenuAction} onSelect={() => router.push(`/knowledge?tab=retrieval&dataset=${dataset.id}`)}><FileSearch className="size-4" />检索测试</DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => router.push(`/datasets/${dataset.id}/precheck`)}><FileSearch className="size-4" />文档预检</DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => router.push(`/datasets/${dataset.id}/profile`)}><BarChart3 className="size-4" />数据画像</DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => router.push(`/datasets/${dataset.id}/workflow`)}><Layers className="size-4" />流程编排</DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => router.push(`/datasets/${dataset.id}/tables`)}><Table2 className="size-4" />表格资产</DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => router.push(`/datasets/${dataset.id}/db-catalog`)}><Database className="size-4" />数据库目录</DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem className="text-destructive focus:bg-destructive/10 focus:text-destructive" onSelect={() => requestDelete(dataset)}><Trash2 className="size-4" />删除数据集</DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <footer className={styles.tableFooter} data-task-center-dock="true">
+          <span className={styles.total} role="status" aria-live="polite">{isLoading ? '加载中…' : datasetsQuery.isError ? '加载失败' : <>共 <strong>{displayedTotal.toLocaleString()}</strong> 个数据集</>}</span>
+          <div className={styles.pagination}>
+            <Select value={String(pageSize)} onValueChange={(value) => { setPageSize(Number(value)); setCurrentPage(1) }}>
+              <SelectTrigger className={styles.pageSize} aria-label="每页数据集数量"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">10 条 / 页</SelectItem>
+                <SelectItem value="20">20 条 / 页</SelectItem>
+                <SelectItem value="50">50 条 / 页</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className={styles.pageControls}>
+              <Button variant="ghost" size="icon" aria-label="上一页" className={styles.pageArrow} disabled={isLoading || currentPage <= 1} onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}><ChevronLeft className="size-4" /></Button>
+              <span className={styles.pageNumber} aria-label={`第 ${totalPages === 0 ? 0 : currentPage} 页，共 ${totalPages} 页`}>{totalPages === 0 ? '0' : currentPage}</span>
+              <span className={styles.pageOf}>/ {totalPages}</span>
+              <Button variant="ghost" size="icon" aria-label="下一页" className={styles.pageArrow} disabled={isLoading || totalPages === 0 || currentPage >= totalPages} onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}><ChevronRight className="size-4" /></Button>
+            </div>
+          </div>
+        </footer>
+      </section>
+
+      <Sheet open={inspectorOpen && Boolean(selectedDataset)} onOpenChange={setInspectorOpen}>
+        <SheetContent className={styles.detailSheet} onCloseAutoFocus={restoreRowFocus}>
+          {selectedDataset ? (
+            <>
+              <SheetHeader className={styles.detailHeader}>
+                <SheetTitle>数据集详情</SheetTitle>
+                <SheetDescription className="sr-only">查看数据集信息，调整访问权限和默认管线</SheetDescription>
+              </SheetHeader>
+              <div data-testid="dataset-inspector" className={cn(styles.detailBody, 'custom-scrollbar')}>
+                <div className={styles.detailIdentity}>
+                  <DatasetIcon appearance="color" className="size-7" />
+                  <h2>{selectedDataset.name}</h2>
+                  <DatasetStatus dataset={selectedDataset} />
+                </div>
+                {selectedDataset.description ? <p className={styles.detailDescription}>{selectedDataset.description}</p> : null}
+                <dl className={styles.detailFields}>
+                  <DatasetDetailRow label="数据集 ID"><span className={styles.datasetId}>{selectedDataset.id}</span></DatasetDetailRow>
+                  <DatasetDetailRow label="文档量">{Number(selectedDatasetStats?.total_documents || 0).toLocaleString()}</DatasetDetailRow>
+                  <DatasetDetailRow label="切块量">{Number(selectedDatasetStats?.total_chunks || 0).toLocaleString()}</DatasetDetailRow>
+                  <DatasetDetailRow label="最近处理">{formatRelativeTime(selectedDatasetStats?.last_processed_at)}</DatasetDetailRow>
+                  <DatasetDetailRow label="访问权限">
+                    <Select
+                      value={selectedDataset.permission}
+                      disabled={permissionUpdatePending}
+                      onValueChange={(value) => detachPromise(handleInspectorPermissionChange(selectedDataset, value as PermissionEnum))}
+                    >
+                      <SelectTrigger aria-label="访问权限" className={styles.detailSelect}><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="only_me">仅自己</SelectItem>
+                        <SelectItem value="all_team_members">全员可见</SelectItem>
+                        <SelectItem value="partial_members">部分成员</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </DatasetDetailRow>
+                  <DatasetDetailRow label="默认管线">
+                    <div className={styles.pipelineControl}>
+                      <span>{selectedDataset.pipeline ? '已启用' : '未启用'}</span>
+                      <Switch
+                        checked={Boolean(selectedDataset.pipeline)}
+                        disabled={pipelineTogglePending}
+                        onCheckedChange={(nextChecked) => detachPromise(handleToggleDefaultPipeline(selectedDataset, nextChecked))}
+                        aria-label={selectedDataset.pipeline ? '关闭默认管线' : '启用默认管线'}
+                      />
+                    </div>
+                  </DatasetDetailRow>
+                </dl>
+                <nav className={styles.detailLinks} aria-label="数据集操作">
+                  {([
+                    { label: '入库管理', icon: Ingestion, href: `/datasets/${selectedDataset.id}/ingestion` },
+                    { label: '检索测试', icon: FileSearch, href: `/knowledge?tab=retrieval&dataset=${selectedDataset.id}` },
+                    { label: '文档预检', icon: FileSearch, href: `/datasets/${selectedDataset.id}/precheck` },
+                    { label: '数据画像', icon: BarChart3, href: `/datasets/${selectedDataset.id}/profile` },
+                  ]).map(({ label, icon: Icon, href }) => (
+                    <Button key={href} variant="ghost" onClick={() => router.push(href)}><Icon className="size-4" />{label}<ChevronRight className="ml-auto size-4" /></Button>
+                  ))}
+                </nav>
+              </div>
+              <div className={styles.detailFooter}>
+                <Button variant="outline" onClick={() => requestDelete(selectedDataset)}><Trash2 className="size-4" />删除</Button>
+                <Button onClick={() => { setInspectorOpen(false); openEdit(selectedDataset) }}><Pencil className="size-4" />编辑设置</Button>
+              </div>
+            </>
+          ) : null}
+        </SheetContent>
+      </Sheet>
 
       {/* Delete confirmation */}
       <AlertDialog
@@ -1222,7 +840,7 @@ export default function DatasetsPage() {
           setDeleteDocumentCountHint(null)
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent onCloseAutoFocus={restoreRowFocus}>
           <AlertDialogHeader>
             <AlertDialogTitle>删除数据集？</AlertDialogTitle>
             <AlertDialogDescription>
@@ -1273,7 +891,7 @@ export default function DatasetsPage() {
         setEditOpen(open)
         if (!open) { setEditing(null); resetForm() }
       }}>
-        <DialogContent className="max-w-xl p-0 sm:rounded-xl">
+        <DialogContent className="max-w-xl p-0 sm:rounded-xl" onCloseAutoFocus={restoreRowFocus}>
           <div className="flex max-h-[min(88vh,860px)] flex-col">
             <DialogHeader className="border-b border-border/60 px-6 pt-6 pb-4">
               <DialogTitle>编辑数据集</DialogTitle>
@@ -1294,197 +912,59 @@ export default function DatasetsPage() {
   )
 }
 
-function DatasetMetaPill({
-  icon: Icon,
-  label,
-  value,
-  className,
-  valueClassName,
-}: Readonly<{
-  icon: LucideIcon
-  label: string
-  value: string
-  className?: string
-  valueClassName?: string
-}>) {
-  const tone = getDatasetIconTone(Icon)
-  return (
-    <div className={cn('inline-flex min-w-0 items-start gap-1.5 px-0 py-0 text-[10px]', className)}>
-      <div className={cn('mt-0.5 flex size-[18px] shrink-0 items-center justify-center rounded-md border', tone.containerClassName)}>
-        <Icon className="size-2" />
-      </div>
-      <div className="min-w-0">
-        <div className="truncate text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/50">{label}</div>
-        <div className={cn('truncate text-[10px] font-medium leading-none text-foreground/82', valueClassName)}>{value}</div>
-      </div>
-    </div>
-  )
+function DatasetDetailRow({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
+  return <div className={styles.detailRow}><dt>{label}</dt><dd>{children}</dd></div>
 }
 
-function DatasetFilterButton({
-  label,
-  count,
-  active,
-  onClick,
-  icon: Icon,
-  dotClassName,
-}: Readonly<{
-  label: string
-  count: number
-  active?: boolean
-  onClick: () => void
-  icon?: LucideIcon
-  dotClassName?: string
-}>) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'flex w-full items-center justify-between rounded-md border px-2.5 py-1.5 text-left transition-colors',
-        active
-          ? 'border-foreground/10 bg-info/[0.06] text-info shadow-none'
-          : 'border-transparent text-foreground/78 hover:border-border/60 hover:bg-muted/40'
-      )}
-    >
-      <span className="flex min-w-0 items-center gap-2">
-        {Icon ? (
-          <span className={cn('flex size-4 shrink-0 items-center justify-center rounded-md border', getDatasetIconTone(Icon).containerClassName)}>
-            <Icon className="size-2.5 shrink-0" />
-          </span>
-        ) : (
-          <span className={cn('size-1.5 rounded-full shrink-0', dotClassName || 'bg-muted-foreground/40')} />
-        )}
-        <span className="truncate text-[11px] font-medium">{label}</span>
-      </span>
-      <span className={cn(
-        'rounded-full px-1.5 py-0.5 text-[9px] font-semibold',
-        active ? 'bg-background/90 text-info' : 'bg-background/80 text-foreground/76'
-      )}>
-        {count}
-      </span>
-    </button>
-  )
+function flattenCategories(items: DatasetCategoryNode[], depth = 0): Array<{ id: string; name: string; depth: number }> {
+  return items.flatMap((item) => [{ id: item.id, name: item.name, depth }, ...flattenCategories(item.children || [], depth + 1)])
 }
 
-function InspectorRow({
-  icon: Icon,
-  label,
-  children,
-}: Readonly<{
-  icon: LucideIcon
-  label: string
-  children: ReactNode
-}>) {
-  const tone = getDatasetIconTone(Icon)
+function DatasetCategoryFilter({ selectedId, onSelect }: Readonly<{ selectedId: string | null; onSelect: (id: string | null) => void }>) {
+  const [open, setOpen] = useState(false)
+  const [managerOpen, setManagerOpen] = useState(false)
+  const trigger = useRef<HTMLButtonElement>(null)
+  const categories = useQuery({
+    queryKey: queryKeys.datasetCategories.tree,
+    queryFn: () => datasetCategoryApi.listTree(),
+  })
+  const items = useMemo(() => flattenCategories(categories.data?.items || []), [categories.data])
+  const label = selectedId ? items.find((item) => item.id === selectedId)?.name || '当前分类' : '全部分类'
+  const select = (id: string | null) => { onSelect(id); setOpen(false) }
   return (
-    <div className="flex items-center justify-between gap-2 py-1">
-      <div className="flex min-w-0 items-center gap-2">
-        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground/56">
-          <span className={cn('flex size-4 items-center justify-center rounded-md border', tone.containerClassName)}>
-            <Icon className="size-2.5" />
-          </span>
-          <span className="truncate">{label}</span>
-        </div>
-      </div>
-      <div className="min-w-0 text-right text-[10px] font-semibold text-foreground/84">
-        {children}
-      </div>
-    </div>
-  )
-}
-
-function DatasetOperationTile({
-  icon: Icon,
-  title,
-  description,
-  onClick,
-}: Readonly<{
-  icon: LucideIcon
-  title: string
-  description: string
-  onClick: () => void
-}>) {
-  const tone = getDatasetIconTone(Icon)
-  return (
-    <button
-      type="button"
-      className="focus-ring group relative flex min-h-[70px] flex-col items-start justify-between rounded-lg border border-foreground/10 bg-background/70 px-2 py-1.5 transition-colors duration-200 hover:border-foreground/15 hover:bg-muted/20 active:scale-[0.98]"
-      onClick={onClick}
-      aria-label={`${title}：${description}`}
-    >
-      <div className={cn('flex size-5 items-center justify-center rounded-md border transition-all duration-200 group-hover:bg-primary/10 group-hover:text-primary', tone.containerClassName)}>
-        <Icon className="size-3" />
-      </div>
-      <div className="min-w-0 text-left">
-        <div className="truncate text-[11px] font-semibold text-foreground/84 transition-colors group-hover:text-primary">
-          {title}
-        </div>
-        <div className="mt-0.5 line-clamp-2 text-[10px] leading-[0.95rem] text-muted-foreground/72">
-          {description}
-        </div>
-      </div>
-    </button>
-  )
-}
-
-function DatasetCapabilityItem({
-  icon: Icon,
-  title,
-  description,
-  onClick,
-}: Readonly<{
-  icon: LucideIcon
-  title: string
-  description: string
-  onClick: () => void
-}>) {
-  const tone = getDatasetIconTone(Icon)
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={description}
-      className="focus-ring group relative flex min-h-[38px] items-center gap-1.5 rounded-md border border-foreground/10 bg-background/70 px-2 py-1.5 transition-colors duration-200 hover:border-foreground/15 hover:bg-muted/20 active:scale-[0.98]"
-    >
-      <div className={cn('flex size-4 shrink-0 items-center justify-center rounded-md border transition-colors duration-200 group-hover:text-primary', tone.containerClassName)}>
-        <Icon className="size-2.5" />
-      </div>
-      <span className="truncate text-[10px] font-medium text-foreground/84 transition-colors duration-200 group-hover:text-primary">
-        {title}
-      </span>
-    </button>
-  )
-}
-
-function DetailStat({
-  label,
-  value,
-  meta,
-  tone,
-}: Readonly<{
-  label: string
-  value: string
-  meta?: string
-  tone: 'success' | 'warning' | 'danger' | 'neutral'
-}>) {
-  return (
-    <div className="rounded-md border border-foreground/10 bg-background/70 px-2 py-1.5 transition-colors duration-200 hover:border-foreground/15 hover:bg-background">
-      <div className="flex items-center gap-1">
-        <span
-          className={cn(
-            'size-1 rounded-full',
-            tone === 'success' && 'bg-success',
-            tone === 'warning' && 'bg-warning',
-            tone === 'danger' && 'bg-destructive',
-            tone === 'neutral' && 'bg-border'
-          )}
-        />
-        <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-foreground/72">{label}</span>
-      </div>
-      <div className="mt-1 text-[11px] font-semibold text-foreground/86">{value}</div>
-      {meta ? <div className="mt-0.5 text-[9px] text-muted-foreground/56">{meta}</div> : null}
-    </div>
+    <>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button ref={trigger} variant="outline" className={styles.categoryTrigger} aria-label="选择数据集分类" title={label}>
+            <FolderOpen className="size-4" /><span>{label}</span><ChevronDown className="size-3.5" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className={styles.categoryMenu}>
+          <div className={styles.categoryOptions} role="group" aria-label="数据集分类">
+            <Button variant="ghost" aria-pressed={!selectedId} onClick={() => select(null)}><FolderTree className="size-4" /><span>全部分类</span>{!selectedId ? <Check className="ml-auto size-3.5" /> : null}</Button>
+            {categories.isPending ? <p className={styles.categoryMessage} role="status">加载分类…</p> : null}
+            {categories.isError ? (
+              <div className={styles.categoryMessage} role="status">分类加载失败<Button variant="ghost" size="sm" onClick={() => detachPromise(categories.refetch())}>重试</Button></div>
+            ) : items.map((item) => (
+              <Button key={item.id} variant="ghost" aria-pressed={selectedId === item.id} onClick={() => select(item.id)} style={{ paddingLeft: 12 + item.depth * 16 }} title={item.name}>
+                <FolderOpen className="size-4" /><span>{item.name}</span>{selectedId === item.id ? <Check className="ml-auto size-3.5" /> : null}
+              </Button>
+            ))}
+          </div>
+          <div className={styles.categoryManage}>
+            <Button variant="ghost" onClick={() => { setOpen(false); setManagerOpen(true) }}><Settings2 className="size-4" />管理分类</Button>
+          </div>
+        </PopoverContent>
+      </Popover>
+      <Sheet open={managerOpen} onOpenChange={setManagerOpen}>
+        <SheetContent className={styles.categorySheet} onCloseAutoFocus={(event) => { event.preventDefault(); trigger.current?.focus() }}>
+          <SheetHeader className={styles.detailHeader}><SheetTitle>管理分类</SheetTitle><SheetDescription>新建或删除数据集分类</SheetDescription></SheetHeader>
+          <div className={cn(styles.detailBody, 'custom-scrollbar')}>
+            <DatasetCategoryTree selectedId={selectedId} onSelect={onSelect} />
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   )
 }
 

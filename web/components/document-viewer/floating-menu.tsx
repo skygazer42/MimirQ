@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Sparkles, Languages, FileText } from "lucide-react"
+import { Sparkles, Languages, FileText } from "@/components/icons"
 import { Button } from "@/components/ui/button"
 import { useRouter } from "@/i18n/navigation"
 import { globalEventBus } from "@/lib/event-bus"

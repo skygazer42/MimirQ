@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { ChevronDown, RefreshCw, Save } from 'lucide-react'
+import { ChevronDown, RefreshCw, Save } from '@/components/icons'
 
 import { settingsApi, type KGConfig, type PromptTemplate } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'

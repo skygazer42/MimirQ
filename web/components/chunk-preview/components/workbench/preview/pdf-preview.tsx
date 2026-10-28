@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Remote } from 'comlink'
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle } from '@/components/icons'
 import dynamic from 'next/dynamic'
 import { useTranslations } from 'next-intl'
 

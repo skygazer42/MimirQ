@@ -1,0 +1,11 @@
+{
+  "document": "02 AI工程师能力贡献标准（0615） - 认证版.xlsx",
+  "parsedName": "02 AI工程师能力贡献标准（0615） - 认证版.md",
+  "sourceCharacters": 7807,
+  "preview": {"strategy":"langchain_recursive","size":1000,"overlap":200,"chunks":14,"average":577,"p95":983,"coverage":"99%","overlapWaste":"4%","gaps":10,"maximumGap":26,"durationMs":189,"at":"10/25 01:52"},
+  "options":{"automaticPreview":true,"includeSource":true,"sourceLimit":100000,"chunksLimit":2000,"parseCache":true,"customPipeline":false,"governance":false,"vector":true,"fullText":true,"contextPrefix":false,"knowledgeGraph":true,"eventIndex":true,"entityIndex":true},
+  "preset":"当前参数",
+  "savedPresets":0,
+  "plugins":"未配置",
+  "provenance":"配置和上次预览来自 2026-10-25 实际页面及用户截图。当前正在编辑的策略与上次预览可能不同；三个静态方案统一展示最近已生成的递归切分预览及其 1000/200 参数以比较结构，不宣称提交了新预览或入库。"
+}

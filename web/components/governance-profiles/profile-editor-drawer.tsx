@@ -1,7 +1,7 @@
 'use client'
 
 import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useState } from 'react'
-import { Braces, FileText, Loader2, Play, Save } from 'lucide-react'
+import { Braces, FileText, Loader2, Play, Save } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -280,6 +280,7 @@ export function ProfileEditorDrawer({
   const [name, setName] = useState('')
   const [key, setKey] = useState('')
   const [description, setDescription] = useState('')
+  const [basePayload, setBasePayload] = useState<GovernanceProfilePayload>(defaultPayload)
   const [inputFormats, setInputFormats] = useState<Array<'markdown' | 'html'>>(['markdown'])
   const [pipelinePatch, setPipelinePatch] = useState<DocumentPipelineOptions>({})
   const [regexRules, setRegexRules] = useState<RegexRuleModel[]>([])
@@ -299,12 +300,12 @@ export function ProfileEditorDrawer({
 
   const payload: GovernanceProfilePayload = useMemo(
     () => ({
-      version: '1',
+      ...basePayload,
       input_formats: inputFormats.length ? inputFormats : ['markdown'],
       pipeline_patch: pipelinePatch,
       regex_rules: regexRules,
     }),
-    [inputFormats, pipelinePatch, regexRules]
+    [basePayload, inputFormats, pipelinePatch, regexRules]
   )
 
   const selectedRulePacks = useMemo(
@@ -317,6 +318,7 @@ export function ProfileEditorDrawer({
     setName('')
     setKey('')
     setDescription('')
+    setBasePayload(defaultPayload())
     setInputFormats(['markdown'])
     setPipelinePatch(defaultPayload().pipeline_patch)
     setRegexRules([])
@@ -341,6 +343,7 @@ export function ProfileEditorDrawer({
       setName(seeded ? String(seeded.name || '') : '')
       setKey(seeded && typeof seeded.key === 'string' ? String(seeded.key || '') : '')
       setDescription(seeded ? String(seeded.description || '') : '')
+      setBasePayload(p)
       setInputFormats(p.input_formats)
       setPipelinePatch(p.pipeline_patch)
       setRegexRules(p.regex_rules)
@@ -365,6 +368,7 @@ export function ProfileEditorDrawer({
         setName(String(prof.name || ''))
         setKey(String(prof.key || ''))
         setDescription(String(prof.description || ''))
+        setBasePayload(prof.payload)
         setInputFormats(prof.payload?.input_formats || ['markdown'])
         setPipelinePatch(prof.payload?.pipeline_patch ?? {})
         setRegexRules(prof.payload?.regex_rules ?? [])

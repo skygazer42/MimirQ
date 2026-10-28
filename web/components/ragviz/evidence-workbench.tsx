@@ -1,23 +1,20 @@
 'use client'
-
-import { useCallback, useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { Download, Loader2, Search, X } from 'lucide-react'
-import { useTranslations } from 'next-intl'
-import { toast } from 'sonner'
-
-import { AuthImage, AuthImageLink } from '@/components/auth-image'
-import type { Citation, EvidenceRetrieveResponse } from '@/types'
-import { datasetApi, ragApi } from '@/lib/api'
-import { formatApiError } from '@/lib/api-errors'
-import { resolveSafeCitationImageUrl } from '@/lib/citation-images'
-import { queryKeys } from '@/lib/query-keys'
-import { cn, detachPromise } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Panel } from '@/components/ui/panel'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Download, Loader2, Search } from '@/components/icons';
+import { useTranslations } from 'next-intl';
+import { toast } from 'sonner';
+import { AuthImage, AuthImageLink } from '@/components/auth-image';
+import type { Citation, EvidenceRetrieveResponse } from '@/types';
+import { datasetApi, ragApi } from '@/lib/api';
+import { formatApiError } from '@/lib/api-errors';
+import { resolveSafeCitationImageUrl } from '@/lib/citation-images';
+import { queryKeys } from '@/lib/query-keys';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { OperationalWorkspace, DirectoryWorkspace, WorkspaceMetrics, WorkspaceNotice, workspaceStyles as ws } from '@/components/ui/operational-workspace';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 
 type RetrievalProfile = 'recall50' | 'coverage80' | 'recall20'
 
@@ -95,7 +92,7 @@ function toCitation(value: unknown): Citation | null {
   return citation
 }
 
-export function EvidenceWorkbench() {
+export function EvidenceWorkbench({ tools }: { tools?: ReactNode }) {
   const t = useTranslations('EvidenceWorkbench')
 
   const DATASET_ALL = '__all__'
@@ -107,7 +104,12 @@ export function EvidenceWorkbench() {
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const [pane, setPane] = useState<'directory' | 'detail'>('directory')
+  const [toolsOpen, setToolsOpen] = useState(false)
   const [result, setResult] = useState<EvidenceRetrieveResponse | null>(null)
+  const intent = useMemo(() => ({ datasetScope, profile, query }), [datasetScope, profile, query])
+  const intentRef = useRef(intent)
+  useLayoutEffect(() => { intentRef.current = intent; setResult(null); setError(null); setRunning(false) }, [intent])
 
   const datasetsQuery = useQuery({
     queryKey: queryKeys.datasets.exhaustive({ purpose: 'evidence-workbench' }),
@@ -131,9 +133,11 @@ export function EvidenceWorkbench() {
   }, [])
 
   const run = useCallback(async () => {
+    const context = intentRef.current
     const q = query.trim()
     if (!q) return
 
+    setPane('detail')
     setRunning(true)
     setError(null)
     setResult(null)
@@ -160,7 +164,8 @@ export function EvidenceWorkbench() {
         },
       })
 
-      setResult(res || null)
+      if (intentRef.current !== context) return
+      setResult(res)
       if (res?.has_evidence) {
         toast.success(t("toasts.foundEvidence"))
       } else if (res?.abstain_triggered) {
@@ -169,9 +174,9 @@ export function EvidenceWorkbench() {
         toast.message(t("toasts.noEvidence"))
       }
     } catch (error: unknown) {
-      setError(formatApiError(error, t("errors.retrieveFailed")))
+      if (intentRef.current === context) setError(formatApiError(error, t("errors.retrieveFailed")))
     } finally {
-      setRunning(false)
+      if (intentRef.current === context) setRunning(false)
     }
   }, [datasetId, profile, query, t])
 
@@ -210,242 +215,34 @@ export function EvidenceWorkbench() {
   const topRel = toMetricLabel(metrics?.top_relevance_score)
   const elapsed = toMetricLabel(metrics?.retrieval_elapsed_sec)
 
-  return (
-    <div className="space-y-4">
-      <Panel variant="glass" className="p-4">
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col md:flex-row gap-3 md:items-end">
-            <div className="flex-1 min-w-0">
-              <div className="text-xs text-muted-foreground mb-1">{t("controls.datasetScope")}</div>
-              <Select value={datasetScope} onValueChange={(v) => setDatasetScope(String(v))}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder={t("controls.datasetPlaceholder")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={DATASET_ALL}>{t("controls.allDocuments")}</SelectItem>
-                  {datasetOptions.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>
-                      {d.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {(() => {
-    if (datasetsLoading) {
-        return (<div className="mt-1 text-[11px] text-muted-foreground">{t("controls.loadingDatasets")}</div>);
-    }
-    else if (datasetsError) {
-            return (<div className="mt-1 text-[11px] text-destructive">{datasetsError}</div>);
-        }
-        else {
-            return null;
-        }
-})()}
-            </div>
 
-            <div className="w-full md:w-[220px]">
-              <div className="text-xs text-muted-foreground mb-1">{t("controls.profile")}</div>
-              <Select value={profile} onValueChange={(v) => setProfile(v as RetrievalProfile)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder={t("controls.profilePlaceholder")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="recall50">{t("profiles.recall50")}</SelectItem>
-                  <SelectItem value="coverage80">{t("profiles.coverage80")}</SelectItem>
-                  <SelectItem value="recall20">{t("profiles.recall20")}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="flex flex-col md:flex-row gap-3 md:items-end">
-            <div className="flex-1 min-w-0">
-              <div className="text-xs text-muted-foreground mb-1">{t("controls.query")}</div>
-              <Textarea
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={t("controls.queryPlaceholder")}
-                className="min-h-[44px]"
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button type="button" onClick={() => detachPromise(run())} disabled={!query.trim() || running}>
-                {running ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
-                    {t("actions.searching")}
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-2">
-                    <Search className="size-4" />
-                    {t("actions.search")}
-                  </span>
-                )}
-              </Button>
-
-              <Button type="button" variant="outline" onClick={reset} disabled={running && !result && !error}>
-                <span className="inline-flex items-center gap-2">
-                  <X className="size-4" />
-                  {t("actions.reset")}
-                </span>
-              </Button>
-
-              <Button type="button" variant="outline" onClick={exportPack} disabled={!result || running}>
-                <span className="inline-flex items-center gap-2">
-                  <Download className="size-4" />
-                  {t("actions.export")}
-                </span>
-              </Button>
-            </div>
-          </div>
-
-          {error ? (
-            <div className="text-[11px] text-destructive bg-destructive/10 border border-destructive/25 px-2 py-1 rounded-lg">
-              {error}
-            </div>
-          ) : null}
-        </div>
-      </Panel>
-
-      {result ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <Panel variant="glass" className="p-4 lg:col-span-1">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold">{t("results.summary.title")}</div>
-                <div className="text-xs text-muted-foreground mt-1">{t("results.summary.description")}</div>
-              </div>
-              <div
-                className={cn(
-                  'px-2 py-1 rounded-md text-xs font-mono border',
-                  (() => {
-    if (result.has_evidence) {
-        return 'bg-success/10 border-success/20 text-success';
-    }
-    else if (result.abstain_triggered) {
-            return 'bg-warning/10 border-warning/20 text-warning';
-        }
-        else {
-            return 'bg-sidebar/45 border-sidebar-border/70 text-muted-foreground';
-        }
-})()
-                )}
-                title="has_evidence / abstain"
-              >
-                has_evidence={String(Boolean(result.has_evidence))}
-              </div>
-            </div>
-
-            <div className="mt-3 space-y-2 text-xs">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-muted-foreground">{t("results.summary.abstainTriggered")}</div>
-                <div className="font-mono">{String(Boolean(result.abstain_triggered))}</div>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-muted-foreground">{t("results.summary.abstainReason")}</div>
-                <div className="font-mono max-w-[220px] truncate" title={String(result.abstain_reason || '')}>
-                  {result.abstain_reason || '-'}
-                </div>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-muted-foreground">{t("results.summary.topRelevanceScore")}</div>
-                <div className="font-mono">{topRel}</div>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-muted-foreground">{t("results.summary.retrievalElapsed")}</div>
-                <div className="font-mono">{elapsed}</div>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-muted-foreground">{t("results.summary.citations")}</div>
-                <div className="font-mono">{citations.length}</div>
-              </div>
-              <div className="pt-2">
-                <div className="text-muted-foreground text-[11px]">{t("results.summary.queryForRetrieval")}</div>
-                <Input
-                  readOnly
-                  value={result.query_for_retrieval || ''}
-                  className="mt-1 border-sidebar-border/70 bg-sidebar/40 font-mono text-[12px]"
-                />
-              </div>
-            </div>
-          </Panel>
-
-          <Panel variant="glass" className="p-4 lg:col-span-2">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold">{t("results.citations.title")}</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  {citations.length ? t("results.citations.hitsHint") : t("results.citations.emptyHits")}
-                </div>
-              </div>
-            </div>
-
-            {citations.length ? (
-              <div className="mt-3 space-y-2 max-h-[560px] overflow-auto pr-1">
-                {citations.map((c) => {
-                  const content = String(c.chunk_content || '')
-                  const safeImgUrl = c.has_image && c.img_url ? resolveSafeCitationImageUrl(c.img_url) : null
-                  const citationTitle = titleForCitation(c, t("results.citations.fallbackTitle"))
-                  return (
-                    <div
-                      key={`${String(c.document_id || '')}:${String(c.chunk_id || '')}:${String(c.page_number ?? '')}`}
-                      className={cn(
-                        'rounded-xl border border-sidebar-border/70 bg-sidebar/55 px-3 py-3 shadow-soft backdrop-blur-sm',
-                        'hover:border-primary/25 hover:bg-sidebar/70 transition-colors'
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-xs font-medium truncate" title={citationTitle}>
-                            {citationTitle}
-                          </div>
-                          {c.header_path ? (
-                            <div className="text-[11px] text-muted-foreground truncate" title={String(c.header_path)}>
-                              {c.header_path}
-                            </div>
-                          ) : null}
-                        </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          {safeImgUrl ? (
-                            <AuthImageLink
-                              src={safeImgUrl}
-                              className="shrink-0 relative h-10 w-14 rounded-md overflow-hidden border border-sidebar-border/70 bg-sidebar/40 shadow-soft/70"
-                              title="Open image"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <AuthImage
-                                src={safeImgUrl}
-                                alt="citation thumbnail"
-                                fill
-                                unoptimized
-                                sizes="56px"
-                                className="object-cover"
-                              />
-                            </AuthImageLink>
-                          ) : null}
-                          <div className="text-[11px] text-muted-foreground">{t("results.citations.scoreLabel")}</div>
-                          <div className="text-[11px] font-mono">{scoreLabel(c)}</div>
-                        </div>
-                      </div>
-
-                      {content ? (
-                        <pre className="mt-2 text-xs leading-relaxed whitespace-pre-wrap font-mono text-foreground/90 max-h-[180px] overflow-auto">
-                          {content}
-                        </pre>
-                      ) : (
-                        <div className="mt-2 text-[11px] text-muted-foreground">{t("results.citations.emptyContent")}</div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            ) : (
-              <div className="mt-4 text-sm text-muted-foreground">{t("results.citations.noCitations")}</div>
-            )}
-          </Panel>
-        </div>
-      ) : null}
-    </div>
-  )
+  const inputClass = 'h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring'
+  const queryForm = <form className="space-y-5 p-4" onSubmit={event => { event.preventDefault(); void run() }}>
+    <h2 className={ws.sectionTitle}>检索问题</h2>
+    <label className="block space-y-2 text-[13px]">数据集<select aria-label="证据数据集" className={inputClass} value={datasetScope} disabled={datasetsLoading} onChange={event => setDatasetScope(event.target.value)}><option value={DATASET_ALL}>{t('controls.allDocuments')}</option>{datasetOptions.map(dataset => <option key={dataset.id} value={dataset.id}>{dataset.name}</option>)}</select></label>
+    {datasetsError ? <WorkspaceNotice retry={() => { void datasetsQuery.refetch() }}>{datasetsError}</WorkspaceNotice> : null}
+    <label className="block space-y-2 text-[13px]">检索预设<select className={inputClass} value={profile} onChange={event => setProfile(event.target.value as RetrievalProfile)}><option value="recall50">{t('profiles.recall50')}</option><option value="coverage80">{t('profiles.coverage80')}</option><option value="recall20">{t('profiles.recall20')}</option></select></label>
+    <label className="block space-y-2 text-[13px]">问题<Textarea aria-label="检索问题" value={query} onChange={event => setQuery(event.target.value)} placeholder={t('controls.queryPlaceholder')} className="min-h-40 text-sm leading-6" onKeyDown={event => { if (!event.nativeEvent.isComposing && (event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); if (!running && query.trim()) void run() } }} /></label>
+    <div className="flex flex-wrap gap-2"><Button type="submit" disabled={!query.trim() || running}>{running ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <Search className="size-4" />}{running ? '正在检索…' : '运行检索'}</Button><Button type="button" variant="ghost" onClick={reset} disabled={running}>清空结果</Button></div>
+  </form>
+  const outcome = result?.has_evidence ? '已找到证据' : result?.abstain_triggered ? '证据不足，已拒答' : '未找到证据'
+  return <OperationalWorkspace title="证据调试" icon="rag-visualization" mode="canvas" context={datasetOptions.find(dataset => dataset.id === datasetScope)?.name || '全部文档'} actions={<><Button variant="outline" onClick={exportPack} disabled={!result || running}><Download className="size-4" /><span className="hidden sm:inline">导出结果</span></Button>{tools ? <Button variant="ghost" onClick={() => setToolsOpen(true)}>高级工具</Button> : null}</>}>
+    <DirectoryWorkspace directory={queryForm} pane={pane} onPaneChange={setPane} directoryLabel="问题与范围" detailLabel="引用证据">
+      {error ? <WorkspaceNotice retry={() => { void run() }} retryLabel="重新检索" pending={running}>{error}</WorkspaceNotice> : null}
+      {running ? <p role="status" className="py-12 text-sm text-muted-foreground">正在检索当前问题的证据…</p> : result ? <>
+        <div className="border-b border-border py-4"><h2 className={cn('text-lg font-semibold', result.abstain_triggered && !result.has_evidence ? ws.warning : 'text-foreground')}>{outcome}</h2><p className="mt-2 break-words text-sm leading-6 text-muted-foreground">{result.query_for_retrieval || query}</p>{result.abstain_reason ? <p className="mt-2 text-sm leading-6">{result.abstain_reason}</p> : null}</div>
+        <WorkspaceMetrics items={[{ label: '可读引用', value: citations.length }, { label: '最高相关分', value: topRel }, { label: '检索耗时（秒）', value: elapsed }]} />
+        <section aria-label="引用证据列表">{citations.map(citation => {
+          const title = titleForCitation(citation, t('results.citations.fallbackTitle'))
+          const image = citation.has_image && citation.img_url ? resolveSafeCitationImageUrl(citation.img_url) : null
+          return <article key={`${citation.document_id}:${citation.chunk_id || ''}:${citation.page_number ?? ''}`} className="border-b border-border py-5"><header className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h3 className="break-words text-[15px] font-semibold leading-6">{title}</h3>{citation.header_path ? <p className="mt-1 break-words text-[13px] text-muted-foreground">{citation.header_path}</p> : null}</div><span className="whitespace-nowrap text-[13px] text-muted-foreground">相关分 <b className="font-medium tabular-nums text-foreground">{scoreLabel(citation)}</b></span></header>
+            {image ? <AuthImageLink src={image} className="relative mt-4 block h-32 w-48 overflow-hidden rounded-md border border-border" title="查看引用图片"><AuthImage src={image} alt="引用图片" fill unoptimized sizes="192px" className="object-contain" /></AuthImageLink> : null}
+            {citation.chunk_content ? <p className="mt-4 whitespace-pre-wrap break-words text-sm leading-7">{citation.chunk_content}</p> : <p className="mt-4 text-[13px] text-muted-foreground">当前引用未返回正文</p>}
+          </article>
+        })}{!citations.length ? <div className={ws.empty}><h2>{result.abstain_triggered ? '当前问题没有足够的引用证据' : '当前结果未返回可读引用'}</h2><p>可调整问题表达或数据集范围后重新检索。</p></div> : null}</section>
+        <details className="py-5 text-[13px]"><summary className="cursor-pointer font-medium">原始检索结果</summary><pre tabIndex={0} className="mt-4 max-h-96 overflow-auto bg-muted/30 p-4 text-xs leading-6">{JSON.stringify(result, null, 2)}</pre></details>
+      </> : !error ? <div className={ws.empty}><h2>输入问题，查看检索证据</h2><p>选择范围与检索预设后运行；这里展示引用，不生成回答。</p></div> : null}
+    </DirectoryWorkspace>
+    <Dialog open={toolsOpen} onOpenChange={setToolsOpen}><DialogContent className={cn(ws.dialog, ws.wideDialog)} aria-describedby={undefined}><DialogHeader className={ws.dialogHeader}><DialogTitle>证据高级工具</DialogTitle></DialogHeader><div className={ws.dialogBody}>{tools}</div><DialogFooter className={ws.dialogFooter}><Button variant="outline" onClick={() => setToolsOpen(false)}>完成</Button></DialogFooter></DialogContent></Dialog>
+  </OperationalWorkspace>
 }

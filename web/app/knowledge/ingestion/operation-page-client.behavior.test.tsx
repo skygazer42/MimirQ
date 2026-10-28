@@ -505,10 +505,6 @@ describe('knowledge ingestion operation page behavior', () => {
 
     await waitForDatasetBootstrap(container)
 
-    await act(async () => {
-      await vi.waitFor(() => expect(container.textContent).toContain('1 个阶段'))
-    })
-
     await chooseExecutionMode(container, 'parse_only')
 
     const file = new File(['pdf'], 'manual.pdf', {
@@ -517,9 +513,6 @@ describe('knowledge ingestion operation page behavior', () => {
     })
     await setFileInputFiles(container, [file])
 
-    await act(async () => {
-      await vi.waitFor(() => expect(container.textContent).toContain('2 个阶段'))
-    })
     expect(getSubmitButton(container).textContent).toContain('登记并解析')
 
     await act(async () => {
@@ -682,6 +675,46 @@ describe('knowledge ingestion operation page behavior', () => {
     expect(container.textContent).toContain('目标目录')
     expect(container.textContent).toContain('重复处理')
 
+    act(() => root.unmount())
+  })
+
+  it('applies the chosen parser and duplicate policy to the submitted files', async () => {
+    const { container, root } = renderPage()
+    await waitForDatasetBootstrap(container)
+    await chooseExecutionMode(container, 'parse_only')
+
+    const parserOption = container.querySelector<HTMLButtonElement>('[data-select-item="markitdown"]')
+    expect(parserOption).not.toBeNull()
+    await act(async () => parserOption?.click())
+    const dedupOption = container.querySelector<HTMLButtonElement>('[data-select-item="none"]')
+    await act(async () => dedupOption?.click())
+    await setFileInputFiles(container, [new File(['guide'], 'guide.md', { type: 'text/markdown' })])
+    await act(async () => getSubmitButton(container).click())
+
+    expect(documentApiMock.uploadBatch).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.objectContaining({
+        parser_backend: 'markitdown',
+        pipeline: expect.objectContaining({ near_dedup_enabled: false, chunk_vector_enabled: false }),
+      })
+    )
+    act(() => root.unmount())
+  })
+
+  it('keeps the staged file and chosen mode visible after submission fails', async () => {
+    documentApiMock.uploadBatch.mockRejectedValueOnce(new Error('unavailable'))
+    const { container, root } = renderPage()
+    await waitForDatasetBootstrap(container)
+    await chooseExecutionMode(container, 'parse_only')
+    await setFileInputFiles(container, [new File(['guide'], 'guide.md', { type: 'text/markdown' })])
+    await act(async () => getSubmitButton(container).click())
+
+    await act(async () => vi.waitFor(() => {
+      expect(toastMock.error).toHaveBeenCalledWith(expect.stringContaining('入库任务提交失败'), expect.objectContaining({ duration: 4000 }))
+    }))
+    expect(container.textContent).toContain('guide.md')
+    expect(container.querySelector<HTMLInputElement>('input[value="parse_only"]')?.checked).toBe(true)
+    expect(getSubmitButton(container).disabled).toBe(false)
     act(() => root.unmount())
   })
 })

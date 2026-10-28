@@ -1,103 +1,31 @@
 // @vitest-environment happy-dom
-
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('@tanstack/react-query', () => ({
-  useQuery: () => ({
-    data: { collections: [] },
-    isFetching: false,
-    error: null,
-    refetch: vi.fn(),
-  }),
-}))
-
-vi.mock('@/hooks/use-media-query', () => ({
-  useMediaQuery: () => false,
-}))
-
-vi.mock('sonner', () => ({
-  toast: {
-    error: vi.fn(),
-    success: vi.fn(),
-    warning: vi.fn(),
-  },
-}))
-
+vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: { collections: [] }, isFetching: false, error: null, refetch: vi.fn() }) }))
+vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() } }))
 import { RagvizSimilarityWorkbench } from './similarity-workbench'
 
-describe('RagvizSimilarityWorkbench accessibility', () => {
+describe('Similarity tool dialogs', () => {
   let container: HTMLDivElement
   let root: ReturnType<typeof createRoot>
-
   beforeEach(() => {
-    ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
-      .IS_REACT_ACT_ENVIRONMENT = true
-    localStorage.clear()
-    container = document.createElement('div')
-    document.body.appendChild(container)
+    ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+    container = document.createElement('div'); document.body.append(container)
     root = createRoot(container)
   })
+  afterEach(() => { act(() => root.unmount()); document.body.innerHTML = '' })
 
-  afterEach(() => {
-    act(() => root.unmount())
-    document.body.innerHTML = ''
-    localStorage.clear()
-  })
-
-  it('marks collapsed sidebars as inert', () => {
-    act(() => {
-      root.render(<RagvizSimilarityWorkbench />)
-    })
-
-    const leftSidebar = container.querySelector(
-      '[role="separator"][aria-label="调整左侧栏宽度"]'
-    )?.parentElement as HTMLElement | null
-    const rightSidebar = container.querySelector(
-      '[role="separator"][aria-label="调整右侧栏宽度"]'
-    )?.parentElement as HTMLElement | null
-
-    const leftToggle = container.querySelector(
-      '[aria-label="收起左侧栏"]'
-    ) as HTMLButtonElement | null
-    const rightToggle = container.querySelector(
-      '[aria-label="收起右侧栏"]'
-    ) as HTMLButtonElement | null
-    expect(leftToggle).not.toBeNull()
-    expect(rightToggle).not.toBeNull()
-
-    act(() => {
-      leftToggle?.click()
-    })
-
-    expect(leftSidebar?.getAttribute('aria-hidden')).toBe('true')
-    expect(leftSidebar?.hasAttribute('inert')).toBe(true)
-
-    act(() => {
-      rightToggle?.click()
-    })
-
-    expect(rightSidebar?.getAttribute('aria-hidden')).toBe('true')
-    expect(rightSidebar?.hasAttribute('inert')).toBe(true)
-  })
-
-  it('resizes the left sidebar from the keyboard', () => {
-    act(() => {
-      root.render(<RagvizSimilarityWorkbench />)
-    })
-
-    const separator = container.querySelector(
-      '[role="separator"][aria-label="调整左侧栏宽度"]'
-    ) as HTMLElement | null
-    expect(separator?.getAttribute('aria-valuenow')).toBe('312')
-
-    act(() => {
-      separator?.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })
-      )
-    })
-
-    expect(separator?.getAttribute('aria-valuenow')).toBe('336')
+  it('keeps source inputs outside the focus order until the dialog opens', () => {
+    act(() => root.render(<RagvizSimilarityWorkbench />))
+    expect(document.querySelector('[aria-label="横轴数据源 1"]')).toBeNull()
+    const trigger = [...container.querySelectorAll('button')].find(button => button.textContent === '数据源与计算')!
+    act(() => trigger.click())
+    const dialog = document.querySelector('[role="dialog"]')!
+    expect(dialog.querySelector('[aria-label="横轴数据源 1"]')).not.toBeNull()
+    expect(dialog.querySelector('[aria-label="纵轴数据源 1"]')).not.toBeNull()
+    const calculate = [...dialog.querySelectorAll('button')].find(button => button.textContent === '计算相似度')!
+    expect(calculate.disabled).toBe(true)
   })
 })

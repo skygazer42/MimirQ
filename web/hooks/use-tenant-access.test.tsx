@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
-import React from 'react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import React, { act } from 'react'
+import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { renderHook, waitForAssertion } from '@/test/hook-harness'
@@ -55,5 +55,23 @@ describe('useTenantAccess', () => {
       expect(accessState.getCurrentTenantAccess).toHaveBeenCalledTimes(1)
     })
     hook.unmount()
+  })
+
+  it('refreshes a recently cached role when the user returns after administrator approval', async () => {
+    accessState.getCurrentTenantAccess.mockResolvedValueOnce({ role: 'viewer', permissions: [] })
+      .mockResolvedValue({ role: 'editor', permissions: ['feedback_triage.write'] })
+    const hook = renderHook(() => useTenantAccess(), { wrapper: createWrapper() })
+    try {
+      await waitForAssertion(() => { expect(hook.result.current.data?.role).toBe('viewer') })
+      act(() => { focusManager.setFocused(false) })
+      act(() => { focusManager.setFocused(true) })
+      await waitForAssertion(() => {
+        expect(hook.result.current.data?.role).toBe('editor')
+        expect(hook.result.current.data?.permissions).toContain('feedback_triage.write')
+      })
+    } finally {
+      hook.unmount()
+      focusManager.setFocused(undefined)
+    }
   })
 })

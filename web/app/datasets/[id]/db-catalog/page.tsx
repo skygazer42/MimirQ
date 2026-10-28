@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { ArrowLeft, BarChart3, Database, Play, Search, Settings2, Table2 } from 'lucide-react'
+import { ArrowLeft, BarChart3, Database, Play, Search, Settings2, Table2 } from '@/components/icons'
 
 import { AppFrame } from '@/components/app-frame'
 import { Badge } from '@/components/ui/badge'
@@ -12,7 +12,8 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { PageScaffold } from '@/components/ui/page-scaffold'
+import { OperationalWorkspace, DirectoryWorkspace, WorkspaceNotice, workspaceStyles as ws } from '@/components/ui/operational-workspace'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Panel } from '@/components/ui/panel'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
@@ -36,9 +37,7 @@ import type {
 
 const ENGINE_OPTIONS: ReadonlyArray<'all' | 'mysql' | 'sqlserver'> = ['all', 'mysql', 'sqlserver']
 const DB_CATALOG_LIST_LIMIT = 200
-const dbCatalogHeroCard = 'relative overflow-hidden border-b border-border/60 bg-transparent px-1 py-2 shadow-none dark:border-border/70'
-const dbCatalogPanelClass = 'overflow-hidden border border-border/60 bg-card shadow-none dark:border-border/70 dark:bg-card'
-const dbCatalogActionButtonClass = 'h-9 gap-1.5 rounded-md border border-border/60 bg-card px-3 text-[13px] shadow-none dark:border-border/70 dark:bg-card'
+const dbCatalogPanelClass = ws.canvasPanel
 
 type DbCatalogSyncConfig = {
   host: string
@@ -113,6 +112,7 @@ export default function DatasetDbCatalogPage() {
   const params = useParams()
   const datasetId = asDatasetId((params as Record<string, unknown>)?.id)
 
+  const [pane, setPane] = useState<'directory' | 'detail'>('directory')
   const [engine, setEngine] = useState<'all' | 'mysql' | 'sqlserver'>('all')
   const [query, setQuery] = useState('')
 
@@ -460,120 +460,9 @@ export default function DatasetDbCatalogPage() {
     }
   }, [latestRun])
 
-  return (
-    <AppFrame>
-      <PageScaffold
-        title="数据库目录"
-        showHeader={false}
-        size="full"
-        density="system-dense"
-        bodyGutter="dense"
-        bodyClassName="h-full overflow-hidden bg-[radial-gradient(circle_at_18%_0%,hsl(var(--info)/0.10),transparent_28%),linear-gradient(180deg,hsl(var(--background)/0.96),hsl(var(--surface-2)/0.68))] pb-3"
-        bodyContainerClassName="h-full min-h-0 overflow-hidden"
-        top={
-          <div className={dbCatalogHeroCard}>
-            <div className="relative flex flex-col gap-2 px-1 py-1 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex min-w-0 items-center gap-2.5">
-                <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-info/10 text-info shadow-none">
-                  <Database className="size-3.5" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="truncate text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground dark:text-foreground">数据库目录</h1>
-                    <span className="inline-flex h-5 items-center rounded-full border border-border/60 bg-card/70 px-2 text-[10px] font-medium leading-none text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-border/60 dark:bg-muted/30 dark:text-muted-foreground">
-                      结构同步 / 安全画像
-                    </span>
-                    <Badge variant="soft" className="h-5 border-info/30 bg-info/10 px-2 text-[10px] font-medium leading-none text-info">
-                      DB CATALOG
-                    </Badge>
-                  </div>
-                  <div className="text-[12px] leading-5 text-muted-foreground">
-                    <span className="font-semibold text-foreground">数据集：</span>
-                    <span className="font-medium text-foreground">{datasetName}</span>
-                    <span> · 同步表结构、列类型、schema diff 与 profile 聚合统计，不读取原始行</span>
-                  </div>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] leading-none text-muted-foreground">
-                    <span className="inline-flex items-center gap-1.5">
-                      <Table2 className="size-3.5 text-info" />
-                      <span>表</span>
-                      <span className="font-mono font-semibold text-foreground">{catalogTotal}</span>
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <Database className="size-3.5 text-info" />
-                      <span>当前过滤</span>
-                      <span className="font-mono font-semibold text-foreground">{engineSummary}</span>
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <BarChart3 className="size-3.5 text-success" />
-                      <span>最近列数</span>
-                      <span className="font-mono font-semibold text-foreground">{latestRunSummary.columns}</span>
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <Settings2 className="size-3.5 text-warning" />
-                      <span>profile</span>
-                      <span className="font-mono font-semibold text-foreground">{latestRunSummary.profiles}</span>
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-2 lg:self-end">
-                <div className="inline-flex h-9 items-center gap-2 rounded-lg border border-info/30 bg-info/5 px-3 text-[13px] font-medium text-info shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:bg-info/10">
-                  <span className={cn('size-2 rounded-full', latestRunLoading ? 'animate-pulse bg-info' : latestRun ? 'bg-success' : 'bg-muted-foreground/50')} />
-                  {latestRunSummary.status}
-                </div>
-              </div>
-            </div>
-          </div>
-        }
-        toolbar={
-          <div className="flex w-full flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-              <Button variant="outline" onClick={() => router.push('/datasets')} className={dbCatalogActionButtonClass}>
-                <ArrowLeft className="size-3.5" />
-                返回
-              </Button>
-              {datasetId ? (
-                <Button variant="outline" onClick={() => router.push(`/datasets/${datasetId}/ingestion`)} className={dbCatalogActionButtonClass}>
-                  <Settings2 className="size-3.5" />
-                  入库策略
-                </Button>
-              ) : null}
-              {datasetId ? (
-                <Button variant="outline" onClick={() => router.push(`/datasets/${datasetId}/profile`)} className={dbCatalogActionButtonClass}>
-                  <BarChart3 className="size-3.5" />
-                  数据画像
-                </Button>
-              ) : null}
-              {datasetId ? (
-                <Button variant="outline" onClick={() => router.push(`/datasets/${datasetId}/tables`)} className={dbCatalogActionButtonClass}>
-                  <Table2 className="size-3.5" />
-                  表格 / TAG
-                </Button>
-              ) : null}
-              {datasetId ? (
-                <Button variant="outline" onClick={() => router.push(`/knowledge?tab=settings&dataset=${encodeURIComponent(datasetId)}`)} className={dbCatalogActionButtonClass}>
-                  <Settings2 className="size-3.5" />
-                  导入任务
-                </Button>
-              ) : null}
-            </div>
-            {datasetId ? (
-              <Button
-                className="h-10 min-w-[118px] gap-2 rounded-md border border-primary/20 bg-primary text-[13px] text-primary-foreground shadow-none hover:bg-primary/90 dark:border-primary/30"
-                onClick={() => {
-                  setSyncError(null)
-                  setSyncOpen(true)
-                }}
-              >
-                <Play className="size-3.5" />
-                新建同步
-              </Button>
-            ) : null}
-          </div>
-        }
-      >
-        <div className="grid h-full min-h-0 grid-cols-1 gap-3 xl:grid-cols-[410px_minmax(0,1fr)]">
-          <Panel className={cn(dbCatalogPanelClass, 'flex min-h-0 flex-col p-0')}>
+  return <AppFrame><OperationalWorkspace title="数据库目录" icon="dataset" mode="canvas" context={dataset?.name ?? '正在读取数据集…'} back={() => router.push('/datasets')} actions={<Button disabled={syncSubmitting} onClick={() => { setSyncError(null); setSyncOpen(true) }}><Play />新建同步</Button>}>
+    {loadError ? <div className="px-5"><WorkspaceNotice retry={refreshCatalogList} pending={isLoading}>{formatApiError(loadError, '数据库目录读取失败')}</WorkspaceNotice></div> : null}
+    <DirectoryWorkspace pane={pane} onPaneChange={setPane} directoryLabel="表目录" detailLabel="表详情" directory={<Panel variant="seamless" className={cn(dbCatalogPanelClass, 'flex min-h-0 flex-col p-0')}>
             <div className="shrink-0 border-b border-border/60 bg-card/65 p-3.5 dark:border-border/60 dark:bg-muted/20">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -602,10 +491,12 @@ export default function DatasetDbCatalogPage() {
                     type="button"
                     variant={engine === k ? 'secondary' : 'outline'}
                     size="sm"
-                    className={cn('h-7 rounded-lg px-2.5 font-mono text-[11px]', engine === k ? 'border-border bg-info/10 text-info' : 'bg-card/70')}
+                    className={ws.filterButton}
+                    data-selected={engine === k}
+                    aria-pressed={engine === k}
                     onClick={() => setEngine(k)}
                   >
-                    {k}
+                    {k === 'all' ? '全部' : k === 'sqlserver' ? 'SQL Server' : 'MySQL'}
                   </Button>
                 ))}
               </div>
@@ -623,6 +514,7 @@ export default function DatasetDbCatalogPage() {
                     </div>
                   )
                 }
+                if (loadError) return <p className="py-5 text-sm text-destructive">目录读取失败。</p>
                 if (items.length) {
                   return (
                     <div className="space-y-1.5">
@@ -633,12 +525,12 @@ export default function DatasetDbCatalogPage() {
                             key={t.id}
                             type="button"
                             className={cn(
-                              'w-full rounded-xl border px-3 py-2.5 text-left transition duration-150',
+                              ws.directoryRow,
                               active
-                                ? 'border-info/40 bg-info/5 shadow-[inset_3px_0_0_hsl(var(--info)/0.72)]'
-                                : 'border-border/60 bg-card/55 hover:border-info/30 hover:bg-info/5 dark:border-border/60 dark:bg-muted/20'
+                                ? 'bg-primary/5'
+                                : 'hover:bg-muted/40'
                             )}
-                            onClick={() => setSelectedId(t.id)}
+                            onClick={() => { setSelectedId(t.id); setPane('detail') }}
                           >
                             <div className="flex items-center justify-between gap-3">
                               <div className="min-w-0">
@@ -656,7 +548,7 @@ export default function DatasetDbCatalogPage() {
                   )
                 }
                 return (
-                  <div className="rounded-2xl border border-dashed border-border/60 bg-muted/40 p-4 dark:border-border/60 dark:bg-muted/20">
+                  <div className="py-4">
                     <div className="text-sm font-semibold text-foreground">暂无数据库目录</div>
                     <div className="mt-1 text-xs leading-5 text-muted-foreground">
                       先运行 SQLServer/MySQL 目录同步。该流程只同步结构与安全统计，不读取原始行。
@@ -724,13 +616,11 @@ export default function DatasetDbCatalogPage() {
                 </details>
               ) : null}
             </div>
-          </Panel>
-
-          <Panel className={cn(dbCatalogPanelClass, 'flex min-h-0 min-w-0 flex-col p-0')}>
+          </Panel>}><Tabs defaultValue="structure"><TabsList className={ws.tabList}><TabsTrigger value="structure">字段结构</TabsTrigger><TabsTrigger value="profile">安全画像</TabsTrigger><TabsTrigger value="history">同步记录</TabsTrigger></TabsList><TabsContent value="structure" className={ws.tabContent}>{detailQuery.isError ? <WorkspaceNotice retry={() => { void detailQuery.refetch() }}>{formatApiError(detailQuery.error, '表结构读取失败')}</WorkspaceNotice> : null}<Panel variant="seamless" className={cn(dbCatalogPanelClass, 'flex min-h-0 min-w-0 flex-col p-0')}>
             <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border/60 bg-card/65 px-3.5 py-3 dark:border-border/60 dark:bg-muted/20">
               <div className="min-w-0 space-y-1.5">
                 <div className="text-sm font-semibold text-foreground dark:text-foreground">表结构</div>
-                {selectedSummary || <div className="text-xs text-muted-foreground">请选择一张表查看结构。</div>}
+                {selectedSummary || <div className="text-xs text-muted-foreground"></div>}
               </div>
             </div>
 
@@ -748,11 +638,11 @@ export default function DatasetDbCatalogPage() {
                 }
                 if (selected) {
                   return (
-                    <div className="overflow-hidden rounded-2xl border border-border/60 bg-card/70 dark:border-border/60 dark:bg-muted/20">
+                    <div className="overflow-hidden">
                       <div className="grid grid-cols-12 gap-0 bg-muted/40 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground dark:bg-muted/30">
-                        <div className="col-span-5 px-3 py-2">Column</div>
-                        <div className="col-span-4 px-3 py-2">Type</div>
-                        <div className="col-span-3 px-3 py-2">Nullable</div>
+                        <div className="col-span-5 px-3 py-2">字段</div>
+                        <div className="col-span-4 px-3 py-2">类型</div>
+                        <div className="col-span-3 px-3 py-2">允许为空</div>
                       </div>
                       {selected.columns?.length ? (
                         <div className="divide-y divide-border/60 dark:divide-border/60">
@@ -776,15 +666,11 @@ export default function DatasetDbCatalogPage() {
                   )
                 }
                 return (
-                  <div className="flex h-full min-h-[260px] items-center justify-center rounded-2xl border border-dashed border-border/60 bg-muted/40 p-6 text-sm text-muted-foreground dark:border-border/60 dark:bg-muted/20">
-                    请选择一张表查看结构。
-                  </div>
+                  <div className={ws.empty}><h2>{items.length ? '选择数据库表' : query || engine !== 'all' ? '没有匹配的表' : '尚未同步数据库目录'}</h2><p>{items.length ? '从目录选择一张表，查看字段与安全画像。' : query || engine !== 'all' ? '调整搜索或引擎筛选后重试。' : '建立数据库连接后，同步表结构与安全统计。'}</p>{!items.length && !loadError ? <Button variant="outline" onClick={() => { if (query || engine !== 'all') { setQuery(''); setEngine('all') } else setSyncOpen(true) }}>{query || engine !== 'all' ? '清除筛选' : '新建同步'}</Button> : null}</div>
                 )
               })()}
             </div>
-          </Panel>
-        </div>
-
+          </Panel></TabsContent><TabsContent value="profile" className={ws.tabContent}><section className={ws.section}><h2 className={ws.sectionTitle}>最新安全画像</h2>{latestProfileQuery.isError ? <WorkspaceNotice retry={() => { void latestProfileQuery.refetch() }}>{formatApiError(latestProfileQuery.error, '安全画像读取失败')}</WorkspaceNotice> : latestProfile ? <><p className="my-3 text-xs text-muted-foreground">{latestProfile.created_at}</p><pre className="overflow-auto bg-muted/20 p-3 text-xs leading-6">{JSON.stringify(latestProfile.profile, null, 2)}</pre><details className="mt-4 text-sm"><summary>采样信息</summary><pre className="overflow-auto py-3 text-xs">{JSON.stringify(latestProfile.sample_meta, null, 2)}</pre></details></> : <p className="py-4 text-sm text-muted-foreground">{latestProfileQuery.isFetching ? '正在读取画像…' : '当前表没有安全画像记录。'}</p>}</section></TabsContent><TabsContent value="history" className={ws.tabContent}><section className={ws.section}><div className={ws.sectionHeading}><h2 className={ws.sectionTitle}>同步记录</h2><Button variant="ghost" onClick={() => { void latestRunQuery.refetch() }}>重新读取记录</Button></div>{latestRunQuery.isError ? <WorkspaceNotice>{formatApiError(latestRunQuery.error, '同步记录读取失败')}</WorkspaceNotice> : <div className={ws.tableScroll}><table className={ws.table} aria-label="数据库目录同步记录"><thead><tr><th>运行</th><th>连接器</th><th>状态</th><th>创建时间</th></tr></thead><tbody>{(latestRunQuery.data?.items ?? []).filter(run => ['mysql_catalog', 'sqlserver_catalog'].includes(run.connector_id)).map(run => <tr key={run.id}><td className="font-mono text-xs">{run.id.slice(0, 8)}</td><td>{run.connector_id}</td><td>{run.status}</td><td>{run.created_at}</td></tr>)}</tbody></table></div>}</section></TabsContent></Tabs></DirectoryWorkspace>
         <Dialog
           open={syncOpen}
           onOpenChange={(open) => {
@@ -792,17 +678,17 @@ export default function DatasetDbCatalogPage() {
             if (!open) setSyncError(null)
           }}
         >
-          <DialogContent className="max-w-xl">
-            <DialogHeader>
-              <DialogTitle>DB 目录同步</DialogTitle>
+          <DialogContent className={ws.dialog}>
+            <DialogHeader className={ws.dialogHeader}>
+              <DialogTitle>数据库目录同步</DialogTitle>
               <DialogDescription>
                 仅同步结构与安全画像（聚合统计）；不读取原始行，不向大模型外发数据库行数据。
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4">
+            <div className={ws.dialogBody}>
               <div className="space-y-2">
-                <Label>Connector</Label>
+                <Label>连接器</Label>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"
@@ -827,11 +713,11 @@ export default function DatasetDbCatalogPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-2 sm:col-span-2">
-                  <Label>Host</Label>
-                  <Input value={syncHost} onChange={(e) => setSyncHost(e.target.value)} placeholder="db.example.com" />
+                  <Label>主机</Label>
+                  <Input aria-label="主机" value={syncHost} onChange={(e) => setSyncHost(e.target.value)} placeholder="db.example.com" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Port</Label>
+                  <Label>端口</Label>
                   <Input
                     value={String(syncPort)}
                     onChange={(e) => setSyncPort(Number.parseInt(e.target.value || '0', 10) || 0)}
@@ -843,19 +729,19 @@ export default function DatasetDbCatalogPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>Database</Label>
-                  <Input value={syncDatabase} onChange={(e) => setSyncDatabase(e.target.value)} placeholder="demo" />
+                  <Label>数据库</Label>
+                  <Input aria-label="数据库" value={syncDatabase} onChange={(e) => setSyncDatabase(e.target.value)} placeholder="demo" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Username</Label>
-                  <Input value={syncUsername} onChange={(e) => setSyncUsername(e.target.value)} placeholder="svc_reader" />
+                  <Label>用户名</Label>
+                  <Input aria-label="用户名" value={syncUsername} onChange={(e) => setSyncUsername(e.target.value)} placeholder="svc_reader" />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label>Password</Label>
+                <Label>密码</Label>
                 <Input
-                  type="password"
+                  type="password" aria-label="密码"
                   value={syncPassword}
                   onChange={(e) => setSyncPassword(e.target.value)}
                   placeholder="••••••••"
@@ -865,7 +751,7 @@ export default function DatasetDbCatalogPage() {
 
               {syncConnectorId === 'sqlserver_catalog' ? (
                 <div className="space-y-2">
-                  <Label>Include Schemas (optional)</Label>
+                  <Label>Schema 范围（选填）</Label>
                   <Textarea
                     value={syncIncludeSchemas}
                     onChange={(e) => setSyncIncludeSchemas(e.target.value)}
@@ -876,7 +762,7 @@ export default function DatasetDbCatalogPage() {
               ) : null}
 
               <div className="space-y-2">
-                <Label>Include Tables (optional)</Label>
+                <Label>同步表范围（选填）</Label>
                 <Textarea
                   value={syncIncludeTables}
                   onChange={(e) => setSyncIncludeTables(e.target.value)}
@@ -887,7 +773,7 @@ export default function DatasetDbCatalogPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>Max Tables</Label>
+                  <Label>最大表数</Label>
                   <Input
                     value={String(syncMaxTables)}
                     onChange={(e) => setSyncMaxTables(Number.parseInt(e.target.value || '0', 10) || 0)}
@@ -906,10 +792,10 @@ export default function DatasetDbCatalogPage() {
                 </div>
               </div>
 
-              {syncError ? <div className="text-sm text-destructive text-pretty">{syncError}</div> : null}
+              {syncError ? <WorkspaceNotice>{syncError}</WorkspaceNotice> : null}
             </div>
 
-            <DialogFooter>
+            <DialogFooter className={ws.dialogFooter}>
               <Button variant="outline" onClick={() => setSyncOpen(false)} disabled={syncSubmitting}>
                 取消
               </Button>
@@ -920,7 +806,5 @@ export default function DatasetDbCatalogPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </PageScaffold>
-    </AppFrame>
-  )
+</OperationalWorkspace></AppFrame>
 }

@@ -21,6 +21,18 @@ type ReportBlobExporter = (
   params: ReportExportParams
 ) => Promise<Blob>
 
+async function reportExportError(error:unknown):Promise<unknown> {
+  if(!error||typeof error!=='object') return error
+  const original=error as {response?:{data?:unknown}}
+  const data=original.response?.data
+  if(!(data instanceof Blob)||data.size>1_048_576) return error
+  try {
+    const parsed:unknown=JSON.parse(await data.text())
+    if(!parsed||typeof parsed!=='object'||Array.isArray(parsed)) return error
+    return {...error,response:{...original.response,data:parsed}}
+  } catch { return error }
+}
+
 export function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -83,7 +95,7 @@ export async function exportReportBlobFile({
     downloadBlob(blob, `${safe}.${filenameStem}${reportPipelineSuffix(pipelineHash)}.${extension}`)
   } catch (e: unknown) {
     reportClientError(errorFallback, e)
-    toast.error(formatApiError(e, errorFallback))
+    toast.error(formatApiError(await reportExportError(e), errorFallback))
   } finally {
     setLoading(false)
   }

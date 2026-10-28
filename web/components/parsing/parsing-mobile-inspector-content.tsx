@@ -1,6 +1,6 @@
 'use client'
 
-import { Code, Copy, Download, Eye, FileStack, FileText } from 'lucide-react'
+import { Code, Copy, Download, Eye, FileStack, FileText } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 
 import { MarkdownToc } from '@/components/markdown/markdown-toc'

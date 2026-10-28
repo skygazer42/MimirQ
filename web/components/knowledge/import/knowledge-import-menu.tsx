@@ -1,6 +1,6 @@
 'use client'
 
-import { Bug, Globe, Link2, SlidersHorizontal, Upload, Zap } from 'lucide-react'
+import { Bug, Globe, Link2, SlidersHorizontal, Upload, Zap } from '@/components/icons'
 
 import { cn } from '@/lib/utils'
 import { DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'

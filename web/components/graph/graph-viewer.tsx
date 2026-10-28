@@ -13,7 +13,7 @@ import { buildGraphViewportLod, type GraphViewportLod, type GraphViewportRect } 
 import { reportClientError } from '@/lib/client-logging'
 import { buildTypeColorMap, EVENT_COLOR, NODE_COLOR_PALETTE } from './graph-colors'
 import { GraphMinimap } from './graph-minimap'
-import { Loader2 } from 'lucide-react'
+import { Loader2 } from '@/components/icons'
 
 export const EDGE_KIND_COLORS: Record<string, string> = {
   entity_relation: '#3b82f6', // blue
@@ -927,6 +927,7 @@ export interface GraphViewerRef {
 export type LayoutMode = 'force' | 'tree' | 'radial'
 
 interface GraphViewerProps {
+  readonly appearance?: 'default' | 'diagram'
   readonly data: GraphRenderData
   readonly onNodeClick?: (node: GraphNodeDatum) => void
   readonly onNodeRightClick?: (node: GraphNodeDatum, event: MouseEvent) => void
@@ -988,6 +989,7 @@ class GraphRenderBoundary extends Component<GraphRenderBoundaryProps, GraphRende
 }
 
 export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({ 
+  appearance = 'default',
   data, 
   onNodeClick,
   onNodeRightClick,
@@ -1006,6 +1008,8 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   const fgRef = useRef<ForceGraphMethods | undefined>(undefined)
   const { width, height } = useResizeObserver(containerRef)
   const [mounted, setMounted] = useState(false)
+  const [fittedView, setFittedView] = useState('')
+  const fittedViewRef = useRef('')
   const [hoveredLinkId, setHoveredLinkId] = useState<string | null>(null)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [isCanvasPanning, setIsCanvasPanning] = useState(false)
@@ -1108,6 +1112,10 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   const cooldownTicks = isLargeGraph ? 50 : 100
   const cooldownTime = isLargeGraph ? 4000 : 8000
   const graphRenderResetKey = `${sanitizedData.nodes.length}:${sanitizedData.links.length}:${layoutMode}`
+  const fitKey = useMemo(() => `${width}:${height}:${layoutMode}:${sanitizedData.nodes.map(node => node.id).join(',')}`, [height, layoutMode, sanitizedData.nodes, width])
+  useEffect(() => {
+    if (appearance === 'diagram') fgRef.current?.d3ReheatSimulation?.()
+  }, [appearance, fitKey])
   const graphCursor = graphCursorStyle(
     isCanvasPanning,
     hoveredNodeId,
@@ -1410,7 +1418,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   }
 
   return (
-    <div ref={containerRef} className="relative h-full w-full bg-transparent">
+    <div ref={containerRef} className="relative h-full w-full bg-transparent" data-graph-renderer="2d" aria-busy={appearance === 'diagram' && fittedView !== fitKey}>
       {(!mounted || width === 0 || height === 0) ? (
         <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
 	           {mounted ? (
@@ -1500,7 +1508,14 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
               cooldownTicks={cooldownTicks}
               cooldownTime={cooldownTime}
               onZoomEnd={updateViewportLod}
-              onEngineStop={updateViewportLod}
+              onEngineStop={() => {
+                updateViewportLod()
+                if (appearance === 'diagram' && fittedViewRef.current !== fitKey && width > 0 && height > 0) {
+                  fgRef.current?.zoomToFit(0, Math.min(70, width * 0.12, height * 0.12))
+                  fittedViewRef.current = fitKey
+                  setFittedView(fitKey)
+                }
+              }}
               onNodeClick={handleNodeClick}
               onNodeRightClick={(node: GraphNodeDatum, event: MouseEvent) => {
                 onNodeRightClick?.(node, event)
@@ -1543,6 +1558,43 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                   color: getNodeColor(node),
                   degree,
                 })
+                if (appearance === 'diagram') {
+                  const scale = Math.max(globalScale, 0.1)
+                  const radius = (state.isSelected ? 17 : 11) / Math.sqrt(Math.max(scale, 0.35))
+                  ctx.save()
+                  ctx.globalAlpha = state.isDimmed ? 0.4 : 1
+                  if (state.isSelected) {
+                    ctx.beginPath()
+                    ctx.arc(state.nx, state.ny, radius + 5 / scale, 0, 2 * Math.PI)
+                    ctx.fillStyle = withAlpha(state.color, 0.08)
+                    ctx.fill()
+                    ctx.strokeStyle = withAlpha(state.color, 0.4)
+                    ctx.lineWidth = 1 / scale
+                    ctx.stroke()
+                  }
+                  ctx.beginPath()
+                  ctx.arc(state.nx, state.ny, radius, 0, 2 * Math.PI)
+                  ctx.fillStyle = state.isSelected ? state.color : withAlpha(state.color, state.isDark ? 0.2 : 0.1)
+                  ctx.fill()
+                  ctx.strokeStyle = state.color
+                  ctx.lineWidth = (state.isHovered ? 2 : 1.3) / scale
+                  ctx.stroke()
+                  ctx.beginPath()
+                  ctx.arc(state.nx, state.ny, 2.4 / scale, 0, 2 * Math.PI)
+                  ctx.fillStyle = state.isSelected ? '#ffffff' : state.color
+                  ctx.fill()
+                  ctx.font = `${state.isSelected ? 600 : 450} ${(state.isSelected ? 14 : 13) / scale}px "Ragvia Manrope", "Ragvia Sans SC", sans-serif`
+                  ctx.textAlign = 'center'
+                  ctx.textBaseline = 'top'
+                  ctx.lineJoin = 'round'
+                  ctx.lineWidth = 4 / scale
+                  ctx.strokeStyle = canvasColors.labelStroke
+                  ctx.strokeText(state.label, state.nx, state.ny + radius + 7 / scale)
+                  ctx.fillStyle = canvasColors.labelFill
+                  ctx.fillText(state.label, state.nx, state.ny + radius + 7 / scale)
+                  ctx.restore()
+                  return
+                }
                 drawGraphNode({
                   ctx,
                   state,

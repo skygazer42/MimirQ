@@ -1,5 +1,5 @@
-import type { LucideIcon } from "lucide-react"
-import { AlertCircle, AlertTriangle, Ban, CheckCircle2, Clock, Loader2 } from "lucide-react"
+import type { PlatformIcon } from "@/components/icons"
+import { AlertCircle, AlertTriangle, Ban, CheckCircle2, Clock, Loader2 } from "@/components/icons"
 import { useTranslations } from 'next-intl'
 
 import { cn } from "@/lib/utils"
@@ -16,7 +16,7 @@ function getStatusMeta(
   t: ReturnType<typeof useTranslations<'CommonUi'>>
 ): Record<
   StatusBadgeStatus,
-  { label: string; icon: LucideIcon; dotColor: string; spin?: boolean }
+  { label: string; icon: PlatformIcon; dotColor: string; spin?: boolean }
 > {
   return {
     pending: {

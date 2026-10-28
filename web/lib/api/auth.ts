@@ -1,4 +1,5 @@
 import type { AuthResponse, LoginRequest, RegisterRequest, UserProfile } from '@/types'
+import type { AuthPolicy } from '@/types/backend'
 
 import { apiClient, openapiRequest } from '@/lib/api/core'
 
@@ -7,6 +8,14 @@ export type RegisterPayload = RegisterRequest & {
 }
 
 export const authApi = {
+  async policy(): Promise<AuthPolicy> {
+    return openapiRequest({ path: '/api/v1/auth/policy', method: 'get' })
+  },
+
+  async signup(payload: RegisterRequest): Promise<AuthResponse> {
+    return openapiRequest({ path: '/api/v1/auth/signup', method: 'post', body: payload })
+  },
+
   async register(payload: RegisterPayload): Promise<AuthResponse> {
     const { bootstrapToken, ...body } = payload
     return openapiRequest({

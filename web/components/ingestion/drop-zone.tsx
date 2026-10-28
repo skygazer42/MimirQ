@@ -4,7 +4,7 @@ import * as React from 'react'
 import { useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
-import { FileUp, UploadCloud } from 'lucide-react'
+import { FileUp, UploadCloud } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'

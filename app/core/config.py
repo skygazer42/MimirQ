@@ -867,12 +867,18 @@ class Settings(BaseSettings):
     # One-time bootstrap gate for the very first local owner registration in production.
     # Provide either a raw token or `sha256:<hex>` and send it via `X-Bootstrap-Token`.
     INITIAL_REGISTRATION_TOKEN: str = ""
+    # Ordinary local signup is opt-in; every new member receives viewer access.
+    # This does not affect first-owner bootstrap or external identity provisioning.
+    LOCAL_ACCOUNT_REGISTRATION_ENABLED: bool = False
     # Optional unattended bootstrap for the very first local owner account.
     # Configure email + username + exactly one password source, then remove after first successful startup.
     INITIAL_ADMIN_EMAIL: str = ""
     INITIAL_ADMIN_USERNAME: str = ""
     INITIAL_ADMIN_PASSWORD: str = ""
     INITIAL_ADMIN_PASSWORD_FILE: str = ""
+    # When INITIAL_ADMIN_* credentials are blank, bootstrap admin with a generated
+    # password saved here. Existing workspace members are never replaced or elevated.
+    INITIAL_ADMIN_CREDENTIALS_FILE: str = "./data/initial-admin.json"
     # Optional previous keys for decrypting already-encrypted secrets (comma-separated).
     # This enables key rotation for connector configs without breaking existing entries.
     SECRET_KEY_FALLBACKS: str = ""

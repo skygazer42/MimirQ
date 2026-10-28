@@ -31,7 +31,7 @@ describe('service worker policy', () => {
     expect(shouldClearLocalServiceWorker({ hasWindow: true, hasServiceWorker: true, hostname: 'app.example.com' })).toBe(false)
   })
 
-  it('deletes only MimirQ caches', async () => {
+  it('deletes only Ragvia caches', async () => {
     const deleteCache = vi.fn().mockResolvedValue(true)
     vi.stubGlobal('caches', {
       keys: vi.fn().mockResolvedValue(['mimirq-v1', 'other-app']),

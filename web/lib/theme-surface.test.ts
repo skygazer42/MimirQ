@@ -34,24 +34,30 @@ function hslTokenToColor(value: string) {
 }
 
 describe('theme surface appearance', () => {
-  it('keeps the default Ocean app canvas calm with a readable structure border', () => {
+  it('keeps default work surfaces neutral and supporting text readable', () => {
     const css = fs.readFileSync(path.resolve(__dirname, '../app/globals.css'), 'utf8')
+    const rootCss = /:root\s*\{([\s\S]*?)\n\s*\}/u.exec(css)?.[1] ?? ''
+    const colorToken = (name: string) => {
+      const value = new RegExp(`${name}:\\s*([^;]+);`, 'u').exec(rootCss)?.[1]
+      expect(value).toBeTruthy()
+      return hslTokenToColor(value ?? '')
+    }
 
-    expect(css).toContain('--background: 200 50% 97.6%')
-    expect(css).toContain('--secondary: 199 42% 96.2%')
-    expect(css).toContain('--muted: 199 38% 96%')
-    expect(css).toContain('--surface-2: 198 40% 96.7%')
-    expect(css).toContain('--border: 203 22% 84%')
-    expect(css).toContain('--sidebar-border: 203 22% 84%')
+    for (const name of ['--background', '--secondary', '--muted', '--sidebar-background', '--surface-2']) {
+      const surface = colorToken(name)
+      expect(surface.get('lch.c')).toBeLessThan(2.5)
+      expect(chroma.contrast(colorToken('--muted-foreground'), surface)).toBeGreaterThanOrEqual(4.5)
+    }
+    expect(chroma.contrast(colorToken('--foreground'), colorToken('--background'))).toBeGreaterThanOrEqual(4.5)
     expect(css).toContain('--app-background-base: hsl(var(--background))')
     expect(css).toContain('--app-orb-primary-opacity: 0')
     expect(css).toContain('--app-orb-secondary-opacity: 0')
     expect(css).toContain('background-image: none')
   })
 
-  it('keeps the default ocean primary anchored in deep navy for hierarchy', () => {
+  it('keeps the default primary anchored in the approved Ragvia ink', () => {
     const ocean = getSurfaceThemeMeta('ocean')
-    expect(ocean.defaultPrimary).toBe('#0f172a')
+    expect(ocean.defaultPrimary).toBe('#20262e')
 
     const tokens = getThemeColorTokens(ocean.defaultPrimary)
     expect(
@@ -73,7 +79,7 @@ describe('theme surface appearance', () => {
       expect(chroma.valid(theme.previewSurface)).toBe(true)
       expect(chroma.valid(theme.defaultPrimary)).toBe(true)
     }
-    expect(getSurfaceThemeMeta('ocean').previewSurface).toBe('#f6fafc')
+    expect(getSurfaceThemeMeta('ocean').previewSurface).toBe('#f6f7f8')
     expect(getSurfaceThemeMeta('deepsea').previewSurface).toBe('#f7f9ff')
   })
 

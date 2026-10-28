@@ -1,6 +1,6 @@
 'use client'
 
-import { Copy, FileText, Hash, Shield } from 'lucide-react'
+import { Copy, Parsing, Chunking, DataGovernance } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 
 import { IconButton } from '@/components/ui/icon-button'
@@ -87,8 +87,8 @@ export function DocumentDetailSummaryCards({
       <Panel className="rounded-2xl">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
-            <div className="grid h-10 w-10 place-items-center rounded-2xl border border-border bg-primary/10 text-primary">
-              <FileText className="h-5 w-5" />
+            <div className="grid h-10 w-10 place-items-center rounded-2xl border icon-surface-process">
+              <Parsing appearance="color" className="size-5" />
             </div>
             <div className="min-w-0">
               <div className="text-sm font-semibold text-foreground">{t('cards.parse.title')}</div>
@@ -109,8 +109,8 @@ export function DocumentDetailSummaryCards({
       <Panel className="rounded-2xl">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
-            <div className="grid h-10 w-10 place-items-center rounded-2xl border border-border bg-success/10 text-success">
-              <Shield className="h-5 w-5" />
+            <div className="grid h-10 w-10 place-items-center rounded-2xl border icon-surface-governance">
+              <DataGovernance appearance="color" className="size-5" />
             </div>
             <div className="min-w-0">
               <div className="text-sm font-semibold text-foreground">{t('cards.governance.title')}</div>
@@ -139,8 +139,8 @@ export function DocumentDetailSummaryCards({
       <Panel className="rounded-2xl">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
-            <div className="grid h-10 w-10 place-items-center rounded-2xl border border-border bg-info/10 text-info">
-              <Hash className="h-5 w-5" />
+            <div className="grid h-10 w-10 place-items-center rounded-2xl border icon-surface-process">
+              <Chunking appearance="color" className="size-5" />
             </div>
             <div className="min-w-0">
               <div className="text-sm font-semibold text-foreground">{t('cards.chunking.title')}</div>

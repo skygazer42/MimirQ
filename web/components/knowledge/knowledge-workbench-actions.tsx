@@ -1,9 +1,9 @@
 'use client'
 
 import type { ConnectorRunOut, Dataset } from '@/types'
-import type { ChangeEvent } from 'react'
-import { useCallback, useRef, useState } from 'react'
-import { Plus } from 'lucide-react'
+import type { ChangeEvent, Ref } from 'react'
+import { useCallback, useImperativeHandle, useRef, useState } from 'react'
+import { ChevronDown, Plus } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 
 import { KnowledgeImportMenu } from '@/components/knowledge/import/knowledge-import-menu'
@@ -21,7 +21,13 @@ import {
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { cn } from '@/lib/utils'
 
+export type KnowledgeImportSource = 'files' | 'url' | 'crawl'
+export type KnowledgeWorkbenchActionsHandle = {
+  openImport: (source: KnowledgeImportSource) => void
+}
+
 type KnowledgeWorkbenchActionsProps = {
+  actionsRef?: Ref<KnowledgeWorkbenchActionsHandle>
   datasets: Dataset[]
   datasetsLoading: boolean
   selectedDatasetId?: string
@@ -31,10 +37,13 @@ type KnowledgeWorkbenchActionsProps = {
   loadDocuments: () => void | Promise<void>
   loadConnectorRuns: (params?: { datasetId?: string }) => void | Promise<void>
   onConnectorRunCreated?: (run: ConnectorRunOut) => void
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
   className?: string
 }
 
 export function KnowledgeWorkbenchActions({
+  actionsRef,
   datasets,
   datasetsLoading,
   selectedDatasetId,
@@ -44,10 +53,13 @@ export function KnowledgeWorkbenchActions({
   loadDocuments,
   loadConnectorRuns,
   onConnectorRunCreated,
+  open,
+  onOpenChange,
   className,
 }: Readonly<KnowledgeWorkbenchActionsProps>) {
   const t = useTranslations('KnowledgeWorkbenchActions')
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const returnFocusRef = useRef<HTMLElement | null>(null)
   const [pipelineConfigOpen, setPipelineConfigOpen] = useState(false)
   const [urlImportOpen, setUrlImportOpen] = useState(false)
   const [urlBatchOpen, setUrlBatchOpen] = useState(false)
@@ -57,6 +69,26 @@ export function KnowledgeWorkbenchActions({
   const handleOpenFilePicker = useCallback(() => {
     fileInputRef.current?.click()
   }, [])
+
+  useImperativeHandle(actionsRef, () => ({
+    openImport: source => {
+      if (source === 'files') handleOpenFilePicker()
+      else {
+        returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+        if (source === 'url') setUrlImportOpen(true)
+        else setWebCrawlOpen(true)
+      }
+    },
+  }), [handleOpenFilePicker])
+
+  const restoreImportFocus = (event: Event) => {
+    const element = returnFocusRef.current
+    returnFocusRef.current = null
+    if (element?.isConnected) {
+      event.preventDefault()
+      element.focus()
+    }
+  }
 
   return (
     <>
@@ -69,18 +101,19 @@ export function KnowledgeWorkbenchActions({
         onChange={handleFileUpload}
       />
 
-      <DropdownMenu>
+      <DropdownMenu open={open} onOpenChange={onOpenChange}>
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
             size="sm"
             className={cn(
-              'group/action relative overflow-hidden bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm before:pointer-events-none before:absolute before:inset-y-0 before:left-[-22%] before:w-[28%] before:-skew-x-[18deg] before:bg-card/25 before:opacity-0 before:blur-md before:transition-[left,opacity] before:duration-500 hover:before:left-[118%] hover:before:opacity-100 active:before:opacity-70',
+              'gap-2 shadow-none',
               className,
             )}
           >
-            <Plus className="relative z-10 size-4 transition-transform duration-200 group-hover/action:rotate-90 group-active/action:scale-90" />
-            <span className="relative z-10">{t('importOrCreate')}</span>
+            <Plus className="size-4" />
+            <span>{t('importOrCreate')}</span>
+            <ChevronDown className="size-3.5" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-72">
@@ -100,6 +133,7 @@ export function KnowledgeWorkbenchActions({
       <KnowledgeUrlImportDialog
         open={urlImportOpen}
         onOpenChange={setUrlImportOpen}
+        onCloseAutoFocus={restoreImportFocus}
         datasets={datasets}
         datasetsLoading={datasetsLoading}
         selectedDatasetId={selectedDatasetId}
@@ -123,6 +157,7 @@ export function KnowledgeWorkbenchActions({
       <KnowledgeWebCrawlDialog
         open={webCrawlOpen}
         onOpenChange={setWebCrawlOpen}
+        onCloseAutoFocus={restoreImportFocus}
         datasets={datasets}
         datasetsLoading={datasetsLoading}
         selectedDatasetId={selectedDatasetId}

@@ -1,11 +1,8 @@
 'use client'
 
 import { SettingsSwitchIndicator } from '@/components/settings/settings-switch'
-import { systemPageTokens } from '@/components/ui/system-page-tokens'
-import { cn } from '@/lib/utils'
 import type { FeatureFlags } from '@/lib/api'
 import {
-  AlertCircle,
   CloudCog,
   FileCode,
   FileSearch,
@@ -14,15 +11,14 @@ import {
   ScanLine,
   Sparkles,
   Wand2,
-  Zap,
-} from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+} from '@/components/icons'
+import type { PlatformIcon } from '@/components/icons'
 
 type FeatureFlagDescriptor = {
   key: keyof FeatureFlags
   name: string
   description: string
-  icon: LucideIcon
+  icon: PlatformIcon
   dependencies: string[]
 }
 
@@ -113,117 +109,34 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
   },
 ]
 
-const FEATURE_FLAG_ACTIVE_STYLE = {
-  bg: 'bg-info/10',
-  border: 'border-info/25',
-  text: 'text-info',
-  iconBg: 'bg-info/12',
-} as const
-
 type FeatureFlagsSectionProps = {
-  editedFeatureFlags?: Partial<FeatureFlags>
   getFeatureValue: (key: keyof FeatureFlags) => boolean
   toggleFeature: (key: keyof FeatureFlags) => void
 }
 
 export function FeatureFlagsSection({
-  editedFeatureFlags,
   getFeatureValue,
   toggleFeature,
 }: Readonly<FeatureFlagsSectionProps>) {
   return (
-    <section className="rounded-xl border border-info/15 bg-info/[0.025] p-3.5 shadow-none">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="flex items-center gap-2 text-[13px] font-semibold text-foreground">
-            <Zap className="h-3.5 w-3.5 text-info" />
-            功能开关
-          </h2>
-          <p className="mt-0.5 text-[11.5px] font-medium leading-[18px] text-muted-foreground">
-            按需启用各项能力模块，保存后会影响后续请求；外部解析器仍需对应服务已启动
-          </p>
-        </div>
-        <div className="inline-flex items-center gap-1.5 rounded-full border border-info/20 bg-info/10 px-2.5 py-1 text-[11px] font-medium text-info">
-          <AlertCircle className="h-3 w-3" />
-          <span>保存后影响后续请求</span>
-        </div>
-      </div>
-
-      <div className="mt-3.5 grid grid-cols-1 gap-2 xl:grid-cols-2">
-        {FEATURE_FLAGS_CONFIG.map((feature) => {
-          const Icon = feature.icon
-          const colors = FEATURE_FLAG_ACTIVE_STYLE
-          const isEnabled = getFeatureValue(feature.key)
-          const isEdited = Boolean(
-            editedFeatureFlags && feature.key in editedFeatureFlags
-          )
-
-          return (
-            <button
-              type="button"
-              key={feature.key}
-              className={cn(
-                'group relative w-full rounded-[13px] border px-3 py-2 text-left transition-[border-color,background-color,box-shadow] duration-150 focus-ring motion-reduce:transition-none',
-                isEnabled
-                  ? `${colors.border} ${colors.bg}`
-                  : 'border-info/15 bg-info/[0.025] hover:border-info/25 hover:bg-info/[0.055]',
-                isEdited && 'ring-2 ring-info/45 ring-offset-1'
-              )}
-              aria-pressed={isEnabled}
-              onClick={() => toggleFeature(feature.key)}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-start gap-2.5">
-                  <div
-                    className={cn(
-                      'mt-0.5 flex size-[23px] shrink-0 items-center justify-center rounded-[9px] transition-colors',
-                      isEnabled ? colors.iconBg : 'bg-info/[0.06]'
-                    )}
-                  >
-                    <Icon
-                      className={cn(
-                        'h-3 w-3',
-                        isEnabled ? colors.text : 'text-muted-foreground'
-                      )}
-                    />
-                  </div>
-                  <div className="min-w-0">
-                    <h3
-                      className={cn(
-                        'text-[12px] font-semibold leading-[15px] transition-colors',
-                        isEnabled ? 'text-foreground' : 'text-foreground/78'
-                      )}
-                    >
-                      {feature.name}
-                    </h3>
-                    <p
-                      className={cn(
-                        systemPageTokens.subtle,
-                        'mt-0.5 max-w-[62ch] truncate text-[10.5px] leading-[14px]'
-                      )}
-                    >
-                      {feature.description}
-                    </p>
-                    {feature.dependencies.length > 0 ? (
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {feature.dependencies.map((dependency) => (
-                          <span
-                            key={dependency}
-                            className="rounded-md border border-info/15 bg-info/[0.035] px-1.5 py-0.5 text-[10px] font-medium leading-[14px] text-muted-foreground"
-                          >
-                            需要: {dependency}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-                <SettingsSwitchIndicator checked={isEnabled} className="mt-0.5" />
-              </div>
-            </button>
-          )
-        })}
-      </div>
-    </section>
+    <div className="grid grid-cols-1 gap-x-8 xl:grid-cols-2">
+      {FEATURE_FLAGS_CONFIG.map((feature) => {
+        const Icon = feature.icon
+        const enabled = getFeatureValue(feature.key)
+        return (
+          <button type="button" key={feature.key} aria-pressed={enabled} onClick={() => toggleFeature(feature.key)} className="flex min-h-16 w-full items-center justify-between gap-4 border-b border-border/50 py-3 text-left transition-colors hover:bg-muted/40 focus-ring motion-reduce:transition-none">
+            <span className="flex min-w-0 items-start gap-3">
+              <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium leading-5 text-foreground">{feature.name}</span>
+                <span className="mt-1 block text-[13px] leading-5 text-muted-foreground">{feature.description}</span>
+                {feature.dependencies.length > 0 ? <span className="mt-1 block text-xs leading-5 text-muted-foreground">需要：{feature.dependencies.join('、')}</span> : null}
+              </span>
+            </span>
+            <SettingsSwitchIndicator checked={enabled} />
+          </button>
+        )
+      })}
+    </div>
   )
 }

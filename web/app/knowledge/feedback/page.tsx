@@ -9,8 +9,8 @@ const FeedbackTriagePageClient = dynamic(() => import('./page-client'), {
   loading: () => (
     <PageLoading
       className="min-h-dvh bg-background"
-      message="正在加载反馈分析中心..."
-      srMessage="Loading feedback analytics workbench"
+      message="正在加载反馈质检…"
+      srMessage="正在加载反馈质检"
     />
   ),
 })

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>原序 · 掠海燕</title><link rel="icon" href="assets/swallow-app.svg" type="image/svg+xml">
+<style>
+@font-face{font-family:Yuanxu;src:url('assets/study-sans.woff2') format('woff2');font-weight:100 900;font-display:block}
+*{box-sizing:border-box}html,body{margin:0;width:1280px;height:900px}body{font-family:Yuanxu,'Microsoft YaHei',sans-serif;color:#143C59;-webkit-font-smoothing:antialiased}button,input{font:inherit}button{cursor:default}button:focus-visible,input:focus-visible{outline:3px solid #147dcc;outline-offset:4px}.canvas{width:1280px;height:900px;display:grid;grid-template-columns:704px 576px;overflow:hidden}.brand{position:relative;background:#eef8fe;overflow:hidden}.wordmark{position:absolute;left:56px;top:45px;display:flex;gap:13px;align-items:center}.wordmark img{width:48px;height:48px}.brand-name{font-size:29px;font-weight:600;letter-spacing:1px}.brand-latin{font-family:'Segoe UI',Arial,sans-serif;font-size:11px;letter-spacing:2.4px;margin-top:2px;font-weight:600;color:#3D6E8D}.statement{position:absolute;left:64px;top:194px;margin:0;font-size:48px;font-weight:500;line-height:1.4;letter-spacing:-1.5px}.statement span{display:block}.intro{position:absolute;left:65px;top:354px;max-width:430px;font-size:16px;line-height:1.85;margin:0;color:#426C88}.ocean{position:absolute;left:0;right:0;top:548px;bottom:0;background:#147dcc}.horizon{height:3px;background:#a3d3ef;position:absolute;top:545px;left:0;right:0}.hero-mark{position:absolute;width:262px;height:262px;left:318px;top:564px}.capabilities{position:absolute;bottom:41px;left:64px;color:#fff;font-size:14px;letter-spacing:.8px}.entry{position:relative;background:#fff;display:flex;align-items:center;justify-content:center}.form-wrap{width:360px;margin-top:-7px}.form-wrap h1{margin:0;font-size:32px;line-height:1.5;font-weight:550;letter-spacing:-.5px}.form-wrap .lead{font-size:14px;line-height:24px;color:#607688;margin:7px 0 30px}.modes{display:flex;gap:30px;border-bottom:1px solid #e1eaf0;margin-bottom:29px;height:42px}.modes button{padding:0 0 12px;border:0;background:none;font-size:15px;color:#687f90;position:relative}.modes .active{color:#147dcc;font-weight:550}.modes .active:after{content:'';position:absolute;height:2px;bottom:-1px;left:0;right:0;background:#147dcc}.field{display:block;margin-bottom:22px}.field label{display:block;font-size:14px;line-height:24px;font-weight:500;margin-bottom:8px}.field input{height:50px;width:100%;border:1px solid #cbdce8;background:#fff;border-radius:8px;padding:0 15px;color:#143C59;font-size:15px;box-shadow:0 1px 2px #123d5703}.field input::placeholder{color:#8194a3;opacity:1}.password-box{position:relative}.password-box input{padding-right:48px}.eye{position:absolute;right:16px;top:15px;width:20px;height:20px;color:#7a91a2}.submit{display:flex;align-items:center;justify-content:center;gap:13px;width:100%;height:50px;background:#147dcc;border:1px solid #147dcc;border-radius:8px;color:#fff;font-size:15px;font-weight:550;margin-top:28px}.submit svg{width:19px;height:19px}.help{margin-top:31px;padding-top:24px;border-top:1px solid #e4ecf1;text-align:center;font-size:13px;line-height:24px;color:#6d8190}.contact{border:0;background:transparent;color:#2e5976;padding:7px 0;font-size:14px;text-decoration:underline;text-underline-offset:5px}.fine-print{position:absolute;right:32px;bottom:27px;font-size:12px;color:#6b8293}
+</style>
+</head>
+<body><main class="canvas">
+<aside class="brand" aria-label="关于原序">
+  <div class="wordmark"><img src="assets/swallow.svg" alt=""><div><div class="brand-name">原序</div><div class="brand-latin">YUANXU</div></div></div>
+  <h2 class="statement"><span>从原始资料，</span><span>到可信答案。</span></h2>
+  <p class="intro">汇集分散的知识，<br>让每一次提问，都能找到出处。</p>
+  <div class="horizon" aria-hidden="true"></div><div class="ocean" aria-hidden="true"></div>
+  <img class="hero-mark" src="assets/swallow-inverse.svg" alt="展翼滑翔的燕子标志">
+  <div class="capabilities">文档 · 知识库 · 来源追溯</div>
+</aside>
+<section class="entry" aria-labelledby="auth-title"><div class="form-wrap">
+  <h1 id="auth-title">欢迎回来</h1><p class="lead">登录原序，继续探索你的知识库。</p>
+  <div class="modes" aria-label="登录方式"><button type="button" class="active" aria-pressed="true">登录</button><button type="button" aria-pressed="false">首次设置</button></div>
+  <form aria-label="账号登录">
+    <div class="field"><label for="account">账号</label><input id="account" placeholder="输入邮箱或用户名" readonly autocomplete="off"></div>
+    <div class="field"><label for="password">密码</label><div class="password-box"><input id="password" type="password" placeholder="请输入密码" readonly autocomplete="off"><svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></div></div>
+    <button type="button" class="submit">登录<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
+  </form>
+  <div class="help">无法登录或需要开通账号？<br><button class="contact" type="button">联系管理员</button></div>
+</div></section>
+</main></body></html>

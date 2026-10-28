@@ -1,6 +1,6 @@
 'use client'
 
-import { CircleDot, Gauge } from 'lucide-react'
+import { CircleDot, Gauge } from '@/components/icons'
 
 import { cn } from '@/lib/utils'
 import type { RegressionRun } from '@/types'

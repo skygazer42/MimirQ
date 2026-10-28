@@ -303,7 +303,7 @@ export function useGraphEntityResolution({
       await loadInitialData('live')
       await reloadEntityResolution(selectedEntityId)
     } catch (error) {
-      setMergeError(formatApiError(error, '合并失败'))
+      toast.error(formatApiError(error, '合并失败'))
     } finally {
       setMergeSubmitting(false)
     }
@@ -352,7 +352,7 @@ export function useGraphEntityResolution({
       await loadInitialData('live')
       await reloadEntityResolution(selectedEntityId)
     } catch (error) {
-      setSplitError(formatApiError(error, '拆分失败'))
+      toast.error(formatApiError(error, '拆分失败'))
     } finally {
       setSplitSubmitting(false)
     }

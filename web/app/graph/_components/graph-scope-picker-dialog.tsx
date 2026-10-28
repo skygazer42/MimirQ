@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
-import { Database, Loader2, Network, Search } from 'lucide-react'
+import { Dataset as DatasetIcon, Loader2, Network, Search } from '@/components/icons'
 import { useRouter } from 'next/navigation'
 
 import { Button } from '@/components/ui/button'
@@ -109,7 +109,7 @@ export function GraphScopePickerDialog({
               isSelected ? 'bg-primary/12 text-primary' : 'bg-muted/60 text-muted-foreground'
             )}
           >
-            <Database className="h-4 w-4" />
+            <DatasetIcon className="h-4 w-4" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-medium text-foreground">{dataset.name || dataset.id}</div>

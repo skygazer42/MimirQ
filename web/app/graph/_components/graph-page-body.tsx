@@ -1,11 +1,8 @@
 'use client'
 
-import type { ComponentProps } from 'react'
-
-import { GraphLegend } from '@/components/graph/graph-legend'
-import { GraphStatsBar } from '@/components/graph/graph-stats-bar'
+import type { ComponentProps, ReactNode } from 'react'
 import type { GraphData } from '@/lib/graph-parser'
-
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { GraphCanvas } from './graph-canvas'
 import { GraphContextMenu } from './graph-context-menu'
 import { GraphExplainabilityPanel } from './graph-explainability-panel'
@@ -13,6 +10,7 @@ import { GraphFloatingControls } from './graph-floating-controls'
 import { GraphLinkDetailPanel } from './graph-link-detail-panel'
 import { GraphNodeDetailPanel } from './graph-node-detail-panel'
 import { KgNetworkAnalysisPanel } from './kg-network-analysis-panel'
+import styles from './graph-workspace.module.css'
 
 type GraphExplainabilityStep = {
   node: string
@@ -20,23 +18,16 @@ type GraphExplainabilityStep = {
 }
 
 type GraphPageBodyProps = Readonly<{
+  summary?: ReactNode
+  canvasLabel?: ReactNode
+  analysisOpen: boolean
+  onAnalysisOpenChange: (open: boolean) => void
   canvasProps: ComponentProps<typeof GraphCanvas>
   contextMenuProps: ComponentProps<typeof GraphContextMenu>
-  legendVisible: boolean
-  legendNodes: GraphData['nodes']
-  legendLinks: GraphData['links']
-  activeTypeFilters: string[]
-  onToggleTypeFilter: (type: string) => void
   explainabilityOpen: boolean
   explainSteps: GraphExplainabilityStep[]
   currentStepIndex: number
   displayNodes: GraphData['nodes']
-  showPendingDocs: boolean
-  pendingDocCount: number | null
-  showStatsBar: boolean
-  statsNodeCount: number
-  statsLinkCount: number
-  statsEntityTypeCount: number
   networkAnalysisNodes: GraphData['nodes']
   networkAnalysisLinks: GraphData['links']
   networkAnalysisSelectedNodeId?: string | null
@@ -46,83 +37,23 @@ type GraphPageBodyProps = Readonly<{
 }>
 
 export function GraphPageBody({
-  canvasProps,
-  contextMenuProps,
-  legendVisible,
-  legendNodes,
-  legendLinks,
-  activeTypeFilters,
-  onToggleTypeFilter,
-  explainabilityOpen,
-  explainSteps,
-  currentStepIndex,
-  displayNodes,
-  showPendingDocs,
-  pendingDocCount,
-  showStatsBar,
-  statsNodeCount,
-  statsLinkCount,
-  statsEntityTypeCount,
-  networkAnalysisNodes,
-  networkAnalysisLinks,
-  networkAnalysisSelectedNodeId,
-  floatingControlsProps,
-  nodeDetailPanelProps,
-  linkDetailPanelProps,
+  canvasProps, contextMenuProps, explainabilityOpen, explainSteps, currentStepIndex, displayNodes,
+  networkAnalysisNodes, networkAnalysisLinks, networkAnalysisSelectedNodeId,
+  floatingControlsProps, nodeDetailPanelProps, linkDetailPanelProps,
+  summary, canvasLabel, analysisOpen, onAnalysisOpenChange,
 }: GraphPageBodyProps) {
-  return (
-    <div className="relative flex h-full min-h-0 w-full flex-1">
-      <GraphCanvas {...canvasProps} />
-
-      <GraphContextMenu {...contextMenuProps} />
-
-      {legendVisible ? (
-        <GraphLegend
-          nodes={legendNodes}
-          links={legendLinks}
-          activeTypeFilters={activeTypeFilters}
-          onToggleTypeFilter={onToggleTypeFilter}
-        />
-      ) : null}
-
-      <GraphExplainabilityPanel
-        open={explainabilityOpen}
-        explainSteps={explainSteps}
-        currentStepIndex={currentStepIndex}
-        nodes={displayNodes}
-      />
-
-      <KgNetworkAnalysisPanel
-        nodes={networkAnalysisNodes}
-        links={networkAnalysisLinks}
-        selectedNodeId={networkAnalysisSelectedNodeId}
-      />
-
-      {showPendingDocs ? (
-        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20">
-          <div className="flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1.5 shadow-sm animate-pulse motion-reduce:animate-none">
-            <span className="text-[11px] font-medium text-primary">KG 构建中</span>
-            <span className="text-[11px] text-muted-foreground">待处理文档</span>
-            <span className="text-[11px] font-mono text-foreground">{pendingDocCount}</span>
-          </div>
-        </div>
-      ) : null}
-
-      {showStatsBar ? (
-        <div className="absolute bottom-8 left-1/2 z-10 hidden -translate-x-1/2 sm:block">
-          <GraphStatsBar
-            nodeCount={statsNodeCount}
-            linkCount={statsLinkCount}
-            entityTypeCount={statsEntityTypeCount}
-          />
-        </div>
-      ) : null}
-
-      <GraphFloatingControls {...floatingControlsProps} />
-
-      <GraphNodeDetailPanel {...nodeDetailPanelProps} />
-
-      <GraphLinkDetailPanel {...linkDetailPanelProps} />
-    </div>
-  )
+  return <div className={styles.canvasRegion} data-graph-canvas-zone>
+    {canvasLabel}
+    <div className={styles.graphViewport}><GraphCanvas {...canvasProps} showSemanticPanel={false} /></div>
+    <GraphContextMenu {...contextMenuProps} />
+    <GraphExplainabilityPanel open={explainabilityOpen} explainSteps={explainSteps} currentStepIndex={currentStepIndex} nodes={displayNodes} />
+    {summary}
+    <GraphFloatingControls {...floatingControlsProps} />
+    {nodeDetailPanelProps.open ? <GraphNodeDetailPanel {...nodeDetailPanelProps} /> : null}
+    {linkDetailPanelProps.open ? <GraphLinkDetailPanel {...linkDetailPanelProps} /> : null}
+    <Dialog open={analysisOpen} onOpenChange={onAnalysisOpenChange}><DialogContent className="max-h-[calc(100dvh-32px)] max-w-2xl overflow-y-auto">
+      <DialogHeader><DialogTitle>网络分析</DialogTitle><DialogDescription>分析当前已加载图谱的节点与关系</DialogDescription></DialogHeader>
+      <KgNetworkAnalysisPanel nodes={networkAnalysisNodes} links={networkAnalysisLinks} selectedNodeId={networkAnalysisSelectedNodeId} embedded />
+    </DialogContent></Dialog>
+  </div>
 }

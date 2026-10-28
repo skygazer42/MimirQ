@@ -2,19 +2,18 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DangerZonePanel } from '@/components/settings/danger-zone-panel'
 import { GovernanceOpsPanel } from '@/components/settings/governance-ops-panel'
 import { SettingsSwitch } from '@/components/settings/settings-switch'
-import { settingsTextTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
+import { settingsLayoutTokens, settingsTextTokens } from '@/components/ui/system-page-tokens'
 import { rbacApi, rtbfApi, type SystemSettings, type TenantMember } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
-import { AlertCircle, Loader2 } from 'lucide-react'
+import { Loader2 } from '@/components/icons'
 import { toast } from 'sonner'
 
 type GovernanceSettings = NonNullable<SystemSettings['governance']>
@@ -150,15 +149,15 @@ function rtbfSubjectSourceLabel(source: RtbfSubjectSource): string {
 
 function rtbfModeButtonClass(isActive: boolean, tone: 'info' | 'destructive') {
   if (isActive && tone === 'info') {
-    return 'border-info/30 bg-info/10 text-info shadow-[0_8px_22px_hsl(var(--info)/0.08)]'
+    return 'border-primary text-foreground'
   }
   if (isActive && tone === 'destructive') {
-    return 'border-destructive/35 bg-destructive/10 text-destructive shadow-[0_8px_22px_hsl(var(--destructive)/0.08)]'
+    return 'border-destructive text-destructive'
   }
   if (tone === 'info') {
-    return 'border-info/15 bg-info/[0.025] text-muted-foreground hover:border-info/25 hover:bg-info/[0.055] hover:text-foreground/78'
+    return 'border-transparent text-muted-foreground hover:border-border hover:text-foreground'
   }
-  return 'border-info/15 bg-info/[0.025] text-muted-foreground hover:border-destructive/25 hover:bg-destructive/5 hover:text-foreground/78'
+  return 'border-transparent text-muted-foreground hover:border-destructive/25 hover:text-destructive'
 }
 
 function buildRtbfResultView(value: unknown): RtbfResultView {
@@ -229,7 +228,7 @@ function buildRtbfResultView(value: unknown): RtbfResultView {
 function rtbfToneClass(tone: RtbfTone): string {
   if (tone === 'danger') return 'border-destructive/25 bg-destructive/10 text-destructive'
   if (tone === 'success') return 'border-success/25 bg-success/10 text-success'
-  if (tone === 'info') return 'border-info/25 bg-info/10 text-info'
+  if (tone === 'info') return 'border-border/60 bg-muted/40 text-foreground'
   return 'border-border/70 bg-muted/40 text-muted-foreground'
 }
 
@@ -244,49 +243,49 @@ function rtbfMemberLabel(member: TenantMember): { primary: string; secondary: st
 }
 
 function RtbfResultSummary({ value }: Readonly<{ value: unknown }>) {
+  if (value == null) return null
   const result = buildRtbfResultView(value)
 
   return (
     <div
       data-testid="rtbf-result-summary"
-      className="mt-3 rounded-xl border border-info/15 bg-info/[0.025] p-3 shadow-none"
+      className="mt-5 space-y-4 border-t border-border/60 pt-4"
     >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/75">个人数据操作结果</div>
-          <div className="mt-1 text-[12px] font-medium tracking-[-0.005em] text-foreground">{result.title}</div>
-          <p className="mt-1 max-w-3xl text-[11px] leading-[1.55] text-muted-foreground">{result.description}</p>
+          <h3 className={settingsTextTokens.panelTitle}>{result.title}</h3>
+          <p className="mt-1 max-w-3xl text-[13px] leading-[1.55] text-muted-foreground">{result.description}</p>
         </div>
-        <span className={cn('inline-flex w-fit shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold', rtbfToneClass(result.tone))}>
+        <span className={cn('inline-flex w-fit shrink-0 items-center rounded-full border px-2 py-0.5 text-xs font-semibold', rtbfToneClass(result.tone))}>
           {result.badge}
         </span>
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
         {result.metrics.map((metric) => (
-          <div key={metric.label} className="rounded-lg border border-border/50 bg-muted/10 px-2.5 py-2">
+          <div key={metric.label}>
             <div className="flex items-center justify-between gap-2">
-              <div className="truncate text-[10px] font-medium text-muted-foreground/85">{metric.label}</div>
-              <div className="rounded-full bg-info/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-foreground/78">{metric.value}</div>
+              <div className="text-[13px] font-medium text-muted-foreground/85">{metric.label}</div>
+              <div className="text-[13px] font-medium tabular-nums text-foreground">{metric.value}</div>
             </div>
-            {metric.hint ? <div className="mt-1.5 truncate text-[10px] leading-3 text-muted-foreground/72">{metric.hint}</div> : null}
+            {metric.hint ? <div className="mt-1 break-words text-xs leading-5 text-muted-foreground">{metric.hint}</div> : null}
           </div>
         ))}
       </div>
 
       <details
         data-testid="rtbf-raw-response"
-        className="group mt-2.5 rounded-lg border border-border/60 bg-muted/15 px-2.5 py-2 text-[11px] text-muted-foreground"
+        className="group mt-2.5 text-[13px] text-muted-foreground"
       >
-        <summary className="cursor-pointer select-none font-medium text-muted-foreground transition-colors hover:text-info">
+        <summary className="cursor-pointer select-none font-medium text-muted-foreground transition-colors hover:text-foreground">
           原始响应（排障时展开）
         </summary>
         {result.rawText ? (
-          <pre className="mt-2 max-h-44 overflow-auto rounded-md border border-info/15 bg-muted/35 p-2 font-mono text-[11px] leading-4 text-muted-foreground whitespace-pre-wrap break-words">
+          <pre className="mt-2 max-h-44 overflow-auto rounded-md bg-muted/30 p-3 font-mono text-[13px] leading-5 text-foreground whitespace-pre-wrap break-words">
             {result.rawText}
           </pre>
         ) : (
-          <div className="mt-2 rounded-md border border-dashed border-info/15 bg-info/[0.025] px-2 py-1.5 text-[11px] text-muted-foreground">
+          <div className="mt-2 rounded-md border border-dashed border-input bg-background px-2 py-1.5 text-[13px] text-muted-foreground">
             暂无后端响应提交请求或查询状态后，这里会保留原始材料
           </div>
         )}
@@ -380,27 +379,12 @@ export function GovernanceSection({
 
   return (
     <section>
-      <div className={cn(systemWorkbenchTokens.panel, 'space-y-3 border-info/15 bg-info/[0.025] p-3.5')}>
-        <div className="flex items-start justify-between gap-3">
-          <Alert className="flex-1 p-3 shadow-none [&>svg]:left-3 [&>svg]:top-3 [&>svg~*]:pl-6">
-            <AlertCircle className="h-3.5 w-3.5" />
+      <div className={cn('space-y-4')}>
+        <div className="grid gap-x-8 md:grid-cols-2">
+          <div className={cn(settingsLayoutTokens.row, 'border-b border-border/60')}>
             <div>
-              <AlertTitle className="text-xs">默认治理规则</AlertTitle>
-              <AlertDescription className={settingsTextTokens.helpText}>
-                这些开关会影响“入库前清洗/脱敏”，用于没有单独配置数据集或文档级管线时的默认行为
-              </AlertDescription>
-            </div>
-          </Alert>
-          <div className="inline-flex shrink-0 items-center gap-1 rounded-full border border-info/20 bg-info/10 px-2 py-0.5 text-[11px] font-semibold text-info">
-            保存后通常可立即生效
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <div className="flex items-start justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
-            <div>
-              <div className={settingsTextTokens.panelTitle}>启用数据治理</div>
-              <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>打开后才会应用下方治理项（对新入库文档生效）</div>
+              <div className={settingsTextTokens.fieldLabel}>启用数据治理</div>
+              <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>对新入库文档应用下方策略。</div>
             </div>
             <SettingsSwitch
               checked={isGovernanceEnabled}
@@ -410,11 +394,11 @@ export function GovernanceSection({
             />
           </div>
 
-          <div className="flex items-start justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
+          <div className={cn(settingsLayoutTokens.row, 'border-b border-border/60')}>
             <div>
-              <div className={settingsTextTokens.panelTitle}>个人信息脱敏</div>
+              <div className={settingsTextTokens.fieldLabel}>个人信息脱敏</div>
               <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
-                尝试识别并匿名化手机号/邮箱等个人信息（可能影响检索/可读性）
+                匿名化手机号、邮箱等信息，可能影响检索和可读性。
               </div>
             </div>
             <SettingsSwitch
@@ -425,11 +409,11 @@ export function GovernanceSection({
             />
           </div>
 
-          <div className="flex items-start justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
+          <div className={cn(settingsLayoutTokens.row, 'border-b border-border/60')}>
             <div>
-              <div className={settingsTextTokens.panelTitle}>密钥信息脱敏</div>
+              <div className={settingsTextTokens.fieldLabel}>密钥信息脱敏</div>
               <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
-                尝试识别并遮蔽 API 密钥、访问令牌等敏感凭据
+                识别并遮蔽 API 密钥、访问令牌等凭据。
               </div>
             </div>
             <SettingsSwitch
@@ -440,11 +424,11 @@ export function GovernanceSection({
             />
           </div>
 
-          <div className="flex items-start justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
+          <div className={cn(settingsLayoutTokens.row, 'border-b border-border/60')}>
             <div>
-              <div className={settingsTextTokens.panelTitle}>质量过滤触发时隔离</div>
+              <div className={settingsTextTokens.fieldLabel}>质量过滤触发时隔离</div>
               <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
-                当触发“低密度/仅目录”等过滤时，将文档标记为“已隔离（quarantined）”（便于排查）
+                低密度、仅目录等过滤命中时，将文档移入隔离队列。
               </div>
             </div>
             <SettingsSwitch
@@ -459,44 +443,44 @@ export function GovernanceSection({
         <DangerZonePanel
           title="个人数据删除闭环（RTBF）"
           impact="会按账号级联影响文档、分块、向量、图谱和缓存；默认只做安全预演，确认范围后才执行删除"
-          badge="默认收起"
+          badge=""
           compact
           tone="neutral"
           icon="help"
         >
-          <div className="grid gap-2 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2">
             <button
               type="button"
               onClick={() => setRtbfDryRun(true)}
               className={cn(
-                'rounded-xl border px-3 py-2 text-left transition-colors',
+                'min-h-11 border-b-2 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 rtbfModeButtonClass(rtbfDryRun, 'info')
               )}
               aria-pressed={rtbfDryRun}
             >
-              <div className="text-[12px] font-medium">安全预演</div>
-              <div className="mt-0.5 text-[11px] leading-4 opacity-80">推荐先点这个，只返回命中文档和影响范围，不删除数据</div>
+              <div className="text-[13px] font-medium">安全预演</div>
+              <div className="mt-1 text-[13px] leading-5 text-muted-foreground">评估命中文档和影响范围，不删除数据。</div>
             </button>
             <button
               type="button"
               onClick={() => setRtbfDryRun(false)}
               className={cn(
-                'rounded-xl border px-3 py-2 text-left transition-colors',
+                'min-h-11 border-b-2 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 rtbfModeButtonClass(isDeleteMode, 'destructive')
               )}
               aria-pressed={isDeleteMode}
             >
-              <div className="text-[12px] font-medium">执行删除</div>
-              <div className="mt-0.5 text-[11px] leading-4 opacity-80">只在预演结果确认后使用，会调用后端级联删除并刷新相关缓存</div>
+              <div className="text-[13px] font-medium">执行删除</div>
+              <div className="mt-1 text-[13px] leading-5 text-muted-foreground">确认预演范围后使用，将级联删除并刷新相关缓存。</div>
             </button>
           </div>
 
-          <div className="mt-3 rounded-xl border border-info/15 bg-info/[0.025] p-3">
-            <div className="grid gap-3 md:grid-cols-4">
+          <div className="mt-5">
+            <div className="grid gap-4 md:grid-cols-4">
               <div className="space-y-1.5 md:col-span-2">
                 <div className="flex items-center justify-between gap-2">
                   <div className={FIELD_LABEL}>目标账号</div>
-                  <span className="rounded-full border border-info/20 bg-info/10 px-1.5 py-0.5 text-[10px] font-semibold text-info">
+                  <span className={settingsTextTokens.microText}>
                     {subjectSourceLabel}
                   </span>
                 </div>
@@ -516,7 +500,7 @@ export function GovernanceSection({
                     setRtbfAccountId(value)
                   }}
                 >
-                  <SelectTrigger className="h-8 rounded-md border-info/15 bg-info/[0.025] text-[12px]">
+                  <SelectTrigger className="h-11 sm:h-9 rounded-md border-input bg-background text-[13px]">
                     <SelectValue placeholder="自动绑定当前账号" />
                   </SelectTrigger>
                   <SelectContent>
@@ -537,8 +521,8 @@ export function GovernanceSection({
                     </SelectItem>
                   </SelectContent>
                 </Select>
-                <div className={cn('rounded-lg border border-border/60 bg-muted/10 px-2.5 py-2', settingsTextTokens.microText)}>
-                  将提交：<span className="font-mono text-foreground/78">{rtbfAccountId.trim() || '等待自动绑定'}</span>
+                <div className={cn('break-words', settingsTextTokens.helpText)}>
+                  将提交：<span className="break-all font-mono text-foreground">{rtbfAccountId.trim() || '等待自动绑定'}</span>。
                   {membersQuery.isError ? '成员列表加载失败时仍可使用手动输入' : '下拉会优先使用当前账号，也可切换到其他租户成员'}
                 </div>
               </div>
@@ -550,10 +534,10 @@ export function GovernanceSection({
                     setRtbfSubjectSource('manual')
                     setRtbfAccountId(event.target.value)
                   }}
-                  className="h-8 rounded-md border-info/15 bg-info/[0.025] text-[12px]"
+                  className="h-11 sm:h-9 rounded-md border-input bg-background text-[13px]"
                   placeholder="例如 user-123 / acct-1 / 用户 UUID"
                 />
-                <div className={settingsTextTokens.microText}>
+                <div className={settingsTextTokens.helpText}>
                   后端会按文档归属账号和生命周期负责人匹配；如果填写用户 UUID，也会一并匹配建议从成员权限或审计日志复制，不要填昵称
                 </div>
               </div>
@@ -562,7 +546,7 @@ export function GovernanceSection({
                 <Input
                   value={String(rtbfMaxDocs)}
                   onChange={(event) => setRtbfMaxDocs(Number.parseInt(event.target.value || '0', 10) || 100)}
-                  className="h-8 rounded-md border-info/15 bg-info/[0.025] text-[12px]"
+                  className="h-11 sm:h-9 rounded-md border-input bg-background text-[13px]"
                   inputMode="numeric"
                 />
                 <div className={settingsTextTokens.microText}>保护阈值，后端允许 1-1000</div>
@@ -572,7 +556,7 @@ export function GovernanceSection({
                 <Input
                   value={String(rtbfMaxRetries)}
                   onChange={(event) => setRtbfMaxRetries(Number.parseInt(event.target.value || '0', 10) || 1)}
-                  className="h-8 rounded-md border-info/15 bg-info/[0.025] text-[12px]"
+                  className="h-11 sm:h-9 rounded-md border-input bg-background text-[13px]"
                   inputMode="numeric"
                 />
                 <div className={settingsTextTokens.microText}>删除失败时重试，后端允许 0-10</div>
@@ -582,19 +566,19 @@ export function GovernanceSection({
                 <Input
                   value={rtbfTicketId}
                   onChange={(event) => setRtbfTicketId(event.target.value)}
-                  className="h-8 rounded-md border-info/15 bg-info/[0.025] font-mono text-[12px]"
+                  className="h-11 sm:h-9 rounded-md border-input bg-background font-mono text-[13px]"
                   placeholder="提交请求后自动回填；也可粘贴已有工单 ID"
                 />
               </div>
               <div className="flex flex-col gap-2 md:col-span-2">
-                <div className={cn('rounded-lg border border-dashed border-border/70 bg-muted/15 px-2.5 py-2', settingsTextTokens.helpText)}>
+                <div className={settingsTextTokens.helpText}>
                   操作顺序：确认目标账号 → 点“开始安全预演” → 看候选文档数量 → 确认无误后切换“执行删除”
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"
                     variant={rtbfDryRun ? 'outline' : 'destructive'}
-                    className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold"
+                    className="h-11 sm:h-9 gap-1.5 rounded-lg px-3 text-xs font-semibold"
                     disabled={Boolean(rtbfRunningKey) || !rtbfAccountId.trim()}
                     onClick={() =>
                       detachPromise(
@@ -615,7 +599,7 @@ export function GovernanceSection({
                   <Button
                     type="button"
                     variant="outline"
-                    className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold"
+                    className="h-11 sm:h-9 gap-1.5 rounded-lg px-3 text-xs font-semibold"
                     disabled={Boolean(rtbfRunningKey) || !rtbfTicketId.trim()}
                     onClick={() => detachPromise(runRtbfAction('RTBF 状态', 'RTBF 状态查询', () => rtbfApi.getStatus(rtbfTicketId.trim())))}
                   >

@@ -2,38 +2,17 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
-import {
- Blocks,
- Check,
- ChevronRight,
- Clock,
- Code,
- Copy,
- Download,
- Edit3,
- Eye,
- FileStack,
- FileText,
- Heading1,
- Image,
- Layers,
- Loader2,
- RotateCcw,
- Save,
- ShieldCheck,
- Sparkles,
- Table2,
- X,
-} from 'lucide-react'
+import { AlertCircle, ArrowRight, Blocks, Check, ChevronDown, Clock, Code, Copy, Download, Edit3, FileStack, FileText, Heading1, Image as ImageIcon, Layers, Loader2, MoreHorizontal, Play, RotateCcw, Save, Table2 } from '@/components/icons'
 
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
-import { MarkdownToc } from '@/components/markdown/markdown-toc'
 import { AuthImage } from '@/components/auth-image'
-import { ParserDropdown } from '@/components/business/parser-dropdown'
 import { ParsingElementsPanel } from '@/components/parsing/parsing-elements-panel'
 import { ParsingExtractPanel } from '@/components/parsing/parsing-extract-panel'
 import { ParsingRightPanel } from '@/components/parsing/parsing-right-panel'
 import { Button } from '@/components/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { ParsingOriginalFile } from './parsing-original-file'
+import styles from './parsing-compare.module.css'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
  buildParsingLayoutEntries,
@@ -42,6 +21,7 @@ import {
 } from '@/lib/parsing-layout'
 import { findEditSelectionForActiveParsingEntry, type ParsingEditFocusHint } from '@/lib/parsing-edit-focus'
 import { cn } from '@/lib/utils'
+import { extractRequestIdFromError } from '@/lib/api-errors'
 import { getParserLabel } from '@/lib/parser-options'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 import type { ParsingElement, ParsingExtractEvidence } from '@/lib/api/parsing'
@@ -106,15 +86,6 @@ function readBackendName(value: unknown): string | null {
  return null
 }
 
-function getQualityBadgeClass(qualityGrade: string): string {
- if (qualityGrade === 'fail') {
- return 'border-destructive/20 bg-destructive/10 text-destructive'
- }
- if (qualityGrade === 'warn') {
- return 'border-warning/20 bg-warning/10 text-warning'
- }
- return 'border-success/20 bg-success/10 text-success'
-}
 
 function buildQualityEvidenceSummary(qualityGate: unknown, pdfQuality: unknown): string {
  const pieces: string[] = []
@@ -161,10 +132,6 @@ function buildQualityEvidenceSummary(qualityGate: unknown, pdfQuality: unknown):
  return pieces.join(' · ')
 }
 
-function formatElementBbox(bbox: ParsingElement['bbox'] | ParsingExtractEvidence['bbox']): string {
- if (!bbox) return ''
- return `${bbox.x0},${bbox.y0},${bbox.x1},${bbox.y1}`
-}
 
 function formatElementPages(element: ParsingElement | null | undefined): string {
  const pages = Array.isArray(element?.pages) ? element.pages.filter((value) => Number.isInteger(value) && value > 0) : []
@@ -273,20 +240,12 @@ function buildParsedStatItems(activeFile: ParsedFile) {
  { icon: Layers, label: '页数', value: pageCount },
  { icon: Blocks, label: '定位块', value: Math.floor(activeFile.stats.blockCount || 0) },
  { icon: Table2, label: '表格', value: Math.floor(activeFile.stats.tableCount || 0) },
- { icon: Image, label: '图片', value: activeFile.stats.imageCount || 0 },
+ { icon: ImageIcon, label: '图片', value: activeFile.stats.imageCount || 0 },
  { icon: Clock, label: '耗时', value: duration },
  ]
 }
 
-function getQualitySectionClass(hasDivider: boolean): string {
- return hasDivider ? 'mt-2 border-t border-border/60 pt-2' : 'mt-2'
-}
 
-function getToggleButtonClass(active: boolean): string {
- return active
- ? 'bg-card text-foreground shadow-sm dark:bg-background dark:text-foreground dark:shadow-none'
- : 'text-muted-foreground hover:text-foreground/80 dark:text-muted-foreground dark:hover:text-muted-foreground'
-}
 
 function buildExtractEvidencePosition(
  evidence: ParsingExtractEvidence | null | undefined,
@@ -327,7 +286,7 @@ type ParsingActiveFilePaneProps = {
  activePdfQuality: unknown
  activeBlocksWithPositions: ParsingBlock[]
  isPdf: boolean
- tocEnabled: boolean
+ tocEnabled?: boolean
  previewMode: 'raw' | 'rendered'
  rightPanelMode: 'blocks' | 'markdown'
  isEditing: boolean
@@ -340,12 +299,11 @@ type ParsingActiveFilePaneProps = {
  onRightPanelModeChange: (mode: 'blocks' | 'markdown') => void
  onStartEdit: () => void
  onCancelEdit: () => void
- onSaveEdit: () => void
+ onSaveEdit: () => void | Promise<void>
  onCopyMarkdown: () => void
  onDownloadMarkdown: () => void
  onParseFile: (fileId: string, backend?: string) => void
  pdfPreviewResetToken: number
- onSetQueueFileParserBackend: (params: { fileId: string; filename: string; backend: string }) => void
  onSubmitToGovernance: () => void
  onEditedContentChange: (value: string) => void
  onActiveBlockIdChange: (blockId: string | null) => void
@@ -361,7 +319,7 @@ export function ParsingActiveFilePane({
  activePdfQuality,
  activeBlocksWithPositions,
  isPdf,
- tocEnabled,
+
  previewMode,
  rightPanelMode,
  isEditing,
@@ -379,13 +337,15 @@ export function ParsingActiveFilePane({
  onDownloadMarkdown,
  onParseFile,
  pdfPreviewResetToken,
- onSetQueueFileParserBackend,
  onSubmitToGovernance,
  onEditedContentChange,
  onActiveBlockIdChange,
  onHoveredBlockIdChange,
 }: Readonly<ParsingActiveFilePaneProps>) {
  const [compareOpen, setCompareOpen] = useState(false)
+ const [resourceView, setResourceView] = useState(false)
+ const [narrowView, setNarrowView] = useState<'source' | 'result'>('result')
+ const [savePending, setSavePending] = useState(false)
  const [activePdfEditHint, setActivePdfEditHint] = useState<{
  blockId: string
  hint: ParsingEditFocusHint
@@ -534,6 +494,7 @@ export function ParsingActiveFilePane({
  }
  setActivePdfEditHint(hint ? { blockId, hint } : null)
  if (hasLayoutEntry) {
+ setResourceView(false)
  onRightPanelModeChange('blocks')
  }
  onActiveBlockIdChange(blockId)
@@ -591,6 +552,7 @@ export function ParsingActiveFilePane({
  }, [activeEditSelection, isEditing])
  useEffect(() => {
  setSelectedExtractEvidence(null)
+ setResourceView(false)
  }, [activeFile.id, activeRun?.id])
 
  useEffect(() => {
@@ -609,14 +571,9 @@ export function ParsingActiveFilePane({
  })
  }, [activeBlockId, layoutEntries, rightPanelMode])
 
- const parsedStatItems = buildParsedStatItems(activeFile)
  const activeImageElements = useMemo(
  () => (activeElements || []).filter((element) => element.kind === 'image'),
  [activeElements]
- )
- const positionedImageElementCount = useMemo(
- () => activeImageElements.filter((element) => element.bbox).length,
- [activeImageElements]
  )
  const imageReviewEntries = useMemo<ImageReviewEntry[]>(
  () =>
@@ -654,743 +611,146 @@ export function ParsingActiveFilePane({
  return leftIndex - rightIndex
  })
  }, [imageReviewEntries, layoutEntries])
- const activeElementSummaryItems = useMemo(() => {
- const counts = new Map<string, number>()
- for (const element of activeElements || []) {
- const kind = String(element.kind || '').trim()
- if (!kind) continue
- counts.set(kind, (counts.get(kind) || 0) + 1)
- }
- const descriptors = [
- { kind: 'seal', label: '印章' },
- { kind: 'equation', label: '公式' },
- { kind: 'table', label: '表格元素' },
- { kind: 'image', label: '图片元素' },
- { kind: 'heading', label: '标题元素' },
- ]
- return descriptors
- .map((descriptor) => ({
- ...descriptor,
- count: counts.get(descriptor.kind) || 0,
- }))
- .filter((descriptor) => descriptor.count > 0)
- }, [activeElements])
- const activeElementHighlightItems = useMemo(() => {
- const highlights: Array<{
- key: string
- label: string
- value: string
- meta?: string
- }> = []
 
- const primarySeal = (activeElements || [])
- .filter((element) => element.kind === 'seal' && typeof element.text === 'string' && element.text.trim())
- .sort((left, right) => Number(right.confidence || 0) - Number(left.confidence || 0))[0]
- if (primarySeal) {
- const sealMeta: string[] = []
- if (formatElementPages(primarySeal)) sealMeta.push(formatElementPages(primarySeal))
- if (typeof primarySeal.confidence === 'number') sealMeta.push(primarySeal.confidence.toFixed(2))
- highlights.push({
- key: 'primary-seal',
- label: '主印章',
- value: String(primarySeal.text || '').trim(),
- meta: sealMeta.join(' · ') || undefined,
- })
+ const resultReady = activeFile.status === 'parsed' && Boolean(activeMarkdown)
+ const failureRequestId = extractRequestIdFromError(activeFile.error)
+ const failureMessage = (activeFile.error || '未能完成解析，请重试。').replace(/\s*[（(]?\brequest_id=[A-Za-z0-9._:-]+[）)]?/g, '').trim()
+ const stats = buildParsedStatItems(activeFile).filter((item) => ['字符', '标题', '表格', '图片', '耗时'].includes(item.label))
+ const resultTab = resourceView ? 'resources' : rightPanelMode
+ const selectResultTab = (tab: 'markdown' | 'blocks' | 'resources') => {
+   setResourceView(tab === 'resources')
+   if (tab !== 'blocks') {
+     onActiveBlockIdChange(null)
+     onHoveredBlockIdChange(null)
+   }
+   if (tab !== 'resources') onRightPanelModeChange(tab)
  }
-
- const equations = (activeElements || []).filter(
- (element) => element.kind === 'equation' && typeof element.text === 'string' && element.text.trim()
- )
- if (equations.length > 0) {
- const leadEquation = String(equations[0]?.text || '').replace(/\s+/g, ' ').trim()
- const extraCount = Math.max(0, equations.length - 1)
- highlights.push({
- key: 'equation-preview',
- label: '公式样例',
- value: leadEquation,
- meta: extraCount > 0 ? `另 ${extraCount} 条` : undefined,
- })
+ const save = async () => {
+   setSavePending(true)
+   try { await onSaveEdit() } finally { setSavePending(false) }
  }
-
- const imageSubtypeCounts = new Map<string, number>()
- for (const element of activeElements || []) {
- if (element.kind !== 'image') continue
- const visualKind = String(element.visual_kind || '').trim()
- if (!visualKind) continue
- imageSubtypeCounts.set(visualKind, (imageSubtypeCounts.get(visualKind) || 0) + 1)
- }
- if (imageSubtypeCounts.size > 0) {
- const rankedSubtypes = Array.from(imageSubtypeCounts.entries()).sort((left, right) => right[1] - left[1])
- const [leadKind, leadCount] = rankedSubtypes[0]
- const remainingKinds = rankedSubtypes.slice(1).map(([kind, count]) => `${kind}×${count}`)
- highlights.push({
- key: 'image-visual-kinds',
- label: '图片子类',
- value: `${leadKind}×${leadCount}`,
- meta: remainingKinds.length > 0 ? remainingKinds.join(' · ') : undefined,
- })
- }
-
- return highlights
- }, [activeElements])
- const submitToGovernanceButton = isEditing ? null : (
- <Button
- onClick={onSubmitToGovernance}
- className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
- >
- <ShieldCheck className="h-4 w-4" />
- 提交到数据治理
- <ChevronRight className="h-4 w-4" />
- </Button>
- )
 
  return (
- <>
- <ParseCompareDialog
- open={compareOpen}
- onOpenChange={setCompareOpen}
- runs={activeFile.runs || []}
- defaultBaseRunId={activeFile.activeRunId || activeRun?.id || null}
- onUseRun={(runId) => {
- onSelectRun(runId)
- setCompareOpen(false)
- }}
- />
+   <>
+     <ParseCompareDialog open={compareOpen} onOpenChange={setCompareOpen} runs={activeFile.runs || []} defaultBaseRunId={activeFile.activeRunId || activeRun?.id || null} onUseRun={(runId) => { onSelectRun(runId); setCompareOpen(false) }} />
+     <div className={styles.mobileTabs} role="group" aria-label="核对视图">
+       <span className={styles.mobileIndicator} style={{ transform: narrowView === 'source' ? 'translateX(0)' : 'translateX(100%)' }} />
+       <button type="button" aria-pressed={narrowView === 'source'} onClick={() => setNarrowView('source')}>原文</button>
+       <button type="button" aria-pressed={narrowView === 'result'} onClick={() => setNarrowView('result')}>解析结果</button>
+     </div>
+     <div className={styles.workspace} data-narrow-view={narrowView} data-testid="parsing-compare-workspace">
+       <section className={styles.source} aria-label="原文">
+         {isPdf ? <PdfViewer key={pdfViewerKey} file={activeFile.file} showToolbar
+           showAllBoxes={rightPanelMode === 'blocks' && !resourceView}
+           blocks={activeBlocksWithPositions} boxesByPage={pdfBoxesByPage} blockIdToPageIndex={pdfBlockIdToPageIndex}
+           activeBlockIds={pdfActiveBlockIds} hoveredBlockIds={hoveredBlockId ? [hoveredBlockId] : []}
+           onHoverBlockId={onHoveredBlockIdChange} onClickBlockId={handleSelectPdfBlock}
+         /> : <ParsingOriginalFile file={activeFile.file} />}
+       </section>
 
- <>
- {parsedStatItems.length > 0 || activeQualityGate || activeElementSummaryItems.length > 0 ? (
- <div className="border-b border-border/60 bg-[linear-gradient(180deg,hsl(var(--background)/0.96),hsl(var(--muted)/0.35))] px-5 py-3 dark:bg-card">
- {parsedStatItems.length > 0 ? (
- <div className="flex flex-wrap items-center gap-1.5">
- {parsedStatItems.map(({ icon: Icon, label, value }) => (
- <div
- key={label}
- className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card/88 px-2.5 py-1 text-[11px] text-muted-foreground shadow-[0_1px_0_hsl(var(--background))] dark:bg-card"
- >
- <Icon className="h-3.5 w-3.5 text-primary/65" />
- <span>{label}</span>
- <span className="font-mono text-[12px] font-medium tabular-nums text-foreground">
- {value}
- </span>
- </div>
- ))}
- </div>
- ) : null}
- {activeQualityGate ? (
- <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-border/60 pt-2">
- <div className="flex items-center gap-2">
- <span
- className={cn(
- 'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.12em]',
- getQualityBadgeClass(qualityGrade)
- )}
- title="解析质量门禁（best-effort）"
- >
- {String(qualityGrade || 'pass')}
- </span>
- <div className="text-[11px] text-muted-foreground">
- {qualityReasons.length ? qualityReasons.join(' · ') : '无明显风险信号'}
- </div>
- </div>
- {qualityEvidenceItems.map((item) => (
- <span
- key={item}
- className="rounded-full border border-border/60 bg-card px-2 py-0.5 font-mono text-[11px] text-muted-foreground/90"
- >
- {item}
- </span>
- ))}
- </div>
- ) : null}
- {activeElementSummaryItems.length > 0 ? (
- <div
- className={cn(
- 'flex flex-wrap items-center gap-1.5',
- getQualitySectionClass(Boolean(activeQualityGate))
- )}
- >
- <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground/75">
- 结构元素
- </span>
- {activeElementSummaryItems.map((item) => (
- <span
- key={item.kind}
- className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-card px-2 py-0.5 text-[11px] text-muted-foreground"
- >
- <span>{item.label}</span>
- <span className="font-mono font-semibold text-foreground">{item.count}</span>
- </span>
- ))}
- </div>
- ) : null}
- {activeElementHighlightItems.length > 0 ? (
- <div
- className={cn(
- 'flex flex-wrap items-center gap-1.5',
- getQualitySectionClass(activeElementSummaryItems.length > 0 || Boolean(activeQualityGate))
- )}
- >
- {activeElementHighlightItems.map((item) => (
- <div
- key={item.key}
- className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border/60 bg-card px-2.5 py-1 text-[11px] text-muted-foreground"
- >
- <span className="font-semibold uppercase tracking-[0.1em] text-foreground/78">{item.label}</span>
- <span className="max-w-[280px] truncate font-medium text-foreground">{item.value}</span>
- {item.meta ? <span className="font-mono text-muted-foreground/85">{item.meta}</span> : null}
- </div>
- ))}
- </div>
- ) : null}
- {selectedExtractEvidence ? (
- <div className="mt-2 border-t border-border/60 pt-2">
- <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground/75">证据定位</div>
- <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-card px-2.5 py-1.5 text-[11px] text-muted-foreground">
- <span className="font-semibold text-foreground/80">{selectedExtractEvidence.fieldName}</span>
- <span>{selectedExtractElement?.kind || selectedExtractEvidence.evidence.kind || 'unknown'}</span>
- {selectedExtractEvidence.evidence.visual_kind ? <span>{selectedExtractEvidence.evidence.visual_kind}</span> : null}
- {selectedExtractElement?.id || selectedExtractEvidence.evidence.element_id ? (
- <span>{selectedExtractElement?.id || selectedExtractEvidence.evidence.element_id}</span>
- ) : null}
- {formatEvidencePages(selectedExtractEvidence.evidence, selectedExtractElement) ? (
- <span>{formatEvidencePages(selectedExtractEvidence.evidence, selectedExtractElement)}</span>
- ) : null}
- {formatElementBbox(selectedExtractElement?.bbox || selectedExtractEvidence.evidence.bbox) ? (
- <span className="font-mono">
- {formatElementBbox(selectedExtractElement?.bbox || selectedExtractEvidence.evidence.bbox)}
- </span>
- ) : null}
- {selectedExtractElement?.text || selectedExtractEvidence.evidence.text ? (
- <span className="truncate font-medium text-foreground">
- {selectedExtractElement?.text || selectedExtractEvidence.evidence.text}
- </span>
- ) : null}
- </div>
- </div>
- ) : null}
- </div>
- ) : null}
+       <section className={styles.result} aria-label="解析结果">
+         <div className={styles.resultToolbar}>
+           <div className={styles.resultTabs} role="group" aria-label="结果视图">
+             {([{ id: 'markdown', label: 'Markdown' }, { id: 'blocks', label: '内容块' }, { id: 'resources', label: '提取资源' }] as const).map((tab) =>
+               <button key={tab.id} type="button" disabled={!resultReady || isEditing} aria-pressed={resultTab === tab.id} onClick={() => selectResultTab(tab.id)}>
+                 {tab.label}{tab.id === 'blocks' && layoutEntries.length ? <span>{layoutEntries.length}</span> : null}
+               </button>
+             )}
+           </div>
+           {resultReady ? <div className={styles.resultActions}>
+             {!isEditing ? <>
+               {resultTab === 'markdown' ? <Button size="icon" variant="ghost" className="size-8" aria-label={previewMode === 'raw' ? '预览 Markdown' : '查看 Markdown 源码'} aria-pressed={previewMode === 'raw'} title={previewMode === 'raw' ? '预览' : '源码'} onClick={() => onPreviewModeChange(previewMode === 'raw' ? 'rendered' : 'raw')}><Code className="size-4" /></Button> : null}
+               <Button size="icon" variant="ghost" className="size-8" aria-label={copied ? '已复制 Markdown' : '复制 Markdown'} title="复制" onClick={onCopyMarkdown}>{copied ? <Check className="size-4 text-success" /> : <Copy className="size-4" />}</Button>
+               <Button size="icon" variant="ghost" className="size-8" aria-label="下载 Markdown" title="下载" onClick={onDownloadMarkdown}><Download className="size-4" /></Button>
+               <DropdownMenu>
+                 <DropdownMenuTrigger asChild><Button size="icon" variant="ghost" className="size-8" aria-label="更多结果操作"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
+                 <DropdownMenuContent align="end" className="w-60">
+                   <DropdownMenuItem onSelect={onStartEdit}><Edit3 className="mr-2 size-4" />{rightPanelMode === 'blocks' && activeBlockId ? '编辑选中内容块' : '编辑 Markdown'}</DropdownMenuItem>
+                   {activeFile.runs && activeFile.runs.length > 1 ? <>
+                     <DropdownMenuSeparator />
+                     <label className="block px-2 py-1.5 text-xs text-muted-foreground" htmlFor="parsing-run">解析版本</label>
+                     <select id="parsing-run" className={styles.runSelect} value={activeRun?.id || activeFile.activeRunId || ''} onChange={(event) => onSelectRun(event.target.value)}>
+                       {activeFile.runs.map((run) => <option key={run.id} value={run.id}>{run.parserLabel}{run.createdAt ? ' · ' + new Date(run.createdAt).toLocaleTimeString() : ''}</option>)}
+                     </select>
+                     <DropdownMenuItem onSelect={() => setCompareOpen(true)}><FileStack className="mr-2 size-4" />对比解析版本</DropdownMenuItem>
+                   </> : null}
+                 </DropdownMenuContent>
+               </DropdownMenu>
+             </> : <span className="px-2 text-xs text-muted-foreground">编辑中</span>}
+           </div> : null}
+         </div>
 
- <div className="border-b border-border/60 bg-card/96 px-4 py-2.5 shadow-soft dark:bg-background/75">
-        <div className="flex min-w-0 flex-col gap-2 md:flex-row md:items-center md:justify-between">
- <div className="flex min-w-0 flex-1 items-center gap-2">
- <span className="min-w-0 truncate text-[13px] font-semibold text-foreground">
- {activeFile.file.name}
- </span>
- <span className="shrink-0 rounded-md border border-border/60 bg-muted/45 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
- {activeFile.parserLabel}
- </span>
- <span className="shrink-0 rounded-md bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
- {activeFile.status === 'parsed' ? '已生成' : activeFile.status === 'pending' ? '待解析' : activeFile.status === 'error' ? '失败' : '解析中'}
- </span>
- {isEditing ? (
- <span className="shrink-0 rounded-md bg-info/10 px-2 py-0.5 text-[11px] font-medium text-info">
- 编辑中
- </span>
- ) : null}
- {activeFile.runs && activeFile.runs.length > 1 ? (
- <select
- value={activeRun?.id || ''}
- onChange={(event) => onSelectRun(event.target.value)}
- className="h-7 max-w-[12rem] shrink-0 rounded-md border border-border/60 bg-background px-2 text-[11px] text-foreground/80 outline-none focus:border-info/50 dark:border-border dark:bg-muted dark:text-muted-foreground"
- >
- {activeFile.runs.map((run) => (
- <option key={run.id} value={run.id}>
- {run.parserLabel} {run.createdAt ? `· ${new Date(run.createdAt).toLocaleTimeString()}` : ''}
- </option>
- ))}
- </select>
- ) : null}
- </div>
+         {!resultReady ? <div className={styles.resultState} role={activeFile.status === 'error' ? 'alert' : 'status'}>
+           {activeFile.status === 'parsing' ? <>
+             <Loader2 className="size-7 animate-spin text-info motion-reduce:animate-none" />
+             <h2>正在解析</h2><p>{activeFile.parserLabel} · {Math.round(activeFile.progress || 0)}%</p>
+             <div className={styles.progress} role="progressbar" aria-label="解析进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(activeFile.progress || 0)}><span style={{ width: Math.min(100, Math.max(0, activeFile.progress || 0)) + '%' }} /></div>
+           </> : activeFile.status === 'error' ? <>
+             <AlertCircle className="size-7 text-destructive" /><h2>解析失败</h2><p>{failureMessage}</p>
+             <Button className="gap-2" onClick={() => onParseFile(activeFile.id, activeFile.parserBackend)}><RotateCcw className="size-4" />重试解析</Button>
+             {failureRequestId ? <details className={styles.diagnostics}><summary>请求详情</summary><p className="font-mono">request_id={failureRequestId}</p></details> : null}
+             {activeFile.parseDiagnostics?.suggested_backends?.length ? <div className={styles.recovery}>
+               {activeFile.parseDiagnostics.suggested_backends.slice(0, 6).map((backend) => <Button key={backend} size="sm" variant="outline" onClick={() => onParseFile(activeFile.id, backend)}>用 {getParserLabel(resolveParserBackendForFilename(activeFile.file.name, backend).backend)} 重试</Button>)}
+             </div> : null}
+             {activeFile.parseDiagnostics?.pdf_sample ? <details className={styles.diagnostics}><summary>查看 PDF 诊断</summary>
+               <p>{activeFile.parseDiagnostics.pdf_sample.page_count || '–'} 页{activeFile.parseDiagnostics.pdf_sample.is_scanned ? ' · 可能为扫描件' : ''}</p>
+               {activeFile.parseDiagnostics.pdf_sample.samples?.slice(0, 3).map((sample) => <p key={sample.page}>第 {sample.page} 页 · {sample.text_chars} 字符<br />{sample.excerpt || '未检测到可选文字'}</p>)}
+             </details> : null}
+           </> : <>
+             <FileText className="size-7 text-muted-foreground" /><h2>{activeFile.status === 'parsed' ? '没有可用的解析内容' : '文档已就绪'}</h2>
+             <p>{activeFile.status === 'parsed' ? '请检查原文，或更换解析器重新运行。' : '选择解析器，开始提取文档内容。'}</p>
+             <Button className="gap-2" onClick={() => onParseFile(activeFile.id, activeFile.parserBackend)}><Play className="size-4" />开始解析</Button>
+           </>}
+         </div> : isEditing ? <div className={styles.editor}>
+           <textarea ref={editorRef} aria-label="编辑 Markdown" value={editedContent} disabled={savePending} onChange={(event) => onEditedContentChange(event.target.value)} spellCheck={false} />
+         </div> : resourceView ? <div className={styles.resourceBody}>
+           {selectedExtractEvidence ? <div className={styles.evidence}>
+             <span>{selectedExtractEvidence.fieldName} · {formatEvidencePages(selectedExtractEvidence.evidence, selectedExtractElement)}</span>
+             <span>{selectedExtractElement?.text || selectedExtractEvidence.evidence.text}</span>
+             <Button size="sm" variant="ghost" onClick={() => setNarrowView('source')}>查看原文</Button>
+           </div> : null}
+           <ParsingExtractPanel documentId={activeFile.libraryId || null} activeElements={activeElements} onSelectEvidence={handleSelectExtractEvidence} className="bg-background" />
+           <ParsingElementsPanel elements={activeElements} onSelectElement={handleSelectElement} />
+         </div> : rightPanelMode === 'blocks' ? <ParsingRightPanel className={styles.blockBody}>
+           {reviewEntries.length ? reviewEntries.map((reviewEntry, index) => {
+             const id = reviewEntry.type === 'layout' ? reviewEntry.entry.id : String(reviewEntry.element.id || '')
+             const isActive = reviewEntry.type === 'layout' ? id === activeBlockId : String(selectedExtractElement?.id || '') === id
+             const meta = reviewEntry.type === 'layout' ? getParsingLayoutMeta(reviewEntry.entry.kind) : getParsingLayoutMeta('image')
+             return <button key={reviewEntry.type + ':' + id + ':' + index} ref={(node) => { if (node) layoutReviewCardRefs.current.set(id, node); else layoutReviewCardRefs.current.delete(id) }}
+               data-layout-entry-id={id} type="button" className={styles.blockRow} aria-pressed={isActive}
+               onClick={() => reviewEntry.type === 'layout' ? handleSelectReviewBlock(id) : handleSelectElement(reviewEntry.element)}
+               onMouseEnter={() => onHoveredBlockIdChange(id)} onMouseLeave={() => onHoveredBlockIdChange(null)}>
+               <div className={styles.blockMeta}><span className={cn('size-1.5 rounded-full', meta.dotClassName)} /><strong>{meta.label}</strong>
+                 <span>{reviewEntry.type === 'layout' && reviewEntry.entry.pageIndex != null ? '第 ' + (reviewEntry.entry.pageIndex + 1) + ' 页' : reviewEntry.type === 'image' ? formatElementPages(reviewEntry.element) : '无页码'}</span>
+                 <span className="ml-auto">{reviewEntry.type === 'layout' ? reviewEntry.entry.charCount + ' 字' : reviewEntry.element.bbox ? '可定位' : '无坐标'}</span>
+               </div>
+               {reviewEntry.type === 'layout' ? <div className={styles.markdown}><MarkdownRenderer markdown={reviewEntry.entry.text} /></div> : <div className={styles.imageEntry}>
+                 {reviewEntry.src ? <AuthImage src={reviewEntry.src} alt={String(reviewEntry.element.text || '文档图片')} width={280} height={200} unoptimized className="max-h-40 w-full object-contain" /> : <ImageIcon className="size-7 text-muted-foreground" />}
+                 <span>{reviewEntry.element.text || '图片 ' + (reviewEntry.imageIndex + 1)}</span>
+               </div>}
+             </button>
+           }) : <div className={styles.empty}><Blocks className="size-6 text-muted-foreground" /><h2>没有可定位的内容块</h2><p>可以切换到 Markdown 查看解析内容。</p></div>}
+         </ParsingRightPanel> : <ParsingRightPanel dragScroll className={cn(styles.markdownBody, 'parsing-md-scroll')}>
+           {previewMode === 'raw' ? <pre className={styles.raw}>{activeMarkdown}</pre> : <article className={styles.markdown}><MarkdownRenderer markdown={activeMarkdown} autoScrollToHash scrollContainerSelector=".parsing-md-scroll" /></article>}
+         </ParsingRightPanel>}
 
- {activeFile.status === 'parsed' ? (
- <div className="-mx-1 flex max-w-full shrink-0 items-center gap-1 overflow-x-auto px-1 no-scrollbar">
- {activeFile.runs && activeFile.runs.length > 1 ? (
- <Button
- variant="outline"
- size="sm"
- onClick={() => setCompareOpen(true)}
- disabled={isEditing}
- className="h-8 shrink-0 gap-1.5 rounded-md px-2.5 text-xs"
- >
- <FileStack className="h-4 w-4" />
- 对比
- </Button>
- ) : null}
+         {resultReady && !isEditing && activeQualityGate && qualityGrade !== 'pass' ? <details className={cn(styles.quality, qualityGrade === 'fail' && styles.qualityFail)}>
+           <summary><AlertCircle className="size-3.5 shrink-0" /><span>{qualityGrade === 'fail' ? '解析质量未通过检查' : '解析内容需要核对'}</span><ChevronDown className="ml-auto size-3.5" /></summary>
+           <div><p>{qualityReasons.join(' · ') || '请对照原文检查解析结果。'}</p>{qualityEvidenceItems.length ? <p>{qualityEvidenceItems.join(' · ')}</p> : null}</div>
+         </details> : null}
+       </section>
+     </div>
 
- {isEditing ? (
- <>
- <Button
- variant="outline"
- size="sm"
- onClick={onCancelEdit}
- className="h-8 shrink-0 gap-1.5 rounded-md px-2.5 text-xs text-muted-foreground"
- >
- <X className="h-4 w-4" />
- 取消
- </Button>
- <Button
- onClick={onSaveEdit}
- size="sm"
- className="h-8 shrink-0 gap-1.5 rounded-md bg-info px-2.5 text-xs hover:bg-info"
- >
- <Save className="h-4 w-4" />
- 保存修改
- </Button>
- </>
- ) : (
- <>
- {rightPanelMode === 'markdown' ? (
- <>
- <button
- onClick={() => onPreviewModeChange('rendered')}
- className={cn(
- 'focus-ring flex h-8 shrink-0 items-center gap-1 rounded-md px-2.5 text-xs transition-colors duration-200 motion-reduce:transition-none',
- getToggleButtonClass(previewMode === 'rendered')
- )}
- >
- <Eye className="h-3.5 w-3.5" />
- 预览
- </button>
- <button
- onClick={() => onPreviewModeChange('raw')}
- className={cn(
- 'focus-ring flex h-8 shrink-0 items-center gap-1 rounded-md px-2.5 text-xs transition-colors duration-200 motion-reduce:transition-none',
- getToggleButtonClass(previewMode === 'raw')
- )}
- >
- <Code className="h-3.5 w-3.5" />
- 源码
- </button>
- </>
- ) : null}
-
- {activeBlocksWithPositions.length > 0 ? (
- <>
- <button
- onClick={() => onRightPanelModeChange('blocks')}
- className={cn(
- 'focus-ring flex h-8 shrink-0 items-center gap-1 rounded-md px-2.5 text-xs transition-colors duration-200 motion-reduce:transition-none',
- getToggleButtonClass(rightPanelMode === 'blocks')
- )}
- >
- <FileStack className="h-3.5 w-3.5" />
- 定位块
- <span className="font-mono text-[11px] tabular-nums opacity-75">
- {layoutEntries.length}
- </span>
- </button>
- <button
- onClick={() => onRightPanelModeChange('markdown')}
- className={cn(
- 'focus-ring flex h-8 shrink-0 items-center gap-1 rounded-md px-2.5 text-xs transition-colors duration-200 motion-reduce:transition-none',
- getToggleButtonClass(rightPanelMode === 'markdown')
- )}
- >
- <FileText className="h-3.5 w-3.5" />
- Markdown
- </button>
- </>
- ) : null}
-
- <Button variant="outline" size="sm" onClick={onStartEdit} className="h-8 shrink-0 gap-1.5 rounded-md px-2.5 text-xs">
- <Edit3 className="h-4 w-4" />
- 编辑
- </Button>
- <Button variant="outline" size="sm" onClick={onSaveEdit} className="h-8 shrink-0 gap-1.5 rounded-md px-2.5 text-xs">
- <Save className="h-4 w-4" />
- 保存
- </Button>
- <Button variant="outline" size="sm" onClick={onCopyMarkdown} className="h-8 shrink-0 gap-1.5 rounded-md px-2.5 text-xs">
- {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
- {copied ? '已复制' : '复制'}
- </Button>
- <Button size="sm" onClick={onDownloadMarkdown} className="h-8 shrink-0 gap-1.5 rounded-md bg-primary px-2.5 text-xs text-primary-foreground hover:bg-primary/90">
- <Download className="h-4 w-4" />
- 下载
- </Button>
- </>
- )}
- </div>
- ) : null}
- </div>
- </div>
-
- <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar">
- {activeFile.status === 'pending' ? (
- <div className="flex h-full items-center justify-center">
- <div className="text-center">
- <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-xl bg-info/15 dark:bg-info/30">
- <Sparkles className="h-8 w-8 text-info dark:text-info" />
- </div>
- <p className="mb-2 text-foreground/80 dark:text-muted-foreground">准备就绪</p>
- <p className="text-sm text-muted-foreground dark:text-muted-foreground">
- 上传只登记到解析工作区；点击下方“用当前解析器开始解析”才会运行（当前：{activeFile.parserLabel}）
- </p>
- <div className="mt-5 flex flex-col items-stretch justify-center gap-3 rounded-2xl border border-border/60 bg-card/86 p-3 shadow-soft sm:flex-row sm:items-center">
- <div className="min-w-0 sm:w-72">
- <ParserDropdown
- value={activeFile.parserBackend}
- filename={activeFile.file.name}
- onChange={(backend) =>
- onSetQueueFileParserBackend({
- fileId: activeFile.id,
- filename: activeFile.file.name,
- backend,
- })
- }
- />
- </div>
- <Button
- onClick={() => onParseFile(activeFile.id, activeFile.parserBackend)}
- className="gap-2 bg-info hover:bg-info"
- >
- <Sparkles className="h-4 w-4 text-info" />
- 用当前解析器开始解析
- </Button>
- </div>
- </div>
- </div>
- ) : null}
-
- {activeFile.status === 'parsing' ? (
- <div className="flex h-full items-center justify-center">
- <div className="text-center">
- <div className="relative">
- <Loader2 className="mx-auto h-12 w-12 animate-spin text-info motion-reduce:animate-none dark:text-info" />
- <div className="absolute inset-0 flex items-center justify-center">
- <span className="text-xs font-medium text-info">
- {Math.round(activeFile.progress || 0)}%
- </span>
- </div>
- </div>
- <p className="mt-4 text-foreground/80 dark:text-muted-foreground">正在解析...</p>
- <p className="mt-1 text-sm text-muted-foreground dark:text-muted-foreground">{activeFile.parserLabel}</p>
- </div>
- </div>
- ) : null}
-
- {activeFile.status === 'error' ? (
- <div className="flex h-full items-center justify-center">
- <div className="max-w-md text-center">
- <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-xl bg-destructive/10">
- <FileText className="h-8 w-8 text-destructive" />
- </div>
- <p className="mb-2 font-medium text-destructive">解析失败</p>
- <p className="text-sm text-muted-foreground dark:text-muted-foreground">{activeFile.error}</p>
-
- {Array.isArray(activeFile.parseDiagnostics?.suggested_backends) &&
- activeFile.parseDiagnostics.suggested_backends.length > 0 ? (
- <div className="mt-4 flex flex-wrap justify-center gap-2">
- {activeFile.parseDiagnostics.suggested_backends.slice(0, 6).map((backend) => {
- const resolved = resolveParserBackendForFilename(activeFile.file.name, backend)
- const label = getParserLabel(resolved.backend)
- return (
- <Button
- key={backend}
- variant="outline"
- size="sm"
- className="gap-2"
- onClick={() => onParseFile(activeFile.id, backend)}
- >
- <RotateCcw className="h-3.5 w-3.5" />
- 用 {label} 重试
- </Button>
- )
- })}
- </div>
- ) : null}
-
- {activeFile.parseDiagnostics?.pdf_sample ? (
- <div className="mt-4 text-left">
- <div className="text-xs text-muted-foreground">
- PDF 采样
- {typeof activeFile.parseDiagnostics.pdf_sample.page_count === 'number'
- ? `（${activeFile.parseDiagnostics.pdf_sample.page_count} 页）`
- : ''}
- {activeFile.parseDiagnostics.pdf_sample.is_scanned ? ' · 可能是扫描件（可选文本很少）' : ''}
- </div>
- {Array.isArray(activeFile.parseDiagnostics.pdf_sample.samples) &&
- activeFile.parseDiagnostics.pdf_sample.samples.length > 0 ? (
- <div className="mt-2 max-h-48 space-y-2 overflow-y-auto overscroll-contain rounded-lg border border-border/60 bg-muted/30 p-2 dark:border-border/60 dark:bg-background/40">
- {activeFile.parseDiagnostics.pdf_sample.samples.slice(0, 3).map((sample) => (
- <div
- key={sample.page}
- className="rounded-md border border-border/40 bg-card/95 p-2 dark:border-border/60 dark:bg-card"
- >
- <div className="text-xs text-muted-foreground">
- 页 {sample.page} · {sample.text_chars} 字符
- </div>
- {sample.excerpt ? (
- <div className="mt-1 whitespace-pre-wrap text-xs text-foreground/80 dark:text-muted-foreground">
- {sample.excerpt}
- </div>
- ) : (
- <div className="mt-1 text-xs italic text-muted-foreground">无可选中文本</div>
- )}
- </div>
- ))}
- </div>
- ) : null}
- </div>
- ) : null}
- </div>
- </div>
- ) : null}
-
- {activeFile.status === 'parsed' && activeMarkdown ? (
- <div className="h-full">
- {isEditing ? (
- <div className="p-6">
- <textarea
- ref={editorRef}
- value={editedContent}
- onChange={(event) => onEditedContentChange(event.target.value)}
- className="min-h-[500px] w-full resize-none rounded-xl border border-border bg-muted p-4 font-mono text-sm leading-relaxed text-foreground/80 whitespace-pre-wrap focus:border-transparent focus:outline-none focus:ring-2 focus:ring-info dark:border-border dark:bg-background dark:text-muted-foreground"
- placeholder="在此编辑内容..."
- autoFocus
- />
- </div>
- ) : (
- <div className="flex h-full min-h-[560px] min-w-0 flex-col bg-[radial-gradient(circle_at_30%_0%,hsl(var(--primary)/0.04),transparent_34%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.22))] xl:flex-row">
- {isPdf ? (
- <div className="relative flex h-full min-h-0 min-w-0 w-full flex-col border-b border-border/60 bg-muted/60 dark:border-border/60 dark:bg-background/40 xl:flex-[1.42] xl:border-b-0 xl:border-r">
- <div className="min-h-0 flex-1">
- <PdfViewer
- key={pdfViewerKey}
- file={activeFile.file}
- blocks={activeBlocksWithPositions}
- boxesByPage={pdfBoxesByPage}
- blockIdToPageIndex={pdfBlockIdToPageIndex}
- activeBlockIds={pdfActiveBlockIds}
- hoveredBlockIds={hoveredBlockId ? [hoveredBlockId] : []}
- onHoverBlockId={onHoveredBlockIdChange}
- onClickBlockId={handleSelectPdfBlock}
- />
- </div>
- </div>
- ) : null}
- <div className={isPdf ? 'w-full min-w-0 xl:flex-[0.92]' : 'w-full min-w-0'}>
- {rightPanelMode === 'blocks' && layoutEntries.length > 0 ? (
- <ParsingRightPanel className="h-full no-scrollbar p-4 lg:p-4">
- <div className="overflow-hidden rounded-2xl border border-border/60 bg-card/95 shadow-soft">
- <div className="border-b border-border/60 bg-[linear-gradient(180deg,hsl(var(--background)/0.92),hsl(var(--muted)/0.36))] px-4 py-3 dark:bg-background/72">
- <div className="flex flex-wrap items-center justify-between gap-2">
- <div className="min-w-0">
- <div className="text-[11px] font-medium tracking-[0.06em] text-foreground/78">
- 解析定位块
- </div>
- <div className="mt-0.5 text-[11px] leading-5 text-muted-foreground/78">
- 点击左侧 PDF 框选可跳到这里，点击定位块也会高亮原页
- </div>
- </div>
- <div className="rounded-full border border-border/60 bg-card px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
- {reviewEntries.length} segments
- </div>
- </div>
- </div>
- <div className="space-y-2.5 bg-muted/20 p-3">
- {reviewEntries.map((reviewEntry, index) => {
- if (reviewEntry.type === 'image') {
- const element = reviewEntry.element
- const isActive = String(selectedExtractElement?.id || '') === String(element.id || '')
- const pageLabel = formatElementPages(element)
- return (
- <button
- key={`image:${String(element.id || reviewEntry.imageIndex)}`}
- ref={(node) => {
- const id = String(element.id || '').trim()
- if (!id) return
- if (node) {
- layoutReviewCardRefs.current.set(id, node)
- } else {
- layoutReviewCardRefs.current.delete(id)
- }
- }}
- data-layout-entry-id={String(element.id || '')}
- type="button"
- onClick={() => handleSelectElement(element)}
- onMouseEnter={() => onHoveredBlockIdChange(String(element.id || '').trim() || null)}
- onMouseLeave={() => onHoveredBlockIdChange(null)}
- className={cn(
- 'group w-full overflow-hidden rounded-xl border text-left transition',
- isActive
- ? 'border-warning/70 bg-warning/5 shadow-soft ring-1 ring-warning/40'
- : 'border-warning/30 bg-card/90 hover:border-warning/70 hover:bg-warning/5 dark:bg-background/35 dark:hover:bg-warning/18'
- )}
- title={String(element.text || element.id || '')}
- >
- <div className="flex gap-3 p-3">
- <div className="relative h-24 w-28 shrink-0 overflow-hidden rounded-lg border border-warning/30 bg-[linear-gradient(135deg,hsl(var(--muted)),hsl(var(--background)))]">
- {reviewEntry.src ? (
- <AuthImage
- src={reviewEntry.src}
- alt={String(element.text || `image-${reviewEntry.imageIndex + 1}`)}
- width={280}
- height={200}
- unoptimized
- className="h-full w-full object-contain p-1.5"
- />
- ) : (
- <div className="flex h-full items-center justify-center text-[11px] text-muted-foreground">无预览</div>
- )}
- </div>
- <div className="min-w-0 flex-1">
- <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
- <span className="inline-flex items-center rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning">
- 图片
- </span>
- <span className="font-mono text-[11px] text-muted-foreground">片段 {index + 1}</span>
- {pageLabel ? <span className="font-mono text-[11px] text-muted-foreground">{pageLabel}</span> : null}
- <span className="font-mono text-[11px] text-muted-foreground">
- {element.bbox ? '可定位' : '无坐标'}
- </span>
- </div>
- <div className="truncate text-sm font-medium text-foreground/82">
- {String(element.text || element.id || `图片 ${reviewEntry.imageIndex + 1}`)}
- </div>
- <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
- 共 {activeImageElements.length} 张图片，{positionedImageElementCount} 张可定位到 PDF 框选
- </div>
- </div>
- </div>
- </button>
- )
- }
-
- const { entry } = reviewEntry
- const layoutMeta = getParsingLayoutMeta(entry.kind)
- const isActive = entry.id === activeBlockId
- return (
- <button
- key={entry.id}
- ref={(node) => {
- if (node) {
- layoutReviewCardRefs.current.set(entry.id, node)
- } else {
- layoutReviewCardRefs.current.delete(entry.id)
- }
- }}
- data-layout-entry-id={entry.id}
- type="button"
- onClick={() => handleSelectReviewBlock(entry.id)}
- onMouseEnter={() => onHoveredBlockIdChange(entry.id)}
- onMouseLeave={() => onHoveredBlockIdChange(null)}
- className={cn(
- 'group w-full rounded-xl border px-3.5 py-3 text-left transition',
- isActive
- ? 'border-primary/55 bg-primary/[0.06] shadow-soft ring-1 ring-primary/[0.12]'
- : 'border-border/48 bg-card/86 hover:border-primary/[0.24] hover:bg-card'
- )}
- >
- <div className="flex items-start gap-3">
- <span className={cn('mt-2 h-2 w-2 flex-none rounded-full shadow-[0_0_0_3px_hsl(var(--background))]', layoutMeta.dotClassName)} />
- <div className="min-w-0 flex-1">
- <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
- <span
- className={cn(
- 'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium',
- layoutMeta.chipClassName
- )}
- >
- {layoutMeta.label}
- </span>
- <span className="font-mono text-[11px] text-muted-foreground">
- 片段 {index + 1}
- </span>
- {Number.isFinite(entry.pageIndex) ? (
- <span className="font-mono text-[11px] text-muted-foreground">
- 页 {Number(entry.pageIndex) + 1}
- </span>
- ) : null}
- <span className="font-mono text-[11px] text-muted-foreground">
- {entry.charCount} 字
- </span>
- {entry.lineCount > 1 ? (
- <span className="font-mono text-[11px] text-muted-foreground">
- {entry.lineCount} 行
- </span>
- ) : null}
- </div>
- <div className="relative pl-3">
- <span
- className={cn(
- 'absolute bottom-1 left-0 top-1 w-px rounded-full transition-colors',
- isActive ? 'bg-primary/55' : 'bg-border/45 group-hover:bg-border/70'
- )}
- />
- <div className="prose prose-slate prose-sm max-w-none prose-headings:mb-1 prose-headings:mt-0 prose-headings:text-foreground prose-p:my-0 prose-p:text-foreground/82 prose-a:text-info prose-code:rounded prose-code:bg-info/10 prose-code:px-1 prose-code:py-0.5 prose-code:text-info prose-pre:my-1 prose-pre:bg-foreground prose-table:my-1 prose-table:border-collapse prose-td:border prose-td:border-info/30 prose-td:p-2 prose-th:border prose-th:border-info/30 prose-th:bg-info/10 prose-th:p-2 dark:prose-invert dark:prose-headings:text-foreground dark:prose-p:text-muted-foreground dark:prose-a:text-info dark:prose-code:bg-muted dark:prose-code:text-info dark:prose-th:border-info/30 dark:prose-th:bg-info/20 dark:prose-td:border-info/30">
- <MarkdownRenderer markdown={entry.text} />
- </div>
- </div>
- </div>
- </div>
- </button>
- )
- })}
- </div>
- </div>
- </ParsingRightPanel>
- ) : (
- <ParsingRightPanel
- dragScroll={rightPanelMode === 'markdown'}
- className="h-full no-scrollbar p-6 parsing-md-scroll"
- >
- {previewMode === 'rendered' ? (
- <div className="flex gap-8">
- <div className="prose prose-slate prose-sm min-w-0 max-w-none flex-1 prose-headings:text-foreground prose-h1:mb-5 prose-h1:text-[26px] prose-h1:font-semibold prose-h1:leading-[1.22] prose-h1:tracking-[-0.02em] prose-h2:mb-3 prose-h2:mt-8 prose-h2:text-[21px] prose-h2:leading-[1.3] prose-h3:text-[17px] prose-p:my-4 prose-p:text-[15px] prose-p:leading-7 prose-p:text-foreground/80 prose-li:text-[15px] prose-li:leading-7 prose-a:text-info prose-code:rounded prose-code:bg-info/10 prose-code:px-1 prose-code:py-0.5 prose-code:text-info prose-pre:bg-foreground prose-table:border-collapse prose-td:border prose-td:border-info/30 prose-td:p-2 prose-th:border prose-th:border-info/30 prose-th:bg-info/10 prose-th:p-2 dark:prose-invert dark:prose-headings:text-foreground dark:prose-p:text-muted-foreground dark:prose-a:text-info dark:prose-code:bg-muted dark:prose-code:text-info dark:prose-th:border-info/30 dark:prose-th:bg-info/20 dark:prose-td:border-info/30">
- <MarkdownRenderer
- markdown={activeMarkdown}
- autoScrollToHash
- scrollContainerSelector=".parsing-md-scroll"
- />
- </div>
- {tocEnabled ? (
- <aside className="hidden w-64 shrink-0 self-start 2xl:sticky 2xl:top-0 2xl:block">
- <div className="max-h-[min(72vh,calc(100vh-13rem))] overflow-y-auto overscroll-contain custom-scrollbar rounded-2xl border border-border/60 bg-card/82 p-3 pr-2 shadow-soft">
- <MarkdownToc markdown={activeMarkdown} scrollContainerSelector=".parsing-md-scroll" />
- </div>
- </aside>
- ) : null}
- </div>
- ) : (
- <pre className="whitespace-pre-wrap rounded-xl border border-border bg-muted/60 p-6 font-mono text-sm leading-relaxed text-foreground/80 dark:border-border dark:bg-background/40 dark:text-muted-foreground">
- {activeMarkdown}
- </pre>
- )}
- </ParsingRightPanel>
- )}
- </div>
- </div>
- )}
- {isEditing ? null : (
- <div className="border-t border-border/60 bg-card">
- <ParsingExtractPanel
- documentId={activeFile.libraryId || null}
- activeElements={activeElements}
- onSelectEvidence={handleSelectExtractEvidence}
- className="bg-card"
- />
- <ParsingElementsPanel elements={activeElements} onSelectElement={handleSelectElement} />
- </div>
- )}
- </div>
- ) : null}
- </div>
-
- {activeFile.status === 'parsed' && activeMarkdown ? (
- <div className="relative z-10 border-t border-border/60 bg-card px-6 py-4 shadow-[0_-10px_24px_-18px_rgba(15,23,42,0.22)] backdrop-blur-xl dark:bg-card dark:shadow-[0_-12px_28px_-18px_rgba(0,0,0,0.42)]">
- <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
- <div className="text-[11px] leading-5 text-muted-foreground/72 dark:text-muted-foreground/70">
- {isEditing ? '编辑完成后点击"保存修改"，然后提交到数据治理' : '确认解析内容无误后，提交到数据治理工作台'}
- </div>
- <div className="flex items-center gap-3">
- {submitToGovernanceButton}
- </div>
- </div>
- </div>
- ) : null}
- </>
- </>
+     {resultReady || isEditing ? <footer className={styles.footer}>
+       <div className={styles.stats}>{isEditing ? <span>正在编辑{rightPanelMode === 'blocks' && activeBlockId ? '内容块' : ' Markdown'}</span> : resultReady ? <>
+         {layoutEntries.length > 0 ? <span><Blocks className="size-3.5" /><b>{layoutEntries.length}</b> 个内容块</span> : null}
+         {stats.map(({ label, value }) => <span key={label}>{label} <b>{value}</b></span>)}
+       </> : <span>{activeFile.parserLabel}</span>}</div>
+       <div className={styles.footerActions}>{isEditing ? <>
+         <Button variant="ghost" size="sm" disabled={savePending} onClick={onCancelEdit}>取消</Button>
+         <Button size="sm" disabled={savePending} className="gap-2" onClick={() => void save()}>{savePending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}{savePending ? '正在保存' : '保存修改'}</Button>
+       </> : resultReady ? <Button variant="outline" size="sm" className="gap-2" onClick={onSubmitToGovernance}><ArrowRight className="size-4" />继续数据治理</Button> : null}</div>
+     </footer> : null}
+   </>
  )
 }

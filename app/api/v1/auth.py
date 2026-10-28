@@ -10,12 +10,14 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.schemas.auth import (
+    AuthPolicy,
     AuthResponse,
     LoginRequest,
     RegisterRequest,
     SamlBridgeConsumeRequest,
     SamlExchangeRequest,
     SamlExchangeResponse,
+    SignupRequest,
     TokenResponse,
     UserPublic,
 )
@@ -23,6 +25,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.env import is_production_env
 from app.core.jwt_utils import create_access_token
+from app.models.user import User
 from app.services.saml_bridge_service import (
     consume_saml_bridge_session,
     issue_saml_bridge_session,
@@ -73,6 +76,43 @@ def _require_initial_registration_token(*, db: Session, bootstrap_token: str | N
     raise HTTPException(status_code=403, detail="Initial registration bootstrap token required")
 
 
+@router.get("/policy", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def get_auth_policy(db: Annotated[Session, Depends(get_db)], response: Response) -> AuthPolicy:
+    """Advertise usable local account entry points without exposing credentials."""
+    response.headers["Cache-Control"] = "no-store"
+    initialized = not _initial_registration_open(db)
+    token_required = is_production_env()
+    return AuthPolicy(
+        initialized=initialized,
+        registration_enabled=(
+            initialized and settings.LOCAL_ACCOUNT_REGISTRATION_ENABLED and UserService.is_default_tenant_active(db)
+        ),
+        bootstrap_enabled=(
+            not initialized and (not token_required or bool(settings.INITIAL_REGISTRATION_TOKEN.strip()))
+        ),
+        bootstrap_token_required=not initialized and token_required,
+        password_min_length=settings.PASSWORD_MIN_LENGTH,
+    )
+
+
+def _account_session(db: Session, user: User) -> AuthResponse:
+    tenant_id = None
+    if str(getattr(settings, "JWT_TENANT_CLAIM", "") or "").strip():
+        current_tenant = UserService.get_current_tenant_id(db, user_id=str(user.id))
+        tenant_id = str(current_tenant) if current_tenant else None
+    token, expires_in = create_access_token(str(user.id), tenant_id=tenant_id)
+    return AuthResponse(user=user, token=TokenResponse(access_token=token, expires_in=expires_in))
+
+
+@router.post("/signup", status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def signup_user(payload: SignupRequest, db: Annotated[Session, Depends(get_db)]) -> AuthResponse:
+    """Register an ordinary local account with viewer access in the default workspace."""
+    user = UserService.create_user(
+        db, email=payload.email, username=payload.username, password=payload.password, initial_owner=False,
+    )
+    return _account_session(db, user)
+
+
 @router.post("/register", status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def register_user(
     payload: RegisterRequest,
@@ -87,15 +127,7 @@ def register_user(
         username=payload.username,
         password=payload.password,
     )
-    tenant_id = None
-    if str(getattr(settings, "JWT_TENANT_CLAIM", "") or "").strip():
-        current_tenant = UserService.get_current_tenant_id(db, user_id=str(user.id))
-        tenant_id = str(current_tenant) if current_tenant else None
-    token, expires_in = create_access_token(str(user.id), tenant_id=tenant_id)
-    return AuthResponse(
-        user=user,
-        token=TokenResponse(access_token=token, expires_in=expires_in),
-    )
+    return _account_session(db, user)
 
 
 @router.post("/login", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -103,15 +135,7 @@ def login_user(payload: LoginRequest, db: Annotated[Session, Depends(get_db)]) -
     """Authenticate a user and issue an access token."""
     user = UserService.authenticate(db, payload.identifier, payload.password)
     UserService.mark_login(db, user)
-    tenant_id = None
-    if str(getattr(settings, "JWT_TENANT_CLAIM", "") or "").strip():
-        current_tenant = UserService.get_current_tenant_id(db, user_id=str(user.id))
-        tenant_id = str(current_tenant) if current_tenant else None
-    token, expires_in = create_access_token(str(user.id), tenant_id=tenant_id)
-    return AuthResponse(
-        user=user,
-        token=TokenResponse(access_token=token, expires_in=expires_in),
-    )
+    return _account_session(db, user)
 
 
 @router.get("/me", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)

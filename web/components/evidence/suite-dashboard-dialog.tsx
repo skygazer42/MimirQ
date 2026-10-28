@@ -1,7 +1,9 @@
 'use client'
 
+
+import { workspaceStyles as ws } from '@/components/ui/operational-workspace'
 import type { ReactNode } from 'react'
-import { Loader2, RefreshCw } from 'lucide-react'
+import { Loader2, RefreshCw } from '@/components/icons'
 
 import type { EvidenceCoverageHeatmap, EvidenceSuite, EvidenceSuiteDashboard } from '@/types'
 import { cn } from '@/lib/utils'
@@ -300,15 +302,16 @@ export function SuiteDashboardDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl overflow-hidden">
-        <DialogHeader>
+      <DialogContent  className={`${ws.dialog} ${ws.wideDialog}`}>
+<DialogHeader  className={ws.dialogHeader}>
           <DialogTitle>Suite Dashboard</DialogTitle>
           <DialogDescription className="text-pretty">
             {suiteDescription}
           </DialogDescription>
         </DialogHeader>
+<div className={ws.dialogBody}>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+<div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="inline-flex items-center gap-2 select-none text-xs text-muted-foreground">
             <Checkbox
               checked={includeArchived}
@@ -327,14 +330,16 @@ export function SuiteDashboardDialog({
           </div>
         </div>
 
-        {error ? <div className="text-xs text-destructive text-pretty">{error}</div> : null}
+{error ? <div className="text-xs text-destructive text-pretty">{error}</div> : null}
 
-        <ScrollArea className="max-h-[70vh] pr-3">
+<ScrollArea className="max-h-[70vh] pr-3">
           <div className="space-y-4">
             {dashboardContent}
           </div>
         </ScrollArea>
-      </DialogContent>
+</div>
+
+</DialogContent>
     </Dialog>
   )
 }

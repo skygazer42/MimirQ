@@ -1,0 +1,334 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=1600,initial-scale=1"><title>E · 筛选工作台 · Ragvia</title><link rel="stylesheet" href="common.css"><style>
+.reading-header{height:48px;display:flex;align-items:center;gap:12px;padding:0 24px;border-bottom:1px solid var(--line);flex:none}
+.reading-eyebrow{font-size:12px;color:var(--muted);white-space:nowrap}.reading-header h2{font-size:14px;line-height:24px;font-weight:600;margin:0;white-space:nowrap}
+.reading-action{font-size:12px;color:var(--muted);white-space:nowrap}.reading-header .btn{height:30px;padding:0 4px;font-size:13px}.reading-header .btn+.btn{margin-left:8px}
+.reading-body{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:30px;padding:14px 24px;min-height:0}
+.reading-metadata,.reading-payload{min-width:0}.reading-metadata .record-fields{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 20px}.reading-metadata .record-fields dt{line-height:20px}
+.reading-metadata .record-fields dd{font-size:14px;line-height:22px;margin-top:2px}.reading-metadata .record-fields>div:last-child{grid-column:span 2}.reading-metadata .record-fields>div:last-child dd{font-size:12px}
+.reading-agent{display:flex;align-items:baseline;gap:12px;margin:9px 0 0;font-size:12px;line-height:22px}.reading-agent dt{color:var(--muted)}.reading-agent dd{margin:0;color:var(--muted)}
+.reading-payload{padding-left:24px;border-left:1px solid var(--line)}.reading-payload .record-section-title{margin-bottom:6px;font-size:13px;font-weight:550}.reading-payload .record-json{font-size:13px;line-height:25px}
+.table-check{width:14px;height:14px;border:1px solid #A6B0BA;border-radius:3px;display:inline-block;vertical-align:middle;background:var(--surface)}
+.audit-time strong{display:block;font-size:14px;line-height:23px;font-weight:450;font-variant-numeric:tabular-nums}.audit-time small{display:block;font-size:12px;line-height:20px;color:var(--muted);font-variant-numeric:tabular-nums}
+.request-ref{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}.row-more{color:var(--muted);display:flex;align-items:center;justify-content:center;width:24px;height:28px}.row-more .icon{height:16px;width:16px}
+
+.query-workspace{height:928px;flex:1;display:grid;grid-template-columns:260px minmax(0,1fr);min-height:0}
+.query-sidebar{min-height:0;display:flex;flex-direction:column;background:var(--fog);border-right:1px solid var(--line);padding:0 20px}.query-sidebar-heading{height:68px;display:flex;align-items:center;gap:10px;flex:none}.query-sidebar-heading h2{font-size:14px;line-height:24px;font-weight:600;margin:0}.query-sidebar-heading span{font-size:12px;color:var(--muted);margin-left:auto}
+.query-form{display:flex;flex-direction:column;gap:14px}.query-period{display:flex;flex-direction:column;gap:9px;padding-bottom:16px;border-bottom:1px solid var(--line)}.query-field{min-width:0}.query-label{font-size:12px;line-height:20px;color:var(--muted);margin-bottom:5px}.query-control{height:36px;display:flex;align-items:center;justify-content:space-between;gap:6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);padding:0 10px;font-size:13px;line-height:22px;white-space:nowrap;font-variant-numeric:tabular-nums}.query-control .icon{height:14px;width:14px;color:var(--muted);flex:none}.query-field .select{height:36px;justify-content:space-between;font-size:13px}.query-field .select>.icon{width:13px;height:13px}.control-placeholder{color:var(--muted)}
+.query-form-actions{display:flex;gap:8px;margin-top:5px}.query-form-actions .btn.solid{flex:1;justify-content:center;height:35px}.query-form-actions .btn.quiet{padding:0 6px}
+.query-shortcuts{border-top:1px solid var(--line);padding-top:17px;margin-top:22px}.query-sidebar .audit-presets{display:grid;grid-template-columns:1fr 1fr;padding:0;gap:7px 8px;min-height:0;border:none;background:transparent}.query-sidebar .audit-presets>span{grid-column:1/-1;font-size:12px;line-height:20px;margin:0 0 3px}.query-sidebar .audit-presets>button{font-size:13px;line-height:24px;text-align:left;border:1px solid var(--line);border-radius:5px;padding:3px 8px;background:var(--surface)}
+.query-sidebar-foot{margin-top:auto;padding:18px 0 20px;font-size:12px;line-height:22px;color:var(--muted)}
+.query-results{min-width:0;min-height:0;display:flex;flex-direction:column}.query-summary{height:68px;display:flex;align-items:center;gap:16px;padding:0 24px;flex:none}.query-summary h2{font-size:20px;line-height:28px;font-weight:600;margin:0}.query-summary p{font-size:12px;line-height:21px;margin:1px 0 0;color:var(--muted)}.query-summary .result-count{font-size:12px;line-height:22px;color:var(--muted);margin-left:auto}.query-summary .result-count strong{color:var(--ink);font-size:14px;font-weight:550}.query-summary .sort-note{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.query-applied{height:42px;flex:none;display:flex;align-items:center;gap:10px;padding:0 24px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.query-applied>span{font-size:12px;color:var(--muted)}.query-applied .condition-chip{font-size:12px;color:var(--ink);line-height:25px;padding:0 8px;border-radius:4px;background:var(--fog)}.query-applied .btn{height:28px;padding:0 4px;font-size:13px}
+.query-table-wrap{height:450px;flex:none;overflow:auto;scrollbar-width:thin;scrollbar-color:#C8CED3 transparent}.query-table{width:100%;border-collapse:collapse;table-layout:fixed}.query-table thead{position:sticky;top:0;z-index:1;background:var(--fog)}.query-table th{height:34px;padding:0 10px;text-align:left;font-size:12px;font-weight:450;color:var(--muted);border-bottom:1px solid var(--line)}.query-table td{height:52px;padding:3px 10px;border-bottom:1px solid var(--line);vertical-align:middle}.query-table tbody tr.is-current{background:#EDF1F3}.query-table .check-cell,.query-table th:first-child{padding-left:24px;padding-right:2px}.query-table .event-title{line-height:23px}.query-table .event-code{line-height:20px}.query-table .resource-name{line-height:23px}.query-table .resource-meta{line-height:20px}.query-table .actor-label{font-size:14px;white-space:nowrap}.query-table .request-ref{font-size:12px}
+.query-results>.audit-footer{padding-inline:24px;border-top:0}.e-reading{flex:1;min-height:0;border-top:1px solid var(--line);background:var(--surface)}.e-reading .reading-header{height:52px}.e-reading .reading-body{padding-top:19px;gap:28px}.e-reading .reading-metadata .record-fields{gap:15px 20px}.e-reading .reading-agent{margin-top:15px}
+</style></head><body><div class="app"><aside class="sidebar"><div class="brand"><img src="../../ragvia/logo.svg" alt="Ragvia"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="panel-left-close"><rect x="3" y="4" width="18" height="16" rx="1" /><path d="M9 4v16m8-12-4 4 4 4" /></svg>
+</div><div class="sidebar-new"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="plus"><path d="M12 4v16M4 12h16" /></svg>
+新对话</div><div class="sidebar-search"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="search"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.25 15.25 5 5" /></svg>
+搜索与命令<small>⌘K</small></div><nav class="nav-scroll"><div class="nav-group">工作区<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="conversation"><path d="M4 4.5h16v12H9l-5 4Z" /><path d="M8 9h8m-8 3.5h5" /></svg>
+对话</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="history"><path d="M3 9h6M3 3v6a9 9 0 1 1 .5 7" /><path d="M12 6v6l4 2" /></svg>
+问答历史</div><div class="nav-group">知识库管理<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="dataset"><rect x="5" y="3.5" width="14" height="5" rx="1" /><path d="M3.5 11v4h17v-4M3.5 18v3h17v-3" /></svg>
+数据集</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="knowledge-base"><path d="M12 5.5C9 3.5 6 3.5 3 4v15c3-.5 6-.5 9 1.5 3-2 6-2 9-1.5V4c-3-.5-6-.5-9 1.5Zm0 0v15" /><path d="M6.5 8h2M6.5 11h2m7-3h2m-2 3h2" /></svg>
+知识库</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="quarantine"><rect x="3" y="3.5" width="18" height="4" rx="0.5" /><path d="M5 7.5v13h14v-13M12 11v4" /><circle cx="12" cy="18" r="1" fill="currentColor" stroke="none" /></svg>
+隔离队列</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="feedback"><path d="M4 4.5h16v12H9l-5 4Z" /><path d="m8 10 2.5 2.5L16 7" /></svg>
+反馈质检</div><div class="nav-group">入库流程<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="ingestion"><path d="M4 14v6h16v-6M8 16h8M12 3v10m-4-4 4 4 4-4" /><path d="M4 5H2.5v6H4m16-6h1.5v6H20" /></svg>
+入库管理</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="parsing"><path d="M12.5 3.5H4v17h8.5M8 8h3M8 12h3M8 16h3M15 7h5m-5 5h5m-5 5h5" /><path d="m17 5 3 2-3 2" /></svg>
+文档解析</div><div class="nav-item"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="data-governance"><path d="M12 3 20 6v6c0 4-3.5 7-8 9-4.5-2-8-5-8-9V6Z" /><path d="M8 9h8M8 12h5M8 15h5" /></svg>
+数据治理</div><div class="nav-item"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="rule-set"><path d="M8 3.5H5v7l-2 1.5 2 1.5v7h3m8-17h3v7l2 1.5-2 1.5v7h-3M10 8h4m-4 4h4m-4 4h4" /></svg>
+治理配置</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chunking"><rect x="3.5" y="4" width="17" height="6" rx="1" /><rect x="3.5" y="14" width="17" height="6" rx="1" /><path d="M8 7h8M8 17h8" /><path d="M2 12h20" stroke-dasharray="1 3" data-chunk-boundary="true" /></svg>
+切块预览</div><div class="nav-group">分析工具<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="knowledge-graph"><path d="m7.3 6.3 8 4.4m-8 7 8-4.4M5 7.5v9" /><circle cx="5" cy="5" r="2.5" /><circle cx="18" cy="12" r="3" /><circle cx="5" cy="19" r="2.5" /></svg>
+知识图谱</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="evaluation"><path d="M4 3.5h10l6 6v11H4Zm10 0v6h6M8 16l2 2 4-5" /><path d="M8 8h2" /></svg>
+RAG 评测</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="reports"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="M8 16v-3m4 3V10m4 6v-4M8 7h2" /></svg>
+数据报告</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="prompts"><rect x="3.5" y="4" width="17" height="16" rx="1" /><path d="m7 9 3 3-3 3m6 0h4" /></svg>
+提示词</div><div class="nav-group">系统<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="diagnostics"><rect x="3.5" y="4" width="17" height="16" rx="1" /><path d="M3.5 12H8l2-4 4 8 2-4h4.5" /></svg>
+诊断</div><div class="nav-item"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="usage"><path d="M4 20V4h16v16ZM8 16v-3m4 3V9m4 7V6" /></svg>
+用量 / 配额</div><div class="nav-item active"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="audit-log"><path d="M6 3.5h13v17H6M3 7h5M3 12h5M3 17h5m4-10h3m-3 5h3m-3 5h3" /></svg>
+审计日志</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="members"><circle cx="9" cy="7" r="3" /><path d="M3 20v-3c0-5 12-5 12 0v3M17 7l2 2 3-4M18 14v6m-2-3h4" /></svg>
+成员权限</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="groups"><circle cx="8" cy="7" r="2.5" /><circle cx="17" cy="9" r="2.5" /><path d="M2.5 20v-2.5c0-5 11-5 11 0V20m3-5c3 0 5 1 5 3.5V20" /></svg>
+组管理</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="settings"><path d="m9 3-.5 3-2 1L4 6l-2 4 2.5 2v2L2 16l2 4 2.5-1 2 1 .5 2h6l.5-2 2-1 2.5 1 2-4-2.5-2v-2L22 10l-2-4-2.5 1-2-1L15 3Z" /><circle cx="12" cy="12.5" r="3" /></svg>
+设置</div></nav><div class="sidebar-bottom"><div class="profile"><span class="avatar"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="user"><circle cx="12" cy="7.5" r="3" /><path d="M5 20v-2.5a7 5.5 0 0 1 14 0V20" /></svg>
+</span><div><strong>开发模式</strong><small>本地开发环境</small></div><span class="profile-icons"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="log-out"><path d="M12 3H3v18h9m-2-9h12m-4-4 4 4-4 4" /></svg>
+<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="sun"><circle cx="12" cy="12" r="4.5" /><path d="M12 1v3m0 16v3M1 12h3m16 0h3M4 4l2 2m12 12 2 2M4 20l2-2M18 6l2-2" /></svg>
+</span></div><div class="appearance"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="palette"><path d="M12 3a9 9 0 0 0 0 18h2c3 0 3-4 0-4h-1c-3 0-3-4 0-4h5c6 0 4-10-6-10Z" /><circle cx="7" cy="9" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="6" r="1" fill="currentColor" stroke="none" /><circle cx="17" cy="8" r="1" fill="currentColor" stroke="none" /><circle cx="6" cy="14" r="1" fill="currentColor" stroke="none" /></svg>
+界面外观<span>5 种风格</span></div><div class="service"><i></i>服务已就绪</div></div></aside><main class="main"><header class="page-header"><div class="audit-heading"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="audit-log"><path d="M6 3.5h13v17H6M3 7h5M3 12h5M3 17h5m4-10h3m-3 5h3m-3 5h3" /></svg>
+<h1>审计日志</h1></div><div class="header-end"><button type="button" class="btn quiet" title="按保留期或当前筛选预演，确认后清理"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="trash2"><path d="M3 6h18M6 6l1 15h10l1-15M9 6V3h6v3M10 10v7m4-7v7" /></svg>
+<span>清理与预演</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</button><button type="button" class="btn quiet"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="refresh-cw"><path d="M20 9a8 8 0 0 0-14-3L3 9m0-6v6h6m-5 6a8 8 0 0 0 14 3l3-3m-6 0h6v6" /></svg>
+<span>刷新</span></button><button type="button" class="btn" title="NDJSON 导出；可选择 gzip 和敏感字段"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="download"><path d="M4 16v4h16v-4M12 3v13m-5-5 5 5 5-5" /></svg>
+<span>导出 NDJSON</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</button></div></header>
+  <div class="query-workspace">
+    <aside class="query-sidebar" aria-label="精确筛选条件">
+      <header class="query-sidebar-heading"><h2>精确筛选</h2><span>当前租户</span></header>
+      <div class="query-form">
+        <div class="query-period">
+          <div class="query-field"><div class="query-label">开始时间</div><div class="query-control"><span>2026-10-24 00:00</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="calendar"><rect x="3.5" y="5" width="17" height="16" rx="1" /><path d="M3.5 10h17M8 2v6m8-6v6M8 14h3m3 0h2M8 17h3" /></svg>
+</div></div>
+          <div class="query-field"><div class="query-label">结束时间</div><div class="query-control"><span>2026-10-25 19:00</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="calendar"><rect x="3.5" y="5" width="17" height="16" rx="1" /><path d="M3.5 10h17M8 2v6m8-6v6M8 14h3m3 0h2M8 17h3" /></svg>
+</div></div>
+        </div>
+        <div class="query-field"><div class="query-label">动作</div><div class="select "><span>全部动作</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div></div>
+        <div class="query-field"><div class="query-label">操作者 ID</div><div class="query-control"><span class="control-placeholder">填写操作者 ID</span></div></div>
+        <div class="query-field"><div class="query-label">资源类型</div><div class="select "><span>全部资源类型</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div></div>
+        <div class="query-field"><div class="query-label">资源 ID</div><div class="query-control"><span class="control-placeholder">填写资源 ID</span></div></div>
+        <div class="query-field"><div class="query-label">请求 ID</div><div class="query-control"><span class="control-placeholder">填写请求 ID</span></div></div>
+        <div class="query-form-actions"><button type="button" class="btn solid"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="filter"><path d="M3.5 4h17l-6.5 8v7l-4 2v-9Z" /></svg>
+<span>查询日志</span></button><button type="button" class="btn quiet"><span>重置</span></button></div>
+      </div>
+      <div class="query-shortcuts"><nav class="audit-presets"><span>快捷筛选</span><button type="button">访问审查</button><button type="button">索引审计</button><button type="button">证据策略</button><button type="button">访问回溯</button></nav></div>
+      <p class="query-sidebar-foot">按字段筛选操作记录，<br>选中一条查看请求与原始明细。</p>
+    </aside>
+    <section class="query-results">
+      <header class="query-summary">
+        <div><h2>筛选结果</h2><p>当前租户的操作记录</p></div>
+        <span class="result-count">共 <strong>20</strong> 条记录</span>
+        <span class="sort-note">时间降序 <svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="arrow-down"><path d="M12 4v15m-6-6 6 6 6-6" /></svg>
+</span>
+      </header>
+      <div class="query-applied"><span>已应用</span><span class="condition-chip">2026-10-24 00:00 — 2026-10-25 19:00</span></div>
+      <div class="query-table-wrap">
+        <table class="query-table">
+          <colgroup><col style="width:40px"><col style="width:122px"><col style="width:267px"><col><col style="width:116px"><col style="width:137px"><col style="width:42px"></colgroup>
+          <thead><tr><th><span class="table-check"></span></th><th>时间</th><th>动作</th><th>资源</th><th>操作者</th><th>请求 ID</th><th></th></tr></thead>
+          <tbody>
+      <tr>
+        <td class="check-cell"><span class="table-check"></span></td>
+        <td><div class="audit-time"><strong>18:24:08</strong><small>2026-10-25</small></div></td>
+        <td><div class="event-title"><i class="event-dot violet"></i><span>访问回溯导出</span></div><small class="event-code">compliance.access_graph.export</small></td>
+        <td><strong class="resource-name">当前租户</strong><small class="resource-meta">租户 · tenant-demo</small></td>
+        <td><span class="actor-label">acct-chen</span></td>
+        <td><span class="request-ref">req-audit-1001</span></td>
+        <td><button type="button" class="row-more" aria-label="记录操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+      </tr>
+      <tr class="is-current">
+        <td class="check-cell"><span class="table-check"></span></td>
+        <td><div class="audit-time"><strong>18:16:42</strong><small>2026-10-25</small></div></td>
+        <td><div class="event-title"><i class="event-dot blue"></i><span>更新数据集</span></div><small class="event-code">dataset.update</small></td>
+        <td><strong class="resource-name">工程文档库</strong><small class="resource-meta">数据集 · ds-engineering</small></td>
+        <td><span class="actor-label">acct-lin</span></td>
+        <td><span class="request-ref">req-audit-1002</span></td>
+        <td><button type="button" class="row-more" aria-label="记录操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+      </tr>
+      <tr>
+        <td class="check-cell"><span class="table-check"></span></td>
+        <td><div class="audit-time"><strong>18:02:31</strong><small>2026-10-25</small></div></td>
+        <td><div class="event-title"><i class="event-dot green"></i><span>创建数据集</span></div><small class="event-code">dataset.create</small></td>
+        <td><strong class="resource-name">产品手册</strong><small class="resource-meta">数据集 · ds-product</small></td>
+        <td><span class="actor-label">acct-lin</span></td>
+        <td><span class="request-ref">req-audit-1003</span></td>
+        <td><button type="button" class="row-more" aria-label="记录操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+      </tr>
+      <tr>
+        <td class="check-cell"><span class="table-check"></span></td>
+        <td><div class="audit-time"><strong>17:44:09</strong><small>2026-10-25</small></div></td>
+        <td><div class="event-title"><i class="event-dot blue"></i><span>导入数据集配置</span></div><small class="event-code">dataset.config.import</small></td>
+        <td><strong class="resource-name">工程文档库</strong><small class="resource-meta">数据集 · ds-engineering</small></td>
+        <td><span class="actor-label">acct-lin</span></td>
+        <td><span class="request-ref">req-audit-1004</span></td>
+        <td><button type="button" class="row-more" aria-label="记录操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+      </tr>
+      <tr>
+        <td class="check-cell"><span class="table-check"></span></td>
+        <td><div class="audit-time"><strong>17:12:56</strong><small>2026-10-25</small></div></td>
+        <td><div class="event-title"><i class="event-dot amber"></i><span>移除租户成员</span></div><small class="event-code">rbac.member.remove</small></td>
+        <td><strong class="resource-name">acct-wu</strong><small class="resource-meta">租户成员</small></td>
+        <td><span class="actor-label">acct-chen</span></td>
+        <td><span class="request-ref">req-audit-1005</span></td>
+        <td><button type="button" class="row-more" aria-label="记录操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+      </tr>
+      <tr>
+        <td class="check-cell"><span class="table-check"></span></td>
+        <td><div class="audit-time"><strong>16:38:17</strong><small>2026-10-25</small></div></td>
+        <td><div class="event-title"><i class="event-dot red"></i><span>清理审计日志</span></div><small class="event-code">audit.logs.purge</small></td>
+        <td><strong class="resource-name">审计日志</strong><small class="resource-meta">审计日志</small></td>
+        <td><span class="actor-label">system</span></td>
+        <td><span class="request-ref">req-audit-1006</span></td>
+        <td><button type="button" class="row-more" aria-label="记录操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+      </tr>
+      <tr>
+        <td class="check-cell"><span class="table-check"></span></td>
+        <td><div class="audit-time"><strong>15:20:34</strong><small>2026-10-25</small></div></td>
+        <td><div class="event-title"><i class="event-dot blue"></i><span>更新数据集</span></div><small class="event-code">dataset.update</small></td>
+        <td><strong class="resource-name">工程文档库</strong><small class="resource-meta">数据集 · ds-engineering</small></td>
+        <td><span class="actor-label">acct-lin</span></td>
+        <td><span class="request-ref">req-audit-1007</span></td>
+        <td><button type="button" class="row-more" aria-label="记录操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+      </tr>
+      <tr>
+        <td class="check-cell"><span class="table-check"></span></td>
+        <td><div class="audit-time"><strong>14:46:11</strong><small>2026-10-25</small></div></td>
+        <td><div class="event-title"><i class="event-dot teal"></i><span>索引审计</span></div><small class="event-code">observability.index_audit.daily</small></td>
+        <td><strong class="resource-name">运维资料</strong><small class="resource-meta">数据集 · ds-operations</small></td>
+        <td><span class="actor-label">system</span></td>
+        <td><span class="request-ref">req-audit-1008</span></td>
+        <td><button type="button" class="row-more" aria-label="记录操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+      </tr>
+      <tr>
+        <td class="check-cell"><span class="table-check"></span></td>
+        <td><div class="audit-time"><strong>13:08:52</strong><small>2026-10-25</small></div></td>
+        <td><div class="event-title"><i class="event-dot teal"></i><span>更新检索审计</span></div><small class="event-code">dataset.retrieval_audit.put</small></td>
+        <td><strong class="resource-name">工程文档库</strong><small class="resource-meta">数据集 · ds-engineering</small></td>
+        <td><span class="actor-label">acct-lin</span></td>
+        <td><span class="request-ref">req-audit-1009</span></td>
+        <td><button type="button" class="row-more" aria-label="记录操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+      </tr>
+      <tr>
+        <td class="check-cell"><span class="table-check"></span></td>
+        <td><div class="audit-time"><strong>11:52:06</strong><small>2026-10-25</small></div></td>
+        <td><div class="event-title"><i class="event-dot red"></i><span>清理文档版本</span></div><small class="event-code">document.version.retention_delete</small></td>
+        <td><strong class="resource-name">version-017</strong><small class="resource-meta">文档版本</small></td>
+        <td><span class="actor-label">system</span></td>
+        <td><span class="request-ref">req-audit-1010</span></td>
+        <td><button type="button" class="row-more" aria-label="记录操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+      </tr>
+      <tr>
+        <td class="check-cell"><span class="table-check"></span></td>
+        <td><div class="audit-time"><strong>10:35:20</strong><small>2026-10-25</small></div></td>
+        <td><div class="event-title"><i class="event-dot blue"></i><span>更新数据集</span></div><small class="event-code">dataset.update</small></td>
+        <td><strong class="resource-name">工程文档库</strong><small class="resource-meta">数据集 · ds-engineering</small></td>
+        <td><span class="actor-label">acct-lin</span></td>
+        <td><span class="request-ref">req-audit-1011</span></td>
+        <td><button type="button" class="row-more" aria-label="记录操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+      </tr>
+      <tr>
+        <td class="check-cell"><span class="table-check"></span></td>
+        <td><div class="audit-time"><strong>09:12:44</strong><small>2026-10-25</small></div></td>
+        <td><div class="event-title"><i class="event-dot teal"></i><span>访问审查</span></div><small class="event-code">compliance.access_review.daily</small></td>
+        <td><strong class="resource-name">当前租户</strong><small class="resource-meta">租户 · tenant-demo</small></td>
+        <td><span class="actor-label">system</span></td>
+        <td><span class="request-ref">req-audit-1012</span></td>
+        <td><button type="button" class="row-more" aria-label="记录操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+      </tr>
+      <tr>
+        <td class="check-cell"><span class="table-check"></span></td>
+        <td><div class="audit-time"><strong>18:42:15</strong><small>2026-10-24</small></div></td>
+        <td><div class="event-title"><i class="event-dot green"></i><span>复制数据集</span></div><small class="event-code">dataset.clone</small></td>
+        <td><strong class="resource-name">ds-engineering-copy</strong><small class="resource-meta">数据集</small></td>
+        <td><span class="actor-label">acct-chen</span></td>
+        <td><span class="request-ref">req-audit-1013</span></td>
+        <td><button type="button" class="row-more" aria-label="记录操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+      </tr>
+      <tr>
+        <td class="check-cell"><span class="table-check"></span></td>
+        <td><div class="audit-time"><strong>17:21:33</strong><small>2026-10-24</small></div></td>
+        <td><div class="event-title"><i class="event-dot violet"></i><span>访问回溯导出</span></div><small class="event-code">compliance.access_graph.export</small></td>
+        <td><strong class="resource-name">当前租户</strong><small class="resource-meta">租户 · tenant-demo</small></td>
+        <td><span class="actor-label">acct-chen</span></td>
+        <td><span class="request-ref">req-audit-1014</span></td>
+        <td><button type="button" class="row-more" aria-label="记录操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+      </tr>
+      <tr>
+        <td class="check-cell"><span class="table-check"></span></td>
+        <td><div class="audit-time"><strong>15:52:41</strong><small>2026-10-24</small></div></td>
+        <td><div class="event-title"><i class="event-dot blue"></i><span>更新数据集</span></div><small class="event-code">dataset.update</small></td>
+        <td><strong class="resource-name">工程文档库</strong><small class="resource-meta">数据集 · ds-engineering</small></td>
+        <td><span class="actor-label">acct-lin</span></td>
+        <td><span class="request-ref">req-audit-1015</span></td>
+        <td><button type="button" class="row-more" aria-label="记录操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+      </tr>
+      <tr>
+        <td class="check-cell"><span class="table-check"></span></td>
+        <td><div class="audit-time"><strong>14:45:28</strong><small>2026-10-24</small></div></td>
+        <td><div class="event-title"><i class="event-dot blue"></i><span>导入数据集配置</span></div><small class="event-code">dataset.config.import</small></td>
+        <td><strong class="resource-name">工程文档库</strong><small class="resource-meta">数据集 · ds-engineering</small></td>
+        <td><span class="actor-label">acct-lin</span></td>
+        <td><span class="request-ref">req-audit-1016</span></td>
+        <td><button type="button" class="row-more" aria-label="记录操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+      </tr>
+      <tr>
+        <td class="check-cell"><span class="table-check"></span></td>
+        <td><div class="audit-time"><strong>13:16:05</strong><small>2026-10-24</small></div></td>
+        <td><div class="event-title"><i class="event-dot teal"></i><span>证据策略检查</span></div><small class="event-code">evidence.drift_audit.daily</small></td>
+        <td><strong class="resource-name">合规档案</strong><small class="resource-meta">数据集 · ds-compliance</small></td>
+        <td><span class="actor-label">system</span></td>
+        <td><span class="request-ref">req-audit-1017</span></td>
+        <td><button type="button" class="row-more" aria-label="记录操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+      </tr>
+      <tr>
+        <td class="check-cell"><span class="table-check"></span></td>
+        <td><div class="audit-time"><strong>11:26:40</strong><small>2026-10-24</small></div></td>
+        <td><div class="event-title"><i class="event-dot red"></i><span>批量删除审计日志</span></div><small class="event-code">audit.logs.bulk_delete</small></td>
+        <td><strong class="resource-name">审计日志</strong><small class="resource-meta">审计日志</small></td>
+        <td><span class="actor-label">acct-chen</span></td>
+        <td><span class="request-ref">req-audit-1018</span></td>
+        <td><button type="button" class="row-more" aria-label="记录操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+      </tr>
+      <tr>
+        <td class="check-cell"><span class="table-check"></span></td>
+        <td><div class="audit-time"><strong>10:20:19</strong><small>2026-10-24</small></div></td>
+        <td><div class="event-title"><i class="event-dot green"></i><span>创建数据集</span></div><small class="event-code">dataset.create</small></td>
+        <td><strong class="resource-name">工程文档库</strong><small class="resource-meta">数据集 · ds-engineering</small></td>
+        <td><span class="actor-label">acct-lin</span></td>
+        <td><span class="request-ref">req-audit-1019</span></td>
+        <td><button type="button" class="row-more" aria-label="记录操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+      </tr>
+      <tr>
+        <td class="check-cell"><span class="table-check"></span></td>
+        <td><div class="audit-time"><strong>09:05:12</strong><small>2026-10-24</small></div></td>
+        <td><div class="event-title"><i class="event-dot red"></i><span>知识资产保留清理</span></div><small class="event-code">knowledge.assets.retention</small></td>
+        <td><strong class="resource-name">asset-024</strong><small class="resource-meta">知识资产</small></td>
+        <td><span class="actor-label">未记录操作者</span></td>
+        <td><span class="request-ref">req-audit-1020</span></td>
+        <td><button type="button" class="row-more" aria-label="记录操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+      </tr></tbody>
+        </table>
+      </div>
+      <footer class="audit-footer"><span>筛选结果 · 共 20 条</span><span class="spacer"></span><span>每页 20 条</span><span class="pager"><button type="button" class="btn square quiet"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-left"><path d="m15 6-6 6 6 6" /></svg>
+<span></span></button><span>1 / 1</span><button type="button" class="btn square quiet"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-right"><path d="m9 6 6 6-6 6" /></svg>
+<span></span></button></span></footer>
+
+    <section class="e-reading" aria-label="当前事件明细">
+      <header class="reading-header">
+        <span class="reading-eyebrow">当前事件</span>
+        <h2>更新数据集</h2>
+        <span class="reading-action">dataset.update</span>
+        <span class="spacer"></span>
+        <button type="button" class="btn quiet"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="copy"><rect x="8" y="8" width="12.5" height="12.5" rx="1" /><path d="M16 4H3.5v12" /></svg>
+<span>复制记录</span></button>
+        <button type="button" class="btn quiet"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="trash2"><path d="M3 6h18M6 6l1 15h10l1-15M9 6V3h6v3M10 10v7m4-7v7" /></svg>
+<span>删除记录</span></button>
+      </header>
+      <div class="reading-body">
+        <div class="reading-metadata">
+          <dl class="record-fields"><div><dt>时间</dt><dd>2026-10-25 18:16:42</dd></div><div><dt>操作者</dt><dd>acct-lin</dd></div><div><dt>资源类型</dt><dd>数据集</dd></div><div><dt>资源 ID</dt><dd>ds-engineering</dd></div><div><dt>请求 ID</dt><dd>req-audit-1002</dd></div><div><dt>来源 IP</dt><dd>127.0.0.1</dd></div><div><dt>租户</dt><dd>tenant-demo</dd></div><div><dt>日志 ID</dt><dd>7c6a2e40-0f71-4f62-9b74-000000001002</dd></div></dl>
+          <dl class="reading-agent"><dt>User-Agent</dt><dd>Ragvia Web / Chromium</dd></dl>
+        </div>
+        <div class="reading-payload">
+          <div class="record-section-title"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="braces"><path d="M8 3H6v7l-3 2 3 2v7h2m8-18h2v7l3 2-3 2v7h-2" /></svg>
+<span>原始明细</span><button type="button">复制 JSON</button></div>
+          <pre class="record-json">{
+  &quot;changed&quot;: true,
+  &quot;name&quot;: &quot;工程文档库&quot;,
+  &quot;permission&quot;: &quot;private&quot;
+}</pre>
+        </div>
+      </div>
+    </section>
+    </section>
+  </div></main></div></body></html>

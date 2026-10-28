@@ -14,6 +14,7 @@ import { extractMarkdownHeadings, flashElementId, scrollToElementId } from '@/li
 import { reportClientError } from '@/lib/client-logging'
 import type { MarkdownHeading } from '@/lib/markdown'
 import { resolveMarkdownImageSrc, sanitizeMarkdownHref } from './markdown-safety'
+import { rehypeSourceRange, type MarkdownSourceRange } from './markdown-source-range'
 
 const FLASH_CLASS = 'bg-primary/10 ring-1 ring-primary/25 rounded-md transition-colors'
 
@@ -58,6 +59,7 @@ type MarkdownRendererProps = Readonly<{
   enableTocAnchors?: boolean
   autoScrollToHash?: boolean
   scrollContainerSelector?: string
+  sourceRange?: MarkdownSourceRange | null
 }>
 
 type MarkdownRenderBoundaryProps = Readonly<{
@@ -315,8 +317,13 @@ function MarkdownRendererContent({
   enableTocAnchors = true,
   autoScrollToHash = false,
   scrollContainerSelector,
+  sourceRange,
 }: MarkdownRendererProps) {
   const text = markdown || ''
+  const rehypePlugins = useMemo<React.ComponentProps<typeof ReactMarkdown>['rehypePlugins']>(
+    () => [rehypeRaw, [rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA], [rehypeSourceRange, { range: sourceRange }]],
+    [sourceRange]
+  )
 
   const headings = useMemo(
     () => (enableTocAnchors ? extractMarkdownHeadings(text) : []),
@@ -359,7 +366,7 @@ function MarkdownRendererContent({
       <MarkdownRendererRuntimeContext.Provider value={runtime}>
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
-          rehypePlugins={[rehypeRaw, [rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA]]}
+          rehypePlugins={rehypePlugins}
           components={MARKDOWN_RENDERER_COMPONENTS}
         >
           {text}

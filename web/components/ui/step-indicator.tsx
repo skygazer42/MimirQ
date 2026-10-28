@@ -1,7 +1,7 @@
 'use client'
 
 import { cn } from '@/lib/utils'
-import { Check } from 'lucide-react'
+import { Check } from '@/components/icons'
 
 interface Step {
   label: string

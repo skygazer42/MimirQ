@@ -1,6 +1,6 @@
 'use client'
 
-import { Info } from 'lucide-react'
+import { Info } from '@/components/icons'
 import { cn } from '@/lib/utils'
 import { getParserOption } from '@/lib/parser-options'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'

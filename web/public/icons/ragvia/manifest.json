@@ -1,0 +1,1784 @@
+{
+  "grid": 24,
+  "stroke": 1.7,
+  "icons": [
+    {
+      "name": "Dataset",
+      "label": "数据集",
+      "category": "knowledge",
+      "aliases": [
+        "Layers",
+        "Layers3"
+      ],
+      "file": "dataset.svg",
+      "tone": "source",
+      "colorFile": "color/dataset.svg"
+    },
+    {
+      "name": "KnowledgeBase",
+      "label": "知识库",
+      "category": "knowledge",
+      "aliases": [
+        "BookOpen",
+        "BookOpenText"
+      ],
+      "file": "knowledge-base.svg",
+      "tone": "knowledge",
+      "colorFile": "color/knowledge-base.svg"
+    },
+    {
+      "name": "Parsing",
+      "label": "文档解析",
+      "category": "knowledge",
+      "aliases": [],
+      "file": "parsing.svg",
+      "tone": "process",
+      "colorFile": "color/parsing.svg"
+    },
+    {
+      "name": "Chunking",
+      "label": "文本切块",
+      "category": "knowledge",
+      "aliases": [
+        "Scissors"
+      ],
+      "file": "chunking.svg",
+      "tone": "process",
+      "colorFile": "color/chunking.svg"
+    },
+    {
+      "name": "KnowledgeGraph",
+      "label": "知识图谱",
+      "category": "knowledge",
+      "aliases": [
+        "Network",
+        "Share2",
+        "Waypoints"
+      ],
+      "file": "knowledge-graph.svg",
+      "tone": "analysis",
+      "colorFile": "color/knowledge-graph.svg"
+    },
+    {
+      "name": "Retrieval",
+      "label": "检索",
+      "category": "knowledge",
+      "aliases": [
+        "FileSearch"
+      ],
+      "file": "retrieval.svg",
+      "tone": "knowledge",
+      "colorFile": "color/retrieval.svg"
+    },
+    {
+      "name": "DataGovernance",
+      "label": "数据治理",
+      "category": "knowledge",
+      "aliases": [],
+      "file": "data-governance.svg",
+      "tone": "governance",
+      "colorFile": "color/data-governance.svg"
+    },
+    {
+      "name": "RuleSet",
+      "label": "治理规则",
+      "category": "knowledge",
+      "aliases": [],
+      "file": "rule-set.svg",
+      "tone": "governance",
+      "colorFile": "color/rule-set.svg"
+    },
+    {
+      "name": "Ingestion",
+      "label": "数据入库",
+      "category": "knowledge",
+      "aliases": [],
+      "file": "ingestion.svg",
+      "tone": "process",
+      "colorFile": "color/ingestion.svg"
+    },
+    {
+      "name": "IngestionMonitor",
+      "label": "入库监控",
+      "category": "knowledge",
+      "aliases": [],
+      "file": "ingestion-monitor.svg",
+      "tone": "process",
+      "colorFile": "color/ingestion-monitor.svg"
+    },
+    {
+      "name": "Quarantine",
+      "label": "隔离审核",
+      "category": "knowledge",
+      "aliases": [],
+      "file": "quarantine.svg",
+      "tone": "slides",
+      "colorFile": "color/quarantine.svg"
+    },
+    {
+      "name": "Prompts",
+      "label": "提示词",
+      "category": "knowledge",
+      "aliases": [
+        "Terminal"
+      ],
+      "file": "prompts.svg",
+      "tone": "knowledge",
+      "colorFile": "color/prompts.svg"
+    },
+    {
+      "name": "Conversation",
+      "label": "对话",
+      "category": "knowledge",
+      "aliases": [
+        "MessageSquare",
+        "MessageSquareText"
+      ],
+      "file": "conversation.svg",
+      "tone": "knowledge",
+      "colorFile": "color/conversation.svg"
+    },
+    {
+      "name": "ConversationAdd",
+      "label": "新对话",
+      "category": "knowledge",
+      "aliases": [
+        "MessageSquarePlus"
+      ],
+      "file": "conversation-add.svg",
+      "tone": "knowledge",
+      "colorFile": "color/conversation-add.svg"
+    },
+    {
+      "name": "ConversationHistory",
+      "label": "对话历史",
+      "category": "knowledge",
+      "aliases": [],
+      "file": "conversation-history.svg",
+      "tone": "knowledge",
+      "colorFile": "color/conversation-history.svg"
+    },
+    {
+      "name": "Feedback",
+      "label": "回答反馈",
+      "category": "knowledge",
+      "aliases": [],
+      "file": "feedback.svg",
+      "tone": "governance",
+      "colorFile": "color/feedback.svg"
+    },
+    {
+      "name": "Evaluation",
+      "label": "检索评估",
+      "category": "knowledge",
+      "aliases": [],
+      "file": "evaluation.svg",
+      "tone": "analysis",
+      "colorFile": "color/evaluation.svg"
+    },
+    {
+      "name": "GraphEvaluation",
+      "label": "图谱评估",
+      "category": "knowledge",
+      "aliases": [],
+      "file": "graph-evaluation.svg",
+      "tone": "analysis",
+      "colorFile": "color/graph-evaluation.svg"
+    },
+    {
+      "name": "GraphSnapshot",
+      "label": "图谱快照",
+      "category": "knowledge",
+      "aliases": [],
+      "file": "graph-snapshot.svg",
+      "tone": "analysis",
+      "colorFile": "color/graph-snapshot.svg"
+    },
+    {
+      "name": "RetrievalAblation",
+      "label": "检索对比",
+      "category": "knowledge",
+      "aliases": [],
+      "file": "retrieval-ablation.svg",
+      "tone": "analysis",
+      "colorFile": "color/retrieval-ablation.svg"
+    },
+    {
+      "name": "RagVisualization",
+      "label": "检索链路",
+      "category": "knowledge",
+      "aliases": [],
+      "file": "rag-visualization.svg",
+      "tone": "analysis",
+      "colorFile": "color/rag-visualization.svg"
+    },
+    {
+      "name": "Reports",
+      "label": "分析报告",
+      "category": "knowledge",
+      "aliases": [],
+      "file": "reports.svg",
+      "tone": "analysis",
+      "colorFile": "color/reports.svg"
+    },
+    {
+      "name": "Usage",
+      "label": "用量配额",
+      "category": "system",
+      "aliases": [
+        "Coins"
+      ],
+      "file": "usage.svg",
+      "tone": "analysis",
+      "colorFile": "color/usage.svg"
+    },
+    {
+      "name": "Diagnostics",
+      "label": "系统诊断",
+      "category": "system",
+      "aliases": [],
+      "file": "diagnostics.svg",
+      "tone": "process",
+      "colorFile": "color/diagnostics.svg"
+    },
+    {
+      "name": "AuditLog",
+      "label": "审计日志",
+      "category": "system",
+      "aliases": [
+        "ScrollText"
+      ],
+      "file": "audit-log.svg",
+      "tone": "neutral",
+      "colorFile": "color/audit-log.svg"
+    },
+    {
+      "name": "AccessReview",
+      "label": "访问审查",
+      "category": "system",
+      "aliases": [],
+      "file": "access-review.svg",
+      "tone": "governance",
+      "colorFile": "color/access-review.svg"
+    },
+    {
+      "name": "Members",
+      "label": "成员权限",
+      "category": "system",
+      "aliases": [
+        "UserCog"
+      ],
+      "file": "members.svg",
+      "tone": "process",
+      "colorFile": "color/members.svg"
+    },
+    {
+      "name": "Groups",
+      "label": "用户组",
+      "category": "system",
+      "aliases": [
+        "Users",
+        "UsersRound"
+      ],
+      "file": "groups.svg",
+      "tone": "process",
+      "colorFile": "color/groups.svg"
+    },
+    {
+      "name": "ProfileDiscovery",
+      "label": "规则发现",
+      "category": "system",
+      "aliases": [],
+      "file": "profile-discovery.svg",
+      "tone": "governance",
+      "colorFile": "color/profile-discovery.svg"
+    },
+    {
+      "name": "Settings",
+      "label": "设置",
+      "category": "system",
+      "aliases": [],
+      "file": "settings.svg",
+      "tone": "neutral",
+      "colorFile": "color/settings.svg"
+    },
+    {
+      "name": "Automation",
+      "label": "自动处理",
+      "category": "knowledge",
+      "aliases": [
+        "Sparkles",
+        "Wand2",
+        "WandSparkles",
+        "Zap"
+      ],
+      "file": "automation.svg",
+      "tone": "process",
+      "colorFile": "color/automation.svg"
+    },
+    {
+      "name": "Processor",
+      "label": "模型计算",
+      "category": "system",
+      "aliases": [
+        "Cpu",
+        "Bot"
+      ],
+      "file": "processor.svg",
+      "tone": "process",
+      "colorFile": "color/processor.svg"
+    },
+    {
+      "name": "LocalModel",
+      "label": "本地模型",
+      "category": "system",
+      "aliases": [],
+      "file": "local-model.svg",
+      "tone": "process",
+      "colorFile": "color/local-model.svg"
+    },
+    {
+      "name": "Reranker",
+      "label": "重排序",
+      "category": "knowledge",
+      "aliases": [],
+      "file": "reranker.svg",
+      "tone": "analysis",
+      "colorFile": "color/reranker.svg"
+    },
+    {
+      "name": "Model",
+      "label": "模型服务",
+      "category": "system",
+      "aliases": [],
+      "file": "model.svg",
+      "tone": "process",
+      "colorFile": "color/model.svg"
+    },
+    {
+      "name": "Document",
+      "label": "文档",
+      "category": "files",
+      "aliases": [
+        "FileText"
+      ],
+      "file": "document.svg",
+      "tone": "neutral",
+      "colorFile": "color/document.svg"
+    },
+    {
+      "name": "File",
+      "label": "文件",
+      "category": "files",
+      "aliases": [],
+      "file": "file.svg",
+      "tone": "neutral",
+      "colorFile": "color/file.svg"
+    },
+    {
+      "name": "FilePdf",
+      "label": "PDF 文件",
+      "category": "files",
+      "aliases": [
+        "FileSignature"
+      ],
+      "file": "file-pdf.svg",
+      "tone": "pdf",
+      "colorFile": "color/file-pdf.svg"
+    },
+    {
+      "name": "FileMarkdown",
+      "label": "Markdown 文件",
+      "category": "files",
+      "aliases": [],
+      "file": "file-markdown.svg",
+      "tone": "neutral",
+      "colorFile": "color/file-markdown.svg"
+    },
+    {
+      "name": "FileSpreadsheet",
+      "label": "表格文件",
+      "category": "files",
+      "aliases": [],
+      "file": "file-spreadsheet.svg",
+      "tone": "sheet",
+      "colorFile": "color/file-spreadsheet.svg"
+    },
+    {
+      "name": "FileCode",
+      "label": "代码文件",
+      "category": "files",
+      "aliases": [
+        "FileCode2"
+      ],
+      "file": "file-code.svg",
+      "tone": "code",
+      "colorFile": "color/file-code.svg"
+    },
+    {
+      "name": "FileJson",
+      "label": "JSON 文件",
+      "category": "files",
+      "aliases": [],
+      "file": "file-json.svg",
+      "tone": "code",
+      "colorFile": "color/file-json.svg"
+    },
+    {
+      "name": "FileType",
+      "label": "Word 文件",
+      "category": "files",
+      "aliases": [],
+      "file": "file-type.svg",
+      "tone": "word",
+      "colorFile": "color/file-type.svg"
+    },
+    {
+      "name": "FileImage",
+      "label": "图片文件",
+      "category": "files",
+      "aliases": [],
+      "file": "file-image.svg",
+      "tone": "media",
+      "colorFile": "color/file-image.svg"
+    },
+    {
+      "name": "FileArchive",
+      "label": "压缩文件",
+      "category": "files",
+      "aliases": [],
+      "file": "file-archive.svg",
+      "tone": "code",
+      "colorFile": "color/file-archive.svg"
+    },
+    {
+      "name": "FileCheck",
+      "label": "文档已检查",
+      "category": "files",
+      "aliases": [
+        "FileCheck2"
+      ],
+      "file": "file-check.svg"
+    },
+    {
+      "name": "FileClock",
+      "label": "文档记录",
+      "category": "files",
+      "aliases": [],
+      "file": "file-clock.svg"
+    },
+    {
+      "name": "FileDigit",
+      "label": "数字文档",
+      "category": "files",
+      "aliases": [],
+      "file": "file-digit.svg"
+    },
+    {
+      "name": "FileUp",
+      "label": "导入文件",
+      "category": "files",
+      "aliases": [],
+      "file": "file-up.svg"
+    },
+    {
+      "name": "FileDown",
+      "label": "导出文件",
+      "category": "files",
+      "aliases": [],
+      "file": "file-down.svg"
+    },
+    {
+      "name": "FileStack",
+      "label": "文档集合",
+      "category": "files",
+      "aliases": [],
+      "file": "file-stack.svg"
+    },
+    {
+      "name": "Folder",
+      "label": "文件夹",
+      "category": "files",
+      "aliases": [],
+      "file": "folder.svg"
+    },
+    {
+      "name": "FolderOpen",
+      "label": "展开文件夹",
+      "category": "files",
+      "aliases": [],
+      "file": "folder-open.svg"
+    },
+    {
+      "name": "FolderPlus",
+      "label": "新建文件夹",
+      "category": "files",
+      "aliases": [],
+      "file": "folder-plus.svg"
+    },
+    {
+      "name": "FolderUp",
+      "label": "上传文件夹",
+      "category": "files",
+      "aliases": [],
+      "file": "folder-up.svg"
+    },
+    {
+      "name": "FolderInput",
+      "label": "移动到文件夹",
+      "category": "files",
+      "aliases": [],
+      "file": "folder-input.svg"
+    },
+    {
+      "name": "FolderTree",
+      "label": "文件目录",
+      "category": "files",
+      "aliases": [],
+      "file": "folder-tree.svg"
+    },
+    {
+      "name": "Archive",
+      "label": "归档",
+      "category": "files",
+      "aliases": [],
+      "file": "archive.svg"
+    },
+    {
+      "name": "Image",
+      "label": "图像",
+      "category": "files",
+      "aliases": [
+        "ImageIcon"
+      ],
+      "file": "image.svg",
+      "tone": "media",
+      "colorFile": "color/image.svg"
+    },
+    {
+      "name": "Presentation",
+      "label": "演示文稿",
+      "category": "files",
+      "aliases": [],
+      "file": "presentation.svg",
+      "tone": "slides",
+      "colorFile": "color/presentation.svg"
+    },
+    {
+      "name": "Paperclip",
+      "label": "附件",
+      "category": "files",
+      "aliases": [],
+      "file": "paperclip.svg"
+    },
+    {
+      "name": "Tag",
+      "label": "标签",
+      "category": "files",
+      "aliases": [],
+      "file": "tag.svg"
+    },
+    {
+      "name": "Tags",
+      "label": "多个标签",
+      "category": "files",
+      "aliases": [],
+      "file": "tags.svg"
+    },
+    {
+      "name": "ArrowRight",
+      "label": "向右",
+      "category": "controls",
+      "aliases": [],
+      "file": "arrow-right.svg"
+    },
+    {
+      "name": "ArrowLeft",
+      "label": "返回",
+      "category": "controls",
+      "aliases": [],
+      "file": "arrow-left.svg"
+    },
+    {
+      "name": "ArrowUp",
+      "label": "提交",
+      "category": "controls",
+      "aliases": [],
+      "file": "arrow-up.svg"
+    },
+    {
+      "name": "ArrowDown",
+      "label": "向下",
+      "category": "controls",
+      "aliases": [],
+      "file": "arrow-down.svg"
+    },
+    {
+      "name": "ArrowUpRight",
+      "label": "前往",
+      "category": "controls",
+      "aliases": [],
+      "file": "arrow-up-right.svg"
+    },
+    {
+      "name": "ArrowRightLeft",
+      "label": "交换",
+      "category": "controls",
+      "aliases": [],
+      "file": "arrow-right-left.svg"
+    },
+    {
+      "name": "ChevronDown",
+      "label": "展开",
+      "category": "controls",
+      "aliases": [],
+      "file": "chevron-down.svg"
+    },
+    {
+      "name": "ChevronUp",
+      "label": "收起",
+      "category": "controls",
+      "aliases": [],
+      "file": "chevron-up.svg"
+    },
+    {
+      "name": "ChevronLeft",
+      "label": "上一项",
+      "category": "controls",
+      "aliases": [],
+      "file": "chevron-left.svg"
+    },
+    {
+      "name": "ChevronRight",
+      "label": "下一项",
+      "category": "controls",
+      "aliases": [],
+      "file": "chevron-right.svg"
+    },
+    {
+      "name": "ChevronsLeft",
+      "label": "最前",
+      "category": "controls",
+      "aliases": [],
+      "file": "chevrons-left.svg"
+    },
+    {
+      "name": "ChevronsUpDown",
+      "label": "上下选择",
+      "category": "controls",
+      "aliases": [],
+      "file": "chevrons-up-down.svg"
+    },
+    {
+      "name": "CornerDownLeft",
+      "label": "回车",
+      "category": "controls",
+      "aliases": [],
+      "file": "corner-down-left.svg"
+    },
+    {
+      "name": "CornerUpLeft",
+      "label": "返回上一步",
+      "category": "controls",
+      "aliases": [],
+      "file": "corner-up-left.svg"
+    },
+    {
+      "name": "Plus",
+      "label": "添加",
+      "category": "controls",
+      "aliases": [],
+      "file": "plus.svg"
+    },
+    {
+      "name": "Minus",
+      "label": "减少",
+      "category": "controls",
+      "aliases": [],
+      "file": "minus.svg"
+    },
+    {
+      "name": "X",
+      "label": "关闭",
+      "category": "controls",
+      "aliases": [],
+      "file": "x.svg"
+    },
+    {
+      "name": "Check",
+      "label": "确认",
+      "category": "controls",
+      "aliases": [],
+      "file": "check.svg"
+    },
+    {
+      "name": "CheckCheck",
+      "label": "全部完成",
+      "category": "controls",
+      "aliases": [],
+      "file": "check-check.svg"
+    },
+    {
+      "name": "CheckSquare",
+      "label": "已选择",
+      "category": "controls",
+      "aliases": [],
+      "file": "check-square.svg"
+    },
+    {
+      "name": "Square",
+      "label": "未选择",
+      "category": "controls",
+      "aliases": [],
+      "file": "square.svg"
+    },
+    {
+      "name": "Circle",
+      "label": "单选",
+      "category": "controls",
+      "aliases": [],
+      "file": "circle.svg"
+    },
+    {
+      "name": "CircleDot",
+      "label": "已选中",
+      "category": "controls",
+      "aliases": [],
+      "file": "circle-dot.svg"
+    },
+    {
+      "name": "Search",
+      "label": "搜索",
+      "category": "controls",
+      "aliases": [],
+      "file": "search.svg"
+    },
+    {
+      "name": "SearchX",
+      "label": "无搜索结果",
+      "category": "controls",
+      "aliases": [],
+      "file": "search-x.svg"
+    },
+    {
+      "name": "SearchCheck",
+      "label": "搜索完成",
+      "category": "controls",
+      "aliases": [],
+      "file": "search-check.svg"
+    },
+    {
+      "name": "SearchCode",
+      "label": "检索表达式",
+      "category": "controls",
+      "aliases": [],
+      "file": "search-code.svg"
+    },
+    {
+      "name": "Filter",
+      "label": "筛选",
+      "category": "controls",
+      "aliases": [],
+      "file": "filter.svg"
+    },
+    {
+      "name": "FilterX",
+      "label": "清除筛选",
+      "category": "controls",
+      "aliases": [],
+      "file": "filter-x.svg"
+    },
+    {
+      "name": "Settings2",
+      "label": "调整参数",
+      "category": "controls",
+      "aliases": [
+        "SlidersHorizontal",
+        "Sliders"
+      ],
+      "file": "settings2.svg"
+    },
+    {
+      "name": "Copy",
+      "label": "复制",
+      "category": "controls",
+      "aliases": [],
+      "file": "copy.svg"
+    },
+    {
+      "name": "Pencil",
+      "label": "编辑",
+      "category": "controls",
+      "aliases": [
+        "Edit",
+        "Edit3"
+      ],
+      "file": "pencil.svg"
+    },
+    {
+      "name": "Trash2",
+      "label": "删除",
+      "category": "controls",
+      "aliases": [],
+      "file": "trash2.svg"
+    },
+    {
+      "name": "Save",
+      "label": "保存",
+      "category": "controls",
+      "aliases": [],
+      "file": "save.svg"
+    },
+    {
+      "name": "Upload",
+      "label": "上传",
+      "category": "controls",
+      "aliases": [],
+      "file": "upload.svg"
+    },
+    {
+      "name": "Download",
+      "label": "下载",
+      "category": "controls",
+      "aliases": [],
+      "file": "download.svg"
+    },
+    {
+      "name": "ExternalLink",
+      "label": "在新窗口打开",
+      "category": "controls",
+      "aliases": [],
+      "file": "external-link.svg"
+    },
+    {
+      "name": "RefreshCw",
+      "label": "刷新",
+      "category": "controls",
+      "aliases": [],
+      "file": "refresh-cw.svg"
+    },
+    {
+      "name": "RotateCcw",
+      "label": "重置",
+      "category": "controls",
+      "aliases": [
+        "RefreshCcw",
+        "Undo"
+      ],
+      "file": "rotate-ccw.svg"
+    },
+    {
+      "name": "Loader2",
+      "label": "加载中",
+      "category": "controls",
+      "aliases": [],
+      "file": "loader2.svg"
+    },
+    {
+      "name": "Play",
+      "label": "开始",
+      "category": "controls",
+      "aliases": [],
+      "file": "play.svg"
+    },
+    {
+      "name": "PlayCircle",
+      "label": "运行",
+      "category": "controls",
+      "aliases": [],
+      "file": "play-circle.svg"
+    },
+    {
+      "name": "StopCircle",
+      "label": "停止",
+      "category": "controls",
+      "aliases": [],
+      "file": "stop-circle.svg"
+    },
+    {
+      "name": "Send",
+      "label": "发送",
+      "category": "controls",
+      "aliases": [],
+      "file": "send.svg"
+    },
+    {
+      "name": "MoreHorizontal",
+      "label": "更多操作",
+      "category": "controls",
+      "aliases": [],
+      "file": "more-horizontal.svg"
+    },
+    {
+      "name": "MoreVertical",
+      "label": "更多选项",
+      "category": "controls",
+      "aliases": [],
+      "file": "more-vertical.svg"
+    },
+    {
+      "name": "Eye",
+      "label": "查看",
+      "category": "controls",
+      "aliases": [],
+      "file": "eye.svg"
+    },
+    {
+      "name": "EyeOff",
+      "label": "隐藏",
+      "category": "controls",
+      "aliases": [],
+      "file": "eye-off.svg"
+    },
+    {
+      "name": "Pin",
+      "label": "固定",
+      "category": "controls",
+      "aliases": [],
+      "file": "pin.svg"
+    },
+    {
+      "name": "PinOff",
+      "label": "取消固定",
+      "category": "controls",
+      "aliases": [],
+      "file": "pin-off.svg"
+    },
+    {
+      "name": "Bookmark",
+      "label": "书签",
+      "category": "controls",
+      "aliases": [],
+      "file": "bookmark.svg"
+    },
+    {
+      "name": "GripHorizontal",
+      "label": "拖动",
+      "category": "controls",
+      "aliases": [],
+      "file": "grip-horizontal.svg"
+    },
+    {
+      "name": "Maximize",
+      "label": "全屏",
+      "category": "controls",
+      "aliases": [],
+      "file": "maximize.svg"
+    },
+    {
+      "name": "Maximize2",
+      "label": "放大面板",
+      "category": "controls",
+      "aliases": [],
+      "file": "maximize2.svg"
+    },
+    {
+      "name": "Minimize2",
+      "label": "缩小面板",
+      "category": "controls",
+      "aliases": [],
+      "file": "minimize2.svg"
+    },
+    {
+      "name": "ZoomIn",
+      "label": "放大",
+      "category": "controls",
+      "aliases": [],
+      "file": "zoom-in.svg"
+    },
+    {
+      "name": "ZoomOut",
+      "label": "缩小",
+      "category": "controls",
+      "aliases": [],
+      "file": "zoom-out.svg"
+    },
+    {
+      "name": "PanelLeftClose",
+      "label": "折叠侧栏",
+      "category": "controls",
+      "aliases": [],
+      "file": "panel-left-close.svg"
+    },
+    {
+      "name": "PanelLeftOpen",
+      "label": "展开侧栏",
+      "category": "controls",
+      "aliases": [],
+      "file": "panel-left-open.svg"
+    },
+    {
+      "name": "PanelRightClose",
+      "label": "关闭面板",
+      "category": "controls",
+      "aliases": [],
+      "file": "panel-right-close.svg"
+    },
+    {
+      "name": "PanelRightOpen",
+      "label": "打开面板",
+      "category": "controls",
+      "aliases": [],
+      "file": "panel-right-open.svg"
+    },
+    {
+      "name": "LayoutGrid",
+      "label": "网格视图",
+      "category": "controls",
+      "aliases": [],
+      "file": "layout-grid.svg"
+    },
+    {
+      "name": "Grid3X3",
+      "label": "矩阵",
+      "category": "controls",
+      "aliases": [],
+      "file": "grid3-x3.svg"
+    },
+    {
+      "name": "LayoutList",
+      "label": "列表视图",
+      "category": "controls",
+      "aliases": [],
+      "file": "layout-list.svg"
+    },
+    {
+      "name": "Layout",
+      "label": "布局",
+      "category": "controls",
+      "aliases": [],
+      "file": "layout.svg"
+    },
+    {
+      "name": "Rows3",
+      "label": "行视图",
+      "category": "controls",
+      "aliases": [],
+      "file": "rows3.svg"
+    },
+    {
+      "name": "BoxSelect",
+      "label": "框选",
+      "category": "controls",
+      "aliases": [],
+      "file": "box-select.svg"
+    },
+    {
+      "name": "MousePointer2",
+      "label": "选择",
+      "category": "controls",
+      "aliases": [],
+      "file": "mouse-pointer2.svg"
+    },
+    {
+      "name": "Keyboard",
+      "label": "键盘快捷键",
+      "category": "controls",
+      "aliases": [],
+      "file": "keyboard.svg"
+    },
+    {
+      "name": "TextCursorInput",
+      "label": "输入文本",
+      "category": "controls",
+      "aliases": [],
+      "file": "text-cursor-input.svg"
+    },
+    {
+      "name": "Eraser",
+      "label": "清空",
+      "category": "controls",
+      "aliases": [],
+      "file": "eraser.svg"
+    },
+    {
+      "name": "Highlighter",
+      "label": "高亮",
+      "category": "controls",
+      "aliases": [],
+      "file": "highlighter.svg"
+    },
+    {
+      "name": "CheckCircle",
+      "label": "成功",
+      "category": "status",
+      "aliases": [
+        "CheckCircle2"
+      ],
+      "file": "check-circle.svg"
+    },
+    {
+      "name": "XCircle",
+      "label": "失败",
+      "category": "status",
+      "aliases": [],
+      "file": "xcircle.svg"
+    },
+    {
+      "name": "AlertCircle",
+      "label": "注意",
+      "category": "status",
+      "aliases": [
+        "CircleAlert"
+      ],
+      "file": "alert-circle.svg"
+    },
+    {
+      "name": "AlertTriangle",
+      "label": "警告",
+      "category": "status",
+      "aliases": [
+        "TriangleAlert"
+      ],
+      "file": "alert-triangle.svg"
+    },
+    {
+      "name": "Info",
+      "label": "信息",
+      "category": "status",
+      "aliases": [],
+      "file": "info.svg"
+    },
+    {
+      "name": "HelpCircle",
+      "label": "帮助",
+      "category": "status",
+      "aliases": [
+        "CircleHelp"
+      ],
+      "file": "help-circle.svg"
+    },
+    {
+      "name": "CircleDashed",
+      "label": "待处理",
+      "category": "status",
+      "aliases": [],
+      "file": "circle-dashed.svg"
+    },
+    {
+      "name": "Ban",
+      "label": "禁止",
+      "category": "status",
+      "aliases": [],
+      "file": "ban.svg"
+    },
+    {
+      "name": "Shield",
+      "label": "防护",
+      "category": "status",
+      "aliases": [],
+      "file": "shield.svg"
+    },
+    {
+      "name": "ShieldCheck",
+      "label": "已验证",
+      "category": "status",
+      "aliases": [],
+      "file": "shield-check.svg"
+    },
+    {
+      "name": "ShieldAlert",
+      "label": "权限提醒",
+      "category": "status",
+      "aliases": [],
+      "file": "shield-alert.svg"
+    },
+    {
+      "name": "Clock",
+      "label": "时间",
+      "category": "status",
+      "aliases": [
+        "Clock3"
+      ],
+      "file": "clock.svg"
+    },
+    {
+      "name": "History",
+      "label": "历史",
+      "category": "status",
+      "aliases": [],
+      "file": "history.svg"
+    },
+    {
+      "name": "Timer",
+      "label": "计时",
+      "category": "status",
+      "aliases": [],
+      "file": "timer.svg"
+    },
+    {
+      "name": "Star",
+      "label": "收藏",
+      "category": "status",
+      "aliases": [],
+      "file": "star.svg"
+    },
+    {
+      "name": "Heart",
+      "label": "喜欢",
+      "category": "status",
+      "aliases": [],
+      "file": "heart.svg"
+    },
+    {
+      "name": "ThumbsUp",
+      "label": "赞同",
+      "category": "status",
+      "aliases": [],
+      "file": "thumbs-up.svg"
+    },
+    {
+      "name": "ThumbsDown",
+      "label": "不赞同",
+      "category": "status",
+      "aliases": [],
+      "file": "thumbs-down.svg"
+    },
+    {
+      "name": "Lightbulb",
+      "label": "建议",
+      "category": "status",
+      "aliases": [],
+      "file": "lightbulb.svg"
+    },
+    {
+      "name": "User",
+      "label": "用户",
+      "category": "system",
+      "aliases": [
+        "UserRound"
+      ],
+      "file": "user.svg"
+    },
+    {
+      "name": "UserPlus",
+      "label": "添加成员",
+      "category": "system",
+      "aliases": [],
+      "file": "user-plus.svg"
+    },
+    {
+      "name": "Mail",
+      "label": "邮箱",
+      "category": "system",
+      "aliases": [],
+      "file": "mail.svg"
+    },
+    {
+      "name": "Lock",
+      "label": "锁定",
+      "category": "system",
+      "aliases": [],
+      "file": "lock.svg"
+    },
+    {
+      "name": "LockKeyhole",
+      "label": "密码",
+      "category": "system",
+      "aliases": [],
+      "file": "lock-keyhole.svg"
+    },
+    {
+      "name": "KeyRound",
+      "label": "访问密钥",
+      "category": "system",
+      "aliases": [],
+      "file": "key-round.svg"
+    },
+    {
+      "name": "LogIn",
+      "label": "登录",
+      "category": "system",
+      "aliases": [],
+      "file": "log-in.svg"
+    },
+    {
+      "name": "LogOut",
+      "label": "退出登录",
+      "category": "system",
+      "aliases": [],
+      "file": "log-out.svg"
+    },
+    {
+      "name": "Sun",
+      "label": "浅色模式",
+      "category": "system",
+      "aliases": [],
+      "file": "sun.svg"
+    },
+    {
+      "name": "Moon",
+      "label": "深色模式",
+      "category": "system",
+      "aliases": [],
+      "file": "moon.svg"
+    },
+    {
+      "name": "Monitor",
+      "label": "跟随系统",
+      "category": "system",
+      "aliases": [],
+      "file": "monitor.svg"
+    },
+    {
+      "name": "Laptop",
+      "label": "电脑",
+      "category": "system",
+      "aliases": [],
+      "file": "laptop.svg"
+    },
+    {
+      "name": "Palette",
+      "label": "外观",
+      "category": "system",
+      "aliases": [],
+      "file": "palette.svg"
+    },
+    {
+      "name": "Home",
+      "label": "首页",
+      "category": "system",
+      "aliases": [],
+      "file": "home.svg"
+    },
+    {
+      "name": "Cloud",
+      "label": "云服务",
+      "category": "system",
+      "aliases": [],
+      "file": "cloud.svg"
+    },
+    {
+      "name": "ConnectionLost",
+      "label": "连接中断",
+      "category": "status",
+      "aliases": [],
+      "file": "connection-lost.svg"
+    },
+    {
+      "name": "UploadCloud",
+      "label": "上传到服务",
+      "category": "system",
+      "aliases": [],
+      "file": "upload-cloud.svg"
+    },
+    {
+      "name": "CloudCog",
+      "label": "服务配置",
+      "category": "system",
+      "aliases": [],
+      "file": "cloud-cog.svg"
+    },
+    {
+      "name": "Server",
+      "label": "服务器",
+      "category": "system",
+      "aliases": [],
+      "file": "server.svg"
+    },
+    {
+      "name": "Database",
+      "label": "数据库",
+      "category": "system",
+      "aliases": [],
+      "file": "database.svg"
+    },
+    {
+      "name": "HardDrive",
+      "label": "存储",
+      "category": "system",
+      "aliases": [],
+      "file": "hard-drive.svg"
+    },
+    {
+      "name": "PlugZap",
+      "label": "连接服务",
+      "category": "system",
+      "aliases": [],
+      "file": "plug-zap.svg"
+    },
+    {
+      "name": "Globe",
+      "label": "网站",
+      "category": "system",
+      "aliases": [],
+      "file": "globe.svg"
+    },
+    {
+      "name": "Languages",
+      "label": "语言",
+      "category": "system",
+      "aliases": [],
+      "file": "languages.svg"
+    },
+    {
+      "name": "Calendar",
+      "label": "日期",
+      "category": "system",
+      "aliases": [],
+      "file": "calendar.svg"
+    },
+    {
+      "name": "CalendarClock",
+      "label": "计划时间",
+      "category": "system",
+      "aliases": [],
+      "file": "calendar-clock.svg"
+    },
+    {
+      "name": "Mic",
+      "label": "语音输入",
+      "category": "controls",
+      "aliases": [],
+      "file": "mic.svg"
+    },
+    {
+      "name": "MicOff",
+      "label": "关闭麦克风",
+      "category": "controls",
+      "aliases": [],
+      "file": "mic-off.svg"
+    },
+    {
+      "name": "Activity",
+      "label": "运行状态",
+      "category": "analysis",
+      "aliases": [],
+      "file": "activity.svg"
+    },
+    {
+      "name": "BarChart",
+      "label": "柱状图",
+      "category": "analysis",
+      "aliases": [
+        "BarChart3"
+      ],
+      "file": "bar-chart.svg"
+    },
+    {
+      "name": "LineChart",
+      "label": "趋势图",
+      "category": "analysis",
+      "aliases": [
+        "ChartLine"
+      ],
+      "file": "line-chart.svg"
+    },
+    {
+      "name": "TrendingUp",
+      "label": "上升趋势",
+      "category": "analysis",
+      "aliases": [],
+      "file": "trending-up.svg"
+    },
+    {
+      "name": "Gauge",
+      "label": "性能",
+      "category": "analysis",
+      "aliases": [],
+      "file": "gauge.svg"
+    },
+    {
+      "name": "Table2",
+      "label": "表格",
+      "category": "analysis",
+      "aliases": [],
+      "file": "table2.svg"
+    },
+    {
+      "name": "TableProperties",
+      "label": "字段信息",
+      "category": "analysis",
+      "aliases": [],
+      "file": "table-properties.svg"
+    },
+    {
+      "name": "GitBranch",
+      "label": "分支",
+      "category": "analysis",
+      "aliases": [],
+      "file": "git-branch.svg"
+    },
+    {
+      "name": "GitCompare",
+      "label": "比较",
+      "category": "analysis",
+      "aliases": [
+        "GitCompareArrows"
+      ],
+      "file": "git-compare.svg"
+    },
+    {
+      "name": "GitCommitHorizontal",
+      "label": "关系边",
+      "category": "analysis",
+      "aliases": [],
+      "file": "git-commit-horizontal.svg"
+    },
+    {
+      "name": "GitCommitVertical",
+      "label": "流程节点",
+      "category": "analysis",
+      "aliases": [],
+      "file": "git-commit-vertical.svg"
+    },
+    {
+      "name": "Route",
+      "label": "处理路径",
+      "category": "analysis",
+      "aliases": [],
+      "file": "route.svg"
+    },
+    {
+      "name": "Workflow",
+      "label": "处理流程",
+      "category": "analysis",
+      "aliases": [],
+      "file": "workflow.svg"
+    },
+    {
+      "name": "Braces",
+      "label": "结构化规则",
+      "category": "analysis",
+      "aliases": [],
+      "file": "braces.svg"
+    },
+    {
+      "name": "Code",
+      "label": "代码",
+      "category": "analysis",
+      "aliases": [
+        "Code2"
+      ],
+      "file": "code.svg"
+    },
+    {
+      "name": "Hash",
+      "label": "编号",
+      "category": "analysis",
+      "aliases": [],
+      "file": "hash.svg"
+    },
+    {
+      "name": "Sigma",
+      "label": "汇总",
+      "category": "analysis",
+      "aliases": [],
+      "file": "sigma.svg"
+    },
+    {
+      "name": "List",
+      "label": "列表",
+      "category": "analysis",
+      "aliases": [
+        "ListIcon"
+      ],
+      "file": "list.svg"
+    },
+    {
+      "name": "ListChecks",
+      "label": "检查清单",
+      "category": "analysis",
+      "aliases": [],
+      "file": "list-checks.svg"
+    },
+    {
+      "name": "ClipboardList",
+      "label": "任务清单",
+      "category": "analysis",
+      "aliases": [],
+      "file": "clipboard-list.svg"
+    },
+    {
+      "name": "ScanLine",
+      "label": "扫描",
+      "category": "analysis",
+      "aliases": [
+        "Scan"
+      ],
+      "file": "scan-line.svg"
+    },
+    {
+      "name": "ScanText",
+      "label": "识别文本",
+      "category": "analysis",
+      "aliases": [],
+      "file": "scan-text.svg"
+    },
+    {
+      "name": "AlignLeft",
+      "label": "文本对齐",
+      "category": "analysis",
+      "aliases": [],
+      "file": "align-left.svg"
+    },
+    {
+      "name": "AlignJustify",
+      "label": "文本段落",
+      "category": "analysis",
+      "aliases": [],
+      "file": "align-justify.svg"
+    },
+    {
+      "name": "Type",
+      "label": "文本",
+      "category": "analysis",
+      "aliases": [],
+      "file": "type.svg"
+    },
+    {
+      "name": "Heading1",
+      "label": "一级标题",
+      "category": "analysis",
+      "aliases": [],
+      "file": "heading1.svg"
+    },
+    {
+      "name": "Link",
+      "label": "链接",
+      "category": "analysis",
+      "aliases": [
+        "Link2"
+      ],
+      "file": "link.svg"
+    },
+    {
+      "name": "Quote",
+      "label": "引用",
+      "category": "analysis",
+      "aliases": [],
+      "file": "quote.svg"
+    },
+    {
+      "name": "Box",
+      "label": "对象",
+      "category": "analysis",
+      "aliases": [],
+      "file": "box.svg"
+    },
+    {
+      "name": "Blocks",
+      "label": "模块",
+      "category": "analysis",
+      "aliases": [],
+      "file": "blocks.svg"
+    },
+    {
+      "name": "Shapes",
+      "label": "内容类型",
+      "category": "analysis",
+      "aliases": [],
+      "file": "shapes.svg"
+    },
+    {
+      "name": "Target",
+      "label": "评估目标",
+      "category": "analysis",
+      "aliases": [],
+      "file": "target.svg"
+    },
+    {
+      "name": "Radar",
+      "label": "预检探测",
+      "category": "analysis",
+      "aliases": [],
+      "file": "radar.svg"
+    },
+    {
+      "name": "Compass",
+      "label": "定位页面",
+      "category": "analysis",
+      "aliases": [],
+      "file": "compass.svg"
+    },
+    {
+      "name": "FlaskConical",
+      "label": "实验",
+      "category": "analysis",
+      "aliases": [
+        "TestTube2"
+      ],
+      "file": "flask-conical.svg"
+    },
+    {
+      "name": "Scale",
+      "label": "质量比较",
+      "category": "analysis",
+      "aliases": [],
+      "file": "scale.svg"
+    },
+    {
+      "name": "Trophy",
+      "label": "最佳结果",
+      "category": "analysis",
+      "aliases": [],
+      "file": "trophy.svg"
+    },
+    {
+      "name": "PackageCheck",
+      "label": "入库完成",
+      "category": "analysis",
+      "aliases": [],
+      "file": "package-check.svg"
+    },
+    {
+      "name": "Wrench",
+      "label": "维护",
+      "category": "analysis",
+      "aliases": [],
+      "file": "wrench.svg"
+    },
+    {
+      "name": "Brain",
+      "label": "记忆",
+      "category": "analysis",
+      "aliases": [],
+      "file": "brain.svg"
+    },
+    {
+      "name": "Bug",
+      "label": "故障",
+      "category": "analysis",
+      "aliases": [],
+      "file": "bug.svg"
+    },
+    {
+      "name": "Fingerprint",
+      "label": "身份标识",
+      "category": "analysis",
+      "aliases": [],
+      "file": "fingerprint.svg"
+    }
+  ],
+  "pages": {
+    "access-review": "AccessReview",
+    "audit-log": "AuditLog",
+    "chat": "Conversation",
+    "chunk-preview": "Chunking",
+    "data-governance": "DataGovernance",
+    "dataset": "Dataset",
+    "diagnostics": "Diagnostics",
+    "feedback-quality": "Feedback",
+    "governance-config": "RuleSet",
+    "group-management": "Groups",
+    "ingestion-monitor": "IngestionMonitor",
+    "ingestion-operation": "Ingestion",
+    "kg-retrieval-evaluation": "GraphEvaluation",
+    "kg-snapshot": "GraphSnapshot",
+    "knowledge-base": "KnowledgeBase",
+    "knowledge-graph": "KnowledgeGraph",
+    "knowledge-management": "KnowledgeBase",
+    "members-rbac": "Members",
+    "parsing": "Parsing",
+    "profile-discovery": "ProfileDiscovery",
+    "prompts": "Prompts",
+    "qa-history": "ConversationHistory",
+    "quarantine-queue": "Quarantine",
+    "rag-visualization": "RagVisualization",
+    "ragas-evaluation": "Evaluation",
+    "report-export": "Reports",
+    "retrieval-ablation": "RetrievalAblation",
+    "settings": "Settings",
+    "usage-quota": "Usage"
+  }
+}

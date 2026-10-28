@@ -2,7 +2,7 @@
 
 import type { ConnectorRunOut, Dataset, DocumentAccessMode } from '@/types'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Loader2 } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
@@ -175,7 +175,7 @@ export function KnowledgeUrlBatchDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-2xl overflow-y-auto overscroll-contain">
         <DialogHeader>
           <DialogTitle>URL 批量导入（Connector）</DialogTitle>
           <DialogDescription>一次导入多个 URL，并生成导入运行记录（需要后端开启 URL_INGEST_ENABLED）。</DialogDescription>

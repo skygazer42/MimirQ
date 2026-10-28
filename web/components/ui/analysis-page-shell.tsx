@@ -1,4 +1,4 @@
-import type { LucideIcon } from "lucide-react"
+import type { PlatformIcon } from "@/components/icons"
 
 import { PageScaffold } from "@/components/ui/page-scaffold"
 import type { PageTitleIconName } from "@/components/ui/page-title-icon"
@@ -6,7 +6,7 @@ import type { PageTitleIconName } from "@/components/ui/page-title-icon"
 type AnalysisPageShellProps = {
   title: string
   description?: React.ReactNode
-  icon: LucideIcon
+  icon: PlatformIcon
   iconImage?: PageTitleIconName
   iconColor?: string
   badge?: string

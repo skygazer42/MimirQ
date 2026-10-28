@@ -5,9 +5,8 @@ import {
   BarChart3,
   Layers,
   ShieldAlert,
-  ShieldCheck,
   Sparkles,
-} from 'lucide-react'
+} from '@/components/icons'
 import type { ReactNode } from 'react'
 import {
   Bar,
@@ -51,22 +50,22 @@ export function auditSeverityMeta(severity: AuditSeverity): {
 } {
   if (severity === 'warning') {
     return {
-      label: '高波动',
-      variant: 'destructive',
+      label: '数量变化较大',
+      variant: 'outline',
       icon: <ShieldAlert className="h-3.5 w-3.5" aria-hidden="true" />,
     }
   }
   if (severity === 'notice') {
     return {
-      label: '关注',
+      label: '数量有变化',
       variant: 'outline',
       icon: <BarChart3 className="h-3.5 w-3.5" aria-hidden="true" />,
     }
   }
   return {
-    label: '稳定',
-    variant: 'soft',
-    icon: <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />,
+    label: '数量变化较小',
+    variant: 'outline',
+    icon: <BarChart3 className="h-3.5 w-3.5" aria-hidden="true" />,
   }
 }
 
@@ -133,11 +132,10 @@ export function SnapshotAuditPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="shrink-0 border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.20))] px-4 py-3">
+      <div className="shrink-0 border-b border-border px-4 py-4">
         <SectionHeading
-          eyebrow="评估"
-          title="效果面板"
-          description="快速查看快照差异强度、类型漂移与整体风险等级。"
+          title="数量变化统计"
+          description="根据两版节点、关系和属性的数量差异计算。"
           icon={<BarChart3 className="h-5 w-5" aria-hidden="true" />}
           extra={
             <Badge
@@ -152,19 +150,19 @@ export function SnapshotAuditPanel({
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <SnapshotInlineStat
             icon={<Sparkles className="h-3.5 w-3.5" />}
-            label="Drift Score"
+            label="数量差异比"
             value={driftScore.toFixed(2)}
             tone={driftScoreTone}
           />
           <SnapshotInlineStat
             icon={<Layers className="h-3.5 w-3.5" />}
-            label="Type Drift"
+            label="类型变化"
             value={typeDriftRows.length}
             tone={typeDriftRows.length > 0 ? 'positive' : 'muted'}
           />
           <SnapshotInlineStat
             icon={<ArrowRightLeft className="h-3.5 w-3.5" />}
-            label="Delta Keys"
+            label="变化项"
             value={deltaRows.filter((row) => row.delta !== 0).length}
             tone="neutral"
           />
@@ -179,7 +177,7 @@ export function SnapshotAuditPanel({
                 className="h-3.5 w-3.5 text-primary/70"
                 aria-hidden="true"
               />
-              Delta Distribution
+              数量差异分布
             </div>
             <div className="flex items-center gap-4">
               <label className="inline-flex items-center gap-2 text-[11px] text-muted-foreground">
@@ -201,16 +199,16 @@ export function SnapshotAuditPanel({
                 <CartesianGrid
                   strokeDasharray="3 3"
                   vertical={false}
-                  stroke="#e2e8f0"
+                  stroke="hsl(var(--border))"
                 />
                 <XAxis
                   dataKey="key"
-                  tick={{ fontSize: 11, fill: '#64748b' }}
+                  tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
                   axisLine={false}
                   tickLine={false}
                 />
                 <YAxis
-                  tick={{ fontSize: 11, fill: '#64748b' }}
+                  tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
                   axisLine={false}
                   tickLine={false}
                   allowDecimals={false}
@@ -219,7 +217,7 @@ export function SnapshotAuditPanel({
                   cursor={{ fill: 'rgba(148, 163, 184, 0.08)' }}
                   content={<SnapshotChartTooltip />}
                 />
-                <Bar dataKey="delta" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="delta" radius={[3, 3, 0, 0]} isAnimationActive={false} />
               </BarChart>
             </SafeResponsiveChart>
           </div>

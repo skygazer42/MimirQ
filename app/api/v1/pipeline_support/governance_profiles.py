@@ -218,7 +218,7 @@ def _upsert_governance_profile_import_record(
             raise HTTPException(status_code=409, detail=f"Profile key already exists: {record.key}")
         existing.name = record.name[:200]
         existing.description = record.description
-        existing.payload = record.payload.model_dump()
+        existing.payload = record.payload.model_dump(mode="json")
         return 0, 1, _profile_summary_from_row(existing)
 
     row = DBGovernanceProfile(
@@ -227,7 +227,7 @@ def _upsert_governance_profile_import_record(
         name=record.name[:200],
         description=record.description,
         is_system=False,
-        payload=record.payload.model_dump(),
+        payload=record.payload.model_dump(mode="json"),
     )
     db.add(row)
     db.flush()

@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Check, Moon, Sun, Settings2, RefreshCw, Sparkles } from "lucide-react"
+import { Check, Monitor, Moon, Sun, Settings2, RotateCcw } from "@/components/icons"
 import { useTranslations } from 'next-intl'
 import { useTheme } from "next-themes"
 
@@ -11,31 +11,39 @@ import {
   applySurfaceTheme,
   applyThemeColor,
   clearThemeColor,
-  getSurfaceThemeMeta,
   notifyThemeAppearanceChanged,
   persistThemeAppearance,
   readSurfaceTheme,
   readThemeColorOverride,
+  SURFACE_THEME_STORAGE_KEY,
   SURFACE_THEMES,
+  THEME_APPEARANCE_CHANGED_EVENT,
+  THEME_COLOR_STORAGE_KEY,
   type SurfaceThemeKey,
 } from "@/lib/theme-surface"
 import { IconButton } from "@/components/ui/icon-button"
+import { Button } from "@/components/ui/button"
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { Label } from "@/components/ui/label"
 
 const PRESET_COLORS = [
-  { name: "Sky", value: "#0ea5e9" }, // Default
-  { name: "Graphite", value: "#18181b" },
-  { name: "Rose", value: "#e11d48" },
-  { name: "Orange", value: "#ea580c" },
-  { name: "Green", value: "#16a34a" },
-  { name: "Violet", value: "#7c3aed" },
-  { name: "Yellow", value: "#ca8a04" },
-]
+  { name: "sky", value: "#0ea5e9" },
+  { name: "graphite", value: "#18181b" },
+  { name: "rose", value: "#e11d48" },
+  { name: "orange", value: "#ea580c" },
+  { name: "green", value: "#16a34a" },
+  { name: "violet", value: "#7c3aed" },
+  { name: "yellow", value: "#ca8a04" },
+] as const
+
+const THEME_MODES = [
+  { value: "light", Icon: Sun },
+  { value: "dark", Icon: Moon },
+  { value: "system", Icon: Monitor },
+] as const
 
 type ThemeCustomizerProps = {
   trigger?: React.ReactNode
@@ -47,9 +55,8 @@ export function ThemeCustomizer({ trigger }: Readonly<ThemeCustomizerProps> = {}
   const { theme, setTheme } = useTheme()
   const [colorOverride, setColorOverride] = React.useState<string | null>(null)
   const [surfaceTheme, setSurfaceTheme] = React.useState<SurfaceThemeKey>('ocean')
-  const surfaceMeta = getSurfaceThemeMeta(surfaceTheme)
-  const effectiveColor = colorOverride ?? surfaceMeta.defaultPrimary
-  const surfaceTitle = t(`themeCustomizer.surfacePresets.${surfaceTheme}.title`)
+  const groupId = React.useId()
+  const titleId = `${groupId}-title`
   const triggerNode = trigger ?? (
     <IconButton
       label={t('themeCustomizer.openLabel')}
@@ -61,26 +68,38 @@ export function ThemeCustomizer({ trigger }: Readonly<ThemeCustomizerProps> = {}
   )
 
   React.useEffect(() => {
-    const storage = getClientStorage()
-    if (storage) {
-      const nextSurfaceTheme = readSurfaceTheme(storage)
-      setSurfaceTheme(nextSurfaceTheme)
+    const syncStoredAppearance = () => {
+      const storage = getClientStorage()
+      if (!storage) return
+      setSurfaceTheme(readSurfaceTheme(storage))
       setColorOverride(readThemeColorOverride(storage))
     }
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key && event.key !== SURFACE_THEME_STORAGE_KEY && event.key !== THEME_COLOR_STORAGE_KEY) return
+      syncStoredAppearance()
+    }
+
+    syncStoredAppearance()
     setMounted(true)
+    window.addEventListener('storage', handleStorage)
+    window.addEventListener(THEME_APPEARANCE_CHANGED_EVENT, syncStoredAppearance)
+
+    return () => {
+      window.removeEventListener('storage', handleStorage)
+      window.removeEventListener(THEME_APPEARANCE_CHANGED_EVENT, syncStoredAppearance)
+    }
   }, [])
 
-  React.useEffect(() => {
-    if (!mounted) return
-
-    applySurfaceTheme(surfaceTheme)
-    if (colorOverride) applyThemeColor(colorOverride)
+  const updateAppearance = (nextSurfaceTheme: SurfaceThemeKey, nextColorOverride: string | null) => {
+    setSurfaceTheme(nextSurfaceTheme)
+    setColorOverride(nextColorOverride)
+    applySurfaceTheme(nextSurfaceTheme)
+    if (nextColorOverride) applyThemeColor(nextColorOverride)
     else clearThemeColor()
-    if (globalThis.window !== undefined) {
-      persistThemeAppearance(surfaceTheme, colorOverride)
-      notifyThemeAppearanceChanged()
-    }
-  }, [colorOverride, mounted, surfaceTheme])
+    // Only user changes persist; syncing another tab must not write stale values back.
+    persistThemeAppearance(nextSurfaceTheme, nextColorOverride)
+    notifyThemeAppearanceChanged()
+  }
 
   if (!mounted) {
     return null
@@ -91,152 +110,145 @@ export function ThemeCustomizer({ trigger }: Readonly<ThemeCustomizerProps> = {}
       <PopoverTrigger asChild>
         {triggerNode}
       </PopoverTrigger>
-      <PopoverContent className="max-h-[calc(100dvh-2rem)] w-80 overflow-y-auto p-4" align="end" sideOffset={10}>
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <h4 className="font-medium leading-none">{t('themeCustomizer.title')}</h4>
-              <p className="text-xs text-muted-foreground">
-                {t('themeCustomizer.description')}
-              </p>
-            </div>
-            <IconButton
-              label={t('themeCustomizer.resetAppearance')}
-              variant="ghost"
-              onClick={() => {
-                setSurfaceTheme('ocean')
-                setColorOverride(null)
-              }}
-            >
-                <RefreshCw className="size-4" />
-            </IconButton>
-          </div>
+      <PopoverContent
+        aria-labelledby={titleId}
+        align="end"
+        side="top"
+        sideOffset={8}
+        collisionPadding={12}
+        className="flex max-h-[min(calc(100dvh-1.5rem),var(--radix-popover-content-available-height))] w-80 max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-xl p-0"
+      >
+        <div className="flex shrink-0 items-center justify-between gap-3 px-4 py-2">
+          <h2 id={titleId} className="text-base font-medium leading-6">{t('themeCustomizer.title')}</h2>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-11 gap-1.5 px-2 text-sm font-normal text-muted-foreground shadow-none hover:bg-muted hover:text-foreground sm:h-10"
+            aria-label={t('themeCustomizer.resetAppearance')}
+            title={t('themeCustomizer.resetAppearance')}
+            onClick={() => updateAppearance('ocean', null)}
+          >
+            <RotateCcw className="size-3.5" aria-hidden="true" />
+            {t('themeCustomizer.resetLabel')}
+          </Button>
+        </div>
 
-          <div className="space-y-2">
-            <Label className="text-xs">{t('themeCustomizer.surfaceLabel')}</Label>
-            <div className="grid gap-2">
-              {SURFACE_THEMES.map((preset) => (
-                <button
-                  key={preset.key}
-                  type="button"
-                  onClick={() => {
-                    setSurfaceTheme(preset.key)
-                    setColorOverride(null)
-                  }}
-                  className={cn(
-                    'rounded-xl border px-3 py-3 text-left transition-colors duration-200 motion-reduce:transition-none',
-                    surfaceTheme === preset.key
-                      ? 'border-primary bg-primary/5 ring-1 ring-primary/15'
-                      : 'border-border bg-card hover:border-primary/40 hover:bg-muted/60'
-                  )}
-                  aria-label={t('themeCustomizer.surfacePresetLabel', { name: preset.label })}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium text-foreground">{t(`themeCustomizer.surfacePresets.${preset.key}.title`)}</div>
-                      <div className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                        {t(`themeCustomizer.surfacePresets.${preset.key}.description`)}
-                      </div>
-                    </div>
-                    <div className="grid shrink-0 gap-1.5 text-[9px] font-medium text-muted-foreground">
-                      <span className="flex items-center gap-1.5">
-                        <span
-                          className="size-3.5 rounded-full border border-black/10"
-                          style={{ backgroundColor: preset.previewSurface }}
-                        />
-                        {t('themeCustomizer.surfaceSwatch')}
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <span
-                          className="size-3.5 rounded-full border border-black/10"
-                          style={{ backgroundColor: preset.defaultPrimary }}
-                        />
-                        {t('themeCustomizer.primarySwatch')}
-                      </span>
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-          
-          <div className="space-y-2">
-            <Label className="text-xs">{t('themeCustomizer.colorLabel')}</Label>
-            <div className="grid grid-cols-4 gap-2">
-              <button
-                type="button"
-                onClick={() => setColorOverride(null)}
-                aria-pressed={colorOverride === null}
-                aria-label={t('themeCustomizer.useSurfaceColor')}
-                title={t('themeCustomizer.useSurfaceColor')}
+        <div className="min-h-0 space-y-4 overflow-y-auto overscroll-contain px-4 pb-4">
+          <fieldset>
+            <legend className="mb-2 text-sm font-medium">{t('themeCustomizer.surfaceLabel')}</legend>
+            {SURFACE_THEMES.map((preset) => (
+              <label
+                key={preset.key}
                 className={cn(
-                  "relative flex h-9 w-full items-center justify-center gap-1 rounded-lg border border-border bg-card shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/45 hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 motion-reduce:transition-none motion-reduce:hover:translate-y-0",
-                  colorOverride === null && "border-primary bg-primary/5 ring-2 ring-primary/25"
+                  'relative flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-sm transition-colors duration-150 hover:bg-muted/60 motion-reduce:transition-none sm:min-h-10',
+                  surfaceTheme === preset.key && 'bg-muted font-medium'
                 )}
               >
-                <Sparkles className="size-3.5 text-muted-foreground" aria-hidden="true" />
-                <span className="text-[10px] font-semibold text-foreground">
-                  {t('themeCustomizer.autoColor')}
-                </span>
-              </button>
-              {PRESET_COLORS.map((preset) => (
-                <button
-                  key={preset.name}
-                  type="button"
-                  onClick={() => setColorOverride(preset.value)}
-                  aria-pressed={colorOverride === preset.value}
-                  aria-label={t('themeCustomizer.presetLabel', { name: preset.name })}
-                  title={preset.name}
-                  className={cn(
-                    "relative flex h-9 w-full items-center justify-center rounded-lg border border-border bg-card shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/45 hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 motion-reduce:transition-none motion-reduce:hover:translate-y-0",
-                    colorOverride === preset.value && "border-primary bg-primary/5 ring-2 ring-primary/25"
-                  )}
+                <input
+                  type="radio"
+                  name={`${groupId}-surface`}
+                  value={preset.key}
+                  checked={surfaceTheme === preset.key}
+                  onChange={() => updateAppearance(preset.key, null)}
+                  aria-label={t('themeCustomizer.surfacePresetLabel', { name: t(`themeCustomizer.surfacePresets.${preset.key}.title`) })}
+                  aria-describedby={`${groupId}-${preset.key}-hint`}
+                  className="peer sr-only"
+                />
+                <span className="pointer-events-none absolute inset-0 rounded-lg peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-popover" aria-hidden="true" />
+                <span
+                  className="flex h-7 w-12 shrink-0 items-center gap-1 rounded-md border border-foreground/15 px-1.5"
+                  style={{ backgroundColor: preset.previewSurface }}
+                  aria-hidden="true"
                 >
-                  <span 
-                    className="size-4 rounded-full border border-black/10 shadow-inner"
-                    style={{ backgroundColor: preset.value }}
+                  <span className="size-2.5 shrink-0 rounded-sm" style={{ backgroundColor: preset.defaultPrimary }} />
+                  <span className="flex flex-1 flex-col gap-1">
+                    <span className="h-0.5 rounded-full" style={{ backgroundColor: preset.defaultPrimary, opacity: 0.55 }} />
+                    <span className="h-0.5 w-2/3 rounded-full" style={{ backgroundColor: preset.defaultPrimary, opacity: 0.3 }} />
+                  </span>
+                </span>
+                <span className="flex-1">{t(`themeCustomizer.surfacePresets.${preset.key}.title`)}</span>
+                <span id={`${groupId}-${preset.key}-hint`} className="sr-only">{t(`themeCustomizer.surfacePresets.${preset.key}.description`)}</span>
+                <Check className={cn('size-4 shrink-0', surfaceTheme === preset.key ? 'opacity-100' : 'opacity-0')} aria-hidden="true" />
+              </label>
+            ))}
+          </fieldset>
+
+          <fieldset>
+            <legend className="mb-2 text-sm font-medium">{t('themeCustomizer.colorLabel')}</legend>
+            <div className="grid grid-cols-4 gap-1">
+              <label className="relative flex min-h-11 cursor-pointer items-center justify-center gap-1 rounded-lg text-sm hover:bg-muted/60 sm:min-h-10">
+                <input
+                  type="radio"
+                  name={`${groupId}-accent`}
+                  value="auto"
+                  checked={colorOverride === null}
+                  onChange={() => updateAppearance(surfaceTheme, null)}
+                  aria-label={t('themeCustomizer.useSurfaceColor')}
+                  className="peer sr-only"
+                />
+                <span className="pointer-events-none absolute inset-0 rounded-lg peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-popover" aria-hidden="true" />
+                <Check className={cn('size-3.5', colorOverride === null ? 'opacity-100' : 'opacity-0')} aria-hidden="true" />
+                {t('themeCustomizer.autoColor')}
+              </label>
+              {PRESET_COLORS.map((preset) => (
+                <label
+                  key={preset.name}
+                  title={t(`themeCustomizer.colors.${preset.name}`)}
+                  className="relative flex min-h-11 cursor-pointer items-center justify-center rounded-lg transition-colors duration-150 hover:bg-muted/60 motion-reduce:transition-none sm:min-h-10"
+                >
+                  <input
+                    type="radio"
+                    name={`${groupId}-accent`}
+                    value={preset.value}
+                    checked={colorOverride === preset.value}
+                    onChange={() => updateAppearance(surfaceTheme, preset.value)}
+                    aria-label={t('themeCustomizer.presetLabel', { name: t(`themeCustomizer.colors.${preset.name}`) })}
+                    className="peer sr-only"
                   />
-                  {colorOverride === preset.value && (
-                    <span className="absolute right-1 top-1 inline-flex size-3.5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm">
-                      <Check className="size-2.5" aria-hidden="true" />
-                      <span className="sr-only">{t('themeCustomizer.selected')}</span>
-                    </span>
-                  )}
-                </button>
+                  <span className="pointer-events-none absolute inset-0 rounded-lg peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-popover" aria-hidden="true" />
+                  <span
+                    className={cn(
+                      'flex size-6 items-center justify-center rounded-full border border-foreground/10 text-primary-foreground',
+                      colorOverride === preset.value && 'ring-2 ring-foreground/70 ring-offset-2 ring-offset-popover'
+                    )}
+                    style={{ backgroundColor: preset.value }}
+                    aria-hidden="true"
+                  >
+                    {colorOverride === preset.value ? <Check className="size-3.5" /> : null}
+                  </span>
+                </label>
               ))}
             </div>
-            <p className="text-[11px] leading-relaxed text-muted-foreground">
-              {colorOverride
-                ? t('themeCustomizer.customColorActive', { style: surfaceTitle, color: effectiveColor })
-                : t('themeCustomizer.surfaceColorActive', { style: surfaceTitle, color: effectiveColor })}
-            </p>
-          </div>
+          </fieldset>
 
-          <div className="space-y-2">
-            <Label className="text-xs">{t('themeCustomizer.modeLabel')}</Label>
-            <div className="flex p-1 bg-muted rounded-lg">
-                <button 
-                    type="button"
-                    onClick={() => setTheme('light')}
-                    className={cn(
-                        "flex-1 flex items-center justify-center gap-2 rounded-md py-1.5 text-xs font-medium transition-colors duration-200 motion-reduce:transition-none",
-                        theme === 'light' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                    )}
+          <fieldset>
+            <legend className="mb-2 text-sm font-medium">{t('themeCustomizer.modeLabel')}</legend>
+            <div className="grid grid-cols-3 rounded-lg bg-muted p-1">
+              {THEME_MODES.map(({ value, Icon }) => (
+                <label
+                  key={value}
+                  className={cn(
+                    'relative flex min-h-11 cursor-pointer items-center justify-center gap-1 rounded-md px-0.5 text-sm transition-[background-color,color,box-shadow] duration-150 motion-reduce:transition-none sm:min-h-10',
+                    theme === value ? 'bg-popover text-foreground shadow-subtle' : 'text-muted-foreground hover:text-foreground'
+                  )}
                 >
-                    <Sun className="h-3.5 w-3.5" /> {t('modeToggle.light')}
-                </button>
-                <button 
-                    type="button"
-                    onClick={() => setTheme('dark')}
-                    className={cn(
-                        "flex-1 flex items-center justify-center gap-2 rounded-md py-1.5 text-xs font-medium transition-colors duration-200 motion-reduce:transition-none",
-                        theme === 'dark' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                    )}
-                >
-                    <Moon className="h-3.5 w-3.5" /> {t('modeToggle.dark')}
-                </button>
+                  <input
+                    type="radio"
+                    name={`${groupId}-mode`}
+                    value={value}
+                    checked={theme === value}
+                    onChange={() => setTheme(value)}
+                    aria-label={t(`modeToggle.${value}`)}
+                    className="peer sr-only"
+                  />
+                  <span className="pointer-events-none absolute inset-0 rounded-md peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-popover" aria-hidden="true" />
+                  <Icon className="size-3.5 shrink-0" aria-hidden="true" />
+                  <span className="whitespace-nowrap">{t(`modeToggle.${value}`)}</span>
+                </label>
+              ))}
             </div>
-          </div>
+          </fieldset>
         </div>
       </PopoverContent>
     </Popover>

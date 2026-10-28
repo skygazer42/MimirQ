@@ -1,0 +1,230 @@
+[
+  {
+    "id": "profile",
+    "name": "数据画像",
+    "route": "/datasets/c3ed7067-abe6-45a4-a8e9-296cb41182d9/profile",
+    "images": {
+      "before": "assets/profile-before.png",
+      "desktop": "assets/profile-desktop.png",
+      "narrow-dark": "assets/profile-narrow-dark.png",
+      "phone": "assets/profile-phone.png"
+    },
+    "note": "改版前基线停留在加载状态；原始实现另有完整源码留档。"
+  },
+  {
+    "id": "health",
+    "name": "数据集健康概览",
+    "route": "/datasets/c3ed7067-abe6-45a4-a8e9-296cb41182d9/health",
+    "images": {
+      "before": "assets/health-before.png",
+      "desktop": "assets/health-desktop.png",
+      "narrow-dark": "assets/health-narrow-dark.png",
+      "phone": "assets/health-phone.png"
+    }
+  },
+  {
+    "id": "workflow",
+    "name": "工作流配置",
+    "route": "/datasets/c3ed7067-abe6-45a4-a8e9-296cb41182d9/workflow",
+    "images": {
+      "before": "assets/workflow-before.png",
+      "desktop": "assets/workflow-desktop.png",
+      "narrow-dark": "assets/workflow-narrow-dark.png",
+      "phone": "assets/workflow-phone.png"
+    }
+  },
+  {
+    "id": "tables",
+    "name": "表格资产",
+    "route": "/datasets/c3ed7067-abe6-45a4-a8e9-296cb41182d9/tables",
+    "images": {
+      "before": "assets/tables-before.png",
+      "desktop": "assets/tables-desktop.png",
+      "narrow-dark": "assets/tables-narrow-dark.png",
+      "phone": "assets/tables-phone.png"
+    }
+  },
+  {
+    "id": "catalog",
+    "name": "数据库目录",
+    "route": "/datasets/c3ed7067-abe6-45a4-a8e9-296cb41182d9/db-catalog",
+    "images": {
+      "before": "assets/catalog-before.png",
+      "desktop": "assets/catalog-desktop.png",
+      "narrow-dark": "assets/catalog-narrow-dark.png",
+      "phone": "assets/catalog-phone.png"
+    }
+  },
+  {
+    "id": "suite",
+    "name": "数据集证据库",
+    "route": "/datasets/c3ed7067-abe6-45a4-a8e9-296cb41182d9/evidence",
+    "images": {
+      "before": "assets/suite-before.png",
+      "desktop": "assets/suite-desktop.png",
+      "narrow-dark": "assets/suite-narrow-dark.png",
+      "phone": "assets/suite-phone.png"
+    }
+  },
+  {
+    "id": "kg",
+    "name": "数据集KG工作台",
+    "route": "/datasets/c3ed7067-abe6-45a4-a8e9-296cb41182d9/kg",
+    "images": {
+      "before": "assets/kg-before.png",
+      "desktop": "assets/kg-desktop.png",
+      "narrow-dark": "assets/kg-narrow-dark.png",
+      "phone": "assets/kg-phone.png"
+    },
+    "note": "主服务目前保留 KG 关闭配置；正向读取已在隔离进程通过真实 PostgreSQL 验证。"
+  },
+  {
+    "id": "monitor",
+    "name": "入库执行监控",
+    "route": "/knowledge/ingestion?mode=execution-monitor&datasetId=c3ed7067-abe6-45a4-a8e9-296cb41182d9",
+    "images": {
+      "before": "assets/monitor-before.png",
+      "desktop": "assets/monitor-desktop.png",
+      "narrow-dark": "assets/monitor-narrow-dark.png",
+      "phone": "assets/monitor-phone.png"
+    }
+  },
+  {
+    "id": "common",
+    "name": "重复内容规则",
+    "route": "/data-governance/common-lines",
+    "images": {
+      "before": "assets/common-before.png",
+      "desktop": "assets/common-desktop.png",
+      "narrow-dark": "assets/common-narrow-dark.png",
+      "phone": "assets/common-phone.png"
+    }
+  },
+  {
+    "id": "industry",
+    "name": "行业规则工作台",
+    "route": "/governance/industry-rules",
+    "images": {
+      "before": "assets/industry-before.png",
+      "desktop": "assets/industry-desktop.png",
+      "narrow-dark": "assets/industry-narrow-dark.png",
+      "phone": "assets/industry-phone.png"
+    }
+  },
+  {
+    "id": "snapshots",
+    "name": "图谱快照",
+    "route": "/graph/snapshots",
+    "images": {
+      "before": "assets/snapshots-before.png",
+      "desktop": "assets/snapshots-desktop.png",
+      "narrow-dark": "assets/snapshots-narrow-dark.png",
+      "phone": "assets/snapshots-phone.png"
+    }
+  },
+  {
+    "id": "diagnostics",
+    "name": "图谱诊断",
+    "route": "/graph/diagnostics",
+    "images": {
+      "before": "assets/diagnostics-before.png",
+      "desktop": "assets/diagnostics-desktop.png",
+      "narrow-dark": "assets/diagnostics-narrow-dark.png",
+      "phone": "assets/diagnostics-phone.png"
+    }
+  },
+  {
+    "id": "ablations",
+    "name": "检索调参对比",
+    "route": "/evaluations/ablations",
+    "images": {
+      "before": "assets/ablations-before.png",
+      "desktop": "assets/ablations-desktop.png",
+      "narrow-dark": "assets/ablations-narrow-dark.png",
+      "phone": "assets/ablations-phone.png"
+    }
+  },
+  {
+    "id": "similarity",
+    "name": "向量相似度诊断",
+    "route": "/knowledge/similarity",
+    "images": {
+      "before": "assets/similarity-before.png",
+      "desktop": "assets/similarity-desktop.png",
+      "narrow-dark": "assets/similarity-narrow-dark.png",
+      "phone": "assets/similarity-phone.png"
+    }
+  },
+  {
+    "id": "audit",
+    "name": "文档健康审计",
+    "route": "/knowledge",
+    "images": {
+      "before": "assets/audit-before.png",
+      "desktop": "assets/audit-desktop.png",
+      "narrow-dark": "assets/audit-narrow-dark.png",
+      "phone": "assets/audit-phone.png"
+    },
+    "note": "填充内容来自隔离接口；从知识库选择已有文档，再进入文档健康审计。",
+    "liveLabel": "在知识库选择文档 ↗"
+  },
+  {
+    "id": "observability",
+    "name": "可观测性",
+    "route": "/observability",
+    "images": {
+      "before": "assets/observability-before.png",
+      "desktop": "assets/observability-desktop.png",
+      "narrow-dark": "assets/observability-narrow-dark.png",
+      "phone": "assets/observability-phone.png"
+    }
+  },
+  {
+    "id": "evidence",
+    "name": "证据调试",
+    "route": "/knowledge/evidence",
+    "images": {
+      "before": "assets/evidence-before.png",
+      "desktop": "assets/evidence-desktop.png",
+      "narrow-dark": "assets/evidence-narrow-dark.png",
+      "phone": "assets/evidence-phone.png"
+    }
+  },
+  {
+    "id": "nebula",
+    "name": "语义星云",
+    "route": "/knowledge/nebula",
+    "images": {
+      "before": "assets/nebula-before.png",
+      "desktop": "assets/nebula-desktop.png",
+      "narrow-dark": "assets/nebula-narrow-dark.png",
+      "phone": "assets/nebula-phone.png"
+    }
+  },
+  {
+    "id": "oidc",
+    "name": "OIDC回调",
+    "route": "/auth/oidc/callback",
+    "images": {
+      "before": "assets/oidc-before.png",
+      "desktop": "assets/oidc-desktop.png",
+      "narrow-dark": "assets/oidc-narrow-dark.png",
+      "phone": "assets/oidc-phone.png"
+    },
+    "note": "此入口展示缺少有效授权会话时的恢复状态；真实登录应从平台的 SSO 入口发起。",
+    "liveLabel": "查看认证恢复入口 ↗"
+  },
+  {
+    "id": "saml",
+    "name": "SAML回调",
+    "route": "/auth/saml/callback?error=saml_session_missing",
+    "images": {
+      "before": "assets/saml-before.png",
+      "desktop": "assets/saml-desktop.png",
+      "narrow-dark": "assets/saml-narrow-dark.png",
+      "phone": "assets/saml-phone.png"
+    },
+    "note": "此入口展示缺少有效授权会话时的恢复状态；真实登录应从平台的 SSO 入口发起。",
+    "liveLabel": "查看认证恢复入口 ↗"
+  }
+]

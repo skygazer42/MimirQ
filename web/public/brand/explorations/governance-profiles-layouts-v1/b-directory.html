@@ -1,0 +1,401 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=1600,initial-scale=1"><title>治理配置 · B 目录分栏 · Ragvia</title><link rel="stylesheet" href="./common.css"><style>
+.directory-layout{height:928px;display:flex;background:var(--surface)}
+.profile-directory{width:280px;flex:none;border-right:1px solid var(--line);display:flex;flex-direction:column;background:#FAFBFC;overflow:hidden}
+.directory-head{padding:20px 18px 0;flex:none}
+.directory-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;line-height:24px;margin-bottom:14px}
+.directory-title .directory-total{font-size:13px;color:var(--muted);font-weight:450;margin-left:auto}
+.directory-head .search{background:var(--surface);font-size:13px;height:36px}
+.directory-tabs{height:46px;display:flex;align-items:center;gap:22px;font-size:13px;border-bottom:1px solid var(--line);color:var(--muted)}
+.directory-tabs span{height:46px;display:flex;align-items:center;position:relative}
+.directory-tabs .active{color:var(--ink);font-weight:600}
+.directory-tabs .active:after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:2px;background:var(--ink)}
+.directory-scroll{flex:1;overflow:hidden;padding:5px 10px 16px;position:relative}
+.directory-scroll:after{content:'';position:absolute;right:3px;top:14px;width:3px;height:344px;background:#CED5DB;border-radius:3px}
+.directory-group h3{height:34px;margin:0 8px;display:flex;align-items:center;font-size:13px;font-weight:550;color:var(--muted)}
+.directory-group h3 span{margin-left:auto;font-size:13px;font-weight:450;font-variant-numeric:tabular-nums;color:#63717D}
+.directory-group+.directory-group{border-top:1px solid var(--line);margin-top:8px;padding-top:5px}
+.directory-item{height:35px;display:flex;align-items:center;gap:10px;padding:0 9px;border-radius:5px;position:relative;font-size:14px;color:#48545F;white-space:nowrap}
+.directory-item .object-icon{width:23px;height:23px;border:0;background:transparent;border-radius:0}
+.directory-item .object-icon .icon{width:17px;height:17px}
+.directory-item>span:not(.object-icon){overflow:hidden;text-overflow:ellipsis}
+.directory-item>.icon{width:13px;height:13px;margin-left:auto;color:#586570}
+.directory-item.current{background:var(--selected);color:var(--ink);font-weight:600}
+.directory-item.current:before{content:'';position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:3px;background:var(--ink)}
+.directory-footer{height:44px;flex:none;border-top:1px solid var(--line);display:flex;align-items:center;gap:7px;padding:0 18px;font-size:13px;color:var(--muted)}
+.directory-footer .icon{width:13px;height:13px}
+.profile-detail{width:1056px;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:var(--surface)}
+.detail-hero{padding:22px 32px 20px;flex:none}
+.detail-location{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);height:20px}
+.detail-location .icon{width:12px;height:12px;color:#63717D}
+.detail-title-row{margin-top:10px;display:flex;align-items:center;gap:11px}
+.detail-title-row h2{font-size:20px;font-weight:650;line-height:30px;letter-spacing:-.2px;white-space:nowrap}
+.detail-title-row .object-icon{width:32px;height:32px}
+.detail-title-row .object-icon .icon{width:19px;height:19px}
+.detail-actions{margin-left:auto;display:flex;gap:8px}
+.detail-actions .btn{height:36px}
+.detail-description{margin-top:10px;font-size:14px;line-height:24px;color:var(--muted)}
+.detail-attributes{display:flex;align-items:center;gap:27px;margin-top:17px;font-size:13px;line-height:24px;white-space:nowrap}
+.detail-attributes>div{display:flex;align-items:center;gap:9px}
+.attribute-label{color:var(--muted)}
+.detail-attributes code{font:450 13px/24px ui-monospace,SFMono-Regular,Consolas,monospace;color:#53616D}
+.detail-attributes .format{font-size:13px;line-height:22px;padding:0 6px}
+.detail-attributes .builtin{font-size:13px}
+.governance-on{display:inline-flex;align-items:center;gap:4px;color:var(--green);font-size:13px}
+.governance-on .icon{width:14px;height:14px}
+.detail-rule-section{flex:none;border-top:1px solid var(--line);padding:20px 32px 17px}
+.detail-section-head{height:26px;display:flex;align-items:center;gap:12px}
+.detail-section-head h3{font-size:14px;line-height:24px;font-weight:600}
+.detail-section-head .section-meta{font-size:13px;color:var(--muted)}
+.detail-section-head .readonly-note{margin-left:auto;font-size:13px}
+.rule-table{margin-top:12px;width:100%}
+.rule-columns,.rule-line{display:grid;grid-template-columns:270px minmax(0,1fr) 140px;align-items:center;column-gap:14px}
+.rule-columns{height:30px;color:var(--muted);font-size:13px;background:var(--fog);padding:0 12px}
+.rule-columns span:last-child{padding-left:6px}
+.rule-line{height:38px;padding:0 12px;font-size:14px}
+.rule-name{display:flex;align-items:center;gap:13px;white-space:nowrap}
+.rule-number{font-size:12px;color:#687581;font-variant-numeric:tabular-nums;width:18px}
+.rule-purpose{font-size:13px;line-height:22px;color:#697580;white-space:nowrap}
+.rule-value{display:flex;align-items:center;gap:10px;padding-left:6px;font-size:13px}
+.value-state{display:inline-flex;align-items:center;gap:5px;color:var(--ink)}
+.value-state .icon{width:14px;height:14px;color:var(--green)}
+.rule-value strong{font:600 15px/24px var(--font)}
+.parameter-line{border-top:1px solid var(--line);margin-top:7px;padding-top:5px;height:43px}
+.rule-config-link{height:24px;display:flex;align-items:center;justify-content:flex-end;padding-right:12px}
+.rule-config-link .quiet-link{height:24px;font-size:13px}
+.detail-preview{border-top:1px solid var(--line);padding:19px 32px 0;flex:1;min-height:0}
+.detail-preview .detail-section-head{margin-bottom:15px}
+.preview-file{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.preview-file .icon{width:14px;height:14px}
+.preview-pair{display:grid;grid-template-columns:1fr 1fr;gap:0}
+.preview-column{min-width:0}
+.preview-column:first-child{padding-right:25px}
+.preview-column+.preview-column{padding-left:25px;border-left:1px solid var(--line)}
+.preview-label{display:flex;align-items:center;gap:8px;margin-bottom:11px;font-size:13px;color:var(--muted)}
+.preview-label .icon{width:14px;height:14px}
+.preview-column pre{margin:0;font:450 13px/20px var(--font);color:#5C6873;white-space:pre-wrap;overflow-wrap:anywhere}
+.removed-line{color:#895C55;text-decoration:line-through;text-decoration-color:#C8A9A5;background:#FCF5F3}
+.cleaned-output{font-size:14px;line-height:25px;color:var(--ink)}
+.cleaned-output p{margin-top:1px}
+.cleaned-output table{border-collapse:collapse;width:100%;margin-top:18px;font-size:13px;line-height:23px;text-align:left}
+.cleaned-output th{font-weight:550;background:var(--fog)}
+.cleaned-output th,.cleaned-output td{padding:8px 10px;border:1px solid var(--line)}
+.cleaned-output th:first-child{width:36%}
+</style></head><body><div class="app"><aside class="sidebar"><div class="brand"><img src="../../ragvia/logo.svg" alt="Ragvia"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="panel-left-close"><rect x="3" y="4" width="18" height="16" rx="1" /><path d="M9 4v16m8-12-4 4 4 4" /></svg>
+</div><div class="sidebar-new"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="plus"><path d="M12 4v16M4 12h16" /></svg>
+新对话</div><div class="sidebar-search"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="search"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.25 15.25 5 5" /></svg>
+搜索与命令<small>⌘K</small></div><nav class="nav-scroll"><div class="nav-group">工作区<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="conversation"><path d="M4 4.5h16v12H9l-5 4Z" /><path d="M8 9h8m-8 3.5h5" /></svg>
+对话</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="history"><path d="M3 9h6M3 3v6a9 9 0 1 1 .5 7" /><path d="M12 6v6l4 2" /></svg>
+问答历史</div><div class="nav-group">知识库管理<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="dataset"><rect x="5" y="3.5" width="14" height="5" rx="1" /><path d="M3.5 11v4h17v-4M3.5 18v3h17v-3" /></svg>
+数据集</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="knowledge-base"><path d="M12 5.5C9 3.5 6 3.5 3 4v15c3-.5 6-.5 9 1.5 3-2 6-2 9-1.5V4c-3-.5-6-.5-9 1.5Zm0 0v15" /><path d="M6.5 8h2M6.5 11h2m7-3h2m-2 3h2" /></svg>
+知识库</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="quarantine"><rect x="3" y="3.5" width="18" height="4" rx="0.5" /><path d="M5 7.5v13h14v-13M12 11v4" /><circle cx="12" cy="18" r="1" fill="currentColor" stroke="none" /></svg>
+隔离队列</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="feedback"><path d="M4 4.5h16v12H9l-5 4Z" /><path d="m8 10 2.5 2.5L16 7" /></svg>
+反馈质检</div><div class="nav-group">入库流程<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="ingestion"><path d="M4 14v6h16v-6M8 16h8M12 3v10m-4-4 4 4 4-4" /><path d="M4 5H2.5v6H4m16-6h1.5v6H20" /></svg>
+入库管理</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="parsing"><path d="M12.5 3.5H4v17h8.5M8 8h3M8 12h3M8 16h3M15 7h5m-5 5h5m-5 5h5" /><path d="m17 5 3 2-3 2" /></svg>
+文档解析</div><div class="nav-item"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="data-governance"><path d="M12 3 20 6v6c0 4-3.5 7-8 9-4.5-2-8-5-8-9V6Z" /><path d="M8 9h8M8 12h5M8 15h5" /></svg>
+数据治理</div><div class="nav-item active"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="rule-set"><path d="M8 3.5H5v7l-2 1.5 2 1.5v7h3m8-17h3v7l2 1.5-2 1.5v7h-3M10 8h4m-4 4h4m-4 4h4" /></svg>
+治理配置</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chunking"><rect x="3.5" y="4" width="17" height="6" rx="1" /><rect x="3.5" y="14" width="17" height="6" rx="1" /><path d="M8 7h8M8 17h8" /><path d="M2 12h20" stroke-dasharray="1 3" data-chunk-boundary="true" /></svg>
+切块预览</div><div class="nav-group">分析工具<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="knowledge-graph"><path d="m7.3 6.3 8 4.4m-8 7 8-4.4M5 7.5v9" /><circle cx="5" cy="5" r="2.5" /><circle cx="18" cy="12" r="3" /><circle cx="5" cy="19" r="2.5" /></svg>
+知识图谱</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="evaluation"><path d="M4 3.5h10l6 6v11H4Zm10 0v6h6M8 16l2 2 4-5" /><path d="M8 8h2" /></svg>
+RAG 评测</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="reports"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="M8 16v-3m4 3V10m4 6v-4M8 7h2" /></svg>
+数据报告</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="prompts"><rect x="3.5" y="4" width="17" height="16" rx="1" /><path d="m7 9 3 3-3 3m6 0h4" /></svg>
+提示词</div><div class="nav-group">系统<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="diagnostics"><rect x="3.5" y="4" width="17" height="16" rx="1" /><path d="M3.5 12H8l2-4 4 8 2-4h4.5" /></svg>
+诊断</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="usage"><path d="M4 20V4h16v16ZM8 16v-3m4 3V9m4 7V6" /></svg>
+用量 / 配额</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="audit-log"><path d="M6 3.5h13v17H6M3 7h5M3 12h5M3 17h5m4-10h3m-3 5h3m-3 5h3" /></svg>
+审计日志</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="members"><circle cx="9" cy="7" r="3" /><path d="M3 20v-3c0-5 12-5 12 0v3M17 7l2 2 3-4M18 14v6m-2-3h4" /></svg>
+成员权限</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="groups"><circle cx="8" cy="7" r="2.5" /><circle cx="17" cy="9" r="2.5" /><path d="M2.5 20v-2.5c0-5 11-5 11 0V20m3-5c3 0 5 1 5 3.5V20" /></svg>
+组管理</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="settings"><path d="m9 3-.5 3-2 1L4 6l-2 4 2.5 2v2L2 16l2 4 2.5-1 2 1 .5 2h6l.5-2 2-1 2.5 1 2-4-2.5-2v-2L22 10l-2-4-2.5 1-2-1L15 3Z" /><circle cx="12" cy="12.5" r="3" /></svg>
+设置</div></nav><div class="sidebar-bottom"><div class="profile"><span class="avatar"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="user"><circle cx="12" cy="7.5" r="3" /><path d="M5 20v-2.5a7 5.5 0 0 1 14 0V20" /></svg>
+</span><div><strong>开发模式</strong><small>本地开发环境</small></div><span class="profile-icons"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="log-out"><path d="M12 3H3v18h9m-2-9h12m-4-4 4 4-4 4" /></svg>
+<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="sun"><circle cx="12" cy="12" r="4.5" /><path d="M12 1v3m0 16v3M1 12h3m16 0h3M4 4l2 2m12 12 2 2M4 20l2-2M18 6l2-2" /></svg>
+</span></div><div class="appearance"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="palette"><path d="M12 3a9 9 0 0 0 0 18h2c3 0 3-4 0-4h-1c-3 0-3-4 0-4h5c6 0 4-10-6-10Z" /><circle cx="7" cy="9" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="6" r="1" fill="currentColor" stroke="none" /><circle cx="17" cy="8" r="1" fill="currentColor" stroke="none" /><circle cx="6" cy="14" r="1" fill="currentColor" stroke="none" /></svg>
+界面外观<span>5 种风格</span></div><div class="service"><i></i>服务已就绪</div></div></aside><main class="main"><header class="page-header"><div class="page-heading"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="rule-set"><path d="M8 3.5H5v7l-2 1.5 2 1.5v7h3m8-17h3v7l2 1.5-2 1.5v7h-3M10 8h4m-4 4h4m-4 4h4" /></svg>
+<div><h1>治理配置</h1><p>管理可复用的文档清洗与脱敏规则</p></div></div><div class="header-end"><button type="button" class="btn quiet"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="hash"><path d="M9 3 6 21M18 3l-3 18M3 8h18M2 16h18" /></svg>
+重复内容规则</button><span class="header-divider"></span><button type="button" class="btn "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="upload"><path d="M4 16v4h16v-4M12 16V3M7 8l5-5 5 5" /></svg>
+导入</button><button type="button" class="btn solid"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="plus"><path d="M12 4v16M4 12h16" /></svg>
+新建配置</button></div></header>
+<div class="directory-layout">
+  <aside class="profile-directory" aria-label="治理模板目录">
+    <div class="directory-head">
+      <div class="directory-title">模板目录<span class="directory-total">26 个模板</span></div>
+      <div class="search "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="search"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.25 15.25 5 5" /></svg>
+<span>搜索模板名称</span></div>
+      <div class="directory-tabs"><span class="active">内置模板</span><span>自定义配置</span></div>
+    </div>
+    <div class="directory-scroll">
+  <section class="directory-group">
+    <h3>通用文档<span>5</span></h3>
+
+      <div class="directory-item " title="知识库默认（保守）">
+        <span class="object-icon text"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-markdown"><rect x="3" y="5" width="18" height="14" rx="1" /><path d="M6.5 15V9l3 3 3-3v6M17 9v6m-2-2 2 2 2-2" /></svg>
+</span>
+        <span>知识库默认</span>
+
+      </div>
+      <div class="directory-item current" title="PDF 文本版（修复断行/页眉页脚/表格）">
+        <span class="object-icon file-pdf"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-pdf"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="m8 17 3-7 1.5 5 3.5 2H8Z" /></svg>
+</span>
+        <span>PDF 文本版</span>
+        <svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-right"><path d="m9 6 6 6-6 6" /></svg>
+
+      </div>
+      <div class="directory-item " title="制度/手册 PDF（条款结构友好）">
+        <span class="object-icon file-pdf"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-pdf"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="m8 17 3-7 1.5 5 3.5 2H8Z" /></svg>
+</span>
+        <span>制度与手册</span>
+
+      </div>
+      <div class="directory-item " title="PDF 扫描/OCR（更强容错）">
+        <span class="object-icon file-pdf"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-pdf"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="m8 17 3-7 1.5 5 3.5 2H8Z" /></svg>
+</span>
+        <span>扫描件与 OCR</span>
+
+      </div>
+      <div class="directory-item " title="长文/Wiki（去重+参考文献）">
+        <span class="object-icon text"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-markdown"><rect x="3" y="5" width="18" height="14" rx="1" /><path d="M6.5 15V9l3 3 3-3v6M17 9v6m-2-2 2 2 2-2" /></svg>
+</span>
+        <span>长文与 Wiki</span>
+
+      </div>
+  </section>
+  <section class="directory-group">
+    <h3>网页与协作<span>7</span></h3>
+
+      <div class="directory-item " title="网页 HTML（去样板/去导航）">
+        <span class="object-icon source"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="globe"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c-6 5-6 13 0 18 6-5 6-13 0-18Z" /></svg>
+</span>
+        <span>网页 HTML</span>
+
+      </div>
+      <div class="directory-item " title="聊天记录导出（Slack/Teams）">
+        <span class="object-icon text"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-markdown"><rect x="3" y="5" width="18" height="14" rx="1" /><path d="M6.5 15V9l3 3 3-3v6M17 9v6m-2-2 2 2 2-2" /></svg>
+</span>
+        <span>聊天记录</span>
+
+      </div>
+      <div class="directory-item " title="网页 XPath 定位正文（默认 //main）">
+        <span class="object-icon source"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="globe"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c-6 5-6 13 0 18 6-5 6-13 0-18Z" /></svg>
+</span>
+        <span>网页正文提取</span>
+
+      </div>
+      <div class="directory-item " title="Confluence 企业导出（强化）">
+        <span class="object-icon source"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="globe"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c-6 5-6 13 0 18 6-5 6-13 0-18Z" /></svg>
+</span>
+        <span>Confluence 导出</span>
+
+      </div>
+      <div class="directory-item " title="SharePoint / Office 365 导出">
+        <span class="object-icon source"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="globe"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c-6 5-6 13 0 18 6-5 6-13 0-18Z" /></svg>
+</span>
+        <span>SharePoint 导出</span>
+
+      </div>
+      <div class="directory-item " title="Notion 数据库 + 文档导出">
+        <span class="object-icon source"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="globe"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c-6 5-6 13 0 18 6-5 6-13 0-18Z" /></svg>
+</span>
+        <span>Notion 导出</span>
+
+      </div>
+      <div class="directory-item " title="飞书 / Lark 知识库">
+        <span class="object-icon source"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="globe"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c-6 5-6 13 0 18 6-5 6-13 0-18Z" /></svg>
+</span>
+        <span>飞书知识库</span>
+
+      </div>
+  </section>
+  <section class="directory-group">
+    <h3>代码与结构<span>3</span></h3>
+
+      <div class="directory-item " title="代码仓库（保留格式 + secrets 脱敏）">
+        <span class="object-icon code"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="braces"><path d="M8 3H6v7l-3 2 3 2v7h2m8-18h2v7l3 2-3 2v7h-2" /></svg>
+</span>
+        <span>代码仓库</span>
+
+      </div>
+      <div class="directory-item " title="结构化数据（CSV/JSON/日志型）">
+        <span class="object-icon dataset"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="database"><path d="M4 6c0-4 16-4 16 0v12c0 4-16 4-16 0ZM4 6c0 4 16 4 16 0M4 12c0 4 16 4 16 0" /></svg>
+</span>
+        <span>结构化数据</span>
+
+      </div>
+      <div class="directory-item " title="元数据增强（frontmatter/语言/关键词）">
+        <span class="object-icon text"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-markdown"><rect x="3" y="5" width="18" height="14" rx="1" /><path d="M6.5 15V9l3 3 3-3v6M17 9v6m-2-2 2 2 2-2" /></svg>
+</span>
+        <span>元数据增强</span>
+
+      </div>
+  </section>
+  <section class="directory-group">
+    <h3>合规与行业<span>11</span></h3>
+
+      <div class="directory-item " title="合规脱敏（PII/密钥）">
+        <span class="object-icon privacy"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="shield-check"><path d="M12 3 20 6v6c0 4-3.5 7-8 9-4.5-2-8-5-8-9V6Z" /><path d="m8 12 3 3 5-6" /></svg>
+</span>
+        <span>合规脱敏</span>
+
+      </div>
+      <div class="directory-item " title="质量门禁（低密度/大纲-only → 隔离）">
+        <span class="object-icon text"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-markdown"><rect x="3" y="5" width="18" height="14" rx="1" /><path d="M6.5 15V9l3 3 3-3v6M17 9v6m-2-2 2 2 2-2" /></svg>
+</span>
+        <span>质量门禁</span>
+
+      </div>
+      <div class="directory-item " title="PII/Secrets 合规门禁（命中即隔离）">
+        <span class="object-icon privacy"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="shield-check"><path d="M12 3 20 6v6c0 4-3.5 7-8 9-4.5-2-8-5-8-9V6Z" /><path d="m8 12 3 3 5-6" /></svg>
+</span>
+        <span>合规门禁</span>
+
+      </div>
+      <div class="directory-item " title="A 股年报 PDF（表格+口径）">
+        <span class="object-icon file-pdf"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-pdf"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="m8 17 3-7 1.5 5 3.5 2H8Z" /></svg>
+</span>
+        <span>A 股年报</span>
+
+      </div>
+      <div class="directory-item " title="A 股招股书（目录裁剪+风险因素去重）">
+        <span class="object-icon file-pdf"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-pdf"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="m8 17 3-7 1.5 5 3.5 2H8Z" /></svg>
+</span>
+        <span>A 股招股书</span>
+
+      </div>
+      <div class="directory-item " title="银行/金融机构合规报告（强 PII）">
+        <span class="object-icon file-pdf"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-pdf"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="m8 17 3-7 1.5 5 3.5 2H8Z" /></svg>
+</span>
+        <span>金融合规报告</span>
+
+      </div>
+      <div class="directory-item " title="保险合同 PDF（条款结构友好）">
+        <span class="object-icon file-pdf"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-pdf"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="m8 17 3-7 1.5 5 3.5 2H8Z" /></svg>
+</span>
+        <span>保险合同</span>
+
+      </div>
+      <div class="directory-item " title="电子病历（强 PHI 脱敏）">
+        <span class="object-icon privacy"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="shield-check"><path d="M12 3 20 6v6c0 4-3.5 7-8 9-4.5-2-8-5-8-9V6Z" /><path d="m8 12 3 3 5-6" /></svg>
+</span>
+        <span>电子病历</span>
+
+      </div>
+      <div class="directory-item " title="政府红头公文（保留章节）">
+        <span class="object-icon file-pdf"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-pdf"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="m8 17 3-7 1.5 5 3.5 2H8Z" /></svg>
+</span>
+        <span>政府公文</span>
+
+      </div>
+      <div class="directory-item " title="中国法规条例（条/款/项结构）">
+        <span class="object-icon file-pdf"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-pdf"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="m8 17 3-7 1.5 5 3.5 2H8Z" /></svg>
+</span>
+        <span>法规条例</span>
+
+      </div>
+      <div class="directory-item " title="法院判决书（裁判文书脱敏）">
+        <span class="object-icon file-pdf"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-pdf"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="m8 17 3-7 1.5 5 3.5 2H8Z" /></svg>
+</span>
+        <span>法院判决书</span>
+
+      </div>
+  </section></div>
+    <div class="directory-footer"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="lock"><rect x="5" y="10" width="14" height="11" rx="1" /><path d="M8 10V6a4 4 0 0 1 8 0v4" /></svg>
+内置模板可复制为自定义配置</div>
+  </aside>
+  <article class="profile-detail" aria-label="PDF 文本版（修复断行/页眉页脚/表格）">
+    <header class="detail-hero">
+      <div class="detail-location"><span>通用文档</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-right"><path d="m9 6 6 6-6 6" /></svg>
+<span>配置详情</span></div>
+      <div class="detail-title-row">
+        <span class="object-icon file-pdf"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-pdf"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="m8 17 3-7 1.5 5 3.5 2H8Z" /></svg>
+</span><h2>PDF 文本版（修复断行/页眉页脚/表格）</h2>
+        <div class="detail-actions"><button type="button" class="btn "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="download"><path d="M4 16v4h16v-4M12 3v13m-5-5 5 5 5-5" /></svg>
+导出</button><button type="button" class="btn solid"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="copy"><rect x="8" y="8" width="12.5" height="12.5" rx="1" /><path d="M16 4H3.5v12" /></svg>
+复制为自定义</button></div>
+      </div>
+      <p class="detail-description">适用于可复制文本的 PDF：合并软换行、去重页眉页脚、表格规范化。</p>
+      <div class="detail-attributes">
+        <div><span class="attribute-label">输入格式</span><span class="format ">Markdown</span></div>
+        <div><span class="attribute-label">治理清洗</span><span class="governance-on"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="check"><path d="m4 12 5 5L20 6" /></svg>
+已启用</span></div>
+        <div><span class="attribute-label">配置标识</span><code>builtin:pdf_text</code></div>
+        <div><span class="builtin"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="lock"><rect x="5" y="10" width="14" height="11" rx="1" /><path d="M8 10V6a4 4 0 0 1 8 0v4" /></svg>
+内置</span><span class="attribute-label">只读</span></div>
+      </div>
+    </header>
+    <section class="detail-rule-section">
+      <div class="detail-section-head"><h3>规则与参数</h3><span class="section-meta">5 条清洗规则 · 1 项参数</span><span class="readonly-note"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="lock"><rect x="5" y="10" width="14" height="11" rx="1" /><path d="M8 10V6a4 4 0 0 1 8 0v4" /></svg>
+复制后可调整</span></div>
+      <div class="rule-table" role="table" aria-label="模板明确设置的管线参数">
+        <div class="rule-columns" role="row"><span role="columnheader">规则</span><span role="columnheader">作用</span><span role="columnheader">状态</span></div>
+
+  <div class="rule-line " role="row">
+    <div class="rule-name" role="cell"><span class="rule-number">01</span>移除目录行</div>
+    <span class="rule-purpose" role="cell">移除目录标题与目录条目</span>
+    <div class="rule-value" role="cell"><span class="value-state"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="check"><path d="m4 12 5 5L20 6" /></svg>
+<span>启用</span></span>
+    </div>
+  </div>
+  <div class="rule-line " role="row">
+    <div class="rule-name" role="cell"><span class="rule-number">02</span>清理噪声行</div>
+    <span class="rule-purpose" role="cell">清理孤立噪声行</span>
+    <div class="rule-value" role="cell"><span class="value-state"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="check"><path d="m4 12 5 5L20 6" /></svg>
+<span>启用</span></span>
+    </div>
+  </div>
+  <div class="rule-line " role="row">
+    <div class="rule-name" role="cell"><span class="rule-number">03</span>合并异常换行</div>
+    <span class="rule-purpose" role="cell">合并段内异常断行</span>
+    <div class="rule-value" role="cell"><span class="value-state"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="check"><path d="m4 12 5 5L20 6" /></svg>
+<span>启用</span></span>
+    </div>
+  </div>
+  <div class="rule-line " role="row">
+    <div class="rule-name" role="cell"><span class="rule-number">04</span>去重复页眉页脚</div>
+    <span class="rule-purpose" role="cell">移除跨页重复页眉页脚</span>
+    <div class="rule-value" role="cell"><span class="value-state"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="check"><path d="m4 12 5 5L20 6" /></svg>
+<span>启用</span></span>
+    </div>
+  </div>
+  <div class="rule-line " role="row">
+    <div class="rule-name" role="cell"><span class="rule-number">05</span>规范 Markdown 表格</div>
+    <span class="rule-purpose" role="cell">统一 Markdown 表格格式</span>
+    <div class="rule-value" role="cell"><span class="value-state"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="check"><path d="m4 12 5 5L20 6" /></svg>
+<span>启用</span></span>
+    </div>
+  </div>
+
+  <div class="rule-line parameter-line" role="row">
+    <div class="rule-name" role="cell"><span class="rule-number">06</span>连续空行上限</div>
+    <span class="rule-purpose" role="cell">限制段落之间的连续空行</span>
+    <div class="rule-value" role="cell"><strong>1</strong><span>行</span>
+    </div>
+  </div>
+      </div>
+      <div class="rule-config-link"><button type="button" class="quiet-link"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="braces"><path d="M8 3H6v7l-3 2 3 2v7h2m8-18h2v7l3 2-3 2v7h-2" /></svg>
+查看配置 JSON</button></div>
+    </section>
+    <section class="detail-preview">
+      <div class="detail-section-head"><h3>清洗前后摘录</h3><span class="preview-file"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-markdown"><rect x="3" y="5" width="18" height="14" rx="1" /><path d="M6.5 15V9l3 3 3-3v6M17 9v6m-2-2 2 2 2-2" /></svg>
+设备维护手册.md</span></div>
+      <div class="preview-pair">
+        <div class="preview-column"><div class="preview-label">清洗前</div><pre><span class="removed-line">设备维护手册  第 1 页</span>
+
+<span class="removed-line">目录</span>
+<span class="removed-line">1. 日常维护 ........ 2</span>
+
+设备运行前，应检查电源连接、
+紧固件和防护装置。
+
+
+检查项目 | 要求
+---|---
+运行状态 | 检查振动和噪声
+
+<span class="removed-line">设备维护手册  第 2 页</span></pre></div>
+        <div class="preview-column"><div class="preview-label">清洗后</div><div class="cleaned-output"><p>设备运行前，应检查电源连接、紧固件和防护装置。</p><table><thead><tr><th>检查项目</th><th>要求</th></tr></thead><tbody><tr><td>运行状态</td><td>检查振动和噪声</td></tr></tbody></table></div></div>
+      </div>
+    </section>
+  </article>
+</div></main></div></body></html>

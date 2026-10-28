@@ -44,7 +44,7 @@ export function useParsingPageState({ files, setFiles }: Readonly<UseParsingPage
   const [isEditing, setIsEditing] = useState(false)
   const [editedContent, setEditedContent] = useState('')
   const [editSession, setEditSession] = useState<ParsingEditSession | null>(null)
-  const [rightPanelMode, setRightPanelMode] = useState<'blocks' | 'markdown'>('blocks')
+  const [rightPanelMode, setRightPanelMode] = useState<'blocks' | 'markdown'>('markdown')
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null)
   const [hoveredBlockId, setHoveredBlockId] = useState<string | null>(null)
   const { parserBackend, setParserBackend } = useParserBackendPreference()

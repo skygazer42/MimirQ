@@ -1,39 +1,16 @@
 'use client'
-
-import type { DocumentHealthCard } from '@/types'
-
-import { useQuery } from '@tanstack/react-query'
-import {
-  Activity,
-  AlertTriangle,
-  ArrowLeft,
-  CheckCircle2,
-  Clock3,
-  Database,
-  FileText,
-  Gauge,
-  GitBranch,
-  Hash,
-  Layers,
-  Network,
-  RefreshCw,
-  SearchCheck,
-  ShieldCheck,
-  Sigma,
-  type LucideIcon,
-} from 'lucide-react'
-import { useMemo } from 'react'
-
-import { AppFrame } from '@/components/app-frame'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { PageScaffold } from '@/components/ui/page-scaffold'
-import { Panel } from '@/components/ui/panel'
-import { useRouter } from '@/i18n/navigation'
-import { documentApi } from '@/lib/api'
-import { formatApiError } from '@/lib/api-errors'
-import { queryKeys } from '@/lib/query-keys'
-import { cn, formatDate, formatFileSize } from '@/lib/utils'
+import type { DocumentHealthCard } from '@/types';
+import { useQuery } from '@tanstack/react-query';
+import { AlertTriangle, FileText, Layers, Network, SearchCheck, type PlatformIcon } from '@/components/icons';
+import { useMemo } from 'react';
+import { AppFrame } from '@/components/app-frame';
+import { Button } from '@/components/ui/button';
+import { OperationalWorkspace, WorkspaceMetrics, WorkspaceNotice, workspaceStyles as ws } from '@/components/ui/operational-workspace';
+import { useRouter } from '@/i18n/navigation';
+import { documentApi } from '@/lib/api';
+import { formatApiError } from '@/lib/api-errors';
+import { queryKeys } from '@/lib/query-keys';
+import { cn, formatDate, formatFileSize } from '@/lib/utils';
 
 type QualityBadgeTone = 'bad' | 'warn' | 'ok'
 type HealthTone = QualityBadgeTone | 'neutral'
@@ -81,30 +58,6 @@ function parseQualityScore(card: DocumentHealthCard | null): number | null {
   const parseQuality = isRecord(card?.parsing?.parse_quality) ? card.parsing.parse_quality : {}
   const score = parseQuality.score
   return safeNumber(score)
-}
-
-function qualityBadgeClassName(tone: QualityBadgeTone): string {
-  switch (tone) {
-    case 'bad':
-      return 'border-destructive/25 bg-destructive/[0.08] text-destructive'
-    case 'warn':
-      return 'border-warning/24 bg-warning/[0.08] text-warning dark:text-warning'
-    default:
-      return 'border-success/24 bg-success/[0.08] text-success dark:text-success'
-  }
-}
-
-function toneClassName(tone: HealthTone): string {
-  switch (tone) {
-    case 'bad':
-      return 'border-destructive/24 bg-destructive/[0.08] text-destructive'
-    case 'warn':
-      return 'border-warning/24 bg-warning/[0.08] text-warning dark:text-warning'
-    case 'ok':
-      return 'border-success/24 bg-success/[0.08] text-success dark:text-success'
-    default:
-      return 'border-border/50 bg-muted/22 text-muted-foreground'
-  }
 }
 
 function retrievalHitsStatusLabel(
@@ -178,156 +131,17 @@ export default function DocumentHealthPage({ documentId }: Readonly<{ documentId
   const isolatedRatio = safeNumber(kgSummary.isolated_entity_ratio)
   const largestComponentRatio = safeNumber(kgComponents.largest_component_ratio)
 
-  return (
-    <AppFrame>
-      <PageScaffold
-        title="文档健康审计"
-        size="full"
-        density="system-dense"
-        bodyGutter="dense"
-        bodyClassName="bg-[radial-gradient(circle_at_18%_0%,hsl(var(--info)/0.10),transparent_28%),linear-gradient(180deg,hsl(var(--background)/0.96),hsl(var(--surface-2)/0.68))] pb-3"
-        description={
-          <div className="space-y-1">
-            <div className="text-muted-foreground">
-              解析 → 分块 → KG → 检索命中（聚合，PII-safe）
-            </div>
-            <div className="font-mono text-xs text-muted-foreground break-all">{documentId}</div>
-          </div>
-        }
-        icon={ShieldCheck}
-        actions={
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 rounded-xl border-border/55 bg-background/78 px-3 text-[12px]"
-              onClick={() => router.push('/knowledge')}
-            >
-              <ArrowLeft className="mr-2 size-3.5" />
-              返回知识库
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 rounded-xl border-border/55 bg-background/78 px-3 text-[12px]"
-              disabled={loading}
-              onClick={() => {
-                healthQuery.refetch()
-              }}
-            >
-              <RefreshCw className={cn('mr-2 size-3.5', loading ? 'animate-spin motion-reduce:animate-none' : '')} />
-              刷新
-            </Button>
-          </div>
-        }
-        top={
-          data ? (
-            <Panel
-              variant="glass"
-              className="overflow-hidden rounded-[24px] border-border/50 bg-[radial-gradient(circle_at_10%_0%,hsl(var(--info)/0.10),transparent_34%),linear-gradient(135deg,hsl(var(--card)/0.90),hsl(var(--surface-2)/0.48))] p-0 shadow-[0_18px_48px_-36px_hsl(var(--primary)/0.28)]"
-            >
-              <div className="flex flex-col gap-4 px-4 py-4 lg:flex-row lg:items-stretch lg:justify-between">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-start gap-3">
-                    <div className="flex size-10 shrink-0 items-center justify-center rounded-[16px] border border-info/18 bg-info/[0.08] text-info shadow-[inset_0_1px_0_hsl(var(--card)/0.80)]">
-                      <FileText className="size-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="break-words text-[20px] font-semibold leading-6 tracking-[-0.02em] text-foreground">
-                          {data.filename || '未命名文档'}
-                        </h2>
-                        <Badge
-                          variant="secondary"
-                          className={cn('border px-2 py-0.5 text-[10px] font-semibold', toneClassName(documentStatusTone(data.status)))}
-                        >
-                          {documentStatusLabel(data.status)}
-                        </Badge>
-                        {qualityBadge ? (
-                          <Badge
-                            variant="secondary"
-                            className={cn('border px-2 py-0.5 text-[10px] font-semibold', qualityBadgeClassName(qualityBadge.tone))}
-                          >
-                            {qualityBadge.label}
-                          </Badge>
-                        ) : null}
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                        <InfoPill icon={Hash} value={data.document_id} />
-                        <InfoPill icon={Database} value={data.dataset_id || '未绑定知识库'} />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="grid min-w-[min(100%,28rem)] grid-cols-2 gap-2 sm:grid-cols-4 lg:max-w-[40rem]">
-                  <HeroMetric icon={FileText} label="类型" value={fmt(data.file_type)} />
-                  <HeroMetric icon={Gauge} label="大小" value={data.file_size ? formatFileSize(data.file_size) : '—'} />
-                  <HeroMetric icon={Clock3} label="创建" value={data.created_at ? formatDate(data.created_at) : '—'} />
-                  <HeroMetric icon={Clock3} label="生成" value={data.generated_at ? formatDate(data.generated_at) : '—'} />
-                </div>
-              </div>
-            </Panel>
-          ) : null
-        }
-      >
-        {error ? (
-          <Panel className="rounded-[18px] border border-destructive/24 bg-destructive/[0.08] text-destructive">
-            {error}
-          </Panel>
-        ) : null}
 
-        {!data && !loading && !error ? (
-          <Panel variant="glass" className="rounded-[18px] text-muted-foreground">
-            未找到数据
-          </Panel>
-        ) : null}
-
-        {loading && !data ? (
-          <Panel variant="glass" className="rounded-[18px] text-muted-foreground">
-            加载中…
-          </Panel>
-        ) : null}
-
-        {data ? (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-              <ScoreTile
-                icon={Activity}
-                label="解析评分"
-                value={qualityScore === null ? '—' : qualityScore.toFixed(3)}
-                detail={qualityBadge?.label || '暂无评分'}
-                tone={qualityBadge?.tone || 'neutral'}
-              />
-              <ScoreTile
-                icon={Layers}
-                label="覆盖率"
-                value={pct(coverage?.coverage_ratio)}
-                detail={`缺口 ${coverage?.gap_count ?? 0}`}
-                tone={getCoverageTone(coverage?.coverage_ratio)}
-              />
-              <ScoreTile
-                icon={Network}
-                label="KG 实体"
-                value={compactNumber(kgSummary.entities)}
-                detail={`关系 ${compactNumber(kgSummary.relations)}`}
-                tone="neutral"
-              />
-              <ScoreTile
-                icon={SearchCheck}
-                label="检索命中"
-                value={pct(data.retrieval_hits?.hit_rate, 2)}
-                detail={retrievalHitsStatus}
-                tone={data.retrieval_hits?.available ? 'ok' : 'neutral'}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2 2xl:grid-cols-4">
-              <HealthSection
+  return <AppFrame showBackground={false}><OperationalWorkspace title="文档健康审计" icon="diagnostics" context={data?.filename || documentId} actions={<Button variant="outline" disabled={loading} onClick={() => { void healthQuery.refetch() }}>{loading ? '正在读取…' : '重新读取'}</Button>} back={() => router.push('/knowledge')}>
+    {error ? <WorkspaceNotice retry={() => { void healthQuery.refetch() }} pending={loading}>{error}</WorkspaceNotice> : null}
+    {loading && !data ? <p role="status" className="py-12 text-sm text-muted-foreground">正在读取文档健康审计…</p> : null}
+    {!loading && !data && !error ? <div className={ws.empty}><h2>暂无文档审计结果</h2><p>请返回知识库选择文档，确认文档已完成处理。</p></div> : null}
+    {data ? <>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border py-4"><div className="flex flex-wrap items-center gap-3 text-[13px]"><span className={documentStatusTone(data.status) === 'bad' ? 'text-destructive' : 'text-foreground'}>{documentStatusLabel(data.status)}</span><span className="text-muted-foreground">{data.file_type?.toUpperCase() || '—'} · {typeof data.file_size === 'number' ? formatFileSize(data.file_size) : '—'}</span></div><details className="text-[13px]"><summary className="cursor-pointer">文档信息</summary><dl className="mt-3 space-y-2 break-all text-muted-foreground"><div>文档：{data.document_id}</div><div>数据集：{data.dataset_id || '未关联数据集'}</div><div>创建：{data.created_at ? formatDate(data.created_at) : '—'}</div><div>生成：{formatDate(data.generated_at)}</div></dl></details></div>
+      <WorkspaceMetrics items={[{ label: '解析评分', value: qualityScore === null ? '—' : qualityScore.toFixed(3), detail: qualityBadge?.label || '暂无评分', tone: qualityBadge?.tone === 'bad' ? 'danger' : qualityBadge?.tone === 'warn' ? 'warning' : undefined }, { label: '字符覆盖率', value: pct(coverage?.coverage_ratio), detail: coverage ? `缺口 ${compactNumber(coverage.gap_count)}` : '尚无覆盖统计' }, { label: 'KG 实体', value: compactNumber(kgSummary.entities), detail: `关系 ${compactNumber(kgSummary.relations)}` }, { label: '检索命中率', value: pct(data.retrieval_hits?.hit_rate, 2), detail: retrievalHitsStatus }]} />
+      <div className="grid min-w-0 gap-x-10 xl:grid-cols-2"><HealthSection
                 icon={FileText}
                 title="解析链路"
-                subtitle="解析器、扫描件、页数与处理时间"
                 badge={qualityBadge?.label || '未评分'}
                 tone={qualityBadge?.tone || 'neutral'}
               >
@@ -340,11 +154,9 @@ export default function DocumentHealthPage({ documentId }: Readonly<{ documentId
                   <Fact label="处理时间" value={data.parsing?.processed_at ? formatDate(data.parsing.processed_at) : '—'} />
                 </DenseGrid>
               </HealthSection>
-
-              <HealthSection
+<HealthSection
                 icon={Layers}
                 title="切片链路"
-                subtitle="chunk 策略、字符覆盖、overlap 成本"
                 badge={`覆盖 ${pct(coverage?.coverage_ratio)}`}
                 tone={getCoverageTone(coverage?.coverage_ratio)}
               >
@@ -360,7 +172,7 @@ export default function DocumentHealthPage({ documentId }: Readonly<{ documentId
                 </DenseGrid>
 
                 {semanticQuality ? (
-                  <div className="mt-3 rounded-[16px] border border-border/45 bg-muted/[0.12] p-3">
+                  <div className="mt-5 border-t border-border pt-4">
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                       <div className="text-[12px] font-semibold text-foreground">语义质量抽样</div>
                       {semanticQuality.note ? (
@@ -382,11 +194,9 @@ export default function DocumentHealthPage({ documentId }: Readonly<{ documentId
                   </div>
                 ) : null}
               </HealthSection>
-
-              <HealthSection
+<HealthSection
                 icon={Network}
                 title="KG 链路"
-                subtitle="事件、实体、关系与连通性摘要"
                 badge={`实体 ${compactNumber(kgSummary.entities)}`}
                 tone="neutral"
               >
@@ -399,11 +209,9 @@ export default function DocumentHealthPage({ documentId }: Readonly<{ documentId
                   <Fact label="最大分量" value={largestComponentRatio === null ? '—' : pct(largestComponentRatio, 2)} />
                 </DenseGrid>
               </HealthSection>
-
-              <HealthSection
+<HealthSection
                 icon={SearchCheck}
                 title="检索命中"
-                subtitle="最近窗口内的引用命中与样本覆盖"
                 badge={retrievalHitsStatus}
                 tone={data.retrieval_hits?.available ? 'ok' : 'neutral'}
               >
@@ -424,138 +232,32 @@ export default function DocumentHealthPage({ documentId }: Readonly<{ documentId
                     <span>提示：需要启用后端 metrics 日志（ENABLE_METRICS_LOG=true）才能统计命中频率。</span>
                   </div>
                 ) : null}
-              </HealthSection>
-            </div>
-          </div>
-        ) : null}
-      </PageScaffold>
-    </AppFrame>
-  )
-}
-
-function InfoPill({
-  icon: Icon,
-  value,
-}: Readonly<{
-  icon: LucideIcon
-  value: string
-}>) {
-  return (
-    <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/45 bg-background/62 px-2 py-1 font-mono text-[10px] text-muted-foreground">
-      <Icon className="size-3 shrink-0 text-info/72" />
-      <span className="truncate">{value}</span>
-    </span>
-  )
-}
-
-function HeroMetric({
-  icon: Icon,
-  label,
-  value,
-}: Readonly<{
-  icon: LucideIcon
-  label: string
-  value: string
-}>) {
-  return (
-    <div className="rounded-[16px] border border-border/45 bg-background/58 px-3 py-2 shadow-[inset_0_1px_0_hsl(var(--card)/0.72)]">
-      <div className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground/66">
-        <Icon className="size-3 text-info/70" />
-        {label}
-      </div>
-      <div className="mt-1 truncate font-mono text-[11px] font-semibold tabular-nums text-foreground/86" title={value}>
-        {value}
-      </div>
-    </div>
-  )
-}
-
-function ScoreTile({
-  detail,
-  icon: Icon,
-  label,
-  tone,
-  value,
-}: Readonly<{
-  detail: string
-  icon: LucideIcon
-  label: string
-  tone: HealthTone
-  value: string
-}>) {
-  const ToneIcon = tone === 'ok' ? CheckCircle2 : tone === 'bad' ? AlertTriangle : Sigma
-
-  return (
-    <div className="group relative overflow-hidden rounded-[18px] border border-border/50 bg-card/58 px-3 py-2.5 shadow-[0_12px_28px_-30px_hsl(var(--primary)/0.24)]">
-      <span className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-[linear-gradient(90deg,hsl(var(--primary)/0.10),hsl(var(--info)/0.42),hsl(var(--primary)/0.08))]" />
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground/72">
-            <Icon className="size-3.5 text-info/78" />
-            {label}
-          </div>
-          <div className="mt-1 truncate font-mono text-[17px] font-semibold tabular-nums tracking-[-0.02em] text-foreground">
-            {value}
-          </div>
-          <div className="mt-0.5 truncate text-[10px] text-muted-foreground/70">
-            {detail}
-          </div>
-        </div>
-        <span className={cn('inline-flex size-7 shrink-0 items-center justify-center rounded-full border', toneClassName(tone))}>
-          <ToneIcon className="size-3.5" />
-        </span>
-      </div>
-    </div>
-  )
+              </HealthSection></div>
+    </> : null}
+  </OperationalWorkspace></AppFrame>
 }
 
 function HealthSection({
   badge,
   children,
   icon: Icon,
-  subtitle,
   title,
   tone,
 }: Readonly<{
   badge: string
   children: React.ReactNode
-  icon: LucideIcon
-  subtitle: string
+  icon: PlatformIcon
   title: string
   tone: HealthTone
 }>) {
-  return (
-    <Panel
-      variant="glass"
-      className="overflow-hidden rounded-[20px] border-border/50 bg-card/54 p-0 shadow-[0_14px_34px_-34px_hsl(var(--primary)/0.22)]"
-    >
-      <div className="border-b border-border/45 bg-[linear-gradient(180deg,hsl(var(--card)/0.70),hsl(var(--surface-2)/0.34))] px-3.5 py-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-2.5">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-[12px] border border-info/16 bg-info/[0.07] text-info">
-              <Icon className="size-4" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-[14px] font-semibold leading-none text-foreground">
-                {title}
-              </div>
-              <div className="mt-1 text-[11px] leading-4 text-muted-foreground/72">
-                {subtitle}
-              </div>
-            </div>
-          </div>
-          <Badge variant="secondary" className={cn('shrink-0 border px-2 py-0.5 text-[10px] font-semibold', toneClassName(tone))}>
-            {badge}
-          </Badge>
-        </div>
-      </div>
-      <div className="p-3.5">{children}</div>
-    </Panel>
-  )
+  return <section className={ws.section}>
+    <header className="mb-5 flex flex-wrap items-start justify-between gap-3"><div><h2 className="flex items-center gap-2 text-[15px] font-semibold"><Icon className="size-5" appearance="color" />{title}</h2></div><span className={cn('text-[13px]', tone === 'bad' ? 'text-destructive' : tone === 'warn' ? ws.warning : 'text-muted-foreground')}>{badge}</span></header>
+    {children}
+  </section>
 }
 
 function DenseGrid({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <div className="grid grid-cols-2 gap-2">{children}</div>
+  return <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">{children}</div>
 }
 
 function Fact({
@@ -568,15 +270,15 @@ function Fact({
   value: string
 }>) {
   return (
-    <div className="min-w-0 rounded-[14px] border border-border/45 bg-background/58 px-2.5 py-2">
-      <div className="text-[10px] font-medium leading-none text-muted-foreground/62">
+    <div className="min-w-0 border-b border-border/60 py-3">
+      <div className="text-[13px] leading-5 text-muted-foreground">
         {label}
       </div>
       <div
         className={cn(
-          'mt-1.5 truncate font-mono text-[11px] font-semibold leading-none tabular-nums text-foreground/84',
-          tone !== 'neutral' && 'inline-flex max-w-full rounded-md border px-1.5 py-0.5',
-          tone !== 'neutral' && toneClassName(tone)
+          'mt-1 break-words text-sm font-medium leading-6 tabular-nums text-foreground',
+
+          tone === 'bad' ? 'text-destructive' : tone === 'warn' ? ws.warning : undefined
         )}
         title={value}
       >

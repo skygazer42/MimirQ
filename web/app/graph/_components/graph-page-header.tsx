@@ -1,52 +1,23 @@
 'use client'
 
-import type { ChangeEventHandler, ReactNode, RefObject } from 'react'
-
-import { BarChart3, FileCode, FileText, Filter, GitCompare, MoreHorizontal, Network, RefreshCw, Share2, Link as LinkIcon, Wrench } from 'lucide-react'
-
+import type { ChangeEventHandler, RefObject } from 'react'
+import { FileCode, FileText, GitCompare, MoreHorizontal, Network, RefreshCw, Share2, Wrench } from '@/components/icons'
 import { Link } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Switch } from '@/components/ui/switch'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import type { KGStatsResponse } from '@/types'
-
-import type { GraphConfBucket } from '../graph-page-utils'
+import type { UseGraphPageStateResult } from '../use-graph-page-state'
+import type { UseGraphDisplayFiltersResult } from '../use-graph-display-filters'
 import { GraphFiltersPopover } from './graph-filters-popover'
-import { GraphSearchOverlay } from './graph-search-overlay'
-import { GraphStatusBanners } from './graph-status-banners'
-
-type GraphFilterOption = Readonly<{
-  value: string
-  count: number
-}>
+import styles from './graph-workspace.module.css'
 
 type GraphPageHeaderProps = Readonly<{
   fileName: string | null
   dataSource: 'live' | 'file'
-  viewMode: '2d' | '3d'
-  kgStats: KGStatsResponse | null
   graphNodeCount: number
-  graphLinkCount: number
-  activeGraphFilterCount: number
-  searchOpen: boolean
-  searchInputRef: RefObject<HTMLInputElement | null>
-  searchTerm: string
-  highlightedMatchCount: number
-  onSearchTermChange: (value: string) => void
-  isPathMode: boolean
-  hasPathStart: boolean
-  hasPathEnd: boolean
-  isConnectMode: boolean
-  connectSourceLabel: string | null
-  isExplainMode: boolean
-  currentStepIndex: number
-  explainStepCount: number
-  onExitPathMode: () => void
-  onExitConnectMode: () => void
-  onExitExplainMode: () => void
+  isLoading: boolean
   includeEntityLinks: boolean
   includeRelationLinks: boolean
   minSharedEvents: number
@@ -54,25 +25,6 @@ type GraphPageHeaderProps = Readonly<{
   onToggleRelationLinks: () => void
   onCycleMinSharedEvents: () => void
   onExportGraphML: () => void
-  isLoading: boolean
-  filtersOpen: boolean
-  onFiltersOpenChange: (open: boolean) => void
-  entityTypeQuery: string
-  onEntityTypeQueryChange: (value: string) => void
-  entityTypeFilters: string[]
-  filteredEntityTypes: GraphFilterOption[]
-  onEntityTypeCheckedChange: (value: string, checked: boolean) => void
-  onResetEntityTypeFilters: () => void
-  predicateQuery: string
-  onPredicateQueryChange: (value: string) => void
-  predicateFilters: string[]
-  filteredPredicates: GraphFilterOption[]
-  onPredicateCheckedChange: (value: string, checked: boolean) => void
-  onResetPredicateFilters: () => void
-  confidenceBucketFilters: GraphConfBucket[]
-  onResetConfidenceBuckets: () => void
-  onToggleConfidenceBucket: (bucket: GraphConfBucket) => void
-  onResetGraphFilters: () => void
   onRefreshLiveData: () => void
   onOpenGraphPicker: () => void
   onTriggerTraceUpload: () => void
@@ -84,337 +36,47 @@ type GraphPageHeaderProps = Readonly<{
 }>
 
 export function GraphPageHeader({
-  fileName,
-  dataSource,
-  viewMode,
-  kgStats,
-  graphNodeCount,
-  graphLinkCount,
-  activeGraphFilterCount,
-  searchOpen,
-  searchInputRef,
-  searchTerm,
-  highlightedMatchCount,
-  onSearchTermChange,
-  isPathMode,
-  hasPathStart,
-  hasPathEnd,
-  isConnectMode,
-  connectSourceLabel,
-  isExplainMode,
-  currentStepIndex,
-  explainStepCount,
-  onExitPathMode,
-  onExitConnectMode,
-  onExitExplainMode,
-  includeEntityLinks,
-  includeRelationLinks,
-  minSharedEvents,
-  onToggleEntityLinks,
-  onToggleRelationLinks,
-  onCycleMinSharedEvents,
-  onExportGraphML,
-  isLoading,
-  filtersOpen,
-  onFiltersOpenChange,
-  entityTypeQuery,
-  onEntityTypeQueryChange,
-  entityTypeFilters,
-  filteredEntityTypes,
-  onEntityTypeCheckedChange,
-  onResetEntityTypeFilters,
-  predicateQuery,
-  onPredicateQueryChange,
-  predicateFilters,
-  filteredPredicates,
-  onPredicateCheckedChange,
-  onResetPredicateFilters,
-  confidenceBucketFilters,
-  onResetConfidenceBuckets,
-  onToggleConfidenceBucket,
-  onResetGraphFilters,
-  onRefreshLiveData,
-  onOpenGraphPicker,
-  onTriggerTraceUpload,
-  traceFileInputRef,
-  onTraceFileUpload,
-  onTriggerManualKgUpload,
-  manualKgFileInputRef,
-  onManualKgFileUpload,
+  fileName, dataSource, graphNodeCount, isLoading,
+  includeEntityLinks, includeRelationLinks, minSharedEvents,
+  onToggleEntityLinks, onToggleRelationLinks, onCycleMinSharedEvents, onExportGraphML,
+  onRefreshLiveData, onOpenGraphPicker, onTriggerTraceUpload, traceFileInputRef,
+  onTraceFileUpload, onTriggerManualKgUpload, manualKgFileInputRef, onManualKgFileUpload,
 }: GraphPageHeaderProps) {
-  let liveControls: ReactNode = null
-  if (dataSource === 'live') {
-    liveControls = (
-      <>
-        <div className="hidden shrink-0 items-center gap-2 2xl:flex">
-          <div className="flex items-center gap-2 rounded-full border border-info/15 bg-background/76 px-2.5 py-1.5 shadow-none">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-foreground/88">
-              <LinkIcon className={cn('h-3.5 w-3.5', includeEntityLinks ? 'text-info' : 'text-muted-foreground')} />
-              <span>实体</span>
-            </div>
-            <Switch
-              checked={includeEntityLinks}
-              onCheckedChange={() => onToggleEntityLinks()}
-              aria-label="切换实体连线"
-              className="scale-[0.82] data-[state=checked]:bg-info"
-            />
-          </div>
-          <div className="flex items-center gap-2 rounded-full border border-info/15 bg-background/76 px-2.5 py-1.5 shadow-none">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-foreground/88">
-              <Network className={cn('h-3.5 w-3.5', includeRelationLinks ? 'text-info' : 'text-muted-foreground')} />
-              <span>关系</span>
-            </div>
-            <Switch
-              checked={includeRelationLinks}
-              onCheckedChange={() => onToggleRelationLinks()}
-              aria-label="切换关系连线"
-              className="scale-[0.82] data-[state=checked]:bg-info"
-            />
-          </div>
-        </div>
-        <TooltipProvider delayDuration={120}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onCycleMinSharedEvents}
-                className="shrink-0 text-muted-foreground hover:text-info hover:bg-info/10"
-              >
-                <Filter className="w-4 h-4 mr-2" />
-                Co≥{minSharedEvents}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" align="center" className="max-w-[240px] text-[11px] leading-5">
-              共现阈值。仅保留至少在 {minSharedEvents} 个事件中共同出现的关系连线；点击可在 1-4 之间切换。
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </>
-    )
-  }
+  return <header className={styles.header}>
+    <div className={styles.heading}><PageTitleIcon name="knowledge-graph" /><h1>知识图谱</h1></div>
+    <span className={styles.scopeLabel} title={fileName || '尚未选择图谱'}>{fileName === '知识图谱' ? '全部数据' : fileName || '尚未选择图谱'}</span>
+    <div className={styles.headerActions}>
+      <Button variant="outline" onClick={onOpenGraphPicker}><Share2 /><span>选择图谱</span></Button>
+      {dataSource === 'live' && graphNodeCount > 0 ? <Button variant="outline" onClick={onExportGraphML} disabled={isLoading} aria-label="导出 GraphML"><FileCode /><span className={styles.buttonLabel}>导出</span></Button> : null}
+      <Popover><PopoverTrigger asChild><Button variant="ghost" className={styles.iconOnly} aria-label="图谱工具"><MoreHorizontal /></Button></PopoverTrigger>
+        <PopoverContent align="end" className={styles.toolsMenu}>
+          <button type="button" onClick={onTriggerManualKgUpload} disabled={isLoading}><Network />导入 KG JSON / JSONL</button>
+          <button type="button" onClick={onTriggerTraceUpload} disabled={isLoading}><FileText />导入检索回放</button>
+          <button type="button" onClick={onRefreshLiveData} disabled={isLoading}><RefreshCw className={cn(isLoading && 'animate-spin motion-reduce:animate-none')} />{isLoading ? '正在加载…' : '重新加载图谱'}</button>
+          <div className={styles.menuDivider} />
+          {dataSource === 'live' ? <><label className={styles.toolSwitch}>实体连线<Switch aria-label="切换实体连线" checked={includeEntityLinks} onCheckedChange={onToggleEntityLinks} /></label><label className={styles.toolSwitch}>关系连线<Switch aria-label="切换关系连线" checked={includeRelationLinks} onCheckedChange={onToggleRelationLinks} /></label><button type="button" onClick={onCycleMinSharedEvents}>共现阈值 ≥ {minSharedEvents}</button><div className={styles.menuDivider} /></> : null}
+          <Link href="/graph/diagnostics"><Wrench />图谱诊断</Link>
+          <Link href="/graph/snapshots"><GitCompare />图谱快照</Link>
+        </PopoverContent>
+      </Popover>
+      <input ref={traceFileInputRef} type="file" accept=".json,application/json" className="hidden" aria-label="导入检索回放文件" onChange={onTraceFileUpload} />
+      <input ref={manualKgFileInputRef} type="file" accept=".json,.jsonl,application/json" className="hidden" aria-label="导入知识图谱文件" onChange={onManualKgFileUpload} />
+    </div>
+  </header>
+}
 
-  return (
-    <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex h-16 items-center gap-2 border-b border-info/15 bg-background/95 px-3 shadow-none md:gap-3 md:px-4 lg:px-6">
-      <span className="pointer-events-none absolute -bottom-px left-4 h-px w-12 bg-info/70" aria-hidden="true" />
-      <div className="pointer-events-auto flex shrink-0 items-center gap-2.5">
-        <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-info/10 text-info shadow-none">
-          <PageTitleIcon name="knowledge-graph" className="size-6" />
-        </div>
-        <h1 className="shrink-0 whitespace-nowrap text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground">
-          知识图谱
-        </h1>
-        <span className="hidden shrink-0 rounded-md border border-info/20 bg-info/[0.06] px-2 py-0.5 text-[10px] font-medium text-info sm:inline-flex">
-          {viewMode === '3d' ? '3D 图谱' : '2D 图谱'}
-        </span>
-      </div>
-
-      <div className="pointer-events-auto hidden min-w-0 shrink-0 items-center gap-2 xl:flex">
-        {fileName ? (
-          <div className="flex max-w-[150px] items-center gap-2 rounded-full border border-border bg-muted/50 px-3 py-1.5 text-xs font-medium text-muted-foreground">
-            <FileCode className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            <span className="truncate">{fileName}</span>
-          </div>
-        ) : null}
-
-        {dataSource === 'live' && kgStats ? (
-          <div className="flex items-center gap-2 rounded-full border border-border bg-muted/50 px-3 py-1.5 text-xs font-medium text-muted-foreground">
-            <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="font-mono">
-              E:{kgStats.events} N:{kgStats.entities} L:{kgStats.links}
-            </span>
-          </div>
-        ) : null}
-      </div>
-
-      <div className="pointer-events-auto hidden min-w-[300px] flex-1 justify-center md:flex">
-        <GraphSearchOverlay
-          open={searchOpen}
-          inputRef={searchInputRef}
-          searchTerm={searchTerm}
-          highlightedMatchCount={highlightedMatchCount}
-          onSearchTermChange={onSearchTermChange}
-        />
-      </div>
-
-      <GraphStatusBanners
-        isPathMode={isPathMode}
-        hasPathStart={hasPathStart}
-        hasPathEnd={hasPathEnd}
-        isConnectMode={isConnectMode}
-        connectSourceLabel={connectSourceLabel}
-        isExplainMode={isExplainMode}
-        currentStepIndex={currentStepIndex}
-        explainStepCount={explainStepCount}
-        onExitPathMode={onExitPathMode}
-        onExitConnectMode={onExitConnectMode}
-        onExitExplainMode={onExitExplainMode}
-      />
-
-      <div className="pointer-events-auto ml-auto flex shrink-0 items-center gap-2">
-        {liveControls}
-
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="size-9 shrink-0 gap-2 border-info/15 bg-background/78 px-0 text-foreground/88 shadow-none hover:bg-info/[0.06] hover:text-info active:bg-info/[0.08] sm:h-9 sm:w-auto sm:px-3"
-            >
-              <MoreHorizontal className="h-4 w-4" />
-              <span className="hidden sm:inline">图谱工具</span>
-              {activeGraphFilterCount > 0 ? (
-                <span className="ml-0.5 rounded-full bg-info/12 px-1.5 py-0.5 text-[10px] font-semibold text-info">
-                  {activeGraphFilterCount}
-                </span>
-              ) : null}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent align="end" className="w-[min(390px,calc(100vw-1rem))] p-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold text-foreground">图谱工具</div>
-                <div className="mt-0.5 text-[11px] text-muted-foreground">
-                  KG JSON/JSONL 是唯一外部图谱导入方式
-                </div>
-              </div>
-              <div className="rounded-full border border-border/60 bg-muted/45 px-2.5 py-1 text-[11px] font-mono text-muted-foreground">
-                {graphNodeCount}N / {graphLinkCount}L
-              </div>
-            </div>
-
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onTriggerManualKgUpload}
-                disabled={isLoading}
-                className="col-span-2 h-auto justify-start gap-3 rounded-xl border-info/20 bg-info/10 px-3 py-3 text-left text-info shadow-none hover:bg-info/15 hover:text-info"
-                title="导入人工治理后的 KG JSON / JSONL 到后端图谱库，并自动创建事件与向量索引"
-              >
-                <Network className="h-4 w-4 shrink-0" />
-                <span className="min-w-0">
-                  <span className="block text-[13px] font-semibold leading-4">导入 KG JSON / JSONL</span>
-                  <span className="mt-0.5 block text-[11px] font-normal leading-4 text-muted-foreground">
-                    实体、关系、证据入库并自动关联事件
-                  </span>
-                </span>
-              </Button>
-
-              <Button
-                asChild
-                variant="outline"
-                size="sm"
-                className="justify-start gap-2 border-border/60 bg-background/70 text-muted-foreground shadow-none hover:bg-warning/10 hover:text-warning dark:hover:text-warning"
-              >
-                <Link href="/graph/diagnostics">
-                  <Wrench className="h-4 w-4" />
-                  Diagnostics
-                </Link>
-              </Button>
-
-              <Button
-                asChild
-                variant="outline"
-                size="sm"
-                className="justify-start gap-2 border-border/60 bg-background/70 text-muted-foreground shadow-none hover:bg-accent/10 hover:text-accent dark:hover:text-accent"
-              >
-                <Link href="/graph/snapshots">
-                  <GitCompare className="h-4 w-4" />
-                  Snapshots
-                </Link>
-              </Button>
-
-              {dataSource === 'live' ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onExportGraphML}
-                  disabled={isLoading}
-                  className="justify-start gap-2 border-border/60 bg-background/70 text-muted-foreground shadow-none hover:bg-info/10 hover:text-info"
-                >
-                  <FileCode className="h-4 w-4" />
-                  导出
-                </Button>
-              ) : null}
-
-              {graphNodeCount > 0 || activeGraphFilterCount > 0 ? (
-                <div className="[&>button]:h-9 [&>button]:w-full [&>button]:justify-start [&>button]:gap-2 [&>button]:rounded-md [&>button]:border [&>button]:border-border/60 [&>button]:bg-background/70 [&>button]:px-3 [&>button]:shadow-none">
-                  <GraphFiltersPopover
-                    open={filtersOpen}
-                    onOpenChange={onFiltersOpenChange}
-                    activeGraphFilterCount={activeGraphFilterCount}
-                    graphNodeCount={graphNodeCount}
-                    graphLinkCount={graphLinkCount}
-                    entityTypeQuery={entityTypeQuery}
-                    onEntityTypeQueryChange={onEntityTypeQueryChange}
-                    entityTypeFilters={entityTypeFilters}
-                    filteredEntityTypes={filteredEntityTypes}
-                    onEntityTypeCheckedChange={onEntityTypeCheckedChange}
-                    onResetEntityTypeFilters={onResetEntityTypeFilters}
-                    predicateQuery={predicateQuery}
-                    onPredicateQueryChange={onPredicateQueryChange}
-                    predicateFilters={predicateFilters}
-                    filteredPredicates={filteredPredicates}
-                    onPredicateCheckedChange={onPredicateCheckedChange}
-                    onResetPredicateFilters={onResetPredicateFilters}
-                    confidenceBucketFilters={confidenceBucketFilters}
-                    onResetConfidenceBuckets={onResetConfidenceBuckets}
-                    onToggleConfidenceBucket={onToggleConfidenceBucket}
-                    onResetGraphFilters={onResetGraphFilters}
-                  />
-                </div>
-              ) : null}
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onOpenGraphPicker}
-                className="justify-start gap-2 border-border/60 bg-background/70 text-muted-foreground shadow-none hover:bg-muted/60 hover:text-foreground"
-              >
-                <Share2 className="h-4 w-4" />
-                {dataSource === 'live' ? '切换图谱' : '选择图谱'}
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onRefreshLiveData}
-                disabled={isLoading}
-                className="justify-start gap-2 border-border/60 bg-background/70 text-muted-foreground shadow-none hover:bg-info/10 hover:text-info dark:hover:text-info"
-              >
-                <RefreshCw className={cn('h-4 w-4', isLoading && 'animate-spin motion-reduce:animate-none')} />
-                {isLoading ? '加载中' : '刷新'}
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onTriggerTraceUpload}
-                className="justify-start gap-2 border-border/60 bg-background/70 text-muted-foreground shadow-none hover:bg-success/10 hover:text-success dark:hover:text-success"
-                title="导入 RAG trace JSON（回放检索路径）"
-              >
-                <FileText className="h-4 w-4" />
-                Trace
-              </Button>
-            </div>
-          </PopoverContent>
-        </Popover>
-        <input
-          ref={traceFileInputRef}
-          type="file"
-          accept=".json,application/json"
-          className="hidden"
-          onChange={onTraceFileUpload}
-        />
-        <input
-          ref={manualKgFileInputRef}
-          type="file"
-          accept=".json,.jsonl,application/json"
-          className="hidden"
-          onChange={onManualKgFileUpload}
-        />
-      </div>
-    </header>
-  )
+export function GraphWorkspaceFilters({ state, filters }: Readonly<{ state: UseGraphPageStateResult; filters: UseGraphDisplayFiltersResult }>) {
+  return <GraphFiltersPopover
+    open={state.filtersOpen} onOpenChange={state.setFiltersOpen}
+    activeGraphFilterCount={filters.activeGraphFilterCount}
+    graphNodeCount={filters.displayGraphData.nodes.length} graphLinkCount={filters.displayGraphData.links.length}
+    entityTypeQuery={state.entityTypeQuery} onEntityTypeQueryChange={state.setEntityTypeQuery}
+    entityTypeFilters={state.entityTypeFilters} filteredEntityTypes={filters.filteredEntityTypes}
+    onEntityTypeCheckedChange={filters.handleEntityTypeCheckedChange} onResetEntityTypeFilters={() => state.setEntityTypeFilters([])}
+    predicateQuery={state.predicateQuery} onPredicateQueryChange={state.setPredicateQuery}
+    predicateFilters={state.predicateFilters} filteredPredicates={filters.filteredPredicates}
+    onPredicateCheckedChange={filters.handlePredicateCheckedChange} onResetPredicateFilters={() => state.setPredicateFilters([])}
+    confidenceBucketFilters={state.confidenceBucketFilters} onResetConfidenceBuckets={() => state.setConfidenceBucketFilters([])}
+    onToggleConfidenceBucket={filters.toggleConfidenceBucket} onResetGraphFilters={filters.resetGraphFilters}
+  />
 }

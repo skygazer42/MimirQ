@@ -47,18 +47,6 @@ describe('dataset detail surface shells', () => {
         },
       },
       {
-        routeFile: 'app/datasets/[id]/ingestion/page.tsx',
-        constants: {
-          ingestionToolbarGroupClass: [/rounded-2xl/, /ring-1/, /shadow-\[/, /backdrop-blur/],
-          ingestionToolbarPrimaryButtonClass: [/shadow-\[/],
-          ingestionPanelClass: [/rounded-\[24px\]/, /ring-1/, /shadow-\[/, /backdrop-blur/],
-          ingestionPanelHeaderClass: [/linear-gradient/],
-          ingestionIconPillClass: [/rounded-2xl/, /shadow-\[/],
-          ingestionActionButtonClass: [/shadow-(?:sm|md|lg|xl|2xl|\[)/],
-          ingestionMetricCardClass: [/rounded-2xl/, /ring-1/, /shadow-\[/],
-        },
-      },
-      {
         routeFile: 'app/datasets/[id]/tables/page.tsx',
         constants: {
           tableToolbarGroupClass: [/rounded-2xl/, /ring-1/, /shadow-\[/, /backdrop-blur/],

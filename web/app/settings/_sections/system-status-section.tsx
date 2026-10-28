@@ -2,44 +2,22 @@
 
 import type { BackendMetaDetails, SystemStatus } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { CheckCircle2, Server, XCircle } from 'lucide-react'
-import { systemPageTokens } from '@/components/ui/system-page-tokens'
+import { CheckCircle2, ChevronDown, XCircle } from '@/components/icons'
+import styles from '../settings.module.css'
 
-type SystemStatusSectionProps = {
-  status: SystemStatus
-  backendMeta: BackendMetaDetails | null
-}
+type SystemStatusSectionProps = { status: SystemStatus; backendMeta: BackendMetaDetails | null }
 
-function StatusCard({
-  label,
-  connected,
-  message,
-}: Readonly<{ label: string; connected: boolean; message: string }>) {
+function StatusRow({ label, ready, message, configuration = false }: Readonly<{ label: string; ready: boolean; message: string; configuration?: boolean }>) {
+  const statusLabel = configuration ? ready ? '已配置' : '未配置' : ready ? '已连接' : '未连接'
+  const detail = message && message !== 'connected' && message !== statusLabel ? message : null
   return (
-    <div
-      className={cn(
-        'rounded-lg border bg-info/[0.025] px-3 py-2.5 transition-colors',
-        connected
-          ? 'border-success/20'
-          : 'border-destructive/20'
-      )}
-    >
-      <div className="mb-1.5 flex items-center justify-between">
-        <span className={cn(systemPageTokens.microLabel, 'text-foreground/80')}>{label}</span>
-        {connected ? (
-          <CheckCircle2 className="h-4 w-4 text-success" />
-        ) : (
-          <XCircle className="h-4 w-4 text-destructive" />
-        )}
-      </div>
-      <p
-        className={cn(
-          'truncate text-[11px]',
-          connected ? 'text-success' : 'text-destructive'
-        )}
-      >
-        {message || (connected ? '已连接' : '未连接')}
-      </p>
+    <div className={styles.statusRow}>
+      <dt className={styles.statusName}>{label}</dt>
+      <dd className={cn(styles.statusValue, ready ? 'text-success' : configuration ? 'text-muted-foreground' : 'text-destructive')}>
+        {ready ? <CheckCircle2 className="size-4 shrink-0" /> : <XCircle className="size-4 shrink-0" />}
+        <span>{statusLabel}</span>
+      </dd>
+      {detail ? <dd className={styles.statusDetail}>{detail}</dd> : null}
     </div>
   )
 }
@@ -65,87 +43,55 @@ function formatParserName(key: string): string {
   return labels[key] || key
 }
 
-export function SystemStatusSection({
-  status,
-  backendMeta,
-}: Readonly<SystemStatusSectionProps>) {
-  const parserEntries = Object.entries(status.parsers || {})
-
+export function SystemStatusSection({ status, backendMeta }: Readonly<SystemStatusSectionProps>) {
+  const parsers = Object.entries(status.parsers || {})
+  const availableParsers = parsers.filter(([, info]) => info.available).length
   return (
-    <section className="space-y-3">
-      <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
-        <StatusCard
-          label="PostgreSQL"
-          connected={status.database.connected}
-          message={status.database.message}
-        />
-        <StatusCard
-          label="Milvus"
-          connected={status.milvus.connected}
-          message={status.milvus.message}
-        />
-        <StatusCard
-          label="大语言模型（LLM）"
-          connected={status.llm.configured}
-          message={status.llm.model}
-        />
-        <StatusCard
-          label="向量模型（Embedding）"
-          connected={status.embedding.configured}
-          message={status.embedding.model}
-        />
-      </div>
-
-      {backendMeta || parserEntries.length ? (
-        <div className="rounded-lg border border-info/15 bg-info/[0.025] p-3.5 shadow-none">
-          <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className={cn(systemPageTokens.microLabel, 'flex items-center gap-1.5 text-foreground/80')}>
-                <Server className="h-3.5 w-3.5 text-info" />
-                运行能力
-              </div>
-              <div className="mt-1 text-[11px] font-medium leading-5 text-muted-foreground">
-                API、运行环境与解析器可用性汇总
-              </div>
-            </div>
-            {backendMeta ? (
-              <div className="text-right text-[11px] font-medium leading-5 text-muted-foreground">
-                <div className="text-foreground">
-                  {backendMeta.name} · {backendMeta.api_version}
-                  {backendMeta.build?.sha ? ` · ${backendMeta.build.sha.slice(0, 7)}` : ''}
-                </div>
-                {backendMeta.runtime?.python ? <div>Python {backendMeta.runtime.python}</div> : null}
-              </div>
-            ) : null}
+    <div className={styles.statusGroups}>
+      <section className={styles.statusGroup} aria-labelledby="status-data-title">
+        <header className={styles.statusGroupHeader}>
+          <h3 id="status-data-title" className={styles.statusGroupTitle}>数据服务</h3>
+          <p className={styles.statusGroupHint}>数据库与向量索引</p>
+        </header>
+        <dl className={styles.statusItems}>
+          <StatusRow label="PostgreSQL" ready={status.database.connected} message={status.database.message} />
+          <StatusRow label="向量数据库" ready={status.milvus.connected} message={status.milvus.message} />
+        </dl>
+      </section>
+      <section className={styles.statusGroup} aria-labelledby="status-models-title">
+        <header className={styles.statusGroupHeader}>
+          <h3 id="status-models-title" className={styles.statusGroupTitle}>模型</h3>
+          <p className={styles.statusGroupHint}>对话与文档向量化</p>
+        </header>
+        <dl className={styles.statusItems}>
+          <StatusRow label="语言模型" ready={status.llm.configured} message={status.llm.configured ? status.llm.model : ''} configuration />
+          <StatusRow label="向量模型" ready={status.embedding.configured} message={status.embedding.configured ? status.embedding.model : ''} configuration />
+        </dl>
+      </section>
+      {backendMeta || parsers.length ? (
+        <details open className={styles.statusParsers}>
+          <summary className={cn(styles.statusSummary, 'focus-ring')}>
+            <span>解析器与运行环境</span>
+            {parsers.length ? <span className={styles.statusParserCount}>{availableParsers} / {parsers.length} 可用</span> : null}
+            <ChevronDown className={cn(styles.statusChevron, 'size-4 shrink-0 text-muted-foreground')} />
+          </summary>
+          <div className={styles.statusParserBody}>
+            {parsers.length ? <ul aria-label="解析器状态" className={styles.statusParserList}>
+              {parsers.map(([key, info]) => (
+                <li key={key} title={info.message || formatParserName(key)} className={styles.statusParserRow}>
+                  <span>{formatParserName(key)}</span>
+                  <span className={cn(styles.statusParserState, info.available ? 'text-success' : 'text-muted-foreground')}>{info.available ? '可用' : '未启用'}</span>
+                </li>
+              ))}
+            </ul> : null}
+            {backendMeta ? <dl aria-label="运行环境" className={styles.statusEnvironment}>
+              <div><dt>API 版本</dt><dd>{backendMeta.api_version}</dd></div>
+              {backendMeta.runtime?.python ? <div><dt>Python</dt><dd>{backendMeta.runtime.python}</dd></div> : null}
+              {backendMeta.build?.sha ? <div><dt>构建版本</dt><dd title={backendMeta.build.sha}>{backendMeta.build.sha.slice(0, 7)}</dd></div> : null}
+            </dl> : null}
           </div>
-
-          <div className="flex flex-wrap gap-1.5 border-t border-border/50 pt-3">
-            {parserEntries.map(([key, info]) => (
-              <span
-                key={key}
-                title={info.message || formatParserName(key)}
-                className={cn(
-                  'inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold',
-                  info.available
-                    ? 'border-success/25 bg-success/10 text-success'
-                    : 'border-border/60 bg-muted/35 text-muted-foreground'
-                )}
-              >
-                <span
-                  className={cn(
-                    'size-1.5 rounded-full',
-                    info.available ? 'bg-success' : 'bg-muted-foreground/45'
-                  )}
-                />
-                {formatParserName(key)}
-                <span className="font-medium opacity-75">
-                  {info.available ? '可用' : '未启用'}
-                </span>
-              </span>
-            ))}
-          </div>
-        </div>
+        </details>
       ) : null}
-    </section>
+    </div>
   )
 }

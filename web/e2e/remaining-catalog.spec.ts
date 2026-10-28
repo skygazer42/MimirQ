@@ -1,0 +1,23 @@
+import { test, expect } from '@playwright/test'
+import { datasetRoute, openRemaining, remainingFixture, remainingShot } from './remaining-pages.helpers'
+test('catalog sync failure preserves connection inputs and a reachable footer on phone', async ({ page }) => {
+  const state = await remainingFixture(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.route('**/api/v1/connectors/runs', route => route.request().method() === 'POST' ? route.fulfill({ status: 503, json: { detail: '同步服务暂不可用' } }) : route.fallback())
+  await openRemaining(page, datasetRoute('db-catalog'), '数据库目录')
+  await page.getByRole('button', { name: '新建同步', exact: true }).first().click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('textbox', { name: '主机', exact: true }).fill('verification.invalid')
+  await dialog.getByRole('textbox', { name: '数据库', exact: true }).fill('verification')
+  await dialog.getByRole('textbox', { name: '用户名', exact: true }).fill('ui-verification')
+  await dialog.getByLabel('密码', { exact: true }).fill('isolated-fixture-password')
+  await dialog.getByRole('button', { name: '开始同步', exact: true }).click()
+  await expect(dialog.getByRole('alert').filter({ hasText: '同步服务暂不可用' })).toBeVisible()
+  await expect(dialog.getByRole('textbox', { name: '主机', exact: true })).toHaveValue('verification.invalid')
+  await expect(dialog.getByLabel('密码', { exact: true })).toHaveValue('isolated-fixture-password')
+  await expect(dialog.getByRole('button', { name: '开始同步', exact: true })).toBeVisible()
+  await remainingShot(page, 'after-catalog-sync-phone-failure')
+  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '数据库目录', exact: true })).toBeVisible()
+  expect(state.base.blocked).toEqual([])
+})

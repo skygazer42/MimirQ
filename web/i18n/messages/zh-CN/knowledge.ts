@@ -1,6 +1,6 @@
 const knowledgeMessages = {
 KnowledgeWorkbenchActions: {
-    importOrCreate: '导入/新增',
+    importOrCreate: '导入文档',
   },
 KnowledgeIngestionPage: {
     loadingMessage: '正在加载知识库入库流程...',
@@ -9,8 +9,8 @@ KnowledgeIngestionPage: {
   },
 KnowledgePage: {
     header: {
-      title: '知识库管理',
-      description: '管理您的文档资产，构建专属知识大脑',
+      title: '知识库',
+      description: '管理文档，查看处理状态与检索结果。',
     },
     stats: {
       totalDocuments: '文档总数',
@@ -23,13 +23,10 @@ KnowledgePage: {
     },
     tabs: {
       documents: {
-        label: '文档列表',
+        label: '文档',
       },
       retrieval: {
         label: '检索测试',
-      },
-      settings: {
-        label: '配置',
       },
     },
     dialogs: {
@@ -195,8 +192,8 @@ KnowledgeDocumentsPanel: {
         },
       },
       blank: {
-        title: '知识库空空如也',
-        description: '上传您的第一份文档，MimirQ 将自动解析并构建专属知识索引。',
+        title: '还没有文档',
+        description: '上传文档，完成解析后即可检索。',
         formats: '支持 PDF, TXT, Markdown, Excel, Word 等常见格式。',
       },
     },
@@ -284,62 +281,7 @@ KnowledgeRetrievalPanel: {
       waitingForDataset: '等待选择数据集',
     },
   },
-KnowledgeSettingsPanel: {
-    header: {
-      title: '知识库参数配置',
-      description: '调整系统默认 Embedding、召回数量与阈值，并保留显式保存与风险确认。',
-    },
-    scope: {
-      systemDefault: '作用范围：系统默认值',
-      datasetPurgeScoped: '当前数据集仅用于危险操作：{datasetId}',
-      datasetPurgeUnselected: '未选择数据集时不可执行危险操作',
-    },
-    embedding: {
-      title: 'Embedding 模型',
-      modelHint: '768 维 / 中英支持',
-      description: '仅修改系统默认 embedding 配置，不会自动重建现有文档向量。',
-    },
-    retrieval: {
-      title: '检索模式',
-      options: {
-        vector: {
-          label: '向量检索',
-          description: '基于语义相似度，适合模糊匹配',
-        },
-        fulltext: {
-          label: '全文检索',
-          description: '基于关键词匹配，适合专有名词',
-        },
-        hybrid: {
-          label: '混合检索',
-          description: '向量 + 全文加权，效果最佳',
-        },
-      },
-    },
-    sliders: {
-      topK: {
-        title: '召回数量 (Top K)',
-        description: '单次检索返回的最大片段数，建议 3-8 之间',
-      },
-      similarity: {
-        title: '相似度阈值',
-        description: '过滤低相关度的结果，值越大匹配越精准',
-      },
-    },
-    runtimeMode: {
-      title: '检索模式说明',
-      description: '实际 retrieval mode 由请求参数、检索 profile 或运行时策略决定，这里不做系统级强制覆盖。',
-      chips: {
-        hybrid: 'Hybrid 优先',
-        vector: 'Vector 直达',
-        keyword: 'Keyword / MMR',
-      },
-    },
-    alerts: {
-      embeddingWarningTitle: 'Embedding 变更不会自动重建历史向量',
-      embeddingWarningDescription: '保存后只会更新系统默认配置。已有文档如果要切换到新模型，需要在文档列表手动重新入库，或走 shadow migration 流程。',
-      loadFailedTitle: '配置加载失败',
-    },
+KnowledgeConnectorRunsPanel: {
     runStatus: {
       all: '全部状态',
       pending: '等待',
@@ -347,19 +289,6 @@ KnowledgeSettingsPanel: {
       failed: '失败',
       completed: '已完成',
       cancelled: '已取消',
-    },
-    aclModes: {
-      inherit: '继承',
-      onlyMe: '仅我',
-      allTeamMembers: '全员',
-      partialMembers: '白名单',
-      mixed: '混合',
-    },
-    syncCapabilities: {
-      incrementalAndResume: '源增量 + 续跑',
-      incremental: '源增量',
-      resumeOnly: '仅续跑',
-      full: '全量',
     },
     connectorRuns: {
       emptyValue: '—',
@@ -451,61 +380,6 @@ KnowledgeSettingsPanel: {
           confirm: '创建重试任务',
         },
       },
-    },
-    dangerZone: {
-      title: '危险操作',
-      description: '仅用于管理员生命周期治理：批量删除数据集内的文档（不删除数据集本身）。默认',
-      descriptionSuffix: '预览。',
-      selectDatasetTitle: '请先选择一个数据集',
-      trigger: '清空数据集文档',
-      dialog: {
-        title: '清空数据集文档？',
-        descriptionPrefix: '将调用',
-        descriptionMiddle: '，每次最多删除',
-        descriptionSuffix: '条。若数据集有扫描任务（pending/running），后端会返回 409。',
-      },
-      maxDelete: 'max_delete',
-      preview: '预览（dry-run）',
-      previewSummaryLabel: 'preview',
-      datasetLabel: 'dataset_id',
-      previewHint: '建议先点击“预览（dry-run）”确认 eligible 数量，再执行清空。',
-      cancel: '返回',
-      confirm: '确认清空',
-    },
-    actions: {
-      reload: '重新加载',
-      reset: '恢复草稿',
-      saveAll: '保存所有更改',
-    },
-    dialogs: {
-      embeddingChange: {
-        title: '确认切换 Embedding 模型？',
-        description: '这会更新系统默认 embedding 配置，但不会自动迁移历史向量索引。',
-        impact: '保存后，新导入内容会使用新的 embedding 模型；已有文档仍需手动重新入库或走蓝绿迁移流程，才能与新模型保持一致。',
-        cancel: '返回',
-        confirm: '继续保存',
-      },
-    },
-    footer: {
-      loading: '正在加载系统配置…',
-      unsaved: '有 {count} 项未保存修改',
-      savedAt: '最近一次保存于 {time}',
-      synced: '当前草稿与系统配置一致',
-    },
-    toasts: {
-      loadFailed: '加载系统配置失败',
-      copyUnsupported: '复制失败：浏览器不支持 Clipboard API',
-      copyFailed: '复制失败',
-      saveSuccess: '配置已保存',
-      saveSuccessEmbeddingChanged: '配置已保存；Embedding 模型已更新，现有文档需手动重新入库',
-      saveFailed: '保存系统配置失败',
-      selectDatasetFirst: '请先选择一个数据集',
-      purgePreviewReady: '已预览：eligible={eligible}',
-      purgeCompleted: '已清空：deleted={deleted}（如还有剩余可重复执行）',
-      purgeFailed: '清空数据集失败',
-      copyRunId: '已复制 run_id',
-      copyTaskLink: '已复制任务链接',
-      copyDocumentIds: '已复制文档 ID 列表',
     },
   }
 } as const

@@ -17,7 +17,7 @@ import { WebVitalsReporter } from "@/components/providers/web-vitals-reporter"
 import { RouteScrollReset } from "@/components/route-scroll-reset"
 import { AuthGuard } from "@/components/auth-guard"
 import { resolveRequestDocumentSettings } from '@/lib/document-language'
-import { MIMIRQ_MARK_PATH } from '@/lib/brand'
+import { BRAND_ASSETS, BRAND_DESCRIPTION, BRAND_NAME } from '@/lib/brand'
 import {
   getThemeColorTokens,
   normalizeSurfaceTheme,
@@ -27,15 +27,15 @@ import {
 } from '@/lib/theme-surface'
 
 export const metadata: Metadata = {
-  title: "MimirQ - 可检查、可回归的 RAG 知识库",
-  description: "可观察、可替换、可回归的企业 RAG 基础设施",
+  title: `${BRAND_NAME} - 知识库`,
+  description: BRAND_DESCRIPTION,
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [
-      { url: MIMIRQ_MARK_PATH, sizes: "512x512", type: "image/png", media: "(prefers-color-scheme: light)" },
-      { url: MIMIRQ_MARK_PATH, sizes: "512x512", type: "image/png", media: "(prefers-color-scheme: dark)" },
+      { url: BRAND_ASSETS.favicon, sizes: "any", type: "image/svg+xml" },
+      { url: BRAND_ASSETS.icon192, sizes: "192x192", type: "image/png" },
     ],
-    apple: [{ url: MIMIRQ_MARK_PATH, sizes: "512x512", type: "image/png" }],
+    apple: [{ url: BRAND_ASSETS.appIcon, sizes: "512x512", type: "image/png" }],
   },
 }
 

@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { FileText, Loader2 } from "lucide-react"
+import { FileText, Loader2 } from "@/components/icons"
 
 import type { DocumentPreviewAnchor } from "@/lib/document-preview-anchor"
 import { buildDocumentPreviewBboxOverlay } from "@/lib/document-preview-anchor"

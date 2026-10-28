@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
-import { Download, FolderTree, Loader2, TableProperties } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+import { Download, FolderTree, Loader2, TableProperties } from '@/components/icons'
+import type { PlatformIcon } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -142,7 +142,7 @@ function ActionButton({
 }: Readonly<{
   busy: boolean
   disabled: boolean
-  icon: LucideIcon
+  icon: PlatformIcon
   label: string
   onClick: () => Promise<void>
 }>) {

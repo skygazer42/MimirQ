@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
 from app.api.utils.http_exception_responses import DEFAULT_HTTP_EXCEPTION_RESPONSES
-from app.api.v1 import document_stats, health, ltr, rbac, reports, rtbf
+from app.api.v1 import document_stats, health, rbac, reports, rtbf
 
 EXPECTED_DESCRIPTIONS = {
     "400": "Bad Request",
@@ -19,7 +19,6 @@ def _build_app() -> FastAPI:
     app.include_router(rtbf.router, prefix="/api/v1/rtbf")
     app.include_router(reports.router, prefix="/api/v1/reports")
     app.include_router(rbac.router, prefix="/api/v1/rbac")
-    app.include_router(ltr.router, prefix="/api/v1/ltr")
     return app
 
 
@@ -39,7 +38,7 @@ def test_shared_http_exception_responses_match_the_common_contract() -> None:
 
 
 def test_selected_routes_reuse_one_shared_http_exception_mapping() -> None:
-    route_modules = [health, document_stats, rtbf, reports, rbac, ltr]
+    route_modules = [health, document_stats, rtbf, reports, rbac]
     for module in route_modules:
         assert module._DEFAULT_HTTP_EXCEPTION_RESPONSES is DEFAULT_HTTP_EXCEPTION_RESPONSES
         assert module.router.responses is DEFAULT_HTTP_EXCEPTION_RESPONSES
@@ -55,4 +54,3 @@ def test_selected_routes_keep_openapi_http_exception_contracts() -> None:
     _assert_default_responses(schema, "/api/v1/rtbf/status/{ticket_id}", "get")
     _assert_default_responses(schema, "/api/v1/reports/datasets/{dataset_id}", "get")
     _assert_default_responses(schema, "/api/v1/rbac/me", "get")
-    _assert_default_responses(schema, "/api/v1/ltr/models", "get")

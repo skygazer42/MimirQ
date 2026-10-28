@@ -3,7 +3,7 @@
 import { cn } from '@/lib/utils'
 import { getChunkStrategyOption, getStrategiesByGroup } from '@/lib/chunk-strategies'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
-import { Layers } from 'lucide-react'
+import { Layers } from '@/components/icons'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 
 interface ChunkStrategySelectProps {

@@ -9,7 +9,7 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import { Wand2, Loader2, X, Download } from 'lucide-react'
+import { Wand2, Loader2, X, Download } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'

@@ -1,6 +1,6 @@
 'use client'
 
-import { Activity } from 'lucide-react'
+import { Activity } from '@/components/icons'
 
 import { readClientStorage, writeClientStorage } from '@/lib/client-storage'
 import { cn } from '@/lib/utils'

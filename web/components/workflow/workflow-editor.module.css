@@ -1,0 +1,8 @@
+.canvas { width: 100%; height: 100%; background: hsl(var(--muted) / .22); }
+.canvas .node { border: 1px solid hsl(var(--border)); border-left: 3px solid hsl(var(--primary) / .65); border-radius: 8px; padding: 16px; color: hsl(var(--foreground)); background: hsl(var(--card)); font-family: inherit; font-size: 14px; font-weight: 550; box-shadow: none; }
+.canvas .node:hover, .canvas .node:global(.selected) { border-color: hsl(var(--primary)); box-shadow: 0 0 0 2px hsl(var(--primary) / .08); }
+.canvas :global(.react-flow__handle) { background: hsl(var(--muted-foreground)); border-color: hsl(var(--card)); }
+.canvas .controls { border: 1px solid hsl(var(--border)); border-radius: 8px; overflow: hidden; box-shadow: none; }
+.controls :global(.react-flow__controls-button) { background: hsl(var(--card)); color: hsl(var(--foreground)); border-color: hsl(var(--border)); fill: currentColor; width: 36px; height: 36px; }
+.controls :global(.react-flow__controls-button):hover { background: hsl(var(--muted)); }
+@media (max-width: 640px) { .controls :global(.react-flow__controls-button) { width: 44px; height: 44px; } }

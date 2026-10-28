@@ -3,13 +3,12 @@
  * 功能：质量检测、智能清洗、数据标注、分类归档
  */
 'use client'
+import { FeedbackToast } from '@/components/feedback-toast'
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import Image from 'next/image'
+import { DataGovernance } from '@/components/icons'
 import {
-  ShieldCheck,
-  Sparkles,
   Tag,
   FolderTree,
   FileText,
@@ -17,32 +16,20 @@ import {
   Save,
   RotateCcw,
   Trash2,
-  Eye,
   Search,
   Wrench,
   ScanLine,
   FileSearch,
-  Hash,
-  Layers,
   X,
-  Info,
   AlertTriangle,
-  Copy,
   Check,
-  PanelRightOpen,
-  PanelRightClose,
-} from 'lucide-react'
+  ArrowLeft, ArrowRight, ChevronRight, ListChecks, Loader2, Plus, SlidersHorizontal, PanelRightOpen, PanelRightClose,
+} from '@/components/icons'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
-import {
-  KnowledgeOpsFlowCard,
-  KnowledgeOpsHero,
-  KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS,
-} from '@/components/ui/knowledge-ops-hero'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -57,7 +44,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { WorkbenchScaffold } from '@/components/workbench'
+import styles from '@/components/data-governance/governance-inbox.module.css'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
+import { GovernanceProfileSelector } from '@/components/governance-profile-selector'
+import { usePipelineOptions } from '@/contexts/pipeline-options-context'
+import type { DocumentPipelineOptions } from '@/types'
+import { getAuthCacheScope } from '@/lib/auth-storage'
+import { formatApiError } from '@/lib/api-errors'
 import { useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { useRouter } from '@/i18n/navigation'
@@ -66,8 +60,8 @@ import {
   useParsedFiles,
   type ParsedFileData,
 } from '@/store/use-parsed-files-store'
-import { cn, formatFileSize, detachPromise } from '@/lib/utils'
-import { getDocContentFromCache } from '@/lib/doc-content-cache'
+import { cn, formatFileSize } from '@/lib/utils'
+import { saveDocContentToCache, getDocContentFromCache } from '@/lib/doc-content-cache'
 import { QualityChecker } from '@/components/data-governance/quality-checker'
 import { DataCleaner } from '@/components/data-governance/data-cleaner'
 import { DataAnnotator } from '@/components/data-governance/data-annotator'
@@ -90,55 +84,13 @@ import { getParserLabel } from '@/lib/parser-options'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 
 const GOVERNANCE_TAB_CONFIGS = [
-  { id: 'quality', icon: ScanLine, color: 'info' },
-  { id: 'clean', icon: Wrench, color: 'teal' },
-  { id: 'annotate', icon: Tag, color: 'accent' },
-  { id: 'classify', icon: FolderTree, color: 'orange' },
+  { id: 'quality', icon: ScanLine, color: 'process' },
+  { id: 'clean', icon: Wrench, color: 'governance' },
+  { id: 'annotate', icon: Tag, color: 'knowledge' },
+  { id: 'classify', icon: FolderTree, color: 'source' },
 ] as const
 
 type GovernanceTab = (typeof GOVERNANCE_TAB_CONFIGS)[number]['id']
-type GovernanceTabColor = (typeof GOVERNANCE_TAB_CONFIGS)[number]['color']
-
-// Tailwind needs literal class strings — keep this map close to the consts.
-const TAB_COLOR_CLASSES: Record<
-  GovernanceTabColor,
-  {
-    active: string
-    icon: string
-    ring: string
-    ringStatic: string
-    dot: string
-  }
-> = {
-  info: {
-    active: 'bg-info/10 text-info ring-info/25',
-    icon: 'text-info',
-    ring: 'focus-visible:ring-info/30',
-    ringStatic: 'ring-info/25',
-    dot: 'bg-info',
-  },
-  teal: {
-    active: 'bg-teal/10 text-teal ring-teal/25',
-    icon: 'text-teal',
-    ring: 'focus-visible:ring-teal/30',
-    ringStatic: 'ring-teal/25',
-    dot: 'bg-teal',
-  },
-  accent: {
-    active: 'bg-accent/10 text-accent ring-accent/25',
-    icon: 'text-accent',
-    ring: 'focus-visible:ring-accent/30',
-    ringStatic: 'ring-accent/25',
-    dot: 'bg-accent',
-  },
-  orange: {
-    active: 'bg-orange/10 text-orange ring-orange/25',
-    icon: 'text-orange',
-    ring: 'focus-visible:ring-orange/30',
-    ringStatic: 'ring-orange/25',
-    dot: 'bg-orange',
-  },
-}
 type DatasetOption = {
   id: string
   name: string
@@ -151,114 +103,7 @@ type GovernanceParsingDocument = Awaited<
   ReturnType<typeof parsingApi.listDocuments>
 >['items'][number]
 
-function getGovernanceNextChunkStatus(
-  fileId: string,
-  markReadyFileIds: Set<string>,
-  markSubmittedFileIds: Set<string>
-): 'ready' | 'submitted' | undefined {
-  if (markSubmittedFileIds.has(fileId)) return 'submitted'
-  if (markReadyFileIds.has(fileId)) return 'ready'
-  return undefined
-}
-
-function getScoreBadgeClass(score: number): string {
-  if (score >= 80) return 'bg-success/12 text-success border-success/25'
-  if (score >= 60) return 'bg-warning/15 text-warning border-warning/30'
-  return 'bg-rose/12 text-rose border-rose/25'
-}
-
-function getAvgScoreGradientClass(avgScore: number): string {
-  if (avgScore >= 80) return 'from-success/80 via-success to-success'
-  if (avgScore >= 60) return 'from-warning/70 via-warning to-warning'
-  if (avgScore > 0) return 'from-rose/70 via-rose to-rose'
-  return 'from-info/40 to-info/70'
-}
-
 const ALL_DATASETS_VALUE = '__all_datasets__'
-const EMPTY_UPLOAD_FORMATS = ['PDF', 'Word', 'Excel', 'TXT', 'MD', 'ZIP'] as const
-const EMPTY_UPLOAD_STEPS = ['parse', 'quality', 'clean'] as const
-
-type DataGovernanceTranslator = ReturnType<typeof useTranslations>
-
-function EmptyStructurePreview({
-  t,
-}: Readonly<{ t: DataGovernanceTranslator }>) {
-  const previewNodes = [
-    {
-      label: t('emptyUpload.structureNodes.root'),
-      value: '0',
-      tone: 'primary',
-    },
-    {
-      label: t('emptyUpload.structureNodes.sections'),
-      value: '—',
-      tone: 'info',
-    },
-    {
-      label: t('emptyUpload.structureNodes.signals'),
-      value: '—',
-      tone: 'success',
-    },
-  ] as const
-
-  return (
-    <div
-      data-governance-empty-structure-rail="true"
-      className="relative border-l border-border/70 pl-4"
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-primary/75">
-            {t('emptyUpload.structureTitle')}
-          </div>
-          <div className="mt-1 text-sm font-semibold tracking-[-0.01em] text-foreground">
-            {t('emptyUpload.structureEmptyTitle')}
-          </div>
-        </div>
-        <div className="grid size-9 place-items-center rounded-xl bg-primary/10 text-primary">
-          <FolderTree className="size-4" />
-        </div>
-      </div>
-
-      <p className="mt-2 text-xs leading-5 text-muted-foreground">
-        {t('emptyUpload.structureEmptyDescription')}
-      </p>
-
-      <div className="mt-4 divide-y divide-border/50">
-        {previewNodes.map((node, index) => (
-          <div
-            key={node.label}
-            className="grid grid-cols-[2rem_minmax(0,1fr)_3.5rem] items-center gap-3 py-2.5"
-          >
-            <span
-              aria-hidden
-              className={cn(
-                'text-[11px] font-semibold tabular-nums',
-                node.tone === 'primary' && 'text-primary',
-                node.tone === 'info' && 'text-info',
-                node.tone === 'success' && 'text-success'
-              )}
-            >
-              {node.value}
-            </span>
-            <span className="min-w-0 text-xs font-medium text-foreground/86">
-              {node.label}
-            </span>
-            <span
-              aria-hidden
-              className={cn(
-                'h-1.5 justify-self-end rounded-full',
-                index === 0 && 'w-14 bg-primary/28',
-                index === 1 && 'w-10 bg-info/22',
-                index === 2 && 'w-8 bg-success/22'
-              )}
-            />
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
 
 function normalizeBackendCandidate(value: unknown): string {
   return typeof value === 'string' && value.trim() ? value.trim() : ''
@@ -375,6 +220,7 @@ interface FileGovernanceState {
   tags: string[]
   category: string | null
   qualityScore: number
+  qualityChecked: boolean
   issues: Array<{
     id: string
     type: 'error' | 'warning' | 'info'
@@ -386,6 +232,7 @@ interface FileGovernanceState {
 
 export function DataGovernancePanel() {
   const t = useTranslations('DataGovernancePanel')
+  const { updateOption, setEnabled } = usePipelineOptions()
   const router = useRouter()
   const searchParams = useSearchParams()
   const files = useParsedFiles((state) => state.files)
@@ -424,7 +271,6 @@ export function DataGovernancePanel() {
   )
   const uploadAbortRef = useRef<AbortController | null>(null)
   const headerTitle = t('header.title')
-  const headerSubtitle = t('header.subtitle')
   const governanceTabs = useMemo(
     () =>
       GOVERNANCE_TAB_CONFIGS.map(({ id, icon, color }) => ({
@@ -494,15 +340,6 @@ export function DataGovernancePanel() {
   const selectedDatasetName = selectedDatasetId
     ? datasetNameById.get(selectedDatasetId) || selectedDatasetId
     : null
-  const activeFolderLabel = useMemo(() => {
-    if (!activeFolderId || activeFolderId === ROOT_FOLDER_ID)
-      return t('sidebar.allFolders')
-    return (
-      libraryFolders.find((folder) => folder.id === activeFolderId)?.name ||
-      t('sidebar.rootFolder')
-    )
-  }, [activeFolderId, libraryFolders, t])
-
   const documentSyncQuery = useQuery({
     queryKey: [
       'data-governance',
@@ -533,6 +370,8 @@ export function DataGovernancePanel() {
           knowledgeResult.reason
         )
       }
+
+      if (parsingResult.status === 'rejected' && knowledgeResult.status === 'rejected') throw new Error('文档队列加载失败，请检查 API 后重试。')
 
       const parsingItems =
         parsingResult.status === 'fulfilled'
@@ -571,6 +410,7 @@ export function DataGovernancePanel() {
           file.originalMarkdownContent || remote.originalMarkdownContent,
         folderId: file.folderId || remote.folderId || ROOT_FOLDER_ID,
         governanceStatus: file.governanceStatus || remote.governanceStatus,
+        governanceReview: file.governanceReview,
         chunkStatus: file.chunkStatus || remote.chunkStatus,
       }
     })
@@ -609,92 +449,33 @@ export function DataGovernancePanel() {
     () => new Set()
   )
 
-  // 侧边栏状态
-  const [sidebarWidth, setSidebarWidth] = useState(280)
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
-  const [isResizing, setIsResizing] = useState(false)
-  const sidebarRef = useRef<HTMLDivElement>(null)
-
-  // 治理面板状态（右侧）
-  const [panelWidth, setPanelWidth] = useState(400)
-  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false)
-  const [isPanelResizing, setIsPanelResizing] = useState(false)
-  const panelRef = useRef<HTMLDivElement>(null)
   const contentScrollRef = useRef<HTMLDivElement>(null)
-
-  // When switching the selected file, reset the main preview pane so it doesn't look"half scrolled".
+  const toolboxScrollRef = useRef<HTMLDivElement>(null)
+  const editorRef = useRef<HTMLTextAreaElement>(null)
+  const queueItemRefs = useRef(new Map<string, HTMLButtonElement>())
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [search, setSearch] = useState('')
+  const [mobileReader, setMobileReader] = useState(false)
+  const [configOpen, setConfigOpen] = useState(false)
+  const [toolsOpen, setToolsOpen] = useState(true)
+  const [batchMode, setBatchMode] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [activeIssueId, setActiveIssueId] = useState<string | null>(null)
   useEffect(() => {
-    if (!selectedFileId) return
-    const raf = globalThis.window.requestAnimationFrame(() => {
-      contentScrollRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' })
-    })
-    return () => globalThis.window.cancelAnimationFrame(raf)
+    setActiveIssueId(null)
+    setSaveError(null)
+    setViewMode('preview')
+    contentScrollRef.current?.scrollTo({ top: 0 })
   }, [selectedFileId])
-
-  const startResizing = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    setIsResizing(true)
-  }, [])
-
-  const startPanelResizing = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    setIsPanelResizing(true)
-  }, [])
-
-  const stopResizing = useCallback(() => {
-    setIsResizing(false)
-    setIsPanelResizing(false)
-  }, [])
-
-  const resize = useCallback(
-    (mouseMoveEvent: MouseEvent) => {
-      if (isResizing && sidebarRef.current) {
-        // 计算相对于视口的位置
-        const sidebarLeft = sidebarRef.current.getBoundingClientRect().left
-        const newWidth = mouseMoveEvent.clientX - sidebarLeft
-
-        // 限制最小和最大宽度
-        if (newWidth > 200 && newWidth < 500) {
-          setSidebarWidth(newWidth)
-        }
-      }
-
-      if (isPanelResizing && panelRef.current) {
-        // 右侧面板宽度 = 视口宽度 - 鼠标 X
-        const newWidth = globalThis.window.innerWidth - mouseMoveEvent.clientX
-
-        if (newWidth > 300 && newWidth < 800) {
-          setPanelWidth(newWidth)
-        }
-      }
-    },
-    [isResizing, isPanelResizing]
-  )
-
   useEffect(() => {
-    if (isResizing || isPanelResizing) {
-      globalThis.window.addEventListener('mousemove', resize)
-      globalThis.window.addEventListener('mouseup', stopResizing)
-    }
-    return () => {
-      globalThis.window.removeEventListener('mousemove', resize)
-      globalThis.window.removeEventListener('mouseup', stopResizing)
-    }
-  }, [isResizing, isPanelResizing, resize, stopResizing])
+    toolboxScrollRef.current?.scrollTo({ top: 0 })
+  }, [selectedFileId, activeTab])
 
   const scopedFiles = useMemo(() => {
     if (!selectedDatasetId) return files
     return files.filter((file) => file.datasetId === selectedDatasetId)
   }, [files, selectedDatasetId])
-
-  const datasetDocumentCounts = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const file of files) {
-      if (!file.datasetId) continue
-      counts.set(file.datasetId, (counts.get(file.datasetId) || 0) + 1)
-    }
-    return counts
-  }, [files])
 
   // 选中的文件
   const selectedFile = scopedFiles.find((f) => f.id === selectedFileId) || null
@@ -762,6 +543,7 @@ export function DataGovernancePanel() {
       id: string
       markdownContent: string
       originalMarkdownContent?: string
+      governanceReview?: ParsedFileData['governanceReview']
     }) => {
       const originalContent =
         file.originalMarkdownContent ?? file.markdownContent
@@ -777,14 +559,14 @@ export function DataGovernancePanel() {
           const hasIncomingContent = Boolean(
             originalContent.trim() || cleanedContent.trim()
           )
-          if (hasAnyExistingContent || !hasIncomingContent) return prev
+          if (existing.isModified || hasAnyExistingContent || !hasIncomingContent) return prev
           return {
             ...prev,
             [file.id]: {
               ...existing,
               originalContent,
               cleanedContent,
-              isModified: cleanedContent !== originalContent,
+              isModified: false,
             },
           }
         }
@@ -794,12 +576,13 @@ export function DataGovernancePanel() {
             id: file.id,
             originalContent,
             cleanedContent,
-            annotations: [],
-            tags: [],
-            category: null,
-            qualityScore: 0,
-            issues: [],
-            isModified: cleanedContent !== originalContent,
+            annotations: file.governanceReview?.annotations || [],
+            tags: file.governanceReview?.tags || [],
+            category: file.governanceReview?.category || null,
+            qualityScore: file.governanceReview?.qualityScore ?? 0,
+            qualityChecked: file.governanceReview?.qualityScore != null,
+            issues: file.governanceReview?.issues || [],
+            isModified: false,
           },
         }
       })
@@ -807,101 +590,45 @@ export function DataGovernancePanel() {
     []
   )
 
-  // Ensure markdown is available after refresh: load from IndexedDB cache first, fallback to backend.
-  useEffect(() => {
-    const file = selectedFile
-    if (!file) return
-    const id = (file?.id || '').trim()
-    if (!id) return
-    if ((file?.markdownContent || '').trim()) {
-      initializeGovernanceState(file)
-      return
-    }
-
-    let cancelled = false
-    ;(async () => {
-      try {
-        const cached = await getDocContentFromCache(id)
-        if (cancelled) return
-        const markdown = (cached?.markdownContent || '').trim()
-        const original = (cached?.originalMarkdownContent || '').trim()
-        if (markdown || original) {
-          const nextMarkdown = markdown || original
-          const nextOriginal = original || markdown
-          updateParsedFile(id, {
-            markdownContent: nextMarkdown,
-            originalMarkdownContent: nextOriginal,
-          })
-          initializeGovernanceState({
-            id,
-            markdownContent: nextMarkdown,
-            originalMarkdownContent: nextOriginal,
-          })
-          return
-        }
-      } catch {
-        // ignore
+  const hasStoredContent = Boolean(selectedFile?.markdownContent || selectedFile?.originalMarkdownContent)
+  const contentQuery = useQuery({
+    queryKey: ['data-governance', 'content', selectedFile?.id, selectedFile?.source],
+    enabled: Boolean(selectedFile && !hasStoredContent),
+    retry: false,
+    queryFn: async () => {
+      const file = selectedFile!
+      const cached = await getDocContentFromCache(file.id).catch(() => null)
+      if (cached) return {
+        id: file.id, markdownContent: cached.markdownContent,
+        originalMarkdownContent: cached.originalMarkdownContent ?? cached.markdownContent,
       }
-
-      try {
-        const remote =
-          file?.source === 'knowledge_base'
-            ? await documentApi.getParsedContent(id, { max_chars: 2_000_000 })
-            : await parsingApi.getContent(id)
-        if (cancelled) return
-        const markdown = (remote?.markdown_content || '').trim()
-        const original = (remote?.original_markdown_content || '').trim()
-        if (!markdown && !original) return
-        const nextMarkdown = markdown || original
-        const nextOriginal = original || markdown
-        updateParsedFile(id, {
-          markdownContent: nextMarkdown,
-          originalMarkdownContent: nextOriginal,
-        })
-        initializeGovernanceState({
-          id,
-          markdownContent: nextMarkdown,
-          originalMarkdownContent: nextOriginal,
-        })
-      } catch {
-        // ignore
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [initializeGovernanceState, selectedFile, updateParsedFile])
-
-  const handleDeleteFile = useCallback(
-    (fileId: string) => {
-      const target = files.find((f) => f.id === fileId)
-      if (!target) return
-
-      detachPromise(
-        (async () => {
-          try {
-            await parsingApi.delete(fileId)
-          } catch {
-            // ignore: some entries may be local-only or already deleted on the backend
-          }
-        })()
-      )
-
-      removeFile(fileId)
-      setGovernanceStates((prev) => {
-        if (!prev[fileId]) return prev
-        const next = { ...prev }
-        delete next[fileId]
-        return next
-      })
-      if (selectedFileId === fileId) {
-        setSelectedFileId(null)
-      }
-      toast.success(t('toasts.fileDeleted'))
+      const remote = file.source === 'knowledge_base'
+        ? await documentApi.getParsedContent(file.id, { max_chars: 2_000_000 })
+        : await parsingApi.getContent(file.id)
+      return { id: file.id, markdownContent: remote.markdown_content ?? '',
+        originalMarkdownContent: remote.original_markdown_content ?? remote.markdown_content ?? '' }
     },
-    [files, removeFile, selectedFileId, t]
-  )
+  })
+  useEffect(() => {
+    if (!selectedFile) return
+    if (hasStoredContent) initializeGovernanceState(selectedFile)
+    else if (contentQuery.data?.id === selectedFile.id) initializeGovernanceState({ ...selectedFile, ...contentQuery.data })
+  }, [selectedFile, hasStoredContent, contentQuery.data, initializeGovernanceState])
+
+  const handleDeleteFile = useCallback(async (fileId: string) => {
+    const target = files.find(file => file.id === fileId)
+    if (!target) return
+    try {
+      if (target.source === 'knowledge_base') await documentApi.delete(fileId)
+      else if (target.source === 'parsing_workspace') await parsingApi.delete(fileId)
+      removeFile(fileId)
+      setGovernanceStates(prev => { const next = { ...prev }; delete next[fileId]; return next })
+      setDeleteFileOpen(false)
+      toast.success(t('toasts.fileDeleted'))
+    } catch (error) {
+      toast.error(formatApiError(error, '删除失败，文档已保留。'))
+    }
+  }, [files, removeFile, t])
 
   // 初始化时自动选择第一个文件
   useEffect(() => {
@@ -1135,7 +862,6 @@ export function DataGovernancePanel() {
       ? governanceState.originalContent
       : governanceState.cleanedContent
   }, [governanceState, viewMode])
-  const libraryOnlyNotice = t('libraryFile.notice')
 
   // 文件选择
   const handleSelectFile = useCallback(
@@ -1144,6 +870,7 @@ export function DataGovernancePanel() {
       if (file) {
         setSelectedFileId(fileId)
         initializeGovernanceState(file)
+        setMobileReader(true)
       }
     },
     [scopedFiles, initializeGovernanceState]
@@ -1158,66 +885,58 @@ export function DataGovernancePanel() {
         [selectedFileId]: {
           ...prev[selectedFileId],
           cleanedContent: newContent,
-          isModified: true, // 手动修改也视为已修改
+          isModified: true,
+          qualityChecked: false,
+          issues: [],
+          annotations: [],
         },
       }))
     },
     [selectedFileId]
   )
 
-  // 质量检测完成回调
   const handleQualityCheck = useCallback(
     (result: { score: number; issues: FileGovernanceState['issues'] }) => {
       if (!selectedFileId) return
-      setGovernanceStates((prev) => ({
-        ...prev,
-        [selectedFileId]: {
-          ...prev[selectedFileId],
-          qualityScore: result.score,
-          issues: result.issues,
-        },
-      }))
-    },
-    [selectedFileId]
+      const source = governanceState?.cleanedContent
+      setGovernanceStates(prev => {
+        const current = prev[selectedFileId]
+        if (!current || current.cleanedContent !== source) return prev
+        return { ...prev, [selectedFileId]: { ...current, qualityScore: result.score, qualityChecked: true, issues: result.issues, isModified: true } }
+      })
+    }, [selectedFileId, governanceState?.cleanedContent]
   )
-
-  // 清洗完成回调
-  const handleClean = useCallback(
-    (cleanedContent: string) => {
-      if (!selectedFileId) return
-      setGovernanceStates((prev) => ({
-        ...prev,
-        [selectedFileId]: {
-          ...prev[selectedFileId],
-          cleanedContent,
-          isModified: cleanedContent !== prev[selectedFileId].originalContent,
-        },
-      }))
-    },
-    [selectedFileId]
-  )
+  const handleClean = useCallback((cleanedContent: string) => {
+    if (!selectedFileId) return
+    const source = governanceState?.cleanedContent
+    setGovernanceStates(prev => {
+      const current = prev[selectedFileId]
+      if (!current || current.cleanedContent !== source) return prev
+      return { ...prev, [selectedFileId]: { ...current, cleanedContent, isModified: true, qualityChecked: false, issues: [], annotations: [] } }
+    })
+  }, [selectedFileId, governanceState?.cleanedContent])
 
   // 标注完成回调
   const handleAnnotate = useCallback(
     (annotations: FileGovernanceState['annotations']) => {
       if (!selectedFileId) return
-      setGovernanceStates((prev) => ({
-        ...prev,
-        [selectedFileId]: {
-          ...prev[selectedFileId],
-          annotations,
-          isModified: true,
-        },
-      }))
+      const source = governanceState?.cleanedContent
+      setGovernanceStates(prev => {
+        const current = prev[selectedFileId]
+        if (!current || current.cleanedContent !== source) return prev
+        return { ...prev, [selectedFileId]: { ...current, annotations, isModified: true } }
+      })
     },
-    [selectedFileId]
+    [selectedFileId, governanceState?.cleanedContent]
   )
 
   const handleDocumentTags = useCallback(
     (tags: string[]) => {
       if (!selectedFileId) return
+      const source = governanceState?.cleanedContent
       setGovernanceStates((prev) => {
         const current = prev[selectedFileId]
+        if (!current || current.cleanedContent !== source) return prev
         const mergedTags = Array.from(
           new Set([...(current.tags || []), ...tags.filter(Boolean)])
         )
@@ -1231,24 +950,21 @@ export function DataGovernancePanel() {
         }
       })
     },
-    [selectedFileId]
+    [selectedFileId, governanceState?.cleanedContent]
   )
 
   // 分类完成回调
   const handleClassify = useCallback(
     (category: string, tags: string[]) => {
       if (!selectedFileId) return
-      setGovernanceStates((prev) => ({
-        ...prev,
-        [selectedFileId]: {
-          ...prev[selectedFileId],
-          category,
-          tags,
-          isModified: true,
-        },
-      }))
+      const source = governanceState?.cleanedContent
+      setGovernanceStates(prev => {
+        const current = prev[selectedFileId]
+        if (!current || current.cleanedContent !== source) return prev
+        return { ...prev, [selectedFileId]: { ...current, category, tags, isModified: true } }
+      })
     },
-    [selectedFileId]
+    [selectedFileId, governanceState?.cleanedContent]
   )
 
   // 重置文件状态
@@ -1263,1331 +979,224 @@ export function DataGovernancePanel() {
         tags: [],
         category: null,
         qualityScore: 0,
+        qualityChecked: false,
         issues: [],
-        isModified: false,
+        isModified: true,
       },
     }))
   }, [selectedFileId, governanceState])
 
-  // 将治理后的内容写回共享存储，供 /chunk-preview 使用最新版本
-  const persistGovernanceEdits = useCallback(
-    (options?: {
-      markReadyFileIds?: Set<string>
-      markSubmittedFileIds?: Set<string>
-    }) => {
-      const markReadyFileIds = options?.markReadyFileIds || new Set<string>()
-      const markSubmittedFileIds =
-        options?.markSubmittedFileIds || new Set<string>()
-
-      for (const f of files) {
-        const state = governanceStates[f.id]
-        const nextChunkStatus = getGovernanceNextChunkStatus(
-          f.id,
-          markReadyFileIds,
-          markSubmittedFileIds
-        )
-        if (!state && !nextChunkStatus) continue
-
-        // 旧数据缺少 originalMarkdownContent 时用当前内容补齐，避免后续保存覆盖
-        const originalMarkdownContent =
-          typeof f.originalMarkdownContent === 'string'
-            ? f.originalMarkdownContent
-            : f.markdownContent
-
-        const shouldUpdateMarkdown =
-          state?.cleanedContent != null &&
-          state.cleanedContent !== f.markdownContent
-        const shouldSetOriginal =
-          Boolean(state) && typeof f.originalMarkdownContent !== 'string'
-
-        if (shouldUpdateMarkdown || shouldSetOriginal || nextChunkStatus) {
-          updateParsedFile(f.id, {
-            ...(shouldUpdateMarkdown
-              ? { markdownContent: state?.cleanedContent }
-              : {}),
-            ...(shouldSetOriginal ? { originalMarkdownContent } : {}),
-            ...(nextChunkStatus ? { chunkStatus: nextChunkStatus } : {}),
-          })
-        }
+  // Save the chosen documents only; drafts in other rows remain untouched.
+  const persistGovernanceEdits = useCallback(async (ids: Set<string>, submitted = false) => {
+    const scope = getAuthCacheScope()
+    for (const id of ids) {
+      const draft = governanceStates[id]
+      const file = files.find(file => file.id === id)
+      if (!file) throw new Error('文档已移除，请重新选择。')
+      let markdown = draft?.cleanedContent ?? file.markdownContent
+      let original = draft?.originalContent ?? file.originalMarkdownContent ?? markdown
+      if (!draft && !markdown) {
+        const cached = await getDocContentFromCache(id, scope)
+        if (!cached) throw new Error('请先打开文档，等待正文加载完成。')
+        markdown = cached.markdownContent
+        original = cached.originalMarkdownContent ?? markdown
       }
-    },
-    [files, governanceStates, updateParsedFile]
-  )
-
-  const handleSave = useCallback(() => {
-    if (!selectedFileId) return
-    persistGovernanceEdits({
-      markReadyFileIds: new Set([selectedFileId]),
-    })
-    setSelectedChunkFileIds((prev) => new Set(prev).add(selectedFileId))
-    toast.success(t('toasts.resultsSaved'))
-  }, [persistGovernanceEdits, selectedFileId, t])
-
-  const handleSubmitSelectedToChunkPreview = useCallback(() => {
-    if (!selectedReadyChunkFiles.length) {
-      toast.error(t('toasts.noChunkReadySelection'))
-      return
-    }
-
-    const targetIds = new Set(selectedReadyChunkFiles.map((file) => file.id))
-    persistGovernanceEdits({
-      markSubmittedFileIds: targetIds,
-    })
-    setSelectedChunkFileIds(new Set())
-    toast.success(
-      t('toasts.submittedToChunkPreview', {
-        count: selectedReadyChunkFiles.length,
+      // This page must observe durable failure before displaying success or navigating.
+      await saveDocContentToCache({ id, markdownContent: markdown, originalMarkdownContent: original }, scope)
+      if (getAuthCacheScope() !== scope || !useParsedFiles.getState().files.some(item => item.id === id)) {
+        throw new Error('当前账户或文档已变更，请重新打开文档。')
+      }
+      await updateParsedFile(id, {
+        markdownContent: markdown, originalMarkdownContent: original,
+        governanceStatus: submitted ? 'submitted' : 'ready',
+        chunkStatus: submitted ? 'submitted' : 'ready',
+        ...(draft ? { governanceReview: {
+          qualityScore: draft.qualityChecked ? draft.qualityScore : null,
+          issues: draft.issues, annotations: draft.annotations, tags: draft.tags, category: draft.category,
+        } } : {}),
       })
-    )
-    const params = new URLSearchParams()
-    if (selectedDatasetId) params.set('dataset_id', selectedDatasetId)
-    const query = params.toString()
-    router.push(query ? `/chunk-preview?${query}` : '/chunk-preview')
-  }, [persistGovernanceEdits, router, selectedDatasetId, selectedReadyChunkFiles, t])
-
-  const handlePushToChunkPreview = useCallback(() => {
-    if (selectedReadyChunkFiles.length > 0) {
-      handleSubmitSelectedToChunkPreview()
-      return
+      setGovernanceStates(prev => prev[id] === draft && draft
+        ? { ...prev, [id]: { ...draft, isModified: false } } : prev)
     }
-    if (selectedFileId) {
-      persistGovernanceEdits({
-        markSubmittedFileIds: new Set([selectedFileId]),
-      })
-    } else {
-      persistGovernanceEdits()
-    }
-    const params = new URLSearchParams()
-    if (selectedDatasetId) params.set('dataset_id', selectedDatasetId)
-    const query = params.toString()
-    router.push(query ? `/chunk-preview?${query}` : '/chunk-preview')
-  }, [
-    handleSubmitSelectedToChunkPreview,
-    persistGovernanceEdits,
-    router,
-    selectedDatasetId,
-    selectedFileId,
-    selectedReadyChunkFiles.length,
-  ])
+  }, [files, governanceStates, updateParsedFile])
 
-  // 统计数据
-  const stats = useMemo(() => {
-    const scopedIds = new Set(scopedFiles.map((file) => file.id))
-    const scopedStates = Object.values(governanceStates).filter((state) =>
-      scopedIds.has(state.id)
-    )
-    const totalFiles = scopedFiles.length
-    const completedFiles = scopedStates.filter((s) => s.qualityScore > 0).length
-    const modifiedFiles = scopedStates.filter((s) => s.isModified).length
-    const avgScore =
-      scopedStates
-        .filter((s) => s.qualityScore > 0)
-        .reduce((sum, s) => sum + s.qualityScore, 0) / completedFiles || 0
-
-    return { totalFiles, completedFiles, modifiedFiles, avgScore }
-  }, [governanceStates, scopedFiles])
-
-  const governanceHeroSummary = (
-    <div className="grid gap-2 sm:grid-cols-2">
-      <div className={KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS}>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="size-1 rounded-full bg-info/70" aria-hidden />
-          文件
-        </span>
-        <span className="font-mono tabular-nums text-foreground">
-          {stats.totalFiles}
-        </span>
-        <span className="h-3.5 w-px bg-border/70" />
-        <span>已完成</span>
-        <span className="font-mono tabular-nums text-foreground">
-          {stats.completedFiles}
-        </span>
-      </div>
-      <KnowledgeOpsFlowCard
-        steps={[
-          { icon: ScanLine, label: '质检' },
-          { icon: Tag, label: '标注' },
-          { icon: Layers, label: '切块' },
-        ]}
-      />
-    </div>
-  )
-
-  // 空状态上传引导
-  if (isLoaded && files.length === 0) {
-    return (
-      <WorkbenchScaffold
-        title={headerTitle}
-        badge={t('header.emptyBadge')}
-        iconImage="data-governance"
-        icon={ShieldCheck}
-        iconColor="text-success"
-        compactHeader
-        description={headerSubtitle}
-        size="full"
-        bodyClassName="px-0 pb-0"
-        header={
-          <KnowledgeOpsHero
-            iconImage="data-governance"
-            title={headerTitle}
-            description={headerSubtitle}
-            summary={governanceHeroSummary}
-          />
-        }
-        mainPanel={
-          <div className="flex-1 flex flex-col min-h-0">
-            <div className="relative flex flex-1 items-start justify-center overflow-x-hidden overflow-y-auto p-4 md:p-6 xl:items-center xl:overflow-hidden">
-              <div
-                aria-hidden
-                className="pointer-events-none absolute inset-0 bg-background"
-              />
-              <div
-                data-governance-empty-workbench="true"
-                className={cn(
-                  'group relative w-full max-w-[1440px] px-1 transition-all duration-200 motion-reduce:transition-none md:px-2 xl:px-4',
-                  isDragging
-                    ? 'bg-primary/8'
-                    : 'bg-transparent'
-                )}
-              >
-                <div className="relative z-10 grid min-h-[clamp(600px,68vh,650px)] items-stretch gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-                  <div className="relative flex h-full min-h-[560px] flex-col justify-center overflow-hidden bg-transparent px-2 py-6 md:px-4 md:py-8">
-                    <div
-                      aria-hidden
-                      className="absolute left-1/2 top-10 h-40 w-40 -translate-x-1/2 rounded-full border border-primary/12 bg-[conic-gradient(from_140deg,hsl(var(--primary)/0.08),hsl(var(--teal)/0.18),hsl(var(--primary)/0.08))] blur-[0.2px]"
-                    />
-
-                    <button
-                      type="button"
-                      className="relative z-10 flex w-full flex-col items-center rounded-[1.25rem] bg-transparent text-center focus-ring"
-                      onDragOver={handleDragOver}
-                      onDragLeave={handleDragLeave}
-                      onDrop={handleDrop}
-                      onClick={() =>
-                        globalThis.document
-                          .getElementById('file-upload')
-                          ?.click()
-                      }
-                      disabled={uploading}
-                      aria-label={t('emptyUpload.openUploadDialog')}
-                    >
-                      <div className="relative mb-5 mt-2 grid size-28 place-items-center">
-                        <span
-                          aria-hidden
-                          className="absolute inset-0 rounded-full border border-primary/18 bg-primary/8 shadow-[inset_0_0_32px_hsl(var(--primary)/0.08)]"
-                        />
-                        <span
-                          aria-hidden
-                          className={cn(
-                            'absolute inset-3 rounded-full border border-dashed border-teal/25',
-                            uploading && 'animate-spin motion-reduce:animate-none'
-                          )}
-                        />
-                        {uploading ? (
-                          <span className="relative grid size-16 place-items-center rounded-3xl border border-primary/18 bg-card/90 text-primary shadow-[0_18px_42px_-28px_hsl(var(--primary)/0.8)]">
-                            <Sparkles className="size-7 animate-spin motion-reduce:animate-none" />
-                          </span>
-                        ) : (
-                          <Image
-                            src="/page-title-icons/data-governance.png"
-                            alt=""
-                            aria-hidden="true"
-                            draggable={false}
-                            width={96}
-                            height={96}
-                            priority
-                            unoptimized
-                            className="relative size-24 object-contain"
-                          />
-                        )}
-                      </div>
-
-                      <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/12 bg-primary/8 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">
-                        <ScanLine className="size-3.5" />
-                        {t('emptyUpload.scanRingLabel')}
-                      </div>
-
-                      <h3 className="max-w-xl text-balance text-3xl font-semibold tracking-[-0.04em] text-foreground md:text-4xl">
-                        {uploading
-                          ? t('emptyUpload.uploadingTitle')
-                          : t('emptyUpload.idleTitle')}
-                      </h3>
-                      <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-muted-foreground md:text-[15px]">
-                        {uploading
-                          ? t('emptyUpload.uploadingDescription')
-                          : t('emptyUpload.idleDescription')}
-                      </p>
-                      <p className="mx-auto mt-2 max-w-xl text-xs leading-5 text-muted-foreground/78">
-                        {t('emptyUpload.dropCta')}
-                      </p>
-                    </button>
-
-                    <div className="relative z-20 mt-6 flex flex-wrap items-center justify-center gap-2">
-                      {EMPTY_UPLOAD_FORMATS.map((format) => (
-                        <span
-                          key={format}
-                          className="rounded-full border border-border/55 bg-card/78 px-3 py-1 text-[11px] font-semibold text-foreground/80 shadow-sm"
-                        >
-                          {format}
-                        </span>
-                      ))}
-                    </div>
-
-                    <div className="relative z-20 mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
-                      <div className="relative">
-                        <input
-                          type="file"
-                          multiple
-                          accept={UPLOAD_ACCEPT_WITH_ZIP}
-                          className="hidden"
-                          id="file-upload"
-                          onChange={handleFileSelect}
-                          disabled={uploading}
-                        />
-                        <label
-                          htmlFor="file-upload"
-                          className={cn(
-                            'inline-flex cursor-pointer items-center gap-3 rounded-2xl border border-info/25 bg-info px-7 py-3.5 text-sm font-semibold text-info-foreground shadow-[0_18px_38px_-28px_hsl(var(--info)/0.88)] transition-all duration-150 hover:-translate-y-0.5 hover:bg-info/90 motion-reduce:transition-none',
-                            uploading && 'cursor-not-allowed opacity-50'
-                          )}
-                        >
-                          <Upload className="size-5" />
-                          {t('emptyUpload.selectLocalFiles')}
-                        </label>
-                      </div>
-                      {uploading && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={cancelUploadAndParse}
-                          className="gap-2 rounded-2xl border-border/60 bg-background px-7 py-3.5 text-muted-foreground transition-colors duration-150 hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive motion-reduce:transition-none"
-                        >
-                          <X className="size-5" />
-                          {t('emptyUpload.cancelParsing')}
-                        </Button>
-                      )}
-                    </div>
-
-                    <div className="relative z-20 mt-7 grid gap-3 border-t border-border/50 pt-4 md:grid-cols-3">
-                      {EMPTY_UPLOAD_STEPS.map((step, index) => (
-                        <div
-                          key={step}
-                          className="text-left"
-                      >
-                          <div className="mb-2 flex items-center gap-2">
-                            <span className="grid size-6 place-items-center rounded-lg bg-primary/10 text-[10px] font-bold text-primary">
-                              {index + 1}
-                            </span>
-                            <span className="text-xs font-semibold text-foreground">
-                              {t(`emptyUpload.stages.${step}`)}
-                            </span>
-                          </div>
-                          <div className="h-1.5 overflow-hidden rounded-full bg-muted/70">
-                            <div
-                              className={cn(
-                                'h-full rounded-full',
-                                index === 0 && 'w-10/12 bg-primary/55',
-                                index === 1 && 'w-8/12 bg-info/55',
-                                index === 2 && 'w-6/12 bg-teal/55'
-                              )}
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex h-full flex-col justify-center gap-7 py-6 lg:py-8">
-                    <EmptyStructurePreview t={t} />
-                    <div className="border-l border-border/70 pl-4">
-                      <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                        <Sparkles className="size-3.5 text-teal" />
-                        {t('emptyUpload.intakeChecksTitle')}
-                      </div>
-                      <div className="mt-3 divide-y divide-border/50">
-                        {[
-                          t('emptyUpload.intakeChecks.structure'),
-                          t('emptyUpload.intakeChecks.quality'),
-                          t('emptyUpload.intakeChecks.cleaning'),
-                        ].map((item) => (
-                          <div
-                            key={item}
-                            className="flex items-center gap-2 py-2.5 text-xs text-foreground/82"
-                          >
-                            <Check className="size-3.5 text-success" />
-                            <span>{item}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        }
-      />
-    )
+  const saveDocuments = async (continueToChunks: boolean, batch = false) => {
+    if (saving) return
+    const ids = batch ? new Set(selectedReadyChunkFiles.map(file => file.id)) : new Set(selectedFileId ? [selectedFileId] : [])
+    if (!ids.size) return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await persistGovernanceEdits(ids, continueToChunks)
+      if (continueToChunks) {
+        const params = new URLSearchParams()
+        if (selectedDatasetId) params.set('dataset_id', selectedDatasetId)
+        router.push(params.size ? '/chunk-preview?' + params : '/chunk-preview')
+      } else toast.success(t('toasts.resultsSaved'))
+    } catch (error) {
+      setSaveError(formatApiError(error, '无法写入治理结果，请重试'))
+    } finally { setSaving(false) }
   }
 
-  const contentBody = (() => {
-    if (viewMode === 'edit') {
-      return (
-        <div className="grid grid-cols-2 gap-4 h-full">
-          <div className="flex flex-col bg-muted rounded-xl border border-border shadow-sm overflow-hidden h-full">
-            <div className="px-4 py-2 bg-muted border-b border-border text-xs font-medium text-muted-foreground">
-              {t('canvas.livePreview')}
-            </div>
-            <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-6">
-              <MarkdownRenderer markdown={displayContent || ''} />
-            </div>
-          </div>
-          <div className="flex flex-col bg-card rounded-xl border border-border shadow-sm overflow-hidden h-full">
-            <div className="px-4 py-2 bg-muted border-b border-border text-xs font-medium text-muted-foreground">
-              {t('canvas.sourceEditor')}
-            </div>
-            <textarea
-              value={displayContent}
-              onChange={(e) => handleManualEdit(e.target.value)}
-              className="flex-1 w-full p-6 resize-none outline-none font-mono text-sm leading-relaxed text-foreground"
-              spellCheck={false}
-            />
-          </div>
-        </div>
-      )
-    }
-
-    if (displayContent?.includes(libraryOnlyNotice)) {
-      return (
-        <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-          <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mb-6 border border-border shadow-sm">
-            <FileText className="w-8 h-8 text-muted-foreground" />
-          </div>
-          <h3 className="text-lg font-medium text-foreground mb-2 truncate max-w-lg">
-            {selectedFile?.filename || t('libraryFile.unknownFile')}
-          </h3>
-          <div className="flex items-center gap-2 mb-8">
-            <span className="px-2.5 py-1 rounded-full bg-muted text-muted-foreground text-xs font-medium border border-border">
-              {t('libraryFile.badge')}
-            </span>
-            <span className="px-2.5 py-1 rounded-full bg-warning/10 dark:bg-warning/20 text-warning dark:text-warning text-xs font-medium border border-warning/30 flex items-center gap-1">
-              <div className="w-1.5 h-1.5 rounded-full bg-warning/10 dark:bg-warning/20" />
-              {t('libraryFile.pending')}
-            </span>
-          </div>
-
-          <div className="max-w-md bg-muted rounded-xl p-5 border border-border mb-8 text-left">
-            <p className="text-sm text-muted-foreground leading-relaxed flex gap-3">
-              <Info className="w-5 h-5 text-info flex-shrink-0 mt-0.5" />
-              {t('libraryFile.description', { notice: libraryOnlyNotice })}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              className="gap-2 bg-card hover:bg-muted text-foreground/80 border-border"
-              onClick={() => {
-                if (selectedFile?.filename) {
-                  navigator.clipboard.writeText(selectedFile.filename)
-                  toast.success(t('toasts.filenameCopied'))
-                }
-              }}
-            >
-              <Copy className="w-4 h-4" />
-              {t('libraryFile.copyName')}
-            </Button>
-            <ConfirmDialog
-              title={t('libraryFile.removeDialog.title')}
-              description={t('libraryFile.removeDialog.description')}
-              confirmLabel={t('libraryFile.removeDialog.confirm')}
-              cancelLabel={t('libraryFile.removeDialog.cancel')}
-              confirmVariant="destructive"
-              confirmDisabled={!selectedFileId}
-              onConfirm={() => {
-                if (!selectedFileId) return
-                const { removeFile } = useParsedFiles.getState()
-                removeFile(selectedFileId)
-                setSelectedFileId(null)
-                toast.success(t('toasts.fileRemoved'))
-              }}
-            >
-              <Button
-                variant="outline"
-                className="gap-2 bg-card hover:bg-destructive/10 dark:bg-destructive/20 text-foreground/80 hover:text-destructive dark:text-destructive/85 border-border hover:border-destructive/30"
-                disabled={!selectedFileId}
-              >
-                <Trash2 className="w-4 h-4" />
-                {t('libraryFile.removeButton')}
-              </Button>
-            </ConfirmDialog>
-          </div>
-        </div>
-      )
-    }
-
-    if (previewFormat === 'rendered') {
-      return (
-        <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-muted-foreground prose-a:text-info dark:prose-a:text-info">
-          <MarkdownRenderer markdown={displayContent || ''} />
-        </div>
-      )
-    }
-
-    return (
-      <pre className="font-mono text-sm leading-relaxed whitespace-pre-wrap break-words text-foreground">
-        {displayContent || ''}
-      </pre>
-    )
-  })()
+  const queueFiles = visibleFiles.filter(file => file.filename.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
+  const statusFor = (file: ParsedFileData) => {
+    const draft = governanceStates[file.id]
+    const score = draft ? (draft.qualityChecked ? draft.qualityScore : null) : file.governanceReview?.qualityScore
+    const issues = draft?.issues ?? file.governanceReview?.issues ?? []
+    if (file.status === 'error') return { id: 'error', label: '解析失败', tone: styles.danger, score }
+    if (file.status === 'pending' || file.status === 'parsing') return { id: 'processing', label: file.status === 'parsing' ? '解析中' : '等待解析', tone: styles.info, score }
+    if (draft?.isModified) return { id: 'review', label: '待核对', tone: styles.warning, score }
+    if (issues.length) return { id: 'review', label: '待核对', tone: styles.warning, score }
+    if (file.governanceStatus === 'ready' || file.governanceStatus === 'submitted' || file.chunkStatus === 'ready' || file.chunkStatus === 'submitted') return { id: 'done', label: '已完成', tone: styles.success, score }
+    if (score != null) return { id: 'review', label: '待核对', tone: styles.warning, score }
+    return { id: 'pending', label: '待治理', tone: '', score: null }
+  }
+  const loadingContent = Boolean(selectedFile && !hasStoredContent && contentQuery.isPending)
+  const contentError = !hasStoredContent && contentQuery.isError
+  const canUseContent = Boolean(governanceState && !loadingContent && !contentError)
+  const hasText = canUseContent && Boolean(governanceState?.cleanedContent.trim())
+  const currentIndex = queueFiles.findIndex(file => file.id === selectedFileId)
+  const activeIssue = governanceState?.issues.find(issue => issue.id === activeIssueId)
+  const currentStatus = selectedFile ? statusFor(selectedFile) : null
+  const nextFile = () => {
+    const next = queueFiles[(currentIndex + 1) % queueFiles.length]
+    if (next) handleSelectFile(next.id)
+  }
+  const returnToQueue = () => {
+    setMobileReader(false)
+    requestAnimationFrame(() => { if (selectedFileId) queueItemRefs.current.get(selectedFileId)?.focus() })
+  }
+  const locateIssue = (issue: FileGovernanceState['issues'][number]) => {
+    setActiveIssueId(issue.id)
+    if (!issue.position) return
+    setViewMode('edit')
+    requestAnimationFrame(() => {
+      editorRef.current?.focus()
+      editorRef.current?.setSelectionRange(issue.position!.start, issue.position!.end)
+      editorRef.current?.scrollIntoView({ block: 'nearest', behavior: 'auto' })
+    })
+  }
 
   return (
-    <WorkbenchScaffold
-      title={headerTitle}
-      badge={t('header.mainBadge')}
-      iconImage="data-governance"
-      icon={ShieldCheck}
-      iconColor="text-info"
-      compactHeader
-      description={t('header.workspaceSubtitle')}
-      header={
-        <KnowledgeOpsHero
-          iconImage="data-governance"
-          title={headerTitle}
-          description={t('header.workspaceSubtitle')}
-          summary={governanceHeroSummary}
-          actions={
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleReset}
-                disabled={!governanceState?.isModified}
-                className="gap-1.5 h-8 text-xs"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                {t('actions.reset')}
-              </Button>
-              <Button
-                variant="info"
-                size="sm"
-                onClick={handleSave}
-                disabled={!governanceState}
-                className="gap-2 h-8 text-xs"
-              >
-                <Save className="w-3.5 h-3.5" />
-                {t('actions.save')}
-              </Button>
-              <div className="w-px h-4 bg-border dark:bg-card mx-1" />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSubmitSelectedToChunkPreview}
-                disabled={selectedReadyChunkCount === 0}
-                className="gap-2 h-8 text-xs"
-              >
-                <Layers className="w-3.5 h-3.5" />
-                {t('actions.submitSelectedToChunkPreview', {
-                  count: selectedReadyChunkCount,
-                })}
-              </Button>
-            </>
-          }
-        />
-      }
-      actions={
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleReset}
-            disabled={!governanceState?.isModified}
-            className="gap-1.5 h-8 text-xs"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            {t('actions.reset')}
-          </Button>
-          <Button
-            variant="info"
-            size="sm"
-            onClick={handleSave}
-            disabled={!governanceState}
-            className="gap-2 h-8 text-xs"
-          >
-            <Save className="w-3.5 h-3.5" />
-            {t('actions.save')}
-          </Button>
-          <div className="w-px h-4 bg-border dark:bg-card mx-1" />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleSubmitSelectedToChunkPreview}
-            disabled={selectedReadyChunkCount === 0}
-            className="gap-2 h-8 text-xs"
-          >
-            <Layers className="w-3.5 h-3.5" />
-            {t('actions.submitSelectedToChunkPreview', {
-              count: selectedReadyChunkCount,
-            })}
-          </Button>
-          <Button
-            variant="default"
-            size="sm"
-            onClick={handlePushToChunkPreview}
-            disabled={!isLoaded || files.length === 0}
-            className="gap-2 h-8 text-xs"
-          >
-            <Layers className="w-3.5 h-3.5" />
-            {t('actions.pushToChunkPreview')}
-          </Button>
+    <div className={styles.page} data-governance-workbench onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
+      <header className={styles.header}>
+        <div className={styles.title}><DataGovernance appearance="color" className="size-6" /><div><h1>{headerTitle}</h1><p className={styles.subtitle}>{t('header.workspaceSubtitle')}</p></div></div>
+        <div className={styles.headerActions}>
+          <Button variant="ghost" size="sm" aria-label="治理配置" onClick={() => setConfigOpen(true)}><SlidersHorizontal className="size-4" /><span className={styles.actionLabel}>治理配置</span></Button>
+          {uploading ? <Button variant="outline" size="sm" onClick={cancelUploadAndParse}><Loader2 className={styles.spinner} />取消解析</Button> : <Button variant="outline" size="sm" disabled={saving} onClick={() => fileInputRef.current?.click()}><Plus className="size-4" />添加文档</Button>}
+          <input ref={fileInputRef} type="file" multiple accept={UPLOAD_ACCEPT_WITH_ZIP} onChange={handleFileSelect} className="hidden" aria-label="上传治理文档" />
         </div>
-      }
-      size="full"
-      bodyClassName="px-0 pb-0"
-      mainPanel={
-        <div className="flex-1 flex flex-col bg-background text-foreground min-h-0">
-          <div className="flex-1 flex overflow-hidden min-h-0 relative bg-background">
-            {/* 左侧文件列表 */}
-            <aside
-              ref={sidebarRef}
-              className={cn(
-                'group/sidebar relative flex flex-col flex-shrink-0 bg-card border-r border-border z-10',
-                isSidebarCollapsed ? 'w-0 border-r-0' : ''
-              )}
-              style={{ width: isSidebarCollapsed ? 0 : sidebarWidth }}
-            >
-              {/* 折叠/展开按钮 */}
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  'absolute -right-3 top-3 z-30 h-6 w-6 rounded-full border border-border bg-card shadow-sm text-muted-foreground hover:text-muted-foreground hover:bg-muted transition-opacity opacity-0 group-hover/sidebar:opacity-100',
-                  isSidebarCollapsed && 'opacity-100 -right-8 translate-x-2'
-                )}
-                onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-                title={
-                  isSidebarCollapsed
-                    ? t('sidebar.expand')
-                    : t('sidebar.collapse')
-                }
-                aria-label={
-                  isSidebarCollapsed
-                    ? t('sidebar.expand')
-                    : t('sidebar.collapse')
-                }
-              >
-                {isSidebarCollapsed ? (
-                  <PanelRightOpen className="w-3 h-3" />
-                ) : (
-                  <PanelRightClose className="w-3 h-3" />
-                )}
-              </Button>
-
-              <div
-                className={cn(
-                  'flex-1 flex flex-col min-h-0 w-full overflow-hidden',
-                  isSidebarCollapsed && 'invisible'
-                )}
-              >
-                {/* 目录切换与搜索 */}
-                <div className="p-3 border-b border-border space-y-3">
-                  <Select
-                    value={activeFolderId || ROOT_FOLDER_ID}
-                    onValueChange={setActiveFolderId}
-                  >
-                    <SelectTrigger className="h-9 text-xs bg-muted border-border text-foreground/80 focus:bg-card focus-ring transition-colors duration-200 motion-reduce:transition-none">
-                      <div className="flex items-center gap-2 truncate">
-                        <FolderTree className="w-3.5 h-3.5 text-primary" />
-                        <span className="truncate">{activeFolderLabel}</span>
-                      </div>
-                    </SelectTrigger>
-                    <SelectContent className="bg-card border-border text-foreground/80">
-                      <SelectItem value={ROOT_FOLDER_ID}>
-                        {t('sidebar.allFolders')}
-                      </SelectItem>
-                      {libraryFolders.map((f) => (
-                        <SelectItem key={f.id} value={f.id}>
-                          {f.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                    <input
-                      type="text"
-                      placeholder={t('sidebar.searchPlaceholder')}
-                      className="w-full rounded-lg border border-border bg-muted py-1.5 pl-9 pr-3 text-xs text-foreground/80 placeholder:text-muted-foreground focus:bg-card focus:outline-none focus:border-primary/30 focus-ring transition-colors duration-200 motion-reduce:transition-none"
-                    />
+      </header>
+      <div className={styles.workspace} data-mobile-reader={mobileReader}>
+        <aside className={styles.queue} data-governance-queue aria-label="文档队列">
+          <div className={styles.queueHeading}>
+            <h2>文档目录</h2><span className={styles.count}>{visibleFiles.length}</span>
+            <div className={styles.queueActions}>
+              <Button variant="ghost" size="icon" className="size-7" aria-label="批量选择切块文档" aria-pressed={batchMode} onClick={() => { setBatchMode(value => !value); setSelectedChunkFileIds(new Set()) }}><ListChecks className="size-3.5" /></Button>
+            </div>
+          </div>
+          <div className={styles.queueFilters}>
+            <Select value={selectedDatasetId || ALL_DATASETS_VALUE} onValueChange={handleDatasetScopeChange} disabled={uploading || saving}>
+              <SelectTrigger className={styles.scope} aria-label="数据集范围"><SelectValue placeholder="全部数据集" /></SelectTrigger>
+              <SelectContent><SelectItem value={ALL_DATASETS_VALUE}>全部数据集</SelectItem>{availableDatasets.map(dataset => <SelectItem key={dataset.id} value={dataset.id}>{dataset.name}</SelectItem>)}</SelectContent>
+            </Select>
+            <div className={styles.search}><Search /><input type="search" aria-label="搜索治理文档" placeholder="搜索文件名" value={search} onChange={event => setSearch(event.target.value)} />{search && <button type="button" aria-label="清除文档搜索" onClick={() => setSearch('')}><X className="size-3" /></button>}</div>
+          </div>
+          <div className={styles.folderTree}><DocumentFolderTree /></div>
+          <div className={styles.fileListHeading}><span>文件</span><span>{queueFiles.length}</span></div>
+          {documentSyncQuery.isError && <div className={styles.inlineError} role="alert"><span>队列加载失败</span><Button size="sm" variant="ghost" onClick={() => void documentSyncQuery.refetch()}>重试</Button></div>}
+          <div className={styles.queueScroll}>
+            {!isLoaded || (documentSyncQuery.isPending && !visibleFiles.length) ? <div className={styles.emptySmall} role="status">正在加载文档…</div> : !queueFiles.length ? (
+              <div className={styles.emptySmall}>{search ? '没有找到匹配的文档' : '当前范围没有文档'}{search && <Button size="sm" variant="link" onClick={() => setSearch('')}>清除搜索</Button>}</div>
+            ) : queueFiles.map(file => {
+                  const status = statusFor(file)
+                  return <div className={styles.queueEntry} key={file.id}>
+                    {batchMode && <input type="checkbox" aria-label={'选择切块文档 ' + file.filename} disabled={file.chunkStatus !== 'ready' || saving} checked={selectedChunkFileIds.has(file.id)} onChange={() => toggleChunkFileSelection(file.id)} />}
+                    <button type="button" className={styles.queueItem} disabled={saving} ref={node => { if (node) queueItemRefs.current.set(file.id, node); else queueItemRefs.current.delete(file.id) }} aria-current={selectedFileId === file.id} data-governance-file={file.id} onClick={() => handleSelectFile(file.id)}>
+                      {getFileIcon(file.filename, 'size-5')}<span className={styles.queueItemText}><strong className={styles.queueName} title={file.filename}>{file.filename}</strong><span className={styles.queueMeta}><span>{formatFileSize(file.fileSize)}</span><span className={status.score == null ? status.tone : status.score >= 80 ? styles.success : status.score >= 60 ? styles.warning : styles.danger}>{status.score != null ? status.score + ' 分' : status.label}</span></span></span>
+                    </button>
                   </div>
-                </div>
-
-                <div className="relative border-b border-border/40">
-                  <div
-                    aria-hidden
-                    className="absolute left-0 top-2 bottom-2 w-[2px] rounded-full bg-info/70"
-                  />
-                  <div className="space-y-1.5 from-info/[0.08] via-info/[0.03] to-transparent py-2.5 pl-4 pr-3 dark:from-info/[0.14] dark:via-info/[0.05]">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-info/90 dark:text-info">
-                        {t('scope.title')}
-                      </span>
-                      <span
-                        className={cn(
-                          'rounded-full border px-1.5 py-0.5 text-[10px] font-medium tabular-nums transition-colors',
-                          selectedDatasetId
-                            ? 'border-info/30 bg-info/15 text-info'
-                            : 'border-border/60 bg-muted/60 text-muted-foreground'
-                        )}
-                      >
-                        {selectedDatasetId
-                          ? t('scope.datasetScoped')
-                          : t('scope.datasetAll')}
-                      </span>
-                    </div>
-                    <Select
-                      value={selectedDatasetId || ALL_DATASETS_VALUE}
-                      onValueChange={handleDatasetScopeChange}
-                    >
-                      <SelectTrigger
-                        className={cn(
-                          'h-8 text-[11px] font-medium bg-card border-border/60 text-foreground transition-colors duration-200 motion-reduce:transition-none',
-                          'hover:border-info/40 focus:border-info/60 data-[state=open]:border-info/60',
-                          'focus-visible:ring-2 focus-visible:ring-info/20 focus-visible:ring-offset-0',
-                          'dark:bg-card'
-                        )}
-                      >
-                        <div className="flex items-center gap-1.5 truncate">
-                          <FolderTree className="w-3.5 h-3.5 text-info/80 flex-shrink-0" />
-                          <SelectValue placeholder={t('scope.placeholder')} />
-                        </div>
-                      </SelectTrigger>
-                      <SelectContent className="bg-card border-border/60 text-foreground">
-                        <SelectItem
-                          value={ALL_DATASETS_VALUE}
-                          className="text-[12px]"
-                        >
-                          <span className="flex items-center gap-1.5">
-                            <span
-                              aria-hidden
-                              className="size-1.5 rounded-full bg-muted-foreground/50"
-                            />
-                            {t('scope.allDatasets')}
-                          </span>
-                        </SelectItem>
-                        {availableDatasets.map((dataset) => (
-                          <SelectItem
-                            key={dataset.id}
-                            value={dataset.id}
-                            className="text-[12px]"
-                          >
-                            <span className="flex items-center gap-1.5">
-                              <span
-                                aria-hidden
-                                className="size-1.5 rounded-full bg-info/70"
-                              />
-                              <span className="truncate">{dataset.name}</span>
-                              <span className="ml-auto pl-2 text-[10px] tabular-nums text-muted-foreground/70">
-                                {datasetDocumentCounts.get(dataset.id) || 0}
-                              </span>
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {/* 可折叠的文件目录树 */}
-                {/* Folder tree section */}
-                <div className="space-y-1.5 border-b border-border/40 px-3 py-2">
-                  <div className="flex items-center gap-1.5 px-1">
-                    <FolderTree className="size-3 text-muted-foreground/65" />
-                    <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/75">
-                      {t('sidebar.foldersHeader')}
-                    </span>
-                    <span className="ml-auto text-[10px] tabular-nums text-muted-foreground/60">
-                      {libraryFolders.length}
-                    </span>
-                  </div>
-                  <div className="-mx-1 max-h-44 overflow-y-auto overscroll-contain no-scrollbar px-1">
-                    <DocumentFolderTree />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between px-4 pt-3 pb-1.5">
-                  <h3 className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/75">
-                    {t('sidebar.filesTitle', { count: visibleFiles.length })}
-                  </h3>
-                </div>
-
-                <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar px-3 pb-3 space-y-2">
-                  {visibleFiles.length === 0 ? (
-                    <div className="text-xs text-muted-foreground text-center py-8">
-                      {t('sidebar.emptyDirectory')}
-                    </div>
-                  ) : (
-                    visibleFiles.map((file) => {
-                      const state = governanceStates[file.id]
-                      const hasIssue = state?.issues.some(
-                        (i) => i.type === 'error'
-                      )
-                      const score = state?.qualityScore || 0
-                      const isReadyForChunk = file.chunkStatus === 'ready'
-                      const isSubmittedForChunk =
-                        file.chunkStatus === 'submitted'
-                      const isSelectedForChunk =
-                        selectedChunkFileIds.has(file.id)
-
-                      return (
-                        <div key={file.id} className="group relative">
-                          <button
-                            type="button"
-                            onClick={() => handleSelectFile(file.id)}
-                            className={cn(
-                              'relative w-full text-left p-3 rounded-lg border transition-[background,border,box-shadow,transform] duration-200 motion-reduce:transition-none cursor-pointer overflow-hidden',
-                              selectedFileId === file.id
-                                ? 'border-info/30 from-info/[0.08] via-info/[0.03] to-transparent shadow-soft dark:from-info/[0.14]'
-                                : 'border-border/60 bg-card hover:border-info/25 hover:bg-muted/40 hover:translate-x-[1px]'
-                            )}
-                            aria-label={t('a11y.openFile', {
-                              filename: file.filename,
-                            })}
-                          >
-                            {selectedFileId === file.id ? (
-                              <span
-                                aria-hidden
-                                className="absolute left-0 top-2 bottom-2 w-[2px] rounded-full bg-info"
-                              />
-                            ) : null}
-                            <div className="flex items-start gap-3">
-                              {/* File Icon */}
-                              {getFileIcon(
-                                file.filename,
-                                cn(
-                                  'size-10 rounded-lg border transition-colors motion-reduce:transition-none flex-shrink-0',
-                                  selectedFileId === file.id
-                                    ? 'border-info/30 ring-1 ring-info/15'
-                                    : 'border-border/60 group-hover:border-info/30'
-                                )
-                              )}
-
-                              <div className="flex-1 min-w-0">
-                                {/* Row 1: Filename & Score */}
-                                <div className="flex items-center justify-between mb-1">
-                                  <div
-                                    className={cn(
-                                      'text-sm font-medium truncate transition-colors',
-                                      selectedFileId === file.id
-                                        ? 'text-foreground'
-                                        : 'text-foreground/85 group-hover:text-foreground'
-                                    )}
-                                  >
-                                    {file.filename}
-                                  </div>
-                                  {score > 0 ? (
-                                    <span
-                                      className={cn(
-                                        'flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-md font-medium tabular-nums border',
-                                        getScoreBadgeClass(score)
-                                      )}
-                                    >
-                                      {t('sidebar.scoreLabel', { score })}
-                                    </span>
-                                  ) : (
-                                    <span className="flex-shrink-0 text-[10px] text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded-md border border-border/60 font-medium tabular-nums">
-                                      {t('sidebar.notScanned')}
-                                    </span>
-                                  )}
-                                </div>
-
-                                {/* Row 2: Metadata (Size & Date) */}
-                                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/80 mb-1.5 tabular-nums">
-                                  <span>{formatFileSize(file.fileSize)}</span>
-                                  <span className="text-muted-foreground/40">
-                                    ·
-                                  </span>
-                                  <span>
-                                    {file.parsedAt
-                                      ? new Date(
-                                          file.parsedAt
-                                        ).toLocaleDateString([], {
-                                          year: 'numeric',
-                                          month: '2-digit',
-                                          day: '2-digit',
-                                        })
-                                      : ''}
-                                  </span>
-                                  {file.datasetName ? (
-                                    <>
-                                      <span className="text-muted-foreground/40">
-                                        ·
-                                      </span>
-                                      <span className="truncate">
-                                        {file.datasetName}
-                                      </span>
-                                    </>
-                                  ) : null}
-                                </div>
-
-                                {/* Row 3: Badges & Actions */}
-                                <div className="flex items-center justify-between h-5 pr-8">
-                                  <div className="flex items-center gap-2">
-                                    {file.source ? (
-                                      <span className="text-[9px] text-muted-foreground flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded border border-border/60 font-medium uppercase">
-                                        {file.source === 'knowledge_base'
-                                          ? t('scope.sourceKnowledge')
-                                          : t('scope.sourceParsing')}
-                                      </span>
-                                    ) : null}
-                                    {state?.isModified && (
-                                      <span className="text-[9px] text-accent flex items-center gap-1 bg-accent/10 px-1.5 py-0.5 rounded border border-accent/25 font-medium">
-                                        <Sparkles className="w-2.5 h-2.5" />{' '}
-                                        {t('sidebar.cleaned')}
-                                      </span>
-                                    )}
-                                    {isReadyForChunk ? (
-                                      <span className="text-[9px] text-info flex items-center gap-1 bg-info/10 px-1.5 py-0.5 rounded border border-info/20 font-medium">
-                                        {t('sidebar.chunkReady')}
-                                      </span>
-                                    ) : null}
-                                    {isSubmittedForChunk ? (
-                                      <span className="text-[9px] text-success flex items-center gap-1 bg-success/10 px-1.5 py-0.5 rounded border border-success/20 font-medium">
-                                        {t('sidebar.chunkSubmitted')}
-                                      </span>
-                                    ) : null}
-                                    {hasIssue && (
-                                      <span className="text-[9px] text-rose flex items-center gap-1 bg-rose/10 px-1.5 py-0.5 rounded border border-rose/25 font-medium">
-                                        <AlertTriangle className="w-2.5 h-2.5" />{' '}
-                                        {t('sidebar.needsAttention')}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </button>
-                          {file.source === 'knowledge_base' ? null : (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setDeleteFileTarget({
-                                  id: file.id,
-                                  filename: file.filename,
-                                })
-                                setDeleteFileOpen(true)
-                              }}
-                              className="absolute bottom-2.5 right-2.5 opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-rose hover:bg-rose/10 rounded transition-opacity transition-colors duration-150 motion-reduce:transition-none"
-                              aria-label={t('a11y.deleteFile', {
-                                filename: file.filename,
-                              })}
-                              title={t('dialogs.deleteFile.confirm')}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          {isReadyForChunk ? (
-                            <button
-                              type="button"
-                              onClick={() => toggleChunkFileSelection(file.id)}
-                              aria-pressed={isSelectedForChunk}
-                              aria-label={t('a11y.toggleChunkFile', {
-                                filename: file.filename,
-                              })}
-                              className={cn(
-                                'absolute right-2.5 top-2.5 grid h-5 w-5 place-items-center rounded-md border text-[10px] transition-colors duration-150 motion-reduce:transition-none',
-                                isSelectedForChunk
-                                  ? 'border-info/45 bg-info text-info-foreground shadow-sm'
-                                  : 'border-border/70 bg-background/90 text-muted-foreground hover:border-info/35 hover:bg-info/10 hover:text-info'
-                              )}
-                            >
-                              {isSelectedForChunk ? <Check className="h-3 w-3" /> : null}
-                            </button>
-                          ) : null}
-                        </div>
-                      )
-                    })
-                  )}
-                </div>
-
-                {/* 底部统计栏 */}
-                {/* Footer KPI bar */}
-                <div className="mt-auto border-t border-border/60 from-muted/30 to-muted/55 backdrop-blur-sm px-3 py-2.5 space-y-1.5">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/75">
-                      {t('stats.storage')}
-                    </span>
-                    <span className="text-[10px] tabular-nums text-muted-foreground/80">
-                      {t('stats.processedRatio', {
-                        done: stats.completedFiles,
-                        total: stats.totalFiles,
-                      })}
-                    </span>
-                  </div>
-                  <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-muted/80 ring-1 ring-inset ring-border/50">
-                    <div
-                      className={cn(
-                        'h-full rounded-full transition-[width] duration-500 motion-reduce:transition-none',
-                        getAvgScoreGradientClass(stats.avgScore)
-                      )}
-                      style={{
-                        width:
-                          stats.totalFiles > 0
-                            ? `${Math.min(100, Math.round((stats.completedFiles / stats.totalFiles) * 100))}%`
-                            : '0%',
-                      }}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between text-[10px] text-muted-foreground/70 tabular-nums">
-                    <span>
-                      {stats.totalFiles > 0
-                        ? `${Math.round((stats.completedFiles / stats.totalFiles) * 100)}%`
-                        : '0%'}
-                    </span>
-                    <span>
-                      {stats.avgScore > 0
-                        ? t('stats.avgScoreInline', {
-                            score: stats.avgScore.toFixed(1),
-                          })
-                        : `${t('stats.avgScore')} —`}
-                    </span>
-                  </div>
+            })}
+          </div>
+          <div className={styles.queueFooter}>
+            {batchMode ? <><span>已选 {selectedReadyChunkCount} 份已保存文档</span><Button variant="ghost" size="sm" disabled={!selectedReadyChunkCount || saving} onClick={() => void saveDocuments(true, true)}>切块<ArrowRight className="size-3" /></Button></> : <><span>已保存</span><span>{queueFiles.filter(file => statusFor(file).id === 'done').length} / {queueFiles.length} 份</span></>}
+          </div>
+        </aside>
+        <main className={styles.reader} data-governance-reader aria-label="文档治理工作区">
+          {selectedFile && governanceState ? (
+            <>
+              <div className={styles.mobileDocumentHeading}>
+                <Button size="icon" variant="ghost" className="size-8" aria-label="返回文档队列" onClick={returnToQueue}><ArrowLeft className="size-4" /></Button>
+                <strong title={selectedFile.filename}>{selectedFile.filename}</strong>
+              </div>
+              <div className={styles.reviewColumns} data-tools-open={toolsOpen}>
+                <section className={styles.documentPane} aria-label="文档正文">
+              <div className={styles.fileHeading}>
+                <span className={styles.fileIcon}>{getFileIcon(selectedFile.filename, 'size-6')}</span>
+                <div className={styles.fileIdentity}><div className={styles.fileTitle}><h2 title={selectedFile.filename}>{selectedFile.filename}</h2><span className={cn(styles.status, currentStatus?.tone)}><i className={styles.dot} aria-hidden />{currentStatus?.label}</span></div><div className={styles.fileMeta}><span>{selectedFile.datasetName || (selectedFile.source === 'knowledge_base' ? '知识库' : '解析文档')}</span><span>{formatFileSize(selectedFile.fileSize)}</span>{canUseContent && <span>{governanceState.cleanedContent.length.toLocaleString()} 字</span>}</div></div>
+                <div className={styles.fileActions}>
+                  <ConfirmDialog title="重置当前修改？" description="将恢复解析原文，并清除本次检测、标注和分类。重置后仍需保存。" confirmLabel="重置" cancelLabel="取消" onConfirm={handleReset}><Button variant="ghost" size="icon" className="size-8" aria-label="重置文档修改" disabled={!canUseContent || saving}><RotateCcw className="size-3.5" /></Button></ConfirmDialog>
+                  <Button variant="ghost" size="icon" className="size-8" aria-label="删除当前文档" disabled={saving} onClick={() => { setDeleteFileTarget({ id: selectedFile.id, filename: selectedFile.filename }); setDeleteFileOpen(true) }}><Trash2 className="size-3.5" /></Button>
                 </div>
               </div>
-
-              {/* 拖拽手柄 */}
-              <button
-                type="button"
-                className={cn(
-                  'absolute right-0 top-0 w-1 h-full cursor-col-resize z-20 border-0 bg-transparent p-0 transition-colors opacity-0 hover:opacity-100 hover:bg-primary/10 dark:hover:bg-primary/20 active:bg-primary/30',
-                  isResizing && 'bg-primary opacity-100'
+              <div className={styles.readerScroll} ref={contentScrollRef}>
+                {loadingContent ? <div className={styles.empty} role="status"><Loader2 className={styles.spinner} /><p>正在加载正文…</p></div> : contentError ? <div className={styles.empty} role="alert"><AlertTriangle /><h3>正文加载失败</h3><p>{formatApiError(contentQuery.error, '请确认文档已经解析，再重试。')}</p><Button size="sm" variant="outline" onClick={() => void contentQuery.refetch()}>重新加载正文</Button></div> : (
+                  <>
+                    <div className={styles.documentToolbar}>
+                      <span><FileText />{viewMode === 'original' ? '原文' : viewMode === 'edit' ? '编辑 Markdown' : '正文预览'}</span>
+                      <div className={styles.viewActions} aria-label="正文显示方式">
+                        <button type="button" aria-pressed={viewMode === 'preview'} onClick={() => setViewMode('preview')}>预览</button>
+                        <button type="button" aria-pressed={viewMode === 'original'} onClick={() => setViewMode('original')}>原文</button>
+                        <button type="button" disabled={saving} aria-pressed={viewMode === 'edit'} onClick={() => setViewMode('edit')}>编辑</button>
+                        {viewMode !== 'edit' && <button type="button" aria-pressed={previewFormat === 'markdown'} onClick={() => setPreviewFormat(value => value === 'rendered' ? 'markdown' : 'rendered')}>Markdown</button>}
+                      </div>
+                    </div>
+                    <div className={styles.document} data-governance-selection-root="true" data-governance-document>
+                      {viewMode === 'edit' ? <textarea ref={editorRef} aria-label="编辑文档正文" value={displayContent} onChange={event => handleManualEdit(event.target.value)} disabled={saving} className={styles.editor} spellCheck={false} /> : !displayContent ? <div className={styles.empty}><FileText /><h3>文档正文为空</h3><p>可切换到编辑模式补充内容，或重新解析原文件。</p></div> : previewFormat === 'markdown' ? <pre className={styles.raw}>{displayContent}</pre> : <MarkdownRenderer markdown={displayContent} />}
+                    </div>
+                  </>
                 )}
-                aria-label={t('sidebar.adjustWidth')}
-                onMouseDown={startResizing}
-              />
-            </aside>
-
-            {/* 主内容区（中间 + 右侧面板） */}
-            <main className="flex-1 flex overflow-hidden min-h-0 relative">
-              {selectedFile && governanceState ? (
-                <>
-                  {/* 中间预览画布 */}
-                  <div className="flex-1 flex flex-col overflow-hidden relative z-0">
-                    {/* 画布工具栏 */}
-                    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center bg-card border border-border/60 shadow-soft rounded-full px-2 py-1 gap-1 transition-colors duration-150 motion-reduce:transition-none">
-                      {/* Segmented view-mode control */}
-                      <div className="flex items-center bg-muted/60 rounded-full p-0.5 border border-border/60">
-                        {(['preview', 'edit', 'original'] as const).map(
-                          (mode) => (
-                            <button
-                              key={mode}
-                              type="button"
-                              onClick={() => setViewMode(mode)}
-                              aria-pressed={viewMode === mode}
-                              className={cn(
-                                'px-3 py-1 rounded-full text-xs font-medium transition-colors duration-150 motion-reduce:transition-none focus-ring-soft',
-                                viewMode === mode
-                                  ? 'bg-card text-foreground shadow-sm ring-1 ring-border/60'
-                                  : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]'
-                              )}
-                            >
-                              {t(`canvas.viewModes.${mode}`)}
-                            </button>
-                          )
-                        )}
-                      </div>
-
-                      <div className="w-px h-3 bg-border mx-1" />
-
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground/80 hover:bg-muted"
-                        onClick={() =>
-                          setPreviewFormat((prev) =>
-                            prev === 'rendered' ? 'markdown' : 'rendered'
-                          )
-                        }
-                        title={
-                          previewFormat === 'rendered'
-                            ? t('canvas.viewSource')
-                            : t('canvas.viewRendered')
-                        }
-                        aria-label={
-                          previewFormat === 'rendered'
-                            ? t('canvas.viewSource')
-                            : t('canvas.viewRendered')
-                        }
-                      >
-                        {previewFormat === 'rendered' ? (
-                          <Hash className="w-3.5 h-3.5" />
-                        ) : (
-                          <Eye className="w-3.5 h-3.5" />
-                        )}
-                      </Button>
+              </div>
+                </section>
+                <aside className={styles.toolbox} data-governance-tools aria-label="治理工具箱">
+                  <div className={styles.toolboxHeading}>
+                    <h2>治理工具</h2>
+                    <Button variant="ghost" size="icon" className="size-8" aria-label={toolsOpen ? '收起治理工具' : '展开治理工具'} aria-expanded={toolsOpen} aria-controls="governance-tools-content" onClick={() => setToolsOpen(value => !value)}>{toolsOpen ? <PanelRightClose className="size-4" /> : <PanelRightOpen className="size-4" />}</Button>
+                  </div>
+                  <div className={styles.toolboxContent} id="governance-tools-content" hidden={!toolsOpen}>
+                    <div className={styles.tabs} role="tablist" aria-label="治理工具">
+                      {governanceTabs.map((tab, index) => { const Icon = tab.icon; return <button type="button" key={tab.id} id={'governance-tab-' + tab.id} role="tab" data-tone={tab.color} aria-selected={activeTab === tab.id} aria-controls="governance-tool-panel" tabIndex={activeTab === tab.id ? 0 : -1} onClick={() => setActiveTab(tab.id)} onKeyDown={event => {
+                        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+                        event.preventDefault()
+                        const next = event.key === 'Home' ? 0 : event.key === 'End' ? governanceTabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + governanceTabs.length) % governanceTabs.length
+                        setActiveTab(governanceTabs[next].id)
+                        document.getElementById('governance-tab-' + governanceTabs[next].id)?.focus()
+                      }}><Icon />{tab.label}</button> })}
                     </div>
-
-                    {/* 左侧栏展开按钮 */}
-                    {isSidebarCollapsed && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setIsSidebarCollapsed(false)}
-                        className="absolute left-4 top-4 z-20 h-8 w-8 bg-card border border-border/60 shadow-soft rounded-lg text-muted-foreground hover:text-info hover:bg-card transition-colors duration-150 motion-reduce:transition-none"
-                        aria-label={t('sidebar.expand')}
-                        title={t('sidebar.expand')}
-                      >
-                        <PanelRightOpen className="w-4 h-4" />
-                      </Button>
-                    )}
-
-                    {isPanelCollapsed && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setIsPanelCollapsed(false)}
-                        className="absolute right-4 top-4 z-20 h-8 w-8 bg-card border border-border/60 shadow-soft rounded-lg text-muted-foreground hover:text-info hover:bg-card transition-colors duration-150 motion-reduce:transition-none"
-                        aria-label={t('panel.expand')}
-                        title={t('panel.expand')}
-                      >
-                        <PanelRightClose className="w-4 h-4 rotate-180" />
-                      </Button>
-                    )}
-
-                    {/* 内容区域 */}
-                    <div
-                      ref={contentScrollRef}
-                      className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-4 md:p-8"
-                    >
-                      <div
-                        className={cn(
-                          'mx-auto',
-                          viewMode === 'edit' ? 'max-w-full' : 'max-w-4xl'
-                        )}
-                      >
-                        {/* 纸张效果容器 */}
-                        <div
-                          className={cn(
-                            'bg-card min-h-[800px] shadow-sm border border-border/60 rounded-xl overflow-hidden relative',
-                            viewMode === 'edit'
-                              ? 'h-[calc(100vh-140px)] border-0 shadow-none bg-transparent'
-                              : 'p-10 md:p-14'
-                          )}
-                        >
-                          {/* 治理状态徽章 */}
-                          {viewMode !== 'edit' &&
-                            governanceState.isModified && (
-                              <div className="absolute top-0 right-0 p-4">
-                                <span className="bg-accent/10 dark:bg-accent/20 text-accent dark:text-accent border border-accent/30 text-xs px-2 py-1 rounded-md font-medium shadow-sm">
-                                  {t('canvas.modified')}
-                                </span>
-                              </div>
-                            )}
-
-                          <div data-governance-selection-root="true">
-                            {contentBody}
-                          </div>
-                        </div>
-                      </div>
+                    <div className={styles.toolboxScroll} ref={toolboxScrollRef} id="governance-tool-panel" role="tabpanel" aria-labelledby={'governance-tab-' + activeTab}>
+                      {canUseContent ? <fieldset disabled={saving} className={styles.tools} key={selectedFile.id + ':' + activeTab}>
+                        {activeTab === 'quality' && <QualityChecker content={governanceState.cleanedContent} initialScore={governanceState.qualityScore} initialIssues={governanceState.issues} checked={governanceState.qualityChecked} disabled={saving || !hasText} onComplete={handleQualityCheck} activeIssueId={activeIssueId} onSelectIssue={issue => setActiveIssueId(issue.id)} onCleanRequest={() => setActiveTab('clean')} />}
+                        {activeTab === 'clean' && <DataCleaner content={governanceState.cleanedContent} cleanedContent={governanceState.cleanedContent} onClean={handleClean} disabled={saving || !hasText} onConfigure={() => setConfigOpen(true)} />}
+                        {activeTab === 'annotate' && <DataAnnotator content={governanceState.cleanedContent} annotations={governanceState.annotations} onAnnotate={handleAnnotate} onDocumentTags={handleDocumentTags} />}
+                        {activeTab === 'classify' && <DataClassifier content={governanceState.cleanedContent} initialCategory={governanceState.category} initialTags={governanceState.tags} onClassify={handleClassify} />}
+                        {activeTab === 'quality' && activeIssue && <div className={styles.issueDetail}><p>{activeIssue.message}</p>{activeIssue.position && <pre>{governanceState.cleanedContent.slice(Math.max(0, activeIssue.position.start - 45), Math.min(governanceState.cleanedContent.length, activeIssue.position.end + 100))}</pre>}<div className={styles.issueDetailActions}>{activeIssue.position && <Button size="sm" variant="ghost" onClick={() => locateIssue(activeIssue)}><Search className="size-3" />定位到正文</Button>}<Button size="sm" variant="ghost" disabled={saving} onClick={() => { setGovernanceStates(prev => ({ ...prev, [selectedFile.id]: { ...prev[selectedFile.id], issues: prev[selectedFile.id].issues.filter(issue => issue.id !== activeIssue.id), isModified: true } })); setActiveIssueId(null) }}>忽略此项</Button><Button size="sm" variant="outline" onClick={() => setActiveTab('clean')}><Wrench className="size-3" />清洗文档</Button></div></div>}
+                      </fieldset> : <div className={styles.emptySmall}>{loadingContent ? '正在加载正文…' : '正文加载后可使用治理工具'}</div>}
                     </div>
                   </div>
-
-                  {/* 右侧治理工具面板 */}
-                  <div
-                    ref={panelRef}
-                    className={cn(
-                      'group/panel relative flex-shrink-0 border-l border-border bg-card flex flex-col transition-transform duration-200 ease-out motion-reduce:transition-none z-10 shadow-strong',
-                      isPanelCollapsed ? 'w-0 border-l-0 translate-x-full' : ''
-                    )}
-                    style={{ width: isPanelCollapsed ? 0 : panelWidth }}
-                  >
-                    {/* Toolbox header — compact */}
-                    <div className="flex-shrink-0 border-b border-border/60 bg-card">
-                      <div className="flex items-center justify-between px-4 pt-3 pb-2 gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span
-                            aria-hidden
-                            className={cn(
-                              'size-1.5 rounded-full flex-shrink-0 transition-colors',
-                              TAB_COLOR_CLASSES[
-                                governanceTabs.find((t) => t.id === activeTab)
-                                  ?.color ?? 'info'
-                              ].dot
-                            )}
-                          />
-                          <h2 className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground/85 truncate">
-                            {t('panel.title')}
-                          </h2>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 text-muted-foreground hover:text-muted-foreground hover:bg-muted"
-                          aria-label={t('panel.collapse')}
-                          title={t('panel.collapse')}
-                          onClick={() => setIsPanelCollapsed(true)}
-                        >
-                          <PanelRightClose className="w-4 h-4 rotate-180" />
-                        </Button>
-                      </div>
-
-                      {/* Token-colored tab pills */}
-                      <div className="px-3 pb-2.5">
-                        <div className="flex items-center gap-1 p-0.5 bg-muted/60 rounded-lg border border-border/60">
-                          {governanceTabs.map((tab) => {
-                            const Icon = tab.icon
-                            const isActive = activeTab === tab.id
-                            const palette = TAB_COLOR_CLASSES[tab.color]
-                            return (
-                              <button
-                                key={tab.id}
-                                onClick={() => setActiveTab(tab.id)}
-                                className={cn(
-                                  'relative flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-medium transition-colors duration-150 motion-reduce:transition-none focus-ring-soft',
-                                  isActive
-                                    ? cn(
-                                        'ring-1 shadow-sm bg-card',
-                                        palette.icon,
-                                        palette.ringStatic
-                                      )
-                                    : 'text-muted-foreground hover:text-foreground hover:bg-card/95'
-                                )}
-                                title={tab.label}
-                                aria-pressed={isActive}
-                              >
-                                <Icon className="size-3.5" />
-                                <span className="truncate">{tab.label}</span>
-                                {tab.id === 'clean' &&
-                                  governanceState.isModified && (
-                                    <span
-                                      className={cn(
-                                        'absolute top-1 right-1 size-1.5 rounded-full ring-1 ring-card',
-                                        palette.dot
-                                      )}
-                                    />
-                                  )}
-                              </button>
-                            )
-                          })}
-                        </div>
-                        {/* Active tool subhead — replaces the old info banner */}
-                        <p className="mt-2 px-1 text-[11px] leading-snug text-muted-foreground/80 flex items-start gap-1.5">
-                          <Info className="w-3 h-3 mt-0.5 flex-shrink-0 text-muted-foreground/50" />
-                          <span>
-                            {
-                              governanceTabs.find((tab) => tab.id === activeTab)
-                                ?.desc
-                            }
-                          </span>
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* 工具内容区 */}
-                    <div
-                      key={activeTab}
-                      data-governance-tool-scroll="true"
-                      className="flex-1 min-h-0 overflow-y-auto overscroll-contain custom-scrollbar bg-surface-2 animate-fade-in-up"
-                    >
-                      {activeTab === 'quality' && (
-                        <QualityChecker
-                          content={governanceState.originalContent}
-                          initialScore={governanceState.qualityScore}
-                          initialIssues={governanceState.issues}
-                          onComplete={handleQualityCheck}
-                        />
-                      )}
-                      {activeTab === 'clean' && (
-                        <DataCleaner
-                          content={governanceState.originalContent}
-                          cleanedContent={governanceState.cleanedContent}
-                          onClean={handleClean}
-                        />
-                      )}
-                      {activeTab === 'annotate' && (
-                        <DataAnnotator
-                          content={governanceState.cleanedContent}
-                          annotations={governanceState.annotations}
-                          onAnnotate={handleAnnotate}
-                          onDocumentTags={handleDocumentTags}
-                        />
-                      )}
-                      {activeTab === 'classify' && (
-                        <DataClassifier
-                          content={governanceState.cleanedContent}
-                          initialCategory={governanceState.category}
-                          initialTags={governanceState.tags}
-                          onClassify={handleClassify}
-                        />
-                      )}
-                    </div>
-
-                    {/* 拖拽手柄 */}
-                    <button
-                      type="button"
-                      className={cn(
-                        'absolute left-0 top-0 w-1 h-full cursor-col-resize z-20 border-0 bg-transparent p-0 transition-colors opacity-0 hover:opacity-100 hover:bg-primary/10 dark:hover:bg-primary/20 active:bg-primary/30',
-                        isPanelResizing && 'bg-primary opacity-100'
-                      )}
-                      aria-label={t('panel.adjustWidth')}
-                      onMouseDown={startPanelResizing}
-                    />
-                  </div>
-                </>
-              ) : (
-                // 空状态占位
-                <div className="flex-1 flex flex-col items-center justify-center bg-muted">
-                  <div className="w-24 h-24 bg-card rounded-full border border-border flex items-center justify-center mb-6 shadow-sm">
-                    <FileSearch className="w-10 h-10 text-muted-foreground" />
-                  </div>
-                  <h3 className="text-xl font-medium text-foreground mb-2">
-                    {t('emptySelection.title')}
-                  </h3>
-                  <p className="text-muted-foreground max-w-sm text-center">
-                    {t('emptySelection.description')}
-                  </p>
-                </div>
-              )}
-            </main>
-          </div>
-
-          <AlertDialog
-            open={deleteFileOpen}
-            onOpenChange={(open) => {
-              setDeleteFileOpen(open)
-              if (!open) setDeleteFileTarget(null)
-            }}
-          >
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>
-                  {t('dialogs.deleteFile.title')}
-                </AlertDialogTitle>
-                <AlertDialogDescription>
-                  {t('dialogs.deleteFile.description', {
-                    filename: deleteFileTarget?.filename || '-',
-                  })}
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>
-                  {t('dialogs.deleteFile.cancel')}
-                </AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => {
-                    const id = deleteFileTarget?.id
-                    if (!id) return
-                    handleDeleteFile(id)
-                  }}
-                >
-                  {t('dialogs.deleteFile.confirm')}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
-      }
-    />
+                </aside>
+              </div>
+              <FeedbackToast type="error" message={saveError ? `保存失败：${saveError}。修改内容已保留。` : null} id="governance-save-feedback" />
+              <footer className={styles.footer}>
+                <span className={styles.saveState} role="status">{saving ? <Loader2 className={styles.spinner} /> : governanceState.isModified ? <span className={cn(styles.dot, styles.warning)} /> : <Check className="size-3.5" />}{saving ? '正在保存…' : governanceState.isModified ? '修改尚未保存' : selectedFile.governanceStatus === 'ready' || selectedFile.governanceStatus === 'submitted' ? '治理结果已保存' : '等待检查文档'}</span>
+                <div className={styles.footerActions}><Button size="sm" variant="ghost" onClick={nextFile} disabled={queueFiles.length < 2 || saving}>下一份<ChevronRight className="size-3.5" /></Button><Button size="sm" variant="outline" onClick={() => void saveDocuments(false)} disabled={!canUseContent || saving}><Save className="size-3.5" />保存</Button><Button size="sm" onClick={() => void saveDocuments(true)} disabled={!hasText || saving}>保存并继续切块<ArrowRight className="size-3.5" /></Button></div>
+              </footer>
+            </>
+          ) : <div className={styles.empty}><FileSearch /><h2>{documentSyncQuery.isPending || !isLoaded ? '正在加载文档…' : '选择需要治理的文档'}</h2><p>从左侧队列打开文档，或添加文档后开始检测和清洗。</p><Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploading}><Plus className="size-4" />添加文档</Button></div>}
+        </main>
+      </div>
+      <Sheet open={configOpen} onOpenChange={setConfigOpen}><SheetContent className={styles.configSheet}><SheetHeader className={styles.configHeader}><SheetTitle>治理配置</SheetTitle><SheetDescription>选择治理预设，调整当前使用的清洗规则。</SheetDescription></SheetHeader><div className={styles.configBody}><section className={styles.configGroup}><h3>治理预设</h3><GovernanceProfileSelector compact onApplyPatch={patch => { setEnabled(true); for (const key of Object.keys(patch) as Array<keyof DocumentPipelineOptions>) { const value = patch[key]; if (value !== undefined) updateOption(key, value) } }} /></section><section className={styles.configGroup}><h3>清洗规则</h3><PipelineOptionsPanel compact showJsonToolbar showIndexingControls={false} /></section></div></SheetContent></Sheet>
+      <AlertDialog open={deleteFileOpen} onOpenChange={setDeleteFileOpen}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{t('dialogs.deleteFile.title')}</AlertDialogTitle><AlertDialogDescription>{t('dialogs.deleteFile.description', { filename: deleteFileTarget?.filename || '' })}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>{t('dialogs.deleteFile.cancel')}</AlertDialogCancel><Button variant="destructive" onClick={() => { if (deleteFileTarget) void handleDeleteFile(deleteFileTarget.id) }}>{t('dialogs.deleteFile.confirm')}</Button></AlertDialogFooter></AlertDialogContent></AlertDialog>
+      {isDragging && <div className={styles.dropOverlay}><Upload className="mx-auto size-8" /><strong>松开以添加并解析文档</strong><span className="text-sm text-muted-foreground">PDF、Word、Excel、TXT、Markdown 或 ZIP</span></div>}
+    </div>
   )
 }

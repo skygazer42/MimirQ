@@ -2,9 +2,10 @@
  * 手动切片上传对话框
  */
 'use client'
+import { FeedbackToast } from '@/components/feedback-toast'
 
 import { useState, useMemo, ChangeEvent, useRef, useEffect, useCallback } from 'react'
-import { Upload, Loader2, FileText, Settings2, Scissors, AlignJustify, Hash, FileType } from 'lucide-react'
+import { Upload, Loader2, Settings2, Scissors, AlignJustify, Hash, FileType } from '@/components/icons'
 
 import {
   Dialog,
@@ -13,9 +14,9 @@ import {
   DialogDescription,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { FileTypeIcon } from '@/components/ui/file-type-icon'
 import { documentApi } from '@/lib/api'
 import { cn, formatFileSize } from '@/lib/utils'
 import type { DocumentPreview, ManualChunk } from '@/types'
@@ -49,7 +50,7 @@ function renderUploadState(isParsing: boolean, file: File | null) {
     return (
       <div className="flex flex-col items-center gap-1">
         <div className="mb-1 rounded-lg bg-primary/10 p-2">
-          <FileText className="h-6 w-6 text-primary" />
+          <FileTypeIcon filename={file.name} className="size-6" />
         </div>
         <p className="line-clamp-1 break-all px-2 text-sm font-medium text-foreground">
           {file.name}
@@ -74,7 +75,7 @@ function renderPreviewState(preview: DocumentPreview | null, chunkPreview: Manua
   if (!preview) {
     return (
       <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
-        <Scissors className="mb-3 h-12 w-12 opacity-20" />
+        <Scissors appearance="color" className="mb-3 size-12" />
         <p className="text-sm">上传文档后在此处查看实时切片效果</p>
       </div>
     )
@@ -524,15 +525,7 @@ export function ManualUploadDialog({ onUploaded }: Readonly<ManualUploadDialogPr
               <PipelineOptionsPanel compact />
             </div>
 
-            {error && (
-              <Alert variant="destructive">
-                <Settings2 className="h-4 w-4" />
-                <div>
-                  <AlertTitle>处理失败</AlertTitle>
-                  <AlertDescription>{error}</AlertDescription>
-                </div>
-              </Alert>
-            )}
+            <FeedbackToast type="error" message={error} id="manual-upload-feedback" />
           </div>
 
           {/* 右侧：预览区 */}

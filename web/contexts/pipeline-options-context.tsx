@@ -44,6 +44,7 @@ const normalizeState = (raw: unknown): PipelineOptionsState => {
 }
 
 export function PipelineOptionsProvider({ children }: Readonly<{ children: React.ReactNode }>) {
+  const [loaded, setLoaded] = useState(false)
   const [state, setState] = useState<PipelineOptionsState>({
     enabled: false,
     options: { ...DEFAULT_DOCUMENT_PIPELINE_OPTIONS },
@@ -51,18 +52,20 @@ export function PipelineOptionsProvider({ children }: Readonly<{ children: React
 
   useEffect(() => {
     const stored = readClientStorage(STORAGE_KEY)
-    if (!stored) return
-    try {
-      const parsed = JSON.parse(stored)
-      setState(normalizeState(parsed))
-    } catch {
-      // ignore corrupted storage
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored)
+        setState(normalizeState(parsed))
+      } catch {
+        // ignore corrupted storage
+      }
     }
+    setLoaded(true)
   }, [])
 
   useEffect(() => {
-    writeClientStorage(STORAGE_KEY, JSON.stringify(state))
-  }, [state])
+    if (loaded) writeClientStorage(STORAGE_KEY, JSON.stringify(state))
+  }, [loaded, state])
 
   useEffect(() => {
     if (globalThis.window === undefined) return

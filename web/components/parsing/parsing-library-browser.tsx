@@ -1,6 +1,6 @@
 'use client'
 
-import { FolderOpen } from 'lucide-react'
+import { FolderOpen } from '@/components/icons'
 
 import { FileQueueItem } from '@/components/ui/file-queue-item'
 import { cn } from '@/lib/utils'

@@ -137,6 +137,12 @@ const evidenceRetrieveResponseSchema = z.looseObject({
     query_debug: z.record(z.string(), z.unknown()).nullable().optional(),
   })
 
+// ChatRAGConfig's server-side defaults also apply to explicitly empty/partial
+// request configs. The generated schema marks several defaulted fields required.
+export type EvidenceRetrieveInput = Omit<EvidenceRetrieveRequest, 'rag_config'> & {
+  rag_config?: Partial<NonNullable<EvidenceRetrieveRequest['rag_config']>>
+}
+
 export const ragApi = {
   async retrievePreview(params: RetrievePreviewRequest): Promise<RetrievePreviewResponse> {
     const { data } = await apiClient.post('/rag/retrieve-preview', params)
@@ -163,11 +169,11 @@ export const ragApi = {
     return data
   },
 
-  async retrieveEvidence(params: EvidenceRetrieveRequest): Promise<EvidenceRetrieveResponse> {
+  async retrieveEvidence(params: EvidenceRetrieveInput): Promise<EvidenceRetrieveResponse> {
     const data = await openapiRequest({
       path: '/api/v1/rag/retrieve',
       method: 'post',
-      body: params,
+      body: params as EvidenceRetrieveRequest,
       responseSchema: evidenceRetrieveResponseSchema,
       responseSchemaName: 'EvidenceRetrieveResponse',
     })

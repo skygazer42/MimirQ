@@ -1,11 +1,11 @@
 'use client'
+import { FeedbackToast } from '@/components/feedback-toast'
 
 import type { ComponentProps, ReactNode } from 'react'
 
-import { Pencil, Tags } from 'lucide-react'
+import { Pencil, Tags } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Panel } from '@/components/ui/panel'
 import { TagInput } from '@/components/ui/tag-input'
@@ -41,6 +41,7 @@ export function DocumentDetailTagsPanel({
 
   return (
     <Panel className="rounded-2xl">
+      <FeedbackToast type="error" message={tagsError} id="document-tagsError" />
       {editing ? (
         <form action={saveAction} className="space-y-4">
           <input type="hidden" name="tags_json" value={JSON.stringify(tagsDraft)} />
@@ -66,12 +67,7 @@ export function DocumentDetailTagsPanel({
           <div className="space-y-3">
             <TagInput value={tagsDraft} onValueChange={onTagsDraftChange} disabled={isSaving} />
 
-            {tagsError ? (
-              <Alert variant="destructive">
-                <AlertTitle>{t('alerts.saveFailedTitle')}</AlertTitle>
-                <AlertDescription>{tagsError}</AlertDescription>
-              </Alert>
-            ) : null}
+
           </div>
         </form>
       ) : (
@@ -102,12 +98,7 @@ export function DocumentDetailTagsPanel({
               <div className="text-xs text-muted-foreground">{t('tags.empty')}</div>
             )}
 
-            {tagsError ? (
-              <Alert variant="destructive">
-                <AlertTitle>{t('alerts.saveFailedTitle')}</AlertTitle>
-                <AlertDescription>{tagsError}</AlertDescription>
-              </Alert>
-            ) : null}
+
           </div>
         </>
       )}

@@ -42,7 +42,7 @@ import {
   FileText,
   Upload,
   Star,
-} from 'lucide-react'
+} from '@/components/icons'
 import { toast } from 'sonner'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { cn, detachPromise } from '@/lib/utils'
@@ -177,7 +177,7 @@ function TestCaseRow({
             <div
               className={cn(
                 'text-muted-foreground line-clamp-2',
-                dense ? 'mb-1.5 text-[11px]' : 'mb-2 text-xs'
+                dense ? 'mb-1.5 text-[13px]' : 'mb-2 text-xs'
               )}
             >
               标准答案: {caseItem.expected_answer}
@@ -197,8 +197,8 @@ function TestCaseRow({
                   className={cn(
                     'inline-flex items-center gap-1 rounded-full border text-muted-foreground',
                     dense
-                      ? 'border-info/15 bg-background/70 px-1.5 py-0.5 text-[9px]'
-                      : 'border-border/60 bg-muted px-2 py-0.5 text-[11px]'
+                      ? 'border-info/15 bg-background/70 px-1.5 py-0.5 text-[12px]'
+                      : 'border-border/60 bg-muted px-2 py-0.5 text-[13px]'
                   )}
                 >
                   <Tag className="w-2.5 h-2.5" />
@@ -208,7 +208,7 @@ function TestCaseRow({
             </div>
           ) : null}
 
-          <div className="flex items-center gap-3 text-[11px] text-muted-foreground/80">
+          <div className="flex items-center gap-3 text-[13px] text-muted-foreground/80">
             <span className="flex items-center gap-1">
               <Calendar className="w-3 h-3" />
               {new Date(caseItem.created_at).toLocaleDateString()}
@@ -793,20 +793,18 @@ export function TestCaseManager({
     const emptyDescription = datasetId
       ? searchQuery || goldenOnly
         ? '当前筛选条件没有命中样本，可以清空筛选或新增一条可复用标准问答。'
-        : '为当前数据集添加标准问题、标准答案和标准证据，用它作为评估 RAG pipeline 的固定标尺。'
+        : '添加标准问题、答案和引用证据，建立评测基准。'
       : 'Golden 评测集绑定到数据集，选择知识库后才能创建标准问答和标准证据。'
 
     caseListContent = (
       <div
         className={cn(
-          'flex h-full min-h-[420px] items-center justify-center px-6 text-center',
-          dense ? 'py-12' : 'py-10'
+          'flex h-full min-h-[260px] items-center justify-center px-6 text-center',
+          dense ? 'py-8' : 'py-10'
         )}
       >
         <div className="max-w-md">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl border border-border/60 bg-[radial-gradient(circle_at_30%_20%,hsl(var(--primary)/0.16),transparent_45%),linear-gradient(180deg,hsl(var(--card))_0%,hsl(var(--background))_100%)] shadow-sm">
-            <FileText className="h-7 w-7 text-primary" />
-          </div>
+          <FileText className="mx-auto size-6 text-muted-foreground" aria-hidden="true" />
           <div className="mt-4 text-base font-semibold text-foreground">
             {emptyTitle}
           </div>
@@ -814,75 +812,9 @@ export function TestCaseManager({
             {emptyDescription}
           </div>
 
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-            {(searchQuery || goldenOnly) && datasetId ? (
-              <Button
-                size="sm"
-                variant="outline"
-                className={cn(
-                  dense &&
-                    'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[11px]'
-                )}
-                onClick={() => {
-                  setSearchQuery('')
-                  setGoldenOnly(false)
-                }}
-              >
-                清空筛选
-              </Button>
-            ) : null}
-            <Button
-              size="sm"
-              className={cn(
-                'gap-2',
-                dense && 'h-8 rounded-lg px-2.5 text-[11px]'
-              )}
-              onClick={() => setIsCreating(true)}
-              disabled={!datasetId}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              新增标准问答
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className={cn(
-                'gap-2',
-                dense &&
-                  'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[11px]'
-              )}
-              onClick={handleChooseEvidencePack}
-              disabled={!datasetId}
-            >
-              <Upload className="h-3.5 w-3.5" />
-              导入 Evidence Pack
-            </Button>
-          </div>
+          {(searchQuery || goldenOnly) && datasetId ? <div className="mt-5"><Button size="sm" variant="outline" onClick={() => { setSearchQuery(''); setGoldenOnly(false) }}>清空筛选</Button></div> : null}
 
-          {datasetId ? (
-            <div className="mt-6 grid grid-cols-3 gap-2 text-left">
-              {[
-                ['1', '标准问题', '固定 RAG 输入'],
-                ['2', '标准证据', '标定 ground truth'],
-                ['3', '差距评分', '追踪回归结果'],
-              ].map(([step, title, desc]) => (
-                <div
-                  key={step}
-                  className="rounded-2xl border border-border/60 bg-card/90 p-2.5"
-                >
-                  <div className="text-[10px] font-semibold text-primary">
-                    STEP {step}
-                  </div>
-                  <div className="mt-1 text-[11px] font-semibold text-foreground">
-                    {title}
-                  </div>
-                  <div className="mt-0.5 text-[10px] leading-4 text-muted-foreground">
-                    {desc}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : null}
+
         </div>
       </div>
     )
@@ -900,7 +832,7 @@ export function TestCaseManager({
             onClick={toggleSelectAll}
             className={cn(
               'flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none',
-              dense ? 'text-[11px]' : 'text-xs'
+              dense ? 'text-[13px]' : 'text-xs'
             )}
           >
             {selectedCaseIds.size === filteredCases.length ? (
@@ -936,19 +868,19 @@ export function TestCaseManager({
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex min-h-0 min-w-0 flex-col h-full">
       {/* 头部操作栏 */}
       <div
         className={cn(
           'border-b',
           dense
-            ? 'border-info/15 bg-info/[0.025] px-3 py-3'
+            ? 'border-border bg-background px-5 py-4'
             : 'border-border p-4'
         )}
       >
         <div
           className={cn(
-            'flex items-center justify-between',
+            'flex flex-wrap items-center justify-between gap-3',
             dense ? 'mb-2.5' : 'mb-3'
           )}
         >
@@ -959,35 +891,28 @@ export function TestCaseManager({
                 dense ? 'text-[13px]' : 'text-sm'
               )}
             >
-              Golden 评测集
+              评测样本
             </h3>
-            <p
-              className={cn(
-                'mt-1 text-muted-foreground',
-                dense ? 'text-[11px] leading-4' : 'text-xs'
-              )}
-            >
-              数据集级固定标尺：问题、标准答案、标准证据。
-            </p>
+
             {dense ? (
               <div
                 aria-label="Golden 评测集统计"
-                className="mt-2 flex flex-wrap items-center gap-1.5"
+                className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1"
               >
-                <span className="rounded-full border border-border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                <span className="text-[12px] text-muted-foreground">
                   样本 {caseTotal}
                   {!casesFullyLoaded ? ` · 已载 ${cases.length}` : ''}
                 </span>
-                <span className="rounded-full border border-warning/30 bg-warning/10 px-1.5 py-0.5 text-[10px] text-warning">
+                <span className="text-[12px] text-muted-foreground">
                   Golden {goldenCount}
                 </span>
-                <span className="rounded-full border border-success/30 bg-success/10 px-1.5 py-0.5 text-[10px] text-success">
+                <span className="text-[12px] text-success">
                   标准答案 {standardAnswerCount}
                 </span>
-                <span className="rounded-full border border-info/30 bg-info/10 px-1.5 py-0.5 text-[10px] text-info">
+                <span className="text-[12px] text-muted-foreground">
                   标准证据 {referenceSourceCount}
                 </span>
-                <span className="rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
+                <span className="text-[12px] text-primary">
                   已选 {selectedCaseIds.size}
                 </span>
               </div>
@@ -1002,7 +927,7 @@ export function TestCaseManager({
                   className={cn(
                     'gap-2',
                     dense &&
-                      'h-8 rounded-lg border-warning/30 bg-warning/5 px-2.5 text-[11px] text-warning hover:bg-warning/10'
+                      'h-8 rounded-lg border-warning/30 bg-warning/5 px-2.5 text-[13px] text-warning hover:bg-warning/10'
                   )}
                   onClick={handleRunGolden}
                   disabled={!datasetId || goldenCaseIds.length === 0}
@@ -1016,7 +941,7 @@ export function TestCaseManager({
                   className={cn(
                     'gap-2',
                     dense &&
-                      'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[11px]'
+                      'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[13px]'
                   )}
                   onClick={handleRunAll}
                   disabled={!datasetId || cases.length === 0}
@@ -1033,7 +958,7 @@ export function TestCaseManager({
                   className={cn(
                     'gap-2',
                     dense &&
-                      'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[11px]'
+                      'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[13px]'
                   )}
                   onClick={handleRunSelected}
                 >
@@ -1053,7 +978,7 @@ export function TestCaseManager({
                     className={cn(
                       'gap-2 text-destructive hover:text-destructive',
                       dense &&
-                        'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[11px]'
+                        'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[13px]'
                     )}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -1079,7 +1004,7 @@ export function TestCaseManager({
               className={cn(
                 'gap-2',
                 dense &&
-                  'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[11px]'
+                  'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[13px]'
               )}
               onClick={handleChooseEvidencePack}
               disabled={!datasetId}
@@ -1092,7 +1017,7 @@ export function TestCaseManager({
               size="sm"
               className={cn(
                 'gap-2',
-                dense && 'h-8 rounded-lg px-2.5 text-[11px]'
+                dense && 'h-9 rounded-md bg-foreground px-3 text-[13px] text-background hover:bg-foreground/85'
               )}
               onClick={() => setIsCreating(true)}
             >
@@ -1111,13 +1036,14 @@ export function TestCaseManager({
             )}
           />
           <Input
+            aria-label="搜索 Golden 评测样本"
             type="text"
             placeholder="搜索问题、关键词或标签..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className={cn(
               dense
-                ? 'h-9 rounded-xl border-border/60 bg-card/95 pl-8 text-[13px]'
+                ? 'h-9 rounded-md border-border bg-background pl-8 text-[13px]'
                 : 'pl-10'
             )}
           />
@@ -1137,7 +1063,7 @@ export function TestCaseManager({
               goldenOnly &&
                 'bg-warning/15 text-warning hover:bg-warning/20',
               dense &&
-                'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[11px]'
+                'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[13px]'
             )}
             onClick={() => {
               setGoldenOnly((v) => !v)
@@ -1173,7 +1099,7 @@ export function TestCaseManager({
               <div
                 className={cn(
                   'block font-medium text-muted-foreground',
-                  dense ? 'mb-1 text-[11px]' : 'mb-1 text-xs'
+                  dense ? 'mb-1 text-[13px]' : 'mb-1 text-xs'
                 )}
               >
                 标准问题 *
@@ -1194,7 +1120,7 @@ export function TestCaseManager({
               <div
                 className={cn(
                   'block font-medium text-muted-foreground',
-                  dense ? 'mb-1 text-[11px]' : 'mb-1 text-xs'
+                  dense ? 'mb-1 text-[13px]' : 'mb-1 text-xs'
                 )}
               >
                 标准答案（推荐）
@@ -1214,7 +1140,7 @@ export function TestCaseManager({
             <div className="flex items-center gap-2">
               <Button
                 size="sm"
-                className={cn(dense && 'h-8 rounded-lg px-2.5 text-[11px]')}
+                className={cn(dense && 'h-9 rounded-md bg-foreground px-3 text-[13px] text-background hover:bg-foreground/85')}
                 onClick={() => detachPromise(handleCreate())}
                 disabled={evidenceLoading || !datasetId || !newQuestion.trim()}
               >
@@ -1232,7 +1158,7 @@ export function TestCaseManager({
                 variant="outline"
                 className={cn(
                   dense &&
-                    'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[11px]'
+                    'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[13px]'
                 )}
                 onClick={() => {
                   setIsCreating(false)
@@ -1246,7 +1172,7 @@ export function TestCaseManager({
             <div
               className={cn(
                 'rounded-xl border border-warning/30 bg-warning/5 px-3 py-2 text-muted-foreground',
-                dense ? 'text-[11px] leading-5' : 'text-[11px]'
+                dense ? 'text-[13px] leading-5' : 'text-[13px]'
               )}
             >
               提示：后端要求每个用例必须提供至少 1 条{' '}
@@ -1273,7 +1199,7 @@ export function TestCaseManager({
                     {evidenceDatasetId || '-'}
                   </span>
                 </div>
-                <div className="text-[11px]">
+                <div className="text-[13px]">
                   citations:{' '}
                   <span className="font-mono text-foreground/80">
                     {evidenceCitations.length}
@@ -1281,7 +1207,7 @@ export function TestCaseManager({
                 </div>
               </div>
               {evidencePack?.exported_at && (
-                <div className="mt-2 text-[11px]">
+                <div className="mt-2 text-[13px]">
                   exported_at:{' '}
                   <span className="font-mono text-foreground/80">
                     {String(evidencePack.exported_at)}
@@ -1320,7 +1246,7 @@ export function TestCaseManager({
                 <div className="text-xs font-semibold text-foreground">
                   选择标准证据（reference_sources）
                 </div>
-                <div className="text-[11px] text-muted-foreground">
+                <div className="text-[13px] text-muted-foreground">
                   已选 {evidenceSelectedChunkIds.size} /{' '}
                   {evidenceCitations.length}
                 </div>
@@ -1361,11 +1287,11 @@ export function TestCaseManager({
                         >
                           #{idx + 1} {label}
                         </div>
-                        <div className="text-[11px] text-muted-foreground mt-1 line-clamp-2">
+                        <div className="text-[13px] text-muted-foreground mt-1 line-clamp-2">
                           “{snippet}
                           {snippet.length >= 180 ? '…' : ''}”
                         </div>
-                        <div className="mt-1 text-[11px] text-muted-foreground flex flex-wrap gap-2">
+                        <div className="mt-1 text-[13px] text-muted-foreground flex flex-wrap gap-2">
                           {c?.page_number ? (
                             <span>p.{String(c.page_number)}</span>
                           ) : null}
@@ -1411,7 +1337,7 @@ export function TestCaseManager({
       </Dialog>
 
       {/* 用例列表 */}
-      <div className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar">
         {caseListContent}
       </div>
 
@@ -1428,7 +1354,7 @@ export function TestCaseManager({
           <div
             className={cn(
               'text-center text-muted-foreground',
-              dense ? 'text-[11px]' : 'text-xs'
+              dense ? 'text-[13px]' : 'text-xs'
             )}
           >
             已显示 {filteredCases.length} 个测试用例

@@ -1,4 +1,4 @@
-import type { LucideIcon } from "lucide-react"
+import type { PlatformIcon } from "@/components/icons"
 import { MANAGEMENT_HERO_PANEL_CLASS } from "@/components/ui/knowledge-ops-hero"
 import { PageTitleIcon, type PageTitleIconName } from "@/components/ui/page-title-icon"
 import { cn } from "@/lib/utils"
@@ -6,12 +6,13 @@ import { cn } from "@/lib/utils"
 interface PageHeaderProps {
   title: React.ReactNode
   description?: React.ReactNode
-  icon?: LucideIcon
+  icon?: PlatformIcon
   iconImage?: PageTitleIconName
   iconColor?: string
   children?: React.ReactNode
   className?: string
   badge?: string
+  status?: React.ReactNode
   compact?: boolean
 }
 
@@ -47,7 +48,7 @@ function renderPageHeaderIcon({
   iconColor,
 }: {
   iconImage?: PageTitleIconName
-  Icon?: LucideIcon
+  Icon?: PlatformIcon
   compact: boolean
   iconColor: string
 }) {
@@ -62,7 +63,7 @@ function renderPageHeaderIcon({
   }
   if (Icon) {
     return (
-      <Icon className={cn(compact ? "size-3.5" : "size-4", iconColor)} />
+      <Icon appearance="color" className={cn(compact ? "size-3.5" : "size-4", iconColor)} />
     )
   }
   return null
@@ -77,6 +78,7 @@ export function PageHeader({
   children,
   className,
   badge,
+  status,
   compact = true,
 }: Readonly<PageHeaderProps>) {
   const headerIcon = renderPageHeaderIcon({
@@ -100,7 +102,7 @@ export function PageHeader({
           className="pointer-events-none absolute -bottom-px left-1 h-px w-12 bg-info/70"
           aria-hidden="true"
         />
-        <div className={cn("relative flex min-w-0 items-center", children && "@3xl:flex-1", getPageHeaderGap(compact))}>
+        <div className={cn("relative flex min-w-0 items-center", (children || status) && "@3xl:flex-1", getPageHeaderGap(compact))}>
           {headerIcon ? (
             <div className={cn(
               "flex shrink-0 items-center justify-center border border-foreground/10 bg-background/70 text-info shadow-none",
@@ -139,6 +141,7 @@ export function PageHeader({
               </div>
             ) : null}
           </div>
+          {status ? <div className="ml-auto shrink-0">{status}</div> : null}
         </div>
 
         {children ? (

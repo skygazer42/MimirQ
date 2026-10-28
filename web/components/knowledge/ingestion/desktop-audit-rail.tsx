@@ -1,7 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { Check, ChevronLeft } from 'lucide-react'
+import { Check, ChevronLeft } from '@/components/icons'
 
 import {
   Select,

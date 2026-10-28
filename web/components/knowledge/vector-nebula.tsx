@@ -1,18 +1,20 @@
 "use client"
-
-import { useEffect, useMemo, useRef } from "react"
-import dynamic from "next/dynamic"
-import { useTheme } from "next-themes"
-import { useQuery } from "@tanstack/react-query"
-import { AlertCircle, Database, Loader2, RefreshCw } from "lucide-react"
-import * as THREE from "three"
-import type { ForceGraphMethods } from "react-force-graph-3d"
-
-import { Button } from "@/components/ui/button"
-import { formatApiError } from "@/lib/api-errors"
-import { documentApi } from "@/lib/api/documents"
-import { getCssHslColor } from "@/lib/css-vars"
-import { queryKeys } from "@/lib/query-keys"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import { useQuery } from "@tanstack/react-query";
+import { Loader2 } from "@/components/icons";
+import * as THREE from "three";
+import type { ForceGraphMethods } from "react-force-graph-3d";
+import { Button } from "@/components/ui/button";
+import { OperationalWorkspace, WorkspaceNotice, workspaceStyles as ws } from "@/components/ui/operational-workspace";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { fitNebulaCamera } from "./nebula-camera"
+import { useMediaQuery } from "@/hooks/use-media-query";
+import { Link } from "@/i18n/navigation";
+import { formatApiError } from "@/lib/api-errors";
+import { documentApi } from "@/lib/api/documents";
+import { getCssHslColor } from "@/lib/css-vars";
+import { queryKeys } from "@/lib/query-keys";
 
 const THREE_CLOCK_DEPRECATION_WARNING = "THREE.THREE.Clock"
 
@@ -33,7 +35,7 @@ async function withSuppressedThreeClockWarning<T>(action: () => Promise<T>): Pro
   }
 }
 
-const ForceGraph3D = dynamic(() => withSuppressedThreeClockWarning(() => import("react-force-graph-3d")), {
+const ForceGraph3D = dynamic(() => withSuppressedThreeClockWarning(() => import("./nebula-graph").then(module => module.NebulaGraph)), {
   ssr: false,
   loading: () => (
     <div className="flex h-full w-full items-center justify-center bg-background">
@@ -179,16 +181,6 @@ function getDocumentType(document: DocumentListItem): string {
   return "default"
 }
 
-function getChunkCount(document: DocumentListItem): number {
-  const metadata = document.metadata || {}
-  const stats = metadata.chunking_stats
-  if (stats && typeof stats === "object" && "count" in stats) {
-    const count = Number((stats as { count?: unknown }).count)
-    if (Number.isFinite(count)) return count
-  }
-  return 0
-}
-
 function clusterCenter(index: number): { x: number; y: number; z: number } {
   const angle = index * 2.399963
   const radius = 70 + index * 18
@@ -206,7 +198,7 @@ function createClusterGeometry(geometry: ClusterVisualStyle["geometry"], size: n
   return new THREE.SphereGeometry(size, 10, 10)
 }
 
-function buildNebula(documents: DocumentListItem[], chunksByDocument: Map<string, DocumentChunkItem[]>): NebulaData {
+export function buildNebula(documents: DocumentListItem[], chunksByDocument: Map<string, DocumentChunkItem[]>): NebulaData {
   const clusterKeys = Array.from(new Set(documents.map(getDocumentType)))
   const clusterByKey = new Map<string, ClusterDefinition>()
 
@@ -216,7 +208,7 @@ function buildNebula(documents: DocumentListItem[], chunksByDocument: Map<string
     clusterByKey.set(key, {
       ...style,
       count: docs.length,
-      chunkCount: docs.reduce((sum, document) => sum + (chunksByDocument.get(document.id)?.length || getChunkCount(document)), 0),
+      chunkCount: docs.reduce((sum, document) => sum + (chunksByDocument.get(document.id)?.length ?? 0), 0),
       center: clusterCenter(index),
     })
   })
@@ -233,15 +225,7 @@ function buildNebula(documents: DocumentListItem[], chunksByDocument: Map<string
       center: clusterCenter(clusterByKey.size),
     }
     const chunks = chunksByDocument.get(document.id) || []
-    const fallbackChunks: DocumentChunkItem[] = chunks.length
-      ? chunks
-      : [{
-          id: `${document.id}:document`,
-          content: document.filename || document.id,
-          chunk_index: 0,
-        }]
-
-    fallbackChunks.forEach((chunk, index) => {
+    chunks.forEach((chunk, index) => {
       const [minSize, maxSize] = cluster.style.sizeRange
       const id = String(chunk.id)
       const spread = cluster.style.spread
@@ -263,7 +247,7 @@ function buildNebula(documents: DocumentListItem[], chunksByDocument: Map<string
       })
 
       if (index > 0) {
-        const previous = fallbackChunks[index - 1]
+        const previous = chunks[index - 1]
         links.push({
           source: `${document.id}:${previous.id}`,
           target: nodeId,
@@ -285,82 +269,80 @@ async function loadVectorNebulaData(): Promise<NebulaData> {
   const documents = (documentList.items || []) as DocumentListItem[]
   const chunksByDocument = new Map<string, DocumentChunkItem[]>()
 
-  await Promise.all(
-    documents.slice(0, 8).map(async (document) => {
-      try {
-        const chunkList = await documentApi.listChunks(document.id, { limit: 80 })
-        chunksByDocument.set(document.id, chunkList.items || [])
-      } catch {
-        chunksByDocument.set(document.id, [])
-      }
-    })
-  )
-
-  return buildNebula(documents, chunksByDocument)
+  const sampledDocuments = documents.slice(0, 8)
+  await Promise.all(sampledDocuments.map(async document => {
+    const chunkList = await documentApi.listChunks(document.id, { limit: 80 })
+    chunksByDocument.set(document.id, chunkList.items)
+  }))
+  return buildNebula(sampledDocuments, chunksByDocument)
 }
 
+
 export function VectorNebula() {
-  const { resolvedTheme } = useTheme()
   const fgRef = useRef<ForceGraphMethods | undefined>(undefined)
-  const nebulaQuery = useQuery({
-    queryKey: queryKeys.documents.nebula,
-    queryFn: loadVectorNebulaData,
-  })
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const [size, setSize] = useState({ width: 0, height: 0 })
+  const [canvasColor, setCanvasColor] = useState('#ffffff')
+  const [linkColor, setLinkColor] = useState('#64748b')
+  const [panel, setPanel] = useState<'legend' | 'node' | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
+  const nebulaQuery = useQuery({ queryKey: queryKeys.documents.nebula, queryFn: loadVectorNebulaData })
   const data = nebulaQuery.data ?? EMPTY_NEBULA
   const loading = nebulaQuery.isFetching
-  const error = nebulaQuery.error
-    ? formatApiError(nebulaQuery.error, "语义星云数据加载失败")
-    : null
-
+  const error = nebulaQuery.error ? formatApiError(nebulaQuery.error, '语义星云数据读取失败') : null
+  const selectedNode = data.nodes.find(node => node.id === selectedId)
+  const totalDocuments = useMemo(() => data.clusters.reduce((sum, cluster) => sum + cluster.count, 0), [data.clusters])
+  useLayoutEffect(() => {
+    const element = viewportRef.current!
+    const observer = new ResizeObserver(() => setSize({ width: element.clientWidth, height: element.clientHeight }))
+    observer.observe(element)
+    setSize({ width: element.clientWidth, height: element.clientHeight })
+    return () => observer.disconnect()
+  }, [])
+  useLayoutEffect(() => {
+    const update = () => { setCanvasColor(getCssHslColor('--background', '#ffffff')); setLinkColor(getCssHslColor('--muted-foreground', '#64748b')) }
+    const observer = new MutationObserver(update)
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style', 'data-surface-theme'] })
+    update()
+    return () => observer.disconnect()
+  }, [])
+  useEffect(() => {
+    if (selectedId && !data.nodes.some(node => node.id === selectedId)) { setSelectedId(null); if (panel === 'node') setPanel(null) }
+  }, [data.nodes, selectedId, panel])
   useEffect(() => {
     const originalWarn = console.warn
-    const patchedWarn = (...args: unknown[]) => {
-      // react-force-graph-3d still emits this upstream Three.js deprecation in dev.
-      if (isThreeClockDeprecationWarning(args)) return
-      originalWarn(...args)
-    }
+    const patchedWarn = (...args: unknown[]) => { if (!isThreeClockDeprecationWarning(args)) originalWarn(...args) }
     console.warn = patchedWarn
-    return () => {
-      if (console.warn === patchedWarn) {
-        console.warn = originalWarn
-      }
-    }
+    return () => { if (console.warn === patchedWarn) console.warn = originalWarn }
   }, [])
+  const fitCamera = useCallback(() => {
+    const graph = fgRef.current
+    if (!graph || !size.width || !size.height) return
+    const camera = graph.camera() as THREE.PerspectiveCamera
+    const view = fitNebulaCamera(data.nodes.map(node => ({ x: node.x, y: node.y, z: node.z, radius: node.val * node.style.halo.scale })), size.width, size.height, camera.fov)
+    if (view) graph.cameraPosition(view.position, view.target, 0)
+  }, [data.nodes, size.width, size.height])
+  const selectNode = useCallback((node: NebulaNode) => {
+    viewportRef.current?.focus()
+    setSelectedId(node.id); setPanel('node')
+    const ratio = 1 + 40 / Math.max(1, Math.hypot(node.x, node.y, node.z))
+    fgRef.current?.cameraPosition({ x: node.x * ratio, y: node.y * ratio, z: node.z * ratio }, node, reducedMotion ? 0 : 600)
+  }, [reducedMotion])
+  return <OperationalWorkspace title="语义星云" icon="knowledge-graph" mode="canvas" context={loading && !nebulaQuery.data ? '正在读取切片…' : `${totalDocuments} 文档 · ${data.nodes.length} 切片`} actions={<><Button variant="outline" onClick={() => setPanel('legend')}>图例与定位</Button><Button variant="ghost" disabled={loading} onClick={() => { void nebulaQuery.refetch() }}>{loading ? '正在读取…' : '重新读取'}</Button></>} toolbar={<><p className="text-[13px] text-muted-foreground">拖动旋转，滚轮缩放；选择切片查看正文。</p><Button variant="ghost" className="ml-auto" disabled={!data.nodes.length} onClick={fitCamera}>重置视角</Button></>}>
+    {error ? <div className="px-4"><WorkspaceNotice retry={() => { void nebulaQuery.refetch() }} pending={loading}>{error}{data.nodes.length ? '。当前仍显示上次读取的切片。' : ''}</WorkspaceNotice></div> : null}
+    <div ref={viewportRef} role="region" tabIndex={0} aria-label="三维切片画布" className="relative min-h-0 min-w-0 flex-1 overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring" data-canvas-background={canvasColor}>
+      {size.width > 0 && size.height > 0 ? <ForceGraph3D graphRef={fgRef} onReady={fitCamera} onEngineStop={fitCamera} width={size.width} height={size.height} graphData={data} backgroundColor={canvasColor} showNavInfo={false} nodeLabel={(raw: unknown) => { const node = raw as NebulaNode; const label = document.createElement('span'); label.textContent = `${node.documentName} · 切片 ${node.chunkIndex ?? '—'}`; return label.outerHTML }} nodeColor="color" nodeRelSize={1.2} nodeOpacity={0.9} nodeResolution={10} linkColor={() => linkColor} linkOpacity={0.7} enableNodeDrag={false} cooldownTicks={0} onNodeClick={(raw: unknown) => selectNode(raw as NebulaNode)} nodeThreeObject={renderNebulaNode} /> : null}
+      {!data.nodes.length ? <div className="absolute inset-0 flex items-center justify-center px-6"><div className="max-w-md text-left"><h2 className="text-lg font-semibold">{loading ? '正在读取文档切片' : error ? '暂时无法生成星云' : '当前没有可视化切片'}</h2><p className="mt-3 text-sm leading-6 text-muted-foreground">{error ? '重新读取成功后，将在这里显示切片。' : loading ? '读取完成后可浏览切片和原文。' : '在知识库完成文档入库后，可在这里浏览切片。'}</p>{!loading && !error ? <Button asChild variant="outline" className="mt-5"><Link href="/knowledge">打开知识库</Link></Button> : null}</div></div> : null}
+    </div>
+    <Dialog open={panel !== null} onOpenChange={open => { if (!open) setPanel(null) }}><DialogContent className={ws.dialog} aria-describedby={undefined}><DialogHeader className={ws.dialogHeader}><DialogTitle>{panel === 'node' ? '切片详情' : '图例与定位'}</DialogTitle></DialogHeader><div className={ws.dialogBody}>
+      {panel === 'node' && selectedNode ? <article><h2 className="break-words text-base font-semibold leading-7">{selectedNode.documentName}</h2><p className="mt-2 text-[13px] text-muted-foreground">{selectedNode.group} · 切片 {selectedNode.chunkIndex ?? '—'}</p><p className="mt-5 whitespace-pre-wrap break-words text-sm leading-7">{selectedNode.content}</p><details className="mt-5 border-t border-border pt-4 text-[13px]"><summary className="cursor-pointer">文档与切片标识</summary><p className="mt-3 break-all font-mono text-xs leading-6">{selectedNode.documentId}<br />{selectedNode.id}</p></details></article> : null}
+      {panel === 'legend' ? <div className="space-y-5"><p className="text-sm leading-7 text-muted-foreground">节点代表已读取的文档切片；连线连接同一文档的相邻切片。空间位置用于浏览，不代表向量距离。当前最多载入 8 份文档，每份最多 80 个切片。</p><dl className="divide-y divide-border">{data.clusters.map(cluster => <div key={cluster.label} className="flex justify-between gap-4 py-4 text-sm"><dt className="flex items-center gap-2"><span className="size-2 rounded-full" style={{ backgroundColor: cluster.color }} />{cluster.label}</dt><dd>{cluster.count} 文档 · {cluster.chunkCount} 切片</dd></div>)}</dl><label className="block space-y-2 text-sm">定位切片<select className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm" value="" disabled={!data.nodes.length} onChange={event => { const node = data.nodes.find(item => item.id === event.target.value); if (node) selectNode(node) }}><option value="">选择文档与切片</option>{data.nodes.map(node => <option value={node.id} key={node.id}>{node.documentName} · 切片 {node.chunkIndex ?? '—'}</option>)}</select></label></div> : null}
+    </div><DialogFooter className={ws.dialogFooter}>{panel === 'node' && selectedNode ? <Button asChild variant="outline"><Link href={`/knowledge/${selectedNode.documentId}/health`}>查看文档审计</Link></Button> : null}<Button onClick={() => setPanel(null)}>完成</Button></DialogFooter></DialogContent></Dialog>
+  </OperationalWorkspace>
+}
 
-  const isDark = resolvedTheme === "dark"
-  const bgColor = getCssHslColor("--background", isDark ? "#020617" : "#ffffff")
-  const totalChunks = useMemo(() => data.clusters.reduce((sum, cluster) => sum + cluster.chunkCount, 0), [data.clusters])
-
-  return (
-    <div className="relative h-full w-full">
-      <ForceGraph3D
-        ref={fgRef}
-        graphData={data}
-        backgroundColor={bgColor}
-        showNavInfo={false}
-        nodeLabel={(rawNode: unknown) => {
-          const node = rawNode as NebulaNode
-          return `[${node.group}] ${node.documentName}\nChunk ${node.chunkIndex ?? "-"}\n${node.content.slice(0, 220)}`
-        }}
-        nodeColor="color"
-        nodeRelSize={1.2}
-        nodeOpacity={0.9}
-        nodeResolution={10}
-        linkColor={(rawLink: unknown) => (rawLink as NebulaLink).color}
-        linkOpacity={0.16}
-        enableNodeDrag={false}
-        cooldownTicks={0}
-        onNodeClick={(rawNode: unknown) => {
-          const node = rawNode as NebulaNode
-          const distance = 40
-          const distRatio = 1 + distance / Math.max(1, Math.hypot(node.x, node.y, node.z))
-          fgRef.current?.cameraPosition(
-            { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
-            node,
-            1200
-          )
-        }}
-        nodeThreeObject={(rawNode: unknown) => {
+function renderNebulaNode(rawNode: unknown) {
           const node = rawNode as NebulaNode
           const [minSize] = node.style.sizeRange
           const coreSize = Math.max(node.val ?? minSize, minSize)
@@ -382,72 +364,4 @@ export function VectorNebula() {
           group.add(haloMesh)
           group.add(coreMesh)
           return group
-        }}
-      />
-
-      <div className="absolute left-4 top-4 max-w-xs rounded-xl border border-border bg-background/85 p-4 shadow-lg backdrop-blur-md">
-        <h3 className="mb-2 flex items-center gap-2 text-lg font-bold">
-          <span className="h-2 w-2 rounded-full bg-primary/60 animate-pulse motion-reduce:animate-none" />
-          <span>语义星云</span>
-        </h3>
-        <p className="mb-4 text-xs text-muted-foreground">
-          基于后端文档清单与真实 chunk 接口生成。节点代表入库切片，颜色来自文档类型，大小来自切片长度。
-        </p>
-        {loading ? (
-          <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
-            正在读取真实切片...
-          </div>
-        ) : error ? (
-          <div className="space-y-2">
-            <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>{error}</span>
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 text-xs"
-              onClick={() => {
-                nebulaQuery.refetch()
-              }}
-            >
-              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-              重新加载
-            </Button>
-          </div>
-        ) : data.nodes.length === 0 ? (
-          <div className="flex items-start gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-            <Database className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            后端暂无可视化切片。请先上传并完成文档入库。
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <div className="rounded-lg border border-border/60 bg-background/50 px-2 py-1.5 text-xs">
-              <div className="flex items-center justify-between gap-3 font-medium">
-                <span>真实节点</span>
-                <span>{data.nodes.length} chunks</span>
-              </div>
-              <p className="mt-1 text-[11px] text-muted-foreground">来源：/documents 与 /documents/:id/chunks</p>
-            </div>
-            {data.clusters.map((cluster) => (
-              <div key={cluster.label} className="rounded-lg border border-border/60 bg-background/40 px-2 py-1.5 text-xs">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="flex items-center gap-2 font-medium">
-                    <span className="h-3 w-3 rounded-full" style={{ backgroundColor: cluster.color }} />
-                    {cluster.label}
-                  </span>
-                  <span className="text-muted-foreground">{cluster.chunkCount} 切片</span>
-                </div>
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  {cluster.count} 文档 · {cluster.style.shapeLabel} · {cluster.style.densityLabel}
-                </p>
-              </div>
-            ))}
-            <p className="text-[11px] text-muted-foreground">当前共 {totalChunks} 个后端切片参与布局。</p>
-          </div>
-        )}
-      </div>
-    </div>
-  )
 }

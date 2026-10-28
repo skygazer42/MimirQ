@@ -2,7 +2,7 @@
 
 import type { ConnectorRunOut, Dataset, DocumentAccessMode } from '@/types'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Loader2 } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
@@ -19,6 +19,7 @@ import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { formatApiError } from '@/lib/api-errors'
 import { connectorApi } from '@/lib/api'
+import { BRAND_NAME } from '@/lib/brand'
 import { coerceOneOf } from '@/lib/one-of'
 import { detachPromise } from '@/lib/utils'
 
@@ -100,6 +101,7 @@ function parseAccessMembers(raw: string): string[] {
 type KnowledgeWebCrawlDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onCloseAutoFocus?: (event: Event) => void
 
   datasets: Dataset[]
   datasetsLoading: boolean
@@ -117,6 +119,7 @@ const DOCUMENT_ACCESS_MODE_VALUES = ['inherit', 'only_me', 'partial_members', 'a
 export function KnowledgeWebCrawlDialog({
   open,
   onOpenChange,
+  onCloseAutoFocus,
   datasets,
   datasetsLoading,
   selectedDatasetId,
@@ -305,7 +308,7 @@ export function KnowledgeWebCrawlDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent onCloseAutoFocus={onCloseAutoFocus} className="max-h-[calc(100dvh-2rem)] max-w-3xl overflow-y-auto overscroll-contain">
         <DialogHeader>
           <DialogTitle>Website Crawl (Connector)</DialogTitle>
           <DialogDescription>
@@ -436,7 +439,7 @@ export function KnowledgeWebCrawlDialog({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <div className="text-sm font-medium text-foreground/80">User-Agent (optional)</div>
-              <Input value={userAgent} onChange={(e) => setUserAgent(e.target.value)} placeholder="MimirQ/1.0 (+web-crawl)" />
+              <Input value={userAgent} onChange={(e) => setUserAgent(e.target.value)} placeholder={`${BRAND_NAME}/1.0 (+web-crawl)`} />
             </div>
             <div className="space-y-2">
               <div className="text-sm font-medium text-foreground/80">Auth</div>

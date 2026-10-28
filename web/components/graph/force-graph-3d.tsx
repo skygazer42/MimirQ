@@ -242,6 +242,10 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
     const containerRef = useRef<HTMLDivElement>(null)
     const fgRef = useRef<ForceGraph3DHandle | null>(null)
     const [mounted, setMounted] = useState(false)
+    const [fittedView, setFittedView] = useState('')
+    const fittedViewRef = useRef('')
+    const fitKey = useMemo(() => `${width}:${height}:${layoutMode}:${data.nodes.map(node => node.id).join(',')}`, [data.nodes, height, layoutMode, width])
+    useEffect(() => { fgRef.current?.d3ReheatSimulation?.() }, [fitKey])
     const [hoveredLinkId, setHoveredLinkId] = useState<string | null>(null)
     const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
     const [isCanvasPanning, setIsCanvasPanning] = useState(false)
@@ -497,7 +501,7 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
     const linkColorBase = isDark ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.18)"
 
     return (
-      <div ref={containerRef} className="h-full w-full">
+      <div ref={containerRef} className="h-full w-full" data-graph-renderer="3d" aria-busy={fittedView !== fitKey}>
         <ForceGraph3D
           ref={fgRef}
           graphData={data}
@@ -510,6 +514,14 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
           dagMode={dagMode}
           cooldownTicks={cooldownTicks}
           cooldownTime={cooldownTime}
+          onEngineStop={() => {
+            const viewWidth = width ?? containerRef.current?.clientWidth ?? 0
+            const viewHeight = height ?? containerRef.current?.clientHeight ?? 0
+            if (fittedViewRef.current === fitKey || viewWidth <= 0 || viewHeight <= 0) return
+            fgRef.current?.zoomToFit?.(0, Math.min(70, viewWidth * 0.12, viewHeight * 0.12))
+            fittedViewRef.current = fitKey
+            setFittedView(fitKey)
+          }}
 
         // Node styling
         nodeLabel="label"
@@ -591,7 +603,7 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
                 const sprite = new SpriteText(label)
                 sprite.color = isDark ? '#dbeafe' : '#334155'
                 sprite.textHeight = 1.75
-                sprite.fontFace = '-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif'
+                sprite.fontFace = 'Ragvia Manrope, Ragvia Sans SC, sans-serif'
                 sprite.fontWeight = '700'
                 sprite.backgroundColor = withAlpha(mixHexColors(color, isDark ? '#0f172a' : '#fffef9', isDark ? 0.72 : 0.86), isDark ? 0.8 : 0.74)
                 sprite.borderColor = withAlpha(color, 0.5)
@@ -651,7 +663,7 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
             mutedFgColor,
           })
           label.textHeight = emphasis ? GRAPH_3D_LABEL_TEXT_HEIGHT + 0.15 : GRAPH_3D_LABEL_TEXT_HEIGHT
-          label.fontFace = "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+          label.fontFace = "Ragvia Manrope, Ragvia Sans SC, sans-serif"
           label.fontWeight = emphasis ? "700" : "600"
           label.backgroundColor = getGraphLabelBackgroundColor({
             emphasis,

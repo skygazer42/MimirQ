@@ -23,13 +23,13 @@ export const INLINE_STAT_VALUE_TONE_CLASSES: Record<SnapshotInlineStatTone, stri
 }
 
 export const SNAPSHOT_NODE_TONE_CLASSES: Record<SnapshotStudioNode['tone'], string> = {
-  amber: 'from-warning to-warning ring-warning/30',
-  blue: 'from-primary to-info ring-primary/30',
-  green: 'from-success to-success ring-success/30',
-  orange: 'from-warning to-destructive ring-warning/30',
-  purple: 'from-accent to-primary ring-accent/30',
-  rose: 'from-destructive to-destructive ring-destructive/30',
-  teal: 'from-success to-info ring-success/30',
+  amber: 'bg-warning/15 text-foreground ring-warning/40',
+  blue: 'bg-info/15 text-foreground ring-info/40',
+  green: 'bg-success/15 text-foreground ring-success/40',
+  orange: 'bg-warning/15 text-foreground ring-warning/40',
+  purple: 'bg-primary/10 text-foreground ring-primary/35',
+  rose: 'bg-destructive/10 text-foreground ring-destructive/35',
+  teal: 'bg-success/15 text-foreground ring-success/35',
 }
 
 export const DELTA_TEXT_CLASSES: Record<DeltaDirection, string> = {

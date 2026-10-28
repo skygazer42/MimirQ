@@ -1,11 +1,9 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { Search } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageLoading } from '@/components/ui/page-loading'
-import { PageScaffold } from '@/components/ui/page-scaffold'
 import { EvidenceOpsPanel } from '@/components/evidence/evidence-ops-panel'
 
 const EvidenceWorkbench = dynamic(() => import('@/components/ragviz/evidence-workbench').then((mod) => mod.EvidenceWorkbench), {
@@ -15,16 +13,8 @@ const EvidenceWorkbench = dynamic(() => import('@/components/ragviz/evidence-wor
 
 export default function KnowledgeEvidencePage() {
   return (
-    <AppFrame>
-      <PageScaffold
-        title="Evidence Workbench"
-        description="检索-only Evidence API 调试台：查看 citations / has_evidence / abstain 信号（不生成回答）"
-        icon={Search}
-        iconColor="text-info"
-      >
-        <EvidenceWorkbench />
-        <EvidenceOpsPanel />
-      </PageScaffold>
+    <AppFrame showBackground={false}>
+      <EvidenceWorkbench tools={<EvidenceOpsPanel />} />
     </AppFrame>
   )
 }

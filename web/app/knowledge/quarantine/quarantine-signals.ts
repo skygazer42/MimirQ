@@ -1,11 +1,8 @@
 import { getDocumentKind } from '@/components/ingestion/monitor-utils'
-import { cn } from '@/lib/utils'
 import type { Document, DocumentPipelineOptions } from '@/types'
 
 import type {
-  ActingState,
   JsonRecord,
-  QuarantineAction,
   QuarantineSeverity,
   UserMetadata,
 } from './types'
@@ -82,15 +79,21 @@ export function extractTuningOverrides(doc: Document): DocumentPipelineOptions {
 export function reasonLabel(reason: string): string {
   switch (reason) {
     case 'outline_only':
-      return '大纲文档'
+      return '仅包含大纲'
     case 'low_density':
-      return '低密度文本'
+      return '正文密度过低'
     case 'empty_document':
       return '空文档'
     case 'pii_exceeded':
-      return 'PII 超阈值'
+      return '个人信息超阈值'
     case 'secrets_exceeded':
-      return 'Secrets 超阈值'
+      return '疑似密钥超阈值'
+    case 'parsing_failed':
+      return '文档解析失败'
+    case 'embedding_failed':
+    case 'vector_write_failed':
+    case 'index_failed':
+      return '索引写入失败'
     default:
       return reason
   }
@@ -115,7 +118,7 @@ export function buildReviewAdvice(doc: Document): string[] {
   if (reasons.has('secrets_exceeded'))
     advice.push('优先确认命中的内容是否为真实密钥或凭证，再执行放行。')
   if (!advice.length)
-    advice.push('先查看命中规则与原文片段，再决定放行、重试或删除。')
+    advice.push('核对原文与入库详情后，可重试或调整文档参数。')
 
   return advice
 }
@@ -129,19 +132,6 @@ export function createReviewMetadataPatch(extra?: JsonRecord): JsonRecord {
   if (extra) Object.assign(patch, extra)
 
   return patch
-}
-
-export function getBusyIconClassName(
-  acting: ActingState,
-  docId: string,
-  action: QuarantineAction
-): string {
-  return cn(
-    'h-4 w-4 mr-1',
-    acting?.id === docId && acting.action === action
-      ? 'animate-spin motion-reduce:animate-none'
-      : ''
-  )
 }
 
 export function downloadTextFile(filename: string, content: string, type: string) {
@@ -200,42 +190,4 @@ export function getQuarantineSeverity(doc: Document): QuarantineSeverity {
     return '中'
   }
   return '低'
-}
-
-export function getSeverityClassName(severity: QuarantineSeverity): string {
-  switch (severity) {
-    case '高':
-      return 'text-rose'
-    case '中':
-      return 'text-warning'
-    case '低':
-    default:
-      return 'text-success'
-  }
-}
-
-export function getSeverityBarClassName(severity: QuarantineSeverity): string {
-  switch (severity) {
-    case '高':
-      return 'bg-rose/70'
-    case '中':
-      return 'bg-warning/70'
-    case '低':
-    default:
-      return 'bg-success/70'
-  }
-}
-
-export function buildConicGradient(values: number[], colors: string[]): string {
-  const total = values.reduce((sum, value) => sum + value, 0)
-  if (!total) return 'conic-gradient(rgba(148,163,184,0.18) 0deg 360deg)'
-
-  let current = 0
-  const stops = values.map((value, index) => {
-    const start = current
-    const end = current + (value / total) * 360
-    current = end
-    return `${colors[index]} ${start.toFixed(2)}deg ${end.toFixed(2)}deg`
-  })
-  return `conic-gradient(${stops.join(', ')})`
 }

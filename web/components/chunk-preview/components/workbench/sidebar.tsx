@@ -6,13 +6,13 @@
 import dynamic from 'next/dynamic'
 
 type SidebarVariant = 'panel' | 'dialog' | 'pane'
-type SidebarProps = Readonly<{ variant?: SidebarVariant }>
+type SidebarProps = Readonly<{ variant?: SidebarVariant; section?: 'all' | 'documents' | 'settings' }>
 
 const ChunkPreviewSidebarClient = dynamic(
   () => import('./sidebar-client').then((mod) => mod.Sidebar),
   {
     ssr: false,
-    loading: () => <div className="h-full w-full rounded-2xl border border-border/60 bg-muted/20 animate-pulse" />,
+    loading: () => <div role="status" className="flex min-h-0 w-full flex-1 items-center justify-center py-10 text-[13px] text-muted-foreground">正在读取配置…</div>,
   }
 )
 

@@ -1,3 +1,5 @@
+import json
+from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
@@ -35,7 +37,7 @@ def _build_test_session():
     return engine, sessionmaker(bind=engine)
 
 
-def test_initial_admin_bootstrap_is_disabled_when_env_blank(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_blank_env_keeps_credentials_out_of_configuration_until_startup(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_prod_bootstrap_env(monkeypatch)
     monkeypatch.delenv("INITIAL_ADMIN_EMAIL", raising=False)
     monkeypatch.delenv("INITIAL_ADMIN_USERNAME", raising=False)
@@ -48,6 +50,219 @@ def test_initial_admin_bootstrap_is_disabled_when_env_blank(monkeypatch: pytest.
     assert configured.INITIAL_ADMIN_USERNAME == ""
     assert configured.INITIAL_ADMIN_PASSWORD == ""
     assert configured.INITIAL_ADMIN_PASSWORD_FILE == ""
+
+
+@pytest.fixture
+def default_admin_config(tmp_path):
+    return SimpleNamespace(
+        DEFAULT_TENANT_ID=str(uuid4()), INITIAL_ADMIN_EMAIL="", INITIAL_ADMIN_USERNAME="",
+        INITIAL_ADMIN_PASSWORD="", INITIAL_ADMIN_PASSWORD_FILE="", PASSWORD_MIN_LENGTH=8,
+        INITIAL_ADMIN_CREDENTIALS_FILE=str(tmp_path / "credentials" / "initial-admin.json"),
+    )
+
+
+def test_blank_admin_configuration_creates_default_owner_with_saved_random_credentials(default_admin_config, caplog):
+    from pathlib import Path
+
+    from app.services.initial_admin_service import bootstrap_initial_admin_if_configured
+
+    engine, sessions = _build_test_session()
+    try:
+        with sessions() as db:
+            assert bootstrap_initial_admin_if_configured(db, config=default_admin_config) is True
+            credentials = json.loads(Path(default_admin_config.INITIAL_ADMIN_CREDENTIALS_FILE).read_text())
+            user = db.query(User).one()
+            member = db.query(TenantMember).one()
+            assert credentials["username"] == user.username == "admin"
+            assert credentials["email"] == user.email == "admin@example.com"
+            assert len(credentials["password"]) >= 32
+            assert verify_password(credentials["password"], user.password_hash)
+            assert member.user_id == str(user.id)
+            assert member.role == "owner"
+            assert member.is_active is True
+            assert credentials["password"] not in caplog.text
+    finally:
+        engine.dispose()
+
+
+def test_default_admin_restarts_do_not_rotate_password_or_recreate_missing_credentials(default_admin_config):
+    from pathlib import Path
+
+    from app.services.initial_admin_service import bootstrap_initial_admin_if_configured
+
+    engine, sessions = _build_test_session()
+    try:
+        with sessions() as db:
+            assert bootstrap_initial_admin_if_configured(db, config=default_admin_config) is True
+            original_hash = db.query(User).one().password_hash
+        path = Path(default_admin_config.INITIAL_ADMIN_CREDENTIALS_FILE)
+        original_file = path.read_bytes()
+        with sessions() as db:
+            assert bootstrap_initial_admin_if_configured(db, config=default_admin_config) is False
+            assert path.read_bytes() == original_file
+            path.unlink()
+            assert bootstrap_initial_admin_if_configured(db, config=default_admin_config) is False
+            assert not path.exists()
+            assert db.query(User).one().password_hash == original_hash
+            assert db.query(User).count() == 1
+    finally:
+        engine.dispose()
+
+
+def test_default_admin_does_not_override_existing_members_or_elevate_identities(default_admin_config):
+    from pathlib import Path
+
+    from app.core.security import hash_password
+    from app.services.initial_admin_service import bootstrap_initial_admin_if_configured
+
+    engine, sessions = _build_test_session()
+    try:
+        with sessions() as db:
+            tenant_id = UUID(default_admin_config.DEFAULT_TENANT_ID)
+            db.add(Tenant(id=tenant_id, name="existing", status="active"))
+            user = User(email="admin@example.com", username="admin", password_hash=hash_password("existing-password"))
+            db.add(user)
+            db.flush()
+            db.add(TenantMember(tenant_id=tenant_id, user_id=str(user.id), role="viewer", is_active=True))
+            db.commit()
+            assert bootstrap_initial_admin_if_configured(db, config=default_admin_config) is False
+            assert db.query(TenantMember).one().role == "viewer"
+            assert verify_password("existing-password", db.query(User).one().password_hash)
+            assert not Path(default_admin_config.INITIAL_ADMIN_CREDENTIALS_FILE).exists()
+    finally:
+        engine.dispose()
+
+
+def test_default_admin_reuses_saved_credentials_after_database_recreation(default_admin_config):
+    from pathlib import Path
+
+    from app.services.initial_admin_service import bootstrap_initial_admin_if_configured
+
+    path = Path(default_admin_config.INITIAL_ADMIN_CREDENTIALS_FILE)
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({
+        "email": "admin@example.com", "username": "admin", "password": "previously-generated-password-for-admin",
+    }))
+    engine, sessions = _build_test_session()
+    try:
+        with sessions() as db:
+            assert bootstrap_initial_admin_if_configured(db, config=default_admin_config) is True
+            assert verify_password("previously-generated-password-for-admin", db.query(User).one().password_hash)
+    finally:
+        engine.dispose()
+
+
+def test_unwritable_default_credentials_prevent_inaccessible_admin_creation(default_admin_config, tmp_path):
+    from app.services.initial_admin_service import InitialAdminBootstrapError, bootstrap_initial_admin_if_configured
+
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("file")
+    default_admin_config.INITIAL_ADMIN_CREDENTIALS_FILE = str(blocker / "admin.json")
+    engine, sessions = _build_test_session()
+    try:
+        with sessions() as db:
+            with pytest.raises(InitialAdminBootstrapError):
+                bootstrap_initial_admin_if_configured(db, config=default_admin_config)
+            assert db.query(User).count() == 0
+            assert db.query(TenantMember).count() == 0
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("failure_point", ["write", "fsync"])
+def test_failed_default_credential_write_can_be_retried(default_admin_config, monkeypatch, failure_point):
+    from pathlib import Path
+
+    from app.services import initial_admin_service as service
+
+    def fail_write(_payload, handle):
+        handle.write("{")
+        raise OSError("Temporary storage failure")
+
+    def fail_fsync(_descriptor):
+        raise OSError("Temporary storage failure")
+
+    path = Path(default_admin_config.INITIAL_ADMIN_CREDENTIALS_FILE)
+    engine, sessions = _build_test_session()
+    try:
+        with sessions() as db:
+            with monkeypatch.context() as fault:
+                if failure_point == "write":
+                    fault.setattr(service.json, "dump", fail_write)
+                else:
+                    fault.setattr(service.os, "fsync", fail_fsync)
+                with pytest.raises(service.InitialAdminBootstrapError):
+                    service.bootstrap_initial_admin_if_configured(db, config=default_admin_config)
+            assert db.query(User).count() == 0
+            assert db.query(TenantMember).count() == 0
+            assert not path.exists()
+            assert list(path.parent.iterdir()) == []
+
+            assert service.bootstrap_initial_admin_if_configured(db, config=default_admin_config) is True
+            saved = json.loads(path.read_text(encoding="utf-8"))
+            assert verify_password(saved["password"], db.query(User).one().password_hash)
+            assert db.query(TenantMember).one().role == "owner"
+            assert list(path.parent.iterdir()) == [path]
+    finally:
+        engine.dispose()
+
+
+def test_different_installations_get_different_default_admin_passwords(default_admin_config, tmp_path):
+    from pathlib import Path
+
+    from app.services.initial_admin_service import bootstrap_initial_admin_if_configured
+
+    passwords = []
+    for index in range(2):
+        default_admin_config.INITIAL_ADMIN_CREDENTIALS_FILE = str(tmp_path / str(index) / "admin.json")
+        engine, sessions = _build_test_session()
+        try:
+            with sessions() as db:
+                assert bootstrap_initial_admin_if_configured(db, config=default_admin_config) is True
+                passwords.append(json.loads(Path(default_admin_config.INITIAL_ADMIN_CREDENTIALS_FILE).read_text())["password"])
+        finally:
+            engine.dispose()
+    assert passwords[0] != passwords[1]
+
+
+def test_explicit_admin_configuration_takes_priority_over_default_credentials(default_admin_config):
+    from pathlib import Path
+
+    from app.services.initial_admin_service import bootstrap_initial_admin_if_configured
+
+    default_admin_config.INITIAL_ADMIN_EMAIL = "operator@example.com"
+    default_admin_config.INITIAL_ADMIN_USERNAME = "operator"
+    default_admin_config.INITIAL_ADMIN_PASSWORD = "configured-operator-password"
+    engine, sessions = _build_test_session()
+    try:
+        with sessions() as db:
+            assert bootstrap_initial_admin_if_configured(db, config=default_admin_config) is True
+            assert db.query(User).one().username == "operator"
+            assert verify_password("configured-operator-password", db.query(User).one().password_hash)
+            assert not Path(default_admin_config.INITIAL_ADMIN_CREDENTIALS_FILE).exists()
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("contents", ["{broken json", '{"username":"admin","email":"admin@example.com","password":"short"}'])
+def test_invalid_saved_default_credentials_do_not_create_an_unknown_admin(default_admin_config, contents):
+    from pathlib import Path
+
+    from app.services.initial_admin_service import InitialAdminBootstrapError, bootstrap_initial_admin_if_configured
+
+    path = Path(default_admin_config.INITIAL_ADMIN_CREDENTIALS_FILE)
+    path.parent.mkdir(parents=True)
+    path.write_text(contents)
+    engine, sessions = _build_test_session()
+    try:
+        with sessions() as db:
+            with pytest.raises(InitialAdminBootstrapError):
+                bootstrap_initial_admin_if_configured(db, config=default_admin_config)
+            assert db.query(User).count() == 0
+            assert db.query(TenantMember).count() == 0
+            assert path.read_text() == contents
+    finally:
+        engine.dispose()
 
 
 def test_initial_admin_bootstrap_requires_complete_identity(monkeypatch: pytest.MonkeyPatch) -> None:

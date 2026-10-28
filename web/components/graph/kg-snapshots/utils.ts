@@ -56,13 +56,13 @@ export function deltaSign(value: number): string {
 
 export function deltaFill(value: number): string {
   const direction = deltaDirection(value)
-  if (direction === 'positive') return '#10b981'
-  if (direction === 'negative') return '#f43f5e'
-  return '#94a3b8'
+  if (direction === 'positive') return 'hsl(var(--success))'
+  if (direction === 'negative') return 'hsl(var(--destructive))'
+  return 'hsl(var(--muted-foreground))'
 }
 
 export function driftScoreToneForSeverity(severity: AuditSeverity): SnapshotInlineStatTone {
-  if (severity === 'healthy') return 'positive'
+  if (severity === 'healthy') return 'neutral'
   if (severity === 'notice') return 'warning'
   return 'negative'
 }

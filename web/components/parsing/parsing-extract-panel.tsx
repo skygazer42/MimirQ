@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronUp, Loader2, WandSparkles } from 'lucide-react'
+import { ChevronDown, ChevronUp, Loader2, WandSparkles } from '@/components/icons'
 
 import { parsingApi } from '@/lib/api'
 import type { ParsingElement, ParsingExtractEvidence, ParsingExtractRequest, ParsingExtractResponse } from '@/lib/api/parsing'
 import { formatApiError } from '@/lib/api-errors'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { FeedbackToast } from '@/components/feedback-toast'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 
@@ -377,7 +378,7 @@ export function ParsingExtractPanel({
  运行抽取
  </Button>
  </div>
- {error ? <div className="mt-2 text-xs text-destructive">{error}</div> : null}
+ <FeedbackToast type="error" message={error} id="parsing-extract-feedback" />
  </div>
 
  <div className="rounded-xl border border-border/60 bg-card p-3">

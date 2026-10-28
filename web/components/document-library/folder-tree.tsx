@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { ArrowRightLeft, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, FileImage, FileCode, FileSpreadsheet, FileArchive, AlertCircle, Paperclip, FolderUp, FileJson, AlignLeft, FileSignature, RotateCcw, Loader2, Clock3, Play } from 'lucide-react'
+import { ArrowRightLeft, ChevronDown, ChevronRight, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, AlertCircle, Paperclip, FolderUp, RotateCcw, Loader2, Clock3, Play } from '@/components/icons'
+import { getFileTypeMeta } from '@/components/knowledge/file-type'
 import { toast } from 'sonner'
 import { collectFolderDescendantIds } from '@/lib/folder-tree-index'
 import { cn } from '@/lib/utils'
@@ -54,168 +55,15 @@ export type DocumentTreeFileItem = {
 const TREE_INDENT_STEP = 14
 const TREE_ROW_BASE_PADDING = 8
 
-const smallFileIconToneClasses: Record<
-  string,
-  {
-    bg: string
-    border: string
-    icon: string
-  }
-> = {
-  red: {
-    bg: 'bg-destructive/10',
-    border: 'border-destructive/30',
-    icon: 'text-destructive',
-  },
-  blue: {
-    bg: 'bg-primary/10',
-    border: 'border-primary/30',
-    icon: 'text-primary',
-  },
-  emerald: {
-    bg: 'bg-success/10',
-    border: 'border-success/30',
-    icon: 'text-success',
-  },
-  amber: {
-    bg: 'bg-warning/10',
-    border: 'border-warning/30',
-    icon: 'text-warning',
-  },
-  rose: {
-    bg: 'bg-destructive/10',
-    border: 'border-destructive/30',
-    icon: 'text-destructive',
-  },
-  sky: {
-    bg: 'bg-info/10',
-    border: 'border-info/30',
-    icon: 'text-info',
-  },
-  teal: {
-    bg: 'bg-success/10',
-    border: 'border-success/30',
-    icon: 'text-success',
-  },
-  slate: {
-    bg: 'bg-muted',
-    border: 'border-border/70',
-    icon: 'text-muted-foreground',
-  },
-}
-
 export function getFileIcon(filename: string, className?: string) {
-  const ext = filename.split('.').pop()?.toLowerCase() || ''
-  const isLarge = className?.includes('w-12')
-
-  // Color & Label Mapping
-  let tone: 'slate' | 'red' | 'blue' | 'emerald' | 'amber' | 'rose' | 'sky' | 'teal' = 'slate'
-  let label = ext.toUpperCase().slice(0, 3)
-  let Icon = FileText
-
-  // Keep icon shapes distinct; keep colors subtle (Notes-like) and avoid purple.
-  if (['pdf'].includes(ext)) { tone = 'red'; label = 'PDF'; Icon = FileSignature }
-  else if (['doc', 'docx'].includes(ext)) { tone = 'blue'; label = 'DOC'; Icon = FileText } // Word
-  else if (['xls', 'xlsx'].includes(ext)) { tone = 'emerald'; label = 'XLS'; Icon = FileSpreadsheet } // Excel
-  else if (['csv'].includes(ext)) { tone = 'emerald'; label = 'CSV'; Icon = FileSpreadsheet }
-  else if (['ppt', 'pptx'].includes(ext)) { tone = 'amber'; label = 'PPT'; Icon = FileImage } // PPT
-  else if (['md'].includes(ext)) { tone = 'sky'; label = 'MD'; Icon = AlignLeft }
-  else if (['txt'].includes(ext)) { tone = 'slate'; label = 'TXT'; Icon = AlignLeft }
-  else if (['json'].includes(ext)) { tone = 'teal'; label = 'JSON'; Icon = FileJson } // JSON
-  else if (['jpg', 'png', 'jpeg', 'gif', 'webp'].includes(ext)) { tone = 'rose'; label = 'IMG'; Icon = FileImage } // Image
-  else if (['zip', 'rar', '7z'].includes(ext)) { tone = 'amber'; label = 'ZIP'; Icon = FileArchive } // Archive
-  else if (['js', 'ts', 'jsx', 'tsx', 'py'].includes(ext)) { tone = 'sky'; label = 'CODE'; Icon = FileCode } // Code
-
-  // Small Icon: light file-type square matching the parsing tree visual.
-  if (!isLarge) {
-    const toneClass = smallFileIconToneClasses[tone] || smallFileIconToneClasses.slate
-    return (
-      <div
-        className={cn(
-          'flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg border shadow-[inset_0_1px_0_rgba(255,255,255,0.78)]',
-          toneClass.bg,
-          toneClass.border,
-          className
-        )}
-        aria-hidden="true"
-      >
-        <Icon className={cn('h-3.5 w-3.5', toneClass.icon)} />
-      </div>
-    )
-  }
-
-  // Large Icon (Detailed Paper Style)
-  // Simulating a vertical document page with a colored fold/header
-  const paperBand: Record<string, string> = {
-    red: "bg-destructive/70",
-    blue: "bg-primary/70",
-    emerald: "bg-success/70",
-    amber: "bg-warning/70",
-    rose: "bg-destructive/70",
-    sky: "bg-primary/30",
-    teal: "bg-success/70",
-    slate: "bg-muted-foreground/40",
-  }
-
-  const textTone: Record<string, string> = {
-    red: "text-destructive",
-    blue: "text-primary",
-    emerald: "text-success",
-    amber: "text-warning",
-    rose: "text-destructive",
-    sky: "text-primary",
-    teal: "text-success",
-    slate: "text-muted-foreground",
-  }
-
-  const badgeBorder: Record<string, string> = {
-    red: "border-destructive/30",
-    blue: "border-primary/30",
-    emerald: "border-success/30",
-    amber: "border-warning/30",
-    rose: "border-destructive/30",
-    sky: "border-primary/25",
-    teal: "border-success/30",
-    slate: "border-border/60",
-  }
-
+  const { icon: Icon, bg, border } = getFileTypeMeta({ filename, file_type: '' })
   return (
-    <div className={cn("relative flex items-center justify-center", className)}>
-      {/* Paper Container */}
-      <div className="relative w-9 h-11 bg-card rounded-sm shadow-soft/40 border border-border/60 overflow-hidden flex flex-col">
-
-        {/* Top Color Band / Header */}
-        <div className={cn("h-3 w-full opacity-80", paperBand[tone] || paperBand.slate)} />
-
-        {/* Corner Fold Effect (CSS Triangle) */}
-        <div className="absolute top-0 right-0 border-t-[8px] border-r-[8px] border-t-black/5 border-r-white/0" />
-
-        {/* Content */}
-        <div className="flex-1 flex items-center justify-center bg-background/40">
-          {(() => {
-    if (['W', 'X', 'P'].includes(label)) {
-        return (<span className={cn("font-serif font-semibold text-lg leading-none", textTone[tone])}>
-              {label}
-            </span>);
-    }
-    else if (['PDF', 'TXT', 'ZIP', 'IMG'].includes(label)) {
-            return (<span className={cn("font-bold text-[9px]  leading-none border-2 rounded px-0.5", textTone[tone], badgeBorder[tone] || badgeBorder.slate)}>
-              {label}
-            </span>);
-        }
-        else {
-            return (<Icon className={cn("w-5 h-5", textTone[tone])}/>);
-        }
-})()}
-        </div>
-
-        {/* Faux Text Lines (Decorative) */}
-        <div className="mb-1.5 px-1.5 space-y-0.5 opacity-20">
-          <div className="h-0.5 w-full bg-muted-foreground/30 rounded-full" />
-          <div className="h-0.5 w-2/3 bg-muted-foreground/30 rounded-full" />
-        </div>
-      </div>
-    </div>
+    <span
+      className={cn('flex size-6 shrink-0 items-center justify-center rounded-lg border', bg, border, className)}
+      aria-hidden="true"
+    >
+      <Icon appearance="color" className="size-2/3" />
+    </span>
   )
 }
 
@@ -246,7 +94,7 @@ function getGovernanceStatusBadgeClass(
 
 function getFileRowShellClass(isActive: boolean, isError: boolean): string {
   if (isActive) {
-    return 'bg-info/[0.085] text-foreground shadow-[inset_0_0_0_1px_hsl(var(--info)/0.10)] before:bg-info/70'
+    return 'bg-primary/[0.06] text-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.10)] before:bg-primary/70'
   }
   if (isError) return 'bg-destructive/7 text-destructive/90 hover:bg-destructive/8'
   return 'text-foreground/72 hover:bg-muted/36 hover:text-foreground/88'

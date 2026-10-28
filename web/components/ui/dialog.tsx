@@ -5,7 +5,7 @@
 
 import * as React from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
-import { X } from "lucide-react"
+import { X } from "@/components/icons"
 
 import { cn } from "@/lib/utils"
 import type { RadixRef } from "@/lib/radix-utils"
@@ -38,8 +38,9 @@ const DialogContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     overlayClassName?: string
   }
->(({ className, children, overlayClassName, ...props }, ref) => (
-  <DialogPortal>
+>(({ className, children, overlayClassName, onOpenAutoFocus, onCloseAutoFocus, ...props }, ref) => {
+  const openerRef = React.useRef<HTMLElement | null>(null)
+  return <DialogPortal>
     <DialogOverlay className={overlayClassName} />
     <DialogPrimitive.Content
       ref={ref}
@@ -47,6 +48,18 @@ const DialogContent = React.forwardRef<
         "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-border/60 bg-popover text-popover-foreground px-6 py-5 shadow-strong will-change-[opacity,transform] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-[0.97] data-[state=open]:zoom-in-[0.97] data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-top-[48%] duration-220 ease-spring motion-reduce:animate-none motion-reduce:transition-none sm:rounded-xl",
         className
       )}
+      onOpenAutoFocus={event => {
+        openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+        onOpenAutoFocus?.(event)
+      }}
+      onCloseAutoFocus={event => {
+        if (onCloseAutoFocus) {
+          onCloseAutoFocus(event)
+        } else if (openerRef.current?.isConnected) {
+          event.preventDefault()
+          openerRef.current.focus()
+        }
+      }}
       {...props}
     >
       {children}
@@ -56,7 +69,7 @@ const DialogContent = React.forwardRef<
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
   </DialogPortal>
-))
+})
 DialogContent.displayName = DialogPrimitive.Content.displayName
 
 const DialogHeader = ({

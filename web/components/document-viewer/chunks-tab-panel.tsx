@@ -1,7 +1,7 @@
 "use client"
 
 import type { Key, KeyboardEvent, RefObject } from "react"
-import { Loader2 } from "lucide-react"
+import { Loader2 } from "@/components/icons"
 
 import type { DocumentChunk } from "@/types"
 

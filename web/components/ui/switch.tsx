@@ -63,7 +63,8 @@ const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
           data-state={checked ? "checked" : "unchecked"}
           data-switch-state={checked ? "checked" : "unchecked"}
           className={cn(
-            "pointer-events-none block h-5 w-5 rounded-full bg-background shadow-md ring-0 transition-all duration-150",
+            "pointer-events-none block h-5 w-5 rounded-full shadow-md ring-0 transition-all duration-150",
+            checked ? "bg-primary-foreground" : "bg-foreground",
             checked
               ? "translate-x-[var(--switch-translate-checked,1.25rem)] scale-[1.02]"
               : "translate-x-[var(--switch-translate-unchecked,0rem)]"

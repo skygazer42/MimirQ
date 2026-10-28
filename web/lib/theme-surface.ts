@@ -47,10 +47,10 @@ export const SURFACE_THEMES: Array<{
 }> = [
   {
     key: 'ocean',
-    label: 'Ocean',
-    description: '深海军蓝主色与清透冰蓝表面，保持克制的海洋层级。',
-    previewSurface: '#f6fafc',
-    defaultPrimary: '#0f172a',
+    label: 'Ragvia',
+    description: '雾灰底色，墨色主色。',
+    previewSurface: '#f6f7f8',
+    defaultPrimary: '#20262e',
   },
   {
     key: 'deepsea',

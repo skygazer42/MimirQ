@@ -1,6 +1,6 @@
 "use client"
 
-import { FileText, ScanLine, Scissors, Database, CheckCircle2 } from "lucide-react"
+import { FileText, ScanLine, Scissors, Database, CheckCircle2 } from "@/components/icons"
 import { useTranslations } from 'next-intl'
 import { cn } from "@/lib/utils"
 

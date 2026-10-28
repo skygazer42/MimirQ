@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { cn } from '@/lib/utils'
 import type { DocumentChunk } from '@/types'
-import { Copy, Link2, Loader2, Pencil, Trash2 } from 'lucide-react'
+import { Copy, Link2, Loader2, Pencil, Trash2 } from '@/components/icons'
 
 import { HighlightLayer } from './highlight-layer'
 

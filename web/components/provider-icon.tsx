@@ -3,6 +3,8 @@
  * 支持 SVG 和 PNG 格式的品牌 Logo
  */
 import Image from 'next/image'
+import { LocalModel, Model, Reranker } from '@/components/icons'
+import { cn } from '@/lib/utils'
 
 interface ProviderIconProps {
   providerId: string
@@ -62,6 +64,9 @@ function normalizeProviderId(providerId: string): string {
   return String(providerId || '').trim().toLowerCase()
 }
 
+// These source marks use black paths and need a light silhouette on dark surfaces.
+const DARK_MONOCHROME_MARKS = new Set(['openai', 'anthropic', 'moonshot', 'ollama', 'openrouter', 'yi', 'jina', 'together'])
+
 // 提供商 ID 到图标文件的映射（旧资源兜底）
 const PROVIDER_ICONS: Record<string, { file: string; format: 'svg' | 'png' }> = {
   // PNG 格式（来自 providers 目录）
@@ -86,14 +91,7 @@ const PROVIDER_ICONS: Record<string, { file: string; format: 'svg' | 'png' }> = 
   anthropic: { file: 'anthropic', format: 'svg' },
   moonshot: { file: 'moonshot', format: 'svg' },
   ollama: { file: 'ollama', format: 'svg' },
-  local: { file: 'local', format: 'svg' },
-  'local-embedding': { file: 'local', format: 'svg' },
-  reranker: { file: 'reranker', format: 'svg' },
-  'local-reranker': { file: 'reranker', format: 'svg' },
 }
-
-// 默认图标
-const DEFAULT_ICON = { file: 'default', format: 'png' }
 
 export function ProviderIcon({ providerId, className = 'w-8 h-8' }: Readonly<ProviderIconProps>) {
   const pid = normalizeProviderId(providerId)
@@ -106,14 +104,22 @@ export function ProviderIcon({ providerId, className = 'w-8 h-8' }: Readonly<Pro
         alt={`${providerId} logo`}
         width={32}
         height={32}
-        className={className}
+        className={cn(className, DARK_MONOCHROME_MARKS.has(lobehubIconName) && 'dark:brightness-0 dark:invert')}
         priority
         unoptimized
       />
     )
   }
 
-  const icon = PROVIDER_ICONS[pid] || DEFAULT_ICON
+  if (pid === 'local' || pid === 'local-embedding') {
+    return <LocalModel className={className} aria-label="本地模型" />
+  }
+  if (pid === 'reranker' || pid === 'local-reranker') {
+    return <Reranker className={className} aria-label="重排序模型" />
+  }
+
+  const icon = PROVIDER_ICONS[pid]
+  if (!icon) return <Model className={className} aria-label={`${providerId || '自定义'}模型`} />
   const src = `/logos/${icon.file}.${icon.format}`
 
   return (

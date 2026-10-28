@@ -1,8 +1,8 @@
 'use client'
 
 import { useMemo, useState, type ReactNode } from 'react'
-import { FileJson, FileText, FolderInput, Loader2 } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+import { FileJson, FileText, FolderInput, Loader2 } from '@/components/icons'
+import type { PlatformIcon } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -265,7 +265,7 @@ function ActionGroup({
 }: Readonly<{
   children: ReactNode
   description: string
-  icon: LucideIcon
+  icon: PlatformIcon
   title: string
 }>) {
   return (
@@ -293,7 +293,7 @@ function ActionButton({
 }: Readonly<{
   busy: boolean
   disabled: boolean
-  icon: LucideIcon
+  icon: PlatformIcon
   label: string
   onClick: () => Promise<void>
 }>) {

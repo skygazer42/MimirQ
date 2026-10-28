@@ -11,7 +11,7 @@ import {
   Network,
   PanelRightClose,
   PanelRightOpen,
-} from 'lucide-react'
+} from '@/components/icons'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -37,6 +37,7 @@ import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { detachPromise } from '@/lib/utils'
 
 type KgNetworkAnalysisPanelProps = Readonly<{
+  embedded?: boolean
   nodes: GraphData['nodes']
   links: GraphData['links']
   selectedNodeId?: string | null
@@ -97,6 +98,7 @@ function getLinkType(link: GraphData['links'][number]): string {
 }
 
 export function KgNetworkAnalysisPanel({
+  embedded = false,
   nodes,
   links,
   selectedNodeId,
@@ -280,7 +282,7 @@ export function KgNetworkAnalysisPanel({
     }
   }
 
-  if (collapsed) {
+  if (collapsed && !embedded) {
     return (
       <div className="absolute left-4 top-20 z-20 transition-transform duration-150 md:left-auto md:right-[6.75rem] md:top-24" style={panelDragStyle}>
         <Button
@@ -305,9 +307,9 @@ export function KgNetworkAnalysisPanel({
   return (
     <div
       id="kg-network-analysis-panel"
-      data-draggable-kg-analysis-panel="true"
-      className="absolute right-[6.75rem] top-24 z-20 w-[286px] space-y-3 will-change-transform"
-      style={panelDragStyle}
+      data-draggable-kg-analysis-panel={!embedded || undefined}
+      className={embedded ? 'relative w-full space-y-4' : 'absolute right-[6.75rem] top-24 z-20 w-[286px] space-y-3 will-change-transform'}
+      style={embedded ? undefined : panelDragStyle}
     >
       <section className="rounded-xl border border-info/15 bg-background/88 p-4 shadow-none">
         <div className="mb-3 flex items-start justify-between gap-3">
@@ -324,7 +326,7 @@ export function KgNetworkAnalysisPanel({
               </p>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-1">
+          <div hidden={embedded} className={embedded ? 'hidden' : 'flex shrink-0 items-center gap-1'}>
             <button
               type="button"
               className="flex h-8 w-8 cursor-grab items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-info/[0.08] hover:text-info active:cursor-grabbing"

@@ -1,0 +1,43 @@
+{
+  "product": "Ragvia",
+  "page": "知识库",
+  "scope": "全部数据集",
+  "totalDocuments": 12,
+  "totalChunks": 658,
+  "states": { "ready": 8, "processing": 2, "failed": 1, "quarantined": 1 },
+  "datasets": [
+    { "name": "产品使用文档", "count": 2 },
+    { "name": "研发规范", "count": 2 },
+    { "name": "API 与集成指南", "count": 2 },
+    { "name": "客户交付资料", "count": 1 },
+    { "name": "销售与产品资料", "count": 2 },
+    { "name": "会议与项目纪要", "count": 1 },
+    { "name": "历史合同归档", "count": 1 },
+    { "name": "内部制度", "count": 1 }
+  ],
+  "documents": [
+    { "id": "guide", "name": "Ragvia 产品使用手册.pdf", "title": "Ragvia 产品使用手册", "type": "pdf", "dataset": "产品使用文档", "folder": "使用指南", "state": "ready", "chunks": 128, "size": "2.4 MB", "added": "12 分钟前", "tags": ["指南", "产品"], "summary": "数据集管理、文档导入与检索测试的操作说明。" },
+    { "id": "deployment", "name": "私有化部署指南.md", "title": "私有化部署指南", "type": "md", "dataset": "研发规范", "folder": "部署运维", "state": "ready", "chunks": 64, "size": "86 KB", "added": "35 分钟前", "tags": ["部署"], "summary": "部署环境准备、服务配置与常见问题排查。" },
+    { "id": "api", "name": "API 接口参考.md", "title": "API 接口参考", "type": "md", "dataset": "API 与集成指南", "folder": "接口文档", "state": "ready", "chunks": 96, "size": "124 KB", "added": "1 小时前", "tags": ["API"], "summary": "认证、文档操作和检索接口的调用方式。" },
+    { "id": "delivery", "name": "客户交付与验收说明.pdf", "title": "客户交付与验收说明", "type": "pdf", "dataset": "客户交付资料", "folder": "交付材料", "state": "processing", "chunks": 0, "size": "3.8 MB", "added": "1 小时前", "progress": 68, "stage": "正在切块", "tags": ["交付"], "summary": "交付检查项、验收流程与环境配置清单。" },
+    { "id": "release", "name": "产品版本说明.docx", "title": "产品版本说明", "type": "docx", "dataset": "产品使用文档", "folder": "版本记录", "state": "ready", "chunks": 42, "size": "620 KB", "added": "2 小时前", "tags": ["产品"], "summary": "功能变更、兼容性说明与升级注意事项。" },
+    { "id": "pricing", "name": "产品报价与规格.xlsx", "title": "产品报价与规格", "type": "xlsx", "dataset": "销售与产品资料", "folder": "产品资料", "state": "failed", "chunks": 0, "size": "1.2 MB", "added": "2 小时前", "reason": "未识别到工作表内容", "tags": ["销售"], "summary": "产品规格、服务范围与报价明细。" },
+    { "id": "access", "name": "账号与权限管理.pdf", "title": "账号与权限管理", "type": "pdf", "dataset": "API 与集成指南", "folder": "使用指南", "state": "ready", "chunks": 86, "size": "1.6 MB", "added": "3 小时前", "tags": ["权限"], "summary": "用户角色、成员授权与文档可见范围。" },
+    { "id": "meeting", "name": "需求评审会议纪要.docx", "title": "需求评审会议纪要", "type": "docx", "dataset": "会议与项目纪要", "folder": "评审记录", "state": "ready", "chunks": 38, "size": "780 KB", "added": "3 小时前", "tags": ["会议"], "summary": "需求讨论、已确认事项与后续安排。" },
+    { "id": "contract", "name": "客户服务合同模板.docx", "title": "客户服务合同模板", "type": "docx", "dataset": "历史合同归档", "folder": "合同模板", "state": "quarantined", "chunks": 0, "size": "980 KB", "added": "4 小时前", "reason": "含敏感字段，等待复核", "tags": ["合同"], "summary": "合同条款、服务约定与附件清单。" },
+    { "id": "engineering", "name": "研发流程与编码规范.md", "title": "研发流程与编码规范", "type": "md", "dataset": "研发规范", "folder": "开发规范", "state": "ready", "chunks": 72, "size": "96 KB", "added": "昨天", "tags": ["研发"], "summary": "分支管理、代码评审、测试与发布约定。" },
+    { "id": "solution", "name": "行业解决方案.pdf", "title": "行业解决方案", "type": "pdf", "dataset": "销售与产品资料", "folder": "产品资料", "state": "processing", "chunks": 0, "size": "2.2 MB", "added": "昨天", "progress": 24, "stage": "正在解析", "tags": ["销售"], "summary": "应用场景、功能清单与实施方式。" },
+    { "id": "policy", "name": "信息安全管理制度.docx", "title": "信息安全管理制度", "type": "docx", "dataset": "内部制度", "folder": "管理制度", "state": "ready", "chunks": 32, "size": "440 KB", "added": "昨天", "tags": ["制度"], "summary": "数据访问、账号管理与安全操作要求。" }
+  ],
+  "preview": {
+    "documentId": "guide",
+    "title": "Ragvia 产品使用手册",
+    "introduction": "本文介绍数据集管理、文档导入和检索测试的基本操作。开始之前，请先确认账号具有相应的文档访问权限。",
+    "sections": [
+      { "title": "创建数据集", "text": "在数据集页面新建数据集，为文档设置名称、访问权限和默认处理管线。可以按项目、业务或资料类型分别管理。" },
+      { "title": "导入文档", "text": "选择数据集后导入文件。支持 PDF、Word、Markdown 和表格；文档解析完成后，会继续进行切块和索引。" },
+      { "title": "检查处理结果", "text": "在文档列表查看处理状态。打开文档可阅读正文与分块；处理失败的文档可以查看原因并重新入库。" },
+      { "title": "测试检索效果", "text": "进入检索测试，输入实际业务问题，查看命中的文档、分块内容和相关性，再决定是否调整处理配置。" }
+    ]
+  }
+}

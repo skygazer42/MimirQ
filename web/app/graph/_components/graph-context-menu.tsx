@@ -1,6 +1,6 @@
 'use client'
 
-import { Copy, FileText, Info, Layers, Maximize, MessageSquare, Route, Trash2, Type, X, Link as LinkIcon } from 'lucide-react'
+import { Copy, FileText, Info, Layers, Maximize, MessageSquare, Route, Trash2, Type, X, Link as LinkIcon } from '@/components/icons'
 
 import { Button } from '@/components/ui/button'
 
