@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from 'react'
 
-import { Box, BoxSelect, ChevronDown, Database, FileText, Info, Layers, Link as LinkIcon, MessageSquare, Network, RefreshCw, Trash2, X } from 'lucide-react'
+import { Box, BoxSelect, ChevronDown, Database, FileText, Info, Layers, Link as LinkIcon, MessageSquare, Network, RefreshCw, Trash2, X } from '@/components/icons'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -396,6 +396,10 @@ export function GraphNodeDetailPanel({
   const [isHovered, setIsHovered] = useState(false)
 
   useEffect(() => {
+    if (open && selectedNode?.id) panelRef.current?.focus()
+  }, [open, selectedNode?.id])
+
+  useEffect(() => {
     setIsKgDetailExpanded(false)
   }, [selectedNode?.id])
 
@@ -768,6 +772,7 @@ export function GraphNodeDetailPanel({
     <section
       ref={panelRef}
       aria-label="图谱节点详情"
+      tabIndex={-1}
       className={cn(
         'group absolute z-20 flex w-[18.25rem] max-h-[min(31rem,calc(100vh-5.5rem))] transform flex-col overflow-visible rounded-2xl transition-transform duration-200 ease-out',
         open && selectedNode ? 'translate-x-0' : 'translate-x-[120%]'

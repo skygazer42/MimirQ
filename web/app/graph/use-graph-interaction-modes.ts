@@ -507,8 +507,6 @@ export function useGraphInteractionModes({
     }
 
     setIsPathMode(true)
-    setIsDetailOpen(false)
-    setSelectedNode(null)
     setHighlightedNodeIds(new Set())
     resetConnectMode()
     resetExplainMode()
@@ -518,9 +516,7 @@ export function useGraphInteractionModes({
     resetExplainMode,
     resetPathMode,
     setHighlightedNodeIds,
-    setIsDetailOpen,
     setIsPathMode,
-    setSelectedNode,
   ])
 
   const cycleLayoutMode = useCallback(() => {

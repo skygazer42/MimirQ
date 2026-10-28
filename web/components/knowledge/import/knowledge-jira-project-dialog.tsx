@@ -2,7 +2,7 @@
 
 import type { ConnectorRunOut, Dataset, DocumentAccessMode, WebCrawlAuthConfig } from '@/types'
 import { useCallback, useEffect, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Loader2 } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
@@ -20,6 +20,7 @@ import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { formatApiError } from '@/lib/api-errors'
 import { connectorApi } from '@/lib/api'
+import { BRAND_NAME } from '@/lib/brand'
 import { coerceOneOf } from '@/lib/one-of'
 import { buildJiraProjectRunPayload } from './knowledge-jira-project-dialog.payload'
 import { detachPromise, trimTrailingSlashes } from '@/lib/utils'
@@ -223,7 +224,7 @@ export function KnowledgeJiraProjectDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-3xl overflow-y-auto overscroll-contain">
         <DialogHeader>
           <DialogTitle>Jira Project (Connector)</DialogTitle>
           <DialogDescription>
@@ -312,7 +313,7 @@ export function KnowledgeJiraProjectDialog({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <div className="text-sm font-medium text-foreground/80">User-Agent（可选）</div>
-              <Input value={userAgent} onChange={(e) => setUserAgent(e.target.value)} placeholder="MimirQ/1.0 (+jira_project)" />
+              <Input value={userAgent} onChange={(e) => setUserAgent(e.target.value)} placeholder={`${BRAND_NAME}/1.0 (+jira_project)`} />
             </div>
             <div className="space-y-2">
               <div className="text-sm font-medium text-foreground/80">Auth</div>

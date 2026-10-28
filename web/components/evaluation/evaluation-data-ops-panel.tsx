@@ -14,8 +14,8 @@ import {
   Sparkles,
   Trash2,
   Upload,
-} from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+} from '@/components/icons'
+import type { PlatformIcon } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -443,7 +443,7 @@ function ActionButton({
   busy: boolean
   className?: string
   disabled: boolean
-  icon: LucideIcon
+  icon: PlatformIcon
   label: string
   onClick: () => Promise<void>
 }>) {

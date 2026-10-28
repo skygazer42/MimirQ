@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FolderTree, Loader2, Pencil, Search, X } from 'lucide-react'
+import { FolderTree, Loader2, Pencil, Search, X } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'

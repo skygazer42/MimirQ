@@ -3,13 +3,14 @@
  */
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { FeedbackToast } from '@/components/feedback-toast'
 import { TenantPermissionGate } from '@/components/auth/tenant-permission-gate'
 import { AppFrame } from '@/components/app-frame'
 import { ModelConfigDialog } from '@/components/model-config-dialog'
 import { Button } from '@/components/ui/button'
-import { PageScaffold } from '@/components/ui/page-scaffold'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { FeatureFlagsSection } from './_sections/feature-flags-section'
@@ -17,78 +18,83 @@ import { DifyIntegrationSection } from './_sections/dify-integration-section'
 import { FrontendPreferencesSection } from './_sections/frontend-preferences-section'
 import { GovernanceSection } from './_sections/governance-section'
 import { IndustryRulesSection } from './_sections/industry-rules-section'
-import { LtrModelRegistrySection } from './_sections/ltr-model-registry-section'
 import { ModelProvidersSection } from './_sections/model-providers-section'
 import { NavigationVisibilitySection } from './_sections/navigation-visibility-section'
 import { ObservabilitySection } from './_sections/observability-section'
-import { ObjectStorageSection } from './_sections/object-storage-section'
 import { ParserServicesSection } from './_sections/parser-services-section'
 import { RagSection } from './_sections/rag-section'
 import { RuntimeControlsSection } from './_sections/runtime-controls-section'
 import { SystemStatusSection } from './_sections/system-status-section'
-import { UrlIngestSection } from './_sections/url-ingest-section'
 import { useSettingsPageState } from './use-settings-page-state'
 import { SettingsSwitchIndicator } from '@/components/settings/settings-switch'
 import {
-  CheckCircle2,
-  Clock,
-  LayoutGrid,
-  Layers,
-  Network,
+  Activity,
+  AuditLog,
+  ArrowLeft,
+  Blocks,
+  ChevronRight,
+  DataGovernance,
+  Gauge,
+  Layout,
+  Link,
+  Loader2,
+  Model,
+  Parsing,
   RefreshCw,
-  Save,
+  RuleSet,
   Search,
-  ShieldCheck,
+  SlidersHorizontal,
   XCircle,
-} from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+  type PlatformIcon,
+} from '@/components/icons'
 import { cn } from '@/lib/utils'
 import { TENANT_PERMISSIONS } from '@/lib/tenant-permissions'
 import { useTenantAccess } from '@/hooks/use-tenant-access'
 import { tenantAccessIsAdmin } from '@/lib/navigation-visibility'
-import { settingsTextTokens } from '@/components/ui/system-page-tokens'
+import { Link as AppLink } from '@/i18n/navigation'
+import { useAuth } from '@/hooks/use-auth'
+import styles from './settings.module.css'
 
 type SettingsSectionDefinition = {
   id: string
   label: string
   hint: string
+  group: 'general' | 'pipeline' | 'integrations' | 'operations'
+  icon: PlatformIcon
   adminOnly?: boolean
 }
 
+const SETTINGS_SECTION_GROUPS = [
+  { id: 'general', label: '通用' },
+  { id: 'pipeline', label: '内容与检索' },
+  { id: 'integrations', label: '外部集成' },
+  { id: 'operations', label: '治理与运行' },
+] as const
+
 const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
-  { id: 'sec-status', label: '系统状态', hint: '后端连通性与运行状态' },
-  { id: 'sec-models', label: '模型接入', hint: 'LLM / Embedding / Rerank 服务商' },
-  { id: 'sec-flags', label: '功能开关', hint: 'RAG/KG 能力开关与依赖提示' },
-  { id: 'sec-frontend', label: '前端偏好', hint: '本地浏览器偏好，不直接写后端' },
-  { id: 'sec-navigation', label: '导航权限', hint: '普通用户入口可见性控制', adminOnly: true },
-  { id: 'sec-parsers', label: '高级解析', hint: '高级解析器地址、超时与解析参数' },
-  { id: 'sec-storage', label: '对象存储', hint: 'MinIO / S3 兼容对象存储', adminOnly: true },
-  { id: 'sec-rag', label: 'RAG 配置', hint: '检索、召回与生成参数' },
-  { id: 'sec-ltr', label: 'LTR 模型', hint: '排序模型注册、回滚和启用' },
-  { id: 'sec-dify', label: 'Dify 接入', hint: '外部知识库访问、API Key 与数据集绑定', adminOnly: true },
-  { id: 'sec-url', label: 'URL 采集', hint: '网页采集与清洗策略', adminOnly: true },
-  { id: 'sec-governance', label: '数据治理', hint: 'PII、密钥、隔离与清洗策略' },
-  { id: 'sec-industry-rules', label: '行业规则', hint: '行业规则包与解析模板' },
-  { id: 'sec-observability', label: '可观测性', hint: '监控、审计和诊断开关', adminOnly: true },
-  { id: 'sec-runtime', label: '运行控制', hint: '聊天、缓存、安全和流程编排' },
+  { id: 'sec-status', label: '系统状态', hint: '查看数据库、模型和解析服务的可用状态。', group: 'general', icon: Activity },
+  { id: 'sec-models', label: '模型接入', hint: '配置语言、嵌入和重排序模型。', group: 'general', icon: Model },
+  { id: 'sec-flags', label: '功能开关', hint: '外部解析器还需启动相应服务。', group: 'general', icon: Blocks },
+  { id: 'sec-frontend', label: '处理偏好', hint: '保存在当前浏览器，用于新上传和预览。', group: 'general', icon: SlidersHorizontal },
+  { id: 'sec-navigation', label: '导航显示', hint: '选择普通成员可见的功能入口，具体操作仍受成员权限限制。', group: 'general', icon: Layout, adminOnly: true },
+  { id: 'sec-parsers', label: '解析服务', hint: '设置各解析器的服务地址、超时和解析参数。', group: 'pipeline', icon: Parsing },
+  { id: 'sec-rag', label: '检索与生成', hint: '调整召回、重排序和内容切分参数。', group: 'pipeline', icon: Search },
+  { id: 'sec-dify', label: 'Dify 接入', hint: '外部知识库访问、API Key 与数据集绑定', group: 'integrations', icon: Link, adminOnly: true },
+  { id: 'sec-governance', label: '数据治理', hint: '文档脱敏、隔离与复核。', group: 'operations', icon: DataGovernance },
+  { id: 'sec-industry-rules', label: '行业规则', hint: '术语词库、匹配规则与意图规则。', group: 'operations', icon: RuleSet },
+  { id: 'sec-observability', label: '监控与审计', hint: '设置运行记录、审计和诊断选项。', group: 'operations', icon: AuditLog, adminOnly: true },
+  { id: 'sec-runtime', label: '运行控制', hint: '聊天、缓存、安全和流程编排', group: 'operations', icon: Gauge },
 ] as const
 
 const SETTINGS_SECTION_BY_ID = Object.fromEntries(
   SETTINGS_SECTIONS.map((section) => [section.id, section])
 ) as Record<string, SettingsSectionDefinition>
-const SETTINGS_CARD_CLASS = 'rounded-xl border border-info/20 bg-info/[0.025] shadow-none'
-const SETTINGS_OUTLINE_BUTTON =
-  'h-8 rounded-lg border-info/15 bg-info/[0.025] px-3 text-[12px] font-medium text-foreground shadow-none hover:border-info/30 hover:bg-info/[0.07] hover:text-info'
-const SETTINGS_PRIMARY_BUTTON =
-  'h-8 rounded-lg bg-info px-3 text-[12px] font-medium text-info-foreground shadow-none hover:bg-info/90 disabled:bg-info/55 disabled:opacity-80 disabled:text-info-foreground'
-
 type SettingsPageState = ReturnType<typeof useSettingsPageState>
 type ParserBackendPreference = ReturnType<typeof useParserBackendPreference>
 type ChunkStrategyPreference = ReturnType<typeof useChunkStrategyPreference>
 type SettingsContentProps = {
   state: SettingsPageState
   visibleSections: SettingsSectionDefinition[]
-  visibleSectionIndex: Record<string, number>
   isAdmin: boolean
   parserBackend: ParserBackendPreference['parserBackend']
   setParserBackend: ParserBackendPreference['setParserBackend']
@@ -96,354 +102,53 @@ type SettingsContentProps = {
   setChunkStrategy: ChunkStrategyPreference['setChunkStrategy']
 }
 
-type SettingsMetricTone = 'blue' | 'green' | 'indigo' | 'slate'
-
-type SettingsMetricItem = {
-  label: string
-  value: string | number
-  icon: LucideIcon
-  tone: SettingsMetricTone
-  valueClassName?: string
-}
-
-const SETTINGS_METRIC_TONE_CLASS: Record<SettingsMetricTone, string> = {
-  blue: 'text-info',
-  green: 'text-success',
-  indigo: 'text-info',
-  slate: 'text-muted-foreground',
-}
-
-function getSaveStatusLabel(
-  saving: boolean,
-  saveMessageType?: string
-): string {
-  if (saving) return '保存中'
-  if (saveMessageType === 'success') return '最近成功'
-  if (saveMessageType === 'error') return '最近失败'
-  return '空闲'
-}
-
-function getSaveStatusTone(saveMessageType?: string): SettingsMetricTone {
-  if (saveMessageType === 'success') return 'green'
-  return 'indigo'
-}
-
-function getSaveStatusValueClassName(
-  saving: boolean,
-  saveMessageType?: string
-): string {
-  if (saveMessageType === 'error') return 'text-destructive'
-  if (saving) return 'text-warning'
-  if (saveMessageType === 'success') return 'text-success'
-  return 'text-foreground/80'
-}
-
-function SettingsMetricStrip({
-  items,
-}: Readonly<{ items: readonly SettingsMetricItem[] }>) {
-  return (
-    <div
-      data-testid="settings-metric-strip"
-      className="flex flex-wrap items-center gap-1.5 rounded-xl border border-info/20 bg-info/[0.025] p-1.5"
-    >
-      {items.map((item) => {
-        const Icon = item.icon
-        return (
-          <div
-            key={item.label}
-            className="flex min-h-9 flex-1 basis-[150px] items-center gap-2 rounded-lg border border-info/15 bg-info/[0.025] px-2.5 py-1.5"
-          >
-            <div
-              className={cn(
-                'flex size-6 shrink-0 items-center justify-center rounded-md border border-info/15 bg-info/[0.06]',
-                SETTINGS_METRIC_TONE_CLASS[item.tone]
-              )}
-            >
-              <Icon className="size-3.5" />
-            </div>
-            <div className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
-              <p className="truncate text-[11px] font-semibold text-muted-foreground">
-                {item.label}
-              </p>
-              <p
-                className={cn(
-                  'shrink-0 text-[13px] font-semibold leading-none text-foreground',
-                  item.valueClassName
-                )}
-              >
-                {item.value}
-              </p>
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-function SettingsSaveFeedback({
-  message,
-  updatedKeys,
-}: Readonly<{
-  message: { type: 'success' | 'error'; text: string; detail?: string }
-  updatedKeys: string[]
-}>) {
-  if (message.type === 'error') {
-    return (
-      <Alert
-        variant="destructive"
-        className="rounded-xl border-destructive/25 bg-destructive/10 shadow-none"
-      >
-        <XCircle className="size-4" />
-        <div>
-          <AlertTitle>保存失败</AlertTitle>
-          <AlertDescription className="text-foreground/80">
-            {message.text}
-          </AlertDescription>
-        </div>
-      </Alert>
-    )
-  }
-
-  const visibleKeys = updatedKeys.slice(0, 4)
-  const extraCount = Math.max(0, updatedKeys.length - visibleKeys.length)
-
-  return (
-    <div className="rounded-xl border border-success/25 bg-success/[0.08] px-3.5 py-3 shadow-none">
-      <div className="flex items-start gap-3">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-[11px] border border-success/25 bg-success/15 text-success">
-          <CheckCircle2 className="size-4" />
-        </div>
-        <div className="min-w-0 flex-1 space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[13px] font-semibold leading-none text-foreground">
-              已保存
-            </p>
-            {message.detail ? (
-              <span className="rounded-full border border-success/25 bg-success/[0.04] px-2 py-0.5 text-[10px] font-medium text-success">
-                少量配置需重启服务
-              </span>
-            ) : null}
-          </div>
-          <p className="text-[12px] leading-5 text-muted-foreground">{message.text}</p>
-          {message.detail ? (
-            <p className="text-[11.5px] font-medium leading-[18px] text-muted-foreground">
-              {message.detail}
-            </p>
-          ) : null}
-          {updatedKeys.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[10px] font-semibold text-muted-foreground">
-                本次更新
-              </span>
-              {visibleKeys.map((key) => (
-                <span
-                  key={key}
-                  className="rounded-full border border-info/15 bg-info/[0.035] px-2 py-0.5 font-mono text-[10px] text-muted-foreground"
-                >
-                  {key}
-                </span>
-              ))}
-              {extraCount > 0 ? (
-                <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                  +{extraCount} 项
-                </span>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-type EnhancementCardProps = {
-  title: string
-  description: string
-  icon: LucideIcon
-  checked: boolean
-  onToggle: () => void
-  tags: string[]
-}
-
-function EnhancementCard({
-  title,
-  description,
-  icon: Icon,
-  checked,
-  onToggle,
-  tags,
-}: Readonly<EnhancementCardProps>) {
-  const toneClass = {
-    card: checked
-      ? 'border-info/30 bg-info/10'
-      : 'border-info/15 bg-info/[0.025]',
-    icon: checked
-      ? 'bg-info/15 text-info'
-      : 'bg-info/[0.06] text-muted-foreground',
-  }
-
+function RetrievalEnhancementSection({ state }: Readonly<{ state: SettingsPageState }>) {
+  const enabled = Boolean(state.ragMerged?.bm25_index_enabled)
   return (
     <button
       type="button"
-      aria-pressed={checked}
-      onClick={onToggle}
-      className={cn(
-        'group flex min-h-[54px] w-full items-center justify-between gap-3 rounded-[13px] border px-3 py-2 text-left transition-[border-color,background-color] duration-150 focus-ring hover:border-info/30 motion-reduce:transition-none',
-        toneClass.card
-      )}
+      aria-pressed={enabled}
+      onClick={() => state.updateRag({ bm25_index_enabled: !enabled })}
+      className="flex min-h-16 w-full items-center justify-between gap-4 border-b border-border/50 py-3 text-left transition-colors hover:bg-muted/40 focus-ring"
     >
-      <span className="flex min-w-0 items-center gap-2.5">
-        <span
-          className={cn(
-            'flex size-6 shrink-0 items-center justify-center rounded-[10px]',
-            toneClass.icon
-          )}
-        >
-          <Icon className="size-3.5" />
-        </span>
+      <span className="flex min-w-0 items-start gap-3">
+        <Search className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0">
-          <span className="block text-[12px] font-semibold leading-4 text-foreground">
-            {title}
-          </span>
-          <span className="mt-0.5 block truncate text-[10.5px] font-medium leading-4 text-muted-foreground">
-            {description}
-          </span>
-          {tags.length > 0 ? (
-            <span className="mt-1 flex flex-wrap gap-1">
-              {tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="rounded-md border border-info/15 bg-info/[0.035] px-1.5 py-0.5 text-[10px] font-medium leading-[14px] text-muted-foreground"
-                >
-                  {tag}
-                </span>
-              ))}
-            </span>
-          ) : null}
+          <span className="block text-sm font-medium text-foreground">BM25 关键词索引</span>
+          <span className="mt-1 block text-[13px] leading-5 text-muted-foreground">使用关键词匹配补充语义检索，适合精确词和标题查询。</span>
         </span>
       </span>
-      <SettingsSwitchIndicator checked={checked} />
+      <SettingsSwitchIndicator checked={enabled} />
     </button>
   )
 }
 
-function RetrievalEnhancementSection({ state }: Readonly<{ state: SettingsPageState }>) {
-  const bm25Enabled = Boolean(state.ragMerged?.bm25_index_enabled)
-  const kgEnabled = state.getFeatureValue('kg_enabled')
-
-  return (
-    <section className="rounded-xl border border-info/15 bg-info/[0.025] p-3.5 shadow-none">
-      <div className="mb-2.5">
-        <h2 className="text-[13px] font-semibold text-foreground">
-          关键词增强配置
-        </h2>
-        <p className="mt-0.5 text-[11.5px] font-medium leading-[18px] text-muted-foreground">
-          绑定后端 RAG 与 KG 开关，控制关键词索引和图谱增强是否参与检索
-        </p>
-      </div>
-      <div className="grid grid-cols-1 gap-2.5 xl:grid-cols-2">
-        <EnhancementCard
-          title="BM25 关键词索引"
-          description="启用关键词通道，对精确词匹配、标题和结构化段落更友好"
-          icon={Search}
-          checked={bm25Enabled}
-          onToggle={() => state.updateRag({ bm25_index_enabled: !bm25Enabled })}
-          tags={['RAG 配置', '真实后端字段']}
-        />
-        <EnhancementCard
-          title="KG 知识图谱"
-          description="启用实体、事件与关系索引，作为 RAG 上下文增强来源"
-          icon={Network}
-          checked={kgEnabled}
-          onToggle={() => state.toggleFeature('kg_enabled')}
-          tags={['Feature Flag', 'KG_ENABLED']}
-        />
-      </div>
-    </section>
-  )
-}
-
-function useSettingsScrollSpy(sectionIds: readonly string[]) {
-  const [activeId, setActiveId] = useState(sectionIds[0])
-  const observerRef = useRef<IntersectionObserver | null>(null)
-
-  useEffect(() => {
-    observerRef.current?.disconnect()
-
-    const visibleMap = new Map<string, number>()
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          visibleMap.set(entry.target.id, entry.intersectionRatio)
-        }
-        let best = sectionIds[0]
-        let bestRatio = -1
-        for (const id of sectionIds) {
-          const ratio = visibleMap.get(id) ?? 0
-          if (ratio > bestRatio) {
-            bestRatio = ratio
-            best = id
-          }
-        }
-        if (bestRatio > 0) setActiveId(best)
-      },
-      {
-        root: document.querySelector('[data-page-scroll-container]'),
-        threshold: [0, 0.1, 0.25, 0.5],
-      }
-    )
-
-    for (const id of sectionIds) {
-      const el = document.getElementById(id)
-      if (el) observerRef.current.observe(el)
-    }
-
-    return () => observerRef.current?.disconnect()
-  }, [sectionIds])
-
-  return activeId
-}
-
 function SettingsSectionFrame({
   section,
-  index,
   children,
   className,
+  hidden = false,
 }: Readonly<{
   section: SettingsSectionDefinition
-  index: number
   children: ReactNode
   className?: string
+  hidden?: boolean
 }>) {
   return (
     <section
       id={section.id}
+      hidden={hidden}
       aria-labelledby={`${section.id}-title`}
       className={cn(
-        'relative scroll-mt-24 overflow-visible rounded-xl border border-info/20 bg-info/[0.018] shadow-none',
+        styles.section,
         className
       )}
     >
-      <div className="border-b border-border/60 bg-info/[0.025] px-4 py-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-7 w-9 shrink-0 items-center justify-center rounded-md border border-info/20 bg-info/[0.08] text-[11px] font-semibold text-info">
-            {String(index + 1).padStart(2, '0')}
-          </span>
-          <div className="min-w-0">
-            <h2
-              id={`${section.id}-title`}
-              className={cn(settingsTextTokens.sectionTitle, 'leading-tight')}
-            >
-              {section.label}
-            </h2>
-            <p className="mt-0.5 text-[11.5px] font-medium leading-[18px] text-muted-foreground">
-              {section.hint}
-            </p>
-          </div>
-        </div>
-      </div>
-      <div className="space-y-3 p-3.5">{children}</div>
+      <header className={styles.sectionHeader}>
+        <h2 id={`${section.id}-title`} className={styles.sectionTitle}>{section.label}</h2>
+        <p className={styles.sectionHint}>{section.hint}</p>
+      </header>
+      <div className={cn(styles.sectionBody, 'space-y-5')}>{children}</div>
     </section>
   )
 }
@@ -467,136 +172,19 @@ function SettingsPageContent() {
     () => SETTINGS_SECTIONS.filter((section) => !section.adminOnly || isAdmin),
     [isAdmin]
   )
-  const visibleSectionIndex = useMemo(
-    () =>
-      Object.fromEntries(
-        visibleSections.map((section, index) => [section.id, index])
-      ) as Record<string, number>,
-    [visibleSections]
-  )
   const { parserBackend, setParserBackend } = useParserBackendPreference()
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
-  const statusMetricItems: SettingsMetricItem[] = [
-    {
-      label: '配置分区',
-      value: visibleSections.length,
-      icon: LayoutGrid,
-      tone: 'blue',
-    },
-    {
-      label: '环境变量',
-      value: state.hasChanges ? '待保存' : '已同步',
-      icon: Layers,
-      tone: 'green',
-      valueClassName: state.hasChanges ? 'text-warning' : 'text-success',
-    },
-    {
-      label: '保存状态',
-      value: getSaveStatusLabel(state.saving, state.saveMessage?.type),
-      icon: ShieldCheck,
-      tone: getSaveStatusTone(state.saveMessage?.type),
-      valueClassName: getSaveStatusValueClassName(
-        state.saving,
-        state.saveMessage?.type
-      ),
-    },
-    {
-      label: '最近更新',
-      value: state.lastUpdatedKeys.length
-        ? `${state.lastUpdatedKeys.length} 项`
-        : '0 秒前',
-      icon: Clock,
-      tone: 'blue',
-    },
-  ]
-
   return (
-    <AppFrame>
-      <PageScaffold
-        title="设置与配置"
-        badge="系统配置"
-        iconImage="settings"
-        description="统一管理功能开关、模型接入、检索增强生成参数（RAG）与运行控制"
-        size="full"
-        compact
-        density="system-dense"
-        headerClassName="[&_[class*='rounded-full']]:border-info/20 [&_[class*='rounded-full']]:bg-info/[0.06] [&_[class*='rounded-full']]:font-medium [&_[class*='rounded-full']]:normal-case [&_[class*='rounded-full']]:text-info"
-        topClassName="pb-2.5"
-        bodyClassName="bg-info/[0.035] !pb-3 pt-0.5"
-        top={
-          <div className="space-y-2">
-            <SettingsMetricStrip items={statusMetricItems} />
-            {state.loadError ? (
-              <Alert
-                variant="destructive"
-                className="rounded-xl border-destructive/25 bg-destructive/10 shadow-none"
-              >
-                <XCircle className="size-4" />
-                <div>
-                  <AlertTitle>加载失败</AlertTitle>
-                  <AlertDescription className="text-foreground/80">
-                    {state.loadError}
-                  </AlertDescription>
-                </div>
-              </Alert>
-            ) : null}
-            {state.saveMessage ? (
-              <SettingsSaveFeedback
-                message={state.saveMessage}
-                updatedKeys={state.lastUpdatedKeys}
-              />
-            ) : null}
-          </div>
-        }
-        actions={
-          <>
-            <Button
-              variant="outline"
-              onClick={state.refreshAll}
-              disabled={state.loading}
-              className={SETTINGS_OUTLINE_BUTTON}
-            >
-              <RefreshCw
-                className={cn(
-                  'size-4',
-                  state.loading && 'animate-spin motion-reduce:animate-none'
-                )}
-              />
-              刷新
-            </Button>
-            <Button
-              onClick={state.saveSettings}
-              disabled={!state.hasChanges || state.saving}
-              className={SETTINGS_PRIMARY_BUTTON}
-            >
-              <Save
-                className={cn(
-                  'size-4',
-                  state.saving && 'animate-pulse motion-reduce:animate-none'
-                )}
-              />
-              {state.saving ? '保存中...' : '保存配置'}
-            </Button>
-          </>
-        }
-      >
-        {state.loading ? (
-          <div className="flex h-64 items-center justify-center">
-            <RefreshCw className="size-8 animate-spin text-muted-foreground motion-reduce:animate-none" />
-          </div>
-        ) : (
-          <SettingsContent
-            state={state}
-            visibleSections={visibleSections}
-            visibleSectionIndex={visibleSectionIndex}
-            isAdmin={isAdmin}
-            parserBackend={parserBackend}
-            setParserBackend={setParserBackend}
-            chunkStrategy={chunkStrategy}
-            setChunkStrategy={setChunkStrategy}
-          />
-        )}
-      </PageScaffold>
+    <AppFrame navigationVariant="rail" showBackground={false} className={styles.workspace}>
+      <SettingsContent
+        state={state}
+        visibleSections={visibleSections}
+        isAdmin={isAdmin}
+        parserBackend={parserBackend}
+        setParserBackend={setParserBackend}
+        chunkStrategy={chunkStrategy}
+        setChunkStrategy={setChunkStrategy}
+      />
 
       <ModelConfigDialog
         provider={state.selectedProvider}
@@ -611,81 +199,144 @@ function SettingsPageContent() {
 function SettingsContent({
   state,
   visibleSections,
-  visibleSectionIndex,
   isAdmin,
   parserBackend,
   setParserBackend,
   chunkStrategy,
   setChunkStrategy,
 }: Readonly<SettingsContentProps>) {
-  const sectionIds = visibleSections.map((s) => s.id)
-  const activeId = useSettingsScrollSpy(sectionIds)
-
-  const scrollTo = useCallback((id: string) => {
-    const el = document.getElementById(id)
-    if (!el) return
-    const main = document.getElementById('main-content')
-    const scrollContainer = document.querySelector<HTMLElement>('[data-page-scroll-container]')
-    if (!scrollContainer) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      return
+  const sectionIds = useMemo(() => visibleSections.map((section) => section.id), [visibleSections])
+  const [selectedId, setSelectedId] = useState('sec-frontend')
+  useEffect(() => {
+    const readSection = () => {
+      const id = window.location.hash.slice(1)
+      if (sectionIds.includes(id)) setSelectedId(id)
     }
+    readSection()
+    window.addEventListener('hashchange', readSection)
+    return () => window.removeEventListener('hashchange', readSection)
+  }, [sectionIds])
+  const activeId = sectionIds.includes(selectedId) ? selectedId : sectionIds[0]
+  const sectionGroups = useMemo(
+    () => SETTINGS_SECTION_GROUPS.map((group) => ({
+      ...group,
+      sections: visibleSections.filter((section) => section.group === group.id),
+    })).filter((group) => group.sections.length > 0),
+    [visibleSections]
+  )
+  const directoryRef = useRef<HTMLElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const { isDevMode, user } = useAuth()
+  const activeSection = SETTINGS_SECTION_BY_ID[activeId] || visibleSections[0]
+  const activeGroup = SETTINGS_SECTION_GROUPS.find((group) => group.id === activeSection.group)
 
-    // Keep the app shell fixed; only the page body should scroll when using
-    // the settings side index. scrollIntoView can also move overflow-hidden
-    // ancestors, which visually cuts off the right pane bottom.
-    main?.scrollTo({ top: 0, left: 0, behavior: 'auto' })
-    const containerRect = scrollContainer.getBoundingClientRect()
-    const targetRect = el.getBoundingClientRect()
-    const nextTop = targetRect.top - containerRect.top + scrollContainer.scrollTop - 8
-    scrollContainer.scrollTo({ top: Math.max(0, nextTop), behavior: 'smooth' })
+  useEffect(() => {
+    const revealCurrentSection = () => {
+      const directory = directoryRef.current
+      const current = directory?.querySelector<HTMLElement>('[aria-current="location"]')
+      if (!directory?.clientHeight || !current) return
+      const directoryBounds = directory.getBoundingClientRect()
+      const currentBounds = current.getBoundingClientRect()
+      if (currentBounds.top < directoryBounds.top + 4) {
+        directory.scrollTop += currentBounds.top - directoryBounds.top - 4
+      } else if (currentBounds.bottom > directoryBounds.bottom - 4) {
+        directory.scrollTop += currentBounds.bottom - directoryBounds.bottom + 4
+      }
+    }
+    revealCurrentSection()
+    window.addEventListener('resize', revealCurrentSection)
+    return () => window.removeEventListener('resize', revealCurrentSection)
+  }, [activeId])
+
+  const positionSection = useCallback(() => {
+    scrollRef.current?.scrollTo({ top: 0, behavior: 'auto' })
   }, [])
 
-  return (
-    <div className="grid gap-4 xl:grid-cols-[176px_minmax(0,1fr)]">
-      <nav
-        className={cn(
-          SETTINGS_CARD_CLASS,
-          'sticky top-4 hidden shrink-0 self-start p-1.5 xl:block'
-        )}
-      >
-        <ul className="space-y-0.5">
-          {visibleSections.map((sec) => (
-            <li key={sec.id}>
-              <button
-                type="button"
-                onClick={() => scrollTo(sec.id)}
-                className={cn(
-                  'relative w-full rounded-lg border border-transparent px-3 py-2 text-left transition-colors',
-                  'text-[12px] font-semibold leading-[18px]',
-                  activeId === sec.id
-                    ? 'border-info/25 bg-info/[0.08] text-info'
-                    : 'text-foreground/78 hover:bg-info/[0.05] hover:text-info'
-                )}
-              >
-                {sec.label}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </nav>
+  useLayoutEffect(() => {
+    positionSection()
+  }, [activeId, state.loading, positionSection])
 
-      <div className="min-w-0 space-y-6">
+  const selectSection = (id: string) => {
+    if (!sectionIds.includes(id)) return
+    setSelectedId(id)
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}#${id}`)
+    if (id === activeId) positionSection()
+  }
+
+  return (
+    <div className={styles.layout} data-settings-workspace>
+      <aside className={cn(styles.directory, 'hidden xl:flex')}>
+        <header><h1 className={styles.directoryTitle}>系统设置</h1></header>
+        <nav ref={directoryRef} aria-label="设置分区" data-settings-directory className={cn(styles.directoryScroll, 'xl:block')}>
+          {sectionGroups.map((group) => (
+            <div key={group.id} className={styles.directoryGroup} role="group" aria-labelledby={`settings-directory-${group.id}`}>
+              <h2 id={`settings-directory-${group.id}`} className={styles.groupName}>{group.label}</h2>
+              <ul>
+                {group.sections.map((section) => {
+                  const isActive = activeId === section.id
+                  return (
+                    <li key={section.id}>
+                      <button
+                        type="button"
+                        disabled={state.loading}
+                        onClick={() => selectSection(section.id)}
+                        aria-controls={section.id}
+                        aria-current={isActive ? 'location' : undefined}
+                        className={cn(styles.directoryItem, 'focus-ring')}
+                      >
+                        <span>{section.label}</span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          ))}
+        </nav>
+        <AppLink href="/" className={cn(styles.returnLink, 'focus-ring')}><ArrowLeft className="size-3.5" />返回工作区</AppLink>
+      </aside>
+
+      <div className={styles.main}>
+        <header className={styles.toolbar}>
+          <nav aria-label="当前位置" className={styles.breadcrumb}>
+            <span>系统设置</span><ChevronRight className="size-3" /><span>{activeGroup?.label}</span><ChevronRight className="size-3" /><strong>{activeSection.label}</strong>
+          </nav>
+          <div className={styles.toolbarStatus}>
+            <div role="status" aria-live="polite" className="flex min-h-8 items-center gap-2">
+              {state.saveError ? <Button variant="ghost" size="sm" onClick={() => void state.retrySave()} className="h-11 text-destructive sm:h-8">重试保存</Button> : state.saving || state.hasChanges ? <><Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />正在保存…</> : null}
+            </div>
+            <span className={styles.account}>{isDevMode ? '开发模式' : user?.username || user?.email}</span>
+          </div>
+        </header>
+        <div data-settings-mobile-directory className={cn(styles.mobileDirectory, 'xl:hidden')}>
+            <Select value={activeId} disabled={state.loading} onValueChange={selectSection}>
+              <SelectTrigger aria-label="设置分区" className="h-11 w-full bg-background text-base"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {sectionGroups.map((group) => <SelectGroup key={group.id}><SelectLabel>{group.label}</SelectLabel>{group.sections.map((section) => <SelectItem key={section.id} value={section.id} className="min-h-11">{section.label}</SelectItem>)}</SelectGroup>)}
+              </SelectContent>
+            </Select>
+        </div>
+        {state.loadError ? <div className={cn(styles.alerts, 'space-y-2')}>
+            {state.loadError ? <Alert variant="destructive" className="rounded-md border-destructive/25 bg-destructive/10 shadow-none"><XCircle className="size-4" /><div><AlertTitle>加载失败</AlertTitle><AlertDescription>{state.loadError}</AlertDescription></div></Alert> : null}
+        </div> : null}
+        <FeedbackToast type="error" id="settings-save-error" message={state.saveError ? `自动保存失败：${state.saveError.replace(/\s*\(request_id=[^)]+\)/g, '')}。修改已保留，可重试。` : null} />
+        <div ref={scrollRef} className={styles.scroll} data-page-scroll-container>
+          {state.loading ? <div className={styles.loading}><RefreshCw className="size-7 animate-spin motion-reduce:animate-none" aria-label="正在加载设置" /></div> : <>
         <SettingsSectionFrame
           section={SETTINGS_SECTION_BY_ID['sec-status']}
-          index={visibleSectionIndex['sec-status']}
+          hidden={activeId !== 'sec-status'}
         >
           {state.status ? (
             <SystemStatusSection
               status={state.status}
               backendMeta={state.backendMeta}
             />
-          ) : null}
+          ) : <p role="status" className="text-[13px] leading-5 text-muted-foreground">暂时无法读取服务状态。</p>}
         </SettingsSectionFrame>
 
         <SettingsSectionFrame
           section={SETTINGS_SECTION_BY_ID['sec-models']}
-          index={visibleSectionIndex['sec-models']}
+          hidden={activeId !== 'sec-models'}
         >
           <ModelProvidersSection
             groupedProviders={state.groupedProviders}
@@ -695,12 +346,11 @@ function SettingsContent({
 
         <SettingsSectionFrame
           section={SETTINGS_SECTION_BY_ID['sec-flags']}
-          index={visibleSectionIndex['sec-flags']}
+          hidden={activeId !== 'sec-flags'}
           className="[&>div:last-child]:space-y-3"
         >
           <RetrievalEnhancementSection state={state} />
           <FeatureFlagsSection
-            editedFeatureFlags={state.editedFeatureFlags}
             getFeatureValue={state.getFeatureValue}
             toggleFeature={state.toggleFeature}
           />
@@ -708,7 +358,7 @@ function SettingsContent({
 
         <SettingsSectionFrame
           section={SETTINGS_SECTION_BY_ID['sec-frontend']}
-          index={visibleSectionIndex['sec-frontend']}
+          hidden={activeId !== 'sec-frontend'}
         >
           <FrontendPreferencesSection
             parserBackend={parserBackend}
@@ -721,18 +371,15 @@ function SettingsContent({
         {isAdmin ? (
           <SettingsSectionFrame
             section={SETTINGS_SECTION_BY_ID['sec-navigation']}
-            index={visibleSectionIndex['sec-navigation']}
+            hidden={activeId !== 'sec-navigation'}
           >
-            <NavigationVisibilitySection
-              navigation={state.navigationMerged}
-              updateNavigation={state.updateNavigation}
-            />
+            <NavigationVisibilitySection navigation={state.navigationMerged} updateNavigation={state.updateNavigation} />
           </SettingsSectionFrame>
         ) : null}
 
         <SettingsSectionFrame
           section={SETTINGS_SECTION_BY_ID['sec-parsers']}
-          index={visibleSectionIndex['sec-parsers']}
+          hidden={activeId !== 'sec-parsers'}
           className="[&>div:last-child]:space-y-4"
         >
           <ParserServicesSection
@@ -753,54 +400,17 @@ function SettingsContent({
           />
         </SettingsSectionFrame>
 
-        {isAdmin ? (
-          <SettingsSectionFrame
-            section={SETTINGS_SECTION_BY_ID['sec-storage']}
-            index={visibleSectionIndex['sec-storage']}
-          >
-            <ObjectStorageSection
-              minio={state.minioMerged}
-              updateMinIO={state.updateMinIO}
-            />
-          </SettingsSectionFrame>
-        ) : null}
-
         <SettingsSectionFrame
           section={SETTINGS_SECTION_BY_ID['sec-rag']}
-          index={visibleSectionIndex['sec-rag']}
+          hidden={activeId !== 'sec-rag'}
         >
           <RagSection rag={state.ragMerged} updateRag={state.updateRag} />
-        </SettingsSectionFrame>
-
-        <SettingsSectionFrame
-          section={SETTINGS_SECTION_BY_ID['sec-ltr']}
-          index={visibleSectionIndex['sec-ltr']}
-        >
-          <LtrModelRegistrySection
-            ltrError={state.ltrError}
-            ltrMessage={state.ltrMessage}
-            ltrUploading={state.ltrUploading}
-            ltrUploadReady={state.ltrUploadReady}
-            ltrUploadResetKey={state.ltrUploadResetKey}
-            ltrLoading={state.ltrLoading}
-            ltrBusyModelId={state.ltrBusyModelId}
-            ltrModels={state.ltrModels}
-            onRegister={state.registerLtrModel}
-            onRefreshList={state.refreshLtrModels}
-            onRollback={state.rollbackLtrModel}
-            onActivate={state.activateLtrModel}
-            onModelFileChange={state.setLtrUploadModelFile}
-            onManifestFileChange={state.setLtrUploadManifestFile}
-            formatBytes={state.formatBytes}
-            formatTime={state.formatTime}
-            shortId={state.shortId}
-          />
         </SettingsSectionFrame>
 
         {isAdmin ? (
           <SettingsSectionFrame
             section={SETTINGS_SECTION_BY_ID['sec-dify']}
-            index={visibleSectionIndex['sec-dify']}
+            hidden={activeId !== 'sec-dify'}
           >
             <DifyIntegrationSection
               difyExternalKnowledge={state.difyExternalKnowledgeMerged}
@@ -809,21 +419,9 @@ function SettingsContent({
           </SettingsSectionFrame>
         ) : null}
 
-        {isAdmin ? (
-          <SettingsSectionFrame
-            section={SETTINGS_SECTION_BY_ID['sec-url']}
-            index={visibleSectionIndex['sec-url']}
-          >
-            <UrlIngestSection
-              urlIngest={state.urlIngestMerged}
-              updateUrlIngest={state.updateUrlIngest}
-            />
-          </SettingsSectionFrame>
-        ) : null}
-
         <SettingsSectionFrame
           section={SETTINGS_SECTION_BY_ID['sec-governance']}
-          index={visibleSectionIndex['sec-governance']}
+          hidden={activeId !== 'sec-governance'}
         >
           <GovernanceSection
             isGovernanceEnabled={state.isGovernanceEnabled}
@@ -836,7 +434,7 @@ function SettingsContent({
 
         <SettingsSectionFrame
           section={SETTINGS_SECTION_BY_ID['sec-industry-rules']}
-          index={visibleSectionIndex['sec-industry-rules']}
+          hidden={activeId !== 'sec-industry-rules'}
         >
           <IndustryRulesSection />
         </SettingsSectionFrame>
@@ -844,7 +442,7 @@ function SettingsContent({
         {isAdmin ? (
           <SettingsSectionFrame
             section={SETTINGS_SECTION_BY_ID['sec-observability']}
-            index={visibleSectionIndex['sec-observability']}
+            hidden={activeId !== 'sec-observability'}
           >
             <ObservabilitySection
               observability={state.observabilityMerged}
@@ -855,7 +453,7 @@ function SettingsContent({
 
         <SettingsSectionFrame
           section={SETTINGS_SECTION_BY_ID['sec-runtime']}
-          index={visibleSectionIndex['sec-runtime']}
+          hidden={activeId !== 'sec-runtime'}
         >
           <RuntimeControlsSection
             chat={state.chatMerged}
@@ -868,6 +466,8 @@ function SettingsContent({
             updateLangGraph={state.updateLangGraph}
           />
         </SettingsSectionFrame>
+          </>}
+        </div>
       </div>
     </div>
   )

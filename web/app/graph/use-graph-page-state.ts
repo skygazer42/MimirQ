@@ -185,7 +185,7 @@ export function useGraphPageState() {
   const [kgStats, setKgStats] = useState<KGStatsResponse | null>(null)
   const [kgNodeDetail, setKgNodeDetail] = useState<KGEntityDetailResponse | KGEventDetailResponse | null>(null)
   const [kgNodeDetailLoading, setKgNodeDetailLoading] = useState(false)
-  const [viewMode, setViewMode] = useState<'2d' | '3d'>('3d')
+  const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d')
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [entityTypeFilters, setEntityTypeFilters] = useState<string[]>([])
   const [predicateFilters, setPredicateFilters] = useState<string[]>([])

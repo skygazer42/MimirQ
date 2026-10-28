@@ -1,4 +1,4 @@
-import type { LucideIcon } from "lucide-react"
+import type { PlatformIcon } from "@/components/icons"
 import type { ComponentProps } from "react"
 
 import { PageBody } from "@/components/ui/page-body"
@@ -12,11 +12,12 @@ import { cn } from "@/lib/utils"
 type PageScaffoldProps = {
   title: string
   description?: React.ReactNode
-  icon?: LucideIcon
+  icon?: PlatformIcon
   iconImage?: PageTitleIconName
   iconColor?: string
   badge?: string
   actions?: React.ReactNode
+  status?: React.ReactNode
   top?: React.ReactNode
   toolbar?: React.ReactNode
   children: React.ReactNode
@@ -65,6 +66,7 @@ export function PageScaffold({
   iconColor,
   badge,
   actions,
+  status,
   top,
   toolbar,
   children,
@@ -99,6 +101,7 @@ export function PageScaffold({
               iconImage={iconImage}
               iconColor={iconColor}
               badge={badge}
+              status={status}
               compact={compact}
               className={cn("p-0", headerClassName)}
             >

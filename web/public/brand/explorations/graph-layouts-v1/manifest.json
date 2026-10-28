@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "lang": "zh",
+  "project": "Ragvia · 知识图谱布局对比",
+  "round": "知识图谱 01",
+  "nativeViewport": "1600x1000",
+  "brief": "延续雾灰／墨色、Manrope 与 Noto Sans SC、Ragvia 完整导航与语义色，比较五种知识图谱工作区。五版共用 18 个实体、22 条关系并选中「系统架构设计」；实体与关系由现有 AI 工程师能力标准文字组织，仅供本轮布局比较，不代表已运行抽取的图谱结果。候选为静态首屏，搜索、筛选、编辑与分析操作未接入，正式页面未修改。",
+  "candidates": [
+    {
+      "id": "a-canvas",
+      "name": "A · 图谱画布",
+      "source": "a-canvas.html",
+      "concept": "关系网占据主工作区，选中实体后在右侧核对关联与来源。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题、14px 正文、13px 工具与元信息",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#DCE1E6", "#75658F", "#48778B", "#45817C", "#927342", "#5D815A"],
+      "traits": ["大面积关系画布", "选中实体的详情与来源同处右侧", "适合探索全局关联"]
+    },
+    {
+      "id": "b-directory",
+      "name": "B · 目录分栏",
+      "source": "b-directory.html",
+      "concept": "先从实体目录定位对象，再聚焦它的周边关系。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题、14px 正文、13px 工具与元信息",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#DCE1E6", "#75658F", "#48778B", "#45817C", "#927342", "#5D815A"],
+      "traits": ["实体目录常驻", "邻域关系单独展开", "适合找实体与检查关联"]
+    },
+    {
+      "id": "c-relations",
+      "name": "C · 关系宽表",
+      "source": "c-relations.html",
+      "concept": "把关系作为可比较的记录，逐条核对主体、谓词、客体和原文。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题、14px 正文、13px 工具与元信息",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#DCE1E6", "#75658F", "#48778B", "#45817C", "#927342", "#5D815A"],
+      "traits": ["主体／关系／客体宽表", "当前关系展开局部图与证据", "适合审阅关系与对照来源"]
+    },
+    {
+      "id": "d-path",
+      "name": "D · 路径追踪",
+      "source": "d-path.html",
+      "concept": "沿一条具体路径观察连接，每段关系都能找到来源依据。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题、14px 正文、13px 工具与元信息",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#DCE1E6", "#75658F", "#48778B", "#45817C", "#927342", "#5D815A"],
+      "traits": ["起点与终点并列", "横向关系路径", "适合追溯对象间如何关联"]
+    },
+    {
+      "id": "e-evidence",
+      "name": "E · 图谱与证据",
+      "source": "e-evidence.html",
+      "concept": "上半看关联，下半读原文，核对关系时保留图谱上下文。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题、14px 正文、13px 工具与元信息",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#DCE1E6", "#75658F", "#48778B", "#45817C", "#927342", "#5D815A"],
+      "traits": ["图谱与原文纵向拆分", "关联列表与证据阅读并列", "适合持续核对来源"]
+    },
+    {
+      "id": "current",
+      "name": "当前页面 · 参照",
+      "source": "current.png",
+      "kind": "image",
+      "baseline": true,
+      "nativeViewport": "1280x720",
+      "concept": "真实页面当前未选择图谱，统计面板与工具悬浮于画布。这里只比较容器与控件的组织方式，不把空态与候选数据量混为一谈。",
+      "traits": ["现有空态", "统计与筛选悬浮面板", "右侧纵向工具栏"]
+    }
+  ]
+}

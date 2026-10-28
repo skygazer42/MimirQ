@@ -283,7 +283,7 @@ export function useParsingRunActions({
 
         setActiveBlockId(null)
         setHoveredBlockId(null)
-        setRightPanelMode(blocks.length ? 'blocks' : 'markdown')
+        setRightPanelMode('markdown')
 
         await updateParsedFile(libraryId, {
           filename: file.file.name,
@@ -396,7 +396,7 @@ export function useParsingRunActions({
 
       setActiveBlockId(null)
       setHoveredBlockId(null)
-      setRightPanelMode(nextRun.blocks.length ? 'blocks' : 'markdown')
+      setRightPanelMode('markdown')
     },
     [activeFile, setActiveBlockId, setFiles, setHoveredBlockId, setRightPanelMode]
   )

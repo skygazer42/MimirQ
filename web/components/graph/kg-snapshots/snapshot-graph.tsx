@@ -6,7 +6,7 @@ import {
   Sparkles,
   Star,
   User,
-} from 'lucide-react'
+} from '@/components/icons'
 import type { ReactNode } from 'react'
 
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
@@ -16,6 +16,27 @@ import type { KGGraphLink, KGGraphNode, KGGraphResponse } from '@/types'
 import { SNAPSHOT_NODE_TONE_CLASSES } from './constants'
 import type { SnapshotStudioLink, SnapshotStudioNode } from './types'
 import { firstDisplayString } from './utils'
+
+export function layoutSnapshotCanvas(nodes: SnapshotStudioNode[], layout: string) {
+  const columns = Math.max(3, Math.ceil(Math.sqrt(nodes.length)))
+  const rows = Math.ceil(nodes.length / columns)
+  const width = Math.max(640, columns * 160 + 64)
+  const height = Math.max(420, rows * 120 + 64)
+  const slots = Array.from({ length: columns * rows }, (_, index) => ({
+    x: ((index % columns + 0.5) * (width - 64) / columns + 32) / width * 100,
+    y: ((Math.floor(index / columns) + 0.5) * (height - 64) / rows + 32) / height * 100,
+  }))
+  const positioned = layoutSnapshotStudioNodes(nodes, layout).map(node => {
+    let nearest = 0, distance = Number.POSITIVE_INFINITY
+    slots.forEach((slot, index) => {
+      const candidate = ((slot.x - node.x) * width) ** 2 + ((slot.y - node.y) * height) ** 2
+      if (candidate < distance) { nearest = index; distance = candidate }
+    })
+    const slot = slots.splice(nearest, 1)[0]
+    return { ...node, x: slot.x, y: slot.y }
+  })
+  return { nodes: positioned, width, height }
+}
 
 export function getLinkEndpointId(value: unknown): string {
   if (typeof value === 'string' || typeof value === 'number')
@@ -121,9 +142,9 @@ export function getLinkBaseOpacity(
   strength: SnapshotStudioLink['strength']
 ): number {
   if (hasFilter && (!sourceVisible || !targetVisible)) return 0.08
-  if (strength === 'strong') return 0.56
-  if (strength === 'medium') return 0.38
-  return 0.24
+  if (strength === 'strong') return 0.85
+  if (strength === 'medium') return 0.7
+  return 0.55
 }
 
 export function getLinkDensityOpacity(baseOpacity: number, isDense: boolean, isMedium: boolean): number {

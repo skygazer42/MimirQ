@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Sparkles, FileText, Eraser, Settings2, Database, History } from 'lucide-react'
+import { Sparkles, FileText, Eraser, Settings2, Database, History } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 
 import {

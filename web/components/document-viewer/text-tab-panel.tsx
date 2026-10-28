@@ -1,6 +1,6 @@
 "use client"
 
-import { FileText, Loader2 } from "lucide-react"
+import { FileText, Loader2 } from "@/components/icons"
 
 import type { ChunkPreviewItem, Citation, DocumentParsedContentResponse } from "@/types"
 import { Button } from "@/components/ui/button"

@@ -1,6 +1,6 @@
 'use client'
 
-import type { LucideIcon } from 'lucide-react'
+import type { PlatformIcon } from '@/components/icons'
 
 import { cn } from '@/lib/utils'
 
@@ -23,7 +23,7 @@ export function StatCard({
 }: Readonly<{
   label: string
   value: string | number
-  icon: LucideIcon
+  icon: PlatformIcon
   color: string
   iconSurface: string
   border: string

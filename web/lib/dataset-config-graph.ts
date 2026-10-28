@@ -60,7 +60,7 @@ export function buildDatasetConfigGraph(config: object): GraphData {
   const nodes: GraphNode[] = [
     {
       id: 'bundle',
-      label: 'Dataset Config',
+      label: '数据集配置',
       color: '#0ea5e9',
       meta: { kind: 'bundle', configured: true, json: cfg } satisfies NodeMeta,
     },
@@ -87,7 +87,7 @@ export function buildDatasetConfigGraph(config: object): GraphData {
   const chunkStrategy = toTrimmedPrimitiveString(cfg.default_chunk_strategy)
   addGroup(
     'ingestion_defaults',
-    'Ingestion Defaults',
+    '入库默认值',
     !!(parserBackend.trim() || chunkStrategy.trim()),
     {
       default_parser_backend: cfg.default_parser_backend ?? null,
@@ -100,7 +100,7 @@ export function buildDatasetConfigGraph(config: object): GraphData {
   const pipeline = isNonEmptyObject(cfg.pipeline) ? cfg.pipeline : null
   addGroup(
     'pipeline',
-    'Pipeline',
+    '处理流程',
     isNonEmptyObject(pipeline),
     pipeline,
     withSummary([pipeline ? `governance_enabled: ${String(!!pipeline.governance_enabled)}` : 'governance_enabled: (inherit)'])
@@ -111,7 +111,7 @@ export function buildDatasetConfigGraph(config: object): GraphData {
     if (govConfigured) {
       addSub(
         'pipeline_governance',
-        'Governance',
+        '数据治理',
         true,
         Object.fromEntries(Object.entries(pipeline).filter(([k]) => k.startsWith('governance_'))),
         withSummary([`rules: ${truthyCount(pipeline, 'governance_')}`])
@@ -120,7 +120,7 @@ export function buildDatasetConfigGraph(config: object): GraphData {
 
     const chunkConfigured = ['chunk_size', 'chunk_overlap', 'chunk_merge_small_min_chars', 'chunk_strategy_params'].some((k) => pipeline[k] != null)
     if (chunkConfigured) {
-      addSub('pipeline_chunking', 'Chunking', true, {
+      addSub('pipeline_chunking', '文档切片', true, {
         chunk_size: pipeline.chunk_size ?? null,
         chunk_overlap: pipeline.chunk_overlap ?? null,
         chunk_merge_small_min_chars: pipeline.chunk_merge_small_min_chars ?? null,
@@ -136,7 +136,7 @@ export function buildDatasetConfigGraph(config: object): GraphData {
       'entity_vector_enabled',
     ].some((k) => pipeline[k] != null)
     if (indexingConfigured) {
-      addSub('pipeline_indexing', 'Indexing', true, {
+      addSub('pipeline_indexing', '索引', true, {
         chunk_vector_enabled: pipeline.chunk_vector_enabled ?? null,
         bm25_index_enabled: pipeline.bm25_index_enabled ?? null,
         kg_enabled: pipeline.kg_enabled ?? null,
@@ -149,7 +149,7 @@ export function buildDatasetConfigGraph(config: object): GraphData {
     if (tablesConfigured) {
       addSub(
         'pipeline_tables',
-        'Tables / TAG',
+        '表格检索',
         true,
         Object.fromEntries(Object.entries(pipeline).filter(([k]) => k.startsWith('table_store_')))
       )
@@ -162,7 +162,7 @@ export function buildDatasetConfigGraph(config: object): GraphData {
   const policyRuleCount = policyRules?.length
   addGroup(
     'ingestion_policy',
-    'Ingestion Policy',
+    '入库策略',
     isNonEmptyObject(ingestionPolicy),
     ingestionPolicy,
     withSummary([typeof policyRuleCount === 'number' ? `rules: ${policyRuleCount}` : 'rules: (none)'])
@@ -170,7 +170,7 @@ export function buildDatasetConfigGraph(config: object): GraphData {
 
   // RAG defaults
   const ragDefaults = cfg.rag_defaults || null
-  addGroup('rag_defaults', 'RAG Defaults', isNonEmptyObject(ragDefaults), ragDefaults)
+  addGroup('rag_defaults', '检索与生成', isNonEmptyObject(ragDefaults), ragDefaults)
 
   // Prompt defaults
   const promptDefaults = {
@@ -180,17 +180,17 @@ export function buildDatasetConfigGraph(config: object): GraphData {
   }
   addGroup(
     'prompt_defaults',
-    'Prompt Defaults',
+    '提示词',
     Object.values(promptDefaults).some((v) => v != null && toTrimmedPrimitiveString(v)),
     promptDefaults
   )
 
   // Optional nodes (backend may include these even if web TS types don't yet)
   if (cfg.chunk_targets_v2 != null) {
-    addGroup('chunk_targets', 'Chunk Targets', isNonEmptyObject(cfg.chunk_targets_v2), cfg.chunk_targets_v2)
+    addGroup('chunk_targets', '切片目标', isNonEmptyObject(cfg.chunk_targets_v2), cfg.chunk_targets_v2)
   }
   if (cfg.fls_policy != null) {
-    addGroup('fls_policy', 'FLS Policy', isNonEmptyObject(cfg.fls_policy), cfg.fls_policy)
+    addGroup('fls_policy', '字段权限', isNonEmptyObject(cfg.fls_policy), cfg.fls_policy)
   }
 
   return { nodes, links }

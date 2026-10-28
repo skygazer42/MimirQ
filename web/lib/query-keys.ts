@@ -33,6 +33,8 @@ export const queryKeys = {
     ingestionStats: (id: string) => ['datasets', 'ingestion-stats', id] as const,
     precheckRuns: (id: string, params?: QueryParams) =>
       ['datasets', 'precheck-runs', id, params] as const,
+    precheckSummary: (id: string, runId: string) =>
+      ['datasets', 'precheck-summary', id, runId] as const,
     precheckSamples: (id: string, runId: string, params?: QueryParams) =>
       ['datasets', 'precheck-samples', id, runId, params] as const,
     precheckNearDups: (id: string, runId: string) =>
@@ -45,6 +47,7 @@ export const queryKeys = {
       ['datasets', 'precheck-finding-files', id, runId, findingKey, params] as const,
     categories: (id: string) => ['datasets', 'categories', id] as const,
     tables: (id: string, params?: QueryParams) => ['datasets', 'tables', id, params] as const,
+    tableAsset: (id: string, tableId: string) => ['datasets', 'table-asset', id, tableId] as const,
     dbCatalogTables: (id: string, params?: QueryParams) =>
       ['datasets', 'db-catalog', id, 'tables', params] as const,
     dbCatalogTableDetail: (id: string, tableId: string) =>
@@ -109,6 +112,7 @@ export const queryKeys = {
   },
   governance: {
     profiles: (params?: QueryParams) => ['governance', 'profiles', params] as const,
+    profile: (profileRef: string) => ['governance', 'profile', profileRef] as const,
     profileResolved: (profileRef: string) =>
       ['governance', 'profile-resolved', profileRef] as const,
   },

@@ -1,6 +1,8 @@
 'use client'
 
-import { Download, Loader2, RefreshCw, Search } from 'lucide-react'
+
+import { workspaceStyles as ws } from '@/components/ui/operational-workspace'
+import { Download, Loader2, RefreshCw, Search } from '@/components/icons'
 
 import type { Citation, EvidenceItem } from '@/types'
 import type { WhyMissedReport } from '@/lib/evidence-why-missed'
@@ -79,15 +81,16 @@ export function WhyMissedDialog({
 }: Readonly<WhyMissedDialogProps>) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl overflow-hidden">
-        <DialogHeader>
+      <DialogContent  className={`${ws.dialog} ${ws.wideDialog}`}>
+<DialogHeader  className={ws.dialogHeader}>
           <DialogTitle>Why missed?</DialogTitle>
           <DialogDescription className="text-pretty">
             对比 <span className="font-mono">reference_sources</span>（Ground Truth）与“当前检索结果”，并附带 Drift Audit（引用指针是否已漂移）。
           </DialogDescription>
         </DialogHeader>
+<div className={ws.dialogBody}>
 
-        <div className="space-y-4">
+<div className="space-y-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-end">
             <div className="w-full md:w-[220px]">
               <div className="mb-1 text-xs text-muted-foreground">Retrieval Profile</div>
@@ -302,7 +305,9 @@ export function WhyMissedDialog({
             </Panel>
           </div>
         </div>
-      </DialogContent>
+</div>
+
+</DialogContent>
     </Dialog>
   )
 }

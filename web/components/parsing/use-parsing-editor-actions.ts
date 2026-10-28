@@ -196,26 +196,25 @@ export function useParsingEditorActions({
           ? editedContent
           : activeMarkdown
 
-    setFiles((prev) => applyEditedMarkdown(prev, activeFile.id, targetRunId, nextMarkdown, countMarkdownHeadings))
-    setRightPanelMode('markdown')
-    setActiveBlockId(null)
-    setEditSession(null)
-    setHoveredBlockId(null)
-    setIsEditing(false)
-
     const libId = (activeFile.libraryId || '').trim()
-    if (!libId) return
-
     try {
-      const saved = await parsingApi.updateContent(libId, { markdown_content: nextMarkdown })
-      await updateParsedFile(libId, {
-        markdownContent: saved.markdown_content || nextMarkdown,
-        originalMarkdownContent: saved.original_markdown_content || nextMarkdown,
-        status: 'parsed',
-        error: undefined,
-        parser: getParserLabel(saved.parser_backend || 'auto'),
-        governanceStatus: 'ready',
-      })
+      if (libId) {
+        const saved = await parsingApi.updateContent(libId, { markdown_content: nextMarkdown })
+        await updateParsedFile(libId, {
+          markdownContent: saved.markdown_content || nextMarkdown,
+          originalMarkdownContent: saved.original_markdown_content || nextMarkdown,
+          status: 'parsed',
+          error: undefined,
+          parser: getParserLabel(saved.parser_backend || 'auto'),
+          governanceStatus: 'ready',
+        })
+      }
+      setFiles((prev) => applyEditedMarkdown(prev, activeFile.id, targetRunId, nextMarkdown, countMarkdownHeadings))
+      setRightPanelMode('markdown')
+      setActiveBlockId(null)
+      setEditSession(null)
+      setHoveredBlockId(null)
+      setIsEditing(false)
       toast.success(t('toasts.saveSuccess'))
     } catch (err: unknown) {
       toast.error(formatApiError(err, t('toasts.saveFailed')))

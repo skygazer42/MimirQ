@@ -95,12 +95,8 @@ export interface CacheConfig {
   chat_response_cache_require_empty_history: boolean
 }
 
-export interface UrlIngestConfig {
+export interface UrlIngestStatus {
   enabled: boolean
-  max_bytes: number
-  timeout_sec: number
-  allow_private_ips: boolean
-  follow_redirects: boolean
 }
 
 export interface GovernanceConfig {
@@ -213,7 +209,7 @@ export interface SystemSettings {
   minio: MinIOConfig
   rag: RAGConfig
   cache: CacheConfig
-  url_ingest: UrlIngestConfig
+  url_ingest: UrlIngestStatus
   governance: GovernanceConfig
   mineru: MinerUConfig
   etl4llm: Etl4LlmConfig
@@ -271,7 +267,7 @@ export const settingsApi = {
     return data
   },
 
-  async update(settings: Partial<SystemSettings>): Promise<{ success: boolean; message: string; updated_keys: string[] }> {
+  async update(settings: Partial<Omit<SystemSettings, 'url_ingest'>>): Promise<{ success: boolean; message: string; updated_keys: string[] }> {
     const { data } = await apiClient.put('/settings', settings)
     return data
   },

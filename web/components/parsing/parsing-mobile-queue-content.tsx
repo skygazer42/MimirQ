@@ -1,6 +1,6 @@
 'use client'
 
-import { Play } from 'lucide-react'
+import { Play } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 
 import { DocumentFolderTree } from '@/components/document-library/folder-tree'

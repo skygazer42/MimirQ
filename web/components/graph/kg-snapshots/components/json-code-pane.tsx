@@ -1,6 +1,6 @@
 'use client'
 
-import { Copy, Download, FileJson } from 'lucide-react'
+import { Copy, Download, FileJson } from '@/components/icons'
 import { useMemo, type ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'

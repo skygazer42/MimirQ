@@ -44,6 +44,14 @@ export interface ParsedFileData {
   source?: 'parsing_workspace' | 'knowledge_base'
   sourcePath?: string | null
   governanceStatus?: 'draft' | 'ready' | 'submitted'
+  /** Review metadata for the saved Markdown; drafts remain in the governance workspace. */
+  governanceReview?: {
+    qualityScore: number | null
+    issues: Array<{ id: string; type: 'error' | 'warning' | 'info'; message: string; position?: { start: number; end: number } }>
+    annotations: Array<{ id: string; text: string; type: 'entity' | 'keyword' | 'sensitive' | 'custom'; label: string; start: number; end: number }>
+    tags: string[]
+    category: string | null
+  }
   chunkStatus?: 'draft' | 'ready' | 'submitted'
   /**
    * UI status for the document library.

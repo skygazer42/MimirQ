@@ -97,7 +97,7 @@ async function main() {
     'together',
     'cohere',
     'jina',
-    // Product/provider aliases used by MimirQ:
+    // Product/provider aliases used by Ragvia:
     'doubao', // ByteDance Ark
     'wenxin', // Baidu Qianfan / ERNIE
     'siliconcloud', // SiliconFlow

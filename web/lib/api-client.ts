@@ -24,7 +24,6 @@ export { healthApi } from '@/lib/api/health'
 export { industryRulesApi } from '@/lib/api/industry-rules'
 export { integrationApi } from '@/lib/api/integrations'
 export { lineageApi } from '@/lib/api/lineage'
-export { ltrApi } from '@/lib/api/ltr'
 export { metaApi } from '@/lib/api/meta'
 export { observabilityApi } from '@/lib/api/observability'
 export { observabilityApi as observabilityApiLegacy } from '@/lib/api/observability'
@@ -63,7 +62,6 @@ export type { ParsingContentResponse, ParsingContentUpdateRequest } from '@/lib/
 export type { BackendMeta, BackendMetaDetails } from '@/lib/api/meta'
 export type { TenantMember, TenantMemberListResponse } from '@/lib/api/access'
 export type { TenantAccess, TenantPermission } from '@/lib/tenant-permissions'
-export type { LTRModelActivateResponse, LTRModelInfo, LTRModelListResponse, LTRModelRegisterResponse } from '@/lib/api/ltr'
 export type { KGNetworkEdge, KGNetworkRequest, KGNetworkResponse } from '@/lib/api/graph'
 export type {
   IndustryRulesGlossaryUpdateRequest,

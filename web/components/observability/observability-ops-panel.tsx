@@ -1,19 +1,16 @@
 'use client'
-
-import { useState, type ReactNode } from 'react'
-import { Activity, Download, Loader2, RefreshCw, ShieldCheck } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
-import { toast } from 'sonner'
-
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Panel } from '@/components/ui/panel'
-import { DatasetSelectField } from '@/components/ops/dataset-select-field'
-import { OperationResultPanel } from '@/components/ops/operation-result-panel'
-import { observabilityApi } from '@/lib/api'
-import { formatApiError } from '@/lib/api-errors'
-import { detachPromise } from '@/lib/utils'
+import { useState, type ReactNode } from 'react';
+import { Activity, Download, Loader2, RefreshCw, ShieldCheck } from '@/components/icons';
+import type { PlatformIcon } from '@/components/icons';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { WorkspaceNotice } from '@/components/ui/operational-workspace';
+import { DatasetSelectField } from '@/components/ops/dataset-select-field';
+import { OperationResultPanel } from '@/components/ops/operation-result-panel';
+import { observabilityApi } from '@/lib/api';
+import { formatApiError } from '@/lib/api-errors';
+import { detachPromise } from '@/lib/utils';
 
 type ResultState = {
   title: string
@@ -30,24 +27,28 @@ function downloadArrayBuffer(data: ArrayBuffer, filename: string) {
   globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export function ObservabilityOpsPanel() {
+export function ObservabilityOpsPanel({ initialWindowMinutes = 60 }: { initialWindowMinutes?: number }) {
   const [datasetId, setDatasetId] = useState('')
   const [documentId, setDocumentId] = useState('')
   const [driftItemId, setDriftItemId] = useState('')
   const [resolutionNote, setResolutionNote] = useState('')
-  const [windowMinutes, setWindowMinutes] = useState(60)
+  const [windowMinutes, setWindowMinutes] = useState(initialWindowMinutes)
   const [iterations, setIterations] = useState(3)
   const [busy, setBusy] = useState<string | null>(null)
   const [result, setResult] = useState<ResultState | null>(null)
 
+  const [actionError, setActionError] = useState<string | null>(null)
+
   async function runAction(key: string, title: string, action: () => Promise<unknown>) {
     setBusy(key)
+    setActionError(null)
+    setResult(null)
     try {
       const payload = await action()
       setResult({ title, payload })
       toast.success(`${title}完成`)
     } catch (error) {
-      toast.error(formatApiError(error, `${title}失败`))
+      setActionError(formatApiError(error, `${title}失败`))
     } finally {
       setBusy(null)
     }
@@ -58,7 +59,7 @@ export function ObservabilityOpsPanel() {
   const actionButtonClass = 'h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold'
 
   return (
-    <Panel padding="md" className="mt-4 border-border/70 bg-card/95">
+    <fieldset disabled={Boolean(busy)} className="space-y-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="text-sm font-semibold text-foreground">观测运维操作</div>
@@ -71,11 +72,11 @@ export function ObservabilityOpsPanel() {
 
       <div className="mt-3 grid gap-2 md:grid-cols-4">
         <Field label="时间窗口（分钟）">
-          <Input value={String(windowMinutes)} onChange={(event) => setWindowMinutes(Number.parseInt(event.target.value || '0', 10) || 60)} className="h-8 text-xs" inputMode="numeric" />
+          <Input value={String(windowMinutes)} onChange={(event) => setWindowMinutes(Number.parseInt(event.target.value || '0', 10) || 60)} className="h-10 text-sm" inputMode="numeric" />
         </Field>
         <DatasetSelectField value={datasetId} onChange={setDatasetId} label="数据集范围" allowAll />
         <Field label="性能迭代次数">
-          <Input value={String(iterations)} onChange={(event) => setIterations(Number.parseInt(event.target.value || '0', 10) || 3)} className="h-8 text-xs" inputMode="numeric" />
+          <Input value={String(iterations)} onChange={(event) => setIterations(Number.parseInt(event.target.value || '0', 10) || 3)} className="h-10 text-sm" inputMode="numeric" />
         </Field>
       </div>
 
@@ -109,7 +110,7 @@ export function ObservabilityOpsPanel() {
             <Input value={driftItemId} onChange={(event) => setDriftItemId(event.target.value)} className="h-8 font-mono text-xs" />
           </Field>
           <Field label="处理备注">
-            <Input value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} className="h-8 text-xs" />
+            <Input value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} className="h-10 text-sm" />
           </Field>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -137,16 +138,17 @@ export function ObservabilityOpsPanel() {
       </details>
 
       <OperationResultPanel className="mt-3" title="观测运维结果" result={result} emptyMessage="选择上方操作后，这里展示执行摘要；原始响应默认收起。" />
-    </Panel>
+      {actionError ? <WorkspaceNotice>{actionError}</WorkspaceNotice> : null}
+    </fieldset>
   )
 }
 
 function Field({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
   return (
-    <div className="space-y-1">
-      <Label className="text-[11px] font-medium text-muted-foreground">{label}</Label>
+    <label className="block space-y-2 text-[13px]">
+      <span className="font-medium text-muted-foreground">{label}</span>
       {children}
-    </div>
+    </label>
   )
 }
 
@@ -159,7 +161,7 @@ function ActionButton({
 }: Readonly<{
   busy: boolean
   disabled: boolean
-  icon: LucideIcon
+  icon: PlatformIcon
   label: string
   onClick: () => Promise<void>
 }>) {

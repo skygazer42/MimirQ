@@ -4,7 +4,7 @@ Auth schemas for user registration and login.
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.api.schemas.base import OrmModel
 
@@ -23,6 +23,20 @@ class RegisterRequest(BaseModel):
     username: str = Field(min_length=3, max_length=64)
     # bcrypt only supports up to 72 bytes for passwords.
     password: str = Field(min_length=8, max_length=72)
+
+
+class SignupRequest(RegisterRequest):
+    """Ordinary signup never accepts caller-selected roles or tenant IDs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class AuthPolicy(BaseModel):
+    initialized: bool
+    registration_enabled: bool
+    bootstrap_enabled: bool
+    bootstrap_token_required: bool
+    password_min_length: int
 
 
 class LoginRequest(BaseModel):

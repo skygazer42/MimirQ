@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "lang": "zh",
+  "project": "Ragvia · 文档解析布局对比",
+  "brief": "固定雾灰／墨色、Manrope 与 Noto Sans SC，以及现有 Ragvia 全局侧栏。五版共用 12 份文档、相同解析状态及设备维护手册第 3 页内容，比较批量管理、原文对照、连续处理、页级校对与分步工作五种构图。保留文件类型、处理中、完成、待核对及失败的语义色。候选为静态设计预览，使用同一批模拟数据，未连接真实上传或解析操作。",
+  "round": "文档解析 01",
+  "nativeViewport": "1600x1000",
+  "candidates": [
+    {
+      "id": "a-table",
+      "name": "A · 批量宽表",
+      "concept": "先对照整批文件的状态，再展开具体解析结果。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题，13px 文件与属性，12px 状态信息",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#476F8B", "#31754D", "#805E18", "#A74740"],
+      "traits": ["首屏 12 份文件连续宽表", "解析器、状态与耗时逐列对照", "底部展开所选文档内容，适合批量管理"],
+      "source": "a-table.html"
+    },
+    {
+      "id": "b-compare",
+      "name": "B · 原文对照",
+      "concept": "原文与 Markdown 同页并排，直接核对解析是否准确。",
+      "typography": "Manrope / Noto Sans SC；15px 文件名，14px Markdown 正文，13px 工具与页签",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#476F8B", "#31754D", "#805E18", "#A74740"],
+      "traits": ["PDF 与 Markdown 等宽对照", "文件列表收进顶部切换器", "页码、内容块与表格核对贴近内容"],
+      "source": "b-compare.html"
+    },
+    {
+      "id": "c-inbox",
+      "name": "C · 文件收件箱",
+      "concept": "保持文件队列可见，连续读完和处理每份解析结果。",
+      "typography": "Manrope / Noto Sans SC；13px 队列，14px 阅读正文，12px 进度与元信息",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#476F8B", "#31754D", "#805E18", "#A74740"],
+      "traits": ["紧凑文件队列与宽幅阅读区", "状态、进度和异常直接出现在文件上", "原文按需切换，适合逐份处理"],
+      "source": "c-inbox.html"
+    },
+    {
+      "id": "d-pages",
+      "name": "D · 页级校对",
+      "concept": "从纸页上的区域直接定位内容块，核对复杂版面。",
+      "typography": "Manrope / Noto Sans SC；13px 检查器与页内工具，12px 块属性，原文按纸页比例呈现",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#476F8B", "#31754D", "#805E18", "#A74740"],
+      "traits": ["页缩略图、原文画布与内容块检查器", "编号区域与表格选中位置相对应", "适合扫描文档及复杂表格校对"],
+      "source": "d-pages.html"
+    },
+    {
+      "id": "e-steps",
+      "name": "E · 分步工作台",
+      "concept": "清楚当前处理阶段，把注意力放在这一步需要核对的内容。",
+      "typography": "Manrope / Noto Sans SC；14px 阶段与正文，19px 文件名，13px 表格与提示",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#476F8B", "#31754D", "#805E18", "#A74740"],
+      "traits": ["上传、解析、核对、治理四个处理阶段", "单一宽画布突出当前待核对表格", "下一步固定在底部，适合清晰推进流程"],
+      "source": "e-steps.html"
+    },
+    {
+      "id": "current",
+      "name": "当前页面 · 参照",
+      "concept": "现有解析页的真实空状态，用于参照页面外壳与原有组织方式。",
+      "typography": "当前正式页面的字体与组件",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#4457D8"],
+      "traits": ["本地文件库为空", "现有文件目录与上传区域", "1280 × 720 实际页面截图"],
+      "kind": "image",
+      "baseline": true,
+      "nativeViewport": "1280x720",
+      "source": "current.png"
+    }
+  ]
+}

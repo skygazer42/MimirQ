@@ -6,13 +6,14 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
 import app.api.v1.auth as auth_module
 from app.api.schemas.auth import SamlExchangeResponse, TokenResponse, UserPublic
 from app.core.config import settings
 from app.core.database import Base
 from app.models.tenant import Tenant, TenantMember
+from app.models.user import User
 from app.services.user_service import UserService
 
 
@@ -98,17 +99,21 @@ def test_default_membership_rejects_registration_after_first_owner(monkeypatch) 
     monkeypatch.setattr(settings, "DEFAULT_TENANT_ID", str(tenant_id), raising=False)
 
     engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine, tables=[Tenant.__table__, TenantMember.__table__])
+    Base.metadata.create_all(engine, tables=[User.__table__, Tenant.__table__, TenantMember.__table__])
     db = sessionmaker(bind=engine)()
     try:
-        UserService.ensure_default_membership(db, user_id="first-user")
+        first = UserService.create_user(
+            db, email="first@example.com", username="first-user", password="valid-first-password",
+        )
         with pytest.raises(HTTPException) as conflict:
-            UserService.ensure_default_membership(db, user_id="later-user")
-        db.flush()
+            UserService.create_user(
+                db, email="later@example.com", username="later-user", password="valid-later-password",
+            )
 
         assert conflict.value.status_code == 409
         roles = {member.user_id: member.role for member in db.query(TenantMember).all()}
-        assert roles == {"first-user": "owner"}
+        assert roles == {str(first.id): "owner"}
+        assert db.query(User).count() == 1
     finally:
         db.close()
         engine.dispose()
@@ -117,7 +122,9 @@ def test_default_membership_rejects_registration_after_first_owner(monkeypatch) 
 def test_default_membership_rejects_invalid_tenant_configuration(monkeypatch) -> None:
     monkeypatch.setattr(settings, "DEFAULT_TENANT_ID", "not-a-uuid", raising=False)
 
-    with pytest.raises(HTTPException) as misconfigured:
-        UserService.ensure_default_membership(object(), user_id="first-user")
+    with Session() as db, pytest.raises(HTTPException) as misconfigured:
+        UserService.create_user(
+            db, email="first@example.com", username="first-user", password="valid-first-password",
+        )
 
     assert misconfigured.value.status_code == 500

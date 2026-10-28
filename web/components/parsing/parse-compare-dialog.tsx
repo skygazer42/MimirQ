@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { createTwoFilesPatch } from 'diff'
-import { Copy, GitCompare, FileText } from 'lucide-react'
+import { Copy, GitCompare, FileText } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'

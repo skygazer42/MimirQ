@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import '@xyflow/react/dist/style.css'
 import {
   addEdge,
@@ -20,6 +20,7 @@ import {
 
 import type { GraphData, GraphNode } from '@/lib/graph-parser'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
+import styles from './workflow-editor.module.css'
 
 type JsonRecord = Record<string, unknown>
 
@@ -151,16 +152,9 @@ function buildEditorNodes(graph: GraphData, workflowLayout: JsonRecord | null | 
       },
       sourcePosition: Position.Right,
       targetPosition: Position.Left,
+      className: styles.node,
       style: {
         width: 208,
-        borderRadius: 18,
-        border: `1px solid ${color}`,
-        background: `${color}18`,
-        color: 'hsl(var(--foreground))',
-        boxShadow: '0 12px 30px rgba(15, 23, 42, 0.08)',
-        fontSize: 12,
-        fontWeight: 600,
-        padding: 12,
       },
     }
   })
@@ -189,8 +183,9 @@ function buildEditorEdges(
       label,
       type: 'smoothstep',
       markerEnd: { type: MarkerType.ArrowClosed },
-      style: { strokeWidth: 1.5, stroke: '#64748b' },
-      labelStyle: { fill: '#475569', fontSize: 11, fontWeight: 600 },
+      style: { strokeWidth: 1.5, stroke: 'hsl(var(--muted-foreground))' },
+      labelStyle: { fill: 'hsl(var(--muted-foreground))', fontSize: 12 },
+      labelBgStyle: { fill: 'hsl(var(--background))' },
     }]
   })
 }
@@ -228,7 +223,9 @@ export function WorkflowEditor({
   onNodeSelect,
 }: Readonly<WorkflowEditorProps>) {
   const nodeIds = useMemo(() => new Set(graph.nodes.map((node) => node.id)), [graph.nodes])
-  const nodes = useMemo(() => buildEditorNodes(graph, workflowLayout), [graph, workflowLayout])
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [measurements, setMeasurements] = useState<Map<string, WorkflowEditorNode['measured']>>(() => new Map())
+  const nodes = useMemo(() => buildEditorNodes(graph, workflowLayout).map(node => ({ ...node, selected: node.id === selectedNodeId, measured: measurements.get(node.id) })), [graph, workflowLayout, measurements, selectedNodeId])
   const edges = useMemo(() => buildEditorEdges(graph, workflowLayout, nodeIds), [graph, nodeIds, workflowLayout])
 
   const publishWorkflowLayout = useCallback((nextNodes: WorkflowEditorNode[], nextEdges: WorkflowEditorEdge[]) => {
@@ -236,10 +233,22 @@ export function WorkflowEditor({
   }, [onWorkflowLayoutChange])
 
   const onNodesChange = useCallback((changes: NodeChange<WorkflowEditorNode>[]) => {
-    publishWorkflowLayout(applyNodeChanges(changes, nodes), edges)
+    const nextNodes = applyNodeChanges(changes, nodes)
+    if (changes.some(change => change.type === 'dimensions')) {
+      setMeasurements(new Map(nextNodes.map(node => [node.id, node.measured])))
+    }
+    const layoutChanged = changes.some(change => {
+      if (change.type === 'select' || change.type === 'dimensions') return false
+      if (change.type !== 'position') return true
+      const node = nodes.find(item => item.id === change.id)
+      return change.position && node && (change.position.x !== node.position.x || change.position.y !== node.position.y)
+    })
+    if (!layoutChanged) return
+    publishWorkflowLayout(nextNodes, edges)
   }, [edges, nodes, publishWorkflowLayout])
 
   const onEdgesChange = useCallback((changes: EdgeChange<WorkflowEditorEdge>[]) => {
+    if (changes.every(change => change.type === 'select')) return
     publishWorkflowLayout(nodes, applyEdgeChanges(changes, edges))
   }, [edges, nodes, publishWorkflowLayout])
 
@@ -250,21 +259,23 @@ export function WorkflowEditor({
       id: buildEdgeId(connection.source, connection.target, edges.length),
       type: 'smoothstep',
       markerEnd: { type: MarkerType.ArrowClosed },
-      style: { strokeWidth: 1.5, stroke: '#64748b' },
+      style: { strokeWidth: 1.5, stroke: 'hsl(var(--muted-foreground))' },
     }
     publishWorkflowLayout(nodes, addEdge(nextEdge, edges))
   }, [edges, nodes, publishWorkflowLayout])
 
   const handleNodeClick = useCallback((_event: React.MouseEvent, node: WorkflowEditorNode) => {
+    setSelectedNodeId(node.id)
     onNodeSelect?.(node.data.graphNode)
   }, [onNodeSelect])
 
   const handlePaneClick = useCallback(() => {
+    setSelectedNodeId(null)
     onNodeSelect?.(null)
   }, [onNodeSelect])
 
   return (
-    <div className="h-full w-full bg-[radial-gradient(circle_at_top,hsl(var(--primary)/0.12),transparent_38%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.45))]">
+    <div className={styles.canvas}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -279,8 +290,8 @@ export function WorkflowEditor({
         fitView
         proOptions={{ hideAttribution: true }}
       >
-        <Background gap={24} size={1} color="rgba(100, 116, 139, 0.25)" />
-        <Controls className="!bg-card/95 !border !border-border/70 !rounded-xl overflow-hidden shadow-sm" showInteractive={false} />
+        <Background gap={24} size={1} color="hsl(var(--border))" />
+        <Controls className={styles.controls} showInteractive={false} />
       </ReactFlow>
     </div>
   )

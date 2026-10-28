@@ -1,6 +1,6 @@
 'use client'
 
-import { FlaskConical } from 'lucide-react'
+import { FlaskConical } from '@/components/icons'
 
 import { cn } from '@/lib/utils'
 import type { RagasRegressionRunDiffResponse, RegressionRunMetricSignificance } from '@/types'

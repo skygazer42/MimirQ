@@ -10,7 +10,7 @@ import {
   Radar,
   ShieldAlert,
   Workflow,
-} from 'lucide-react'
+} from '@/components/icons'
 
 import { EChart } from '@/components/ui/echart'
 import { SalesPanelHeader } from '@/app/knowledge/ingestion/components/sales-panel-header'

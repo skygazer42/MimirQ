@@ -46,7 +46,6 @@ describe('SnapshotNodeDetailsRail', () => {
               { label: '关联', target: '重复名称', targetId: 'node-b' },
             ],
           }}
-          diffOverview={[]}
           onClose={onClose}
           onSelectRelationTarget={onSelectRelationTarget}
         />

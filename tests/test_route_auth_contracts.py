@@ -24,6 +24,8 @@ _PUBLIC_API_PATHS = {
     "/api/v1/health/ready",
     "/api/v1/meta",
     "/api/v1/auth/register",
+    "/api/v1/auth/signup",
+    "/api/v1/auth/policy",
     "/api/v1/auth/login",
     "/api/v1/auth/saml/exchange",
     "/api/v1/auth/saml/bridge/consume",

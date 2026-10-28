@@ -1,6 +1,6 @@
 'use client'
 
-import { Lightbulb } from 'lucide-react'
+import { Lightbulb } from '@/components/icons'
 
 import { cn } from '@/lib/utils'
 

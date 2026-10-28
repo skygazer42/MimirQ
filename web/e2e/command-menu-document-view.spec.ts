@@ -30,9 +30,9 @@ test('command menu natural-language handoff routes into chat autorun', async ({ 
   })
   await page.goto('/')
 
-  await expect(page.getByPlaceholder('问点什么... (Shift + Enter 换行)')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByLabel('消息输入框', { exact: true })).toBeVisible({ timeout: 60_000 })
 
-  await page.getByRole('button', { name: '打开命令搜索' }).click()
+  await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '搜索与命令', exact: true }).click()
 
   const commandDialog = page.getByRole('dialog')
   await expect(commandDialog).toBeVisible()
@@ -40,7 +40,8 @@ test('command menu natural-language handoff routes into chat autorun', async ({ 
   const commandInput = commandDialog.getByRole('combobox')
   await expect(commandInput).toBeVisible()
   await commandInput.fill(prompt)
-  await expect(page.getByRole('option', { name: /执行自然语言指令/ })).toBeVisible()
+  await expect(page.getByRole('option', { name: /向知识库提问/ })).toBeVisible()
+  await expect(commandDialog.getByRole('button', { name: '提问：向知识库提问', exact: true })).toBeEnabled()
 
   await commandInput.press('Enter')
 

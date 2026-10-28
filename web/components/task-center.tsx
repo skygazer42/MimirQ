@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { documentApi } from '@/lib/api'
-import { Loader2, AlertCircle, X, Ban, RotateCcw, ArrowUpRight, Settings2 } from 'lucide-react'
+import { Loader2, AlertCircle, X, Ban, RotateCcw, ArrowUpRight, Settings2 } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -14,6 +14,7 @@ import { usePathname, useRouter } from '@/i18n/navigation'
 import { formatApiError } from '@/lib/api-errors'
 import { useAuth } from '@/hooks/use-auth'
 import { useBackendMeta } from '@/hooks/use-backend-meta'
+import styles from './task-center.module.css'
 
 const TASK_CENTER_ACTIVE_ROUTE_PREFIXES = [
   '/knowledge',
@@ -131,12 +132,12 @@ export function TaskCenter() {
   }
 
   return (
-	      <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end supports-[padding:env(safe-area-inset-bottom)]:bottom-[calc(env(safe-area-inset-bottom)+1rem)] supports-[padding:env(safe-area-inset-right)]:right-[calc(env(safe-area-inset-right)+1rem)]">
+      <div className={styles.root}>
 	        {isOpen && (
 	            <div
                 data-task-center-panel="true"
                 data-task-center-boundary="ruled"
-                className="mb-2 w-[26rem] overflow-hidden rounded-lg border border-foreground/15 bg-background text-foreground animate-in slide-in-from-bottom-5 fade-in motion-reduce:animate-none motion-reduce:transition-none"
+                className={cn(styles.panel, "mb-2 overflow-hidden rounded-lg border border-foreground/15 bg-background text-foreground animate-in slide-in-from-bottom-5 fade-in motion-reduce:animate-none motion-reduce:transition-none")}
               >
                 <div className="flex items-center justify-between border-b border-foreground/10 bg-background px-4 py-3">
                     <div className="min-w-0">

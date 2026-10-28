@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from "react"
-import { Search, X } from "lucide-react"
+import { Search, X } from "@/components/icons"
 import { useTranslations } from 'next-intl'
 
 import { IconButton } from "@/components/ui/icon-button"
@@ -50,7 +50,7 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
         value={value}
         onChange={(e) => onValueChange(e.target.value)}
         placeholder={resolvedPlaceholder}
-        className={cn("pl-9 pr-10", inputClassName)}
+        className={cn("pl-9 pr-10 [&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none", inputClassName)}
         {...props}
       />
       {value ? (

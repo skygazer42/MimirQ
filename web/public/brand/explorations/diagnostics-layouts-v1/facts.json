@@ -1,0 +1,166 @@
+{
+  "dataset": "工程文档库",
+  "document_scope": "全部可检索文档",
+  "documents": 128,
+  "query": "生产环境升级失败后，如何回滚服务？",
+  "retrieval_query": "生产环境 服务升级失败 回滚操作与验证",
+  "generated_at": "2026-10-25 16:42",
+  "api_version": "v1",
+  "vector_backend": "Milvus",
+  "profile": "balanced",
+  "config_hash": "a8c91d72e164",
+  "explain_enabled": true,
+  "preview_status": "已返回",
+  "citations": 6,
+  "prompt_tokens": 1248,
+  "context_tokens": 936,
+  "history_tokens": 128,
+  "latency_ms": 286,
+  "channels": [
+    {
+      "name": "向量召回",
+      "key": "vector",
+      "count": 32,
+      "tone": "blue"
+    },
+    {
+      "name": "关键词召回",
+      "key": "keyword",
+      "count": 28,
+      "tone": "teal"
+    }
+  ],
+  "config": {
+    "retrieval_mode": "hybrid",
+    "fusion_strategy": "RRF",
+    "alpha": "0.60",
+    "score_threshold": "0.20",
+    "enable_reranker": false,
+    "reranker_state": "未启用"
+  },
+  "drift": {
+    "status": "待执行",
+    "sample_n": 200,
+    "threshold": "0.05"
+  },
+  "performance": {
+    "status": "待执行",
+    "iterations": 10,
+    "timeout_sec": 2
+  },
+  "online_quality": "未启用",
+  "note": "五版共用的设计排版数据，不是实际探针输出、生产状态或质量分数。真实开发环境为 memory，未执行检索预览、漂移或性能门禁。缺失质量读数保持未返回；三个探针彼此独立，没有执行顺序或持久化历史。",
+  "dependencies": [
+    {
+      "name": "服务 API",
+      "detail": "接口健康探针",
+      "status": "已连接",
+      "tone": "green",
+      "icon": "server"
+    },
+    {
+      "name": "PostgreSQL",
+      "detail": "检索数据与配置",
+      "status": "已连接",
+      "tone": "green",
+      "icon": "database"
+    },
+    {
+      "name": "Milvus",
+      "detail": "向量检索后端",
+      "status": "已连接",
+      "tone": "green",
+      "icon": "search-code"
+    },
+    {
+      "name": "Redis",
+      "detail": "任务队列与缓存",
+      "status": "未启用",
+      "tone": "neutral",
+      "icon": "activity"
+    },
+    {
+      "name": "MinIO",
+      "detail": "对象存储",
+      "status": "未启用",
+      "tone": "neutral",
+      "icon": "file-archive"
+    }
+  ],
+  "dimensions": [
+    {
+      "label": "检索相关性",
+      "value": "未返回",
+      "source": "metrics",
+      "tone": "neutral",
+      "detail": "本次预览没有返回相关性评分。"
+    },
+    {
+      "label": "召回引用",
+      "value": "6 条",
+      "source": "citations",
+      "tone": "green",
+      "detail": "预览返回的可引用片段数量，不等于召回率。"
+    },
+    {
+      "label": "上下文相关性",
+      "value": "未返回",
+      "source": "metrics",
+      "tone": "neutral",
+      "detail": "本次预览没有返回上下文评分。"
+    },
+    {
+      "label": "生成质量",
+      "value": "未返回",
+      "source": "metrics",
+      "tone": "neutral",
+      "detail": "检索预览不代表已经生成或评价答案。"
+    },
+    {
+      "label": "事实一致性",
+      "value": "未返回",
+      "source": "metrics",
+      "tone": "neutral",
+      "detail": "本次预览没有返回事实一致性评分。"
+    },
+    {
+      "label": "安全评分",
+      "value": "未返回",
+      "source": "metrics",
+      "tone": "neutral",
+      "detail": "本次预览没有返回安全评分。"
+    },
+    {
+      "label": "提示词 token",
+      "value": "1,248",
+      "source": "metrics",
+      "tone": "blue",
+      "detail": "本次预览返回的提示词 token 用量。"
+    },
+    {
+      "label": "执行耗时",
+      "value": "286 ms",
+      "source": "metrics",
+      "tone": "blue",
+      "detail": "本次预览返回的执行耗时，不是性能门禁结论。"
+    }
+  ],
+  "raw_summary": {
+    "query_for_retrieval": "生产环境 服务升级失败 回滚操作与验证",
+    "retrieval_profile": "balanced",
+    "config_hash": "a8c91d72e164",
+    "candidate_counts": {
+      "vector": 32,
+      "keyword": 28,
+      "citations": 6
+    },
+    "metrics": {
+      "prompt_tokens": 1248,
+      "context_tokens": 936,
+      "history_tokens": 128,
+      "latency_ms": 286
+    },
+    "embedding_drift": null,
+    "perf_suite": null
+  }
+}

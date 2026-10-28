@@ -11,6 +11,7 @@ type IngestionViewSwitchProps = {
   className?: string
   compact?: boolean
   tone?: 'default' | 'info'
+  variant?: 'segmented' | 'tabs'
 }
 
 const VIEW_OPTIONS: Array<{ value: IngestionView; label: string }> = [
@@ -22,6 +23,7 @@ export function IngestionViewSwitch({
   className,
   compact = false,
   tone = 'default',
+  variant = 'segmented',
 }: Readonly<IngestionViewSwitchProps>) {
   const searchParams = useSearchParams()
   const pathname = usePathname()
@@ -49,8 +51,11 @@ export function IngestionViewSwitch({
         'inline-flex rounded-2xl border border-border/60 bg-card/72 p-1 shadow-[0_10px_28px_hsl(var(--primary)/0.06)] backdrop-blur-xl',
         tone === 'info' && 'border-info/20 bg-info/[0.04] shadow-none',
         compact && 'rounded-lg border-border/55 bg-background/60 p-0.5 shadow-none backdrop-blur-none',
+        variant === 'tabs' && 'self-stretch gap-6 rounded-none border-0 bg-transparent p-0 shadow-none backdrop-blur-none',
         className
       )}
+      role="group"
+      aria-label="入库视图"
     >
       {VIEW_OPTIONS.map((option) => {
         const selected = activeView === option.value
@@ -63,7 +68,12 @@ export function IngestionViewSwitch({
             className={cn(
               'h-8 rounded-xl px-3 text-sm font-medium transition-colors',
               compact && 'h-8 rounded-md px-2.5 text-[11px]',
-              selected
+              variant === 'tabs'
+                ? cn(
+                  'h-full min-h-12 rounded-none border-b-2 px-0 text-[13px] shadow-none',
+                  selected ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'
+                )
+                : selected
                 ? tone === 'info'
                   ? 'bg-info text-info-foreground shadow-none'
                   : 'bg-primary text-primary-foreground shadow-[0_8px_20px_hsl(var(--primary)/0.18)]'

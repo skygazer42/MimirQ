@@ -8,10 +8,10 @@ import {
   Upload,
   BookOpen,
   HelpCircle,
-  ScanLine,
+  Parsing,
   Cpu,
   FileUp,
-} from 'lucide-react'
+} from '@/components/icons'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
@@ -98,7 +98,7 @@ export function EmptyState() {
           >
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-lg bg-primary/10 text-primary">
-                <BookOpen className="w-5 h-5" />
+                <BookOpen appearance="color" className="size-5" />
               </div>
               <div>
                 <div className="font-semibold text-foreground text-sm">{t('emptyState.exampleTitle')}</div>
@@ -110,7 +110,7 @@ export function EmptyState() {
           <div className="bg-card p-5 rounded-2xl border border-border/70">
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-lg bg-primary/10 text-primary">
-                <ScanLine className="w-5 h-5" />
+                <Parsing appearance="color" className="size-5" />
               </div>
               <div>
                 <div className="font-semibold text-foreground text-sm">{t('emptyState.previewTitle')}</div>
@@ -122,7 +122,7 @@ export function EmptyState() {
           <div className="bg-card p-5 rounded-2xl border border-border/70">
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-lg bg-info/10 text-info">
-                <Cpu className="w-5 h-5" />
+                <Cpu appearance="color" className="size-5" />
               </div>
               <div>
                 <div className="font-semibold text-foreground text-sm">{t('emptyState.tipsTitle')}</div>

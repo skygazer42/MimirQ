@@ -1,8 +1,9 @@
 "use client"
 
-import { CornerUpLeft, Download, FileText, Maximize2, Minimize2, X } from "lucide-react"
+import { CornerUpLeft, Download, Maximize2, Minimize2, X } from "@/components/icons"
 
 import { Button } from "@/components/ui/button"
+import { FileTypeIcon } from "@/components/ui/file-type-icon"
 
 type DocumentViewerHeaderProps = {
   filename?: string | null
@@ -27,7 +28,7 @@ export function DocumentViewerHeader({
     <div className="flex items-center justify-between border-b border-sidebar-border/70 bg-sidebar px-4 pb-3 pt-3 supports-[padding:env(safe-area-inset-top)]:pt-[calc(env(safe-area-inset-top)+0.75rem)]">
       <div className="flex items-center gap-3 overflow-hidden">
         <div className="rounded-xl p-2">
-          <FileText className="size-5 text-muted-foreground" />
+          <FileTypeIcon filename={filename} className="size-5" />
         </div>
         <div className="flex min-w-0 flex-col">
           <h2 className="max-w-[200px] truncate text-sm font-semibold leading-snug" title={filename ?? undefined}>

@@ -1,0 +1,155 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=1600,initial-scale=1"><title>知识库 · 阅读分栏 · Ragvia</title><link rel="stylesheet" href="./common.css"><style>
+.c-main{display:flex;flex-direction:column;background:#fff}
+.c-header{height:72px;flex-shrink:0;display:flex;align-items:center;gap:24px;padding:0 28px;border-bottom:1px solid var(--line)}
+.c-heading{display:flex;align-items:center;gap:11px}
+.c-heading h1{font-size:19px;line-height:26px;font-weight:620}
+.c-heading>.icon{width:23px;height:23px}
+.c-overview{display:flex;align-items:center;gap:16px;color:var(--muted);font-size:12px}
+.c-overview strong{font-size:13px;font-weight:600;color:var(--ink);margin-right:3px}
+.c-header-actions{margin-left:auto;display:flex;align-items:center;gap:12px}
+.c-scope{min-width:172px;justify-content:flex-start;background:var(--canvas)}
+.c-scope .c-scope-caret{margin-left:auto;width:13px;height:13px}
+.c-header .c-import{height:36px;padding:0 15px}
+.c-navigation{height:52px;flex-shrink:0;display:flex;align-items:stretch;gap:28px;padding:0 28px;border-bottom:1px solid var(--line)}
+.c-nav-item{position:relative;display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);padding:0 2px}
+.c-nav-item>.icon{width:16px;height:16px}
+.c-nav-item.c-active{font-weight:620;color:var(--ink)}
+.c-nav-item.c-active:after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:2px;background:var(--ink)}
+.c-workspace{display:grid;grid-template-columns:340px minmax(0,1fr);height:876px;min-height:0}
+.c-library{background:#F8F9FA;border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.c-library-head{height:94px;flex-shrink:0;padding:15px 16px 12px}
+.c-library-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px;height:23px}
+.c-library-top h2{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600}
+.c-document-count{font:550 12px/19px var(--font);color:var(--muted);background:#E9EDF0;padding:0 5px;border-radius:3px}
+.c-sort{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:12px;padding:0}
+.c-sort>.icon{width:13px;height:13px}
+.c-search-documents{width:100%;height:33px;background:#fff;font-size:12px}
+.c-search-documents>.icon{width:15px;height:15px}
+.c-search-documents .c-search-hint{margin-left:auto;font-size:11px;color:#8A939D}
+.c-document-list{flex:1;min-height:0;overflow:hidden}
+.c-document{display:grid;grid-template-columns:20px minmax(0,1fr);gap:10px;align-items:start;width:100%;height:61px;padding:9px 16px 10px;text-align:left;border-bottom:1px solid #E8ECF0;position:relative}
+.c-document.c-document-selected{background:#E7EDF2}
+.c-document-selected:before{content:'';position:absolute;left:0;top:9px;bottom:9px;width:3px;background:#4F5F6D;border-radius:0 2px 2px 0}
+.c-document-icon{display:flex;padding-top:3px}
+.c-document-icon>.icon{width:19px;height:19px}
+.c-document-copy{display:block;min-width:0}
+.c-document-name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:22px;font-weight:500;color:var(--ink)}
+.c-document-selected .c-document-name{font-weight:650}
+.c-document-meta{display:flex;align-items:center;gap:8px;white-space:nowrap;font-size:11px;line-height:20px;color:var(--muted)}
+.c-document-meta .state{border:0;background:none;padding:0;min-height:20px;line-height:20px;font-size:11px;gap:4px}
+.c-document-meta .state>.icon{width:12px;height:12px}
+.c-meta-divider{height:9px;width:1px;background:#D1D8DE;flex-shrink:0}
+.c-library-footer{height:50px;flex-shrink:0;padding:0 16px;display:flex;align-items:center;gap:7px;border-top:1px solid var(--line);color:var(--muted);font-size:12px;background:#F4F6F8}
+.c-library-footer>.icon{width:14px;height:14px}
+.c-library-footer .c-footer-summary{margin-left:auto;font-size:11px}
+.c-reader{display:flex;flex-direction:column;min-width:0;background:#fff}
+.c-reader-toolbar{height:58px;flex-shrink:0;display:flex;align-items:center;gap:19px;padding:0 28px;border-bottom:1px solid #E6E9ED}
+.c-reading-tab{height:58px;position:relative;font-size:13px;padding:0 1px;display:flex;align-items:center;gap:6px;color:var(--muted)}
+.c-reading-tab.c-active{font-weight:620;color:var(--ink)}
+.c-reading-tab.c-active:after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--ink)}
+.c-chunk-count{font:500 11px/18px var(--font);background:#F0F2F4;color:var(--muted);padding:0 5px;border-radius:3px}
+.c-reader-tools{display:flex;align-items:center;gap:9px;margin-left:auto}
+.c-search-current{width:190px;height:31px;background:#F8F9FA;font-size:12px;border-color:#E4E8EC}
+.c-reader-tools .btn{height:31px;font-size:12px}
+.c-reader-tools .btn.quiet{padding:0 5px}
+.c-reader-tools .btn.square{width:26px}
+.c-reading-surface{flex:1;position:relative;min-height:0;padding:37px 55px 24px 55px;overflow:hidden}
+.c-document-context{display:flex;align-items:center;gap:7px;font-size:12px;line-height:20px;color:var(--muted);margin-bottom:15px}
+.c-document-context>.icon{width:13px;height:13px}
+.c-document-title{font-size:22px;line-height:32px;font-weight:650;letter-spacing:0}
+.c-file-metadata{display:flex;align-items:center;gap:13px;margin-top:14px;padding-bottom:25px;border-bottom:1px solid #E5E9ED;color:var(--muted);font-size:12px;line-height:20px}
+.c-file-format{display:inline-flex;align-items:center;gap:6px}
+.c-file-format>.icon{width:15px;height:15px}
+.c-file-metadata .state{font-size:11px;min-height:22px;line-height:18px;padding:1px 5px}
+.c-file-metadata .c-added{margin-left:auto}
+.c-document-body{max-width:754px;padding-top:27px;color:#333D48;font-size:15px;line-height:26px;font-weight:400}
+.c-introduction{margin-bottom:28px}
+.c-section{margin-top:25px}
+.c-section h3{font-size:16px;line-height:26px;font-weight:620;color:var(--ink);margin-bottom:9px}
+.c-section p{font-size:15px;line-height:26px;font-weight:400}
+.c-reading-footer{height:42px;flex-shrink:0;border-top:1px solid #E9EDF0;background:#FAFBFC;display:flex;align-items:center;gap:7px;padding:0 28px;font-size:11px;color:var(--muted)}
+.c-reading-footer>.icon{width:13px;height:13px}
+.c-reading-footer .c-footer-end{margin-left:auto;display:flex;align-items:center;gap:6px}
+</style></head><body><div class="app"><aside class="global-sidebar" aria-label="全局导航">
+ <div class="brand-row"><img class="brand" src="../../ragvia/logo.svg" alt="ragvia"><img class="collapse" src="../../../icons/ragvia/panel-left-close.svg" alt=""></div>
+ <div class="global-new"><img class="icon" src="../../../icons/ragvia/plus.svg" alt="">新对话</div>
+ <div class="global-search"><img class="icon" src="../../../icons/ragvia/search.svg" alt="">搜索与命令<kbd>⌘K</kbd></div>
+ <div class="global-groups">
+  <div class="global-group-label">工作区<span>⌄</span></div>
+  <div class="global-nav"><img class="icon" src="../../../icons/ragvia/conversation.svg" alt="">对话</div>
+  <div class="global-nav"><img class="icon" src="../../../icons/ragvia/conversation-history.svg" alt="">问答历史</div>
+  <div class="global-group-label" style="margin-top:19px">知识库管理<span>⌄</span></div>
+  <div class="global-nav"><img class="icon" src="../../../icons/ragvia/dataset.svg" alt="">数据集</div>
+  <div class="global-nav active"><img class="icon" src="../../../icons/ragvia/knowledge-base.svg" alt="">知识库</div>
+  <div class="global-nav"><img class="icon" src="../../../icons/ragvia/quarantine.svg" alt="">隔离队列</div>
+  <div class="global-nav"><img class="icon" src="../../../icons/ragvia/feedback.svg" alt="">反馈质检</div>
+  <div class="global-group-label" style="margin-top:19px">入库流程<span>⌄</span></div>
+  <div class="global-nav"><img class="icon" src="../../../icons/ragvia/ingestion.svg" alt="">入库管理</div>
+  <div class="global-nav"><img class="icon" src="../../../icons/ragvia/parsing.svg" alt="">文档解析</div>
+  <div class="global-nav"><img class="icon" src="../../../icons/ragvia/data-governance.svg" alt="">数据治理</div>
+  <div class="global-nav"><img class="icon" src="../../../icons/ragvia/braces.svg" alt="">治理配置</div>
+  <div class="global-nav"><img class="icon" src="../../../icons/ragvia/chunking.svg" alt="">切块预览</div>
+ </div>
+ <footer class="global-footer"><div class="global-profile"><div class="global-avatar"><img class="icon" src="../../../icons/ragvia/user.svg" alt=""></div><div><strong>开发模式</strong><small>本地开发环境</small></div><div class="profile-end"><img class="icon" src="../../../icons/ragvia/log-out.svg" alt=""><img class="icon" src="../../../icons/ragvia/sun.svg" alt=""></div></div><div class="global-appearance"><img class="icon" src="../../../icons/ragvia/palette.svg" alt="">界面外观<small>5 种风格</small></div><div class="global-service"><span></span>服务已就绪</div></footer>
+</aside>
+<main class="main c-main">
+  <header class="c-header">
+    <div class="c-heading"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="knowledge-base"><path d="M12 5.5C9 3.5 6 3.5 3 4v15c3-.5 6-.5 9 1.5 3-2 6-2 9-1.5V4c-3-.5-6-.5-9 1.5Zm0 0v15" /><path d="M6.5 8h2M6.5 11h2m7-3h2m-2 3h2" /></svg><h1>知识库</h1></div>
+    <div class="c-overview"><span><strong>12</strong> 份文档</span><span><strong>658</strong> 个分块</span></div>
+    <div class="c-header-actions"><button class="btn c-scope" type="button"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="dataset"><rect x="5" y="3.5" width="14" height="5" rx="1" /><path d="M3.5 11v4h17v-4M3.5 18v3h17v-3" /></svg>全部数据集<svg class="icon c-scope-caret" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg></button><button class="btn solid c-import" type="button"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="upload"><path d="M4 16v4h16v-4M12 16V3M7 8l5-5 5 5" /></svg>导入文档</button></div>
+  </header>
+  <nav class="c-navigation" aria-label="知识库功能"><button type="button" class="c-nav-item c-active"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="document"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="M8 12h8m-8 4h6" /></svg>文档</button><button type="button" class="c-nav-item"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="retrieval"><path d="M12 3.5H4v17h7M7.5 7.5H11m-3.5 4H10" /><circle cx="16" cy="13" r="4" /><path d="m19 16 3 4" /></svg>检索测试</button><button type="button" class="c-nav-item"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="settings2"><path d="M3 6h6m5 0h7M3 18h12m4 0h2M3 12h2m4 0h12" /><circle cx="11.5" cy="6" r="2.5" /><circle cx="7" cy="12" r="2" /><circle cx="17" cy="18" r="2" /></svg>配置</button></nav>
+  <div class="c-workspace">
+    <aside class="c-library" aria-label="文档清单">
+      <div class="c-library-head"><div class="c-library-top"><h2>全部文档 <span class="c-document-count">12</span></h2><button class="c-sort" type="button">最近添加<svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg></button></div><div class="field c-search-documents"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="search"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.25 15.25 5 5" /></svg><span>搜索文档</span><span class="c-search-hint">名称或内容</span></div></div>
+      <div class="c-document-list"><button type="button" class="c-document c-document-selected" aria-current="true">
+  <span class="c-document-icon"><svg class="icon type-pdf " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-pdf"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="m8 17 3-7 1.5 5 3.5 2H8Z" /></svg></span>
+  <span class="c-document-copy"><span class="c-document-name">Ragvia 产品使用手册.pdf</span><span class="c-document-meta"><span class="state state-ready"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="check-circle"><circle cx="12" cy="12" r="9" /><path d="m7.5 12 3 3 6-6" /></svg>已就绪</span><span class="c-meta-divider"></span><span>产品使用文档</span></span></span>
+</button><button type="button" class="c-document">
+  <span class="c-document-icon"><svg class="icon type-md " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-markdown"><rect x="3" y="5" width="18" height="14" rx="1" /><path d="M6.5 15V9l3 3 3-3v6M17 9v6m-2-2 2 2 2-2" /></svg></span>
+  <span class="c-document-copy"><span class="c-document-name">私有化部署指南.md</span><span class="c-document-meta"><span class="state state-ready"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="check-circle"><circle cx="12" cy="12" r="9" /><path d="m7.5 12 3 3 6-6" /></svg>已就绪</span><span class="c-meta-divider"></span><span>研发规范</span></span></span>
+</button><button type="button" class="c-document">
+  <span class="c-document-icon"><svg class="icon type-md " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-markdown"><rect x="3" y="5" width="18" height="14" rx="1" /><path d="M6.5 15V9l3 3 3-3v6M17 9v6m-2-2 2 2 2-2" /></svg></span>
+  <span class="c-document-copy"><span class="c-document-name">API 接口参考.md</span><span class="c-document-meta"><span class="state state-ready"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="check-circle"><circle cx="12" cy="12" r="9" /><path d="m7.5 12 3 3 6-6" /></svg>已就绪</span><span class="c-meta-divider"></span><span>API 与集成指南</span></span></span>
+</button><button type="button" class="c-document">
+  <span class="c-document-icon"><svg class="icon type-pdf " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-pdf"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="m8 17 3-7 1.5 5 3.5 2H8Z" /></svg></span>
+  <span class="c-document-copy"><span class="c-document-name">客户交付与验收说明.pdf</span><span class="c-document-meta"><span class="state state-processing"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="loader2"><path d="M12 3a9 9 0 1 1-9 9" /></svg>处理中</span><span class="c-meta-divider"></span><span>客户交付资料</span></span></span>
+</button><button type="button" class="c-document">
+  <span class="c-document-icon"><svg class="icon type-docx " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /></svg></span>
+  <span class="c-document-copy"><span class="c-document-name">产品版本说明.docx</span><span class="c-document-meta"><span class="state state-ready"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="check-circle"><circle cx="12" cy="12" r="9" /><path d="m7.5 12 3 3 6-6" /></svg>已就绪</span><span class="c-meta-divider"></span><span>产品使用文档</span></span></span>
+</button><button type="button" class="c-document">
+  <span class="c-document-icon"><svg class="icon type-xlsx " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-spreadsheet"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="M5 11h14m-14 4.5h14M11 11v9.5" /></svg></span>
+  <span class="c-document-copy"><span class="c-document-name">产品报价与规格.xlsx</span><span class="c-document-meta"><span class="state state-failed"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="alert-circle"><circle cx="12" cy="12" r="9" /><path d="M12 7v6" /><circle cx="12" cy="17" r="1" fill="currentColor" stroke="none" /></svg>失败</span><span class="c-meta-divider"></span><span>销售与产品资料</span></span></span>
+</button><button type="button" class="c-document">
+  <span class="c-document-icon"><svg class="icon type-pdf " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-pdf"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="m8 17 3-7 1.5 5 3.5 2H8Z" /></svg></span>
+  <span class="c-document-copy"><span class="c-document-name">账号与权限管理.pdf</span><span class="c-document-meta"><span class="state state-ready"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="check-circle"><circle cx="12" cy="12" r="9" /><path d="m7.5 12 3 3 6-6" /></svg>已就绪</span><span class="c-meta-divider"></span><span>API 与集成指南</span></span></span>
+</button><button type="button" class="c-document">
+  <span class="c-document-icon"><svg class="icon type-docx " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /></svg></span>
+  <span class="c-document-copy"><span class="c-document-name">需求评审会议纪要.docx</span><span class="c-document-meta"><span class="state state-ready"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="check-circle"><circle cx="12" cy="12" r="9" /><path d="m7.5 12 3 3 6-6" /></svg>已就绪</span><span class="c-meta-divider"></span><span>会议与项目纪要</span></span></span>
+</button><button type="button" class="c-document">
+  <span class="c-document-icon"><svg class="icon type-docx " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /></svg></span>
+  <span class="c-document-copy"><span class="c-document-name">客户服务合同模板.docx</span><span class="c-document-meta"><span class="state state-quarantined"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="lock"><rect x="5" y="10" width="14" height="11" rx="1" /><path d="M8 10V6a4 4 0 0 1 8 0v4" /></svg>已隔离</span><span class="c-meta-divider"></span><span>历史合同归档</span></span></span>
+</button><button type="button" class="c-document">
+  <span class="c-document-icon"><svg class="icon type-md " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-markdown"><rect x="3" y="5" width="18" height="14" rx="1" /><path d="M6.5 15V9l3 3 3-3v6M17 9v6m-2-2 2 2 2-2" /></svg></span>
+  <span class="c-document-copy"><span class="c-document-name">研发流程与编码规范.md</span><span class="c-document-meta"><span class="state state-ready"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="check-circle"><circle cx="12" cy="12" r="9" /><path d="m7.5 12 3 3 6-6" /></svg>已就绪</span><span class="c-meta-divider"></span><span>研发规范</span></span></span>
+</button><button type="button" class="c-document">
+  <span class="c-document-icon"><svg class="icon type-pdf " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-pdf"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="m8 17 3-7 1.5 5 3.5 2H8Z" /></svg></span>
+  <span class="c-document-copy"><span class="c-document-name">行业解决方案.pdf</span><span class="c-document-meta"><span class="state state-processing"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="loader2"><path d="M12 3a9 9 0 1 1-9 9" /></svg>处理中</span><span class="c-meta-divider"></span><span>销售与产品资料</span></span></span>
+</button><button type="button" class="c-document">
+  <span class="c-document-icon"><svg class="icon type-docx " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /></svg></span>
+  <span class="c-document-copy"><span class="c-document-name">信息安全管理制度.docx</span><span class="c-document-meta"><span class="state state-ready"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="check-circle"><circle cx="12" cy="12" r="9" /><path d="m7.5 12 3 3 6-6" /></svg>已就绪</span><span class="c-meta-divider"></span><span>内部制度</span></span></span>
+</button></div>
+      <footer class="c-library-footer"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="filter"><path d="M3.5 4h17l-6.5 8v7l-4 2v-9Z" /></svg><span>全部状态</span><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg><span class="c-footer-summary">8 已就绪 · 2 处理中</span></footer>
+    </aside>
+    <section class="c-reader" aria-label="文档正文">
+      <div class="c-reader-toolbar"><button class="c-reading-tab c-active" type="button">正文</button><button class="c-reading-tab" type="button">分块<span class="c-chunk-count">128</span></button><div class="c-reader-tools"><div class="field c-search-current"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="search"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.25 15.25 5 5" /></svg>搜索当前文档</div><button type="button" class="btn quiet"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="external-link"><path d="M10 4H4v16h16v-6M13 3h8v8M10 14 21 3" /></svg>原文件</button><button class="btn quiet square" type="button" aria-label="更多文档操作"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg></button></div></div>
+      <article class="c-reading-surface">
+        <div class="c-document-context"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="dataset"><rect x="5" y="3.5" width="14" height="5" rx="1" /><path d="M3.5 11v4h17v-4M3.5 18v3h17v-3" /></svg><span>产品使用文档</span><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-right"><path d="m9 6 6 6-6 6" /></svg><span>使用指南</span></div>
+        <h2 class="c-document-title">Ragvia 产品使用手册</h2>
+        <div class="c-file-metadata"><span class="c-file-format"><svg class="icon type-pdf " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-pdf"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="m8 17 3-7 1.5 5 3.5 2H8Z" /></svg>PDF</span><span>2.4 MB</span><span>128 个分块</span><span class="state state-ready"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="check-circle"><circle cx="12" cy="12" r="9" /><path d="m7.5 12 3 3 6-6" /></svg>已就绪</span><span class="c-added">12 分钟前添加</span></div>
+        <div class="c-document-body"><p class="c-introduction">本文介绍数据集管理、文档导入和检索测试的基本操作。开始之前，请先确认账号具有相应的文档访问权限。</p><section class="c-section"><h3>创建数据集</h3><p>在数据集页面新建数据集，为文档设置名称、访问权限和默认处理管线。可以按项目、业务或资料类型分别管理。</p></section><section class="c-section"><h3>导入文档</h3><p>选择数据集后导入文件。支持 PDF、Word、Markdown 和表格；文档解析完成后，会继续进行切块和索引。</p></section><section class="c-section"><h3>检查处理结果</h3><p>在文档列表查看处理状态。打开文档可阅读正文与分块；处理失败的文档可以查看原因并重新入库。</p></section><section class="c-section"><h3>测试检索效果</h3><p>进入检索测试，输入实际业务问题，查看命中的文档、分块内容和相关性，再决定是否调整处理配置。</p></section></div>
+      </article>
+      <footer class="c-reading-footer"><svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-check"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="m8 14 3 3 5-6" /></svg><span>正文已解析</span><span class="c-footer-end">查看全部分块 <svg class="icon " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="arrow-right"><path d="M4 12h15m-6-6 6 6-6 6" /></svg></span></footer>
+    </section>
+  </div>
+</main></div></body></html>

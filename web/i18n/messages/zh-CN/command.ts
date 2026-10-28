@@ -2,12 +2,21 @@ const commandMessages = {
 CommandMenu: {
     header: {
       title: '命令中心',
-      description: '搜索页面、数据与对话，或执行快捷动作',
-      hint: '查看快捷键',
+      description: '查找内容，或向知识库提问',
+      hint: '快捷键',
     },
     search: {
-      placeholder: '搜索页面、数据和对话，或输入 / 执行动作…',
+      label: '搜索内容或输入问题',
+      placeholder: '搜索、提问，或输入 / 查看指令',
       empty: '未找到相关结果',
+    },
+    execution: {
+      current: '当前操作',
+      choose: '暂无可执行的操作',
+      open: '打开',
+      run: '执行',
+      ask: '提问',
+      switch: '切换',
     },
     groups: {
       slash: '快捷指令',
@@ -15,7 +24,7 @@ CommandMenu: {
       viewerShortcuts: '文档查看器快捷键',
       shortcutMap: '工作流快捷键地图',
       navigation: '导航',
-      aiActions: 'AI 快捷动作',
+      aiActions: '提问',
       modules: '模块与工作台',
       documents: '文档',
       datasets: '数据集',
@@ -26,27 +35,27 @@ CommandMenu: {
     currentView: {
       graph: {
         prompt: '请基于当前图谱视图，总结关键实体、关系模式、异常断点，并给出最值得继续下钻的节点。',
-        description: '把当前图谱视图送入对话区，自动生成下钻建议。',
+        description: '在对话中分析当前图谱',
       },
       knowledge: {
         prompt: '请基于当前知识库工作台，总结文档状态、导入风险和最值得优先处理的事项。',
-        description: '把当前知识库上下文转成一条可直接发起的分析问题。',
+        description: '在对话中分析文档与导入状态',
       },
       datasets: {
         prompt: '请基于当前数据集页面，总结关键质量信号、风险项，以及建议的下一步治理动作。',
-        description: '针对当前数据集页面生成一条诊断型提问。',
+        description: '在对话中分析数据集质量',
       },
       settings: {
         prompt: '请基于当前系统设置页面，指出高风险配置、建议保守值和需要复核的项。',
-        description: '针对当前设置视图生成一条配置审查提问。',
+        description: '在对话中检查当前配置',
       },
       observability: {
         prompt: '请基于当前可观测/报表页面，总结异常指标、可能根因和建议的排查顺序。',
-        description: '把当前监控视图转成可直接追问的调查提示。',
+        description: '在对话中分析监控指标',
       },
       default: {
         prompt: '请分析我当前所在页面的重点信息、潜在风险，以及建议的下一步操作。',
-        description: '将当前视图整理成一条可直接发送的分析问题。',
+        description: '在对话中分析当前页面',
       },
     },
     keyChords: {
@@ -102,39 +111,39 @@ CommandMenu: {
     slash: {
       commands: {
         resume: {
-          label: '恢复最近文档上下文',
-          description: '重新打开最近一次查看的文档、切片与高亮位置。',
-          emptyDescription: '最近没有可恢复的文档定位。',
+          label: '继续查看文档',
+          description: '回到上次查看的位置',
+          emptyDescription: '暂无最近打开的文档',
           keywords: ['resume', 'viewer', 'document', 'citation', '恢复', '文档', '引用', '继续查看'],
         },
         upload: {
           label: '上传文档',
-          description: '直达知识库工作台，继续上传、整理和查看导入状态。',
+          description: '导入文档到知识库',
           keywords: ['upload', '文档', '知识库', '导入'],
         },
         analyze: {
           label: '分析当前视图',
-          description: '将当前视图整理成一条可直接发送的分析问题。',
+          description: '在对话中分析当前页面',
           keywords: ['analyze', '分析', '当前视图', '总结', '诊断'],
         },
         report: {
           label: '下载入库预检报告',
-          description: '在入库预检中快速打开当前样本评估报告的 PDF 打印视图。',
+          description: '查看预检报告并导出 PDF',
           keywords: ['report', 'pdf report', 'ingestion report', '下载报告', '入库报告', 'PDF', '预检报告'],
         },
         stats: {
           label: '查看统计与诊断',
-          description: '打开用量/配额视图，快速查看 tokens、成本和系统诊断入口。',
+          description: '查看用量、配额和诊断',
           keywords: ['stats', 'usage', 'diagnostics', 'quota', 'token', 'cost', '统计', '诊断', '用量'],
         },
         retryFailed: {
           label: '重试失败任务',
-          description: '在执行监控中批量重试当前失败/取消任务。',
+          description: '重试导入失败或已取消的任务',
           keywords: ['retry failed', 'retry', 'ingestion', 'failed', '重试', '失败任务', '执行监控'],
         },
         pauseActive: {
           label: '暂停活动任务',
-          description: '在执行监控中批量取消当前运行中的任务。',
+          description: '取消正在运行的导入任务',
           keywords: ['pause active', 'cancel active', 'ingestion', '暂停', '取消运行任务', '活动任务'],
         },
         demo: {
@@ -144,52 +153,52 @@ CommandMenu: {
         },
         precheck: {
           label: '打开入库预检',
-          description: '进入数据集预检扫描，先做入库前摸底再决定是否真正导入。',
+          description: '检查数据是否适合导入',
           keywords: ['precheck', 'ingestion precheck', 'dataset precheck', '预检', '入库预检', '预检扫描'],
         },
         datasets: {
           label: '打开数据集',
-          description: '跳到数据集列表，查看质量信号与治理入口。',
+          description: '查看数据集与质量检查',
           keywords: ['datasets', '数据集', '质量', '治理'],
         },
         history: {
           label: '打开问答历史',
-          description: '查看最近问答记录，便于复盘与复用。',
+          description: '查看之前的问答记录',
           keywords: ['history', 'qa', '对话历史', '复盘'],
         },
         graph: {
           label: '打开图谱工作台',
-          description: '跳到图谱视图，查看实体关系和路径分析。',
+          description: '查看实体、关系和路径',
           keywords: ['graph', '图谱', '关系', '实体'],
         },
         diagnostics: {
           label: '打开运行诊断',
-          description: '进入系统诊断页，查看健康状态、依赖和前端运行信息。',
+          description: '检查服务状态和运行环境',
           keywords: ['diagnostics', 'health', 'observability', '诊断', '健康检查'],
         },
         settings: {
           label: '打开系统设置',
-          description: '快速进入模型、RAG 和治理配置。',
+          description: '配置模型、检索与数据治理',
           keywords: ['settings', '设置', 'rag', '配置'],
         },
         parsing: {
           label: '打开解析工作台',
-          description: '进入文档解析工作台，检查切分策略、解析质量与提取结果。',
+          description: '检查文档解析与切分结果',
           keywords: ['parsing', 'parser', 'chunking', 'extract', '解析', '文档解析', '切分', '抽取', '解析工作台'],
         },
         reports: {
           label: '打开数据报告',
-          description: '按数据集生成质量、治理和 RAG 审计报告，支持导出分享。',
+          description: '查看质量、治理和检索报告',
           keywords: ['reports', 'report', 'analytics', 'dashboard', '报表', '报告', '数据报告', '数据集报告', '质量报告', '审计'],
         },
         observability: {
           label: '打开可观测中心',
-          description: '直达可观测页面，追踪指标、日志和诊断线索。',
+          description: '查看指标、日志与链路',
           keywords: ['observability', 'monitoring', 'metrics', 'logs', 'trace', '可观测', '监控', '指标', '日志', '链路'],
         },
         governance: {
           label: '打开数据治理',
-          description: '进入数据治理工作台，处理画像、规则与质量治理任务。',
+          description: '管理质量规则与治理任务',
           keywords: ['governance', 'data governance', 'policy', 'compliance', '数据治理', '治理', '规则', '合规', '画像'],
         },
       },
@@ -262,8 +271,7 @@ CommandMenu: {
       settings: '设置',
     },
     aiAction: {
-      label: '执行自然语言指令',
-      description: '直接把当前输入发送给 AI，并立即开始执行。',
+      label: '向知识库提问',
     },
     results: {
       modulesEmpty: '未找到匹配的模块',

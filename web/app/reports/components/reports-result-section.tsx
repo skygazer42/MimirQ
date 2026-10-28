@@ -1,150 +1,19 @@
 'use client'
 
-import { AlertTriangle } from 'lucide-react'
+import { AlertCircle, Loader2 } from '@/components/icons'
+import { Button } from '@/components/ui/button'
+import { Link } from '@/i18n/navigation'
+import type { DatasetReport } from '@/types'
+import { ReportsDashboard, type ReportsDashboardProps } from './reports-dashboard'
+import styles from '../reports.module.css'
 
-import { EmptyState } from '@/components/ui/empty-state'
-
-import type {
-  DatasetReport,
-  DatasetReportPipelineVersion,
-} from '@/types'
-
-import {
-  reportPreviewEmptyDescription,
-  reportPreviewEmptyTitle,
-} from '../report-format'
-import { ReportsDashboard } from './reports-dashboard'
-
-import type {
-  CategoryMetricDatum,
-  CoverageRow,
-  IssueRow,
-  PipelineVersionDatum,
-  ReportMetricDatum,
-  RetrievalAudit,
-} from '../types'
-
-export function ReportsResultSection({
-  report,
-  datasetId,
-  isLoadingReport,
-  reportErrorMessage,
-  totalDocs,
-  totalBytes,
-  successDocs,
-  successRate,
-  failed,
-  failedRate,
-  pipelineVersions,
-  pipelineVersionsWithFill,
-  pipelineFilterLabel,
-  latestAuditTime,
-  retrievalAudit,
-  missingFindingCount,
-  duplicateFindingCount,
-  lowQualityFindingCount,
-  fieldCoverageRows,
-  fieldCoverageBadge,
-  topDocumentRows,
-  topDocumentMax,
-  onClearFolderQuery,
-  governanceAuditUrlValue,
-  governanceAuditUrlSub,
-  governanceAuditImageValue,
-  governanceAuditImageSub,
-  governanceAuditHasSamples,
-  sensitiveHits,
-  piiHits,
-  secretHits,
-  categoryBarData,
-  versionTotal,
-  issueRows,
-}: Readonly<{
-  report: DatasetReport | null
-  datasetId: string
-  isLoadingReport: boolean
-  reportErrorMessage: string
-  totalDocs: number
-  totalBytes: number
-  successDocs: number
-  successRate: string
-  failed: number
-  failedRate: string
-  pipelineVersions: DatasetReportPipelineVersion[]
-  pipelineVersionsWithFill: PipelineVersionDatum[]
-  pipelineFilterLabel: string
-  latestAuditTime: string
-  retrievalAudit: RetrievalAudit | null
-  missingFindingCount: number
-  duplicateFindingCount: number
-  lowQualityFindingCount: number
-  fieldCoverageRows: CoverageRow[]
-  fieldCoverageBadge: string
-  topDocumentRows: ReportMetricDatum[]
-  topDocumentMax: number
-  onClearFolderQuery: () => void
-  governanceAuditUrlValue: string
-  governanceAuditUrlSub: string
-  governanceAuditImageValue: string
-  governanceAuditImageSub: string
-  governanceAuditHasSamples: boolean
-  sensitiveHits: number
-  piiHits: number
-  secretHits: number
-  categoryBarData: CategoryMetricDatum[]
-  versionTotal: number
-  issueRows: IssueRow[]
-}>) {
-  if (!report) {
-    if (reportErrorMessage && datasetId && !isLoadingReport) {
-      return (
-        <EmptyState
-          icon={AlertTriangle}
-          title="报告加载失败"
-          description={reportErrorMessage}
-        />
-      )
-    }
-    return (
-      <EmptyState
-        title={reportPreviewEmptyTitle(datasetId, isLoadingReport)}
-        description={reportPreviewEmptyDescription(datasetId, isLoadingReport)}
-      />
-    )
+type Props=Omit<ReportsDashboardProps,'report'> & {report:DatasetReport|null;datasetId:string;isLoadingReport:boolean;reportErrorMessage:string;onRetry:()=>void;datasetsErrorMessage:string;isLoadingDatasets:boolean;onRetryDatasets:()=>void}
+export function ReportsResultSection({datasetId,isLoadingReport,reportErrorMessage,onRetry,datasetsErrorMessage,isLoadingDatasets,onRetryDatasets,...props}:Readonly<Props>) {
+  if(!props.report) {
+    const error=reportErrorMessage||datasetsErrorMessage
+    if(error)return <div className={styles.pageState} role="alert"><AlertCircle/><h2>{datasetsErrorMessage?'数据集加载失败':'报告加载失败'}</h2><p>{error}</p><Button variant="outline" aria-label="重试报告" onClick={datasetsErrorMessage?onRetryDatasets:onRetry}>重试</Button></div>
+    if(isLoadingReport||isLoadingDatasets)return <div className={styles.pageState} role="status"><Loader2 className="animate-spin motion-reduce:animate-none"/><p>正在加载报告…</p></div>
+    return <div className={styles.pageState}><h2>{datasetId?'暂无报告':'先选择数据集'}</h2><p>{datasetId?'刷新报告后查看当前快照。':'在数据集中导入文档后，可以在这里查看报告。'}</p><Link href="/datasets">查看数据集</Link></div>
   }
-
-  return (
-    <ReportsDashboard
-      totalDocs={totalDocs}
-      totalBytes={totalBytes}
-      successDocs={successDocs}
-      successRate={successRate}
-      failed={failed}
-      failedRate={failedRate}
-      pipelineVersions={pipelineVersions}
-      pipelineVersionsWithFill={pipelineVersionsWithFill}
-      pipelineFilterLabel={pipelineFilterLabel}
-      latestAuditTime={latestAuditTime}
-      retrievalAudit={retrievalAudit}
-      missingFindingCount={missingFindingCount}
-      duplicateFindingCount={duplicateFindingCount}
-      lowQualityFindingCount={lowQualityFindingCount}
-      fieldCoverageRows={fieldCoverageRows}
-      fieldCoverageBadge={fieldCoverageBadge}
-      topDocumentRows={topDocumentRows}
-      topDocumentMax={topDocumentMax}
-      onClearFolderQuery={onClearFolderQuery}
-      governanceAuditUrlValue={governanceAuditUrlValue}
-      governanceAuditUrlSub={governanceAuditUrlSub}
-      governanceAuditImageValue={governanceAuditImageValue}
-      governanceAuditImageSub={governanceAuditImageSub}
-      governanceAuditHasSamples={governanceAuditHasSamples}
-      sensitiveHits={sensitiveHits}
-      piiHits={piiHits}
-      secretHits={secretHits}
-      categoryBarData={categoryBarData}
-      versionTotal={versionTotal}
-      issueRows={issueRows}
-    />
-  )
+  return <>{reportErrorMessage&&<div className={styles.loadNotice} role="alert"><span>更新失败，当前显示上次报告：{reportErrorMessage}</span><Button variant="ghost" aria-label="重试报告" onClick={onRetry}>重试</Button></div>}<ReportsDashboard {...props} report={props.report}/></>
 }

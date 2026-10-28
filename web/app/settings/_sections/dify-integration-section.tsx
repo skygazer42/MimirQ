@@ -1,15 +1,17 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { CheckCircle2, Copy, Database, KeyRound, Link2, PlugZap, RefreshCw, Trash2 } from 'lucide-react'
+import { CheckCircle2, Copy, RefreshCw, Trash2 } from '@/components/icons'
 
 import { SettingsSwitch } from '@/components/settings/settings-switch'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
-import { settingsTextTokens } from '@/components/ui/system-page-tokens'
+import { settingsLayoutTokens, settingsTextTokens } from '@/components/ui/system-page-tokens'
 import { datasetApi, type SystemSettings } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { Dataset } from '@/types'
+import styles from '../settings.module.css'
 
 type DifyExternalKnowledgeSettings = NonNullable<SystemSettings['dify_external_knowledge']>
 
@@ -169,245 +171,223 @@ export function DifyIntegrationSection({
     globalThis.setTimeout(() => setCopied(false), 1200)
   }
 
+  const inputClassName = cn(
+    settingsLayoutTokens.input,
+    'border-transparent bg-[var(--settings-value)] placeholder:text-muted-foreground focus-visible:border-input'
+  )
+
   return (
-    <section className="space-y-3">
-      <div className="rounded-xl border border-info/20 bg-info/[0.04] p-3.5">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="flex size-8 items-center justify-center rounded-[12px] border border-info/20 bg-info/[0.07] text-info shadow-none">
-                <PlugZap className="size-4" />
-              </span>
-              <div>
-                <h3 className="text-[13px] font-semibold tracking-[-0.01em] text-foreground">
-                  Dify 外部知识库
-                </h3>
-                <p className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
-                  MimirQ 负责真实召回，Dify 只传 knowledge_id；这里把 knowledge_id 自动绑定到一个或多个数据集
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 rounded-full border border-info/20 bg-info/[0.06] px-2.5 py-1.5 text-[11px] text-muted-foreground">
-            <span>{difyExternalKnowledge.enabled ? '已启用' : '未启用'}</span>
-            <SettingsSwitch
-              checked={Boolean(difyExternalKnowledge.enabled)}
-              onClick={() =>
-                updateDifyExternalKnowledge({ enabled: !difyExternalKnowledge.enabled })
-              }
-              aria-label="切换 Dify 外部知识库接入"
-            />
-          </div>
-        </div>
-
-        <div className="mt-3 grid grid-cols-1 gap-2.5 lg:grid-cols-[minmax(0,1fr)_220px]">
-          <div className="rounded-[13px] border border-info/20 bg-info/[0.07] px-3 py-2.5 text-foreground shadow-none">
-            <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-info">
-                  Retrieval Endpoint
-                </div>
-                <div className="mt-1 truncate font-mono text-[12px] text-foreground/85">
-                  {endpointUrl || endpointPath}
-                </div>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-8 shrink-0 rounded-[11px] border-info/20 bg-info/10 px-2.5 text-[11px] text-info hover:bg-info/15 hover:text-info"
-                onClick={copyEndpoint}
-              >
-                {copied ? <CheckCircle2 className="size-3.5" /> : <Copy className="size-3.5" />}
-                复制接入地址
-              </Button>
-            </div>
-          </div>
-
-          <div className="rounded-[13px] border border-info/15 bg-info/[0.025] px-3 py-2.5">
-            <div className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground">
-              <KeyRound className="size-3.5 text-info" />
-              API Key
-            </div>
-            <Input
-              type="password"
-              value={difyExternalKnowledge.api_keys || ''}
-              placeholder="Dify Bearer Token"
-              className="mt-1.5 h-8 rounded-[10px] border-info/15 bg-info/[0.025] text-[12px]"
-              onChange={(event) => updateDifyExternalKnowledge({ api_keys: event.target.value })}
-            />
-          </div>
+    <div>
+      <div className={styles.integrationToggle}>
+        <label htmlFor="dify-enabled" className={settingsTextTokens.panelTitle}>
+          启用 Dify 接入
+        </label>
+        <p className={cn(settingsTextTokens.helpText, styles.integrationToggleHint)}>
+          允许 Dify 检索已绑定的数据集
+        </p>
+        <div className={cn(styles.integrationToggleStatus, 'flex shrink-0 items-center gap-3 text-[13px] text-muted-foreground')}>
+          <span>{difyExternalKnowledge.enabled ? '已启用' : '未启用'}</span>
+          <SettingsSwitch
+            id="dify-enabled"
+            checked={Boolean(difyExternalKnowledge.enabled)}
+            onClick={() => updateDifyExternalKnowledge({ enabled: !difyExternalKnowledge.enabled })}
+            aria-label="切换 Dify 外部知识库接入"
+          />
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.9fr)]">
-        <div className="rounded-xl border border-info/15 bg-info/[0.025] p-3.5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <div className={settingsTextTokens.panelTitle}>选择数据集生成绑定</div>
-              <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
-                选择一个或多个数据集后生成 Dify 侧可填写的 knowledge_id
-              </div>
-            </div>
-            <div className="rounded-full border border-border/60 bg-muted/35 px-2.5 py-1 text-[11px] text-muted-foreground">
-              已选择数据集 {selectedDatasetIds.length}
-            </div>
-          </div>
-
-          <div className="mt-3 grid max-h-[260px] grid-cols-1 gap-2 overflow-auto pr-1 md:grid-cols-2">
-            {datasetsLoading ? (
-              <div className="col-span-full flex items-center gap-2 rounded-[12px] border border-border/60 bg-muted/35 px-3 py-2 text-[12px] text-muted-foreground">
-                <RefreshCw className="size-3.5 animate-spin" />
-                正在加载数据集
-              </div>
-            ) : null}
-            {datasetsError ? (
-              <div className="col-span-full rounded-[12px] border border-warning/25 bg-warning/10 px-3 py-2 text-[12px] text-warning">
-                {datasetsError}
-              </div>
-            ) : null}
-            {!datasetsLoading && datasets.length === 0 && !datasetsError ? (
-              <div className="col-span-full rounded-[12px] border border-border/60 bg-muted/35 px-3 py-2 text-[12px] text-muted-foreground">
-                暂无可绑定数据集
-              </div>
-            ) : null}
-            {datasets.map((dataset) => {
-              const checked = selectedDatasetIds.includes(dataset.id)
-              return (
-                <button
-                  key={dataset.id}
-                  type="button"
-                  aria-pressed={checked}
-                  onClick={() => toggleDataset(dataset.id)}
-                  className={cn(
-                    'flex items-center gap-2 rounded-[12px] border px-3 py-2 text-left transition-colors',
-                    checked
-                      ? 'border-info/30 bg-info/10 text-info'
-                      : 'border-info/15 bg-info/[0.025] text-foreground/78 hover:border-info/25 hover:bg-info/[0.055]'
-                  )}
-                >
-                  <span
-                    className={cn(
-                      'flex size-6 shrink-0 items-center justify-center rounded-[9px]',
-                      checked ? 'bg-info text-info-foreground' : 'bg-info/[0.06] text-muted-foreground'
-                    )}
-                  >
-                    <Database className="size-3.5" />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block truncate text-[12px] font-medium">{dataset.name}</span>
-                    <span className="block font-mono text-[10.5px] text-muted-foreground">
-                      {shortId(dataset.id)}
-                    </span>
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-
-          <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-[minmax(0,1fr)_auto]">
-            <Input
-              value={knowledgeId}
-              className="h-9 rounded-[11px] border-info/15 bg-info/[0.025] text-[12px]"
-              placeholder="knowledge_id"
-              onChange={(event) => setKnowledgeId(event.target.value)}
-            />
-            <Button
-              type="button"
-              className="h-9 rounded-[11px] bg-info px-3 text-[12px] font-medium text-info-foreground hover:bg-info/90"
-              disabled={selectedDatasetIds.length === 0}
-              onClick={writeBinding}
-            >
-              <Link2 className="size-3.5" />
-              生成绑定
-            </Button>
-          </div>
-        </div>
-
-        <div className="space-y-3 rounded-xl border border-info/15 bg-info/[0.025] p-3.5">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <div className={settingsTextTokens.panelTitle}>当前绑定</div>
-              <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
-                Dify 请求里的 knowledge_id 会按这里路由到数据集
-              </div>
-            </div>
-            <div className="rounded-full border border-border/60 bg-muted/35 px-2 py-0.5 text-[11px] text-muted-foreground">
-              {Object.keys(knowledgeMap).length} 条
-            </div>
-          </div>
-
-          {knowledgeMapError ? (
-            <div className="rounded-[12px] border border-warning/25 bg-warning/10 px-3 py-2 text-[12px] text-warning">
-              {knowledgeMapError}
-            </div>
-          ) : null}
-
-          <div className="space-y-2">
-            {Object.entries(knowledgeMap).length === 0 ? (
-              <div className="rounded-[13px] border border-dashed border-border/60 bg-muted/35 px-3 py-5 text-center text-[12px] text-muted-foreground">
-                暂无绑定选择数据集后生成一个 knowledge_id
-              </div>
-            ) : null}
-            {Object.entries(knowledgeMap).map(([bindingId, datasetIds]) => (
-              <div
-                key={bindingId}
-                className="rounded-[13px] border border-border/60 bg-muted/30 px-3 py-2.5"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="font-mono text-[12px] font-semibold text-foreground">{bindingId}</div>
-                    <div className="mt-1 flex flex-wrap gap-1.5">
-                      {datasetIds.map((datasetId) => (
-                        <span
-                          key={datasetId}
-                          className="rounded-full border border-info/20 bg-info/[0.035] px-2 py-0.5 text-[10.5px] text-muted-foreground"
-                        >
-                          {datasetLabel(datasets.find((dataset) => dataset.id === datasetId), datasetId)}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
+      <div className={styles.integrationLayout}>
+        <div className={styles.integrationMain}>
+          <section aria-labelledby="dify-connection-title" className={styles.integrationGroup}>
+            <h3 id="dify-connection-title" className={styles.integrationTitle}>连接配置</h3>
+            <div className="mt-5 space-y-5">
+              <div className="min-w-0">
+                <div id="dify-endpoint-label" className={styles.integrationLabel}>检索接入地址</div>
+                <div className={styles.integrationEndpoint}>
+                  <code aria-labelledby="dify-endpoint-label">{endpointUrl || endpointPath}</code>
                   <Button
                     type="button"
                     variant="ghost"
-                    className="h-7 w-7 shrink-0 rounded-[9px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                    onClick={() => removeBinding(bindingId)}
-                    aria-label={`删除 ${bindingId} 绑定`}
+                    className="h-11 shrink-0 gap-1.5 px-2 text-[13px] sm:h-9"
+                    onClick={copyEndpoint}
+                    aria-label="复制检索地址"
                   >
-                    <Trash2 className="size-3.5" />
+                    {copied ? <CheckCircle2 className="size-3.5" /> : <Copy className="size-3.5" />}
+                    {copied ? '已复制' : '复制'}
                   </Button>
                 </div>
               </div>
-            ))}
-          </div>
+              <div>
+                <label htmlFor="dify-api-key" className={styles.integrationLabel}>API Key</label>
+                <Input
+                  id="dify-api-key"
+                  type="password"
+                  value={difyExternalKnowledge.api_keys || ''}
+                  placeholder="Dify Bearer Token"
+                  className={cn(inputClassName, 'mt-2')}
+                  onChange={(event) => updateDifyExternalKnowledge({ api_keys: event.target.value })}
+                />
+              </div>
+            </div>
+          </section>
 
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-1">
-            <label className="block text-[11px] leading-4 text-muted-foreground">
-              <span className={settingsTextTokens.fieldLabel}>服务账号</span>
+          <section aria-labelledby="dify-datasets-title" className={styles.integrationGroup}>
+            <h3 id="dify-datasets-title" className={styles.integrationTitle}>数据集绑定</h3>
+            <p className={cn(settingsTextTokens.helpText, 'mt-1')}>
+              将一个或多个数据集绑定到 Dify 使用的知识库标识
+            </p>
+
+            <div className="mt-5">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <span id="dify-dataset-label" className={styles.integrationLabel}>选择数据集</span>
+                <span className="text-[13px] tabular-nums text-muted-foreground" aria-live="polite">
+                  已选 {selectedDatasetIds.length} 项
+                </span>
+              </div>
+              <div
+                role="group"
+                aria-labelledby="dify-dataset-label"
+                className="max-h-64 divide-y divide-border/60 overflow-auto"
+              >
+                {datasetsLoading ? (
+                  <div role="status" className="flex items-center gap-2 py-3 text-[13px] text-muted-foreground">
+                    <RefreshCw className="size-3.5 animate-spin" />
+                    正在加载数据集
+                  </div>
+                ) : null}
+                {datasetsError ? (
+                  <div role="alert" className="py-3 text-[13px] text-warning">{datasetsError}</div>
+                ) : null}
+                {!datasetsLoading && datasets.length === 0 && !datasetsError ? (
+                  <div className="py-3 text-[13px] text-muted-foreground">暂无可绑定数据集</div>
+                ) : null}
+                {datasets.map((dataset) => {
+                  const checked = selectedDatasetIds.includes(dataset.id)
+                  return (
+                    <label
+                      key={dataset.id}
+                      className={cn(
+                        'flex min-h-11 w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring',
+                        checked ? 'bg-[var(--settings-value)] text-foreground' : 'text-foreground hover:bg-muted/30'
+                      )}
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={() => toggleDataset(dataset.id)}
+                        aria-label={dataset.name}
+                      />
+                      <span className="min-w-0">
+                        <span className="block break-words text-[14px] font-medium [overflow-wrap:anywhere]">{dataset.name}</span>
+                        <span className="mt-0.5 block font-mono text-xs text-muted-foreground" title={dataset.id}>
+                          {shortId(dataset.id)}
+                        </span>
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="min-w-0 flex-1">
+                <label htmlFor="dify-knowledge-id" className={styles.integrationLabel}>
+                  知识库标识 <span className="ml-1 font-mono text-[13px] font-normal text-muted-foreground">knowledge_id</span>
+                </label>
+                <Input
+                  id="dify-knowledge-id"
+                  aria-label="knowledge_id"
+                  value={knowledgeId}
+                  className={cn(inputClassName, 'mt-2 font-mono')}
+                  placeholder="knowledge_id"
+                  onChange={(event) => setKnowledgeId(event.target.value)}
+                />
+              </div>
+              <Button
+                type="button"
+                className="h-11 shrink-0 rounded-lg px-4 text-[14px] font-medium sm:h-10"
+                disabled={selectedDatasetIds.length === 0}
+                onClick={writeBinding}
+              >
+                生成绑定
+              </Button>
+            </div>
+
+            <div className="mt-7 border-t border-border/60 pt-5">
+              <div className="flex items-center gap-3">
+                <h4 className={styles.integrationLabel}>已有绑定</h4>
+                {Object.keys(knowledgeMap).length > 0 ? (
+                  <span className="text-[13px] tabular-nums text-muted-foreground">{Object.keys(knowledgeMap).length} 条</span>
+                ) : null}
+              </div>
+              {knowledgeMapError ? (
+                <div role="alert" className="mt-3 text-[13px] text-warning">{knowledgeMapError}</div>
+              ) : null}
+              {!knowledgeMapError && Object.keys(knowledgeMap).length === 0 ? (
+                <p className="mt-3 text-[13px] text-muted-foreground">尚未创建绑定</p>
+              ) : null}
+              <div className="mt-2 divide-y divide-border/60">
+                {Object.entries(knowledgeMap).map(([bindingId, datasetIds]) => (
+                  <div key={bindingId} className="flex items-start justify-between gap-3 py-3">
+                    <div className="min-w-0">
+                      <div className="break-all font-mono text-[13px] font-medium text-foreground">{bindingId}</div>
+                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                        {datasetIds.map((datasetId) => (
+                          <span key={datasetId} className="break-words text-[13px] leading-5 text-muted-foreground [overflow-wrap:anywhere]">
+                            {datasetLabel(datasets.find((dataset) => dataset.id === datasetId), datasetId)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="size-11 shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive sm:size-9"
+                      onClick={() => removeBinding(bindingId)}
+                      aria-label={`删除 ${bindingId} 绑定`}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <section aria-labelledby="dify-request-title" className={styles.integrationAside}>
+          <h3 id="dify-request-title" className={styles.integrationTitle}>请求设置</h3>
+          <div className="mt-5 space-y-5">
+            <div>
+              <label htmlFor="dify-account" className={styles.integrationLabel}>服务账号</label>
               <Input
+                id="dify-account"
                 value={difyExternalKnowledge.account_id || 'system:dify'}
-                className="mt-1 h-8 rounded-[10px] border-info/15 bg-info/[0.025] text-[12px]"
+                className={cn(inputClassName, 'mt-2')}
                 onChange={(event) => updateDifyExternalKnowledge({ account_id: event.target.value })}
               />
-            </label>
-            <label className="block text-[11px] leading-4 text-muted-foreground">
-              <span className={settingsTextTokens.fieldLabel}>最大返回条数</span>
-              <Input
-                type="number"
-                min={1}
-                max={200}
-                value={difyExternalKnowledge.top_k_max}
-                className="mt-1 h-8 rounded-[10px] border-info/15 bg-info/[0.025] text-[12px]"
-                onChange={(event) =>
-                  updateDifyExternalKnowledge({
-                    top_k_max: Math.max(1, Math.min(200, Number.parseInt(event.target.value || '50', 10))),
-                  })
-                }
-              />
-            </label>
+            </div>
+            <div>
+              <label htmlFor="dify-top-k" className={styles.integrationLabel}>最大返回条数</label>
+              <div className="mt-2 flex items-center gap-3">
+                <Input
+                  id="dify-top-k"
+                  type="number"
+                  min={1}
+                  max={200}
+                  value={difyExternalKnowledge.top_k_max}
+                  className={cn(inputClassName, 'max-w-28 tabular-nums')}
+                  onChange={(event) =>
+                    updateDifyExternalKnowledge({
+                      top_k_max: Math.max(1, Math.min(200, Number.parseInt(event.target.value || '50', 10))),
+                    })
+                  }
+                />
+                <span className="text-[13px] text-muted-foreground">条</span>
+              </div>
+            </div>
           </div>
-        </div>
+        </section>
       </div>
-    </section>
+    </div>
   )
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { GitCompareArrows } from 'lucide-react'
+import { GitCompareArrows } from '@/components/icons'
 
 import { cn } from '@/lib/utils'
 import type { RegressionRun } from '@/types'

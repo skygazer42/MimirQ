@@ -1,10 +1,7 @@
 'use client'
-
-import type { ReactNode } from 'react'
-import { useMemo } from 'react'
-import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
-import { ChevronDown, Minus, Plus } from 'lucide-react'
+import { useMemo } from 'react';
+import { Button } from '@/components/ui/button';
+import { ChevronDown, Minus, Plus } from '@/components/icons';
 
 export type SelectOption = {
   value: string
@@ -14,13 +11,13 @@ export type SelectOption = {
 }
 
 const similaritySelectClass =
-  'h-9 w-full appearance-none rounded-[0.9rem] border border-border/38 bg-background/58 px-3 pr-9 text-[12px] font-medium text-foreground/84 shadow-[inset_0_1px_0_hsl(var(--card)/0.62),0_10px_24px_-22px_hsl(var(--foreground)/0.28)] outline-none transition-[border-color,box-shadow,background-color] hover:border-primary/26 hover:bg-background/76 focus:border-primary/38 focus:shadow-[inset_0_1px_0_hsl(var(--card)/0.72),0_0_0_4px_hsl(var(--primary)/0.10)]'
+  'h-10 w-full appearance-none rounded-md border border-input bg-background px-3 pr-9 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring'
 export const similarityInputClass =
-  'h-9 w-full rounded-[0.9rem] border border-border/38 bg-background/58 px-3 text-[12px] font-medium text-foreground/84 shadow-[inset_0_1px_0_hsl(var(--card)/0.62),0_10px_24px_-22px_hsl(var(--foreground)/0.28)] outline-none transition-[border-color,box-shadow,background-color] hover:border-primary/26 hover:bg-background/76 focus:border-primary/38 focus:shadow-[inset_0_1px_0_hsl(var(--card)/0.72),0_0_0_4px_hsl(var(--primary)/0.10)]'
+  'h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring'
 const similarityIconControlClass =
-  'h-9 w-9 rounded-[0.9rem] border-border/38 bg-background/58 text-muted-foreground shadow-[inset_0_1px_0_hsl(var(--card)/0.62),0_10px_24px_-22px_hsl(var(--foreground)/0.28)] hover:border-primary/30 hover:bg-background/76 hover:text-primary'
+  'size-10 shrink-0 rounded-md border-border bg-background text-muted-foreground hover:text-foreground'
 export const similarityNativeSelectClass =
-  'h-9 w-full rounded-[0.9rem] border border-border/38 bg-background/58 px-3 text-[12px] font-medium text-foreground/84 shadow-[inset_0_1px_0_hsl(var(--card)/0.62)] outline-none focus:border-primary/38 focus:ring-4 focus:ring-primary/10'
+  'h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
 export function isEmptyCollectionOption(option: SelectOption) {
   return typeof option.count === 'number' && option.count <= 0
@@ -30,44 +27,6 @@ function collectionOptionLabel(option: SelectOption) {
   if (typeof option.count !== 'number') return option.label
   if (option.count <= 0) return `${option.label}（0 项，暂无数据）`
   return `${option.label}（${option.count} 项）`
-}
-
-export function AxisConfigCard({
-  eyebrow,
-  title,
-  badge,
-  badgeClassName,
-  children,
-}: Readonly<{
-  eyebrow: string
-  title: string
-  badge: string
-  badgeClassName?: string
-  children: ReactNode
-}>) {
-  return (
-    <section className="border-b border-border/28 px-3.5 py-3.5 last:border-b-0">
-      <div className="mb-2.5 flex items-start justify-between gap-2.5">
-        <div className="min-w-0">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary/72">
-            {eyebrow}
-          </div>
-          <div className="mt-0.5 text-[13px] font-semibold leading-4 text-foreground/86">
-            {title}
-          </div>
-        </div>
-        <span
-          className={cn(
-            'inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-medium',
-            badgeClassName
-          )}
-        >
-          {badge}
-        </span>
-      </div>
-      <div className="space-y-2.5">{children}</div>
-    </section>
-  )
 }
 
 export function CollectionSelectorBlock({
@@ -105,6 +64,7 @@ export function CollectionSelectorBlock({
           <div key={key} className="flex items-center gap-1.5">
             <div className="relative flex-1">
               <select
+                aria-label={`${label} ${idx + 1}`}
                 className={similaritySelectClass}
                 value={value}
                 onChange={(e) => {
@@ -177,10 +137,10 @@ export function NumberField({
   return (
     <div className="space-y-1.5 block">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/60">
+        <div className="text-[13px] font-medium text-foreground">
           {label}
         </div>
-        <div className="text-[10.5px] font-medium text-muted-foreground/58">
+        <div className="text-xs text-muted-foreground">
           {min}-{max}
         </div>
       </div>

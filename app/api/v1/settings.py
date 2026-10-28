@@ -395,14 +395,10 @@ class RAGConfig(BaseModel):
         return provider
 
 
-class UrlIngestConfig(BaseModel):
-    """URL ingestion config (server-side fetch; connectors)."""
+class UrlIngestStatus(BaseModel):
+    """Read-only URL import availability for the ingestion workbench."""
 
     enabled: bool = False
-    max_bytes: int = 50_000_000
-    timeout_sec: float = 30.0
-    allow_private_ips: bool = False
-    follow_redirects: bool = False
 
 
 class GovernanceConfig(BaseModel):
@@ -585,7 +581,7 @@ class SystemSettings(BaseModel):
     minio: MinioConfig
     rag: RAGConfig
     cache: CacheConfig
-    url_ingest: UrlIngestConfig
+    url_ingest: UrlIngestStatus
     governance: GovernanceConfig
     mineru: MinerUConfig
     etl4llm: Etl4LlmConfig
@@ -613,7 +609,6 @@ class UpdateSettingsRequest(BaseModel):
     minio: MinioConfig | None = None
     rag: RAGConfig | None = None
     cache: CacheConfig | None = None
-    url_ingest: UrlIngestConfig | None = None
     governance: GovernanceConfig | None = None
     mineru: MinerUConfig | None = None
     etl4llm: Etl4LlmConfig | None = None
@@ -847,26 +842,6 @@ def _apply_cache_runtime_settings(env_vars: dict[str, str], updated_keys: set[st
     )
 
 
-def _apply_url_ingest_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
-    _apply_runtime_specs(
-        env_vars,
-        updated_keys,
-        (
-            ("URL_INGEST_ENABLED", _parse_bool),
-            (
-                "URL_INGEST_MAX_BYTES",
-                lambda value: _parse_int(value, default=getattr(settings, "URL_INGEST_MAX_BYTES", 0)),
-            ),
-            (
-                "URL_INGEST_TIMEOUT_SEC",
-                lambda value: _parse_float(value, default=getattr(settings, "URL_INGEST_TIMEOUT_SEC", 30.0)),
-            ),
-            ("URL_INGEST_ALLOW_PRIVATE_IPS", _parse_bool),
-            ("URL_INGEST_FOLLOW_REDIRECTS", _parse_bool),
-        ),
-    )
-
-
 def _apply_governance_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
     _apply_runtime_specs(
         env_vars,
@@ -1077,7 +1052,6 @@ def _apply_runtime_settings(env_vars: dict[str, str], updated_keys: list[str]) -
     _apply_storage_runtime_settings(env_vars, updated_key_set)
     _apply_rag_runtime_settings(env_vars, updated_key_set)
     _apply_cache_runtime_settings(env_vars, updated_key_set)
-    _apply_url_ingest_runtime_settings(env_vars, updated_key_set)
     _apply_governance_runtime_settings(env_vars, updated_key_set)
     _apply_mineru_runtime_settings(env_vars, updated_key_set)
     _apply_etl4llm_runtime_settings(env_vars, updated_key_set)
@@ -1257,12 +1231,8 @@ def get_settings(
                 getattr(settings, "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY", True)
             ),
         ),
-        url_ingest=UrlIngestConfig(
+        url_ingest=UrlIngestStatus(
             enabled=bool(getattr(settings, "URL_INGEST_ENABLED", False)),
-            max_bytes=int(getattr(settings, "URL_INGEST_MAX_BYTES", 0) or 0),
-            timeout_sec=float(getattr(settings, "URL_INGEST_TIMEOUT_SEC", 0.0) or 0.0),
-            allow_private_ips=bool(getattr(settings, "URL_INGEST_ALLOW_PRIVATE_IPS", False)),
-            follow_redirects=bool(getattr(settings, "URL_INGEST_FOLLOW_REDIRECTS", False)),
         ),
         governance=GovernanceConfig(
             enabled=bool(getattr(settings, "GOVERNANCE_ENABLED", False)),
@@ -1580,23 +1550,6 @@ def _update_cache_env(env_vars: dict[str, str], updated_keys: list[str], cache: 
     )
 
 
-def _update_url_ingest_env(env_vars: dict[str, str], updated_keys: list[str], url_ingest: UrlIngestConfig) -> None:
-    _set_bool_env(env_vars, "URL_INGEST_ENABLED", url_ingest.enabled)
-    _set_int_env(env_vars, "URL_INGEST_MAX_BYTES", getattr(url_ingest, "max_bytes", 0) or 0)
-    _set_float_env(env_vars, "URL_INGEST_TIMEOUT_SEC", getattr(url_ingest, "timeout_sec", 0.0) or 0.0)
-    _set_bool_env(env_vars, "URL_INGEST_ALLOW_PRIVATE_IPS", getattr(url_ingest, "allow_private_ips", False))
-    _set_bool_env(env_vars, "URL_INGEST_FOLLOW_REDIRECTS", getattr(url_ingest, "follow_redirects", False))
-    updated_keys.extend(
-        [
-            "URL_INGEST_ENABLED",
-            "URL_INGEST_MAX_BYTES",
-            "URL_INGEST_TIMEOUT_SEC",
-            "URL_INGEST_ALLOW_PRIVATE_IPS",
-            "URL_INGEST_FOLLOW_REDIRECTS",
-        ]
-    )
-
-
 def _update_governance_env(env_vars: dict[str, str], updated_keys: list[str], governance: GovernanceConfig) -> None:
     _set_bool_env(env_vars, "GOVERNANCE_ENABLED", getattr(governance, "enabled", False))
     _set_bool_env(env_vars, "GOVERNANCE_PII_ANONYMIZE", getattr(governance, "pii_anonymize", False))
@@ -1872,7 +1825,6 @@ def _apply_request_settings_updates(
         ("minio", _update_minio_env),
         ("rag", _update_rag_env),
         ("cache", _update_cache_env),
-        ("url_ingest", _update_url_ingest_env),
         ("governance", _update_governance_env),
         ("mineru", _update_mineru_env),
         ("etl4llm", _update_etl4llm_env),
@@ -2239,8 +2191,13 @@ def _get_database_status(session_local_factory: Callable[[], Any], text: Callabl
     return status
 
 
-def _get_milvus_status(connections: Any) -> dict[str, object]:
+def _get_milvus_status() -> dict[str, object]:
     status = {"connected": False, "message": ""}
+    try:
+        from pymilvus import connections
+    except ImportError:
+        return {"connected": False, "message": "Milvus 客户端未安装"}
+
     try:
         connections.connect(
             alias="status_check",
@@ -2248,6 +2205,7 @@ def _get_milvus_status(connections: Any) -> dict[str, object]:
             port=settings.MILVUS_PORT,
             user=settings.MILVUS_USER or None,
             password=settings.MILVUS_PASSWORD or None,
+            timeout=1.0,
         )
         connections.disconnect("status_check")
         status["connected"] = True
@@ -2255,6 +2213,23 @@ def _get_milvus_status(connections: Any) -> dict[str, object]:
     except Exception as exc:  # noqa: BLE001
         status["message"] = str(exc)[:100]
     return status
+
+
+def _get_vector_status() -> dict[str, object]:
+    backend = (settings.VECTOR_BACKEND or "milvus").strip().lower()
+    if backend == "milvus":
+        return _get_milvus_status()
+
+    from app.core.health_checks import check_vector
+
+    vector_status, _, _ = check_vector(settings, mode="health")
+    ready = vector_status["status"] == "ready"
+    if backend == "memory":
+        message = "内存索引（开发模式）"
+    else:
+        state = "就绪" if ready else "索引不存在" if vector_status["status"] == "missing" else "连接未检测"
+        message = f"{backend} · {state}"
+    return {"connected": ready, "message": message}
 
 
 @router.get("/status", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -2266,7 +2241,6 @@ async def get_system_status(
 ):
     """Get system status."""
     _ensure_settings_readable(db, tenant_id, account_id)
-    from pymilvus import connections
     from sqlalchemy import text
 
     from app.core.database import SessionLocal
@@ -2275,7 +2249,7 @@ async def get_system_status(
 
     return {
         "database": _get_database_status(SessionLocal, text),
-        "milvus": _get_milvus_status(connections),
+        "milvus": _get_vector_status(),
         "llm": {"configured": bool(settings.LLM_API_KEY), "model": settings.LLM_MODEL},
         "embedding": {
             "configured": bool(settings.EMBEDDING_API_KEY or settings.LLM_API_KEY),

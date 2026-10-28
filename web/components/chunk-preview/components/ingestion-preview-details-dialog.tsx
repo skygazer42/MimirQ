@@ -7,7 +7,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { Download, FileText, Settings2 } from 'lucide-react'
+import { Download, FileText, Settings2 } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 

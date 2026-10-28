@@ -2,22 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { FileText } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
-import { AnalysisPageShell } from '@/components/ui/analysis-page-shell'
-import { KNOWLEDGE_OPS_BACKGROUND_CLASS } from '@/components/ui/knowledge-ops-hero'
 
 import { datasetApi, datasetCategoryApi } from '@/lib/api/datasets'
 import { reportApi } from '@/lib/api/reports'
 import { formatApiError } from '@/lib/api-errors'
 import { queryKeys } from '@/lib/query-keys'
-import { cn, formatDate, detachPromise } from '@/lib/utils'
+import { formatDate, detachPromise } from '@/lib/utils'
 
 import type { DatasetCategoryNode } from '@/types'
 
 import { ReportsControlPanel } from './components/reports-control-panel'
-import { ReportsPageHero } from './components/reports-page-hero'
 import { ReportsResultSection } from './components/reports-result-section'
 import {
   exportChartsJsonPayload,
@@ -34,8 +30,6 @@ import {
   pipelineVersionLabel,
   buildIssueRows,
   buildTopDocumentRows,
-  reportDataSourceLabel,
-  reportDataSourceSub,
   reportPipelineFilterLabel,
   safeNumber,
   sumRecordValues,
@@ -46,6 +40,7 @@ import {
 } from './report-tokens'
 import { useDatasetReportQuery } from './use-dataset-report-query'
 import { useFlatReportFolders } from './use-flat-report-folders'
+import styles from './reports.module.css'
 
 export { useDatasetReportQuery } from './use-dataset-report-query'
 
@@ -434,14 +429,9 @@ export default function ReportsCenterPage() {
     : Math.max(0, totalDocs - failed - quarantined)
   const successRate = formatPct(successDocs, totalDocs)
   const failedRate = formatPct(failed, totalDocs)
-  const selectedDatasetName =
-    selectedDataset?.name || report?.dataset_name || '未选择数据集'
   const latestAuditTime = report?.generated_at
     ? formatDate(report.generated_at)
     : '-'
-  const dataProvenance = report?.data_provenance || null
-  const dataSourceLabel = reportDataSourceLabel(dataProvenance)
-  const dataSourceSub = reportDataSourceSub(dataProvenance)
   const piiHits = sumRecordValues(report?.compliance?.pii_hits_total)
   const secretHits = sumRecordValues(report?.compliance?.secrets_hits_total)
   const sensitiveHits = piiHits + secretHits
@@ -648,36 +638,7 @@ export default function ReportsCenterPage() {
 
   return (
     <AppFrame>
-      <div
-        className={cn(KNOWLEDGE_OPS_BACKGROUND_CLASS, 'bg-info/[0.035]')}
-      >
-        <AnalysisPageShell
-          title="数据报告与审计概览"
-          description="一键导出数据报告与审计结果，支持多种格式与指标视图，便于数据治理与合规审查。"
-          icon={FileText}
-          iconColor="text-primary"
-          badge="报告"
-          size="full"
-          showHeader={false}
-          bodyGutter="none"
-          bodyClassName="!pb-0 !pt-0"
-          bodyContainerClassName="max-w-none"
-        >
-          <div
-            data-reports-dossier="true"
-            className="space-y-3 px-4 py-3 md:px-6 md:py-4"
-          >
-            <ReportsPageHero
-              selectedDatasetName={selectedDatasetName}
-              datasetId={datasetId}
-              totalDocs={totalDocs}
-              isLoadingReport={isLoadingReport}
-              report={report}
-              latestAuditTime={latestAuditTime}
-              dataSourceLabel={dataSourceLabel}
-              dataSourceSub={dataSourceSub}
-              dataProvenance={dataProvenance}
-            />
+      <div className={styles.workspace} data-reports-dossier="true">
             <ReportsControlPanel
               datasetId={datasetId}
               datasets={datasets}
@@ -685,7 +646,6 @@ export default function ReportsCenterPage() {
               pipelineVersionSelectValue={pipelineVersionSelectValue}
               pipelineVersionOptions={pipelineVersionOptions}
               connectorRunsLimit={connectorRunsLimit}
-              showOnlyIssues={showOnlyIssues}
               redact={redact}
               isExportingJson={isExportingJson}
               isExportingHtml={isExportingHtml}
@@ -696,7 +656,6 @@ export default function ReportsCenterPage() {
               onDatasetChange={handleDatasetChange}
               onPipelineHashChange={handlePipelineHashChange}
               onConnectorRunsLimitChange={setConnectorRunsLimit}
-              onShowOnlyIssuesChange={setShowOnlyIssues}
               onRedactChange={setRedact}
               onExportJson={handleExportJson}
               onExportCompleteJson={handleExportCompleteJson}
@@ -704,11 +663,17 @@ export default function ReportsCenterPage() {
               onExportRagAuditHtml={handleExportRagAuditHtml}
               onExportBundleZip={handleExportBundleZip}
               onExportHtml={handleExportHtml}
-              onRegenerateReport={reportQuery.refetch}
               onRefresh={handleRefresh}
             />
-
             <ReportsResultSection
+              baseCoverageRows={baseCoverageRows}
+              showOnlyIssues={showOnlyIssues}
+              onShowOnlyIssuesChange={setShowOnlyIssues}
+              redact={redact}
+              onRetry={() => reportQuery.refetch()}
+              datasetsErrorMessage={datasetsQuery.error ? formatApiError(datasetsQuery.error, '数据集加载失败') : ''}
+              isLoadingDatasets={isLoadingDatasets}
+              onRetryDatasets={() => datasetsQuery.refetch()}
               report={report}
               datasetId={datasetId}
               isLoadingReport={isLoadingReport}
@@ -744,8 +709,6 @@ export default function ReportsCenterPage() {
               versionTotal={versionTotal}
               issueRows={issueRows}
             />
-          </div>
-        </AnalysisPageShell>
       </div>
     </AppFrame>
   )

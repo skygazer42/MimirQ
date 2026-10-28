@@ -1,9 +1,10 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { AlertTriangle, Grid3X3, PlayCircle } from 'lucide-react'
+import { AlertTriangle, Grid3X3, PlayCircle } from '@/components/icons'
 
 import { Button } from '@/components/ui/button'
+import { FeedbackToast } from '@/components/feedback-toast'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import type { RegressionAblationGridValue, RegressionRunCreate } from '@/types'
@@ -175,14 +176,10 @@ export function AblationGridPanel({
         className="mt-3 min-h-36 rounded-xl border-border bg-background font-mono text-xs text-foreground"
       />
 
+      <FeedbackToast type="error" message={batchError} id="ablation-batch-feedback" />
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <div className="min-h-5 text-xs text-muted-foreground">
-          {batchError ? (
-            <span className="inline-flex items-center gap-1 text-destructive">
-              <AlertTriangle className="size-3.5" />
-              {batchError}
-            </span>
-          ) : error ? (
+          {error ? (
             <span className="inline-flex items-center gap-1 text-destructive">
               <AlertTriangle className="size-3.5" />
               {error}

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, ChevronRight, FolderOpen, FolderPlus, FolderTree, Loader2, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, FolderOpen, FolderPlus, FolderTree, Loader2, Plus, Trash2 } from '@/components/icons'
 import { toast } from 'sonner'
 
 import {

@@ -157,7 +157,7 @@ export function useGraphDataLoading({
         if (requestToken !== loadTokenRef.current) return
 
         setGraphData(data)
-        setViewMode('3d')
+        setViewMode('2d')
         setDataSource(source)
         setTraceReplay(null)
         setFileName(

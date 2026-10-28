@@ -1,0 +1,31 @@
+{
+  "title": "数据集",
+  "selectedId": "product-docs",
+  "palette": {"canvas":"#F6F7F8","surface":"#FFFFFF","ink":"#20262E","muted":"#64707D","line":"#DFE3E8","selected":"#E9ECEF"},
+  "categories": [{"name":"全部数据集","count":10},{"name":"产品研发","count":4},{"name":"业务资料","count":3},{"name":"团队协作","count":2},{"name":"未分类","count":1}],
+  "statuses": [{"id":"all","label":"全部","count":10},{"id":"active","label":"正常","count":5},{"id":"anomaly","label":"异常","count":2},{"id":"pending","label":"待处理","count":2},{"id":"testing","label":"测试集","count":1}],
+  "datasets": [
+    {"id":"product-docs","name":"产品使用文档","description":"产品功能、操作说明与常见问题。","category":"产品研发","status":"正常","statusId":"active","documents":128,"chunks":2148,"permission":"全员","members":8,"updated":"12 分钟前","anomalies":0},
+    {"id":"api-guide","name":"API 与集成指南","description":"接口说明、鉴权方式与系统集成文档。","category":"产品研发","status":"正常","statusId":"active","documents":64,"chunks":960,"permission":"部分成员","members":6,"updated":"35 分钟前","anomalies":0},
+    {"id":"delivery","name":"客户交付资料","description":"交付手册、验收记录与客户环境说明。","category":"业务资料","status":"异常","statusId":"anomaly","documents":86,"chunks":580,"permission":"部分成员","members":12,"updated":"1 小时前","anomalies":3},
+    {"id":"sales","name":"销售与产品资料","description":"产品介绍、方案与客户沟通常用资料。","category":"业务资料","status":"正常","statusId":"active","documents":41,"chunks":712,"permission":"全员","members":10,"updated":"2 小时前","anomalies":0},
+    {"id":"engineering","name":"研发规范","description":"编码规范、评审流程与工程约定。","category":"产品研发","status":"待处理","statusId":"pending","documents":38,"chunks":624,"permission":"部分成员","members":9,"updated":"3 小时前","anomalies":0},
+    {"id":"policies","name":"内部制度","description":"日常办公、人事与财务相关制度。","category":"团队协作","status":"正常","statusId":"active","documents":25,"chunks":386,"permission":"全员","members":8,"updated":"4 小时前","anomalies":0},
+    {"id":"meetings","name":"会议与项目纪要","description":"项目进展、会议结论与事项记录。","category":"团队协作","status":"待处理","statusId":"pending","documents":58,"chunks":794,"permission":"部分成员","members":6,"updated":"昨天","anomalies":0},
+    {"id":"contracts","name":"历史合同归档","description":"已归档合同、附件及相关往来材料。","category":"业务资料","status":"异常","statusId":"anomaly","documents":143,"chunks":1286,"permission":"仅自己","members":3,"updated":"昨天","anomalies":5},
+    {"id":"evaluation","name":"检索评测集","description":"检索效果验证使用的问题与对应资料。","category":"产品研发","status":"测试集","statusId":"testing","documents":12,"chunks":240,"permission":"部分成员","members":4,"updated":"2 天前","anomalies":0},
+    {"id":"parsing","name":"Parsing Workspace [b10fb173]","description":"解析草稿与 Markdown 文件。","category":"未分类","status":"正常","statusId":"active","documents":0,"chunks":0,"permission":"仅自己","members":0,"updated":"—","anomalies":0}
+  ],
+  "selectedDetails": {
+    "idShort":"7e3a9c12",
+    "pipeline":"未启用",
+    "description":"产品功能、操作说明与常见问题。",
+    "actions":["入库","检索测试","预检扫描","数据画像","入库策略"],
+    "documents":[
+      {"name":"产品使用手册.pdf","kind":"PDF","size":"4.2 MB","status":"已就绪","chunks":162,"updated":"12 分钟前"},
+      {"name":"知识库接入规范.md","kind":"MD","size":"84 KB","status":"已就绪","chunks":24,"updated":"35 分钟前"},
+      {"name":"权限与成员管理.pdf","kind":"PDF","size":"1.8 MB","status":"已就绪","chunks":76,"updated":"1 小时前"},
+      {"name":"常见问题与排查.md","kind":"MD","size":"126 KB","status":"已就绪","chunks":38,"updated":"昨天"}
+    ]
+  }
+}

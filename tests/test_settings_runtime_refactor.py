@@ -194,6 +194,7 @@ def test_get_system_status_reports_parser_health_branches(monkeypatch: pytest.Mo
     monkeypatch.setattr(settings, "LLM_MODEL", "gpt-5.4-mini", raising=False)
     monkeypatch.setattr(settings, "EMBEDDING_API_KEY", "", raising=False)
     monkeypatch.setattr(settings, "EMBEDDING_MODEL", "text-embedding-3-small", raising=False)
+    monkeypatch.setattr(settings, "VECTOR_BACKEND", "milvus")
     monkeypatch.setattr(settings, "MILVUS_HOST", "milvus.example.test", raising=False)
     monkeypatch.setattr(settings, "MILVUS_PORT", 19530, raising=False)
     monkeypatch.setattr(settings, "MILVUS_USER", "", raising=False)
@@ -266,3 +267,42 @@ def test_get_system_status_reports_parser_health_branches(monkeypatch: pytest.Mo
         "available": True,
         "message": "configured (models: /models/magicpdf)",
     }
+
+
+@pytest.mark.parametrize(
+    ("backend", "expected_vector_status"),
+    [
+        ("memory", {"connected": True, "message": "内存索引（开发模式）"}),
+        ("milvus", {"connected": False, "message": "Milvus 客户端未安装"}),
+    ],
+)
+def test_get_system_status_without_optional_milvus_client(
+    monkeypatch: pytest.MonkeyPatch, backend: str, expected_vector_status: dict[str, object]
+) -> None:
+    from app.api.v1 import settings as settings_api
+    from app.core.config import settings
+
+    class _Session:
+        def execute(self, query):
+            assert str(query) == "SELECT 1"
+
+        def close(self):
+            pass
+
+    async def _parser_statuses(**_kwargs):
+        return {"basic": {"enabled": True, "available": True, "message": "built-in"}}
+
+    monkeypatch.setattr(settings_api, "_ensure_settings_readable", lambda *_args: None)
+    monkeypatch.setattr(settings_api, "_build_parser_statuses", _parser_statuses)
+    monkeypatch.setattr("app.core.database.SessionLocal", _Session)
+    monkeypatch.setattr(settings, "VECTOR_BACKEND", backend)
+    monkeypatch.setitem(sys.modules, "pymilvus", None)
+
+    status = asyncio.run(
+        settings_api.get_system_status(tenant_id=uuid4(), account_id="reader", db=SimpleNamespace())
+    )
+
+    assert status["database"] == {"connected": True, "message": "connected"}
+    assert status["milvus"] == expected_vector_status
+    assert status["parsers"]["basic"]["available"] is True
+    assert "llm" in status and "embedding" in status

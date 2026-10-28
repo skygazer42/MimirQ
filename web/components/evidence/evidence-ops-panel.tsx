@@ -1,20 +1,17 @@
 'use client'
-
-import { useState, type ReactNode } from 'react'
-import { Download, Loader2, PackageCheck, ShieldCheck } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
-import { toast } from 'sonner'
-
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Panel } from '@/components/ui/panel'
-import { Textarea } from '@/components/ui/textarea'
-import { DatasetSelectField } from '@/components/ops/dataset-select-field'
-import { OperationResultPanel } from '@/components/ops/operation-result-panel'
-import { evidenceApi } from '@/lib/api'
-import { formatApiError } from '@/lib/api-errors'
-import { detachPromise } from '@/lib/utils'
+import { useState, type ReactNode } from 'react';
+import { Download, Loader2, PackageCheck, ShieldCheck } from '@/components/icons';
+import type { PlatformIcon } from '@/components/icons';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { WorkspaceNotice } from '@/components/ui/operational-workspace';
+import { Textarea } from '@/components/ui/textarea';
+import { DatasetSelectField } from '@/components/ops/dataset-select-field';
+import { OperationResultPanel } from '@/components/ops/operation-result-panel';
+import { evidenceApi } from '@/lib/api';
+import { formatApiError } from '@/lib/api-errors';
+import { detachPromise } from '@/lib/utils';
 
 function parseJson(raw: string) {
   const value = raw.trim()
@@ -44,21 +41,25 @@ export function EvidenceOpsPanel() {
   const item = itemId.trim()
   const capsule = capsuleId.trim()
 
+  const [actionError, setActionError] = useState<string | null>(null)
+
   async function runAction(key: string, title: string, action: () => Promise<unknown>) {
     setBusy(key)
+    setActionError(null)
+    setResult(null)
     try {
       const payload = await action()
       setResult({ title, payload })
       toast.success(`${title}完成`)
     } catch (error) {
-      toast.error(formatApiError(error, `${title}失败`))
+      setActionError(formatApiError(error, `${title}失败`))
     } finally {
       setBusy(null)
     }
   }
 
   return (
-    <Panel padding="md" className="mt-4 border-border/70 bg-card/95">
+    <fieldset disabled={Boolean(busy)} className="space-y-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="text-sm font-semibold text-foreground">Evidence 管理操作</div>
@@ -110,16 +111,17 @@ export function EvidenceOpsPanel() {
       </details>
 
       <OperationResultPanel className="mt-3" title="Evidence 操作结果" result={result} emptyMessage="选择上方操作后，这里展示执行摘要；原始响应默认收起。" />
-    </Panel>
+      {actionError ? <WorkspaceNotice>{actionError}</WorkspaceNotice> : null}
+    </fieldset>
   )
 }
 
 function Field({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
   return (
-    <div className="space-y-1">
-      <Label className="text-[11px] font-medium text-muted-foreground">{label}</Label>
+    <label className="block space-y-2 text-[13px]">
+      <span className="font-medium text-muted-foreground">{label}</span>
       {children}
-    </div>
+    </label>
   )
 }
 
@@ -132,7 +134,7 @@ function ActionButton({
 }: Readonly<{
   busy: boolean
   disabled: boolean
-  icon: LucideIcon
+  icon: PlatformIcon
   label: string
   onClick: () => Promise<void>
 }>) {

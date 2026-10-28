@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { PanelRightClose, PanelRightOpen } from 'lucide-react'
+import { PanelRightClose, PanelRightOpen } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 
 import { readClientStorage, writeClientStorage } from '@/lib/client-storage'

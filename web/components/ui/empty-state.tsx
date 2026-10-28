@@ -1,12 +1,12 @@
 import * as React from "react"
-import type { LucideIcon } from "lucide-react"
+import type { PlatformIcon } from "@/components/icons"
 
 import { cn } from "@/lib/utils"
 
 export type EmptyStateProps = {
   title: string
   description?: React.ReactNode
-  icon?: LucideIcon
+  icon?: PlatformIcon
   iconClassName?: string
   className?: string
   children?: React.ReactNode
@@ -29,7 +29,7 @@ export function EmptyState({
     >
       {Icon ? (
         <div className="mb-5 grid size-14 place-items-center rounded-2xl bg-muted/50 border border-border/50">
-            <Icon className={cn("size-7 text-muted-foreground/70", iconClassName)} />
+          <Icon appearance={iconClassName ? "monochrome" : "color"} className={cn("size-7 text-muted-foreground/70", iconClassName)} />
         </div>
       ) : null}
 

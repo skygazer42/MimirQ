@@ -1,6 +1,6 @@
 'use client'
 
-import type { LucideIcon } from 'lucide-react'
+import type { PlatformIcon } from '@/components/icons'
 
 import { cn } from '@/lib/utils'
 import { IconButton } from '@/components/ui/icon-button'
@@ -22,7 +22,7 @@ type WorkbenchPanelDialogProps = {
    * Optional trigger. If omitted, provide `triggerIcon` + `triggerLabel`.
    */
   trigger?: React.ReactNode
-  triggerIcon?: LucideIcon
+  triggerIcon?: PlatformIcon
   triggerLabel?: string
 
   className?: string

@@ -3,12 +3,13 @@
 import * as React from "react"
 import { type DialogProps } from "@radix-ui/react-dialog"
 import { Command as CommandPrimitive } from "cmdk"
-import { Search } from "lucide-react"
+import { Search } from "@/components/icons"
 import { useTranslations } from 'next-intl'
 
 import { cn } from "@/lib/utils"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import type { RadixRef } from "@/lib/radix-utils"
+import styles from "./command.module.css"
 
 const Command = React.forwardRef<
   RadixRef<typeof CommandPrimitive>,
@@ -29,18 +30,52 @@ interface CommandDialogProps extends DialogProps {}
 
 const CommandDialog = ({ children, ...props }: CommandDialogProps) => {
   const t = useTranslations('CommonUi')
+  const returnFocusRef = React.useRef<HTMLElement | null>(null)
 
   return (
     <Dialog {...props}>
       <DialogContent
         data-command-dialog="true"
-        className="overflow-hidden border border-foreground/15 bg-background p-0 shadow-none sm:max-w-[560px]"
+        className={cn(styles.dialog, "flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden rounded-xl border border-foreground/15 bg-background p-0 shadow-none sm:max-w-[600px] [&>button]:right-2 [&>button]:top-1.5 [&>button]:flex [&>button]:size-11 [&>button]:items-center [&>button]:justify-center")}
+        onOpenAutoFocus={(event) => {
+          const content = event.currentTarget instanceof HTMLElement ? event.currentTarget : null
+          const opener = document.activeElement
+          if (opener instanceof HTMLElement && !content?.contains(opener)) {
+            returnFocusRef.current = opener
+          }
+          const input = content?.querySelector<HTMLInputElement>('[cmdk-input]')
+          if (input) {
+            event.preventDefault()
+            input.focus()
+          }
+        }}
+        onCloseAutoFocus={(event) => {
+          // The command menu opens from several controls, without a DialogTrigger.
+          const opener = returnFocusRef.current
+          returnFocusRef.current = null
+          const content = event.currentTarget instanceof HTMLElement ? event.currentTarget : null
+          const focused = document.activeElement
+          // A command may already have opened and focused another panel.
+          if (
+            focused instanceof HTMLElement &&
+            focused !== document.body &&
+            focused !== opener &&
+            !content?.contains(focused)
+          ) {
+            event.preventDefault()
+            return
+          }
+          if (opener?.isConnected) {
+            event.preventDefault()
+            opener.focus({ preventScroll: true })
+          }
+        }}
       >
         <DialogTitle className="sr-only">{t('command.title')}</DialogTitle>
         <DialogDescription className="sr-only">
           {t('command.description')}
         </DialogDescription>
-        <Command className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-group]]:px-2 [&_[data-cmdk-input-wrapper]_svg]:h-5 [&_[data-cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5">
+        <Command className="h-auto min-h-0 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group]]:px-0 [&_[data-cmdk-input-wrapper]]:shrink-0 [&_[data-cmdk-input-wrapper]]:px-5 [&_[cmdk-item]]:min-h-11 [&_[cmdk-item]]:cursor-pointer [&_[cmdk-item]]:items-start [&_[cmdk-item]]:gap-3 [&_[cmdk-item]]:rounded-lg [&_[cmdk-item]]:px-3 [&_[cmdk-item]]:py-2 [&_[cmdk-item]]:text-[15px] [&_[cmdk-item]]:leading-[22px] [&_[cmdk-item]>svg]:mt-[3px] [&_[cmdk-item]_svg]:mr-0 [&_[cmdk-item]_svg]:shrink-0 [&_[cmdk-item]_svg]:text-muted-foreground">
           {children}
         </Command>
       </DialogContent>

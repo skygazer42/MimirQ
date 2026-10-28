@@ -4,7 +4,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Download, GitCompareArrows, Info } from 'lucide-react'
+import { Download, GitCompareArrows, Info } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'

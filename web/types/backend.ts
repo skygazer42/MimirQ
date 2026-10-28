@@ -17,6 +17,7 @@ export type MetaDetailsResponse = paths['/api/v1/meta/details']['get']['response
 export type UserProfile = OpenApiSchema<'UserPublic'>
 export type AuthToken = OpenApiSchema<'TokenResponse'>
 export type AuthResponse = OpenApiSchema<'AuthResponse'>
+export type AuthPolicy = OpenApiSchema<'AuthPolicy'>
 export type RegisterRequest = OpenApiSchema<'RegisterRequest'>
 export type LoginRequest = OpenApiSchema<'LoginRequest'>
 

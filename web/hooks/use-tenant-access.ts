@@ -12,6 +12,8 @@ export function useTenantAccess(options: { enabled?: boolean } = {}) {
     queryFn: () => rbacApi.getCurrentTenantAccess(),
     enabled: options.enabled,
     staleTime: 5 * 60_000,
+    // A member may have just been promoted in another administrator's browser.
+    refetchOnWindowFocus: 'always',
     retry: 1,
   })
 }

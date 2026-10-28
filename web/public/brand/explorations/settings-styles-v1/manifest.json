@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "project": "Ragvia · 设置工作区",
+  "brief": "同一组处理偏好：自动选择解析器、LangChain 递归切分、解析器可用状态。比较真实中文字形、色彩关系和工作区构图。",
+  "round": "01",
+  "nativeViewport": "1395x1004",
+  "candidates": [
+    {
+      "id": "current",
+      "name": "当前页面 · 对照",
+      "baseline": true,
+      "kind": "image",
+      "source": "E:/MimirQ/artifacts/rebrand/settings-picker-surface-v1/after/parser.png",
+      "concept": "保留当前界面截图，便于比较本轮变化。",
+      "typography": "现有平台中文无衬线字体",
+      "palette": ["#F4EFE7", "#3A352C", "#8F704B"],
+      "traits": ["应用侧栏与设置目录", "两列表单与上拉菜单"]
+    },
+    {
+      "id": "paper",
+      "name": "A · 纸页",
+      "concept": "像阅读技术手册一样，靠文字与细线组织配置。",
+      "typography": "Noto Serif SC 宋体：26px 标题、15px 标签、13px 说明；Manrope 拉丁字",
+      "palette": ["#F3F0E8", "#282C2A", "#963E2B", "#E9DFD2"],
+      "traits": ["纵向阅读与窄文字目录", "宋体、暖纸与赭红", "细线分隔、4px 圆角"],
+      "source": "paper.html"
+    },
+    {
+      "id": "verdant",
+      "name": "B · 青衡",
+      "concept": "把设置做成清楚的控制台，让选择与当前配置并排。",
+      "typography": "Noto Sans SC 黑体：24px 标题、15px 标签、13px 说明；Manrope 拉丁字",
+      "palette": ["#EDF2EF", "#143D32", "#26745B", "#D8E8DE"],
+      "traits": ["顶部应用导航与横向设置分组", "薄荷灰工作面与松绿选择色", "宽选项列表、连续色带"],
+      "source": "verdant.html"
+    },
+    {
+      "id": "slate",
+      "name": "C · 界面",
+      "concept": "像配置检查器一样，目录、当前值和可用选项各就其位。",
+      "typography": "DengXian 等线：24px 标题、16px 标签、14px 说明；Bahnschrift 拉丁字",
+      "palette": ["#ECEFF3", "#283344", "#3159A8", "#DCE5F3"],
+      "traits": ["64px 工具轨与设置索引", "当前配置与解析检查器并列", "冷灰蓝、2px 圆角与清晰描边"],
+      "source": "slate.html"
+    }
+  ]
+}

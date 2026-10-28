@@ -1,7 +1,7 @@
 'use client'
 
 import { AnimatePresence, motion } from 'framer-motion'
-import { CircleAlert, ShieldCheck } from 'lucide-react'
+import { CircleAlert, ShieldCheck } from '@/components/icons'
 
 import { cn } from '@/lib/utils'
 import type { PrecheckEmbeddingAdvisoryView } from '@/lib/precheck-embedding-advisories'

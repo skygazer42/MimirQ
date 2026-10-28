@@ -5,7 +5,7 @@
 
 import { useState, useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { FileText, Upload, Loader2, Trash2, CheckCircle2, AlertCircle, X, Clock, Search } from 'lucide-react'
+import { FileText, Upload, Loader2, Trash2, CheckCircle2, AlertCircle, X, Clock, Search } from '@/components/icons'
 import { useDocuments } from '@/hooks/use-documents'
 import { useLocalSearch } from '@/hooks/use-local-search'
 import { cn, formatFileSize, formatDate } from '@/lib/utils'
@@ -272,7 +272,7 @@ function DocumentCard({
           "p-2 rounded-lg transition-colors flex items-center justify-center",
           isSelected ? "bg-primary/10 text-primary" : "bg-secondary/70 text-muted-foreground group-hover:text-foreground"
         )}>
-          <FileTypeIcon type={document.file_type} className="size-5" />
+          <FileTypeIcon type={document.file_type} filename={document.filename} className="size-5" />
         </div>
 
         {/* 文档信息 */}

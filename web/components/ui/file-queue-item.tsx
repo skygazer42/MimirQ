@@ -13,7 +13,7 @@ import {
   Trash2,
   RotateCcw,
   Clock,
-} from 'lucide-react'
+} from '@/components/icons'
 import { useTranslations } from 'next-intl'
 import { Progress } from '@/components/ui/progress'
 

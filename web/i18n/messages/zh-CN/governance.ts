@@ -7,8 +7,8 @@ DataGovernancePage: {
   },
 GovernanceProfilesRoutePage: {
     loading: {
-      message: '正在加载治理 Profiles...',
-      srMessage: 'Loading governance profiles page',
+      message: '正在加载治理配置…',
+      srMessage: '正在加载治理配置页面',
     },
   },
 GovernanceCommonLinesRoutePage: {
@@ -108,9 +108,9 @@ DataClassifier: {
     },
     auto: {
       empty: '请先选择或输入文档内容',
-      success: '后端已返回 {count} 个分类标签',
-      noTags: '后端未返回可用分类标签',
-      failed: '后端自动分类失败',
+      success: '已更新分类与标签',
+      noTags: '未识别到可用标签',
+      failed: '自动分类失败，请重试',
     },
     sections: {
       category: '文档分类',

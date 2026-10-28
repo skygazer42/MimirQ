@@ -1,6 +1,9 @@
 'use client'
 
-import { Loader2 } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { DirectoryWorkspace, workspaceStyles as ws } from '@/components/ui/operational-workspace'
+import { SuiteActionsBar } from './suite-actions-bar'
+import { Loader2 } from '@/components/icons'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -153,8 +156,11 @@ export function EvidenceSuiteWorkbenchShell({
   whyMissedRetrieving,
   whyMissedError,
 }: Readonly<EvidenceSuiteWorkbenchState>) {
+  const [pane, setPane] = useState<'directory' | 'detail'>('directory')
+  const [detailOpen, setDetailOpen] = useState(false)
+  const detailTrigger = useRef<HTMLElement | null>(null)
   return (
-    <div className="space-y-4">
+    <div className="flex min-h-0 flex-1 flex-col">
       {pendingFeedbackId ? (
         <div className="rounded-2xl border border-warning/25 bg-warning/8 px-4 py-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -196,8 +202,7 @@ export function EvidenceSuiteWorkbenchShell({
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-        <SuiteListPanel
+      <DirectoryWorkspace pane={pane} onPaneChange={setPane} directoryLabel="证据集" detailLabel="证据条目" directory={<SuiteListPanel
           datasetLabel={datasetLoading ? '加载中…' : dataset?.name || datasetId || '-'}
           suiteQuery={suiteQuery}
           onSuiteQueryChange={setSuiteQuery}
@@ -211,11 +216,9 @@ export function EvidenceSuiteWorkbenchShell({
           onCreateSuite={openCreateSuite}
           onSelectSuite={(suiteId) => {
             setSelectedSuiteId(suiteId)
-            setSelectedItemId('')
+            setSelectedItemId(''); setPane('detail')
           }}
-        />
-
-        <ItemListPanel
+        />}>{selectedSuiteId ? <><SuiteActionsBar selectedSuite={selectedSuite} suiteCounts={suiteCounts} importingQAFaq={importingQAFaq} qaFaqInputRef={qaFaqInputRef} onImportQAFaqFile={file => { void handleImportQAFaq(file) }} onOpenHardcases={() => setHardcaseOpen(true)} onOpenDashboard={() => setDashboardOpen(true)} onExportSuite={handleExportSuite} onExportLtrTraining={handleExportLtrTraining} onSyncSuite={() => { void handleSyncSuite() }} /><ItemListPanel
           selectedSuite={selectedSuite}
           selectedSuiteId={selectedSuiteId}
           itemQuery={itemQuery}
@@ -228,29 +231,18 @@ export function EvidenceSuiteWorkbenchShell({
           itemsError={itemsError}
           selectedItemId={selectedItemId}
           onCreateItem={openCreateItem}
-          onSelectItem={setSelectedItemId}
+          onSelectItem={id => { detailTrigger.current = document.activeElement as HTMLElement; setSelectedItemId(id); setDetailOpen(true) }}
           statusBadgeVariant={evidenceStatusBadgeVariant}
-        />
-
-        <ItemDetailPanel
+        /></> : <div className={ws.empty}><h2>{suitesLoading ? '正在读取证据集…' : suitesError ? '证据集读取失败' : filteredSuites.length ? '选择证据集' : suiteQuery ? '没有匹配的证据集' : '还没有证据集'}</h2><p>{filteredSuites.length ? '从目录选择一个证据集，管理问题、答案和引用。' : '新建证据集后，添加用于复核与回归的问题。'}</p>{!suitesLoading && !suitesError ? <Button onClick={suiteQuery ? () => setSuiteQuery('') : openCreateSuite}>{suiteQuery ? '清除搜索' : '新建证据集'}</Button> : null}</div>}</DirectoryWorkspace>
+      <Dialog open={detailOpen} onOpenChange={setDetailOpen}><DialogContent className={ws.dialog} onCloseAutoFocus={event => { event.preventDefault(); detailTrigger.current?.focus() }}><DialogHeader className={ws.dialogHeader}><DialogTitle>证据条目</DialogTitle><DialogDescription>复核标准答案和引用证据。</DialogDescription></DialogHeader><div className={ws.dialogBody}><ItemDetailPanel
           selectedItem={selectedItem}
           selectedSuite={selectedSuite}
-          suiteCounts={suiteCounts}
-          importingQAFaq={importingQAFaq}
-          qaFaqInputRef={qaFaqInputRef}
           statusBadgeVariant={evidenceStatusBadgeVariant}
-          onImportQAFaqFile={(file) => detachPromise(handleImportQAFaq(file))}
-          onOpenHardcases={() => setHardcaseOpen(true)}
-          onOpenDashboard={() => setDashboardOpen(true)}
-          onExportSuite={handleExportSuite}
-          onExportLtrTraining={handleExportLtrTraining}
-          onSyncSuite={() => detachPromise(handleSyncSuite())}
           onReviewItem={(itemId) => detachPromise(handleReviewItem(itemId))}
           onApproveItem={(itemId) => detachPromise(handleApproveItem(itemId))}
-          onOpenWhyMissed={openWhyMissed}
+          onOpenWhyMissed={() => { setDetailOpen(false); openWhyMissed() }}
           onArchiveItem={(itemId) => detachPromise(handleArchiveItem(itemId))}
-        />
-      </div>
+        /></div></DialogContent></Dialog>
 
       <HardcaseCandidatesDialog
         open={hardcaseOpen}
@@ -307,13 +299,14 @@ export function EvidenceSuiteWorkbenchShell({
           if (!open) resetCreateSuiteForm()
         }}
       >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>新建 Evidence Suite</DialogTitle>
-            <DialogDescription className="text-pretty">Suite 用于组织证据 Items，并作为“同步到回归”的单位。</DialogDescription>
+        <DialogContent  className={ws.dialog}>
+<DialogHeader  className={ws.dialogHeader}>
+            <DialogTitle>新建证据集</DialogTitle>
+            <DialogDescription className="text-pretty">将相关问题与引用证据组织在同一个证据集中。</DialogDescription>
           </DialogHeader>
+<div className={ws.dialogBody}>
 
-          <div className="space-y-3">
+<div className="space-y-3">
             <div className="space-y-1">
               <Label htmlFor="suite-name">名称</Label>
               <Input
@@ -334,12 +327,13 @@ export function EvidenceSuiteWorkbenchShell({
               />
             </div>
             <div className="space-y-1">
-              <Label>Tags（可选）</Label>
-              <TagInput value={suiteTags} onValueChange={setSuiteTags} placeholder="回车添加 tag…" />
+              <Label>标签（选填）</Label>
+              <TagInput value={suiteTags} onValueChange={setSuiteTags} placeholder="输入后回车添加标签" />
             </div>
           </div>
 
-          <DialogFooter>
+</div>
+<DialogFooter  className={ws.dialogFooter}>
             <Button variant="outline" onClick={() => setCreateSuiteOpen(false)}>
               取消
             </Button>
@@ -348,7 +342,7 @@ export function EvidenceSuiteWorkbenchShell({
               创建
             </Button>
           </DialogFooter>
-        </DialogContent>
+</DialogContent>
       </Dialog>
 
       <CreateItemDialog

@@ -9,8 +9,8 @@ import {
   Radar,
   UploadCloud,
   Workflow,
-  type LucideIcon,
-} from 'lucide-react'
+  type PlatformIcon,
+} from '@/components/icons'
 
 import { Button } from '@/components/ui/button'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
@@ -41,7 +41,7 @@ type IngestionHeroPanelProps = {
 
 type SummaryStripItem = {
   detail: string
-  icon: LucideIcon
+  icon: PlatformIcon
   label: string
   tone: string
   value: string

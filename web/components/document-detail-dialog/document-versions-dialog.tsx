@@ -1,6 +1,6 @@
 'use client'
 
-import { Copy, Hash } from 'lucide-react'
+import { Copy, Hash } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'

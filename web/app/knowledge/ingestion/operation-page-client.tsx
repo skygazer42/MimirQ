@@ -1,30 +1,28 @@
 'use client'
+import { FeedbackToast } from '@/components/feedback-toast'
 
-import { type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, type RefObject, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   Archive,
   ArrowRight,
-  CheckCircle2,
   ChevronDown,
   CircleAlert,
   Cloud,
   Database,
-  FileArchive,
-  FileSpreadsheet,
-  FileText,
-  FileType,
+  Dataset as DatasetIcon,
+  Parsing,
   FileUp,
   Folder,
   Link as LinkIcon,
   Loader2,
-  Play,
   Plus,
-  RefreshCw,
   ShieldCheck,
+  Settings2,
   Trash2,
   UploadCloud,
-  type LucideIcon,
-} from 'lucide-react'
+  X,
+  type PlatformIcon,
+} from '@/components/icons'
 import { useQuery } from '@tanstack/react-query'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
@@ -32,17 +30,19 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
+import { getFileTypeMeta } from '@/components/knowledge/file-type'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
 } from '@/components/ui/select'
-import { Tabs, TabsContent } from '@/components/ui/tabs'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { connectorApi, datasetApi, documentApi, settingsApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { readClientStorage } from '@/lib/client-storage'
+import { getParserOption, PARSER_BACKEND_REGISTRY_OPTIONS } from '@/lib/parser-options'
 import { cn, detachPromise, formatFileSize } from '@/lib/utils'
 import type {
   Dataset,
@@ -53,15 +53,12 @@ import type {
 } from '@/types'
 
 import { IngestionViewSwitch } from './view-switch'
+import styles from './operation.module.css'
 
 const DRAFT_KEY = 'mimirq.knowledge.ingestion.operation.draft'
 const DEFAULT_COLLECTION = 'default'
 const NO_DATASET_FILE_BUCKET = '__mimirq_no_dataset__'
 const EMPTY_FILES: File[] = []
-const OPERATION_BACKGROUND_CLASS =
-  'bg-background bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.10),transparent_34rem)] dark:bg-background'
-const OPERATION_HERO_PANEL_CLASS =
-  'relative overflow-hidden border-b border-border/60 bg-transparent px-1 py-2 shadow-none dark:border-border/70'
 
 type UploadSource = 'local' | 'folder' | 'url' | 'object' | 'api'
 type ParserBackend = 'auto' | 'docling' | 'markitdown' | 'deepdoc' | 'csv' | 'json' | 'markdown'
@@ -115,7 +112,7 @@ const DEFAULT_DRAFT: DraftState = {
 const SOURCE_OPTIONS: Array<{
   value: UploadSource
   label: string
-  icon: LucideIcon
+  icon: PlatformIcon
   description: string
 }> = [
   { value: 'local', label: '本地文件', icon: UploadCloud, description: '上传文件' },
@@ -128,10 +125,10 @@ const SOURCE_OPTIONS: Array<{
 const OPERATION_STAGES: Array<{
   label: string
   description: string
-  icon: LucideIcon
+  icon: PlatformIcon
 }> = [
   { label: '登记', description: '校验来源与文件', icon: FileUp },
-  { label: '解析', description: '提取正文与结构', icon: FileText },
+  { label: '解析', description: '提取正文与结构', icon: Parsing },
   { label: '治理', description: '清洗、去重、切块', icon: ShieldCheck },
   { label: '建索引', description: '向量与关键词索引', icon: Database },
 ]
@@ -151,18 +148,10 @@ const ACCEPTED_EXTENSIONS = [
   '.zip',
 ]
 
-const SOFT_CONTROL_CLASS =
-  'rounded-[1rem] border-border/55 bg-background/76 text-[13px] shadow-[inset_0_1px_0_hsl(var(--card)/0.68)]'
-const CONFIG_BOX_CLASS = 'border-y border-border/55 bg-transparent'
-const CONFIG_INPUT_CLASS =
-  'rounded-[1rem] border-border/55 bg-card/72 text-[13px] shadow-[inset_0_1px_0_hsl(var(--card)/0.66)]'
-const TABLE_SHELL_CLASS = 'overflow-hidden border-b border-border/65 bg-transparent'
-const TABLE_HEAD_CLASS = 'bg-muted/20 text-[10px] font-medium text-muted-foreground/72'
-const TABLE_ROW_CLASS = 'border-t border-border/45 text-[12px] leading-5 transition-colors hover:bg-muted/[0.16]'
-const SELECT_MENU_CLASS =
-  'rounded-[18px] border-border/50 bg-popover/96 p-1 shadow-[0_22px_56px_-34px_hsl(var(--foreground)/0.28)] backdrop-blur-xl'
-const SELECT_OPTION_CLASS =
-  'min-h-[46px] items-start rounded-[14px] py-2 pl-8 pr-3 text-[12px] data-[highlighted]:bg-primary/[0.08] data-[state=checked]:bg-primary/[0.08] data-[state=checked]:text-primary'
+const SOFT_CONTROL_CLASS = styles.control
+const CONFIG_INPUT_CLASS = styles.control
+const SELECT_MENU_CLASS = styles.menu
+const SELECT_OPTION_CLASS = styles.menuOption
 const INGEST_MODE_OPTIONS: Array<SelectOption<IngestMode>> = [
   {
     value: 'append',
@@ -187,19 +176,19 @@ const EXECUTION_MODE_OPTIONS: Array<SelectOption<IngestExecutionMode>> = [
   {
     value: 'upload_only',
     title: '仅登记',
-    description: '仅登记到知识库（不解析），不启动解析队列。',
+    description: '保存源文件，暂不解析',
     badge: '默认',
   },
   {
     value: 'parse_only',
     title: '入库并解析',
-    description: '入库并解析（不建索引），可进入执行监控。',
+    description: '提取正文，暂不建立索引',
     badge: '监控',
   },
   {
     value: 'full_index',
     title: '解析 + 索引',
-    description: '完整入库（解析 + 索引），直接写入检索索引。',
+    description: '解析内容并加入知识库检索',
     badge: '完整',
   },
 ]
@@ -285,7 +274,6 @@ function getSelectOptionTitle<T extends string>(
 }
 
 function SelectOptionBody({
-  badge,
   description,
   title,
 }: Readonly<{
@@ -294,33 +282,18 @@ function SelectOptionBody({
   title: string
 }>) {
   return (
-    <span className="flex min-w-0 flex-col gap-0.5">
-      <span className="flex min-w-0 items-center gap-2">
-        <span className="truncate text-[13px] font-semibold leading-4 text-foreground">
-          {title}
-        </span>
-        {badge ? (
-          <span className="shrink-0 rounded-full border border-primary/18 bg-primary/[0.07] px-1.5 py-0.5 text-[9px] font-medium leading-none text-primary">
-            {badge}
-          </span>
-        ) : null}
-      </span>
-      <span className="line-clamp-2 text-[10px] leading-4 text-muted-foreground/68">
-        {description}
-      </span>
+    <span className={styles.optionBody}>
+      <strong>{title}</strong>
+      <small>{description}</small>
     </span>
   )
 }
 
 function DatasetOptionBody({ dataset }: Readonly<{ dataset: Dataset }>) {
   return (
-    <span className="flex min-w-0 flex-col gap-0.5">
-      <span className="truncate text-[13px] font-semibold leading-4 text-foreground">
-        {dataset.name}
-      </span>
-      <span className="font-mono text-[10px] leading-4 text-muted-foreground/58">
-        ID {datasetShortId(dataset)}
-      </span>
+    <span className={styles.optionBody}>
+      <strong>{dataset.name}</strong>
+      <small>{datasetShortId(dataset)}</small>
     </span>
   )
 }
@@ -381,11 +354,7 @@ function collectCollectionOptions(
 }
 
 function getFileIcon(file: File) {
-  const ext = file.name.split('.').pop()?.toLowerCase()
-  if (['xlsx', 'xls', 'csv'].includes(ext || '')) return FileSpreadsheet
-  if (['zip'].includes(ext || '')) return FileArchive
-  if (['md', 'markdown', 'txt', 'html', 'docx', 'pdf'].includes(ext || '')) return FileText
-  return FileType
+  return getFileTypeMeta({ filename: file.name, file_type: '' }).icon
 }
 
 function shouldBuildIndexes(draft: DraftState) {
@@ -469,6 +438,8 @@ export default function KnowledgeIngestionOperationPage() {
   const [dragging, setDragging] = useState(false)
   const [status, setStatus] = useState<TaskStatus>('idle')
   const [uploadResponse, setUploadResponse] = useState<DocumentBatchUploadResponse | null>(null)
+  const [submissionError, setSubmissionError] = useState<string | null>(null)
+  const [configurationOpen, setConfigurationOpen] = useState(false)
 
   useEffect(() => {
     const nextDraft = loadDraft()
@@ -481,11 +452,6 @@ export default function KnowledgeIngestionOperationPage() {
         },
       })
     }
-  }, [])
-
-  useEffect(() => {
-    folderInputRef.current?.setAttribute('webkitdirectory', '')
-    folderInputRef.current?.setAttribute('directory', '')
   }, [])
 
   const datasetsQuery = useQuery({
@@ -521,6 +487,7 @@ export default function KnowledgeIngestionOperationPage() {
     if (previousDatasetIdRef.current === draft.datasetId) return
     previousDatasetIdRef.current = draft.datasetId
     setUploadResponse(null)
+    setSubmissionError(null)
     setStatus('idle')
   }, [draft.datasetId])
 
@@ -600,14 +567,12 @@ export default function KnowledgeIngestionOperationPage() {
 
   const connectorSourceBlocked = (source === 'url' || source === 'object') && !urlIngestEnabled
   const canStartIngest =
-    Boolean(draft.datasetId) &&
+    Boolean(selectedDataset) &&
     status !== 'uploading' &&
     pendingSourceCount > 0 &&
     !connectorSourceBlocked
 
   const totalDocuments = ingestionStats?.total_documents ?? documents.length
-  const totalChunks = ingestionStats?.total_chunks ?? documents.reduce((sum, item) => sum + Number(item.chunk_count || 0), 0)
-  const datasetTotalBytes = ingestionStats?.total_size ?? documents.reduce((sum, item) => sum + Number(item.file_size || 0), 0)
 
   const fileRows = useMemo(
     () =>
@@ -664,6 +629,7 @@ export default function KnowledgeIngestionOperationPage() {
       [activeFileBucketKey]: [],
     }))
     setUploadResponse(null)
+    setSubmissionError(null)
     setStatus('idle')
   }, [activeFileBucketKey])
 
@@ -680,11 +646,12 @@ export default function KnowledgeIngestionOperationPage() {
       return
     }
     if (!urlIngestEnabled) {
-      toast.error('URL 导入未启用：请先在系统设置中开启 URL_INGEST_ENABLED')
+      toast.error('URL 导入未启用，请联系管理员启用后重试。')
       return
     }
     setStatus('uploading')
     setUploadResponse(null)
+    setSubmissionError(null)
     try {
       const sharedConfig = {
         parser_backend: draft.parserBackend,
@@ -721,7 +688,8 @@ export default function KnowledgeIngestionOperationPage() {
       }
     } catch (error) {
       setStatus('failed')
-      toast.error(formatApiError(error, '连接器任务创建失败'))
+      const message = formatApiError(error, '连接器任务创建失败')
+      setSubmissionError(message)
     }
   }, [
     draft,
@@ -779,6 +747,7 @@ export default function KnowledgeIngestionOperationPage() {
       const uploadTargets = files
       setStatus('uploading')
       setUploadResponse(null)
+      setSubmissionError(null)
       try {
         if (source === 'api') {
           const filename = apiFilename.trim() || 'api-payload.json'
@@ -864,7 +833,8 @@ export default function KnowledgeIngestionOperationPage() {
         }
       } catch (error) {
         setStatus('failed')
-        toast.error(formatApiError(error, '入库任务提交失败'))
+        const message = formatApiError(error, '入库任务提交失败')
+        setSubmissionError(message)
       }
     },
     [apiContent, apiFilename, documentsQuery, draft, files, foldersQuery, ingestionStatsQuery, parsedUrls.length, router, source, submitConnectorRun]
@@ -900,7 +870,6 @@ export default function KnowledgeIngestionOperationPage() {
       : draft.executionMode === 'parse_only'
         ? 2
         : OPERATION_STAGES.length
-  const ActiveSourceIcon = activeSource.icon
   const sourceExecutionBlocked =
     draft.executionMode === 'upload_only' &&
     (source === 'url' || source === 'object' || source === 'api')
@@ -934,252 +903,154 @@ export default function KnowledgeIngestionOperationPage() {
       ? `${emptySourceMessage}，完成后即可提交`
       : `将 ${pendingSourceCount} 项内容写入 ${selectedDataset?.name ?? '目标数据集'}，按“${getSelectOptionTitle(EXECUTION_MODE_OPTIONS, draft.executionMode)}”处理`
 
+  const isSubmitting = status === 'uploading'
+  const isFileSource = source === 'local' || source === 'folder'
+  const executionPath = OPERATION_STAGES.slice(0, activeStageCount).map((stage) => stage.label).join(' → ')
+  const configurationProps = {
+    draft,
+    updateDraft,
+    datasets,
+    selectedDataset,
+    documentCount: ingestionStatsQuery.isSuccess ? totalDocuments : undefined,
+    loading: datasetsQuery.isLoading,
+    loadError: datasetsQuery.isError,
+    locked: isSubmitting,
+    onRetry: () => detachPromise(handleSyncDatasets()),
+    onCreate: () => router.push('/datasets'),
+    tagOptions,
+    collectionOptions,
+  }
+
   return (
-    <div
-      data-ingestion-operation-root="true"
-      className={cn(
-        'flex h-full min-h-0 overflow-y-auto px-3 py-2.5 text-foreground',
-        OPERATION_BACKGROUND_CLASS
-      )}
-    >
-      <div className="mx-auto min-h-full w-full max-w-[1680px]">
-        <div
-          className={cn(
-            'grid min-h-14 min-w-0 xl:grid-cols-[minmax(0,1fr)_auto]',
-            OPERATION_HERO_PANEL_CLASS
-          )}
-        >
-          <span className="pointer-events-none absolute -bottom-px left-1 h-px w-12 bg-info/70" aria-hidden="true" />
-          <div className="relative flex min-w-0 items-center gap-2.5">
-            <div className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-md bg-info/10 text-info shadow-none">
-              <PageTitleIcon name="ingestion-operation" className="size-6" />
-            </div>
-            <div className="min-w-0 sm:flex sm:items-center sm:gap-2.5">
-              <h1 className="shrink-0 whitespace-nowrap text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground">
-                入库管理
-              </h1>
-              <p className="text-[12px] leading-5 text-muted-foreground/85">
-                选择目标和来源，确认执行路径后提交。
-              </p>
-            </div>
-          </div>
-          <div className="flex min-w-[360px] items-center justify-end gap-2 border-t border-border/60 p-2 xl:border-t-0">
-            <IngestionViewSwitch compact tone="info" />
-            <Button
-              variant="ghost"
-              size="icon"
-              title="同步数据集状态"
-              aria-label="同步数据集状态"
-              className="size-9 rounded-lg text-muted-foreground hover:bg-muted/35 hover:text-foreground"
-              onClick={() => detachPromise(handleSyncDatasets())}
-            >
-              <RefreshCw className="size-4" />
-            </Button>
-          </div>
+    <div data-ingestion-operation-root="true" className={styles.page} aria-busy={isSubmitting}>
+      <header className={styles.header}>
+        <div className={styles.title}>
+          <PageTitleIcon name="ingestion-operation" className={styles.titleIcon} />
+          <h1>入库管理</h1>
         </div>
-
-        <div
-          data-ingestion-operation-workspace="true"
-          className={cn(
-            'grid min-h-[calc(100vh-6.5rem)] xl:grid-cols-[300px_minmax(0,1fr)]'
-          )}
-        >
-          <aside
-            data-ingestion-context-panel="true"
-            className="h-full border-b border-border/70 xl:border-b-0 xl:border-r"
-            aria-label="入库任务上下文"
-          >
-            <section className="border-b border-border/70 px-5 py-4">
-              <div className="flex items-center justify-between gap-3">
-                <label htmlFor="ingestion-dataset" className="text-[13px] font-semibold">目标数据集</label>
-                <Button variant="ghost" className="h-7 rounded-md px-2 text-[11px] text-muted-foreground" onClick={() => router.push('/datasets')}>
-                  <Plus className="size-3.5" />
-                  新建
-                </Button>
-              </div>
-              <Select value={draft.datasetId} onValueChange={(value) => updateDraft('datasetId', value)}>
-                <SelectTrigger id="ingestion-dataset" className={cn('mt-2 h-10 font-medium', SOFT_CONTROL_CLASS)}>
-                  <span className="min-w-0 truncate text-[13px] font-semibold">
-                    {selectedDataset?.name ?? (datasetsQuery.isLoading ? '正在加载数据集' : '选择目标数据集')}
-                  </span>
-                </SelectTrigger>
-                <SelectContent className={SELECT_MENU_CLASS}>
-                  {datasets.map((dataset) => (
-                    <SelectItem key={dataset.id} value={dataset.id} textValue={dataset.name} className={SELECT_OPTION_CLASS}>
-                      <DatasetOptionBody dataset={dataset} />
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
-                <span>{totalDocuments.toLocaleString()} 文档</span>
-                <span>{totalChunks.toLocaleString()} 分块</span>
-                <span>{formatFileSize(datasetTotalBytes)}</span>
-              </div>
-            </section>
-
-            <section className="border-b border-border/70 px-5 py-4">
-              <label htmlFor="ingestion-source" className="text-[13px] font-semibold">文件来源</label>
-              <Select value={source} onValueChange={(value) => setSource(value as UploadSource)}>
-                <SelectTrigger id="ingestion-source" className={cn('mt-2 h-10 pl-3 font-medium', SOFT_CONTROL_CLASS)}>
-                  <span className="flex min-w-0 items-center gap-2">
-                    <ActiveSourceIcon className="size-4 shrink-0 text-info" />
-                    <span className="truncate text-[13px] font-medium">{activeSource.label}</span>
-                  </span>
-                </SelectTrigger>
-                <SelectContent className={SELECT_MENU_CLASS}>
-                  {SOURCE_OPTIONS.map((item) => {
-                    const Icon = item.icon
-                    return (
-                      <SelectItem key={item.value} value={item.value} textValue={item.label} className={SELECT_OPTION_CLASS}>
-                        <span className="flex items-start gap-2">
-                          <Icon className="mt-0.5 size-4 text-info" />
-                          <span>
-                            <span className="block font-medium">{item.label}</span>
-                            <span className="block text-[10px] text-muted-foreground">{item.description}</span>
-                          </span>
-                        </span>
-                      </SelectItem>
-                    )
-                  })}
-                </SelectContent>
-              </Select>
-              <p className="mt-1.5 text-[10px] text-muted-foreground">{activeSource.description}</p>
-            </section>
-
-            <fieldset className="border-b border-border/70 px-5 py-4">
-              <legend className="text-[13px] font-semibold">执行终点</legend>
-              <div className="mt-2 space-y-1">
-                {EXECUTION_MODE_OPTIONS.map((option) => {
-                  const selected = draft.executionMode === option.value
-                  return (
-                    <label key={option.value} className={cn('flex min-h-10 cursor-pointer items-center gap-3 rounded-md px-2 transition-colors hover:bg-muted/30', selected && 'bg-info/5')}>
-                      <input
-                        type="radio"
-                        name="ingestion-execution-mode"
-                        value={option.value}
-                        checked={selected}
-                        onChange={() => updateDraft('executionMode', option.value)}
-                        className="size-4 accent-[hsl(var(--info))]"
-                      />
-                      <span className="min-w-0">
-                        <span className="block text-[12px] font-semibold">{option.title}</span>
-                        <span className="block truncate text-[10px] text-muted-foreground">{option.description}</span>
-                      </span>
-                    </label>
-                  )
-                })}
-              </div>
-            </fieldset>
-
-            <AdvancedIngestSettings
-              draft={draft}
-              updateDraft={updateDraft}
-              tagOptions={tagOptions}
-              collectionOptions={collectionOptions}
-            />
-          </aside>
-
-          <main className="flex min-h-0 min-w-0 flex-col">
-            <section data-ingestion-pipeline="true" className="border-b border-border/70">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/65 px-5 py-2.5">
-                <div>
-                  <h2 className="text-[13px] font-semibold">执行路径</h2>
-                  <p className="mt-0.5 text-[10px] text-muted-foreground">内容会依次经过已启用的处理阶段</p>
-                </div>
-                <div className="flex items-center gap-2 font-mono text-[10px] text-muted-foreground">
-                  <span>{pendingSourceCount} 项</span>
-                  <ArrowRight className="size-3.5" />
-                  <span>{activeStageCount} 个阶段</span>
-                </div>
-              </div>
-              <div className="grid sm:grid-cols-2 xl:grid-cols-4">
-                {OPERATION_STAGES.map((stage, index) => {
-                  const Icon = stage.icon
-                  const enabled = index < activeStageCount
-                  return (
-                    <div key={stage.label} className={cn('relative min-h-20 border-b border-border/65 px-4 py-3 sm:border-r xl:border-b-0', enabled ? 'bg-info/[0.025]' : 'bg-muted/10 text-muted-foreground', index === OPERATION_STAGES.length - 1 && 'sm:border-r-0')}>
-                      <span className={cn('absolute inset-x-0 top-0 h-0.5', enabled ? 'bg-info' : 'bg-border')} />
-                      <div className="flex min-w-0 items-center gap-2">
-                        <Icon className={cn('size-4', enabled ? 'text-info' : 'text-muted-foreground')} />
-                        <div className="min-w-0 flex-1">
-                          <div className="text-[12px] font-semibold">{stage.label}</div>
-                          <div className="truncate text-[10px] text-muted-foreground">{stage.description}</div>
-                        </div>
-                        <span className="font-mono text-[9px] text-muted-foreground">0{index + 1}</span>
-                      </div>
-                      <div className={cn('mt-2 pl-6 text-[10px]', enabled ? 'text-success' : 'text-muted-foreground')}>{enabled ? '● 已启用' : '○ 跳过'}</div>
-                    </div>
-                  )
-                })}
-              </div>
-            </section>
-
-            <section data-ingestion-file-stage="true" className="grid border-b border-border/70 lg:grid-cols-[minmax(0,1fr)_260px]">
-              <div className="min-w-0 border-b border-border/65 lg:border-b-0 lg:border-r">
-                <Tabs value={source} onValueChange={(value) => setSource(value as UploadSource)}>
-                  <TabsContent value="local" className="m-0">
-                    <UploadDropArea dragging={dragging} onDragState={setDragging} onClick={() => inputRef.current?.click()} onFiles={addFiles} />
-                  </TabsContent>
-                  <TabsContent value="folder" className="m-0"><SourceConfiguration source="folder" {...sourceConfigurationProps} /></TabsContent>
-                  <TabsContent value="url" className="m-0"><SourceConfiguration source="url" {...sourceConfigurationProps} /></TabsContent>
-                  <TabsContent value="object" className="m-0"><SourceConfiguration source="object" {...sourceConfigurationProps} /></TabsContent>
-                  <TabsContent value="api" className="m-0"><SourceConfiguration source="api" {...sourceConfigurationProps} /></TabsContent>
-                </Tabs>
-                <input
-                  ref={inputRef}
-                  type="file"
-                  multiple
-                  className="sr-only"
-                  accept={ACCEPTED_EXTENSIONS.join(',')}
-                  onChange={(event) => {
-                    addFiles(Array.from(event.target.files ?? []))
-                    event.target.value = ''
-                  }}
-                />
-              </div>
-              <div className="flex min-h-24 items-center justify-between gap-3 px-5">
-                <div>
-                  <div className="text-[10px] text-muted-foreground">预检结果</div>
-                  <div className={cn('mt-1 text-[12px] font-semibold', operationReady ? 'text-success' : 'text-warning')}>{preflightMessage}</div>
-                </div>
-                {operationReady ? <CheckCircle2 className="size-5 text-success" /> : <CircleAlert className="size-5 text-warning" />}
-              </div>
-            </section>
-
-            {source === 'local' || source === 'folder' ? (
-              <SelectedFilesTable
-                rows={fileRows}
-                totalBytes={selectedTotalBytes}
-                sourceName={activeSource.label}
-                dragging={dragging}
-                onDragState={setDragging}
-                onFiles={addFiles}
-                onChoose={() => inputRef.current?.click()}
-                onClear={clearFiles}
-                onRemove={removeFile}
-              />
-            ) : null}
-
-            <footer data-ingestion-action-bar="true" className="sticky bottom-0 z-10 flex flex-col gap-3 border-t border-border/70 bg-background/95 px-5 py-3 backdrop-blur lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex min-h-10 flex-wrap items-center gap-x-5 gap-y-1 text-[12px] text-muted-foreground">
-                <span>{submissionSummary}</span>
-                <span className="text-[10px]">{getSelectOptionTitle(DEDUP_OPTIONS, draft.dedupStrategy)}</span>
-                {status === 'uploading' ? <span className="text-info">正在提交…</span> : null}
-              </div>
-              <Button
-                variant="info"
-                className="h-10 min-w-36 rounded-lg px-5 text-[12px] font-semibold shadow-subtle active:scale-[0.98]"
-                onClick={() => detachPromise(uploadFiles(draft.executionMode === 'upload_only' ? 'upload_only' : 'ingest'))}
-                disabled={!operationReady}
-              >
-                {status === 'uploading' ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
-                {status === 'uploading' ? '正在提交' : status === 'completed' ? '再次提交' : actionLabel}
+        <IngestionViewSwitch variant="tabs" className={styles.viewSwitch} />
+        <div className={styles.headerActions}>
+          <Button variant="ghost" className={styles.quietButton} onClick={() => router.push('/knowledge')}>
+            查看文档
+          </Button>
+          <Sheet open={configurationOpen} onOpenChange={setConfigurationOpen}>
+            <SheetTrigger asChild>
+              <Button variant="ghost" className={cn(styles.quietButton, styles.configTrigger)}>
+                <Settings2 className="size-4" />
+                入库配置
               </Button>
-            </footer>
-          </main>
+            </SheetTrigger>
+            <SheetContent className={styles.configSheet}>
+              <SheetHeader className={styles.sheetHeader}>
+                <SheetTitle>入库配置</SheetTitle>
+                <SheetDescription className="sr-only">选择目标数据集与本次导入的处理方式。</SheetDescription>
+              </SheetHeader>
+              <div className={styles.sheetBody}>
+                <IngestionConfiguration {...configurationProps} idPrefix="mobile-ingestion" />
+              </div>
+            </SheetContent>
+          </Sheet>
         </div>
+      </header>
+
+      <div data-ingestion-operation-workspace="true" className={styles.workspace}>
+        <section className={styles.filesPane} aria-label="导入内容">
+          <nav className={styles.sourceNav} aria-label="文件来源">
+            {SOURCE_OPTIONS.map((option) => {
+              const Icon = option.icon
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={styles.sourceTab}
+                  aria-pressed={source === option.value}
+                  onClick={() => setSource(option.value)}
+                  disabled={isSubmitting}
+                >
+                  <Icon aria-hidden="true" />
+                  {option.label}
+                </button>
+              )
+            })}
+          </nav>
+
+          <fieldset disabled={isSubmitting} className={styles.sourceContent} data-ingestion-file-stage="true">
+            {source === 'local' ? (
+                <UploadDropArea
+                  dragging={dragging}
+                  onDragState={setDragging}
+                  onClick={() => inputRef.current?.click()}
+                  onFiles={addFiles}
+                  disabled={isSubmitting}
+                />
+            ) : null}
+            {source === 'folder' ? <SourceConfiguration source="folder" {...sourceConfigurationProps} /> : null}
+            {source === 'url' ? <SourceConfiguration source="url" {...sourceConfigurationProps} /> : null}
+            {source === 'object' ? <SourceConfiguration source="object" {...sourceConfigurationProps} /> : null}
+            {source === 'api' ? <SourceConfiguration source="api" {...sourceConfigurationProps} /> : null}
+            <input
+              ref={inputRef}
+              type="file"
+              multiple
+              className="sr-only"
+              aria-label="选择待入库文件"
+              accept={ACCEPTED_EXTENSIONS.join(',')}
+              disabled={isSubmitting}
+              onChange={(event) => {
+                addFiles(Array.from(event.target.files ?? []))
+                event.target.value = ''
+              }}
+            />
+          </fieldset>
+
+          {isFileSource ? (
+            <SelectedFilesTable
+              rows={fileRows}
+              totalBytes={selectedTotalBytes}
+              sourceName={activeSource.label}
+              dragging={dragging}
+              onDragState={setDragging}
+              onFiles={addFiles}
+              onClear={clearFiles}
+              onRemove={removeFile}
+              disabled={isSubmitting}
+              response={uploadResponse}
+            />
+          ) : (
+            <div className={styles.emptyQueue}>
+              <activeSource.icon aria-hidden="true" />
+              <strong>{source === 'url' ? '从文件地址导入' : source === 'object' ? '从对象存储导入' : '将内容导入知识库'}</strong>
+              <p>{source === 'url' ? '填写文件链接后，确认右侧处理方式并提交。' : source === 'object' ? '按上方的前缀和扩展名选择待导入对象。' : '提交上方内容，在目标数据集中创建文档。'}</p>
+            </div>
+          )}
+        </section>
+
+        <aside data-ingestion-context-panel="true" className={styles.settingsPane} aria-label="入库配置">
+          <IngestionConfiguration {...configurationProps} />
+        </aside>
       </div>
+
+      <FeedbackToast type="error" message={submissionError ? `${submissionError}。文件和配置已保留，可再次提交。` : null} id="ingestion-submit-feedback" />
+
+      <footer data-ingestion-action-bar="true" data-task-center-dock="true" className={styles.submitBar}>
+        <div className={styles.submitSummary} aria-live="polite">
+          <strong>{uploadResponse ? submissionSummary : pendingSourceCount > 0 ? (
+            isFileSource ? pendingSourceCount + ' 个文件 · ' + formatFileSize(selectedTotalBytes) : pendingSourceCount + ' 项内容'
+          ) : '尚未添加内容'}</strong>
+          <span>{!operationReady && !isSubmitting ? preflightMessage : (
+            '目标：' + (selectedDataset?.name ?? '未选择') + ' · ' + executionPath
+          )}</span>
+        </div>
+        <Button
+          data-ingestion-submit="true"
+          className={styles.submitButton}
+          onClick={() => detachPromise(uploadFiles(draft.executionMode === 'upload_only' ? 'upload_only' : 'ingest'))}
+          disabled={!operationReady}
+        >
+          {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
+          {isSubmitting ? '正在提交' : status === 'completed' ? '再次提交' : actionLabel}
+        </Button>
+      </footer>
     </div>
   )
 }
@@ -1194,11 +1065,11 @@ function FieldBlock({
   children: ReactNode
 }>) {
   return (
-    <label className="block">
-      <div className="mb-1.5 flex items-center gap-1 text-[11px] font-medium leading-none text-muted-foreground/74">
-        {required ? <span className="text-destructive">*</span> : null}
+    <label className={styles.fieldBlock}>
+      <span className={styles.fieldBlockLabel}>
+        {required ? <span>*</span> : null}
         {label}
-      </div>
+      </span>
       {children}
     </label>
   )
@@ -1209,44 +1080,42 @@ function UploadDropArea({
   onDragState,
   onClick,
   onFiles,
+  disabled,
 }: Readonly<{
   dragging: boolean
   onDragState: (dragging: boolean) => void
   onClick: () => void
   onFiles: (files: File[]) => void
+  disabled: boolean
 }>) {
   return (
     <button
       type="button"
+      className={styles.dropArea}
+      data-dragging={dragging}
+      disabled={disabled}
       onClick={onClick}
       onDragEnter={(event) => {
         event.preventDefault()
-        onDragState(true)
+        if (!disabled) onDragState(true)
       }}
       onDragOver={(event) => {
         event.preventDefault()
-        onDragState(true)
+        if (!disabled) onDragState(true)
       }}
       onDragLeave={() => onDragState(false)}
       onDrop={(event) => {
         event.preventDefault()
         onDragState(false)
-        onFiles(Array.from(event.dataTransfer.files ?? []))
+        if (!disabled) onFiles(Array.from(event.dataTransfer.files ?? []))
       }}
-      className={cn(
-        'flex min-h-24 w-full items-center gap-4 border-0 bg-transparent px-5 py-4 text-left transition-colors',
-        dragging
-          ? 'bg-info/[0.08] ring-2 ring-inset ring-info/30'
-          : 'hover:bg-info/[0.035]'
-      )}
     >
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-info/10 text-info">
-        <UploadCloud className="size-5" />
+      <UploadCloud aria-hidden="true" />
+      <span className={styles.dropCopy}>
+        <strong>添加文件到本次任务</strong>
+        <span>拖入或选择 PDF、Word、表格等文件，单文件 ≤ 2 GB</span>
       </span>
-      <span>
-        <span className="block text-[13px] font-semibold leading-5 text-foreground">添加文件到本次任务</span>
-        <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground/70">点击选择或拖入文件 · 单文件 ≤ 2GB</span>
-      </span>
+      <span className={styles.addFiles}><Plus aria-hidden="true" />添加文件</span>
     </button>
   )
 }
@@ -1300,27 +1169,24 @@ function SourceConfiguration({
 }>) {
   if (source === 'folder') {
     return (
-      <div className={cn(CONFIG_BOX_CLASS, 'border-dashed px-3 py-2')}>
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-[1rem] bg-primary/10 text-primary ring-1 ring-primary/20">
-              <Folder className="size-4" />
-            </span>
-            <div className="min-w-0">
-              <div className="text-[14px] font-semibold leading-5 text-foreground">选择本地文件夹</div>
-              <div className="text-[11px] leading-4 text-muted-foreground/70">浏览器会保留相对路径，后端按文件夹内文件批量上传到当前数据集。</div>
-            </div>
-          </div>
-          <Button variant="outline" className={cn(CONFIG_INPUT_CLASS, 'h-9 text-[13px] font-medium hover:bg-background/88')} onClick={() => folderInputRef.current?.click()}>
-            <Folder className="mr-2 size-4" />
-            选择文件夹
-          </Button>
+      <div className={styles.folderSource}>
+        <div>
+          <strong>选择本地文件夹</strong>
+          <p>批量添加文件，保留文件夹中的相对路径。</p>
         </div>
+        <Button variant="outline" className={styles.addFiles} onClick={() => folderInputRef.current?.click()}>
+          <Folder className="size-4" />选择文件夹
+        </Button>
         <input
-          ref={folderInputRef}
+          ref={(element) => {
+            folderInputRef.current = element
+            element?.setAttribute('webkitdirectory', '')
+            element?.setAttribute('directory', '')
+          }}
           type="file"
           multiple
           className="sr-only"
+          aria-label="选择待入库文件夹"
           accept={ACCEPTED_EXTENSIONS.join(',')}
           onChange={(event) => {
             onFiles(Array.from(event.target.files ?? []))
@@ -1333,27 +1199,18 @@ function SourceConfiguration({
 
   if (source === 'url') {
     return (
-      <div className={cn(CONFIG_BOX_CLASS, 'grid gap-2 p-2 md:grid-cols-[minmax(0,1fr)_15rem]')}>
+      <div className={styles.sourceForm}>
         <FieldBlock label="URL 列表">
           <Textarea
-            className={cn('min-h-[5.2rem]', CONFIG_INPUT_CLASS)}
+            className={cn('min-h-32', CONFIG_INPUT_CLASS)}
             value={urlList}
             onChange={(event) => setUrlList(event.target.value)}
             placeholder="https://example.com/manual.pdf&#10;https://example.com/guide.md"
           />
-          <div className="mt-1 text-[11px] leading-4 text-muted-foreground/70">
-            {urlIngestEnabled
-              ? `已识别 ${parsedUrls.length} 个有效 http(s) 地址，提交后走后端 URL 批量导入任务。`
-              : 'URL 导入未启用：请先在系统设置开启 URL_INGEST_ENABLED。'}
-          </div>
+          <p>{urlIngestEnabled ? '每行一个文件地址，已识别 ' + parsedUrls.length + ' 个有效链接。' : 'URL 导入未启用，请联系管理员启用后重试。'}</p>
         </FieldBlock>
         <FieldBlock label="统一文件名（可选）">
-          <Input
-            className={cn('h-9', CONFIG_INPUT_CLASS)}
-            value={urlFilename}
-            onChange={(event) => setUrlFilename(event.target.value)}
-            placeholder="remote-documents.md"
-          />
+          <Input className={CONFIG_INPUT_CLASS} value={urlFilename} onChange={(event) => setUrlFilename(event.target.value)} placeholder="remote-documents.md" />
         </FieldBlock>
       </div>
     )
@@ -1361,40 +1218,21 @@ function SourceConfiguration({
 
   if (source === 'object') {
     return (
-      <div className={cn(CONFIG_BOX_CLASS, 'grid gap-2 p-2 md:grid-cols-2 xl:grid-cols-4')}>
-        {urlIngestEnabled ? null : (
-          <div className="rounded-[1rem] border border-warning/20 bg-warning/[0.08] px-3 py-2 text-[11px] leading-4 text-warning md:col-span-2 xl:col-span-4">
-            URL 导入未启用：对象存储需要后端通过 presigned URL 拉取文件，请先开启 URL_INGEST_ENABLED。
-          </div>
-        )}
+      <div className={cn(styles.sourceForm, styles.sourceFormColumns)}>
+        {!urlIngestEnabled ? <p className={styles.sourceNotice}>对象存储导入需要通过文件地址拉取内容，请联系管理员启用 URL 导入。</p> : null}
         <FieldBlock label="Bucket（可选）">
-          <Input
-            className={cn('h-9', CONFIG_INPUT_CLASS)}
-            value={objectBucket}
-            onChange={(event) => setObjectBucket(event.target.value)}
-            placeholder="默认使用后端 MINIO_BUCKET_NAME"
-          />
+          <Input className={CONFIG_INPUT_CLASS} value={objectBucket} onChange={(event) => setObjectBucket(event.target.value)} placeholder="使用已配置的存储桶" />
         </FieldBlock>
         <FieldBlock label="对象前缀">
-          <Input
-            className={cn('h-9', CONFIG_INPUT_CLASS)}
-            value={objectPrefix}
-            onChange={(event) => setObjectPrefix(event.target.value)}
-            placeholder="manuals/2026/"
-          />
+          <Input className={CONFIG_INPUT_CLASS} value={objectPrefix} onChange={(event) => setObjectPrefix(event.target.value)} placeholder="manuals/2026/" />
         </FieldBlock>
         <FieldBlock label="扩展名">
-          <Input
-            className={cn('h-9', CONFIG_INPUT_CLASS)}
-            value={objectExtensions}
-            onChange={(event) => setObjectExtensions(event.target.value)}
-            placeholder=".pdf, .md, .txt"
-          />
-          <div className="mt-1 text-[11px] leading-4 text-muted-foreground/70">实际提交：{parsedObjectExtensions.join(', ')}</div>
+          <Input className={CONFIG_INPUT_CLASS} value={objectExtensions} onChange={(event) => setObjectExtensions(event.target.value)} placeholder=".pdf, .md, .txt" />
+          <p>导入格式：{parsedObjectExtensions.join(', ')}</p>
         </FieldBlock>
         <FieldBlock label="最大对象数">
           <Input
-            className={cn('h-9', CONFIG_INPUT_CLASS)}
+            className={CONFIG_INPUT_CLASS}
             min={1}
             max={200}
             type="number"
@@ -1407,25 +1245,18 @@ function SourceConfiguration({
   }
 
   return (
-    <div className={cn(CONFIG_BOX_CLASS, 'grid gap-2 p-2 md:grid-cols-[16rem_minmax(0,1fr)]')}>
+    <div className={styles.sourceForm}>
       <FieldBlock label="生成文件名">
-        <Input
-          className={cn('h-9', CONFIG_INPUT_CLASS)}
-          value={apiFilename}
-          onChange={(event) => setApiFilename(event.target.value)}
-          placeholder="api-payload.json"
-        />
-        <div className="mt-1 text-[11px] leading-4 text-muted-foreground/70">
-          提交时直接调用后端手动入库接口，按单段内容写入当前数据集。
-        </div>
+        <Input className={CONFIG_INPUT_CLASS} value={apiFilename} onChange={(event) => setApiFilename(event.target.value)} placeholder="api-payload.json" />
       </FieldBlock>
       <FieldBlock label="API Payload">
         <Textarea
-          className={cn('min-h-[5.2rem] font-mono text-xs', CONFIG_INPUT_CLASS)}
+          className={cn('min-h-52 font-mono', CONFIG_INPUT_CLASS)}
           value={apiContent}
           onChange={(event) => setApiContent(event.target.value)}
           placeholder='{"title":"产品说明","content":"这里粘贴接口推送内容"}'
         />
+        <p>内容将作为一个文档导入当前数据集。</p>
       </FieldBlock>
     </div>
   )
@@ -1438,137 +1269,238 @@ function SelectedFilesTable({
   dragging,
   onDragState,
   onFiles,
-  onChoose,
   onClear,
   onRemove,
+  disabled,
+  response,
 }: Readonly<{
-  rows: Array<{ file: File; Icon: LucideIcon; key: string }>
+  rows: Array<{ file: File; Icon: PlatformIcon; key: string }>
   totalBytes: number
   sourceName: string
   dragging: boolean
   onDragState: (dragging: boolean) => void
   onFiles: (files: File[]) => void
-  onChoose: () => void
   onClear: () => void
   onRemove: (key: string) => void
+  disabled: boolean
+  response: DocumentBatchUploadResponse | null
 }>) {
-  const hasRows = rows.length > 0
+  const submittedNames = useMemo(() => new Set(response?.successful?.map((item) => item.filename)), [response])
+  const failedNames = useMemo(() => new Set(response?.failed?.map((item) => item.filename)), [response])
 
   return (
-    <div
-      data-ingestion-file-staging-workspace="true"
-      data-selected-files-table="stable"
-      className={cn('flex min-h-0 flex-1 flex-col', TABLE_SHELL_CLASS)}
-    >
-      <div className="flex h-10 shrink-0 items-center justify-between border-b border-border/50 px-3 py-1.5">
-        <div className="flex items-center gap-2 text-[12px] font-semibold leading-none text-foreground">
-          <span>本次任务文件</span>
-          <span className="rounded-md border border-foreground/10 bg-muted/20 px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground tabular-nums">
-            {rows.length}
-          </span>
-        </div>
-        {hasRows ? (
-          <Button variant="ghost" className="h-8 rounded-md px-2 text-[10px] text-muted-foreground/72 hover:bg-muted/35" onClick={onClear}>
-            <Trash2 className="size-3.5" />
-            清空
+    <div data-ingestion-file-staging-workspace="true" data-selected-files-table="stable" className={styles.fileStaging}>
+      <div className={styles.queueHeading}>
+        <h2>本次任务文件</h2>
+        <span className={styles.queueCount}>{rows.length}</span>
+        {rows.length > 0 ? <span className={styles.queueSize}>共 {formatFileSize(totalBytes)}</span> : null}
+        {rows.length > 0 ? (
+          <Button variant="ghost" className={styles.quietButton} onClick={onClear} disabled={disabled}>
+            <Trash2 className="size-3.5" />清空
           </Button>
-        ) : (
-          <span className="text-[10px] text-muted-foreground">等待文件</span>
-        )}
+        ) : null}
       </div>
-      {hasRows ? (
-        <>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]">
-            <table className="w-full table-fixed text-left text-[12px]">
-              <colgroup>
-                <col className="w-[46%]" />
-                <col className="w-[16%]" />
-                <col className="w-[12%]" />
-                <col className="w-[16%]" />
-                <col className="w-[10%]" />
-              </colgroup>
-              <thead className={cn('sticky top-0', TABLE_HEAD_CLASS)}>
-                <tr>
-                  <th className="px-3 py-1.5 font-medium">文件名</th>
-                  <th className="px-2.5 py-1.5 font-medium">大小</th>
-                  <th className="px-2.5 py-1.5 font-medium">类型</th>
-                  <th className="px-2.5 py-1.5 font-medium">来源</th>
-                  <th className="px-2.5 py-1.5 font-medium">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map(({ file, Icon, key }) => (
-                  <tr key={key} className={TABLE_ROW_CLASS}>
-                    <td className="px-3 py-1.5">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="flex size-6 shrink-0 items-center justify-center rounded-[0.8rem] border border-border/60 bg-primary/10 text-primary">
-                          <Icon className="size-3.5" />
-                        </span>
-                        <span className="min-w-0 truncate font-medium text-foreground" title={file.name}>{file.name}</span>
+      {rows.length > 0 ? (
+        <div className={styles.tableWrap}>
+          <table className={styles.fileTable} aria-label="本次待入库文件">
+            <colgroup>
+              <col className={styles.indexCol} /><col /><col className={styles.typeCol} />
+              <col className={styles.sizeCol} /><col className={styles.statusCol} /><col className={styles.actionCol} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th className={styles.rowIndex} scope="col">#</th>
+                <th scope="col">文件名称</th>
+                <th className={styles.fileFormat} scope="col">格式</th>
+                <th className={styles.numeric} scope="col">大小</th>
+                <th scope="col">状态</th>
+                <th scope="col"><span className="sr-only">移除</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(({ file, Icon, key }, index) => {
+                const uploadName = fileUploadName(file)
+                const submitted = submittedNames.has(uploadName)
+                const failed = failedNames.has(uploadName)
+                const label = failed ? '提交失败' : submitted ? '已提交' : disabled ? '提交中' : '待提交'
+                return (
+                  <tr key={key}>
+                    <td className={styles.rowIndex}>{String(index + 1).padStart(2, '0')}</td>
+                    <td>
+                      <div className={styles.fileName}>
+                        <Icon appearance="color" aria-hidden="true" />
+                        <div>
+                          <strong title={sourceName + ' · ' + uploadName}>{file.name}</strong>
+                          <span className={styles.fileMobileMeta}>{formatFileSize(file.size)} · {formatFileType(file)}</span>
+                        </div>
                       </div>
                     </td>
-                    <td className="truncate px-2.5 py-1.5 font-mono text-muted-foreground">{formatFileSize(file.size)}</td>
-                    <td className="truncate px-2.5 py-1.5 text-muted-foreground">{formatFileType(file)}</td>
-                    <td className="px-2.5 py-1.5 text-muted-foreground">{sourceName}</td>
-                    <td className="px-2.5 py-1.5">
+                    <td className={styles.fileFormat}>{formatFileType(file)}</td>
+                    <td className={styles.numeric}>{formatFileSize(file.size)}</td>
+                    <td><span className={styles.fileState} data-state={failed ? 'failed' : submitted ? 'submitted' : 'pending'}>{label}</span></td>
+                    <td>
                       <Button
                         variant="ghost"
-                        size="icon"
-                        aria-label={`移除文件 ${file.name}`}
-                        title={`移除文件 ${file.name}`}
-                        className="size-7 rounded-[0.85rem] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        className={styles.removeFile}
+                        aria-label={'移除文件 ' + file.name}
+                        title={'移除文件 ' + file.name}
+                        disabled={disabled}
                         onClick={() => onRemove(key)}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
+                      ><X aria-hidden="true" /></Button>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="h-8 shrink-0 border-t border-border/50 px-3 py-1.5 text-xs text-muted-foreground">
-            共 {rows.length} 个文件，合计 {formatFileSize(totalBytes)}
-          </div>
-        </>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       ) : (
-        <button
-          type="button"
+        <div
           data-ingestion-empty-file-drop="true"
-          onClick={onChoose}
-          onDragEnter={(event) => {
-            event.preventDefault()
-            onDragState(true)
-          }}
+          className={styles.emptyQueue}
+          data-dragging={dragging}
           onDragOver={(event) => {
             event.preventDefault()
-            onDragState(true)
+            if (!disabled) onDragState(true)
           }}
           onDragLeave={() => onDragState(false)}
           onDrop={(event) => {
             event.preventDefault()
             onDragState(false)
-            onFiles(Array.from(event.dataTransfer.files ?? []))
+            if (!disabled) onFiles(Array.from(event.dataTransfer.files ?? []))
           }}
-          className={cn(
-            'flex min-h-[20rem] flex-1 flex-col items-center justify-center px-6 py-10 text-center transition-colors focus-ring',
-            dragging
-              ? 'bg-info/[0.08] ring-2 ring-inset ring-info/30'
-              : 'bg-transparent hover:bg-info/[0.025]'
-          )}
         >
-          <UploadCloud className="size-7 text-info" />
-          <span className="mt-3 text-[14px] font-semibold text-foreground">
-            将文件拖到这里
-          </span>
-          <span className="mt-1 text-[11px] leading-5 text-muted-foreground">
-            点击选择文件，或直接拖放到当前暂存区
-          </span>
-          <span className="mt-3 text-[10px] leading-5 text-muted-foreground/75">
-            支持 PDF、Word、Markdown、表格、文本与压缩包 · 单文件 ≤ 2GB
-          </span>
-        </button>
+          <UploadCloud aria-hidden="true" />
+          <strong>将文件拖到这里</strong>
+          <p>支持 PDF、Word、Markdown、表格、文本与压缩包</p>
+        </div>
       )}
+    </div>
+  )
+}
+
+type IngestionConfigurationProps = Readonly<{
+  draft: DraftState
+  updateDraft: <K extends keyof DraftState>(key: K, value: DraftState[K]) => void
+  datasets: Dataset[]
+  selectedDataset: Dataset | null
+  documentCount?: number
+  loading: boolean
+  loadError: boolean
+  locked: boolean
+  onRetry: () => void
+  onCreate: () => void
+  tagOptions: string[]
+  collectionOptions: string[]
+  idPrefix?: string
+}>
+
+const INGESTION_PARSERS = PARSER_BACKEND_REGISTRY_OPTIONS.filter((option) =>
+  ['auto', 'docling', 'markitdown', 'deepdoc', 'csv', 'json', 'markdown'].includes(option.value)
+)
+
+function IngestionConfiguration({
+  draft,
+  updateDraft,
+  datasets,
+  selectedDataset,
+  documentCount,
+  loading,
+  loadError,
+  locked,
+  onRetry,
+  onCreate,
+  tagOptions,
+  collectionOptions,
+  idPrefix = 'ingestion',
+}: IngestionConfigurationProps) {
+  const instanceId = useId()
+  const datasetId = instanceId + '-dataset'
+  const parserId = instanceId + '-parser'
+  const dedupId = instanceId + '-dedup'
+  const parsing = draft.executionMode !== 'upload_only'
+
+  return (
+    <div className={styles.configuration}>
+      <h2 className={styles.configurationTitle}>入库配置</h2>
+      <fieldset disabled={locked}>
+        <legend className="sr-only">本次导入设置</legend>
+        <div className={styles.destination}>
+          <div className={styles.fieldHeading}>
+            <label htmlFor={datasetId}>目标数据集</label>
+            <Button variant="ghost" className={styles.quietButton} onClick={onCreate}>新建</Button>
+          </div>
+          <Select value={draft.datasetId} onValueChange={(value) => updateDraft('datasetId', value)} disabled={locked || loading || datasets.length === 0}>
+            <SelectTrigger id={datasetId} className={SOFT_CONTROL_CLASS}>
+              <span className={styles.controlText}><DatasetIcon aria-hidden="true" /><span>{selectedDataset?.name ?? (loading ? '正在加载数据集' : datasets.length ? '选择目标数据集' : '暂无数据集')}</span></span>
+            </SelectTrigger>
+            <SelectContent className={SELECT_MENU_CLASS}>
+              {datasets.map((dataset) => (
+                <SelectItem key={dataset.id} value={dataset.id} textValue={dataset.name} className={SELECT_OPTION_CLASS}>
+                  <DatasetOptionBody dataset={dataset} />
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {loadError ? (
+            <p role="alert" className={styles.datasetError}>数据集加载失败。<button type="button" onClick={onRetry}>重试</button></p>
+          ) : !loading && datasets.length === 0 ? (
+            <p className={styles.destinationMeta}>先新建一个数据集，再添加文件。</p>
+          ) : selectedDataset && documentCount !== undefined ? <p className={styles.destinationMeta}>已有 {documentCount.toLocaleString()} 个文档</p> : null}
+        </div>
+
+        <fieldset className={styles.modeGroup} disabled={locked}>
+          <legend>处理方式</legend>
+          <div className={styles.modeList}>
+            {EXECUTION_MODE_OPTIONS.map((option) => {
+              const selected = draft.executionMode === option.value
+              return (
+                <label key={option.value} className={styles.modeOption} data-selected={selected}>
+                  <input
+                    type="radio"
+                    name={idPrefix + '-execution-mode'}
+                    value={option.value}
+                    checked={selected}
+                    onChange={() => updateDraft('executionMode', option.value)}
+                  />
+                  <span><strong>{option.title}</strong><small>{option.description}</small></span>
+                </label>
+              )
+            })}
+          </div>
+        </fieldset>
+
+        <div className={styles.processFields}>
+          <div className={styles.inlineField}>
+            <label htmlFor={parserId}>解析器</label>
+            <Select value={draft.parserBackend} onValueChange={(value) => updateDraft('parserBackend', value as ParserBackend)} disabled={locked || !parsing}>
+              <SelectTrigger id={parserId} className={SOFT_CONTROL_CLASS} title={!parsing ? '仅登记时不使用解析器' : getParserOption(draft.parserBackend).label}>
+                <span className="truncate">{getParserOption(draft.parserBackend).label}</span>
+              </SelectTrigger>
+              <SelectContent className={SELECT_MENU_CLASS}>
+                {INGESTION_PARSERS.map((option) => (
+                  <SelectItem key={option.value} value={option.value} textValue={option.label} className={SELECT_OPTION_CLASS}>
+                    <SelectOptionBody title={option.label} description={option.description} />
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className={styles.inlineField}>
+            <label htmlFor={dedupId}>重复处理</label>
+            <Select value={draft.dedupStrategy} onValueChange={(value) => updateDraft('dedupStrategy', value)} disabled={locked}>
+              <SelectTrigger id={dedupId} className={SOFT_CONTROL_CLASS}><span className="truncate">{getSelectOptionTitle(DEDUP_OPTIONS, draft.dedupStrategy)}</span></SelectTrigger>
+              <SelectContent className={SELECT_MENU_CLASS}>
+                {DEDUP_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value} textValue={option.title} className={SELECT_OPTION_CLASS}><SelectOptionBody {...option} /></SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <AdvancedIngestSettings draft={draft} updateDraft={updateDraft} tagOptions={tagOptions} collectionOptions={collectionOptions} />
+      </fieldset>
     </div>
   )
 }
@@ -1584,66 +1516,34 @@ function AdvancedIngestSettings({
   tagOptions: string[]
   collectionOptions: string[]
 }>) {
-  const tagListId = 'knowledge-ingestion-tag-options'
-  const collectionListId = 'knowledge-ingestion-collection-options'
+  const instanceId = useId()
+  const tagListId = instanceId + '-tags'
+  const collectionListId = instanceId + '-collections'
 
   return (
-    <details data-ingestion-advanced-settings="true" className="group border-b border-border/70">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-3 text-[12px] font-semibold marker:content-none">
-        <span>
-          高级设置
-          <span className="ml-2 text-[10px] font-normal text-muted-foreground">入库模式、标签、目录、重复处理</span>
-        </span>
-        <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
+    <details data-ingestion-advanced-settings="true" className={styles.advanced}>
+      <summary>
+        <span><strong>高级设置</strong><small>导入方式、标签与目录</small></span>
+        <ChevronDown aria-hidden="true" />
       </summary>
-      <div className="grid gap-3 border-t border-border/65 px-5 py-4">
+      <div className={styles.advancedFields}>
         <FieldBlock label="入库模式">
           <Select value={draft.ingestMode} onValueChange={(value) => updateDraft('ingestMode', value as IngestMode)}>
-            <SelectTrigger className={cn('h-9 font-medium', SOFT_CONTROL_CLASS)}>
-              <span className="truncate text-[12px] font-medium">{getSelectOptionTitle(INGEST_MODE_OPTIONS, draft.ingestMode)}</span>
-            </SelectTrigger>
+            <SelectTrigger className={SOFT_CONTROL_CLASS} aria-label="入库模式"><span className="truncate">{getSelectOptionTitle(INGEST_MODE_OPTIONS, draft.ingestMode)}</span></SelectTrigger>
             <SelectContent className={SELECT_MENU_CLASS}>
               {INGEST_MODE_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value} textValue={option.title} className={SELECT_OPTION_CLASS}>
-                  <SelectOptionBody {...option} />
-                </SelectItem>
+                <SelectItem key={option.value} value={option.value} textValue={option.title} className={SELECT_OPTION_CLASS}><SelectOptionBody {...option} /></SelectItem>
               ))}
             </SelectContent>
           </Select>
         </FieldBlock>
         <FieldBlock label="标签">
-          <Input
-            list={tagListId}
-            className={cn('h-9 text-[12px]', CONFIG_INPUT_CLASS)}
-            value={draft.tags}
-            onChange={(event) => updateDraft('tags', event.target.value)}
-            placeholder="选择或输入标签"
-          />
+          <Input list={tagListId} className={CONFIG_INPUT_CLASS} value={draft.tags} onChange={(event) => updateDraft('tags', event.target.value)} placeholder="选择或输入标签" />
           <datalist id={tagListId}>{tagOptions.map((tag) => <option key={tag} value={tag} />)}</datalist>
         </FieldBlock>
         <FieldBlock label="目标目录">
-          <Input
-            list={collectionListId}
-            className={cn('h-9 text-[12px]', CONFIG_INPUT_CLASS)}
-            value={draft.collection}
-            onChange={(event) => updateDraft('collection', event.target.value)}
-            placeholder="default"
-          />
+          <Input list={collectionListId} className={CONFIG_INPUT_CLASS} value={draft.collection} onChange={(event) => updateDraft('collection', event.target.value)} placeholder="default" />
           <datalist id={collectionListId}>{collectionOptions.map((collection) => <option key={collection} value={collection} />)}</datalist>
-        </FieldBlock>
-        <FieldBlock label="重复处理">
-          <Select value={draft.dedupStrategy} onValueChange={(value) => updateDraft('dedupStrategy', value)}>
-            <SelectTrigger className={cn('h-9 font-medium', SOFT_CONTROL_CLASS)}>
-              <span className="truncate text-[12px] font-medium">{getSelectOptionTitle(DEDUP_OPTIONS, draft.dedupStrategy)}</span>
-            </SelectTrigger>
-            <SelectContent className={SELECT_MENU_CLASS}>
-              {DEDUP_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value} textValue={option.title} className={SELECT_OPTION_CLASS}>
-                  <SelectOptionBody {...option} />
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </FieldBlock>
       </div>
     </details>

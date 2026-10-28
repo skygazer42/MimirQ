@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { BarChart3, Search, Shapes, Sparkles, ShieldCheck, UploadCloud } from 'lucide-react'
+import { BarChart3, Search, Ingestion, Sparkles, ShieldCheck, UploadCloud } from '@/components/icons'
 
 import { Button } from '@/components/ui/button'
 
@@ -36,7 +36,7 @@ export function EmptyState({
   return (
     <div className="rounded-[2rem] border border-border/60 bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.12),transparent_38%),linear-gradient(180deg,hsl(var(--card)/0.7),hsl(var(--card)/0.9))] px-6 py-10 text-left shadow-soft dark:bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.16),transparent_32%),linear-gradient(180deg,hsl(var(--card)/0.92),hsl(var(--background)/0.96))]">
       <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-info/20 bg-card/80 shadow-soft">
-        <Shapes className="h-7 w-7 text-info" />
+        <Ingestion appearance="color" className="size-7" />
       </div>
       <div className="mx-auto max-w-4xl text-center">
         <p className="text-lg font-semibold text-foreground">还没有生成入库预检结果</p>

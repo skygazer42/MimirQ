@@ -1,7 +1,5 @@
 // @vitest-environment happy-dom
 
-import fs from 'node:fs'
-import path from 'node:path'
 import React, { act } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRoot } from 'react-dom/client'
@@ -16,6 +14,7 @@ const datasetsState = vi.hoisted(() => ({
 }))
 const documentApiMock = vi.hoisted(() => ({
   list: vi.fn(),
+  getParsedContent: vi.fn(),
   retry: vi.fn(),
   delete: vi.fn(),
   patchPipeline: vi.fn(),
@@ -149,45 +148,6 @@ vi.mock('@/components/document-viewer-panel', () => ({
 vi.mock('@/components/ingestion/ingestion-detail-dialog', () => ({
   IngestionDetailDialog: () => null,
 }))
-vi.mock('./components/quarantine-review-drawer', () => ({
-  QuarantineReviewDrawer: ({
-    open,
-    selected,
-  }: {
-    open: boolean
-    selected: { filename?: string } | null
-  }) =>
-    open && selected
-      ? React.createElement(
-          'div',
-          { 'data-review-drawer': 'true' },
-          selected.filename
-        )
-      : null,
-}))
-vi.mock('@/components/knowledge/quarantine/summary-cards', () => ({
-  SummaryStatCard: ({ label, value }: { label: string; value: number }) =>
-    React.createElement('div', null, `${label}:${value}`),
-  DonutSummaryCard: ({ title }: { title: string }) =>
-    React.createElement('div', null, title),
-  QuickActionCard: ({
-    title,
-    onClick,
-  }: {
-    title: string
-    onClick: () => void
-  }) => React.createElement('button', { onClick }, title),
-}))
-vi.mock('@/app/knowledge/quarantine/components/quarantine-empty-state', () => ({
-  QuarantineEmptyState: () => React.createElement('div', null, 'empty'),
-}))
-vi.mock('@/app/knowledge/quarantine/components/status-pill', () => ({
-  StatusPill: ({ status }: { status: string }) =>
-    React.createElement('span', null, status),
-}))
-vi.mock('@/app/knowledge/quarantine/components/file-kind-glyph', () => ({
-  FileKindGlyph: () => React.createElement('div', null, 'glyph'),
-}))
 vi.mock('@/components/ingestion/monitor-utils', () => ({
   getDocumentKind: () => 'pdf',
 }))
@@ -217,147 +177,107 @@ import QuarantineQueuePage from './page'
 
 function createDocument(index: number) {
   return {
-    id: `doc-${index}`,
-    filename: `quarantine-${index}.pdf`,
-    dataset_id: 'ds-1',
-    status: 'quarantined',
-    file_size: 1024 * index,
-    updated_at: `2026-08-${String(index).padStart(2, '0')}T00:00:00Z`,
-    metadata: {},
+    id: `doc-${index}`, filename: `quarantine-${index}.pdf`, dataset_id: 'ds-1',
+    status: 'quarantined', file_size: 1024 * index,
+    updated_at: '2026-10-22T09:00:00Z', metadata: {},
     governance: { drop_reasons: { outline_only: 1 } },
   }
 }
 
+const cleanups: (() => void)[] = []
 function renderPage() {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  })
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
-
-  act(() => {
-    root.render(
-      React.createElement(
-        QueryClientProvider,
-        { client: queryClient },
-        React.createElement(QuarantineQueuePage)
-      )
-    )
-  })
-
-  return { container, root }
+  act(() => root.render(<QueryClientProvider client={queryClient}><QuarantineQueuePage /></QueryClientProvider>))
+  cleanups.push(() => { act(() => root.unmount()); queryClient.clear() })
+  return container
+}
+function button(container: HTMLElement, label: string) {
+  const target = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(node => node.getAttribute('aria-label') === label || node.textContent?.trim() === label)
+  expect(target, label).toBeDefined()
+  return target!
+}
+async function click(target: HTMLElement) {
+  await act(async () => target.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+}
+async function loaded(container: HTMLElement) {
+  await act(async () => { await vi.waitFor(() => expect(container.textContent).toContain('quarantine-1.pdf')) })
 }
 
 describe('QuarantineQueuePage behavior', () => {
-  it('uses the project quarantine raster mark instead of PageTitleIcon', () => {
-    const pagePath = path.resolve(__dirname, 'page.tsx')
-    const assetPath = path.resolve(
-      __dirname,
-      '../../../public/brand/mimirq-quarantine-mark.png'
-    )
-    const src = fs.readFileSync(pagePath, 'utf8')
-
-    expect(fs.existsSync(assetPath)).toBe(true)
-    expect(src).toContain("import Image from 'next/image'")
-    expect(src).toContain('data-quarantine-title-mark="true"')
-    expect(src).toContain('src="/brand/mimirq-quarantine-mark.png"')
-    expect(src).toContain('size-7 shrink-0 items-center justify-center')
-    expect(src).toContain('dark:bg-info/[0.14]')
-    expect(src).not.toContain('<PageTitleIcon name="quarantine-queue"')
-  })
-
   beforeEach(() => {
     ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
-    routerMock.replace.mockReset()
-    documentViewMock.openDocument.mockReset()
-    documentApiMock.list.mockReset()
+    vi.clearAllMocks()
+    documentApiMock.list.mockImplementation(async (params: { status: string }) => ({
+      items: params.status === 'quarantined' ? Array.from({ length: 21 }, (_, i) => createDocument(i + 1)) : [], total: params.status === 'quarantined' ? 21 : 0,
+    }))
+    documentApiMock.getParsedContent.mockResolvedValue({ available: true, original_markdown_content: '原文内容 <script>普通文本</script>', markdown_content: '' })
     documentApiMock.retry.mockResolvedValue(undefined)
     documentApiMock.delete.mockResolvedValue(undefined)
     documentApiMock.patchPipeline.mockResolvedValue(undefined)
     documentApiMock.patchUserMetadata.mockResolvedValue(undefined)
-    documentApiMock.list
-      .mockResolvedValueOnce({
-        items: Array.from({ length: 7 }, (_, index) => createDocument(index + 1)),
-        total: 7,
-      })
-      .mockResolvedValueOnce({
-        items: [],
-        total: 0,
-      })
+  })
+  afterEach(() => { cleanups.splice(0).forEach(cleanup => cleanup()); document.body.innerHTML = '' })
+
+  it('reviews in the current row, keeps source text inert, and closes it when changing pages', async () => {
+    const container = renderPage(); await loaded(container)
+    expect(container.querySelectorAll('[data-quarantine-row]')).toHaveLength(20)
+    expect(documentApiMock.getParsedContent).not.toHaveBeenCalled()
+    const source = button(container, '复核 quarantine-1.pdf')
+    await click(source)
+    expect(source.getAttribute('aria-expanded')).toBe('true')
+    await act(async () => { await vi.waitFor(() => expect(container.querySelector('pre')?.textContent).toContain('<script>普通文本</script>')) })
+    expect(container.querySelector('pre script')).toBeNull()
+    await click(button(container, '查看原文'))
+    expect(documentViewMock.openDocument).toHaveBeenCalledWith('doc-1')
+    await click(button(container, '下一页'))
+    expect(container.querySelectorAll('[data-quarantine-row]')).toHaveLength(1)
+    expect(container.textContent).toContain('quarantine-21.pdf')
+    expect(container.querySelector('pre')).toBeNull()
+    await click(button(container, '上一页'))
+    expect(button(container, '复核 quarantine-1.pdf').getAttribute('aria-expanded')).toBe('false')
   })
 
-  afterEach(() => {
-    document.body.innerHTML = ''
-    vi.clearAllMocks()
+  it('retains search text on no match and can restore the list', async () => {
+    const container = renderPage(); await loaded(container)
+    const search = container.querySelector<HTMLInputElement>('input[placeholder="搜索文档、规则或原因"]')!
+    await act(async () => { search.value = '不存在的文档'; search.dispatchEvent(new Event('input', { bubbles: true })) })
+    expect(container.textContent).toContain('没有符合条件的文档')
+    expect(search.value).toBe('不存在的文档')
+    await click(button(container, '清除筛选'))
+    expect(search.value).toBe('')
+    expect(container.querySelectorAll('[data-quarantine-row]')).toHaveLength(20)
   })
 
-  it('opens the review drawer from a filename button and paginates rows', async () => {
-    const { container, root } = renderPage()
-
-    await act(async () => {
-      await vi.waitFor(() =>
-        expect(container.textContent).toContain('异常隔离审查表')
-      )
-      await vi.waitFor(() =>
-        expect(container.textContent).toContain('quarantine-1.pdf')
-      )
-    })
-
-    const fileButton = Array.from(
-      container.querySelectorAll<HTMLButtonElement>('button')
-    ).find((button) => button.textContent?.includes('quarantine-1.pdf'))
-    expect(fileButton).not.toBeUndefined()
-
-    await act(async () => {
-      fileButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    })
-
-    expect(container.querySelector('[data-review-drawer="true"]')?.textContent).toContain(
-      'quarantine-1.pdf'
-    )
-
-    expect(container.textContent).toContain('quarantine-6.pdf')
-    expect(container.textContent).not.toContain('quarantine-7.pdf')
-
-    const nextButton = Array.from(
-      container.querySelectorAll<HTMLButtonElement>('button')
-    ).find((button) => button.textContent === '2')
-    expect(nextButton).not.toBeUndefined()
-
-    await act(async () => {
-      nextButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    })
-
-    expect(container.textContent).toContain('quarantine-7.pdf')
-
-    act(() => root.unmount())
+  it('does not claim an empty queue while the first requests are pending', async () => {
+    documentApiMock.list.mockImplementation(() => new Promise(() => {}))
+    const container = renderPage()
+    expect(container.textContent).toContain('正在加载隔离队列')
+    expect(container.textContent).not.toContain('当前没有待复核文档')
   })
 
-  it('opens the tune dialog from the rule manager quick action', async () => {
-    const { container, root } = renderPage()
+  it('keeps the expanded document and error available after a retry fails', async () => {
+    const { toast } = await import('sonner')
+    documentApiMock.retry.mockRejectedValueOnce(new Error('重试服务暂时不可用'))
+    const container = renderPage(); await loaded(container)
+    await click(button(container, '复核 quarantine-1.pdf'))
+    await click(button(container, '重试'))
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('重试服务暂时不可用'))
+    expect(button(container, '复核 quarantine-1.pdf').getAttribute('aria-expanded')).toBe('true')
+    expect(documentApiMock.patchUserMetadata).not.toHaveBeenCalled()
+    await click(button(container, '重试'))
+    expect(documentApiMock.retry).toHaveBeenCalledTimes(2)
+    expect(documentApiMock.patchUserMetadata).toHaveBeenCalledWith('doc-1', expect.objectContaining({ patch: expect.objectContaining({ quarantine_reviewed: true, quarantine_action: 'retry' }) }))
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+  })
 
-    await act(async () => {
-      await vi.waitFor(() =>
-        expect(container.textContent).toContain('规则管理')
-      )
-    })
-
-    const ruleManagerButton = Array.from(
-      container.querySelectorAll<HTMLButtonElement>('button')
-    ).find((button) => button.textContent?.includes('规则管理'))
-    expect(ruleManagerButton).not.toBeUndefined()
-
-    await act(async () => {
-      ruleManagerButton?.dispatchEvent(
-        new MouseEvent('click', { bubbles: true })
-      )
-    })
-
+  it('opens the existing document tuning form from inline review', async () => {
+    const container = renderPage(); await loaded(container)
+    await click(button(container, '复核 quarantine-1.pdf'))
+    await click(button(container, '调参'))
     expect(container.textContent).toContain('调参回放')
-    expect(container.textContent).toContain('保存配置')
     expect(container.textContent).toContain('保存并重试')
-
-    act(() => root.unmount())
   })
 })

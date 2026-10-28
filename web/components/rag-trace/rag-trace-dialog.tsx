@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import dynamic from 'next/dynamic'
-import { Route } from 'lucide-react'
+import { Route } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'

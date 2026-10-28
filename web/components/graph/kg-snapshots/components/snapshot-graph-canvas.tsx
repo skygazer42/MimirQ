@@ -1,7 +1,7 @@
 'use client'
 
-import { Network, RefreshCcw } from 'lucide-react'
-import { useMemo } from 'react'
+import { Network, RefreshCcw } from '@/components/icons'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import { cn } from '@/lib/utils'
 
@@ -13,7 +13,7 @@ import {
   getProminentNodeLimit,
   graphLoadingDescription,
   graphLoadingTitle,
-  layoutSnapshotStudioNodes,
+  layoutSnapshotCanvas,
   snapshotToneClassName,
 } from '../snapshot-graph'
 import type { SnapshotStudioLink, SnapshotStudioNode } from '../types'
@@ -43,13 +43,24 @@ export function SnapshotGraphCanvas({
   relationCount: number
   isLoading: boolean
   emptyMessage?: string
-  onSelectNode: (nodeId: string) => void
+  onSelectNode: (nodeId: string, trigger: HTMLButtonElement) => void
 }>) {
   const normalizedSearch = searchValue.trim().toLowerCase()
-  const displayNodes = useMemo(
-    () => layoutSnapshotStudioNodes(nodes, layout),
+  const canvasLayout = useMemo(
+    () => layoutSnapshotCanvas(nodes, layout),
     [layout, nodes]
   )
+  const canvasRef = useRef<HTMLDivElement>(null)
+  const [viewport, setViewport] = useState({ width: canvasLayout.width, height: canvasLayout.height })
+  useLayoutEffect(() => {
+    const element = canvasRef.current!
+    const update = () => setViewport({ width: element.clientWidth, height: element.clientHeight })
+    const observer = new ResizeObserver(update)
+    observer.observe(element)
+    update()
+    return () => observer.disconnect()
+  }, [])
+  const displayNodes = canvasLayout.nodes
   const nodeById = useMemo(
     () => new Map(displayNodes.map((node) => [node.id, node])),
     [displayNodes]
@@ -81,6 +92,19 @@ export function SnapshotGraphCanvas({
   const isEmpty = nodes.length === 0
   const isDenseGraph = nodes.length > 64 || filteredLinks.length > 96
   const mediumGraph = nodes.length > 36 || filteredLinks.length > 56
+  const linkViews = useMemo(() => filteredLinks.flatMap(link => {
+    const source = nodeById.get(link.source), target = nodeById.get(link.target)
+    if (!source || !target) return []
+    const sourceVisible = filteredNodeIds.has(source.id), targetVisible = filteredNodeIds.has(target.id)
+    const opacity = getLinkDensityOpacity(getLinkBaseOpacity(hasFilter, sourceVisible, targetVisible, link.strength), isDenseGraph, mediumGraph)
+    const dx = (target.x - source.x) * viewport.width / 100
+    const dy = (target.y - source.y) * viewport.height / 100
+    const distance = Math.hypot(dx, dy)
+    const radius = (isDenseGraph ? 28 : mediumGraph ? 40 : 56) / 2 + 6
+    const endX = distance ? target.x - dx / distance * radius / viewport.width * 100 : target.x + radius / viewport.width * 100
+    const endY = distance ? target.y - dy / distance * radius / viewport.height * 100 : target.y
+    return [{ link, source, target, endX, endY, opacity, midX: (source.x + target.x) / 2, midY: (source.y + target.y) / 2, showLabel: !isDenseGraph || hasFilter || link.strength === 'strong', labelOpacity: hasFilter && (!sourceVisible || !targetVisible) ? 0.25 : 1 }]
+  }), [filteredLinks, nodeById, filteredNodeIds, hasFilter, isDenseGraph, mediumGraph, viewport])
   const prominentNodeIds = useMemo(() => {
     const sorted = [...displayNodes].sort((a, b) => {
       const bScore = b.relations.length * 2 + b.occurrences
@@ -112,15 +136,17 @@ export function SnapshotGraphCanvas({
 
   return (
     <div
+      ref={canvasRef}
       data-testid="kg-snapshot-graph-canvas"
-      className="relative min-h-0 flex-1 overflow-hidden bg-[radial-gradient(circle_at_center,hsl(var(--primary)/0.05),transparent_44%),radial-gradient(circle_at_70%_20%,hsl(var(--info)/0.04),transparent_28%)]"
+      className="relative h-full min-h-0 flex-1 overflow-hidden bg-background"
+      style={{ minWidth: canvasLayout.width, minHeight: canvasLayout.height }}
     >
       <div
         className="absolute inset-0 opacity-[0.42] [background-image:radial-gradient(circle,hsl(var(--muted-foreground)/0.26)_1px,transparent_1px)] [background-size:14px_14px]"
         aria-hidden
       />
 
-      <div className="absolute left-7 top-7 z-20 rounded-2xl border border-border/70 bg-card/90 p-3 shadow-lg backdrop-blur">
+      {!isLoading ? <div className="absolute left-4 top-4 z-20 bg-background/90 px-3 py-2">
         <div className="grid grid-cols-[auto_auto] gap-x-4 gap-y-1 text-[12px]">
           <span className="text-muted-foreground">节点</span>
           <span className="font-mono font-semibold tabular-nums text-foreground">
@@ -131,31 +157,27 @@ export function SnapshotGraphCanvas({
             {relationCount}
           </span>
         </div>
-      </div>
+      </div> : null}
 
       {isLoading || isEmpty ? (
         <div className="absolute inset-0 z-10 flex items-center justify-center px-8">
           <div className="flex max-w-[460px] flex-col items-center text-center">
             <div className="relative">
-              <div
-                className="absolute inset-0 rounded-full bg-primary/10 blur-2xl"
-                aria-hidden
-              />
-              <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-border/70 bg-card text-primary shadow-sm">
+              <div className="relative flex size-8 items-center justify-center text-primary">
                 {isLoading ? (
                   <RefreshCcw
                     className="h-7 w-7 animate-spin"
                     aria-hidden="true"
                   />
                 ) : (
-                  <Network className="h-7 w-7" aria-hidden="true" />
+                  <Network appearance="color" className="size-7" aria-hidden="true" />
                 )}
               </div>
             </div>
             <div className="mt-4 text-[15px] font-semibold text-foreground">
               {graphLoadingTitle(isLoading)}
             </div>
-            <div className="mt-1.5 text-[12px] leading-5 text-muted-foreground">
+            <div className="mt-1.5 text-[13px] leading-6 text-muted-foreground">
               {graphLoadingDescription(isLoading, emptyMessage)}
             </div>
           </div>
@@ -180,58 +202,24 @@ export function SnapshotGraphCanvas({
           >
             <path
               d="M 0 0 L 10 5 L 0 10 z"
-              fill="rgb(148 163 184)"
+              fill="hsl(var(--muted-foreground))"
               opacity="0.72"
             />
           </marker>
         </defs>
-        {filteredLinks.map((link) => {
-          const source = nodeById.get(link.source)
-          const target = nodeById.get(link.target)
-          if (!source || !target) return null
-          const sourceVisible = filteredNodeIds.has(source.id)
-          const targetVisible = filteredNodeIds.has(target.id)
-          const baseOpacity = getLinkBaseOpacity(
-            hasFilter,
-            sourceVisible,
-            targetVisible,
-            link.strength
-          )
-          const opacity = getLinkDensityOpacity(baseOpacity, isDenseGraph, mediumGraph)
-          const midX = (source.x + target.x) / 2
-          const midY = (source.y + target.y) / 2
-          const curve = source.x < target.x ? -6 : 6
-          const showLinkLabel =
-            !isDenseGraph || hasFilter || link.strength === 'strong'
-          return (
-            <g key={`${link.source}:${link.target}:${link.label}`}>
-              <path
-                d={`M ${source.x} ${source.y} C ${midX} ${midY + curve}, ${midX} ${midY - curve}, ${target.x} ${target.y}`}
-                fill="none"
-                stroke="rgb(148 163 184)"
-                strokeWidth={getLinkStrokeWidth(isDenseGraph, link.strength)}
-                strokeDasharray={
-                  link.strength === 'weak' ? '1.1 1.1' : undefined
-                }
-                opacity={opacity}
-                markerEnd="url(#snapshot-arrow)"
-              />
-              {showLinkLabel ? (
-                <text
-                  x={midX}
-                  y={midY - 1.2}
-                  textAnchor="middle"
-                  className="fill-muted-foreground text-[1.55px] font-normal tracking-[0.03em]"
-                  opacity={Math.max(opacity * 0.9, 0.16)}
-                >
-                  {link.label}
-                </text>
-              ) : null}
-            </g>
-          )
-        })}
+        {linkViews.map(({ link, source, endX, endY, opacity, midX, midY }) => <path
+        key={`${link.source}:${link.target}:${link.label}`}
+        d={`M ${source.x} ${source.y} C ${midX} ${midY + (source.x < endX ? -6 : 6)}, ${midX} ${midY - (source.x < endX ? -6 : 6)}, ${endX} ${endY}`}
+        fill="none" stroke="hsl(var(--muted-foreground))" strokeWidth={getLinkStrokeWidth(isDenseGraph, link.strength)}
+        strokeDasharray={link.strength === 'weak' ? '1.1 1.1' : undefined} opacity={opacity} markerEnd="url(#snapshot-arrow)"
+      />)}
       </svg>
 
+      {linkViews.filter(view => view.showLabel).map(({ link, midX, midY, labelOpacity }) => <span
+        key={`label:${link.source}:${link.target}:${link.label}`}
+        className="pointer-events-none absolute z-[1] max-w-44 -translate-x-1/2 -translate-y-1/2 truncate bg-background/95 px-1.5 py-0.5 text-[13px] text-foreground"
+        style={{ left: `${midX}%`, top: `${midY}%`, opacity: labelOpacity }} title={link.label}
+      >{link.label}</span>)}
       {displayNodes.map((node) => {
         const selected = selectedNodeId === node.id
         const matches = filteredNodeIds.has(node.id)
@@ -248,17 +236,17 @@ export function SnapshotGraphCanvas({
             key={node.id}
             type="button"
             className={cn(
-              'absolute z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center transition-all duration-200',
+              'absolute z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center transition-all duration-200 motion-reduce:transition-none',
               isDenseGraph ? 'gap-1' : 'gap-1.5',
               muted ? 'scale-95 opacity-25' : 'opacity-100 hover:scale-105'
             )}
             style={{ left: `${node.x}%`, top: `${node.y}%` }}
-            onClick={() => onSelectNode(node.id)}
+            onClick={event => onSelectNode(node.id, event.currentTarget)}
             aria-label={`选择节点 ${node.label}`}
           >
             <span
               className={cn(
-                'flex items-center justify-center rounded-full text-info-foreground shadow-strong shadow-foreground/10',
+                'flex items-center justify-center rounded-full',
                 getGraphNodeSizeClass(isDenseGraph, mediumGraph),
                 snapshotToneClassName(node.tone, selected)
               )}
@@ -269,7 +257,7 @@ export function SnapshotGraphCanvas({
               <span
                 className={cn(
                   'max-w-[132px] rounded-full bg-background/82 px-2 py-0.5 font-semibold text-foreground shadow-sm backdrop-blur',
-                  isDenseGraph ? 'text-[10px]' : 'text-[12px]'
+                  'text-[13px]'
                 )}
               >
                 <span className="block truncate">{node.label}</span>
@@ -279,7 +267,7 @@ export function SnapshotGraphCanvas({
         )
       })}
 
-      <div className="absolute bottom-5 left-7 z-20 flex max-w-[calc(100%-3.5rem)] flex-wrap items-center gap-3 rounded-2xl border border-border/70 bg-card/92 px-4 py-2.5 text-[12px] text-muted-foreground shadow-lg backdrop-blur">
+      <div className="absolute bottom-4 left-4 z-20 flex max-w-[calc(100%-2rem)] flex-wrap items-center gap-3 bg-background/90 px-3 py-2 text-xs text-muted-foreground">
         <span className="font-medium text-foreground">图例:</span>
         {legendRows.length ? (
           legendRows.map(([label, color]) => (

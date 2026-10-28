@@ -15,6 +15,8 @@ class TenantMemberOut(BaseModel):
     id: UUID
     tenant_id: UUID
     user_id: str | None = None
+    username: str | None = None
+    email: str | None = None
     role: str = Field(default=UserRoles.VIEWER, description=_TENANT_ROLE_DESCRIPTION)
     is_active: bool = True
     is_current: bool = False

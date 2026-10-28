@@ -1,16 +1,18 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { ArrowLeft, BarChart3, Cloud, Database, FileSearch, Play, Sparkles, Table2 } from 'lucide-react'
+import { ArrowLeft, BarChart3, Cloud, Database, FileSearch, Play, Sparkles, Table2 } from '@/components/icons'
 
 import { AppFrame } from '@/components/app-frame'
-import { PageScaffold } from '@/components/ui/page-scaffold'
+import { OperationalWorkspace, DirectoryWorkspace, WorkspaceNotice, workspaceStyles as ws } from '@/components/ui/operational-workspace'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Panel } from '@/components/ui/panel'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useRouter } from '@/i18n/navigation'
@@ -30,7 +32,8 @@ function asDatasetId(raw: unknown): string | null {
 }
 
 function renderValue(v: unknown): string {
-  if (v === null || v === undefined) return ''
+  if (v === null) return 'NULL'
+  if (v === undefined) return '—'
   if (typeof v === 'string') return v
   if (typeof v === 'number' || typeof v === 'boolean') return String(v)
   try {
@@ -42,11 +45,18 @@ function renderValue(v: unknown): string {
 
 const TABLE_ASSET_LIST_PARAMS = { skip: 0, limit: 200 } as const
 
+function TableResult({ result }: { result: TableQueryResponse }) {
+  return <div className={ws.tableScroll}><table className={ws.table} aria-label="数据表查询结果"><thead><tr>{result.columns.map((column, index) => <th key={`${index}:${column}`}>{column}</th>)}</tr></thead><tbody>{result.rows.map((row, index) => <tr key={index}>{row.map((value, position) => <td key={position}>{renderValue(value)}</td>)}</tr>)}</tbody></table>{!result.rows.length ? <p className="py-4 text-sm text-muted-foreground">查询没有返回行。</p> : null}{result.truncated ? <p className="py-3 text-sm text-muted-foreground">结果已按返回上限截取。</p> : null}</div>
+}
+
 export default function DatasetTablesPage() {
   const router = useRouter()
   const params = useParams()
   const datasetId = asDatasetId((params as Record<string, unknown>)?.id)
 
+  const [pane, setPane] = useState<'directory' | 'detail'>('directory')
+  const tableIntent = useRef<{ datasetId: string | null; tableId: string } | null>(null)
+  const [errors, setErrors] = useState<Record<'query' | 'ask' | 'filter', string | null>>({ query: null, ask: null, filter: null })
   const [selected, setSelected] = useState<DatasetTableAsset | null>(null)
 
   const [querySql, setQuerySql] = useState('SELECT * FROM "sheet_0" LIMIT 20')
@@ -91,7 +101,7 @@ export default function DatasetTablesPage() {
 
   useEffect(() => {
     if (!loadError) return
-    toast.error(formatApiError(loadError, '加载表格失败'))
+    reportClientError('Failed to load table assets', loadError)
   }, [loadError, loadErrorUpdatedAt])
 
   useEffect(() => {
@@ -108,546 +118,95 @@ export default function DatasetTablesPage() {
     })
   }, [items])
 
+  const detailQuery = useQuery({
+    queryKey: queryKeys.datasets.tableAsset(datasetId || '', selected?.table_id || ''),
+    queryFn: () => datasetApi.getTable(datasetId!, selected!.table_id, { include_columns: true, include_sample_rows: true }),
+    enabled: Boolean(datasetId && selected?.table_id),
+  })
+  const table = detailQuery.data ?? selected
   useEffect(() => {
-    if (!datasetId || !selected?.table_id) return
-    if (Array.isArray(selected.columns) && selected.columns.length > 0) return
+    if (tableIntent.current?.datasetId === datasetId && tableIntent.current?.tableId === selected?.table_id) return
+    tableIntent.current = selected ? { datasetId, tableId: selected.table_id } : null
+    setQueryRes(null); setAskRes(null); setSemFilterRes(null)
+    setQueryRunning(false); setAskRunning(false); setSemFilterRunning(false)
+    setErrors({ query: null, ask: null, filter: null })
+  }, [datasetId, selected])
 
-    let cancelled = false
-    datasetApi
-      .getTable(datasetId, selected.table_id, { include_columns: true, include_sample_rows: true })
-      .then((full) => {
-        if (cancelled) return
-        setSelected((prev) => (prev?.table_id === full.table_id ? full : prev))
-      })
-      .catch((e: unknown) => {
-        if (cancelled) return
-        reportClientError('Failed to load selected table detail', e)
-        toast.error(formatApiError(e, '加载表格详情失败'))
-      })
-
-    return () => {
-      cancelled = true
+  const selectTable = (next: DatasetTableAsset) => {
+    if (next.table_id !== selected?.table_id || tableIntent.current?.datasetId !== datasetId) {
+      tableIntent.current = { datasetId, tableId: next.table_id }
+      setQueryRes(null); setAskRes(null); setSemFilterRes(null)
+      setQueryRunning(false); setAskRunning(false); setSemFilterRunning(false)
+      setErrors({ query: null, ask: null, filter: null })
+      setQuerySql(`SELECT * FROM "sheet_${next.sheet_index}" LIMIT 20`)
     }
-  }, [datasetId, selected?.columns, selected?.table_id])
-
-  const selectTable = async (table: DatasetTableAsset) => {
-    if (!datasetId) return
-    setSelected(table)
-    try {
-      const full = await datasetApi.getTable(datasetId, table.table_id, { include_columns: true, include_sample_rows: true })
-      setSelected(full)
-      // Update default query target table for convenience.
-      const sheetName = `sheet_${full.sheet_index || 0}`
-      setQuerySql(`SELECT * FROM "${sheetName}" LIMIT 20`)
-    } catch (e: unknown) {
-      reportClientError('Failed to load dataset table detail', e)
-      toast.error(formatApiError(e, '加载表格详情失败'))
-    }
+    setSelected(next); setPane('detail')
   }
 
   const runQuery = async () => {
     if (!datasetId || !selected) return
+    const intent = tableIntent.current
+    setErrors(current => ({ ...current, query: null }))
     setQueryRunning(true)
     setQueryRes(null)
     try {
       const res = await datasetApi.queryTable(datasetId, selected.table_id, { sql: querySql })
-      setQueryRes(res)
+      if (tableIntent.current === intent) setQueryRes(res)
     } catch (e: unknown) {
       reportClientError('Dataset table SQL query failed', e)
-      toast.error(formatApiError(e, '查询失败（只允许 SELECT/WITH SELECT）'))
+      if (tableIntent.current === intent) setErrors(current => ({ ...current, query: formatApiError(e, '查询失败，只支持只读 SQL。') }))
     } finally {
-      setQueryRunning(false)
+      if (tableIntent.current === intent) setQueryRunning(false)
     }
   }
 
   const ask = async () => {
     if (!datasetId || !selected) return
     if (!question.trim()) return
+    const intent = tableIntent.current
+    setErrors(current => ({ ...current, ask: null }))
     setAskRunning(true)
     setAskRes(null)
     try {
       const res = await datasetApi.askTable(datasetId, selected.table_id, { question: question.trim() })
-      setAskRes(res)
+      if (tableIntent.current === intent) setAskRes(res)
     } catch (e: unknown) {
       reportClientError('Dataset table question answering failed', e)
-      toast.error(formatApiError(e, 'TAG 问答失败（需要开启 TABLE_NL2SQL_ENABLED）'))
+      if (tableIntent.current === intent) setErrors(current => ({ ...current, ask: formatApiError(e, '问答失败') }))
     } finally {
-      setAskRunning(false)
+      if (tableIntent.current === intent) setAskRunning(false)
     }
   }
 
   const semFilter = async () => {
     if (!datasetId || !selected) return
     if (!semFilterInstruction.trim()) return
+    const intent = tableIntent.current
+    setErrors(current => ({ ...current, filter: null }))
     setSemFilterRunning(true)
     setSemFilterRes(null)
     try {
       const res = await datasetApi.lotusSemFilter(datasetId, selected.table_id, { user_instruction: semFilterInstruction.trim(), strategy: 'cot' })
-      setSemFilterRes(res)
+      if (tableIntent.current === intent) setSemFilterRes(res)
     } catch (e: unknown) {
       reportClientError('Dataset table semantic filter failed', e)
-      toast.error(formatApiError(e, '语义过滤失败（需要开启 TABLE_LOTUS_ENABLED 或 TABLE_NL2SQL_ENABLED）'))
+      if (tableIntent.current === intent) setErrors(current => ({ ...current, filter: formatApiError(e, '语义过滤失败') }))
     } finally {
-      setSemFilterRunning(false)
+      if (tableIntent.current === intent) setSemFilterRunning(false)
     }
   }
 
-  const selectedSummary = useMemo(() => {
-    if (!selected) return null
-    return (
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <Badge variant="outline" className="font-mono">
-          {selected.table_id}
-        </Badge>
-        <Badge variant="soft" className="font-mono">
-          rows: {selected.row_count}
-        </Badge>
-        <Badge variant="soft" className="font-mono">
-          cols: {selected.col_count}
-        </Badge>
-        {selected.truncated ? (
-          <Badge variant="destructive" className="font-mono">
-            truncated
-          </Badge>
-        ) : null}
-        {selected.sheet_name ? (
-          <Badge variant="outline" className="font-mono">
-            sheet: {selected.sheet_name}
-          </Badge>
-        ) : null}
-      </div>
-    )
-  }, [selected])
-
-  const tablesHeroCard = 'relative overflow-hidden border-b border-border/60 bg-transparent px-1 py-2 shadow-none dark:border-border/70'
-  const tablePanelClass = 'overflow-hidden border border-border/60 bg-card shadow-none dark:border-border/70 dark:bg-card'
-  const tablePanelHeaderClass = 'border-b border-border/60 bg-card px-5 py-4 dark:border-border/70 dark:bg-card'
-  const sectionTitleClass = 'text-[15px] font-bold tracking-[-0.015em] text-foreground dark:text-foreground'
-  const mutedHintClass = 'text-[12px] leading-5 text-muted-foreground dark:text-muted-foreground'
-  const tableToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-lg border border-border/60 bg-card p-1 shadow-none dark:border-border/70 dark:bg-card'
-  const tableToolbarButtonClass = 'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-semibold text-muted-foreground shadow-none hover:bg-card hover:text-foreground hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
-  const tableMetricCardClass = 'relative overflow-hidden rounded-lg border border-border/60 bg-card px-4 py-3 shadow-none transition-colors hover:border-border dark:border-border/70 dark:bg-card'
-  const tableIconPillClass = 'flex size-9 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/20 text-foreground/85 shadow-none dark:border-border/70 dark:bg-muted/30 dark:text-foreground'
-  const totalRows = items.reduce((sum, item) => sum + (Number(item.row_count) || 0), 0)
-  const totalColumns = items.reduce((sum, item) => sum + (Number(item.col_count) || 0), 0)
-
-  return (
-    <AppFrame>
-      <PageScaffold
-        title="表格资产"
-        showHeader={false}
-        size="full"
-        density="system-dense"
-        bodyGutter="dense"
-        bodyClassName="h-full overflow-hidden bg-[radial-gradient(circle_at_16%_0%,hsl(var(--info)/0.12),transparent_30%),radial-gradient(circle_at_84%_10%,hsl(var(--foreground)/0.055),transparent_28%),linear-gradient(180deg,hsl(var(--background)/0.98),hsl(var(--surface-2)/0.76))] pb-3"
-        bodyContainerClassName="h-full min-h-0 overflow-hidden"
-        top={
-          <div className={tablesHeroCard}>
-            <div className="relative flex flex-col gap-2 px-1 py-1 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex min-w-0 items-center gap-2.5">
-                <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-info/10 text-primary shadow-none">
-                  <Table2 className="size-3.5" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="truncate text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground dark:text-foreground">表格资产工作台</h1>
-                    <span className="inline-flex h-5 items-center rounded-full border border-border bg-card/82 px-2 text-[10px] font-bold uppercase leading-none tracking-[0.12em] text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-border/60 dark:bg-muted/30 dark:text-muted-foreground">
-                      table intelligence
-                    </span>
-                    <Badge variant="soft" className="h-5 border-primary/20 bg-primary/10 px-2 text-[10px] font-bold leading-none text-primary">
-                      TAG / SQL
-                    </Badge>
-                  </div>
-                  <div className="text-[12px] leading-5 text-muted-foreground dark:text-muted-foreground">
-                    <span className="font-semibold text-foreground">数据集：</span>
-                    <span className="font-medium text-foreground">{dataset?.name || datasetId}</span>
-                    <span> · 结构化表格资产、SQL 查询、TAG 问答与语义过滤</span>
-                  </div>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] font-medium leading-none text-muted-foreground dark:text-muted-foreground">
-                    <span className="inline-flex items-center gap-1.5">
-                      <Database className="size-3.5 text-muted-foreground/80" />
-                      <span>表格</span>
-                      <span className="font-mono font-semibold text-foreground">{items.length}</span>
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <BarChart3 className="size-3.5 text-muted-foreground/80" />
-                      <span>总行数</span>
-                      <span className="font-mono font-semibold text-foreground">{totalRows}</span>
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <Cloud className="size-3.5 text-muted-foreground/80" />
-                      <span>总列数</span>
-                      <span className="font-mono font-semibold text-foreground">{totalColumns}</span>
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <FileSearch className="size-3.5 text-muted-foreground/80" />
-                      <span>当前表</span>
-                      <span className="max-w-[220px] truncate font-mono font-semibold text-foreground">{selected?.table_id || '--'}</span>
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <div className="flex shrink-0 flex-col items-stretch gap-2 lg:w-[360px]">
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    ['01', '表格资产'],
-                    ['02', 'SQL / TAG'],
-                    ['03', '语义过滤'],
-                  ].map(([step, label]) => (
-                    <div key={step} className="rounded-lg border border-border/60 bg-card px-3 py-2 shadow-none">
-                      <div className="font-mono text-[10px] font-black leading-none text-info">{step}</div>
-                      <div className="mt-1 truncate text-[11px] font-bold leading-none text-foreground">{label}</div>
-                    </div>
-                  ))}
-                </div>
-                <div className="inline-flex h-9 items-center gap-2 rounded-lg border border-success/30 bg-success/5 px-3 text-[12px] font-semibold text-success shadow-none">
-                  <span className="size-2 rounded-full bg-success" />
-                  {selected ? '已选择表格' : '等待表格资产'}
-                </div>
-              </div>
-            </div>
-          </div>
-        }
-        toolbar={
-          <div className="flex w-full flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-            <div className={tableToolbarGroupClass}>
-              <Button size="sm" variant="ghost" className={tableToolbarButtonClass} onClick={() => router.push('/datasets')}>
-                <ArrowLeft className="size-3.5" />
-                返回
-              </Button>
-              <Button size="sm" variant="ghost" className={tableToolbarButtonClass} onClick={() => router.push(`/datasets/${datasetId}/health`)}>
-                <Sparkles className="size-3.5" />
-                健康
-              </Button>
-              <Button size="sm" variant="ghost" className={tableToolbarButtonClass} onClick={() => router.push(`/datasets/${datasetId}/profile`)}>
-                <BarChart3 className="size-3.5" />
-                数据画像
-              </Button>
-              <Button size="sm" variant="ghost" className={tableToolbarButtonClass} onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}>
-                <Database className="size-3.5" />
-                入库策略
-              </Button>
-            </div>
-          </div>
-        }
-      >
-        <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
-          <div className="grid shrink-0 grid-cols-2 gap-3 md:grid-cols-4">
-            {[
-              { icon: Table2, label: '表格资产', value: items.length, subValue: 'table assets', tone: 'text-info bg-info/10 border-info/20' },
-              { icon: BarChart3, label: '总行数', value: totalRows, subValue: 'sum(row_count)', tone: 'text-success bg-success/10 border-success/20' },
-              { icon: Database, label: '总列数', value: totalColumns, subValue: 'sum(col_count)', tone: 'text-warning bg-warning/10 border-warning/20' },
-              { icon: FileSearch, label: '当前表', value: selected?.sheet_name || selected?.table_id || '—', subValue: selected ? 'selected table' : 'waiting asset', tone: 'text-success bg-success/10 border-success/20' },
-            ].map((item) => (
-              <div key={item.label} className={tableMetricCardClass}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground/70 dark:text-muted-foreground">{item.label}</div>
-                    <div className="mt-1 truncate font-mono text-[17px] font-black leading-none tracking-[-0.02em] text-foreground tabular-nums dark:text-foreground">
-                      {item.value}
-                    </div>
-                    <div className="mt-1.5 truncate text-[11px] font-medium text-muted-foreground dark:text-muted-foreground">{item.subValue}</div>
-                  </div>
-                  <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-xl border', item.tone)}>
-                    <item.icon className="size-4" />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-hidden xl:grid-cols-[340px_minmax(0,1fr)]">
-          <Panel className={cn(tablePanelClass, 'flex min-h-0 flex-col')}>
-            <div className={cn(tablePanelHeaderClass, 'flex items-center justify-between gap-3')}>
-              <div className="flex min-w-0 items-start gap-3">
-                <div className={tableIconPillClass}>
-                  <Table2 className="size-4" />
-                </div>
-                <div className="min-w-0">
-                  <div className="mb-1 font-mono text-[10px] font-black uppercase tracking-[0.18em] text-info">Table assets</div>
-                  <div className="flex items-center gap-2">
-                    <div className={sectionTitleClass}>表格资产</div>
-                    <Badge variant="outline" className="h-5 rounded-full px-2 font-mono text-[10px] uppercase text-muted-foreground">
-                      {items.length} tables
-                    </Badge>
-                  </div>
-                  <div className={cn(mutedHintClass, 'mt-1')}>从入库结果中提取的结构化 sheet / table</div>
-                </div>
-              </div>
-            </div>
-
-            <div className={cn('min-h-0 flex-1 bg-muted/15 p-4 pr-3 dark:bg-muted/10', items.length ? 'space-y-2 overflow-auto no-scrollbar' : '')}>
-              {items.length === 0 && !isLoading ? (
-                <div className="rounded-lg border border-dashed border-info/30 bg-card p-4 shadow-none">
-                  <div className="flex items-start gap-3">
-                    <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-info/10 text-info">
-                      <Table2 className="size-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-[13px] font-bold text-foreground">暂无表格资产</div>
-                      <div className={cn(mutedHintClass, 'mt-1')}>
-                        需要在入库策略中开启表格存储，或对包含表格的文件重新入库后再查看。
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="mt-3 h-8 rounded-xl bg-card px-2.5 text-[11px] font-semibold"
-                        onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}
-                      >
-                        检查入库策略
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              {items.map((t) => {
-                const active = selected?.table_id === t.table_id
-                return (
-                  <button
-                    key={t.table_id}
-                    type="button"
-                    onClick={() => selectTable(t)}
-                    className={cn(
-                      'group relative w-full overflow-hidden rounded-lg border px-3 py-3 text-left transition-all duration-200',
-                      active
-                        ? 'border-info/40 bg-info/5'
-                        : 'border-border/60 bg-card/78 hover:border-info/30 hover:bg-info/5 dark:bg-card/35'
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="truncate font-mono text-[11px] font-semibold text-foreground dark:text-foreground">
-                          {t.sheet_name || t.table_id}
-                        </div>
-                        {t.sheet_name ? (
-                          <div className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground/60">{t.table_id}</div>
-                        ) : null}
-                      </div>
-                      <span className={cn('size-2 shrink-0 rounded-full', active ? 'bg-info' : 'bg-border group-hover:bg-info/30')} />
-                    </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5 font-mono text-[10px] text-muted-foreground">
-                      <span className="rounded-md bg-muted/60 px-1.5 py-0.5 dark:bg-muted/30">rows {t.row_count}</span>
-                      <span className="rounded-md bg-muted/60 px-1.5 py-0.5 dark:bg-muted/30">cols {t.col_count}</span>
-                    </div>
-                    {t.document_filename ? (
-                      <div className="mt-1.5 truncate text-[10px] text-muted-foreground/60" title={t.document_filename}>
-                        {t.document_filename}
-                      </div>
-                    ) : null}
-                  </button>
-                )
-              })}
-            </div>
-          </Panel>
-
-          <div className="min-h-0 space-y-3 overflow-y-auto pr-1 no-scrollbar">
-            {!selected ? (
-              <Panel className={cn(tablePanelClass, 'min-h-[360px] p-4')}>
-                <div className="flex min-h-[330px] flex-col items-center justify-center rounded-lg border border-dashed border-info/30 bg-card p-7 text-center">
-                  <div className="flex size-14 items-center justify-center rounded-lg border border-info/20 bg-card text-info shadow-none">
-                    <Table2 className="size-6" />
-                  </div>
-                  <div className="mt-4 text-[18px] font-bold tracking-[-0.02em] text-foreground">
-                    {isLoading ? '正在加载表格资产' : '选择表格后开始分析'}
-                  </div>
-                  <div className="mt-2 max-w-xl text-[13px] leading-6 text-muted-foreground">
-                    表格工作台只在存在 table asset 时展示 SQL 查询、TAG 问答和语义过滤，避免空数据时误操作。
-                  </div>
-                  <div className="mt-5 grid w-full max-w-2xl grid-cols-1 gap-2 md:grid-cols-3">
-                    {[
-                      ['SQL', '只读 SELECT / WITH 查询'],
-                      ['TAG', '自然语言转 SQL 并执行'],
-                      ['语义过滤', 'LOTUS 或 fallback NL→SQL'],
-                    ].map(([name, desc]) => (
-                      <div key={name} className="rounded-lg border border-border/60 bg-card px-4 py-3 text-left shadow-none">
-                        <div className="text-[13px] font-bold text-foreground">{name}</div>
-                        <div className="mt-1 text-[11px] leading-4 text-muted-foreground">{desc}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </Panel>
-            ) : (
-              <>
-                <Panel className={cn(tablePanelClass, 'p-4')}>
-                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                    <div>
-                      <div className={sectionTitleClass}>表格信息</div>
-                      <div className={cn(mutedHintClass, 'mt-0.5')}>字段结构、样例行和当前 table scope</div>
-                    </div>
-                    {selectedSummary}
-                  </div>
-
-                  <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(220px,0.45fr)_minmax(0,0.55fr)]">
-                    <div>
-                      <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/60">Columns</div>
-                      <div className="max-h-[180px] overflow-auto rounded-xl border border-border/50 bg-card/45 p-2 dark:bg-card/35">
-                        {(selected.columns || []).length === 0 ? (
-                          <div className="text-[11px] text-muted-foreground/60">未加载列信息</div>
-                        ) : (
-                          <div className="divide-y divide-border/40">
-                            {(selected.columns || []).map((c) => (
-                              <div key={c.name} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 py-1.5 font-mono text-[11px]">
-                                <span className="truncate text-foreground dark:text-foreground">{c.name}</span>
-                                <span className="truncate rounded-md bg-muted/60 px-1.5 py-0.5 text-[10px] text-muted-foreground dark:bg-muted/30">{c.dtype || 'unknown'}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/60">Sample Rows</div>
-                      <div className="max-h-[180px] overflow-auto rounded-xl border border-border/50 bg-foreground/[0.025] p-2 dark:bg-muted/20">
-                        {(selected.sample_rows || []).length === 0 ? (
-                          <div className="text-[11px] text-muted-foreground/60">未加载样例，或已关闭 sample_rows</div>
-                        ) : (
-                          <pre className="text-[11px] font-mono leading-4 whitespace-pre-wrap break-words text-foreground/85 dark:text-muted-foreground">{JSON.stringify(selected.sample_rows || [], null, 2)}</pre>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </Panel>
-
-                <div className="grid grid-cols-1 gap-3 2xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
-                  <Panel className={cn(tablePanelClass, 'p-4')}>
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <div className={sectionTitleClass}>SQL 查询</div>
-                        <div className={mutedHintClass}>只读查询当前表，适合快速核对字段和样例数据</div>
-                      </div>
-                      <Button size="sm" className="h-8 gap-1.5 rounded-lg px-2.5 text-[11px]" onClick={runQuery} disabled={queryRunning}>
-                        <Play className={cn('size-3.5', queryRunning && 'animate-spin motion-reduce:animate-none')} />
-                        执行
-                      </Button>
-                    </div>
-                    <div className="mt-3 space-y-2">
-                      <Textarea value={querySql} onChange={(e) => setQuerySql(e.target.value)} className="min-h-[112px] rounded-xl bg-foreground/[0.025] font-mono text-[12px] leading-5" />
-                      {queryRes ? (
-                        <div className="rounded-xl border border-border/55 bg-card/45 p-2 dark:bg-card/35">
-                          <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
-                            <span>cols:{(queryRes.columns || []).length}</span>
-                            <span>rows:{(queryRes.rows || []).length}</span>
-                            {queryRes.truncated ? <Badge variant="soft" className="h-5 px-1.5 font-mono text-[10px]">truncated</Badge> : null}
-                          </div>
-                          <div className="mt-2 overflow-auto">
-                            <table aria-label="数据表查询结果" className="min-w-full text-[11px]">
-                              <thead>
-                                <tr className="border-b border-border/60 bg-muted/40 dark:bg-muted/20">
-                                  {(queryRes.columns || []).map((c) => (
-                                    <th key={c} className="px-2 py-1.5 text-left font-mono font-semibold whitespace-nowrap">
-                                      {c}
-                                    </th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {(queryRes.rows || []).map((r, i) => (
-                                  <tr key={`query-row-${i}`} className="border-b border-border/35">
-                                    {(r || []).map((v, j) => (
-                                      <td key={`query-cell-${i}-${j}`} className="px-2 py-1.5 font-mono whitespace-nowrap">
-                                        {renderValue(v)}
-                                      </td>
-                                    ))}
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                  </Panel>
-
-                  <div className="space-y-3">
-                    <Panel className={cn(tablePanelClass, 'p-4')}>
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <Sparkles className="size-3.5 text-primary" />
-                            <div className={sectionTitleClass}>TAG 问答</div>
-                          </div>
-                          <div className={mutedHintClass}>NL→SQL→执行</div>
-                        </div>
-                        <Button size="sm" className="h-8 gap-1.5 rounded-lg px-2.5 text-[11px]" onClick={ask} disabled={askRunning || !question.trim()}>
-                          <Sparkles className={cn('size-3.5', askRunning && 'animate-spin motion-reduce:animate-none')} />
-                          询问
-                        </Button>
-                      </div>
-                      <div className="mt-3 space-y-2">
-                        <Input value={question} onChange={(e) => setQuestion(e.target.value)} className="h-9 text-[12px]" placeholder="例如：按地区汇总销售额 TOP 10？" />
-                        <div className="min-h-[38px] rounded-xl border border-border/55 bg-card/45 p-2.5 text-[12px] leading-5 dark:bg-card/35">
-                          {askRes?.answer ? askRes.answer : <span className="text-[11px] text-muted-foreground/60">需要开启 TABLE_NL2SQL_ENABLED</span>}
-                        </div>
-                        {askRes?.sql ? (
-                          <pre className="max-h-[140px] overflow-auto rounded-xl border border-border/55 bg-foreground/[0.025] p-2 text-[11px] font-mono leading-4 whitespace-pre-wrap break-words text-foreground/85 dark:bg-muted/20 dark:text-muted-foreground">{askRes.sql}</pre>
-                        ) : null}
-                      </div>
-                    </Panel>
-
-                    <Panel className={cn(tablePanelClass, 'p-4')}>
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <div className={sectionTitleClass}>语义过滤</div>
-                          <div className={mutedHintClass}>LOTUS / fallback NL→SQL</div>
-                        </div>
-                        <Button size="sm" className="h-8 gap-1.5 rounded-lg px-2.5 text-[11px]" onClick={semFilter} disabled={semFilterRunning || !semFilterInstruction.trim()}>
-                          <Play className={cn('size-3.5', semFilterRunning && 'animate-spin motion-reduce:animate-none')} />
-                          运行
-                        </Button>
-                      </div>
-                      <div className="mt-3 space-y-2">
-                        <Input
-                          value={semFilterInstruction}
-                          onChange={(e) => setSemFilterInstruction(e.target.value)}
-                          className="h-9 text-[12px]"
-                          placeholder='例如："{客户名称} 是互联网公司"'
-                        />
-                        {semFilterRes ? (
-                          <div className="rounded-xl border border-border/55 bg-card/45 p-2 dark:bg-card/35">
-                            <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
-                              <span>cols:{(semFilterRes.columns || []).length}</span>
-                              <span>rows:{(semFilterRes.rows || []).length}</span>
-                              {semFilterRes.truncated ? <Badge variant="soft" className="h-5 px-1.5 font-mono text-[10px]">truncated</Badge> : null}
-                            </div>
-                            <div className="mt-2 overflow-auto">
-                              <table aria-label="数据表问答引用结果" className="min-w-full text-[11px]">
-                                <thead>
-                                  <tr className="border-b border-border/60 bg-muted/40 dark:bg-muted/20">
-                                    {(semFilterRes.columns || []).map((c) => (
-                                      <th key={c} className="px-2 py-1.5 text-left font-mono font-semibold whitespace-nowrap">
-                                        {c}
-                                      </th>
-                                    ))}
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {(semFilterRes.rows || []).map((r, i) => (
-                                    <tr key={`sem-row-${i}`} className="border-b border-border/35">
-                                      {(r || []).map((v, j) => (
-                                        <td key={`sem-cell-${i}-${j}`} className="px-2 py-1.5 font-mono whitespace-nowrap">
-                                          {renderValue(v)}
-                                        </td>
-                                      ))}
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-                    </Panel>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-          </div>
-        </div>
-      </PageScaffold>
-    </AppFrame>
-  )
+  return <AppFrame><OperationalWorkspace title="表格资产" icon="dataset" mode="canvas" context={dataset?.name ?? '正在读取数据集…'} back={() => router.push('/datasets')} actions={<Button variant="outline" onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}>入库策略</Button>}>
+    {loadError ? <div className="px-5"><WorkspaceNotice retry={() => { void datasetQuery.refetch(); void tablesQuery.refetch() }} pending={isLoading}>{formatApiError(loadError, '表格读取失败')}</WorkspaceNotice></div> : null}
+    <DirectoryWorkspace pane={pane} onPaneChange={setPane} directoryLabel="表格目录" detailLabel="当前表格" directory={<><div className={ws.directoryHeader}><h2 className={ws.sectionTitle}>表格目录</h2><p className={ws.muted}>{tablesQuery.isPending ? '正在读取…' : tablesQuery.isError ? '目录读取失败' : `${items.length} 张表`}</p></div>{items.map(item => <button key={item.table_id} className={ws.directoryRow} data-selected={selected?.table_id === item.table_id} aria-label={`选择表 ${item.sheet_name || item.table_id}`} onClick={() => selectTable(item)}><strong title={item.sheet_name || item.table_id}>{item.sheet_name || item.table_id}</strong><small>{item.row_count} 行 · {item.col_count} 列</small>{item.document_filename ? <small>{item.document_filename}</small> : null}</button>)}{!items.length && !tablesQuery.isPending && !tablesQuery.isError ? <div className="p-4"><h3 className="text-sm font-medium">还没有表格资产</h3><p className={ws.muted}>含表格的文档入库后，可在这里查看和查询。</p><Button className="mt-3" variant="outline" onClick={() => router.push(`/knowledge/ingestion?datasetId=${datasetId}`)}>去入库操作</Button></div> : null}</>}>
+      {!table ? <div className={ws.empty}><h2>{items.length ? '选择表格' : tablesQuery.isPending ? '正在读取表格目录…' : tablesQuery.isError ? '表格目录读取失败' : '还没有表格资产'}</h2><p>{items.length ? '从目录选择一张表，查看数据或发起查询。' : '含表格的文档解析入库后，可在这里查看和查询。'}</p>{!items.length && !isLoading && !loadError ? <Button variant="outline" onClick={() => router.push(`/knowledge/ingestion?datasetId=${datasetId}`)}>去入库操作</Button> : null}</div> : <><div className={ws.sectionHeading}><div><h2 className={ws.sectionTitle}>{table.sheet_name || table.table_id}</h2><p className={ws.muted}>{table.document_filename} · {table.row_count} 行 · {table.col_count} 列</p></div></div>{detailQuery.isError ? <WorkspaceNotice retry={() => { void detailQuery.refetch() }} pending={detailQuery.isFetching}>{formatApiError(detailQuery.error, '表格详情读取失败')}</WorkspaceNotice> : null}
+        <Tabs defaultValue="data"><TabsList className={ws.tabList} aria-label="表格工具"><TabsTrigger value="data">数据预览</TabsTrigger><TabsTrigger value="sql">SQL 查询</TabsTrigger><TabsTrigger value="ask">表格问答</TabsTrigger><TabsTrigger value="filter">语义筛选</TabsTrigger></TabsList>
+          <TabsContent value="data" className={ws.tabContent}><section className={ws.section}><h3 className={ws.sectionTitle}>字段</h3><div className={ws.tableScroll}><table className={ws.table} aria-label="表格字段"><thead><tr><th>名称</th><th>类型</th></tr></thead><tbody>{(table.columns ?? []).map(column => <tr key={column.name}><td>{column.name}</td><td>{column.dtype ?? '未返回'}</td></tr>)}</tbody></table></div></section><section className={ws.section}><h3 className={ws.sectionTitle}>样例数据</h3><div className={ws.tableScroll}><table className={ws.table} aria-label="表格样例数据"><thead><tr>{(table.columns ?? []).map(column => <th key={column.name}>{column.name}</th>)}</tr></thead><tbody>{(table.sample_rows ?? []).map((row, index) => <tr key={index}>{(table.columns ?? []).map(column => <td key={column.name}>{renderValue(row[column.name])}</td>)}</tr>)}</tbody></table>{!table.sample_rows?.length ? <p className="py-4 text-sm text-muted-foreground">{detailQuery.isFetching ? '正在读取样例…' : '未返回样例数据。'}</p> : null}</div></section></TabsContent>
+          <TabsContent value="sql" className={ws.tabContent}><section className={ws.section}><Label htmlFor="table-sql">SQL 查询语句</Label><Textarea id="table-sql" value={querySql} onChange={event => setQuerySql(event.target.value)} className="my-3 min-h-32 font-mono text-sm" /><Button disabled={queryRunning || !querySql.trim()} onClick={() => { void runQuery() }}><Play />{queryRunning ? '正在查询…' : '执行查询'}</Button>{errors.query ? <WorkspaceNotice>{errors.query}</WorkspaceNotice> : null}{queryRes ? <TableResult result={queryRes} /> : null}</section></TabsContent>
+          <TabsContent value="ask" className={ws.tabContent}><section className={ws.section}><Label htmlFor="table-question">向当前表格提问</Label><Input id="table-question" className="my-3" value={question} onChange={event => setQuestion(event.target.value)} placeholder="例如：按地区汇总销售额" /><Button disabled={askRunning || !question.trim()} onClick={() => { void ask() }}><Sparkles />{askRunning ? '正在查询…' : '查询表格'}</Button>{errors.ask ? <WorkspaceNotice>{errors.ask}</WorkspaceNotice> : null}{askRes ? <div className="mt-5 space-y-4 text-sm leading-7"><p>{askRes.answer}</p>{askRes.sql ? <pre className="overflow-auto bg-muted/30 p-3 text-xs">{askRes.sql}</pre> : null}{askRes.data ? <TableResult result={askRes.data} /> : null}</div> : null}</section></TabsContent>
+          <TabsContent value="filter" className={ws.tabContent}><section className={ws.section}><Label htmlFor="table-sem-filter">筛选条件</Label><Input id="table-sem-filter" className="my-3" value={semFilterInstruction} onChange={event => setSemFilterInstruction(event.target.value)} placeholder="描述要保留的行" /><Button disabled={semFilterRunning || !semFilterInstruction.trim()} onClick={() => { void semFilter() }}><Play />{semFilterRunning ? '正在筛选…' : '筛选数据'}</Button>{errors.filter ? <WorkspaceNotice>{errors.filter}</WorkspaceNotice> : null}{semFilterRes ? <TableResult result={semFilterRes} /> : null}</section></TabsContent>
+        </Tabs>
+      </>}
+    </DirectoryWorkspace>
+  </OperationalWorkspace></AppFrame>
 }

@@ -7,7 +7,7 @@ import { startTransition, useActionState, useCallback, useEffect, useId, useMemo
 import { useFormStatus } from 'react-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Calendar, Database, Download, Eye, FileType, Hash, Loader2, Shield } from 'lucide-react'
+import { Calendar, Download, Eye, Hash, Loader2, Shield } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
@@ -21,6 +21,7 @@ import { DocumentDetailTagsPanel } from '@/components/document-detail-dialog/doc
 import { DocumentVersionsDialog } from '@/components/document-detail-dialog/document-versions-dialog'
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { IconButton } from '@/components/ui/icon-button'
+import { FileTypeIcon } from '@/components/ui/file-type-icon'
 import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
 import { documentApi, kgApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
@@ -962,13 +963,13 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         <header className="flex items-start justify-between gap-6 border-b border-foreground/15 bg-background px-6 py-4">
           <div className="flex items-start gap-4 min-w-0">
             <div className="grid h-12 w-12 place-items-center rounded-xl border border-foreground/10 bg-background/70 text-primary">
-              <Database className="h-6 w-6" />
+              <FileTypeIcon type={displayDoc.file_type} filename={displayDoc.filename} className="size-6" />
             </div>
             <div className="min-w-0">
               <DialogTitle className="truncate">{displayDoc.filename}</DialogTitle>
               <DialogDescription className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                 <span className="inline-flex items-center gap-1">
-                  <FileType className="h-3.5 w-3.5" />
+                  <FileTypeIcon type={displayDoc.file_type} filename={displayDoc.filename} className="size-3.5" />
                   {displayDoc.file_type}
                 </span>
                 <span className="text-muted-foreground/40">|</span>

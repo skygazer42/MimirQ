@@ -1,6 +1,8 @@
 import { withSentryConfig } from '@sentry/nextjs'
 import { networkInterfaces } from 'node:os'
 import createNextIntlPlugin from 'next-intl/plugin'
+// Dev readers see complete manifests/chunks; Windows sharing locks are bounded.
+import { AtomicDevManifestsPlugin, versionRootLayoutFilename } from './scripts/atomic-dev-manifests.mjs'
 
 const sentryEnabled = Boolean(
   process.env.NEXT_PUBLIC_SENTRY_DSN || process.env.SENTRY_DSN || process.env.SENTRY_AUTH_TOKEN
@@ -124,7 +126,13 @@ const nextConfig = {
   distDir:
     process.env.NEXT_DIST_DIR ||
     (process.env.NODE_ENV === 'production' ? '.next_build' : '.next'),
-  webpack: (config, { webpack }) => {
+  webpack: (config, { webpack, dev, isServer }) => {
+    if (dev && !isServer) {
+      // An open Windows response stream can lock a mutable chunk. Versioned
+      // filenames let the next compilation publish without replacing that file.
+      config.output.filename = versionRootLayoutFilename(config.output.filename)
+    }
+    config.plugins.push(new AtomicDevManifestsPlugin())
     config.plugins.push({
       apply: (compiler) => {
         compiler.hooks.compilation.tap('MimirQPdfjsWorkerMinifyFix', (compilation) => {

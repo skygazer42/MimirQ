@@ -7,14 +7,10 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
 import {
   RefreshCw,
   GitCompare,
-  Target,
-  TrendingUp,
-  ChartLine,
-  Timer,
-  SearchX,
-  ShieldAlert,
   Scale,
-} from 'lucide-react'
+  ChartLine,
+  ShieldAlert,
+} from '@/components/icons'
 
 import { Button } from '@/components/ui/button'
 import { Panel } from '@/components/ui/panel'
@@ -26,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { StatCard, StatsGrid } from '@/components/ui/stats-card'
+import evaluationStyles from './evaluation-panels.module.css'
 import { observabilityApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { queryKeys } from '@/lib/query-keys'
@@ -180,12 +176,12 @@ function deltaState(value: unknown, lowerIsBetter: boolean) {
 function QuerysetChartEmptyState() {
   return (
     <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-      <div className="rounded-2xl bg-background/70 px-4 py-3 text-center shadow-none ring-1 ring-info/15">
-        <div className="mx-auto mb-1.5 flex h-9 w-9 items-center justify-center rounded-xl bg-info/[0.04] text-info/70">
+      <div className="px-4 py-3 text-center">
+        <div className="mx-auto mb-2 flex h-7 w-7 items-center justify-center text-muted-foreground">
           <ChartLine className="h-4 w-4" aria-hidden="true" />
         </div>
-        <div className="text-[12px] font-semibold text-foreground">暂无数据</div>
-        <div className="mt-0.5 text-[11px] text-muted-foreground">
+        <div className="text-[14px] font-medium text-foreground">暂无数据</div>
+        <div className="mt-0.5 text-[13px] text-muted-foreground">
           当前筛选条件下暂无趋势数据
         </div>
       </div>
@@ -298,7 +294,7 @@ export function QuerysetHealthTab({
       row.weak_hit_rate != null
   )
   return (
-    <div className={cn('space-y-2.5', embedded ? '' : 'p-5')}>
+    <div className={cn(embedded ? evaluationStyles.health : 'space-y-5 p-5')}>
       {embedded ? (
         null
       ) : (
@@ -329,90 +325,49 @@ export function QuerysetHealthTab({
         </div>
       )}
 
-      <Panel padding="sm" className="rounded-2xl border-info/15 bg-background/72 shadow-none">
+      <Panel variant="seamless" padding="none" className={evaluationStyles.healthSection}>
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="text-sm font-semibold text-foreground">
               最新快照
             </div>
             {latest?.generated_at ? (
-              <div className="mt-0.5 text-[11px] text-muted-foreground">
+              <div className="mt-0.5 text-[13px] text-muted-foreground">
                 生成时间={String(latest.generated_at)}
               </div>
             ) : null}
           </div>
           <div className="text-xs text-muted-foreground">
-            文件路径: <span className="font-mono">{runs?.path || '—'}</span>
+            {runs?.path && <details><summary>数据源</summary><span className="break-all">{runs.path}</span></details>}
           </div>
         </div>
 
         <div className="mt-2">
-          <StatsGrid dense className="gap-2 xl:grid-cols-6">
-            <StatCard
-              dense
-              icon={Target}
-              label="命中率 Hit@K"
-              value={fmtPercent(latestMetrics.hit_at_k, 1)}
-              color="sky"
-            />
-            <StatCard
-              dense
-              icon={TrendingUp}
-              label="MRR"
-              value={fmtNum(latestMetrics.mrr, 3)}
-              color="teal"
-            />
-            <StatCard
-              dense
-              icon={ChartLine}
-              label="NDCG@K"
-              value={fmtNum(latestMetrics.ndcg_at_k, 3)}
-              color="teal"
-            />
-            <StatCard
-              dense
-              icon={Timer}
-              label="P95 延迟"
-              value={fmtMs(latestMetrics.p95_latency_ms)}
-              color="amber"
-            />
-            <StatCard
-              dense
-              icon={SearchX}
-              label="漏检率"
-              value={fmtPercent(latestRisk.miss_rate, 1)}
-              color="rose"
-            />
-            <StatCard
-              dense
-              icon={ShieldAlert}
-              label="弱命中率"
-              value={fmtPercent(latestRisk.weak_hit_rate, 1)}
-              color="rose"
-            />
-          </StatsGrid>
+          <dl className={evaluationStyles.healthMetrics}>{[
+            ['命中率 Hit@K', fmtPercent(latestMetrics.hit_at_k,1)], ['MRR',fmtNum(latestMetrics.mrr,3)], ['NDCG@K',fmtNum(latestMetrics.ndcg_at_k,3)], ['P95 延迟',fmtMs(latestMetrics.p95_latency_ms)], ['漏检率',fmtPercent(latestRisk.miss_rate,1)], ['弱命中率',fmtPercent(latestRisk.weak_hit_rate,1)]
+          ].map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
 
           {latestFlags.length ? (
             <div className="mt-3 flex flex-wrap gap-2">
               {latestFlags.slice(0, 12).map((f) => (
                 <span
                   key={String(f)}
-                  className="text-[11px] px-2 py-0.5 rounded-full bg-destructive/10 text-destructive border border-destructive/20"
+                  className="text-[13px] px-2 py-0.5 rounded-full bg-destructive/10 text-destructive border border-destructive/20"
                 >
                   {String(f)}
                 </span>
               ))}
             </div>
           ) : (
-            <div className="mt-2 text-xs text-muted-foreground">无退化标记</div>
+            <div className="mt-2 text-[13px] text-muted-foreground">{latest ? '无退化标记' : '暂无快照'}</div>
           )}
         </div>
       </Panel>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      <div className={evaluationStyles.healthCharts}>
         <Panel
           padding="sm"
-          className="rounded-2xl min-h-[205px] border-info/15 bg-background/72 shadow-none"
+          variant="seamless" className={evaluationStyles.healthChart}
         >
           <div className="flex items-center justify-between mb-2">
             <div className="text-sm font-semibold text-foreground">
@@ -420,17 +375,17 @@ export function QuerysetHealthTab({
             </div>
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
               <span>Hit@K / MRR / NDCG</span>
-              <span className="inline-flex h-7 items-center rounded-lg border border-border px-2 text-[11px]">
+              <span className="inline-flex h-7 items-center rounded-lg border border-border px-2 text-[13px]">
                 近 7 天
               </span>
             </div>
           </div>
           <div className="relative h-[145px]">
-            <SafeResponsiveChart className="h-full" minHeight={145}>
+            {hasQualityChartData ? <SafeResponsiveChart className="h-full" minHeight={145}>
               <LineChart data={chartDisplayData}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                <XAxis dataKey="dateLabel" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} domain={[0, 1]} />
+                <XAxis dataKey="dateLabel" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} domain={[0, 1]} />
                 <Tooltip />
                 <Line
                   type="monotone"
@@ -454,14 +409,13 @@ export function QuerysetHealthTab({
                   dot={false}
                 />
               </LineChart>
-            </SafeResponsiveChart>
-            {hasQualityChartData ? null : <QuerysetChartEmptyState />}
+            </SafeResponsiveChart> : <QuerysetChartEmptyState />}
           </div>
         </Panel>
 
         <Panel
           padding="sm"
-          className="rounded-2xl min-h-[205px] border-info/15 bg-background/72 shadow-none"
+          variant="seamless" className={evaluationStyles.healthChart}
         >
           <div className="flex items-center justify-between mb-2">
             <div className="text-sm font-semibold text-foreground">
@@ -469,17 +423,17 @@ export function QuerysetHealthTab({
             </div>
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
               <span>P95 / 漏检 / 弱命中</span>
-              <span className="inline-flex h-7 items-center rounded-lg border border-border px-2 text-[11px]">
+              <span className="inline-flex h-7 items-center rounded-lg border border-border px-2 text-[13px]">
                 近 7 天
               </span>
             </div>
           </div>
           <div className="relative h-[145px]">
-            <SafeResponsiveChart className="h-full" minHeight={145}>
+            {hasRiskChartData ? <SafeResponsiveChart className="h-full" minHeight={145}>
               <LineChart data={chartDisplayData}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                <XAxis dataKey="dateLabel" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} />
+                <XAxis dataKey="dateLabel" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} />
                 <Tooltip />
                 <Line
                   type="monotone"
@@ -503,13 +457,12 @@ export function QuerysetHealthTab({
                   dot={false}
                 />
               </LineChart>
-            </SafeResponsiveChart>
-            {hasRiskChartData ? null : <QuerysetChartEmptyState />}
+            </SafeResponsiveChart> : <QuerysetChartEmptyState />}
           </div>
         </Panel>
       </div>
 
-      <Panel padding="sm" className="rounded-2xl border-info/15 bg-background/72 shadow-none">
+      <Panel variant="seamless" padding="none" className={evaluationStyles.healthSection}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.72fr)]">
           <div>
             <div className="flex items-center justify-between gap-4">
@@ -616,7 +569,7 @@ export function QuerysetHealthTab({
               <div className="text-sm font-semibold text-foreground">
                 如何解读差异
               </div>
-              <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
+              <div className="mt-1 text-[13px] leading-5 text-muted-foreground">
                 命中率、MRR、NDCG 为正表示提升；P95 延迟、漏检率、弱命中率为负表示改善。
                 仅对相同评测配置的快照进行可比对。
               </div>
@@ -625,7 +578,7 @@ export function QuerysetHealthTab({
         </div>
       </Panel>
 
-      <Panel padding="sm" className="rounded-2xl border-info/15 bg-background/72 shadow-none">
+      <Panel variant="seamless" padding="none" className={evaluationStyles.healthSection}>
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-sm font-semibold text-foreground">
@@ -639,7 +592,7 @@ export function QuerysetHealthTab({
             <Button
               variant="outline"
               size="sm"
-              className="h-7 rounded-lg border-border px-2 text-[11px]"
+              className="h-7 rounded-lg border-border px-2 text-[13px]"
               aria-expanded={showAllRuns}
               onClick={() => setShowAllRuns((showAll) => !showAll)}
             >

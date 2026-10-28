@@ -10,9 +10,9 @@ export function PageTransition({ children }: Readonly<{ children: React.ReactNod
   return (
     <motion.div
       key={pathname}
-      initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 20, filter: "blur(5px)" }}
-      animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, y: 0, filter: "blur(0px)" }}
-      exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -20, filter: "blur(5px)" }}
+      initial={shouldReduceMotion ? { opacity: 0, y: 0, filter: "blur(0px)" } : { opacity: 0, y: 20, filter: "blur(5px)" }}
+      animate={{ opacity: 1, y: 0, filter: "blur(0px)", transitionEnd: { filter: "none" } }}
+      exit={shouldReduceMotion ? { opacity: 0, y: 0, filter: "blur(0px)" } : { opacity: 0, y: -20, filter: "blur(5px)" }}
       transition={{
         ...(shouldReduceMotion ? { duration: 0.01 } : { type: "spring", stiffness: 260, damping: 20 }),
       }}

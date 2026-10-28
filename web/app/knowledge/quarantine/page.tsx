@@ -1,43 +1,18 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import Image from 'next/image'
+import { Download, Quarantine, RefreshCw } from '@/components/icons'
 import { useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
-import {
-  AlertCircle,
-  ArrowRight,
-  BarChart3,
-  ChevronLeft,
-  ChevronRight,
-  CheckCircle2,
-  Download,
-  Eye,
-  Layers,
-  LayoutList,
-  Play,
-  RefreshCw,
-  RotateCcw,
-  Settings2,
-  ShieldAlert,
-  ShieldCheck,
-} from 'lucide-react'
 import { toast } from 'sonner'
-
 import { AppFrame } from '@/components/app-frame'
-import { QuarantineAuditCanvas } from '@/components/knowledge/quarantine/quarantine-audit-canvas'
+import { QuarantineTableWorkspace } from '@/components/knowledge/quarantine/quarantine-table-workspace'
 import { QuarantineTuneDialog } from '@/components/knowledge/quarantine/quarantine-tune-dialog'
-import { PageScaffold } from '@/components/ui/page-scaffold'
-import {
-  KNOWLEDGE_OPS_HERO_PANEL_CLASS,
-  KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS,
-} from '@/components/ui/knowledge-ops-hero'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
-import { Badge } from '@/components/ui/badge'
-import { cn, detachPromise, formatDate, formatFileSize } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 import { documentApi } from '@/lib/api'
-import { formatApiError } from '@/lib/api-errors'
+import { formatApiError, toApiErrorInfo } from '@/lib/api-errors'
 import { captureApiError } from '@/lib/api-error-reporting'
 import { useDatasets } from '@/hooks/use-datasets'
 import type { Document, DocumentPipelineOptions } from '@/types'
@@ -45,58 +20,11 @@ import { useDocumentView } from '@/store/document-view'
 import { usePathname, useRouter } from '@/i18n/navigation'
 import { DocumentViewerPanel } from '@/components/document-viewer-panel'
 import { IngestionDetailDialog } from '@/components/ingestion/ingestion-detail-dialog'
-import {
-  Dialog,
-} from '@/components/ui/dialog'
-import { QuarantineReviewDrawer } from './components/quarantine-review-drawer'
-import {
-  DonutSummaryCard,
-  QuickActionCard,
-  SummaryStatCard,
-} from './components/summary-cards'
-import {
-  QUARANTINE_BACKGROUND_CLASS,
-  QUARANTINE_GRID_OVERLAY_CLASS,
-  QUARANTINE_PAGE_SIZE,
-} from './constants'
+import { QUARANTINE_PAGE_SIZE } from './constants'
 import { buildDemoQuarantineDocuments } from './demo-quarantine'
-import {
-  createReviewMetadataPatch,
-  downloadTextFile,
-  extractTuningOverrides,
-  getDropReasons,
-  getQuarantineSeverity,
-  getQuarantineSource,
-  getSeverityBarClassName,
-  getSeverityClassName,
-  isReviewed,
-  reasonLabel,
-} from './quarantine-signals'
-import type {
-  ActingState,
-  JsonRecord,
-  QuarantineSeverity,
-  QueueSyncStatus,
-  ReviewState,
-} from './types'
-
-function getQuarantineFooterMessage({
-  hasActiveFilters,
-  filteredCount,
-  documentCount,
-  autoRefresh,
-}: {
-  hasActiveFilters: boolean
-  filteredCount: number
-  documentCount: number
-  autoRefresh: boolean
-}): string {
-  if (hasActiveFilters) {
-    return `当前筛出 ${filteredCount} / ${documentCount} 条`
-  }
-  if (autoRefresh) return '自动刷新已开启，每 5 秒轮询一次'
-  return '自动刷新已关闭'
-}
+import { createReviewMetadataPatch, downloadTextFile, extractTuningOverrides, getDropReasons, getQuarantineSeverity, getQuarantineSource, isReviewed, reasonLabel } from './quarantine-signals'
+import type { ActingState, JsonRecord, QuarantineSeverity } from './types'
+import styles from './quarantine.module.css'
 
 export default function QuarantineQueuePage() {
   const searchParams = useSearchParams()
@@ -120,11 +48,10 @@ export default function QuarantineQueuePage() {
   >('all')
   const [page, setPage] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [reviewDrawerOpen, setReviewDrawerOpen] = useState(false)
   const [acting, setActing] = useState<ActingState>(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailDocumentId, setDetailDocumentId] = useState<string | null>(null)
-  const [lastQueueSync, setLastQueueSync] = useState<QueueSyncStatus | null>(null)
+  const [actionError, setActionError] = useState<{ id: string; message: string; requestId?: string } | null>(null)
 
   const [tuneOpen, setTuneOpen] = useState(false)
   const [tuneTarget, setTuneTarget] = useState<Document | null>(null)
@@ -181,57 +108,22 @@ export default function QuarantineQueuePage() {
     const err = queueError || failedQueueError
     return err ? formatApiError(err, '隔离队列同步失败') : null
   }, [failedQueueError, queueError])
-  const refreshQueue = useCallback(
-    async ({ notify = false }: { notify?: boolean } = {}) => {
-      try {
-        const [quarantineResult, failedResult] = await Promise.all([
-          refetch(),
-          refetchFailed(),
-        ])
-        const err = quarantineResult.error || failedResult.error
-        if (err) {
-          const info = captureApiError(err, '隔离队列同步失败', {
-            level: 'warning',
-            tags: { page: 'knowledge-quarantine', action: 'manual-sync' },
-          })
-          setLastQueueSync({
-            type: 'error',
-            message: info.message,
-            at: new Date().toISOString(),
-          })
-          if (notify) toast.error(info.message)
-          return false
-        }
-
-        const quarantinedTotal = quarantineResult.data?.total ?? data?.total ?? 0
-        const failedTotal = failedResult.data?.total ?? failedData?.total ?? 0
-        const message =
-          quarantinedTotal + failedTotal > 0
-            ? `同步完成：待审核 ${quarantinedTotal} 条，失败 ${failedTotal} 条`
-            : '同步完成：当前没有隔离或失败记录'
-        setLastQueueSync({
-          type: 'success',
-          message,
-          at: new Date().toISOString(),
-        })
-        if (notify) toast.success(message)
-        return true
-      } catch (err) {
-        const info = captureApiError(err, '隔离队列同步失败', {
-          level: 'warning',
-          tags: { page: 'knowledge-quarantine', action: 'manual-sync' },
-        })
-        setLastQueueSync({
-          type: 'error',
-          message: info.message,
-          at: new Date().toISOString(),
-        })
-        if (notify) toast.error(info.message)
-        return false
-      }
-    },
-    [data?.total, failedData?.total, refetch, refetchFailed]
-  )
+  const refreshQueue = useCallback(async ({ notify = false }: { notify?: boolean } = {}) => {
+    try {
+      const results = await Promise.all([refetch(), refetchFailed()])
+      const error = results.find(result => result.error)?.error
+      if (error) throw error
+      if (notify) toast.success('隔离队列已同步')
+      return true
+    } catch (error) {
+      const info = captureApiError(error, '隔离队列同步失败', {
+        level: 'warning',
+        tags: { page: 'knowledge-quarantine', action: 'manual-sync' },
+      })
+      if (notify) toast.error(info.message)
+      return false
+    }
+  }, [refetch, refetchFailed])
 
   useEffect(() => {
     setSelectedDataset(searchParams.get('datasetId') || 'all')
@@ -310,14 +202,6 @@ export default function QuarantineQueuePage() {
     )
   }, [documents])
 
-  const sourceCounts = useMemo(() => {
-    return documents.reduce<Record<string, number>>((acc, doc) => {
-      const source = getQuarantineSource(doc)
-      acc[source] = (acc[source] || 0) + 1
-      return acc
-    }, {})
-  }, [documents])
-
   const stats = useMemo(() => {
     const total = documents.length
     const reviewed = documents.filter(isReviewed).length
@@ -331,38 +215,6 @@ export default function QuarantineQueuePage() {
       highRisk,
     }
   }, [documents])
-
-  const reasonTopItems = useMemo(
-    () =>
-      Object.entries(reasonCounts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([reason, count]) => ({
-          label: `R${Math.max(1, sortedReasons.indexOf(reason) + 1)} ${reasonLabel(reason)}`,
-          value: count,
-          hint: documents.length
-            ? `(${((count / documents.length) * 100).toFixed(1)}%)`
-            : '(0%)',
-        })),
-    [documents.length, reasonCounts, sortedReasons]
-  )
-
-  const severityItems = useMemo(
-    () => [
-      { label: '高', value: severityCounts['高'] },
-      { label: '中', value: severityCounts['中'] },
-      { label: '低', value: severityCounts['低'] },
-    ],
-    [severityCounts]
-  )
-
-  const sourceItems = useMemo(
-    () =>
-      Object.entries(sourceCounts)
-        .sort((a, b) => b[1] - a[1])
-        .map(([label, value]) => ({ label, value })),
-    [sourceCounts]
-  )
 
   const filtered = useMemo(() => {
     let out = documents
@@ -426,43 +278,6 @@ export default function QuarantineQueuePage() {
     selectedSource,
   ])
 
-  const listSummary = useMemo(() => {
-    if (!documents.length) return null
-
-    const hasSearch = search.trim().length > 0
-    const hasReasonFilter = selectedReason !== 'all'
-    const hasDatasetFilter = selectedDataset !== 'all'
-    const hasSourceFilter = selectedSource !== 'all'
-    const hasSeverityFilter = selectedSeverity !== 'all'
-    const hasReviewFilter = reviewState !== 'all'
-    const hasDateFilter = Boolean(dateFrom || dateTo)
-
-    if (
-      hasSearch ||
-      hasReasonFilter ||
-      hasDatasetFilter ||
-      hasSourceFilter ||
-      hasSeverityFilter ||
-      hasReviewFilter ||
-      hasDateFilter
-    ) {
-      return `筛出 ${filtered.length} / ${documents.length}`
-    }
-
-    return `共 ${filtered.length} 条`
-  }, [
-    dateFrom,
-    dateTo,
-    documents.length,
-    filtered.length,
-    reviewState,
-    search,
-    selectedDataset,
-    selectedReason,
-    selectedSeverity,
-    selectedSource,
-  ])
-
   const hasActiveFilters =
     Boolean(search.trim()) ||
     selectedReason !== 'all' ||
@@ -488,24 +303,9 @@ export default function QuarantineQueuePage() {
     [filtered, safePage]
   )
 
-  const selected = useMemo(() => {
-    if (!selectedId) return null
-    return documents.find((d) => d.id === selectedId) || null
-  }, [documents, selectedId])
-
   useEffect(() => {
-    if (!selectedId) return
-    if (documents.some((doc) => doc.id === selectedId)) return
-    setSelectedId(null)
-    setReviewDrawerOpen(false)
-  }, [documents, selectedId])
-
-  useEffect(() => {
-    if (!filtered.length && reviewDrawerOpen) {
-      setSelectedId(null)
-      setReviewDrawerOpen(false)
-    }
-  }, [filtered, reviewDrawerOpen])
+    if (selectedId && !paginated.some(doc => doc.id === selectedId)) setSelectedId(null)
+  }, [paginated, selectedId])
 
   useEffect(() => {
     setPage(1)
@@ -557,6 +357,7 @@ export default function QuarantineQueuePage() {
         toast.success('Demo 模式仅用于预览布局，不执行真实重试')
         return
       }
+      setActionError(null)
       setActing({ id: doc.id, action: 'retry' })
       try {
         await documentApi.retry(doc.id)
@@ -564,7 +365,9 @@ export default function QuarantineQueuePage() {
         toast.success('已触发重新入库')
         await refreshQueue()
       } catch (err: unknown) {
-        toast.error(formatApiError(err, '重试失败'))
+        const { message, requestId } = toApiErrorInfo(err, '重试失败')
+        setActionError({ id: doc.id, message, requestId })
+        toast.error(message)
       } finally {
         setActing(null)
       }
@@ -578,6 +381,7 @@ export default function QuarantineQueuePage() {
         toast.success('Demo 模式仅用于预览布局，不执行真实放行')
         return
       }
+      setActionError(null)
       setActing({ id: doc.id, action: 'release' })
       try {
         const patch = buildRecommendedPatch(doc)
@@ -592,7 +396,9 @@ export default function QuarantineQueuePage() {
         toast.success('已放行并重试')
         await refreshQueue()
       } catch (err: unknown) {
-        toast.error(formatApiError(err, '放行失败'))
+        const { message, requestId } = toApiErrorInfo(err, '放行失败')
+        setActionError({ id: doc.id, message, requestId })
+        toast.error(message)
       } finally {
         setActing(null)
       }
@@ -606,17 +412,19 @@ export default function QuarantineQueuePage() {
         toast.success('Demo 模式仅用于预览布局，不执行真实删除')
         return
       }
+      setActionError(null)
       setActing({ id: doc.id, action: 'delete' })
       try {
         await documentApi.delete(doc.id)
         toast.success('已删除文档')
         if (selectedId === doc.id) {
           setSelectedId(null)
-          setReviewDrawerOpen(false)
         }
         await refreshQueue()
       } catch (err: unknown) {
-        toast.error(formatApiError(err, '删除失败'))
+        const { message, requestId } = toApiErrorInfo(err, '删除失败')
+        setActionError({ id: doc.id, message, requestId })
+        toast.error(message)
       } finally {
         setActing(null)
       }
@@ -630,13 +438,16 @@ export default function QuarantineQueuePage() {
         toast.success('Demo 模式仅用于预览布局，不写入真实审核状态')
         return
       }
+      setActionError(null)
       setActing({ id: doc.id, action: 'review' })
       try {
         await markReviewed(doc.id, { quarantine_action: 'reviewed' })
-        toast.success('已标记为已处理')
+        toast.success('已标记为已复核')
         await refreshQueue()
       } catch (err: unknown) {
-        toast.error(formatApiError(err, '标记失败'))
+        const { message, requestId } = toApiErrorInfo(err, '标记失败')
+        setActionError({ id: doc.id, message, requestId })
+        toast.error(message)
       } finally {
         setActing(null)
       }
@@ -664,6 +475,7 @@ export default function QuarantineQueuePage() {
         return
       }
       const doc = tuneTarget
+      setActionError(null)
       setActing({ id: doc.id, action: 'tune' })
       try {
         await documentApi.patchPipeline(doc.id, {
@@ -680,7 +492,9 @@ export default function QuarantineQueuePage() {
         setTuneOpen(false)
         await refreshQueue()
       } catch (err: unknown) {
-        toast.error(formatApiError(err, '保存失败'))
+        const { message, requestId } = toApiErrorInfo(err, '保存失败')
+        setActionError({ id: doc.id, message, requestId })
+        toast.error(message)
       } finally {
         setActing(null)
       }
@@ -700,40 +514,12 @@ export default function QuarantineQueuePage() {
       updated_at: doc.updated_at,
     }))
     downloadTextFile(
-      'quarantine-review-samples.json',
+      'quarantine-documents.json',
       JSON.stringify(payload, null, 2),
       'application/json;charset=utf-8'
     )
-    toast.success('已导出隔离样本')
+    toast.success('已导出当前筛选记录')
   }, [filtered])
-
-  const handleOpenFirstForReview = useCallback(() => {
-    if (!filtered.length) {
-      toast.error('当前没有可审核的隔离记录')
-      return
-    }
-    setSelectedId(filtered[0].id)
-    setReviewDrawerOpen(true)
-  }, [filtered])
-
-  const handleOpenRuleManager = useCallback(() => {
-    const target = filtered[0] || documents[0]
-    if (!target) {
-      toast.error('当前没有可调参的隔离记录')
-      return
-    }
-    openTuneDialog(target)
-  }, [documents, filtered, openTuneDialog])
-
-  const handleOpenReplayLog = useCallback(() => {
-    const target = filtered[0] || documents[0]
-    if (!target) {
-      toast.error('当前没有可查看的回放记录')
-      return
-    }
-    setDetailDocumentId(target.id)
-    setDetailOpen(true)
-  }, [documents, filtered])
 
   const handleExitDemoMode = useCallback(() => {
     const params = new URLSearchParams(searchParams.toString())
@@ -742,388 +528,88 @@ export default function QuarantineQueuePage() {
     router.replace(query ? `${pathname}?${query}` : pathname)
   }, [pathname, router, searchParams])
 
+  const countsReady = demoMode || Boolean(data && failedData)
+  const initialLoading = !demoMode && !countsReady && queueFetching && !documents.length
+
   return (
     <AppFrame rightPanel={<DocumentViewerPanel />} withDocumentViewerPadding>
-      <div
-        data-quarantine-page-root="true"
-        className={cn(
-          'relative flex h-full min-h-0 flex-col overflow-hidden',
-          QUARANTINE_BACKGROUND_CLASS
-        )}
-      >
-        <div className={QUARANTINE_GRID_OVERLAY_CLASS} aria-hidden="true" />
-        <PageScaffold
-          title="隔离审核中心"
-          icon={ShieldAlert}
-          showHeader={false}
-          size="full"
-          // max-w-[1520px]
-          topClassName="relative z-10 w-full max-w-none px-4 pt-4 pb-2.5 md:px-5 lg:px-6"
-          top={
-          <div className="space-y-2.5">
-            <div
-              className={cn(
-                'flex min-h-14 min-w-0 flex-col gap-2 lg:flex-row lg:items-center lg:justify-between',
-                KNOWLEDGE_OPS_HERO_PANEL_CLASS
-              )}
-            >
-              <span className="pointer-events-none absolute -bottom-px left-1 h-px w-12 bg-info/70" aria-hidden="true" />
-              <div className="relative flex min-w-0 items-center gap-2.5">
-                <div
-                  data-quarantine-title-mark="true"
-                  className="relative flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-md border-0 bg-info/10 text-info shadow-none dark:bg-info/[0.14]"
-                >
-                  <Image
-                    src="/brand/mimirq-quarantine-mark.png"
-                    alt="MimirQ 隔离审核标记"
-                    width={160}
-                    height={160}
-                    loading="eager"
-                    className="size-6 scale-110 object-contain"
-                  />
-                </div>
-                <div className="min-w-0 sm:flex sm:items-center sm:gap-2.5">
-                  <h1 className="text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground">
-                    隔离审核中心
-                  </h1>
-                  <p className="text-[12px] leading-5 text-muted-foreground/85">
-                    集中复核隔离样本，支持原文预览、规则调参与回放。
-                  </p>
-                </div>
-              </div>
-              <div className="relative flex min-w-0 flex-col gap-1.5 xl:min-w-[700px] xl:flex-row xl:items-center xl:justify-end">
-                <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
-                  <div className={cn(KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS, 'py-1.5')}>
-                    <span className="inline-flex items-center gap-1.5">
-                      <span
-                        className="size-1 rounded-full bg-info/70"
-                        aria-hidden
-                      />
-                      队列
-                    </span>
-                    <span className="min-w-0 truncate font-medium text-foreground">
-                      {stats.total} 条样本
-                    </span>
-                    <span className="h-3.5 w-px bg-border/70" />
-                    <span>待审核</span>
-                    <span className="font-mono tabular-nums text-foreground">
-                      {stats.unreviewed}
-                    </span>
-                  </div>
-                  <div className={cn(KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS, 'justify-between py-1.5')}>
-                    <span className="inline-flex items-center gap-1.5">
-                      <LayoutList className="size-3 text-info" />
-                      发现
-                    </span>
-                    <ArrowRight className="size-3 shrink-0 text-muted-foreground/45" />
-                    <span className="inline-flex items-center gap-1.5">
-                      <Eye className="size-3 text-info" />
-                      复核
-                    </span>
-                    <ArrowRight className="size-3 shrink-0 text-muted-foreground/45" />
-                    <span className="inline-flex items-center gap-1.5">
-                      <RotateCcw className="size-3 text-info" />
-                      回放
-                    </span>
-                  </div>
-                </div>
-                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                  {demoMode ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 gap-2 rounded-lg border border-foreground/10 bg-background px-4 text-[12px] font-medium text-primary shadow-none hover:bg-primary/10"
-                      onClick={handleExitDemoMode}
-                    >
-                      <Play className="size-4 fill-current" />
-                      退出 Demo
-                    </Button>
-                  ) : null}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 gap-2 rounded-lg border border-foreground/10 bg-background px-3.5 text-[12px] font-medium text-info shadow-none hover:bg-info/[0.08]"
-                    onClick={() => {
-                      if (demoMode) {
-                        toast.success('Demo 数据已刷新')
-                        return
-                      }
-                      detachPromise(refreshQueue({ notify: true }))
-                    }}
-                  >
-                    <RefreshCw
-                      className={cn(
-                        'h-4 w-4',
-                        queueFetching
-                          ? 'animate-spin motion-reduce:animate-none'
-                          : ''
-                      )}
-                    />
-                    同步数据
-                  </Button>
-
-                  <div className="flex h-8 items-center gap-2 rounded-md border border-foreground/10 bg-background/70 px-2.5">
-                    <span className="text-[11px] font-medium text-muted-foreground">
-                      自动刷新
-                    </span>
-                    <Switch
-                      checked={autoRefresh}
-                      onCheckedChange={setAutoRefresh}
-                      className="data-[state=checked]:bg-primary"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {queueErrorMessage ? (
-              <div className="flex items-start gap-2 rounded-xl border border-destructive/20 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
-                <AlertCircle className="mt-0.5 size-4 shrink-0" />
-                <div className="min-w-0">
-                  <div className="font-medium">隔离队列同步异常</div>
-                  <div className="mt-0.5 break-words text-[11px] opacity-85">
-                    {queueErrorMessage}
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {lastQueueSync ? (
-              <div
-                className={cn(
-                  'flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 text-[11px]',
-                  lastQueueSync.type === 'success'
-                    ? 'border-success/20 bg-success/10 text-success'
-                    : 'border-destructive/20 bg-destructive/10 text-destructive'
-                )}
-              >
-                {lastQueueSync.type === 'success' ? (
-                  <CheckCircle2 className="size-4 shrink-0" />
-                ) : (
-                  <AlertCircle className="size-4 shrink-0" />
-                )}
-                <span className="font-medium">
-                  {lastQueueSync.type === 'success' ? '上次同步成功' : '上次同步异常'}
-                </span>
-                <span className="min-w-0 flex-1 truncate">{lastQueueSync.message}</span>
-                <span className="font-mono text-[10px] opacity-70">
-                  {formatDate(lastQueueSync.at)}
-                </span>
-              </div>
-            ) : null}
-
-            <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-              <SummaryStatCard
-                label="总隔离记录"
-                value={stats.total}
-                hint="较昨日 0"
-                icon={LayoutList}
-                tone="neutral"
-              />
-              <SummaryStatCard
-                label="待审核"
-                value={stats.unreviewed}
-                hint="较昨日 0"
-                icon={AlertCircle}
-                tone="warning"
-              />
-              <SummaryStatCard
-                label="已解决"
-                value={stats.reviewed}
-                hint="较昨日 0"
-                icon={CheckCircle2}
-                tone="success"
-              />
-              <SummaryStatCard
-                label="规则集中率"
-                value={stats.highRisk}
-                hint={
-                  stats.total
-                    ? `占比 ${((stats.highRisk / Math.max(stats.total, 1)) * 100).toFixed(1)}%`
-                    : '占比 0%'
-                }
-                icon={BarChart3}
-                tone="info"
-              />
-            </div>
+      <div data-quarantine-page-root="true" className={styles.shell}>
+        <header className={styles.header}>
+          <div className={styles.heading}><Quarantine appearance="color" data-quarantine-title-mark="true" aria-hidden="true" /><h1>隔离队列</h1></div>
+          <div className={styles.headerActions}>
+            {demoMode && <Button size="sm" variant="ghost" onClick={handleExitDemoMode}>退出 Demo</Button>}
+            <label className={styles.autoRefresh}><span>自动刷新</span><Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} aria-label="自动刷新隔离队列" /></label>
+            <Button variant="ghost" className={styles.sync} aria-label="同步隔离队列" disabled={queueFetching} onClick={() => { if (!demoMode) detachPromise(refreshQueue({ notify: true })) }}><RefreshCw className={cn(queueFetching && 'animate-spin motion-reduce:animate-none')} aria-hidden="true" /><span>同步</span></Button>
+            <Button variant="outline" className={styles.export} disabled={!filtered.length} onClick={handleExportFiltered}><Download aria-hidden="true" />导出</Button>
           </div>
-        }
-          bodyClassName="relative z-10 flex w-full max-w-none flex-1 flex-col px-2 pb-4 md:px-3 xl:px-4"
-          bodyContainerClassName="flex min-h-0 max-w-none flex-1 flex-col"
-        >
-        <div className="flex min-h-0 flex-1 flex-col gap-4">
-          <QuarantineAuditCanvas
-            className="min-h-[25.5rem] flex-1"
-            autoRefresh={autoRefresh}
-            dateFrom={dateFrom}
-            dateTo={dateTo}
-            datasetLabelById={datasetLabelById}
-            datasetOptions={datasetOptions}
-            datasets={datasetOptions.filter((option) =>
-              datasets.some((dataset) => dataset.id === option.id)
-            )}
-            datasetsLoading={datasetsLoading}
-            documentsCount={documents.length}
-            filtered={filtered}
-            footerMessage={getQuarantineFooterMessage({
-              hasActiveFilters,
-              filteredCount: filtered.length,
-              documentCount: documents.length,
-              autoRefresh,
-            })}
-            hasActiveFilters={hasActiveFilters}
-            listSummary={listSummary}
-            paginated={paginated}
-            queueFetching={queueFetching}
-            reviewState={reviewState}
-            safePage={safePage}
-            search={search}
-            selectedDataset={selectedDataset}
-            selectedId={selectedId}
-            selectedReason={selectedReason}
-            selectedSeverity={selectedSeverity}
-            selectedSource={selectedSource}
-            sortedReasons={sortedReasons}
-            sourceOptions={sourceOptions}
-            totalPages={totalPages}
-            reasonCounts={reasonCounts}
-            onDateFromChange={setDateFrom}
-            onDateToChange={setDateTo}
-            onDatasetChange={handleDatasetScopeChange}
-            onOpenDocument={openDocument}
-            onOpenReview={(docId) => {
-              setSelectedId(docId)
-              setReviewDrawerOpen(true)
-            }}
-            onPageChange={setPage}
-            onReasonChange={setSelectedReason}
-            onRefresh={() => refreshQueue({ notify: true })}
-            onResetFilters={resetFilters}
-            onReviewStateChange={setReviewState}
-            onSearchChange={setSearch}
-            onSeverityChange={setSelectedSeverity}
-            onSourceChange={setSelectedSource}
-          />
-
-          <div className="grid shrink-0 gap-4 xl:grid-cols-[1fr_1fr_1fr_1.05fr] xl:items-stretch">
-            <DonutSummaryCard
-              title="规则命中分布 TOP5"
-              items={reasonTopItems}
-              colors={[
-                'hsl(var(--primary))',
-                'hsl(var(--info))',
-                'hsl(var(--success))',
-                'hsl(var(--warning))',
-                'hsl(var(--muted-foreground))',
-              ]}
-            />
-            <DonutSummaryCard
-              title="疑似度分布"
-              items={severityItems}
-              colors={['#ef4444', '#f59e0b', '#34d399']}
-            />
-            <DonutSummaryCard
-              title="来源分布"
-              items={sourceItems}
-              colors={[
-                'hsl(var(--primary))',
-                'hsl(var(--success))',
-                'hsl(var(--warning))',
-                'hsl(var(--info))',
-              ]}
-            />
-
-            <div className="flex h-full flex-col rounded-lg border border-foreground/10 bg-background p-4 shadow-none">
-              <div className="text-[0.95rem] font-medium text-foreground">
-                快捷操作
-              </div>
-              <div className="mt-3.5 grid flex-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-2">
-                <QuickActionCard
-                  title="批量审核"
-                  description="选择多条待审样本后进行批量处置"
-                  icon={ShieldCheck}
-                  onClick={handleOpenFirstForReview}
-                />
-                <QuickActionCard
-                  title="导出隔离样本"
-                  description="导出当前筛选结果用于离线审阅"
-                  icon={Download}
-                  onClick={handleExportFiltered}
-                />
-                <QuickActionCard
-                  title="规则管理"
-                  description="查看并快速调整当前规则阈值"
-                  icon={Settings2}
-                  onClick={handleOpenRuleManager}
-                />
-                <QuickActionCard
-                  title="回放记录"
-                  description="查看最近样本的明细和回放信息"
-                  icon={Layers}
-                  onClick={handleOpenReplayLog}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-        </PageScaffold>
-      </div>
-
-      <QuarantineReviewDrawer
-        open={reviewDrawerOpen}
-        onOpenChange={(next) => {
-          setReviewDrawerOpen(next)
-          if (!next) setSelectedId(null)
-        }}
-        selected={selected}
-        acting={acting}
-        onRelease={handleRelease}
-        onRetry={handleRetry}
-        onTune={openTuneDialog}
-        onPreview={openDocument}
-        onShowDetails={(docId) => {
-          setDetailDocumentId(docId)
-          setDetailOpen(true)
-        }}
-        onMarkReviewed={handleMarkReviewedOnly}
-        onDelete={handleDelete}
-      />
-
-      <IngestionDetailDialog
-        open={detailOpen}
-        onOpenChange={setDetailOpen}
-        documentId={detailDocumentId}
-      />
-
-      <Dialog open={tuneOpen} onOpenChange={(v) => setTuneOpen(v)}>
-        <QuarantineTuneDialog
+        </header>
+        <QuarantineTableWorkspace
+          demoMode={demoMode}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          datasetLabelById={datasetLabelById}
+          datasetOptions={datasetOptions}
+          datasetsLoading={datasetsLoading}
+          documentsCount={documents.length}
+          filteredCount={filtered.length}
+          hasActiveFilters={hasActiveFilters}
+          paginated={paginated}
+          queueFetching={queueFetching}
+          initialLoading={initialLoading}
+          queueError={queueErrorMessage}
+          countsReady={countsReady}
+          reviewCounts={stats}
+          severityCounts={severityCounts}
+          reviewState={reviewState}
+          safePage={safePage}
+          search={search}
+          selectedDataset={selectedDataset}
+          selectedId={selectedId}
+          selectedReason={selectedReason}
+          selectedSeverity={selectedSeverity}
+          selectedSource={selectedSource}
+          sortedReasons={sortedReasons}
+          sourceOptions={sourceOptions}
+          totalPages={totalPages}
+          reasonCounts={reasonCounts}
           acting={acting}
-          open={tuneOpen}
-          patch={tunePatch}
-          target={tuneTarget}
-          onApplyDisableQualityFilters={() =>
-            setTunePatch((p) => ({
-              ...p,
-              governance_drop_outline_only: false,
-              governance_drop_low_density: false,
-            }))
-          }
-          onOpenChange={setTuneOpen}
-          onPatchChange={setTunePatch}
-          onResetRecommended={() => {
-            if (!tuneTarget) return
-            const current = extractTuningOverrides(tuneTarget)
-            const recommended = buildRecommendedPatch(tuneTarget)
-            setTunePatch({ ...current, ...recommended })
-          }}
-          onSave={saveTune}
+          actionError={actionError}
+          onDateFromChange={setDateFrom}
+          onDateToChange={setDateTo}
+          onDatasetChange={handleDatasetScopeChange}
+          onOpenDocument={openDocument}
+          onOpenReview={docId => setSelectedId(current => current === docId ? null : docId)}
+          onPageChange={setPage}
+          onReasonChange={setSelectedReason}
+          onRefresh={() => detachPromise(refreshQueue({ notify: true }))}
+          onResetFilters={resetFilters}
+          onReviewStateChange={setReviewState}
+          onSearchChange={setSearch}
+          onSeverityChange={setSelectedSeverity}
+          onSourceChange={setSelectedSource}
+          onRelease={handleRelease}
+          onRetry={handleRetry}
+          onTune={openTuneDialog}
+          onMarkReviewed={handleMarkReviewedOnly}
+          onDelete={handleDelete}
+          onShowDetails={docId => { setDetailDocumentId(docId); setDetailOpen(true) }}
         />
-      </Dialog>
+      </div>
+      <IngestionDetailDialog open={detailOpen} onOpenChange={setDetailOpen} documentId={detailDocumentId} />
+      <QuarantineTuneDialog
+        acting={acting}
+        open={tuneOpen}
+        patch={tunePatch}
+        target={tuneTarget}
+        onApplyDisableQualityFilters={() => setTunePatch(current => ({ ...current, governance_drop_outline_only: false, governance_drop_low_density: false }))}
+        onOpenChange={setTuneOpen}
+        onPatchChange={setTunePatch}
+        onResetRecommended={() => {
+          if (!tuneTarget) return
+          setTunePatch({ ...extractTuningOverrides(tuneTarget), ...buildRecommendedPatch(tuneTarget) })
+        }}
+        onSave={saveTune}
+      />
     </AppFrame>
   )
 }
-
-/*
-Source markers retained for layout/source tests:
-grid gap-3 md:grid-cols-2 xl:grid-cols-4
-*/

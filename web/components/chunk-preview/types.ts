@@ -50,6 +50,7 @@ export interface ChunkPreviewState {
   isSubmitting: boolean
   showOriginalPanel: boolean
   showSettingsPanel: boolean
+  gapReviewRequest: number
   submitSuccess: boolean
   error: string | null
   processedStatus: Record<string, ChunkPreviewProcessedStatus>
@@ -126,6 +127,7 @@ export interface ChunkPreviewActions {
   toggleOriginalPanel: () => void
   setOriginalPanelVisible: (visible: boolean) => void
   toggleSettingsPanel: () => void
+  focusGapReview: () => void
 
   // 拖放处理
   handleDragOver: (e: React.DragEvent) => void

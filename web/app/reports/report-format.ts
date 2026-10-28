@@ -75,7 +75,7 @@ export function reportDataSourceSub(dataProvenance: DatasetReportDataProvenance 
 
 export function reportPipelineFilterLabel(pipelineHash: string): string {
   if (pipelineHash) return shortPipelineHash(pipelineHash)
-  return '当前版本'
+  return '全部处理版本'
 }
 
 export function pipelineVersionLabel(pipelineHash: string | null | undefined): string {
@@ -115,8 +115,7 @@ export function filterReportFindings(
   if (!showOnlyIssues) return findings
   return findings.filter(
     (item) =>
-      item.severity === 'warning' ||
-      item.severity === 'error' ||
+      (item.severity === 'warning' || item.severity === 'error') &&
       safeNumber(item.count) > 0
   )
 }

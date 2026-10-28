@@ -40,5 +40,7 @@ export function AuthGuard({ children }: Readonly<{ children: React.ReactNode }>)
 
   if (shouldBlockProtectedRoute) return null
 
-  return <Fragment key={authRevision}>{children}</Fragment>
+  // Saving a successful login updates the auth scope before navigation finishes.
+  // Keep that form mounted; only private pages need their state reset on account changes.
+  return <Fragment key={isAuthRoute ? 'auth' : authRevision}>{children}</Fragment>
 }

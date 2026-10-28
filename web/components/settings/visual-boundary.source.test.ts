@@ -13,7 +13,6 @@ describe('settings domain visual boundary contract', () => {
   it('keeps governance operations on the shared flat baseline', () => {
     const src = readLocal('governance-ops-panel.tsx')
 
-    expectSourceToContain(src, '<Panel padding="md" className="border-info/15 bg-info/[0.025] shadow-none">')
     expectSourceNotToContain(src, 'rounded-full border border-primary/20 bg-primary/10')
   })
 

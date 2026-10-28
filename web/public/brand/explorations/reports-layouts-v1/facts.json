@@ -1,0 +1,166 @@
+{
+  "dataset": "工程文档库",
+  "dataset_id": "engineering-docs",
+  "generated_at": "2026-10-25 10:42",
+  "total_documents": 128,
+  "total_size": "256.4 MB",
+  "total_size_bytes": 268854886,
+  "by_status": {
+    "已完成": 118,
+    "处理中": 6,
+    "失败": 3,
+    "隔离": 1
+  },
+  "by_file_type": {
+    "PDF": 68,
+    "Word": 32,
+    "Markdown": 20,
+    "Excel": 8
+  },
+  "directories": [
+    {
+      "name": "工程规范",
+      "documents": 44
+    },
+    {
+      "name": "接口文档",
+      "documents": 36
+    },
+    {
+      "name": "运维手册",
+      "documents": 24
+    },
+    {
+      "name": "复盘记录",
+      "documents": 18
+    }
+  ],
+  "coverage": [
+    {
+      "label": "状态字段",
+      "value": 128,
+      "max": 128
+    },
+    {
+      "label": "文件类型",
+      "value": 128,
+      "max": 128
+    },
+    {
+      "label": "目录字段",
+      "value": 122,
+      "max": 128
+    },
+    {
+      "label": "解析来源",
+      "value": 125,
+      "max": 128
+    },
+    {
+      "label": "分块统计",
+      "value": 123,
+      "max": 128
+    }
+  ],
+  "findings": [
+    {
+      "key": "missing_directory",
+      "label": "目录字段缺失",
+      "count": 6,
+      "severity": "warning",
+      "description": "6 个文档未记录目录字段，目录统计尚未覆盖全部文档。"
+    },
+    {
+      "key": "duplicate_hash",
+      "label": "重复文档",
+      "count": 4,
+      "severity": "warning",
+      "description": "内容哈希重复的文档命中 4 次；保留结果需回到数据集核对。"
+    },
+    {
+      "key": "low_confidence",
+      "label": "低置信度内容",
+      "count": 5,
+      "severity": "warning",
+      "description": "质量扫描返回 5 条低置信度命中，可进入数据画像继续核对。"
+    },
+    {
+      "key": "parse_failed",
+      "label": "解析失败",
+      "count": 3,
+      "severity": "error",
+      "description": "3 个文档解析失败，详见原处理任务的错误记录。"
+    }
+  ],
+  "finding_hits": 18,
+  "pipeline_versions": [
+    {
+      "hash": "9fd1bc3e6a2b",
+      "label": "当前处理管线",
+      "documents": 96
+    },
+    {
+      "hash": "4a8c017d9f32",
+      "label": "历史处理管线",
+      "documents": 32
+    }
+  ],
+  "scope": "全部处理版本",
+  "connector_runs_limit": 20,
+  "retrieval_audit": {
+    "status": "需复核",
+    "gates": [
+      {
+        "label": "召回命中 Hit@K",
+        "value": 0.88,
+        "target": 0.9,
+        "direction": "≥",
+        "passed": false
+      },
+      {
+        "label": "元数据命中",
+        "value": 0.96,
+        "target": 0.95,
+        "direction": "≥",
+        "passed": true
+      },
+      {
+        "label": "有效上下文",
+        "value": 0.94,
+        "target": 0.9,
+        "direction": "≥",
+        "passed": true
+      },
+      {
+        "label": "噪声占比",
+        "value": 0.08,
+        "target": 0.1,
+        "direction": "≤",
+        "passed": true
+      }
+    ],
+    "gate_total": 4,
+    "passed": 3,
+    "failed": 1
+  },
+  "sensitive_hits": {
+    "pii": 7,
+    "secrets": 0
+  },
+  "governance": {
+    "changed_documents": 38,
+    "urls_changed": 12,
+    "images_removed": 3
+  },
+  "export_formats": [
+    "HTML 阅读版",
+    "标准 JSON",
+    "完整 JSON 快照",
+    "RAG 统计数据",
+    "RAG 审计 HTML",
+    "Bundle ZIP"
+  ],
+  "redact": true,
+  "redact_scope": "HTML／ZIP",
+  "note": "五版共用的设计排版数据，不是本地真实报告、模型结果或质量承诺；规则命中可以重叠，不等于去重后的问题文档数。"
+}

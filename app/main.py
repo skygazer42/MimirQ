@@ -289,7 +289,7 @@ def _bootstrap_initial_admin() -> None:
         db = SessionLocal()
         try:
             if bootstrap_initial_admin_if_configured(db):
-                logger.info("Bootstrapped initial local administrator from environment")
+                logger.info("Bootstrapped initial local administrator")
         finally:
             db.close()
     except InitialAdminBootstrapError as exc:

@@ -1,107 +1,30 @@
 'use client'
-
-import type {
-  KeyboardEvent as ReactKeyboardEvent,
-  MouseEvent as ReactMouseEvent,
-} from 'react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { ragvizApi } from '@/lib/api'
-import type {
-  RagvizSimilarityCollection,
-  RagvizSimilarityCalculateResponse,
-  RagvizSimilarityRequest,
-} from '@/types'
-import { Button } from '@/components/ui/button'
-import { PageHeader } from '@/components/ui/page-header'
-import { readClientStorage, writeClientStorage } from '@/lib/client-storage'
-import { cn, detachPromise } from '@/lib/utils'
-import { queryKeys } from '@/lib/query-keys'
-import { useMediaQuery } from '@/hooks/use-media-query'
-import { buildSimilarityDiagnostics } from '@/components/ragviz/similarity-diagnostics'
-import type {
-  DiagnosticDecision,
-  SimilarityDiagnosticsResult,
-} from '@/components/ragviz/similarity-diagnostics'
-import {
-  COLOR_SCHEMES,
-  createDefaultVisualConfig,
-  generateUniqueLabels,
-  isVisualConfig,
-  type ColorSchemeKey,
-  type MatrixButtonState,
-  type SimilarityMatrixEntry,
-  type VisualConfig,
-} from '@/components/ragviz/similarity/color-schemes'
-import {
-  EmptyControlTile,
-  IconBtn,
-  Panel,
-  RelatedListCard,
-  RightEmptyInfoCard,
-  StatsGrid,
-  StatsItem,
-} from '@/components/ragviz/similarity/display-components'
-import {
-  AxisConfigCard,
-  CollectionSelectorBlock,
-  NumberField,
-  isEmptyCollectionOption,
-  similarityInputClass,
-  similarityNativeSelectClass,
-  type SelectOption,
-} from '@/components/ragviz/similarity/form-controls'
-import {
-  SimilarityMainPanel,
-  type MainViewMode,
-} from '@/components/ragviz/similarity/panels'
-import type { SelectedHeatmapCell } from '@/components/ragviz/similarity/heatmap-types'
-import {
-  applyMask,
-  calculateDifferenceModeStatistics,
-  calculateNormalModeStatistics,
-  combineWithAND,
-  combineWithOR,
-  computeFinalMask,
-  formatHeatmapValue,
-  type SimilarityTopKAxis,
-} from '@/components/ragviz/similarity/similarity-matrix-math'
-import {
-  collectionLabel,
-  firstSimilarityDisplayString,
-  formatPercent,
-  getErrorMessage,
-  importedPayloadEntries,
-  isRecord,
-  isSimilarityMatrixResult,
-  metricToneClass,
-} from '@/components/ragviz/similarity/utils'
-import {
-  BarChart3,
-  ChevronLeft,
-  ChevronRight,
-  ChevronDown,
-  Database,
-  Download,
-  Eye,
-  Filter,
-  Grid3X3,
-  Lock,
-  Play,
-  RefreshCw,
-  Target,
-} from 'lucide-react'
-import { toast } from 'sonner'
-
-type LeftTopPanel = 'dataSource' | 'operations'
-type RightTopPanel = 'statistics' | null
-type RightBottomPanel = 'filters' | null
-
-const MIN_RAGVIZ_SIDEBAR_WIDTH = 240
-const MAX_RAGVIZ_SIDEBAR_WIDTH = 560
-const RAGVIZ_SIDEBAR_RESIZE_STEP = 24
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { ragvizApi } from '@/lib/api';
+import { formatApiError } from '@/lib/api-errors';
+import type { RagvizSimilarityCollection, RagvizSimilarityCalculateResponse, RagvizSimilarityRequest } from '@/types';
+import { Button } from '@/components/ui/button';
+import { OperationalWorkspace, WorkspaceMetrics, WorkspaceNotice, workspaceStyles as ws } from '@/components/ui/operational-workspace';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { cn as joinClasses } from '@/lib/utils';
+import { cn, detachPromise } from '@/lib/utils';
+import { queryKeys } from '@/lib/query-keys';
+import { buildSimilarityDiagnostics } from '@/components/ragviz/similarity-diagnostics';
+import type { DiagnosticDecision, SimilarityDiagnosticsResult } from '@/components/ragviz/similarity-diagnostics';
+import { COLOR_SCHEMES, createDefaultVisualConfig, generateUniqueLabels, isVisualConfig, type ColorSchemeKey, type MatrixButtonState, type SimilarityMatrixEntry, type VisualConfig } from '@/components/ragviz/similarity/color-schemes';
+import { EmptyControlTile, Panel, RelatedListCard, RightEmptyInfoCard, StatsGrid, StatsItem } from '@/components/ragviz/similarity/display-components';
+import { CollectionSelectorBlock, NumberField, isEmptyCollectionOption, similarityInputClass, similarityNativeSelectClass, type SelectOption } from '@/components/ragviz/similarity/form-controls';
+import { SimilarityMainPanel, type MainViewMode } from '@/components/ragviz/similarity/panels';
+import type { SelectedHeatmapCell } from '@/components/ragviz/similarity/heatmap-types';
+import { applyMask, calculateDifferenceModeStatistics, calculateNormalModeStatistics, combineWithAND, combineWithOR, computeFinalMask, formatHeatmapValue, type SimilarityTopKAxis } from '@/components/ragviz/similarity/similarity-matrix-math';
+import { collectionLabel, firstSimilarityDisplayString, formatPercent, getErrorMessage, importedPayloadEntries, isRecord, isSimilarityMatrixResult } from '@/components/ragviz/similarity/utils';
+import { Eye, Filter, Grid3X3, Lock, Target } from '@/components/icons';
+import { toast } from 'sonner';
 
 export function RagvizSimilarityWorkbench() {
+  const [panel, setPanel] = useState<'source' | 'operations' | 'controls' | 'statistics' | 'filters' | null>(null)
+  const [calculationErrors, setCalculationErrors] = useState<string[]>([])
   const [xSelections, setXSelections] = useState<string[]>([''])
   const [ySelections, setYSelections] = useState<string[]>([''])
   const [xMaxItems, setXMaxItems] = useState<number>(30)
@@ -128,36 +51,6 @@ export function RagvizSimilarityWorkbench() {
     null
   )
 
-  const [leftTopPanel, setLeftTopPanel] = useState<LeftTopPanel>('dataSource')
-  const [rightTopPanel, setRightTopPanel] =
-    useState<RightTopPanel>('statistics')
-  const [rightBottomPanel, setRightBottomPanel] =
-    useState<RightBottomPanel>('filters')
-  const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(false)
-  const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(false)
-  const isCompactRightSidebar = useMediaQuery('(max-width: 1535.98px)')
-  const isCompactLeftSidebar = useMediaQuery('(max-width: 1279.98px)')
-  const [compactSidebar, setCompactSidebar] = useState<
-    'left' | 'right' | null
-  >(null)
-
-  const isLeftSidebarOpen = isCompactLeftSidebar
-    ? compactSidebar === 'left'
-    : !isLeftSidebarCollapsed
-  const isRightSidebarOpen = isCompactRightSidebar
-    ? compactSidebar === 'right'
-    : !isRightSidebarCollapsed
-  const hasCompactOverlay =
-    (isCompactLeftSidebar && compactSidebar === 'left') ||
-    (isCompactRightSidebar && compactSidebar === 'right')
-
-  const [leftWidth, setLeftWidth] = useState<number>(312)
-  const [rightWidth, setRightWidth] = useState<number>(248)
-  const [leftTopHeight, setLeftTopHeight] = useState<number | null>(null)
-  const [rightTopHeight, setRightTopHeight] = useState<number | null>(null)
-
-  const leftSidebarRef = useRef<HTMLDivElement>(null)
-  const rightSidebarRef = useRef<HTMLDivElement>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
 
   const [results, setResults] = useState<SimilarityMatrixEntry[]>([])
@@ -202,15 +95,16 @@ export function RagvizSimilarityWorkbench() {
   }
 
   const calculateSimilarity = async () => {
+    setCalculationErrors([])
     const xs = xSelections.map((x) => x.trim()).filter(Boolean)
     const ys = ySelections.map((y) => y.trim()).filter(Boolean)
 
     if (xs.length === 0) {
-      toast.error('请至少选择一个横坐标 Collection')
+      setCalculationErrors(['请至少选择一个横坐标 Collection'])
       return
     }
     if (ys.length === 0) {
-      toast.error('请至少选择一个纵坐标 Collection')
+      setCalculationErrors(['请至少选择一个纵坐标 Collection'])
       return
     }
     const emptySelections: SelectOption[] = []
@@ -231,6 +125,7 @@ export function RagvizSimilarityWorkbench() {
     }
 
     const total = xs.length * ys.length
+    setPanel(null)
     setIsCalculating(true)
     setCalcProgress({ done: 0, total })
     setResults([])
@@ -276,7 +171,8 @@ export function RagvizSimilarityWorkbench() {
             visualConfig,
           })
         } catch (error: unknown) {
-          const msg = getErrorMessage(error, '计算失败')
+          const msg = formatApiError(error, '计算失败')
+          setCalculationErrors(current => [...current, `${resolveCollectionLabel(x)} / ${resolveCollectionLabel(y)}：${msg}`])
           toast.error(
             `${resolveCollectionLabel(x)} vs ${resolveCollectionLabel(y)}：${msg}`
           )
@@ -694,70 +590,6 @@ export function RagvizSimilarityWorkbench() {
     )
   }, [])
 
-  const handleLeftSidebarToggle = useCallback(() => {
-    if (isCompactLeftSidebar) {
-      setCompactSidebar((current) => (current === 'left' ? null : 'left'))
-      return
-    }
-    setIsLeftSidebarCollapsed((current) => !current)
-  }, [isCompactLeftSidebar])
-
-  const handleRightSidebarToggle = useCallback(() => {
-    if (isCompactRightSidebar) {
-      setCompactSidebar((current) => (current === 'right' ? null : 'right'))
-      return
-    }
-    setIsRightSidebarCollapsed((current) => !current)
-  }, [isCompactRightSidebar])
-
-  const handleStatisticsPanelToggle = useCallback(() => {
-    if (isCompactRightSidebar) {
-      setRightTopPanel('statistics')
-      setCompactSidebar('right')
-      return
-    }
-    if (isRightSidebarCollapsed) {
-      setIsRightSidebarCollapsed(false)
-      setRightTopPanel('statistics')
-      return
-    }
-    setRightTopPanel((prev) => (prev === 'statistics' ? null : 'statistics'))
-  }, [isCompactRightSidebar, isRightSidebarCollapsed])
-
-  const handleFilterPanelToggle = useCallback(() => {
-    if (isCompactRightSidebar) {
-      setRightBottomPanel('filters')
-      setCompactSidebar('right')
-      return
-    }
-    if (isRightSidebarCollapsed) {
-      setIsRightSidebarCollapsed(false)
-      setRightBottomPanel('filters')
-      return
-    }
-    setRightBottomPanel((prev) => (prev === 'filters' ? null : 'filters'))
-  }, [isCompactRightSidebar, isRightSidebarCollapsed])
-
-  const handleLeftTopPanelSelect = useCallback(
-    (panel: LeftTopPanel) => {
-      if (isCompactLeftSidebar) {
-        setCompactSidebar('left')
-      } else if (isLeftSidebarCollapsed) {
-        setIsLeftSidebarCollapsed(false)
-      }
-      setLeftTopPanel(panel)
-    },
-    [isCompactLeftSidebar, isLeftSidebarCollapsed]
-  )
-
-  const handleLeftChartControlsOpen = useCallback(() => {
-    if (isCompactLeftSidebar) {
-      setCompactSidebar('left')
-    } else if (isLeftSidebarCollapsed) {
-      setIsLeftSidebarCollapsed(false)
-    }
-  }, [isCompactLeftSidebar, isLeftSidebarCollapsed])
-
   const updateDisplayFields = (xField: string, yField: string) => {
     if (primaryIndex === null) return
     const target = exclusiveIndex ?? primaryIndex
@@ -844,7 +676,7 @@ export function RagvizSimilarityWorkbench() {
     setActiveFilterIndices([index])
 
     setMatrixButtons((prev) =>
-      prev.map((s, i) => ({
+      prev.map((_, i) => ({
         applyData: i === index,
         applyFilter: i === index,
         exclusive: i === index,
@@ -957,156 +789,6 @@ export function RagvizSimilarityWorkbench() {
     })
   }
 
-  // Persist UI layout.
-  useEffect(() => {
-    try {
-      const payload = {
-        leftWidth,
-        rightWidth,
-        leftTopHeight,
-        rightTopHeight,
-        isLeftSidebarCollapsed,
-        isRightSidebarCollapsed,
-      }
-      writeClientStorage(
-        'ragviz_similarity_layout_v2',
-        JSON.stringify(payload)
-      )
-    } catch {
-      // ignore
-    }
-  }, [
-    isLeftSidebarCollapsed,
-    isRightSidebarCollapsed,
-    leftWidth,
-    rightWidth,
-    leftTopHeight,
-    rightTopHeight,
-  ])
-
-  useEffect(() => {
-    try {
-      const raw = readClientStorage('ragviz_similarity_layout_v2')
-      if (!raw) return
-      const parsed = JSON.parse(raw)
-      if (typeof parsed.leftWidth === 'number') setLeftWidth(parsed.leftWidth)
-      if (typeof parsed.rightWidth === 'number')
-        setRightWidth(parsed.rightWidth)
-      if (typeof parsed.leftTopHeight === 'number')
-        setLeftTopHeight(parsed.leftTopHeight)
-      if (typeof parsed.rightTopHeight === 'number')
-        setRightTopHeight(parsed.rightTopHeight)
-      if (typeof parsed.isLeftSidebarCollapsed === 'boolean')
-        setIsLeftSidebarCollapsed(parsed.isLeftSidebarCollapsed)
-      if (typeof parsed.isRightSidebarCollapsed === 'boolean')
-        setIsRightSidebarCollapsed(parsed.isRightSidebarCollapsed)
-    } catch {
-      // ignore
-    }
-  }, [])
-
-  const leftTopStyle = useMemo(() => {
-    if (!leftTopHeight) return undefined
-    return { height: leftTopHeight }
-  }, [leftTopHeight])
-
-  const rightTopStyle = useMemo(() => {
-    if (!rightTopHeight) return undefined
-    return { height: rightTopHeight }
-  }, [rightTopHeight])
-
-  const clampSidebarWidth = useCallback((width: number) => {
-    return Math.max(
-      MIN_RAGVIZ_SIDEBAR_WIDTH,
-      Math.min(MAX_RAGVIZ_SIDEBAR_WIDTH, Math.round(width))
-    )
-  }, [])
-
-  const applySidebarResizeDelta = useCallback(
-    (side: 'left' | 'right', delta: number) => {
-      if (side === 'left') {
-        setLeftWidth((current) => clampSidebarWidth(current + delta))
-        return
-      }
-      setRightWidth((current) => clampSidebarWidth(current - delta))
-    },
-    [clampSidebarWidth]
-  )
-
-  const startResizeSidebar = (
-    side: 'left' | 'right',
-    event: ReactMouseEvent
-  ) => {
-    event.preventDefault()
-    const startX = event.clientX
-    const startWidth = side === 'left' ? leftWidth : rightWidth
-
-    const onMove = (e: MouseEvent) => {
-      const delta = e.clientX - startX
-      const next = side === 'left' ? startWidth + delta : startWidth - delta
-      const clamped = clampSidebarWidth(next)
-      if (side === 'left') setLeftWidth(clamped)
-      else setRightWidth(clamped)
-    }
-
-    const onUp = () => {
-      globalThis.window.removeEventListener('mousemove', onMove)
-      globalThis.window.removeEventListener('mouseup', onUp)
-    }
-
-    globalThis.window.addEventListener('mousemove', onMove)
-    globalThis.window.addEventListener('mouseup', onUp)
-  }
-
-  const handleSidebarResizeKeyDown = useCallback(
-    (side: 'left' | 'right', event: ReactKeyboardEvent<HTMLElement>) => {
-      const step = event.shiftKey
-        ? RAGVIZ_SIDEBAR_RESIZE_STEP * 2
-        : RAGVIZ_SIDEBAR_RESIZE_STEP
-      if (event.key === 'ArrowLeft') {
-        event.preventDefault()
-        applySidebarResizeDelta(side, -step)
-        return
-      }
-      if (event.key === 'ArrowRight') {
-        event.preventDefault()
-        applySidebarResizeDelta(side, step)
-      }
-    },
-    [applySidebarResizeDelta]
-  )
-
-  const startResizeSplit = (side: 'left' | 'right', event: ReactMouseEvent) => {
-    event.preventDefault()
-    const container =
-      side === 'left' ? leftSidebarRef.current : rightSidebarRef.current
-    if (!container) return
-    const rect = container.getBoundingClientRect()
-    const startY = event.clientY
-    const initial =
-      side === 'left'
-        ? (leftTopHeight ?? rect.height * 0.5)
-        : (rightTopHeight ?? rect.height * 0.5)
-
-    const onMove = (e: MouseEvent) => {
-      const delta = e.clientY - startY
-      const next = initial + delta
-      const min = 140
-      const max = rect.height - 140
-      const clamped = Math.max(min, Math.min(max, next))
-      if (side === 'left') setLeftTopHeight(clamped)
-      else setRightTopHeight(clamped)
-    }
-
-    const onUp = () => {
-      globalThis.window.removeEventListener('mousemove', onMove)
-      globalThis.window.removeEventListener('mouseup', onUp)
-    }
-
-    globalThis.window.addEventListener('mousemove', onMove)
-    globalThis.window.addEventListener('mouseup', onUp)
-  }
-
   const heatmapSummaryMetrics = useMemo(() => {
     if (!primaryEntry) return []
 
@@ -1117,8 +799,8 @@ export function RagvizSimilarityWorkbench() {
       0,
       Number(stats?.total_pairs || rowCount * colCount || 0)
     )
-    const highCount = Math.max(0, Number(stats?.high_similarity_count || 0))
-    const highRatio = totalPairs > 0 ? highCount / totalPairs : 0
+    const highCount = typeof stats?.high_similarity_count === 'number' ? Math.max(0, stats.high_similarity_count) : null
+    const highRatio = highCount !== null && totalPairs > 0 ? highCount / totalPairs : null
 
     return [
       { label: '矩阵规模', value: `${rowCount} × ${colCount}` },
@@ -1129,9 +811,9 @@ export function RagvizSimilarityWorkbench() {
       {
         label: '最高相似度',
         value: formatHeatmapValue(stats?.max_similarity ?? null),
-        tone: 'danger' as const,
+
       },
-      { label: '高相似占比', value: formatPercent(highRatio) },
+      { label: '高相似占比', value: highRatio === null ? '—' : formatPercent(highRatio) },
     ]
   }, [primaryEntry])
 
@@ -1170,202 +852,37 @@ export function RagvizSimilarityWorkbench() {
     return { topX, topY }
   }, [displayLabels, displayMatrix, selectedCellDetails])
 
-  return (
-    <div className="relative flex h-full min-w-0 w-full overflow-hidden bg-[radial-gradient(circle_at_50%_-12%,hsl(var(--primary)/0.10),transparent_34%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--surface-2)/0.34))]">
-      {hasCompactOverlay ? (
-        <button
-          type="button"
-          className="absolute inset-0 z-10 cursor-default bg-foreground/[0.04] backdrop-blur-[1px]"
-          aria-label="关闭侧栏"
-          onClick={() => setCompactSidebar(null)}
-        />
-      ) : null}
 
-      {/* Left section */}
-      <div className="relative z-20 flex h-full shrink-0">
-        <div className="relative z-30 flex w-12 flex-col items-center border-r border-border/34 bg-card/46 py-2 shadow-[8px_0_24px_-28px_hsl(var(--foreground)/0.22)] backdrop-blur-xl">
-          <div className="flex flex-col gap-1">
-            <IconBtn
-              active={isLeftSidebarOpen && leftTopPanel === 'dataSource'}
-              title="数据源配置"
-              onClick={() => handleLeftTopPanelSelect('dataSource')}
-              icon={<Database className="size-4" />}
-            />
-            <IconBtn
-              active={isLeftSidebarOpen && leftTopPanel === 'operations'}
-              title="结果操作"
-              onClick={() => handleLeftTopPanelSelect('operations')}
-              icon={<Download className="size-4" />}
-            />
-            <IconBtn
-              active={false}
-              title={isLeftSidebarOpen ? '收起左侧栏' : '展开左侧栏'}
-              onClick={handleLeftSidebarToggle}
-              icon={
-                isLeftSidebarOpen ? (
-                  <ChevronLeft className="size-4" />
-                ) : (
-                  <ChevronRight className="size-4" />
-                )
-              }
-            />
-          </div>
-          <div className="mt-auto pt-2">
-            <IconBtn
-              active={isLeftSidebarOpen}
-              title="图表选择与控制"
-              onClick={handleLeftChartControlsOpen}
-              icon={<Grid3X3 className="size-4" />}
-            />
-          </div>
-        </div>
-
-        <div
-          ref={leftSidebarRef}
-          className={cn(
-            'flex h-full max-w-[calc(100vw-7rem)] flex-col overflow-hidden border-r border-border/34 backdrop-blur-xl transition-[width,opacity] duration-200 ease-out',
-            isCompactLeftSidebar
-              ? 'absolute inset-y-0 left-12 z-20 bg-card/95 shadow-[18px_0_42px_-24px_rgba(15,23,42,0.35)]'
-              : 'relative bg-card/42',
-            isLeftSidebarOpen
-              ? 'opacity-100'
-              : 'pointer-events-none opacity-0'
-          )}
-          style={{ width: isLeftSidebarOpen ? leftWidth : 0 }}
-          aria-hidden={!isLeftSidebarOpen}
-          inert={!isLeftSidebarOpen}
-        >
-          {isLeftSidebarOpen && !isCompactLeftSidebar ? (
-            <div
-              role="separator"
-              aria-label="调整左侧栏宽度"
-              aria-orientation="vertical"
-              aria-valuemin={MIN_RAGVIZ_SIDEBAR_WIDTH}
-              aria-valuemax={MAX_RAGVIZ_SIDEBAR_WIDTH}
-              aria-valuenow={leftWidth}
-              aria-valuetext={`${leftWidth}px`}
-              tabIndex={0}
-              className="absolute top-0 right-0 h-full w-1 cursor-col-resize hover:bg-primary/20"
-              onMouseDown={(e) => startResizeSidebar('left', e)}
-              onKeyDown={(event) => handleSidebarResizeKeyDown('left', event)}
-            />
-          ) : null}
-
-          <div className="flex flex-col overflow-hidden">
-            <div
-              className="border-b border-border/34 bg-card/40 p-3.5"
-              style={leftTopStyle}
-            >
-              {leftTopPanel === 'dataSource' ? (
-                <Panel
-                  title="数据源配置"
-                  subtitle="选择横/纵坐标 collections，计算两侧相似度。"
-                  rightSlot={
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={refreshCollections}
-                      disabled={collectionsLoading}
-                      title="刷新"
-                      aria-label="刷新"
-                    >
-                      <RefreshCw
-                        className={cn(
-                          'size-4',
-                          collectionsLoading &&
-                            'animate-spin motion-reduce:animate-none'
-                        )}
-                      />
-                    </Button>
-                  }
-                >
-                  <div className="overflow-hidden rounded-[1.35rem] border border-border/38 bg-card/68 shadow-[0_18px_42px_-36px_hsl(var(--foreground)/0.28),inset_0_1px_0_hsl(var(--card)/0.68)]">
-                    <div className="border-b border-border/32 bg-muted/[0.12] px-3.5 py-3">
-                      <div className="flex items-start gap-3">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[0.9rem] border border-primary/14 bg-primary/[0.07] text-primary">
-                          <Grid3X3 className="size-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/58">
-                            Matrix Setup
-                          </div>
-                          <div className="mt-0.5 text-[14px] font-semibold leading-4 text-foreground/88">
-                            矩阵设置
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {collectionsError ? (
-                      <div className="m-4 rounded-2xl border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-                        {collectionsError}
-                      </div>
-                    ) : null}
-
-                    <div>
-                      <AxisConfigCard
-                        eyebrow="X Axis"
-                        title="横坐标 Collection"
-                        badge="横向对比"
-                        badgeClassName="border-primary/20 bg-primary/10 text-primary"
-                      >
-                        <CollectionSelectorBlock
-                          label="横坐标 Collection"
-                          showLabel={false}
-                          selections={xSelections}
-                          onChange={setXSelections}
-                          options={availableCollectionOptions}
-                        />
-                        <NumberField
-                          label="最大项目数"
-                          value={xMaxItems}
-                          onChange={setXMaxItems}
-                          min={10}
-                          max={500}
-                        />
-                      </AxisConfigCard>
-
-                      <AxisConfigCard
-                        eyebrow="Y Axis"
-                        title="纵坐标 Collection"
-                        badge="纵向对比"
-                        badgeClassName="border-success/20 bg-success/10 text-success"
-                      >
-                        <CollectionSelectorBlock
-                          label="纵坐标 Collection"
-                          showLabel={false}
-                          selections={ySelections}
-                          onChange={setYSelections}
-                          options={availableCollectionOptions}
-                        />
-                        <NumberField
-                          label="最大项目数"
-                          value={yMaxItems}
-                          onChange={setYMaxItems}
-                          min={10}
-                          max={500}
-                        />
-                      </AxisConfigCard>
-                    </div>
-
-                    <div className="px-3.5 pb-3.5 pt-2">
-                      <Button
-                        className="h-9 w-full rounded-full bg-primary text-primary-foreground shadow-[0_14px_28px_-20px_hsl(var(--primary)/0.62)] hover:bg-primary/92"
-                        onClick={calculateSimilarity}
-                        disabled={isCalculating}
-                      >
-                        {isCalculating ? null : (
-                          <Play className="mr-2 size-3.5 fill-current" />
-                        )}
-                        {isCalculating && calcProgress
-                          ? `计算中... (${calcProgress.done}/${calcProgress.total})`
-                          : '计算相似度'}
-                      </Button>
-                    </div>
-                  </div>
-                </Panel>
-              ) : (
-                <Panel title="结果操作">
+  const titles = { source: '数据源与计算', operations: '导入与导出', controls: '矩阵管理', statistics: selectedCellDetails ? '单元详情与统计' : '矩阵统计', filters: '显示与筛选' }
+  return <OperationalWorkspace title="向量相似度诊断" icon="rag-visualization" mode="canvas" context={primaryEntry ? `${primaryEntry.xCollectionLabel} / ${primaryEntry.yCollectionLabel}` : '选择横轴与纵轴数据源'} actions={<><Button variant="outline" disabled={isCalculating} onClick={() => setPanel('operations')}>导入与导出</Button><Button disabled={isCalculating} onClick={() => setPanel('source')}>{isCalculating ? `正在计算 ${calcProgress?.done ?? 0}/${calcProgress?.total ?? 0}` : '数据源与计算'}</Button></>} toolbar={<>
+    <div role="group" aria-label="相似度视图" className="flex gap-2"><Button variant={mainView === 'heatmap' ? 'secondary' : 'ghost'} onClick={() => setMainView('heatmap')}>相似度矩阵</Button><Button variant={mainView === 'diagnostics' ? 'secondary' : 'ghost'} disabled={!primaryEntry || !displayLabels || isDifferenceMode} onClick={() => setMainView('diagnostics')}>向量诊断</Button></div>
+    <Button variant="ghost" disabled={!results.length} onClick={() => setPanel('controls')}>矩阵管理 {results.length || ''}</Button><Button variant="ghost" disabled={!primaryEntry} onClick={() => setPanel('filters')}>显示与筛选</Button><Button variant="ghost" disabled={!primaryEntry} onClick={() => setPanel('statistics')}>统计与详情</Button>
+    <label className="ml-auto flex items-center gap-2 text-[13px]">色阶<select aria-label="矩阵色阶" value={colorScheme} onChange={event => setColorScheme(event.target.value as ColorSchemeKey)} className="h-9 rounded-md border border-input bg-background px-3">{COLOR_SCHEMES.map(scheme => <option key={scheme.key} value={scheme.key}>{scheme.label}</option>)}</select></label>
+  </>}>
+    {calculationErrors.length ? <div className="px-4">{calculationErrors.map((message, index) => <WorkspaceNotice key={`${index}:${message}`} retry={() => setPanel('source')} retryLabel="检查数据源">{message}</WorkspaceNotice>)}</div> : null}
+    {heatmapSummaryMetrics.length ? <div className="px-4 md:px-6"><WorkspaceMetrics items={heatmapSummaryMetrics.map(metric => ({ label: metric.label, value: metric.value }))} /></div> : null}
+    <div className="min-h-0 min-w-0 flex-1 overflow-auto" aria-label="相似度工作区">
+      {primaryEntry ? <div className="h-full min-h-[560px] min-w-[640px]"><SimilarityMainPanel
+              primaryEntry={primaryEntry}
+              displayMatrix={displayMatrix}
+              displayLabels={displayLabels}
+              mainView={mainView}
+              diagnostics={diagnostics}
+              maskedMatrix={maskedMatrix}
+              colorScheme={colorScheme}
+              isDifferenceMode={isDifferenceMode}
+              onDecisionChange={setDiagnosticDecision}
+              onCellSelect={cell => { handleHeatmapCellSelect(cell); setPanel('statistics') }}
+            /></div> : <div className="px-6 py-8"><div className={ws.empty}><h2>{isCalculating ? '正在计算相似度矩阵' : '尚未生成相似度矩阵'}</h2><p>{isCalculating ? '计算完成后可查看单元值、筛选结果和导出数据。' : '选择横轴、纵轴数据源后计算，也可导入已有矩阵。'}</p>{!isCalculating ? <div className="flex flex-wrap gap-3"><Button onClick={() => setPanel('source')}>选择数据源</Button><Button variant="outline" onClick={() => setPanel('operations')}>导入矩阵</Button></div> : null}</div></div>}
+    </div>
+    <Dialog open={panel !== null} onOpenChange={open => { if (!open) setPanel(null) }}><DialogContent aria-describedby={undefined} className={joinClasses(ws.dialog, panel === 'statistics' || panel === 'controls' ? ws.wideDialog : '')}><DialogHeader className={ws.dialogHeader}><DialogTitle>{panel ? titles[panel] : ''}</DialogTitle></DialogHeader><div className={ws.dialogBody}>
+      {panel === 'source' ? <fieldset disabled={isCalculating} className="space-y-5">
+        {collectionsError ? <WorkspaceNotice retry={refreshCollections}>{collectionsError}</WorkspaceNotice> : null}
+        <div className="flex items-center justify-between gap-3"><p className="text-[13px] text-muted-foreground">{collectionsLoading ? '正在读取可用数据源…' : `可用数据源 ${collections.length}`}</p><Button variant="ghost" disabled={collectionsLoading} onClick={refreshCollections}>重新读取数据源</Button></div>
+        <div className="grid gap-8 sm:grid-cols-2"><section className="space-y-4"><h2 className={ws.sectionTitle}>横轴</h2><CollectionSelectorBlock label="横轴数据源" selections={xSelections} onChange={setXSelections} options={availableCollectionOptions} /><NumberField label="横轴最大项目数" value={xMaxItems} onChange={setXMaxItems} min={10} max={500} /></section><section className="space-y-4"><h2 className={ws.sectionTitle}>纵轴</h2><CollectionSelectorBlock label="纵轴数据源" selections={ySelections} onChange={setYSelections} options={availableCollectionOptions} /><NumberField label="纵轴最大项目数" value={yMaxItems} onChange={setYMaxItems} min={10} max={500} /></section></div>
+        {calculationErrors.length ? <p className="text-[13px] text-destructive">{calculationErrors.join('；')}</p> : null}
+      </fieldset> : null}
+      {panel === 'operations' ? <Panel title="">
                   <div className="space-y-3">
                     <p className="text-xs text-muted-foreground">
                       支持导入/导出当前矩阵数据（用于复现、分享、离线分析）。
@@ -1437,19 +954,8 @@ export function RagvizSimilarityWorkbench() {
                       }}
                     />
                   </div>
-                </Panel>
-              )}
-            </div>
-
-            <button
-              type="button"
-              aria-label="Resize left split"
-              className="h-2 cursor-row-resize bg-border/28 hover:bg-primary/14"
-              onMouseDown={(e) => startResizeSplit('left', e)}
-            />
-
-            <div className="overflow-auto overscroll-contain bg-card/30 p-3.5 no-scrollbar">
-              <Panel title="图表选择与控制">
+                </Panel> : null}
+      {panel === 'controls' ? <Panel title="">
                 {results.length === 0 ? (
                   <div className="rounded-[1.25rem] border border-border/34 bg-card/58 p-3.5 text-center shadow-[inset_0_1px_0_hsl(var(--card)/0.55)]">
                     <div className="text-[13px] font-semibold text-foreground/84">
@@ -1572,217 +1078,8 @@ export function RagvizSimilarityWorkbench() {
                     </div>
                   </div>
                 )}
-              </Panel>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Main content */}
-      <div className="h-full min-w-0 flex-1 overflow-hidden bg-transparent">
-        <div className="h-full w-full flex flex-col">
-          <div className="px-4 pb-3 pt-5 sm:px-5 xl:px-6 2xl:px-8 2xl:pt-6">
-            <PageHeader
-              title={
-                mainView === 'diagnostics'
-                  ? '向量诊断'
-                  : '跨集合相似度热力图'
-              }
-              description={
-                mainView === 'diagnostics'
-                  ? '基于当前相似度矩阵重建局部向量邻域，帮助识别高分但支撑不足的干扰项。'
-                  : '使用当前主图矩阵和筛选器观察不同集合之间的相似度分布。'
-              }
-              iconImage="rag-visualization"
-              icon={Grid3X3}
-              iconColor="text-info"
-              badge="RAG"
-              compact
-              className="p-0"
-            >
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="inline-flex items-center rounded-2xl border border-border/70 bg-card p-1 shadow-subtle">
-                  <Button
-                    variant={mainView === 'heatmap' ? 'default' : 'outline'}
-                    size="sm"
-                    className={cn(
-                      'rounded-xl',
-                      mainView === 'heatmap' &&
-                        'bg-info text-primary-foreground hover:bg-info/90'
-                    )}
-                    onClick={() => setMainView('heatmap')}
-                  >
-                    热力图
-                  </Button>
-                  <Button
-                    variant={mainView === 'diagnostics' ? 'default' : 'outline'}
-                    size="sm"
-                    className="rounded-xl"
-                    onClick={() => setMainView('diagnostics')}
-                    disabled={
-                      !primaryEntry || !displayLabels || isDifferenceMode
-                    }
-                    title={
-                      isDifferenceMode
-                        ? '差值模式暂不支持向量诊断'
-                        : '查看向量诊断'
-                    }
-                  >
-                    向量诊断
-                  </Button>
-                </div>
-
-                {mainView === 'heatmap' ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-muted-foreground">
-                      配色方案：
-                    </span>
-                    <div className="flex items-center gap-1">
-                      {COLOR_SCHEMES.map((scheme) => (
-                        <button
-                          key={scheme.key}
-                          type="button"
-                          className={cn(
-                            'h-3 w-7 rounded-full border transition',
-                            scheme.key === colorScheme
-                              ? 'border-primary'
-                              : 'border-border hover:border-primary/50'
-                          )}
-                          title={scheme.label}
-                          onClick={() => setColorScheme(scheme.key)}
-                          style={{ backgroundImage: scheme.preview }}
-                        />
-                      ))}
-                    </div>
-                    <ChevronDown className="size-3.5 text-muted-foreground" />
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>3D 投影预览</span>
-                    <span className="rounded-full border border-border px-2 py-0.5">
-                      {diagnostics?.summary.activeOutlierCount ?? 0}{' '}
-                      个活跃异常点
-                    </span>
-                  </div>
-                )}
-              </div>
-            </PageHeader>
-
-            {heatmapSummaryMetrics.length > 0 ? (
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                {heatmapSummaryMetrics.map((metric) => (
-                  <div
-                    key={metric.label}
-                    className="rounded-[1.1rem] border border-border/34 bg-card/58 px-4 py-3 text-center shadow-[inset_0_1px_0_hsl(var(--card)/0.55)]"
-                  >
-                    <div className="text-[11px] font-medium text-muted-foreground">
-                      {metric.label}
-                    </div>
-                    <div
-                      className={cn(
-                        'mt-1 text-2xl font-semibold tabular-nums',
-                        metricToneClass(metric.tone)
-                      )}
-                    >
-                      {metric.value}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </div>
-          <div className="flex-1 overflow-hidden">
-            <SimilarityMainPanel
-              primaryEntry={primaryEntry}
-              displayMatrix={displayMatrix}
-              displayLabels={displayLabels}
-              mainView={mainView}
-              diagnostics={diagnostics}
-              maskedMatrix={maskedMatrix}
-              colorScheme={colorScheme}
-              isDifferenceMode={isDifferenceMode}
-              onDecisionChange={setDiagnosticDecision}
-              onCellSelect={handleHeatmapCellSelect}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Right section */}
-      <div className="relative z-20 flex h-full shrink-0">
-        <div className="relative z-30 flex w-12 flex-col items-center border-l border-border/34 bg-card/46 py-2 shadow-[-8px_0_24px_-28px_hsl(var(--foreground)/0.22)] backdrop-blur-xl">
-          <div className="flex flex-col gap-1">
-            <IconBtn
-              active={
-                isRightSidebarOpen && rightTopPanel === 'statistics'
-              }
-              title="统计信息"
-              onClick={handleStatisticsPanelToggle}
-              icon={<BarChart3 className="size-4" />}
-            />
-            <IconBtn
-              active={false}
-              title={isRightSidebarOpen ? '收起右侧栏' : '展开右侧栏'}
-              onClick={handleRightSidebarToggle}
-              icon={
-                isRightSidebarOpen ? (
-                  <ChevronRight className="size-4" />
-                ) : (
-                  <ChevronLeft className="size-4" />
-                )
-              }
-            />
-          </div>
-          <div className="mt-auto pt-2">
-            <IconBtn
-              active={
-                isRightSidebarOpen && rightBottomPanel === 'filters'
-              }
-              title="筛选器控制"
-              onClick={handleFilterPanelToggle}
-              icon={<Filter className="size-4" />}
-            />
-          </div>
-        </div>
-
-        <div
-          ref={rightSidebarRef}
-          className={cn(
-            'flex h-full max-w-[calc(100vw-7rem)] flex-col overflow-hidden border-l border-border/34 backdrop-blur-xl transition-[width,opacity] duration-200 ease-out',
-            isCompactRightSidebar
-              ? 'absolute inset-y-0 right-12 z-20 bg-card/95 shadow-[-18px_0_42px_-24px_rgba(15,23,42,0.35)]'
-              : 'relative bg-card/42',
-            isRightSidebarOpen
-              ? 'opacity-100'
-              : 'pointer-events-none opacity-0'
-          )}
-          style={{ width: isRightSidebarOpen ? rightWidth : 0 }}
-          aria-hidden={!isRightSidebarOpen}
-          inert={!isRightSidebarOpen}
-        >
-          {isRightSidebarOpen && !isCompactRightSidebar ? (
-            <div
-              role="separator"
-              aria-label="调整右侧栏宽度"
-              aria-orientation="vertical"
-              aria-valuemin={MIN_RAGVIZ_SIDEBAR_WIDTH}
-              aria-valuemax={MAX_RAGVIZ_SIDEBAR_WIDTH}
-              aria-valuenow={rightWidth}
-              aria-valuetext={`${rightWidth}px`}
-              tabIndex={0}
-              className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-primary/20"
-              onMouseDown={(e) => startResizeSidebar('right', e)}
-              onKeyDown={(event) => handleSidebarResizeKeyDown('right', event)}
-            />
-          ) : null}
-
-          <div className="flex flex-col overflow-hidden">
-            <div
-              className="border-b border-border/34 bg-card/40 p-3.5"
-              style={rightTopStyle}
-            >
-              {rightTopPanel === 'statistics' ? (
-                <Panel title="统计信息" subtitle="数据概览与交互信息">
+              </Panel> : null}
+      {panel === 'statistics' ? <Panel title="" subtitle="数据概览与交互信息">
                   {(() => {
                     if (!primaryEntry || !effectiveMask) {
                       return (
@@ -1880,7 +1177,7 @@ export function RagvizSimilarityWorkbench() {
 
                       {selectedCellDetails ? (
                         <div className="space-y-2">
-                          <div className="rounded-[1.2rem] border border-border/34 bg-card/62 p-3 shadow-[inset_0_1px_0_hsl(var(--card)/0.55)]">
+                          <div className="border-b border-border py-4">
                             <div className="grid grid-cols-2 gap-3">
                               <div className="min-w-0">
                                 <div className="text-[11px] font-medium text-muted-foreground">
@@ -1982,22 +1279,8 @@ export function RagvizSimilarityWorkbench() {
                       )}
                     </div>
                   ) : null}
-                </Panel>
-              ) : (
-                <div className="h-full" />
-              )}
-            </div>
-
-            <button
-              type="button"
-              aria-label="Resize right split"
-              className="h-2 cursor-row-resize bg-border/28 hover:bg-primary/14"
-              onMouseDown={(e) => startResizeSplit('right', e)}
-            />
-
-            <div className="overflow-auto overscroll-contain bg-card/30 p-3.5 no-scrollbar">
-              {rightBottomPanel === 'filters' ? (
-                <Panel title="筛选器控制">
+                </Panel> : null}
+      {panel === 'filters' ? <Panel title="">
                   {primaryEntry ? (
                     <div className="space-y-5">
                       <div className="space-y-2">
@@ -2051,7 +1334,7 @@ export function RagvizSimilarityWorkbench() {
                         <div className="space-y-2">
                           <div className="flex items-center gap-2">
                             <input
-                              type="range"
+                              type="range" style={{ accentColor: 'hsl(var(--primary))' }}
                               min={rangeBounds.min}
                               max={rangeBounds.max}
                               step={0.01}
@@ -2081,7 +1364,7 @@ export function RagvizSimilarityWorkbench() {
                           </div>
                           <div className="flex items-center gap-2">
                             <input
-                              type="range"
+                              type="range" style={{ accentColor: 'hsl(var(--primary))' }}
                               min={rangeBounds.min}
                               max={rangeBounds.max}
                               step={0.01}
@@ -2118,7 +1401,7 @@ export function RagvizSimilarityWorkbench() {
                         </div>
                         <div className="flex items-center gap-2">
                           <input
-                            type="range"
+                            type="range" style={{ accentColor: 'hsl(var(--primary))' }}
                             min={0}
                             max={Math.max(
                               0,
@@ -2200,14 +1483,7 @@ export function RagvizSimilarityWorkbench() {
                       description="请先生成相似度矩阵后，在这里选择一个主图矩阵。"
                     />
                   )}
-                </Panel>
-              ) : (
-                <div />
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
+                </Panel> : null}
+    </div><DialogFooter className={ws.dialogFooter}><Button variant="outline" onClick={() => setPanel(null)}>完成</Button>{panel === 'source' ? <Button disabled={isCalculating || collectionsLoading || !xSelections.some(Boolean) || !ySelections.some(Boolean)} onClick={() => { void calculateSimilarity() }}>计算相似度</Button> : null}</DialogFooter></DialogContent></Dialog>
+  </OperationalWorkspace>
 }

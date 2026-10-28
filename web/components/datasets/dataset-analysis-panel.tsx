@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Activity, Download, FileText, Loader2, ShieldCheck, Sparkles } from 'lucide-react'
+import { Activity, Download, FileText, Loader2, ShieldCheck, Sparkles } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'

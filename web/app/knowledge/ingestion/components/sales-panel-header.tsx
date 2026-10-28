@@ -1,12 +1,12 @@
 'use client'
 
-import { ChevronRight, LucideIcon } from 'lucide-react'
+import { ChevronRight, PlatformIcon } from '@/components/icons'
 
 import { cn } from '@/lib/utils'
 
 export type SalesPanelHeaderProps = {
   actionLabel?: string
-  icon: LucideIcon
+  icon: PlatformIcon
   iconTone?: string
   onAction?: () => void
   subtitle?: string

@@ -1,0 +1,7 @@
+@font-face{font-family:'History Sans';src:url('./fonts/sans.woff') format('woff');font-weight:100 900;font-display:block}
+@font-face{font-family:'History Manrope';src:url('./fonts/manrope.woff') format('woff');font-weight:200 800;font-display:block}
+@font-face{font-family:'History Serif';src:url('./fonts/serif.woff') format('woff');font-weight:100 900;font-display:block}
+@font-face{font-family:'History Deng';src:url('./fonts/deng-regular.woff') format('woff');font-weight:400;font-display:block}
+@font-face{font-family:'History Deng';src:url('./fonts/deng-bold.woff') format('woff');font-weight:700;font-display:block}
+@font-face{font-family:'History Bahnschrift';src:url('./fonts/bahnschrift.woff') format('woff');font-weight:100 900;font-display:block}
+.glyph{display:inline-flex;width:17px;height:17px;flex:none;vertical-align:middle}.glyph svg{display:block;width:100%;height:100%}

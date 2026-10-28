@@ -1,8 +1,9 @@
 'use client'
+import { FeedbackToast } from '@/components/feedback-toast'
 
 import type { ComponentProps, ReactNode } from 'react'
 
-import { Calendar, Pencil } from 'lucide-react'
+import { Calendar, Pencil } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -72,6 +73,7 @@ export function DocumentDetailLifecyclePanel({
 
   return (
     <Panel className="rounded-2xl">
+      <FeedbackToast type="error" message={lifecycleError} id="document-lifecycleError" />
       {editing ? (
         <form action={saveAction}>
           <input type="hidden" name="publication_status" value={lifecyclePublicationStatusDraft} />
@@ -180,12 +182,7 @@ export function DocumentDetailLifecyclePanel({
               </Alert>
             ) : null}
 
-            {lifecycleError ? (
-              <Alert variant="destructive">
-                <AlertTitle>{t('alerts.saveFailedTitle')}</AlertTitle>
-                <AlertDescription>{lifecycleError}</AlertDescription>
-              </Alert>
-            ) : null}
+
           </div>
         </form>
       ) : (
@@ -264,12 +261,7 @@ export function DocumentDetailLifecyclePanel({
               ) : null}
             </div>
 
-            {lifecycleError ? (
-              <Alert variant="destructive">
-                <AlertTitle>{t('alerts.saveFailedTitle')}</AlertTitle>
-                <AlertDescription>{lifecycleError}</AlertDescription>
-              </Alert>
-            ) : null}
+
           </div>
         </>
       )}

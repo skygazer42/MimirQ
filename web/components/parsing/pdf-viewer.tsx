@@ -5,7 +5,7 @@
 
 import type { Remote } from 'comlink'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { AlertCircle, Loader2, RotateCcw } from 'lucide-react'
+import { AlertCircle, ChevronLeft, ChevronRight, FileText, Loader2, RotateCcw } from '@/components/icons'
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
 import { ParsingBlock } from '@/lib/parsing-positions'
 import type { ParsingEditFocusHint } from '@/lib/parsing-edit-focus'
@@ -34,6 +34,7 @@ type PdfJsModule = typeof import('pdfjs-dist/build/pdf.mjs')
 type PageBaseSize = { width: number; height: number }
 
 interface PdfViewerProps {
+ showToolbar?: boolean
  file?: File | null
  fileUrl?: string | null
  scrollToPageIndex?: number | null
@@ -286,6 +287,7 @@ async function readPdfSourceData(file?: File | null, fileUrl?: string | null): P
 }
 
 export function PdfViewer({
+ showToolbar = false,
  file,
  fileUrl,
  scrollToPageIndex,
@@ -304,7 +306,9 @@ export function PdfViewer({
  const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map())
  const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null)
  const [pageCount, setPageCount] = useState(0)
+ const [currentPage, setCurrentPage] = useState(1)
  const [scale, setScale] = useState(1)
+ const [zoomPercent, setZoomPercent] = useState('fit')
  const [isLoading, setIsLoading] = useState(false)
  const [loadError, setLoadError] = useState<string | null>(null)
  const [reloadTick, setReloadTick] = useState(0)
@@ -462,6 +466,7 @@ export function PdfViewer({
 
  useEffect(() => {
  containerRef.current?.scrollTo({ top: 0 })
+ setZoomPercent('fit')
  }, [file, fileUrl, reloadTick])
 
  useEffect(() => {
@@ -1162,6 +1167,16 @@ export function PdfViewer({
  if (raf) cancelAnimationFrame(raf)
  raf = requestAnimationFrame(() => {
  raf = 0
+ if (showToolbar) {
+   const containerTop = container.getBoundingClientRect().top
+   for (let index = 0; index < totalPages; index += 1) {
+     const page = pageRefs.current.get(index)
+     if (page && page.getBoundingClientRect().bottom > containerTop + 32) {
+       setCurrentPage(index + 1)
+       break
+     }
+   }
+ }
  queueVisiblePdfPageWindow({
  containerScrollTop: container.scrollTop,
  containerHeight: container.clientHeight,
@@ -1182,7 +1197,7 @@ export function PdfViewer({
  container.removeEventListener('scroll', handleViewportQueue)
  globalThis.window?.removeEventListener('resize', handleViewportQueue)
  }
- }, [pageCount, pdfDoc, queuePageRender, scale])
+ }, [pageCount, pdfDoc, queuePageRender, scale, showToolbar])
 
  useEffect(() => {
  const doc = pdfDoc
@@ -1450,8 +1465,29 @@ export function PdfViewer({
  }
 
  return (
- <div ref={containerRef} className="h-full overflow-y-auto overscroll-contain no-scrollbar px-4 py-6">
- <div ref={contentRef} className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+ <div className="flex h-full min-h-0 flex-col">
+ {showToolbar ? <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background/60 px-5 text-[13px]">
+   <FileText className="size-3.5 text-muted-foreground" /><span>原文 PDF</span>
+   <div className="ml-auto flex items-center gap-2 text-xs tabular-nums text-muted-foreground">
+     <Button variant="ghost" size="icon" className="size-7" aria-label="上一页原文" disabled={currentPage <= 1} onClick={() => {
+       const page = pageRefs.current.get(currentPage - 2)
+       if (page && containerRef.current) scrollPdfPageIntoElement({ behavior: 'auto', scrollElement: containerRef.current, targetElement: page })
+     }}><ChevronLeft className="size-3.5" /></Button>
+     <span><span className="text-foreground">{currentPage}</span> / {pageCount} 页</span>
+     <Button variant="ghost" size="icon" className="size-7" aria-label="下一页原文" disabled={currentPage >= pageCount} onClick={() => {
+       const page = pageRefs.current.get(currentPage)
+       if (page && containerRef.current) scrollPdfPageIntoElement({ behavior: 'auto', scrollElement: containerRef.current, targetElement: page })
+     }}><ChevronRight className="size-3.5" /></Button>
+     <select aria-label="原文缩放" value={zoomPercent} onChange={(event) => setZoomPercent(event.target.value)} className="ml-1 max-w-24 rounded border-0 border-l border-border bg-transparent py-1 pl-2 text-xs text-muted-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring">
+       <option value="fit">适合宽度</option>
+       <option value="100">100%</option>
+       <option value="150">150%</option>
+       <option value="200">200%</option>
+     </select>
+   </div>
+ </div> : null}
+ <div ref={containerRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain no-scrollbar px-5 py-7">
+ <div ref={contentRef} className={showToolbar ? 'mx-auto flex w-full max-w-[480px] flex-col gap-6' : 'mx-auto flex w-full max-w-4xl flex-col gap-6'} style={showToolbar && zoomPercent !== 'fit' ? { width: (defaultPageBaseSize?.width || 595) * Number(zoomPercent) / 100, maxWidth: 'none' } : undefined}>
  {pageNumbers.map((pageNumber) => {
  const index = pageNumber - 1
  const pageBoxes = resolvedBoxesByPage.get(index) || []
@@ -1477,7 +1513,8 @@ export function PdfViewer({
  pageRefs.current.delete(index)
  }}
  data-page-index={index}
- className="relative rounded-xl bg-card shadow-sm ring-1 ring-border/60"
+ data-page-rendered={isRendered ? 'true' : 'false'}
+ className={showToolbar ? 'relative bg-card shadow-sm ring-1 ring-border/60' : 'relative rounded-xl bg-card shadow-sm ring-1 ring-border/60'}
  style={pageStyle}
  >
  <canvas
@@ -1488,7 +1525,7 @@ export function PdfViewer({
  }
  canvasRefs.current.delete(index)
  }}
- className="block h-auto w-full rounded-xl"
+ className={showToolbar ? 'block h-auto w-full' : 'block h-auto w-full rounded-xl'}
  style={pageAspectRatio ? { aspectRatio: String(pageAspectRatio) } : undefined}
  />
  {isRendered ? null : isPageFailed ? (
@@ -1526,6 +1563,7 @@ export function PdfViewer({
  </div>
  )
  })}
+ </div>
  </div>
  </div>
  )

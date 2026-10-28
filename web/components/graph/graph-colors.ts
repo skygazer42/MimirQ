@@ -6,6 +6,11 @@ type GraphNodeColorLike = Readonly<{
 }>
 
 const GRAPH_TYPE_COLOR_FAMILIES = [
+  { color: '#75658f', aliases: ['ability', 'capability', '能力', '能力项'] },
+  { color: '#927342', aliases: ['role', '角色'] },
+  { color: '#48778b', aliases: ['practice', 'behavior', '行为'] },
+  { color: '#45817c', aliases: ['asset', '资产'] },
+  { color: '#5d815a', aliases: ['outcome', 'goal', '目标'] },
   {
     color: '#f59e0b',
     aliases: ['person', 'people', 'human', '人物', '人员', '个人', '申请人', '法人'],

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Ban, Calendar, CheckCircle2, Copy, FileText, GitBranch, Loader2, Pencil, RefreshCw, Save, Search, X } from 'lucide-react'
+import { Ban, Calendar, CheckCircle2, Copy, FileText, GitBranch, Loader2, Pencil, RefreshCw, Save, Search, X } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 

@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { ExternalLink, Keyboard, Scissors, Settings2, Sparkles } from 'lucide-react'
+import { ExternalLink, Keyboard, Scissors, Settings2, Sparkles } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'

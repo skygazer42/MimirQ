@@ -1,0 +1,50 @@
+{
+  "nativeViewport": "1600x1000",
+  "candidates": [
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-batch-three-v1/retrieval-ablations/a.html",
+      "name": "A 结果与排行",
+      "concept": "对象与结果直接对照，配置按需打开",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "A 结果与排行"
+      ]
+    },
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-batch-three-v1/retrieval-ablations/b.html",
+      "name": "B 排行与对照",
+      "concept": "对象与结果直接对照，配置按需打开",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "B 排行与对照"
+      ]
+    },
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-batch-three-v1/retrieval-ablations/c.html",
+      "name": "C 实验报告",
+      "concept": "对象与结果直接对照，配置按需打开",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "C 实验报告"
+      ]
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { FileDown, SearchCode } from 'lucide-react'
+import { FileDown, SearchCode } from '@/components/icons'
 
 import { Button } from '@/components/ui/button'
 import { evaluationApi } from '@/lib/api/evaluation'

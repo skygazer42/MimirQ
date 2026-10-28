@@ -3,11 +3,11 @@
 import { DangerZonePanel } from '@/components/settings/danger-zone-panel'
 import { SettingsSwitch } from '@/components/settings/settings-switch'
 import { Input } from '@/components/ui/input'
-import { settingsTextTokens } from '@/components/ui/system-page-tokens'
+import { settingsLayoutTokens, settingsTextTokens } from '@/components/ui/system-page-tokens'
 import type { CacheConfig, ChatConfig, LangGraphConfig, SafetyConfig } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { Database, EyeOff, Network, Server } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+import { Database, EyeOff, Network, Server } from '@/components/icons'
+import type { PlatformIcon } from '@/components/icons'
 import type { ReactNode } from 'react'
 
 type RuntimeControlsSectionProps = {
@@ -21,11 +21,9 @@ type RuntimeControlsSectionProps = {
   updateLangGraph: (patch: Partial<LangGraphConfig>) => void
 }
 
-const RUNTIME_CARD =
-  'rounded-xl border border-info/15 bg-info/[0.025] p-3.5 shadow-none'
 const RUNTIME_LABEL = settingsTextTokens.fieldLabel
 const RUNTIME_HINT = settingsTextTokens.helpText
-const RUNTIME_INPUT = 'h-8 rounded-lg border-info/15 bg-info/[0.025] text-[12px]'
+const RUNTIME_INPUT = settingsLayoutTokens.input
 
 function RuntimeToggle({
   checked,
@@ -42,37 +40,32 @@ function RuntimeToggle({
   )
 }
 
-function RuntimeCard({
+function RuntimeGroup({
   icon: Icon,
-  label,
   title,
   description,
   action,
   children,
 }: Readonly<{
-  icon: LucideIcon
-  label: string
+  icon: PlatformIcon
   title: string
   description: string
   action?: ReactNode
   children?: ReactNode
 }>) {
   return (
-    <div className={RUNTIME_CARD}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 gap-2.5">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-[12px] border border-info/20 bg-info/10 text-info">
-            <Icon className="h-4 w-4" />
-          </div>
-          <div className="min-w-0">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-info/80">{label}</div>
-            <div className="mt-0.5 text-[13px] font-medium tracking-[-0.005em] text-foreground">{title}</div>
-            <div className={cn(RUNTIME_HINT, 'mt-0.5')}>{description}</div>
-          </div>
-        </div>
-        {action}
+    <div className={settingsLayoutTokens.group}>
+      <div className="min-w-0">
+        <h3 className={cn(settingsTextTokens.panelTitle, 'flex items-center gap-2')}>
+          <Icon className={settingsTextTokens.panelTitleIcon} />
+          {title}
+        </h3>
+        <p className={cn(RUNTIME_HINT, 'mt-1')}>{description}</p>
       </div>
-      {children ? <div className="mt-3 space-y-3">{children}</div> : null}
+      <div className="min-w-0 space-y-4">
+        {action ? <div className="flex justify-end">{action}</div> : null}
+        {children}
+      </div>
     </div>
   )
 }
@@ -91,12 +84,7 @@ function OptionRow({
   label: string
 }>) {
   return (
-    <div
-      className={cn(
-        'flex items-start justify-between gap-3 rounded-xl border px-3 py-2.5 transition-colors',
-        checked ? 'border-info/25 bg-info/10' : 'border-border/60 bg-muted/28'
-      )}
-    >
+    <div className={settingsLayoutTokens.row}>
       <div className="min-w-0">
         <div className={settingsTextTokens.panelTitle}>{title}</div>
         <div className={cn(RUNTIME_HINT, 'mt-0.5')}>{description}</div>
@@ -113,8 +101,10 @@ function Field({
 }: Readonly<{ label: string; children: ReactNode; hint?: string }>) {
   return (
     <div className="space-y-1.5">
-      <div className={RUNTIME_LABEL}>{label}</div>
-      {children}
+      <label className="block space-y-1.5">
+        <span className={cn(RUNTIME_LABEL, 'block')}>{label}</span>
+        {children}
+      </label>
       {hint ? <div className={RUNTIME_HINT}>{hint}</div> : null}
     </div>
   )
@@ -145,10 +135,9 @@ export function RuntimeControlsSection({
       tone="neutral"
       icon="help"
     >
-      <section className="grid gap-3 xl:grid-cols-2">
-      <RuntimeCard
+      <section>
+      <RuntimeGroup
         icon={Server}
-        label="流式"
         title="对话流式稳定性"
         description="心跳保活连接，断连后自动释放资源"
         action={
@@ -177,19 +166,18 @@ export function RuntimeControlsSection({
               className={RUNTIME_INPUT}
             />
           </Field>
-          <div className={cn('rounded-xl border border-border/60 bg-muted/35 px-3 py-2', settingsTextTokens.helpText)}>
+          <div className={cn('sm:pt-7', settingsTextTokens.helpText)}>
             适合经过代理或负载均衡的长连接场景，避免空闲连接被误断
           </div>
         </div>
-      </RuntimeCard>
+      </RuntimeGroup>
 
-      <RuntimeCard
+      <RuntimeGroup
         icon={Database}
-        label="缓存"
         title="性能与缓存"
         description="去重与缓存为尽力而为，Redis 不可用时放行主流程"
       >
-        <div className="grid gap-2">
+        <div className="divide-y divide-border/60">
           <OptionRow
             title="上传去重"
             description="同文件指纹和管线配置时复用已有文档"
@@ -209,7 +197,7 @@ export function RuntimeControlsSection({
         </div>
 
         {isChatResponseCacheEnabled ? (
-          <div className="grid gap-3 rounded-xl border border-info/20 bg-info/[0.07] p-3 md:grid-cols-3">
+          <div className="grid gap-4 border-l border-border/60 pl-4 md:grid-cols-2">
             <Field label="缓存时长（秒）">
               <Input
                 type="number"
@@ -241,7 +229,7 @@ export function RuntimeControlsSection({
                 className={RUNTIME_INPUT}
               />
             </Field>
-            <div className="flex items-center justify-between gap-3 pt-5 text-[12px] font-medium text-muted-foreground">
+            <div className="flex items-center justify-between gap-3 text-[13px] font-medium text-foreground md:col-span-2">
               <span>仅无历史</span>
               <SettingsSwitch
                 checked={cache.chat_response_cache_require_empty_history ?? true}
@@ -253,11 +241,10 @@ export function RuntimeControlsSection({
             </div>
           </div>
         ) : null}
-      </RuntimeCard>
+      </RuntimeGroup>
 
-      <RuntimeCard
+      <RuntimeGroup
         icon={EyeOff}
-        label="安全"
         title="敏感信息脱敏"
         description="对模型输入、输出和工具调用做敏感信息遮蔽"
         action={
@@ -293,11 +280,10 @@ export function RuntimeControlsSection({
             </Field>
           </div>
         ) : null}
-      </RuntimeCard>
+      </RuntimeGroup>
 
-      <RuntimeCard
+      <RuntimeGroup
         icon={Network}
-        label="编排"
         title="子图编排"
         description="将检索和生成拆成子图节点，便于后续扩展编排"
         action={

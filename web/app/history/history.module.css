@@ -1,0 +1,135 @@
+.shell {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+.pageHeader {
+  display: flex;
+  min-height: 72px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 30px;
+  border-bottom: 1px solid hsl(var(--border) / .65);
+}
+
+.pageHeading { display: flex; align-items: center; gap: 13px; }
+.pageHeading h1 { font-size: 21px; font-weight: 570; line-height: 30px; }
+.pageHeading > span { display: inline-flex; color: hsl(var(--muted-foreground)); }
+.workspace { display: flex; min-height: 0; flex: 1; overflow: hidden; }
+.queue { background: hsl(var(--background)); }
+.queueTools { flex-shrink: 0; padding: 20px 16px 10px; }
+.searchInput { height: 38px; border-radius: 6px; background: hsl(var(--card)); font-size: 13px; }
+.filters { display: flex; align-items: center; gap: 18px; padding: 10px 3px 0; }
+.filter {
+  position: relative;
+  height: 30px;
+  padding: 0 1px;
+  border-radius: 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 12.5px;
+}
+.filter:hover { background: transparent; color: hsl(var(--foreground)); }
+.filter[aria-pressed='true'] { color: hsl(var(--foreground)); font-weight: 600; }
+.filter[aria-pressed='true']::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: currentColor;
+  content: '';
+}
+.queueToggle { margin-left: auto; }
+.queueScroll { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 4px 12px 18px; }
+.dateGroup + .dateGroup { margin-top: 14px; }
+.groupHeading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 5px 13px;
+  background: hsl(var(--background));
+  color: hsl(var(--muted-foreground));
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 20px;
+}
+.conversationButton {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-height: 76px;
+  flex-direction: column;
+  gap: 7px;
+  overflow: hidden;
+  border-radius: 5px;
+  padding: 12px 13px;
+  text-align: left;
+  transition: background-color 160ms ease-out;
+}
+.conversationButton:hover { background: hsl(var(--muted) / .65); }
+.conversationButton[aria-pressed='true'] {
+  gap: 4px;
+  background: color-mix(in srgb, hsl(var(--ring)) 8%, hsl(var(--background)));
+}
+.conversationTitle { display: block; width: 100%; padding-right: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; font-weight: 470; line-height: 21px; }
+.conversationButton[aria-pressed='true'] .conversationTitle { font-weight: 600; }
+.conversationPreview { width: 100%; overflow: hidden; color: hsl(var(--muted-foreground)); font-size: 11.5px; line-height: 18px; text-overflow: ellipsis; white-space: nowrap; }
+.conversationMeta { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px; color: hsl(var(--muted-foreground)); font-size: 11px; line-height: 18px; font-variant-numeric: tabular-nums; }
+.conversationCount { display: inline-flex; align-items: center; gap: 4px; }
+.rowActions { position: absolute; top: 7px; right: 1px; display: flex; align-items: center; }
+.reading { position: relative; min-height: 0; min-width: 0; flex: 1; flex-direction: column; background: hsl(var(--card)); }
+.detailHeader { z-index: 2; flex-shrink: 0; border-bottom: 1px solid hsl(var(--border) / .65); background: hsl(var(--card)); color: hsl(var(--foreground)); }
+.detailHeaderInner { display: flex; width: 100%; max-width: 60rem; min-height: 96px; align-items: center; justify-content: space-between; gap: 20px; margin: 0 auto; padding: 22px 40px; }
+.detailHeading { min-width: 0; flex: 1; }
+.detailTitle { overflow: hidden; font-size: 16px; font-weight: 580; line-height: 25px; text-overflow: ellipsis; white-space: nowrap; }
+.detailMeta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 5px; color: hsl(var(--muted-foreground)); font-size: 11.5px; line-height: 18px; }
+.detailActions { display: flex; flex-shrink: 0; align-items: center; gap: 8px; }
+.continueButton { height: 36px; gap: 8px; border-radius: 6px; padding: 0 14px; font-size: 13px; }
+.messagesViewport { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior: contain; }
+.messages { width: 100%; max-width: 60rem; margin: 0 auto; padding: 20px 40px 40px; }
+.messageGroup + .messageGroup { margin-top: 28px; }
+.messageDate { margin-bottom: 20px; color: hsl(var(--muted-foreground)); font-size: 11px; line-height: 18px; }
+.messageEntry + .messageEntry { margin-top: 30px; }
+.messageEntry[data-history-message-role='user']:not(:first-child) { border-top: 1px solid hsl(var(--border)); padding-top: 24px; }
+.status { padding: 28px 13px; color: hsl(var(--muted-foreground)); font-size: 13px; line-height: 22px; }
+.readingStatus { display: flex; min-height: 0; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 32px; text-align: center; }
+.menu { min-width: 184px; }
+
+@media (max-width: 1023px) {
+  .detailHeaderInner { gap: 12px; padding: 20px 24px; }
+  .messages { padding: 20px 24px 32px; }
+}
+
+@media (max-width: 767px) {
+  .pageHeader { min-height: 68px; padding: 0 16px 0 68px; }
+  .pageHeading { gap: 9px; }
+  .pageHeading h1 { font-size: 19px; line-height: 26px; }
+  .pageHeading > span { display: none; }
+  .queueTools { padding: 12px 16px 8px; }
+  .searchInput { height: 44px; font-size: 16px; }
+  .filters { padding-top: 8px; }
+  .filter { min-height: 44px; padding: 0 5px; font-size: 14px; }
+  .queueScroll { padding-right: 12px; padding-left: 12px; }
+  .conversationButton { min-height: 82px; padding-top: 13px; padding-bottom: 13px; }
+  .conversationTitle { padding-right: 30px; font-size: 14px; }
+  .conversationPreview, .conversationMeta { font-size: 12px; }
+  .detailHeaderInner { min-height: 0; flex-wrap: wrap; padding: 18px 20px; }
+  .detailHeading { flex-basis: 100%; }
+  .detailTitle { overflow: visible; white-space: normal; overflow-wrap: anywhere; font-size: 17px; line-height: 26px; }
+  .detailActions { width: 100%; justify-content: flex-end; }
+  .continueButton { height: 44px; font-size: 14px; }
+  .messages { padding: 20px 20px 32px; }
+  .messageEntry + .messageEntry { margin-top: 26px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversationButton { transition: none; }
+}

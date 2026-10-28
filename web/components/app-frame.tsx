@@ -16,6 +16,7 @@ type AppFrameProps = {
   showBackground?: boolean
   showNavbar?: boolean
   withDocumentViewerPadding?: boolean
+  navigationVariant?: 'default' | 'rail'
 }
 
 export function AppFrame({
@@ -26,9 +27,11 @@ export function AppFrame({
   showBackground = true,
   showNavbar = true,
   withDocumentViewerPadding = false,
+  navigationVariant = 'default',
 }: Readonly<AppFrameProps>) {
   const t = useTranslations('Layout')
-  const [isSidebarOpen, setSidebarOpen] = React.useState(true)
+  const [isSidebarOpen, setSidebarOpen] = React.useState(navigationVariant !== 'rail')
+  const sidebarExpanded = navigationVariant !== 'rail' && isSidebarOpen
   const skipLinkRef = React.useRef<HTMLAnchorElement | null>(null)
   const appContentRef = React.useRef<HTMLDivElement | null>(null)
   const { isOpen: isDocPanelOpen } = useDocumentView()
@@ -57,7 +60,7 @@ export function AppFrame({
       isMobile = false
     }
 
-    const shouldInert = Boolean(isMobile && isSidebarOpen)
+    const shouldInert = Boolean(isMobile && sidebarExpanded)
 
     const applyInert = (el: HTMLElement | null, inert: boolean) => {
       if (!el) return
@@ -80,7 +83,7 @@ export function AppFrame({
       applyInert(skipEl, false)
       applyInert(contentEl, false)
     }
-  }, [isSidebarOpen, showNavbar])
+  }, [sidebarExpanded, showNavbar])
 
   return (
     <div className={cn("relative h-dvh overflow-hidden bg-background text-foreground", className)}>
@@ -93,7 +96,7 @@ export function AppFrame({
       </a>
       {showBackground && <AppBackground />}
       <div className="relative z-10 flex h-full overflow-hidden">
-        {showNavbar && <Navbar isSidebarOpen={isSidebarOpen} setSidebarOpen={setSidebarOpen} />}
+        {showNavbar && <Navbar variant={navigationVariant} isSidebarOpen={sidebarExpanded} setSidebarOpen={setSidebarOpen} />}
         <div ref={appContentRef} className="flex-1 min-h-0 relative flex overflow-hidden">
           <main
             id="main-content"

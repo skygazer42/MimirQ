@@ -1,122 +1,62 @@
-import type { LucideIcon } from 'lucide-react'
-import { File, FileCode, FileSpreadsheet, FileText, FileType, Presentation } from 'lucide-react'
+import type { PlatformIcon } from '@/components/icons'
+import { File, FileMarkdown, FilePdf, FileCode, FileJson, FileSpreadsheet, FileText, FileType, FileImage, FileArchive, Presentation } from '@/components/icons'
 
 import type { Document } from '@/types'
 
 export type FileTypeMeta = {
-  icon: LucideIcon
+  icon: PlatformIcon
   label: string
   color: string
   bg: string
   border: string
 }
 
+function fileMeta(icon: PlatformIcon, label: string, tone: string): FileTypeMeta {
+  return { icon, label, color: `icon-ink-${tone}`, bg: `icon-surface-${tone}`, border: `icon-border-${tone}` }
+}
+
 export function getFileTypeMeta(doc: Pick<Document, 'filename' | 'file_type'>): FileTypeMeta {
   const explicit = String(doc.file_type || '').trim().toLowerCase()
-  const fromName =
-    String(doc.filename || '')
-      .trim()
-      .split('.')
-      .pop()
-      ?.toLowerCase()
-      ?.trim() || ''
+  const fromName = String(doc.filename || '').trim().split('.').pop()?.toLowerCase()?.trim() || ''
   const ext = explicit || fromName
 
-  const base = {
-    border: 'border-border/60',
-  }
-
   switch (ext) {
-    case 'pdf':
-      return {
-        icon: FileText,
-        label: 'PDF',
-        color: 'text-destructive dark:text-red-400',
-        bg: 'bg-destructive/10 dark:bg-red-900/20',
-        border: 'border-destructive/30 dark:border-red-500/30',
-      }
-    case 'docx':
-      return {
-        icon: FileType,
-        label: 'DOCX',
-        color: 'text-primary',
-        bg: 'bg-primary/10',
-        border: 'border-primary/30',
-      }
+    case 'pdf': return fileMeta(FilePdf, 'PDF', 'pdf')
     case 'doc':
-      return {
-        icon: FileType,
-        label: 'DOC',
-        color: 'text-primary dark:text-indigo-400',
-        bg: 'bg-primary/10 dark:bg-indigo-900/20',
-        border: 'border-primary/30 dark:border-indigo-500/30',
-      }
+    case 'docx': return fileMeta(FileType, ext.toUpperCase(), 'word')
     case 'ppt':
-    case 'pptx':
-      return {
-        icon: Presentation,
-        label: ext.toUpperCase(),
-        color: 'text-destructive dark:text-rose-300',
-        bg: 'bg-destructive/10 dark:bg-rose-900/20',
-        border: 'border-destructive/30 dark:border-rose-500/30',
-      }
-    case 'xlsx':
+    case 'pptx': return fileMeta(Presentation, ext.toUpperCase(), 'slides')
     case 'xls':
-      return {
-        icon: FileSpreadsheet,
-        label: ext.toUpperCase(),
-        color: 'text-success dark:text-emerald-300',
-        bg: 'bg-success/10 dark:bg-emerald-900/20',
-        border: 'border-success/30 dark:border-emerald-500/30',
-      }
-    case 'csv':
-      return {
-        icon: FileSpreadsheet,
-        label: 'CSV',
-        color: 'text-success dark:text-teal-300',
-        bg: 'bg-success/10 dark:bg-teal-900/20',
-        border: 'border-success/30 dark:border-teal-500/30',
-      }
-    case 'md':
-      return {
-        icon: FileCode,
-        label: 'MD',
-        color: 'text-accent dark:text-purple-300',
-        bg: 'bg-accent/10 dark:bg-purple-900/20',
-        border: 'border-accent/30 dark:border-purple-500/30',
-      }
-    case 'txt':
-      return {
-        icon: FileText,
-        label: 'TXT',
-        color: 'text-muted-foreground',
-        bg: 'bg-muted/40',
-        border: base.border,
-      }
-    case 'json':
-      return {
-        icon: FileCode,
-        label: 'JSON',
-        color: 'text-warning dark:text-amber-300',
-        bg: 'bg-warning/10 dark:bg-amber-900/20',
-        border: 'border-warning/30 dark:border-amber-500/30',
-      }
+    case 'xlsx':
+    case 'csv': return fileMeta(FileSpreadsheet, ext.toUpperCase(), 'sheet')
+    case 'markdown':
+    case 'md': return fileMeta(FileMarkdown, 'MD', 'neutral')
+    case 'txt': return fileMeta(FileText, 'TXT', 'neutral')
+    case 'json': return fileMeta(FileJson, 'JSON', 'code')
     case 'html':
-    case 'htm':
-      return {
-        icon: FileCode,
-        label: 'HTML',
-        color: 'text-warning dark:text-orange-300',
-        bg: 'bg-warning/10 dark:bg-orange-900/20',
-        border: 'border-warning/30 dark:border-orange-500/30',
-      }
-    default:
-      return {
-        icon: File,
-        label: ext ? ext.toUpperCase() : 'FILE',
-        color: 'text-muted-foreground',
-        bg: 'bg-muted/40',
-        border: base.border,
-      }
+    case 'htm': return fileMeta(FileCode, 'HTML', 'code')
+    case 'js':
+    case 'ts':
+    case 'jsx':
+    case 'tsx':
+    case 'py':
+    case 'yaml':
+    case 'yml':
+    case 'toml':
+    case 'xml':
+    case 'css':
+    case 'sql':
+    case 'java':
+    case 'go':
+    case 'rs': return fileMeta(FileCode, ext.toUpperCase(), 'code')
+    case 'png':
+    case 'jpg':
+    case 'jpeg':
+    case 'webp':
+    case 'gif': return fileMeta(FileImage, ext.toUpperCase(), 'media')
+    case 'zip':
+    case 'rar':
+    case '7z': return fileMeta(FileArchive, ext.toUpperCase(), 'code')
+    default: return fileMeta(File, ext ? ext.toUpperCase() : 'FILE', 'neutral')
   }
 }

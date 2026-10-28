@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ChevronDown, Download, GitCommitVertical, Loader2, MessageSquarePlus, Trash2 } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+import { ChevronDown, Download, GitCommitVertical, Loader2, MessageSquarePlus, Trash2 } from '@/components/icons'
+import type { PlatformIcon } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -11,8 +11,6 @@ import { Panel } from '@/components/ui/panel'
 import { chatApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, detachPromise } from '@/lib/utils'
-
-const QUICK_ACTIONS = ['Markdown', 'JSON', '检查点', '清缓存'] as const
 
 function prettyJson(value: unknown) {
   try {
@@ -57,9 +55,9 @@ function formatResultSummary(payload: unknown) {
   return `操作已完成，返回 ${Object.keys(record).length} 个字段。`
 }
 
-export function ConversationOpsPanel({ conversationId }: Readonly<{ conversationId?: string | null }>) {
+export function ConversationOpsPanel({ conversationId, initiallyExpanded = false }: Readonly<{ conversationId?: string | null; initiallyExpanded?: boolean }>) {
   const [manualConversationId, setManualConversationId] = useState(conversationId || '')
-  const [panelOpen, setPanelOpen] = useState(false)
+  const [panelOpen, setPanelOpen] = useState(initiallyExpanded)
   const [resultDetailsOpen, setResultDetailsOpen] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
   const [result, setResult] = useState<{ title: string; payload: unknown } | null>(null)
@@ -91,94 +89,34 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
     <Panel
       data-history-ops-panel="true"
       data-history-ops-boundary="ruled"
-      padding="md"
-      className={cn(
-        'relative border border-foreground/15 bg-background transition-all duration-200 motion-reduce:transition-none',
-        panelOpen ? 'rounded-lg' : 'rounded-lg py-3'
-      )}
+      variant="seamless"
+      padding="none"
+      className="border-border pb-2"
     >
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <button
+        <Button
           type="button"
-          className="group flex min-w-0 flex-1 items-center gap-3 rounded-md py-0.5 pl-1 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-info/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          variant="ghost"
+          className="h-11 w-full justify-start gap-2 px-2 text-[13px] sm:h-9"
           aria-expanded={panelOpen}
+          aria-controls="history-conversation-actions"
           onClick={() => setPanelOpen((open) => !open)}
         >
-          <span
-            className={cn(
-              'flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background text-foreground transition-colors',
-              panelOpen
-                ? 'text-foreground'
-                : 'text-muted-foreground group-hover:border-foreground/15 group-hover:text-foreground'
-            )}
-          >
-            <ChevronDown className={cn('h-4 w-4 transition-transform', panelOpen ? 'rotate-0' : '-rotate-90')} />
+          <ChevronDown className={cn('size-4 text-muted-foreground transition-transform motion-reduce:transition-none', panelOpen ? 'rotate-0' : '-rotate-90')} />
+          <span>对话操作</span>
+          <span className="hidden text-xs font-normal text-muted-foreground sm:inline">导出与检查点</span>
+          <span className="ml-auto text-xs font-normal text-muted-foreground">
+            {panelOpen ? '收起' : '展开'}
           </span>
-          <span className="min-w-0">
-            <span className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-semibold tracking-[-0.01em] text-foreground">对话运维工具箱</span>
-              <span className="rounded-md border border-foreground/10 bg-background/70 px-2 py-0.5 text-[10px] font-semibold text-foreground/80">
-                导出 · 检查点
-              </span>
-            </span>
-            <span className="mt-1 block truncate text-xs text-muted-foreground">
-              {panelOpen
-                ? '当前对话已绑定，可执行导出、检查点查询和缓存清理。'
-                : '已收起，展开后可导出对话、查看检查点或清理缓存。'}
-            </span>
-            {!panelOpen ? (
-              <span className="mt-2 hidden flex-wrap items-center gap-1.5 sm:flex">
-                {QUICK_ACTIONS.map((label) => (
-                  <span
-                    key={label}
-                    className="rounded-md border border-foreground/10 bg-background/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground"
-                  >
-                    {label}
-                  </span>
-                ))}
-              </span>
-            ) : null}
-          </span>
-        </button>
-        <div className="flex items-center gap-2 sm:justify-end">
-          <span
-            className={cn(
-              'w-fit rounded-md border px-2.5 py-1 text-[11px] font-semibold',
-              hasConversation
-                ? 'border-success/20 bg-success/[0.08] text-success'
-                : 'border-foreground/10 bg-background/70 text-muted-foreground'
-            )}
-          >
-            {hasConversation ? '已绑定' : '未选择'}
-          </span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className={cn(
-              'h-8 rounded-md border-foreground/10 px-3 text-xs font-semibold transition',
-              panelOpen
-                ? 'bg-background hover:border-foreground/15 hover:bg-muted/30'
-                : 'bg-foreground text-background hover:border-foreground hover:bg-foreground/86'
-            )}
-            onClick={() => setPanelOpen((open) => !open)}
-          >
-            {panelOpen ? '收起面板' : '展开操作'}
-          </Button>
           {busy ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground motion-reduce:animate-none" /> : null}
-        </div>
-      </div>
+        </Button>
 
       {panelOpen ? (
-        <>
-          <div className="mt-3 rounded-md border border-foreground/10 bg-background/70 p-3">
-            <div className="text-xs font-semibold text-foreground">当前对话自动绑定</div>
-            <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
-              {hasConversation
-                ? '可直接导出、查看检查点列表或清理缓存，不需要手动填写后端 ID。'
-                : '请先在左侧选择一个对话，导出和检查点操作会自动启用。'}
+        <div id="history-conversation-actions">
+          {!hasConversation && (
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              请先选择一段对话。
             </p>
-          </div>
+          )}
 
           <div className="mt-3 flex flex-wrap gap-2">
             <ActionButton
@@ -190,7 +128,7 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
             />
             <Button
               variant="outline"
-              className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold"
+              className="h-11 px-3 text-[13px] sm:h-9"
               disabled={Boolean(busy) || !effectiveConversationId}
               onClick={() =>
                 detachPromise(
@@ -205,12 +143,12 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
                 )
               }
             >
-              <Download className="h-3.5 w-3.5" />
+              <Download className="size-4" />
               导出 Markdown
             </Button>
             <Button
               variant="outline"
-              className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold"
+              className="h-11 px-3 text-[13px] sm:h-9"
               disabled={Boolean(busy) || !effectiveConversationId}
               onClick={() =>
                 detachPromise(
@@ -225,7 +163,7 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
                 )
               }
             >
-              <Download className="h-3.5 w-3.5" />
+              <Download className="size-4" />
               导出 JSON
             </Button>
             <ActionButton
@@ -252,32 +190,33 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
             >
               <Button
                 variant="outline"
-                className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold"
+                className="h-11 px-3 text-[13px] sm:h-9"
                 disabled={Boolean(busy) || !effectiveConversationId}
               >
                 {busy === 'delete-checkpoints' ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+                  <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
                 ) : (
-                  <Trash2 className="h-3.5 w-3.5" />
+                  <Trash2 className="size-4" />
                 )}
                 清理检查点
               </Button>
             </ConfirmDialog>
           </div>
-        </>
+        </div>
       ) : null}
 
       {result ? (
-        <div className="mt-3 rounded-lg border border-border/60 bg-muted/20 p-3">
+        <div className="mt-4 border-t border-border pt-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <div className="text-xs font-semibold text-foreground">{result.title}</div>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">{formatResultSummary(result.payload)}</p>
+              <div className="text-sm font-medium text-foreground">{result.title}</div>
+              <p className="mt-1 text-[13px] leading-5 text-muted-foreground">{formatResultSummary(result.payload)}</p>
             </div>
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 w-fit rounded-lg px-2 text-[11px] font-semibold"
+              className="h-11 w-fit px-2 text-xs sm:h-8"
+              aria-expanded={resultDetailsOpen}
               onClick={() => setResultDetailsOpen((open) => !open)}
             >
               查看原始响应
@@ -308,13 +247,13 @@ function ActionButton({
 }: Readonly<{
   busy: boolean
   disabled: boolean
-  icon: LucideIcon
+  icon: PlatformIcon
   label: string
   onClick: () => Promise<void>
 }>) {
   return (
-    <Button variant="outline" className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold" disabled={disabled} onClick={() => detachPromise(onClick())}>
-      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Icon className="h-3.5 w-3.5" />}
+    <Button variant="outline" className="h-11 px-3 text-[13px] sm:h-9" disabled={disabled} onClick={() => detachPromise(onClick())}>
+      {busy ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <Icon className="size-4" />}
       {label}
     </Button>
   )

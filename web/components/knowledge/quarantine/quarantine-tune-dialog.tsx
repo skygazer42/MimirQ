@@ -1,6 +1,6 @@
 'use client'
 
-import { RotateCcw, Settings2 } from 'lucide-react'
+import { RotateCcw, Settings2 } from '@/components/icons'
 
 import { Button } from '@/components/ui/button'
 import {

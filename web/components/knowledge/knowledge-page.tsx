@@ -1,1273 +1,500 @@
 'use client'
 
-/**
- * 知识库管理页面
- * 重构为更贴近设计稿的密集型管理工作台，同时保留共享 workbench 能力。
- */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Image from 'next/image'
-import { useSearchParams } from 'next/navigation'
-import { useVirtualizer } from '@tanstack/react-virtual'
-import {
-  Activity,
-  ArrowRight,
-  Database,
-  Eye,
-  FileStack,
-  Filter,
-  History,
-  LayoutGrid,
-  ListIcon,
-  Loader2,
-  Maximize2,
-  Minimize2,
-  Plus,
-  RefreshCw,
-  Search,
-  X,
-} from 'lucide-react'
-import {
-  AnimatePresence,
-  motion,
-  useReducedMotion,
-  type Transition,
-} from 'framer-motion'
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
+import { Dataset as DatasetIcon, Filter, History, KnowledgeBase, Loader2, MoreHorizontal, RefreshCw } from '@/components/icons'
 import { AppFrame } from '@/components/app-frame'
+import { DatasetFolderTree } from '@/components/document-library/dataset-folder-tree'
 import { DocumentViewerPanel } from '@/components/document-viewer-panel'
 import { KnowledgeDocumentsPanel } from '@/components/knowledge/knowledge-documents-panel'
-import { KnowledgeInspector } from '@/components/knowledge/knowledge-inspector'
-import { KnowledgeRetrievalPanel } from '@/components/knowledge/knowledge-retrieval-panel'
-import { KnowledgeScopePanel } from '@/components/knowledge/knowledge-scope-panel'
-import {
-  KnowledgeConnectorRunsPanel,
-  KnowledgeSettingsPanel,
-} from '@/components/knowledge/knowledge-settings-panel'
+import { KnowledgeConnectorRunsPanel } from '@/components/knowledge/knowledge-connector-runs-panel'
+import { KnowledgeWorkbenchActions, type KnowledgeWorkbenchActionsHandle } from '@/components/knowledge/knowledge-workbench-actions'
 import {
   parseKnowledgeQueryState,
   serializeKnowledgeQueryState,
   type KnowledgeQueryState,
+  type KnowledgeStatusFilter,
 } from '@/components/knowledge/use-knowledge-query-state'
-import { useKnowledgeScrollContainer } from '@/components/knowledge/use-knowledge-scroll-container'
-import { KnowledgeWorkbenchActions } from '@/components/knowledge/knowledge-workbench-actions'
 import { RetrievePreviewPanel } from '@/components/rag/retrieve-preview-panel'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
-import {
-  KNOWLEDGE_OPS_BACKGROUND_CLASS,
-} from '@/components/ui/knowledge-ops-hero'
-import { WorkbenchPanelDialog, WorkbenchScaffold } from '@/components/workbench'
-
+import { SearchInput } from '@/components/ui/search-input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useConnectorRuns } from '@/hooks/use-connector-runs'
 import { useDatasets } from '@/hooks/use-datasets'
 import { useDocuments } from '@/hooks/use-documents'
-import { Link, useRouter } from '@/i18n/navigation'
+import { useIsMobile } from '@/hooks/use-media-query'
 import { documentApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
-import { buildChunkPreviewDocumentHref } from '@/lib/chunk-preview-links'
+import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
 import { useDocumentView } from '@/store/document-view'
 
-const DATASET_ALL = '__all__'
-const KNOWLEDGE_BACKGROUND_CLASS = KNOWLEDGE_OPS_BACKGROUND_CLASS
-const KNOWLEDGE_GRID_OVERLAY_CLASS =
-  'hidden'
-const KNOWLEDGE_GLASS_CARD_CLASS =
-  'border-foreground/10 bg-background shadow-none backdrop-blur-none dark:border-foreground/10 dark:bg-background'
-const KNOWLEDGE_WORKBENCH_SURFACE_CLASS =
-  'border-foreground/10 bg-background shadow-none backdrop-blur-none dark:border-foreground/10 dark:bg-background'
-const DOCUMENTS_PAGE_SIZE = 20
-type TabKey = 'documents' | 'retrieval' | 'settings'
+import styles from './knowledge-page.module.css'
 
-/*
- * Source markers retained for legacy source tests while the documents tab is
- * flattened into an IDE-style surface.
- * hsl(var(--primary)/0.10)
- * bg-card/80
- * bg-background/35
- * shadow-[0_8px_22px_hsl(var(--primary)/0.06)]
- * 'min-h-[56px] px-3 py-2'
- */
+const DATASET_ALL = '__all__'
+const DEFAULT_PAGE_SIZE = 20
+const TABS = ['documents', 'retrieval'] as const
+const STATUS_FILTERS: KnowledgeStatusFilter[] = ['all', 'completed', 'processing', 'failed', 'quarantined']
+const SORT_OPTIONS = [
+  { value: 'created_at:desc', label: '最新上传' },
+  { value: 'created_at:asc', label: '最早上传' },
+  { value: 'filename:asc', label: '文件名 A–Z' },
+  { value: 'filename:desc', label: '文件名 Z–A' },
+  { value: 'file_size:desc', label: '大小从大到小' },
+  { value: 'file_size:asc', label: '大小从小到大' },
+]
 
 export default function KnowledgePage() {
   const t = useTranslations('KnowledgePage')
-  // t("header.title")
-  // t("stats.totalDocuments")
-  // label: t(`tabs.${tab.key}.label`)
   const scopeT = useTranslations('KnowledgeScopePanel')
-  const router = useRouter()
   const searchParams = useSearchParams()
-  const reduceMotion = useReducedMotion()
+  const router = useRouter()
+  const isMobile = useIsMobile()
+  const queryClient = useQueryClient()
+  const importActionsRef = useRef<KnowledgeWorkbenchActionsHandle>(null)
   const { openDocument } = useDocumentView()
-
-  const initialQueryStateRef = useRef<KnowledgeQueryState | null>(null)
-  initialQueryStateRef.current ??= parseKnowledgeQueryState(
-    new URLSearchParams(searchParams.toString()),
-    { datasetAllValue: DATASET_ALL }
-  )
-  const initialQueryState = initialQueryStateRef.current
-
-  const [activeTab, setActiveTab] = useState<TabKey>(
-    initialQueryState.activeTab
-  )
-  const [desktopScopeCollapsed, setDesktopScopeCollapsed] = useState(false)
-  const [datasetScope, setDatasetScope] = useState<string>(
-    initialQueryState.datasetScope
-  )
-  const [docFilter, setDocFilter] = useState(initialQueryState.docFilter)
-  const [statusFilter, setStatusFilter] = useState(
-    initialQueryState.statusFilter
-  )
-  const [lifecycleFilter, setLifecycleFilter] = useState(
-    initialQueryState.lifecycleFilter
-  )
-  const [folderPath, setFolderPath] = useState<string | null>(
-    initialQueryState.folderPath
-  )
-  const [sortKey, setSortKey] = useState(initialQueryState.sortKey)
-  const [sortDir, setSortDir] = useState(initialQueryState.sortDir)
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>(
-    initialQueryState.viewMode
-  )
+  const queryString = searchParams.toString()
+  const [query, setQuery] = useState(() => parseKnowledgeQueryState(
+    new URLSearchParams(queryString), { datasetAllValue: DATASET_ALL }
+  ))
+  const queryRef = useRef(query)
+  const writtenQueryRef = useRef(queryString)
   const [documentsPage, setDocumentsPage] = useState(1)
-  const [activeConnectorRunId, setActiveConnectorRunId] = useState<
-    string | null
-  >(initialQueryState.connectorRunId)
-  const [peekingDocId, setPeekingDocId] = useState<string | null>(null)
-  const [showConnectorRunsPanel, setShowConnectorRunsPanel] = useState(false)
-  const setShowTaskCenter = setShowConnectorRunsPanel
-  const [mobileScopeOpen, setMobileScopeOpen] = useState(false)
-  const [mobileInspectorOpen, setMobileInspectorOpen] = useState(false)
-  const [mobileRunsOpen, setMobileRunsOpen] = useState(false)
-
-  useEffect(() => {
-    const parsed = parseKnowledgeQueryState(
-      new URLSearchParams(searchParams.toString()),
-      {
-        datasetAllValue: DATASET_ALL,
-      }
-    )
-
-    setActiveTab(parsed.activeTab)
-    setDatasetScope(parsed.datasetScope)
-    setDocFilter(parsed.docFilter)
-    setStatusFilter(parsed.statusFilter)
-    setLifecycleFilter(parsed.lifecycleFilter)
-    setFolderPath(parsed.folderPath)
-    setSortKey(parsed.sortKey)
-    setSortDir(parsed.sortDir)
-    setViewMode(parsed.viewMode)
-    setActiveConnectorRunId(parsed.connectorRunId)
-  }, [searchParams])
-
-  useEffect(() => {
-    const nextQuery = serializeKnowledgeQueryState(
-      {
-        activeTab,
-        viewMode,
-        docFilter,
-        statusFilter,
-        lifecycleFilter,
-        datasetScope,
-        folderPath,
-        sortKey,
-        sortDir,
-        connectorRunId: activeTab === 'settings' ? activeConnectorRunId : null,
-      },
-      { datasetAllValue: DATASET_ALL }
-    )
-    const currentQuery = searchParams.toString()
-    if (nextQuery === currentQuery) return
-    router.replace(nextQuery ? `/knowledge?${nextQuery}` : '/knowledge')
-  }, [
-    activeConnectorRunId,
-    activeTab,
-    datasetScope,
-    docFilter,
-    folderPath,
-    lifecycleFilter,
-    router,
-    searchParams,
-    sortDir,
-    sortKey,
-    statusFilter,
-    viewMode,
-  ])
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'b') {
-        event.preventDefault()
-        setDesktopScopeCollapsed((prev) => !prev)
-      }
-    }
-
-    globalThis.window.addEventListener('keydown', handleKeyDown)
-    return () => globalThis.window.removeEventListener('keydown', handleKeyDown)
-  }, [])
-
-  const selectedDatasetId =
-    datasetScope === DATASET_ALL ? undefined : datasetScope
-  const documentsModeActive = activeTab === 'documents'
-  const { datasets, isLoading: datasetsLoading } = useDatasets()
-
-  const {
-    documents,
-    isLoading,
-    loadDocuments,
-    deleteDocument,
-    uploadDocuments,
-    uploadDocumentFromUrl,
-  } = useDocuments({
-    dataset_id: selectedDatasetId,
-    status:
-      documentsModeActive && statusFilter !== 'all' ? statusFilter : undefined,
-    lifecycle:
-      documentsModeActive && lifecycleFilter !== 'all'
-        ? lifecycleFilter
-        : undefined,
-    source_path_prefix: documentsModeActive
-      ? folderPath || undefined
-      : undefined,
-  })
-
-  const {
-    connectorRuns,
-    connectorRunsLoading,
-    loadConnectorRuns,
-    cancelConnectorRun,
-    resumeConnectorRun,
-    retryFailedConnectorRun,
-  } = useConnectorRuns({
-    selectedDatasetId,
-  })
-
-  const scopedDocuments = useMemo(() => {
-    if (!selectedDatasetId) return documents
-    return documents.filter(
-      (doc) => String(doc.dataset_id || '') === selectedDatasetId
-    )
-  }, [documents, selectedDatasetId])
-
-  const filteredDocuments = useMemo(() => {
-    const term = docFilter.trim().toLowerCase()
-    const next = scopedDocuments.filter((doc) => {
-      if (!term) return true
-      return (
-        doc.filename.toLowerCase().includes(term) ||
-        doc.id.toLowerCase().includes(term) ||
-        (doc.dataset_id || '').toLowerCase().includes(term)
-      )
-    })
-
-    next.sort((a, b) => {
-      const dir = sortDir === 'asc' ? 1 : -1
-      if (sortKey === 'filename')
-        return a.filename.localeCompare(b.filename) * dir
-      if (sortKey === 'file_size') return (a.file_size - b.file_size) * dir
-      return (
-        (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) *
-        dir
-      )
-    })
-
-    return next
-  }, [docFilter, scopedDocuments, sortDir, sortKey])
-  const documentsPageCount = Math.max(
-    1,
-    Math.ceil(filteredDocuments.length / DOCUMENTS_PAGE_SIZE)
-  )
-  const paginatedDocuments = useMemo(
-    () =>
-      filteredDocuments.slice(
-        (documentsPage - 1) * DOCUMENTS_PAGE_SIZE,
-        documentsPage * DOCUMENTS_PAGE_SIZE
-      ),
-    [documentsPage, filteredDocuments]
-  )
-  const documentsEmptySurface =
-    documentsModeActive && !isLoading && filteredDocuments.length === 0
-
-  const { sentinelRef: mainPaneSentinelRef, scrollEl: mainPaneScrollEl } =
-    useKnowledgeScrollContainer()
-  const [documentsScrollEl, setDocumentsScrollEl] =
-    useState<HTMLDivElement | null>(null)
-
-  const docGridColumns = 3
-  const docGridRowCount = Math.ceil(paginatedDocuments.length / docGridColumns)
-  // eslint-disable-next-line react-hooks/incompatible-library
-  const docsGridVirtualizer = useVirtualizer({
-    count: docGridRowCount,
-    getScrollElement: () => documentsScrollEl ?? mainPaneScrollEl,
-    estimateSize: () => 280,
-    overscan: 5,
-  })
-  const docsTableVirtualizer = useVirtualizer({
-    count: paginatedDocuments.length,
-    getScrollElement: () => documentsScrollEl ?? mainPaneScrollEl,
-    estimateSize: () => 108,
-    overscan: 10,
-  })
-
-  useEffect(() => {
-    setDocumentsPage(1)
-  }, [
-    datasetScope,
-    docFilter,
-    folderPath,
-    lifecycleFilter,
-    sortDir,
-    sortKey,
-    statusFilter,
-  ])
-
-  useEffect(() => {
-    setDocumentsPage((current) => Math.min(current, documentsPageCount))
-  }, [documentsPageCount])
-
-  useEffect(() => {
-    const scrollTarget =
-      activeTab === 'documents'
-        ? documentsScrollEl ?? mainPaneScrollEl
-        : mainPaneScrollEl
-    scrollTarget?.scrollTo({
-      top: 0,
-      behavior: reduceMotion ? 'auto' : 'smooth',
-    })
-  }, [activeTab, documentsScrollEl, mainPaneScrollEl, reduceMotion])
-
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([])
+  const [scopeOpen, setScopeOpen] = useState(false)
+  const [tasksOpen, setTasksOpen] = useState(false)
+  const [operationsOpen, setOperationsOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false)
+  const [batchDeleteError, setBatchDeleteError] = useState<string | null>(null)
   const [batchDeleting, setBatchDeleting] = useState(false)
   const [batchLifecycleWorking, setBatchLifecycleWorking] = useState(false)
   const [batchReingestWorking, setBatchReingestWorking] = useState(false)
 
-  const selectedSet = useMemo(() => new Set(selectedDocIds), [selectedDocIds])
-  const allVisibleSelected =
-    paginatedDocuments.length > 0 &&
-    paginatedDocuments.every((doc) => selectedSet.has(doc.id))
-  const selectedDocuments = useMemo(
-    () => filteredDocuments.filter((doc) => selectedSet.has(doc.id)),
-    [filteredDocuments, selectedSet]
-  )
-
-  const anySelectedEnabled = useMemo(
-    () => selectedDocuments.some((doc) => !doc.disabled_at),
-    [selectedDocuments]
-  )
-  const anySelectedDisabled = useMemo(
-    () => selectedDocuments.some((doc) => doc.disabled_at),
-    [selectedDocuments]
-  )
-  const anySelectedArchived = useMemo(
-    () => selectedDocuments.some((doc) => doc.archived_at),
-    [selectedDocuments]
-  )
-  const anySelectedNotArchived = useMemo(
-    () => selectedDocuments.some((doc) => !doc.archived_at),
-    [selectedDocuments]
-  )
-
   useEffect(() => {
-    const validIds = new Set(scopedDocuments.map((doc) => doc.id))
-    setSelectedDocIds((prev) => {
-      const next = prev.filter((id) => validIds.has(id))
-      return next.length === prev.length ? prev : next
-    })
-  }, [scopedDocuments])
+    const params = new URLSearchParams(queryString)
+    if (params.get('tab') === 'settings' && !params.get('run') && params.get('tasks') !== '1') {
+      router.replace('/settings#sec-models')
+    }
+  }, [queryString, router])
 
+  // Only external navigation reads state back. Our own URL writes preserve the
+  // exact input string, including a trailing space while a name is being typed.
   useEffect(() => {
-    if (activeTab !== 'documents') {
-      setSelectedDocIds([])
-      setPeekingDocId(null)
-      setShowConnectorRunsPanel(false)
-      setMobileInspectorOpen(false)
-      setMobileRunsOpen(false)
-    }
-  }, [activeTab])
+    if (queryString === writtenQueryRef.current) return
+    writtenQueryRef.current = queryString
+    const next = parseKnowledgeQueryState(new URLSearchParams(queryString), { datasetAllValue: DATASET_ALL })
+    queryRef.current = next
+    setQuery(next)
+    setDocumentsPage(1)
+    setSelectedDocIds([])
+  }, [queryString])
 
-  const activeTasksCount = useMemo(
-    () =>
-      connectorRuns.filter(
-        (run) => run.status === 'running' || run.status === 'pending'
-      ).length,
-    [connectorRuns]
-  )
-
-  const totalDocs = scopedDocuments.length
-  const completedDocsValue = scopedDocuments.filter(
-    (doc) => doc.status === 'completed'
-  ).length
-  const processingDocsValue = scopedDocuments.filter(
-    (doc) => doc.status === 'processing' || doc.status === 'pending'
-  ).length
-  const failedDocsValue = scopedDocuments.filter(
-    (doc) => doc.status === 'failed'
-  ).length
-  const quarantinedDocsValue = scopedDocuments.filter(
-    (doc) => doc.status === 'quarantined'
-  ).length
-  const totalChunksValue = scopedDocuments.reduce(
-    (sum, doc) => sum + (doc.chunk_count || 0),
-    0
-  )
-
-  const selectedDataset = useMemo(
-    () => datasets.find((dataset) => dataset.id === selectedDatasetId) || null,
-    [datasets, selectedDatasetId]
-  )
-
-  const selectedDatasetLabel = selectedDataset?.name || selectedDatasetId
-
-  const datasetLabelById = useMemo(() => {
-    const map: Record<string, string> = {}
-    for (const dataset of datasets) {
-      map[dataset.id] = dataset.name
-    }
-    return map
-  }, [datasets])
-
-  const retrievalDatasetIds = useMemo(
-    () => datasets.map((dataset) => dataset.id).filter(Boolean),
-    [datasets]
-  )
-
-  const documentScopeSummary = useMemo(
-    () => (
-      <div className="inline-flex max-w-full flex-wrap items-center gap-2 rounded-lg border border-border/50 bg-muted/20 px-2.5 py-1.5 text-[11px] shadow-none dark:border-border/60 dark:bg-muted/10">
-        <span className="inline-flex items-center gap-1.5 font-medium text-foreground/75">
-          <Database className="size-3.5 text-info" />
-          数据范围
-          <span className="max-w-[14rem] truncate font-semibold text-foreground">
-            {selectedDatasetLabel || scopeT('dataset.all')}
-          </span>
-        </span>
-        <span className="h-3.5 w-px bg-border/70" />
-        <span className="inline-flex items-center gap-1.5 font-medium text-foreground/75">
-          <Eye className="size-3.5 text-info" />
-          可见
-          <span className="font-mono font-semibold tabular-nums text-info">
-            {filteredDocuments.length}
-          </span>
-        </span>
-        <span className="h-3.5 w-px bg-border/70" />
-        <span className="inline-flex items-center gap-1.5 font-medium text-foreground/75">
-          <Activity className="size-3.5 text-success" />
-          生命周期
-          <span className="font-semibold text-success">
-            {lifecycleFilter}
-          </span>
-        </span>
-      </div>
-    ),
-    [filteredDocuments.length, lifecycleFilter, scopeT, selectedDatasetLabel]
-  )
-
-  const handleDatasetScopeChange = useCallback((value: string) => {
-    setDatasetScope(value)
-    setFolderPath(null)
-  }, [])
-
-  const handleFileUpload = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const files = event.target.files
-      if (!files?.length) return
-
-      try {
-        await uploadDocuments(Array.from(files))
-        toast.success(t('toasts.uploadSuccess'))
-        await loadDocuments()
-      } catch (err) {
-        toast.error(formatApiError(err, t('toasts.uploadFailed')))
-      }
-    },
-    [loadDocuments, t, uploadDocuments]
-  )
-
-  const toggleDocSelection = useCallback((docId: string) => {
-    setSelectedDocIds((prev) =>
-      prev.includes(docId)
-        ? prev.filter((id) => id !== docId)
-        : [...prev, docId]
+  const updateQuery = useCallback((patch: Partial<KnowledgeQueryState>) => {
+    const next = { ...queryRef.current, ...patch, viewMode: 'list' as const }
+    queryRef.current = next
+    setQuery(next)
+    setDocumentsPage(1)
+    setSelectedDocIds([])
+    const nextQuery = serializeKnowledgeQueryState(next, { datasetAllValue: DATASET_ALL })
+    writtenQueryRef.current = nextQuery
+    globalThis.window.history.replaceState(
+      globalThis.window.history.state,
+      '',
+      nextQuery ? '/knowledge?' + nextQuery : '/knowledge'
     )
   }, [])
 
-  const toggleSelectAllVisible = useCallback(() => {
-    setSelectedDocIds((prev) => {
-      if (allVisibleSelected) return []
-      const next = new Set(prev)
-      for (const doc of paginatedDocuments) {
-        next.add(doc.id)
-      }
-      return Array.from(next)
-    })
-  }, [allVisibleSelected, paginatedDocuments])
-
-  const runBatchLifecycle = useCallback(
-    async (action: 'enable' | 'disable' | 'archive' | 'unarchive') => {
-      if (selectedDocIds.length === 0) return
-
-      setBatchLifecycleWorking(true)
-      try {
-        const lifecycleAction = {
-          enable: documentApi.batchEnable,
-          disable: documentApi.batchDisable,
-          archive: documentApi.batchArchive,
-          unarchive: documentApi.batchUnarchive,
-        }[action]
-        await lifecycleAction(selectedDocIds)
-        toast.success(t(`toasts.batchLifecycleSuccess.${action}`))
-        await loadDocuments()
-      } catch (err) {
-        toast.error(formatApiError(err, t('toasts.batchLifecycleFailed')))
-      } finally {
-        setBatchLifecycleWorking(false)
-      }
-    },
-    [loadDocuments, selectedDocIds, t]
+  const { activeTab, datasetScope, docFilter, statusFilter, lifecycleFilter, folderPath, sortKey, sortDir } = query
+  const selectedDatasetId = datasetScope === DATASET_ALL ? undefined : datasetScope
+  const { datasets, isLoading: datasetsLoading } = useDatasets()
+  const selectedDataset = datasets.find(dataset => dataset.id === selectedDatasetId) ?? null
+  const selectedDatasetLabel = selectedDataset?.name || selectedDatasetId
+  const datasetLabelById = useMemo(
+    () => Object.fromEntries(datasets.map(dataset => [dataset.id, dataset.name])),
+    [datasets]
   )
+  const retrievalDatasetIds = useMemo(() => datasets.map(dataset => dataset.id).filter(Boolean), [datasets])
 
-  const runBatchReingest = useCallback(async () => {
-    if (selectedDocIds.length === 0) return
+  const { documents, total, isLoading, error, loadDocuments, deleteDocument, uploadDocuments, uploadDocumentFromUrl } = useDocuments({
+    dataset_id: selectedDatasetId,
+    status: activeTab === 'documents' && statusFilter !== 'all' ? statusFilter : undefined,
+    lifecycle: activeTab === 'documents' ? lifecycleFilter : 'active',
+    source_path_prefix: activeTab === 'documents' ? folderPath || undefined : undefined,
+    q: activeTab === 'documents' ? docFilter.trim() || undefined : undefined,
+    order_by: sortKey,
+    order_dir: sortDir,
+    skip: activeTab === 'documents' ? (documentsPage - 1) * pageSize : 0,
+    limit: pageSize,
+  })
 
+  const statsParams = {
+    dataset_id: selectedDatasetId,
+    lifecycle: activeTab === 'documents' ? lifecycleFilter : 'active' as const,
+    q: activeTab === 'documents' ? docFilter.trim() || undefined : undefined,
+  }
+  const { data: stats, isLoading: statsLoading } = useQuery({
+    queryKey: ['documents', 'stats', statsParams],
+    queryFn: () => documentApi.stats(statsParams),
+    enabled: !folderPath || activeTab !== 'documents',
+  })
+  const statusCounts = !folderPath && stats ? {
+    all: stats.total,
+    completed: stats.by_status?.completed ?? 0,
+    processing: (stats.by_status?.processing ?? 0) + (stats.by_status?.pending ?? 0),
+    failed: stats.by_status?.failed ?? 0,
+    quarantined: stats.by_status?.quarantined ?? 0,
+  } : undefined
+  const totalChunks = !folderPath && statusFilter === 'all' ? stats?.total_chunks : undefined
+  const documentCount = folderPath && activeTab === 'documents' ? total : stats?.total
+  const pageCount = Math.max(1, Math.ceil(total / pageSize))
+
+  useEffect(() => {
+    if (isLoading) return
+    setDocumentsPage(current => Math.min(current, pageCount))
+  }, [isLoading, pageCount])
+
+  const {
+    connectorRuns, connectorRunsLoading, loadConnectorRuns,
+    cancelConnectorRun, resumeConnectorRun, retryFailedConnectorRun,
+  } = useConnectorRuns({ selectedDatasetId })
+  const activeTasksCount = connectorRuns.filter(run => run.status === 'running' || run.status === 'pending').length
+
+  useEffect(() => {
+    if (tasksOpen) detachPromise(loadConnectorRuns({ datasetId: selectedDatasetId }))
+  }, [loadConnectorRuns, selectedDatasetId, tasksOpen])
+
+  useEffect(() => {
+    if (query.connectorRunId || query.tasksOpen) setTasksOpen(true)
+  }, [query.connectorRunId, query.tasksOpen])
+
+  const refreshDocuments = useCallback(async () => {
+    await Promise.all([
+      loadDocuments(),
+      queryClient.invalidateQueries({ queryKey: queryKeys.documents.all }),
+    ])
+  }, [loadDocuments, queryClient])
+
+  const handleDatasetScopeChange = useCallback((value: string) => {
+    updateQuery({ datasetScope: value, folderPath: null })
+  }, [updateQuery])
+
+  const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.target
+    const files = Array.from(input.files || [])
+    if (!files.length) return
+    try {
+      await uploadDocuments(files)
+      toast.success(t('toasts.uploadSuccess', { count: files.length }))
+      await refreshDocuments()
+    } catch (err) {
+      toast.error(formatApiError(err, t('toasts.uploadFailed')))
+    } finally {
+      input.value = ''
+    }
+  }, [refreshDocuments, t, uploadDocuments])
+
+  const selectedSet = useMemo(() => new Set(selectedDocIds), [selectedDocIds])
+  const selectedDocuments = documents.filter(doc => selectedSet.has(doc.id))
+  const allVisibleSelected = documents.length > 0 && documents.every(doc => selectedSet.has(doc.id))
+  const toggleDocSelection = useCallback((docId: string) => {
+    setSelectedDocIds(previous => previous.includes(docId) ? previous.filter(id => id !== docId) : [...previous, docId])
+  }, [])
+  const toggleSelectAllVisible = () => {
+    setSelectedDocIds(allVisibleSelected ? [] : documents.map(doc => doc.id))
+  }
+  const batchWorking = batchDeleting || batchLifecycleWorking || batchReingestWorking
+
+  useEffect(() => {
+    if (isLoading) return
+    const validIds = new Set(documents.map(doc => doc.id))
+    setSelectedDocIds(previous => {
+      const next = previous.filter(id => validIds.has(id))
+      return next.length === previous.length ? previous : next
+    })
+  }, [documents, isLoading])
+
+  const runBatchLifecycle = async (action: 'enable' | 'disable' | 'archive' | 'unarchive') => {
+    if (!selectedDocIds.length || batchWorking) return
+    setBatchLifecycleWorking(true)
+    try {
+      const lifecycleAction = {
+        enable: documentApi.batchEnable, disable: documentApi.batchDisable,
+        archive: documentApi.batchArchive, unarchive: documentApi.batchUnarchive,
+      }[action]
+      const result = await lifecycleAction(selectedDocIds)
+      const remaining = [...(result.denied ?? []), ...(result.conflicts ?? [])]
+      if (result.updated) toast.success(t('toasts.batchLifecycle.' + action, { count: result.updated }))
+      if (remaining.length) toast.error(remaining.length + ' 份文档未完成操作，请检查权限或处理状态。')
+      setSelectedDocIds(remaining)
+      await refreshDocuments()
+    } catch (err) {
+      toast.error(formatApiError(err, t('toasts.batchLifecycleFailed')))
+    } finally {
+      setBatchLifecycleWorking(false)
+    }
+  }
+  const runBatchReingest = async () => {
+    if (!selectedDocIds.length || batchWorking) return
     setBatchReingestWorking(true)
     try {
-      await documentApi.batchReingest({
-        document_ids: selectedDocIds,
-        replace: false,
-        force: true,
-        skip_if_unchanged: false,
+      const result = await documentApi.batchReingest({
+        document_ids: selectedDocIds, replace: false, force: true, skip_if_unchanged: false,
       })
-      toast.success(t('toasts.batchReingestSuccess'))
-      setSelectedDocIds([])
-      await loadDocuments()
+      const remaining = [...(result.denied ?? []), ...(result.conflicts ?? [])]
+      if (result.queued) toast.success(t('toasts.reingestQueued', { count: result.queued }))
+      if (remaining.length) toast.error(remaining.length + ' 份文档未能重新入库，请检查权限或处理状态。')
+      setSelectedDocIds(remaining)
+      await refreshDocuments()
     } catch (err) {
-      toast.error(formatApiError(err, t('toasts.batchReingestFailed')))
+      toast.error(formatApiError(err, t('toasts.reingestFailed')))
     } finally {
       setBatchReingestWorking(false)
     }
-  }, [loadDocuments, selectedDocIds, t])
-
-  const confirmBatchDelete = useCallback(async () => {
-    if (selectedDocIds.length === 0) return
-
+  }
+  const confirmBatchDelete = async () => {
+    if (!selectedDocIds.length || batchWorking) return
     setBatchDeleting(true)
+    setBatchDeleteError(null)
     try {
-      await documentApi.batchDelete(selectedDocIds)
-      setSelectedDocIds([])
-      await loadDocuments()
+      const result = await documentApi.batchDelete(selectedDocIds)
+      const remaining = result.denied ?? []
+      setSelectedDocIds(remaining)
+      if (remaining.length) {
+        setBatchDeleteError('已删除 ' + result.deleted + ' 份文档；其余 ' + remaining.length + ' 份没有删除权限。')
+      } else {
+        setBatchDeleteOpen(false)
+      }
+      await refreshDocuments()
     } catch (err) {
-      toast.error(formatApiError(err, t('toasts.batchDeleteFailed')))
+      setBatchDeleteError(formatApiError(err, t('toasts.batchDeleteFailed')))
     } finally {
       setBatchDeleting(false)
-      setBatchDeleteOpen(false)
     }
-  }, [loadDocuments, selectedDocIds, t])
-
-  const peekingDoc = useMemo(
-    () => scopedDocuments.find((doc) => doc.id === peekingDocId) ?? null,
-    [peekingDocId, scopedDocuments]
-  )
-
-  const scopeMode =
-    activeTab === 'documents'
-      ? 'documents'
-      : activeTab === 'retrieval'
-        ? 'retrieval'
-        : 'settings'
-
-  const tabs: Array<{ key: TabKey; label: string; icon: typeof FileStack }> = [
-    { key: 'documents', label: t('tabs.documents.label'), icon: FileStack },
-    { key: 'retrieval', label: t('tabs.retrieval.label'), icon: Activity },
-    { key: 'settings', label: t('tabs.settings.label'), icon: Database },
-  ]
-
-  const layoutTransition: Transition = {
-    type: 'spring',
-    bounce: 0.12,
-    duration: 0.45,
   }
 
-  const openChunkManager = useCallback(
-    (id: string) => {
-      openDocument(id, undefined, undefined, { activeTab: 'chunks' })
-      setPeekingDocId(null)
-      setShowConnectorRunsPanel(false)
-      setMobileInspectorOpen(false)
-      setMobileRunsOpen(false)
-    },
-    [openDocument]
+  const handleTabsKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+    event.preventDefault()
+    const current = TABS.indexOf(activeTab)
+    const index = event.key === 'Home' ? 0 : event.key === 'End' ? TABS.length - 1
+      : (current + (event.key === 'ArrowRight' ? 1 : -1) + TABS.length) % TABS.length
+    updateQuery({ activeTab: TABS[index] })
+    event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[index]?.focus()
+  }
+  const hasAdvancedFilters = lifecycleFilter !== 'active' || Boolean(folderPath)
+  const hasActiveFilters = hasAdvancedFilters || statusFilter !== 'all' || Boolean(docFilter.trim())
+  const showImportIntro = activeTab === 'documents' && !isLoading && !error && total === 0 && !hasActiveFilters
+  const clearFilters = () => updateQuery({ docFilter: '', statusFilter: 'all', lifecycleFilter: 'active', folderPath: null })
+
+  const datasetSelect = (
+    <Select value={datasetScope} onValueChange={handleDatasetScopeChange} disabled={datasetsLoading || batchWorking}>
+      <SelectTrigger className={styles.datasetTrigger} aria-label={scopeT('dataset.ariaLabel')}>
+        <DatasetIcon aria-hidden="true" />
+        <SelectValue placeholder={scopeT('dataset.all')} />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={DATASET_ALL}>{scopeT('dataset.all')}</SelectItem>
+        {selectedDatasetId && !selectedDataset ? <SelectItem value={selectedDatasetId}>{selectedDatasetId}</SelectItem> : null}
+        {datasets.map(dataset => <SelectItem key={dataset.id} value={dataset.id}>{dataset.name}</SelectItem>)}
+      </SelectContent>
+    </Select>
   )
 
   return (
-    <AppFrame
-      rightPanel={<DocumentViewerPanel />}
-      withDocumentViewerPadding={activeTab !== 'retrieval'}
-    >
-      <div
-        data-knowledge-page-root="true"
-        className={cn(
-          'relative h-full overflow-hidden',
-          KNOWLEDGE_BACKGROUND_CLASS
-        )}
-      >
-        <div className={KNOWLEDGE_GRID_OVERLAY_CLASS} aria-hidden="true" />
-      <WorkbenchScaffold
-        className="relative z-10 bg-transparent"
-        title={t('header.title')}
-        headerClassName="-mx-1 -mt-1 md:-mx-3 md:-mt-2"
-        header={
-          <header
-            data-testid="knowledge-page-toolbar"
-            className="relative flex min-h-14 flex-col gap-2 border-b border-foreground/15 px-1 py-2 sm:flex-row sm:items-center sm:justify-between"
-          >
-            <span className="absolute -bottom-px left-1 h-px w-12 bg-info/70" aria-hidden="true" />
-            <div className="flex min-w-0 items-center gap-2.5">
-              <span
-                data-knowledge-title-mark="true"
-                className="flex size-7 shrink-0 items-center justify-center rounded-md bg-info/10 text-info"
-                aria-hidden="true"
-              >
-                <Image
-                  src="/brand/mimirq-knowledge-mark.png"
-                  alt=""
-                  aria-hidden="true"
-                  draggable={false}
-                  width={64}
-                  height={64}
-                  loading="eager"
-                  unoptimized
-                  className="size-6 scale-110 object-contain"
-                />
-              </span>
-              <div className="min-w-0 sm:flex sm:items-center sm:gap-2.5">
-                <h1 className="text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground">
-                  {t('header.title')}
-                </h1>
-                <span className="hidden h-3.5 w-px bg-border/80 sm:block" aria-hidden="true" />
-                <p className="truncate text-[12px] leading-5 text-muted-foreground/80">
-                  {t('header.description')}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex min-w-0 shrink-0 items-center gap-3 text-[11px] text-muted-foreground">
-              <span className="inline-flex min-w-0 items-center gap-1.5">
-                <span>范围</span>
-                <span className="max-w-[160px] truncate font-medium text-foreground/80">
-                  {selectedDatasetLabel || scopeT('dataset.all')}
-                </span>
-              </span>
-              <span className="h-3.5 w-px bg-border/80" aria-hidden="true" />
-              <span className="inline-flex items-center gap-1.5">
-                <span>任务</span>
-                <span className="font-mono font-semibold tabular-nums text-info">
-                  {activeTasksCount}
-                </span>
-              </span>
-              <span className="hidden h-3.5 w-px bg-border/80 2xl:block" aria-hidden="true" />
-              <span className="hidden items-center gap-1.5 text-foreground/70 2xl:inline-flex">
-                <Database className="size-3.5 text-info" />
-                <span>
-                  采集
-                </span>
-                <ArrowRight className="size-3 shrink-0 text-muted-foreground/50" />
-                <FileStack className="size-3.5 text-info" />
-                <span>
-                  资产
-                </span>
-                <ArrowRight className="size-3 shrink-0 text-muted-foreground/50" />
-                <Search className="size-3.5 text-info" />
-                <span>
-                  验证
-                </span>
-              </span>
-            </div>
-          </header>
-        }
-        size="full"
-        toolbar={
-          <div
-            className={cn(
-              'relative flex flex-col overflow-hidden rounded-none border-y border-x-0 border-foreground/15 bg-background xl:flex-row xl:items-center xl:justify-between dark:border-foreground/15 dark:bg-background',
-              activeTab === 'settings' ? 'gap-2 px-1 py-2' : 'gap-3 px-1 py-2'
-            )}
-          >
-            <div className="flex flex-wrap items-center gap-2.5">
-              <div className="inline-flex items-center gap-0.5 rounded-lg border border-foreground/10 bg-background/70 p-0.5 shadow-none dark:border-foreground/10 dark:bg-background/70">
-                {tabs.map((tab) => (
-                  <motion.button
-                    key={tab.key}
-                    type="button"
-                    onClick={() => {
-                      setActiveTab(tab.key)
-                      setPeekingDocId(null)
-                    }}
-                    whileHover={reduceMotion ? undefined : { y: -1 }}
-                    whileTap={reduceMotion ? undefined : { scale: 0.985 }}
-                    transition={{ type: 'spring', stiffness: 380, damping: 24 }}
-                    className={cn(
-                      'relative flex h-9 min-w-[96px] items-center justify-center gap-2 rounded-md border-0 px-3 text-[12px] font-medium transition-colors duration-150 focus-ring',
-                      activeTab === tab.key
-                        ? 'bg-foreground text-background shadow-none'
-                        : 'bg-transparent text-muted-foreground hover:bg-background hover:text-foreground'
-                    )}
-                  >
-                    <tab.icon
-                      className={cn(
-                        'relative z-10 size-4 transition-transform duration-200',
-                        activeTab === tab.key && 'scale-110'
-                      )}
-                    />
-                    <span className="relative z-10">{tab.label}</span>
-                  </motion.button>
-                ))}
-              </div>
-
-              <WorkbenchPanelDialog
-                open={mobileScopeOpen}
-                onOpenChange={setMobileScopeOpen}
-                title={t('dialogs.scope.title')}
-                trigger={
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-10 rounded-lg border border-foreground/10 bg-background/70 px-4 text-[13px] font-bold shadow-none hover:bg-muted/20 lg:hidden"
-                  >
-                    <Filter className="mr-2 size-4" />
-                    筛选
-                  </Button>
-                }
-                className="lg:hidden"
-              >
-                <div className="flex h-full min-h-0 flex-col overflow-hidden">
-                  <KnowledgeScopePanel
-                    mode={scopeMode}
-                    surface="embedded"
-                    datasets={datasets}
-                    datasetsLoading={datasetsLoading}
-                    datasetScope={datasetScope}
-                    datasetAllValue={DATASET_ALL}
-                    selectedDatasetId={selectedDatasetId}
-                    lifecycleFilter={lifecycleFilter}
-                    setLifecycleFilter={setLifecycleFilter}
-                    folderPath={folderPath}
-                    setFolderPath={setFolderPath}
-                    statusFilter={statusFilter}
-                    setStatusFilter={setStatusFilter}
-                    totalDocs={totalDocs}
-                    completedDocsValue={completedDocsValue}
-                    processingDocsValue={processingDocsValue}
-                    failedDocsValue={failedDocsValue}
-                    quarantinedDocsValue={quarantinedDocsValue}
-                    setDatasetScope={handleDatasetScopeChange}
-                  />
-                </div>
-              </WorkbenchPanelDialog>
-
-              {activeTab === 'documents' ? (
-                <WorkbenchPanelDialog
-                  open={mobileRunsOpen}
-                  onOpenChange={setMobileRunsOpen}
-                  title="任务历史"
-                  trigger={
-                    <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-10 rounded-lg border border-foreground/10 bg-background/70 px-4 text-[13px] font-bold shadow-none hover:bg-muted/20 xl:hidden"
-                    >
-                      <History className="mr-2 size-4" />
-                      任务
-                    </Button>
-                  }
-                  className="xl:hidden"
-                >
-                  <div className="flex h-full min-h-0 flex-col overflow-hidden">
-                    <KnowledgeConnectorRunsPanel
-                      selectedDatasetId={selectedDatasetId}
-                      connectorRuns={connectorRuns}
-                      connectorRunsLoading={connectorRunsLoading}
-                      onCancelConnectorRun={cancelConnectorRun}
-                      onResumeConnectorRun={resumeConnectorRun}
-                      onRetryFailedConnectorRun={retryFailedConnectorRun}
-                      onLoadConnectorRuns={loadConnectorRuns}
-                    />
-                  </div>
-                </WorkbenchPanelDialog>
-              ) : null}
-
-              {peekingDoc ? (
-                <WorkbenchPanelDialog
-                  open={mobileInspectorOpen}
-                  onOpenChange={setMobileInspectorOpen}
-                  title={t('dialogs.inspector.title')}
-                  trigger={
-                    <Button
-                      type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-9 rounded-lg border border-foreground/10 bg-background/70 px-3 text-[12px] xl:hidden"
-                    >
-                      <Eye className="mr-2 size-3.5" />
-                      审查
-                    </Button>
-                  }
-                  className="xl:hidden"
-                >
-                  <div className="flex h-full min-h-0 flex-col overflow-hidden">
-                    <KnowledgeInspector
-                      embedded
-                      selectedDocs={peekingDoc ? [peekingDoc] : []}
-                    />
-                  </div>
-                </WorkbenchPanelDialog>
-              ) : null}
-            </div>
-
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              {activeTab === 'documents' ? (
-                <div className="hidden items-center rounded-md border border-foreground/10 bg-background/70 px-3 py-1 text-[11px] text-muted-foreground/80 transition-colors hover:border-foreground/15 xl:inline-flex">
-                  <span>列表</span>
-                  <span className="ml-2 font-mono tabular-nums text-foreground">
-                    {filteredDocuments.length}
-                  </span>
-                </div>
-              ) : null}
-
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className={cn(
-                  'hidden h-10 rounded-xl border px-3.5 text-[13px] font-medium lg:inline-flex',
-                  desktopScopeCollapsed
-                    ? 'border-foreground/10 bg-background/70 text-muted-foreground'
-                    : 'border-foreground/10 bg-background/70 text-foreground'
-                )}
-                onClick={() => setDesktopScopeCollapsed((prev) => !prev)}
-                aria-label={desktopScopeCollapsed ? t('actions.showScope') : t('actions.hideScope')}
-              >
-                {desktopScopeCollapsed ? (
-                  <Maximize2 className="mr-2 size-3.5" />
-                ) : (
-                  <Minimize2 className="mr-2 size-3.5" />
-                )}
-                {desktopScopeCollapsed
-                  ? t('actions.showScope')
-                  : t('actions.hideScope')}
-              </Button>
-
-              {activeTab === 'documents' && (
-                <>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className={cn(
-                      'hidden h-10 rounded-xl border px-3.5 text-[13px] font-medium xl:inline-flex',
-                      showConnectorRunsPanel || activeTasksCount > 0
-                        ? 'border-primary/30 bg-primary/[0.06] text-primary '
-                        : 'border-success/20 bg-success/[0.08] text-success dark:text-success'
-                    )}
-                    onClick={() => {
-                      setShowConnectorRunsPanel((prev) => {
-                        const next = !prev
-                        if (next) setPeekingDocId(null)
-                        return next
-                      })
-                    }}
-                  >
-                    {activeTasksCount > 0 ? (
-                      <Loader2 className="mr-2 size-3.5 animate-spin" />
-                    ) : (
-                      <History className="mr-2 size-3.5" />
-                    )}
-                    {activeTasksCount > 0 ? (
-                      <>
-                        <span className="font-mono tabular-nums">{activeTasksCount}</span>
-                        <span className="ml-1">个任务进行中</span>
-                      </>
-                    ) : (
-                      '任务历史'
-                    )}
-                  </Button>
-
-                  <KnowledgeWorkbenchActions
-                    className="h-8 rounded-md border border-foreground/10 bg-background/70 px-4 text-[10px] font-medium text-info dark:text-info shadow-none"
-                    datasets={datasets}
-                    datasetsLoading={datasetsLoading}
-                    selectedDatasetId={selectedDatasetId}
-                    datasetDefaultValue={DATASET_ALL}
-                    handleFileUpload={handleFileUpload}
-                    uploadDocumentFromUrl={uploadDocumentFromUrl}
-                    loadDocuments={loadDocuments}
-                    loadConnectorRuns={loadConnectorRuns}
-                    onConnectorRunCreated={(run) => { setShowTaskCenter(true); setPeekingDocId(null); setActiveTab('documents'); }}
-                  />
-
-                  <div className="inline-flex h-10 items-center gap-1 rounded-lg border border-foreground/10 bg-background/70 p-1">
-                    {/* layoutId="knowledge-view-mode-active-pill" */}
-                    <button
-                      type="button"
-                      onClick={() => setViewMode('grid')}
-                      className={cn(
-                        'relative flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors',
-                        viewMode === 'grid' && 'text-foreground'
-                      )}
-                    >
-                      {viewMode === 'grid' ? (
-                        <span className="absolute inset-0 rounded-lg border border-foreground/10 bg-background shadow-none" />
-                      ) : null}
-                      <LayoutGrid
-                        className={cn(
-                          'relative z-10 size-3.5 transition-transform duration-200',
-                          viewMode === 'grid' && 'scale-105'
-                        )}
-                      />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setViewMode('list')}
-                      className={cn(
-                        'relative flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors',
-                        viewMode === 'list' && 'text-foreground'
-                      )}
-                    >
-                      {viewMode === 'list' ? (
-                        <span className="absolute inset-0 rounded-lg border border-foreground/10 bg-background shadow-none" />
-                      ) : null}
-                      <ListIcon
-                        className={cn(
-                          'relative z-10 size-3.5 transition-transform duration-200',
-                          viewMode === 'list' && 'scale-105'
-                        )}
-                      />
-                    </button>
-                  </div>
-                </>
-              )}
-
-              {activeTab === 'settings' ? (
-                <>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className={cn(
-                      'h-9 rounded-xl border px-3 text-[12px] font-medium',
-                      showConnectorRunsPanel
-                        ? 'border-primary/30 bg-primary/[0.06] text-primary '
-                        : 'border-success/20 bg-success/[0.08] text-success dark:text-success'
-                    )}
-                    onClick={() => {
-                      setShowConnectorRunsPanel((prev) => !prev)
-                      setPeekingDocId(null)
-                    }}
-                  >
-                    <History className="mr-2 size-3.5" />
-                    任务历史
-                  </Button>
-
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="h-9 rounded-md border border-primary/20 bg-primary px-3.5 text-[12px] font-medium text-primary-foreground shadow-none"
-                    onClick={() => setActiveTab('documents')}
-                  >
-                    <Plus className="mr-2 size-3.5" />
-                    导入/新增
-                  </Button>
-                </>
-              ) : null}
-
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-10 w-10 rounded-lg border border-foreground/10 bg-background/70 p-0 shadow-none hover:shadow-none"
-                onClick={() => detachPromise(loadDocuments())}
-                disabled={isLoading}
-              >
-                <RefreshCw
-                  className={cn('size-3.5', isLoading && 'animate-spin')}
-                />
-              </Button>
-            </div>
+    <AppFrame navigationVariant={activeTab === 'retrieval' && !isMobile ? 'rail' : 'default'} rightPanel={<DocumentViewerPanel />} withDocumentViewerPadding={activeTab !== 'retrieval'}>
+      <div data-knowledge-page-root="true" data-knowledge-table-shell="true" className={styles.shell}>
+        <header className={styles.pageHeader} data-testid="knowledge-page-toolbar">
+          <div className={styles.pageHeading} data-knowledge-title-mark="true">
+            <KnowledgeBase appearance="color" className="size-6" aria-hidden="true" />
+            <h1>{t('header.title')}</h1>
           </div>
-        }
-        toolbarClassName="px-3 py-2 md:px-3 md:py-2"
-        bodyClassName={cn(
-          'bg-background/35 px-3 pt-3 dark:bg-background/20 md:px-3',
-          documentsEmptySurface ? 'min-h-0 flex-1 overflow-hidden pb-3' : undefined
-        )}
-        paneGroupClassName={cn(
-          activeTab !== 'settings'
-            ? 'gap-0 overflow-hidden rounded-lg border border-foreground/10 bg-background shadow-none dark:border-foreground/10 dark:bg-background'
-            : undefined
-        )}
-        mainPaneClassName={cn(
-          activeTab === 'documents' ? 'rounded-none border-0 bg-transparent shadow-none' : undefined
-        )}
-        mainPaneBodyClassName={cn(
-          activeTab === 'documents' ? 'overflow-hidden bg-transparent p-0' : undefined,
-          activeTab === 'settings' ? 'overflow-hidden p-0' : undefined,
-          documentsEmptySurface ? 'min-h-0 flex-1 overflow-hidden pb-3' : undefined
-        )}
-        // leftPanel={!desktopScopeCollapsed ? (
-        // Legacy source-test anchor:
-        // rightPanel={(activeTab === 'retrieval' || peekingDocId || showTaskCenter) ? (
-        leftPanel={
-          desktopScopeCollapsed || activeTab === 'settings' ? null : (
-              <aside
-              className={cn(
-                'flex h-full flex-col overflow-hidden rounded-none border-r border-y-0 border-l-0',
-                KNOWLEDGE_WORKBENCH_SURFACE_CLASS
-              )}
+          <div className={styles.tabs} role="tablist" aria-label="知识库视图" onKeyDown={handleTabsKeyDown}>
+            {TABS.map(tab => (
+              <button
+                key={tab} id={'knowledge-tab-' + tab} type="button" role="tab"
+                aria-selected={activeTab === tab} aria-controls={'knowledge-panel-' + tab}
+                tabIndex={activeTab === tab ? 0 : -1} className={styles.tab}
+                onClick={() => updateQuery({ activeTab: tab })}
               >
-              <KnowledgeScopePanel
-                mode={scopeMode}
-                surface="embedded"
-                datasets={datasets}
-                datasetsLoading={datasetsLoading}
-                datasetScope={datasetScope}
-                datasetAllValue={DATASET_ALL}
-                selectedDatasetId={selectedDatasetId}
-                lifecycleFilter={lifecycleFilter}
-                setLifecycleFilter={setLifecycleFilter}
-                folderPath={folderPath}
-                setFolderPath={setFolderPath}
-                statusFilter={statusFilter}
-                setStatusFilter={setStatusFilter}
-                totalDocs={totalDocs}
-                completedDocsValue={completedDocsValue}
-                processingDocsValue={processingDocsValue}
-                failedDocsValue={failedDocsValue}
-                quarantinedDocsValue={quarantinedDocsValue}
-                setDatasetScope={handleDatasetScopeChange}
-              />
-              </aside>
-          )
-        }
-        rightPanel={
-          activeTab === 'retrieval' ||
-          peekingDocId ||
-          showConnectorRunsPanel ? (
-            <aside
-              className={cn(
-                'flex h-full flex-col overflow-hidden rounded-none border-l border-y-0 border-r-0',
-                KNOWLEDGE_WORKBENCH_SURFACE_CLASS
-              )}
-            >
-              {activeTab === 'retrieval' ? (
-                <KnowledgeRetrievalPanel
-                  selectedDatasetId={selectedDatasetId}
-                  aggregateDocuments={totalDocs}
-                  aggregateChunks={totalChunksValue}
-                  compact
-                />
-              ) : peekingDoc ? (
-                <div className="flex h-full flex-col">
-                  <div className="flex items-center justify-between border-b border-border/60 px-5 py-4">
-                    <div className="min-w-0">
-                      <div className="text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground/68">
-                        Chunk Inspector
-                      </div>
-                      <div className="mt-1 truncate text-[13px] font-medium text-foreground">
-                        {peekingDoc.filename}
-                      </div>
-                    </div>
-                    <IconButton
-                      label="关闭"
-                      variant="ghost"
-                      className="h-8 w-8 rounded-full"
-                      onClick={() => setPeekingDocId(null)}
-                    >
-                      <X className="size-4" />
-                    </IconButton>
-                  </div>
-                  <div className="min-h-0 flex-1 overflow-hidden">
-                    <KnowledgeInspector
-                      embedded
-                      selectedDocs={peekingDoc ? [peekingDoc] : []}
-                    />
-                  </div>
-                  <div className="border-t border-border/60 px-5 py-4">
-                    <Button
-                      asChild
-                      variant="outline"
-                      size="sm"
-                      className="h-9 w-full rounded-xl"
-                    >
-                      <Link
-                        href={buildChunkPreviewDocumentHref(peekingDoc.id)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <Maximize2 className="mr-2 size-3.5" />
-                        进入沉浸式预览
-                      </Link>
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <KnowledgeConnectorRunsPanel
-                  selectedDatasetId={selectedDatasetId}
-                  connectorRuns={connectorRuns}
-                  connectorRunsLoading={connectorRunsLoading}
-                  onCancelConnectorRun={cancelConnectorRun}
-                  onResumeConnectorRun={resumeConnectorRun}
-                  onRetryFailedConnectorRun={retryFailedConnectorRun}
-                  onLoadConnectorRuns={loadConnectorRuns}
-                />
-              )}
-            </aside>
-          ) : null
-        }
-      >
-        <div
-          ref={mainPaneSentinelRef}
-          className="h-0 w-0"
-          data-knowledge-main-scroll-sentinel="true"
-          aria-hidden="true"
-        />
-
-        {activeTab === 'documents' ? (
-          <motion.div
-            layout={!reduceMotion}
-            layoutId="knowledge-documents-surface"
-            transition={layoutTransition}
-            className="flex min-h-0 flex-1 flex-col"
-          >
-            <KnowledgeDocumentsPanel
-              embedded
-              isLoading={isLoading}
-              documents={scopedDocuments}
-              filteredDocuments={paginatedDocuments}
-              totalDocumentsCount={filteredDocuments.length}
-              datasets={datasets}
-              selectedDatasetId={selectedDatasetId}
-              selectedDatasetLabel={selectedDatasetLabel}
-              datasetLabelById={datasetLabelById}
-              hasActiveFilters={
-                Boolean(docFilter.trim()) ||
-                statusFilter !== 'all' ||
-                lifecycleFilter !== 'active' ||
-                Boolean(folderPath)
-              }
-              onSwitchToAllDatasets={() => {
-                setDatasetScope(DATASET_ALL)
-                setFolderPath(null)
-              }}
-              scopeSummary={documentScopeSummary}
-              docFilter={docFilter}
-              setDocFilter={setDocFilter}
-              onClearFilters={() => {
-                setDocFilter('')
-                setStatusFilter('all')
-                setLifecycleFilter('active')
-                setFolderPath(null)
-              }}
-              sortKey={sortKey}
-              sortDir={sortDir}
-              setSortKey={setSortKey}
-              setSortDir={setSortDir}
-              viewMode={viewMode}
-              docGridColumns={docGridColumns}
-              docGridRowCount={docGridRowCount}
-              docsGridVirtualizer={docsGridVirtualizer}
-              docsTableVirtualizer={docsTableVirtualizer}
-              page={documentsPage}
-              pageSize={DOCUMENTS_PAGE_SIZE}
-              pageCount={documentsPageCount}
-              onPageChange={setDocumentsPage}
-              selectedDocIds={selectedDocIds}
-              setSelectedDocIds={setSelectedDocIds}
-              selectedSet={selectedSet}
-              allVisibleSelected={allVisibleSelected}
-              toggleSelectAllVisible={toggleSelectAllVisible}
-              toggleDocSelection={toggleDocSelection}
-              batchDeleteOpen={batchDeleteOpen}
-              setBatchDeleteOpen={setBatchDeleteOpen}
-              batchDeleting={batchDeleting}
-              confirmBatchDelete={confirmBatchDelete}
-              batchLifecycleWorking={batchLifecycleWorking}
-              batchReingestWorking={batchReingestWorking}
-              runBatchReingest={runBatchReingest}
-              runBatchLifecycle={runBatchLifecycle}
-              anySelectedDisabled={anySelectedDisabled}
-              anySelectedEnabled={anySelectedEnabled}
-              anySelectedArchived={anySelectedArchived}
-              anySelectedNotArchived={anySelectedNotArchived}
-              deleteDocument={deleteDocument}
-              handleFileUpload={handleFileUpload}
-              onPeek={openChunkManager}
-              onScrollContainerChange={setDocumentsScrollEl}
+                {t('tabs.' + tab + '.label')}
+                {tab === 'documents' && typeof documentCount === 'number' && !showImportIntro ? <span className={styles.tabCount}>{documentCount}</span> : null}
+              </button>
+            ))}
+          </div>
+          <div className={styles.headerActions}>
+            <Button variant="ghost" className={styles.taskButton} onClick={() => setTasksOpen(true)} aria-label="任务历史" title="任务历史">
+              {activeTasksCount ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <History className="size-4" />}
+              {activeTasksCount ? <span>{activeTasksCount}</span> : <span className={styles.taskLabel}>任务</span>}
+            </Button>
+            <KnowledgeWorkbenchActions
+              actionsRef={importActionsRef}
+              className={styles.importButton} open={importOpen} onOpenChange={setImportOpen}
+              datasets={datasets} datasetsLoading={datasetsLoading} selectedDatasetId={selectedDatasetId}
+              datasetDefaultValue={DATASET_ALL} handleFileUpload={handleFileUpload}
+              uploadDocumentFromUrl={uploadDocumentFromUrl} loadDocuments={refreshDocuments}
+              loadConnectorRuns={loadConnectorRuns}
+              onConnectorRunCreated={() => { setTasksOpen(true); updateQuery({ activeTab: 'documents' }) }}
             />
+          </div>
+        </header>
 
-            <div className="xl:hidden">
-              <AnimatePresence>
-                {mobileRunsOpen ? (
-                  <div className="hidden">
-                    <KnowledgeConnectorRunsPanel
-                      selectedDatasetId={selectedDatasetId}
-                      connectorRuns={connectorRuns}
-                      connectorRunsLoading={connectorRunsLoading}
-                      onCancelConnectorRun={cancelConnectorRun}
-                      onResumeConnectorRun={resumeConnectorRun}
-                      onRetryFailedConnectorRun={retryFailedConnectorRun}
-                      onLoadConnectorRuns={loadConnectorRuns}
-                    />
-                  </div>
-                ) : null}
-              </AnimatePresence>
+        <div className={cn(styles.toolbar, (showImportIntro || activeTab === 'retrieval') && styles.introToolbar)} aria-label="文档筛选与排序">
+          {datasetSelect}
+          {activeTab === 'retrieval' && stats ? <p className={styles.scopeSummary}>{stats.total} 份文档<span>·</span>{stats.total_chunks ?? 0} 个分片</p> : null}
+          {activeTab === 'documents' && !showImportIntro ? (
+            <div className={styles.filters} aria-label="处理状态">
+              {STATUS_FILTERS.map(status => (
+                <Button
+                  key={status} variant="ghost" className={styles.filter} disabled={batchWorking}
+                  aria-pressed={statusFilter === status}
+                  onClick={() => updateQuery({ statusFilter: status })}
+                >
+                  {scopeT('status.' + status + '.label')}
+                  {statusCounts ? <span className={styles.filterCount}>{statusCounts[status]}</span> : null}
+                </Button>
+              ))}
             </div>
-          </motion.div>
+          ) : null}
+          <div className={styles.toolbarEnd}>
+            {activeTab === 'documents' ? (
+              <>
+                {!showImportIntro ? <>
+                <SearchInput
+                  aria-label="搜索文档名称" placeholder="搜索文档名称"
+                  value={docFilter} onValueChange={value => updateQuery({ docFilter: value })}
+                  disabled={batchWorking} containerClassName={styles.search} inputClassName={styles.searchInput}
+                />
+                <Select value={sortKey + ':' + sortDir} onValueChange={value => {
+                  const [key, direction] = value.split(':')
+                  updateQuery({ sortKey: key as KnowledgeQueryState['sortKey'], sortDir: direction as KnowledgeQueryState['sortDir'] })
+                }} disabled={batchWorking}>
+                  <SelectTrigger aria-label="文档排序" className={styles.sort}><SelectValue /></SelectTrigger>
+                  <SelectContent>{SORT_OPTIONS.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+                </Select>
+                </> : null}
+                <IconButton
+                  label="更多筛选" title="更多筛选" variant="ghost"
+                  className={cn(styles.toolIcon, styles.advancedFilter)} aria-pressed={hasAdvancedFilters}
+                  onClick={() => setScopeOpen(true)} disabled={batchWorking}
+                ><Filter className="size-4" /></IconButton>
+                <IconButton
+                  label="文档工具" title="文档工具" variant="ghost" className={cn(styles.toolIcon, styles.refresh)}
+                  onClick={() => setOperationsOpen(true)}
+                ><MoreHorizontal className="size-4" /></IconButton>
+              </>
+            ) : null}
+            <IconButton
+              label="刷新文档" title="刷新文档" variant="ghost" className={cn(styles.toolIcon, styles.refresh)}
+              disabled={isLoading || batchWorking} onClick={() => detachPromise(refreshDocuments())}
+            ><RefreshCw className={cn('size-4', isLoading && 'animate-spin motion-reduce:animate-none')} /></IconButton>
+          </div>
+        </div>
+
+        {activeTab === 'documents' && hasAdvancedFilters ? (
+          <div className={styles.filterSummary}>
+            {lifecycleFilter !== 'active' ? <span>{scopeT('lifecycle.label')}：{scopeT('lifecycle.' + lifecycleFilter)}</span> : null}
+            {folderPath ? <span title={folderPath}>文件夹：{folderPath}</span> : null}
+            <Button variant="ghost" onClick={clearFilters}>清空筛选</Button>
+          </div>
         ) : null}
 
-        {activeTab === 'retrieval' && (
-          <motion.div
-            initial={{ opacity: 0, y: reduceMotion ? 0 : 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex min-h-0 flex-1 flex-col"
-          >
-            {/* mode="retrieval" */}
-            {/* <RetrievePreviewPanel selectedDatasetId={selectedDatasetId} className="h-full border-0 bg-transparent p-0 shadow-none" /> */}
-            {/* <KnowledgeRetrievalPanel selectedDatasetId={selectedDatasetId} compact /> */}
+        <div className={styles.content} id={'knowledge-panel-' + activeTab} role="tabpanel" aria-labelledby={'knowledge-tab-' + activeTab}>
+          {activeTab === 'documents' ? (
+            <KnowledgeDocumentsPanel
+              isLoading={isLoading} error={error} documents={documents} totalDocumentsCount={total}
+              totalChunks={totalChunks} datasets={datasets} selectedDatasetId={selectedDatasetId}
+              selectedDatasetLabel={selectedDatasetLabel} datasetLabelById={datasetLabelById}
+              hasActiveFilters={hasActiveFilters}
+              showImportIntro={showImportIntro}
+              onImportSource={source => importActionsRef.current?.openImport(source)}
+              onClearFilters={clearFilters} onSwitchToAllDatasets={() => handleDatasetScopeChange(DATASET_ALL)}
+              onImport={() => setImportOpen(true)} onRefresh={refreshDocuments}
+              page={documentsPage} pageSize={pageSize} pageCount={pageCount}
+              onPageChange={page => { setDocumentsPage(page); setSelectedDocIds([]) }}
+              onPageSizeChange={size => { setPageSize(size); setDocumentsPage(1); setSelectedDocIds([]) }}
+              selectedDocIds={selectedDocIds} setSelectedDocIds={setSelectedDocIds}
+              selectedSet={selectedSet} allVisibleSelected={allVisibleSelected}
+              toggleSelectAllVisible={toggleSelectAllVisible} toggleDocSelection={toggleDocSelection}
+              batchDeleteOpen={batchDeleteOpen} setBatchDeleteOpen={open => { setBatchDeleteOpen(open); setBatchDeleteError(null) }}
+              batchDeleteError={batchDeleteError} batchDeleting={batchDeleting} confirmBatchDelete={confirmBatchDelete}
+              batchLifecycleWorking={batchLifecycleWorking} batchReingestWorking={batchReingestWorking}
+              runBatchReingest={runBatchReingest} runBatchLifecycle={runBatchLifecycle}
+              anySelectedDisabled={selectedDocuments.some(doc => doc.disabled_at)}
+              anySelectedEnabled={selectedDocuments.some(doc => !doc.disabled_at)}
+              anySelectedArchived={selectedDocuments.some(doc => doc.archived_at)}
+              anySelectedNotArchived={selectedDocuments.some(doc => !doc.archived_at)}
+              deleteDocument={deleteDocument}
+              onOpenDocument={id => openDocument(id)}
+              onPeek={id => openDocument(id, undefined, undefined, { activeTab: 'chunks' })}
+              operationsOpen={operationsOpen} setOperationsOpen={setOperationsOpen}
+            />
+          ) : null}
+          {activeTab === 'retrieval' ? (
             <RetrievePreviewPanel
-              selectedDatasetId={selectedDatasetId}
-              availableDatasetIds={retrievalDatasetIds}
-              className="h-full border-0 bg-transparent p-0 shadow-none"
+              selectedDatasetId={selectedDatasetId} availableDatasetIds={retrievalDatasetIds}
+              scopeLabel={selectedDatasetLabel || scopeT('dataset.all')}
+              aggregateDocuments={stats?.total ?? (error ? undefined : total)} aggregateChunks={stats?.total_chunks ?? 0}
+              scopeLoading={datasetsLoading || isLoading || statsLoading}
+              onGoToDocuments={() => updateQuery({ activeTab: 'documents' })}
             />
-          </motion.div>
-        )}
+          ) : null}
+        </div>
 
-        {activeTab === 'settings' && (
-          <motion.div
-            initial={{ opacity: 0, y: reduceMotion ? 0 : 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className={cn(
-              'flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border',
-              KNOWLEDGE_WORKBENCH_SURFACE_CLASS
-            )}
-          >
-            {/* <KnowledgeSettingsPanel selectedDatasetId={selectedDatasetId} /> */}
-            <KnowledgeSettingsPanel
-              selectedDatasetId={selectedDatasetId}
-              selectedDataset={selectedDataset}
-              datasets={datasets}
-              datasetsLoading={datasetsLoading}
-              datasetAllValue={DATASET_ALL}
-              onDatasetScopeChange={handleDatasetScopeChange}
-              settingsSidebarCollapsed={desktopScopeCollapsed}
-              onGoToRetrievalTest={() => setActiveTab('retrieval')}
-            />
-          </motion.div>
-        )}
-      </WorkbenchScaffold>
+        <Sheet open={scopeOpen} onOpenChange={setScopeOpen}>
+          <SheetContent className={styles.sheet}>
+            <SheetHeader className={styles.sheetHeader}>
+              <SheetTitle>更多筛选</SheetTitle>
+              <SheetDescription className="sr-only">按文档生命周期与文件夹筛选</SheetDescription>
+            </SheetHeader>
+            <div className={styles.operationsBody} data-knowledge-scope-content="true">
+              <div className="space-y-6">
+                <div className="space-y-2"><p className="text-[13px] font-medium">{scopeT('dataset.label')}</p>{datasetSelect}</div>
+                <div className="space-y-2">
+                  <p className="text-[13px] font-medium">{scopeT('lifecycle.label')}</p>
+                  <Select value={lifecycleFilter} onValueChange={value => updateQuery({ lifecycleFilter: value as KnowledgeQueryState['lifecycleFilter'] })}>
+                    <SelectTrigger aria-label={scopeT('lifecycle.ariaLabel')}><SelectValue /></SelectTrigger>
+                    <SelectContent>{(['active', 'disabled', 'archived', 'all'] as const).map(value => <SelectItem key={value} value={value}>{scopeT('lifecycle.' + value)}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                {selectedDatasetId ? (
+                  <DatasetFolderTree datasetId={selectedDatasetId} lifecycle={lifecycleFilter} selectedPath={folderPath} onSelect={path => updateQuery({ folderPath: path })} />
+                ) : <p className="text-[13px] leading-6 text-muted-foreground">选择数据集后可按文件夹筛选。</p>}
+                {hasActiveFilters ? <Button variant="outline" onClick={clearFilters}>清空筛选</Button> : null}
+                <div className={styles.scopeTools}>
+                  <Button variant="outline" onClick={() => { setScopeOpen(false); setOperationsOpen(true) }}>文档工具</Button>
+                  <Button variant="ghost" disabled={isLoading} onClick={() => detachPromise(refreshDocuments())}><RefreshCw className="size-4" />刷新文档</Button>
+                </div>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+        <Sheet open={tasksOpen} onOpenChange={open => {
+          setTasksOpen(open)
+          if (!open && (query.connectorRunId || query.tasksOpen)) updateQuery({ connectorRunId: null, tasksOpen: false })
+        }}>
+          <SheetContent className={cn(styles.sheet, styles.operationsSheet)}>
+            <SheetHeader className={styles.sheetHeader}>
+              <SheetTitle>任务历史</SheetTitle>
+              <SheetDescription className="sr-only">当前数据集的导入任务与处理记录</SheetDescription>
+            </SheetHeader>
+            <div className={styles.sheetBody}>
+              <KnowledgeConnectorRunsPanel
+                selectedDatasetId={selectedDatasetId} connectorRuns={connectorRuns}
+                connectorRunsLoading={connectorRunsLoading} onCancelConnectorRun={cancelConnectorRun}
+                onResumeConnectorRun={resumeConnectorRun} onRetryFailedConnectorRun={retryFailedConnectorRun}
+                onLoadConnectorRuns={loadConnectorRuns}
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
     </AppFrame>
   )

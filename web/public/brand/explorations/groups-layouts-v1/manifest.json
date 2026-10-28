@@ -1,0 +1,16 @@
+{
+  "schemaVersion":1,
+  "lang":"zh",
+  "project":"Ragvia · 组管理布局对比",
+  "round":"组管理 01",
+  "nativeViewport":"1600x1000",
+  "brief":"配色、字体和导航保持一致，只比较组目录与成员管理的布局。五版共用12个组、4名成员的排版数据，真实空页面另作参照。本轮为静态首屏，选定后应用正式页。",
+  "candidates":[
+    {"id":"a-table","name":"A · 管理宽表","source":"a-table.html","concept":"横向比较组名称、外部标识与更新时间，需要时再打开组管理成员。","typography":"Manrope / Noto Sans SC；20px 标题、14px 正文、13px 操作、12px 元信息","palette":["#F6F7F8","#20262E","#FFFFFF","#DCE1E6","#476F8B","#5B6773"],"traits":["连续组宽表","组信息对照","详情按需打开"]},
+    {"id":"b-directory","name":"B · 组目录","source":"b-directory.html","concept":"从左侧组目录定位对象，右侧直接核对组信息与成员，减少往返。","typography":"Manrope / Noto Sans SC；20px 标题、14px 正文、13px 操作、12px 元信息","palette":["#F6F7F8","#20262E","#FFFFFF","#DCE1E6","#476F8B","#5B6773"],"traits":["目录与内容分栏","当前组持续可见","就地维护成员"]},
+    {"id":"c-sections","name":"C · 标识分组","source":"c-sections.html","concept":"把已填写和未填写外部组 ID 的目录分开浏览，快速找到需要维护的标识。","typography":"Manrope / Noto Sans SC；20px 标题、14px 正文、13px 操作、12px 元信息","palette":["#F6F7F8","#20262E","#FFFFFF","#DCE1E6","#476F8B","#5B6773"],"traits":["两列开放清单","外部标识分类","低强调行级操作"]},
+    {"id":"d-inline","name":"D · 行内展开","source":"d-inline.html","concept":"在组列表中直接展开当前组的信息与成员，维护后仍留在原位置。","typography":"Manrope / Noto Sans SC；20px 标题、14px 正文、13px 操作、12px 元信息","palette":["#F6F7F8","#20262E","#FFFFFF","#DCE1E6","#476F8B","#5B6773"],"traits":["连续组列表","当前行展开","名册内核对成员"]},
+    {"id":"e-split","name":"E · 上下分区","source":"e-split.html","concept":"上方铺开全部组的文字索引，下方保留当前组与成员的宽阅读面。","typography":"Manrope / Noto Sans SC；20px 标题、14px 正文、13px 操作、12px 元信息","palette":["#F6F7F8","#20262E","#FFFFFF","#DCE1E6","#476F8B","#5B6773"],"traits":["完整文字索引","上下持续对照","宽成员阅读区"]},
+    {"id":"current","name":"当前页面 · 参照","source":"current.jpg","kind":"image","baseline":true,"nativeViewport":"1280x720","concept":"真实运行页面尚无组，保留原有统计卡与嵌套列表作为参照；没有创建或更改真实组。","traits":["真实空集合","原有卡片布局","1280×720 基线"]}
+  ]
+}

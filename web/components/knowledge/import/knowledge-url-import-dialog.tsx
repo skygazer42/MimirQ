@@ -2,7 +2,7 @@
 
 import type { Dataset } from '@/types'
 import { useCallback, useEffect, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Loader2 } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
@@ -19,6 +19,7 @@ import { formatApiError } from '@/lib/api-errors'
 type KnowledgeUrlImportDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onCloseAutoFocus?: (event: Event) => void
 
   datasets: Dataset[]
   datasetsLoading: boolean
@@ -33,6 +34,7 @@ type KnowledgeUrlImportDialogProps = {
 export function KnowledgeUrlImportDialog({
   open,
   onOpenChange,
+  onCloseAutoFocus,
   datasets,
   datasetsLoading,
   selectedDatasetId,
@@ -97,7 +99,7 @@ export function KnowledgeUrlImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent onCloseAutoFocus={onCloseAutoFocus} className="max-h-[calc(100dvh-2rem)] max-w-2xl overflow-y-auto overscroll-contain">
         <DialogHeader>
           <DialogTitle>通过 URL 导入文档</DialogTitle>
           <DialogDescription>

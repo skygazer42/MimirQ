@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronUp } from '@/components/icons'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { cn } from '@/lib/utils'
 import { buildTypeColorMap, EVENT_COLOR } from './graph-colors'

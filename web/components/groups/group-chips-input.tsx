@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { Check, ChevronsUpDown, Loader2, X } from 'lucide-react'
+import { Check, ChevronsUpDown, Loader2, X } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'

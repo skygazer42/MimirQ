@@ -1,12 +1,13 @@
 'use client'
 
-import { LockKeyhole, RefreshCw, ShieldAlert } from 'lucide-react'
+import { LockKeyhole, Loader2, RefreshCw, ShieldAlert } from '@/components/icons'
 import { useEffect, useState, type ReactNode } from 'react'
+import { toast } from 'sonner'
 
 import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
 import { PageLoading } from '@/components/ui/page-loading'
-import { PageScaffold } from '@/components/ui/page-scaffold'
+import { PageStatus, pageStatusActionClass } from '@/components/ui/page-status'
 import { useAuth } from '@/hooks/use-auth'
 import { useTenantAccess } from '@/hooks/use-tenant-access'
 import {
@@ -30,6 +31,13 @@ export function NavigationVisibilityGate({
   const access = useTenantAccess()
   const allowed = hasHydrated && canShowAdminControlledNavigationModule(access.data, moduleKey)
   const effectiveAllowed = hasHydrated && (isDevMode || allowed)
+  async function recheckAccess() {
+    toast.dismiss('navigation-access-recheck')
+    const result = await access.refetch()
+    if (result.isSuccess && !canShowAdminControlledNavigationModule(result.data, moduleKey)) {
+      toast.info('校验完成，此入口仍未向当前账号开放。', { id: 'navigation-access-recheck', duration: 3200 })
+    }
+  }
 
   useEffect(() => {
     setHasHydrated(true)
@@ -51,32 +59,17 @@ export function NavigationVisibilityGate({
     const isUnknown = access.isError || !access.data
     return (
       <AppFrame>
-        <PageScaffold
+        <PageStatus
           title={isUnknown ? '无法确认入口权限' : '入口未开放'}
           description={
             isUnknown
-              ? '当前无法读取租户角色或导航配置，请检查登录状态或后端服务后重试。'
-              : `管理员未向当前角色开放「${pageName}」前端入口。`
+              ? '暂时无法读取账号权限或入口配置，请检查登录状态或服务连接后重试。'
+              : `「${pageName}」尚未向当前账号开放，请联系管理员。`
           }
-          icon={isUnknown ? ShieldAlert : LockKeyhole}
-          size="5xl"
-          compact
-        >
-          <div className="rounded-2xl border border-border/80 bg-card p-6 shadow-sm">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="text-sm font-semibold text-foreground">入口标识：{moduleKey}</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  当前角色：{access.data?.role || '未知'}。如需访问，请联系管理员在「设置 → 导航权限」中开放。
-                </p>
-              </div>
-              <Button variant="outline" className="gap-2 self-start" onClick={() => access.refetch()}>
-                <RefreshCw className="size-4" />
-                重新校验
-              </Button>
-            </div>
-          </div>
-        </PageScaffold>
+          icon={isUnknown ? <ShieldAlert /> : <LockKeyhole />}
+          actions={<Button variant="outline" className={pageStatusActionClass} disabled={access.isFetching} aria-busy={access.isFetching} onClick={() => { void recheckAccess() }}>{access.isFetching ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="size-4" />}重新校验</Button>}
+          metadata={<details><summary className="cursor-pointer py-1 text-[13px]">入口信息</summary><dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1"><dt>入口标识</dt><dd className="break-all font-mono text-foreground">{moduleKey}</dd><dt>最近读取的角色</dt><dd className="break-all text-foreground">{access.data?.role || '未读取'}</dd></dl><p className="mt-3">管理员可在「设置 → 导航权限」调整。</p></details>}
+        />
       </AppFrame>
     )
   }

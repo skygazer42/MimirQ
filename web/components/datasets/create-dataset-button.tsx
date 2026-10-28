@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Plus } from 'lucide-react'
+import { Plus } from '@/components/icons'
 
 import { Button, type ButtonProps } from '@/components/ui/button'
 import { cn } from '@/lib/utils'

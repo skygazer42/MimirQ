@@ -1,7 +1,7 @@
 'use client'
 
-import type { LucideIcon } from 'lucide-react'
-import { ShieldCheck, Sparkles } from 'lucide-react'
+import type { PlatformIcon } from '@/components/icons'
+import { ShieldCheck, Sparkles } from '@/components/icons'
 import type { ReactNode } from 'react'
 
 import { PageTitleIcon, type PageTitleIconName } from '@/components/ui/page-title-icon'
@@ -109,7 +109,7 @@ export function KnowledgeOpsHero({
 }
 
 type KnowledgeOpsFlowCardProps = {
-  steps: Array<{ icon: LucideIcon; label: ReactNode }>
+  steps: Array<{ icon: PlatformIcon; label: ReactNode }>
   className?: string
 }
 

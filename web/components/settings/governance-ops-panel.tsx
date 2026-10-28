@@ -1,15 +1,14 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
-import { Database, FileClock, Loader2, Trash2 } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+import { Database, FileClock, Loader2, Trash2 } from '@/components/icons'
+import type { PlatformIcon } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Panel } from '@/components/ui/panel'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DatasetSelectField } from '@/components/ops/dataset-select-field'
 import { OperationResultPanel } from '@/components/ops/operation-result-panel'
@@ -41,38 +40,33 @@ export function GovernanceOpsPanel() {
   }
 
   return (
-    <Panel padding="md" className="border-info/15 bg-info/[0.025] shadow-none">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+    <section className="border-t border-border/60 pt-5">
+      <div>
         <div>
-          <div className={cn(settingsTextTokens.sectionTitle, 'flex items-center gap-1.5')}>
-            <Database className="h-3.5 w-3.5 text-info" />
-            数据集复核运维
-          </div>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            待复核/过期文档是按数据集查询，已自动绑定首个可用数据集，可按需切换
-            切块预设删除不按数据集筛选，放在高级维护里单独确认
+          <h3 className={cn(settingsTextTokens.panelTitle, 'flex items-center gap-2')}>
+            <Database className="size-4 text-muted-foreground" />
+            文档复核
+          </h3>
+          <p className="mt-1 text-[13px] leading-5 text-muted-foreground">
+            按数据集查询待复核或已过期的文档。
           </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="rounded-full border border-info/15 bg-info/[0.04] px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
-            {datasetId ? '已绑定数据集' : '等待数据集'}
-          </span>
-          {busy ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground motion-reduce:animate-none" /> : null}
         </div>
       </div>
 
-      <div className="mt-3 grid gap-2 md:grid-cols-4">
+      <div className="mt-4 grid items-end gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,0.8fr)_minmax(0,0.7fr)_auto]">
         <DatasetSelectField
           value={datasetId}
           onChange={setDatasetId}
-          label="绑定数据集"
-          placeholder="选择要巡检的数据集"
+          label="数据集"
+          placeholder="选择要复核的数据集"
           autoSelectFirst
-          className="md:col-span-2"
+          className="min-w-0"
+          labelClassName={settingsTextTokens.fieldLabel}
+          triggerClassName="h-11 text-[13px] sm:h-9"
         />
         <Field label="复核范围">
           <Select value={mode} onValueChange={(value) => setMode(value as typeof mode)}>
-            <SelectTrigger className="h-8 text-xs">
+            <SelectTrigger aria-label="复核范围" className="h-11 text-[13px] sm:h-9">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -83,15 +77,9 @@ export function GovernanceOpsPanel() {
           </Select>
         </Field>
         <Field label="到期窗口（天）">
-          <Input value={String(dueWithinDays)} onChange={(event) => setDueWithinDays(Number.parseInt(event.target.value || '0', 10) || 14)} className="h-8 text-xs" inputMode="numeric" />
+          <Input aria-label="到期窗口（天）" value={String(dueWithinDays)} onChange={(event) => setDueWithinDays(Number.parseInt(event.target.value || '0', 10) || 14)} className="h-11 text-[13px] sm:h-9" inputMode="numeric" />
         </Field>
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-center gap-2">
         <ActionButton icon={FileClock} busy={busy === 'stale'} disabled={Boolean(busy) || !datasetId.trim()} label="查询待复核文档" onClick={() => runAction('stale', '待复核文档', () => governanceApi.listStaleDocumentsByDataset(datasetId.trim(), { mode, due_within_days: dueWithinDays, limit: 50 }))} />
-        <div className="text-[11px] leading-4 text-muted-foreground/85">
-          当前接口：<span className="font-mono">/governance/datasets/{'{dataset_id}'}/stale-documents</span>
-        </div>
       </div>
 
       <DangerZonePanel
@@ -103,12 +91,9 @@ export function GovernanceOpsPanel() {
         tone="neutral"
         icon="help"
       >
-        <p className="text-xs leading-5 text-muted-foreground">
-          这里不跟上方数据集巡检联动；删除前请确认没有数据集或入库策略继续引用该预设
-        </p>
         <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
           <Field label="切块预设 ID">
-            <Input value={presetId} onChange={(event) => setPresetId(event.target.value)} className="h-8 font-mono text-xs" />
+            <Input aria-label="切块预设 ID" value={presetId} onChange={(event) => setPresetId(event.target.value)} className="h-11 font-mono text-[13px] sm:h-9" />
           </Field>
           <ConfirmDialog
             title="删除切块预设？"
@@ -119,7 +104,7 @@ export function GovernanceOpsPanel() {
               return { preset_id: presetId.trim(), deleted: true }
             })}
           >
-            <Button variant="outline" className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold" disabled={Boolean(busy) || !presetId.trim()}>
+            <Button variant="outline" className="h-11 gap-2 px-3 text-[13px] sm:h-9" disabled={Boolean(busy) || !presetId.trim()}>
               {busy === 'delete-preset' ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Trash2 className="h-3.5 w-3.5" />}
               删除切块预设
             </Button>
@@ -127,8 +112,8 @@ export function GovernanceOpsPanel() {
         </div>
       </DangerZonePanel>
 
-      <OperationResultPanel className="mt-3" title="治理运维结果" result={result} emptyMessage="选择绑定数据集后查询待复核文档；原始响应默认收起" />
-    </Panel>
+      {result ? <OperationResultPanel className="mt-3" title="治理运维结果" result={result} emptyMessage="尚无复核结果。" /> : null}
+    </section>
   )
 }
 
@@ -150,12 +135,12 @@ function ActionButton({
 }: Readonly<{
   busy: boolean
   disabled: boolean
-  icon: LucideIcon
+  icon: PlatformIcon
   label: string
   onClick: () => Promise<void>
 }>) {
   return (
-    <Button variant="outline" className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold" disabled={disabled} onClick={() => detachPromise(onClick())}>
+    <Button variant="secondary" className="h-11 gap-2 px-3 text-[13px] sm:h-9" disabled={disabled} onClick={() => detachPromise(onClick())}>
       {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Icon className="h-3.5 w-3.5" />}
       {label}
     </Button>

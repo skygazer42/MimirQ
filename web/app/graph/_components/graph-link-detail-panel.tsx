@@ -1,6 +1,6 @@
 'use client'
 
-import { ChevronDown, ChevronUp, FileText, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, FileText, X } from '@/components/icons'
 
 import { cn } from '@/lib/utils'
 

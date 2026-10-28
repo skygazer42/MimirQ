@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { Waypoints, GitCommitHorizontal, Shapes } from 'lucide-react'
+import { Waypoints, GitCommitHorizontal, Shapes } from '@/components/icons'
 
 interface GraphStatsBarProps {
   readonly nodeCount: number

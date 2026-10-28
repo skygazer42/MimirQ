@@ -1,0 +1,118 @@
+{
+  "groups": [
+    {
+      "id": "5ed48c72-6419-4eac-a538-000000000001",
+      "name": "检索研发",
+      "external_id": "ragvia-search",
+      "created_at": "2026-09-08 10:20",
+      "updated_at": "2026-10-26 15:30"
+    },
+    {
+      "id": "5ed48c72-6419-4eac-a538-000000000002",
+      "name": "内容运营",
+      "external_id": "ragvia-content",
+      "created_at": "2026-09-09 10:20",
+      "updated_at": "2026-10-26 14:30"
+    },
+    {
+      "id": "5ed48c72-6419-4eac-a538-000000000003",
+      "name": "数据维护",
+      "external_id": "ragvia-data",
+      "created_at": "2026-09-10 10:20",
+      "updated_at": "2026-10-25 13:30"
+    },
+    {
+      "id": "5ed48c72-6419-4eac-a538-000000000004",
+      "name": "审阅协作",
+      "external_id": "ragvia-review",
+      "created_at": "2026-09-11 10:20",
+      "updated_at": "2026-10-25 12:30"
+    },
+    {
+      "id": "5ed48c72-6419-4eac-a538-000000000005",
+      "name": "产品资料",
+      "external_id": "ragvia-product",
+      "created_at": "2026-09-12 10:20",
+      "updated_at": "2026-10-24 11:30"
+    },
+    {
+      "id": "5ed48c72-6419-4eac-a538-000000000006",
+      "name": "客户支持",
+      "external_id": "ragvia-support",
+      "created_at": "2026-09-13 10:20",
+      "updated_at": "2026-10-24 15:30"
+    },
+    {
+      "id": "5ed48c72-6419-4eac-a538-000000000007",
+      "name": "项目协作",
+      "external_id": null,
+      "created_at": "2026-09-14 10:20",
+      "updated_at": "2026-10-23 14:30"
+    },
+    {
+      "id": "5ed48c72-6419-4eac-a538-000000000008",
+      "name": "发布复核",
+      "external_id": null,
+      "created_at": "2026-09-15 10:20",
+      "updated_at": "2026-10-23 13:30"
+    },
+    {
+      "id": "5ed48c72-6419-4eac-a538-000000000009",
+      "name": "研发文档",
+      "external_id": null,
+      "created_at": "2026-09-16 10:20",
+      "updated_at": "2026-10-22 12:30"
+    },
+    {
+      "id": "5ed48c72-6419-4eac-a538-000000000010",
+      "name": "入库测试",
+      "external_id": null,
+      "created_at": "2026-09-17 10:20",
+      "updated_at": "2026-10-22 11:30"
+    },
+    {
+      "id": "5ed48c72-6419-4eac-a538-000000000011",
+      "name": "外部协作",
+      "external_id": null,
+      "created_at": "2026-09-18 10:20",
+      "updated_at": "2026-10-21 15:30"
+    },
+    {
+      "id": "5ed48c72-6419-4eac-a538-000000000012",
+      "name": "临时审阅",
+      "external_id": null,
+      "created_at": "2026-09-19 10:20",
+      "updated_at": "2026-10-21 14:30"
+    }
+  ],
+  "total": 12,
+  "selected_group_id": "5ed48c72-6419-4eac-a538-000000000001",
+  "selected_group_members": [
+    {
+      "user_id": "member-lin",
+      "username": "林澈",
+      "email": "lin.che@example.com",
+      "created_at": "2026-09-08 11:10"
+    },
+    {
+      "user_id": "member-chen",
+      "username": "陈宁",
+      "email": "chen.ning@example.com",
+      "created_at": "2026-09-12 09:40"
+    },
+    {
+      "user_id": "member-su",
+      "username": "苏晴",
+      "email": "su.qing@example.com",
+      "created_at": "2026-09-15 14:20"
+    },
+    {
+      "user_id": "member-jiang",
+      "username": "江屿",
+      "email": "jiang.yu@example.com",
+      "created_at": "2026-10-02 10:20"
+    }
+  ],
+  "selected_group_member_total": 4,
+  "note": "十二个组和四名成员均为同一份设计排版数据，不写入实际环境。group API提供组ID、名称、external_id、创建和更新时间；成员接口只提供user_id与加入时间。这里成员姓名/邮箱表示可由现有rbac/members接口按user_id补充的身份，失败时必须保留ID，不假定组接口返回姓名。列表没有每组人数、负责人、部门、嵌套层级、连接状态或权限数量。external_id非空仅表示已填写，不表示SCIM/JWT已同步。支持创建、编辑、删除组及添加/移除现有租户成员；不支持邀请、建账号、组角色分配或在此直接配置资源ACL。读取受settings.read控制，写入受settings.write控制。"
+}

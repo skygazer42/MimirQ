@@ -12,7 +12,7 @@ import {
   type RefObject,
 } from 'react'
 
-import { Network, PanelRightClose, PanelRightOpen, Rows3 } from 'lucide-react'
+import { Network, PanelRightClose, PanelRightOpen, Rows3 } from '@/components/icons'
 import dynamic from 'next/dynamic'
 
 import type { Remote } from 'comlink'
@@ -57,16 +57,9 @@ function primitiveText(value: unknown, fallback = ''): string {
   return fallback
 }
 
-function getCanvasBackdropStyle(isDark: boolean) {
-  const gridOpacity = isDark ? 0.06 : 0.035
+function getCanvasBackdropStyle() {
   return {
-    backgroundColor: 'hsl(var(--background))',
-    backgroundImage: [
-      `linear-gradient(hsl(var(--info) / ${gridOpacity}) 1px, transparent 1px)`,
-      `linear-gradient(90deg, hsl(var(--info) / ${gridOpacity}) 1px, transparent 1px)`,
-    ].join(','),
-    backgroundSize: '32px 32px, 32px 32px',
-    backgroundPosition: '-1px -1px, -1px -1px',
+    backgroundColor: 'hsl(var(--muted) / 0.25)',
   } as const
 }
 
@@ -133,6 +126,7 @@ const KnowledgeGraph3D = dynamic(
 )
 
 type GraphCanvasProps = Readonly<{
+  showSemanticPanel?: boolean
   viewportRef: RefObject<HTMLDivElement | null>
   graph2dRef: RefObject<GraphViewerRef | null>
   graph3dRef: RefObject<KnowledgeGraph3DRef | null>
@@ -178,6 +172,7 @@ function normalizeLinkEndpoint(endpoint: unknown) {
 }
 
 export function GraphCanvas({
+  showSemanticPanel = true,
   viewportRef,
   graph2dRef,
   graph3dRef,
@@ -560,14 +555,14 @@ export function GraphCanvas({
       ref={viewportRef}
       className="relative h-full min-h-0 w-full flex-1 overflow-hidden bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/40"
       tabIndex={0}
-      role="grid"
-      aria-label="知识图谱画布，按 Tab 浏览节点"
-      aria-describedby={viewMode === '3d' ? `${semanticPanelId}-keyboard-help ${semanticPanelId}-keyboard-status` : undefined}
-      onKeyDown={handleCanvasKeyDown}
+      role="region"
+      aria-label={showSemanticPanel ? '知识图谱画布，按 Tab 浏览节点' : '知识图谱画布'}
+      aria-describedby={showSemanticPanel && viewMode === '3d' ? `${semanticPanelId}-keyboard-help ${semanticPanelId}-keyboard-status` : undefined}
+      onKeyDown={showSemanticPanel ? handleCanvasKeyDown : undefined}
     >
       <div
         className="absolute inset-0 z-0"
-        style={getCanvasBackdropStyle(isDark)}
+        style={getCanvasBackdropStyle()}
       />
       {graphRenderData.nodes.length > 0 ? (
         <>
@@ -601,6 +596,8 @@ export function GraphCanvas({
             )
           ) : (
             <GraphViewer
+              appearance="diagram"
+              showMinimap={!selectedNodeId}
               ref={graph2dRef}
               data={effectiveGraphRenderData}
               onNodeClick={onNodeClick}
@@ -616,7 +613,7 @@ export function GraphCanvas({
               layoutMode={layoutMode}
             />
           )}
-          <aside
+          {showSemanticPanel ? <aside
             className="absolute z-20 pointer-events-none"
             style={
               semanticPanelPosition
@@ -825,36 +822,19 @@ export function GraphCanvas({
                 ) : null}
               </section>
             </div>
-          </aside>
+          </aside> : null}
         </>
       ) : (
-        <div className="absolute inset-x-0 bottom-0 top-16 z-10 flex items-center justify-center px-6 py-6 pr-28">
+        <div className="absolute inset-0 z-10 flex items-center justify-center px-5 py-6">
           {isLoading ? (
-            <div className="w-full max-w-2xl rounded-2xl border border-border/60 bg-card p-6 shadow-none">
-              <div className="flex items-center gap-3">
-                <Skeleton className="h-11 w-11 rounded-xl" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-5 w-44" />
-                  <Skeleton className="h-4 w-72" />
-                </div>
-              </div>
-              <div className="mt-6 grid gap-3">
-                <Skeleton className="h-20 w-full rounded-xl" />
-                <Skeleton className="h-20 w-full rounded-xl" />
-                <Skeleton className="h-20 w-full rounded-xl" />
-              </div>
-              <div className="mt-6 flex items-center gap-3">
-                <Skeleton className="h-10 w-32 rounded-xl" />
-                <Skeleton className="h-10 w-28 rounded-xl" />
-              </div>
-            </div>
+            <GraphLoadingIndicator message="正在读取图谱…" srMessage="正在读取图谱" />
           ) : (
             <section className="mx-auto flex w-full max-w-[36rem] flex-col items-center justify-center px-8 py-14 text-center md:px-10 md:py-16">
               <div className="mb-7 flex items-center justify-center">
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 180 72"
-                  className="h-[76px] w-[190px] md:h-[82px] md:w-[204px]"
+                  className="h-14 w-36"
                 >
                   <path
                     d="M36 46H90M90 46H144M90 46V22"
@@ -874,26 +854,26 @@ export function GraphCanvas({
                 </svg>
               </div>
               <h2 className="mx-auto w-full max-w-[19rem] text-balance text-[1.42rem] font-semibold  text-foreground md:text-[1.56rem]">
-                {hasActiveScope ? '当前范围暂无图谱' : '选择知识库图谱'}
+                {hasActiveScope ? '当前范围暂无图谱' : '选择图谱'}
               </h2>
               <div className="mx-auto mt-3 w-full max-w-[30rem] text-pretty text-sm leading-7 text-muted-foreground md:text-[15px]">
                 {hasActiveScope ? (
-                  '当前知识库范围还没有可视化结果。请先执行 KG 抽取，或切换到其他已有图谱的范围。'
+                  '当前范围还没有实体与关系，可以切换到其他已有图谱。'
                 ) : (
-                  '优先查看已有知识库 KG；外部图谱统一使用 KG JSON / JSONL 导入。'
+                  '选择数据集或文档，查看已有的实体、关系与来源。'
                 )}
               </div>
               <div className="mx-auto mt-7 flex w-full max-w-[30rem] flex-wrap items-center justify-center gap-3">
                 <Button
-                  className="h-9 gap-1.5 rounded-md bg-info px-3.5 text-[12px] font-medium text-info-foreground shadow-none hover:bg-info/90"
+                  variant="outline"
+                  className="h-9 gap-2 rounded-md px-3 text-[13px] shadow-none"
                   onClick={onTriggerManualKgUpload}
                 >
                   <Network className="h-4 w-4" />
                   导入 KG JSON / JSONL
                 </Button>
                 <Button
-                  variant="outline"
-                  className="h-9 gap-1.5 rounded-md border-info/25 bg-background/75 px-3.5 text-[12px] font-medium text-foreground shadow-none hover:bg-info/[0.08] hover:text-info"
+                  className="h-9 gap-2 rounded-md px-3 text-[13px] shadow-none"
                   onClick={onOpenGraphPicker}
                 >
                   选择图谱

@@ -1,7 +1,9 @@
 'use client'
 
+
+import { workspaceStyles as ws } from '@/components/ui/operational-workspace'
 import * as React from 'react'
-import { Copy, ExternalLink, FileText, Image as ImageIcon, Table2 } from 'lucide-react'
+import { Copy, ExternalLink, FileText, Image as ImageIcon, Table2 } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { AuthImage, useResolvedAuthAssetUrl } from '@/components/auth-image'
@@ -181,12 +183,13 @@ export function EvidenceViewerDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl p-0 overflow-hidden">
-        <DialogHeader className="px-4 py-3 border-b border-border/60">
+      <DialogContent  className={ws.dialog}>
+<DialogHeader  className={ws.dialogHeader}>
           <DialogTitle className="text-sm">{title}</DialogTitle>
         </DialogHeader>
+<div className={ws.dialogBody}>
 
-        <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-2 border-b border-border/40">
+<div className="px-4 py-3 flex flex-wrap items-center justify-between gap-2 border-b border-border/40">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="soft" className="text-[11px]">
               {(() => {
@@ -245,7 +248,7 @@ export function EvidenceViewerDialog({
           </div>
         </div>
 
-        <ScrollArea className="max-h-[70vh]">
+<ScrollArea className="max-h-[70vh]">
           <div className="p-4 space-y-4">
             {kind === 'image' ? (
               <div className="space-y-3">
@@ -332,7 +335,9 @@ export function EvidenceViewerDialog({
             ) : null}
           </div>
         </ScrollArea>
-      </DialogContent>
+</div>
+
+</DialogContent>
     </Dialog>
   )
 }
