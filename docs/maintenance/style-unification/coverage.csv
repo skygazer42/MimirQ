@@ -237,13 +237,13 @@ app/connectors/registry.py,4,pending,adjusted,Awaiting file-level convention and
 app/connectors/types.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/__init__.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/async_bridge.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/core/config.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/core/config_validation.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/core/config.py,3,adjusted,conforms,Settings schema and validation order preserved; implicit dependency injection removed,task-3-configuration-static; full Settings AST; public reexports
+app/core/config_validation.py,3,adjusted,conforms,Typed Settings validation and direct owners; redundant field wrappers removed,task-3-configuration-static; 53 canonical bodies; 4 moved bodies; 313 bound calls
 app/core/constants.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/cost_tracker.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/database.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/database_singleton.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/core/env.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/core/env.py,3,conforms,adjusted,Environment reader already has a single explicit typed responsibility,task-3-configuration-static; complete source review
 app/core/exceptions.py,3,adjusted,conforms,Shared business errors include NotFoundError with the existing HTTP 404 error code,Task 2 auth contracts; Task 3 group/SCIM error contracts
 app/core/health_checks.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/http_client.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -1218,7 +1218,7 @@ app/services/chunk_quality_gate.py,3,pending,conforms,Awaiting file-level conven
 app/services/chunk_quality_recommendation_service.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/chunk_quality_scoring.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/chunking_stats_utils.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/services/config_hot_reload.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/services/config_hot_reload.py,3,adjusted,adjusted,Read owned snapshot attributes and required key; preserve fingerprint representation,task-3-configuration-static; 2 canonical bodies; schema and hash input review
 app/services/connector_acl_prometheus_metrics.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/connector_egress_policy.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/connector_reconcile_service.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -1306,7 +1306,7 @@ app/services/metrics_logger.py,3,pending,adjusted,Awaiting file-level convention
 app/services/mineru_service.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/navigation_visibility.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/online_eval_service.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/services/ops_config_snapshot_service.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/services/ops_config_snapshot_service.py,3,conforms,conforms,Snapshot redaction and representation conversions implement explicit protocol boundaries,task-3-configuration-static; complete source and caller review
 app/services/parse_cache.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/parser_strategy_policy.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/parsing_extract_service.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -3635,3 +3635,4 @@ web/workers/pdf-page-render.worker.ts,6,pending,pending,Awaiting file-level conv
 web/workers/pdf-preview.worker.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/workers/report-transforms.worker.ts,6,pending,pending,Awaiting file-level convention and contract review,
 docs/maintenance/style-unification/decisions/implemented/simplification/2026-11-02-dataset-service-functions.md,3,preserved,preserved,Dataset service decision record; documentation scope,task-3-dataset-final
+docs/maintenance/style-unification/decisions/implemented/simplification/2026-11-02-configuration-validation-contracts.md,3,preserved,preserved,Configuration validation decision record; documentation scope,task-3-configuration-static

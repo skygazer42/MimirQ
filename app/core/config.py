@@ -8,81 +8,29 @@ Centralized settings management including:
 - Storage backend config
 """
 
-import ipaddress
-import json
 import os
 import sys
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal
-from urllib.parse import urlparse
 
 from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core import config_validation as _settings_validation
+from app.core.config_validation import (
+    _DEFAULT_RAG_EVAL_SUMMARY_PATH,
+    DEFAULT_RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS,
+)
+from app.core.config_validation import (
+    normalize_object_storage_provider_name as normalize_object_storage_provider_name,
+)
+from app.core.config_validation import (
+    parse_object_storage_region_profiles as parse_object_storage_region_profiles,
+)
+from app.core.config_validation import (
+    validate_jwt_remote_url as validate_jwt_remote_url,
+)
 from app.core.constants import DEFAULT_OPENAI_API_BASE
-from app.core.env import is_production_env
-from app.rag.retrieval.contract import (
-    VALID_RETRIEVAL_CONTRACT_MODES,
-    normalize_retrieval_contract_mode,
-)
-from app.rag.retrieval.sparse import (
-    VALID_SPARSE_PROVIDERS,
-    normalize_sparse_provider_name,
-)
-
-_DEFAULT_RAG_EVAL_SUMMARY_PATH = "tests/rag/evaluation/fixtures/rag_eval_summary.sample.json"
-_COMMA_OR_WHITESPACE_RE = r"[,\\s]+"
-_LEGACY_DEV_SECRET_KEY = "".join(("your-secret-key", "-change-in-production"))
-_LOCAL_MINIO_DEFAULT_CREDENTIAL = "".join(("minio", "admin"))
-_ALL_INTERFACES_HOST = str(ipaddress.IPv4Address(0))
-_JWT_LOCAL_HOSTS = frozenset({"localhost", "localhost.localdomain", "127.0.0.1", "::1"})
-_OBJECT_STORAGE_PROVIDER_ALIASES = {
-    "": "minio",
-    "minio": "minio",
-    "s3": "s3",
-    "aws_s3": "s3",
-    "s3_compatible": "s3_compatible",
-    "s3compat": "s3_compatible",
-    "oss": "oss",
-    "aliyun_oss": "oss",
-    "cos": "cos",
-    "tencent_cos": "cos",
-}
-
-DEFAULT_RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS = "high,medium"
-
-
-def normalize_object_storage_provider_name(raw: object) -> str:
-    requested = str(raw or "minio").strip().lower()
-    try:
-        return _OBJECT_STORAGE_PROVIDER_ALIASES[requested]
-    except KeyError as exc:
-        raise ValueError(f"unsupported object storage provider: {requested}") from exc
-
-
-def parse_object_storage_region_profiles(raw: object) -> dict[str, dict[str, object]]:
-    if isinstance(raw, Mapping):
-        source = dict(raw)
-    else:
-        text = str(raw or "").strip()
-        if not text:
-            return {}
-        try:
-            source = json.loads(text)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("OBJECT_STORAGE_REGION_PROFILES must be a valid JSON object") from exc
-        if not isinstance(source, dict):
-            raise ValueError("OBJECT_STORAGE_REGION_PROFILES must be a valid JSON object")
-
-    profiles: dict[str, dict[str, object]] = {}
-    for raw_region, raw_profile in source.items():
-        region = str(raw_region or "").strip().lower()
-        if not region or not isinstance(raw_profile, Mapping):
-            raise ValueError("OBJECT_STORAGE_REGION_PROFILES entries must map a non-empty region to an object")
-        profiles[region] = dict(raw_profile)
-    return profiles
 
 
 def _should_disable_repo_env_file() -> bool:
@@ -102,58 +50,6 @@ def _should_disable_repo_env_file() -> bool:
         return True
     argv0 = Path(str(sys.argv[0] or "")).name.lower()
     return "pytest" in argv0
-
-
-def _is_local_jwt_http_host(host: str) -> bool:
-    normalized = str(host or "").strip().lower()
-    if not normalized:
-        return False
-    if normalized in _JWT_LOCAL_HOSTS or normalized.endswith(".localhost"):
-        return True
-    try:
-        ip = ipaddress.ip_address(normalized)
-    except ValueError:
-        return False
-    return bool(ip.is_loopback)
-
-
-def validate_jwt_remote_url(raw_url: str, *, field_name: str) -> None:
-    url = str(raw_url or "").strip()
-    if not url:
-        return
-
-    parsed = urlparse(url)
-    scheme = str(parsed.scheme or "").strip().lower()
-    host = str(parsed.hostname or "").strip().lower()
-    if scheme not in {"http", "https"} or not host:
-        raise ValueError(f"{field_name} must be a http(s) URL")
-    if parsed.username or parsed.password:
-        raise ValueError(f"{field_name} must not include userinfo")
-    if scheme == "https":
-        return
-    if not is_production_env() and _is_local_jwt_http_host(host):
-        return
-    raise ValueError(f"{field_name} must use https")
-
-
-# Bind shared helpers/constants onto the validation module. ``config_validation``
-# holds the split-out sections of ``Settings.validate_settings`` and must not
-# import any app-internal module (this module stays the dependency-tree leaf),
-# so the names those sections need are injected here instead.
-_settings_validation.is_production_env = is_production_env
-_settings_validation.validate_jwt_remote_url = validate_jwt_remote_url
-_settings_validation.normalize_object_storage_provider_name = normalize_object_storage_provider_name
-_settings_validation.parse_object_storage_region_profiles = parse_object_storage_region_profiles
-_settings_validation.normalize_retrieval_contract_mode = normalize_retrieval_contract_mode
-_settings_validation.VALID_RETRIEVAL_CONTRACT_MODES = VALID_RETRIEVAL_CONTRACT_MODES
-_settings_validation.normalize_sparse_provider_name = normalize_sparse_provider_name
-_settings_validation.VALID_SPARSE_PROVIDERS = VALID_SPARSE_PROVIDERS
-_settings_validation.DEFAULT_RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS = DEFAULT_RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS
-_settings_validation._ALL_INTERFACES_HOST = _ALL_INTERFACES_HOST
-_settings_validation._COMMA_OR_WHITESPACE_RE = _COMMA_OR_WHITESPACE_RE
-_settings_validation._LEGACY_DEV_SECRET_KEY = _LEGACY_DEV_SECRET_KEY
-_settings_validation._LOCAL_MINIO_DEFAULT_CREDENTIAL = _LOCAL_MINIO_DEFAULT_CREDENTIAL
-_settings_validation._DEFAULT_RAG_EVAL_SUMMARY_PATH = _DEFAULT_RAG_EVAL_SUMMARY_PATH
 
 
 class Settings(BaseSettings):
