@@ -9,7 +9,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
+from app.core.config import Settings, settings
 from app.core.constants import UserRoles
 from app.core.security import hash_password
 from app.models.tenant import Tenant, TenantMember
@@ -46,11 +46,11 @@ def _read_password_file(raw_path: str) -> str:
         raise InitialAdminBootstrapError("INITIAL_ADMIN_PASSWORD_FILE must contain UTF-8 text") from exc
 
 
-def _load_credentials(config: object) -> _InitialAdminCredentials | None:
-    raw_email = str(getattr(config, "INITIAL_ADMIN_EMAIL", "") or "").strip()
-    username = str(getattr(config, "INITIAL_ADMIN_USERNAME", "") or "").strip()
-    inline_password = str(getattr(config, "INITIAL_ADMIN_PASSWORD", "") or "")
-    password_file = str(getattr(config, "INITIAL_ADMIN_PASSWORD_FILE", "") or "").strip()
+def _load_credentials(config: Settings) -> _InitialAdminCredentials | None:
+    raw_email = (config.INITIAL_ADMIN_EMAIL or "").strip()
+    username = (config.INITIAL_ADMIN_USERNAME or "").strip()
+    inline_password = config.INITIAL_ADMIN_PASSWORD or ""
+    password_file = (config.INITIAL_ADMIN_PASSWORD_FILE or "").strip()
 
     if not any((raw_email, username, inline_password, password_file)):
         return None
@@ -74,7 +74,7 @@ def _load_credentials(config: object) -> _InitialAdminCredentials | None:
         raise InitialAdminBootstrapError("INITIAL_ADMIN_USERNAME must be between 3 and 64 characters")
 
     password = inline_password if inline_password else _read_password_file(password_file)
-    min_length = int(getattr(config, "PASSWORD_MIN_LENGTH", 8) or 8)
+    min_length = config.PASSWORD_MIN_LENGTH or 8
     if len(password) < min_length:
         raise InitialAdminBootstrapError(f"Initial admin password must be at least {min_length} characters")
     if len(password.encode("utf-8")) > 72:
@@ -83,8 +83,8 @@ def _load_credentials(config: object) -> _InitialAdminCredentials | None:
     return _InitialAdminCredentials(email=email, username=username, password=password)
 
 
-def _default_tenant_id(config: object) -> UUID:
-    raw_tenant_id = str(getattr(config, "DEFAULT_TENANT_ID", "") or "").strip()
+def _default_tenant_id(config: Settings) -> UUID:
+    raw_tenant_id = (config.DEFAULT_TENANT_ID or "").strip()
     try:
         return UUID(raw_tenant_id)
     except ValueError as exc:
@@ -98,17 +98,17 @@ def _matching_owner(db: Session, *, tenant_id: UUID, credentials: _InitialAdminC
 
     for member in members:
         try:
-            user_id = UUID(str(member.user_id or ""))
+            user_id = UUID(member.user_id or "")
         except ValueError:
             continue
         user = db.query(User).filter(User.id == user_id).first()
         if (
             user is not None
-            and str(user.email or "").lower() == credentials.email
-            and str(user.username or "") == credentials.username
+            and user.email.lower() == credentials.email
+            and user.username == credentials.username
             and bool(user.is_active)
             and bool(member.is_active)
-            and str(member.role or "").lower() == UserRoles.OWNER
+            and (member.role or "").lower() == UserRoles.OWNER
         ):
             return user
 
@@ -167,7 +167,7 @@ def _bootstrap_once(db: Session, *, tenant_id: UUID, credentials: _InitialAdminC
     return True
 
 
-def bootstrap_initial_admin_if_configured(db: Session, *, config: object = settings) -> bool:
+def bootstrap_initial_admin_if_configured(db: Session, *, config: Settings = settings) -> bool:
     """Create the configured first owner, returning whether a new account was created."""
     credentials = _load_credentials(config)
     if credentials is None:

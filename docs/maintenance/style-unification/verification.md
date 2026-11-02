@@ -129,3 +129,11 @@
 - 完整 main.py 装配经明确配置、类型标注与目录字符串规则规范化后 AST 一致，覆盖 43 处声明配置读取与 30 个顶层函数；路由、中间件、启动与关闭顺序保留。两个探针补返回标注时显式 response_model=None；依据已安装 FastAPI 源码核对原推断行为，未运行 OpenAPI 导出。
 - 最终 15 个保留模块 Ruff check、Ruff format --check 与语法解析通过；决定记录目录、格式及归档检查通过。覆盖清单仍精确对应 3,637 个最终跟踪路径：43 已调整、8 已符合、953 登记保留、2,633 待语义审核。
 - 未新增、扩写或运行 Python 测试，未导入应用模块或启动外部服务；运行时回归未验证。证据位于执行工作区 common-api-refactor/ 及 logs/task-3-common-api-static.json、task-3-middleware-static.json、task-3-app-entry-static.json。
+
+## 第三批：身份、令牌与 JWT 组同步（2026-11-02）
+
+- 完整审核 10 个模块：5 个调整、5 个已符合。签发、校验与初始管理员直接使用声明的 Settings、字符串和 ORM 类型；租户模型只修正身份说明，列、约束、默认值保持一致。
+- JWT 外部 claim、JSON 形状、逐跳 HTTPS、issuer、kid 和不可信 URL 校验保留；最多六把签名密钥、过期立即失败、kid miss 刷新、异步锁、有界 stale 和缓存列表复制策略保留。诊断解析与 bcrypt 验证继续采用原有失败契约。
+- 组同步直接读取模型保证的名称和主键，已有组名用集合判重，去掉无作用别名与不可达的空主键分支。非空组名必在查询结果或 flush 后的新对象中；主键与成员 group_id 均不可空。外部 claim 的长度、去重和数量限制、租户条件、只增不删、失败限频及 commit／rollback／close 顺序保留。
+- 10 个完整模块经已审阅的精确替换规范化后 AST 一致；35 个函数参数名与默认值、31 处错误构造及 jwt.encode／decode 调用保持一致，16 个文件中 69 处可确定调用匹配签名。临时核对器的一处跨函数别名规则已限定作用域后重新通过，未为通过检查更改生产策略。
+- 最终 10 个模块 Ruff check、Ruff format --check 与语法解析通过；未新增、扩写或运行 Python 测试，未导入业务模块。运行时回归未验证。证据位于执行工作区 identity-refactor/ 与 logs/task-3-identity-*.log、task-3-identity-static.json。
