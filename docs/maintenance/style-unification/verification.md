@@ -283,3 +283,10 @@
 - 指定数据集仍执行 tenant 限定查询和写权限检查；缺省时仍先 ensure_member，按 created_at 升序选择首个可写数据集；无可写项时仍以同一角色集拒绝或创建 ONLY_ME 默认集。原错误构造 AST 与事务来源未改变。
 - 完整核对 10 个修改前模块规范化 AST；移动后的函数体与原函数在所有者及局部名称归一化后相同。10 个路由声明、81 个 HTTP 错误构造、162 条既有测试断言和 54 个测试用例保持不变；6 个调用按服务签名核对，所有旧函数名引用清零。
 - Ruff check、Ruff format --check、语法解析和 diff --check 通过。按用户要求没有运行 Python 测试，默认数据集创建的运行时事务未验证。
+
+## 第四批：手工分块与 Preview 图片所有权（2026-11-03）
+
+- 将 15 个图片引用解析、文件查找／读取、owner sidecar 校验与提升、legacy 文档引用验证、MinIO 上传及 markdown URL 重写 helper 移入现有 `document_preview_utils`。documents route 保留 rewrite 函数的直接重导出；手工分块入口改为直接依赖 preview、pipeline、identity、lifecycle 与 dataset 所有者，不再动态导入整份 documents 模块。
+- 服务的既有图片正则、大小和 inline image 数量边界、digest 去重、本地与 MinIO 分支、owner scope、403／422 错误、失败时跳过上传策略和资源关闭行为均按原函数体核对；MinIO 图片错误日志沿用 `api.documents` logger。为避免 utility 与 legacy lookup 的现存正则导入循环，只在归属校验函数中局部导入 legacy 查询。
+- Ruff check、Ruff format --check、语法解析及 diff --check 通过；手工路由完成规范化 AST 与所有者检查，preview 图片测试 patch 已指向真实 utility。57 条既有断言和用例定义未变。
+- 按用户要求没有运行 Python 测试、导入应用或连接存储；运行时验证未做。更新覆盖表中的手工路由与测试同步结论，较大的 preview utility 与 chunk preview 其他职责继续保留待审。

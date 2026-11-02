@@ -1,6 +1,5 @@
 import asyncio
 import contextlib
-import importlib
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,8 +17,14 @@ from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
+from app.rag.core.logging import get_logger
+from app.rag.kg.pipeline import extract_events
 from app.services import dataset_service
+from app.services.document_identity import compute_pipeline_hash
+from app.services.document_lifecycle_service import MANUAL_FILE_PATH_PREFIX
+from app.services.document_preview_utils import MINIO_IMAGE_REF_RE, _rewrite_preview_images_to_minio
 from app.services.indexer import Indexer
+from app.services.pipeline_config import build_indexing_options, resolve_pipeline_effective, upsert_pipeline_metadata
 from app.types.indexing import IndexKind, IndexRecord
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -31,25 +36,21 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 }
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-
-
-def _documents_module() -> Any:
-    return importlib.import_module("app.api.v1.documents")
+logger = get_logger("api.documents")
 
 
 def _build_manual_document_metadata(
     *,
-    docs_mod: Any,
     request: ManualDocumentCreate,
 ) -> tuple[dict[str, Any], Any]:
     pipeline_options = to_pipeline_options(pipeline=request.pipeline)
     doc_metadata = dict(request.metadata or {})
-    docs_mod.upsert_pipeline_metadata(doc_metadata, options=pipeline_options)
+    upsert_pipeline_metadata(doc_metadata, options=pipeline_options)
     doc_metadata.setdefault("parser_backend", "manual")
     doc_metadata.setdefault("chunk_strategy", "manual")
     doc_metadata.setdefault("parser_backend_requested", "manual")
     doc_metadata.setdefault("chunk_strategy_requested", "manual")
-    pipeline_hash = docs_mod._compute_pipeline_hash(doc_metadata)
+    pipeline_hash = compute_pipeline_hash(doc_metadata)
     doc_metadata.setdefault("pipeline_hash", pipeline_hash)
     doc_metadata.setdefault("active_pipeline_hash", doc_metadata.get("pipeline_hash") or pipeline_hash)
     doc_metadata.setdefault("active_pipeline_ready", False)
@@ -58,7 +59,6 @@ def _build_manual_document_metadata(
 
 def _run_manual_kg_extraction(
     *,
-    docs_mod: Any,
     document_id: UUID,
     tenant_id: UUID,
     account_id: str,
@@ -72,14 +72,14 @@ def _run_manual_kg_extraction(
         try:
             prompt_template_id = UUID(raw_template_id)
         except ValueError:
-            docs_mod.logger.warning(
+            logger.warning(
                 "Invalid KG_EXTRACT_PROMPT_TEMPLATE_ID: %s",
                 raw_template_id[:50],
             )
 
     try:
         asyncio.run(
-            docs_mod.extract_events(
+            extract_events(
                 chunk_ids=chunk_ids,
                 tenant_id=tenant_id,
                 chunks=db_chunks,
@@ -91,7 +91,7 @@ def _run_manual_kg_extraction(
             )
         )
     except Exception as exc:  # noqa: BLE001
-        docs_mod.logger.warning(
+        logger.warning(
             "KG extraction failed for document %s: %s",
             document_id,
             str(exc)[:200],
@@ -120,10 +120,10 @@ def _manual_chunk_metadata(
     }
 
 
-def _populate_manual_existing_image_metadata(*, docs_mod: Any, content: str, metadata: dict[str, Any]) -> None:
+def _populate_manual_existing_image_metadata(*, content: str, metadata: dict[str, Any]) -> None:
     if not settings.MINIO_ENABLED or metadata.get("img_id") or metadata.get("image_id"):
         return
-    match = docs_mod.MINIO_IMAGE_REF_RE.search(content)
+    match = MINIO_IMAGE_REF_RE.search(content)
     if not match:
         return
     maybe_id = (match.group(1) or "").strip()
@@ -179,7 +179,6 @@ def _require_manual_chunk_persist_result(persist_result: Any) -> Any:
 def _index_manual_document_chunks(
     *,
     db: Session,
-    docs_mod: Any,
     request: ManualDocumentCreate,
     tenant_id: UUID,
     account_id: str,
@@ -187,12 +186,12 @@ def _index_manual_document_chunks(
     db_document: DBDocument,
 ) -> None:
     pipeline_options = to_pipeline_options(pipeline=request.pipeline)
-    pipeline_effective = docs_mod.resolve_pipeline_effective(
+    pipeline_effective = resolve_pipeline_effective(
         dataset_metadata=(getattr(dataset, "dataset_metadata", None) or {}),
         document_metadata=dict(db_document.doc_metadata or {}),
         request_overrides=pipeline_options,
     )
-    index_options = docs_mod.build_indexing_options(pipeline_effective)
+    index_options = build_indexing_options(pipeline_effective)
 
     db_document.status = "processing"
     db_document.processing_attempts = int(getattr(db_document, "processing_attempts", 0) or 0) + 1
@@ -220,9 +219,9 @@ def _index_manual_document_chunks(
             chunk=chunk,
             chunk_index=idx,
         )
-        _populate_manual_existing_image_metadata(docs_mod=docs_mod, content=content, metadata=metadata)
+        _populate_manual_existing_image_metadata(content=content, metadata=metadata)
 
-        content, img_ids, asset_index = docs_mod._rewrite_preview_images_to_minio(
+        content, img_ids, asset_index = _rewrite_preview_images_to_minio(
             content,
             tenant_id=str(tenant_id),
             dataset_id=str(dataset.id),
@@ -279,7 +278,7 @@ def _index_manual_document_chunks(
         if stats:
             meta["chunking_stats"] = stats
     except Exception as exc:  # noqa: BLE001
-        docs_mod.logger.debug(
+        logger.debug(
             "Failed computing chunking stats for manual document %s: %s",
             db_document.id,
             str(exc)[:200],
@@ -290,7 +289,6 @@ def _index_manual_document_chunks(
 
     if pipeline_effective.kg_enabled:
         _run_manual_kg_extraction(
-            docs_mod=docs_mod,
             document_id=db_document.id,
             tenant_id=tenant_id,
             account_id=account_id,
@@ -333,7 +331,6 @@ def _process_manual_document_chunks_background(
     account_id: str,
     request_payload: dict[str, Any],
 ) -> None:
-    docs_mod = _documents_module()
     db = SessionLocal()
     try:
         request = ManualDocumentCreate.model_validate(request_payload)
@@ -349,7 +346,6 @@ def _process_manual_document_chunks_background(
         dataset_service.assert_dataset_writable(db, dataset, account_id)
         _index_manual_document_chunks(
             db=db,
-            docs_mod=docs_mod,
             request=request,
             tenant_id=tenant_id,
             account_id=account_id,
@@ -357,7 +353,7 @@ def _process_manual_document_chunks_background(
             db_document=db_document,
         )
     except Exception as exc:  # noqa: BLE001
-        docs_mod.logger.exception(
+        logger.exception(
             "Manual document background indexing failed for document %s: %s",
             document_id,
             str(exc)[:200],
@@ -384,7 +380,6 @@ def create_document_with_manual_chunks(
     """
     Create a document from frontend custom chunks.
     """
-    docs_mod = _documents_module()
     dataset = dataset_service.resolve_writable_dataset(db, tenant_id, account_id, request.dataset_id)
 
     if not request.chunks:
@@ -395,13 +390,13 @@ def create_document_with_manual_chunks(
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {request.file_type}")
 
     document_id = uuid.uuid4()
-    doc_metadata, pipeline_options = _build_manual_document_metadata(docs_mod=docs_mod, request=request)
-    pipeline_effective = docs_mod.resolve_pipeline_effective(
+    doc_metadata, pipeline_options = _build_manual_document_metadata(request=request)
+    pipeline_effective = resolve_pipeline_effective(
         dataset_metadata=(getattr(dataset, "dataset_metadata", None) or {}),
         document_metadata={},
         request_overrides=pipeline_options,
     )
-    docs_mod.build_indexing_options(pipeline_effective)
+    build_indexing_options(pipeline_effective)
 
     db_document = DBDocument(
         id=document_id,
@@ -410,7 +405,7 @@ def create_document_with_manual_chunks(
         filename=request.filename,
         file_type=request.file_type.lower(),
         file_size=request.file_size,
-        file_path=f"{docs_mod.MANUAL_FILE_PATH_PREFIX}{document_id}",
+        file_path=f"{MANUAL_FILE_PATH_PREFIX}{document_id}",
         owner_id=account_id,
         access_mode=None,
         status="processing",

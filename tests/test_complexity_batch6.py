@@ -1,5 +1,4 @@
 import json
-import re
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -443,13 +442,11 @@ def test_index_manual_document_chunks_characterizes_metadata_merging_and_image_t
         raising=True,
     )
 
-    docs_mod = SimpleNamespace(
-        resolve_pipeline_effective=lambda **_kwargs: SimpleNamespace(kg_enabled=False),
-        build_indexing_options=lambda _pipeline_effective: {"mode": "manual"},
-        MINIO_IMAGE_REF_RE=re.compile(r"/image-url/([^)\"]+)"),
-        _rewrite_preview_images_to_minio=fake_rewrite,
-        logger=SimpleNamespace(debug=lambda *_args, **_kwargs: None),
+    monkeypatch.setattr(
+        manual_module, "resolve_pipeline_effective", lambda **_kwargs: SimpleNamespace(kg_enabled=False)
     )
+    monkeypatch.setattr(manual_module, "build_indexing_options", lambda _effective: {"mode": "manual"})
+    monkeypatch.setattr(manual_module, "_rewrite_preview_images_to_minio", fake_rewrite)
     request = SimpleNamespace(
         filename="manual.md",
         file_type="MD",
@@ -490,7 +487,6 @@ def test_index_manual_document_chunks_characterizes_metadata_merging_and_image_t
 
     manual_module._index_manual_document_chunks(
         db=_FakeDB(),
-        docs_mod=docs_mod,
         request=request,
         tenant_id=tenant_id,
         account_id="acct-1",

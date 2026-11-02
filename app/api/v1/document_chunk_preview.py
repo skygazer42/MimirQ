@@ -28,10 +28,7 @@ from app.api.utils.pipeline_options import to_pipeline_options
 from app.api.utils.upload import save_upload_file_with_hash
 from app.api.v1.documents import (
     CHUNK_OVERLAP_LESS_THAN_SIZE_DETAIL,
-    DATA_IMAGE_PREFIX,
-    MINIO_IMAGE_REF_RE,
     POSITION_TAG_RE,
-    PREVIEW_IMAGE_REF_RE,
     _coerce_bool_preview,
     _coerce_float_preview,
     _coerce_int_preview,
@@ -53,6 +50,9 @@ from app.rag.preprocessing.processor import governance_processor
 from app.rag.preprocessing.rules import build_governance_rules
 from app.services import dataset_service
 from app.services.document_preview_utils import (
+    DATA_IMAGE_PREFIX,
+    MINIO_IMAGE_REF_RE,
+    PREVIEW_IMAGE_REF_RE,
     _compute_chunk_coverage_metrics_from_ranges,
     _compute_chunk_length_histogram,
     _compute_chunk_preview_quality,
