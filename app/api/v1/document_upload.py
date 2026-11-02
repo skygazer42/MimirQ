@@ -1205,7 +1205,6 @@ async def _finalize_batch_document(
 async def _process_saved_batch_upload(
     *,
     background_tasks: BackgroundTasks,
-    documents_module: Any,
     db: Session,
     tenant_id: UUID,
     account_id: str,
@@ -1342,7 +1341,6 @@ async def _process_saved_batch_upload(
 async def _process_live_batch_upload(
     *,
     background_tasks: BackgroundTasks,
-    documents_module: Any,
     db: Session,
     tenant_id: UUID,
     account_id: str,
@@ -1392,7 +1390,6 @@ async def _process_live_batch_upload(
             )
         return await _process_saved_batch_upload(
             background_tasks=background_tasks,
-            documents_module=documents_module,
             db=db,
             tenant_id=tenant_id,
             account_id=account_id,
@@ -2178,7 +2175,6 @@ async def upload_documents_batch(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    from app.api.v1 import documents as documents_module  # Local import to avoid router circular import.
     from app.services.tenant_quota_service import enforce_tenant_upload_quotas
 
     max_concurrent = _validate_batch_upload_request(files, max_concurrent=form.max_concurrent)
@@ -2283,8 +2279,7 @@ async def upload_documents_batch(
             [
                 lambda staged=staged: _process_saved_batch_upload(
                     background_tasks=background_tasks,
-                    documents_module=documents_module,
-                    db=documents_module.SessionLocal(),
+                    db=SessionLocal(),
                     tenant_id=tenant_id,
                     account_id=account_id,
                     dataset=dataset,
@@ -2336,8 +2331,7 @@ async def upload_documents_batch(
         [
             lambda file=file: _process_live_batch_upload(
                 background_tasks=background_tasks,
-                documents_module=documents_module,
-                db=documents_module.SessionLocal(),
+                db=SessionLocal(),
                 tenant_id=tenant_id,
                 account_id=account_id,
                 dataset=dataset,

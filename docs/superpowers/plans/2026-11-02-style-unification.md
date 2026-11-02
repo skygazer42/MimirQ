@@ -180,6 +180,8 @@ Batch precheck helpers 直接依赖 staging file APIs、scan model/session 和�
 
 文件上传的 single/batch document 构造和 batch finalization 直接依赖 `DBDocument` model；仅为创建该 ORM row 的 documents module 参数退出，字段值与租户查询条件保持一致。
 
+批量上传的 saved/live worker 直接使用已有 `SessionLocal` 所有者；两个 helper 不再接收未使用的 `documents_module: Any`，批量路由也不再为创建会话导入 documents 聚合模块。路由声明与每个 worker 的独立会话生命周期保持不变。
+
 **本批产出：** 上传到任务的输入输出和失败路径一致，同一字段映射与权限规则只有一个业务维护点。
 
 ### Task 5：RAG 与模型调用

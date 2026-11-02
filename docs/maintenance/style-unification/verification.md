@@ -346,3 +346,9 @@
 - 文件名校验、路径段处理、Windows drive/FakePath 归一化、`..` 折叠和上传 key 上限迁到现有 `app/api/utils/upload.py`；原 error detail 与各函数 AST 保持一致。`documents.py` 继续直接导出旧 helper 和常量。
 - 文件上传、批量 metadata map、staging path、文档预览和分块预览直接导入实际 utility。`document_preview` 仍从 `documents.py` 读取其他 parse/governance helper；只移除 sanitizer 对该聚合模块的依赖。测试只把三个 sanitizer 与 19 个上传保存 helper 的 patch 指向调用模块。
 - Ruff check/format、AST 比较、diff --check 通过。已有 route、错误状态、source path 和文件名限制按原函数体保留。按用户要求没有运行 Python 测试或导入应用，上传与预览运行时未验证。
+
+## 第四批：批量上传 session 所有权（2026-11-03）
+
+- `_process_saved_batch_upload` 与 `_process_live_batch_upload` 移除未使用的 `documents_module: Any` 参数；`upload_documents_batch` 直接调用现有 `app.core.database.SessionLocal` 创建每个 worker 使用的 session。
+- 同步更新两处批量入口和 live-to-saved 转发；路由声明、并发限制及 worker 的 session 清理顺序不变。批量入口不再动态导入 documents 路由聚合模块。
+- Ruff check、Ruff format --check、AST 语法解析与 diff --check 通过；没有运行 Python 测试或导入应用，批量上传运行时未验证。
