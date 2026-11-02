@@ -364,3 +364,9 @@
 - URL 上传与本地 HTML 入库共用的来源解析、管线策略、metadata、配额、dedup、持久化和处理调度迁到 `document_source_ingestion`。`document_upload` 和 connectors 直接调用该 owner；`documents.py` 保留入口、请求 schema 和相关数据类型的直接兼容导出。
 - `LocalHtmlIngestRequest` 移到文档 schema。dedup constraint、identity match、integrity-error 判断与 persisted-duplicate 异常由 `document_dedup_service` 统一持有；原 409、SSRF 校验和功能开关状态、tenant/write 检查、quota 次序、commit/rollback、对象及临时文件清理、queue/inline 路径按原 AST 保持。
 - 49 个移动定义 AST 相同；schema class AST 相同；`upload_document_from_url` 的路由参数、装饰器和响应配置不变。Ruff、格式、AST 语法与 diff 检查通过。只同步现有 patch 目标，没有运行 Python 测试、导入应用或连接存储。
+
+## 第四批：分块预览直接依赖（2026-11-03）
+
+- 分块预览直接调用 parsing `run_subprocess_worker`，治理仍直接调用现有 `governance_processor`，日志保留 `api.documents` category；位置标记直接来自 `parsing.artifact_stats`。预览独有的布尔、数字、转义文本和 chunker 参数归一化 helper 移到 `document_chunk_preview`。
+- 移除 5 个内部 helper 的 `documents_module: Any` 参数、所有转发及 endpoint 局部聚合器导入。缓存锁、disconnect 检查、subprocess timeout/cancellation、治理结果和响应字段保持原实现。
+- 五个移动 helper 与位置标记 AST 相同；公开路由签名和 decorator 不变。Ruff、格式、语法与 diff 检查通过；按用户要求没有运行 Python 测试或导入应用。

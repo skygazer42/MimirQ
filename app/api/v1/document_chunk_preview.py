@@ -30,23 +30,16 @@ from app.api.utils.pipeline_options import (
     to_pipeline_options,
 )
 from app.api.utils.upload import _sanitize_filename, save_upload_file_with_hash
-from app.api.v1.documents import (
-    POSITION_TAG_RE,
-    _coerce_bool_preview,
-    _coerce_float_preview,
-    _coerce_int_preview,
-    _decode_escaped_input_preview,
-    _filter_chunker_kwargs_for_strategy,
-    logger,
-)
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.env import is_production_env
 from app.core.token_utils import estimate_tokens, num_tokens_from_string
+from app.parsing.artifact_stats import POSITION_TAG_RE
 from app.parsing.factory import parser_factory
-from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError
+from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.rag.chunking.factory import chunker_factory
 from app.rag.chunking.strategies.separator import SeparatorChunker
+from app.rag.core.logging import get_logger
 from app.rag.preprocessing.processor import governance_processor
 from app.rag.preprocessing.rules import build_governance_rules
 from app.services import dataset_service
@@ -75,6 +68,102 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 }
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+logger = get_logger("api.documents")
+
+
+def _coerce_bool_preview(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "y", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "n", "off"}:
+            return False
+    return None
+
+
+def _coerce_int_preview(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        try:
+            return int(value)
+        except Exception:
+            return None
+    if isinstance(value, str):
+        try:
+            return int(float(value.strip()))
+        except Exception:
+            return None
+    return None
+
+
+def _coerce_float_preview(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, (int, float)):
+        try:
+            return float(value)
+        except Exception:
+            return None
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except Exception:
+            return None
+    return None
+
+
+def _decode_escaped_input_preview(value: str) -> str:
+    """
+    Best-effort decode for user input strings like "\\n\\n" / "\\t" / "\\u4e2d".
+
+    Keep aligned with frontend behavior and ingestion SeparatorChunker handling.
+    """
+    raw = str(value or "")
+    if not raw:
+        return raw
+    try:
+        escaped = raw.replace('"', '\\"')
+        return json.loads(f'"{escaped}"')
+    except Exception:
+        return raw
+
+
+def _filter_chunker_kwargs_for_strategy(strategy: str, kwargs: dict[str, Any]) -> dict[str, Any]:
+    """
+    Filter kwargs to match the chunker __init__ signature (mirrors chunker_factory.get_chunker behavior).
+    """
+    if not kwargs:
+        return {}
+    chunker_cls = chunker_factory.SUPPORTED_STRATEGIES.get(strategy)
+    if chunker_cls is None:
+        return {}
+
+    import inspect
+
+    try:
+        sig = inspect.signature(chunker_cls.__init__)
+        if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+            return dict(kwargs)
+        accepted = {
+            p.name
+            for p in sig.parameters.values()
+            if p.name not in {"self", "chunk_size", "chunk_overlap"}
+            and p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+        }
+        return {k: v for k, v in kwargs.items() if k in accepted}
+    except Exception:
+        return {}
 
 
 @dataclass
@@ -914,7 +1003,6 @@ def _store_preview_parse_cache(
 
 async def _parse_uncached_preview_documents(
     *,
-    documents_module: Any,
     temp_path: Path,
     file_ext: str,
     tenant_id: UUID,
@@ -942,7 +1030,7 @@ async def _parse_uncached_preview_documents(
         duration_ms = int(max(0.0, (time.perf_counter() - parse_started) * 1000.0))
         return _serialize_preview_parse_documents(parsed_documents), str(backend or config.parser_backend), duration_ms
 
-    parsed = await documents_module.run_subprocess_worker(
+    parsed = await run_subprocess_worker(
         tenant_id=tenant_id,
         payload={
             "action": "parse_documents",
@@ -965,7 +1053,6 @@ async def _parse_uncached_preview_documents(
 
 async def _load_preview_parsed_payload(
     *,
-    documents_module: Any,
     temp_path: Path,
     file_ext: str,
     tenant_id: UUID,
@@ -1021,7 +1108,6 @@ async def _load_preview_parsed_payload(
                         0,
                     )
                 parsed_docs_payload, resolved_backend, parse_duration_ms = await _parse_uncached_preview_documents(
-                    documents_module=documents_module,
                     temp_path=temp_path,
                     file_ext=file_ext,
                     tenant_id=tenant_id,
@@ -1041,7 +1127,6 @@ async def _load_preview_parsed_payload(
                 )
         else:
             parsed_docs_payload, resolved_backend, parse_duration_ms = await _parse_uncached_preview_documents(
-                documents_module=documents_module,
                 temp_path=temp_path,
                 file_ext=file_ext,
                 tenant_id=tenant_id,
@@ -1064,7 +1149,6 @@ async def _load_preview_parsed_payload(
 
 async def _build_uploaded_preview_execution_state(
     *,
-    documents_module: Any,
     request: Request,
     temp_path: Path,
     file_ext: str,
@@ -1076,7 +1160,7 @@ async def _build_uploaded_preview_execution_state(
 ) -> PreviewExecutionState:
     if config.resolved_chunk_strategy in chunker_factory.INTEGRATED_PIPELINE_STRATEGIES:
         integrated_started = time.perf_counter()
-        result = await documents_module.run_subprocess_worker(
+        result = await run_subprocess_worker(
             tenant_id=tenant_id,
             payload={
                 "action": "integrated_chunk",
@@ -1111,7 +1195,6 @@ async def _build_uploaded_preview_execution_state(
         parse_cache_age_ms,
         parse_duration_ms,
     ) = await _load_preview_parsed_payload(
-        documents_module=documents_module,
         temp_path=temp_path,
         file_ext=file_ext,
         tenant_id=tenant_id,
@@ -1153,7 +1236,6 @@ def _clean_preview_original_text(original_text_value: str | None) -> str | None:
 
 async def _run_uploaded_chunk_preview(
     *,
-    documents_module: Any,
     request: Request,
     response: Response,
     file: UploadFile,
@@ -1181,7 +1263,6 @@ async def _run_uploaded_chunk_preview(
     )
     pipeline_state = _resolve_preview_pipeline_state(config=config, dataset_meta=dataset_meta, params=params)
     execution_state = await _build_uploaded_preview_execution_state(
-        documents_module=documents_module,
         request=request,
         temp_path=temp_path,
         file_ext=file_ext,
@@ -1215,7 +1296,6 @@ def _preview_failure_detail(exc: Exception, *, production_message: str) -> str:
 
 async def _execute_preview_chunking(
     *,
-    documents_module: Any,
     request: Request,
     response: Response,
     file: UploadFile,
@@ -1255,7 +1335,6 @@ async def _execute_preview_chunking(
     temp_path = run_dir / f"input{file_ext}"
     try:
         return await _run_uploaded_chunk_preview(
-            documents_module=documents_module,
             request=request,
             response=response,
             file=file,
@@ -1492,11 +1571,8 @@ async def preview_chunking(
     Upload a file and preview chunking with the given parameters (no DB writes).
     Returns chunk results with positions for frontend highlighting.
     """
-    from app.api.v1 import documents as documents_module
-
     try:
         return await _execute_preview_chunking(
-            documents_module=documents_module,
             request=request,
             response=response,
             file=file,

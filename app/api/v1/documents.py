@@ -4,9 +4,7 @@ Document management API.
 
 import contextlib
 import importlib
-import json
 import os
-import re
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -225,8 +223,8 @@ from app.core.database import SessionLocal
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
+from app.parsing.artifact_stats import POSITION_TAG_RE as POSITION_TAG_RE
 from app.parsing.subprocess_runner import run_subprocess_worker
-from app.rag.chunking.factory import chunker_factory
 from app.rag.core.logging import get_logger
 from app.rag.kg.pipeline import extract_events
 from app.rag.preprocessing.processor import governance_processor
@@ -348,113 +346,12 @@ router.include_router(document_versions.router)
 # endpoint from `app.api.v1.documents`.
 preview_document = document_preview.preview_document
 
-# Filename validation:
-# - We store uploads by UUID on disk/MinIO, so we don't need a strict character allowlist.
-# - Still reject path separators / control characters to prevent path traversal and header issues.
-# Position tags emitted by some PDF parsers (used for PDF overlay highlighting).
-POSITION_TAG_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##")
-
 DOC_NOT_FOUND_DETAIL = "Document not found"
 PIPELINE_HASH_TOO_LONG_DETAIL = "pipeline_hash too long"
 CHUNK_NOT_FOUND_DETAIL = "Chunk not found"
 CHUNK_NOT_ACTIVE_PIPELINE_DETAIL = "Chunk is not in the active pipeline version"
 MANUAL_FILE_PATH_PREFIX = "manual://"
 CHUNK_PATCH_OPERATION = "chunk.patch"
-
-
-def _coerce_bool_preview(value: Any) -> bool | None:
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return bool(value)
-    if isinstance(value, str):
-        lowered = value.strip().lower()
-        if lowered in {"1", "true", "yes", "y", "on"}:
-            return True
-        if lowered in {"0", "false", "no", "n", "off"}:
-            return False
-    return None
-
-
-def _coerce_int_preview(value: Any) -> int | None:
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, (int, float)):
-        try:
-            return int(value)
-        except Exception:
-            return None
-    if isinstance(value, str):
-        try:
-            return int(float(value.strip()))
-        except Exception:
-            return None
-    return None
-
-
-def _coerce_float_preview(value: Any) -> float | None:
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        return float(value)
-    if isinstance(value, (int, float)):
-        try:
-            return float(value)
-        except Exception:
-            return None
-    if isinstance(value, str):
-        try:
-            return float(value.strip())
-        except Exception:
-            return None
-    return None
-
-
-def _decode_escaped_input_preview(value: str) -> str:
-    """
-    Best-effort decode for user input strings like "\\n\\n" / "\\t" / "\\u4e2d".
-
-    Keep aligned with frontend behavior and ingestion SeparatorChunker handling.
-    """
-    raw = str(value or "")
-    if not raw:
-        return raw
-    try:
-        escaped = raw.replace('"', '\\"')
-        return json.loads(f'"{escaped}"')
-    except Exception:
-        return raw
-
-
-def _filter_chunker_kwargs_for_strategy(strategy: str, kwargs: dict[str, Any]) -> dict[str, Any]:
-    """
-    Filter kwargs to match the chunker __init__ signature (mirrors chunker_factory.get_chunker behavior).
-    """
-    if not kwargs:
-        return {}
-    chunker_cls = chunker_factory.SUPPORTED_STRATEGIES.get(strategy)
-    if chunker_cls is None:
-        return {}
-
-    import inspect
-
-    try:
-        sig = inspect.signature(chunker_cls.__init__)
-        if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
-            return dict(kwargs)
-        accepted = {
-            p.name
-            for p in sig.parameters.values()
-            if p.name not in {"self", "chunk_size", "chunk_overlap"}
-            and p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
-        }
-        return {k: v for k, v in kwargs.items() if k in accepted}
-    except Exception:
-        return {}
 
 
 def _get_document_for_chunk_ops(db: Session, tenant_id: UUID, document_id: UUID) -> DBDocument | None:

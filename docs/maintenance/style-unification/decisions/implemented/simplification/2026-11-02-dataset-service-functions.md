@@ -126,3 +126,5 @@ batch precheck 不再传递整个 documents 模块；hardlink/copy fallback、sc
 文件上传与 URL 入库共用 tenant-scoped duplicate lookup。route 层只按各自的 commit/retry 约定处理结果；查询的 tenant/archive filters、排序、JSONB fast path 和 bounded scan fallback 只维护一份。
 
 URL 上传与 connector HTML 入库共用来源准备、配额、去重、持久化和处理调度；这组流程由 `document_source_ingestion` 单一模块函数所有。`document_upload` 与 connectors 直接调用该模块，`documents.py` 只直接重导出现有入口供兼容。`LocalHtmlIngestRequest` 位于文档 schema。dedup constraint、identity match、integrity-error 判断和 commit 冲突异常归 `document_dedup_service`，避免文件与来源入库各自维护一份规则。
+
+分块预览直接依赖 parsing subprocess runner 与治理 processor；preview 输入参数及 chunker kwargs 由调用模块自己归一化，解析位置标记来自 `parsing.artifact_stats`。整份 documents 模块不再作为参数传入；取消、缓存、错误与日志行为保持原样。

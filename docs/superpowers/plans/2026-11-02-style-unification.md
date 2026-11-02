@@ -186,6 +186,8 @@ Batch precheck helpers 直接依赖 staging file APIs、scan model/session 和�
 
 URL 上传与 connector HTML 入库共享的来源准备、配额、去重、持久化和任务调度流程归入 `app/api/v1/document_source_ingestion.py`；`document_upload` 和 connectors 直接导入，`documents.py` 只保留旧入口的直接兼容导出。`LocalHtmlIngestRequest` 归入文档 schema；dedup identity、约束识别和冲突异常统一由 `document_dedup_service` 持有。49 个流程定义按 AST 保持原实现；SSRF、功能开关、租户权限、配额、错误映射、事务与资源清理顺序不变。
 
+分块预览直接导入 parsing subprocess runner 和解析位置标记；预览参数归一化与 chunker 参数过滤由 `document_chunk_preview` 自身拥有。移除跨整个 `documents` 模块的 Any 传递，日志 category、解析取消、缓存锁、治理处理和响应策略保持原样。
+
 **本批产出：** 上传到任务的输入输出和失败路径一致，同一字段映射与权限规则只有一个业务维护点。
 
 ### Task 5：RAG 与模型调用
