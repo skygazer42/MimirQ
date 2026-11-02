@@ -16,7 +16,8 @@ from app.api.schemas.dataset_category import (
     DatasetCategoryUpdate,
 )
 from app.core.database import get_db
-from app.services.dataset_category_service import DatasetCategoryService
+from app.models.dataset_category import DatasetCategory
+from app.services import dataset_category_service
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -35,15 +36,12 @@ def list_dataset_categories(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> DatasetCategoryTreeResponse:
     """List the tenant dataset category tree."""
-    nodes = DatasetCategoryService.list_tree(db, tenant_id=tenant_id, account_id=account_id)
+    nodes = dataset_category_service.list_tree(db, tenant_id=tenant_id, account_id=account_id)
     # total categories (not just root nodes)
-    total = 0
     try:
-        from app.models.dataset_category import DatasetCategory
-
-        total = int(db.query(DatasetCategory.id).filter(DatasetCategory.tenant_id == tenant_id).count() or 0)
+        total = db.query(DatasetCategory.id).filter(DatasetCategory.tenant_id == tenant_id).count()
     except Exception:
         total = 0
     return DatasetCategoryTreeResponse(total=total, items=nodes)
@@ -56,9 +54,9 @@ def create_dataset_category(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> DatasetCategoryOut:
     """Create a dataset category."""
-    row = DatasetCategoryService.create(
+    row = dataset_category_service.create_category(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -77,9 +75,9 @@ def update_dataset_category(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> DatasetCategoryOut:
     """Update a dataset category."""
-    row = DatasetCategoryService.update(
+    row = dataset_category_service.update_category(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -98,9 +96,9 @@ def move_dataset_category(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> DatasetCategoryOut:
     """Move a dataset category within the tree."""
-    row = DatasetCategoryService.move(
+    row = dataset_category_service.move_category(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -118,7 +116,7 @@ def delete_dataset_category(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> Response:
     """Delete a dataset category."""
-    DatasetCategoryService.delete(db, tenant_id=tenant_id, account_id=account_id, category_id=category_id)
+    dataset_category_service.delete_category(db, tenant_id=tenant_id, account_id=account_id, category_id=category_id)
     return Response(status_code=204)

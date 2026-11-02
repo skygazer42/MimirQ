@@ -81,9 +81,8 @@ from app.parsing.factory import ParserFactory
 from app.rag.chunking import chunker_factory
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
-from app.services import dataset_service
+from app.services import dataset_category_service, dataset_service
 from app.services.audit_log_service import audit_log_event
-from app.services.dataset_category_service import DatasetCategoryService, collect_descendant_ids
 from app.services.dataset_embedding_config import resolve_dataset_embedding_runtime
 from app.services.dataset_profile_scan_runner import run_dataset_profile_deep_scan
 from app.services.dataset_profile_service import (
@@ -652,7 +651,7 @@ def _apply_dataset_category_filter(
         )
         parent_by_id = {cid: pid for cid, pid in rows if cid is not None}
         category_ids = (
-            collect_descendant_ids(root_id=category_id, parent_by_id=parent_by_id)
+            dataset_category_service.collect_descendant_ids(root_id=category_id, parent_by_id=parent_by_id)
             if bool(include_descendants)
             else {category_id}
         )
@@ -1482,7 +1481,7 @@ def get_dataset_categories(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    category_ids = DatasetCategoryService.list_dataset_category_ids(
+    category_ids = dataset_category_service.list_dataset_category_ids(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -1504,12 +1503,12 @@ def set_dataset_categories(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    category_ids = DatasetCategoryService.set_dataset_categories(
+    category_ids = dataset_category_service.set_dataset_categories(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
         dataset_id=dataset_id,
-        category_ids=payload.category_ids or [],
+        category_ids=payload.category_ids,
     )
     return DatasetCategoryAssignmentResponse(dataset_id=dataset_id, category_ids=category_ids)
 

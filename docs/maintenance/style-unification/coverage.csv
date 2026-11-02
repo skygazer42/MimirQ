@@ -80,7 +80,7 @@ app/api/schemas/chat.py,3,pending,conforms,Awaiting file-level convention and co
 app/api/schemas/connector.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/connector_acl.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/dataset.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/schemas/dataset_category.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/api/schemas/dataset_category.py,3,conforms,adjusted,Framework schemas own category UUID input and tree response contracts; no structural change required,task-3-category: exact schema AST; all request/response fields reviewed; Ruff/format; no Python tests
 app/api/schemas/dataset_health.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/dataset_precheck.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/dataset_profile.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -147,10 +147,10 @@ app/api/v1/connectors_validation.py,3,pending,conforms,Awaiting file-level conve
 app/api/v1/connectors_web_crawl.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/v1/connectors_web_crawl_plan.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/v1/dataset_analysis.py,3,pending,adjusted,Awaiting file-level convention and contract review; Dataset caller migration only; full module semantic review remains pending,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending; task-3-dataset-final: Ruff/AST/signature checks; no Python tests
-app/api/v1/dataset_categories.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/api/v1/dataset_categories.py,3,adjusted,adjusted,Direct category service owner and typed route results; original optional count fallback retained,task-3-category: complete canonical route AST; all decorators unchanged; Ruff/format; no Python tests
 app/api/v1/dataset_precheck.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/v1/dataset_tables.py,3,pending,conforms,Awaiting file-level convention and contract review; Dataset caller migration only; full module semantic review remains pending,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending; task-3-dataset-final: Ruff/AST/signature checks; no Python tests
-app/api/v1/datasets.py,3,pending,conforms,Awaiting file-level convention and contract review; Dataset caller migration only; full module semantic review remains pending,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending; task-3-dataset-final: Ruff/AST/signature checks; no Python tests
+app/api/v1/datasets.py,3,pending,conforms,Dataset and category service caller migration only; full dataset API semantic review remains pending,task-3-dataset-final and task-3-category: complete caller canonical AST; Ruff/format; no Python tests
 app/api/v1/db_catalog.py,3,pending,conforms,Awaiting file-level convention and contract review; Dataset caller migration only; full module semantic review remains pending,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending; task-3-dataset-final: Ruff/AST/signature checks; no Python tests
 app/api/v1/dify_support/__init__.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/v1/dify_support/anchor_strength.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -452,7 +452,7 @@ app/models/connector.py,3,pending,adjusted,Awaiting file-level convention and co
 app/models/connector_config.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/models/conversation_summary.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/models/dataset.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/models/dataset_category.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/models/dataset_category.py,3,conforms,conforms,Tenant-safe composite foreign keys; non-null unique memberships and native UUID columns; no structural change required,task-3-category: exact model AST; uniqueness/nullability/tenant constraints reviewed; Ruff/format; no Python tests
 app/models/dataset_precheck_scan.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/models/dataset_profile_scan.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/models/db_catalog.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -1229,7 +1229,7 @@ app/services/conversation_summary_service.py,3,pending,adjusted,Awaiting file-le
 app/services/corpus_cache_tokens.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/cross_dataset_dedup_report.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/dataset_analysis_service.py,3,pending,conforms,Awaiting file-level convention and contract review; Dataset caller migration only; full module semantic review remains pending,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending; task-3-dataset-final: Ruff/AST/signature checks; no Python tests
-app/services/dataset_category_service.py,3,pending,conforms,Awaiting file-level convention and contract review; Dataset caller migration only; full module semantic review remains pending,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending; task-3-dataset-final: Ruff/AST/signature checks; no Python tests
+app/services/dataset_category_service.py,3,adjusted,conforms,Category service module functions; trust schema UUID lists and ORM uniqueness; retain external tree adapters and permission rules,task-3-category: canonical functions; 13 parameter contracts; 8 bound calls; Ruff/format; no Python tests
 app/services/dataset_defaults.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/dataset_embedding_advisory.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/dataset_embedding_config.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
