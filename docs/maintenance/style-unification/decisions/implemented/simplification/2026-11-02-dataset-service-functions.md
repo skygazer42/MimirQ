@@ -62,6 +62,8 @@ tenant-scoped 重复文档查询和 bounded metadata scan 归入 `document_dedup
 
 数据库 commit 冲突后的重复识别也由该 service 接收 ORM `DBDocument` 并查询；缺失 dataset、内容 hash 或 pipeline hash 时仍返回无匹配。两个上传入口仍先 rollback，再查找已提交 duplicate，之后按原策略清理未持久化文件／对象并复用已有文档。
 
+上传遇到处理中 duplicate 时，409 文案由 `document_dedup_service` 持有，documents 只直接重导出该常量。失败 duplicate 的重试直接调用 `document_processing.retry_document_processing`；上传 commit acknowledgement 不确定时通过现有 `SessionLocal` owner 核实记录。租户写权限、重试参数和对象清理时序保持原样。
+
 preview 图片引用解析、本地临时文件读取与 owner sidecar 验证、legacy 记录查询和 MinIO 存储由已有 `document_preview_utils` 共同负责。手工分块直接导入该 owner，documents 对外保留原名称的直接导出。legacy 查询仅在 owner 校验路径中局部导入，因为 `document_preview_legacy` 的正则直接来自本模块，顶层互相导入会产生循环。
 
 RBAC 与配额继续依赖这些成员契约，具体边界见[权限与配额决定](2026-11-02-permission-quota-contracts.md)。

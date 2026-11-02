@@ -352,3 +352,9 @@
 - `_process_saved_batch_upload` 与 `_process_live_batch_upload` 移除未使用的 `documents_module: Any` 参数；`upload_documents_batch` 直接调用现有 `app.core.database.SessionLocal` 创建每个 worker 使用的 session。
 - 同步更新两处批量入口和 live-to-saved 转发；路由声明、并发限制及 worker 的 session 清理顺序不变。批量入口不再动态导入 documents 路由聚合模块。
 - Ruff check、Ruff format --check、AST 语法解析与 diff --check 通过；没有运行 Python 测试或导入应用，批量上传运行时未验证。
+
+## 第四批：上传重复文档重试所有权（2026-11-03）
+
+- 上传路由直接调用 `document_processing.retry_document_processing`；commit acknowledgement 不确定时使用现有 `SessionLocal`；处理中 duplicate 的 409 文案归入 `document_dedup_service`，`documents.py` 保留同名直接导出。
+- 更新四个现有并发流程 fixture 的 retry patch 目标；重试参数、权限检查、409 文案、rollback／提交确认及对象清理顺序不变。URL 上传的 documents 路由调用仍单独待审。
+- Ruff check、Ruff format --check、AST 语法解析与 diff --check 通过；没有运行 Python 测试或导入应用，重试和提交确认运行时未验证。

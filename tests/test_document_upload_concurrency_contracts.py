@@ -936,7 +936,7 @@ async def test_single_upload_hands_retry_ingest_lock_to_worker(monkeypatch: pyte
     monkeypatch.setattr("app.tasks.queue.get_queue", _queue, raising=False)
     monkeypatch.setattr("app.tasks.locks.acquire_lock", _acquire, raising=False)
     monkeypatch.setattr("app.tasks.locks.release_lock", _release, raising=False)
-    monkeypatch.setattr(documents_module, "retry_document_processing", _retry, raising=True)
+    monkeypatch.setattr(document_upload, "retry_document_processing", _retry, raising=True)
 
     db = SimpleNamespace(commit=lambda: None, refresh=lambda *_args: None)
     result = await document_upload.upload_document(
@@ -1162,7 +1162,7 @@ async def test_failed_persisted_duplicate_reuses_existing_retry_path(monkeypatch
         def refresh(self, _document) -> None:  # noqa: ANN001
             return None
 
-    monkeypatch.setattr(documents_module, "retry_document_processing", _retry, raising=True)
+    monkeypatch.setattr(document_upload, "retry_document_processing", _retry, raising=True)
     db = _FakeDB()
     background_tasks = BackgroundTasks()
 
@@ -1299,7 +1299,7 @@ async def test_batch_upload_hands_retry_ingest_lock_to_worker(monkeypatch: pytes
     monkeypatch.setattr("app.tasks.queue.get_queue", _queue, raising=False)
     monkeypatch.setattr("app.tasks.locks.acquire_lock", _acquire, raising=False)
     monkeypatch.setattr("app.tasks.locks.release_lock", _release, raising=False)
-    monkeypatch.setattr(documents_module, "retry_document_processing", _retry, raising=True)
+    monkeypatch.setattr(document_upload, "retry_document_processing", _retry, raising=True)
 
     result = await document_upload.upload_documents_batch(
         background_tasks=BackgroundTasks(),
@@ -1565,7 +1565,7 @@ async def test_precheck_staged_batch_hands_retry_ingest_lock_to_worker(
     monkeypatch.setattr("app.tasks.queue.get_queue", _queue, raising=False)
     monkeypatch.setattr("app.tasks.locks.acquire_lock", _acquire, raising=False)
     monkeypatch.setattr("app.tasks.locks.release_lock", _release, raising=False)
-    monkeypatch.setattr(documents_module, "retry_document_processing", _retry, raising=True)
+    monkeypatch.setattr(document_upload, "retry_document_processing", _retry, raising=True)
 
     result = await document_upload.upload_documents_batch(
         background_tasks=BackgroundTasks(),

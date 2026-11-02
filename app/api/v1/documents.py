@@ -215,7 +215,11 @@ from app.rag.preprocessing.rules import build_governance_rules
 from app.services import dataset_service, document_access_service, ingestion_run_service
 from app.services.dataset_precheck_ingestion_suggestion import apply_ingestion_policy_suggestion
 from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
-from app.services.document_dedup_service import _find_duplicate_document, _find_duplicate_document_for_persist_conflict
+from app.services.document_dedup_service import (
+    DUPLICATE_DOCUMENT_PROCESSING_DETAIL,
+    _find_duplicate_document,
+    _find_duplicate_document_for_persist_conflict,
+)
 from app.services.document_dedup_service import _find_duplicate_document_by_sha as _find_duplicate_document_by_sha
 from app.services.document_identity import (
     build_document_dedup_key,
@@ -348,7 +352,6 @@ preview_document = document_preview.preview_document
 POSITION_TAG_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##")
 
 DOC_NOT_FOUND_DETAIL = "Document not found"
-DUPLICATE_DOCUMENT_PROCESSING_DETAIL = "Duplicate document is currently processing"
 HTML_FILE_EXTENSION = ".html"
 PIPELINE_HASH_TOO_LONG_DETAIL = "pipeline_hash too long"
 CHUNK_NOT_FOUND_DETAIL = "Chunk not found"

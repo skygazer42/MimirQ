@@ -9,6 +9,8 @@ from sqlalchemy.orm import Query, Session
 from app.models.document import Document as DBDocument
 from app.services.document_identity import get_content_sha256
 
+DUPLICATE_DOCUMENT_PROCESSING_DETAIL = "Duplicate document is currently processing"
+
 
 def _duplicate_document_query(db: Session, *, tenant_id: UUID, dataset_id: UUID) -> Query[DBDocument]:
     return (

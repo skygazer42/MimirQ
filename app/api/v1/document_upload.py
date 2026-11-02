@@ -31,6 +31,7 @@ from app.api.utils.upload import (
     _sanitize_filename,
     save_upload_file_with_hash,
 )
+from app.api.v1.document_processing import retry_document_processing
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.models.dataset import Dataset
@@ -43,6 +44,7 @@ from app.services import dataset_service, ingestion_run_service
 from app.services.dataset_precheck_ingestion_suggestion import apply_ingestion_policy_suggestion
 from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
 from app.services.document_dedup_service import (
+    DUPLICATE_DOCUMENT_PROCESSING_DETAIL,
     _find_duplicate_document,
     _find_duplicate_document_by_sha,
     _find_duplicate_document_for_persist_conflict,
@@ -420,9 +422,8 @@ async def _retry_failed_persisted_duplicate(
 ) -> None:
     if str(getattr(document, "status", "") or "").lower() != "failed":
         return
-    from app.api.v1 import documents as documents_module
 
-    await documents_module.retry_document_processing(
+    await retry_document_processing(
         document_id=document.id,
         background_tasks=background_tasks,
         force=True,
@@ -468,14 +469,12 @@ async def _persist_uploaded_document(db: Session, db_document: Any, *, file_path
         raise
     except Exception:
         # The server may have committed even when the client lost the acknowledgement.
-        from app.api.v1 import documents as documents_module
-
         with contextlib.suppress(Exception):
             db.rollback()
         document_id = getattr(db_document, "id", None)
         if isinstance(document_id, UUID):
             await _cleanup_commit_ambiguous_source(
-                session_factory=documents_module.SessionLocal,
+                session_factory=SessionLocal,
                 document_id=document_id,
                 stored_path=str(getattr(db_document, "file_path", "") or ""),
                 file_path=file_path,
@@ -946,9 +945,7 @@ async def _reuse_duplicate_document(
             pipeline_hash=pipeline_hash,
         ):
             return duplicate_document
-        from app.api.v1 import documents as documents_module
-
-        raise HTTPException(status_code=409, detail=documents_module.DUPLICATE_DOCUMENT_PROCESSING_DETAIL)
+        raise HTTPException(status_code=409, detail=DUPLICATE_DOCUMENT_PROCESSING_DETAIL)
     duplicate_document.doc_metadata = _merge_duplicate_document_metadata(
         duplicate_document,
         identity=identity,
@@ -964,9 +961,8 @@ async def _reuse_duplicate_document(
     db.refresh(duplicate_document)
     if upload_only:
         return duplicate_document
-    from app.api.v1 import documents as documents_module
 
-    await documents_module.retry_document_processing(
+    await retry_document_processing(
         document_id=duplicate_document.id,
         background_tasks=background_tasks,
         force=True,

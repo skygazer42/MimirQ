@@ -182,6 +182,8 @@ Batch precheck helpers 直接依赖 staging file APIs、scan model/session 和�
 
 批量上传的 saved/live worker 直接使用已有 `SessionLocal` 所有者；两个 helper 不再接收未使用的 `documents_module: Any`，批量路由也不再为创建会话导入 documents 聚合模块。路由声明与每个 worker 的独立会话生命周期保持不变。
 
+失败 duplicate 直接调用 `document_processing.retry_document_processing`；处理中 duplicate 的 409 文案归入 `document_dedup_service`，documents 仅兼容重导出。commit acknowledgement 不确定时直接使用 `SessionLocal`。重试输入、错误文案与对象清理时序保持原样；URL 入库仍需独立移除路由聚合依赖。
+
 **本批产出：** 上传到任务的输入输出和失败路径一致，同一字段映射与权限规则只有一个业务维护点。
 
 ### Task 5：RAG 与模型调用
