@@ -21,6 +21,7 @@ from app.api.schemas.document import (
 )
 from app.core.database import get_db
 from app.models.document import Document as DBDocument
+from app.services import dataset_service
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -65,10 +66,10 @@ def _resolve_batch_move_target(
     account_id: str,
     payload: DocumentBatchMoveRequest,
 ):
-    member = documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
     if payload.target_dataset_id is not None:
-        target_ds = documents_module.DatasetService.get_dataset(db, tenant_id, payload.target_dataset_id)
-        documents_module.DatasetService.assert_dataset_writable(db, target_ds, account_id)
+        target_ds = dataset_service.get_dataset(db, tenant_id, payload.target_dataset_id)
+        dataset_service.assert_dataset_writable(db, target_ds, account_id)
         return member
     role = (getattr(member, "role", None) or "").lower()
     if role not in documents_module.EDIT_ROLES:
@@ -106,7 +107,7 @@ def batch_patch_document_user_metadata(
     For any documents the caller cannot write, they will be returned in `denied`.
     """
     documents_module = _documents_module()
-    documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     ids = list(payload.document_ids or [])
     if not ids:
@@ -158,7 +159,7 @@ async def batch_retry_documents(
 ):
     """Batch retry/reprocess documents (best-effort per id)."""
     documents_module = _documents_module()
-    documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     queued = 0
     skipped = 0
@@ -220,7 +221,7 @@ async def batch_reingest_documents(
     - Intended for generating new pipeline_hash versions and/or rebuilding indexes.
     """
     documents_module = _documents_module()
-    documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     queued = 0
     skipped = 0
@@ -302,7 +303,7 @@ async def batch_update_document_access(
 ):
     """Batch update document ACL (best-effort per id)."""
     documents_module = _documents_module()
-    documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     updated = 0
     not_found: list[UUID] = []

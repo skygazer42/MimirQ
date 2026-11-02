@@ -72,15 +72,15 @@ async def test_upload_parsing_document_persists_selected_dataset(
     db = _CaptureDB()
 
     monkeypatch.setattr(parsing_module.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
-    monkeypatch.setattr(parsing_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(parsing_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        parsing_module.DatasetService,
+        parsing_module.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: target_dataset,
         raising=True,
     )
     monkeypatch.setattr(
-        parsing_module.DatasetService,
+        parsing_module.dataset_service,
         "assert_dataset_writable",
         lambda *_args, **_kwargs: None,
         raising=True,
@@ -139,15 +139,15 @@ async def test_upload_parsing_document_uses_selected_dataset_for_object_storage(
             return "minio://bucket/doc.pdf"
 
     monkeypatch.setattr(parsing_module.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
-    monkeypatch.setattr(parsing_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(parsing_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        parsing_module.DatasetService,
+        parsing_module.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: target_dataset,
         raising=True,
     )
     monkeypatch.setattr(
-        parsing_module.DatasetService,
+        parsing_module.dataset_service,
         "assert_dataset_writable",
         lambda *_args, **_kwargs: None,
         raising=True,
@@ -222,7 +222,7 @@ def test_list_parsing_documents_default_scope_includes_owner_bound_company_docs(
         raising=True,
     )
     monkeypatch.setattr(
-        parsing_module.DatasetService,
+        parsing_module.dataset_service,
         "assert_dataset_readable",
         lambda *_args, **_kwargs: None,
         raising=True,
@@ -257,13 +257,13 @@ def test_list_parsing_documents_dataset_filter_uses_real_dataset_with_legacy_fal
         raising=True,
     )
     monkeypatch.setattr(
-        parsing_module.DatasetService,
+        parsing_module.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=target_dataset_id),
         raising=True,
     )
     monkeypatch.setattr(
-        parsing_module.DatasetService,
+        parsing_module.dataset_service,
         "assert_dataset_readable",
         lambda *_args, **_kwargs: None,
         raising=True,
@@ -297,15 +297,15 @@ def test_get_workspace_document_hides_owner_scoped_company_doc_from_other_users(
     )
     db = _CaptureDB(first_result=document)
 
-    monkeypatch.setattr(parsing_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(parsing_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        parsing_module.DatasetService,
+        parsing_module.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=target_dataset_id),
         raising=True,
     )
     monkeypatch.setattr(
-        parsing_module.DatasetService,
+        parsing_module.dataset_service,
         "assert_dataset_readable",
         lambda *_args, **_kwargs: None,
         raising=True,

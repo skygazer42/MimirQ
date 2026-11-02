@@ -241,10 +241,10 @@ def test_create_evidence_item_from_feedback_keeps_trace_refs_when_finalize_fails
         ],
     }
 
-    monkeypatch.setattr(feedback_api.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(feedback_api.DatasetService, "get_dataset", lambda *_args, **_kwargs: object(), raising=True)
+    monkeypatch.setattr(feedback_api.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(feedback_api.dataset_service, "get_dataset", lambda *_args, **_kwargs: object(), raising=True)
     monkeypatch.setattr(
-        feedback_api.DatasetService,
+        feedback_api.dataset_service,
         "assert_dataset_readable",
         lambda *_args, **_kwargs: None,
         raising=True,
@@ -320,10 +320,10 @@ def test_patch_evidence_item_only_updates_selected_fields_and_finalizes_refs(
     )
     db = _FakeDB(evidence_items=[row], evidence_suites=[suite])
 
-    monkeypatch.setattr(evidence_api.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(evidence_api.DatasetService, "get_dataset", lambda *_args, **_kwargs: object(), raising=True)
+    monkeypatch.setattr(evidence_api.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(evidence_api.dataset_service, "get_dataset", lambda *_args, **_kwargs: object(), raising=True)
     monkeypatch.setattr(
-        evidence_api.DatasetService,
+        evidence_api.dataset_service,
         "assert_dataset_writable",
         lambda *_args, **_kwargs: None,
         raising=True,
@@ -431,10 +431,10 @@ def test_export_evidence_suite_ltr_training_bundle_preserves_schema_when_hard_ne
         evidence_items=[skipped_no_snapshot, skipped_no_citations, kept_item],
     )
 
-    monkeypatch.setattr(evidence_api.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(evidence_api.DatasetService, "get_dataset", lambda *_args, **_kwargs: object(), raising=True)
+    monkeypatch.setattr(evidence_api.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(evidence_api.dataset_service, "get_dataset", lambda *_args, **_kwargs: object(), raising=True)
     monkeypatch.setattr(
-        evidence_api.DatasetService,
+        evidence_api.dataset_service,
         "assert_dataset_readable",
         lambda *_args, **_kwargs: None,
         raising=True,

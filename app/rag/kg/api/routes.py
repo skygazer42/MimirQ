@@ -119,7 +119,7 @@ from app.rag.kg.schemas import (
     KGSearchResponse,
     KGStatsResponse,
 )
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 from app.services.document_access import filter_allowed_document_ids
 
 KG_EXTRACTION_ALREADY_QUEUED_DETAIL = _common_support.KG_EXTRACTION_ALREADY_QUEUED_DETAIL
@@ -761,7 +761,7 @@ def preview_manual_kg_import(
 ):
     """Validate a governed external KG payload without writing it to storage."""
     _ensure_enabled()
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     from app.rag.kg.manual_import import preview_manual_import
 
     return preview_manual_import(payload)
@@ -2566,8 +2566,8 @@ async def run_kg_search(
             )
     elif payload.dataset_id:
         # Enterprise semantics: allow dataset-scoped search without enumerating all document_ids.
-        ds = DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
-        DatasetService.assert_dataset_readable(db, ds, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, payload.dataset_id)
+        dataset_service.assert_dataset_readable(db, ds, account_id)
         scope_dataset_id = payload.dataset_id
     else:
         raise HTTPException(status_code=400, detail="dataset_id is required when document_ids is empty")

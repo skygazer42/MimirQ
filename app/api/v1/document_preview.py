@@ -24,7 +24,7 @@ from app.parsing.subprocess_runner import (
 )
 from app.rag.core.logging import get_logger
 from app.rag.preprocessing.rules import build_governance_rules
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 from app.services.pipeline_config import resolve_pipeline_effective
 from app.types.document_analytics import compute_document_analytics
 
@@ -179,8 +179,8 @@ def _preview_dataset_metadata(
     if not dataset_id:
         return {}
     try:
-        ds = DatasetService.get_dataset(db, tenant_id, UUID(str(dataset_id)))
-        DatasetService.assert_dataset_readable(db, ds, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, UUID(str(dataset_id)))
+        dataset_service.assert_dataset_readable(db, ds, account_id)
         return dict(getattr(ds, "dataset_metadata", None) or {})
     except HTTPException:
         raise
@@ -382,7 +382,7 @@ async def preview_document(
     """
     from app.api.v1 import documents as documents_module  # Local import to avoid router circular import.
 
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     file.filename = documents_module._sanitize_filename(file.filename)
 
     parser_backend = form.parser_backend

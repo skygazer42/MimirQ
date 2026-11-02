@@ -18,6 +18,7 @@ from app.api.v1.connectors_runs import (
 from app.core.database import get_db
 from app.models.connector import ConnectorRun
 from app.models.connector_config import ConnectorConfig
+from app.services import dataset_service
 
 router = APIRouter(responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES)
 _URL_CONNECTORS = {
@@ -64,8 +65,8 @@ def _is_scheduled_config_due(cfg: ConnectorConfig, *, now: datetime) -> bool:
 
 def _config_dataset_is_writable(ctx: _ScheduledTickContext, cfg: ConnectorConfig) -> bool:
     try:
-        dataset = connectors_module.DatasetService.get_dataset(ctx.db, ctx.tenant_id, cfg.dataset_id)
-        connectors_module.DatasetService.assert_dataset_writable(ctx.db, dataset, ctx.account_id)
+        dataset = dataset_service.get_dataset(ctx.db, ctx.tenant_id, cfg.dataset_id)
+        dataset_service.assert_dataset_writable(ctx.db, dataset, ctx.account_id)
     except HTTPException:
         return False
     return True
@@ -204,7 +205,7 @@ async def scheduled_tick(
 
     This endpoint is intentionally simple and deterministic; it is a "tick hook" for an external scheduler.
     """
-    connectors_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     now = connectors_module._now()
     rows = _scheduled_connector_configs(db, tenant_id)

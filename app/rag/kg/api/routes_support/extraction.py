@@ -30,7 +30,7 @@ from app.rag.kg.extraction_job_options import (
 from app.rag.kg.pipeline import extract_events
 from app.rag.kg.schemas import KGExtractResponse
 from app.rag.pipeline_plugins.registry import derive_registered_stage_plugin_ref
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 
 
 def _get_extraction_document(db: Session, *, tenant_id: UUID, document_id: UUID, account_id: str) -> DBDocument:
@@ -38,8 +38,8 @@ def _get_extraction_document(db: Session, *, tenant_id: UUID, document_id: UUID,
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
     if document.dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, document.dataset_id)
+        dataset_service.assert_dataset_readable(db, dataset, account_id)
     return document
 
 

@@ -41,6 +41,7 @@ from app.models.tenant_group import TenantGroupMember
 from app.rag.core.logging import get_logger
 from app.rag.preprocessing.pii_anonymizer import anonymize_pii
 from app.rag.preprocessing.secrets import redact_secrets
+from app.services import dataset_service
 from app.services.dataset_profile_utils import (
     AVG_CHUNK_CHARS_BINS,
     AVG_CHUNK_TOKENS_BINS,
@@ -59,7 +60,6 @@ from app.services.dataset_profile_utils import (
     safe_float,
     safe_int,
 )
-from app.services.dataset_service import DatasetService
 
 logger = get_logger(__name__)
 
@@ -323,9 +323,9 @@ def build_dataset_documents_query(
     - Dataset read permission is enforced first
     - Then document-level ACL ("security trimming") is applied
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     query = db.query(DBDocument).filter(
         DBDocument.tenant_id == tenant_id,

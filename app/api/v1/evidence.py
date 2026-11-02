@@ -54,8 +54,8 @@ from app.models.evaluation import RagasRegressionCase
 from app.models.evidence import EvidenceItem, EvidenceSuite
 from app.models.feedback import MessageFeedback
 from app.rag.core.logging import get_logger
+from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
-from app.services.dataset_service import DatasetService
 from app.services.hardcase_discovery_service import (
     build_rag_trace_index_from_records,
     plan_feedback_hardcase_candidates,
@@ -152,11 +152,11 @@ def _assert_suite_access(
     suite: EvidenceSuite,
     writable: bool,
 ) -> None:
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
+    ds = dataset_service.get_dataset(db, tenant_id, suite.dataset_id)
     if writable:
-        DatasetService.assert_dataset_writable(db, ds, account_id)
+        dataset_service.assert_dataset_writable(db, ds, account_id)
         return
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
 
 def _build_empty_reference_repair_response(
@@ -966,7 +966,7 @@ async def repair_evidence_suite_reference_sources(
     - Does not mutate approved items unless `allow_approved=true`.
     - Dry-run by default (`apply=false`).
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     suite = _get_evidence_suite_or_404(db, tenant_id=tenant_id, suite_id=suite_id)
     _assert_suite_access(
@@ -1035,10 +1035,10 @@ def create_evidence_suite(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
-    ds = DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, payload.dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     row = EvidenceSuite(
         tenant_id=tenant_id,
@@ -1069,12 +1069,12 @@ def list_evidence_suites(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     q = db.query(EvidenceSuite).filter(EvidenceSuite.tenant_id == tenant_id)
     if dataset_id is not None:
-        ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_readable(db, ds, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+        dataset_service.assert_dataset_readable(db, ds, account_id)
         q = q.filter(EvidenceSuite.dataset_id == dataset_id)
     else:
         # Security trimming: list only suites under datasets readable by the caller.
@@ -1130,14 +1130,14 @@ def get_evidence_suite(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     row = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not row:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
-    ds = DatasetService.get_dataset(db, tenant_id, row.dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, row.dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     counts = _suite_counts(db, tenant_id=tenant_id, suite_ids=[row.id])
     out = EvidenceSuiteOut.model_validate(row).model_dump()
@@ -1171,14 +1171,14 @@ def get_evidence_suite_dashboard(
 
     Coverage is derived from reference_sources by resolving referenced documents.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, suite.dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     # Counts: include archived so the dashboard matches suite list badges.
     counts = _suite_counts(db, tenant_id=tenant_id, suite_ids=[suite_id])
@@ -1259,7 +1259,7 @@ def list_evidence_suite_hardcase_candidates(
 
     Output is clustered/deduped by `question_hash` and does NOT include raw query text.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     suite = _get_evidence_suite_or_404(db, tenant_id=tenant_id, suite_id=suite_id)
     if getattr(suite, "archived_at", None) is not None:
@@ -1352,14 +1352,14 @@ def patch_evidence_suite(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     row = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not row:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
-    ds = DatasetService.get_dataset(db, tenant_id, row.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, row.dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     fields = set(getattr(payload, "model_fields_set", set()) or set())
     if "name" in fields and payload.name is not None:
@@ -1405,14 +1405,14 @@ def audit_evidence_suite_reference_sources_drift(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, suite.dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     q = db.query(EvidenceItem).filter(EvidenceItem.tenant_id == tenant_id, EvidenceItem.suite_id == suite_id)
     if not include_archived_items:
@@ -1448,10 +1448,10 @@ def audit_dataset_reference_sources_drift(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     suite_ids = [
         row[0]
@@ -1514,7 +1514,7 @@ def create_evidence_item(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not suite:
@@ -1527,8 +1527,8 @@ def create_evidence_item(
     if payload.dataset_id != suite.dataset_id:
         raise HTTPException(status_code=400, detail="dataset_id mismatch")
 
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, suite.dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     # Normalize and validate evidence pointers before persisting.
     from app.api.v1.evaluations import _finalize_reference_sources  # noqa: WPS433
@@ -1584,7 +1584,7 @@ async def import_evidence_items(
     - reference_sources starts empty; users can later label evidence and progress review/approve.
     - Dedupes by query (query.strip(), whitespace-collapsed) within the suite.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not suite:
@@ -1592,8 +1592,8 @@ async def import_evidence_items(
     if suite.archived_at is not None:
         raise HTTPException(status_code=400, detail="Suite is archived")
 
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, suite.dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     max_bytes = 5 * 1024 * 1024
     raw = await file.read(max_bytes + 1)
@@ -1675,14 +1675,14 @@ def list_evidence_items(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, suite.dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     q = db.query(EvidenceItem).filter(EvidenceItem.tenant_id == tenant_id, EvidenceItem.suite_id == suite_id)
     if status:
@@ -1702,7 +1702,7 @@ def patch_evidence_item(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     row = _get_evidence_item_or_404(db, tenant_id=tenant_id, item_id=item_id)
     suite = _get_evidence_suite_or_404(db, tenant_id=tenant_id, suite_id=row.suite_id)
@@ -1739,7 +1739,7 @@ def review_evidence_item(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     row = db.query(EvidenceItem).filter(EvidenceItem.id == item_id, EvidenceItem.tenant_id == tenant_id).first()
     if not row:
@@ -1751,8 +1751,8 @@ def review_evidence_item(
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, suite.dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     _ensure_status(row, expected="draft")
     refs = row.reference_sources if isinstance(getattr(row, "reference_sources", None), list) else []
@@ -1776,7 +1776,7 @@ def approve_evidence_item(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     row = db.query(EvidenceItem).filter(EvidenceItem.id == item_id, EvidenceItem.tenant_id == tenant_id).first()
     if not row:
@@ -1788,8 +1788,8 @@ def approve_evidence_item(
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, suite.dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     _ensure_status(row, expected="reviewed")
     refs = row.reference_sources if isinstance(getattr(row, "reference_sources", None), list) else []
@@ -1813,7 +1813,7 @@ def archive_evidence_item(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     row = db.query(EvidenceItem).filter(EvidenceItem.id == item_id, EvidenceItem.tenant_id == tenant_id).first()
     if not row:
@@ -1825,8 +1825,8 @@ def archive_evidence_item(
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, suite.dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     cur = str(getattr(row, "status", "") or "").strip().lower()
     if cur == "archived":
@@ -1854,14 +1854,14 @@ def sync_suite_to_regression_cases(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, suite.dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     approved_items = (
         db.query(EvidenceItem)
@@ -1985,14 +1985,14 @@ def export_evidence_suite(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, suite.dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     q = (
         db.query(EvidenceItem)
@@ -2068,9 +2068,9 @@ def export_training_dataset(
     - `jsonl`: one stable row per feedback/evidence record
     - `csv`: flattened export with nested JSON columns
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     fmt = str(format or "jsonl").strip().lower() or "jsonl"
     if fmt not in {"jsonl", "csv"}:
@@ -2153,7 +2153,7 @@ def export_evidence_suite_ltr_training_bundle(
     from app.rag.reranker.ltr import LTRFeatureSpec, extract_ltr_features
     from app.rag.reranker.types import RerankCandidate
 
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     suite = _get_evidence_suite_or_404(db, tenant_id=tenant_id, suite_id=suite_id)
     _assert_suite_access(

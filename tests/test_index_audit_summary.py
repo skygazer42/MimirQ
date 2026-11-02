@@ -232,7 +232,7 @@ def test_plan_index_audit_reconcile_reports_only_pending_error_as_candidates(mon
         def all(self):  # noqa: ANN201
             return list(docs)
 
-    monkeypatch.setattr(audit_service.DatasetService, "get_dataset", lambda *_args, **_kwargs: object(), raising=True)
+    monkeypatch.setattr(audit_service.dataset_service, "get_dataset", lambda *_args, **_kwargs: object(), raising=True)
     monkeypatch.setattr(audit_service, "_active_index_audit_documents_query", lambda **_kwargs: _Query(), raising=True)
 
     payloads = {

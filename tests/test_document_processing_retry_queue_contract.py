@@ -200,15 +200,15 @@ async def test_retry_document_processing_fails_closed_when_queue_handoff_fails(
         return None
 
     monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        documents_module.DatasetService,
+        documents_module.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=document.dataset_id),
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module.DatasetService,
+        documents_module.dataset_service,
         "assert_dataset_writable",
         lambda *_args, **_kwargs: None,
         raising=True,
@@ -294,15 +294,15 @@ async def test_retry_document_processing_hash_ignores_parser_backend_resolved_dr
         return "task-123"
 
     monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        documents_module.DatasetService,
+        documents_module.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=document.dataset_id),
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module.DatasetService,
+        documents_module.dataset_service,
         "assert_dataset_writable",
         lambda *_args, **_kwargs: None,
         raising=True,
@@ -407,15 +407,15 @@ async def test_retry_document_processing_local_fallback_preserves_then_consumes_
         return None
 
     monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", False, raising=False)
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        documents_module.DatasetService,
+        documents_module.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=document.dataset_id),
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module.DatasetService,
+        documents_module.dataset_service,
         "assert_dataset_writable",
         lambda *_args, **_kwargs: None,
         raising=True,

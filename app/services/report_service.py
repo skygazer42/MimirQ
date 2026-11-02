@@ -36,9 +36,9 @@ from app.core.config import settings
 from app.models.connector import ConnectorRun as DBConnectorRun
 from app.models.document import Document as DBDocument
 from app.rag.core.logging import get_logger
+from app.services import dataset_service
 from app.services.dataset_profile_service import build_dataset_documents_query, compute_dataset_profile_summary
 from app.services.dataset_profile_utils import HistogramBinSpec, histogram, percentile_from_sorted
-from app.services.dataset_service import DatasetService
 from app.services.document_folders import build_document_folder_tree
 
 logger = get_logger(__name__)
@@ -1574,8 +1574,8 @@ class ReportService:
         *,
         request: DatasetReportRequest,
     ) -> DatasetReportOut:
-        dataset = DatasetService.get_dataset(db, request.tenant_id, request.dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, request.account_id)
+        dataset = dataset_service.get_dataset(db, request.tenant_id, request.dataset_id)
+        dataset_service.assert_dataset_readable(db, dataset, request.account_id)
 
         pipeline_hash_norm = _normalize_pipeline_hash(request)
         profile = compute_dataset_profile_summary(

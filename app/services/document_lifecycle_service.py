@@ -16,8 +16,8 @@ from app.core.database import SessionLocal
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.rag.core.logging import get_logger
+from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
-from app.services.dataset_service import DatasetService
 from app.storage.object.minio import minio_service
 from app.storage.object.runtime import is_object_storage_uri, resolve_document_object_reference
 
@@ -74,8 +74,8 @@ def _assert_document_delete_permission(
     enforce_permissions: bool,
 ) -> None:
     if enforce_permissions and document.dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_writable(db, ds, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, document.dataset_id)
+        dataset_service.assert_dataset_writable(db, ds, account_id)
 
 
 def _cancel_processing_document(db: Session, document: DBDocument) -> None:
@@ -397,7 +397,7 @@ def _prepare_document_delete(
     enforce_membership: bool,
 ) -> list[str]:
     if enforce_membership:
-        DatasetService.ensure_member(db, tenant_id, account_id)
+        dataset_service.ensure_member(db, tenant_id, account_id)
     document = _get_document_for_delete(db, tenant_id=tenant_id, document_id=document_id)
     _assert_document_delete_permission(
         db,

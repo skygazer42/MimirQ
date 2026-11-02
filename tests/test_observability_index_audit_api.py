@@ -324,7 +324,7 @@ def test_index_audit_reconcile_job_enqueue_defaults_to_dataset_dry_run(monkeypat
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
     monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(obs_mod.DatasetService, "get_dataset", lambda *_args, **_kwargs: object(), raising=True)
+    monkeypatch.setattr(obs_mod.dataset_service, "get_dataset", lambda *_args, **_kwargs: object(), raising=True)
     monkeypatch.setattr(obs_mod.settings, "TASK_QUEUE_ENABLED", True, raising=False)
 
     captured: dict[str, object] = {}
@@ -365,7 +365,7 @@ def test_index_audit_reconcile_job_enqueue_validates_document_scope_and_duplicat
     document_id = uuid.uuid4()
     missing_document_id = uuid.uuid4()
     monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(obs_mod.DatasetService, "get_dataset", lambda *_args, **_kwargs: object(), raising=True)
+    monkeypatch.setattr(obs_mod.dataset_service, "get_dataset", lambda *_args, **_kwargs: object(), raising=True)
 
     import app.services.index_audit_service as audit_service
 
@@ -412,7 +412,7 @@ def test_index_audit_reconcile_job_enqueue_reports_queue_disabled(monkeypatch) -
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
     monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(obs_mod.DatasetService, "get_dataset", lambda *_args, **_kwargs: object(), raising=True)
+    monkeypatch.setattr(obs_mod.dataset_service, "get_dataset", lambda *_args, **_kwargs: object(), raising=True)
     monkeypatch.setattr(obs_mod.settings, "TASK_QUEUE_ENABLED", False, raising=False)
 
     async def _enqueue(**_kwargs):  # noqa: ANN202

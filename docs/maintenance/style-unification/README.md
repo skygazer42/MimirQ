@@ -1,16 +1,18 @@
 # 代码风格统一重构记录
 
 基线：`codex/local-account-registration` 的 `77b6adc1bce523482f0509302a454ce20e01c41c`。
-实施分支：`codex/style-unification`；日期：2026-11-02。
+实施分支：`codex/local-account-registration`；工作区：`E:/MimirQ`；更新日期：2026-11-02。
 
 本目录记录全项目迁移。**当前仍在实施，不代表全仓语义审核已完成。**
 
-- `coverage.csv`：基线的 3,624 个跟踪文件与逐文件处理状态；新增文件在后续批次补入。
-- `baseline-python-failures.txt`：Python 基线失败和收集错误的用例名称。
-- `verification.md`：基线及各批真实检查结果。
+- [实施计划](../../superpowers/plans/2026-11-02-style-unification.md)：统一约定、Skill 分工、业务批次与验收；当前先收尾数据集服务已有改动。
+- `coverage.csv`：当前 3,634 个跟踪文件与逐文件处理状态，新增、删除和移动在所属批次同步。
+- `baseline-python-failures.txt`：原始 Python 基线失败和收集错误的用例名称。
+- `verification.md`：基线及各批真实检查结果；历史结果不代表当前版本通过。
 
-清单中的 review_status 与 format_status 分开维护。pending 表示尚未审核；机械排版不能将其变为已符合。
-preserved 表示第三方、历史迁移、静态资源等已登记范围排除；具体原因写在每行。
-后续完成的业务切片填写 adjusted 或 conforms，并记录验证依据。
+清单中的 `review_status` 与 `format_status` 分开维护。`pending` 表示尚未语义审核，机械排版或调用替换不能将其变为已符合。
+`preserved` 表示有明确理由保留，第三方、历史迁移、生成物等逐行注明原因；后续完成审核的业务文件填写 `adjusted` 或 `conforms` 并记录依据。
 
-原工作区的修改、未跟踪文件和旧重构残留未复制到此次检出。
+按用户 2026-11-02 的追加要求，本轮不新增、扩写或运行 Python 测试；删除旧符号时仅同步既有测试的必要引用。测试文件后续按用户要求保留登记，不以此声称已做测试质量审核。Python 继续使用 Ruff、语法和调用契约检查，未做运行时回归需明确记录。前端仍按批准计划执行相关验证与最终全量检查。
+
+原工作区已有修改与未跟踪残留保留在原处；本批仅暂存明确的文件清单。规范中彼此冲突的 Skill 示例服从项目已选写法及用户要求，不因安装 Skill 另起分支、升级语言版本或增加整套工具。

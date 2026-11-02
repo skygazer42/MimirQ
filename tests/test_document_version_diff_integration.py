@@ -181,7 +181,7 @@ def test_unassigned_document_version_diff_allows_readable_viewers(pg_session, mo
     pg_session.commit()
 
     monkeypatch.setattr(
-        "app.api.v1.document_versions.DatasetService.ensure_member",
+        "app.services.dataset_service.ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="viewer"),
     )
 

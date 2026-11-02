@@ -21,8 +21,8 @@ from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.rag.core.logging import get_logger
+from app.services import dataset_service
 from app.services.chunk_coverage_utils import compute_chunk_coverage_metrics_from_ranges
-from app.services.dataset_service import DatasetService
 from app.services.document_access_service import assert_document_acl_readable
 from app.services.document_index_channel_service import summarize_document_index_channels
 
@@ -56,8 +56,8 @@ def _get_health_document_or_404(*, db: Session, tenant_id: UUID, document_id: UU
 def _authorize_health_document(*, db: Session, tenant_id: UUID, account_id: str, document) -> None:
     dataset: Dataset | None = None
     if document.dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, document.dataset_id)
+        dataset_service.assert_dataset_readable(db, dataset, account_id)
     assert_document_acl_readable(
         db,
         tenant_id=tenant_id,
@@ -257,7 +257,7 @@ def get_document_health_card(
 
     PII-safe: returns aggregate signals only (no raw chunk text).
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     document = _get_health_document_or_404(db=db, tenant_id=tenant_id, document_id=document_id)
     _authorize_health_document(db=db, tenant_id=tenant_id, account_id=account_id, document=document)
     now0 = datetime.now(UTC)

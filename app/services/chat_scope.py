@@ -5,12 +5,12 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models.chat import Conversation
+from app.services import dataset_service
 from app.services.chat_conversation_access import ensure_conversation_access
 from app.services.chat_conversation_titles import (
     CONVERSATION_TITLE_SOURCE_AUTO,
     apply_auto_conversation_title,
 )
-from app.services.dataset_service import DatasetService
 from app.services.document_access import (
     filter_allowed_document_ids,
     get_allowed_document_id_sets,
@@ -112,9 +112,9 @@ def _resolve_requested_dataset_scope(
     request_dataset_id: UUID,
     conversation: Conversation | None = None,
 ) -> tuple[UUID, list[UUID]]:
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    dataset = DatasetService.get_dataset(db, tenant_id, request_dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, request_dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
     if conversation is not None:
         conversation.dataset_id = request_dataset_id
         conversation.document_ids = []

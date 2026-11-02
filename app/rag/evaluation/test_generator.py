@@ -234,9 +234,9 @@ def _resolve_document_scope_ids(
     if document_ids:
         return filter_allowed_document_ids(db, tenant_id, account_id, document_ids)
     if dataset_id:
-        from app.services.dataset_service import DatasetService
+        from app.services import dataset_service
 
-        DatasetService.ensure_member(db, tenant_id, account_id)
+        dataset_service.ensure_member(db, tenant_id, account_id)
         query = db.query(DBDocument).filter(
             DBDocument.tenant_id == tenant_id,
             DBDocument.dataset_id == dataset_id,

@@ -712,7 +712,7 @@ def test_feedback_promotion_requires_write_permission(monkeypatch: pytest.Monkey
     def deny(*_args, **_kwargs):  # noqa: ANN002,ANN003
         raise HTTPException(status_code=403, detail="denied")
 
-    monkeypatch.setattr(feedback_api.DatasetService, "ensure_member", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(feedback_api.dataset_service, "ensure_member", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(feedback_api, "ensure_tenant_permission", deny)
 
     with pytest.raises(HTTPException) as exc_info:
@@ -786,12 +786,12 @@ def test_feedback_promotion_keeps_server_lineage(monkeypatch: pytest.MonkeyPatch
         messages=[user_message, assistant],
         conversations=[conversation],
     )
-    monkeypatch.setattr(feedback_api.DatasetService, "ensure_member", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(feedback_api.dataset_service, "ensure_member", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(feedback_api, "ensure_tenant_permission", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(feedback_api.DatasetService, "get_dataset", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(feedback_api.dataset_service, "get_dataset", lambda *_args, **_kwargs: object())
     writable_checks: list[tuple[object, str]] = []
     monkeypatch.setattr(
-        feedback_api.DatasetService,
+        feedback_api.dataset_service,
         "assert_dataset_writable",
         lambda _db, dataset, account_id: writable_checks.append((dataset, account_id)),
     )

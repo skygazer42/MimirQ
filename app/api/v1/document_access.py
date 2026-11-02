@@ -11,8 +11,8 @@ from app.api.schemas.document import DocumentAccessInfo, DocumentAccessUpdateReq
 from app.core.database import get_db
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
+from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
-from app.services.dataset_service import DatasetService
 from app.services.document_access_service import assert_document_access_manageable, assert_document_acl_readable
 from app.services.document_permission_service import DocumentGroupPermissionService, DocumentPermissionService
 
@@ -38,7 +38,7 @@ def get_document_access(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Get document-level ACL settings (requires document read access)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
@@ -46,8 +46,8 @@ def get_document_access(
 
     dataset: Dataset | None = None
     if document.dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, document.dataset_id)
+        dataset_service.assert_dataset_readable(db, dataset, account_id)
     assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=dataset)
 
     mode = (str(getattr(document, "access_mode", "") or "")).strip().lower() or "inherit"
@@ -75,7 +75,7 @@ def put_document_access(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Update document ACL settings using dataset or unassigned-document ownership policy."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:

@@ -57,18 +57,18 @@ def _build_client(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, str]:
     app.dependency_overrides[get_current_account_id] = lambda: "reader-1"
     app.dependency_overrides[get_db] = lambda: object()
 
-    monkeypatch.setattr(dataset_analysis_api.DatasetService, "ensure_member", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(dataset_analysis_api.dataset_service, "ensure_member", lambda *_a, **_k: object(), raising=True)
     monkeypatch.setattr(
-        dataset_analysis_api.DatasetService,
+        dataset_analysis_api.dataset_service,
         "get_dataset",
         lambda *_a, **_k: SimpleNamespace(id=dataset_id, name="Dataset A"),
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True
+        dataset_analysis_api.dataset_service, "assert_dataset_readable", lambda *_a, **_k: None, raising=True
     )
     monkeypatch.setattr(
-        dataset_analysis_api.DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True
+        dataset_analysis_api.dataset_service, "assert_dataset_writable", lambda *_a, **_k: None, raising=True
     )
     return TestClient(app), dataset_id
 

@@ -272,9 +272,9 @@ def test_patch_regression_case_applies_explicit_scalars_and_preserves_write_orde
         expected_answer=None,
         tags=[],
     )
-    monkeypatch.setattr(evaluations.DatasetService, "ensure_member", lambda *_args: None)
-    monkeypatch.setattr(evaluations.DatasetService, "get_dataset", lambda *_args: object())
-    monkeypatch.setattr(evaluations.DatasetService, "assert_dataset_writable", lambda *_args: None)
+    monkeypatch.setattr(evaluations.dataset_service, "ensure_member", lambda *_args: None)
+    monkeypatch.setattr(evaluations.dataset_service, "get_dataset", lambda *_args: object())
+    monkeypatch.setattr(evaluations.dataset_service, "assert_dataset_writable", lambda *_args: None)
 
     result = evaluations.patch_ragas_regression_case(
         row.id,
@@ -324,9 +324,9 @@ def test_import_regression_cases_creates_updates_and_commits_once(monkeypatch: p
         max_items=10,
         items=[create_item, update_item],
     )
-    monkeypatch.setattr(evaluations.DatasetService, "ensure_member", lambda *_args: None)
-    monkeypatch.setattr(evaluations.DatasetService, "get_dataset", lambda *_args: object())
-    monkeypatch.setattr(evaluations.DatasetService, "assert_dataset_writable", lambda *_args: None)
+    monkeypatch.setattr(evaluations.dataset_service, "ensure_member", lambda *_args: None)
+    monkeypatch.setattr(evaluations.dataset_service, "get_dataset", lambda *_args: object())
+    monkeypatch.setattr(evaluations.dataset_service, "assert_dataset_writable", lambda *_args: None)
     monkeypatch.setattr(
         evaluations,
         "plan_case_import",
@@ -384,9 +384,9 @@ def test_generate_synthetic_hardcases_dry_run_deduplicates_without_writes(
         tag="synthetic_hardcase",
     )
     monkeypatch.setattr(evaluations.settings, "KG_ENABLED", True)
-    monkeypatch.setattr(evaluations.DatasetService, "ensure_member", lambda *_args: None)
-    monkeypatch.setattr(evaluations.DatasetService, "get_dataset", lambda *_args: object())
-    monkeypatch.setattr(evaluations.DatasetService, "assert_dataset_readable", lambda *_args: None)
+    monkeypatch.setattr(evaluations.dataset_service, "ensure_member", lambda *_args: None)
+    monkeypatch.setattr(evaluations.dataset_service, "get_dataset", lambda *_args: object())
+    monkeypatch.setattr(evaluations.dataset_service, "assert_dataset_readable", lambda *_args: None)
     monkeypatch.setattr(
         "app.rag.evaluation.kg_search_diagnostics._resolve_ground_truth_event_ids",
         lambda *_args, **_kwargs: ["event-1"],
@@ -443,9 +443,9 @@ def test_generate_test_cases_from_documents_auto_saves_grounded_case(
         prompt_ab_experiment_key=None,
         auto_save_as_cases=True,
     )
-    monkeypatch.setattr(evaluations.DatasetService, "ensure_member", lambda *_args: None)
-    monkeypatch.setattr(evaluations.DatasetService, "get_dataset", lambda *_args: object())
-    monkeypatch.setattr(evaluations.DatasetService, "assert_dataset_writable", lambda *_args: None)
+    monkeypatch.setattr(evaluations.dataset_service, "ensure_member", lambda *_args: None)
+    monkeypatch.setattr(evaluations.dataset_service, "get_dataset", lambda *_args: object())
+    monkeypatch.setattr(evaluations.dataset_service, "assert_dataset_writable", lambda *_args: None)
     monkeypatch.setattr(evaluations, "generate_questions_from_documents", lambda **_kwargs: [question])
     monkeypatch.setattr(
         evaluations,

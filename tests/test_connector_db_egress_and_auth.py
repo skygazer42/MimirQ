@@ -140,7 +140,7 @@ def test_db_validate_requires_admin_permission(monkeypatch: pytest.MonkeyPatch) 
     client = _build_validation_client(monkeypatch=monkeypatch)
 
     monkeypatch.setattr(
-        validation_api.DatasetService,
+        validation_api.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="member"),
         raising=True,
@@ -157,7 +157,7 @@ def test_db_validate_rejects_private_destinations_before_connectivity_check(monk
     client = _build_validation_client(monkeypatch=monkeypatch)
 
     monkeypatch.setattr(
-        validation_api.DatasetService,
+        validation_api.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="owner"),
         raising=True,
@@ -204,7 +204,7 @@ def test_db_run_creation_requires_admin_permission(monkeypatch: pytest.MonkeyPat
         raising=True,
     )
     monkeypatch.setattr(
-        rbac_service.DatasetService,
+        rbac_service.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="member"),
         raising=True,
@@ -253,13 +253,13 @@ def test_db_saved_config_run_requires_admin_permission(monkeypatch: pytest.Monke
     client = _build_configs_client(monkeypatch=monkeypatch)
 
     monkeypatch.setattr(
-        configs_api.connectors_module.DatasetService,
+        configs_api.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="member"),
         raising=True,
     )
     monkeypatch.setattr(
-        rbac_service.DatasetService,
+        rbac_service.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="member"),
         raising=True,

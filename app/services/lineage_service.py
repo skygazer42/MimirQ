@@ -12,9 +12,9 @@ from app.models.chat import Conversation
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentPermission
 from app.rag.core.hashing import stable_hash
+from app.services import dataset_service
 from app.services.chat_conversation_access import resolve_conversation_owner_account_id
 from app.services.connector_reconcile_service import extract_connector_source_identity
-from app.services.dataset_service import DatasetService
 from app.services.document_access import get_allowed_document_id_sets
 from app.services.jsonl_tail import read_jsonl_tail
 from app.services.rbac_service import TenantPermissions, role_allows
@@ -95,7 +95,7 @@ def authorize_chunk_lineage_access(
     account_id: str,
     document_id: UUID,
 ) -> bool:
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
     if _can_read_observability(member):
         return True
     allowed_ids, _missing_ids = get_allowed_document_id_sets(
@@ -135,7 +135,7 @@ def authorize_answer_lineage_access(
     account_id: str,
     trace_record: Mapping[str, Any],
 ) -> bool:
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
     if _can_read_observability(member):
         return True
 

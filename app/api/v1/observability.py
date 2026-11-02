@@ -18,8 +18,8 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.api.utils.response_headers import download_response_headers
 from app.core.config import settings
 from app.core.database import get_db
+from app.services import dataset_service
 from app.services.corpus_cache_tokens import invalidate_dataset_cache_namespace
-from app.services.dataset_service import DatasetService
 from app.services.metrics_logger import log_metrics
 from app.services.ops_config_snapshot_service import build_ops_config_snapshot
 from app.services.periodic_job_freshness_service import build_periodic_job_freshness_snapshot
@@ -192,7 +192,7 @@ def report_frontend_web_vital(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     log_metrics(
         {
@@ -221,7 +221,7 @@ def report_frontend_trace(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     log_metrics(
         {
@@ -1281,7 +1281,7 @@ async def enqueue_index_audit_reconcile_job_endpoint(
     report-only inside the job and are not auto-rebuilt.
     """
     _ensure_admin(db, tenant_id, account_id)
-    DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
+    dataset_service.get_dataset(db, tenant_id, payload.dataset_id)
 
     if payload.document_id is not None:
         from app.services.index_audit_service import get_index_audit_reconcile_document_state

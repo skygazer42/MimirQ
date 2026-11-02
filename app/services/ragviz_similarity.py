@@ -23,7 +23,7 @@ from app.models.document import DocumentChunk
 from app.models.evaluation import RagasRegressionCase
 from app.rag.core.logging import get_logger
 from app.rag.embedding import create_langchain_embeddings_from_config
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 from app.services.document_access import filter_allowed_document_ids
 
 
@@ -143,7 +143,7 @@ def _is_dataset_readable(ds: Dataset, account_id: str, *, allowed_partial_ids: s
 
 
 def list_similarity_collections(db: Session, tenant_id: UUID, account_id: str) -> list[RagvizCollection]:
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     datasets = db.query(Dataset).filter(Dataset.tenant_id == tenant_id).order_by(Dataset.created_at.desc()).all()
     partial_ids = [
@@ -241,7 +241,7 @@ def _dataset_chunks_items(
     ds = db.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.id == dataset_id).first()
     if not ds:
         raise ValueError("Dataset not found")
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     rows = (
         db.query(DocumentChunk, DBDocument.filename, DBDocument.id, DBDocument.file_type)
@@ -328,7 +328,7 @@ def _regression_cases_base_query(
     ds = db.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.id == dataset_id).first()
     if not ds:
         raise ValueError("Dataset not found")
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     return (
         db.query(RagasRegressionCase)

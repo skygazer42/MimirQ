@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.constants import UserRoles
 from app.models.tenant import TenantMember
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 
 
 class TenantPermissions:
@@ -75,10 +75,10 @@ def ensure_tenant_permission(
     Ensure `account_id` is a tenant member and has the requested permission.
 
     Notes:
-    - We intentionally reuse DatasetService.ensure_member so dev bootstrap behavior remains unchanged.
+    - We intentionally reuse dataset_service.ensure_member so dev bootstrap behavior remains unchanged.
     - This helper is for tenant-scoped admin capabilities (settings/observability/audit).
     """
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
     role_norm = _normalize_role(getattr(member, "role", None))
     if role_norm not in allowed_roles_for_permission(permission):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)

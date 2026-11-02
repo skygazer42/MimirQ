@@ -10,7 +10,7 @@ from app.core.database import get_db
 
 def test_parsing_extract_endpoint_returns_json_with_evidence(monkeypatch):  # noqa: ANN001
     import app.api.v1.parsing as parsing_module
-    from app.services.dataset_service import DatasetService
+    from app.services import dataset_service
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -56,8 +56,8 @@ def test_parsing_extract_endpoint_returns_json_with_evidence(monkeypatch):  # no
     dummy_doc = _DummyDoc()
 
     monkeypatch.setattr(parsing_module, "_get_workspace_document", lambda *_a, **_k: dummy_doc, raising=True)
-    monkeypatch.setattr(DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
-    monkeypatch.setattr(DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(dataset_service, "get_dataset", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(dataset_service, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
 
     class _DummyQuery:
         def filter(self, *_a, **_k):  # noqa: ANN001

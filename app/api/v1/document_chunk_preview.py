@@ -51,7 +51,7 @@ from app.rag.chunking.factory import chunker_factory
 from app.rag.chunking.strategies.separator import SeparatorChunker
 from app.rag.preprocessing.processor import governance_processor
 from app.rag.preprocessing.rules import build_governance_rules
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 from app.services.document_preview_utils import (
     _compute_chunk_coverage_metrics_from_ranges,
     _compute_chunk_length_histogram,
@@ -237,8 +237,8 @@ def _resolve_preview_dataset_meta(
     if not dataset_id:
         return {}
     try:
-        ds = DatasetService.get_dataset(db, tenant_id, UUID(str(dataset_id)))
-        DatasetService.assert_dataset_readable(db, ds, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, UUID(str(dataset_id)))
+        dataset_service.assert_dataset_readable(db, ds, account_id)
         return dict(getattr(ds, "dataset_metadata", None) or {})
     except HTTPException:
         raise
@@ -1223,7 +1223,7 @@ async def _execute_preview_chunking(
     tenant_id: UUID,
     account_id: str,
 ) -> ChunkPreviewResponse:
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     file.filename = _sanitize_filename(file.filename)
     preview_started = time.perf_counter()
     config = _build_preview_request_config(
@@ -1539,7 +1539,7 @@ def preview_chunking_by_sha(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     preview_started = time.perf_counter()
     sha = str(file_fields.file_sha256 or "").strip().lower()

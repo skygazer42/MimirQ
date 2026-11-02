@@ -58,7 +58,7 @@ from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerE
 from app.parsing.utils.cli import resolve_cli_command
 from app.parsing.utils.document_elements import normalize_document_elements
 from app.rag.core.logging import get_logger
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 from app.services.parsing_extract_service import extract_parsing_fields
 from app.storage.object.runtime import (
     document_object_storage_enabled,
@@ -610,7 +610,7 @@ def _get_or_create_workspace_dataset(db: Session, tenant_id: UUID, account_id: s
     dataset_name = f"Parsing Workspace [{owner_tag}]"
 
     try:
-        ds = DatasetService.create_dataset(
+        ds = dataset_service.create_dataset(
             db=db,
             tenant_id=tenant_id,
             name=dataset_name,
@@ -664,7 +664,7 @@ def _assert_path_under_tenant_root(*, tenant_id: UUID, path: Path) -> None:
 
 
 def _get_workspace_document(db: Session, *, tenant_id: UUID, account_id: str, document_id: UUID) -> DBDocument:
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     doc = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not doc:
@@ -675,8 +675,8 @@ def _get_workspace_document(db: Session, *, tenant_id: UUID, account_id: str, do
         raise HTTPException(status_code=404, detail="Document not found")
 
     if doc.dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, doc.dataset_id)
-        DatasetService.assert_dataset_readable(db, ds, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, doc.dataset_id)
+        dataset_service.assert_dataset_readable(db, ds, account_id)
     else:
         # Should not happen for workspace docs, but keep safe default.
         raise HTTPException(status_code=403, detail="Workspace access denied")
@@ -722,7 +722,7 @@ def list_parsing_documents(
     List parsing workspace documents (persistent across restarts).
     """
     workspace_dataset = _get_or_create_workspace_dataset(db, tenant_id, account_id)
-    DatasetService.assert_dataset_readable(db, workspace_dataset, account_id)
+    dataset_service.assert_dataset_readable(db, workspace_dataset, account_id)
 
     query = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id)
     query = query.filter(
@@ -733,8 +733,8 @@ def list_parsing_documents(
     )
 
     if dataset_id is not None:
-        target_dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_readable(db, target_dataset, account_id)
+        target_dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+        dataset_service.assert_dataset_readable(db, target_dataset, account_id)
         query = query.filter(_parsing_workspace_target_dataset_clause(dataset_id=dataset_id))
     query = _filter_parsing_workspace_documents(query)
 
@@ -759,7 +759,7 @@ async def upload_parsing_document(
     """
     Upload a source file into the parsing workspace (no parsing yet).
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     file.filename = _sanitize_filename(file.filename)
 
     file_ext = Path(file.filename).suffix.lower()
@@ -771,12 +771,12 @@ async def upload_parsing_document(
 
     target_dataset: Dataset | None = None
     if dataset_id is not None:
-        target_dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_writable(db, target_dataset, account_id)
+        target_dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+        dataset_service.assert_dataset_writable(db, target_dataset, account_id)
         dataset = target_dataset
     else:
         dataset = _get_or_create_workspace_dataset(db, tenant_id, account_id)
-        DatasetService.assert_dataset_writable(db, dataset, account_id)
+        dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     document_id = uuid.uuid4()
 
@@ -1885,8 +1885,8 @@ async def parse_workspace_document(
     Parse a previously uploaded workspace document and persist markdown.
     """
     doc = _get_workspace_document(db, tenant_id=tenant_id, account_id=account_id, document_id=document_id)
-    ds = DatasetService.get_dataset(db, tenant_id, doc.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, doc.dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
     source_path = await _resolve_workspace_source_path(doc=doc, tenant_id=tenant_id)
     cleanup_path = source_path if is_object_storage_uri(str(doc.file_path or "").strip()) else None
     _set_workspace_parse_processing(doc, db)
@@ -1990,8 +1990,8 @@ def update_parsing_content(
     db: Annotated[Session, Depends(get_db)],
 ):
     doc = _get_workspace_document(db, tenant_id=tenant_id, account_id=account_id, document_id=document_id)
-    ds = DatasetService.get_dataset(db, tenant_id, doc.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, doc.dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     markdown = _strip_storage_nul_chars(str(payload.markdown_content or ""))
     original = payload.original_markdown_content
@@ -2070,8 +2070,8 @@ def delete_parsing_document(
     db: Annotated[Session, Depends(get_db)],
 ):
     doc = _get_workspace_document(db, tenant_id=tenant_id, account_id=account_id, document_id=document_id)
-    ds = DatasetService.get_dataset(db, tenant_id, doc.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, doc.dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     # Best-effort delete source file.
     with contextlib.suppress(Exception):

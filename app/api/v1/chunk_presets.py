@@ -17,8 +17,8 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
 from app.models.chunk_preset import ChunkPreset
 from app.models.dataset import Dataset
+from app.services import dataset_service
 from app.services.base_service import BaseService
-from app.services.dataset_service import DatasetService
 from app.services.document_access import build_dataset_read_filter
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -176,7 +176,7 @@ def _dataset_uuid_from_payload(payload: dict[str, Any]) -> UUID | None:
 def _get_scoped_dataset(*, db: Session, tenant_id: UUID, dataset_id: UUID | None):
     if dataset_id is None:
         return None
-    return DatasetService.get_dataset(db, tenant_id, dataset_id)
+    return dataset_service.get_dataset(db, tenant_id, dataset_id)
 
 
 @router.get("", response_model=ChunkPresetListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -190,7 +190,7 @@ def list_chunk_presets(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     dataset_uuid: UUID | None = None
     if dataset_id is not None and str(dataset_id).strip():
         try:
@@ -198,7 +198,7 @@ def list_chunk_presets(
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=400, detail=f"invalid dataset_id: {str(dataset_id)[:64]}") from exc
         dataset = _get_scoped_dataset(db=db, tenant_id=tenant_id, dataset_id=dataset_uuid)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
+        dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     readable_dataset_ids: set[UUID] | None = None
     if dataset_uuid is None:
@@ -231,12 +231,12 @@ def create_chunk_preset(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
 ):
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
     BaseService.assert_edit_role(member)
     dataset_uuid = _dataset_uuid_from_payload(req.payload)
     if dataset_uuid is not None:
         dataset = _get_scoped_dataset(db=db, tenant_id=tenant_id, dataset_id=dataset_uuid)
-        DatasetService.assert_dataset_writable(db, dataset, account_id)
+        dataset_service.assert_dataset_writable(db, dataset, account_id)
     row = _create_chunk_preset_row(
         db=db,
         tenant_id=tenant_id,
@@ -257,18 +257,18 @@ def update_chunk_preset(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
 ):
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
     BaseService.assert_edit_role(member)
     existing = _get_chunk_preset_row(db=db, tenant_id=tenant_id, preset_id=preset_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Chunk preset not found")
     if getattr(existing, "dataset_id", None) is not None:
         existing_dataset = _get_scoped_dataset(db=db, tenant_id=tenant_id, dataset_id=existing.dataset_id)
-        DatasetService.assert_dataset_writable(db, existing_dataset, account_id)
+        dataset_service.assert_dataset_writable(db, existing_dataset, account_id)
     dataset_uuid = _dataset_uuid_from_payload(req.payload)
     if dataset_uuid is not None:
         dataset = _get_scoped_dataset(db=db, tenant_id=tenant_id, dataset_id=dataset_uuid)
-        DatasetService.assert_dataset_writable(db, dataset, account_id)
+        dataset_service.assert_dataset_writable(db, dataset, account_id)
     row = _update_chunk_preset_row(
         db=db,
         tenant_id=tenant_id,
@@ -289,14 +289,14 @@ def delete_chunk_preset(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
 ):
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
     BaseService.assert_edit_role(member)
     existing = _get_chunk_preset_row(db=db, tenant_id=tenant_id, preset_id=preset_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Chunk preset not found")
     if getattr(existing, "dataset_id", None) is not None:
         dataset = _get_scoped_dataset(db=db, tenant_id=tenant_id, dataset_id=existing.dataset_id)
-        DatasetService.assert_dataset_writable(db, dataset, account_id)
+        dataset_service.assert_dataset_writable(db, dataset, account_id)
     ok = _delete_chunk_preset_row(db=db, tenant_id=tenant_id, preset_id=preset_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Chunk preset not found")

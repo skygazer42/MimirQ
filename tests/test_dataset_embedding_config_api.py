@@ -37,9 +37,9 @@ def test_create_dataset_rejects_invalid_embedding_defaults_before_service_call(
         raise AssertionError("service should not be called")
 
     monkeypatch.setattr(datasets.settings, "VECTOR_BACKEND", "faiss", raising=False)
-    monkeypatch.setattr(datasets.DatasetService, "ensure_member", lambda *_a, **_k: object(), raising=True)
-    monkeypatch.setattr(datasets.DatasetService, "_assert_edit_role", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(datasets.DatasetService, "create_dataset", _create_dataset, raising=True)
+    monkeypatch.setattr(datasets.dataset_service, "ensure_member", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(datasets.dataset_service, "_assert_edit_role", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(datasets.dataset_service, "create_dataset", _create_dataset, raising=True)
 
     with pytest.raises(HTTPException, match="VECTOR_BACKEND=milvus"):
         datasets.create_dataset(
@@ -64,7 +64,7 @@ def test_create_checks_membership_before_embedding_config(monkeypatch: pytest.Mo
     def _deny(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
         raise HTTPException(status_code=403, detail="Not a tenant member")
 
-    monkeypatch.setattr(datasets.DatasetService, "ensure_member", _deny, raising=True)
+    monkeypatch.setattr(datasets.dataset_service, "ensure_member", _deny, raising=True)
 
     with pytest.raises(HTTPException) as exc_info:
         datasets.create_dataset(
@@ -109,15 +109,15 @@ def test_clone_dataset_drops_invalid_embedding_defaults_on_non_milvus_backend(
     captured: dict[str, object] = {}
 
     monkeypatch.setattr(datasets.settings, "VECTOR_BACKEND", "faiss", raising=False)
-    monkeypatch.setattr(datasets.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(datasets.DatasetService, "get_dataset", lambda *_a, **_k: source_dataset, raising=True)
-    monkeypatch.setattr(datasets.DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(datasets.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(datasets.dataset_service, "get_dataset", lambda *_a, **_k: source_dataset, raising=True)
+    monkeypatch.setattr(datasets.dataset_service, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
 
     def _create_dataset(**kwargs):  # noqa: ANN003, ANN202
         captured["dataset_metadata"] = kwargs.get("dataset_metadata")
         return created_dataset
 
-    monkeypatch.setattr(datasets.DatasetService, "create_dataset", _create_dataset, raising=True)
+    monkeypatch.setattr(datasets.dataset_service, "create_dataset", _create_dataset, raising=True)
     monkeypatch.setattr(datasets, "_dataset_out", lambda *_a, **_k: created_dataset, raising=True)
     monkeypatch.setattr(datasets, "audit_log_event", lambda *_a, **_k: None, raising=True)
 
@@ -139,8 +139,8 @@ def test_update_rejects_invalid_embedding_before_dataset_commit(monkeypatch: pyt
 
     monkeypatch.setattr(datasets.settings, "VECTOR_BACKEND", "faiss", raising=False)
     dataset = SimpleNamespace(dataset_metadata={})
-    monkeypatch.setattr(datasets.DatasetService, "get_dataset", lambda *_a, **_k: dataset, raising=True)
-    monkeypatch.setattr(datasets.DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(datasets.dataset_service, "get_dataset", lambda *_a, **_k: dataset, raising=True)
+    monkeypatch.setattr(datasets.dataset_service, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
     called = False
 
     def _update_dataset(**_kwargs):  # noqa: ANN003, ANN202
@@ -148,7 +148,7 @@ def test_update_rejects_invalid_embedding_before_dataset_commit(monkeypatch: pyt
         called = True
         return None
 
-    monkeypatch.setattr(datasets.DatasetService, "update_dataset", _update_dataset, raising=True)
+    monkeypatch.setattr(datasets.dataset_service, "update_dataset", _update_dataset, raising=True)
 
     with pytest.raises(HTTPException) as exc_info:
         datasets.update_dataset(

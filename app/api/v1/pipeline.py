@@ -154,7 +154,7 @@ from app.rag.preprocessing.cleaning import (
     learn_common_line_candidates,
 )
 from app.rag.preprocessing.rules import DEFAULT_MARKDOWN_RULES
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 from app.services.governance_processing_scripts import list_builtin_processing_scripts
 from app.services.governance_profiles import (
     get_builtin_governance_profiles,
@@ -501,9 +501,9 @@ def build_pipeline_plugin_golden_draft(
     bundle, then import it through the regression case import API or the
     pipeline-side golden-draft/import helper.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    dataset = DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, payload.dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     try:
         descriptor = resolve_registered_plugin_descriptor(payload.plugin_ref)
@@ -542,9 +542,9 @@ async def import_pipeline_plugin_golden_draft(
     db: Annotated[Session, Depends(get_db)],
 ) -> PipelinePluginGoldenDraftImportResponse:
     """Build a plugin golden draft bundle and import it into regression cases."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    dataset = DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, payload.dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     try:
         descriptor = resolve_registered_plugin_descriptor(payload.plugin_ref)
@@ -596,7 +596,7 @@ def get_pipeline_capabilities(
 
     Note: only availability info is returned (no sensitive config like API keys).
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     default_parser_backend = normalize_parser_backend(settings.DEFAULT_PARSER_BACKEND or "auto") or "auto"
     default_chunk_strategy = (settings.DEFAULT_CHUNK_STRATEGY or "langchain_recursive").strip().lower()
@@ -636,7 +636,7 @@ def list_governance_profiles(
     - Built-in profiles are shipped in code (read-only).
     - Custom profiles are stored in DB (tenant-scoped).
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     query = (q or "").strip().lower()
     items: list[GovernanceProfileSummary] = []
@@ -722,7 +722,7 @@ def create_governance_profile(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     name = str(body.name or "").strip()
     if not name:
@@ -775,7 +775,7 @@ def get_governance_profile(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     return _resolve_profile_ref(
         db=db,
         tenant_id=tenant_id,
@@ -796,7 +796,7 @@ def get_governance_profile_resolved(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     try:
         resolved = resolve_governance_profile_ref_effective(
             db=db,
@@ -829,7 +829,7 @@ def update_governance_profile(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     row = _resolve_custom_profile_row(
         db=db,
@@ -870,7 +870,7 @@ def delete_governance_profile(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     row = _resolve_custom_profile_row(
         db=db,
@@ -904,7 +904,7 @@ async def import_governance_profiles(
     - Only declarative JSON is accepted (no executable code).
     - Strong validation on regex rules and option keys is applied server-side.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     raw_profiles = _raw_governance_profile_import_items(await _read_governance_profile_import_json(file))
     created = 0
@@ -934,7 +934,7 @@ def export_governance_profile(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     profile = _resolve_profile_ref(
         db=db,
         tenant_id=tenant_id,
@@ -978,7 +978,7 @@ def export_governance_profile_ingestion_policy(
     This "closes the loop" for operators: build custom governance profiles in the UI, then export
     an ingestion_policy JSON snippet to be imported into a dataset.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     profile = _resolve_profile_ref(
         db=db,
         tenant_id=tenant_id,
@@ -1023,7 +1023,7 @@ async def parse_preview(
     """
     Parse a file into a Markdown preview without persisting it; extract inline images to uploads/{tenant}/images.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     file_ext = Path(file.filename).suffix.lower()
     if file_ext not in settings.allowed_extensions_list:
@@ -1142,10 +1142,10 @@ async def ingestion_preview(
     - parse to Markdown (preview)
     - run governance clean preview (issues + unified diff)
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     file_ext = Path(file.filename).suffix.lower()
     if file_ext not in settings.allowed_extensions_list:
@@ -1246,7 +1246,7 @@ def chunk_preview(
     """
     Perform hierarchical chunking for Markdown text and return highlight offsets.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     chunks = hierarchical_chunk_markdown(body.markdown)
     return PipelineChunkPreviewResponse(**chunks)
 
@@ -1267,7 +1267,7 @@ def clean_preview(
     """
     Preview governance-style cleaning for Markdown (no persistence) to compare before/after.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     input_text = _extract_governance_input_text(body)
     input_text, frontmatter, title, tags = _extract_clean_preview_frontmatter(input_text, body)
     baseline_text = input_text or ""
@@ -1365,9 +1365,9 @@ def learn_common_lines(
     This endpoint is intended to support "learning mode" in the governance UI:
     discover candidate lines, then turn them into regex rules and write into a custom profile.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    dataset = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, body.dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     total, texts = _collect_common_lines_texts(
         db=db,
@@ -1431,7 +1431,7 @@ def governance_analyze(
 
     This is intended for "quality check" UI flows to recommend治理配置/预设。
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     input_text = _extract_governance_input_text(body)
     analysis_opts = _governance_analysis_options(body)
@@ -1455,7 +1455,7 @@ def list_clean_rules(
     """
     Return default governance rules for UI selection/editing.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     return CleanRulesResponse(
         rules=[CleanRegexRuleModel(pattern=r.pattern, repl=r.repl, flags=r.flags) for r in DEFAULT_MARKDOWN_RULES]
     )
@@ -1479,7 +1479,7 @@ def extract_keywords(
     - provider=hanlp (optional dependency; requires `hanlp` and `HANLP_TOKENIZER_MODEL`)
     - provider=simple (lightweight regex tokenization + term frequency)
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     from app.rag.preprocessing.keyword import (
         KeywordProviderUnavailable,
         UnsupportedKeywordProvider,
@@ -1518,7 +1518,7 @@ async def auto_annotations(
 
     Results are suggestions for human confirmation, not authoritative labels.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     source = str(body.text or "")
     total_chars = len(source)
@@ -1573,7 +1573,7 @@ async def llm_clean_preview(
     - This endpoint calls an LLM (requires `LLM_API_KEY/LLM_API_BASE/LLM_MODEL`).
     - PromptTemplate can override the cleaning strategy via `prompt_template_id` / `template_key` / `ab_experiment_key`.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     markdown = body.markdown or ""
     if len(markdown) > int(body.max_chars):
@@ -1646,8 +1646,8 @@ async def upload_zip_with_images(
         dataset_uuid = UUID(str(dataset_id))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid dataset_id") from exc
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_uuid)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_uuid)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     # Save to a temporary file.
     temp_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "temp_zip"

@@ -27,6 +27,7 @@ from app.api.utils.response_headers import download_response_headers
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.chat import Conversation, Message
+from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
 from app.services.chat_conversation_access import (
     ensure_conversation_access,
@@ -39,7 +40,6 @@ from app.services.chat_conversation_titles import (
     get_latest_user_message_content,
 )
 from app.services.chat_scope import enforce_non_empty_chat_scope
-from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, get_allowed_document_id_sets
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -286,9 +286,9 @@ def create_conversation(
         allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, request.document_ids)
         scope_dataset_id = None
     elif request.dataset_id is not None:
-        DatasetService.ensure_member(db, tenant_id, account_id)
-        ds = DatasetService.get_dataset(db, tenant_id, request.dataset_id)
-        DatasetService.assert_dataset_readable(db, ds, account_id)
+        dataset_service.ensure_member(db, tenant_id, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, request.dataset_id)
+        dataset_service.assert_dataset_readable(db, ds, account_id)
         scope_dataset_id = request.dataset_id
         allowed_doc_ids = []
     else:
@@ -335,7 +335,7 @@ def update_conversation(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Update conversation metadata (currently: title)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     conversation = (
         db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id).first()
@@ -389,7 +389,7 @@ def list_conversations(
     db: Annotated[Session, Depends(get_db)],
 ):
     """List conversations."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     normalized_account_id = str(account_id or "").strip()
     search_term = str(q or "").strip()
     query = db.query(Conversation).filter(
@@ -465,7 +465,7 @@ def export_conversation(
     - fmt=markdown (default): text/markdown
     - fmt=json: application/json
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     conversation = (
         db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id).first()
@@ -576,7 +576,7 @@ def get_conversation_messages(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Fetch conversation history (paged)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     conversation = (
         db.query(Conversation)
         .filter(
@@ -658,7 +658,7 @@ def delete_conversation(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Delete a conversation."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     conversation = (
         db.query(Conversation)
         .filter(

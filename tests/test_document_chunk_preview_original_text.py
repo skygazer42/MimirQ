@@ -29,7 +29,7 @@ def _build_client(monkeypatch, tmp_path: Path) -> tuple[TestClient, uuid.UUID, s
     account_id = "test-account"
 
     monkeypatch.setattr(
-        chunk_preview_module.DatasetService,
+        chunk_preview_module.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: None,
         raising=True,

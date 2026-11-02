@@ -28,8 +28,9 @@ from app.models.group_permissions import DatasetGroupPermission
 from app.models.ingestion_run import IngestionRun as DBIngestionRun
 from app.models.tenant_group import TenantGroupMember
 from app.rag.core.logging import get_logger
+from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
-from app.services.dataset_service import EDIT_ROLES, DatasetService
+from app.services.dataset_service import EDIT_ROLES
 from app.services.ingestion_run_service import IngestionRunService
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -105,7 +106,7 @@ def _run_out(run: DBIngestionRun) -> IngestionRunOut:
 
 
 def _load_replay_base_run(*, db: Session, run_id: UUID, tenant_id: UUID, account_id: str) -> DBIngestionRun:
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     base = (
         db.query(DBIngestionRun)
         .options(selectinload(DBIngestionRun.documents))
@@ -115,8 +116,8 @@ def _load_replay_base_run(*, db: Session, run_id: UUID, tenant_id: UUID, account
     if not base:
         raise HTTPException(status_code=404, detail="Ingestion run not found")
     if base.dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, base.dataset_id)
-        DatasetService.assert_dataset_writable(db, ds, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, base.dataset_id)
+        dataset_service.assert_dataset_writable(db, ds, account_id)
     return base
 
 
@@ -241,12 +242,12 @@ def list_ingestion_runs(
     db: Annotated[Session, Depends(get_db)],
 ):
     """List ingestion runs (requires dataset write permission for each returned run's dataset)."""
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
 
     q = db.query(DBIngestionRun).filter(DBIngestionRun.tenant_id == tenant_id)
     if dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_writable(db, ds, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+        dataset_service.assert_dataset_writable(db, ds, account_id)
         q = q.filter(DBIngestionRun.dataset_id == dataset_id)
     elif str(getattr(member, "role", "") or "").lower() not in EDIT_ROLES:
         return IngestionRunListResponse(total=0, items=[])
@@ -284,7 +285,7 @@ def get_ingestion_run(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Get ingestion run detail (requires dataset write permission)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     run = (
         db.query(DBIngestionRun)
@@ -296,8 +297,8 @@ def get_ingestion_run(
         raise HTTPException(status_code=404, detail="Ingestion run not found")
 
     if run.dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, run.dataset_id)
-        DatasetService.assert_dataset_writable(db, ds, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, run.dataset_id)
+        dataset_service.assert_dataset_writable(db, ds, account_id)
 
     return _run_out(run)
 

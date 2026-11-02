@@ -18,7 +18,7 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
 from app.models.document import Document as DBDocument
 from app.rag.preprocessing.rule_packs import list_governance_rule_packs
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -42,7 +42,7 @@ def list_rule_packs(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     return {"items": list_governance_rule_packs()}
 
 
@@ -109,9 +109,9 @@ def list_stale_documents_by_dataset(
 
     RBAC: dataset editor/admin (dataset writable).
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     now = as_of or datetime.now(UTC)
     upper = due_before or (now + timedelta(days=int(due_within_days or 0)))

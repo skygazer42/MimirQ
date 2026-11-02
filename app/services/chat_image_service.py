@@ -101,11 +101,11 @@ def build_chat_image_context_docs(
         raise ValueError(f"image retrieval query exceeds RETRIEVAL_QUERY_MAX_CHARS={max_query_chars}")
 
     try:
-        from app.services.dataset_service import DatasetService  # noqa: WPS433
+        from app.services import dataset_service  # noqa: WPS433
 
-        DatasetService.ensure_member(db, tenant_id, str(account_id or ""))
-        ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_readable(db, ds, str(account_id or ""))
+        dataset_service.ensure_member(db, tenant_id, str(account_id or ""))
+        ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+        dataset_service.assert_dataset_readable(db, ds, str(account_id or ""))
     except Exception as exc:  # noqa: BLE001
         meta["reason"] = f"dataset_not_readable:{str(exc)[:120]}"
         return [], meta

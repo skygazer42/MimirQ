@@ -17,13 +17,13 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.chat import Conversation
 from app.rag.trace_schema import RagTraceListResponse
+from app.services import dataset_service
 from app.services.chat_conversation_access import ensure_conversation_access
 from app.services.conversation_summary_service import (
     clear_conversation_summary,
     get_conversation_summary,
     update_conversation_summary,
 )
-from app.services.dataset_service import DatasetService
 from app.services.rag_trace_service import list_rag_traces
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -45,7 +45,7 @@ def _load_accessible_conversation(
     account_id: str,
     conversation_id: UUID,
 ) -> Conversation:
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     conversation = (
         db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id).first()
     )

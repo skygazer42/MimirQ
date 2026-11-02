@@ -177,7 +177,7 @@ def test_list_ingestion_runs_applies_acl_before_count_and_pagination(monkeypatch
     tenant_id, runs, allowed_dataset_ids = _build_runs()
     db = _FakeSession(query=_FakeQuery(runs=runs))
     calls = _install_acl_guards(
-        monkeypatch, dataset_service=ingestion_runs_module.DatasetService, allowed_dataset_ids=allowed_dataset_ids
+        monkeypatch, dataset_service=ingestion_runs_module.dataset_service, allowed_dataset_ids=allowed_dataset_ids
     )
     monkeypatch.setattr(
         ingestion_runs_module,
@@ -208,7 +208,7 @@ def test_list_connector_runs_applies_acl_before_count_and_pagination(monkeypatch
     assert connectors_runs_module.connectors_module is connectors_facade
     calls = _install_acl_guards(
         monkeypatch,
-        dataset_service=connectors_runs_module.connectors_module.DatasetService,
+        dataset_service=connectors_runs_module.dataset_service,
         allowed_dataset_ids=allowed_dataset_ids,
     )
     monkeypatch.setattr(
@@ -253,7 +253,7 @@ def test_list_connector_configs_applies_acl_before_count_and_pagination(monkeypa
     assert connectors_configs_module.connectors_module is connectors_facade
     calls = _install_acl_guards(
         monkeypatch,
-        dataset_service=connectors_configs_module.connectors_module.DatasetService,
+        dataset_service=connectors_configs_module.dataset_service,
         allowed_dataset_ids=allowed_dataset_ids,
     )
     monkeypatch.setattr(

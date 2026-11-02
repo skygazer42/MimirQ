@@ -19,6 +19,7 @@ from app.api.schemas.document import (
     DocumentChunkUpdateRequest,
 )
 from app.core.database import get_db
+from app.services import dataset_service
 
 router = APIRouter(responses=documents_module._DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
@@ -43,7 +44,7 @@ def create_document_chunk(
     This is intended for post-ingest manual chunk editing. It does not re-parse the source file.
     """
 
-    documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     document = (
         db.query(documents_module.DBDocument)
@@ -175,7 +176,7 @@ def _load_chunk_write_document(
     document_id: UUID,
     edit_verb: str,
 ):
-    documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     document = documents_module._get_document_for_chunk_ops(db, tenant_id, document_id)
     if not document:
         raise HTTPException(status_code=404, detail=documents_module.DOC_NOT_FOUND_DETAIL)
@@ -659,7 +660,7 @@ async def disable_document_chunk(
     """Disable a chunk (exclude it from retrieval/indexing)."""
     from app.rag.retriever import hybrid_retriever
 
-    documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     document = documents_module._get_document_for_chunk_ops(db, tenant_id, document_id)
     if not document:
@@ -775,7 +776,7 @@ def enable_document_chunk(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Enable a previously-disabled chunk (requires re-embed to restore vector index)."""
-    documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     document = documents_module._get_document_for_chunk_ops(db, tenant_id, document_id)
     if not document:

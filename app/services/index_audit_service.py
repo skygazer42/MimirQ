@@ -12,7 +12,7 @@ from app.models.document import DocumentChunk
 from app.models.document_index_channel import DocumentIndexChannel
 from app.models.index_drift_item import IndexDriftItem
 from app.rag.core.logging import get_logger
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 from app.services.document_index_channel_service import (
     DOCUMENT_INDEX_CHANNEL_TERMINAL_ERROR,
     DOCUMENT_INDEX_CHANNEL_TERMINAL_READY,
@@ -796,7 +796,7 @@ def get_index_audit_reconcile_document_state(
     dataset_id: UUID,
     document_id: UUID,
 ) -> dict[str, Any] | None:
-    DatasetService.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.get_dataset(db, tenant_id, dataset_id)
     document = (
         db.query(DBDocument)
         .filter(
@@ -954,7 +954,7 @@ def plan_index_audit_reconcile(
     limit: int | None = None,
     dry_run: bool = True,
 ) -> dict[str, Any]:
-    DatasetService.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.get_dataset(db, tenant_id, dataset_id)
     cap = _bounded_index_audit_reconcile_scan_limit(limit)
 
     documents: list[DBDocument]
@@ -1093,8 +1093,8 @@ def run_dataset_index_audit(
     - It is bounded (max_check_ids / milvus_list_limit) to avoid massive scans.
     """
     # Ensure the caller is at least a tenant member; the API layer enforces admin role separately.
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    DatasetService.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    dataset_service.get_dataset(db, tenant_id, dataset_id)
     return _run_dataset_index_audit_core(
         db=db,
         tenant_id=tenant_id,
@@ -1121,7 +1121,7 @@ def run_dataset_index_audit_internal(
     - does NOT require an account_id / membership check
     - still validates the dataset exists for the tenant
     """
-    DatasetService.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.get_dataset(db, tenant_id, dataset_id)
     return _run_dataset_index_audit_core(
         db=db,
         tenant_id=tenant_id,

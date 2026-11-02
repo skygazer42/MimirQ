@@ -183,19 +183,19 @@ def test_run_connector_config_uses_shared_enqueue_helper(monkeypatch) -> None:  
     queued: list[dict[str, object]] = []
 
     monkeypatch.setattr(
-        configs_api.connectors_module.DatasetService,
+        configs_api.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
     monkeypatch.setattr(
-        configs_api.connectors_module.DatasetService,
+        configs_api.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=dataset_id),
         raising=True,
     )
     monkeypatch.setattr(
-        configs_api.connectors_module.DatasetService,
+        configs_api.dataset_service,
         "assert_dataset_writable",
         lambda *_args, **_kwargs: None,
         raising=True,
@@ -319,19 +319,19 @@ def test_run_connector_config_fails_closed_when_queue_handoff_fails(monkeypatch)
         return None
 
     monkeypatch.setattr(
-        configs_api.connectors_module.DatasetService,
+        configs_api.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
     monkeypatch.setattr(
-        configs_api.connectors_module.DatasetService,
+        configs_api.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=dataset_id),
         raising=True,
     )
     monkeypatch.setattr(
-        configs_api.connectors_module.DatasetService,
+        configs_api.dataset_service,
         "assert_dataset_writable",
         lambda *_args, **_kwargs: None,
         raising=True,

@@ -158,7 +158,7 @@ def test_manual_chunk_mutations_route_vector_ops_through_indexer_helpers(
         raising=True,
     )
     monkeypatch.setattr(chunk_routes.documents_module, "Indexer", _FakeIndexer, raising=False)
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
         documents_module, "_assert_document_writable_for_chunk_ops", lambda *_a, **_k: None, raising=True
     )
@@ -366,7 +366,7 @@ def test_delete_document_version_routes_vector_cleanup_through_indexer_helper(
         raising=True,
     )
     monkeypatch.setattr(document_versions, "Indexer", _FakeIndexer, raising=True)
-    monkeypatch.setattr(document_versions.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(document_versions.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
         document_versions, "assert_document_writable_for_lifecycle", lambda *_a, **_k: None, raising=True
     )

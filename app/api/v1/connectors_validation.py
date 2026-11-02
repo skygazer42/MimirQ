@@ -26,8 +26,8 @@ from app.connectors.registry import registry as connector_class_registry
 from app.core.database import get_db
 from app.core.secrets import redact_secrets
 from app.models.tenant_group import TenantGroup
+from app.services import dataset_service
 from app.services.connector_egress_policy import validate_db_connector_config
-from app.services.dataset_service import DatasetService
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 from app.services.security_redaction import redact_connection_info
 
@@ -266,7 +266,7 @@ async def validate_connector_config(
     """
     connector_id = str(payload.connector_id or "").strip()
 
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     if connector_id in _DB_CONNECTOR_IDS:
         ensure_tenant_permission(
             db,

@@ -23,6 +23,7 @@ from app.api.v1.connectors_runs import (
 from app.core.database import get_db
 from app.models.connector_config import ConnectorConfig
 from app.models.document import Document as DBDocument
+from app.services import dataset_service
 from app.services.connector_egress_policy import validate_db_connector_config
 from app.services.dataset_service import EDIT_ROLES
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
@@ -53,12 +54,12 @@ def list_connector_configs(
     Note: configs may contain secrets (even if encrypted); we enforce dataset write permission
     semantics similar to connector runs to avoid leaking URLs/auth details to readers.
     """
-    member = connectors_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
 
     query = db.query(ConnectorConfig).filter(ConnectorConfig.tenant_id == tenant_id)
     if dataset_id is not None:
-        dataset = connectors_module.DatasetService.get_dataset(db, tenant_id, dataset_id)
-        connectors_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+        dataset_service.assert_dataset_writable(db, dataset, account_id)
         query = query.filter(ConnectorConfig.dataset_id == dataset_id)
     if connector_id:
         query = query.filter(ConnectorConfig.connector_id == str(connector_id))
@@ -92,9 +93,9 @@ def create_connector_config(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Create a saved connector configuration."""
-    connectors_module.DatasetService.ensure_member(db, tenant_id, account_id)
-    dataset = connectors_module.DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
-    connectors_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, payload.dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     cfg_dict = connectors_module.encrypt_connector_config_secrets(dict(payload.config or {}))
 
@@ -132,7 +133,7 @@ def update_connector_config(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Update a saved connector configuration (best-effort)."""
-    connectors_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     cfg = (
         db.query(ConnectorConfig)
@@ -142,8 +143,8 @@ def update_connector_config(
     if not cfg:
         raise HTTPException(status_code=404, detail=connectors_module.CONNECTOR_CONFIG_NOT_FOUND_DETAIL)
 
-    dataset = connectors_module.DatasetService.get_dataset(db, tenant_id, cfg.dataset_id)
-    connectors_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, cfg.dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     if payload.name is not None:
         cfg.name = str(payload.name or "").strip()  # type: ignore[assignment]
@@ -170,7 +171,7 @@ def delete_connector_config(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Delete a saved connector configuration."""
-    connectors_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     cfg = (
         db.query(ConnectorConfig)
@@ -180,8 +181,8 @@ def delete_connector_config(
     if not cfg:
         raise HTTPException(status_code=404, detail=connectors_module.CONNECTOR_CONFIG_NOT_FOUND_DETAIL)
 
-    dataset = connectors_module.DatasetService.get_dataset(db, tenant_id, cfg.dataset_id)
-    connectors_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, cfg.dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     db.delete(cfg)
     db.commit()
@@ -203,7 +204,7 @@ async def run_connector_config(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Create a connector run from a saved connector configuration."""
-    connectors_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     cfg = (
         db.query(ConnectorConfig)
@@ -223,8 +224,8 @@ async def run_connector_config(
             detail=_DB_CONNECTOR_PERMISSION_DETAIL,
         )
 
-    dataset = connectors_module.DatasetService.get_dataset(db, tenant_id, cfg.dataset_id)
-    connectors_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, cfg.dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     url_connectors = {
         "url_batch",
@@ -301,7 +302,7 @@ def reconcile_connector_config(
     - dry-run: show stale / disabled / missing refs
     - apply: disable stale docs and re-enable matching disabled docs
     """
-    connectors_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     cfg = (
         db.query(ConnectorConfig)
@@ -311,8 +312,8 @@ def reconcile_connector_config(
     if not cfg:
         raise HTTPException(status_code=404, detail=connectors_module.CONNECTOR_CONFIG_NOT_FOUND_DETAIL)
 
-    dataset = connectors_module.DatasetService.get_dataset(db, tenant_id, cfg.dataset_id)
-    connectors_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, cfg.dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     desired_refs = connectors_module.resolve_connector_reconcile_source_refs(
         connector_id=str(cfg.connector_id or "").strip(),

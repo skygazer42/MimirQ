@@ -1,7 +1,7 @@
 """
 Document permission service (document-level ACL allowlist).
 
-This mirrors DatasetPermissionService but is scoped to individual documents.
+This mirrors dataset_service but is scoped to individual documents.
 """
 
 from uuid import UUID

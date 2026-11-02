@@ -65,7 +65,6 @@ from app.services.connector_sync_state import (
 from app.services.connector_sync_state import (
     normalize_source_manifest as normalize_source_manifest,
 )
-from app.services.dataset_service import DatasetService as DatasetService
 from app.tasks.queue import enqueue_connector_run as enqueue_connector_run
 from app.tasks.queue import get_queue as get_queue
 

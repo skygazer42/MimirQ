@@ -254,13 +254,13 @@ async def test_create_dataset_profile_scan_run_marks_failed_when_enqueue_is_reje
     background_tasks = BackgroundTasks()
 
     monkeypatch.setattr(
-        datasets_api.DatasetService,
+        datasets_api.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=dataset_id, tenant_id=tenant_id),
         raising=True,
     )
     monkeypatch.setattr(
-        datasets_api.DatasetService,
+        datasets_api.dataset_service,
         "assert_dataset_writable",
         lambda *_args, **_kwargs: None,
         raising=True,
@@ -319,13 +319,13 @@ async def test_create_dataset_profile_scan_run_replaces_stale_pending_and_falls_
     background_tasks = BackgroundTasks()
 
     monkeypatch.setattr(
-        datasets_api.DatasetService,
+        datasets_api.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=dataset_id, tenant_id=tenant_id),
         raising=True,
     )
     monkeypatch.setattr(
-        datasets_api.DatasetService,
+        datasets_api.dataset_service,
         "assert_dataset_writable",
         lambda *_args, **_kwargs: None,
         raising=True,
@@ -706,13 +706,13 @@ def test_delete_dataset_reconciles_stale_scans_before_active_scan_guard(
     calls: list[str] = []
 
     monkeypatch.setattr(
-        datasets_api.DatasetService,
+        datasets_api.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: dataset,
         raising=True,
     )
     monkeypatch.setattr(
-        datasets_api.DatasetService,
+        datasets_api.dataset_service,
         "assert_dataset_writable",
         lambda *_args, **_kwargs: None,
         raising=True,
@@ -760,7 +760,7 @@ async def test_purge_dataset_reconciles_stale_scans_before_active_scan_guard(
 
     monkeypatch.setattr(datasets_api, "ensure_tenant_permission", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        datasets_api.DatasetService,
+        datasets_api.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=dataset_id, tenant_id=tenant_id),
         raising=True,

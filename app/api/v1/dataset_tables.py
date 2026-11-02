@@ -30,8 +30,8 @@ from app.models.document import Document as DBDocument
 from app.rag.core.logging import get_logger
 from app.rag.preprocessing.pii_anonymizer import anonymize_pii
 from app.rag.preprocessing.secrets import redact_secrets
+from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
-from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, get_allowed_document_id_sets
 from app.services.fls_policy import (
     FlsUserContext,
@@ -218,7 +218,7 @@ def _table_member_context(
     account_id: str,
     dataset: object,
 ) -> tuple[str, Any, FlsUserContext]:
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
     role = _member_role(member)
     fls_policy = parse_fls_policy_from_metadata(getattr(dataset, "dataset_metadata", None) or {})
     fls_ctx = FlsUserContext(account_id=account_id, role=role)
@@ -773,8 +773,8 @@ def list_dataset_tables(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     role, fls_policy, fls_ctx = _table_member_context(
         db,
@@ -864,8 +864,8 @@ def get_dataset_table(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     role, fls_policy, fls_ctx = _table_member_context(
         db,
@@ -930,10 +930,10 @@ def preview_dataset_table(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
     role = _member_role(member)
     redact_rows = _should_redact_table_rows_role(role)
 
@@ -1001,10 +1001,10 @@ def query_dataset_table(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
     role = _member_role(member)
     redact_rows = _should_redact_table_rows_role(role)
 
@@ -1085,8 +1085,8 @@ def ask_dataset_table(
 ):
     _ensure_table_ask_enabled()
 
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     role, fls_policy, fls_ctx = _table_member_context(
         db,
@@ -1217,8 +1217,8 @@ def lotus_sem_filter_dataset_table(
 ):
     _ensure_lotus_sem_filter_enabled()
 
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     role, fls_policy, fls_ctx = _table_member_context(
         db,

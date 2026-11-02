@@ -13,7 +13,7 @@ from app.core.database import get_db
 from app.models.audit_log import AuditLog
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 from app.services.document_access_service import assert_document_acl_readable
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -99,7 +99,7 @@ def get_document_timeline(
     db: Annotated[Session, Depends(get_db)],
 ):
     """User-facing document timeline (audit logs + synthetic document state events)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
@@ -107,8 +107,8 @@ def get_document_timeline(
 
     dataset: Dataset | None = None
     if document.dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, document.dataset_id)
+        dataset_service.assert_dataset_readable(db, dataset, account_id)
     assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=dataset)
 
     audit_rows = (

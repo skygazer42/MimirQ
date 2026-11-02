@@ -11,7 +11,7 @@ from app.api.schemas.document import DocumentList
 from app.core.database import get_db
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 from app.services.document_access import build_dataset_read_filter, build_document_read_filter
 from app.services.document_runtime_metadata import attach_runtime_document_metadata
 
@@ -79,8 +79,8 @@ def _apply_dataset_scope(
     dataset_id: UUID | None,
 ):
     if dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+        dataset_service.assert_dataset_readable(db, dataset, account_id)
         return query.filter(DBDocument.dataset_id == dataset_id)
 
     allowed_dataset_ids_subq = select(Dataset.id).where(
@@ -163,7 +163,7 @@ def list_documents(
     """
     List documents.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     skip = params.skip
     limit = params.limit

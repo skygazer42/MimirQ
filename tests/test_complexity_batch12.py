@@ -115,11 +115,11 @@ def test_batch_reingest_classifies_patch_failures_without_retry(monkeypatch) -> 
         return {"status": "pending"}
 
     fake_documents_module = SimpleNamespace(
-        DatasetService=SimpleNamespace(ensure_member=lambda *_a, **_k: None),
         patch_document_pipeline=_patch_document_pipeline,
         retry_document_processing=_retry_document_processing,
     )
     monkeypatch.setattr(document_batches, "_documents_module", lambda: fake_documents_module, raising=True)
+    monkeypatch.setattr(document_batches.dataset_service, "ensure_member", lambda *_a, **_k: None)
 
     result = asyncio.run(
         document_batches.batch_reingest_documents(
@@ -176,7 +176,7 @@ def test_diff_document_versions_falls_back_to_legacy_rows_and_chunk_ids(monkeypa
         ]
     )
 
-    monkeypatch.setattr(document_versions.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(document_versions.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
         document_versions,
         "assert_document_readable_for_lifecycle",
@@ -242,7 +242,7 @@ def test_delete_document_version_falls_back_to_metadata_scan_and_restores_curren
         def delete_event_indexes_for_chunks(self, **kwargs) -> None:
             helper_calls.append({"op": "delete_events", **kwargs})
 
-    monkeypatch.setattr(document_versions.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(document_versions.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
         document_versions,
         "assert_document_writable_for_lifecycle",
@@ -301,7 +301,7 @@ def test_lifecycle_patch_noop_returns_current_metadata_without_writes(monkeypatc
     db = _QueuedDB([])
     audit_calls: list[dict[str, object]] = []
 
-    monkeypatch.setattr(document_lifecycle.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(document_lifecycle.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(document_lifecycle, "get_document_for_lifecycle", lambda *_a, **_k: document, raising=True)
     monkeypatch.setattr(
         document_lifecycle,

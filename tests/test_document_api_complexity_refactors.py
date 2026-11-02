@@ -250,19 +250,19 @@ async def test_preview_document_inline_path_preserves_auth_pipeline_governance_a
     monkeypatch.setattr(document_preview.settings, "TASK_JOB_TIMEOUT_SEC", 321, raising=False)
     monkeypatch.setattr(document_preview.settings, "ALLOWED_EXTENSIONS", ".md,.pdf", raising=False)
     monkeypatch.setattr(
-        document_preview.DatasetService,
+        document_preview.dataset_service,
         "ensure_member",
         lambda *_args: call_order.append("ensure_member"),
         raising=True,
     )
     monkeypatch.setattr(
-        document_preview.DatasetService,
+        document_preview.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(dataset_metadata={"dataset": "meta"}),
         raising=True,
     )
     monkeypatch.setattr(
-        document_preview.DatasetService,
+        document_preview.dataset_service,
         "assert_dataset_readable",
         lambda *_args, **_kwargs: call_order.append("assert_dataset_readable"),
         raising=True,
@@ -447,8 +447,8 @@ async def test_preview_document_subprocess_path_preserves_payload_and_cleanup_sa
     monkeypatch.setattr(document_preview.settings, "MAGIC_PDF_KEEP_ARTIFACTS", False, raising=False)
     monkeypatch.setattr(document_preview.settings, "TASK_JOB_TIMEOUT_SEC", 45, raising=False)
     monkeypatch.setattr(document_preview.settings, "ALLOWED_EXTENSIONS", ".pdf", raising=False)
-    monkeypatch.setattr(document_preview.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(document_preview.DatasetService, "get_dataset", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_preview.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_preview.dataset_service, "get_dataset", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(document_preview, "save_upload_file", _save_upload, raising=True)
     monkeypatch.setattr(documents_module, "_sanitize_filename", lambda _name: "sanitized.pdf", raising=True)
     monkeypatch.setattr(document_preview, "compute_document_analytics", _analytics, raising=True)
@@ -584,7 +584,7 @@ async def test_preview_document_maps_worker_errors_without_leaking_production_de
     monkeypatch.setattr(document_preview.settings, "UPLOAD_DIR", str(upload_root), raising=False)
     monkeypatch.setattr(document_preview.settings, "MAX_FILE_SIZE", 128, raising=False)
     monkeypatch.setattr(document_preview.settings, "ALLOWED_EXTENSIONS", ".pdf", raising=False)
-    monkeypatch.setattr(document_preview.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_preview.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(document_preview, "save_upload_file", _save_upload, raising=True)
     monkeypatch.setattr(documents_module, "_sanitize_filename", lambda _name: "sanitized.pdf", raising=True)
     monkeypatch.setattr(documents_module, "run_subprocess_worker", _raise, raising=True)
@@ -624,7 +624,7 @@ async def test_retry_document_processing_enforces_membership_then_write_gate(
         call_order.append("assert_writable")
         raise HTTPException(status_code=403, detail="denied")
 
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", _ensure_member, raising=True)
+    monkeypatch.setattr(documents_module.dataset_service, "ensure_member", _ensure_member, raising=True)
     monkeypatch.setattr(documents_module, "_assert_document_writable_for_lifecycle", _deny, raising=True)
 
     with pytest.raises(HTTPException) as exc_info:
@@ -666,7 +666,7 @@ async def test_retry_document_processing_rejects_non_retryable_states(
     )
     db = _DB(document)
 
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
         documents_module,
         "_assert_document_writable_for_lifecycle",
@@ -714,7 +714,7 @@ async def test_retry_document_processing_skip_if_unchanged_is_idempotent_and_ret
     db = _DB(document, chunk_exists=True)
     audit_events: list[dict[str, object]] = []
 
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
         documents_module,
         "_assert_document_writable_for_lifecycle",
@@ -796,7 +796,7 @@ async def test_retry_document_processing_preserves_existing_versions_and_stable_
         enqueue_calls.append(kwargs)
         return "task-123"
 
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
         documents_module,
         "_assert_document_writable_for_lifecycle",
@@ -903,7 +903,7 @@ async def test_retry_document_processing_object_store_fallback_cleans_temp_file_
 
     monkeypatch.setattr(documents_module.settings, "UPLOAD_DIR", str(tmp_path / "uploads"), raising=False)
     monkeypatch.setattr(documents_module.settings, "MAX_FILE_SIZE", 1024, raising=False)
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
         documents_module,
         "_assert_document_writable_for_lifecycle",

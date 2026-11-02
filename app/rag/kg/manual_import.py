@@ -34,8 +34,8 @@ from app.rag.kg.schemas import (
     KGManualImportStats,
     KGManualRelationInput,
 )
+from app.services import dataset_service
 from app.services.dataset_embedding_config import create_embeddings_for_runtime
-from app.services.dataset_service import DatasetService
 from app.services.indexer import Indexer
 
 logger = get_logger(__name__)
@@ -413,17 +413,17 @@ def _ensure_import_dataset(
     payload: KGManualImportRequest,
 ) -> Dataset:
     if payload.dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
-        DatasetService.assert_dataset_writable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, payload.dataset_id)
+        dataset_service.assert_dataset_writable(db, dataset, account_id)
         return dataset
 
     dataset_name = _norm(payload.dataset_name) or DEFAULT_MANUAL_DATASET_NAME
     existing = db.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.name == dataset_name).first()
     if existing:
-        DatasetService.assert_dataset_writable(db, existing, account_id)
+        dataset_service.assert_dataset_writable(db, existing, account_id)
         return existing
 
-    return DatasetService.create_dataset(
+    return dataset_service.create_dataset(
         db,
         tenant_id,
         name=dataset_name,
@@ -567,8 +567,8 @@ def delete_manual_import(
     if not document:
         raise HTTPException(status_code=404, detail="Manual KG import not found")
     if document.dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_writable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, document.dataset_id)
+        dataset_service.assert_dataset_writable(db, dataset, account_id)
     out = _delete_import_rows(
         db, tenant_id=tenant_id, import_id=import_id, document=document, prune_entities=prune_entities
     )
@@ -1346,7 +1346,7 @@ def list_manual_imports(
     for doc in rows:
         if doc.dataset_id:
             dataset = db.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.id == doc.dataset_id).first()
-            if not dataset or not DatasetService.check_dataset_permission(db, dataset, account_id):
+            if not dataset or not dataset_service.check_dataset_permission(db, dataset, account_id):
                 continue
         meta = doc.doc_metadata or {}
         items.append(

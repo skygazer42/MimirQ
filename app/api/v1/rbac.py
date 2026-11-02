@@ -32,8 +32,8 @@ from app.models.dataset import DatasetPermission
 from app.models.document import DocumentPermission
 from app.models.tenant import TenantMember
 from app.models.tenant_group import TenantGroupMember
+from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
-from app.services.dataset_service import DatasetService
 from app.services.navigation_visibility import navigation_user_visible_modules_from_settings
 from app.services.rbac_service import TenantPermissions, all_tenant_permissions, ensure_tenant_permission, role_allows
 
@@ -61,7 +61,7 @@ def get_current_tenant_access(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
     role = str(getattr(member, "role", "") or "").strip().lower()
     permissions = [permission for permission in all_tenant_permissions() if role_allows(permission, role=role)]
     return TenantAccessOut(

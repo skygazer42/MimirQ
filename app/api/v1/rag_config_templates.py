@@ -26,7 +26,7 @@ from app.api.schemas.rag_config_template import (
 )
 from app.core.database import get_db
 from app.models.rag_config_template import RagConfigTemplate
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -88,7 +88,7 @@ def create_rag_config_template(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> RagConfigTemplate:
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     _ensure_write(db, tenant_id, account_id)
 
     template_key = request.template_key or _derive_template_key(request.name)
@@ -131,7 +131,7 @@ def list_rag_config_templates(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> RagConfigTemplateList:
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     _ensure_read(db, tenant_id, account_id)
 
     query = db.query(RagConfigTemplate).filter(RagConfigTemplate.tenant_id == tenant_id)
@@ -165,7 +165,7 @@ def get_rag_config_template(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> RagConfigTemplate:
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     _ensure_read(db, tenant_id, account_id)
 
     template = (
@@ -187,7 +187,7 @@ def update_rag_config_template(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> RagConfigTemplate:
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     _ensure_write(db, tenant_id, account_id)
 
     template = (
@@ -252,7 +252,7 @@ def create_rag_config_template_version(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> RagConfigTemplate:
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     _ensure_write(db, tenant_id, account_id)
 
     current = (

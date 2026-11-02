@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
+from app.services import dataset_service
 from app.services.dataset_analysis_service import (
     build_dataset_analysis_examples,
     build_dataset_analysis_rule_suggestions,
@@ -20,7 +21,6 @@ from app.services.dataset_analysis_service import (
     get_dataset_analysis_png_task_status,
     writeback_dataset_analysis_glossary_candidates,
 )
-from app.services.dataset_service import DatasetService
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -34,14 +34,14 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 def _require_dataset_readable(*, db: Session, tenant_id: UUID, dataset_id: UUID, account_id: str):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
     return dataset
 
 
 def _require_dataset_writable(*, db: Session, tenant_id: UUID, dataset_id: UUID, account_id: str):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
     return dataset
 
 
@@ -57,7 +57,7 @@ def get_tenant_dataset_analysis_dashboard(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Return the tenant-level dataset analysis dashboard."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     return build_tenant_dataset_analysis_dashboard(
         db=db,
         tenant_id=tenant_id,
@@ -82,7 +82,7 @@ def get_dataset_analysis_summary(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Return an analysis summary for one dataset."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     dataset = _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
     return build_dataset_analysis_summary(
         db=db,
@@ -110,7 +110,7 @@ def get_dataset_analysis_examples(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Return representative analysis examples for one dataset."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     dataset = _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
     return build_dataset_analysis_examples(
         db=db,
@@ -139,7 +139,7 @@ def get_dataset_analysis_rule_suggestions(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Return glossary and rule suggestions for dataset analysis."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     dataset = _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
     return build_dataset_analysis_rule_suggestions(
         db=db,
@@ -167,7 +167,7 @@ def export_dataset_analysis_json_endpoint(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Export dataset analysis as JSON."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     dataset = _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
     return export_dataset_analysis_json(
         db=db,
@@ -194,7 +194,7 @@ def export_dataset_analysis_jsonl_endpoint(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Export dataset analysis as newline-delimited JSON."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     dataset = _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
     payload = export_dataset_analysis_jsonl(
         db=db,
@@ -222,7 +222,7 @@ def export_dataset_analysis_html_endpoint(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Export dataset analysis as an HTML report."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     dataset = _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
     payload = export_dataset_analysis_html(
         db=db,
@@ -252,7 +252,7 @@ def writeback_dataset_analysis_glossary_endpoint(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Write suggested glossary entries back to a ruleset."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     dataset = _require_dataset_writable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
     return writeback_dataset_analysis_glossary_candidates(
         db=db,
@@ -282,7 +282,7 @@ def create_dataset_analysis_png_task_endpoint(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Create an asynchronous PNG export task for dataset analysis."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     dataset = _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
     try:
         return create_dataset_analysis_png_task(
@@ -311,7 +311,7 @@ def get_dataset_analysis_png_task_endpoint(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Return the status of a dataset analysis PNG export task."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
     try:
         return get_dataset_analysis_png_task_status(
@@ -336,7 +336,7 @@ def get_dataset_analysis_png_task_result_endpoint(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Return the PNG result for a completed dataset analysis export task."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
     try:
         status = get_dataset_analysis_png_task_status(

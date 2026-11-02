@@ -147,10 +147,10 @@ def test_create_conversation_sets_owner_account_id(monkeypatch: pytest.MonkeyPat
     tenant_id = uuid4()
     dataset_id = uuid4()
     db = _FakeDB()
-    monkeypatch.setattr(conversations_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(conversations_api.DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(conversations_api.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(conversations_api.dataset_service, "get_dataset", lambda *_a, **_k: object(), raising=True)
     monkeypatch.setattr(
-        conversations_api.DatasetService,
+        conversations_api.dataset_service,
         "assert_dataset_readable",
         lambda *_a, **_k: None,
         raising=True,
@@ -263,13 +263,13 @@ def test_ensure_conversation_access_rechecks_dataset_scope_readability(
         document_ids=[],
     )
 
-    monkeypatch.setattr(conversation_access.DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(conversation_access.dataset_service, "get_dataset", lambda *_a, **_k: object(), raising=True)
 
     def _deny(*_args, **_kwargs) -> None:  # noqa: ANN001
         raise HTTPException(status_code=403, detail="dataset denied")
 
     monkeypatch.setattr(
-        conversation_access.DatasetService,
+        conversation_access.dataset_service,
         "assert_dataset_readable",
         _deny,
         raising=True,
@@ -345,7 +345,7 @@ async def test_conversation_routes_reject_cross_account_access(
         document_ids=[],
     )
     db = _FakeDB(conversations=[conversation])
-    monkeypatch.setattr(conversations_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(conversations_api.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
 
     with pytest.raises(HTTPException) as exc_info:
         await invoke(conversations_api, conversation.id, tenant_id, db)
@@ -376,7 +376,7 @@ def test_list_conversations_hides_other_accounts_open_scope_rows(
         message_count=1,
     )
     db = _FakeDB(conversations=[mine, theirs])
-    monkeypatch.setattr(conversations_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(conversations_api.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
 
     response = conversations_api.list_conversations(
         tenant_id=tenant_id,
@@ -428,7 +428,7 @@ def test_list_conversations_searches_all_pages_by_title_and_latest_message(
         created_at=None,
     )
     db = _FakeDB(conversations=[title_match, *fillers, message_match])
-    monkeypatch.setattr(conversations_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(conversations_api.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
         conversations_api,
         "_get_latest_messages_by_conversation_id",
@@ -603,13 +603,13 @@ def test_list_conversations_hides_revoked_dataset_scope(
         message_count=1,
     )
     db = _FakeDB(conversations=[allowed, revoked])
-    monkeypatch.setattr(conversations_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(conversations_api.DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(conversations_api.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(conversations_api.dataset_service, "get_dataset", lambda *_a, **_k: object(), raising=True)
 
     def _deny(*_args, **_kwargs) -> None:  # noqa: ANN001
         raise HTTPException(status_code=403, detail="dataset denied")
 
-    monkeypatch.setattr(conversations_api.DatasetService, "assert_dataset_readable", _deny, raising=True)
+    monkeypatch.setattr(conversations_api.dataset_service, "assert_dataset_readable", _deny, raising=True)
 
     response = conversations_api.list_conversations(
         tenant_id=tenant_id,
@@ -640,7 +640,7 @@ def test_list_conversations_keeps_unmigrated_legacy_row_fail_closed(
         message_count=1,
     )
     db = _FakeDB(conversations=[legacy])
-    monkeypatch.setattr(conversations_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(conversations_api.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
 
     response = conversations_api.list_conversations(
         tenant_id=tenant_id,

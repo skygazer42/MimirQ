@@ -23,6 +23,7 @@ from app.api.schemas.qa import (
 )
 from app.core.database import get_db
 from app.models.document import Document as DBDocument
+from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
 from app.services.document_qa_service import generate_and_index_document_qa
 from app.services.pipeline_config import parse_pipeline_from_metadata, upsert_pipeline_metadata
@@ -61,7 +62,7 @@ def generate_document_qa(
     Generated chunks are tagged with `file_type=qa` in chunk metadata.
     """
     documents_module = _documents_module()
-    documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
@@ -128,7 +129,7 @@ def patch_document_pipeline(
     Patch `documents.metadata.pipeline` for document-level pipeline overrides.
     """
     documents_module = _documents_module()
-    documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
@@ -196,7 +197,7 @@ def patch_document_user_metadata(
     Patch `documents.metadata.user` for user-editable document metadata.
     """
     documents_module = _documents_module()
-    documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:

@@ -10,8 +10,8 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import DocumentLifecycleMetadata, DocumentLifecycleMetadataUpdateRequest
 from app.core.database import get_db
 from app.rag.core.hashing import stable_hash
+from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
-from app.services.dataset_service import DatasetService
 from app.services.document_access_service import (
     assert_document_writable_for_lifecycle,
     get_document_for_lifecycle,
@@ -120,7 +120,7 @@ def get_document_lifecycle_metadata(
 
     RBAC: dataset editor/admin (dataset writable) when the document belongs to a dataset.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     document = get_document_for_lifecycle(db, tenant_id, document_id)
     if not document:
@@ -158,7 +158,7 @@ def patch_document_lifecycle_metadata(
 
     RBAC: dataset editor/admin (dataset writable) when the document belongs to a dataset.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     document = get_document_for_lifecycle(db, tenant_id, document_id)
     if not document:

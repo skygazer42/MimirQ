@@ -27,8 +27,8 @@ from app.core.constants import NON_CRITICAL_EXCEPTION_LOG_MESSAGE
 from app.models.dataset import Dataset
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.rag.core.logging import get_logger
+from app.services import dataset_service
 from app.services.dataset_precheck_scan_runner import _build_samples_payload
-from app.services.dataset_service import DatasetService
 
 logger = get_logger(__name__)
 
@@ -110,12 +110,12 @@ def get_dataset_for_precheck(
     account_id: str,
     require_write: bool = False,
 ) -> Dataset:
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
     if require_write:
-        DatasetService.assert_dataset_writable(db, ds, account_id)
+        dataset_service.assert_dataset_writable(db, ds, account_id)
     else:
-        DatasetService.assert_dataset_readable(db, ds, account_id)
+        dataset_service.assert_dataset_readable(db, ds, account_id)
     return ds
 
 

@@ -32,8 +32,8 @@ from app.models.feedback import MessageFeedback
 from app.rag.core.logging import get_logger
 from app.rag.feedback_loop.dispatcher import dispatch_feedback_loop_batch
 from app.rag.industry_rules.loaders.yaml_loader import load_ruleset, ruleset_exists
+from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
-from app.services.dataset_service import DatasetService
 from app.services.feedback_service import FeedbackService
 from app.services.rag_trace_service import list_rag_traces
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
@@ -431,7 +431,7 @@ def upsert_message_feedback(
         expected_answer=request.expected_answer,
         category=request.category,
         extra=request.extra if isinstance(request.extra, dict) else {},
-        ensure_member_fn=DatasetService.ensure_member,
+        ensure_member_fn=dataset_service.ensure_member,
         list_rag_traces_fn=list_rag_traces,
     )
 
@@ -460,7 +460,7 @@ def list_message_feedback(
         max_rating=max_rating,
         skip=skip,
         limit=limit,
-        ensure_member_fn=DatasetService.ensure_member,
+        ensure_member_fn=dataset_service.ensure_member,
     )
 
 
@@ -490,7 +490,7 @@ def list_message_feedback_enriched(
         max_rating=max_rating,
         skip=skip,
         limit=limit,
-        ensure_member_fn=DatasetService.ensure_member,
+        ensure_member_fn=dataset_service.ensure_member,
     )
 
 
@@ -518,7 +518,7 @@ def patch_message_feedback(
         feedback_id=feedback_id,
         archived=request.archived,
         category=request.category,
-        ensure_member_fn=DatasetService.ensure_member,
+        ensure_member_fn=dataset_service.ensure_member,
     )
 
 
@@ -558,7 +558,7 @@ def preview_feedback_loop_candidates(
         max_rating=int(max_rating),
         limit=int(limit),
         ruleset=ruleset_obj,
-        ensure_member_fn=DatasetService.ensure_member,
+        ensure_member_fn=dataset_service.ensure_member,
     )
 
 
@@ -605,7 +605,7 @@ def export_feedback_loop_hard_negatives(
         append=bool(append),
         trigger="manual",
         ruleset=ruleset_obj,
-        ensure_member_fn=DatasetService.ensure_member,
+        ensure_member_fn=dataset_service.ensure_member,
     )
 
 
@@ -654,8 +654,8 @@ def create_regression_case_from_feedback(
     )
     dataset_id, _meta, request_id = _resolve_feedback_dataset_id(assistant, conv)
     if dataset_id is not None:
-        dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_writable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+        dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     doc_ids: list[str] = []
     if bool(getattr(body, "include_document_scope", True)):
@@ -739,7 +739,7 @@ def create_evidence_item_from_feedback(
     Intended workflow:
     feedback -> draft EvidenceItem -> review/approve -> sync into regression cases.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     suite_id = getattr(body, "suite_id", None)
     suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
@@ -749,8 +749,8 @@ def create_evidence_item_from_feedback(
         raise HTTPException(status_code=400, detail="Evidence suite is archived")
 
     # Ensure user can at least read the suite's dataset.
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, suite.dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     fb = _get_feedback_for_promotion(db, tenant_id=tenant_id, feedback_id=feedback_id)
     assistant = _get_feedback_assistant_message(db, tenant_id=tenant_id, message_id=fb.message_id)

@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models.chat import Conversation
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 from app.services.document_access import get_allowed_document_id_sets
 
 CONVERSATION_NOT_ACCESSIBLE_DETAIL = "Conversation is not accessible"
@@ -47,8 +47,8 @@ def ensure_conversation_dataset_access(
     dataset_id = getattr(conv, "dataset_id", None)
     if dataset_id is None:
         return
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
 
 def ensure_conversation_access(

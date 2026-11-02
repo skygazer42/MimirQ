@@ -9,7 +9,7 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document_folders import DocumentFolderTreeResponse
 from app.core.database import get_db
 from app.models.document import Document as DBDocument
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 from app.services.document_access import build_document_read_filter
 from app.services.document_folders import build_document_folder_tree
 
@@ -41,10 +41,10 @@ def list_document_folders(
     - `source_path` is only present when the client uploads with directory-preserving keys.
     - The tree is dataset-scoped for performance and permission clarity.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     query = db.query(DBDocument).filter(
         DBDocument.tenant_id == tenant_id,

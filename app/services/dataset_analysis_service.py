@@ -39,7 +39,7 @@ from app.rag.evaluation.poc_runner.telemetry import build_poc_interaction_rows
 from app.rag.industry_rules import load_ruleset
 from app.rag.industry_rules.loaders import write_glossary_candidates
 from app.rag.industry_rules.mining.auto_rules import build_ruleset_suggestions
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 from app.services.rag_trace_service import list_rag_traces
 
 _SUMMARY_SCHEMA = "mimirq.dataset_analysis.summary.v1"
@@ -457,7 +457,7 @@ def build_tenant_dataset_analysis_dashboard(
     feedback_polarity: str | None = None,
     limit: int = 20,
 ) -> dict[str, Any]:
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     rows = db.query(Dataset).filter(Dataset.tenant_id == tenant_id).order_by(Dataset.name.asc()).all()
 
     cards: list[dict[str, Any]] = []
@@ -471,7 +471,7 @@ def build_tenant_dataset_analysis_dashboard(
     }
 
     for dataset in rows:
-        if not DatasetService.check_dataset_permission(db, dataset, account_id):
+        if not dataset_service.check_dataset_permission(db, dataset, account_id):
             continue
         payload = build_dataset_analysis_summary(
             db=db,

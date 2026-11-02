@@ -250,7 +250,7 @@ def test_get_document_parsed_content_uses_text_fallback_and_metadata(monkeypatch
         }
     )
 
-    monkeypatch.setattr(document_content.DatasetService, "ensure_member", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(document_content.dataset_service, "ensure_member", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(document_content, "assert_document_acl_readable", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         document_content,

@@ -36,7 +36,7 @@ def test_dataset_ingestion_policy_put_get_and_import_export(monkeypatch):  # noq
         import_dataset_ingestion_policy,
         put_dataset_ingestion_policy,
     )
-    from app.services.dataset_service import DatasetService
+    from app.services import dataset_service
 
     # Keep a single in-memory dataset object to observe metadata mutations.
     dataset_id = uuid.uuid4()
@@ -50,12 +50,12 @@ def test_dataset_ingestion_policy_put_get_and_import_export(monkeypatch):  # noq
 
     ds = _Dataset()
 
-    monkeypatch.setattr(DatasetService, "get_dataset", lambda _db, _tenant_id, _did: ds, raising=True)
+    monkeypatch.setattr(dataset_service, "get_dataset", lambda _db, _tenant_id, _did: ds, raising=True)
     monkeypatch.setattr(
-        DatasetService, "assert_dataset_readable", lambda _db, _dataset, _account_id: None, raising=True
+        dataset_service, "assert_dataset_readable", lambda _db, _dataset, _account_id: None, raising=True
     )
     monkeypatch.setattr(
-        DatasetService, "assert_dataset_writable", lambda _db, _dataset, _account_id: None, raising=True
+        dataset_service, "assert_dataset_writable", lambda _db, _dataset, _account_id: None, raising=True
     )
 
     app = FastAPI()
@@ -120,7 +120,7 @@ def test_dataset_ingestion_policy_put_get_and_import_export(monkeypatch):  # noq
 
 def test_dataset_ingestion_policy_import_replace_false_conflict(monkeypatch):  # noqa: ANN001
     from app.api.v1.datasets import import_dataset_ingestion_policy
-    from app.services.dataset_service import DatasetService
+    from app.services import dataset_service
 
     dataset_id = uuid.uuid4()
 
@@ -133,9 +133,9 @@ def test_dataset_ingestion_policy_import_replace_false_conflict(monkeypatch):  #
 
     ds = _Dataset()
 
-    monkeypatch.setattr(DatasetService, "get_dataset", lambda _db, _tenant_id, _did: ds, raising=True)
+    monkeypatch.setattr(dataset_service, "get_dataset", lambda _db, _tenant_id, _did: ds, raising=True)
     monkeypatch.setattr(
-        DatasetService, "assert_dataset_writable", lambda _db, _dataset, _account_id: None, raising=True
+        dataset_service, "assert_dataset_writable", lambda _db, _dataset, _account_id: None, raising=True
     )
 
     app = FastAPI()
@@ -155,7 +155,7 @@ def test_dataset_ingestion_policy_import_replace_false_conflict(monkeypatch):  #
 
 def test_dataset_ingestion_policy_get_exposes_table_routing_policy_audit(monkeypatch):  # noqa: ANN001
     from app.api.v1.datasets import get_dataset_ingestion_policy
-    from app.services.dataset_service import DatasetService
+    from app.services import dataset_service
 
     dataset_id = uuid.uuid4()
 
@@ -191,9 +191,9 @@ def test_dataset_ingestion_policy_get_exposes_table_routing_policy_audit(monkeyp
 
     ds = _Dataset()
 
-    monkeypatch.setattr(DatasetService, "get_dataset", lambda _db, _tenant_id, _did: ds, raising=True)
+    monkeypatch.setattr(dataset_service, "get_dataset", lambda _db, _tenant_id, _did: ds, raising=True)
     monkeypatch.setattr(
-        DatasetService, "assert_dataset_readable", lambda _db, _dataset, _account_id: None, raising=True
+        dataset_service, "assert_dataset_readable", lambda _db, _dataset, _account_id: None, raising=True
     )
 
     app = FastAPI()

@@ -20,7 +20,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.rag.pipelines.langgraph import build_rag_state
 from app.rag.retrieval.orchestrator import run_retrieval
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 from app.services.document_access import filter_allowed_document_ids
 from app.services.rag_runtime_limiter import run_blocking_retrieval_call_with_managed_session
 
@@ -115,15 +115,15 @@ async def explain_retrieval(
     if not bool(body.retrieval_only):
         raise HTTPException(status_code=400, detail="retrieval_only must be true for this endpoint")
 
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     scope_dataset_id: UUID | None = None
     scope_document_ids: list[UUID] = []
     if body.document_ids:
         scope_document_ids = filter_allowed_document_ids(db, tenant_id, account_id, body.document_ids)
     elif body.dataset_id is not None:
-        ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
-        DatasetService.assert_dataset_readable(db, ds, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, body.dataset_id)
+        dataset_service.assert_dataset_readable(db, ds, account_id)
         scope_dataset_id = body.dataset_id
     elif not bool(settings.CHAT_ALLOW_OPEN_SCOPE):
         raise HTTPException(status_code=400, detail="dataset_id is required when document_ids is empty")

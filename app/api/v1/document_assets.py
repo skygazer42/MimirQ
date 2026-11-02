@@ -15,7 +15,7 @@ from app.core.database import get_db
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.rag.core.logging import get_logger
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 from app.services.document_preview_legacy import find_legacy_preview_document_ids
 from app.services.document_preview_utils import _load_preview_owner_binding, _write_preview_owner_binding
 from app.storage.object.runtime import is_object_storage_uri, resolve_document_object_reference
@@ -58,8 +58,8 @@ def _authorize_bound_preview_document(
     if not document or getattr(document, "dataset_id", None) != dataset_id:
         return None
     if account_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+        dataset_service.assert_dataset_readable(db, dataset, account_id)
         docs_mod._assert_document_acl_readable(
             db,
             tenant_id=tenant_id,
@@ -230,7 +230,7 @@ def _get_readable_preview_dataset(
         readable_datasets[dataset_id] = None
         return None
     try:
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
+        dataset_service.assert_dataset_readable(db, dataset, account_id)
     except HTTPException:
         readable_datasets[dataset_id] = None
         return None
@@ -335,14 +335,14 @@ def _resolve_document_download(
     document_id: UUID,
 ) -> DBDocument:
     if account_id:
-        DatasetService.ensure_member(db, tenant_id, account_id)
+        dataset_service.ensure_member(db, tenant_id, account_id)
     document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
         raise HTTPException(status_code=404, detail=docs_mod.DOC_NOT_FOUND_DETAIL)
     dataset: Dataset | None = None
     if document.dataset_id and account_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, document.dataset_id)
+        dataset_service.assert_dataset_readable(db, dataset, account_id)
     if account_id:
         docs_mod._assert_document_acl_readable(
             db,
@@ -549,8 +549,8 @@ def _authorize_image_url_request(
             return
         dataset: Dataset | None = None
         if document.dataset_id:
-            dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-            DatasetService.assert_dataset_readable(db, dataset, account_id)
+            dataset = dataset_service.get_dataset(db, tenant_id, document.dataset_id)
+            dataset_service.assert_dataset_readable(db, dataset, account_id)
         docs_mod._assert_document_acl_readable(
             db,
             tenant_id=tenant_id,
@@ -564,8 +564,8 @@ def _authorize_image_url_request(
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=404, detail=docs_mod.IMAGE_NOT_FOUND_DETAIL) from exc
     if account_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, dataset_uuid)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, dataset_uuid)
+        dataset_service.assert_dataset_readable(db, dataset, account_id)
 
 
 def _image_object_name(img_id: str) -> str | None:
@@ -663,7 +663,7 @@ async def get_image(
     """
     docs_mod, tenant_id, account_id = await _resolve_document_asset_request_context(request)
     if account_id:
-        DatasetService.ensure_member(db, tenant_id, account_id)
+        dataset_service.ensure_member(db, tenant_id, account_id)
     images_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "images"
     try:
         safe_id = uuid.UUID(image_id).hex
@@ -730,7 +730,7 @@ async def get_image_url(
     )
 
     if account_id:
-        DatasetService.ensure_member(db, tenant_id, account_id)
+        dataset_service.ensure_member(db, tenant_id, account_id)
     _authorize_image_url_request(
         db=db,
         docs_mod=docs_mod,

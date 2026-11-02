@@ -19,7 +19,7 @@ def test_documents_batch_reingest_calls_patch_and_retry(monkeypatch):  # noqa: A
     doc2 = uuid.uuid4()
 
     # Avoid auth/DB logic in unit test.
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
 
     calls = {"patch": 0, "retry": 0}
 

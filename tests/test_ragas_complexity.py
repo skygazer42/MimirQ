@@ -253,7 +253,7 @@ def test_run_conversation_ragas_evaluation_timeout_falls_back_to_deterministic_p
     )
     db = _RunDB(run, item_model=ragas_module.RagasEvaluationItem)
     monkeypatch.setattr(ragas_module, "SessionLocal", lambda: db, raising=True)
-    monkeypatch.setattr(ragas_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(ragas_module.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
         ragas_module,
         "_load_conversation_for_evaluation",

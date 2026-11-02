@@ -13,6 +13,7 @@ from app.api.schemas.external_conversation import (
 )
 from app.core.token_utils import num_tokens_from_string
 from app.models.chat import Conversation, Message
+from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
 from app.services.chat_conversation_access import ensure_conversation_access
 from app.services.chat_conversation_titles import (
@@ -20,7 +21,6 @@ from app.services.chat_conversation_titles import (
     CONVERSATION_TITLE_SOURCE_MANUAL,
     apply_auto_conversation_title,
 )
-from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids
 
 EXTERNAL_CONVERSATION_METADATA_KEY = "external_conversation"
@@ -61,12 +61,12 @@ def _resolve_document_scope(
         return None, allowed_doc_ids
 
     if request.dataset_id is not None:
-        DatasetService.ensure_member(db, tenant_id, account_id)
-        dataset = DatasetService.get_dataset(db, tenant_id, request.dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
+        dataset_service.ensure_member(db, tenant_id, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, request.dataset_id)
+        dataset_service.assert_dataset_readable(db, dataset, account_id)
         return request.dataset_id, []
 
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     return None, []
 
 

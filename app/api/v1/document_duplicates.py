@@ -11,7 +11,7 @@ from app.api.schemas.document import DocumentDuplicateList
 from app.core.database import get_db
 from app.models.document import Document as DBDocument
 from app.rag.core.logging import get_logger
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 from app.services.document_access import build_document_read_filter
 
 logger = get_logger(__name__)
@@ -274,9 +274,9 @@ def list_document_duplicates(
     - Uses Postgres grouping when available to avoid loading all documents into memory.
     - Best-effort and bounded by `max_groups`/`max_docs_per_group`.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     min_count_value = int(min_count or 2)
     max_groups_value = int(max_groups or 50)

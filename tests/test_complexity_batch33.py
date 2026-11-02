@@ -226,15 +226,15 @@ def test_preview_chunking_by_sha_preserves_offsets_metadata_and_dataset_authoriz
     monkeypatch.setattr(preview_module.settings, "PREVIEW_PARSE_CACHE_MAX_ENTRIES", 10, raising=False)
     monkeypatch.setattr(preview_module.settings, "PREVIEW_PARSE_CACHE_VERSION", "v1", raising=False)
     monkeypatch.setattr(preview_module.settings, "CHUNK_MIN_CHARS", 0, raising=False)
-    monkeypatch.setattr(preview_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(preview_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        preview_module.DatasetService,
+        preview_module.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=dataset_id, dataset_metadata={}),
         raising=True,
     )
     monkeypatch.setattr(
-        preview_module.DatasetService,
+        preview_module.dataset_service,
         "assert_dataset_readable",
         lambda _db, _ds, acct: readable_calls.append(("readable", acct)),
         raising=True,
@@ -352,13 +352,13 @@ async def test_parse_workspace_document_requested_backend_fallback_preserves_502
     db = _DB()
 
     monkeypatch.setattr(
-        parsing_module.DatasetService,
+        parsing_module.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=dataset_id),
         raising=True,
     )
     monkeypatch.setattr(
-        parsing_module.DatasetService, "assert_dataset_writable", lambda *_args, **_kwargs: None, raising=True
+        parsing_module.dataset_service, "assert_dataset_writable", lambda *_args, **_kwargs: None, raising=True
     )
     monkeypatch.setattr(parsing_module, "_get_workspace_document", lambda *_args, **_kwargs: doc, raising=True)
     monkeypatch.setattr(parsing_module, "is_object_storage_uri", lambda _path: False, raising=True)

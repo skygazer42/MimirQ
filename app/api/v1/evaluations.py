@@ -73,9 +73,9 @@ from app.rag.evaluation.test_generator import (
     generate_questions_from_conversations,
     generate_questions_from_documents,
 )
+from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
 from app.services.chat_conversation_access import ensure_conversation_access
-from app.services.dataset_service import DatasetService
 from app.services.ragas_conversation_readiness import conversation_readiness_items
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 from app.services.regression_case_bundle import export_case_bundle, plan_case_import
@@ -548,7 +548,7 @@ def get_ragas_conversation_readiness(
     db: Annotated[Session, Depends(get_db)],
 ) -> RagasConversationReadinessResponse:
     """Return citation-backed evaluation readiness for a batch of conversations."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     scoped_ids = _accessible_requested_conversation_ids(
         db=db,
@@ -582,7 +582,7 @@ def create_ragas_run(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Create a RAGAS evaluation run and execute it in background."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     _load_accessible_conversation(
         db=db,
@@ -633,7 +633,7 @@ def list_ragas_runs(
     db: Annotated[Session, Depends(get_db)],
 ):
     """List RAGAS evaluation runs for current tenant."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     if conversation_id:
         _load_accessible_conversation(
@@ -670,7 +670,7 @@ def get_ragas_run(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Get a single run and (optionally) its items."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     run = (
         db.query(RagasEvaluationRun)
@@ -724,11 +724,11 @@ def create_ragas_regression_case(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Create a regression case (per-dataset; requires evidence sources)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
-    ds = DatasetService.get_dataset(db, tenant_id, request.dataset_id)
+    ds = dataset_service.get_dataset(db, tenant_id, request.dataset_id)
     # Governance: regression cases back CI gates ("golden questions") and are a write operation.
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     reference_sources = _finalize_reference_sources(
         db,
@@ -780,7 +780,7 @@ def patch_ragas_regression_case(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Patch a regression case (dataset_id is immutable)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     row = (
         db.query(RagasRegressionCase)
@@ -792,9 +792,9 @@ def patch_ragas_regression_case(
 
     ds_id = getattr(row, "dataset_id", None)
     if ds_id is not None:
-        ds = DatasetService.get_dataset(db, tenant_id, ds_id)
+        ds = dataset_service.get_dataset(db, tenant_id, ds_id)
         # Governance: patching cases can alter golden suites and should be gated as a write action.
-        DatasetService.assert_dataset_writable(db, ds, account_id)
+        dataset_service.assert_dataset_writable(db, ds, account_id)
 
     fields = set(getattr(request, "model_fields_set", set()) or set())
     _apply_regression_case_scalar_patch(row, request, fields)
@@ -908,7 +908,7 @@ def list_ragas_regression_cases(
     db: Annotated[Session, Depends(get_db)],
 ):
     """List regression cases (tenant isolated, filterable by dataset_id)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     query = db.query(RagasRegressionCase).filter(RagasRegressionCase.tenant_id == tenant_id)
     if dataset_id:
@@ -929,10 +929,10 @@ def export_ragas_regression_cases(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Export regression cases as a dataset-scoped bundle (no internal ids)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     items = (
         db.query(RagasRegressionCase)
@@ -960,10 +960,10 @@ def import_ragas_regression_cases(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Import (upsert) regression cases by (dataset_id + question.strip())."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
-    ds = DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, payload.dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     existing = (
         db.query(RagasRegressionCase)
@@ -1162,17 +1162,17 @@ def generate_synthetic_hardcases(
     - Generates harder query variants (alias/skill pressure) using KG-derived candidates
     - Reuses the same reference_sources so evaluation remains grounded
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     if not bool(settings.KG_ENABLED):
         raise HTTPException(status_code=503, detail=_DETAIL_KG_DISABLED)
 
-    ds = DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
+    ds = dataset_service.get_dataset(db, tenant_id, payload.dataset_id)
     if bool(payload.dry_run):
-        DatasetService.assert_dataset_readable(db, ds, account_id)
+        dataset_service.assert_dataset_readable(db, ds, account_id)
     else:
         # Creating many cases is a write action (governance).
-        DatasetService.assert_dataset_writable(db, ds, account_id)
+        dataset_service.assert_dataset_writable(db, ds, account_id)
 
     _validate_synthetic_case_scope(db, tenant_id=tenant_id, payload=payload)
 
@@ -1495,7 +1495,7 @@ def delete_ragas_regression_case(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Delete a regression case."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     row = (
         db.query(RagasRegressionCase)
@@ -1508,9 +1508,9 @@ def delete_ragas_regression_case(
     ds_id = getattr(row, "dataset_id", None)
     if ds_id is None:
         raise HTTPException(status_code=400, detail="Cannot delete case without dataset_id")
-    ds = DatasetService.get_dataset(db, tenant_id, UUID(str(ds_id)))
+    ds = dataset_service.get_dataset(db, tenant_id, UUID(str(ds_id)))
     # Governance: deletion is a write action; protect golden suites.
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     db.delete(row)
     db.commit()
@@ -1532,10 +1532,10 @@ def create_ragas_regression_run(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Create a regression evaluation run and execute it in background."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
-    ds = DatasetService.get_dataset(db, tenant_id, request.dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, request.dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     if request.case_ids:
         rows = (
@@ -1587,10 +1587,10 @@ def create_ragas_regression_ablation_batch(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Create a bounded cartesian batch of regression runs for ablation analysis."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
-    ds = DatasetService.get_dataset(db, tenant_id, request.dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, request.dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     if request.case_ids:
         rows = (
@@ -1676,11 +1676,11 @@ def list_ragas_regression_runs(
     db: Annotated[Session, Depends(get_db)],
 ):
     """List regression runs."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     query = db.query(RagasRegressionRun).filter(RagasRegressionRun.tenant_id == tenant_id)
     if dataset_id is not None:
-        DatasetService.get_dataset(db, tenant_id, dataset_id)
+        dataset_service.get_dataset(db, tenant_id, dataset_id)
         query = query.filter(RagasRegressionRun.dataset_id == dataset_id)
     total = query.count()
     runs = query.order_by(RagasRegressionRun.created_at.desc()).offset(skip).limit(limit).all()
@@ -1704,10 +1704,10 @@ def get_ragas_regression_run_leaderboard(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Rank regression runs by a retrieval-only metric and attach retrieval_config_hash (PII-safe)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     query = (
         db.query(RagasRegressionRun)
@@ -1740,7 +1740,7 @@ def get_ragas_regression_run(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Get a regression run detail (optional items and contexts)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     run = (
         db.query(RagasRegressionRun)
@@ -1791,7 +1791,7 @@ def export_ragas_regression_run_bundle_api(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Export a compact regression run bundle (PII-safe by default)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     run = (
         db.query(RagasRegressionRun)
@@ -1803,8 +1803,8 @@ def export_ragas_regression_run_bundle_api(
 
     ds_id = getattr(run, "dataset_id", None)
     if ds_id is not None:
-        ds = DatasetService.get_dataset(db, tenant_id, UUID(str(ds_id)))
-        DatasetService.assert_dataset_readable(db, ds, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, UUID(str(ds_id)))
+        dataset_service.assert_dataset_readable(db, ds, account_id)
 
     items = (
         db.query(RagasRegressionItem)
@@ -1944,7 +1944,7 @@ def diff_ragas_regression_runs(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Diff two regression runs (objective numbers + retrieval slices only)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     base = (
         db.query(RagasRegressionRun)
@@ -2015,7 +2015,7 @@ async def export_ragas_regression_run_diff_html(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     # Reuse the JSON diff logic (single source of truth).
     payload = await diff_ragas_regression_runs(
@@ -2055,7 +2055,7 @@ def generate_test_cases_from_documents(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Generate test questions from documents."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     try:
         questions = generate_questions_from_documents(
@@ -2234,8 +2234,8 @@ def _ensure_generated_case_dataset_writable(
     if dataset_id in dataset_cache:
         return True
     try:
-        dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_writable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+        dataset_service.assert_dataset_writable(db, dataset, account_id)
         dataset_cache[dataset_id] = dataset
         return True
     except HTTPException as exc:
@@ -2359,9 +2359,9 @@ async def run_kg_search_diagnostics(
     if not bool(settings.KG_ENABLED):
         raise HTTPException(status_code=503, detail=_DETAIL_KG_DISABLED)
 
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, payload.dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     # Lazy import to keep module import side-effects smaller (Milvus/LLM config, etc).
     from app.rag.evaluation.kg_search_diagnostics import run_kg_search_diagnostics as run_impl
@@ -2491,9 +2491,9 @@ def list_kg_search_diagnostics_runs(
     if not bool(settings.KG_ENABLED):
         raise HTTPException(status_code=503, detail=_DETAIL_KG_DISABLED)
 
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     query = db.query(KGSearchDiagnosticsRun).filter(
         KGSearchDiagnosticsRun.tenant_id == tenant_id,
@@ -2527,9 +2527,9 @@ def get_kg_search_diagnostics_run(
     if run is None:
         raise HTTPException(status_code=404, detail="Diagnostics run not found")
 
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, run.dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, run.dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     items = list(run.items or []) if isinstance(getattr(run, "items", None), list) else []
     return KGSearchDiagnosticsRunDetail(run=run, items=items)
@@ -2555,9 +2555,9 @@ def get_kg_quality_report(
     if not bool(settings.KG_ENABLED):
         raise HTTPException(status_code=503, detail=_DETAIL_KG_DISABLED)
 
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     from app.models.document import Document as DBDocument  # noqa: WPS433
     from app.services.document_access import filter_allowed_document_ids  # noqa: WPS433
@@ -2606,7 +2606,7 @@ def generate_test_cases_from_conversations(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Generate test questions from conversation history."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     try:
         # Generate questions.

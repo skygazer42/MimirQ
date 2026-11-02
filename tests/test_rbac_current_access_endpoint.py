@@ -32,7 +32,7 @@ def _build_client(*, monkeypatch: pytest.MonkeyPatch, tenant_id: uuid.UUID, role
         assert account_id == "current-user"
         return SimpleNamespace(role=role, is_active=True, is_current=True)
 
-    monkeypatch.setattr(rbac_api.DatasetService, "ensure_member", _ensure_member, raising=True)
+    monkeypatch.setattr(rbac_api.dataset_service, "ensure_member", _ensure_member, raising=True)
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db

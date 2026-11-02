@@ -25,8 +25,8 @@ from app.api.schemas.db_catalog import (
 from app.connectors.db.profile_privacy import sanitize_db_profile_snapshot
 from app.core.database import get_db
 from app.models.db_catalog import DbCatalogColumn, DbCatalogTable, DbProfileSnapshot
+from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
-from app.services.dataset_service import DatasetService
 from app.services.db_catalog_profile_cache import (
     build_db_profile_cache_key,
     get_cached_db_profile,
@@ -99,8 +99,8 @@ def list_db_catalog_tables(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     query = db.query(DbCatalogTable).filter(
         DbCatalogTable.tenant_id == tenant_id, DbCatalogTable.dataset_id == dataset_id
@@ -150,10 +150,10 @@ def get_db_catalog_table(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
     role = str(getattr(member, "role", "") or "").strip().lower()
     fls_policy = parse_fls_policy_from_metadata(getattr(dataset, "dataset_metadata", None) or {})
     fls_ctx = FlsUserContext(account_id=account_id, role=role)
@@ -230,8 +230,8 @@ def list_db_catalog_profiles(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     # Defense-in-depth: ensure table belongs to dataset/tenant before returning snapshots.
     table = (

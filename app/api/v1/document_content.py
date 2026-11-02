@@ -18,7 +18,7 @@ from app.models.document import Document as DBDocument
 from app.models.document import DocumentParsedContent
 from app.parsing.factory import ParserFactory
 from app.parsing.output import markdown_to_blocks, render_clean_docx_bytes
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 from app.services.document_access_service import assert_document_acl_readable
 from app.services.path_safety import resolve_under_base
 
@@ -104,8 +104,8 @@ def _resolve_document_dataset_for_access(
 ) -> Dataset | None:
     dataset: Dataset | None = None
     if getattr(document, "dataset_id", None):
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, document.dataset_id)
+        dataset_service.assert_dataset_readable(db, dataset, account_id)
     return dataset
 
 
@@ -175,7 +175,7 @@ def get_document_parsed_content(
     - For local text-like source files, fall back to the original text when no parsed cache exists.
     - When unavailable, returns `available=false` with empty strings.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
@@ -225,7 +225,7 @@ def download_document_clean_docx(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
@@ -233,8 +233,8 @@ def download_document_clean_docx(
 
     dataset: Dataset | None = None
     if document.dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, document.dataset_id)
+        dataset_service.assert_dataset_readable(db, dataset, account_id)
     assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=dataset)
 
     row = (

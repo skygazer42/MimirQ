@@ -18,13 +18,13 @@ from app.api.schemas.dataset_category import DatasetCategoryNode
 from app.core.constants import UserRoles
 from app.models.dataset_category import DatasetCategory, DatasetCategoryMembership
 from app.rag.core.logging import get_logger
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 
 _EDIT_ROLES = UserRoles.EDIT_ROLES
 
 
 def _assert_can_edit(db: Session, tenant_id: UUID, account_id: str) -> None:
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
     role = str(getattr(member, "role", "") or "").lower()
     if role not in _EDIT_ROLES:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No permission to manage dataset categories")
@@ -149,7 +149,7 @@ class DatasetCategoryService:
 
     @staticmethod
     def list_tree(db: Session, *, tenant_id: UUID, account_id: str) -> list[DatasetCategoryNode]:
-        DatasetService.ensure_member(db, tenant_id, account_id)
+        dataset_service.ensure_member(db, tenant_id, account_id)
         rows = (
             db.query(DatasetCategory)
             .filter(DatasetCategory.tenant_id == tenant_id)
@@ -262,8 +262,8 @@ class DatasetCategoryService:
 
     @staticmethod
     def list_dataset_category_ids(db: Session, *, tenant_id: UUID, account_id: str, dataset_id: UUID) -> list[UUID]:
-        ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_readable(db, ds, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+        dataset_service.assert_dataset_readable(db, ds, account_id)
 
         rows = (
             db.query(DatasetCategoryMembership.category_id)
@@ -294,8 +294,8 @@ class DatasetCategoryService:
         dataset_id: UUID,
         category_ids: list[UUID],
     ) -> list[UUID]:
-        ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_writable(db, ds, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+        dataset_service.assert_dataset_writable(db, ds, account_id)
 
         normalized: list[UUID] = []
         seen: set[UUID] = set()

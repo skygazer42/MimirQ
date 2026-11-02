@@ -15,6 +15,7 @@ from app.api.schemas.document import (
     DocumentBatchLifecycleResponse,
 )
 from app.core.database import get_db
+from app.services import dataset_service
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -43,7 +44,7 @@ def batch_disable_documents(
 ):
     """Batch disable documents (best-effort)."""
     documents_module = _documents_module()
-    documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     updated = 0
     not_found: list[UUID] = []
@@ -100,7 +101,7 @@ def batch_enable_documents(
 ):
     """Batch enable documents (best-effort)."""
     documents_module = _documents_module()
-    documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     updated = 0
     not_found: list[UUID] = []
@@ -155,7 +156,7 @@ def batch_archive_documents(
 ):
     """Batch archive documents (best-effort)."""
     documents_module = _documents_module()
-    documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     updated = 0
     not_found: list[UUID] = []
@@ -212,7 +213,7 @@ def batch_unarchive_documents(
 ):
     """Batch unarchive documents (best-effort)."""
     documents_module = _documents_module()
-    documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     updated = 0
     not_found: list[UUID] = []
@@ -267,7 +268,7 @@ async def batch_delete_documents(
     Batch delete documents (best-effort per id).
     """
     documents_module = _documents_module()
-    documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     deleted = 0
     not_found: list[UUID] = []

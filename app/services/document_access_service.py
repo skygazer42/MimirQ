@@ -7,8 +7,8 @@ from app.core.constants import UserRoles
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
-from app.services import tenant_group_service
-from app.services.dataset_service import EDIT_ROLES, DatasetService
+from app.services import dataset_service, tenant_group_service
+from app.services.dataset_service import EDIT_ROLES
 from app.services.document_permission_service import DocumentGroupPermissionService
 
 NO_DOCUMENT_ACCESS_DETAIL = "No document access"
@@ -120,8 +120,8 @@ def assert_document_readable_for_lifecycle(
 ) -> None:
     dataset: Dataset | None = None
     if getattr(document, "dataset_id", None):
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, document.dataset_id)
+        dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     assert_document_acl_readable(
         db,
@@ -139,7 +139,7 @@ def assert_document_writable_for_unassigned_target(
     account_id: str,
     document: DBDocument,
 ) -> None:
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
     role = (getattr(member, "role", None) or "").lower()
     if role in UserRoles.ADMIN_ROLES:
         return
@@ -162,8 +162,8 @@ def assert_document_access_manageable(
 ) -> None:
     """Authorize ACL repair without requiring the current document ACL."""
     if getattr(document, "dataset_id", None):
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_writable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, document.dataset_id)
+        dataset_service.assert_dataset_writable(db, dataset, account_id)
         return
 
     assert_document_writable_for_unassigned_target(
@@ -183,8 +183,8 @@ def assert_document_writable_for_lifecycle(
 ) -> None:
     dataset: Dataset | None = None
     if getattr(document, "dataset_id", None):
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_writable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, document.dataset_id)
+        dataset_service.assert_dataset_writable(db, dataset, account_id)
         assert_document_acl_readable(
             db,
             tenant_id=tenant_id,

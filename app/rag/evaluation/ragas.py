@@ -59,8 +59,8 @@ from app.rag.pipeline_plugins.contracts import (
     INDEXED_METADATA_KEY,
     RECORD_IDENTITY_METADATA_KEY,
 )
+from app.services import dataset_service
 from app.services.chat_conversation_access import ensure_conversation_access
-from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, get_allowed_document_id_sets
 
 logger = get_logger(__name__)
@@ -955,8 +955,8 @@ def _resolve_case_scope(
         return filter_allowed_document_ids(db, tenant_id, account_id, raw_doc_ids), None
 
     if case.dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, case.dataset_id)
-        DatasetService.assert_dataset_readable(db, ds, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, case.dataset_id)
+        dataset_service.assert_dataset_readable(db, ds, account_id)
         return None, case.dataset_id
 
     return None, None
@@ -1559,7 +1559,7 @@ def run_conversation_ragas_evaluation(
 
         _mark_run_running(db, run, clear_error=True)
 
-        DatasetService.ensure_member(db, tenant_id, account_id)
+        dataset_service.ensure_member(db, tenant_id, account_id)
 
         conversation, allowed_doc_ids = _load_conversation_for_evaluation(
             db,
@@ -2638,7 +2638,7 @@ def run_regression_ragas_evaluation(
 
         _mark_run_running(db, run)
 
-        DatasetService.ensure_member(db, tenant_id, account_id)
+        dataset_service.ensure_member(db, tenant_id, account_id)
         cases = _load_regression_cases(
             db,
             run,

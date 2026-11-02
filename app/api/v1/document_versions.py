@@ -14,8 +14,8 @@ from app.core.database import get_db
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.rag.core.logging import get_logger
+from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
-from app.services.dataset_service import DatasetService
 from app.services.document_access_service import (
     assert_document_readable_for_lifecycle,
     assert_document_writable_for_lifecycle,
@@ -171,7 +171,7 @@ def list_document_versions(
     - Versions are inferred from persisted chunks (doc_metadata.doc_pipeline_key).
     - This is best-effort and primarily intended for ops/debug/rollback.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
@@ -304,7 +304,7 @@ def diff_document_versions(
     - For legacy chunks without `content_hash`, we fall back to chunk id as a unique signature
       (so counts remain accurate, but "unchanged" may be underestimated).
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     document = _get_version_document_or_404(db=db, tenant_id=tenant_id, document_id=document_id)
     assert_document_readable_for_lifecycle(
         db,
@@ -375,7 +375,7 @@ def activate_document_version(
 
     This does not re-run parsing/indexing; it only switches the active version *if* chunks exist.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
@@ -488,7 +488,7 @@ def delete_document_version(
     - The currently-active version cannot be deleted (use activate to switch first).
     - This endpoint is intended for ops/debug cleanup; it does not re-run processing.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     document = _get_version_document_or_404(db=db, tenant_id=tenant_id, document_id=document_id)
     assert_document_writable_for_lifecycle(
         db,

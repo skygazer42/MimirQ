@@ -17,6 +17,7 @@ from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
+from app.services import dataset_service
 from app.services.indexer import Indexer
 from app.types.indexing import IndexKind, IndexRecord
 
@@ -343,8 +344,8 @@ def _process_manual_document_chunks_background(
         if str(db_document.status or "").lower() == "cancelled":
             return
 
-        dataset = docs_mod.DatasetService.get_dataset(db, tenant_id, db_document.dataset_id)
-        docs_mod.DatasetService.assert_dataset_writable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, db_document.dataset_id)
+        dataset_service.assert_dataset_writable(db, dataset, account_id)
         _index_manual_document_chunks(
             db=db,
             docs_mod=docs_mod,

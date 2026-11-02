@@ -81,6 +81,7 @@ from app.parsing.factory import ParserFactory
 from app.rag.chunking import chunker_factory
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
+from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
 from app.services.dataset_category_service import DatasetCategoryService, collect_descendant_ids
 from app.services.dataset_embedding_config import resolve_dataset_embedding_runtime
@@ -90,7 +91,6 @@ from app.services.dataset_profile_service import (
     list_bucket_documents,
     list_finding_documents,
 )
-from app.services.dataset_service import DatasetGroupPermissionService, DatasetPermissionService, DatasetService
 from app.services.document_access import build_dataset_read_filter, build_document_read_filter
 from app.services.fls_policy import parse_fls_policy_from_metadata, validate_and_normalize_fls_policy
 from app.services.ingestion_policy import (
@@ -543,8 +543,8 @@ def _dataset_partial_permissions(
     if ds.permission != DatasetPermissionEnum.PARTIAL_MEMBERS:
         return None, None
     return (
-        DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, ds.id),
-        DatasetGroupPermissionService.get_dataset_partial_group_list(db, tenant_id, ds.id),
+        dataset_service.get_dataset_partial_member_list(db, tenant_id, ds.id),
+        dataset_service.get_dataset_partial_group_list(db, tenant_id, ds.id),
     )
 
 
@@ -599,9 +599,9 @@ def get_dataset_ingestion_stats(
     - Enforces dataset read permission.
     - Applies document-level ACL filtering for non-owners ("security trimming").
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     query = db.query(DBDocument).filter(
         DBDocument.tenant_id == tenant_id,
@@ -1126,11 +1126,11 @@ def create_dataset(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
-    DatasetService._assert_edit_role(member)
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
+    dataset_service._assert_edit_role(member)
     meta: dict[str, Any] = {}
     metadata_changed = _apply_create_dataset_metadata_defaults(meta, payload)
-    dataset = DatasetService.create_dataset(
+    dataset = dataset_service.create_dataset(
         db=db,
         tenant_id=tenant_id,
         name=payload.name,
@@ -1178,7 +1178,7 @@ def list_datasets(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     scope_query = db.query(Dataset).filter(Dataset.tenant_id == tenant_id)
     scope_query = scope_query.filter(build_dataset_read_filter(tenant_id=tenant_id, account_id=account_id))
@@ -1429,13 +1429,13 @@ def get_dataset(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
     partial_list = None
     partial_groups = None
     if dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
-        partial_list = DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, dataset_id)
-        partial_groups = DatasetGroupPermissionService.get_dataset_partial_group_list(db, tenant_id, dataset_id)
+        partial_list = dataset_service.get_dataset_partial_member_list(db, tenant_id, dataset_id)
+        partial_groups = dataset_service.get_dataset_partial_group_list(db, tenant_id, dataset_id)
     default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(dataset)
     (
         rag_config_template_id,
@@ -1523,13 +1523,13 @@ def update_dataset(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     meta = dict(getattr(dataset, "dataset_metadata", None) or {})
     metadata_changed = _apply_update_dataset_metadata_defaults(meta, payload)
 
-    updated = DatasetService.update_dataset(
+    updated = dataset_service.update_dataset(
         db=db,
         dataset=dataset,
         updater_id=account_id,
@@ -1617,9 +1617,9 @@ def export_dataset_config(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Export a portable dataset config bundle (JSON)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     return DatasetConfigExport(
         version="1",
@@ -1646,9 +1646,9 @@ def import_dataset_config(
     - replace=false (default): apply only non-null fields in the bundle (no clearing).
     - replace=true: overwrite/clear supported config keys based on bundle content.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     replace = bool(payload.replace)
     cfg = payload.config
@@ -1690,8 +1690,8 @@ def put_dataset_retrieval_audit(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Persist a sanitized retrieval audit snapshot for dataset reports."""
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     try:
         audit = sanitize_retrieval_audit_snapshot(payload.model_dump(mode="json"))
@@ -1739,16 +1739,16 @@ def clone_dataset(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Clone an existing dataset (config + optional permission/members)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    src = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, src, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    src = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, src, account_id)
 
     permission = src.permission if payload.copy_permission else DatasetPermissionEnum.ALL_TEAM_MEMBERS
     partial_members: list[str] = []
     partial_groups: list[UUID] = []
     if permission == DatasetPermissionEnum.PARTIAL_MEMBERS and payload.copy_partial_members:
-        partial_members = DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, src.id) or []
-        partial_groups = DatasetGroupPermissionService.get_dataset_partial_group_list(db, tenant_id, src.id) or []
+        partial_members = dataset_service.get_dataset_partial_member_list(db, tenant_id, src.id) or []
+        partial_groups = dataset_service.get_dataset_partial_group_list(db, tenant_id, src.id) or []
 
     clone_cfg = _build_dataset_config_bundle(src)
     if clone_cfg.embedding_defaults is not None:
@@ -1761,7 +1761,7 @@ def clone_dataset(
     copied_metadata: dict[str, Any] = {}
     _apply_config_import_metadata(copied_metadata, clone_cfg, replace=True)
 
-    created = DatasetService.create_dataset(
+    created = dataset_service.create_dataset(
         db=db,
         tenant_id=tenant_id,
         name=str(payload.name or "").strip(),
@@ -1978,8 +1978,8 @@ def delete_dataset(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     # Prevent deleting non-empty datasets. The DB also enforces tenant-safe
     # dataset references; keep the API check for a friendly 409.
@@ -2040,7 +2040,7 @@ async def purge_dataset_documents(
         detail="No permission to purge dataset documents",
     )
 
-    DatasetService.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.get_dataset(db, tenant_id, dataset_id)
 
     # Reconcile stale profile/precheck runs before the active-run guard so
     # worker crashes do not strand purge requests behind 409s.
@@ -2130,8 +2130,8 @@ def get_dataset_ingestion_policy(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
     meta = getattr(dataset, "dataset_metadata", None)
     meta_obj = meta if isinstance(meta, dict) else {}
     policy = parse_ingestion_policy_from_metadata(meta_obj) or IngestionPolicy(version="1", rules=[])
@@ -2155,8 +2155,8 @@ def list_dataset_ingestion_policy_versions(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     meta = dict(getattr(dataset, "dataset_metadata", None) or {})
     current_id = meta.get(_INGESTION_POLICY_CURRENT_VERSION_ID_KEY)
@@ -2218,8 +2218,8 @@ def rollback_dataset_ingestion_policy(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     meta = dict(getattr(dataset, "dataset_metadata", None) or {})
     target_id, target = _require_ingestion_policy_version(meta, body.version_id)
@@ -2258,8 +2258,8 @@ def put_dataset_ingestion_policy(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     normalized = validate_and_normalize_ingestion_policy(payload)
     meta = dict(getattr(dataset, "dataset_metadata", None) or {})
@@ -2288,8 +2288,8 @@ async def import_dataset_ingestion_policy(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     max_bytes = 256 * 1024
     raw = await file.read(max_bytes + 1)
@@ -2329,8 +2329,8 @@ def export_dataset_ingestion_policy(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
     meta = getattr(dataset, "dataset_metadata", None)
     policy = parse_ingestion_policy_from_metadata(meta if isinstance(meta, dict) else {}) or IngestionPolicy(
         version="1", rules=[]
@@ -2568,8 +2568,8 @@ async def create_dataset_profile_scan_run(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     # Clear stale pending rows before the active-run check so queue failures or
     # crashed requests do not leave the dataset permanently blocked.
@@ -2664,8 +2664,8 @@ def list_dataset_profile_scan_runs(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     q = db.query(DBDatasetProfileScanRun).filter(
         DBDatasetProfileScanRun.tenant_id == tenant_id, DBDatasetProfileScanRun.dataset_id == dataset_id
@@ -2688,8 +2688,8 @@ def get_dataset_profile_scan_run(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     row = (
         db.query(DBDatasetProfileScanRun)
@@ -2713,8 +2713,8 @@ def export_dataset_profile_summary(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     summary = compute_dataset_profile_summary(
         db,
@@ -2742,8 +2742,8 @@ def export_dataset_profile_html_report(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     summary = compute_dataset_profile_summary(
         db,
@@ -3325,7 +3325,7 @@ def export_dataset_documents_ndjson(
         detail="No permission to export dataset documents",
     )
 
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
     fmt = str(export_format or "ndjson").strip().lower() or "ndjson"
     if fmt not in {"ndjson", "json"}:
         raise HTTPException(status_code=400, detail="export_format must be one of: ndjson, json")
@@ -3402,7 +3402,7 @@ def export_dataset_bundle_zip(
         detail="No permission to export dataset bundle",
     )
 
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
     docs = _dataset_documents_page(db, tenant_id, dataset_id, limit=int(limit or 0))
     exported_at = datetime.now(timezone.utc)
 

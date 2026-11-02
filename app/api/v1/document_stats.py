@@ -14,7 +14,7 @@ from app.api.utils.http_exception_responses import (
 from app.core.database import get_db
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 from app.services.document_access import build_dataset_read_filter, build_document_read_filter
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -39,7 +39,7 @@ def get_document_stats(
     - Enforces the same dataset permission semantics as `list_documents`.
     - Supports lightweight filename search via `q`.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     query = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id)
     query = _apply_document_stats_dataset_scope(
@@ -86,8 +86,8 @@ def _apply_document_stats_dataset_scope(
     db: Session,
 ):
     if dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+        dataset_service.assert_dataset_readable(db, dataset, account_id)
         return query.filter(DBDocument.dataset_id == dataset_id)
 
     allowed_dataset_ids_subquery = select(Dataset.id).where(

@@ -29,6 +29,7 @@ from app.models.connector import ConnectorRun
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.group_permissions import DatasetGroupPermission
 from app.models.tenant_group import TenantGroupMember
+from app.services import dataset_service
 from app.services.connector_egress_policy import validate_db_connector_config
 from app.services.dataset_service import EDIT_ROLES
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
@@ -144,8 +145,8 @@ def _get_connector_run_or_404(db: Session, *, run_id: UUID, tenant_id: UUID) -> 
 def _assert_connector_run_dataset_writable(db: Session, *, run: ConnectorRun, tenant_id: UUID, account_id: str) -> None:
     if not run.dataset_id:
         return
-    dataset = connectors_module.DatasetService.get_dataset(db, tenant_id, run.dataset_id)
-    connectors_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, run.dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
 
 def _connector_run_dispatcher(connector_id: str) -> Any:
@@ -503,7 +504,7 @@ async def create_connector_run(
             detail=_DB_CONNECTOR_PERMISSION_DETAIL,
         )
     else:
-        connectors_module.DatasetService.ensure_member(db, tenant_id, account_id)
+        dataset_service.ensure_member(db, tenant_id, account_id)
     dataset = connectors_module._resolve_writable_dataset(db, tenant_id, account_id, payload.dataset_id)
     cfg, cfg_dict = _validate_and_encrypt_run_config(connector_id, payload.config)
     if connector_id in _DB_CATALOG_CONNECTOR_IDS:
@@ -543,12 +544,12 @@ def list_connector_runs(
     db: Annotated[Session, Depends(get_db)],
 ):
     """List connector runs (requires dataset write permission for each returned run's dataset)."""
-    member = connectors_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
 
     query = db.query(ConnectorRun).filter(ConnectorRun.tenant_id == tenant_id)
     if params.dataset_id:
-        dataset = connectors_module.DatasetService.get_dataset(db, tenant_id, params.dataset_id)
-        connectors_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, params.dataset_id)
+        dataset_service.assert_dataset_writable(db, dataset, account_id)
         query = query.filter(ConnectorRun.dataset_id == params.dataset_id)
     elif str(getattr(member, "role", "") or "").lower() not in EDIT_ROLES:
         return {"total": 0, "items": []}
@@ -589,7 +590,7 @@ def get_connector_run(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Get connector run detail (requires dataset write permission)."""
-    connectors_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     run = (
         db.query(ConnectorRun)
@@ -601,8 +602,8 @@ def get_connector_run(
         raise HTTPException(status_code=404, detail=connectors_module.CONNECTOR_RUN_NOT_FOUND_DETAIL)
 
     if run.dataset_id:
-        dataset = connectors_module.DatasetService.get_dataset(db, tenant_id, run.dataset_id)
-        connectors_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, run.dataset_id)
+        dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     summary = connectors_module._fetch_connector_run_acl_summaries(
         db,
@@ -631,7 +632,7 @@ async def retry_failed_connector_run(
     if not bool(getattr(connectors_module.settings, "URL_INGEST_ENABLED", False)):
         raise HTTPException(status_code=400, detail=connectors_module.URL_INGEST_DISABLED_DETAIL)
 
-    connectors_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     run = _get_connector_run_or_404(db, run_id=run_id, tenant_id=tenant_id)
 
@@ -692,7 +693,7 @@ async def resume_connector_run(
     if not bool(getattr(connectors_module.settings, "URL_INGEST_ENABLED", False)):
         raise HTTPException(status_code=400, detail=connectors_module.URL_INGEST_DISABLED_DETAIL)
 
-    connectors_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     run = _get_connector_run_or_404(db, run_id=run_id, tenant_id=tenant_id)
 
@@ -743,7 +744,7 @@ async def cancel_connector_run(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Cancel a running connector run (best-effort)."""
-    connectors_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     run = _get_connector_run_or_404(db, run_id=run_id, tenant_id=tenant_id)
     _assert_connector_run_dataset_writable(db, run=run, tenant_id=tenant_id, account_id=account_id)

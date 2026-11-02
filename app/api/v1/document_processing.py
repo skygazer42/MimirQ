@@ -15,6 +15,7 @@ from app.api.schemas.document import DocumentStatus
 from app.core.database import get_db
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
+from app.services import dataset_service
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -57,7 +58,7 @@ def get_document_status(
     Get document processing status (for polling).
     """
     documents_module = _documents_module()
-    documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
 
     if not document:
@@ -89,7 +90,7 @@ async def cancel_document_processing(
     - When queue is disabled, the in-process/background worker cooperatively checks the cancelled status.
     """
     documents_module = _documents_module()
-    documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
@@ -523,7 +524,7 @@ async def retry_document_processing(
     - Use `force=true` to allow retrying completed documents.
     """
     documents_module = _documents_module()
-    documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     document = _get_retry_document(
         documents_module=documents_module,
         db=db,

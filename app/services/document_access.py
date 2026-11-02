@@ -11,9 +11,8 @@ from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
 from app.models.group_permissions import DatasetGroupPermission, DocumentGroupPermission
 from app.models.tenant_group import TenantGroupMember
-from app.services import tenant_group_service
+from app.services import dataset_service, tenant_group_service
 from app.services.authz_prometheus_metrics import observe_group_permission_check
-from app.services.dataset_service import DatasetService
 
 # Document-level ACL ("security trimming") modes.
 _DOC_ACCESS_DEFAULTS = {"", "inherit"}
@@ -373,7 +372,7 @@ def get_readable_datasets_map(
 ) -> dict[UUID, Dataset]:
     requested_ids = list(dict.fromkeys(dataset_ids or []))
     if check_member:
-        DatasetService.ensure_member(db, tenant_id, account_id)
+        dataset_service.ensure_member(db, tenant_id, account_id)
     if not requested_ids:
         return {}
 
@@ -407,7 +406,7 @@ def get_allowed_document_id_sets(
     """
     check_member0 = bool(_check_member) if _check_member is not None else bool(check_member)
     if check_member0:
-        DatasetService.ensure_member(db, tenant_id, account_id)
+        dataset_service.ensure_member(db, tenant_id, account_id)
     if not doc_ids:
         return set(), set()
 
@@ -453,7 +452,7 @@ def filter_allowed_document_ids(
     Validate documents exist under tenant and enforce dataset read permissions.
     Returns the list of allowed document IDs (preserves input order when possible).
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     if not doc_ids:
         return []
 
@@ -490,7 +489,7 @@ def list_accessible_document_ids(
     This is a batched/efficient variant for "default scope" scenarios (e.g. chat without explicit document_ids).
     It enforces dataset permissions without issuing 1 query per document.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     query = db.query(
         DBDocument.id, DBDocument.dataset_id, DBDocument.access_mode, DBDocument.owner_id, DBDocument.updated_at
     ).filter(DBDocument.tenant_id == tenant_id)

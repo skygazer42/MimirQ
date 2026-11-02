@@ -20,8 +20,8 @@ from app.api.schemas.chat import ChatRAGConfig, HistoryMessage
 from app.core.config import settings
 from app.core.database import get_db
 from app.rag.core.logging import get_logger
+from app.services import dataset_service
 from app.services.dataset_defaults import load_dataset_metadata, resolve_single_dataset_id_for_documents
-from app.services.dataset_service import DatasetService
 from app.services.document_access import (
     filter_allowed_document_ids,
     get_readable_datasets_map,
@@ -271,8 +271,8 @@ def _resolve_retrieval_scope(
         )
         scope_dataset_ids = requested_dataset_ids
     elif dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_readable(db, ds, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+        dataset_service.assert_dataset_readable(db, ds, account_id)
         scope_dataset_id = dataset_id
     elif not bool(settings.CHAT_ALLOW_OPEN_SCOPE):
         raise HTTPException(
@@ -885,9 +885,9 @@ def document_structure_preview(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Return document structure derived from existing chunk hierarchy metadata."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, body.dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     from app.rag.retrieval.document_structure import load_document_structure
 
@@ -916,7 +916,7 @@ async def retrieve_preview(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Execute retrieval only (no answer generation); for parameter tuning and retrieval quality debugging."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     # Best-effort per-tenant aggregate QPS limiter.
     from app.services.tenant_quota_service import enforce_tenant_qps_quota_async
@@ -1208,9 +1208,9 @@ def index_image_embeddings(
     Security:
     - Requires dataset write permission (indexing is a compute-heavy admin action).
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, body.dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     from app.services.image_embedding_index import index_clip_image_embeddings_for_dataset
 
@@ -1245,9 +1245,9 @@ async def image_search_preview(
     - Dataset-scoped only.
     - Returns citation-like chunk payloads (including img_id/img_url) for UI consumers.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, body.dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     # Best-effort per-tenant aggregate QPS limiter.
     from app.services.tenant_quota_service import enforce_tenant_qps_quota_async
@@ -1363,7 +1363,7 @@ async def retrieve_evidence(
     Defaults to a recall-first profile when the caller omits rag_config.
     """
     t_api_start = time.monotonic()
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     # Best-effort per-tenant aggregate QPS limiter.
     from app.services.tenant_quota_service import enforce_tenant_qps_quota_async
@@ -1649,7 +1649,7 @@ async def prompt_preview(
 ):
     """Execute retrieval and return final prompt (no LLM call); for debugging prompt/context assembly."""
     t0 = time.time()
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     # Best-effort per-tenant aggregate QPS limiter.
     from app.services.tenant_quota_service import enforce_tenant_qps_quota_async
