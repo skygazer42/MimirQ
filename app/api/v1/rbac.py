@@ -34,7 +34,7 @@ from app.models.tenant import TenantMember
 from app.models.tenant_group import TenantGroupMember
 from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
-from app.services.navigation_visibility import navigation_user_visible_modules_from_settings
+from app.services.navigation_visibility import normalize_navigation_modules
 from app.services.rbac_service import TenantPermissions, all_tenant_permissions, ensure_tenant_permission, role_allows
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -69,7 +69,7 @@ def get_current_tenant_access(
         account_id=account_id,
         role=role,
         permissions=permissions,
-        navigation_user_visible_modules=navigation_user_visible_modules_from_settings(settings),
+        navigation_user_visible_modules=normalize_navigation_modules(settings.NAVIGATION_USER_VISIBLE_MODULES),
         is_active=bool(member.is_active),
         is_current=bool(member.is_current),
     )

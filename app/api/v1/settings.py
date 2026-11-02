@@ -65,7 +65,7 @@ from app.core.config import (
 )
 from app.core.database import get_db
 from app.core.jwt_inspect import format_unix_ts_utc, try_get_jwt_exp
-from app.services.navigation_visibility import normalize_navigation_modules, serialize_navigation_modules
+from app.services.navigation_visibility import normalize_navigation_modules
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -1429,7 +1429,7 @@ def _update_langgraph_env(env_vars: dict[str, str], updated_keys: list[str], lan
 
 
 def _update_navigation_env(env_vars: dict[str, str], updated_keys: list[str], navigation: NavigationConfig) -> None:
-    env_vars["NAVIGATION_USER_VISIBLE_MODULES"] = serialize_navigation_modules(navigation.user_visible_modules)
+    env_vars["NAVIGATION_USER_VISIBLE_MODULES"] = ",".join(navigation.user_visible_modules)
     updated_keys.append("NAVIGATION_USER_VISIBLE_MODULES")
 
 

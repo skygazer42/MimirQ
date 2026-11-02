@@ -18,8 +18,8 @@ from app.core.database import get_db
 from app.models.chunk_preset import ChunkPreset
 from app.models.dataset import Dataset
 from app.services import dataset_service
-from app.services.base_service import BaseService
 from app.services.document_access import build_dataset_read_filter
+from app.services.rbac_service import assert_edit_role
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -232,7 +232,7 @@ def create_chunk_preset(
     account_id: Annotated[str, Depends(get_current_account_id)],
 ):
     member = dataset_service.ensure_member(db, tenant_id, account_id)
-    BaseService.assert_edit_role(member)
+    assert_edit_role(member)
     dataset_uuid = _dataset_uuid_from_payload(req.payload)
     if dataset_uuid is not None:
         dataset = _get_scoped_dataset(db=db, tenant_id=tenant_id, dataset_id=dataset_uuid)
@@ -258,7 +258,7 @@ def update_chunk_preset(
     account_id: Annotated[str, Depends(get_current_account_id)],
 ):
     member = dataset_service.ensure_member(db, tenant_id, account_id)
-    BaseService.assert_edit_role(member)
+    assert_edit_role(member)
     existing = _get_chunk_preset_row(db=db, tenant_id=tenant_id, preset_id=preset_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Chunk preset not found")
@@ -290,7 +290,7 @@ def delete_chunk_preset(
     account_id: Annotated[str, Depends(get_current_account_id)],
 ):
     member = dataset_service.ensure_member(db, tenant_id, account_id)
-    BaseService.assert_edit_role(member)
+    assert_edit_role(member)
     existing = _get_chunk_preset_row(db=db, tenant_id=tenant_id, preset_id=preset_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Chunk preset not found")

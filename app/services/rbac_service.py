@@ -56,6 +56,12 @@ def role_allows(permission: str, *, role: str | None) -> bool:
     return role_norm in allowed_roles_for_permission(permission)
 
 
+def assert_edit_role(member: TenantMember) -> None:
+    role = (member.role or "").lower()
+    if role not in UserRoles.EDIT_ROLES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No permission to edit")
+
+
 def ensure_tenant_permission(
     db: Session,
     tenant_id: UUID,
@@ -81,6 +87,7 @@ __all__ = [
     "TenantPermissions",
     "all_tenant_permissions",
     "allowed_roles_for_permission",
+    "assert_edit_role",
     "ensure_tenant_permission",
     "role_allows",
 ]
