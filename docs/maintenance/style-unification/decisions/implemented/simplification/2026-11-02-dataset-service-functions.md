@@ -124,3 +124,5 @@ pipeline 的 JSON parser 和 chunk overlap validator 归入 `pipeline_options` u
 batch precheck 不再传递整个 documents 模块；hardlink/copy fallback、scan 状态提交、失败标记、建议应用的 best-effort 和 staging 清理顺序保持原样。日志仍使用原 `api.documents` category。
 
 文件上传与 URL 入库共用 tenant-scoped duplicate lookup。route 层只按各自的 commit/retry 约定处理结果；查询的 tenant/archive filters、排序、JSONB fast path 和 bounded scan fallback 只维护一份。
+
+URL 上传与 connector HTML 入库共用来源准备、配额、去重、持久化和处理调度；这组流程由 `document_source_ingestion` 单一模块函数所有。`document_upload` 与 connectors 直接调用该模块，`documents.py` 只直接重导出现有入口供兼容。`LocalHtmlIngestRequest` 位于文档 schema。dedup constraint、identity match、integrity-error 判断和 commit 冲突异常归 `document_dedup_service`，避免文件与来源入库各自维护一份规则。

@@ -8,7 +8,8 @@ from fastapi import BackgroundTasks, HTTPException
 
 from app.api.utils import document_dispatch
 from app.api.utils.url_ingest import DownloadedURL
-from app.api.v1 import documents as documents_module
+from app.api.v1 import document_source_ingestion as source_ingestion
+from app.storage.object.runtime import minio_service
 from app.types.pipeline import PipelineOptions
 
 
@@ -79,7 +80,7 @@ async def test_schedule_document_processing_falls_back_when_enqueue_fails(monkey
     async def _process(file_path, *_args):  # noqa: ANN001, ANN002, ANN202
         processed.append(file_path)
 
-    monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", False, raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "TASK_QUEUE_ENABLED", False, raising=False)
     monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _fail_enqueue, raising=True)
     monkeypatch.setattr(document_dispatch, "run_document_processing_limited", _process, raising=True)
 
@@ -131,7 +132,7 @@ async def test_schedule_document_processing_fails_closed_when_queue_handoff_fail
         def rollback(self) -> None:
             return None
 
-    monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "TASK_QUEUE_ENABLED", True, raising=False)
     monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _fail_enqueue, raising=True)
 
     with pytest.raises(HTTPException) as exc_info:
@@ -161,15 +162,15 @@ def _dataset(dataset_id: uuid.UUID) -> SimpleNamespace:
     return SimpleNamespace(id=dataset_id, dataset_metadata={})
 
 
-def _prepared() -> documents_module.PreparedDocumentIngestion:
-    return documents_module.PreparedDocumentIngestion(
-        policy=documents_module.ResolvedDocumentIngestionPolicy(
+def _prepared() -> source_ingestion.PreparedDocumentIngestion:
+    return source_ingestion.PreparedDocumentIngestion(
+        policy=source_ingestion.ResolvedDocumentIngestionPolicy(
             parser_backend_choice="auto",
             chunk_strategy_choice="langchain_recursive",
             pipeline_options=PipelineOptions(),
             ingestion_meta=None,
         ),
-        pipeline=documents_module.ResolvedDocumentPipeline(
+        pipeline=source_ingestion.ResolvedDocumentPipeline(
             parser_backend="auto",
             chunk_strategy="langchain_recursive",
         ),
@@ -185,16 +186,16 @@ async def test_store_ingested_source_uses_minio_when_enabled(monkeypatch, tmp_pa
     document_id = uuid.uuid4()
     calls: list[dict] = []
 
-    monkeypatch.setattr(documents_module.settings, "MINIO_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module.settings, "MINIO_DOCUMENTS_ENABLED", True, raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "MINIO_ENABLED", True, raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "MINIO_DOCUMENTS_ENABLED", True, raising=False)
 
     def _upload(**kwargs):  # noqa: ANN003, ANN202
         calls.append(kwargs)
         return "minio://documents/documents/t/d/source.html"
 
-    monkeypatch.setattr(documents_module.minio_service, "upload_document_file", _upload, raising=True)
+    monkeypatch.setattr(minio_service, "upload_document_file", _upload, raising=True)
 
-    stored_path = await documents_module._store_ingested_source(
+    stored_path = await source_ingestion._store_ingested_source(
         file_path=source,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
@@ -231,12 +232,12 @@ async def test_store_ingested_source_uses_generic_object_store_when_enabled(monk
             calls.append(kwargs)
             return "s3://documents/documents/t/d/source.html"
 
-    monkeypatch.setattr(documents_module.settings, "OBJECT_STORAGE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module.settings, "OBJECT_STORAGE_DOCUMENTS_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module.settings, "OBJECT_STORAGE_PROVIDER", "s3", raising=False)
-    monkeypatch.setattr(documents_module, "get_document_object_store", lambda: _Store(), raising=True)
+    monkeypatch.setattr(source_ingestion.settings, "OBJECT_STORAGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "OBJECT_STORAGE_DOCUMENTS_ENABLED", True, raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "OBJECT_STORAGE_PROVIDER", "s3", raising=False)
+    monkeypatch.setattr(source_ingestion, "get_document_object_store", lambda: _Store(), raising=True)
 
-    stored_path = await documents_module._store_ingested_source(
+    stored_path = await source_ingestion._store_ingested_source(
         file_path=source,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
@@ -264,17 +265,17 @@ async def test_store_ingested_source_removes_temp_when_minio_upload_fails(monkey
     source = tmp_path / "source.html"
     source.write_text("<html>ok</html>", encoding="utf-8")
 
-    monkeypatch.setattr(documents_module.settings, "MINIO_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module.settings, "MINIO_DOCUMENTS_ENABLED", True, raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "MINIO_ENABLED", True, raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "MINIO_DOCUMENTS_ENABLED", True, raising=False)
     monkeypatch.setattr(
-        documents_module.minio_service,
+        minio_service,
         "upload_document_file",
         lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("minio unavailable")),
         raising=True,
     )
 
     with pytest.raises(RuntimeError, match="minio unavailable"):
-        await documents_module._store_ingested_source(
+        await source_ingestion._store_ingested_source(
             file_path=source,
             tenant_id=uuid.uuid4(),
             dataset_id=uuid.uuid4(),
@@ -292,10 +293,10 @@ async def test_ingest_url_request_persists_minio_uri_and_cleans_temp_after_queue
     dataset_id = uuid.uuid4()
     upload_calls: list[dict] = []
 
-    monkeypatch.setattr(documents_module.settings, "URL_INGEST_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module.settings, "MINIO_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module.settings, "MINIO_DOCUMENTS_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "URL_INGEST_ENABLED", True, raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "MINIO_ENABLED", True, raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "MINIO_DOCUMENTS_ENABLED", True, raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
 
     async def _validate(url: str) -> str:
         return url
@@ -312,27 +313,27 @@ async def test_ingest_url_request_persists_minio_uri_and_cleans_temp_after_queue
         upload_calls.append(kwargs)
         return f"minio://documents/documents/{kwargs['tenant_id']}/{kwargs['dataset_id']}/{kwargs['document_id']}.txt"
 
-    monkeypatch.setattr(documents_module, "validate_url_for_ingest", _validate, raising=True)
-    monkeypatch.setattr(documents_module, "download_url_to_path", _download, raising=True)
+    monkeypatch.setattr(source_ingestion, "validate_url_for_ingest", _validate, raising=True)
+    monkeypatch.setattr(source_ingestion, "download_url_to_path", _download, raising=True)
     monkeypatch.setattr(
-        documents_module.dataset_service,
+        source_ingestion.dataset_service,
         "resolve_writable_dataset",
         lambda *_args, **_kwargs: _dataset(dataset_id),
         raising=True,
     )
-    monkeypatch.setattr(documents_module, "_prepare_document_ingestion", lambda **_kwargs: _prepared(), raising=True)
-    monkeypatch.setattr(documents_module, "_create_url_ingestion_run", lambda **_kwargs: None, raising=True)
+    monkeypatch.setattr(source_ingestion, "_prepare_document_ingestion", lambda **_kwargs: _prepared(), raising=True)
+    monkeypatch.setattr(source_ingestion, "_create_url_ingestion_run", lambda **_kwargs: None, raising=True)
     monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _queued, raising=True)
-    monkeypatch.setattr(documents_module.minio_service, "upload_document_file", _upload, raising=True)
+    monkeypatch.setattr(minio_service, "upload_document_file", _upload, raising=True)
 
-    body = documents_module.UrlUploadRequest(
+    body = source_ingestion.UrlUploadRequest(
         url="https://example.com/doc.txt",
         dataset_id=dataset_id,
         filename="doc.txt",
     )
     db = _DB()
 
-    document = await documents_module._ingest_url_upload_request(
+    document = await source_ingestion._ingest_url_upload_request(
         background_tasks=BackgroundTasks(),
         body=body,
         tenant_id=tenant_id,
@@ -353,25 +354,25 @@ async def test_ingest_local_html_request_persists_minio_uri_and_cleans_temp_afte
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
 
-    monkeypatch.setattr(documents_module.settings, "URL_INGEST_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module.settings, "MINIO_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module.settings, "MINIO_DOCUMENTS_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "URL_INGEST_ENABLED", True, raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "MINIO_ENABLED", True, raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "MINIO_DOCUMENTS_ENABLED", True, raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
 
     async def _queued(**_kwargs):  # noqa: ANN003, ANN202
         return "task-456"
 
     monkeypatch.setattr(
-        documents_module.dataset_service,
+        source_ingestion.dataset_service,
         "resolve_writable_dataset",
         lambda *_args, **_kwargs: _dataset(dataset_id),
         raising=True,
     )
-    monkeypatch.setattr(documents_module, "_prepare_document_ingestion", lambda **_kwargs: _prepared(), raising=True)
-    monkeypatch.setattr(documents_module, "_create_local_html_ingestion_run", lambda **_kwargs: None, raising=True)
+    monkeypatch.setattr(source_ingestion, "_prepare_document_ingestion", lambda **_kwargs: _prepared(), raising=True)
+    monkeypatch.setattr(source_ingestion, "_create_local_html_ingestion_run", lambda **_kwargs: None, raising=True)
     monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _queued, raising=True)
     monkeypatch.setattr(
-        documents_module.minio_service,
+        minio_service,
         "upload_document_file",
         lambda **kwargs: (
             f"minio://documents/documents/{kwargs['tenant_id']}/{kwargs['dataset_id']}/{kwargs['document_id']}.html"
@@ -379,7 +380,7 @@ async def test_ingest_local_html_request_persists_minio_uri_and_cleans_temp_afte
         raising=True,
     )
 
-    body = documents_module.LocalHtmlIngestRequest(
+    body = source_ingestion.LocalHtmlIngestRequest(
         html="<html><body>Hello</body></html>",
         source_url="https://example.com/page",
         dataset_id=dataset_id,
@@ -387,7 +388,7 @@ async def test_ingest_local_html_request_persists_minio_uri_and_cleans_temp_afte
     )
     db = _DB()
 
-    document = await documents_module._ingest_local_html_request(
+    document = await source_ingestion._ingest_local_html_request(
         background_tasks=BackgroundTasks(),
         body=body,
         tenant_id=tenant_id,
@@ -411,16 +412,16 @@ async def test_ingest_local_html_request_enforces_upload_quota_before_object_sto
     dataset_id = uuid.uuid4()
     quota_calls: list[dict[str, int]] = []
 
-    monkeypatch.setattr(documents_module.settings, "URL_INGEST_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "URL_INGEST_ENABLED", True, raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(
-        documents_module.dataset_service,
+        source_ingestion.dataset_service,
         "resolve_writable_dataset",
         lambda *_args, **_kwargs: _dataset(dataset_id),
         raising=True,
     )
-    monkeypatch.setattr(documents_module, "_prepare_document_ingestion", lambda **_kwargs: _prepared(), raising=True)
-    monkeypatch.setattr(documents_module, "_create_local_html_ingestion_run", lambda **_kwargs: None, raising=True)
+    monkeypatch.setattr(source_ingestion, "_prepare_document_ingestion", lambda **_kwargs: _prepared(), raising=True)
+    monkeypatch.setattr(source_ingestion, "_create_local_html_ingestion_run", lambda **_kwargs: None, raising=True)
     monkeypatch.setattr(
         quota_service,
         "enforce_tenant_upload_quotas",
@@ -447,14 +448,14 @@ async def test_ingest_local_html_request_enforces_upload_quota_before_object_sto
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module,
+        source_ingestion,
         "_store_ingested_source",
         lambda **_kwargs: (_ for _ in ()).throw(AssertionError("object storage should not run after quota failure")),
         raising=True,
     )
 
     html = "<html><body>Hello quota</body></html>"
-    body = documents_module.LocalHtmlIngestRequest(
+    body = source_ingestion.LocalHtmlIngestRequest(
         html=html,
         source_url="https://example.com/page",
         dataset_id=dataset_id,
@@ -462,7 +463,7 @@ async def test_ingest_local_html_request_enforces_upload_quota_before_object_sto
     )
 
     with pytest.raises(HTTPException) as exc_info:
-        await documents_module._ingest_local_html_request(
+        await source_ingestion._ingest_local_html_request(
             background_tasks=BackgroundTasks(),
             body=body,
             tenant_id=tenant_id,
@@ -489,7 +490,7 @@ async def test_ingest_url_request_reuses_existing_document_when_audit_metadata_d
 ) -> None:
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
-    expected_pipeline_hash = documents_module._compute_pipeline_hash(
+    expected_pipeline_hash = source_ingestion._compute_pipeline_hash(
         {
             "parser_backend": "auto",
             "parser_backend_requested": "auto",
@@ -527,24 +528,24 @@ async def test_ingest_url_request_reuses_existing_document_when_audit_metadata_d
         etag="new-etag",
     )
 
-    monkeypatch.setattr(documents_module.settings, "URL_INGEST_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "URL_INGEST_ENABLED", True, raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(
-        documents_module.dataset_service,
+        source_ingestion.dataset_service,
         "resolve_writable_dataset",
         lambda *_args, **_kwargs: _dataset(dataset_id),
         raising=True,
     )
-    monkeypatch.setattr(documents_module, "_prepare_document_ingestion", lambda **_kwargs: _prepared(), raising=True)
-    monkeypatch.setattr(documents_module, "_create_url_ingestion_run", lambda **_kwargs: None, raising=True)
+    monkeypatch.setattr(source_ingestion, "_prepare_document_ingestion", lambda **_kwargs: _prepared(), raising=True)
+    monkeypatch.setattr(source_ingestion, "_create_url_ingestion_run", lambda **_kwargs: None, raising=True)
 
     async def _validate(url: str) -> str:
         return url
 
-    monkeypatch.setattr(documents_module, "validate_url_for_ingest", _validate, raising=True)
+    monkeypatch.setattr(source_ingestion, "validate_url_for_ingest", _validate, raising=True)
 
     async def _download(**_kwargs):  # noqa: ANN202
-        return documents_module.UrlIngestFile(
+        return source_ingestion.UrlIngestFile(
             file_id=uuid.uuid4(),
             final_path=final_path,
             file_ext=".txt",
@@ -555,7 +556,7 @@ async def test_ingest_url_request_reuses_existing_document_when_audit_metadata_d
         )
 
     async def _source_meta(**_kwargs):  # noqa: ANN202
-        return documents_module.UrlSourceMetadata(
+        return source_ingestion.UrlSourceMetadata(
             final_url="https://new.example/doc",
             normalized_requested="https://new.example/doc",
             normalized_final="https://new.example/doc",
@@ -568,10 +569,10 @@ async def test_ingest_url_request_reuses_existing_document_when_audit_metadata_d
             etag="new-etag",
         )
 
-    monkeypatch.setattr(documents_module, "_download_url_ingest_file", _download, raising=True)
-    monkeypatch.setattr(documents_module, "_url_source_metadata", _source_meta, raising=True)
+    monkeypatch.setattr(source_ingestion, "_download_url_ingest_file", _download, raising=True)
+    monkeypatch.setattr(source_ingestion, "_url_source_metadata", _source_meta, raising=True)
     monkeypatch.setattr(
-        documents_module,
+        source_ingestion,
         "_find_duplicate_document",
         lambda _db, *, tenant_id, dataset_id, file_sha256, pipeline_hash, **_kwargs: (
             seen.append(
@@ -587,13 +588,13 @@ async def test_ingest_url_request_reuses_existing_document_when_audit_metadata_d
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module,
+        source_ingestion,
         "_store_ingested_source",
         lambda **_kwargs: (_ for _ in ()).throw(AssertionError("duplicate reuse should bypass object storage")),
         raising=True,
     )
 
-    body = documents_module.UrlUploadRequest(
+    body = source_ingestion.UrlUploadRequest(
         url="https://new.example/doc",
         dataset_id=dataset_id,
         filename="dup.txt",
@@ -601,7 +602,7 @@ async def test_ingest_url_request_reuses_existing_document_when_audit_metadata_d
         chunk_strategy="langchain_recursive",
     )
 
-    result = await documents_module._ingest_url_upload_request(
+    result = await source_ingestion._ingest_url_upload_request(
         background_tasks=BackgroundTasks(),
         body=body,
         tenant_id=tenant_id,
@@ -629,7 +630,7 @@ async def test_ingest_local_html_request_reuses_existing_document_when_source_ur
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
     content_sha = hashlib.sha256(b"<html><body>Hello</body></html>").hexdigest()
-    expected_pipeline_hash = documents_module._compute_pipeline_hash(
+    expected_pipeline_hash = source_ingestion._compute_pipeline_hash(
         {
             "parser_backend": "auto",
             "parser_backend_requested": "auto",
@@ -652,19 +653,19 @@ async def test_ingest_local_html_request_reuses_existing_document_when_source_ur
     )
     seen: list[dict[str, object]] = []
 
-    monkeypatch.setattr(documents_module.settings, "URL_INGEST_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "URL_INGEST_ENABLED", True, raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(
-        documents_module.dataset_service,
+        source_ingestion.dataset_service,
         "resolve_writable_dataset",
         lambda *_args, **_kwargs: _dataset(dataset_id),
         raising=True,
     )
-    monkeypatch.setattr(documents_module, "_prepare_document_ingestion", lambda **_kwargs: _prepared(), raising=True)
-    monkeypatch.setattr(documents_module, "_create_local_html_ingestion_run", lambda **_kwargs: None, raising=True)
+    monkeypatch.setattr(source_ingestion, "_prepare_document_ingestion", lambda **_kwargs: _prepared(), raising=True)
+    monkeypatch.setattr(source_ingestion, "_create_local_html_ingestion_run", lambda **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        documents_module,
+        source_ingestion,
         "_find_duplicate_document",
         lambda _db, *, tenant_id, dataset_id, file_sha256, pipeline_hash, **_kwargs: (
             seen.append(
@@ -680,13 +681,13 @@ async def test_ingest_local_html_request_reuses_existing_document_when_source_ur
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module,
+        source_ingestion,
         "_store_ingested_source",
         lambda **_kwargs: (_ for _ in ()).throw(AssertionError("duplicate reuse should bypass object storage")),
         raising=True,
     )
 
-    body = documents_module.LocalHtmlIngestRequest(
+    body = source_ingestion.LocalHtmlIngestRequest(
         html="<html><body>Hello</body></html>",
         source_url="https://new.example/page",
         dataset_id=dataset_id,
@@ -695,7 +696,7 @@ async def test_ingest_local_html_request_reuses_existing_document_when_source_ur
         chunk_strategy="langchain_recursive",
     )
 
-    result = await documents_module._ingest_local_html_request(
+    result = await source_ingestion._ingest_local_html_request(
         background_tasks=BackgroundTasks(),
         body=body,
         tenant_id=tenant_id,
@@ -725,7 +726,7 @@ async def test_persist_and_process_ingested_document_add_failure_deletes_unpersi
     dataset_id = uuid.uuid4()
     document_id = uuid.uuid4()
     deleted: list[str] = []
-    monkeypatch.setattr(documents_module.settings, "MINIO_BUCKET_NAME", "documents", raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "MINIO_BUCKET_NAME", "documents", raising=False)
 
     class _FailingDB:
         def add(self, _obj) -> None:  # noqa: ANN001
@@ -735,14 +736,14 @@ async def test_persist_and_process_ingested_document_add_failure_deletes_unpersi
             return None
 
     monkeypatch.setattr(
-        documents_module.minio_service,
+        minio_service,
         "delete_object",
         lambda *, object_name: deleted.append(object_name),
         raising=True,
     )
 
     with pytest.raises(RuntimeError, match="add failed"):
-        await documents_module._persist_and_process_ingested_document(
+        await source_ingestion._persist_and_process_ingested_document(
             db=_FailingDB(),
             background_tasks=BackgroundTasks(),
             tenant_id=tenant_id,
@@ -757,7 +758,7 @@ async def test_persist_and_process_ingested_document_add_failure_deletes_unpersi
             source_ref="https://example.com/page",
             doc_metadata={},
             pipeline_hash="pipeline-hash",
-            pipeline=documents_module.ResolvedDocumentPipeline(
+            pipeline=source_ingestion.ResolvedDocumentPipeline(
                 parser_backend="auto",
                 chunk_strategy="langchain_recursive",
             ),
@@ -778,7 +779,7 @@ async def test_persist_and_process_ingested_document_commit_failure_keeps_object
     dataset_id = uuid.uuid4()
     document_id = uuid.uuid4()
     deleted: list[str] = []
-    monkeypatch.setattr(documents_module.settings, "MINIO_BUCKET_NAME", "documents", raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "MINIO_BUCKET_NAME", "documents", raising=False)
 
     class _FailingDB:
         def add(self, _obj) -> None:  # noqa: ANN001
@@ -791,20 +792,20 @@ async def test_persist_and_process_ingested_document_commit_failure_keeps_object
             return None
 
     monkeypatch.setattr(
-        documents_module.minio_service,
+        minio_service,
         "delete_object",
         lambda *, object_name: deleted.append(object_name),
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module,
+        source_ingestion,
         "SessionLocal",
         lambda: SimpleNamespace(get=lambda *_args, **_kwargs: object(), close=lambda: None),
         raising=True,
     )
 
     with pytest.raises(RuntimeError, match="commit failed"):
-        await documents_module._persist_and_process_ingested_document(
+        await source_ingestion._persist_and_process_ingested_document(
             db=_FailingDB(),
             background_tasks=BackgroundTasks(),
             tenant_id=tenant_id,
@@ -819,7 +820,7 @@ async def test_persist_and_process_ingested_document_commit_failure_keeps_object
             source_ref="https://example.com/page",
             doc_metadata={},
             pipeline_hash="pipeline-hash",
-            pipeline=documents_module.ResolvedDocumentPipeline(
+            pipeline=source_ingestion.ResolvedDocumentPipeline(
                 parser_backend="auto",
                 chunk_strategy="langchain_recursive",
             ),
@@ -840,7 +841,7 @@ async def test_persist_and_process_ingested_document_commit_failure_deletes_obje
     dataset_id = uuid.uuid4()
     document_id = uuid.uuid4()
     deleted: list[str] = []
-    monkeypatch.setattr(documents_module.settings, "MINIO_BUCKET_NAME", "documents", raising=False)
+    monkeypatch.setattr(source_ingestion.settings, "MINIO_BUCKET_NAME", "documents", raising=False)
 
     class _FailingDB:
         def add(self, _obj) -> None:  # noqa: ANN001
@@ -853,20 +854,20 @@ async def test_persist_and_process_ingested_document_commit_failure_deletes_obje
             return None
 
     monkeypatch.setattr(
-        documents_module.minio_service,
+        minio_service,
         "delete_object",
         lambda *, object_name: deleted.append(object_name),
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module,
+        source_ingestion,
         "SessionLocal",
         lambda: SimpleNamespace(get=lambda *_args, **_kwargs: None, close=lambda: None),
         raising=True,
     )
 
     with pytest.raises(RuntimeError, match="commit failed"):
-        await documents_module._persist_and_process_ingested_document(
+        await source_ingestion._persist_and_process_ingested_document(
             db=_FailingDB(),
             background_tasks=BackgroundTasks(),
             tenant_id=tenant_id,
@@ -881,7 +882,7 @@ async def test_persist_and_process_ingested_document_commit_failure_deletes_obje
             source_ref="https://example.com/page",
             doc_metadata={},
             pipeline_hash="pipeline-hash",
-            pipeline=documents_module.ResolvedDocumentPipeline(
+            pipeline=source_ingestion.ResolvedDocumentPipeline(
                 parser_backend="auto",
                 chunk_strategy="langchain_recursive",
             ),
@@ -913,14 +914,14 @@ async def test_persist_and_process_ingested_document_commit_failure_keeps_local_
             return None
 
     monkeypatch.setattr(
-        documents_module,
+        source_ingestion,
         "SessionLocal",
         lambda: SimpleNamespace(get=lambda *_args, **_kwargs: object(), close=lambda: None),
         raising=True,
     )
 
     with pytest.raises(RuntimeError, match="commit failed"):
-        await documents_module._persist_and_process_ingested_document(
+        await source_ingestion._persist_and_process_ingested_document(
             db=_FailingDB(),
             background_tasks=BackgroundTasks(),
             tenant_id=tenant_id,
@@ -935,7 +936,7 @@ async def test_persist_and_process_ingested_document_commit_failure_keeps_local_
             source_ref="https://example.com/page",
             doc_metadata={},
             pipeline_hash="pipeline-hash",
-            pipeline=documents_module.ResolvedDocumentPipeline(
+            pipeline=source_ingestion.ResolvedDocumentPipeline(
                 parser_backend="auto",
                 chunk_strategy="langchain_recursive",
             ),
@@ -966,14 +967,14 @@ async def test_persist_and_process_ingested_document_commit_failure_keeps_local_
             return None
 
     monkeypatch.setattr(
-        documents_module,
+        source_ingestion,
         "SessionLocal",
         lambda: (_ for _ in ()).throw(RuntimeError("session unavailable")),
         raising=True,
     )
 
     with pytest.raises(RuntimeError, match="commit failed"):
-        await documents_module._persist_and_process_ingested_document(
+        await source_ingestion._persist_and_process_ingested_document(
             db=_FailingDB(),
             background_tasks=BackgroundTasks(),
             tenant_id=tenant_id,
@@ -988,7 +989,7 @@ async def test_persist_and_process_ingested_document_commit_failure_keeps_local_
             source_ref="https://example.com/page",
             doc_metadata={},
             pipeline_hash="pipeline-hash",
-            pipeline=documents_module.ResolvedDocumentPipeline(
+            pipeline=source_ingestion.ResolvedDocumentPipeline(
                 parser_backend="auto",
                 chunk_strategy="langchain_recursive",
             ),

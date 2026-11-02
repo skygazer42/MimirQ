@@ -14,6 +14,7 @@ from uuid import UUID
 from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
+from app.api.schemas.document import LocalHtmlIngestRequest as LocalHtmlIngestRequest
 from app.api.v1 import (
     connectors_acl,
     connectors_artifacts,
@@ -34,7 +35,10 @@ from app.api.v1 import (
     connectors_web_crawl_plan,
 )
 from app.api.v1.connectors_validation import validate_connector_config as validate_connector_config
-from app.api.v1.documents import (
+from app.api.v1.document_source_ingestion import (
+    _ingest_local_html_request as _ingest_local_html_request,
+)
+from app.api.v1.document_source_ingestion import (
     _ingest_url_upload_request as _ingest_url_upload_request,
 )
 from app.core.config import settings as settings

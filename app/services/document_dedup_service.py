@@ -4,12 +4,40 @@ from collections.abc import Callable
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, Session
 
 from app.models.document import Document as DBDocument
-from app.services.document_identity import get_content_sha256
+from app.services.document_identity import build_document_dedup_key, get_content_sha256
 
 DUPLICATE_DOCUMENT_PROCESSING_DETAIL = "Duplicate document is currently processing"
+DOCUMENT_DEDUP_CONSTRAINT_NAME = "uq_documents_tenant_dataset_dedup_key_active"
+
+
+class DuplicatePersistedDocumentError(RuntimeError):
+    def __init__(self, document: Any) -> None:
+        super().__init__("duplicate persisted document")
+        self.document = document
+
+
+def document_matches_dedup_identity(document: Any, *, content_sha256: str, pipeline_hash: str) -> bool:
+    expected = build_document_dedup_key(content_sha256=content_sha256, pipeline_hash=pipeline_hash)
+    if expected and str(getattr(document, "dedup_key", "") or "").strip() == expected:
+        return True
+    metadata = dict(getattr(document, "doc_metadata", None) or {})
+    return bool(
+        expected
+        and get_content_sha256(metadata) == str(content_sha256 or "").strip().lower()
+        and str(metadata.get("pipeline_hash") or "").strip() == str(pipeline_hash or "").strip()
+    )
+
+
+def is_document_dedup_integrity_error(exc: IntegrityError) -> bool:
+    diag = getattr(getattr(exc, "orig", None), "diag", None)
+    if str(getattr(diag, "constraint_name", "") or "").strip() == DOCUMENT_DEDUP_CONSTRAINT_NAME:
+        return True
+    message = str(getattr(exc, "orig", "") or exc)
+    return DOCUMENT_DEDUP_CONSTRAINT_NAME in message
 
 
 def _duplicate_document_query(db: Session, *, tenant_id: UUID, dataset_id: UUID) -> Query[DBDocument]:

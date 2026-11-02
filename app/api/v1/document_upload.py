@@ -32,6 +32,7 @@ from app.api.utils.upload import (
     save_upload_file_with_hash,
 )
 from app.api.v1.document_processing import retry_document_processing
+from app.api.v1.document_source_ingestion import _ingest_url_upload_request
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.models.dataset import Dataset
@@ -44,15 +45,26 @@ from app.services import dataset_service, ingestion_run_service
 from app.services.dataset_precheck_ingestion_suggestion import apply_ingestion_policy_suggestion
 from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
 from app.services.document_dedup_service import (
+    DOCUMENT_DEDUP_CONSTRAINT_NAME as DOCUMENT_DEDUP_CONSTRAINT_NAME,
+)
+from app.services.document_dedup_service import (
     DUPLICATE_DOCUMENT_PROCESSING_DETAIL,
     _find_duplicate_document,
     _find_duplicate_document_by_sha,
     _find_duplicate_document_for_persist_conflict,
 )
+from app.services.document_dedup_service import (
+    DuplicatePersistedDocumentError as _DuplicatePersistedDocumentError,
+)
+from app.services.document_dedup_service import (
+    document_matches_dedup_identity as _document_matches_dedup_identity,
+)
+from app.services.document_dedup_service import (
+    is_document_dedup_integrity_error as _is_document_dedup_integrity_error,
+)
 from app.services.document_identity import (
     build_document_dedup_key,
     compute_pipeline_hash,
-    get_content_sha256,
     set_content_sha256,
     sync_pipeline_execution_identity,
 )
@@ -90,13 +102,6 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 logger = get_logger(__name__)
 document_logger = get_logger("api.documents")
 INGEST_LOCK_UNAVAILABLE_DETAIL = "Ingest lock unavailable"
-DOCUMENT_DEDUP_CONSTRAINT_NAME = "uq_documents_tenant_dataset_dedup_key_active"
-
-
-class _DuplicatePersistedDocumentError(RuntimeError):
-    def __init__(self, document: Any) -> None:
-        super().__init__("duplicate persisted document")
-        self.document = document
 
 
 @dataclass
@@ -367,31 +372,6 @@ def _retain_ingest_lock_if_task_handed_off(document: Any, *, ingest_lock: _Inges
 
 def _build_document_dedup_key(*, file_sha256: str | None, pipeline_hash: str | None) -> str | None:
     return build_document_dedup_key(content_sha256=file_sha256, pipeline_hash=pipeline_hash)
-
-
-def _document_matches_dedup_identity(
-    document: Any,
-    *,
-    file_sha256: str,
-    pipeline_hash: str,
-) -> bool:
-    expected = _build_document_dedup_key(file_sha256=file_sha256, pipeline_hash=pipeline_hash)
-    if expected and str(getattr(document, "dedup_key", "") or "").strip() == expected:
-        return True
-    metadata = dict(getattr(document, "doc_metadata", None) or {})
-    return bool(
-        expected
-        and get_content_sha256(metadata) == str(file_sha256 or "").strip().lower()
-        and str(metadata.get("pipeline_hash") or "").strip() == str(pipeline_hash or "").strip()
-    )
-
-
-def _is_document_dedup_integrity_error(exc: IntegrityError) -> bool:
-    diag = getattr(getattr(exc, "orig", None), "diag", None)
-    if str(getattr(diag, "constraint_name", "") or "").strip() == DOCUMENT_DEDUP_CONSTRAINT_NAME:
-        return True
-    message = str(getattr(exc, "orig", "") or exc)
-    return DOCUMENT_DEDUP_CONSTRAINT_NAME in message
 
 
 def _sync_duplicate_document_pipeline_identity(
@@ -941,7 +921,7 @@ async def _reuse_duplicate_document(
     if status0 in {"pending", "processing"}:
         if _document_matches_dedup_identity(
             duplicate_document,
-            file_sha256=file_sha256,
+            content_sha256=file_sha256,
             pipeline_hash=pipeline_hash,
         ):
             return duplicate_document
@@ -2143,9 +2123,7 @@ async def upload_document_from_url(
     - Disabled by default: set URL_INGEST_ENABLED=true to enable.
     - SSRF guard: blocks private/loopback/link-local hosts by default.
     """
-    from app.api.v1 import documents as documents_module  # Local import to avoid router circular import.
-
-    return await documents_module._ingest_url_upload_request(
+    return await _ingest_url_upload_request(
         background_tasks=background_tasks,
         body=body,
         tenant_id=tenant_id,

@@ -14,7 +14,7 @@
 
 - 工作区：`E:/MimirQ`；分支：`codex/local-account-registration`。不新建分支或 worktree。
 - 原始基线：`77b6adc1bce523482f0509302a454ce20e01c41c`；数据集服务已提交为 `2c16dedf8`。前两批及第三批此前结果保留，不重新执行。
-- 当前覆盖表有 3,645 个文件：123 个已调整、29 个已符合、964 个登记保留、2,529 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
+- 当前覆盖表有 3,646 个文件：124 个已调整、29 个已符合、964 个登记保留、2,529 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
 - Task 3A 的 125 个 Python 文件已完成最终静态核对并按数据集类别提交；Task 3B 的权限、配额、SCIM、配置、通用 API、身份令牌、共享资源与健康观测已完成本轮代码整理与静态检查，继续核对其余基础模块。原有 `app/api/schemas/document.py` 修改另行保留。
 - 原工作区的 1,625 个未跟踪文件及其他既有修改保留；只按本批明确文件清单暂存，不使用 `git add .`，不执行全仓清理或重置。
 - 用户执行要求：提交按完整业务类别归并，不按函数、文件或每个检查步骤频繁提交；同一类别的定义、调用方、必要引用和验证记录一起提交。纯格式化仍独立成类。
@@ -183,6 +183,8 @@ Batch precheck helpers 直接依赖 staging file APIs、scan model/session 和�
 批量上传的 saved/live worker 直接使用已有 `SessionLocal` 所有者；两个 helper 不再接收未使用的 `documents_module: Any`，批量路由也不再为创建会话导入 documents 聚合模块。路由声明与每个 worker 的独立会话生命周期保持不变。
 
 失败 duplicate 直接调用 `document_processing.retry_document_processing`；处理中 duplicate 的 409 文案归入 `document_dedup_service`，documents 仅兼容重导出。commit acknowledgement 不确定时直接使用 `SessionLocal`。重试输入、错误文案与对象清理时序保持原样；URL 入库仍需独立移除路由聚合依赖。
+
+URL 上传与 connector HTML 入库共享的来源准备、配额、去重、持久化和任务调度流程归入 `app/api/v1/document_source_ingestion.py`；`document_upload` 和 connectors 直接导入，`documents.py` 只保留旧入口的直接兼容导出。`LocalHtmlIngestRequest` 归入文档 schema；dedup identity、约束识别和冲突异常统一由 `document_dedup_service` 持有。49 个流程定义按 AST 保持原实现；SSRF、功能开关、租户权限、配额、错误映射、事务与资源清理顺序不变。
 
 **本批产出：** 上传到任务的输入输出和失败路径一致，同一字段映射与权限规则只有一个业务维护点。
 

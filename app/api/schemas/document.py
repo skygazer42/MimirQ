@@ -503,6 +503,24 @@ class UrlUploadRequest(BaseModel):
     pipeline: DocumentPipelineOptions | None = None
 
 
+class LocalHtmlIngestRequest(BaseModel):
+    """Ingest a local HTML payload as a document (internal connector helper)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    html: str = Field(..., description="HTML content (fragment or full document)")
+    source_url: str | None = Field(
+        default=None, max_length=2000, description="Best-effort source URL for citations/debug"
+    )
+    dataset_id: UUID | None = None
+    filename: str | None = Field(
+        default=None, max_length=500, description="Optional override filename (used for extension + display)"
+    )
+    parser_backend: str = Field(default=settings.DEFAULT_PARSER_BACKEND)
+    chunk_strategy: str = Field(default=settings.DEFAULT_CHUNK_STRATEGY)
+    pipeline: DocumentPipelineOptions | None = None
+
+
 DocumentAccessMode = Literal["inherit", "only_me", "all_team_members", "partial_members"]
 
 

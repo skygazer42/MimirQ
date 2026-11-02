@@ -358,3 +358,9 @@
 - 上传路由直接调用 `document_processing.retry_document_processing`；commit acknowledgement 不确定时使用现有 `SessionLocal`；处理中 duplicate 的 409 文案归入 `document_dedup_service`，`documents.py` 保留同名直接导出。
 - 更新四个现有并发流程 fixture 的 retry patch 目标；重试参数、权限检查、409 文案、rollback／提交确认及对象清理顺序不变。URL 上传的 documents 路由调用仍单独待审。
 - Ruff check、Ruff format --check、AST 语法解析与 diff --check 通过；没有运行 Python 测试或导入应用，重试和提交确认运行时未验证。
+
+## 第四批：URL 与 connector HTML 来源入库所有权（2026-11-03）
+
+- URL 上传与本地 HTML 入库共用的来源解析、管线策略、metadata、配额、dedup、持久化和处理调度迁到 `document_source_ingestion`。`document_upload` 和 connectors 直接调用该 owner；`documents.py` 保留入口、请求 schema 和相关数据类型的直接兼容导出。
+- `LocalHtmlIngestRequest` 移到文档 schema。dedup constraint、identity match、integrity-error 判断与 persisted-duplicate 异常由 `document_dedup_service` 统一持有；原 409、SSRF 校验和功能开关状态、tenant/write 检查、quota 次序、commit/rollback、对象及临时文件清理、queue/inline 路径按原 AST 保持。
+- 49 个移动定义 AST 相同；schema class AST 相同；`upload_document_from_url` 的路由参数、装饰器和响应配置不变。Ruff、格式、AST 语法与 diff 检查通过。只同步现有 patch 目标，没有运行 Python 测试、导入应用或连接存储。
