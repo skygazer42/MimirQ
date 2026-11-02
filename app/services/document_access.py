@@ -11,9 +11,9 @@ from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
 from app.models.group_permissions import DatasetGroupPermission, DocumentGroupPermission
 from app.models.tenant_group import TenantGroupMember
+from app.services import tenant_group_service
 from app.services.authz_prometheus_metrics import observe_group_permission_check
 from app.services.dataset_service import DatasetService
-from app.services.tenant_group_service import TenantGroupService
 
 # Document-level ACL ("security trimming") modes.
 _DOC_ACCESS_DEFAULTS = {"", "inherit"}
@@ -39,7 +39,7 @@ def _resolve_account_group_ids(db: Session, *, tenant_id: UUID, account_id: str)
     Note: this is a low-level helper used by permission checks; it must not raise
     for missing memberships (empty set means "no groups").
     """
-    return TenantGroupService.resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
+    return tenant_group_service.resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
 
 
 def build_dataset_read_filter(*, tenant_id: UUID, account_id: str) -> ColumnElement[bool]:

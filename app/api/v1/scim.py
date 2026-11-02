@@ -29,10 +29,11 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.exceptions import MimirQError
 from app.models.tenant import TenantMember
 from app.models.tenant_group import TenantGroupMember
+from app.services import tenant_group_service
 from app.services.audit_log_service import audit_log_event
-from app.services.tenant_group_service import TenantGroupService
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -62,14 +63,14 @@ _REMOVE_MEMBER_FILTER_RE = re.compile(r'members\[\s*value\s+eq\s+"([^"]+)"\s*\]'
 
 
 def get_scim_tenant_id(request: Request, x_tenant_id: str | None = Header(default=None)) -> UUID:
-    tenant_header = str(getattr(settings, "TENANT_HEADER", "") or "X-Tenant-ID").strip() or "X-Tenant-ID"
+    tenant_header = str(settings.TENANT_HEADER or "X-Tenant-ID").strip() or "X-Tenant-ID"
     raw_tenant = (x_tenant_id or "").strip()
     if not raw_tenant and tenant_header.lower() != "x-tenant-id":
         raw_tenant = (request.headers.get(tenant_header) or "").strip()
     if not raw_tenant:
         raise HTTPException(status_code=400, detail=f"{tenant_header} header required")
 
-    bound_tenant = str(getattr(settings, "SCIM_TENANT_ID", "") or "").strip()
+    bound_tenant = str(settings.SCIM_TENANT_ID or "").strip()
     try:
         requested_id = UUID(raw_tenant)
         bound_id = UUID(bound_tenant)
@@ -158,16 +159,16 @@ def _parse_ip_allowlist(raw: str) -> list[ipaddress.IPv4Network | ipaddress.IPv6
 
 
 def _require_scim_actor(request: Request, authorization: Annotated[str | None, Header()] = None) -> str:
-    if not bool(getattr(settings, "SCIM_ENABLED", False)):
+    if not bool(settings.SCIM_ENABLED):
         raise HTTPException(status_code=404, detail="SCIM not enabled")
 
-    expected_raw = str(getattr(settings, "SCIM_BEARER_TOKEN", "") or "").strip()
+    expected_raw = str(settings.SCIM_BEARER_TOKEN or "").strip()
     expected_tokens = _split_items(expected_raw)
     if not expected_tokens:
         # Misconfiguration; do not expose further detail.
         raise HTTPException(status_code=404, detail="SCIM not enabled")
 
-    allowlist_raw = str(getattr(settings, "SCIM_IP_ALLOWLIST_CIDRS", "") or "").strip()
+    allowlist_raw = str(settings.SCIM_IP_ALLOWLIST_CIDRS or "").strip()
     if allowlist_raw:
         client_ip = _extract_client_ip(request)
         if client_ip is None:
@@ -195,7 +196,7 @@ def _require_scim_actor(request: Request, authorization: Annotated[str | None, H
 def _scim_page(*, start_index: int, count: int) -> tuple[int, int, int]:
     start = max(1, int(start_index or 1))
     page_size = max(1, int(count or 200))
-    max_page_size = int(getattr(settings, "SCIM_PAGE_SIZE_MAX", 200) or 200)
+    max_page_size = int(settings.SCIM_PAGE_SIZE_MAX or 200)
     if max_page_size > 0:
         page_size = min(page_size, max_page_size)
     skip = start - 1
@@ -292,8 +293,8 @@ def _get_user(db: Session, *, tenant_id: UUID, user_id: str) -> TenantMember | N
 @router.get("/ServiceProviderConfig", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_service_provider_config(_actor: Annotated[str, Depends(_require_scim_actor)]):
     # See RFC7644 §4 and RFC7643 (ServiceProviderConfig schema).
-    patch_supported = bool(getattr(settings, "SCIM_PATCH_GROUP_MEMBERSHIP_ENABLED", False)) or bool(
-        getattr(settings, "SCIM_USERS_PATCH_ACTIVE_ENABLED", False)
+    patch_supported = bool(settings.SCIM_PATCH_GROUP_MEMBERSHIP_ENABLED) or bool(
+        settings.SCIM_USERS_PATCH_ACTIVE_ENABLED
     )
     return _scim_json(
         {
@@ -393,7 +394,7 @@ def list_groups(
     db: Annotated[Session, Depends(get_db)],
 ):
     skip, limit, start = _scim_page(start_index=start_index, count=count)
-    total, groups = TenantGroupService.list_groups(db, tenant_id=tenant_id, skip=skip, limit=limit)
+    total, groups = tenant_group_service.list_groups(db, tenant_id=tenant_id, skip=skip, limit=limit)
     resources = [_scim_group(g, include_members=False) for g in groups]
     return _scim_json(
         _list_response(
@@ -414,10 +415,10 @@ def get_group(
     db: Annotated[Session, Depends(get_db)],
 ):
     try:
-        group = TenantGroupService.get_group(db, tenant_id=tenant_id, group_id=group_id)
-        _total, rows = TenantGroupService.list_members(db, tenant_id=tenant_id, group_id=group_id, skip=0, limit=2000)
-    except HTTPException as exc:
-        return _scim_error(status_code=int(exc.status_code), detail=str(exc.detail or "error"))
+        group = tenant_group_service.get_group(db, tenant_id=tenant_id, group_id=group_id)
+        _total, rows = tenant_group_service.list_members(db, tenant_id=tenant_id, group_id=group_id, skip=0, limit=2000)
+    except MimirQError as exc:
+        return _scim_error(status_code=exc.status_code, detail=exc.message)
     members = [str(getattr(r, "user_id", "") or "").strip() for r in rows]
     return _scim_json(_scim_group(group, include_members=True, members=members))
 
@@ -431,7 +432,7 @@ def create_group(
     actor_id: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    if not bool(getattr(settings, "SCIM_GROUPS_MUTATION_ENABLED", False)):
+    if not bool(settings.SCIM_GROUPS_MUTATION_ENABLED):
         return _scim_error(status_code=404, detail="POST /Groups not enabled")
 
     if not isinstance(payload, dict):
@@ -451,10 +452,10 @@ def create_group(
             return _scim_error(status_code=400, detail="externalId too long (max=255)", scim_type="invalidValue")
 
     try:
-        group = TenantGroupService.create_group(db, tenant_id=tenant_id, name=display_name, external_id=external_id)
-    except HTTPException as exc:
-        scim_type = "uniqueness" if int(exc.status_code) == 409 else None
-        return _scim_error(status_code=int(exc.status_code), detail=str(exc.detail or "error"), scim_type=scim_type)
+        group = tenant_group_service.create_group(db, tenant_id=tenant_id, name=display_name, external_id=external_id)
+    except MimirQError as exc:
+        scim_type = "uniqueness" if exc.status_code == 409 else None
+        return _scim_error(status_code=exc.status_code, detail=exc.message, scim_type=scim_type)
 
     members_provided = payload.get("members")
     member_count = 0
@@ -493,7 +494,7 @@ def put_group(
     actor_id: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    if not bool(getattr(settings, "SCIM_GROUPS_MUTATION_ENABLED", False)):
+    if not bool(settings.SCIM_GROUPS_MUTATION_ENABLED):
         return _scim_error(status_code=404, detail="PUT /Groups not enabled")
 
     if not isinstance(payload, dict):
@@ -516,16 +517,16 @@ def put_group(
         external_id_hash = _hash_pii(raw_ext) if raw_ext else None
 
     try:
-        group = TenantGroupService.update_group(
+        group = tenant_group_service.update_group(
             db,
             tenant_id=tenant_id,
             group_id=group_id,
             name=display_name,
             external_id=external_id_arg,
         )
-    except HTTPException as exc:
-        scim_type = "uniqueness" if int(exc.status_code) == 409 else None
-        return _scim_error(status_code=int(exc.status_code), detail=str(exc.detail or "error"), scim_type=scim_type)
+    except MimirQError as exc:
+        scim_type = "uniqueness" if exc.status_code == 409 else None
+        return _scim_error(status_code=exc.status_code, detail=exc.message, scim_type=scim_type)
 
     _audit_scim(
         db,
@@ -556,21 +557,21 @@ def delete_group(
     actor_id: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    if not bool(getattr(settings, "SCIM_GROUPS_MUTATION_ENABLED", False)):
+    if not bool(settings.SCIM_GROUPS_MUTATION_ENABLED):
         return _scim_error(status_code=404, detail="DELETE /Groups not enabled")
 
     try:
-        group = TenantGroupService.get_group(db, tenant_id=tenant_id, group_id=group_id)
-    except HTTPException as exc:
-        return _scim_error(status_code=int(exc.status_code), detail=str(exc.detail or "error"))
+        group = tenant_group_service.get_group(db, tenant_id=tenant_id, group_id=group_id)
+    except MimirQError as exc:
+        return _scim_error(status_code=exc.status_code, detail=exc.message)
 
     display_name = str(getattr(group, "name", "") or "")
     external_id = getattr(group, "external_id", None)
 
     try:
-        TenantGroupService.delete_group(db, tenant_id=tenant_id, group_id=group_id)
-    except HTTPException as exc:
-        return _scim_error(status_code=int(exc.status_code), detail=str(exc.detail or "error"))
+        tenant_group_service.delete_group(db, tenant_id=tenant_id, group_id=group_id)
+    except MimirQError as exc:
+        return _scim_error(status_code=exc.status_code, detail=exc.message)
 
     _audit_scim(
         db,
@@ -711,7 +712,7 @@ def create_user(
     actor_id: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    if not bool(getattr(settings, "SCIM_USERS_CREATE_ENABLED", False)):
+    if not bool(settings.SCIM_USERS_CREATE_ENABLED):
         return _scim_error(status_code=404, detail="POST /Users not enabled")
 
     if not isinstance(payload, dict):
@@ -803,7 +804,7 @@ def patch_user(
     actor_id: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    if not bool(getattr(settings, "SCIM_USERS_PATCH_ACTIVE_ENABLED", False)):
+    if not bool(settings.SCIM_USERS_PATCH_ACTIVE_ENABLED):
         return _scim_error(status_code=404, detail="PATCH /Users not enabled")
 
     member = _get_user(db, tenant_id=tenant_id, user_id=user_id)
@@ -829,7 +830,7 @@ def patch_user(
             member.is_current = False
 
     revoked = 0
-    if not after and bool(getattr(settings, "SCIM_DEPROVISION_REVOKE_GROUP_MEMBERSHIPS_ENABLED", False)):
+    if not after and bool(settings.SCIM_DEPROVISION_REVOKE_GROUP_MEMBERSHIPS_ENABLED):
         revoked = _revoke_group_memberships_for_user(
             db,
             tenant_id=tenant_id,
@@ -937,16 +938,16 @@ def _apply_membership_patch(
     removed = 0
     try:
         if to_add:
-            added = TenantGroupService.add_members(db, tenant_id=tenant_id, group_id=group_id, member_ids=to_add)
+            added = tenant_group_service.add_members(db, tenant_id=tenant_id, group_id=group_id, member_ids=to_add)
         if to_remove:
-            removed = TenantGroupService.remove_members(
+            removed = tenant_group_service.remove_members(
                 db,
                 tenant_id=tenant_id,
                 group_id=group_id,
                 member_ids=to_remove,
             )
-    except HTTPException as exc:
-        return _scim_error(status_code=int(exc.status_code), detail=str(exc.detail or "error"))
+    except MimirQError as exc:
+        return _scim_error(status_code=exc.status_code, detail=exc.message)
     return added, removed
 
 
@@ -978,8 +979,8 @@ def _audit_membership_patch(
 
 
 def _membership_patch_response(*, db: Session, tenant_id: UUID, group_id: UUID) -> JSONResponse:
-    group = TenantGroupService.get_group(db, tenant_id=tenant_id, group_id=group_id)
-    _total, rows = TenantGroupService.list_members(db, tenant_id=tenant_id, group_id=group_id, skip=0, limit=2000)
+    group = tenant_group_service.get_group(db, tenant_id=tenant_id, group_id=group_id)
+    _total, rows = tenant_group_service.list_members(db, tenant_id=tenant_id, group_id=group_id, skip=0, limit=2000)
     members = [str(getattr(r, "user_id", "") or "").strip() for r in rows]
     return _scim_json(_scim_group(group, include_members=True, members=members))
 
@@ -993,7 +994,7 @@ def patch_group_membership(
     actor_id: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    if not bool(getattr(settings, "SCIM_PATCH_GROUP_MEMBERSHIP_ENABLED", False)):
+    if not bool(settings.SCIM_PATCH_GROUP_MEMBERSHIP_ENABLED):
         return _scim_error(status_code=404, detail="PATCH group membership not enabled")
 
     ops, error = _validate_group_membership_patch_payload(payload)

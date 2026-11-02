@@ -165,6 +165,11 @@ class AuthorizationError(MimirQError):
         super().__init__(message, error_code="AUTHORIZATION_ERROR", status_code=403)
 
 
+class NotFoundError(MimirQError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="NOT_FOUND", status_code=404)
+
+
 class ConflictError(MimirQError):
     def __init__(self, message: str) -> None:
         super().__init__(message, error_code="CONFLICT", status_code=409)

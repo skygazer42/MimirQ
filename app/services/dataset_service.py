@@ -16,9 +16,9 @@ from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.group_permissions import DatasetGroupPermission
 from app.models.tenant import Tenant, TenantMember
 from app.models.tenant_group import TenantGroup
+from app.services import tenant_group_service
 from app.services.audit_log_service import audit_log_event
 from app.services.authz_prometheus_metrics import observe_group_permission_check
-from app.services.tenant_group_service import TenantGroupService
 
 EDIT_ROLES = UserRoles.EDIT_ROLES
 
@@ -26,7 +26,7 @@ EDIT_ROLES = UserRoles.EDIT_ROLES
 class DatasetService:
     @staticmethod
     def _default_tenant_id() -> UUID | None:
-        raw_tenant_id = str(getattr(settings, "DEFAULT_TENANT_ID", "") or "").strip()
+        raw_tenant_id = str(settings.DEFAULT_TENANT_ID or "").strip()
         if not raw_tenant_id:
             return None
         try:
@@ -48,11 +48,11 @@ class DatasetService:
 
     @staticmethod
     def _allow_local_owner_bootstrap(*, tenant_id: UUID) -> bool:
-        if not bool(getattr(settings, "LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED", False)):
+        if not bool(settings.LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED):
             return False
         if is_production_env():
             return False
-        if str(getattr(settings, "AUTH_MODE", "jwt") or "jwt").strip().lower() != "header":
+        if str(settings.AUTH_MODE or "jwt").strip().lower() != "header":
             return False
         default_tenant_id = DatasetService._default_tenant_id()
         if default_tenant_id is None or tenant_id != default_tenant_id:
@@ -326,7 +326,7 @@ class DatasetService:
         # Group-based allowlist (enterprise): allow when any of the account's tenant groups
         # is granted access to the dataset.
         group_ids = list(
-            TenantGroupService.resolve_account_group_ids(
+            tenant_group_service.resolve_account_group_ids(
                 db,
                 tenant_id=dataset.tenant_id,
                 account_id=account_id,
@@ -379,7 +379,7 @@ class DatasetService:
                 return
 
             group_ids = list(
-                TenantGroupService.resolve_account_group_ids(
+                tenant_group_service.resolve_account_group_ids(
                     db,
                     tenant_id=dataset.tenant_id,
                     account_id=account_id,

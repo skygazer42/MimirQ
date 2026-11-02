@@ -7,9 +7,9 @@ from app.core.constants import UserRoles
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
+from app.services import tenant_group_service
 from app.services.dataset_service import EDIT_ROLES, DatasetService
 from app.services.document_permission_service import DocumentGroupPermissionService
-from app.services.tenant_group_service import TenantGroupService
 
 NO_DOCUMENT_ACCESS_DETAIL = "No document access"
 NO_UNASSIGNED_DOCUMENT_WRITE_DETAIL = "No permission to manage unassigned documents"
@@ -49,7 +49,7 @@ def _document_acl_partial_member_allowed(
     if exists:
         return True
 
-    group_ids = TenantGroupService.resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
+    group_ids = tenant_group_service.resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
     if not group_ids:
         return False
     allowlist_groups = DocumentGroupPermissionService.get_document_partial_group_list(

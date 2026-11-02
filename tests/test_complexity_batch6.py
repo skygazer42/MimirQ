@@ -62,15 +62,15 @@ def test_scim_patch_group_membership_characterizes_add_remove_audit_and_response
         captured["audit"] = kwargs
 
     monkeypatch.setattr(scim.settings, "SCIM_PATCH_GROUP_MEMBERSHIP_ENABLED", True, raising=False)
-    monkeypatch.setattr(scim.TenantGroupService, "add_members", fake_add_members)
-    monkeypatch.setattr(scim.TenantGroupService, "remove_members", fake_remove_members)
+    monkeypatch.setattr(scim.tenant_group_service, "add_members", fake_add_members)
+    monkeypatch.setattr(scim.tenant_group_service, "remove_members", fake_remove_members)
     monkeypatch.setattr(
-        scim.TenantGroupService,
+        scim.tenant_group_service,
         "get_group",
         lambda _db, *, tenant_id, group_id: SimpleNamespace(id=group_id, tenant_id=tenant_id),
     )
     monkeypatch.setattr(
-        scim.TenantGroupService,
+        scim.tenant_group_service,
         "list_members",
         lambda _db, *, tenant_id, group_id, skip, limit: (
             2,
