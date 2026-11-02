@@ -32,7 +32,6 @@ from app.api.utils.upload import (
     save_upload_file_with_hash,
 )
 from app.api.v1.document_processing import retry_document_processing
-from app.api.v1.document_source_ingestion import _ingest_url_upload_request
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.models.dataset import Dataset
@@ -41,7 +40,7 @@ from app.models.document import Document as DBDocument
 from app.parsing.factory import parser_factory
 from app.rag.chunking.factory import chunker_factory
 from app.rag.core.logging import get_logger
-from app.services import dataset_service, ingestion_run_service
+from app.services import dataset_service, document_batch_ingestion, document_ingestion, ingestion_run_service
 from app.services.dataset_precheck_ingestion_suggestion import apply_ingestion_policy_suggestion
 from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
 from app.services.document_dedup_service import (
@@ -1879,21 +1878,16 @@ async def upload_document(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    file_lease = _UploadFileLease()
-    try:
-        return await _upload_document_impl(
-            background_tasks,
-            file,
-            form,
-            overrides_form,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            db=db,
-            file_lease=file_lease,
-        )
-    finally:
-        file_lease.cleanup()
+) -> DBDocument:
+    return await document_ingestion.ingest_file(
+        background_tasks=background_tasks,
+        file=file,
+        form=form,
+        overrides_form=overrides_form,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        db=db,
+    )
 
 
 async def _upload_document_impl(
@@ -2115,7 +2109,7 @@ async def upload_document_from_url(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> DBDocument:
     """
     Fetch a remote URL and ingest it as a document.
 
@@ -2123,7 +2117,7 @@ async def upload_document_from_url(
     - Disabled by default: set URL_INGEST_ENABLED=true to enable.
     - SSRF guard: blocks private/loopback/link-local hosts by default.
     """
-    return await _ingest_url_upload_request(
+    return await document_ingestion.ingest_url(
         background_tasks=background_tasks,
         body=body,
         tenant_id=tenant_id,
@@ -2148,190 +2142,13 @@ async def upload_documents_batch(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    from app.services.tenant_quota_service import enforce_tenant_upload_quotas
-
-    max_concurrent = _validate_batch_upload_request(files, max_concurrent=form.max_concurrent)
-    enforce_tenant_upload_quotas(
-        db,
-        tenant_id=tenant_id,
-        additional_docs=int(len(files or [])),
-        additional_bytes=0,
-    )
-
-    pipeline_overrides = PipelineOptionOverrides(**asdict(overrides_form))
-    parser_backend = form.parser_backend
-    chunk_strategy = form.chunk_strategy
-    precheck_first = form.precheck_first
-    precheck_only = form.precheck_only
-    upload_only = form.upload_only
-    pipeline_parsed = _parse_pipeline_json(form.pipeline)
-    user_meta_by_key = _parse_batch_user_metadata_map(form.user_metadata_map)
-    dataset = dataset_service.resolve_writable_dataset(db, tenant_id, account_id, form.dataset_id)
-    dataset_meta = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
-    policy = _refresh_batch_policy(dataset)
-    dataset_default_pb, dataset_default_cs = _dataset_upload_defaults(dataset_meta)
-    defaults = _select_upload_defaults(
-        parser_backend=parser_backend,
-        chunk_strategy=chunk_strategy,
-        dataset_default_pb=dataset_default_pb,
-        dataset_default_cs=dataset_default_cs,
-    )
-    ingestion_run = None
-    if not precheck_only and not upload_only:
-        try:
-            ingestion_run = ingestion_run_service.create_run(
-                db,
-                tenant_id=tenant_id,
-                dataset_id=getattr(dataset, "id", None),
-                requested_by=account_id,
-                kind="upload_batch",
-                config={
-                    "files": int(len(files or [])),
-                    "parser_backend_requested": str(parser_backend or "")[:80],
-                    "chunk_strategy_requested": str(chunk_strategy or "")[:80],
-                    "pipeline": (
-                        pipeline_parsed.model_dump(exclude_none=True) if pipeline_parsed is not None else None
-                    ),
-                },
-                expected_documents=int(len(files or [])),
-            )
-        except Exception:
-            ingestion_run = None
-
-    if precheck_first or precheck_only:
-        if dataset is None:
-            raise HTTPException(status_code=400, detail="dataset_id is required for precheck")
-        save_results = await _gather_with_concurrency_limit(
-            [lambda file=file: _stage_upload_for_precheck(file, tenant_id=tenant_id) for file in files],
-            limit=max_concurrent,
-        )
-        staged_successful, staged_failed = _partition_batch_results(save_results)
-        try:
-            total_bytes = sum(int(result.get("file_size") or 0) for result in staged_successful)
-            enforce_tenant_upload_quotas(
-                db,
-                tenant_id=tenant_id,
-                additional_docs=int(len(staged_successful)),
-                additional_bytes=int(total_bytes),
-            )
-        except HTTPException:
-            _cleanup_uploaded_batch_files(staged_successful)
-            raise
-        scan_run = None
-        if staged_successful:
-            scan_run = await _run_precheck_scan(
-                db=db,
-                tenant_id=tenant_id,
-                account_id=account_id,
-                dataset=dataset,
-                staged_successful=staged_successful,
-                precheck_only=precheck_only,
-            )
-        if not precheck_only and dataset is not None:
-            with contextlib.suppress(Exception):
-                db.refresh(dataset)
-            dataset_meta = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
-            policy = _refresh_batch_policy(dataset)
-            dataset_default_pb, dataset_default_cs = _dataset_upload_defaults(dataset_meta)
-            defaults = _select_upload_defaults(
-                parser_backend=parser_backend,
-                chunk_strategy=chunk_strategy,
-                dataset_default_pb=dataset_default_pb,
-                dataset_default_cs=dataset_default_cs,
-            )
-        if precheck_only:
-            _cleanup_uploaded_batch_files(staged_successful)
-            return _build_batch_response(
-                files=files,
-                successful=[],
-                failed=staged_failed,
-                precheck_scan_run_id=str(scan_run.id) if scan_run is not None else None,
-            )
-        governance_profile_cache: dict[str, Any] = {}
-        finalize_results = await _gather_with_concurrency_limit(
-            [
-                lambda staged=staged: _process_saved_batch_upload(
-                    background_tasks=background_tasks,
-                    db=SessionLocal(),
-                    tenant_id=tenant_id,
-                    account_id=account_id,
-                    dataset=dataset,
-                    dataset_meta=dataset_meta,
-                    policy=policy,
-                    pipeline_parsed=pipeline_parsed,
-                    pipeline_overrides=pipeline_overrides,
-                    defaults=defaults,
-                    identity=_UploadIdentity(
-                        filename=str(staged.get("filename") or "unknown"),
-                        file_ext=str(staged.get("file_ext") or "").strip().lower()
-                        or Path(str(staged.get("filename") or "unknown")).suffix.lower(),
-                        upload_key=str(staged.get("upload_key") or ""),
-                        source_path=staged.get("source_path"),
-                    ),
-                    file_id=staged.get("file_id"),
-                    file_path=Path(str(staged.get("file_path") or "")),
-                    file_size=int(staged.get("file_size") or 0),
-                    file_sha256=staged.get("file_sha256"),
-                    content_type=str(staged.get("content_type") or "application/octet-stream"),
-                    request_parser_backend=parser_backend,
-                    request_chunk_strategy=chunk_strategy,
-                    user_patch=_select_upload_user_patch(
-                        user_meta_by_key=user_meta_by_key,
-                        upload_key=str(staged.get("upload_key") or ""),
-                        filename=str(staged.get("filename") or "unknown"),
-                    ),
-                    upload_only=upload_only,
-                    governance_profile_cache=governance_profile_cache,
-                )
-                for staged in staged_successful
-            ],
-            limit=max_concurrent,
-        )
-        successful, processed_failed = _partition_batch_results(finalize_results)
-        failed = staged_failed + processed_failed
-        _finalize_batch_ingestion_run(
-            db=db,
-            tenant_id=tenant_id,
-            ingestion_run=ingestion_run,
-            files=files,
-            successful=successful,
-            failed=failed,
-        )
-        return _build_batch_response(files=files, successful=successful, failed=failed)
-
-    governance_profile_cache: dict[str, Any] = {}
-    direct_results = await _gather_with_concurrency_limit(
-        [
-            lambda file=file: _process_live_batch_upload(
-                background_tasks=background_tasks,
-                db=SessionLocal(),
-                tenant_id=tenant_id,
-                account_id=account_id,
-                dataset=dataset,
-                dataset_meta=dataset_meta,
-                policy=policy,
-                pipeline_parsed=pipeline_parsed,
-                pipeline_overrides=pipeline_overrides,
-                defaults=defaults,
-                file=file,
-                user_meta_by_key=user_meta_by_key,
-                request_parser_backend=parser_backend,
-                request_chunk_strategy=chunk_strategy,
-                upload_only=upload_only,
-                governance_profile_cache=governance_profile_cache,
-            )
-            for file in files
-        ],
-        limit=max_concurrent,
-    )
-    successful, failed = _partition_batch_results(direct_results)
-    _finalize_batch_ingestion_run(
-        db=db,
-        tenant_id=tenant_id,
-        ingestion_run=ingestion_run,
+) -> DocumentBatchUploadResponse:
+    return await document_batch_ingestion.ingest_batch(
+        background_tasks=background_tasks,
         files=files,
-        successful=successful,
-        failed=failed,
+        form=form,
+        overrides_form=overrides_form,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        db=db,
     )
-    return _build_batch_response(files=files, successful=successful, failed=failed)
