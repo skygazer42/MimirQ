@@ -121,7 +121,7 @@ app/api/utils/upload.py,3,pending,adjusted,Awaiting file-level convention and co
 app/api/utils/url_ingest.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/v1/__init__.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/v1/audit.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/v1/auth.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/api/v1/auth.py,2,adjusted,adjusted,Module user service; explicit configuration and domain errors; callers migrated; external auth contract preserved,Task 2: 34 focused / 127 expanded auth regressions passed; Ruff check and format passed
 app/api/v1/chat.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/v1/chat_conversation_memory.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/v1/chat_conversations.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -244,7 +244,7 @@ app/core/cost_tracker.py,3,pending,conforms,Awaiting file-level convention and c
 app/core/database.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/database_singleton.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/env.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/core/exceptions.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/core/exceptions.py,2,adjusted,adjusted,Module user service; explicit configuration and domain errors; callers migrated; external auth contract preserved,Task 2: 34 focused / 127 expanded auth regressions passed; Ruff check and format passed
 app/core/health_checks.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/http_client.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/http_env.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -1354,7 +1354,7 @@ app/services/router_prometheus_metrics.py,3,pending,adjusted,Awaiting file-level
 app/services/rtbf_cascade.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/saml_bridge_service.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/saml_replay_service.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/services/saml_service.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/services/saml_service.py,2,adjusted,adjusted,Module user service; explicit configuration and domain errors; callers migrated; external auth contract preserved,Task 2: 34 focused / 127 expanded auth regressions passed; Ruff check and format passed
 app/services/security_redaction.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/semantic_cache.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/slo_snapshot_service.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -1373,7 +1373,7 @@ app/services/tenant_member_provisioning_service.py,3,pending,adjusted,Awaiting f
 app/services/tenant_quota.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/tenant_quota_service.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/tenant_rls.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/services/user_service.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/services/user_service.py,2,adjusted,adjusted,Module user service; explicit configuration and domain errors; callers migrated; external auth contract preserved,Task 2: 34 focused / 127 expanded auth regressions passed; Ruff check and format passed
 app/services/web_crawler.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/storage/__init__.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/storage/object/__init__.py,4,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -2173,9 +2173,9 @@ tests/test_async_bridge.py,7,pending,conforms,Awaiting file-level convention and
 tests/test_async_cancellation_cleanup.py,7,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 tests/test_async_rate_limit_and_tenant_quota.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 tests/test_auth_dependency_sets_request_state.py,7,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-tests/test_auth_local_account_flow.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+tests/test_auth_local_account_flow.py,2,adjusted,adjusted,Module user service; explicit configuration and domain errors; callers migrated; external auth contract preserved,Task 2: 34 focused / 127 expanded auth regressions passed; Ruff check and format passed
 tests/test_auth_saml_bridge_endpoint.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-tests/test_auth_saml_exchange_endpoint.py,7,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+tests/test_auth_saml_exchange_endpoint.py,2,adjusted,adjusted,Module user service; explicit configuration and domain errors; callers migrated; external auth contract preserved,Task 2: 34 focused / 127 expanded auth regressions passed; Ruff check and format passed
 tests/test_backend_performance_fixes.py,7,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 tests/test_backfill_minio_images.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 tests/test_benchmark_io_concurrency.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -2693,7 +2693,7 @@ web/app/datasets/[id]/workflow/loading.tsx,6,pending,pending,Awaiting file-level
 web/app/datasets/[id]/workflow/page.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/app/datasets/error.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/app/datasets/loading.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/app/datasets/page.tsx,6,pending,pending,Awaiting file-level convention and contract review,
+web/app/datasets/page.tsx,2,adjusted,adjusted,"Named component, shared type aliases, one pipeline mapping and explicit query states; ESM plugin imports; framework default entry retained",Task 2: 6 Chrome scenarios and 421 frontend unit tests passed; scoped ESLint and Prettier passed
 web/app/diagnostics/diagnostics-theme-surface.source.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/app/diagnostics/error.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/app/diagnostics/loading.tsx,6,pending,pending,Awaiting file-level convention and contract review,
@@ -2966,8 +2966,8 @@ web/components/datasets/create-dataset-button.tsx,6,pending,pending,Awaiting fil
 web/components/datasets/dataset-analysis-panel.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/datasets/dataset-kg-workbench-page.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/datasets/dataset-ops-panel.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/datasets/datasets-page.source.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/datasets/datasets-page.tsx,6,pending,pending,Awaiting file-level convention and contract review,
+web/components/datasets/datasets-page.source.test.ts,2,adjusted,adjusted,"Named component, shared type aliases, one pipeline mapping and explicit query states; ESM plugin imports; framework default entry retained",Task 2: 6 Chrome scenarios and 421 frontend unit tests passed; scoped ESLint and Prettier passed
+web/components/datasets/datasets-page.tsx,2,adjusted,adjusted,"Named component, shared type aliases, one pipeline mapping and explicit query states; ESM plugin imports; framework default entry retained",Task 2: 6 Chrome scenarios and 421 frontend unit tests passed; scoped ESLint and Prettier passed
 web/components/document-detail-dialog.source.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/document-detail-dialog.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/document-detail-dialog/document-access-dialog.tsx,6,pending,pending,Awaiting file-level convention and contract review,
@@ -3274,6 +3274,7 @@ web/contexts/pipeline-capabilities-context.tsx,6,pending,pending,Awaiting file-l
 web/contexts/pipeline-options-context.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/e2e/auth-page.spec.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/e2e/command-menu-document-view.spec.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/e2e/datasets-state.spec.ts,2,adjusted,adjusted,"Named component, shared type aliases, one pipeline mapping and explicit query states; ESM plugin imports; framework default entry retained",Task 2: 6 Chrome scenarios and 421 frontend unit tests passed; scoped ESLint and Prettier passed
 web/e2e/document-chat.smoke.spec.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/e2e/enterprise-quality-telemetry.helpers.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/e2e/fixtures/enterprise-telemetry-sample.md,inventory,preserved,preserved,"Documentation, static resource, data or non-source configuration; tracked for scope",inventory
@@ -3600,7 +3601,8 @@ web/store/document-view.auth-scope.test.ts,6,pending,pending,Awaiting file-level
 web/store/document-view.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/store/use-parsed-files-store.auth-scope.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/store/use-parsed-files-store.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/tailwind.config.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/tailwind.config.test.ts,2,adjusted,adjusted,"Named component, shared type aliases, one pipeline mapping and explicit query states; ESM plugin imports; framework default entry retained",Task 2: 6 Chrome scenarios and 421 frontend unit tests passed; scoped ESLint and Prettier passed
+web/tailwind.config.ts,2,adjusted,adjusted,"Named component, shared type aliases, one pipeline mapping and explicit query states; ESM plugin imports; framework default entry retained",Task 2: 6 Chrome scenarios and 421 frontend unit tests passed; scoped ESLint and Prettier passed
 web/test/hook-harness.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/tsconfig.json,inventory,preserved,preserved,"Documentation, static resource, data or non-source configuration; tracked for scope",inventory
 web/types/backend.ts,6,pending,pending,Awaiting file-level convention and contract review,
@@ -3608,7 +3610,7 @@ web/types/chat.ts,6,pending,pending,Awaiting file-level convention and contract 
 web/types/clean-preview-rule-stats.typecheck.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/types/common.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/types/connectors.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/types/datasets.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/types/datasets.ts,2,adjusted,adjusted,"Named component, shared type aliases, one pipeline mapping and explicit query states; ESM plugin imports; framework default entry retained",Task 2: 6 Chrome scenarios and 421 frontend unit tests passed; scoped ESLint and Prettier passed
 web/types/documents.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/types/evaluation.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/types/index.ts,6,pending,pending,Awaiting file-level convention and contract review,
