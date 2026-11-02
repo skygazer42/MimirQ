@@ -10,7 +10,7 @@ from app.api.schemas.document_folders import DocumentFolderTreeResponse
 from app.core.database import get_db
 from app.models.document import Document as DBDocument
 from app.services import dataset_service
-from app.services.document_access import build_document_read_filter
+from app.services.document_access import apply_document_lifecycle_filter, build_document_read_filter
 from app.services.document_folders import build_document_folder_tree
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -33,7 +33,7 @@ def list_document_folders(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> DocumentFolderTreeResponse:
     """
     Build a folder tree derived from `document.metadata.source_path`.
 
@@ -53,27 +53,16 @@ def list_document_folders(
 
     query = query.filter(build_document_read_filter(tenant_id=tenant_id, account_id=account_id))
 
-    lifecycle0 = str(lifecycle or "active").strip().lower()
-    if lifecycle0 != "all":
-        if lifecycle0 == "archived":
-            query = query.filter(DBDocument.archived_at.isnot(None))
-        elif lifecycle0 == "disabled":
-            query = query.filter(DBDocument.disabled_at.isnot(None))
-        else:
-            query = query.filter(
-                DBDocument.archived_at.is_(None),
-                DBDocument.disabled_at.is_(None),
-            )
-
-    total = int(query.count() or 0)
+    query = apply_document_lifecycle_filter(query, lifecycle)
+    total = query.count()
 
     rows = query.with_entities(DBDocument.doc_metadata["source_path"].astext).all()  # type: ignore[attr-defined]
-    source_paths = [row[0] for row in rows if isinstance(row[0], str) and row[0].strip()]
+    source_paths = [source_path for (source_path,) in rows if isinstance(source_path, str) and source_path.strip()]
 
     root = build_document_folder_tree(
         source_paths,
         total_documents=total,
-        max_depth=int(max_depth or 20),
+        max_depth=max_depth,
     )
     return DocumentFolderTreeResponse(
         dataset_id=dataset_id,

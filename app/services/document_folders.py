@@ -23,14 +23,13 @@ def build_document_folder_tree(
     - `total_documents` may include documents without `source_path`; those still count in the root.
     - Folder counts only include documents whose `source_path` contains at least one "/" segment.
     """
-    max_depth_eff = max(1, int(max_depth or 0)) if int(max_depth or 0) else 20
-    max_depth_eff = max(1, min(max_depth_eff, 50))
+    max_depth_eff = max(1, min(max_depth or 20, 50))
 
-    root = DocumentFolderNode(name="", path="", depth=0, documents=max(0, int(total_documents or 0)), children=[])
+    root = DocumentFolderNode(name="", path="", depth=0, documents=max(0, total_documents), children=[])
     nodes_by_path: dict[str, DocumentFolderNode] = {"": root}
 
-    for sp in source_paths:
-        raw = str(sp or "").strip()
+    for source_path in source_paths:
+        raw = (source_path or "").strip()
         if not raw:
             continue
         parts = [p for p in raw.split("/") if p]
@@ -59,9 +58,9 @@ def build_document_folder_tree(
 
 
 def _sort_tree(node: DocumentFolderNode) -> None:
-    node.children.sort(key=lambda c: (str(c.name or "").casefold(), str(c.path or "")))
-    for c in node.children:
-        _sort_tree(c)
+    node.children.sort(key=lambda child: (child.name.casefold(), child.path))
+    for child in node.children:
+        _sort_tree(child)
 
 
 __all__ = [

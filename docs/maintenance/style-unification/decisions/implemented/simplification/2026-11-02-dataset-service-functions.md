@@ -32,6 +32,10 @@ API 的 `DatasetBase` 与 `DatasetUpdate` 使用 `list[UUID]` 校验组 ID；复
 
 批量操作与修改路由直接依赖权限、元数据、管线标识和实际操作模块，退出动态路由装配器。待处理状态的三个判断归到已有生命周期服务；上传未排队、旧数据空闲、任务标记、处理进度及版本就绪的原条件保留。同步的 `patch_document_pipeline` 直接调用，后续异步 retry 继续 await；原调用对 ORM 返回值执行 await 会失败，这是明确修复的既有缺陷，不能把它当作重构等价性结论。
 
+列表与统计的数据集范围由 `document_access.apply_document_dataset_scope` 统一维护；列表、统计与目录树的生命周期选择由同模块的 `apply_document_lifecycle_filter` 维护。调用方传入已经过 Query 校验的值，仍分别执行成员检查、文档 ACL 与租户限定；processing 的特殊匹配和其他状态的原值比较、count、稳定排序与分页顺序不变。共用 SQL 规则沿用现有查询所有者，避免再建一个服务层。
+
+MinerU 的 `_normalize_batch_status` 已提供七个状态字段，API 直接消费完整内部结果；外部 HTTP／JSON 适配留在 MinerU。目录与重复查询使用明确的 Row／ORM 类型，保留元数据形状筛选、目录深度夹取、时间戳与 SQL 扫描的既定降级。
+
 RBAC 与配额继续依赖这些成员契约，具体边界见[权限与配额决定](2026-11-02-permission-quota-contracts.md)。
 
 ## Alternatives considered

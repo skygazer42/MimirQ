@@ -31,7 +31,7 @@ async def apply_batch_upload_urls(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> BatchUploadResponse:
     """
     Batch request file upload URLs (MinerU online parsing).
 
@@ -66,7 +66,7 @@ async def get_batch_task_status(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> BatchTaskStatus:
     """
     Query batch parsing task status.
     """
@@ -76,13 +76,13 @@ async def get_batch_task_status(
 
         return BatchTaskStatus(
             batch_id=batch_id,
-            status=status.get("status", "pending"),
-            total_files=status.get("total_files", 0),
-            completed_files=status.get("completed_files", 0),
-            failed_files=status.get("failed_files", 0),
-            progress=status.get("progress", 0),
-            result_url=status.get("result_url"),
-            error=status.get("error"),
+            status=status["status"],
+            total_files=status["total_files"],
+            completed_files=status["completed_files"],
+            failed_files=status["failed_files"],
+            progress=status["progress"],
+            result_url=status["result_url"],
+            error=status["error"],
         )
 
     except LookupError as e:

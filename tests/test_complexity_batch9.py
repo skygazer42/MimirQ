@@ -19,6 +19,7 @@ if not hasattr(starlette_status, "HTTP_422_UNPROCESSABLE_CONTENT"):
     vars(starlette_status)["HTTP_422_UNPROCESSABLE_CONTENT"] = 422
 
 import app.rag.agents.multi_agent as multi_agent
+import app.services.document_access as document_access_module
 from app.api.v1.document_duplicates import list_document_duplicates
 from app.api.v1.document_listing import ListDocumentsQueryFields, list_documents
 from app.core.database import Base
@@ -393,7 +394,7 @@ def test_list_documents_applies_processing_lifecycle_prefix_and_ordering(
         lambda *_a, **_k: None,
         raising=True,
     )
-    monkeypatch.setattr(listing_module, "build_dataset_read_filter", lambda **_k: True, raising=True)
+    monkeypatch.setattr(document_access_module, "build_dataset_read_filter", lambda **_k: True, raising=True)
     monkeypatch.setattr(listing_module, "build_document_read_filter", lambda **_k: True, raising=True)
     monkeypatch.setattr(
         listing_module,

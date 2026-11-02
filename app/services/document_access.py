@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, exists, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Query, Session
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
@@ -30,6 +30,42 @@ class _DocumentAllowlistState:
     member_doc_ids: set[UUID]
     group_doc_ids: set[UUID]
     group_ids: set[UUID]
+
+
+def apply_document_dataset_scope(
+    *,
+    query: Query[DBDocument],
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID | None,
+) -> Query[DBDocument]:
+    if dataset_id:
+        dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+        dataset_service.assert_dataset_readable(db, dataset, account_id)
+        return query.filter(DBDocument.dataset_id == dataset_id)
+
+    allowed_dataset_ids_subq = select(Dataset.id).where(
+        Dataset.tenant_id == tenant_id,
+        build_dataset_read_filter(tenant_id=tenant_id, account_id=account_id),
+    )
+    return query.filter(
+        or_(
+            DBDocument.dataset_id.is_(None),
+            DBDocument.dataset_id.in_(allowed_dataset_ids_subq),
+        )
+    )
+
+
+def apply_document_lifecycle_filter(query: Query[DBDocument], lifecycle: str) -> Query[DBDocument]:
+    """Apply the validated lifecycle selection used by document library views."""
+    if lifecycle == "all":
+        return query
+    if lifecycle == "archived":
+        return query.filter(DBDocument.archived_at.isnot(None))
+    if lifecycle == "disabled":
+        return query.filter(DBDocument.disabled_at.isnot(None))
+    return query.filter(DBDocument.archived_at.is_(None), DBDocument.disabled_at.is_(None))
 
 
 def build_dataset_read_filter(*, tenant_id: UUID, account_id: str) -> ColumnElement[bool]:
