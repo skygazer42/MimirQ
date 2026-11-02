@@ -178,6 +178,8 @@ Batch precheck helpers 直接依赖 staging file APIs、scan model/session 和�
 
 去重查询和 bounded metadata fallback 归入 `document_dedup_service`；文件上传与 URL 入库复用同一实现，`documents.py` 保留兼容导出。tenant/dataset/archived 条件、updated/created 排序、JSONB fast path、5,000 行上限、查询异常后的 scan fallback 与持久化冲突处理顺序保持不变。
 
+文件上传的 single/batch document 构造和 batch finalization 直接依赖 `DBDocument` model；仅为创建该 ORM row 的 documents module 参数退出，字段值与租户查询条件保持一致。
+
 **本批产出：** 上传到任务的输入输出和失败路径一致，同一字段映射与权限规则只有一个业务维护点。
 
 ### Task 5：RAG 与模型调用

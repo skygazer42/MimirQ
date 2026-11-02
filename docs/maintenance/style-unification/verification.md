@@ -330,6 +330,11 @@
 - The four query bodies match their previous AST. Tenant/dataset/archived filters, updated/created ordering, JSONB fast path, legacy content/file SHA keys, 5,000-row cap and Python scan fallback remain unchanged. Conflict handling still runs after rollback and returns the same found duplicate.
 - Existing upload fixtures patch the direct lookup owner; the conflict fixture patches both the initial route binding and service lookup used after commit failure. Test declarations and assertions are unchanged. Ruff/format/AST/diff passed; no Python tests, application imports or database calls were run.
 
+## 第四批：上传 ORM 模型所有权（2026-11-03）
+
+- Batch document construction, single-file construction and batch-ingestion finalization now use the imported `DBDocument` model directly. `_build_batch_document` no longer accepts the documents module solely to construct the ORM row; batch finalization keeps the same tenant/document predicates and commit sequence.
+- Four existing concurrency fixtures patch `document_upload.DBDocument` at the same construction owner. Route declarations and model field values are unchanged. Ruff check/format and diff check passed; Python tests and database calls were not run.
+
 ## 第四批：上传提交确认读取（2026-11-03）
 
 - `_fresh_session_document_exists` 直接导入 `DBDocument`，以 `Callable[[], Session]` 表达 session factory 并调用 SQLAlchemy `Session.get`。删除从 `documents` 路由动态取模型以及对 `get`／`query` 的形状探测；factory 注入保持不变。

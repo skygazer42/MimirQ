@@ -1055,7 +1055,6 @@ def _safe_staging_relpath(item: dict[str, Any], *, idx: int) -> Path:
 
 
 def _build_batch_document(
-    documents_module: Any,
     *,
     file_id: UUID,
     tenant_id: UUID,
@@ -1067,8 +1066,8 @@ def _build_batch_document(
     doc_metadata: dict[str, Any],
     file_sha256: str | None,
     pipeline_hash: str,
-) -> Any:
-    db_document = documents_module.DBDocument(
+) -> DBDocument:
+    db_document = DBDocument(
         id=file_id,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
@@ -1292,7 +1291,6 @@ async def _process_saved_batch_upload(
         )
         _apply_object_store_metadata_if_needed(prepared_metadata.doc_metadata, stored_path=stored_path)
         db_document = _build_batch_document(
-            documents_module,
             file_id=file_id,
             tenant_id=tenant_id,
             dataset_id=getattr(dataset, "id", None) if dataset is not None else None,
@@ -1656,7 +1654,6 @@ def _refresh_batch_policy(dataset: Any) -> Any:
 
 def _finalize_batch_ingestion_run(
     *,
-    documents_module: Any,
     db: Session,
     tenant_id: UUID,
     ingestion_run: Any,
@@ -1675,10 +1672,10 @@ def _finalize_batch_ingestion_run(
         except ValueError:
             continue
         doc = (
-            db.query(documents_module.DBDocument)
+            db.query(DBDocument)
             .filter(
-                documents_module.DBDocument.id == doc_id,
-                documents_module.DBDocument.tenant_id == tenant_id,
+                DBDocument.id == doc_id,
+                DBDocument.tenant_id == tenant_id,
             )
             .first()
         )
@@ -1937,8 +1934,6 @@ async def _upload_document_impl(
     db: Session,
     file_lease: _UploadFileLease,
 ):
-    from app.api.v1 import documents as documents_module  # Local import to avoid router circular import.
-
     ingest_lock = _IngestLockLease()
     identity = _normalize_upload_identity(file)
     _require_upload_extension(identity.file_ext)
@@ -2057,7 +2052,7 @@ async def _upload_document_impl(
                 doc_metadata.update(document_object_store_metadata(store))
         persistence_started = False
         try:
-            db_document = documents_module.DBDocument(
+            db_document = DBDocument(
                 id=file_id,
                 tenant_id=tenant_id,
                 dataset_id=dataset.id,
@@ -2327,7 +2322,6 @@ async def upload_documents_batch(
         successful, processed_failed = _partition_batch_results(finalize_results)
         failed = staged_failed + processed_failed
         _finalize_batch_ingestion_run(
-            documents_module=documents_module,
             db=db,
             tenant_id=tenant_id,
             ingestion_run=ingestion_run,
@@ -2365,7 +2359,6 @@ async def upload_documents_batch(
     )
     successful, failed = _partition_batch_results(direct_results)
     _finalize_batch_ingestion_run(
-        documents_module=documents_module,
         db=db,
         tenant_id=tenant_id,
         ingestion_run=ingestion_run,

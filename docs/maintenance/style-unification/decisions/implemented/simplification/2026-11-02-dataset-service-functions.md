@@ -56,7 +56,11 @@ multipart 表单的 pipeline JSON 解析与 chunk overlap 约束也由该 API ut
 
 Batch precheck 的 staging tree、scan run 和 policy suggestion 由上传入口直接使用标准库、SQLAlchemy model/session 与两个所属服务。仍先创建 pending scan row、commit／refresh，再在线程内执行扫描；扫描异常时标记 failed 并重新抛出，调用层仍 best-effort 继续上传。policy suggestion 的 409 不告警，其他异常继续记录到 `api.documents` logger。finally 清理 staging root 的顺序保持不变。
 
+文件上传的 batch row 构造、单文件 row 构造和 batch finalization 直接使用 `DBDocument` ORM model。`documents.py` 不再作为模型 factory 或查询字段的中转；数据库字段值、tenant/document 查询过滤、commit 与 refresh 顺序不变。
+
 tenant-scoped 重复文档查询和 bounded metadata scan 归入 `document_dedup_service`。查询先限定 tenant、dataset 和未归档状态，再按 updated／created 时间降序；可用时保留 JSONB fast path，数据库查询失败时仍扫描最多 5,000 份文档并按相同 identity 条件返回首个结果。`document_identity` 继续只负责 metadata hash/key，不接收 SQL 查询职责。`documents.py` 直接重导出旧 lookup 名称，上传流程直接导入服务。
+
+数据库 commit 冲突后的重复识别也由该 service 接收 ORM `DBDocument` 并查询；缺失 dataset、内容 hash 或 pipeline hash 时仍返回无匹配。两个上传入口仍先 rollback，再查找已提交 duplicate，之后按原策略清理未持久化文件／对象并复用已有文档。
 
 preview 图片引用解析、本地临时文件读取与 owner sidecar 验证、legacy 记录查询和 MinIO 存储由已有 `document_preview_utils` 共同负责。手工分块直接导入该 owner，documents 对外保留原名称的直接导出。legacy 查询仅在 owner 校验路径中局部导入，因为 `document_preview_legacy` 的正则直接来自本模块，顶层互相导入会产生循环。
 
@@ -65,6 +69,8 @@ RBAC 与配额继续依赖这些成员契约，具体边界见[权限与配额�
 文件下载、preview 和 image-url 的 tenant／account 解析归入 `document_assets` 路由模块，ACL 直接导入 `document_access_service`；手工 owner 与 legacy data lookup 继续留在对应服务。documents 只直接重导出仍有旧 Python 引用的错误常量和共享资产入口，不为资产读取、缓存或认证提供代理函数。header auth、JWT claim、查询 tenant、文件根目录和 Range 规则保持各自原有入口语义。
 
 ## Alternatives considered
+
+- 把 `documents_module` 继续传入 batch builder 与 finalizer 可以省去 ORM import，但会让上传主流程依赖路由聚合对象并失去字段类型。当前直接导入模型，不另加 repository wrapper。
 
 - 继续把 JSON 表单解析与 chunk overlap 检查放在 `documents.py` 可以少迁移几个名字，但上传、预览和分块预览会依赖路由聚合器。单建 upload pipeline 模块则会与现有 API `pipeline_options` utility 重叠。当前沿用该 utility 作为表单到 pipeline 类型的边界，并从现有业务模块导入策略、parser、chunker 和 metadata 规则。
 - 把 batch precheck helper 作为 `documents_module: Any` 传入可以少列几项依赖，但该流程直接使用标准库文件操作、扫描 model、session factory 和已有 scan/suggestion 服务。当前将这些边界直接导入上传模块，不另建 precheck service。
@@ -110,6 +116,8 @@ URL 上传模型的单一声明位于文档 schema；上传与连接器入口不
 上传文件名和来源路径规则集中在现有上传 utility；旧 route export 仍有效，直接依赖的入口不再为归一化加载 `documents.py`。输入边界、拒绝错误与字符串长度约束保持原样。
 
 pipeline 的 JSON parser 和 chunk overlap validator 归入 `pipeline_options` utility 后，所有相关 endpoint 仍使用相同 schema、默认值、合并次序及 400 错误边界；上传配置流程不再从 documents 路由装配器读取其直接业务依赖。
+
+上传路径直接构造与查询 `DBDocument`，相关 helper 不再接收仅用于模型访问的 whole-module 参数。既有字段赋值、tenant filter 和事务顺序保持一致；夹具 patch 改到上传模块绑定。
 
 batch precheck 不再传递整个 documents 模块；hardlink/copy fallback、scan 状态提交、失败标记、建议应用的 best-effort 和 staging 清理顺序保持原样。日志仍使用原 `api.documents` category。
 

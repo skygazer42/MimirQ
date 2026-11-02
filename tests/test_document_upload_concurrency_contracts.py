@@ -324,7 +324,7 @@ async def test_upload_batch_uses_isolated_item_sessions_and_response_survives_cl
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
-    monkeypatch.setattr(documents_module, "DBDocument", _DetachedStatusDocument, raising=True)
+    monkeypatch.setattr(document_upload, "DBDocument", _DetachedStatusDocument, raising=True)
     monkeypatch.setattr(document_upload, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
 
     def _new_item_session() -> _FakeItemSession:
@@ -798,7 +798,7 @@ async def test_single_upload_skips_ingest_lock_when_queue_disabled(monkeypatch: 
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
     monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", False, raising=False)
-    monkeypatch.setattr(documents_module, "DBDocument", _DetachedStatusDocument, raising=True)
+    monkeypatch.setattr(document_upload, "DBDocument", _DetachedStatusDocument, raising=True)
     monkeypatch.setattr(document_upload, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
 
     async def _queue() -> object:
@@ -847,7 +847,7 @@ async def test_single_upload_releases_ingest_lock_without_worker_handoff(monkeyp
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
     monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module, "DBDocument", _DetachedStatusDocument, raising=True)
+    monkeypatch.setattr(document_upload, "DBDocument", _DetachedStatusDocument, raising=True)
     monkeypatch.setattr(document_upload, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
 
     async def _queue() -> object:
@@ -1200,7 +1200,7 @@ async def test_single_upload_preserves_local_source_when_queue_handoff_fails_aft
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "MINIO_ENABLED", False, raising=False)
     monkeypatch.setattr(document_upload.settings, "MINIO_DOCUMENTS_ENABLED", False, raising=False)
-    monkeypatch.setattr(documents_module, "DBDocument", _DetachedStatusDocument, raising=True)
+    monkeypatch.setattr(document_upload, "DBDocument", _DetachedStatusDocument, raising=True)
     monkeypatch.setattr(document_upload, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
 
     async def _queue() -> object:
