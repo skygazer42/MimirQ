@@ -42,6 +42,11 @@ from app.rag.core.logging import get_logger
 from app.services import dataset_service, ingestion_run_service
 from app.services.dataset_precheck_ingestion_suggestion import apply_ingestion_policy_suggestion
 from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
+from app.services.document_dedup_service import (
+    _find_duplicate_document,
+    _find_duplicate_document_by_sha,
+    _find_duplicate_document_for_persist_conflict,
+)
 from app.services.document_identity import (
     build_document_dedup_key,
     compute_pipeline_hash,
@@ -294,27 +299,6 @@ async def _cleanup_commit_ambiguous_source(
         return
     if object_backed:
         _unlink_upload(file_path)
-
-
-def _find_duplicate_document_for_persist_conflict(db: Session, *, db_document: Any) -> Any | None:
-    from app.api.v1 import documents as documents_module
-
-    dataset_id = getattr(db_document, "dataset_id", None)
-    tenant_id = getattr(db_document, "tenant_id", None)
-    if not isinstance(dataset_id, UUID) or not isinstance(tenant_id, UUID):
-        return None
-    doc_metadata = dict(getattr(db_document, "doc_metadata", None) or {})
-    file_sha256 = get_content_sha256(doc_metadata)
-    pipeline_hash = str(doc_metadata.get("pipeline_hash") or "").strip()
-    if file_sha256 and pipeline_hash:
-        return documents_module._find_duplicate_document(
-            db,
-            tenant_id=tenant_id,
-            dataset_id=dataset_id,
-            file_sha256=file_sha256,
-            pipeline_hash=pipeline_hash,
-        )
-    return None
 
 
 async def _maybe_acquire_ingest_lock(
@@ -1105,7 +1089,6 @@ def _build_batch_document(
 
 async def _maybe_resolve_upload_duplicate(
     *,
-    documents_module: Any,
     db: Session,
     background_tasks: BackgroundTasks,
     tenant_id: UUID,
@@ -1125,7 +1108,7 @@ async def _maybe_resolve_upload_duplicate(
 ) -> Any | None:
     if not bool(settings.UPLOAD_DEDUP_ENABLED) or not isinstance(file_sha256, str) or not file_sha256:
         return None
-    duplicate = documents_module._find_duplicate_document(
+    duplicate = _find_duplicate_document(
         db,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
@@ -1136,7 +1119,7 @@ async def _maybe_resolve_upload_duplicate(
         if cleanup_exact_duplicate:
             _unlink_upload(file_path)
         return duplicate
-    duplicate_by_sha = documents_module._find_duplicate_document_by_sha(
+    duplicate_by_sha = _find_duplicate_document_by_sha(
         db,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
@@ -1280,7 +1263,6 @@ async def _process_saved_batch_upload(
             ingest_lock=ingest_lock,
         )
         duplicate = await _maybe_resolve_upload_duplicate(
-            documents_module=documents_module,
             db=db,
             background_tasks=background_tasks,
             tenant_id=tenant_id,
@@ -1817,7 +1799,6 @@ def _attach_document_to_ingestion_run(
 
 async def _maybe_resolve_single_upload_duplicate(
     *,
-    documents_module: Any,
     db: Session,
     background_tasks: BackgroundTasks,
     tenant_id: UUID,
@@ -1834,7 +1815,7 @@ async def _maybe_resolve_single_upload_duplicate(
 ) -> Any | None:
     if not bool(settings.UPLOAD_DEDUP_ENABLED) or not isinstance(file_sha256, str) or not file_sha256:
         return None
-    duplicate = documents_module._find_duplicate_document(
+    duplicate = _find_duplicate_document(
         db,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
@@ -1842,14 +1823,14 @@ async def _maybe_resolve_single_upload_duplicate(
         pipeline_hash=pipeline_hash,
     )
     if duplicate is not None and str(getattr(duplicate, "status", "") or "").lower() not in {"failed"}:
-        documents_module.logger.info(
+        document_logger.info(
             "Upload dedup hit tenant_id=%s dataset_id=%s document_id=%s",
             str(tenant_id),
             str(dataset_id),
             str(getattr(duplicate, "id", "")),
         )
         return duplicate
-    duplicate_by_sha = documents_module._find_duplicate_document_by_sha(
+    duplicate_by_sha = _find_duplicate_document_by_sha(
         db,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
@@ -2036,7 +2017,6 @@ async def _upload_document_impl(
             pipeline_parsed=pipeline_parsed,
         )
         duplicate = await _maybe_resolve_single_upload_duplicate(
-            documents_module=documents_module,
             db=db,
             background_tasks=background_tasks,
             tenant_id=tenant_id,

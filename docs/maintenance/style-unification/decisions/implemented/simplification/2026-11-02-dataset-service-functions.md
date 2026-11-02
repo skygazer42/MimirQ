@@ -56,6 +56,8 @@ multipart 表单的 pipeline JSON 解析与 chunk overlap 约束也由该 API ut
 
 Batch precheck 的 staging tree、scan run 和 policy suggestion 由上传入口直接使用标准库、SQLAlchemy model/session 与两个所属服务。仍先创建 pending scan row、commit／refresh，再在线程内执行扫描；扫描异常时标记 failed 并重新抛出，调用层仍 best-effort 继续上传。policy suggestion 的 409 不告警，其他异常继续记录到 `api.documents` logger。finally 清理 staging root 的顺序保持不变。
 
+tenant-scoped 重复文档查询和 bounded metadata scan 归入 `document_dedup_service`。查询先限定 tenant、dataset 和未归档状态，再按 updated／created 时间降序；可用时保留 JSONB fast path，数据库查询失败时仍扫描最多 5,000 份文档并按相同 identity 条件返回首个结果。`document_identity` 继续只负责 metadata hash/key，不接收 SQL 查询职责。`documents.py` 直接重导出旧 lookup 名称，上传流程直接导入服务。
+
 preview 图片引用解析、本地临时文件读取与 owner sidecar 验证、legacy 记录查询和 MinIO 存储由已有 `document_preview_utils` 共同负责。手工分块直接导入该 owner，documents 对外保留原名称的直接导出。legacy 查询仅在 owner 校验路径中局部导入，因为 `document_preview_legacy` 的正则直接来自本模块，顶层互相导入会产生循环。
 
 RBAC 与配额继续依赖这些成员契约，具体边界见[权限与配额决定](2026-11-02-permission-quota-contracts.md)。
@@ -75,6 +77,7 @@ RBAC 与配额继续依赖这些成员契约，具体边界见[权限与配额�
 - 为用户 patch 新建独立模块能让旧运行时文件保持不动，但文档元数据又多一个维护入口；当前合入更名后的已有服务，三项公共操作直接导入。
 - 将成员校验再抽出一个模块能够进一步拆分文件，但会同时影响本地引导与 RBAC 的所有者边界。本批维持现有所有者，减少跨领域调整。
 - 将可写数据集选择留在 `documents.py` 或让 `connectors.py` 再转发，能缩小新调用范围，却会令共享 API 流程依赖路由聚合模块。当前把选择规则放在已有 `dataset_service`，与租户校验、写权限和默认数据集创建共用实际所有者。
+- 把去重查询放进 `document_identity` 能让调用者只依赖一个模块，但会把 SQLAlchemy session、ORM filtering 和数据库 fallback 混入 metadata identity helper。保留在 `documents.py` 则继续令文件上传依赖路由聚合器。当前使用单独 persistence service，identity hashing 与数据库 lookup 各有明确 owner。
 - 将 `UrlUploadRequest` 留在 `documents.py` 可以避免迁移导入，但 `document_upload.py` 需要从正在装配它的路由模块取请求类型，继续形成反向依赖。当前把请求类型放在现有 schema 所有者，并由路由直接重导出旧名称。
 - 让连接器继续通过字符串名称解析 `UrlUploadRequest` 可以少改调用点，但会让类型来源依赖运行时路由注册。当前连接器直接导入 schema，其他业务 helper 的既有解析仍留待各自所有者迁移。
 - 让 HTTP 路由继续维护 dispatcher 名称表可以避免依赖执行服务，但队列和路由各维护一份相同映射，新增 connector 时容易只更新一边。当前两者共同调用执行服务的 resolver，未知 ID 仍由 API 转成原有 400。
@@ -109,3 +112,5 @@ URL 上传模型的单一声明位于文档 schema；上传与连接器入口不
 pipeline 的 JSON parser 和 chunk overlap validator 归入 `pipeline_options` utility 后，所有相关 endpoint 仍使用相同 schema、默认值、合并次序及 400 错误边界；上传配置流程不再从 documents 路由装配器读取其直接业务依赖。
 
 batch precheck 不再传递整个 documents 模块；hardlink/copy fallback、scan 状态提交、失败标记、建议应用的 best-effort 和 staging 清理顺序保持原样。日志仍使用原 `api.documents` category。
+
+文件上传与 URL 入库共用 tenant-scoped duplicate lookup。route 层只按各自的 commit/retry 约定处理结果；查询的 tenant/archive filters、排序、JSONB fast path 和 bounded scan fallback 只维护一份。

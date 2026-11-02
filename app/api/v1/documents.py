@@ -215,6 +215,8 @@ from app.rag.preprocessing.rules import build_governance_rules
 from app.services import dataset_service, document_access_service, ingestion_run_service
 from app.services.dataset_precheck_ingestion_suggestion import apply_ingestion_policy_suggestion
 from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
+from app.services.document_dedup_service import _find_duplicate_document, _find_duplicate_document_for_persist_conflict
+from app.services.document_dedup_service import _find_duplicate_document_by_sha as _find_duplicate_document_by_sha
 from app.services.document_identity import (
     build_document_dedup_key,
     compute_pipeline_hash,
@@ -984,25 +986,6 @@ class _DuplicatePersistedDocumentError(RuntimeError):
         self.document = document
 
 
-def _find_duplicate_document_for_persist_conflict(db: Session, *, db_document: Any) -> Any | None:
-    dataset_id = getattr(db_document, "dataset_id", None)
-    tenant_id = getattr(db_document, "tenant_id", None)
-    if not isinstance(dataset_id, UUID) or not isinstance(tenant_id, UUID):
-        return None
-    doc_metadata = dict(getattr(db_document, "doc_metadata", None) or {})
-    content_sha256 = get_content_sha256(doc_metadata)
-    pipeline_hash = str(doc_metadata.get("pipeline_hash") or "").strip()
-    if content_sha256 and pipeline_hash:
-        return _find_duplicate_document(
-            db,
-            tenant_id=tenant_id,
-            dataset_id=dataset_id,
-            file_sha256=content_sha256,
-            pipeline_hash=pipeline_hash,
-        )
-    return None
-
-
 async def _store_ingested_source(
     *,
     file_path: Path,
@@ -1657,109 +1640,6 @@ async def _ingest_url_upload_request(
             duplicate=exc.document,
             content_sha256=ingest_file.content_sha256,
             pipeline_hash=pipeline_hash,
-        )
-
-
-def _duplicate_document_query(db: Session, *, tenant_id: UUID, dataset_id: UUID):
-    return (
-        db.query(DBDocument)
-        .filter(
-            DBDocument.tenant_id == tenant_id,
-            DBDocument.dataset_id == dataset_id,
-            DBDocument.archived_at.is_(None),
-        )
-        .order_by(DBDocument.updated_at.desc(), DBDocument.created_at.desc())
-    )
-
-
-def _scan_duplicate_documents(
-    db: Session,
-    *,
-    tenant_id: UUID,
-    dataset_id: UUID,
-    max_scan: int,
-    predicate: Any,
-) -> DBDocument | None:
-    docs = (
-        _duplicate_document_query(db, tenant_id=tenant_id, dataset_id=dataset_id)
-        .limit(max(1, int(max_scan or 5000)))
-        .all()
-    )
-    for doc in docs or []:
-        meta = dict(getattr(doc, "doc_metadata", None) or {})
-        if predicate(meta):
-            return doc
-    return None
-
-
-def _find_duplicate_document(
-    db: Session,
-    *,
-    tenant_id: UUID,
-    dataset_id: UUID | None,
-    file_sha256: str,
-    pipeline_hash: str,
-    max_scan: int = 5000,
-) -> DBDocument | None:
-    if dataset_id is None:
-        return None
-    sha = str(file_sha256 or "").strip().lower()
-    ph = str(pipeline_hash or "").strip()
-    if not sha or not ph:
-        return None
-
-    try:
-        return (
-            _duplicate_document_query(db, tenant_id=tenant_id, dataset_id=dataset_id)
-            .filter(
-                (DBDocument.doc_metadata["content_sha256"].astext == sha)  # type: ignore[attr-defined]
-                | (DBDocument.doc_metadata["file_sha256"].astext == sha)  # type: ignore[attr-defined]
-            )
-            .filter(DBDocument.doc_metadata["pipeline_hash"].astext == ph)  # type: ignore[attr-defined]
-            .first()
-        )
-    except Exception:
-        return _scan_duplicate_documents(
-            db,
-            tenant_id=tenant_id,
-            dataset_id=dataset_id,
-            max_scan=max_scan,
-            predicate=lambda meta: (
-                get_content_sha256(meta) == sha and str(meta.get("pipeline_hash") or "").strip() == ph
-            ),
-        )
-
-
-def _find_duplicate_document_by_sha(
-    db: Session,
-    *,
-    tenant_id: UUID,
-    dataset_id: UUID | None,
-    file_sha256: str,
-    max_scan: int = 5000,
-) -> DBDocument | None:
-    if dataset_id is None:
-        return None
-    sha = str(file_sha256 or "").strip().lower()
-    if not sha:
-        return None
-
-    try:
-        return (
-            _duplicate_document_query(db, tenant_id=tenant_id, dataset_id=dataset_id)
-            .filter(
-                (DBDocument.doc_metadata["content_sha256"].astext == sha)  # type: ignore[attr-defined]
-                | (DBDocument.doc_metadata["file_sha256"].astext == sha)  # type: ignore[attr-defined]
-            )
-            .first()
-        )
-    except Exception:
-        return _scan_duplicate_documents(
-            db,
-            tenant_id=tenant_id,
-            dataset_id=dataset_id,
-            max_scan=max_scan,
-            predicate=lambda meta: get_content_sha256(meta) == sha,
         )
 
 

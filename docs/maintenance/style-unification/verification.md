@@ -324,6 +324,12 @@
 - Hardlink fallback to copy, staging-root containment, pending-row commit/refresh order, background-thread scan, failed-row update/rethrow, outer best-effort continue behavior, policy-suggestion 409 handling and cleanup remain in the same order. Scan/policy warnings retain the `api.documents` logger name.
 - Ruff check/format and diff check passed. Three existing test fixtures now patch the upload module's scan and policy owners; precheck `SessionLocal` patches follow the direct binding. No Python tests or application imports were run; full precheck integration remains unverified.
 
+## 第四批：文档去重查询所有权（2026-11-03）
+
+- Four tenant-scoped duplicate query helpers moved from `documents.py` to `document_dedup_service`; the commit-conflict lookup also uses its declared `DBDocument` input. `documents.py` retains the old function names as direct imports, while `document_upload` calls the service owner.
+- The four query bodies match their previous AST. Tenant/dataset/archived filters, updated/created ordering, JSONB fast path, legacy content/file SHA keys, 5,000-row cap and Python scan fallback remain unchanged. Conflict handling still runs after rollback and returns the same found duplicate.
+- Existing upload fixtures patch the direct lookup owner; the conflict fixture patches both the initial route binding and service lookup used after commit failure. Test declarations and assertions are unchanged. Ruff/format/AST/diff passed; no Python tests, application imports or database calls were run.
+
 ## 第四批：上传提交确认读取（2026-11-03）
 
 - `_fresh_session_document_exists` 直接导入 `DBDocument`，以 `Callable[[], Session]` 表达 session factory 并调用 SQLAlchemy `Session.get`。删除从 `documents` 路由动态取模型以及对 `get`／`query` 的形状探测；factory 注入保持不变。
