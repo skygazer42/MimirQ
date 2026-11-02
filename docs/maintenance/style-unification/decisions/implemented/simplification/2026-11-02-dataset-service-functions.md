@@ -1,4 +1,4 @@
-# Agent Note: 数据集与文档权限服务直接使用模块函数
+# Agent Note: 数据集与文档服务直接使用模块函数
 
 Status: implemented
 
@@ -23,6 +23,10 @@ API 的 `DatasetBase` 与 `DatasetUpdate` 使用 `list[UUID]` 校验组 ID；复
 `document_access` 保留批量筛选和 SQL 条件，`document_access_service` 保留单文档／生命周期判断，`document_permission_service` 负责 allowlist 持久化；这三项职责不因命名相近而合并。内部使用 ORM 声明的 nullable 字符串与 UUID；去掉无调用的成员检查兼容参数、组查询转发和两个单次判断包装。未知模式的拒绝、未分配文档所有者规则、组指标和查询排序保持原样。
 
 分块预设的四个模型归到 schema，五个数据库操作归到所属服务；路由只组织鉴权、数据集授权与响应。旧私有操作名称直接导入实际函数，保留既有 patch 引用，没有转发壳。列表上限继续由 Query 校验，非法路径 ID 仍返回未找到，payload 与查询中的非法数据集 ID 仍按原格式返回 400。
+
+入库运行记录由 `ingestion_run_service` 的五个模块函数负责，入口位于私有统计与锁帮助函数之前。上传模块直接调用实际服务，不再从文档路由装配器取静态类；两个只为取得服务而接收整个模块的参数同时退出。数据库与模型已声明的字段直接使用，JSON 统计和文档元数据仍保留真实形状适配。
+
+创建运行记录的数据库失败由调用方决定处理方式；绑定与收尾维持 best-effort，状态通知的 `required` 模式仍在回滚后抛错。运行行锁先于关联行锁、重复绑定幂等、唯一约束、提交与观测顺序、统计 top 上限及空批失败规则继续保持。已有并发夹具仅补齐模型的 config 字段和 Session.flush，并同步服务引用，不增加用例或断言。
 
 RBAC 与配额继续依赖这些成员契约，具体边界见[权限与配额决定](2026-11-02-permission-quota-contracts.md)。
 

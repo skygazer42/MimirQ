@@ -715,10 +715,10 @@ class DocumentProcessorService:
         criticality: str = "best_effort",
     ) -> None:
         try:
-            from app.services.ingestion_run_service import IngestionRunService
+            from app.services import ingestion_run_service
 
             doc_meta = getattr(db_doc, "doc_metadata", None)
-            IngestionRunService.on_document_status_update(
+            ingestion_run_service.on_document_status_update(
                 db,
                 tenant_id=tenant_id,
                 document_id=document_id,

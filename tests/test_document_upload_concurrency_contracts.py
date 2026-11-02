@@ -90,7 +90,9 @@ def _patch_minimal_document_resolution(
     monkeypatch.setattr(documents_module, "_compute_pipeline_hash", lambda meta: pipeline_hash, raising=True)
     monkeypatch.setattr(documents_module, "_find_duplicate_document", lambda *args, **kwargs: None, raising=True)
     monkeypatch.setattr(documents_module, "_find_duplicate_document_by_sha", lambda *args, **kwargs: None, raising=True)
-    monkeypatch.setattr(documents_module.IngestionRunService, "create_run", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(
+        documents_module.ingestion_run_service, "create_run", lambda *args, **kwargs: None, raising=True
+    )
     return dataset
 
 
@@ -394,7 +396,7 @@ async def test_upload_batch_closes_intake_after_attaching_successes_in_both_bran
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module.IngestionRunService, "create_run", lambda *args, **kwargs: ingestion_run, raising=True
+        documents_module.ingestion_run_service, "create_run", lambda *args, **kwargs: ingestion_run, raising=True
     )
 
     def _add_document(*_args, **kwargs) -> None:  # noqa: ANN003
@@ -404,8 +406,8 @@ async def test_upload_batch_closes_intake_after_attaching_successes_in_both_bran
         events.append("close")
         close_calls.append(kwargs)
 
-    monkeypatch.setattr(documents_module.IngestionRunService, "add_document", _add_document, raising=True)
-    monkeypatch.setattr(documents_module.IngestionRunService, "close_intake", _close_intake, raising=True)
+    monkeypatch.setattr(documents_module.ingestion_run_service, "add_document", _add_document, raising=True)
+    monkeypatch.setattr(documents_module.ingestion_run_service, "close_intake", _close_intake, raising=True)
     monkeypatch.setattr(documents_module, "run_dataset_precheck_scan", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
         documents_module, "apply_ingestion_policy_suggestion", lambda *_args, **_kwargs: None, raising=True
@@ -975,7 +977,9 @@ async def test_single_upload_reuses_matching_sha_only_duplicate_while_pending_or
     monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", False, raising=False)
     monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
-    monkeypatch.setattr(documents_module.IngestionRunService, "create_run", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(
+        documents_module.ingestion_run_service, "create_run", lambda *args, **kwargs: None, raising=True
+    )
     monkeypatch.setattr(documents_module, "_find_duplicate_document", lambda *args, **kwargs: None, raising=True)
     monkeypatch.setattr(
         documents_module,

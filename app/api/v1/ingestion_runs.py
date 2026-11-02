@@ -28,10 +28,9 @@ from app.models.group_permissions import DatasetGroupPermission
 from app.models.ingestion_run import IngestionRun as DBIngestionRun
 from app.models.tenant_group import TenantGroupMember
 from app.rag.core.logging import get_logger
-from app.services import dataset_service
+from app.services import dataset_service, ingestion_run_service
 from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import EDIT_ROLES
-from app.services.ingestion_run_service import IngestionRunService
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -166,7 +165,7 @@ def _audit_replay_creation(
 def _attach_replay_documents(*, db: Session, tenant_id: UUID, run_id: UUID, doc_ids: list[UUID]) -> None:
     for doc_id in doc_ids[:2000]:
         try:
-            IngestionRunService.add_document(
+            ingestion_run_service.add_document(
                 db,
                 tenant_id=tenant_id,
                 run_id=run_id,
@@ -425,7 +424,7 @@ def compare_ingestion_runs(
     )
     diff = {}
     if row_a is not None and row_b is not None:
-        diff = IngestionRunService.compare_runs(run_a=row_a, run_b=row_b)
+        diff = ingestion_run_service.compare_runs(run_a=row_a, run_b=row_b)
 
     # Best-effort audit log (PII-minimal): record compare operation.
     try:
@@ -473,7 +472,7 @@ def replay_ingestion_run(
     base = _load_replay_base_run(db=db, run_id=run_id, tenant_id=tenant_id, account_id=account_id)
     doc_ids = _collect_replay_doc_ids(base)
 
-    new_run = IngestionRunService.create_run(
+    new_run = ingestion_run_service.create_run(
         db,
         tenant_id=tenant_id,
         dataset_id=getattr(base, "dataset_id", None),

@@ -376,7 +376,7 @@ def test_replay_ingestion_run_creates_new_run_and_schedules_background_work(monk
         raising=True,
     )
     monkeypatch.setattr(
-        ingestion_runs.IngestionRunService,
+        ingestion_runs.ingestion_run_service,
         "create_run",
         lambda *_a, **_k: new_run,
         raising=True,
@@ -385,7 +385,7 @@ def test_replay_ingestion_run_creates_new_run_and_schedules_background_work(monk
     def _add_document(*_args, **kwargs):
         add_calls.append(kwargs)
 
-    monkeypatch.setattr(ingestion_runs.IngestionRunService, "add_document", _add_document, raising=True)
+    monkeypatch.setattr(ingestion_runs.ingestion_run_service, "add_document", _add_document, raising=True)
 
     background_tasks = BackgroundTasks()
     result = ingestion_runs.replay_ingestion_run(

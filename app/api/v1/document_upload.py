@@ -20,6 +20,7 @@ from app.api.v1.documents import UrlUploadRequest
 from app.core.config import settings
 from app.core.database import get_db
 from app.rag.core.logging import get_logger
+from app.services import ingestion_run_service
 from app.services.document_identity import (
     build_document_dedup_key,
     get_content_sha256,
@@ -1813,7 +1814,7 @@ def _finalize_batch_ingestion_run(
         except Exception:
             meta0 = dict(getattr(doc, "doc_metadata", None) or {})
         with contextlib.suppress(Exception):
-            documents_module.IngestionRunService.add_document(
+            ingestion_run_service.add_document(
                 db,
                 tenant_id=tenant_id,
                 run_id=ingestion_run.id,
@@ -1823,7 +1824,7 @@ def _finalize_batch_ingestion_run(
                 doc_meta=meta0 if isinstance(meta0, dict) else None,
             )
     with contextlib.suppress(Exception):
-        documents_module.IngestionRunService.close_intake(
+        ingestion_run_service.close_intake(
             db,
             tenant_id=tenant_id,
             run_id=ingestion_run.id,
@@ -1846,7 +1847,6 @@ def _validate_batch_upload_request(files: list[UploadFile], *, max_concurrent: i
 
 def _create_single_ingestion_run(
     *,
-    documents_module: Any,
     db: Session,
     tenant_id: UUID,
     dataset_id: UUID | None,
@@ -1859,7 +1859,7 @@ def _create_single_ingestion_run(
     pipeline_parsed: Any,
 ) -> Any:
     try:
-        return documents_module.IngestionRunService.create_run(
+        return ingestion_run_service.create_run(
             db,
             tenant_id=tenant_id,
             dataset_id=dataset_id,
@@ -1885,7 +1885,6 @@ def _create_single_ingestion_run(
 
 def _attach_document_to_ingestion_run(
     *,
-    documents_module: Any,
     db: Session,
     ingestion_run: Any,
     tenant_id: UUID,
@@ -1907,7 +1906,7 @@ def _attach_document_to_ingestion_run(
     except Exception:
         meta0 = dict(getattr(document, "doc_metadata", None) or {})
     with contextlib.suppress(Exception):
-        documents_module.IngestionRunService.add_document(
+        ingestion_run_service.add_document(
             db,
             tenant_id=tenant_id,
             run_id=ingestion_run.id,
@@ -2131,7 +2130,6 @@ async def _upload_document_impl(
 
     try:
         ingestion_run = _create_single_ingestion_run(
-            documents_module=documents_module,
             db=db,
             tenant_id=tenant_id,
             dataset_id=getattr(dataset, "id", None),
@@ -2162,7 +2160,6 @@ async def _upload_document_impl(
         if duplicate is not None:
             with contextlib.suppress(Exception):
                 _attach_document_to_ingestion_run(
-                    documents_module=documents_module,
                     db=db,
                     ingestion_run=ingestion_run,
                     tenant_id=tenant_id,
@@ -2215,7 +2212,6 @@ async def _upload_document_impl(
             _retain_ingest_lock_if_task_handed_off(exc.document, ingest_lock=ingest_lock)
             with contextlib.suppress(Exception):
                 _attach_document_to_ingestion_run(
-                    documents_module=documents_module,
                     db=db,
                     ingestion_run=ingestion_run,
                     tenant_id=tenant_id,
@@ -2230,7 +2226,6 @@ async def _upload_document_impl(
             raise
         with contextlib.suppress(Exception):
             _attach_document_to_ingestion_run(
-                documents_module=documents_module,
                 db=db,
                 ingestion_run=ingestion_run,
                 tenant_id=tenant_id,
@@ -2346,7 +2341,7 @@ async def upload_documents_batch(
     ingestion_run = None
     if not precheck_only and not upload_only:
         try:
-            ingestion_run = documents_module.IngestionRunService.create_run(
+            ingestion_run = ingestion_run_service.create_run(
                 db,
                 tenant_id=tenant_id,
                 dataset_id=getattr(dataset, "id", None),

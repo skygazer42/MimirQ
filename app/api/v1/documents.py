@@ -184,7 +184,7 @@ from app.rag.kg.pipeline import extract_events
 from app.rag.preprocessing.html_canonical import extract_canonical_url, normalize_url_for_dedup
 from app.rag.preprocessing.processor import governance_processor
 from app.rag.preprocessing.rules import build_governance_rules
-from app.services import dataset_service, document_access_service
+from app.services import dataset_service, document_access_service, ingestion_run_service
 from app.services.dataset_precheck_ingestion_suggestion import apply_ingestion_policy_suggestion
 from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
 from app.services.dataset_service import EDIT_ROLES
@@ -211,7 +211,6 @@ from app.services.ingestion_policy import (
     parse_ingestion_policy_from_metadata,
     resolve_governance_profile_ref,
 )
-from app.services.ingestion_run_service import IngestionRunService
 from app.services.pipeline_config import (
     build_indexing_options,
     merge_pipeline_options,
@@ -1692,7 +1691,7 @@ def _create_ingestion_run_if_missing(
         return ingestion_run_id
     try:
         ingestion_kind_norm = str(ingestion_kind or default_kind).strip() or default_kind
-        ingestion_run = IngestionRunService.create_run(
+        ingestion_run = ingestion_run_service.create_run(
             db,
             tenant_id=tenant_id,
             dataset_id=getattr(dataset, "id", None),
@@ -1977,7 +1976,7 @@ def _add_document_to_ingestion_run(
     if ingestion_run_id is None:
         return
     with contextlib.suppress(Exception):
-        IngestionRunService.add_document(
+        ingestion_run_service.add_document(
             db,
             tenant_id=tenant_id,
             run_id=ingestion_run_id,
