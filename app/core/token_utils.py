@@ -5,12 +5,15 @@ Provides token counting and truncation functionality based on tiktoken.
 Supports cl100k_base encoding (GPT-4, GPT-3.5-turbo, etc.).
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Literal
 
-_encoder = None
+if TYPE_CHECKING:
+    from tiktoken import Encoding
+
+_encoder: "Encoding | Literal[False] | None" = None
 
 
-def _get_encoder():
+def _get_encoder() -> "Encoding | Literal[False]":
     """Lazy load the tiktoken encoder."""
     global _encoder
     if _encoder is None:
@@ -48,7 +51,7 @@ def num_tokens_from_string(string: str) -> int:
         return max(1, len(string) // 4)
 
 
-def total_token_count_from_response(resp: Any) -> int:
+def total_token_count_from_response(resp: object) -> int:
     """Extract token count from LLM response in various formats.
 
     Handles different response structures from various LLM providers:
@@ -83,13 +86,13 @@ def total_token_count_from_response(resp: Any) -> int:
     return 0
 
 
-def _valid_token_count(value: Any) -> int | None:
+def _valid_token_count(value: object) -> int | None:
     if isinstance(value, int) and not isinstance(value, bool):
         return value
     return None
 
 
-def _token_total_from_mapping(value: Any) -> int | None:
+def _token_total_from_mapping(value: object) -> int | None:
     if not isinstance(value, dict):
         return None
     total = _valid_token_count(value.get("total_tokens"))

@@ -120,7 +120,7 @@ class MilvusConfig:
     DEFAULT_COLLECTION = "mimirq_chunks"
 
     @classmethod
-    def get_index_params(cls) -> dict:
+    def get_index_params(cls) -> dict[str, object]:
         """Get index params."""
         return {
             "metric_type": cls.METRIC_TYPE,
@@ -129,7 +129,7 @@ class MilvusConfig:
         }
 
     @classmethod
-    def get_search_params(cls) -> dict:
+    def get_search_params(cls) -> dict[str, object]:
         """Get search params."""
         return {
             "metric_type": cls.METRIC_TYPE,
