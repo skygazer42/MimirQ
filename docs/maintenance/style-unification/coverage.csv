@@ -220,7 +220,7 @@ app/api/v1/retrieval_config_hash.py,3,pending,adjusted,Awaiting file-level conve
 app/api/v1/retrieval_explain.py,3,pending,conforms,Awaiting file-level convention and contract review; Dataset caller migration only; full module semantic review remains pending,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending; task-3-dataset-final: Ruff/AST/signature checks; no Python tests
 app/api/v1/retrieval_profiles.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/v1/rtbf.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/v1/scim.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/api/v1/scim.py,3,adjusted,conforms,Typed SCIM internals and sequential membership PATCH retain protocol boundaries,Ruff and format; 13 route declarations; 42 error constructors; 99 bound calls; static source-order review; no Python tests
 app/api/v1/settings.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/v1/usage.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/config/__init__.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
