@@ -74,6 +74,7 @@ app/api/middleware/request_id.py,3,adjusted,conforms,Explicit UUID/config/framew
 app/api/middleware/response_header_sanitizer.py,3,adjusted,adjusted,Explicit UUID/config/framework contracts; duplicate internal conversions removed; policies retained,Task 3 common API: Ruff/format/AST/signatures; source-only verification; no Python tests
 app/api/middleware/security_headers.py,3,adjusted,conforms,Explicit UUID/config/framework contracts; duplicate internal conversions removed; policies retained,Task 3 common API: Ruff/format/AST/signatures; source-only verification; no Python tests
 app/api/schemas/__init__.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/api/schemas/audit.py,3,adjusted,conforms,Eight original audit request and response schemas moved to the schema owner,Task 3 audit 8 exact class ASTs; Ruff and format
 app/api/schemas/auth.py,3,conforms,conforms,External authentication schemas and validators reviewed; public fields unchanged,Task 3 identity: 10-module Ruff/format/AST; 35 signatures; 69 static calls; Python tests deferred
 app/api/schemas/base.py,3,conforms,conforms,Framework schema inheritance and timestamp contracts reviewed; existing classes retained,Task 3 identity: 10-module Ruff/format/AST; 35 signatures; 69 static calls; Python tests deferred
 app/api/schemas/chat.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -119,7 +120,7 @@ app/api/utils/response_headers.py,3,conforms,adjusted,Complete source review; fr
 app/api/utils/upload.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/utils/url_ingest.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/v1/__init__.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/v1/audit.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/api/v1/audit.py,3,adjusted,conforms,Audit schemas and shared filters; typed exports preserve redaction cursor and permissions,Task 3 audit source contracts; 7 routes; Ruff and format
 app/api/v1/auth.py,2,adjusted,adjusted,Module user service; explicit configuration and domain errors; callers migrated; external auth contract preserved,Task 2: 34 focused / 127 expanded auth regressions passed; Ruff check and format passed
 app/api/v1/chat.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/v1/chat_conversation_memory.py,3,pending,adjusted,Awaiting file-level convention and contract review; Dataset caller migration only; full module semantic review remains pending,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending; task-3-dataset-final: Ruff/AST/signature checks; no Python tests
@@ -445,7 +446,7 @@ app/main.py,7,adjusted,conforms,Explicit UUID/config/framework contracts; duplic
 app/middleware/__init__.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/models/__init__.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/models/_all.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/models/audit_log.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/models/audit_log.py,3,conforms,conforms,Declared native UUID and scalar audit columns already match boundary contracts,Task 3 audit full model AST unchanged; source review
 app/models/chat.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/models/chunk.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/models/chunk_preset.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -1191,8 +1192,8 @@ app/rag/workflows/self_rag.py,5,pending,adjusted,Awaiting file-level convention 
 app/rag/workflows/self_route.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/workflows/system_router.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/access_graph_diff_service.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/services/audit_log_retention.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/services/audit_log_service.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/services/audit_log_retention.py,3,adjusted,conforms,Single-column UUID Row unpack; existing deletion owner shared across all purge paths,Task 3 audit row contract; transaction source comparison; Ruff and format
+app/services/audit_log_service.py,3,adjusted,conforms,One owner for 7 audit filters; typed chat detail construction; original writer policy retained,Task 3 audit shared-filter AST; 123 bound calls; Ruff and format
 app/services/authz_prometheus_metrics.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/base_service.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/chat_bootstrap_runtime.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -1794,6 +1795,7 @@ docs/llama_index_config.md,inventory,preserved,preserved,"Documentation, static 
 docs/maintenance/style-unification/README.md,1,preserved,preserved,Migration plan or verification record,Task 1 inventory
 docs/maintenance/style-unification/baseline-python-failures.txt,1,preserved,preserved,Migration plan or verification record,Task 1 inventory
 docs/maintenance/style-unification/coverage.csv,1,preserved,preserved,Migration plan or verification record,Task 1 inventory
+docs/maintenance/style-unification/decisions/implemented/bug-fix/2026-11-02-audit-query-and-row-contracts.md,inventory,preserved,preserved,Audit query and single-column row contract decision record,Task 3 audit note tree and format checks
 docs/maintenance/style-unification/decisions/implemented/simplification/2026-11-02-common-api-boundaries.md,inventory,preserved,preserved,Maintenance decision for common API contracts and removed unused wrappers,Task 3 common API; note tree/format/archive verification
 docs/maintenance/style-unification/decisions/implemented/simplification/2026-11-02-configuration-validation-contracts.md,3,preserved,preserved,Configuration validation decision record; documentation scope,task-3-configuration-static
 docs/maintenance/style-unification/decisions/implemented/simplification/2026-11-02-dataset-service-functions.md,3,preserved,preserved,Dataset service decision record; documentation scope,task-3-dataset-final
