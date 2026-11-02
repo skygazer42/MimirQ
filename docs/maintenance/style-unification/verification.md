@@ -376,3 +376,8 @@
 - `document_chunks_write` 直接导入 ORM models、`Indexer`、ACL、审计、`settings` 与 index-audit helpers；chunk 查询、写权限、strictness、结果序列化、drift persistence 和 reconcile queue helpers 从 `documents.py` 移到实际写路由模块。`documents.py` 保留直接兼容导出。
 - 六个路由的参数、decorators 和 response metadata 保持一致；12 个移动 helper 的 AST 与原实现匹配，active-pipeline resolver 与 index-audit service body 相同。Vector/BM25 尝试、commit/rollback、audit 与 drift reconciliation 顺序不变。
 - 更新三组既有权限、chunk vector 和 drift fixture 的 patch owner；用例与断言未改。Ruff、格式、语法和 diff 检查通过；没有运行 Python 测试或连接数据库/索引服务。
+
+## 第四批：Connector worker ID contract（2026-11-03）
+
+- `ConnectorRun.connector_id` 是 ORM 中声明的非空 `String(80)`。`connector_run_job` 直接读取并 `.strip()`，保留未知 ID 的 `unsupported_connector_id` 失败状态；移除 `getattr`、`str` 和空串默认转换。
+- Ruff check、格式和语法检查通过。未运行 Python 测试或 connector queue 集成。

@@ -838,7 +838,7 @@ async def connector_run_job(ctx, tenant_id: str, run_id: str, requested_by: str)
                 run_id=run_id,
             )
 
-        connector_id = str(getattr(run, "connector_id", "") or "").strip()
+        connector_id = run.connector_id.strip()
         try:
             redis = _task_queue_redis_or_retry(ctx, retry_defer_sec=retry_defer_sec)
             sem_key = await tenant_acquire(

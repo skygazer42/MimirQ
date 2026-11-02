@@ -192,6 +192,8 @@ URL 上传与 connector HTML 入库共享的来源准备、配额、去重、持
 
 Chunk-write routes 直接依赖 ORM、`Indexer`、ACL、审计和 index-audit owners。chunk-specific 查询、状态策略、index result 和 drift persistence helper 归 `document_chunks_write`；`documents.py` 只保留既有直接兼容导出。manual edits 的 chunk metadata patch 就地呈现；路由事务、权限检查、vector/BM25 best-effort、drift markers 和 response mapping 保持原序。
 
+`connector_run_job` reads the non-null ORM `ConnectorRun.connector_id` as a string directly and retains its existing whitespace normalization and unsupported-ID failure path; no arbitrary-object coercion or empty-string fallback is needed.
+
 **本批产出：** 上传到任务的输入输出和失败路径一致，同一字段映射与权限规则只有一个业务维护点。
 
 ### Task 5：RAG 与模型调用

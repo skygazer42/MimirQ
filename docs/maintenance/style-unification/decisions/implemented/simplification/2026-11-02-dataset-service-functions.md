@@ -132,3 +132,5 @@ URL 上传与 connector HTML 入库共用来源准备、配额、去重、持久
 原文解析预览直接依赖 subprocess runner 和治理 processor；错误映射与 `api.documents` 日志由预览模块自身负责。路由保留成员权限、400/499/500 状态、生产错误脱敏、请求断开检查和临时文件清理顺序。
 
 Chunk mutation routes directly depend on the ORM, indexer, ACL, audit and index-audit owners. Query helpers, index consistency policy and drift result/persistence helpers live in `document_chunks_write`; the `documents` aggregate only re-exports those existing names. Request order, transaction boundaries and best-effort vector/BM25 behavior remain unchanged.
+
+`ConnectorRun.connector_id` is declared as non-null `String(80)`. The queue job reads that field directly, retaining `.strip()` before dispatch while allowing impossible missing/type-corrupt ORM state to fail instead of becoming an empty connector ID.
