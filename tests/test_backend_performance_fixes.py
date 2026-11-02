@@ -619,7 +619,7 @@ def test_runtime_document_metadata_never_reads_source_pdf(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
 ) -> None:  # noqa: ANN001
-    from app.services.document_runtime_metadata import build_runtime_document_metadata
+    from app.services.document_metadata_service import build_runtime_document_metadata
 
     source = tmp_path / "legacy.pdf"
     source.write_bytes(b"not-a-real-pdf")

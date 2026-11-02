@@ -673,7 +673,7 @@ async def test_retry_document_processing_rejects_non_retryable_states(
         lambda *_args, **_kwargs: None,
         raising=True,
     )
-    monkeypatch.setattr(documents_module, "_is_reprocessable_pending_document", lambda _document: False, raising=True)
+    monkeypatch.setattr(document_processing, "is_reprocessable_pending_document", lambda _document: False, raising=True)
 
     with pytest.raises(HTTPException) as exc_info:
         await document_processing.retry_document_processing(

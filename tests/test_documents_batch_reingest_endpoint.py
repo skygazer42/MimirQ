@@ -11,20 +11,19 @@ from tests.helpers.async_utils import yield_control
 
 
 def test_documents_batch_reingest_calls_patch_and_retry(monkeypatch):  # noqa: ANN001
-    import app.api.v1.documents as documents_module
-    from app.api.v1.documents import batch_reingest_documents
+    from app.api.v1 import document_batches
+    from app.api.v1.document_batches import batch_reingest_documents
 
     tenant_id = uuid.uuid4()
     doc1 = uuid.uuid4()
     doc2 = uuid.uuid4()
 
     # Avoid auth/DB logic in unit test.
-    monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_batches.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
 
     calls = {"patch": 0, "retry": 0}
 
-    async def _fake_patch(**kwargs):  # noqa: ANN001, ANN202
-        await yield_control()
+    def _fake_patch(**kwargs):  # noqa: ANN001, ANN202
         calls["patch"] += 1
         return None
 
@@ -39,8 +38,8 @@ def test_documents_batch_reingest_calls_patch_and_retry(monkeypatch):  # noqa: A
             "error_message": None,
         }
 
-    monkeypatch.setattr(documents_module, "patch_document_pipeline", _fake_patch, raising=True)
-    monkeypatch.setattr(documents_module, "retry_document_processing", _fake_retry, raising=True)
+    monkeypatch.setattr(document_batches.document_mutations, "patch_document_pipeline", _fake_patch, raising=True)
+    monkeypatch.setattr(document_batches.document_processing, "retry_document_processing", _fake_retry, raising=True)
 
     class _DummyDB:
         pass

@@ -246,7 +246,10 @@ def test_document_qa_calls_the_qa_service(monkeypatch) -> None:
 
     monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args: None, raising=True)
     monkeypatch.setattr(
-        documents_module, "_assert_document_writable_for_lifecycle", lambda *_args, **_kwargs: None, raising=True
+        mutations_module.document_access_service,
+        "assert_document_writable_for_lifecycle",
+        lambda *_args, **_kwargs: None,
+        raising=True,
     )
     monkeypatch.setattr(mutations_module, "audit_log_event", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(mutations_module, "generate_and_index_document_qa", _generate, raising=True)

@@ -969,59 +969,6 @@ def _resolve_writable_dataset(
     )
 
 
-def _merge_user_metadata_patch(*, current: dict, patch: dict, replace: bool) -> dict:
-    if replace:
-        return dict(patch or {})
-
-    next_user = dict(current or {})
-    for key, value in (patch or {}).items():
-        if value is None:
-            next_user.pop(key, None)
-        else:
-            next_user[key] = value
-    return next_user
-
-
-def _normalize_user_metadata_tags(next_user: dict, *, replace: bool) -> None:
-    tags = next_user.get("tags")
-    if isinstance(tags, str):
-        tags = [t.strip() for t in tags.split(",")]
-    if isinstance(tags, list):
-        cleaned: list[str] = []
-        seen: set[str] = set()
-        for raw in tags:
-            if not isinstance(raw, str):
-                continue
-            val = raw.strip()
-            if not val:
-                continue
-            key = val.lower()
-            if key in seen:
-                continue
-            seen.add(key)
-            cleaned.append(val[:64])
-        next_user["tags"] = cleaned[:50]
-    elif tags is None and "tags" in next_user and not replace:
-        next_user.pop("tags", None)
-
-
-def _normalize_user_metadata_notes(next_user: dict) -> None:
-    notes = next_user.get("notes")
-    if isinstance(notes, str):
-        val = notes.strip()
-        if not val:
-            next_user.pop("notes", None)
-        else:
-            next_user["notes"] = val[:20_000]
-
-
-def _apply_user_metadata_patch(*, current: dict, patch: dict, replace: bool) -> dict:
-    next_user = _merge_user_metadata_patch(current=current, patch=patch, replace=replace)
-    _normalize_user_metadata_tags(next_user, replace=replace)
-    _normalize_user_metadata_notes(next_user)
-    return next_user
-
-
 _WINDOWS_DRIVE_LETTER_RE = re.compile(r"^[a-zA-Z]:$")
 _UPLOAD_SOURCE_PATH_MAX_LEN = 500
 
@@ -1118,65 +1065,6 @@ def _parse_pipeline_json(pipeline: str | None) -> DocumentPipelineOptions | None
 
 def _compute_pipeline_hash(doc_metadata: dict) -> str:
     return compute_pipeline_hash(doc_metadata)
-
-
-def _is_uploaded_only_pending_document(document: Any) -> bool:
-    """
-    True for files registered by upload-only mode but not yet queued/processed.
-
-    Those documents are persisted as `status=pending` so they appear in ingestion
-    lists, but they are not active processing jobs. Reingest may safely patch
-    their pipeline and start processing them later.
-    """
-    if str(getattr(document, "status", "") or "").strip().lower() != "pending":
-        return False
-
-    meta = getattr(document, "doc_metadata", None)
-    meta = meta if isinstance(meta, dict) else {}
-    if str(meta.get("ingest_stage") or "").strip() != "uploaded_only":
-        return False
-    if str(meta.get("task_id") or "").strip():
-        return False
-
-    current_stage = str(getattr(document, "current_stage", "") or "").strip().lower()
-    if current_stage and current_stage not in {"uploaded_only", "registered"}:
-        return False
-
-    return not bool(meta.get("active_pipeline_ready"))
-
-
-def _is_idle_pending_document(document: Any) -> bool:
-    """
-    True for pending documents that are persisted but not attached to a live job.
-
-    Legacy imports and upload-only flows can leave a document as `status=pending`
-    without `ingest_stage=uploaded_only`. They are safe to reconfigure only when
-    no queue/task marker, active stage, or progress indicates work is running.
-    """
-    if str(getattr(document, "status", "") or "").strip().lower() != "pending":
-        return False
-
-    meta = getattr(document, "doc_metadata", None)
-    meta = meta if isinstance(meta, dict) else {}
-    if str(meta.get("task_id") or "").strip() or str(meta.get("kg_task_id") or "").strip():
-        return False
-
-    current_stage = str(getattr(document, "current_stage", "") or "").strip().lower()
-    if current_stage and current_stage not in {"uploaded_only", "registered"}:
-        return False
-
-    try:
-        progress = int(getattr(document, "processing_progress", 0) or 0)
-    except (TypeError, ValueError):
-        return False
-    if progress > 0:
-        return False
-
-    return not bool(meta.get("active_pipeline_ready"))
-
-
-def _is_reprocessable_pending_document(document: Any) -> bool:
-    return _is_uploaded_only_pending_document(document) or _is_idle_pending_document(document)
 
 
 @dataclass(frozen=True)

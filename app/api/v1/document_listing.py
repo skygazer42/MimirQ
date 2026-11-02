@@ -13,7 +13,7 @@ from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.services import dataset_service
 from app.services.document_access import build_dataset_read_filter, build_document_read_filter
-from app.services.document_runtime_metadata import attach_runtime_document_metadata
+from app.services.document_metadata_service import attach_runtime_document_metadata
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},

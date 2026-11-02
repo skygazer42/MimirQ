@@ -16,6 +16,7 @@ from app.core.database import get_db
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.services import dataset_service
+from app.services.document_lifecycle_service import is_reprocessable_pending_document
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -164,7 +165,7 @@ def _ensure_retryable_document_state(
 ) -> tuple[str, str]:
     current_status = str(document.status or "").lower()
     if current_status == "processing" or (
-        current_status == "pending" and not documents_module._is_reprocessable_pending_document(document)
+        current_status == "pending" and not is_reprocessable_pending_document(document)
     ):
         raise HTTPException(status_code=409, detail=f"Cannot retry a {current_status} document")
     if current_status == "completed" and not force:

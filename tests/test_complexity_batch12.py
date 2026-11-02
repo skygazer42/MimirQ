@@ -100,7 +100,7 @@ def test_batch_reingest_classifies_patch_failures_without_retry(monkeypatch) -> 
     document_ids = [uuid.uuid4() for _ in range(4)]
     retry_ids: list[uuid.UUID] = []
 
-    async def _patch_document_pipeline(**kwargs):
+    def _patch_document_pipeline(**kwargs):
         document_id = kwargs["document_id"]
         if document_id == document_ids[0]:
             raise HTTPException(status_code=404, detail="missing")
@@ -114,11 +114,12 @@ def test_batch_reingest_classifies_patch_failures_without_retry(monkeypatch) -> 
         retry_ids.append(kwargs["document_id"])
         return {"status": "pending"}
 
-    fake_documents_module = SimpleNamespace(
-        patch_document_pipeline=_patch_document_pipeline,
-        retry_document_processing=_retry_document_processing,
+    monkeypatch.setattr(
+        document_batches.document_mutations, "patch_document_pipeline", _patch_document_pipeline, raising=True
     )
-    monkeypatch.setattr(document_batches, "_documents_module", lambda: fake_documents_module, raising=True)
+    monkeypatch.setattr(
+        document_batches.document_processing, "retry_document_processing", _retry_document_processing, raising=True
+    )
     monkeypatch.setattr(document_batches.dataset_service, "ensure_member", lambda *_a, **_k: None)
 
     result = asyncio.run(

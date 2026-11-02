@@ -1,5 +1,4 @@
-import importlib
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -19,9 +18,13 @@ from app.api.schemas.document import (
     DocumentBatchUserMetadataPatchResponse,
     DocumentPipelinePatchRequest,
 )
+from app.api.v1 import document_access, document_mutations, document_processing
 from app.core.database import get_db
 from app.models.document import Document as DBDocument
-from app.services import dataset_service
+from app.services import dataset_service, document_access_service
+from app.services.dataset_service import EDIT_ROLES
+from app.services.document_metadata_service import apply_user_metadata_patch
+from app.storage.object.runtime import is_object_storage_uri
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -32,61 +35,6 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 }
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-
-
-def _documents_module():
-    return importlib.import_module("app.api.v1.documents")
-
-
-def _record_batch_http_error(
-    *,
-    exc: HTTPException,
-    document_id: UUID,
-    not_found: list[UUID],
-    denied: list[UUID],
-    conflicts: list[UUID],
-) -> bool:
-    if exc.status_code == 404:
-        not_found.append(document_id)
-        return True
-    if exc.status_code in (401, 403):
-        denied.append(document_id)
-        return True
-    if exc.status_code in (409, 413, 429, 503):
-        conflicts.append(document_id)
-        return True
-    return False
-
-
-def _resolve_batch_move_target(
-    *,
-    documents_module,
-    db: Session,
-    tenant_id: UUID,
-    account_id: str,
-    payload: DocumentBatchMoveRequest,
-):
-    member = dataset_service.ensure_member(db, tenant_id, account_id)
-    if payload.target_dataset_id is not None:
-        target_ds = dataset_service.get_dataset(db, tenant_id, payload.target_dataset_id)
-        dataset_service.assert_dataset_writable(db, target_ds, account_id)
-        return member
-    role = (getattr(member, "role", None) or "").lower()
-    if role not in documents_module.EDIT_ROLES:
-        raise HTTPException(status_code=403, detail="No permission to move documents to unassigned scope")
-    return member
-
-
-def _move_document_conflicts(*, documents_module, doc: DBDocument) -> bool:
-    status = str(doc.status or "").lower()
-    if status in {"pending", "processing"}:
-        return True
-    raw_path = str(getattr(doc, "file_path", "") or "").strip()
-    if raw_path and documents_module.is_object_storage_uri(raw_path):
-        return True
-    meta = dict(getattr(doc, "doc_metadata", None) or {})
-    img_ids = meta.get("img_ids")
-    return isinstance(img_ids, list) and any(isinstance(value, str) and value.strip() for value in img_ids)
 
 
 @router.post(
@@ -100,18 +48,15 @@ def batch_patch_document_user_metadata(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> dict[str, Any]:
     """
     Batch patch `documents.metadata.user`.
 
     For any documents the caller cannot write, they will be returned in `denied`.
     """
-    documents_module = _documents_module()
     dataset_service.ensure_member(db, tenant_id, account_id)
 
-    ids = list(payload.document_ids or [])
-    if not ids:
-        return {"updated": 0, "not_found": [], "denied": []}
+    ids = payload.document_ids
 
     documents = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(ids)).all()
     found_map = {document.id: document for document in documents}
@@ -120,10 +65,10 @@ def batch_patch_document_user_metadata(
     denied: list[UUID] = []
     updated = 0
 
-    patch = payload.patch if isinstance(payload.patch, dict) else {}
+    patch = payload.patch
     for document in documents:
         try:
-            documents_module._assert_document_writable_for_lifecycle(
+            document_access_service.assert_document_writable_for_lifecycle(
                 db,
                 tenant_id=tenant_id,
                 account_id=account_id,
@@ -135,9 +80,7 @@ def batch_patch_document_user_metadata(
 
         meta = dict(document.doc_metadata or {})
         current_user = meta.get("user") if isinstance(meta.get("user"), dict) else {}
-        next_user = documents_module._apply_user_metadata_patch(
-            current=current_user, patch=patch, replace=payload.replace
-        )
+        next_user = apply_user_metadata_patch(current=current_user, patch=patch, replace=payload.replace)
         meta["user"] = next_user
         document.doc_metadata = meta
         updated += 1
@@ -156,9 +99,8 @@ async def batch_retry_documents(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> dict[str, Any]:
     """Batch retry/reprocess documents (best-effort per id)."""
-    documents_module = _documents_module()
     dataset_service.ensure_member(db, tenant_id, account_id)
 
     queued = 0
@@ -169,29 +111,28 @@ async def batch_retry_documents(
 
     for document_id in payload.document_ids:
         try:
-            out = await documents_module.retry_document_processing(
+            out = await document_processing.retry_document_processing(
                 document_id=document_id,
                 background_tasks=background_tasks,
-                force=bool(payload.force),
-                skip_if_unchanged=bool(payload.skip_if_unchanged),
+                force=payload.force,
+                skip_if_unchanged=payload.skip_if_unchanged,
                 tenant_id=tenant_id,
                 account_id=account_id,
                 db=db,
             )
-            status = str((out or {}).get("status") or "").lower()
-            if bool(payload.force) and bool(payload.skip_if_unchanged) and status == "completed":
+            status = out["status"].lower()
+            if payload.force and payload.skip_if_unchanged and status == "completed":
                 skipped += 1
             else:
                 queued += 1
         except HTTPException as exc:
-            if exc.status_code == 404:
-                not_found.append(document_id)
-                continue
-            if exc.status_code in (401, 403):
-                denied.append(document_id)
-                continue
-            if exc.status_code in (409, 413, 429, 503):
-                conflicts.append(document_id)
+            if _record_batch_http_error(
+                exc=exc,
+                document_id=document_id,
+                not_found=not_found,
+                denied=denied,
+                conflicts=conflicts,
+            ):
                 continue
             raise
 
@@ -212,7 +153,7 @@ async def batch_reingest_documents(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> dict[str, Any]:
     """
     Batch re-ingest documents by (optionally) patching pipeline overrides and forcing a retry.
 
@@ -220,7 +161,6 @@ async def batch_reingest_documents(
     - This is best-effort per id: failures are returned in `not_found/denied/conflicts`.
     - Intended for generating new pipeline_hash versions and/or rebuilding indexes.
     """
-    documents_module = _documents_module()
     dataset_service.ensure_member(db, tenant_id, account_id)
 
     queued = 0
@@ -229,13 +169,13 @@ async def batch_reingest_documents(
     denied: list[UUID] = []
     conflicts: list[UUID] = []
 
-    patch_req = DocumentPipelinePatchRequest(patch=payload.patch, replace=bool(payload.replace))
-    has_patch = bool(getattr(payload.patch, "model_fields_set", set()))
+    patch_req = DocumentPipelinePatchRequest(patch=payload.patch, replace=payload.replace)
+    has_patch = bool(payload.patch.model_fields_set)
 
     for document_id in payload.document_ids:
-        if bool(payload.replace) or has_patch:
+        if payload.replace or has_patch:
             try:
-                await documents_module.patch_document_pipeline(
+                document_mutations.patch_document_pipeline(
                     document_id=document_id,
                     payload=patch_req,
                     tenant_id=tenant_id,
@@ -254,20 +194,16 @@ async def batch_reingest_documents(
                 raise
 
         try:
-            out = await documents_module.retry_document_processing(
+            out = await document_processing.retry_document_processing(
                 document_id=document_id,
                 background_tasks=background_tasks,
-                force=bool(payload.force),
-                skip_if_unchanged=bool(payload.skip_if_unchanged),
+                force=payload.force,
+                skip_if_unchanged=payload.skip_if_unchanged,
                 tenant_id=tenant_id,
                 account_id=account_id,
                 db=db,
             )
-            if (
-                bool(payload.force)
-                and bool(payload.skip_if_unchanged)
-                and str((out or {}).get("status") or "").lower() == "completed"
-            ):
+            if payload.force and payload.skip_if_unchanged and out["status"].lower() == "completed":
                 skipped += 1
             else:
                 queued += 1
@@ -300,9 +236,8 @@ async def batch_update_document_access(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> dict[str, Any]:
     """Batch update document ACL (best-effort per id)."""
-    documents_module = _documents_module()
     dataset_service.ensure_member(db, tenant_id, account_id)
 
     updated = 0
@@ -311,7 +246,7 @@ async def batch_update_document_access(
 
     for document_id in payload.document_ids:
         try:
-            await documents_module.put_document_access(
+            await document_access.put_document_access(
                 document_id=document_id,
                 payload=payload.access,
                 tenant_id=tenant_id,
@@ -338,7 +273,7 @@ def batch_move_documents(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> dict[str, Any]:
     """
     Batch move documents between datasets (best-effort).
 
@@ -347,9 +282,7 @@ def batch_move_documents(
       because dataset_id is part of the object/key namespace.
     - Disallows moving documents that are pending/processing.
     """
-    documents_module = _documents_module()
     _resolve_batch_move_target(
-        documents_module=documents_module,
         db=db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -368,7 +301,7 @@ def batch_move_documents(
             continue
 
         try:
-            documents_module._assert_document_writable_for_lifecycle(
+            document_access_service.assert_document_writable_for_lifecycle(
                 db,
                 tenant_id=tenant_id,
                 account_id=account_id,
@@ -379,7 +312,7 @@ def batch_move_documents(
             continue
         if payload.target_dataset_id is None:
             try:
-                documents_module._assert_document_writable_for_unassigned_target(
+                document_access_service.assert_document_writable_for_unassigned_target(
                     db,
                     tenant_id=tenant_id,
                     account_id=account_id,
@@ -388,7 +321,7 @@ def batch_move_documents(
             except HTTPException:
                 denied.append(document_id)
                 continue
-        if _move_document_conflicts(documents_module=documents_module, doc=doc):
+        if _move_document_conflicts(doc=doc):
             conflicts.append(document_id)
             continue
 
@@ -399,3 +332,52 @@ def batch_move_documents(
         db.commit()
 
     return {"moved": moved, "not_found": not_found, "denied": denied, "conflicts": conflicts}
+
+
+def _record_batch_http_error(
+    *,
+    exc: HTTPException,
+    document_id: UUID,
+    not_found: list[UUID],
+    denied: list[UUID],
+    conflicts: list[UUID],
+) -> bool:
+    if exc.status_code == 404:
+        not_found.append(document_id)
+        return True
+    if exc.status_code in (401, 403):
+        denied.append(document_id)
+        return True
+    if exc.status_code in (409, 413, 429, 503):
+        conflicts.append(document_id)
+        return True
+    return False
+
+
+def _resolve_batch_move_target(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    payload: DocumentBatchMoveRequest,
+) -> None:
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
+    if payload.target_dataset_id is not None:
+        target_ds = dataset_service.get_dataset(db, tenant_id, payload.target_dataset_id)
+        dataset_service.assert_dataset_writable(db, target_ds, account_id)
+        return
+    role = (member.role or "").lower()
+    if role not in EDIT_ROLES:
+        raise HTTPException(status_code=403, detail="No permission to move documents to unassigned scope")
+
+
+def _move_document_conflicts(*, doc: DBDocument) -> bool:
+    status = doc.status.lower()
+    if status in {"pending", "processing"}:
+        return True
+    raw_path = doc.file_path.strip()
+    if raw_path and is_object_storage_uri(raw_path):
+        return True
+    meta = dict(doc.doc_metadata or {})
+    img_ids = meta.get("img_ids")
+    return isinstance(img_ids, list) and any(isinstance(value, str) and value.strip() for value in img_ids)

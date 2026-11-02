@@ -27,6 +27,7 @@ from app.services.document_identity import (
     sync_pipeline_execution_identity,
 )
 from app.services.document_index_channel_service import reconcile_document_index_channels
+from app.services.document_metadata_service import apply_user_metadata_patch
 from app.storage.object.minio import minio_service as minio_service
 from app.storage.object.runtime import (
     document_object_storage_enabled,
@@ -949,7 +950,7 @@ def _build_document_metadata(
     if resolved_pipeline.ingestion_meta:
         doc_metadata["ingestion"] = resolved_pipeline.ingestion_meta
     if isinstance(user_patch, dict) and user_patch:
-        doc_metadata["user"] = documents_module._apply_user_metadata_patch(
+        doc_metadata["user"] = apply_user_metadata_patch(
             current={},
             patch=user_patch,
             replace=True,
@@ -1007,7 +1008,7 @@ def _merge_duplicate_document_metadata(
         meta_any["ingestion"] = resolved_pipeline.ingestion_meta
     if isinstance(user_patch, dict) and user_patch:
         current_user = meta_any.get("user") if isinstance(meta_any.get("user"), dict) else {}
-        meta_any["user"] = documents_module._apply_user_metadata_patch(
+        meta_any["user"] = apply_user_metadata_patch(
             current=current_user,
             patch=user_patch,
             replace=False,

@@ -410,15 +410,16 @@ async def test_document_processing_endpoints_use_shared_unassigned_acl(
 
 
 def test_document_mutation_endpoints_use_shared_unassigned_acl(monkeypatch: pytest.MonkeyPatch) -> None:
-    documents_module = document_mutations._documents_module()
     document = _unassigned_document(access_mode="all_team_members")
     db = _DB(document)
     sentinel = HTTPException(status_code=403, detail="shared-write-policy")
 
-    monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        documents_module,
-        "_assert_document_writable_for_lifecycle",
+        document_mutations.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True
+    )
+    monkeypatch.setattr(
+        document_mutations.document_access_service,
+        "assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(sentinel),
         raising=True,
     )
