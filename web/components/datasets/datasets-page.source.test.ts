@@ -30,12 +30,12 @@ describe('datasets-page header action contract', () => {
   it('keeps refresh and create actions wired while the header is simplified', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'datasets-page.tsx'), 'utf8')
 
-    expect(src).toContain('onClick={() => { detachPromise(refreshDatasets()) }}')
+    expect(src).toMatch(/onClick=\{\(\) => \{\s*detachPromise\(refreshDatasets\(\)\)\s*\}\}/)
     expect(src).toContain('disabled={isRefreshing}')
-    expect(src).toContain('<Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (open) resetForm() }}>')
+    expect(src).toMatch(/<Dialog\s+open=\{createOpen\}\s+onOpenChange=\{\(open\) => \{\s*setCreateOpen\(open\);?\s*if \(open\) resetForm\(\)\s*\}\}\s*>/)
     expect(src).toContain('<DialogTrigger asChild>')
     expect(src).toContain('<CreateDatasetButton')
-    expect(src).toContain('<Button onClick={handleCreate} disabled={!canSubmit}>确认创建</Button>')
+    expect(src).toMatch(/<Button onClick=\{handleCreate\} disabled=\{!canSubmit\}>\s*确认创建\s*<\/Button>/)
   })
 
   it('uses a compact management toolbar without decorative workflow chrome', () => {
