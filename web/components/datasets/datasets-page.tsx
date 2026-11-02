@@ -67,6 +67,7 @@ import type {
   Dataset,
   DatasetIngestionSummary,
   DatasetListResponse,
+  DatasetOperationalStatus,
   PermissionEnum,
   DocumentPipelineOptions,
 } from '@/types'
@@ -78,7 +79,6 @@ import { DatasetCategoryMultiSelect } from '@/components/dataset-categories/cate
 import { CreateDatasetButton } from '@/components/datasets/create-dataset-button'
 import { GroupChipsInput } from '@/components/groups/group-chips-input'
 
-type DatasetOperationalStatus = 'active' | 'anomaly' | 'pending' | 'testing'
 const DATASET_SEARCH_DEBOUNCE_MS = 220
 const DATASET_SEARCH_MAX_LENGTH = 200
 
@@ -141,26 +141,15 @@ function mergePipelineOptions(
   defaults: DocumentPipelineOptions,
   overrides?: DocumentPipelineOptions | null,
 ): DocumentPipelineOptions {
-  if (!overrides) return { ...defaults }
   return { ...defaults, ...overrides }
 }
 
-function applyPipelinePatch(
-  current: DocumentPipelineOptions,
-  patch?: DocumentPipelineOptions | null,
-): DocumentPipelineOptions {
-  if (!patch) return { ...current }
-  return { ...current, ...patch }
-}
-
 function getDatasetAnomalyCount(stats?: DatasetIngestionSummary | null): number {
-  const byStatus = stats?.by_status || {}
-  return Number(byStatus.failed || 0) + Number(byStatus.quarantined || 0)
+  return (stats?.by_status?.failed ?? 0) + (stats?.by_status?.quarantined ?? 0)
 }
 
 function getDatasetPendingCount(stats?: DatasetIngestionSummary | null): number {
-  const byStatus = stats?.by_status || {}
-  return Number(byStatus.pending || 0) + Number(byStatus.processing || 0)
+  return (stats?.by_status?.pending ?? 0) + (stats?.by_status?.processing ?? 0)
 }
 
 function getDatasetOperationalStatus(
@@ -168,7 +157,7 @@ function getDatasetOperationalStatus(
   stats?: DatasetIngestionSummary | null,
 ): DatasetOperationalStatus {
   if (dataset.operational_status) return dataset.operational_status
-  const name = String(dataset.name || '').toLowerCase()
+  const name = dataset.name.toLowerCase()
   if (name.includes('test') || name.includes('demo') || name.includes('测试')) return 'testing'
   if (getDatasetAnomalyCount(stats) > 0) return 'anomaly'
   if (getDatasetPendingCount(stats) > 0) return 'pending'
@@ -336,7 +325,7 @@ function getDatasetIconTone(icon: LucideIcon) {
   }
 }
 
-export default function DatasetsPage() {
+export function DatasetsPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const { options: defaultPipelineOptions } = usePipelineOptions()
@@ -413,17 +402,17 @@ export default function DatasetsPage() {
     queryFn: () => datasetApi.list(datasetListParams),
   })
 
-  const response = datasetsQuery.data ?? null
-  const items = useMemo(() => response?.items || [], [response?.items])
-  const scopeTotal = Number(response?.facets?.scope_total || 0)
-  const filteredTotal = Number(response?.facets?.filtered_total || 0)
-  const displayedTotal = Number(response?.total || 0)
+  const response = datasetsQuery.data
+  const items = useMemo(() => response?.items ?? [], [response?.items])
+  const scopeTotal = response?.facets?.scope_total ?? 0
+  const filteredTotal = response?.facets?.filtered_total ?? 0
+  const displayedTotal = response?.total ?? 0
   const statusCounts = useMemo(
     () => ({
-      active: Number(response?.facets?.status_counts?.active || 0),
-      anomaly: Number(response?.facets?.status_counts?.anomaly || 0),
-      pending: Number(response?.facets?.status_counts?.pending || 0),
-      testing: Number(response?.facets?.status_counts?.testing || 0),
+      active: response?.facets?.status_counts?.active ?? 0,
+      anomaly: response?.facets?.status_counts?.anomaly ?? 0,
+      pending: response?.facets?.status_counts?.pending ?? 0,
+      testing: response?.facets?.status_counts?.testing ?? 0,
     }),
     [response?.facets?.status_counts],
   )
@@ -433,7 +422,6 @@ export default function DatasetsPage() {
   useEffect(() => {
     if (!datasetsQuery.error) return
     reportClientError('Failed to load datasets', datasetsQuery.error)
-    toast.error(formatApiError(datasetsQuery.error, '加载数据集失败'))
   }, [datasetsQuery.error, datasetsQuery.errorUpdatedAt])
 
   const refreshDatasets = useCallback(async () => {
@@ -896,7 +884,38 @@ export default function DatasetsPage() {
                   data-dataset-catalog-scroll="true"
                   className="min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar px-3.5 py-3"
                 >
-                  {items.length === 0 && !isLoading ? (
+                  {datasetsQuery.isError ? (
+                    <div
+                      role="alert"
+                      className="mb-3 flex items-start gap-3 rounded-lg border border-destructive/25 bg-destructive/5 p-3 text-sm"
+                    >
+                      <AlertCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-destructive" />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium">加载数据集失败</p>
+                        <p className="mt-1 text-muted-foreground">
+                          {formatApiError(datasetsQuery.error, '请稍后重试')}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={isRefreshing}
+                        onClick={() => detachPromise(refreshDatasets())}
+                      >
+                        重试
+                      </Button>
+                    </div>
+                  ) : null}
+                  {isLoading ? (
+                    <div
+                      role="status"
+                      className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground"
+                    >
+                      <Loader2 aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" />
+                      正在加载数据集
+                    </div>
+                  ) : items.length === 0 && datasetsQuery.isSuccess ? (
                     <EmptyState
                       icon={Layers}
                       title={searchQuery ? '未找到匹配的数据集' : '暂无数据集'}
@@ -1773,7 +1792,7 @@ function DatasetForm({
                 onApplyPatch={(patch) => {
                   setForm({
                     ...form,
-                    pipelineOptions: applyPipelinePatch(form.pipelineOptions, patch),
+                    pipelineOptions: mergePipelineOptions(form.pipelineOptions, patch),
                   })
                 }}
               />
