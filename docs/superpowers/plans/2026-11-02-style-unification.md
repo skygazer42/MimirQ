@@ -190,6 +190,8 @@ URL 上传与 connector HTML 入库共享的来源准备、配额、去重、持
 
 原文预览直接调用 parsing subprocess runner 与治理 processor；错误转换 helper 在 `document_preview` 本地使用相同 `api.documents` logger。移除向 parse、governance 和错误转换 helper 传递 `documents_module`，保留 400／499／500 映射、生产错误脱敏、disconnect 检查和 finally 临时目录清理顺序。
 
+Chunk-write routes 直接依赖 ORM、`Indexer`、ACL、审计和 index-audit owners。chunk-specific 查询、状态策略、index result 和 drift persistence helper 归 `document_chunks_write`；`documents.py` 只保留既有直接兼容导出。manual edits 的 chunk metadata patch 就地呈现；路由事务、权限检查、vector/BM25 best-effort、drift markers 和 response mapping 保持原序。
+
 **本批产出：** 上传到任务的输入输出和失败路径一致，同一字段映射与权限规则只有一个业务维护点。
 
 ### Task 5：RAG 与模型调用

@@ -131,4 +131,4 @@ URL 上传与 connector HTML 入库共用来源准备、配额、去重、持久
 
 原文解析预览直接依赖 subprocess runner 和治理 processor；错误映射与 `api.documents` 日志由预览模块自身负责。路由保留成员权限、400/499/500 状态、生产错误脱敏、请求断开检查和临时文件清理顺序。
 
-原文预览同样直接依赖 subprocess runner、`governance_processor` 和固定 `api.documents` logger；错误映射由预览模块本地处理。对外路由不变，生产环境错误脱敏、499 取消响应、disconnect 检查和预览目录 finally 清理顺序不变。
+Chunk mutation routes directly depend on the ORM, indexer, ACL, audit and index-audit owners. Query helpers, index consistency policy and drift result/persistence helpers live in `document_chunks_write`; the `documents` aggregate only re-exports those existing names. Request order, transaction boundaries and best-effort vector/BM25 behavior remain unchanged.

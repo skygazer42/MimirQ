@@ -370,3 +370,9 @@
 - 分块预览直接调用 parsing `run_subprocess_worker`，原文预览也直接使用同一 parsing owner；两者都直接调用现有 `governance_processor`，日志保留 `api.documents` category。位置标记来自 `parsing.artifact_stats`；分块输入归一化和 chunker 参数过滤 helper 移到 `document_chunk_preview`。
 - 移除分块预览 5 个内部 helper 的 `documents_module: Any` 参数、所有转发及 endpoint 局部聚合器导入；原文预览不再向 parse、governance 或错误转换 helper 传递模块对象。缓存锁、disconnect 检查、subprocess timeout/cancellation、治理结果和临时目录清理顺序保持不变。
 - 五个分块预览 helper 与位置标记 AST 相同；两条公开路由签名和 decorator 不变。现有 subprocess/governance fixture 的 patch 指向实际调用模块，断言未改。Ruff、格式、语法与 diff 检查通过；按用户要求没有运行 Python 测试或导入应用。
+
+## 第四批：Chunk-write owners（2026-11-03）
+
+- `document_chunks_write` 直接导入 ORM models、`Indexer`、ACL、审计、`settings` 与 index-audit helpers；chunk 查询、写权限、strictness、结果序列化、drift persistence 和 reconcile queue helpers 从 `documents.py` 移到实际写路由模块。`documents.py` 保留直接兼容导出。
+- 六个路由的参数、decorators 和 response metadata 保持一致；12 个移动 helper 的 AST 与原实现匹配，active-pipeline resolver 与 index-audit service body 相同。Vector/BM25 尝试、commit/rollback、audit 与 drift reconciliation 顺序不变。
+- 更新三组既有权限、chunk vector 和 drift fixture 的 patch owner；用例与断言未改。Ruff、格式、语法和 diff 检查通过；没有运行 Python 测试或连接数据库/索引服务。

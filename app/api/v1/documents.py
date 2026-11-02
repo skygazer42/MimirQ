@@ -2,15 +2,12 @@
 Document management API.
 """
 
-import contextlib
 import importlib
 import os
 from dataclasses import dataclass
-from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Form
-from sqlalchemy.orm import Session
 
 from app.api.schemas.document import (
     DocumentPipelineOptions as DocumentPipelineOptions,
@@ -221,8 +218,6 @@ from app.api.v1.document_versions import (
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
-from app.models.document import Document as DBDocument
-from app.models.document import DocumentChunk
 from app.parsing.artifact_stats import POSITION_TAG_RE as POSITION_TAG_RE
 from app.parsing.subprocess_runner import run_subprocess_worker
 from app.rag.core.logging import get_logger
@@ -274,7 +269,6 @@ from app.services.document_preview_utils import (
 from app.services.document_preview_utils import (
     _rewrite_preview_images_to_minio as _rewrite_preview_images_to_minio,
 )
-from app.services.index_audit_service import build_index_drift_marker
 from app.services.pipeline_config import (
     build_indexing_options,
 )
@@ -348,46 +342,7 @@ preview_document = document_preview.preview_document
 
 DOC_NOT_FOUND_DETAIL = "Document not found"
 PIPELINE_HASH_TOO_LONG_DETAIL = "pipeline_hash too long"
-CHUNK_NOT_FOUND_DETAIL = "Chunk not found"
-CHUNK_NOT_ACTIVE_PIPELINE_DETAIL = "Chunk is not in the active pipeline version"
 MANUAL_FILE_PATH_PREFIX = "manual://"
-CHUNK_PATCH_OPERATION = "chunk.patch"
-
-
-def _get_document_for_chunk_ops(db: Session, tenant_id: UUID, document_id: UUID) -> DBDocument | None:
-    return db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
-
-
-def _get_chunk_for_chunk_ops(
-    db: Session,
-    tenant_id: UUID,
-    document_id: UUID,
-    chunk_id: UUID,
-) -> DocumentChunk | None:
-    return (
-        db.query(DocumentChunk)
-        .filter(
-            DocumentChunk.tenant_id == tenant_id,
-            DocumentChunk.document_id == document_id,
-            DocumentChunk.id == chunk_id,
-        )
-        .first()
-    )
-
-
-def _assert_document_writable_for_chunk_ops(
-    db: Session,
-    *,
-    tenant_id: UUID,
-    account_id: str,
-    document: DBDocument,
-) -> None:
-    _assert_document_writable_for_lifecycle(
-        db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        document=document,
-    )
 
 
 def _document_object_storage_enabled() -> bool:
@@ -443,274 +398,23 @@ upload_document_from_url = document_upload.upload_document_from_url
 upload_documents_batch = document_upload.upload_documents_batch
 
 
-def _resolve_active_doc_pipeline_key(document_id: UUID, doc_metadata: dict) -> str:
-    active_hash = str(
-        (doc_metadata or {}).get("active_pipeline_hash") or (doc_metadata or {}).get("pipeline_hash") or ""
-    ).strip()
-    return f"{document_id}:{active_hash}" if active_hash else str(document_id)
-
-
-def _apply_chunk_metadata_patch(*, current: dict, patch: dict) -> dict:
-    next_meta = dict(current or {})
-    for key, value in (patch or {}).items():
-        if not isinstance(key, str) or not key.strip():
-            continue
-        k = key.strip()
-        if value is None:
-            next_meta.pop(k, None)
-        else:
-            next_meta[k] = value
-    return next_meta
-
-
-def _normalize_index_consistency_strictness(*, patch_mode: bool = False) -> str:
-    strictness = str(settings.INDEX_CONSISTENCY_STRICTNESS or "off").strip().lower()
-    if strictness not in {"off", "warn", "strict"}:
-        strictness = "off"
-    enabled = bool(settings.INDEX_CONSISTENCY_ENABLED)
-    patch_strict = bool(settings.INDEX_CONSISTENCY_PATCH_CHUNK_STRICT)
-    if patch_mode and patch_strict:
-        return "strict"
-    if not enabled and strictness != "strict":
-        return "off"
-    return strictness
-
-
-def _build_index_channel_result(
-    *,
-    status: str,
-    attempted: bool,
-    error: str | None = None,
-    vector_id: str | None = None,
-) -> dict[str, Any]:
-    out: dict[str, Any] = {
-        "status": str(status or "skipped"),
-        "attempted": bool(attempted),
-    }
-    if error:
-        out["error"] = str(error)[:240]
-    if vector_id:
-        out["vector_id"] = str(vector_id)[:200]
-    return out
-
-
-def _index_channel_status(value: dict[str, Any] | None) -> str:
-    return str((value or {}).get("status") or "skipped").strip().lower()
-
-
-def _index_drift_marker_rows(drift_markers: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
-    return [dict(marker) for marker in (drift_markers or []) if isinstance(marker, dict)][:20]
-
-
-def _build_chunk_index_operation_result(
-    *,
-    operation: str,
-    strictness: str,
-    vector: dict[str, Any],
-    bm25: dict[str, Any],
-    kg: dict[str, Any] | None = None,
-    reconcile: dict[str, Any] | None = None,
-    drift_markers: list[dict[str, Any]] | None = None,
-) -> dict[str, Any]:
-    vector_status = _index_channel_status(vector)
-    bm25_status = _index_channel_status(bm25)
-    kg_status = _index_channel_status(kg) if isinstance(kg, dict) else "skipped"
-    success = all(st in {"ok", "skipped"} for st in (vector_status, bm25_status, kg_status))
-    return {
-        "schema": "mimirq.index_operation_result.v1",
-        "operation": str(operation or "").strip()[:80] or CHUNK_PATCH_OPERATION,
-        "strictness": str(strictness or "off").strip().lower(),
-        "success": bool(success),
-        "vector": dict(vector or {}),
-        "bm25": dict(bm25 or {}),
-        "kg": (dict(kg or {}) if isinstance(kg, dict) else None),
-        "reconcile": (dict(reconcile or {}) if isinstance(reconcile, dict) else None),
-        "drift_markers": _index_drift_marker_rows(drift_markers),
-    }
-
-
-def _persist_chunk_index_operation_result(
-    *,
-    db: Session,
-    chunk: DocumentChunk,
-    result: dict[str, Any],
-    drift_markers: list[dict[str, Any]] | None = None,
-) -> None:
-    meta = dict(getattr(chunk, "doc_metadata", None) or {})
-    meta["index_operation_result"] = dict(result or {})
-
-    if drift_markers:
-        existing = meta.get("index_drift_markers")
-        existing_rows = [dict(x) for x in existing if isinstance(x, dict)] if isinstance(existing, list) else []
-        merged = existing_rows + [dict(x) for x in drift_markers if isinstance(x, dict)]
-        meta["index_drift_markers"] = merged[-20:]
-
-    chunk.doc_metadata = meta
-    db.commit()
-    with contextlib.suppress(Exception):
-        db.refresh(chunk)
-
-
-async def _enqueue_index_drift_reconcile(
-    *,
-    tenant_id: UUID,
-    document_id: UUID,
-    requested_by: str,
-) -> str | None:
-    if not bool(settings.TASK_QUEUE_ENABLED):
-        return None
-
-    try:
-        from app.tasks.queue import enqueue_rebuild_indexes
-
-        return await enqueue_rebuild_indexes(
-            tenant_id=tenant_id,
-            document_id=document_id,
-            requested_by=str(requested_by or "system:index-drift"),
-            job_id=f"index-drift-reconcile:{tenant_id}:{document_id}",
-        )
-    except Exception:
-        return None
-
-
-def _build_chunk_drift_markers(
-    *,
-    operation: str,
-    strictness: str,
-    tenant_id: UUID,
-    document_id: UUID,
-    chunk: DocumentChunk,
-    vector_error: str | None,
-    bm25_error: str | None,
-    emit_drift_markers: bool,
-) -> list[dict[str, Any]]:
-    drift_markers: list[dict[str, Any]] = []
-    if emit_drift_markers and vector_error:
-        drift_markers.append(
-            build_index_drift_marker(
-                operation=operation,
-                strictness=strictness,
-                tenant_id=tenant_id,
-                document_id=document_id,
-                chunk_id=chunk.id,
-                channel="vector",
-                reason=vector_error,
-            )
-        )
-    if emit_drift_markers and bm25_error:
-        drift_markers.append(
-            build_index_drift_marker(
-                operation=operation,
-                strictness=strictness,
-                tenant_id=tenant_id,
-                document_id=document_id,
-                chunk_id=chunk.id,
-                channel="bm25",
-                reason=bm25_error,
-            )
-        )
-    return drift_markers
-
-
-async def _record_chunk_index_drift(
-    *,
-    db: Session,
-    document: DBDocument,
-    chunk: DocumentChunk,
-    tenant_id: UUID,
-    account_id: str,
-    operation: str,
-    strictness: str,
-    vector_error: str | None,
-    bm25_error: str | None,
-    vector_id_after: str | None = None,
-) -> tuple[dict[str, Any], list[dict[str, Any]], str | None]:
-    from app.services.index_audit_service import record_index_drift_item
-
-    emit_drift_markers = bool(settings.INDEX_CONSISTENCY_EMIT_DRIFT_MARKERS)
-    drift_markers = _build_chunk_drift_markers(
-        operation=operation,
-        strictness=strictness,
-        tenant_id=tenant_id,
-        document_id=document.id,
-        chunk=chunk,
-        vector_error=vector_error,
-        bm25_error=bm25_error,
-        emit_drift_markers=emit_drift_markers,
-    )
-    reconcile_task_id: str | None = None
-    reconcile_result: dict[str, Any] | None = None
-    auto_reconcile_supported = vector_error is None and bm25_error is not None
-    if drift_markers and auto_reconcile_supported:
-        reconcile_task_id = await _enqueue_index_drift_reconcile(
-            tenant_id=tenant_id,
-            document_id=document.id,
-            requested_by=account_id,
-        )
-        if reconcile_task_id:
-            reconcile_result = {
-                "status": "enqueued",
-                "scope": "document",
-                "channels": ["bm25"],
-                "task_id": reconcile_task_id,
-            }
-        else:
-            reconcile_result = {
-                "status": "not_enqueued",
-                "scope": "document",
-                "channels": ["bm25"],
-                "reason": "queue_disabled_duplicate_or_unavailable",
-            }
-    elif drift_markers and vector_error is not None:
-        reconcile_result = {
-            "status": "unsupported",
-            "reason": "document_scoped_auto_reconcile_only_supports_bm25",
-        }
-    elif drift_markers:
-        reconcile_result = {
-            "status": "skipped",
-        }
-
-    if drift_markers:
-        for marker in drift_markers:
-            with contextlib.suppress(Exception):
-                record_index_drift_item(
-                    db=db,
-                    dataset_id=getattr(document, "dataset_id", None),
-                    marker=marker,
-                    reconcile_task_id=(reconcile_task_id if marker.get("channel") == "bm25" else None),
-                )
-
-    vector_result = _build_index_channel_result(
-        status=("error" if vector_error else "ok"),
-        attempted=True,
-        error=vector_error,
-        vector_id=vector_id_after,
-    )
-    bm25_result = _build_index_channel_result(
-        status=("error" if bm25_error else "ok"),
-        attempted=True,
-        error=bm25_error,
-    )
-    operation_result = _build_chunk_index_operation_result(
-        operation=operation,
-        strictness=strictness,
-        vector=vector_result,
-        bm25=bm25_result,
-        kg=None,
-        reconcile=reconcile_result,
-        drift_markers=drift_markers,
-    )
-    _persist_chunk_index_operation_result(
-        db=db,
-        chunk=chunk,
-        result=operation_result,
-        drift_markers=drift_markers,
-    )
-    return operation_result, drift_markers, reconcile_task_id
-
-
 document_chunks_write = importlib.import_module("app.api.v1.document_chunks_write")
+CHUNK_NOT_FOUND_DETAIL = document_chunks_write.CHUNK_NOT_FOUND_DETAIL
+CHUNK_NOT_ACTIVE_PIPELINE_DETAIL = document_chunks_write.CHUNK_NOT_ACTIVE_PIPELINE_DETAIL
+CHUNK_PATCH_OPERATION = document_chunks_write.CHUNK_PATCH_OPERATION
+_get_document_for_chunk_ops = document_chunks_write._get_document_for_chunk_ops
+_get_chunk_for_chunk_ops = document_chunks_write._get_chunk_for_chunk_ops
+_assert_document_writable_for_chunk_ops = document_chunks_write._assert_document_writable_for_chunk_ops
+_resolve_active_doc_pipeline_key = document_chunks_write._resolve_active_doc_pipeline_key
+_normalize_index_consistency_strictness = document_chunks_write._normalize_index_consistency_strictness
+_build_index_channel_result = document_chunks_write._build_index_channel_result
+_index_channel_status = document_chunks_write._index_channel_status
+_index_drift_marker_rows = document_chunks_write._index_drift_marker_rows
+_build_chunk_index_operation_result = document_chunks_write._build_chunk_index_operation_result
+_persist_chunk_index_operation_result = document_chunks_write._persist_chunk_index_operation_result
+_enqueue_index_drift_reconcile = document_chunks_write._enqueue_index_drift_reconcile
+_build_chunk_drift_markers = document_chunks_write._build_chunk_drift_markers
+_record_chunk_index_drift = document_chunks_write._record_chunk_index_drift
 create_document_chunk = document_chunks_write.create_document_chunk
 patch_document_chunk = document_chunks_write.patch_document_chunk
 delete_document_chunk = document_chunks_write.delete_document_chunk
