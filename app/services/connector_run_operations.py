@@ -629,9 +629,7 @@ async def create_run(
         )
     else:
         dataset_service.ensure_member(db, tenant_id, account_id)
-    from app.services.document_ingestion import resolve_writable_dataset
-
-    dataset = resolve_writable_dataset(db, tenant_id, account_id, payload.dataset_id)
+    dataset = dataset_service.resolve_writable_dataset(db, tenant_id, account_id, payload.dataset_id)
     cfg, cfg_dict = _validate_and_encrypt_run_config(connector_id, payload.config)
     if connector_id in _DB_CATALOG_CONNECTOR_IDS:
         try:

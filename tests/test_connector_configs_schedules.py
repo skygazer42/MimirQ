@@ -78,6 +78,7 @@ class _ScheduledDB(_ConfigLookupDB):
 @pytest.mark.parametrize("mode", ["none", "exception"])
 def test_shared_connector_enqueue_helper_fails_closed_when_queue_handoff_fails(monkeypatch, mode: str) -> None:  # noqa: ANN001
     import app.api.v1.connectors_runs as runs_api
+    import app.services.connector_run_operations as run_operations
 
     tenant_id = uuid4()
     run = SimpleNamespace(
@@ -97,9 +98,9 @@ def test_shared_connector_enqueue_helper_fails_closed_when_queue_handoff_fails(m
     async def _enqueue_error(**_kwargs):  # noqa: ANN003, ANN202
         raise RuntimeError("queue down")
 
-    monkeypatch.setattr(runs_api.connectors_module.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(run_operations.settings, "TASK_QUEUE_ENABLED", True, raising=False)
     monkeypatch.setattr(
-        runs_api.connectors_module,
+        run_operations,
         "enqueue_connector_run",
         _enqueue_none if mode == "none" else _enqueue_error,
         raising=True,
@@ -127,6 +128,7 @@ def test_shared_connector_enqueue_helper_fails_closed_when_queue_handoff_fails(m
 
 def test_shared_connector_enqueue_helper_rejects_unsupported_connector_before_handoff(monkeypatch) -> None:  # noqa: ANN001
     import app.api.v1.connectors_runs as runs_api
+    import app.services.connector_run_operations as run_operations
 
     tenant_id = uuid4()
     run = SimpleNamespace(
@@ -145,8 +147,8 @@ def test_shared_connector_enqueue_helper_rejects_unsupported_connector_before_ha
         enqueue_called = True
         return "task-id"
 
-    monkeypatch.setattr(runs_api.connectors_module.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(runs_api.connectors_module, "enqueue_connector_run", _unexpected_enqueue, raising=True)
+    monkeypatch.setattr(run_operations.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(run_operations, "enqueue_connector_run", _unexpected_enqueue, raising=True)
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
