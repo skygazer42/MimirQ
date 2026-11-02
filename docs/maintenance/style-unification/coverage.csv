@@ -98,7 +98,7 @@ app/api/schemas/external_conversation.py,3,pending,adjusted,Awaiting file-level 
 app/api/schemas/feedback.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/fls_policy.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/governance_profile.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/schemas/group.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/api/schemas/group.py,3,adjusted,conforms,After validators consume declared strings and lists; retain ordering rejection and length constraints,Task 3 tenant boundary full AST; 16 schema fields; 3 after validators
 app/api/schemas/health.py,3,conforms,adjusted,Complete health response schema review; current field and framework inheritance contracts conform,Complete module and parameter AST review; logs/task-3-observation-static.json; Ruff check/format passed; Python tests deferred
 app/api/schemas/indexing.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/industry_rules.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -464,14 +464,14 @@ app/models/evaluation.py,3,pending,conforms,Awaiting file-level convention and c
 app/models/evidence.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/models/feedback.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/models/governance_profile.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/models/group_permissions.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/models/group_permissions.py,3,conforms,conforms,Tenant composite keys uniqueness and allowlist ownership already explicit,Task 3 tenant boundary exact model AST and full source review
 app/models/index_drift_item.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/models/ingest_dead_letter.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/models/ingestion_run.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/models/prompt_template.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/models/rag_config_template.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/models/tenant.py,3,adjusted,conforms,Local and external identity storage clarified; ORM columns and constraints unchanged,Task 3 identity: 10-module Ruff/format/AST; 35 signatures; 69 static calls; Python tests deferred
-app/models/tenant_group.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/models/tenant_group.py,3,adjusted,conforms,Correct stale group ACL description; original columns constraints and relationships preserved,Task 3 tenant boundary ORM AST unchanged apart from module docstring
 app/models/user.py,3,conforms,conforms,Account constraints and nullable fields reviewed; ORM schema unchanged,Task 3 identity: 10-module Ruff/format/AST; 35 signatures; 69 static calls; Python tests deferred
 app/parsing/__init__.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/parsing/artifact_stats.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -1194,7 +1194,7 @@ app/rag/workflows/system_router.py,5,pending,adjusted,Awaiting file-level conven
 app/services/access_graph_diff_service.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/audit_log_retention.py,3,adjusted,conforms,Single-column UUID Row unpack; existing deletion owner shared across all purge paths,Task 3 audit row contract; transaction source comparison; Ruff and format
 app/services/audit_log_service.py,3,adjusted,conforms,One owner for 7 audit filters; typed chat detail construction; original writer policy retained,Task 3 audit shared-filter AST; 123 bound calls; Ruff and format
-app/services/authz_prometheus_metrics.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/services/authz_prometheus_metrics.py,3,adjusted,conforms,Direct enabled setting and bounded label normalization without redundant wrapper,Task 3 tenant boundary normalized AST; fixed label sets and Counter unchanged
 app/services/base_service.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/chat_bootstrap_runtime.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/chat_cache_runtime.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -1373,7 +1373,7 @@ app/services/tenant_group_service.py,3,adjusted,conforms,Module functions; expli
 app/services/tenant_member_provisioning_service.py,3,adjusted,adjusted,JWT member creation uses a typed session factory and one audit hash; best-effort lifecycle policy retained,task-3-permission-quota: auth caller and audit/transaction source review; Ruff; AST; no Python tests
 app/services/tenant_quota.py,3,adjusted,adjusted,"Typed quota arithmetic avoids repeated casts; clamps, warning/block policy and versioned schema retained",task-3-permission-quota: full source and tracked caller review; Ruff; AST; no Python tests
 app/services/tenant_quota_service.py,3,adjusted,adjusted,"Shared typed QPS results, 429 and backend-error policies; sync/async token paths and quota failure contracts retained",task-3-permission-quota: Ruff/AST/signatures; 3 exact SQL bodies; sync/async AST parity; no Python tests
-app/services/tenant_rls.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/services/tenant_rls.py,3,adjusted,conforms,SQL bundle consumes declared strings; identifiers literals and schema defaults retained,Task 3 tenant boundary exact normalized AST; 10 SQL interpolations
 app/services/user_service.py,2,adjusted,adjusted,Module user service; explicit configuration and domain errors; callers migrated; external auth contract preserved,Task 2: 34 focused / 127 expanded auth regressions passed; Ruff check and format passed
 app/services/web_crawler.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/storage/__init__.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending

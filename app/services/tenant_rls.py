@@ -2,22 +2,22 @@ from typing import Any
 
 
 def _quote_ident(name: str) -> str:
-    return '"' + str(name).replace('"', '""') + '"'
+    return '"' + name.replace('"', '""') + '"'
 
 
 def _quote_literal(value: str) -> str:
-    return "'" + str(value).replace("'", "''") + "'"
+    return "'" + value.replace("'", "''") + "'"
 
 
 def _quote_qualified_ident(name: str) -> str:
-    parts = [part.strip() for part in str(name or "").split(".") if part.strip()]
+    parts = [part.strip() for part in name.split(".") if part.strip()]
     if not parts:
         return _quote_ident("")
     return ".".join(_quote_ident(part) for part in parts)
 
 
 def _qualify_with_default_schema(name: str, *, schema_name: str) -> str:
-    raw = str(name or "").strip()
+    raw = name.strip()
     if not raw:
         return _quote_ident("")
     if "." in raw:
@@ -35,12 +35,12 @@ def build_tenant_rls_bundle(
     schema_name: str = "public",
 ) -> dict[str, Any]:
     bundle_schema = "mimirq.tenant_rls_bundle.v1"
-    effective_schema = str(schema_name or "public").strip() or "public"
+    effective_schema = schema_name.strip() or "public"
     helper_schema_q = _quote_ident(effective_schema)
     tenant_table_q = _qualify_with_default_schema(tenant_table, schema_name=effective_schema)
     tenant_column_q = _quote_ident(tenant_column)
     role_column_q = _quote_ident(role_column)
-    admin_role_s = _quote_literal(str(admin_role or "admin").strip() or "admin")
+    admin_role_s = _quote_literal(admin_role.strip() or "admin")
     is_admin_fn_q = f"{helper_schema_q}.{_quote_ident('is_admin')}"
     tenant_matches_fn_q = f"{helper_schema_q}.{_quote_ident('tenant_matches')}"
 
@@ -63,8 +63,8 @@ def build_tenant_rls_bundle(
     )
 
     policies: dict[str, dict[str, str]] = {}
-    for table in managed_tables or []:
-        table_name = str(table or "").strip()
+    for table in managed_tables:
+        table_name = table.strip()
         if not table_name:
             continue
         table_q = _qualify_with_default_schema(table_name, schema_name=effective_schema)

@@ -22,17 +22,9 @@ AUTHZ_GROUP_PERMISSION_TOTAL = Counter(
 )
 
 
-def _enabled() -> bool:
-    return bool(settings.PROMETHEUS_ENABLED)
-
-
 def _norm(value: str | None, *, allowed: set[str], fallback: str = "unknown") -> str:
-    v = (str(value or "")).strip().lower()
-    if not v:
-        return fallback
-    if v not in allowed:
-        return fallback
-    return v
+    normalized = (value or "").strip().lower()
+    return normalized if normalized in allowed else fallback
 
 
 def observe_group_permission_check(*, resource: str, action: str, result: str) -> None:
@@ -44,7 +36,7 @@ def observe_group_permission_check(*, resource: str, action: str, result: str) -
     - action: read|write
     - result: allow|deny_no_groups|deny_no_match|unknown
     """
-    if not _enabled():
+    if not settings.PROMETHEUS_ENABLED:
         return
 
     AUTHZ_GROUP_PERMISSION_TOTAL.labels(
