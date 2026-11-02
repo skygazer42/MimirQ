@@ -1,0 +1,11 @@
+node_modules/
+.next*/
+out/
+dist/
+coverage/
+playwright-report/
+test-results/
+public/
+openapi.json
+types/openapi.ts
+pnpm-lock.yaml
