@@ -7,7 +7,6 @@ Design constraints:
 - only reads files under the provided origin path
 """
 
-
 import re
 import time
 from dataclasses import dataclass
@@ -199,23 +198,27 @@ def _analyze_image_code(
         return None, 1, 0
     if max_code_chars > 0 and len(code_text) > max_code_chars:
         code_text = code_text[: max_code_chars - 3].rstrip() + "..."
-    return {
-        "code_text": code_text,
-        "element": {
-            "kind": "image",
-            "visual_kind": visual_kind or None,
-            "text": code_text or str(alt or "").strip() or f"{visual_kind or 'image'} image",
-            "attributes": {
-                "source_content_type": "image_code" if code_text else "image_understanding",
-                "source_doc_type": "image_code" if code_text else "image",
-                "image_code_text": code_text or None,
-                "image_code_values": list(code_info.get("values") or []),
-                "image_code_src": str(src or ""),
-                "image_code_alt": str(alt or ""),
-                "image_visual_kind_source": "pixel",
+    return (
+        {
+            "code_text": code_text,
+            "element": {
+                "kind": "image",
+                "visual_kind": visual_kind or None,
+                "text": code_text or str(alt or "").strip() or f"{visual_kind or 'image'} image",
+                "attributes": {
+                    "source_content_type": "image_code" if code_text else "image_understanding",
+                    "source_doc_type": "image_code" if code_text else "image",
+                    "image_code_text": code_text or None,
+                    "image_code_values": list(code_info.get("values") or []),
+                    "image_code_src": str(src or ""),
+                    "image_code_alt": str(alt or ""),
+                    "image_visual_kind_source": "pixel",
+                },
             },
         },
-    }, 1, 1
+        1,
+        1,
+    )
 
 
 def _extract_code_payloads_for_line(
@@ -261,28 +264,36 @@ def add_image_code_blocks(
 ) -> tuple[str, int, ImageCodeAudit]:
     raw = str(markdown or "")
     if not raw:
-        return "", 0, ImageCodeAudit(
-            applied=False,
-            codes_added=0,
-            images_attempted=0,
-            images_succeeded=0,
-            elapsed_ms=0,
-            backend="local_decode",
-            code_elements=[],
-            error=None,
+        return (
+            "",
+            0,
+            ImageCodeAudit(
+                applied=False,
+                codes_added=0,
+                images_attempted=0,
+                images_succeeded=0,
+                elapsed_ms=0,
+                backend="local_decode",
+                code_elements=[],
+                error=None,
+            ),
         )
 
     max_images_i = max(0, int(max_images or 0))
     if max_images_i <= 0:
-        return raw, 0, ImageCodeAudit(
-            applied=False,
-            codes_added=0,
-            images_attempted=0,
-            images_succeeded=0,
-            elapsed_ms=0,
-            backend="local_decode",
-            code_elements=[],
-            error="max_images<=0",
+        return (
+            raw,
+            0,
+            ImageCodeAudit(
+                applied=False,
+                codes_added=0,
+                images_attempted=0,
+                images_succeeded=0,
+                elapsed_ms=0,
+                backend="local_decode",
+                code_elements=[],
+                error="max_images<=0",
+            ),
         )
 
     t0 = time.perf_counter()

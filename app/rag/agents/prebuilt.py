@@ -83,10 +83,7 @@ def create_rag_agent(
     else:
         kwargs.setdefault("recursion_limit", AGENT_RECURSION_LIMIT)
 
-    logger.info(
-        "Creating RAG agent with %d tools, checkpointer=%s",
-        len(tools), type(checkpointer).__name__
-    )
+    logger.info("Creating RAG agent with %d tools, checkpointer=%s", len(tools), type(checkpointer).__name__)
 
     return create_react_agent(
         model=model,
@@ -170,11 +167,13 @@ def create_retriever_tool(
         """Retrieve documents for the given query."""
         try:
             import asyncio
+
             # Handle both sync and async retrieval
             if asyncio.iscoroutinefunction(retriever_func):
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
                     import concurrent.futures
+
                     with concurrent.futures.ThreadPoolExecutor() as pool:
                         future = pool.submit(asyncio.run, retriever_func(query))
                         results = future.result()
@@ -286,6 +285,7 @@ class RAGAgent:
         store = None
         if self.config.enable_memory:
             from langgraph.store.memory import InMemoryStore
+
             store = InMemoryStore()
 
         self._graph = create_rag_agent(

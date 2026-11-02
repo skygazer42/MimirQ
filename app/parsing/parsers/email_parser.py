@@ -10,7 +10,6 @@ Notes:
 - Attachments are not extracted in Phase 1 (future work).
 """
 
-
 import re
 from email import policy
 from email.message import Message

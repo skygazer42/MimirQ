@@ -6,7 +6,6 @@ for many enterprise RAG workloads. This module provides a conservative, best-eff
 way to trim such sections.
 """
 
-
 import re
 from dataclasses import dataclass
 

@@ -7,7 +7,6 @@ These utilities keep "per-dataset defaults" logic out of API endpoints so it can
 - future workers/tasks (ingestion, evaluation, etc.)
 """
 
-
 from typing import Any
 from uuid import UUID
 
@@ -51,13 +50,8 @@ def load_dataset_metadata(
     dataset_id: UUID,
 ) -> dict[str, Any]:
     """Load dataset metadata JSON safely (returns {} when missing/invalid)."""
-    row = (
-        db.query(Dataset)
-        .filter(Dataset.tenant_id == tenant_id, Dataset.id == dataset_id)
-        .first()
-    )
+    row = db.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.id == dataset_id).first()
     if row is None:
         return {}
     meta = getattr(row, "dataset_metadata", None)
     return dict(meta) if isinstance(meta, dict) else {}
-

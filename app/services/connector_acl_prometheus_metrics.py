@@ -7,7 +7,6 @@ Design goals:
 - Optional: enabled only when PROMETHEUS_ENABLED=true.
 """
 
-
 import re
 
 from prometheus_client import Counter
@@ -115,4 +114,3 @@ __all__ = [
     "observe_connector_acl_apply",
     "observe_connector_acl_apply_error",
 ]
-

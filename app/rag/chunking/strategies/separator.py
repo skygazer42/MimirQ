@@ -2,7 +2,6 @@
 Custom separator-based chunking strategy.
 """
 
-
 import re
 
 from langchain_core.documents import Document
@@ -59,11 +58,7 @@ class SeparatorChunker(BaseChunker):
                 raw_end = raw_start + len(part)
 
                 offset = raw_end
-                if (
-                    not self.keep_separator
-                    and self.separator
-                    and i < len(parts) - 1
-                ):
+                if not self.keep_separator and self.separator and i < len(parts) - 1:
                     # text.split() drops the separator; account for it between parts.
                     offset += len(self.separator)
 
@@ -169,4 +164,3 @@ class SeparatorChunker(BaseChunker):
             pos = end
 
         return chunks
-

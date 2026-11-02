@@ -7,7 +7,6 @@ Design goals:
 - Deterministic: rolling windows are computed server-side with UTC.
 """
 
-
 import math
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -212,8 +211,7 @@ def _embedding_quota_usage_chars(db: Session, *, tenant_id: UUID, since: datetim
             DBDocument.disabled_at.is_(None),
             func.coalesce(DBDocument.processed_at, DBDocument.updated_at) >= since,
             (
-                (DBDocument.status == "completed")
-                | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
+                (DBDocument.status == "completed") | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
             ),
         )
         .scalar()

@@ -10,7 +10,6 @@ Design principles:
 - Script-friendly: return small JSON-safe summaries
 """
 
-
 import re
 import time
 from datetime import UTC, datetime
@@ -136,4 +135,3 @@ __all__ = [
     "build_postgres_maintenance_commands",
     "run_postgres_maintenance",
 ]
-

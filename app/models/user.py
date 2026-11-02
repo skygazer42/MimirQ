@@ -3,6 +3,7 @@ User account models
 
 Basic user table for login/registration.
 """
+
 import uuid
 
 from sqlalchemy import Boolean, Column, DateTime, String

@@ -1,4 +1,3 @@
-
 import contextvars
 from collections.abc import AsyncIterator, Iterator
 from typing import Any
@@ -174,9 +173,7 @@ class FallbackChatOpenAI(BaseChatModel):
         error: Exception | None = None,
         yielded_tokens: bool | None = None,
     ) -> None:
-        attempts.append(
-            self._attempt_entry(model=model, success=success, error=error, yielded_tokens=yielded_tokens)
-        )
+        attempts.append(self._attempt_entry(model=model, success=success, error=error, yielded_tokens=yielded_tokens))
 
     def _set_success_metadata(
         self,

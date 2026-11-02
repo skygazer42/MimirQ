@@ -1,4 +1,3 @@
-
 import math
 import re
 from collections import Counter, defaultdict
@@ -120,10 +119,7 @@ def mine_query_patterns(
         total_docs=total_docs,
     )
 
-    document_heat = [
-        {"filename": filename, "count": count}
-        for filename, count in doc_counts.most_common()
-    ]
+    document_heat = [{"filename": filename, "count": count} for filename, count in doc_counts.most_common()]
 
     return {
         "abbreviations": abbreviations,

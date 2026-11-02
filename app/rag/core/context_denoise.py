@@ -9,7 +9,6 @@ Rules:
 - conservative cleaning (boilerplate removal is heading/code-fence aware)
 """
 
-
 import re
 from collections import defaultdict
 from collections.abc import Iterable

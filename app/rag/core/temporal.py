@@ -7,7 +7,6 @@ This module is intentionally:
 - fail-open (must never break retrieval)
 """
 
-
 import re
 import time
 from typing import Any

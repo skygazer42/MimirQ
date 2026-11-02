@@ -1,4 +1,3 @@
-
 MAINSTREAM_RAG_STRATEGIES: set[str] = {
     "auto",
     "langchain_recursive",

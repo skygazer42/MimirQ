@@ -1,6 +1,5 @@
 """Structured embedding advisories derived from dataset precheck evidence."""
 
-
 from typing import Any
 
 from app.core.config import settings
@@ -93,8 +92,7 @@ def build_embedding_language_advisories(
     configured = _configured_language_models()
     routing_enabled = bool(getattr(settings, "EMBEDDING_LANGUAGE_ROUTING_ENABLED", False))
     routed_for_observed_language = routing_enabled and bool(
-        (language_counts["zh"] and configured.get("zh"))
-        or (language_counts["mixed"] and configured.get("mixed"))
+        (language_counts["zh"] and configured.get("zh")) or (language_counts["mixed"] and configured.get("mixed"))
     )
     if routed_for_observed_language or model_id not in _GENERIC_OPENAI_MODELS:
         return []

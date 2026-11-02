@@ -6,7 +6,6 @@ does not attempt to be a full document understanding pipeline. It provides stabl
 counts for common UI panels (parsing/governance/chunk-preview).
 """
 
-
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
@@ -57,7 +56,7 @@ def compute_document_analytics(
     detect_language: bool = False,
     language_min_chars: int = 40,
 ) -> DocumentAnalytics:
-    raw = (markdown or "")
+    raw = markdown or ""
 
     # Reuse existing artifact stats helper to keep table/image/page/block counting consistent.
     artifact = compute_parsing_artifact_stats(

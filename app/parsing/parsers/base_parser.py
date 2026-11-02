@@ -2,7 +2,6 @@
 Advanced parser base class.
 """
 
-
 import asyncio
 import logging
 import re
@@ -85,12 +84,7 @@ class BaseAdvancedParser(ABC):
 
     @abstractmethod
     def _call_parse_method(
-        self,
-        parser: Any,
-        file_path: Path,
-        binary: bytes | None,
-        callback: Callable[[float, str], None],
-        **kwargs
+        self, parser: Any, file_path: Path, binary: bytes | None, callback: Callable[[float, str], None], **kwargs
     ) -> tuple[list, list]:
         """
         Call the underlying parser's parse method.
@@ -132,16 +126,15 @@ class BaseAdvancedParser(ABC):
 
         if self.SUPPORTED_EXTENSIONS is not None:
             if file_path.suffix.lower() not in self.SUPPORTED_EXTENSIONS:
-                raise ValueError(
-                    f"Unsupported file type: {file_path.suffix}. "
-                    f"Supported: {self.SUPPORTED_EXTENSIONS}"
-                )
+                raise ValueError(f"Unsupported file type: {file_path.suffix}. Supported: {self.SUPPORTED_EXTENSIONS}")
 
     def _create_callback(self) -> Callable[[float, str], None]:
         """Create a progress callback."""
         parser_name = self._get_parser_name().upper()
+
         def callback(progress: float, msg: str):
             self._logger.info(f"[{parser_name}] {progress:.0%} - {msg}")
+
         return callback
 
     def _positions_from_tag(self, tag: str) -> list[tuple[int, float, float, float, float]]:
@@ -270,11 +263,7 @@ class BaseAdvancedParser(ABC):
             # Best-effort: never fail parsing due to table image handling.
             self._logger.debug("Failed to attach table image metadata; continuing parse: %s", exc)
 
-    def _convert_sections_to_documents(
-        self,
-        sections: list,
-        base_metadata: dict
-    ) -> list[Document]:
+    def _convert_sections_to_documents(self, sections: list, base_metadata: dict) -> list[Document]:
         """
         Convert sections to a list of Documents.
 
@@ -304,11 +293,7 @@ class BaseAdvancedParser(ABC):
             documents.insert(0, text_document)
         return documents
 
-    def _convert_tables_to_documents(
-        self,
-        tables: list,
-        base_metadata: dict
-    ) -> list[Document]:
+    def _convert_tables_to_documents(self, tables: list, base_metadata: dict) -> list[Document]:
         """
         Convert tables to a list of Documents.
 
@@ -327,14 +312,16 @@ class BaseAdvancedParser(ABC):
             table_content = self._extract_table_content(table)
 
             if table_content and table_content.strip():
-                documents.append(Document(
-                    page_content=table_content,
-                    metadata={
-                        **base_metadata,
-                        "content_type": "table",
-                        "table_index": i,
-                    }
-                ))
+                documents.append(
+                    Document(
+                        page_content=table_content,
+                        metadata={
+                            **base_metadata,
+                            "content_type": "table",
+                            "table_index": i,
+                        },
+                    )
+                )
             self._maybe_append_table_image_document(
                 documents=documents,
                 table=table,
@@ -369,11 +356,7 @@ class BaseAdvancedParser(ABC):
                 return table_data
         return str(table)
 
-    def parse(
-        self,
-        file_path: Path,
-        **kwargs
-    ) -> list[Document]:
+    def parse(self, file_path: Path, **kwargs) -> list[Document]:
         """
         Parse document.
 
@@ -397,11 +380,7 @@ class BaseAdvancedParser(ABC):
         # Call underlying parser.
         callback = self._create_callback()
         sections, tables = self._call_parse_method(
-            parser=parser,
-            file_path=file_path,
-            binary=None,
-            callback=callback,
-            **kwargs
+            parser=parser, file_path=file_path, binary=None, callback=callback, **kwargs
         )
 
         # Convert to LangChain Document format.
@@ -416,9 +395,7 @@ class BaseAdvancedParser(ABC):
         documents.extend(self._convert_sections_to_documents(sections, base_metadata))
         documents.extend(self._convert_tables_to_documents(tables, base_metadata))
 
-        self._logger.info(
-            f"{self._get_parser_name()} parsed {file_path.name}: {len(documents)} documents"
-        )
+        self._logger.info(f"{self._get_parser_name()} parsed {file_path.name}: {len(documents)} documents")
         return documents
 
     async def aparse(
@@ -450,11 +427,7 @@ class BaseAdvancedParser(ABC):
         def _parse_in_thread():
             callback = self._create_callback()
             sections, tables = self._call_parse_method(
-                parser=parser,
-                file_path=file_path,
-                binary=None,
-                callback=callback,
-                **kwargs
+                parser=parser, file_path=file_path, binary=None, callback=callback, **kwargs
             )
 
             # Convert to LangChain Document format.
@@ -473,7 +446,5 @@ class BaseAdvancedParser(ABC):
 
         documents = await asyncio.to_thread(_parse_in_thread)
 
-        self._logger.info(
-            f"{self._get_parser_name()} parsed {file_path.name}: {len(documents)} documents"
-        )
+        self._logger.info(f"{self._get_parser_name()} parsed {file_path.name}: {len(documents)} documents")
         return documents

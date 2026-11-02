@@ -1,4 +1,5 @@
 """Parsed-document IO helpers: logical source metadata, markdown joins, parse-cache serialization."""
+
 from pathlib import Path
 from typing import Any
 

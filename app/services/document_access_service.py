@@ -1,4 +1,3 @@
-
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -109,11 +108,7 @@ def assert_document_acl_readable(
 
 
 def get_document_for_lifecycle(db: Session, tenant_id: UUID, document_id: UUID) -> DBDocument | None:
-    return (
-        db.query(DBDocument)
-        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-        .first()
-    )
+    return db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
 
 
 def assert_document_readable_for_lifecycle(

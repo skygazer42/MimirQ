@@ -1,9 +1,9 @@
-
 import re
 from collections import Counter
 from typing import Any
 
 _SCHEMA = "mimirq.llm_noise_miner.v1"
+
 
 def _is_attachment_download_meta(line: str) -> bool:
     text = line.strip()

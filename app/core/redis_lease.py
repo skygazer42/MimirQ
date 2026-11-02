@@ -37,6 +37,7 @@ def try_acquire_redis_lease(
         )
     )
 
+
 def release_redis_lease(
     client: Any,
     key: str,

@@ -1,4 +1,5 @@
 """Seal, OCR and governance quality summary helpers."""
+
 from typing import Any
 
 from langchain_core.documents import Document
@@ -247,12 +248,12 @@ def _compute_governance_quality_metrics(text: str) -> tuple[int, int, int, int, 
     try:
         density_metrics = drop_if_low_density(text, threshold=-1.0).metrics or {}
     except Exception as exc:
-        _log_processor_fallback('_build_governance_audit_metadata_patch', exc)
+        _log_processor_fallback("_build_governance_audit_metadata_patch", exc)
         density_metrics = {}
     try:
         outline_metrics = drop_if_outline_only(text, min_content_chars=0, max_heading_ratio=2.0).metrics or {}
     except Exception as exc:
-        _log_processor_fallback('_build_governance_audit_metadata_patch', exc)
+        _log_processor_fallback("_build_governance_audit_metadata_patch", exc)
         outline_metrics = {}
 
     return (

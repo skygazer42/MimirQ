@@ -6,7 +6,6 @@ Adds a lightweight timing header to responses for debugging/perf checks:
 - Server-Timing (optional)
 """
 
-
 from collections.abc import Callable
 from time import perf_counter
 

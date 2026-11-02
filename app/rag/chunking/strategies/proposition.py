@@ -10,7 +10,6 @@ Why baseline first:
 - Provides an upgrade path to LLM-based proposition rewriting later.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -84,4 +83,3 @@ class PropositionChunker(BaseChunker):
 
 
 __all__ = ["PropositionChunker"]
-

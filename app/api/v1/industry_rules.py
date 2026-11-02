@@ -1,4 +1,3 @@
-
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -141,8 +140,7 @@ def get_industry_ruleset(name: str) -> dict[str, Any]:
     response_model=IndustryRulesUpdateResponse,
     summary="整体替换术语映射表",
     description=(
-        "用请求体中的 glossary 全量替换指定规则集的术语映射表(非增量合并)。"
-        "返回写入条目数。规则集不存在时返回 404。"
+        "用请求体中的 glossary 全量替换指定规则集的术语映射表(非增量合并)。返回写入条目数。规则集不存在时返回 404。"
     ),
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
@@ -165,8 +163,7 @@ def put_industry_ruleset_glossary(
     response_model=IndustryRulesUpdateResponse,
     summary="整体替换问题模式",
     description=(
-        "用请求体中的 patterns 全量替换指定规则集的问题模式列表(非增量合并)。"
-        "返回写入条目数。规则集不存在时返回 404。"
+        "用请求体中的 patterns 全量替换指定规则集的问题模式列表(非增量合并)。返回写入条目数。规则集不存在时返回 404。"
     ),
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
@@ -189,8 +186,7 @@ def put_industry_ruleset_patterns(
     response_model=IndustryRulesUpdateResponse,
     summary="整体替换意图分类",
     description=(
-        "用请求体中的 intents 全量替换指定规则集的意图分类列表(非增量合并)。"
-        "返回写入条目数。规则集不存在时返回 404。"
+        "用请求体中的 intents 全量替换指定规则集的意图分类列表(非增量合并)。返回写入条目数。规则集不存在时返回 404。"
     ),
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )

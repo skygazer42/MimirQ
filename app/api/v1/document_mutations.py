@@ -1,4 +1,3 @@
-
 import contextlib
 import importlib
 import uuid
@@ -64,11 +63,7 @@ def generate_document_qa(
     documents_module = _documents_module()
     documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
 
-    document = (
-        db.query(DBDocument)
-        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-        .first()
-    )
+    document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
         raise HTTPException(status_code=404, detail=documents_module.DOC_NOT_FOUND_DETAIL)
 
@@ -135,11 +130,7 @@ def patch_document_pipeline(
     documents_module = _documents_module()
     documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
 
-    document = (
-        db.query(DBDocument)
-        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-        .first()
-    )
+    document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
         raise HTTPException(status_code=404, detail=documents_module.DOC_NOT_FOUND_DETAIL)
 
@@ -152,8 +143,7 @@ def patch_document_pipeline(
 
     current_status = str(document.status or "").lower()
     if current_status == "processing" or (
-        current_status == "pending"
-        and not documents_module._is_reprocessable_pending_document(document)
+        current_status == "pending" and not documents_module._is_reprocessable_pending_document(document)
     ):
         raise HTTPException(status_code=409, detail=f"Cannot edit pipeline for a {current_status} document")
 
@@ -208,11 +198,7 @@ def patch_document_user_metadata(
     documents_module = _documents_module()
     documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
 
-    document = (
-        db.query(DBDocument)
-        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-        .first()
-    )
+    document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
         raise HTTPException(status_code=404, detail=documents_module.DOC_NOT_FOUND_DETAIL)
 

@@ -37,11 +37,7 @@ class RapidOCRService:
             raise RuntimeError(f"Failed to load RapidOCR model: {e}") from e
 
     def ocr_pdf_pages(
-        self,
-        pdf_path: Path,
-        max_pages: int = 3,
-        zoom_x: float = 2.0,
-        zoom_y: float = 2.0
+        self, pdf_path: Path, max_pages: int = 3, zoom_x: float = 2.0, zoom_y: float = 2.0
     ) -> tuple[str, int]:
         """
         Run OCR on the first few PDF pages and return text + total chars.

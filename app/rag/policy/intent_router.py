@@ -10,7 +10,6 @@ This is used to automatically pick retrieval presets/profiles and toggles
 based on the query "shape" (faq/howto/api/log) when enabled.
 """
 
-
 import re
 from typing import Any
 
@@ -715,7 +714,7 @@ def route_adaptive_retrieval_overrides(
 
     matched_rule_ids: list[str] = []
     overrides: dict[str, Any] = {}
-    for rule in (policy.get("rules") or []):
+    for rule in policy.get("rules") or []:
         if not isinstance(rule, dict):
             continue
         if not _adaptive_rule_matches(

@@ -1,6 +1,5 @@
 """Connector registry."""
 
-
 from collections.abc import Callable
 
 from app.connectors.base import ConnectorBase

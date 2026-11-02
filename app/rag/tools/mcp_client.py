@@ -12,7 +12,6 @@ Usage:
     result = await client.call_tool("search", {"query": "example"})
 """
 
-
 import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -37,21 +36,25 @@ MCP_MAX_RETRIES = getattr(settings, "MCP_MAX_RETRIES", 3)
 
 class MCPError(Exception):
     """Base exception for MCP errors."""
+
     pass
 
 
 class MCPConnectionError(MCPError):
     """Connection error to MCP server."""
+
     pass
 
 
 class MCPToolError(MCPError):
     """Error executing MCP tool."""
+
     pass
 
 
 class ToolType(str, Enum):
     """Types of MCP tools."""
+
     FUNCTION = "function"
     RESOURCE = "resource"
     PROMPT = "prompt"
@@ -60,6 +63,7 @@ class ToolType(str, Enum):
 @dataclass
 class ToolParameter:
     """Tool parameter definition."""
+
     name: str
     type: str
     description: str = ""
@@ -82,6 +86,7 @@ class ToolParameter:
 @dataclass
 class MCPTool:
     """MCP tool definition."""
+
     name: str
     description: str
     type: ToolType = ToolType.FUNCTION
@@ -91,10 +96,7 @@ class MCPTool:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MCPTool":
-        params = [
-            ToolParameter.from_dict(p)
-            for p in data.get("parameters", [])
-        ]
+        params = [ToolParameter.from_dict(p) for p in data.get("parameters", [])]
         return cls(
             name=data.get("name", ""),
             description=data.get("description", ""),
@@ -134,6 +136,7 @@ class MCPTool:
 @dataclass
 class ToolResult:
     """Result from MCP tool execution."""
+
     success: bool
     data: Any = None
     error: str | None = None
@@ -219,7 +222,7 @@ class MCPClient:
                     raise MCPConnectionError(f"Connection error: {e}") from e
 
             # Wait before retry
-            await asyncio.sleep(2 ** attempt)
+            await asyncio.sleep(2**attempt)
 
         raise MCPError("Max retries exceeded")
 

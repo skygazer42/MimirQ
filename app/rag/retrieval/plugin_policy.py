@@ -1,4 +1,3 @@
-
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -173,8 +172,7 @@ def _slot_binding_query_matches(
             values = {
                 normalized
                 for normalized in (
-                    _normalize_policy_match_text(value)
-                    for value in _metadata_terms(_metadata_value(meta, field))
+                    _normalize_policy_match_text(value) for value in _metadata_terms(_metadata_value(meta, field))
                 )
                 if normalized
             }
@@ -195,10 +193,7 @@ def _slot_binding_query_matches(
             continue
         slot_values.update(
             normalized
-            for normalized in (
-                _normalize_policy_match_text(term)
-                for term in _metadata_terms(mapping.get("terms"))
-            )
+            for normalized in (_normalize_policy_match_text(term) for term in _metadata_terms(mapping.get("terms")))
             if normalized
         )
 

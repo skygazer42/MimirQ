@@ -4,7 +4,6 @@ Workflow factory for creating workflow instances.
 Provides factory functions and configuration-based workflow selection.
 """
 
-
 from typing import Any
 
 from app.core.config import settings
@@ -80,10 +79,7 @@ def resolve_mode(mode: str | WorkflowMode) -> WorkflowMode:
         pass
 
     valid_modes = list(MODE_ALIASES.keys())
-    raise ValueError(
-        f"Unknown workflow mode: '{mode}'. "
-        f"Valid modes: {valid_modes}"
-    )
+    raise ValueError(f"Unknown workflow mode: '{mode}'. Valid modes: {valid_modes}")
 
 
 def create_workflow(
@@ -180,6 +176,7 @@ def create_rag_workflow(
 
     if resolved_mode == WorkflowMode.CHAIN:
         from app.rag.workflows.chain import create_rag_chain
+
         return create_rag_chain(retrieve_func, generate_func, **kwargs)
 
     elif resolved_mode == WorkflowMode.PARALLEL:
@@ -224,6 +221,7 @@ def create_multi_query_workflow(
             # Retrieve
             contexts = await retrieve_func(rewritten)
             return {"contexts": contexts, "rewritten_query": rewritten}
+
         return task
 
     # Create workflow with aggregator

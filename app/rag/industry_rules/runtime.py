@@ -1,4 +1,3 @@
-
 import hashlib
 from collections.abc import Sequence
 from typing import Any

@@ -6,6 +6,7 @@ This module provides functions to:
 - Test embedding model connectivity
 - List available models
 """
+
 import asyncio
 
 from app.core.config import settings
@@ -49,10 +50,7 @@ def select_embedding_model(model_id: str) -> BaseEmbeddingModel:
     supported_models = get_supported_model_ids()
 
     if model_id not in supported_models:
-        raise ValueError(
-            f"Unsupported embed model: {model_id}. "
-            f"Supported models: {supported_models}"
-        )
+        raise ValueError(f"Unsupported embed model: {model_id}. Supported models: {supported_models}")
 
     model_info = get_model_info(model_id)
     if model_info is None:
@@ -186,9 +184,7 @@ async def test_all_embedding_models_status() -> dict:
         else:
             results[status["model_id"]] = status
 
-    available_count = len(
-        [m for m in results.values() if m.get("status") == "available"]
-    )
+    available_count = len([m for m in results.values() if m.get("status") == "available"])
 
     return {
         "models": results,
@@ -214,8 +210,4 @@ def list_embedding_providers() -> list[str]:
 
 def list_models_by_provider(provider: str) -> list[str]:
     """List all model IDs for a specific provider."""
-    return [
-        model_id
-        for model_id in DEFAULT_EMBED_MODELS
-        if model_id.startswith(f"{provider}/")
-    ]
+    return [model_id for model_id in DEFAULT_EMBED_MODELS if model_id.startswith(f"{provider}/")]

@@ -12,7 +12,6 @@ Security posture:
 - Per-process only: safe even without Redis.
 """
 
-
 import json
 import threading
 import time

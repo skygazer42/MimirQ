@@ -1,4 +1,3 @@
-
 from prometheus_client import Counter
 
 from app.core.config import settings

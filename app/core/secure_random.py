@@ -6,7 +6,6 @@ These utilities exist primarily to avoid security hotspots caused by the standar
 cryptographic unpredictability is desired or required by static analysis rules.
 """
 
-
 import secrets
 from collections.abc import Sequence
 from typing import TypeVar
@@ -55,4 +54,3 @@ def secure_sample(population: Sequence[T], k: int) -> list[T]:
         j = i + secrets.randbelow(n - i)
         items[i], items[j] = items[j], items[i]
     return items[:k_int]
-

@@ -1,4 +1,3 @@
-
 import asyncio
 from typing import Any
 
@@ -117,6 +116,7 @@ def _append_connector_error(stats: dict, *, url: str, exc: Exception) -> dict:
 def _finalize_connector_stats(stats: dict) -> dict:
     groups = stats.get("error_groups")
     if isinstance(groups, list):
+
         def _count(it: object) -> int:
             if not isinstance(it, dict):
                 return 0

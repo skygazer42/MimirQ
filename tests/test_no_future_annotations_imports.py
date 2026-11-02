@@ -21,6 +21,5 @@ def test_python_sources_do_not_enable_future_annotations() -> None:
                 offenders.append(path.relative_to(_REPOSITORY_ROOT).as_posix())
 
     assert not offenders, (
-        f"Found {_FUTURE_ANNOTATIONS_IMPORT!r} in {len(offenders)} Python files; "
-        f"first offenders: {offenders[:20]}"
+        f"Found {_FUTURE_ANNOTATIONS_IMPORT!r} in {len(offenders)} Python files; first offenders: {offenders[:20]}"
     )

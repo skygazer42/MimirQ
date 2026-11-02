@@ -6,7 +6,6 @@ bundles and dashboards we also want a compact, stable summary that doesn't requi
 full artifact.
 """
 
-
 from typing import Any
 
 

@@ -9,7 +9,6 @@ This is useful for long plain text where character-based overlap would cut
 sentences in half.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any

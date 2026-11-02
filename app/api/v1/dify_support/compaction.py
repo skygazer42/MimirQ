@@ -124,9 +124,7 @@ def _compact_fast_answer_value(answer: str, *, query: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     normalized_terms = tuple(
-        _normalize_match_term(term)
-        for term in _fast_answer_query_terms(query)
-        if _normalize_match_term(term)
+        _normalize_match_term(term) for term in _fast_answer_query_terms(query) if _normalize_match_term(term)
     )
     if not normalized_terms:
         return _clamp_hint_value(text, limit=limit)
@@ -140,10 +138,7 @@ def _compact_fast_answer_value(answer: str, *, query: str, limit: int) -> str:
     if not scored:
         return _clamp_hint_value(text, limit=limit)
     target_limit = max(240, min(limit, 700))
-    selected_indices = {
-        index
-        for index, _score, _segment in sorted(scored, key=lambda item: (-item[1], item[0]))[:6]
-    }
+    selected_indices = {index for index, _score, _segment in sorted(scored, key=lambda item: (-item[1], item[0]))[:6]}
     snippet = "".join(segment for index, _score, segment in scored if index in selected_indices).strip()
     if not snippet:
         return _clamp_hint_value(text, limit=limit)

@@ -1,4 +1,3 @@
-
 import contextlib
 import sys
 from pathlib import Path
@@ -659,11 +658,7 @@ def _finalize_github_repo_run_success(
 
 def _mark_github_repo_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, exc: Exception) -> None:
     with contextlib.suppress(Exception):
-        run = (
-            db.query(ConnectorRun)
-            .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
-            .first()
-        )
+        run = db.query(ConnectorRun).filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id).first()
         if run is not None:
             run.status = "failed"
             run.finished_at = _resolve_connectors_helper("_now")()

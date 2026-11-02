@@ -15,7 +15,6 @@ This module is intentionally dependency-free and line-oriented; it is NOT a full
 Markdown parser.
 """
 
-
 from dataclasses import dataclass
 
 from app.rag.preprocessing.normalization import normalize_text

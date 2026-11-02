@@ -1,4 +1,3 @@
-
 import contextlib
 from dataclasses import dataclass
 from typing import Any
@@ -462,18 +461,14 @@ async def prepare_stream_chat_runtime(
     dataset_id_used = request_runtime.dataset_id_used
     effective_prompt_template_id = request_runtime.effective_prompt_template_id
     effective_prompt_template_key = request_runtime.effective_prompt_template_key
-    effective_prompt_ab_experiment_key = (
-        request_runtime.effective_prompt_ab_experiment_key
-    )
+    effective_prompt_ab_experiment_key = request_runtime.effective_prompt_ab_experiment_key
     rag_config_template_meta = request_runtime.rag_config_template_meta
     history_for_llm = request_runtime.history_for_llm
 
     cache_scope_dataset_id = dataset_id_used or scope_dataset_id
     rag_cfg = jsonable_encoder(effective_rag_config.model_dump())
     prompt_cfg = {
-        "prompt_template_id": str(effective_prompt_template_id)
-        if effective_prompt_template_id
-        else None,
+        "prompt_template_id": str(effective_prompt_template_id) if effective_prompt_template_id else None,
         "prompt_template_key": (effective_prompt_template_key or None),
         "prompt_ab_experiment_key": (effective_prompt_ab_experiment_key or None),
     }
@@ -505,11 +500,7 @@ async def prepare_stream_chat_runtime(
 
     if isinstance(cached, dict):
         full_response = str(cached.get("content") or "")
-        citations_data = (
-            cached.get("citations")
-            if isinstance(cached.get("citations"), list)
-            else []
-        )
+        citations_data = cached.get("citations") if isinstance(cached.get("citations"), list) else []
         metrics_data = annotate_chat_cache_metrics(
             dict(cached.get("metrics") or {}),
             enabled=cache_feature_enabled,

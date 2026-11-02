@@ -7,7 +7,6 @@ Design goals:
 - Optional: enabled only when PROMETHEUS_ENABLED=true.
 """
 
-
 import re
 
 from prometheus_client import Counter
@@ -60,4 +59,3 @@ __all__ = [
     "observe_milvus_write_compat_fallback",
     "observe_milvus_search_expr_fallback",
 ]
-

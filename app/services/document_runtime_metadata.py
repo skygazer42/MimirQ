@@ -1,4 +1,3 @@
-
 import re
 from typing import Any
 
@@ -60,12 +59,7 @@ def _count_element_tables(metadata: dict[str, Any]) -> int:
         for element in elements:
             if not isinstance(element, dict):
                 continue
-            kind = str(
-                element.get("kind")
-                or element.get("type")
-                or element.get("category")
-                or ""
-            ).lower()
+            kind = str(element.get("kind") or element.get("type") or element.get("category") or "").lower()
             if kind == "table":
                 count += 1
 

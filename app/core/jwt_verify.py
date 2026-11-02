@@ -11,7 +11,6 @@ This module is intentionally best-effort:
 - Optional OIDC discovery can derive jwks_uri from JWT_ISSUER
 """
 
-
 import asyncio
 import time
 from dataclasses import dataclass
@@ -80,6 +79,7 @@ class _JWKSCacheEntry:
 
 _jwks_cache: dict[str, _JWKSCacheEntry] = {}
 _jwks_locks: dict[str, asyncio.Lock] = {}
+
 
 @dataclass(frozen=True)
 class _OIDCDiscoveryEntry:

@@ -202,6 +202,7 @@ def test_run_connector_config_uses_shared_enqueue_helper(monkeypatch) -> None:  
     )
     monkeypatch.setattr(configs_api.connectors_module.settings, "URL_INGEST_ENABLED", True, raising=False)
     monkeypatch.setattr(configs_api, "validate_db_connector_config", lambda *_args, **_kwargs: None, raising=True)
+
     async def _fake_enqueue(db, *, background_tasks, run, tenant_id, requested_by):  # noqa: ANN001, ANN202
         queued.append(
             {

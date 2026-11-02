@@ -1,4 +1,3 @@
-
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -268,9 +267,7 @@ def build_saved_state_snapshot(
     )
 
     updated_keys = sorted(
-        key
-        for key, value in state.items()
-        if not str(key).startswith("state_") and previous_state.get(key) != value
+        key for key, value in state.items() if not str(key).startswith("state_") and previous_state.get(key) != value
     )
 
     try:

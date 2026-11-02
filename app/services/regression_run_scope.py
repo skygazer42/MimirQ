@@ -1,4 +1,3 @@
-
 from collections.abc import Sequence
 from uuid import UUID
 
@@ -51,4 +50,3 @@ def validate_case_ids_belong_to_dataset(
     mismatched = [cid for cid, case_ds in found.items() if case_ds is None or case_ds != ds_id]
     if mismatched:
         raise DatasetMismatchError("Some cases do not belong to dataset_id")
-

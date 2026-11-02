@@ -128,20 +128,22 @@ class ParentChildChunker(BaseChunker):
             length=32,
         )
         parent_metadata = dict(doc.metadata or {})
-        parent_metadata.update({
-            "start_char": parent_start,
-            "end_char": parent_end,
-            "chunk_strategy": "parent_child",
-            "chunk_role": "parent",
-            "parent_id": parent_id,
-            "hierarchy_basis": "parent_child",
-            "hierarchy_level": "parent",
-            "hierarchy_node_key": parent_id,
-            "hierarchy_family_key": parent_id,
-            "hierarchy_parent_key": None,
-            "child_chunk_size": self.child_size,
-            "child_chunk_overlap": self.child_overlap,
-        })
+        parent_metadata.update(
+            {
+                "start_char": parent_start,
+                "end_char": parent_end,
+                "chunk_strategy": "parent_child",
+                "chunk_role": "parent",
+                "parent_id": parent_id,
+                "hierarchy_basis": "parent_child",
+                "hierarchy_level": "parent",
+                "hierarchy_node_key": parent_id,
+                "hierarchy_family_key": parent_id,
+                "hierarchy_parent_key": None,
+                "child_chunk_size": self.child_size,
+                "child_chunk_overlap": self.child_overlap,
+            }
+        )
         parent_doc = Document(page_content=parent_text, metadata=parent_metadata)
         parent_child_docs = self._build_child_documents(
             doc=doc,
@@ -180,20 +182,22 @@ class ParentChildChunker(BaseChunker):
                 f"pc-child:{parent_id}:{child_start}:{child_end}:{stable_hash(child_text, length=None)}",
                 length=32,
             )
-            child_metadata.update({
-                "start_char": child_start,
-                "end_char": child_end,
-                "chunk_strategy": "parent_child",
-                "chunk_role": "child",
-                "parent_id": parent_id,
-                "hierarchy_basis": "parent_child",
-                "hierarchy_level": "child",
-                "hierarchy_node_key": child_node_key,
-                "hierarchy_parent_key": parent_id,
-                "hierarchy_family_key": parent_id,
-                "parent_start_char": parent_start,
-                "parent_end_char": parent_end,
-            })
+            child_metadata.update(
+                {
+                    "start_char": child_start,
+                    "end_char": child_end,
+                    "chunk_strategy": "parent_child",
+                    "chunk_role": "child",
+                    "parent_id": parent_id,
+                    "hierarchy_basis": "parent_child",
+                    "hierarchy_level": "child",
+                    "hierarchy_node_key": child_node_key,
+                    "hierarchy_parent_key": parent_id,
+                    "hierarchy_family_key": parent_id,
+                    "parent_start_char": parent_start,
+                    "parent_end_char": parent_end,
+                }
+            )
             child_docs.append(Document(page_content=child_text, metadata=child_metadata))
 
         return child_docs

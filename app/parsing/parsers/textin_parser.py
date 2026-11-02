@@ -8,7 +8,6 @@ Config via env/.env:
 - TEXTIN_SECRET_CODE=<secret-code>
 """
 
-
 import json
 import re
 from pathlib import Path

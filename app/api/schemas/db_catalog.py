@@ -5,7 +5,6 @@ These schemas cover read-only metadata and safe, aggregate profiling snapshots
 for SQLServer/MySQL catalog connectors.
 """
 
-
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -60,4 +59,3 @@ class DbProfileSnapshotOut(OrmModel):
 class DbProfileSnapshotListResponse(BaseModel):
     total: int
     items: list[DbProfileSnapshotOut]
-

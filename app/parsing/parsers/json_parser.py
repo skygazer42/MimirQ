@@ -6,7 +6,6 @@ basic structural metadata. This is useful as a fallback when MarkItDown is not
 available or fails.
 """
 
-
 import json
 from pathlib import Path
 from typing import Any
@@ -88,4 +87,3 @@ class JsonParser:
                 metadata["json_top_level"] = type(data).__name__
 
         return [Document(page_content=content, metadata=metadata)]
-

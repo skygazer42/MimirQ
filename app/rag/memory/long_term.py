@@ -11,7 +11,6 @@ Features:
 - Cross-session memory retrieval
 """
 
-
 import json
 import sqlite3
 import threading
@@ -90,6 +89,7 @@ class MemoryItem:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MemoryItem":
         """Create from dictionary."""
+
         def parse_datetime(value):
             if value is None:
                 return None
@@ -309,10 +309,7 @@ class InMemoryStore(BaseMemoryStore):
             now = datetime.now(UTC).replace(tzinfo=None)
 
             # Filter out expired items
-            items = [
-                item for item in ns_store.values()
-                if not (item.expires_at and item.expires_at < now)
-            ]
+            items = [item for item in ns_store.values() if not (item.expires_at and item.expires_at < now)]
 
             items.sort(key=lambda x: x.updated_at or datetime.min, reverse=True)
             return items[:limit]
@@ -340,7 +337,7 @@ class SqliteStore(BaseMemoryStore):
 
     def _get_conn(self) -> sqlite3.Connection:
         """Get thread-local connection."""
-        if not hasattr(self._local, 'conn') or self._local.conn is None:
+        if not hasattr(self._local, "conn") or self._local.conn is None:
             Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
             self._local.conn = sqlite3.connect(
                 self.db_path,
@@ -382,8 +379,7 @@ class SqliteStore(BaseMemoryStore):
 
         # Check for existing item
         cursor = conn.execute(
-            "SELECT id, created_at FROM memory_items WHERE namespace = ? AND key = ?",
-            (namespace, key)
+            "SELECT id, created_at FROM memory_items WHERE namespace = ? AND key = ?", (namespace, key)
         )
         existing = cursor.fetchone()
 
@@ -399,21 +395,24 @@ class SqliteStore(BaseMemoryStore):
             expires_at=kwargs.get("expires_at"),
         )
 
-        conn.execute("""
+        conn.execute(
+            """
             INSERT OR REPLACE INTO memory_items
             (id, namespace, key, value, memory_type, metadata, created_at, updated_at, expires_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            item.id,
-            item.namespace,
-            item.key,
-            json.dumps(item.value),
-            item.memory_type,
-            json.dumps(item.metadata) if item.metadata else None,
-            item.created_at.isoformat() if item.created_at else None,
-            item.updated_at.isoformat() if item.updated_at else None,
-            item.expires_at.isoformat() if item.expires_at else None,
-        ))
+        """,
+            (
+                item.id,
+                item.namespace,
+                item.key,
+                json.dumps(item.value),
+                item.memory_type,
+                json.dumps(item.metadata) if item.metadata else None,
+                item.created_at.isoformat() if item.created_at else None,
+                item.updated_at.isoformat() if item.updated_at else None,
+                item.expires_at.isoformat() if item.expires_at else None,
+            ),
+        )
 
         return item
 
@@ -435,11 +434,14 @@ class SqliteStore(BaseMemoryStore):
         conn = self._get_conn()
         now = datetime.now(UTC).replace(tzinfo=None).isoformat()
 
-        cursor = conn.execute("""
+        cursor = conn.execute(
+            """
             SELECT * FROM memory_items
             WHERE namespace = ? AND key = ?
             AND (expires_at IS NULL OR expires_at > ?)
-        """, (namespace, key, now))
+        """,
+            (namespace, key, now),
+        )
 
         row = cursor.fetchone()
         if row:
@@ -480,42 +482,36 @@ class SqliteStore(BaseMemoryStore):
 
     def delete(self, namespace: str, key: str) -> bool:
         conn = self._get_conn()
-        cursor = conn.execute(
-            "DELETE FROM memory_items WHERE namespace = ? AND key = ?",
-            (namespace, key)
-        )
+        cursor = conn.execute("DELETE FROM memory_items WHERE namespace = ? AND key = ?", (namespace, key))
         return cursor.rowcount > 0
 
     def list(self, namespace: str, limit: int = 100) -> list[MemoryItem]:
         conn = self._get_conn()
         now = datetime.now(UTC).replace(tzinfo=None).isoformat()
 
-        cursor = conn.execute("""
+        cursor = conn.execute(
+            """
             SELECT * FROM memory_items
             WHERE namespace = ?
             AND (expires_at IS NULL OR expires_at > ?)
             ORDER BY updated_at DESC
             LIMIT ?
-        """, (namespace, now, limit))
+        """,
+            (namespace, now, limit),
+        )
 
         return [self._row_to_item(row) for row in cursor.fetchall()]
 
     def clear(self, namespace: str) -> int:
         conn = self._get_conn()
-        cursor = conn.execute(
-            "DELETE FROM memory_items WHERE namespace = ?",
-            (namespace,)
-        )
+        cursor = conn.execute("DELETE FROM memory_items WHERE namespace = ?", (namespace,))
         return cursor.rowcount
 
     def cleanup_expired(self) -> int:
         """Remove all expired items."""
         conn = self._get_conn()
         now = datetime.now(UTC).replace(tzinfo=None).isoformat()
-        cursor = conn.execute(
-            "DELETE FROM memory_items WHERE expires_at IS NOT NULL AND expires_at < ?",
-            (now,)
-        )
+        cursor = conn.execute("DELETE FROM memory_items WHERE expires_at IS NOT NULL AND expires_at < ?", (now,))
         return cursor.rowcount
 
 
@@ -550,13 +546,7 @@ class UserMemory:
 
     def set_preference(self, key: str, value: Any, **kwargs) -> MemoryItem:
         """Set a user preference."""
-        return self.store.put(
-            self._namespace,
-            f"pref:{key}",
-            value,
-            memory_type="preference",
-            **kwargs
-        )
+        return self.store.put(self._namespace, f"pref:{key}", value, memory_type="preference", **kwargs)
 
     def get_preference(self, key: str, default: Any = None) -> Any:
         """Get a user preference."""
@@ -565,13 +555,7 @@ class UserMemory:
 
     def set_fact(self, key: str, value: Any, **kwargs) -> MemoryItem:
         """Store a user fact."""
-        return self.store.put(
-            self._namespace,
-            f"fact:{key}",
-            value,
-            memory_type="fact",
-            **kwargs
-        )
+        return self.store.put(self._namespace, f"fact:{key}", value, memory_type="fact", **kwargs)
 
     def get_fact(self, key: str, default: Any = None) -> Any:
         """Get a user fact."""
@@ -580,13 +564,7 @@ class UserMemory:
 
     def add_context(self, key: str, value: Any, **kwargs) -> MemoryItem:
         """Add conversation context."""
-        return self.store.put(
-            self._namespace,
-            f"ctx:{key}",
-            value,
-            memory_type="context",
-            **kwargs
-        )
+        return self.store.put(self._namespace, f"ctx:{key}", value, memory_type="context", **kwargs)
 
     def get_context(self, key: str, default: Any = None) -> Any:
         """Get conversation context."""
@@ -614,10 +592,7 @@ class UserMemory:
             memory_type="preference",
             limit=100,
         )
-        return {
-            item.key.replace("pref:", ""): item.value
-            for item in items
-        }
+        return {item.key.replace("pref:", ""): item.value for item in items}
 
     def get_all_facts(self) -> dict[str, Any]:
         """Get all user facts as a dictionary."""
@@ -626,10 +601,7 @@ class UserMemory:
             memory_type="fact",
             limit=100,
         )
-        return {
-            item.key.replace("fact:", ""): item.value
-            for item in items
-        }
+        return {item.key.replace("fact:", ""): item.value for item in items}
 
     def clear_all(self) -> int:
         """Clear all user memory."""

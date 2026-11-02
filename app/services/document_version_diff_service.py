@@ -1,4 +1,3 @@
-
 from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -49,7 +48,7 @@ def content_hash_multiset_diff(
     to_total = int(sum(b.values()))
 
     unchanged = 0
-    for key in (a.keys() & b.keys()):
+    for key in a.keys() & b.keys():
         unchanged += min(int(a.get(key, 0) or 0), int(b.get(key, 0) or 0))
 
     added = max(0, to_total - int(unchanged))
@@ -57,7 +56,7 @@ def content_hash_multiset_diff(
 
     added_hashes: list[tuple[int, str]] = []
     removed_hashes: list[tuple[int, str]] = []
-    for key in (a.keys() | b.keys()):
+    for key in a.keys() | b.keys():
         da = int(a.get(key, 0) or 0)
         db = int(b.get(key, 0) or 0)
         if db > da:

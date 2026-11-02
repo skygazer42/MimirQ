@@ -9,7 +9,6 @@ Config via env/.env:
 - OLMOCR_API_URL=http://localhost:2085/convert  (recommended: full endpoint)
 """
 
-
 import json
 import re
 from pathlib import Path

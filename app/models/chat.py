@@ -3,6 +3,7 @@ Conversation and message data models (multi-tenant isolation support)
 
 Defines conversation and message table structures.
 """
+
 import uuid
 
 from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, Text
@@ -15,10 +16,9 @@ from app.core.database import Base
 
 class Conversation(Base):
     """Conversation table"""
+
     __tablename__ = "conversations"
-    __table_args__ = (
-        Index("ix_conversations_tenant_owner_account_id", "tenant_id", "owner_account_id"),
-    )
+    __table_args__ = (Index("ix_conversations_tenant_owner_account_id", "tenant_id", "owner_account_id"),)
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
@@ -45,6 +45,7 @@ class Conversation(Base):
 
 class Message(Base):
     """Message table"""
+
     __tablename__ = "messages"
     __table_args__ = (
         Index("ix_messages_tenant_conversation_created_at", "tenant_id", "conversation_id", "created_at"),
@@ -52,7 +53,7 @@ class Message(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    conversation_id = Column(UUID(as_uuid=True), ForeignKey('conversations.id', ondelete='CASCADE'), nullable=False)
+    conversation_id = Column(UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False)
 
     role = Column(String(20), nullable=False)  # user | assistant
     content = Column(Text, nullable=False)

@@ -1,4 +1,5 @@
 """KG extract module."""
+
 from app.rag.kg.extraction.auto_graph_r1 import AUTO_GRAPH_R1_PLAN_SCHEMA_V1, build_auto_graph_r1_plan
 from app.rag.kg.extraction.config import ExtractBaseConfig, ExtractConfig
 from app.rag.kg.extraction.extractor import EventExtractor

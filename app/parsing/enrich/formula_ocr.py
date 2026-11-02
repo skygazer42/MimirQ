@@ -8,7 +8,6 @@ Design constraints:
 - Security: only read local image files under the origin/asset base dir.
 """
 
-
 import re
 import time
 from dataclasses import dataclass
@@ -290,20 +289,24 @@ def _extract_formula_element(
         logger.debug("[formula_ocr] backend returned empty latex (%s)", status)
         return None, 1, 0
 
-    return {
-        "latex": latex,
-        "element": {
-            "kind": "equation",
-            "text": latex,
-            "attributes": {
-                "source_content_type": "formula_ocr",
-                "source_doc_type": "formula_ocr",
-                "formula_image_alt": str(alt or ""),
-                "formula_image_src": str(src or ""),
-                "formula_backend_status": str(status or ""),
+    return (
+        {
+            "latex": latex,
+            "element": {
+                "kind": "equation",
+                "text": latex,
+                "attributes": {
+                    "source_content_type": "formula_ocr",
+                    "source_doc_type": "formula_ocr",
+                    "formula_image_alt": str(alt or ""),
+                    "formula_image_src": str(src or ""),
+                    "formula_backend_status": str(status or ""),
+                },
             },
         },
-    }, 1, 1
+        1,
+        1,
+    )
 
 
 def _extract_formula_elements_for_line(
@@ -363,38 +366,50 @@ def add_formula_latex_blocks(
     """
     raw = str(markdown or "")
     if not raw:
-        return "", 0, FormulaOcrAudit(
-            applied=False,
-            formulas_added=0,
-            images_attempted=0,
-            images_succeeded=0,
-            elapsed_ms=0,
-            backend="formula_http",
-            error=None,
+        return (
+            "",
+            0,
+            FormulaOcrAudit(
+                applied=False,
+                formulas_added=0,
+                images_attempted=0,
+                images_succeeded=0,
+                elapsed_ms=0,
+                backend="formula_http",
+                error=None,
+            ),
         )
 
     url = str(api_url or "").strip()
     if not url:
-        return raw, 0, FormulaOcrAudit(
-            applied=False,
-            formulas_added=0,
-            images_attempted=0,
-            images_succeeded=0,
-            elapsed_ms=0,
-            backend="formula_http",
-            error="missing_api_url",
+        return (
+            raw,
+            0,
+            FormulaOcrAudit(
+                applied=False,
+                formulas_added=0,
+                images_attempted=0,
+                images_succeeded=0,
+                elapsed_ms=0,
+                backend="formula_http",
+                error="missing_api_url",
+            ),
         )
 
     max_images_i = max(0, int(max_images or 0))
     if max_images_i <= 0:
-        return raw, 0, FormulaOcrAudit(
-            applied=False,
-            formulas_added=0,
-            images_attempted=0,
-            images_succeeded=0,
-            elapsed_ms=0,
-            backend="formula_http",
-            error="max_images<=0",
+        return (
+            raw,
+            0,
+            FormulaOcrAudit(
+                applied=False,
+                formulas_added=0,
+                images_attempted=0,
+                images_succeeded=0,
+                elapsed_ms=0,
+                backend="formula_http",
+                error="max_images<=0",
+            ),
         )
 
     t0 = time.perf_counter()

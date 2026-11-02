@@ -6,7 +6,6 @@ benchmark parsing backends in CI/nightly jobs without requiring heavyweight
 evaluation packages in the core backend image.
 """
 
-
 import difflib
 import re
 from collections import Counter

@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from app.rag.core.text import split_into_claims, verify_claim_with_fallback
@@ -78,4 +77,3 @@ def compute_faithfulness_score(
         "unsupported_claims": unsupported_claims,
         "method": "claim_support_ratio",
     }
-

@@ -6,7 +6,6 @@ This module keeps checks best-effort and dependency-light:
 - Return structured status dicts instead of raising, so endpoints can decide 200 vs 503.
 """
 
-
 from collections.abc import Callable
 from functools import lru_cache
 from pathlib import Path
@@ -16,9 +15,10 @@ HealthMode = Literal["ready", "health"]
 
 
 def redis_usage_flags(settings) -> dict[str, bool]:
-    singleflight_redis_enabled = bool(
-        getattr(settings, "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED", True)
-    ) and len(str(getattr(settings, "SECRET_KEY", "") or "").strip()) >= 32
+    singleflight_redis_enabled = (
+        bool(getattr(settings, "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED", True))
+        and len(str(getattr(settings, "SECRET_KEY", "") or "").strip()) >= 32
+    )
     return {
         "task_queue": bool(getattr(settings, "TASK_QUEUE_ENABLED", False)),
         "embedding_cache": bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", False)),

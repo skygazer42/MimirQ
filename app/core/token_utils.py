@@ -4,6 +4,7 @@ Token utility module.
 Provides token counting and truncation functionality based on tiktoken.
 Supports cl100k_base encoding (GPT-4, GPT-3.5-turbo, etc.).
 """
+
 from typing import Any
 
 _encoder = None

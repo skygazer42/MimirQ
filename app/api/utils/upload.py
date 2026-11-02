@@ -7,7 +7,6 @@ Centralizes:
 - best-effort cleanup on failure
 """
 
-
 import contextlib
 import hashlib
 from pathlib import Path

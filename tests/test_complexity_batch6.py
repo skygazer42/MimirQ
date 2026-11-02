@@ -1,4 +1,3 @@
-
 import json
 import re
 from pathlib import Path
@@ -610,14 +609,7 @@ def test_qa_markdown_chunker_characterizes_pair_overlap_offsets_and_previews() -
 
 
 def test_qa_pairs_chunker_characterizes_pair_overlap_offsets_and_previews() -> None:
-    text = (
-        "Q: Alpha?\n"
-        "A: First answer.\n"
-        "Q: Beta?\n"
-        "A: Second answer.\n"
-        "Q: Gamma?\n"
-        "A: Third answer.\n"
-    )
+    text = "Q: Alpha?\nA: First answer.\nQ: Beta?\nA: Second answer.\nQ: Gamma?\nA: Third answer.\n"
 
     assert _summarize_chunks(QAPairsChunker(60, 30), text) == [
         (
@@ -660,14 +652,7 @@ def test_qa_pairs_chunker_characterizes_pair_overlap_offsets_and_previews() -> N
 
 
 def test_timeline_events_chunker_characterizes_event_overlap_offsets_and_metadata() -> None:
-    text = (
-        "2024-01-01 - Kickoff\n"
-        "alpha\n"
-        "2024-01-03 10:30 - Review\n"
-        "beta\n"
-        "2024-01-05 - Launch\n"
-        "gamma\n"
-    )
+    text = "2024-01-01 - Kickoff\nalpha\n2024-01-03 10:30 - Review\nbeta\n2024-01-05 - Launch\ngamma\n"
 
     assert _summarize_chunks(TimelineEventsChunker(70, 40), text) == [
         (

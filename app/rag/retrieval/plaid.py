@@ -1,4 +1,3 @@
-
 from typing import Any
 
 PLAID_COMPRESSION_SCHEMA = "mimirq.plaid_compression.v1"

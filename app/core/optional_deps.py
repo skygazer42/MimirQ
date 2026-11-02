@@ -7,7 +7,6 @@ Enterprise baseline:
 - When a feature is enabled/selected, use require_dependency() to fail-fast with a clear hint.
 """
 
-
 import importlib
 import logging
 from types import ModuleType

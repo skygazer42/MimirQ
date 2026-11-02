@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from app.rag.evaluation.metrics.retrieval import evaluate_retrieval_metrics
@@ -53,12 +52,7 @@ def _coerce_ranked_ids(items: Any) -> list[str]:
 
 
 def _coerce_channels(sample: dict[str, Any]) -> dict[str, list[str]]:
-    raw = (
-        sample.get("hybrid_channels")
-        or sample.get("channel_rankings")
-        or sample.get("retrieval_channels")
-        or {}
-    )
+    raw = sample.get("hybrid_channels") or sample.get("channel_rankings") or sample.get("retrieval_channels") or {}
     if not isinstance(raw, dict):
         return {}
     channels: dict[str, list[str]] = {}
@@ -112,9 +106,7 @@ def run_hybrid_sweep(
     channels = _coerce_channels(sample if isinstance(sample, dict) else {})
     configs = list(configs or build_hybrid_sweep_configs())
     gold_chunk_ids = _coerce_ranked_ids((sample or {}).get("gold_chunk_ids"))
-    cited_chunk_ids = _coerce_ranked_ids(
-        (sample or {}).get("cited_chunk_ids") or (sample or {}).get("citations")
-    )
+    cited_chunk_ids = _coerce_ranked_ids((sample or {}).get("cited_chunk_ids") or (sample or {}).get("citations"))
 
     rows: list[dict[str, Any]] = []
     for cfg in configs:
@@ -154,7 +146,7 @@ def run_hybrid_sweep(
     best: dict[str, Any] | None = None
     best_key: tuple[float, float, float, int] | None = None
     for index, row in enumerate(rows):
-        metrics = ((row.get("evaluators") or {}).get("retrieval") or {})
+        metrics = (row.get("evaluators") or {}).get("retrieval") or {}
         key = (
             float(metrics.get("recall_at_k") or 0.0),
             float(metrics.get("mrr") or 0.0),
@@ -204,8 +196,7 @@ def run_hybrid_route(sample: dict[str, Any]) -> dict[str, Any]:
         }
 
     raise RuntimeError(
-        "Stage1 hybrid evaluation requires actual channel rankings; "
-        "gold labels must never be used as system output"
+        "Stage1 hybrid evaluation requires actual channel rankings; gold labels must never be used as system output"
     )
 
 

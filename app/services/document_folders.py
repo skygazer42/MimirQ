@@ -5,7 +5,6 @@ This derives a folder hierarchy from document metadata `source_path` values
 (directory-preserving upload keys like "folder/sub/file.pdf").
 """
 
-
 from collections.abc import Iterable
 
 from app.api.schemas.document_folders import DocumentFolderNode
@@ -68,4 +67,3 @@ def _sort_tree(node: DocumentFolderNode) -> None:
 __all__ = [
     "build_document_folder_tree",
 ]
-

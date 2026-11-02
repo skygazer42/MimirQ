@@ -13,7 +13,6 @@ Keeping the singletons in a separate module prevents accidental re-initializatio
 when `app.core.database` is removed from `sys.modules`.
 """
 
-
 import contextlib
 from typing import Any
 
@@ -48,6 +47,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=
 
 # ORM Base.
 Base = declarative_base()
+
 
 def get_db():  # noqa: ANN201
     """FastAPI dependency: yield a DB session."""

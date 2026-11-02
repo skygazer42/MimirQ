@@ -10,6 +10,7 @@ from typing import Any, Protocol
 @dataclass(frozen=True)
 class RerankCandidate:
     """Rerank candidate item"""
+
     id: str
     text: str
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -18,6 +19,7 @@ class RerankCandidate:
 @dataclass
 class RerankResult:
     """Rerank result"""
+
     ordered_ids: list[str]
     score_map: dict[str, float]
     items: list[dict[str, Any]] = field(default_factory=list)
@@ -30,21 +32,21 @@ class RerankResult:
 
 class SyncReranker(Protocol):
     """Synchronous Reranker protocol"""
+
     def rerank(
         self,
         query: str,
         candidates: Sequence[RerankCandidate],
         **kwargs: Any,
-    ) -> RerankResult:
-        ...
+    ) -> RerankResult: ...
 
 
 class AsyncReranker(Protocol):
     """Asynchronous Reranker protocol"""
+
     async def rerank(
         self,
         query: str,
         candidates: Sequence[RerankCandidate],
         **kwargs: Any,
-    ) -> RerankResult:
-        ...
+    ) -> RerankResult: ...

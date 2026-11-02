@@ -6,7 +6,6 @@ Notes:
 - Should not be placed in app/api/schemas (avoid polluting API schema layer with internal config)
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 

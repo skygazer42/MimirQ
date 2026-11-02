@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from app.rag.evaluation.results.schema import normalize_eval_result_row

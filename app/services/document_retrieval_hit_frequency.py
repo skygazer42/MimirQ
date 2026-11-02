@@ -9,7 +9,6 @@ Design constraints:
 - Bounded IO: tail-read of the metrics file (max_bytes)
 """
 
-
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any

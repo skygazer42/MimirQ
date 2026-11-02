@@ -7,7 +7,6 @@ Design goals:
 - Optional: enabled only when PROMETHEUS_ENABLED=true.
 """
 
-
 from prometheus_client import Counter
 
 from app.core.config import settings

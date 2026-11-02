@@ -7,7 +7,6 @@ Used by:
 - offline evaluators
 """
 
-
 from collections.abc import Iterable
 
 from app.rag.core.logging import get_logger

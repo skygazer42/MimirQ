@@ -8,7 +8,6 @@ This is a lightweight, dependency-free anonymizer intended for:
 It uses conservative patterns with basic validators to reduce false positives.
 """
 
-
 import re
 from collections.abc import Callable
 from dataclasses import dataclass

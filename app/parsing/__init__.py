@@ -13,7 +13,6 @@ Key components:
 Note: text chunking has moved to app.rag.chunking.
 """
 
-
 from typing import Any
 
 __all__ = [
@@ -52,6 +51,3 @@ def __getattr__(name: str) -> Any:
 
         return zip_image_processor
     raise AttributeError(f"module 'app.parsing' has no attribute {name!r}")
-
-
-

@@ -10,7 +10,6 @@ Design goals:
 - Fail-closed defaults (unmapped principals should not accidentally open access)
 """
 
-
 from typing import Literal
 from uuid import UUID
 

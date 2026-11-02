@@ -4,7 +4,6 @@ Audit log service.
 Best-effort, fail-open: logging must never break product flows.
 """
 
-
 import hashlib
 from typing import Any
 from uuid import UUID

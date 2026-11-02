@@ -131,6 +131,8 @@ def test_clone_dataset_drops_invalid_embedding_defaults_on_non_milvus_backend(
 
     assert response is created_dataset
     assert captured["dataset_metadata"] == {}
+
+
 def test_update_rejects_invalid_embedding_before_dataset_commit(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.api.schemas.dataset import DatasetEmbeddingDefaults, DatasetUpdate
     from app.api.v1 import datasets
@@ -151,9 +153,7 @@ def test_update_rejects_invalid_embedding_before_dataset_commit(monkeypatch: pyt
     with pytest.raises(HTTPException) as exc_info:
         datasets.update_dataset(
             uuid4(),
-            DatasetUpdate(
-                embedding_defaults=DatasetEmbeddingDefaults(provider="local", model="embed-a")
-            ),
+            DatasetUpdate(embedding_defaults=DatasetEmbeddingDefaults(provider="local", model="embed-a")),
             tenant_id=uuid4(),
             account_id="owner-1",
             db=SimpleNamespace(),

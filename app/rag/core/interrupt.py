@@ -21,7 +21,6 @@ Usage:
         return Command(goto="finish")
 """
 
-
 import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -42,6 +41,7 @@ INTERRUPT_TIMEOUT_SEC = getattr(settings, "INTERRUPT_TIMEOUT_SEC", 3600)  # 1 ho
 
 class InterruptStatus(str, Enum):
     """Status of a pending interrupt."""
+
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
@@ -56,6 +56,7 @@ class PendingInterrupt:
 
     Stored in the interrupt registry until resolved.
     """
+
     id: str
     session_id: str
     thread_id: str
@@ -155,10 +156,7 @@ class InterruptRegistry:
                 self._by_thread[thread_id] = []
             self._by_thread[thread_id].append(interrupt_id)
 
-            logger.info(
-                "Registered interrupt %s for session %s, thread %s",
-                interrupt_id, session_id, thread_id
-            )
+            logger.info("Registered interrupt %s for session %s, thread %s", interrupt_id, session_id, thread_id)
             return pending
 
     async def get(self, interrupt_id: str) -> PendingInterrupt | None:
@@ -230,10 +228,7 @@ class InterruptRegistry:
             pending.resolved_at = datetime.now(UTC).replace(tzinfo=None)
             pending.resolved_by = resolved_by
 
-            logger.info(
-                "Resolved interrupt %s with status %s",
-                interrupt_id, status.value
-            )
+            logger.info("Resolved interrupt %s with status %s", interrupt_id, status.value)
             return pending
 
     async def approve(
@@ -271,10 +266,7 @@ class InterruptRegistry:
     async def cleanup_expired(self) -> int:
         """Remove expired interrupts."""
         async with self._lock:
-            expired_ids = [
-                iid for iid, pending in self._pending.items()
-                if pending.is_expired()
-            ]
+            expired_ids = [iid for iid, pending in self._pending.items() if pending.is_expired()]
 
             for iid in expired_ids:
                 pending = self._pending.pop(iid, None)

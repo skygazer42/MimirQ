@@ -6,7 +6,6 @@ Used for:
 - optional cross-document near-duplicate dropping
 """
 
-
 import hashlib
 import re
 from collections import Counter

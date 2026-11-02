@@ -11,6 +11,7 @@ from pathlib import Path
 # Project root
 # =============================================================================
 
+
 def _find_project_root() -> Path:
     """
     Find project root.
@@ -63,6 +64,7 @@ ALEMBIC_INI: Path = PROJECT_ROOT / "alembic.ini"
 # =============================================================================
 # Path utilities
 # =============================================================================
+
 
 def ensure_dir(path: Path) -> Path:
     """
@@ -179,6 +181,7 @@ def get_relative_path(path: Path) -> str:
 # =============================================================================
 # Environment overrides
 # =============================================================================
+
 
 def _get_path_from_env(env_key: str, default: Path) -> Path:
     """

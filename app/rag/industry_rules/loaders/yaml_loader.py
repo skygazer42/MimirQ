@@ -1,4 +1,3 @@
-
 import os
 import tempfile
 import threading
@@ -90,11 +89,7 @@ def list_rulesets() -> list[str]:
     root = _ruleset_root()
     if not root.exists():
         return []
-    return sorted(
-        entry.name
-        for entry in root.iterdir()
-        if entry.is_dir() and _ruleset_dir(entry.name) is not None
-    )
+    return sorted(entry.name for entry in root.iterdir() if entry.is_dir() and _ruleset_dir(entry.name) is not None)
 
 
 def ruleset_exists(name: str) -> bool:

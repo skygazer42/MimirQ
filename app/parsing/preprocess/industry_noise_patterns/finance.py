@@ -1,4 +1,3 @@
-
 from app.rag.preprocessing.cleaning import RegexRule
 
 RULES: list[RegexRule] = [

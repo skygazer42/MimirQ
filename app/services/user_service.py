@@ -37,11 +37,7 @@ class UserService:
     def authenticate(db: Session, identifier: str, password: str) -> User:
         ident = (identifier or "").strip()
         ident_lower = ident.lower()
-        users = (
-            db.query(User)
-            .filter((User.email == ident_lower) | (User.username == ident))
-            .all()
-        )
+        users = db.query(User).filter((User.email == ident_lower) | (User.username == ident)).all()
         if len(users) != 1:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
         user = users[0]
@@ -137,11 +133,7 @@ class UserService:
             tenant_id = UUID(raw_tenant)
         except ValueError as exc:
             raise HTTPException(status_code=500, detail="DEFAULT_TENANT_ID is invalid") from exc
-        return int(
-            db.query(TenantMember)
-            .filter(TenantMember.tenant_id == tenant_id)
-            .count()
-        )
+        return int(db.query(TenantMember).filter(TenantMember.tenant_id == tenant_id).count())
 
     @staticmethod
     def mark_login(db: Session, user: User) -> None:

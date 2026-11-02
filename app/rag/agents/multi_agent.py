@@ -1,4 +1,3 @@
-
 import asyncio
 import threading
 import time
@@ -117,9 +116,11 @@ class MultiAgentRAGRunner:
         max_sub_questions = max(1, int(max_sub_questions or 1))
         planner_llm = self._engine.models.get("fast") or llm
         try:
-            plan_chain = self._engine.decompose_prompt | planner_llm.bind(
-                temperature=float(getattr(settings, "QUERY_DECOMPOSITION_TEMPERATURE", 0.2) or 0.2)
-            ) | StrOutputParser()
+            plan_chain = (
+                self._engine.decompose_prompt
+                | planner_llm.bind(temperature=float(getattr(settings, "QUERY_DECOMPOSITION_TEMPERATURE", 0.2) or 0.2))
+                | StrOutputParser()
+            )
             raw = await plan_chain.ainvoke({"query": question, "n": max_sub_questions})
             data, _meta = parse_json_from_text(raw, expected="array")
             if isinstance(data, list):
@@ -202,9 +203,7 @@ class MultiAgentRAGRunner:
     @staticmethod
     def _base_state_overrides(stream_request: AgenticStreamRequest) -> dict[str, Any]:
         return {
-            key: value
-            for key, value in (stream_request.state_overrides or {}).items()
-            if key in _RAG_STATE_BUILD_KEYS
+            key: value for key, value in (stream_request.state_overrides or {}).items() if key in _RAG_STATE_BUILD_KEYS
         }
 
     def _build_base_state(

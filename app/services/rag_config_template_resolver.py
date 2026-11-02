@@ -9,7 +9,6 @@ Supports:
 This mirrors `app/services/prompt_resolver.py` but targets retrieval/rerank knobs.
 """
 
-
 import hashlib
 import json
 from collections.abc import Callable, Sequence
@@ -149,7 +148,7 @@ def aggregate_feedback_rewards(
     bucket: dict[str, dict[str, float]] = {}
     total_feedback = 0
 
-    for row in (feedback_rows or []):
+    for row in feedback_rows or []:
         if isinstance(row, dict):
             variant_raw = row.get(variant_field)
             rating = _as_float(row.get(rating_field))
@@ -366,10 +365,14 @@ def _resolve_experiment_variants(
 
     normalized_snapshot = _normalize_reward_snapshot(variants=variants, snapshot=reward_snapshot)
     explore = _stable_unit_interval(f"{seed}:adaptive:explore") < epsilon
-    chosen = weighted_choice if explore else _pick_highest_reward_variant(
-        variants=variants,
-        reward_snapshot=normalized_snapshot,
-        seed=seed,
+    chosen = (
+        weighted_choice
+        if explore
+        else _pick_highest_reward_variant(
+            variants=variants,
+            reward_snapshot=normalized_snapshot,
+            seed=seed,
+        )
     )
     decision = "explore" if explore else "exploit"
     return _return_with_optional_debug(

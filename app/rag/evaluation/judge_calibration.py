@@ -1,6 +1,5 @@
 """Human-label calibration contract for the unified LLM judge."""
 
-
 from collections import Counter
 from datetime import datetime
 from typing import Any
@@ -93,8 +92,7 @@ def build_calibration_report(
     payload_dict = payload if isinstance(payload, dict) else {}
     kappa = cohens_kappa(rows)
     confusion: dict[str, dict[str, int]] = {
-        human: {judge: 0 for judge in CALIBRATION_LABELS}
-        for human in CALIBRATION_LABELS
+        human: {judge: 0 for judge in CALIBRATION_LABELS} for human in CALIBRATION_LABELS
     }
     for row in rows:
         confusion[row["human_label"]][row["judge_label"]] += 1

@@ -1,4 +1,3 @@
-
 import io
 import json
 import zipfile
@@ -97,9 +96,7 @@ def _load_page_sizes(zf: zipfile.ZipFile) -> dict[int, tuple[float, float]]:
     return {}
 
 
-def _collect_normalized_pages(
-    items: list[dict[str, Any]], page_sizes: dict[int, tuple[float, float]]
-) -> set[int]:
+def _collect_normalized_pages(items: list[dict[str, Any]], page_sizes: dict[int, tuple[float, float]]) -> set[int]:
     needs_normalization: set[int] = set()
     if not items or not page_sizes:
         return needs_normalization

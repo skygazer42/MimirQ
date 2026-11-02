@@ -7,7 +7,6 @@ This is an optional second LLM pass designed to:
 - ensure each relation has an evidence quote
 """
 
-
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass

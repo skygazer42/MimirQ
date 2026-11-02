@@ -8,6 +8,7 @@ Available providers:
 - local: Local sentence-transformers models
 - deterministic_test: Dependency-free lexical vectors for offline integration tests
 """
+
 from app.rag.embedding.providers.dashscope import DashScopeEmbedding
 from app.rag.embedding.providers.deterministic_test import DeterministicTestEmbedding
 from app.rag.embedding.providers.local import SentenceTransformerEmbedding

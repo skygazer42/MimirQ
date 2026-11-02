@@ -1,4 +1,3 @@
-
 import asyncio
 import time
 from dataclasses import dataclass
@@ -57,11 +56,13 @@ def _build_correction_prompt(markdown: str) -> str:
 async def _correct_markdown_with_vision_async(*, markdown: str, image_bytes: bytes) -> str:
     timeout = float(getattr(settings, "VISION_LLM_TIMEOUT_SEC", 120) or 120)
     async with httpx.AsyncClient(timeout=timeout) as http_client:
-        return (await _describe_with_vision_llm(
-            http_client=http_client,
-            image_bytes=image_bytes,
-            prompt=_build_correction_prompt(markdown),
-        )).strip()
+        return (
+            await _describe_with_vision_llm(
+                http_client=http_client,
+                image_bytes=image_bytes,
+                prompt=_build_correction_prompt(markdown),
+            )
+        ).strip()
 
 
 def _correct_markdown_with_vision(*, markdown: str, image_bytes: bytes) -> str:
@@ -352,6 +353,7 @@ def maybe_correct_markdown_pages(
         elapsed_ms=int(elapsed_ms),
         error=None,
     )
+
 
 __all__ = [
     "apply_vlm_correction",

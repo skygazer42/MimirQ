@@ -6,7 +6,6 @@ Features:
 - Safety: best-effort PII redaction when `settings.PII_REDACTION_ENABLED` is enabled
 """
 
-
 import atexit
 import contextlib
 import contextvars
@@ -184,7 +183,6 @@ def _maybe_json_dump_via_method(value: Any, method_name: str) -> Any:
     except Exception as exc:
         logger.debug(_SERVICE_FALLBACK_LOG_MESSAGE, exc)
         return None
-
 
 
 def _maybe_redact(obj: Any) -> Any:

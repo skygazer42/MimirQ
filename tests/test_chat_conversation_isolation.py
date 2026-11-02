@@ -432,11 +432,9 @@ def test_list_conversations_searches_all_pages_by_title_and_latest_message(
     monkeypatch.setattr(
         conversations_api,
         "_get_latest_messages_by_conversation_id",
-        lambda _db, _tenant_id, conversation_ids: {
-            message_match.id: latest_message
-        }
-        if message_match.id in conversation_ids
-        else {},
+        lambda _db, _tenant_id, conversation_ids: (
+            {message_match.id: latest_message} if message_match.id in conversation_ids else {}
+        ),
         raising=False,
     )
 
@@ -445,8 +443,7 @@ def test_list_conversations_searches_all_pages_by_title_and_latest_message(
         query._rows = [  # noqa: SLF001 - focused fake query seam
             conversation
             for conversation in query._rows  # noqa: SLF001
-            if search_term in str(conversation.title or "").casefold()
-            or conversation.id == message_match.id
+            if search_term in str(conversation.title or "").casefold() or conversation.id == message_match.id
         ]
         return query
 

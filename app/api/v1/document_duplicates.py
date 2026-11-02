@@ -1,4 +1,3 @@
-
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -127,8 +126,10 @@ def _list_document_duplicates_fast_path(
         .filter(DBDocument.tenant_id == tenant_id, DBDocument.dataset_id == dataset_id)
     )
     group_all_q = group_all_q.filter(document_read_filter)
-    group_all_q = group_all_q.filter(sha_expr.isnot(None), sha_expr != "").group_by(sha_key_expr).having(
-        func.count(DBDocument.id) >= min_count
+    group_all_q = (
+        group_all_q.filter(sha_expr.isnot(None), sha_expr != "")
+        .group_by(sha_key_expr)
+        .having(func.count(DBDocument.id) >= min_count)
     )
     total_groups = int(db.query(func.count()).select_from(group_all_q.subquery()).scalar() or 0)
 

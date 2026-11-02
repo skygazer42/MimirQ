@@ -7,7 +7,6 @@ This is used as a robust fallback when general converters (MarkItDown/Pandoc)
 fail on certain presentations.
 """
 
-
 from pathlib import Path
 
 from langchain_core.documents import Document

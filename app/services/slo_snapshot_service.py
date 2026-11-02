@@ -6,7 +6,6 @@ Sources (priority order):
 2) Metrics JSONL aggregates (fallback)
 """
 
-
 import math
 from dataclasses import dataclass
 from datetime import UTC, datetime

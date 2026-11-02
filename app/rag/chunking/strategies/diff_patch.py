@@ -6,7 +6,6 @@ Splits by file blocks first (`diff --git ...`), then splits large file blocks
 at hunk boundaries (`@@ -a,b +c,d @@`) while preserving character offsets.
 """
 
-
 import re
 import shlex
 from dataclasses import dataclass

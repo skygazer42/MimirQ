@@ -11,7 +11,6 @@ This is intentionally conservative: it only fires on explicit patterns (parenthe
 and should prefer precision over recall.
 """
 
-
 import re
 import unicodedata
 from dataclasses import dataclass

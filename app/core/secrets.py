@@ -11,7 +11,6 @@ Security notes:
 - Rotating SECRET_KEY will make previously stored encrypted secrets undecryptable.
 """
 
-
 import base64
 import hashlib
 from typing import Any

@@ -1,6 +1,5 @@
 """Capability discovery for parser exports and backend families."""
 
-
 from typing import Any
 
 from app.parsing.backends import normalize_parser_backend

@@ -11,7 +11,6 @@ their memberships. Group-based permissions are implemented via separate
 permission tables (see follow-up migrations/models).
 """
 
-
 import uuid
 from datetime import UTC, datetime
 

@@ -12,7 +12,6 @@ Security posture:
 - Payloads are bounded to prevent metadata bloat.
 """
 
-
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any
@@ -176,4 +175,3 @@ def apply_document_acl_provenance(doc, *, provenance: dict[str, Any]) -> None:  
 
 
 __all__ = ["ACL_PROVENANCE_SCHEMA", "apply_document_acl_provenance", "build_document_acl_provenance"]
-

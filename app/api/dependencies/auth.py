@@ -19,6 +19,7 @@ logger = get_logger("api.auth")
 # Public error detail, not a credential.
 INVALID_TOKEN_DETAIL = "Invalid token"  # noqa: S105
 
+
 def _coerce_uuid(raw: object) -> str | None:
     value = str(raw or "").strip()
     if not value:

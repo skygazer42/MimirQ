@@ -10,7 +10,6 @@ The chunker tries to keep complete speaker turns together and uses turn-level
 overlap (instead of raw character overlap) when possible.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any

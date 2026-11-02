@@ -36,6 +36,5 @@ def test_python_sources_do_not_hide_module_imports_behind_try_blocks() -> None:
                 offenders.append(f"{relative_path}:{line}")
 
     assert not offenders, (
-        f"Found {len(offenders)} module-level import fallback blocks; "
-        f"first offenders: {offenders[:20]}"
+        f"Found {len(offenders)} module-level import fallback blocks; first offenders: {offenders[:20]}"
     )

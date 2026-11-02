@@ -4,7 +4,6 @@ Optional Sentry initialization.
 Enabled when SENTRY_DSN is set.
 """
 
-
 import logging
 
 from app.core.config import settings
@@ -33,4 +32,3 @@ def init_sentry() -> bool:
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to init Sentry: %s", str(exc)[:200])
         return False
-

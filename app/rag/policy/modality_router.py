@@ -7,7 +7,6 @@ Design goals:
 - Safe defaults: fall back to "text" when unsure.
 """
 
-
 import re
 
 # Keep this aligned with chat_tag_service table intent detection, but avoid importing

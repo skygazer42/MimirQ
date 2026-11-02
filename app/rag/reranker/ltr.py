@@ -11,7 +11,6 @@ Design constraints:
 - Model loading must be explicit (model_path required) so defaults do not change behavior.
 """
 
-
 import hashlib
 import json
 from collections.abc import Sequence
@@ -274,11 +273,7 @@ def extract_ltr_features(*, spec: LTRFeatureSpec, query: str, candidate: RerankC
     keyword_max_score = max(float(bm25_score), float(lexical_score), float(sparse_score))
     vector_keyword_gap = float(vector_score) - float(keyword_max_score)
     multi_channel_hits = float(
-        sum(
-            1
-            for s in (vector_score, bm25_score, lexical_score, sparse_score)
-            if float(s) > 0.0
-        )
+        sum(1 for s in (vector_score, bm25_score, lexical_score, sparse_score) if float(s) > 0.0)
     )
 
     f_map: dict[str, float] = {

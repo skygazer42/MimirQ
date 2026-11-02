@@ -7,7 +7,6 @@ This module is intended for ops tooling and incident response:
 - Dependency-light (avoid importing optional deps at import time)
 """
 
-
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -51,7 +50,7 @@ def _probe_postgres() -> dict[str, Any]:
             except Exception:
                 version = None
             status["status"] = "connected"
-            status["version"] = (str(version).strip()[:40] if version else None)
+            status["version"] = str(version).strip()[:40] if version else None
         finally:
             try:
                 db.close()
@@ -105,7 +104,7 @@ def _probe_redis() -> dict[str, Any]:
         except Exception:
             version = None
         status["status"] = "connected"
-        status["version"] = (str(version).strip()[:40] if version else None)
+        status["version"] = str(version).strip()[:40] if version else None
     except Exception as exc:  # noqa: BLE001
         status["error"] = str(exc)[:200]
     status["elapsed_ms"] = round((time.perf_counter() - t0) * 1000.0, 2)

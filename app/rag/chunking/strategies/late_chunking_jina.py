@@ -1,4 +1,3 @@
-
 from langchain_core.documents import Document
 
 from app.rag.chunking.strategies.late_chunking import LateChunkingChunker

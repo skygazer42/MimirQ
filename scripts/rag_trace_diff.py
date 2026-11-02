@@ -10,7 +10,6 @@ Example:
   python scripts/rag_trace_diff.py --request-id-a <reqA> --request-id-b <reqB>
 """
 
-
 import argparse
 import json
 import sys
@@ -110,4 +109,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

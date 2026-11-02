@@ -6,7 +6,6 @@ This is intentionally simple:
 - user_id is a string (matches current tenant_members.user_id model)
 """
 
-
 import contextlib
 from collections.abc import Iterable
 from uuid import UUID
@@ -95,11 +94,7 @@ class TenantGroupService:
 
     @staticmethod
     def get_group(db: Session, *, tenant_id: UUID, group_id: UUID) -> TenantGroup:
-        group = (
-            db.query(TenantGroup)
-            .filter(TenantGroup.tenant_id == tenant_id, TenantGroup.id == group_id)
-            .first()
-        )
+        group = db.query(TenantGroup).filter(TenantGroup.tenant_id == tenant_id, TenantGroup.id == group_id).first()
         if not group:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
         return group
@@ -116,11 +111,7 @@ class TenantGroupService:
         if ext is not None and len(ext) > 255:
             raise HTTPException(status_code=400, detail="external_id too long (max=255)")
 
-        exists = (
-            db.query(TenantGroup.id)
-            .filter(TenantGroup.tenant_id == tenant_id, TenantGroup.name == n)
-            .first()
-        )
+        exists = db.query(TenantGroup.id).filter(TenantGroup.tenant_id == tenant_id, TenantGroup.name == n).first()
         if exists:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Group name already exists")
 
@@ -209,12 +200,9 @@ class TenantGroupService:
     ) -> tuple[int, list[TenantGroupMember]]:
         TenantGroupService.get_group(db, tenant_id=tenant_id, group_id=group_id)
 
-        q = (
-            db.query(TenantGroupMember)
-            .filter(
-                TenantGroupMember.tenant_id == tenant_id,
-                TenantGroupMember.group_id == group_id,
-            )
+        q = db.query(TenantGroupMember).filter(
+            TenantGroupMember.tenant_id == tenant_id,
+            TenantGroupMember.group_id == group_id,
         )
         total = int(q.count())
         items = (

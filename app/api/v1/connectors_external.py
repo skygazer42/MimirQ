@@ -1,4 +1,3 @@
-
 import contextlib
 import hashlib
 from typing import Any
@@ -312,10 +311,7 @@ async def _github_fetch_repo_team_principal_keys(
     if not org or not repo_name:
         return []
 
-    url = (
-        f"https://api.github.com/repos/{quote(org, safe='')}/"
-        f"{quote(repo_name, safe='')}/teams?per_page=100"
-    )
+    url = f"https://api.github.com/repos/{quote(org, safe='')}/{quote(repo_name, safe='')}/teams?per_page=100"
     out: list[str] = []
     seen: set[str] = set()
 

@@ -7,7 +7,6 @@ Wave7(A) goals:
 - Deterministic and bounded (stable schema, caps).
 """
 
-
 import json
 from pathlib import Path
 from typing import Any
@@ -58,7 +57,7 @@ def _dedupe_chunk_rows(
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
     dropped = 0
-    for row in (rows or []):
+    for row in rows or []:
         if not isinstance(row, dict):
             continue
         cid = _safe_str(row.get("chunk_id"), max_len=200)

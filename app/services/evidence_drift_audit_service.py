@@ -8,7 +8,6 @@ This logic is used by:
 Important: Do NOT read or emit chunk content. Ids + counters only.
 """
 
-
 from collections import Counter, defaultdict
 from datetime import UTC, datetime
 from typing import Any

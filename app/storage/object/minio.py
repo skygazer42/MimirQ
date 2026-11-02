@@ -5,6 +5,7 @@ Used for:
 - images extracted during document parsing (legacy + current)
 - document source files when enabled (enterprise deployments)
 """
+
 import asyncio
 import contextlib
 import io
@@ -247,20 +248,10 @@ class MinIOService:
             img_id: format "{tenant_id}:{dataset_id}:{document_id}:{chunk_key}"
         """
         return await asyncio.to_thread(
-            self.upload_image,
-            image_data,
-            tenant_id,
-            dataset_id,
-            document_id,
-            chunk_key,
-            extension
+            self.upload_image, image_data, tenant_id, dataset_id, document_id, chunk_key, extension
         )
 
-    async def upload_images_batch(
-        self,
-        images: list[dict[str, Any]],
-        max_concurrent: int = 10
-    ) -> list[dict[str, Any]]:
+    async def upload_images_batch(self, images: list[dict[str, Any]], max_concurrent: int = 10) -> list[dict[str, Any]]:
         """
         Upload images to MinIO concurrently in batches.
 
@@ -296,20 +287,12 @@ class MinIOService:
                         dataset_id=img_info["dataset_id"],
                         document_id=img_info["document_id"],
                         chunk_key=img_info["chunk_key"],
-                        extension=img_info.get("extension", "jpg")
+                        extension=img_info.get("extension", "jpg"),
                     )
-                    return {
-                        "success": True,
-                        "img_id": img_id,
-                        "chunk_key": img_info["chunk_key"]
-                    }
+                    return {"success": True, "img_id": img_id, "chunk_key": img_info["chunk_key"]}
                 except Exception as e:
                     logger.exception(f"Batch upload failed for chunk_key {img_info.get('chunk_key')}: {str(e)}")
-                    return {
-                        "success": False,
-                        "error": str(e),
-                        "chunk_key": img_info.get("chunk_key")
-                    }
+                    return {"success": False, "error": str(e), "chunk_key": img_info.get("chunk_key")}
 
         tasks = [upload_single(img) for img in images]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -318,20 +301,15 @@ class MinIOService:
         processed_results = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                processed_results.append({
-                    "success": False,
-                    "error": str(result),
-                    "chunk_key": images[i].get("chunk_key")
-                })
+                processed_results.append(
+                    {"success": False, "error": str(result), "chunk_key": images[i].get("chunk_key")}
+                )
             else:
                 processed_results.append(result)
 
         elapsed = time.perf_counter() - t0
         success_count = sum(1 for r in processed_results if r.get("success"))
-        logger.info(
-            f"Batch upload completed: {success_count}/{len(images)} successful, "
-            f"elapsed: {elapsed:.2f}s"
-        )
+        logger.info(f"Batch upload completed: {success_count}/{len(images)} successful, elapsed: {elapsed:.2f}s")
 
         return processed_results
 

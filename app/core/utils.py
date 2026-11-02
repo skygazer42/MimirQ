@@ -19,6 +19,7 @@ T = TypeVar("T", bound=BaseModel)
 # UUID conversion
 # =============================================================================
 
+
 def to_uuid(value: Any) -> UUID:
     """
     Safely convert a value to UUID.
@@ -78,6 +79,7 @@ def uuid_list(values: list[Any]) -> list[UUID]:
 # Pydantic model conversion
 # =============================================================================
 
+
 def models_to_dicts(models: list[T]) -> list[dict[str, Any]]:
     """
     Convert a list of Pydantic models to a list of dicts.
@@ -114,6 +116,7 @@ def model_to_dict(model: T, **kwargs) -> dict[str, Any]:
 # Proxy configuration
 # =============================================================================
 
+
 def get_proxy_url() -> str | None:
     """
     Get proxy URL.
@@ -149,6 +152,7 @@ def has_proxy_configured() -> bool:
 # String utilities
 # =============================================================================
 
+
 def truncate_string(s: str, max_length: int, suffix: str = "...") -> str:
     """
     Truncate a string to a maximum length.
@@ -163,7 +167,7 @@ def truncate_string(s: str, max_length: int, suffix: str = "...") -> str:
     """
     if len(s) <= max_length:
         return s
-    return s[:max_length - len(suffix)] + suffix
+    return s[: max_length - len(suffix)] + suffix
 
 
 def safe_str(value: Any, default: str = "") -> str:
@@ -185,6 +189,7 @@ def safe_str(value: Any, default: str = "") -> str:
 # =============================================================================
 # Config utilities
 # =============================================================================
+
 
 def parse_csv(value: str | None) -> list[str]:
     """
@@ -272,6 +277,7 @@ def get_env_float(key: str, default: float = 0.0) -> float:
 # List utilities
 # =============================================================================
 
+
 def chunk_list(lst: list[T], chunk_size: int) -> list[list[T]]:
     """
     Split a list into fixed-size chunks.
@@ -287,7 +293,7 @@ def chunk_list(lst: list[T], chunk_size: int) -> list[list[T]]:
         >>> chunk_list([1, 2, 3, 4, 5], 2)
         [[1, 2], [3, 4], [5]]
     """
-    return [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
+    return [lst[i : i + chunk_size] for i in range(0, len(lst), chunk_size)]
 
 
 def flatten_list(nested: list[list[T]]) -> list[T]:

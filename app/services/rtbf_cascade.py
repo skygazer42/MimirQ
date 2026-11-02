@@ -17,7 +17,6 @@ Notes:
   cleanup to avoid duplicating side effects in a second code path.
 """
 
-
 import contextlib
 from datetime import UTC, datetime
 from uuid import UUID

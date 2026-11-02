@@ -8,7 +8,6 @@ This is used after parsing (before chunking) to:
 It is intentionally cheap and dependency-free.
 """
 
-
 import re
 from dataclasses import dataclass
 
@@ -63,4 +62,3 @@ __all__ = [
     "TextQualityScore",
     "score_parsed_text_quality",
 ]
-

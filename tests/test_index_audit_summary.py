@@ -1,5 +1,3 @@
-
-
 def test_compute_index_audit_summary_reports_missing_and_orphan_samples() -> None:
     from uuid import UUID
 

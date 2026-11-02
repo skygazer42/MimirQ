@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from app.rag.kg.extraction.relation_processor import normalize_predicate

@@ -1,4 +1,3 @@
-
 import asyncio
 from dataclasses import dataclass, replace
 from typing import Any, cast
@@ -199,11 +198,7 @@ async def prepare_non_streaming_chat_cache_state(
             singleflight_leader=False,
             singleflight_key=None,
             full_response=str(cached.get("content") or ""),
-            citations_data=(
-                cached.get("citations")
-                if isinstance(cached.get("citations"), list)
-                else []
-            ),
+            citations_data=(cached.get("citations") if isinstance(cached.get("citations"), list) else []),
             metrics_data=metrics_data,
             structured_data=cached.get("structured_data"),
         )
@@ -215,9 +210,7 @@ async def prepare_non_streaming_chat_cache_state(
     citations_data: list[Any] = []
     metrics_data: dict[str, Any] = {}
     structured_data: object | None = None
-    singleflight_feature_enabled = bool(
-        getattr(settings, "CHAT_RESPONSE_SINGLEFLIGHT_ENABLED", False)
-    )
+    singleflight_feature_enabled = bool(getattr(settings, "CHAT_RESPONSE_SINGLEFLIGHT_ENABLED", False))
     response_cache_ttl_sec = max(
         0,
         int(getattr(settings, "CHAT_RESPONSE_CACHE_TTL_SEC", 300) or 0),
@@ -231,9 +224,7 @@ async def prepare_non_streaming_chat_cache_state(
         loop = asyncio.get_running_loop()
         singleflight_wait_deadline = loop.time() + singleflight_wait_timeout_sec
         while True:
-            singleflight_leader, inflight_future = await acquire_inflight_chat_response(
-                singleflight_key
-            )
+            singleflight_leader, inflight_future = await acquire_inflight_chat_response(singleflight_key)
             if singleflight_leader:
                 break
             try:
@@ -248,9 +239,7 @@ async def prepare_non_streaming_chat_cache_state(
                 continue
             full_response = str(shared_payload.get("content") or "")
             citations_data = (
-                shared_payload.get("citations")
-                if isinstance(shared_payload.get("citations"), list)
-                else []
+                shared_payload.get("citations") if isinstance(shared_payload.get("citations"), list) else []
             )
             metrics_data = annotate_chat_cache_metrics(
                 dict(shared_payload.get("metrics") or {}),
@@ -278,9 +267,7 @@ async def prepare_non_streaming_chat_cache_state(
                 resolve_inflight_chat_response(singleflight_key, shared_payload)
                 full_response = str(shared_payload.get("content") or "")
                 citations_data = (
-                    shared_payload.get("citations")
-                    if isinstance(shared_payload.get("citations"), list)
-                    else []
+                    shared_payload.get("citations") if isinstance(shared_payload.get("citations"), list) else []
                 )
                 metrics_data = annotate_chat_cache_metrics(
                     dict(shared_payload.get("metrics") or {}),

@@ -7,7 +7,6 @@ Supports .xlsx via openpyxl; .xls uses pandas engines and may fail.
 Outputs Markdown tables (best-effort) for better fidelity in downstream preview/RAG.
 """
 
-
 import io
 from pathlib import Path
 from typing import Any
@@ -169,9 +168,8 @@ class ExcelParser:
             return _EMPTY_SHEET_MARKDOWN, 0, False
 
         try:
-            truncated = (
-                (self.max_rows > 0 and int(getattr(ws, "max_row", 0) or 0) > self.max_rows)
-                or (self.max_cols > 0 and int(getattr(ws, "max_column", 0) or 0) > self.max_cols)
+            truncated = (self.max_rows > 0 and int(getattr(ws, "max_row", 0) or 0) > self.max_rows) or (
+                self.max_cols > 0 and int(getattr(ws, "max_column", 0) or 0) > self.max_cols
             )
         except Exception as exc:
             logger.debug("Ignoring Excel truncation metadata failure: %s", exc)

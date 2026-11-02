@@ -19,13 +19,9 @@ WEB_APP = REPO / "web" / "app"
 OUT = REPO / "docs-site" / "docs" / "integration" / "generated" / "fe-be-matrix.mdx"
 
 # apiClient.get("/api/v1/foo") or `/api/v1/foo` or "/api/v1/foo"
-PATH_RE = re.compile(
-    r"""['`](?P<p>/api/v1[^'"`$]*?)['`]"""
-)
+PATH_RE = re.compile(r"""['`](?P<p>/api/v1[^'"`$]*?)['`]""")
 # Optional template: `/api/v1/foo/${id}`
-PATH_TEMPLATE_RE = re.compile(
-    r"""['"](?P<p>/api/v1(?:/\{[^}]+\}|/[a-zA-Z0-9_\-{}]+)+)['"]"""
-)
+PATH_TEMPLATE_RE = re.compile(r"""['"](?P<p>/api/v1(?:/\{[^}]+\}|/[a-zA-Z0-9_\-{}]+)+)['"]""")
 
 
 def load_openapi_by_tag() -> dict[str, list[str]]:

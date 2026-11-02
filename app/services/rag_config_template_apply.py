@@ -8,7 +8,6 @@ We apply template patches as *fallback overrides*:
 This keeps debug/probe callers in control while enabling safe rollout for default traffic.
 """
 
-
 from collections.abc import Iterable
 from typing import Any
 
@@ -46,4 +45,3 @@ def apply_rag_config_patch(
 
 
 __all__ = ["apply_rag_config_patch"]
-

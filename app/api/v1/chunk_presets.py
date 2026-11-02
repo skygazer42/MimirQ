@@ -4,7 +4,6 @@ Chunk presets API.
 Tenant-scoped CRUD endpoints for reusable chunking configurations.
 """
 
-
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -103,12 +102,7 @@ def _get_chunk_preset_row(*, db: Session, tenant_id: UUID, preset_id: str) -> An
     except Exception:  # noqa: BLE001
         return None
 
-    return (
-        db.query(ChunkPreset)
-        .filter(ChunkPreset.tenant_id == tenant_id)
-        .filter(ChunkPreset.id == pid)
-        .first()
-    )
+    return db.query(ChunkPreset).filter(ChunkPreset.tenant_id == tenant_id).filter(ChunkPreset.id == pid).first()
 
 
 def _create_chunk_preset_row(

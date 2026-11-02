@@ -474,11 +474,7 @@ def test_github_actions_chunker_characterizes_job_and_fallback_chunks() -> None:
 
 
 def test_glossary_chunker_characterizes_entry_overlap_and_fallback_chunks() -> None:
-    structured = (
-        "API: Application programming interface\n"
-        "SDK: Software development kit\n"
-        "CLI: Command line interface\n"
-    )
+    structured = "API: Application programming interface\nSDK: Software development kit\nCLI: Command line interface\n"
     fallback = "random prose only\nno entries\n"
 
     assert _summarize_chunks(GlossaryChunker(65, 20), structured) == [

@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from app.services.rag_metrics_dashboard import RagTraceBundle

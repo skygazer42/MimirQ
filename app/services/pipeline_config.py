@@ -499,9 +499,15 @@ def parse_pipeline_from_metadata(metadata: dict[str, Any]) -> PipelineOptions:
         governance_normalize_urls=_coerce_bool(governance.get("normalize_urls")),
         governance_normalize_urls_strip_tracking=_coerce_bool(governance.get("normalize_urls_strip_tracking")),
         governance_drop_duplicate_paragraphs=_coerce_bool(governance.get("drop_duplicate_paragraphs")),
-        governance_drop_duplicate_paragraphs_min_occurrences=_coerce_int(governance.get("drop_duplicate_paragraphs_min_occurrences")),
-        governance_drop_duplicate_paragraphs_min_chars=_coerce_int(governance.get("drop_duplicate_paragraphs_min_chars")),
-        governance_drop_duplicate_paragraphs_max_chars=_coerce_int(governance.get("drop_duplicate_paragraphs_max_chars")),
+        governance_drop_duplicate_paragraphs_min_occurrences=_coerce_int(
+            governance.get("drop_duplicate_paragraphs_min_occurrences")
+        ),
+        governance_drop_duplicate_paragraphs_min_chars=_coerce_int(
+            governance.get("drop_duplicate_paragraphs_min_chars")
+        ),
+        governance_drop_duplicate_paragraphs_max_chars=_coerce_int(
+            governance.get("drop_duplicate_paragraphs_max_chars")
+        ),
         governance_trim_references=_coerce_bool(governance.get("trim_references")),
         governance_extract_keywords=_coerce_bool(governance.get("extract_keywords")),
         governance_keywords_provider=_coerce_str(governance.get("keywords_provider")),
@@ -662,9 +668,7 @@ def resolve_pipeline_effective(
 
 def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
     governance_enabled = (
-        settings.GOVERNANCE_ENABLED
-        if options.governance_enabled is None
-        else bool(options.governance_enabled)
+        settings.GOVERNANCE_ENABLED if options.governance_enabled is None else bool(options.governance_enabled)
     )
     governance_remove_toc_lines = (
         settings.GOVERNANCE_REMOVE_TOC_LINES
@@ -1007,11 +1011,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         if options.chunk_merge_small_min_chars is not None
         else int(getattr(settings, "CHUNK_MERGE_SMALL_MIN_CHARS", 0) or 0)
     )
-    chunk_strategy_params = (
-        options.chunk_strategy_params
-        if options.chunk_strategy_params is not None
-        else None
-    )
+    chunk_strategy_params = options.chunk_strategy_params if options.chunk_strategy_params is not None else None
     chunk_strategy_params = _sanitize_chunk_strategy_params(chunk_strategy_params) or {}
     chunk_python_plugin = _sanitize_stage_python_plugin_ref(options.chunk_python_plugin, "chunk") or ""
     chunk_python_params = _sanitize_chunk_strategy_params(options.chunk_python_params) or {}
@@ -1041,14 +1041,10 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         else bool(options.table_store_enabled)
     )
     table_store_max_rows = (
-        options.table_store_max_rows
-        if options.table_store_max_rows is not None
-        else int(settings.TABLE_STORE_MAX_ROWS)
+        options.table_store_max_rows if options.table_store_max_rows is not None else int(settings.TABLE_STORE_MAX_ROWS)
     )
     table_store_max_cols = (
-        options.table_store_max_cols
-        if options.table_store_max_cols is not None
-        else int(settings.TABLE_STORE_MAX_COLS)
+        options.table_store_max_cols if options.table_store_max_cols is not None else int(settings.TABLE_STORE_MAX_COLS)
     )
     table_store_sample_rows = (
         options.table_store_sample_rows

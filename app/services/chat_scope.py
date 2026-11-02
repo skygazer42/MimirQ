@@ -268,8 +268,7 @@ def enforce_non_empty_chat_scope(
         )
         q = q.filter(DBDocument.publication_status == "published")
         q = q.filter(
-            (DBDocument.status == "completed")
-            | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
+            (DBDocument.status == "completed") | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
         )
         if not q.with_entities(DBDocument.id).limit(1).first():
             raise HTTPException(status_code=400, detail=error_detail)

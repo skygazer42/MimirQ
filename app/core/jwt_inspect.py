@@ -5,7 +5,6 @@ Used for best-effort diagnostics (e.g., token expiry warnings) for third-party
 services where we do not have the signing key.
 """
 
-
 import base64
 import json
 from datetime import UTC, datetime

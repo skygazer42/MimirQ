@@ -1,4 +1,3 @@
-
 from typing import Any
 from uuid import UUID
 
@@ -79,12 +78,7 @@ def summarize_relation_noise(
         .scalar()
         or 0
     )
-    missing_chunk = (
-        base.with_entities(func.count(KgRelation.id))
-        .filter(KgRelation.chunk_id.is_(None))
-        .scalar()
-        or 0
-    )
+    missing_chunk = base.with_entities(func.count(KgRelation.id)).filter(KgRelation.chunk_id.is_(None)).scalar() or 0
 
     return {
         "relations_total": int(total),

@@ -8,7 +8,6 @@ The chunker splits by sheets first, then applies a fallback splitter inside
 each sheet while preserving character offsets.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -67,7 +66,7 @@ def _iter_sheets(text: str) -> list[_Sheet]:
         end = starts[idx + 1] if idx + 1 < len(starts) else len(raw)
         name = names[idx] or ""
         if not name:
-            name = f"sheet_{idx+1}"
+            name = f"sheet_{idx + 1}"
         sheets.append(_Sheet(start=int(start), end=int(end), index=idx, name=name))
     return sheets
 

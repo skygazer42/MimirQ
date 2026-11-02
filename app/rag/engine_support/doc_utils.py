@@ -158,10 +158,10 @@ class DocUtilsMixin:
                 (
                     key,
                     Document(
-                    page_content=doc.page_content,
-                    metadata=meta,
-                    id=getattr(doc, "id", None) or meta.get("chunk_id"),
-                )
+                        page_content=doc.page_content,
+                        metadata=meta,
+                        id=getattr(doc, "id", None) or meta.get("chunk_id"),
+                    ),
                 ),
             )
 

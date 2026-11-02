@@ -382,9 +382,7 @@ def _collect_citation_records(citations: Any) -> tuple[list[CitationRecord], lis
             continue
         chunk_id = _coerce_uuid(payload.get("chunk_id"))
         document_id = _coerce_uuid(payload.get("document_id"))
-        fallback_text = str(
-            payload.get("chunk_content") or payload.get("quote") or payload.get("text") or ""
-        ).strip()
+        fallback_text = str(payload.get("chunk_content") or payload.get("quote") or payload.get("text") or "").strip()
         records.append(
             CitationRecord(
                 original=item,
@@ -485,9 +483,7 @@ def _resolve_enrichment_allowed_document_ids(
         return allowed_set
 
     candidate_doc_ids = {
-        chunk.document_id
-        for chunk in chunk_map.values()
-        if getattr(chunk, "document_id", None) is not None
+        chunk.document_id for chunk in chunk_map.values() if getattr(chunk, "document_id", None) is not None
     }
     if not candidate_doc_ids:
         return allowed_set
@@ -632,10 +628,7 @@ def _enrich_citations_with_chunk_metadata(
         return citations
 
     records, chunk_ids = _collect_citation_records(citations)
-    normalized_items = [
-        record.payload if record.payload is not None else record.original
-        for record in records
-    ]
+    normalized_items = [record.payload if record.payload is not None else record.original for record in records]
     if not chunk_ids:
         return normalized_items
 
@@ -1216,7 +1209,6 @@ def _build_llm_and_embeddings():
 
     provider = (settings.EMBEDDING_PROVIDER or "openai_compatible").lower()
     if provider == "local":
-
         embeddings = HuggingFaceEmbeddings(model_name=settings.EMBEDDING_MODEL)
     elif provider == "dashscope":
         embeddings = create_langchain_embeddings_from_config(

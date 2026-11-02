@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from app.rag.core.retrieval_profiles import LONG_CONTEXT_RETRIEVAL_PROFILE, PRODUCTION_RETRIEVAL_PROFILE

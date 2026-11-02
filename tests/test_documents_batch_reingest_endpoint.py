@@ -1,4 +1,3 @@
-
 import uuid
 
 from fastapi import FastAPI
@@ -70,4 +69,3 @@ def test_documents_batch_reingest_calls_patch_and_retry(monkeypatch):  # noqa: A
     assert body["queued"] == 2
     assert calls["patch"] == 2
     assert calls["retry"] == 2
-

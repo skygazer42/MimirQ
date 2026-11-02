@@ -13,7 +13,6 @@ Design:
 - PII-minimal audit: store hashes, not raw user ids.
 """
 
-
 import contextlib
 import hashlib
 from typing import Any

@@ -1,4 +1,3 @@
-
 import asyncio
 import contextlib
 import importlib
@@ -85,9 +84,7 @@ def _run_manual_kg_extraction(
                 index_options=index_options,
                 prompt_template_id=prompt_template_id,
                 prompt_template_key=(getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", "") or "").strip() or None,
-                prompt_ab_experiment_key=(
-                    getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or ""
-                ).strip()
+                prompt_ab_experiment_key=(getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or "").strip()
                 or None,
                 ab_user_key=account_id,
             )
@@ -253,13 +250,15 @@ def _index_manual_document_chunks(
     _merge_manual_document_image_ids(db_document=db_document, document_img_ids=document_img_ids)
 
     persist_result = _require_manual_chunk_persist_result(
-        Indexer(db).upsert(
+        Indexer(db)
+        .upsert(
             tenant_id=tenant_id,
             records=records,
             default_source=request.filename,
             options=index_options,
             commit=False,
-        ).chunk_result
+        )
+        .chunk_result
     )
 
     db_document.chunk_count = len(request.chunks)
@@ -311,11 +310,7 @@ def _mark_manual_document_failed(
     with contextlib.suppress(Exception):
         Indexer(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
 
-    db_document = (
-        db.query(DBDocument)
-        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-        .first()
-    )
+    db_document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not db_document:
         return
     if str(db_document.status or "").lower() == "cancelled":
@@ -342,9 +337,7 @@ def _process_manual_document_chunks_background(
     try:
         request = ManualDocumentCreate.model_validate(request_payload)
         db_document = (
-            db.query(DBDocument)
-            .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-            .first()
+            db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
         )
         if not db_document:
             return

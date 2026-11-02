@@ -1,4 +1,3 @@
-
 from typing import Any, Callable
 
 from app.rag.core.query_rewrite_strategy import (

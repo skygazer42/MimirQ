@@ -75,9 +75,7 @@ def _download(spec: WheelSpec, target: Path, retries: int, timeout_sec: int) -> 
 
             actual_sha256 = _sha256(tmp_path)
             if actual_sha256 != spec.sha256:
-                raise RuntimeError(
-                    f"sha256 mismatch for {spec.filename}: expected {spec.sha256}, got {actual_sha256}"
-                )
+                raise RuntimeError(f"sha256 mismatch for {spec.filename}: expected {spec.sha256}, got {actual_sha256}")
 
             tmp_path.replace(target)
             print(f"[wheels] downloaded {spec.filename}")

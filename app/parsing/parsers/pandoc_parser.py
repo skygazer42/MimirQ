@@ -10,7 +10,6 @@ This parser is intentionally optional because it relies on external CLIs:
 - soffice (LibreOffice) for legacy formats
 """
 
-
 import re
 from pathlib import Path
 from subprocess import PIPE, CalledProcessError, TimeoutExpired
@@ -113,9 +112,7 @@ class PandocParser:
 
     def _convert_via_libreoffice(self, *, file_path: Path, artifact_root: Path) -> Path:
         if not self._soffice_path:
-            raise RuntimeError(
-                "LibreOffice conversion requested but LIBREOFFICE_ENABLED=false or soffice is missing."
-            )
+            raise RuntimeError("LibreOffice conversion requested but LIBREOFFICE_ENABLED=false or soffice is missing.")
 
         source_path = file_path.resolve(strict=False)
         ext = file_path.suffix.lower()

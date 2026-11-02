@@ -6,7 +6,6 @@ This implementation is best-effort and lightweight:
 - PDFs: normalize page rotation metadata when a dominant rotation is detected.
 """
 
-
 import time
 from pathlib import Path
 from typing import Any

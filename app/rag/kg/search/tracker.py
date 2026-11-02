@@ -1,6 +1,7 @@
 """
 Clue tracker with normalized node formats for query/entity/event.
 """
+
 import uuid
 from typing import Any
 
@@ -61,8 +62,10 @@ class Tracker:
 
     @staticmethod
     def build_entity_node(entity: dict[str, Any]) -> dict[str, Any]:
-        ent_id = entity.get("entity_id") or entity.get("id") or Tracker._uuid_from_text(
-            "entity", entity.get("name", "unknown")
+        ent_id = (
+            entity.get("entity_id")
+            or entity.get("id")
+            or Tracker._uuid_from_text("entity", entity.get("name", "unknown"))
         )
         return {
             "id": ent_id,
@@ -77,8 +80,10 @@ class Tracker:
     def build_event_node(event: Any, stage: str | None = None, hop: int | None = None) -> dict[str, Any]:
         ev_id = getattr(event, "id", None) or event.get("id") if isinstance(event, dict) else None  # type: ignore
         title = getattr(event, "title", None) or (event.get("title") if isinstance(event, dict) else "")
-        content = getattr(event, "content", None) or getattr(event, "summary", None) or (
-            event.get("content") if isinstance(event, dict) else ""
+        content = (
+            getattr(event, "content", None)
+            or getattr(event, "summary", None)
+            or (event.get("content") if isinstance(event, dict) else "")
         )
         node_id = f"{stage}_{ev_id}" if stage and ev_id else ev_id or Tracker._uuid_from_text("event", title or "")
         return {

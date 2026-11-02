@@ -12,7 +12,6 @@ Additional optional phases:
 - before_agent / after_agent: Agent/workflow lifecycle hooks
 """
 
-
 import asyncio
 import threading
 from collections.abc import Callable
@@ -34,6 +33,7 @@ WrapperFunc = Callable[[Callable], Callable]
 
 class MiddlewarePhase(str, Enum):
     """Middleware execution phases."""
+
     BEFORE_MODEL = "before_model"
     AFTER_MODEL = "after_model"
     WRAP_MODEL = "wrap_model"
@@ -48,6 +48,7 @@ class MiddlewarePhase(str, Enum):
 @dataclass
 class MiddlewareConfig:
     """Configuration for a middleware."""
+
     name: str
     phase: MiddlewarePhase
     priority: int = 100  # Lower = earlier execution
@@ -134,6 +135,7 @@ def before_model(
                 raise ValueError("Question is required")
             return state
     """
+
     def decorator(f: Callable) -> Callable:
         _registry.register(f, MiddlewarePhase.BEFORE_MODEL, priority, name)
 
@@ -172,6 +174,7 @@ def after_model(
                 state["answer"] = "I could not generate a response."
             return state
     """
+
     def decorator(f: Callable) -> Callable:
         _registry.register(f, MiddlewarePhase.AFTER_MODEL, priority, name)
 
@@ -209,6 +212,7 @@ def wrap_model_call(
                     return await func(state, *args, **kwargs)
             return wrapper
     """
+
     def decorator(f: Callable) -> Callable:
         _registry.register(f, MiddlewarePhase.WRAP_MODEL, priority, name)
         return f
@@ -239,6 +243,7 @@ def dynamic_prompt(
             state["system_prompt"] = system + state.get("system_prompt", "")
             return state
     """
+
     def decorator(f: Callable) -> Callable:
         _registry.register(f, MiddlewarePhase.DYNAMIC_PROMPT, priority, name)
 
@@ -270,6 +275,7 @@ def before_tool_call(
           "error": str | None,
         }
     """
+
     def decorator(f: Callable) -> Callable:
         _registry.register(f, MiddlewarePhase.BEFORE_TOOL_CALL, priority, name)
 
@@ -291,6 +297,7 @@ def after_tool_call(
     name: str | None = None,
 ) -> Callable:
     """Decorator for post-tool hooks (runs after a tool call completes)."""
+
     def decorator(f: Callable) -> Callable:
         _registry.register(f, MiddlewarePhase.AFTER_TOOL_CALL, priority, name)
 
@@ -317,6 +324,7 @@ def wrap_tool_call(
     The decorated function should be a wrapper factory that takes the
     original tool-call function and returns a wrapped version.
     """
+
     def decorator(f: Callable) -> Callable:
         _registry.register(f, MiddlewarePhase.WRAP_TOOL_CALL, priority, name)
         return f
@@ -333,6 +341,7 @@ def before_agent(
     name: str | None = None,
 ) -> Callable:
     """Decorator for agent/workflow lifecycle hooks (runs at agent start)."""
+
     def decorator(f: Callable) -> Callable:
         _registry.register(f, MiddlewarePhase.BEFORE_AGENT, priority, name)
 
@@ -354,6 +363,7 @@ def after_agent(
     name: str | None = None,
 ) -> Callable:
     """Decorator for agent/workflow lifecycle hooks (runs at agent end)."""
+
     def decorator(f: Callable) -> Callable:
         _registry.register(f, MiddlewarePhase.AFTER_AGENT, priority, name)
 
@@ -593,13 +603,13 @@ def apply_middlewares(
     """
     chain = MiddlewareChain()
 
-    for f in (before or []):
+    for f in before or []:
         chain.add_before(f)
 
-    for f in (after or []):
+    for f in after or []:
         chain.add_after(f)
 
-    for w in (wrappers or []):
+    for w in wrappers or []:
         chain.add_wrapper(w)
 
     @wraps(func)

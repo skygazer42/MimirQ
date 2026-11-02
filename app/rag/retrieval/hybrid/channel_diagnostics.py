@@ -1,4 +1,3 @@
-
 from collections import Counter
 from typing import Any
 
@@ -89,11 +88,7 @@ def update_hybrid_channel_diagnostics(
     sparse_provider_snapshot = {
         "requested_provider": str(sparse_status.get("requested_provider") or ""),
         "requested_provider_normalized": str(sparse_status.get("requested_provider_normalized") or ""),
-        "effective_provider": str(
-            sparse_status.get("effective_provider")
-            or sparse_provider
-            or "deterministic"
-        ),
+        "effective_provider": str(sparse_status.get("effective_provider") or sparse_provider or "deterministic"),
         "provider_supported": bool(sparse_status.get("provider_supported", False)),
         "model_required": bool(sparse_status.get("model_required", False)),
         "model_configured": bool(sparse_status.get("model_configured", False)),
@@ -153,9 +148,7 @@ def update_hybrid_channel_diagnostics(
                 "enabled": bool(want_sparse),
                 "candidates": len(sparse_results or []),
                 "provider": str(
-                    sparse_provider_snapshot.get("effective_provider")
-                    or sparse_provider
-                    or "deterministic"
+                    sparse_provider_snapshot.get("effective_provider") or sparse_provider or "deterministic"
                 ),
                 "provider_status": sparse_provider_snapshot,
             },

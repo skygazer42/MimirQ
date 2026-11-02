@@ -8,7 +8,6 @@ fallback RecursiveCharacterTextSplitter inside each section while preserving
 character offsets.
 """
 
-
 import html as _html
 import re
 from dataclasses import dataclass

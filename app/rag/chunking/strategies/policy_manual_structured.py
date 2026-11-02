@@ -10,7 +10,6 @@ This is intentionally deterministic and conservative:
 - Heuristics aim to avoid misclassifying generic outlines
 """
 
-
 import hashlib
 from dataclasses import dataclass
 from typing import Any

@@ -1,4 +1,3 @@
-
 import hashlib
 import json
 import re
@@ -310,28 +309,36 @@ def add_chart_data_blocks(
 
     raw = str(markdown or "")
     if not bool(getattr(settings, "CHART_TO_DATA_ENABLED", False)):
-        return raw, 0, ChartToDataAudit(
-            applied=False,
-            charts_added=0,
-            images_attempted=0,
-            images_succeeded=0,
-            elapsed_ms=0,
-            backend="chart_to_data",
-            chart_elements=[],
-            error=None,
+        return (
+            raw,
+            0,
+            ChartToDataAudit(
+                applied=False,
+                charts_added=0,
+                images_attempted=0,
+                images_succeeded=0,
+                elapsed_ms=0,
+                backend="chart_to_data",
+                chart_elements=[],
+                error=None,
+            ),
         )
 
     api_url = str(getattr(settings, "CHART_TO_DATA_API_URL", "") or "").strip()
     if not api_url:
-        return raw, 0, ChartToDataAudit(
-            applied=False,
-            charts_added=0,
-            images_attempted=0,
-            images_succeeded=0,
-            elapsed_ms=0,
-            backend="chart_to_data",
-            chart_elements=[],
-            error="api_url_missing",
+        return (
+            raw,
+            0,
+            ChartToDataAudit(
+                applied=False,
+                charts_added=0,
+                images_attempted=0,
+                images_succeeded=0,
+                elapsed_ms=0,
+                backend="chart_to_data",
+                chart_elements=[],
+                error="api_url_missing",
+            ),
         )
 
     t0 = time.perf_counter()

@@ -1,6 +1,5 @@
 """KG search module."""
 
-
 from typing import Any
 
 __all__ = [

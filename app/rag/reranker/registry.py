@@ -4,7 +4,6 @@ The registry is data-only: it describes provider families, aliases, and lazy
 import targets without importing provider implementations.
 """
 
-
 from dataclasses import dataclass
 
 
@@ -118,11 +117,7 @@ _FAMILIES: tuple[RerankerProviderFamily, ...] = (
     ),
 )
 
-_FAMILY_BY_ALIAS = {
-    alias: family
-    for family in _FAMILIES
-    for alias in family.aliases
-}
+_FAMILY_BY_ALIAS = {alias: family for family in _FAMILIES for alias in family.aliases}
 
 
 def get_reranker_provider_family(provider: str | None) -> RerankerProviderFamily | None:

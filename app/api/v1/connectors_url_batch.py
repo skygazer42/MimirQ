@@ -1,4 +1,3 @@
-
 import contextlib
 from typing import Any
 from uuid import UUID
@@ -315,11 +314,7 @@ def _mark_url_batch_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, ex
     from app.api.v1 import connectors as connectors_module  # Local import to preserve monkeypatch surface.
 
     with contextlib.suppress(Exception):
-        run = (
-            db.query(ConnectorRun)
-            .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
-            .first()
-        )
+        run = db.query(ConnectorRun).filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id).first()
         if run is not None:
             run.status = "failed"
             run.finished_at = connectors_module._now()

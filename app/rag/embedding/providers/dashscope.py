@@ -3,6 +3,7 @@ DashScope (Alibaba Cloud) embedding model implementation.
 
 Provides Alibaba Cloud DashScope embedding API support.
 """
+
 import contextlib
 import json
 

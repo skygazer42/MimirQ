@@ -9,7 +9,6 @@ The chunker splits the document into heading blocks first, then applies a
 fallback RecursiveCharacterTextSplitter while preserving character offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any

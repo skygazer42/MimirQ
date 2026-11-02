@@ -5,7 +5,6 @@ Targets JUnit-style XML reports with repeated <testcase> elements and splits by
 testcase blocks while preserving offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -47,7 +46,7 @@ def _build_testcase_blocks(text: str) -> list[_CaseBlock]:
     blocks: list[_CaseBlock] = []
     for m in _TESTCASE_ANY_RE.finditer(text):
         start = m.start()
-        tag = (m.group(0) or "")
+        tag = m.group(0) or ""
         if tag.rstrip().endswith("/>"):
             end = m.end()
         else:

@@ -9,7 +9,6 @@ Example:
     --out runs/queryset_health/diff.json
 """
 
-
 import argparse
 import json
 import sys

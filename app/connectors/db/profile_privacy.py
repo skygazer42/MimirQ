@@ -6,7 +6,6 @@ avoid persisting raw values (sample rows / top values lists) that could leak
 sensitive information.
 """
 
-
 from collections.abc import Mapping
 from typing import Any
 

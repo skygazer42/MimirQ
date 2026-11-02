@@ -2,7 +2,6 @@
 API v1 routes.
 """
 
-
 from importlib import import_module
 
 from fastapi import APIRouter

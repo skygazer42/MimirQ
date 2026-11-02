@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from app.rag.evaluation.graphrag_bench import summarize_graphrag_bench

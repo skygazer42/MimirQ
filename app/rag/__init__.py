@@ -52,11 +52,3 @@ def __getattr__(name: str):
 
         return DEFAULT_EMBED_MODELS
     raise AttributeError(name)
-
-
-
-
-
-
-
-

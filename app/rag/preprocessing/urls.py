@@ -7,7 +7,6 @@ without changing the URL path/host.
 This is opt-in because rewriting URLs can be surprising in some domains.
 """
 
-
 import re
 from dataclasses import dataclass
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit

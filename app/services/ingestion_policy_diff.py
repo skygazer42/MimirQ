@@ -5,7 +5,6 @@ Used by precheck "suggest ingestion policy" to show how the suggested policy dif
 from the currently configured dataset policy.
 """
 
-
 import json
 from typing import Any
 
@@ -54,4 +53,3 @@ def diff_ingestion_policies(before: IngestionPolicy | None, after: IngestionPoli
 
 
 __all__ = ["diff_ingestion_policies"]
-

@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from app.rag.evaluation.metrics.answer_det import evaluate_answer_deterministic
@@ -29,11 +28,7 @@ def evaluate_hard_negative_case(case: dict[str, Any]) -> dict[str, Any]:
     refusal_correct = answer_metrics.get("refusal_correct")
 
     hard_negative_triggered = bool(
-        citations
-        and answer_em < 1.0
-        and answer_f1 > 0.0
-        and not obvious_hallucination
-        and refusal_correct is not True
+        citations and answer_em < 1.0 and answer_f1 > 0.0 and not obvious_hallucination and refusal_correct is not True
     )
     reason_codes = ["hard_negative_triggered"] if hard_negative_triggered else []
 

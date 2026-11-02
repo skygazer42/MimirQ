@@ -51,9 +51,7 @@ def list_document_folders(
         DBDocument.dataset_id == dataset_id,
     )
 
-    query = query.filter(
-        build_document_read_filter(tenant_id=tenant_id, account_id=account_id)
-    )
+    query = query.filter(build_document_read_filter(tenant_id=tenant_id, account_id=account_id))
 
     lifecycle0 = str(lifecycle or "active").strip().lower()
     if lifecycle0 != "all":
@@ -70,11 +68,7 @@ def list_document_folders(
     total = int(query.count() or 0)
 
     rows = query.with_entities(DBDocument.doc_metadata["source_path"].astext).all()  # type: ignore[attr-defined]
-    source_paths = [
-        row[0]
-        for row in rows
-        if isinstance(row[0], str) and row[0].strip()
-    ]
+    source_paths = [row[0] for row in rows if isinstance(row[0], str) and row[0].strip()]
 
     root = build_document_folder_tree(
         source_paths,

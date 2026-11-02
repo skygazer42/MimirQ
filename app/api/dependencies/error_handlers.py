@@ -12,12 +12,7 @@ from sqlalchemy.orm import Session
 T = TypeVar("T")
 
 
-def get_or_404(
-    db: Session,
-    model: type[T],
-    resource_name: str = None,
-    **filters
-) -> T:
+def get_or_404(db: Session, model: type[T], resource_name: str = None, **filters) -> T:
     """
     Get resource or raise 404 error
 
@@ -43,10 +38,7 @@ def get_or_404(
     return resource
 
 
-def check_exists_or_404(
-    resource: Any,
-    resource_name: str = "Resource"
-) -> None:
+def check_exists_or_404(resource: Any, resource_name: str = "Resource") -> None:
     """
     Check if resource exists, raise 404 if not
 
@@ -61,10 +53,7 @@ def check_exists_or_404(
         raise HTTPException(status_code=404, detail=f"{resource_name} not found")
 
 
-def check_permission_or_403(
-    condition: bool,
-    message: str = "Permission denied"
-) -> None:
+def check_permission_or_403(condition: bool, message: str = "Permission denied") -> None:
     """
     Check permission, raise 403 if not authorized
 
@@ -80,11 +69,7 @@ def check_permission_or_403(
 
 
 def check_member_or_403(
-    db: Session,
-    tenant_member_model: type,
-    tenant_id: Any,
-    user_id: str,
-    message: str = "Not a tenant member"
+    db: Session, tenant_member_model: type, tenant_id: Any, user_id: str, message: str = "Not a tenant member"
 ) -> Any:
     """
     Check if user is a tenant member
@@ -102,19 +87,17 @@ def check_member_or_403(
     Raises:
         HTTPException: 403 Forbidden
     """
-    member = db.query(tenant_member_model).filter(
-        tenant_member_model.tenant_id == tenant_id,
-        tenant_member_model.user_id == user_id
-    ).first()
+    member = (
+        db.query(tenant_member_model)
+        .filter(tenant_member_model.tenant_id == tenant_id, tenant_member_model.user_id == user_id)
+        .first()
+    )
     if not member:
         raise HTTPException(status_code=403, detail=message)
     return member
 
 
-def validate_or_400(
-    condition: bool,
-    message: str = "Invalid request"
-) -> None:
+def validate_or_400(condition: bool, message: str = "Invalid request") -> None:
     """
     Validate condition, raise 400 if not satisfied
 

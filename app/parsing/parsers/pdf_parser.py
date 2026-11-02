@@ -1,6 +1,7 @@
 """
 PDF parser (based on PyMuPDF).
 """
+
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -42,8 +43,7 @@ class PDFParser:
                 continue
             separator_cells = [cell.strip() for cell in separator.strip().strip("|").split("|")]
             if not separator_cells or not all(
-                cell and set(cell) <= {"-", ":", " "} and cell.count("-") >= 3
-                for cell in separator_cells
+                cell and set(cell) <= {"-", ":", " "} and cell.count("-") >= 3 for cell in separator_cells
             ):
                 continue
             columns = [cell.strip() for cell in header.strip().strip("|").split("|") if cell.strip()]

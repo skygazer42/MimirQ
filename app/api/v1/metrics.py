@@ -2,7 +2,6 @@
 Prometheus metrics endpoint.
 """
 
-
 import hashlib
 import hmac
 from typing import Annotated

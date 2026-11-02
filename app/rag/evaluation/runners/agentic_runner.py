@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from app.rag.agents.rag_agent import get_agentic_runner

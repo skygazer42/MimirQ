@@ -7,7 +7,6 @@ This module is intentionally deterministic and bounded:
 - Expansion provenance is included with each generated variant.
 """
 
-
 import re
 from pathlib import Path
 from typing import Any
@@ -211,9 +210,7 @@ def _dictionary_list_value(stripped: str) -> str | None:
     value = stripped[1:].strip()
     if not value:
         return None
-    quoted = (value.startswith('"') and value.endswith('"')) or (
-        value.startswith("'") and value.endswith("'")
-    )
+    quoted = (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'"))
     if quoted and len(value) >= 2:
         return value[1:-1]
     return value

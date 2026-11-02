@@ -11,7 +11,6 @@ Notes:
 - Deterministic-ish: retrieval is embedding-based and bounded; no LLM calls.
 """
 
-
 from typing import Any
 from uuid import UUID
 

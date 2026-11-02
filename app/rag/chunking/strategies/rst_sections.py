@@ -14,7 +14,6 @@ fallback RecursiveCharacterTextSplitter inside each section while preserving
 character offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any

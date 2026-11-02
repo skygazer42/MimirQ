@@ -12,7 +12,6 @@ Principles:
 - Fail-open: retention must never crash product flows
 """
 
-
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -247,6 +246,7 @@ def run_audit_log_retention(
         "deleted": int(deleted),
         "ran_at": _dt_to_json(now0),
     }
+
 
 def run_regression_run_retention(
     db: Session,

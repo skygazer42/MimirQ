@@ -6,7 +6,6 @@ change blocks (lines like "# aws_instance.example will be created") while
 preserving character offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any

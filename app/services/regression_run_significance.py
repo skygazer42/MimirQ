@@ -1,6 +1,5 @@
 """Case-paired statistics for RAGAS regression run diffs."""
 
-
 import hashlib
 import math
 import statistics
@@ -113,9 +112,7 @@ def _wilcoxon_p_value(deltas: list[float]) -> float | None:
 
 def _mcnemar_p_value(pairs: list[tuple[float, float]]) -> float | None:
     binary_pairs = [
-        (int(base > 0), int(target > 0))
-        for base, target in pairs
-        if base in {0.0, 1.0} and target in {0.0, 1.0}
+        (int(base > 0), int(target > 0)) for base, target in pairs if base in {0.0, 1.0} and target in {0.0, 1.0}
     ]
     if not binary_pairs:
         return None

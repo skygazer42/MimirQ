@@ -7,7 +7,6 @@ across pages (headers/footers/legal notices) which line-based filters miss.
 Opt-in and conservative: only drops paragraphs repeated >= min_occurrences.
 """
 
-
 import re
 from dataclasses import dataclass
 

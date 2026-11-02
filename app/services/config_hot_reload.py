@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass
 
 from app.rag.core.hashing import stable_hash

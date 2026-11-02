@@ -1,6 +1,5 @@
 """Runtime limiters for blocking RAG work executed from async API routes."""
 
-
 import asyncio
 import contextlib
 import logging
@@ -83,8 +82,7 @@ def _distributed_admission_enabled(limit: int) -> bool:
 
 def _distributed_admission_prefix() -> str:
     return (
-        str(getattr(settings, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX", "ragadm") or "ragadm").strip()
-        or "ragadm"
+        str(getattr(settings, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX", "ragadm") or "ragadm").strip() or "ragadm"
     )
 
 
@@ -520,11 +518,7 @@ def run_blocking_retrieval_call_sync(
             )
         acquired_at = time.perf_counter()
         with _distributed_admission_scope(distributed_lease):
-            result = (
-                func(*args, **kwargs)
-                if already_admitted or gate is None
-                else _run_admitted(func, args, kwargs)
-            )
+            result = func(*args, **kwargs) if already_admitted or gate is None else _run_admitted(func, args, kwargs)
     finally:
         if acquired:
             gate.release()
@@ -624,9 +618,7 @@ def run_with_retrieval_backend_budget_sync(
             return func(*args, **kwargs)
 
     wait_timeout_sec = (
-        _configured_admission_timeout_sec()
-        if timeout_sec is None
-        else max(0.0, float(timeout_sec or 0.0))
+        _configured_admission_timeout_sec() if timeout_sec is None else max(0.0, float(timeout_sec or 0.0))
     )
     deadline = _admission_deadline(wait_timeout_sec)
     distributed_ttl_sec = _distributed_admission_ttl_sec(wait_timeout_sec)

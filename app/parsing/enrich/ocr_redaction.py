@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from app.rag.preprocessing.pii_anonymizer import anonymize_pii
@@ -47,4 +46,3 @@ def redact_ocr_text(
 
 
 __all__ = ["redact_ocr_text"]
-

@@ -2,7 +2,6 @@
 Health check response schemas.
 """
 
-
 from typing import Any
 
 from pydantic import BaseModel

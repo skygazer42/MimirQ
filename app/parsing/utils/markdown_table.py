@@ -6,7 +6,6 @@ Goals:
 - Produce stable "table blocks" so markdown-aware chunkers can keep tables intact.
 """
 
-
 import re
 
 _WS_RE = re.compile(r"\s+")
@@ -93,4 +92,3 @@ def build_markdown_table(*, header: list[str], rows: list[list[str]]) -> str:
 
 
 __all__ = ["build_markdown_table", "clean_table_cell", "infer_table_header"]
-

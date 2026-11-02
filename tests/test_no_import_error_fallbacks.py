@@ -46,6 +46,5 @@ def test_python_sources_do_not_use_import_error_fallback_blocks() -> None:
                 offenders.append(f"{relative_path}:{line}")
 
     assert not offenders, (
-        f"Found {len(offenders)} ImportError-based import fallback blocks; "
-        f"first offenders: {offenders[:20]}"
+        f"Found {len(offenders)} ImportError-based import fallback blocks; first offenders: {offenders[:20]}"
     )

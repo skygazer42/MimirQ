@@ -10,7 +10,6 @@ Design goals:
 - Best-effort concurrency safety (fcntl lock on Linux)
 """
 
-
 import json
 import time
 from collections.abc import Iterable, Iterator

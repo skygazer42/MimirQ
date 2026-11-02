@@ -1,4 +1,3 @@
-
 from pathlib import Path
 from typing import Any
 
@@ -35,12 +34,11 @@ def evaluate_ingest_pre_poc_quality_gate(
     pii_max_hits: int | None = None,
     secrets_max_hits: int | None = None,
 ) -> dict[str, Any]:
-    effective_enabled = bool(
-        getattr(settings, "INGEST_PRE_POC_SCANNER_ENABLED", False) if enabled is None else enabled
+    effective_enabled = bool(getattr(settings, "INGEST_PRE_POC_SCANNER_ENABLED", False) if enabled is None else enabled)
+    mode_norm = (
+        str(getattr(settings, "INGEST_PRE_POC_QUALITY_GATE_MODE", "warn") if mode is None else mode).strip().lower()
+        or "warn"
     )
-    mode_norm = str(
-        getattr(settings, "INGEST_PRE_POC_QUALITY_GATE_MODE", "warn") if mode is None else mode
-    ).strip().lower() or "warn"
     if mode_norm not in {"off", "warn", "strict"}:
         mode_norm = "warn"
     path = Path(file_path)
@@ -62,11 +60,7 @@ def evaluate_ingest_pre_poc_quality_gate(
         else int(text_sample_bytes or 0)
     )
     sample = _read_text_sample(path, max_bytes=sample_bytes)
-    pii_threshold = (
-        int(settings.INGEST_PRE_POC_PII_MAX_HITS)
-        if pii_max_hits is None
-        else int(pii_max_hits)
-    )
+    pii_threshold = int(settings.INGEST_PRE_POC_PII_MAX_HITS) if pii_max_hits is None else int(pii_max_hits)
     secret_threshold = (
         int(getattr(settings, "INGEST_PRE_POC_SECRETS_MAX_HITS", 0) or 0)
         if secrets_max_hits is None

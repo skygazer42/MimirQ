@@ -108,10 +108,9 @@ def build_channel_budget_policy(
     triggers: list[str] = []
 
     # Sparse channel uplift: allocate one slot when sparse report is non-regressive.
-    sparse_non_regressive = (
-        sparse.get("hit_at_k", 0.0) >= base.get("hit_at_k", 0.0)
-        and sparse.get("mrr", 0.0) >= base.get("mrr", 0.0)
-    )
+    sparse_non_regressive = sparse.get("hit_at_k", 0.0) >= base.get("hit_at_k", 0.0) and sparse.get(
+        "mrr", 0.0
+    ) >= base.get("mrr", 0.0)
     if sparse_non_regressive:
         triggers.append("sparse_uplift")
         keyword_budgets["sparse"] = max(1, keyword_budgets.get("sparse", 0))
@@ -119,10 +118,9 @@ def build_channel_budget_policy(
         keyword_budgets = _normalize_budgets_to_k(keyword_budgets, k=top_k)
 
     # ColBERT uplift in vector mode when quality is non-regressive.
-    colbert_non_regressive = (
-        colbert.get("hit_at_k", 0.0) >= base.get("hit_at_k", 0.0)
-        and colbert.get("mrr", 0.0) >= base.get("mrr", 0.0)
-    )
+    colbert_non_regressive = colbert.get("hit_at_k", 0.0) >= base.get("hit_at_k", 0.0) and colbert.get(
+        "mrr", 0.0
+    ) >= base.get("mrr", 0.0)
     if colbert_non_regressive:
         triggers.append("colbert_uplift")
         vector_budgets["vector"] = min(top_k, max(vector_budgets.get("vector", 0), int(round(top_k * 0.8))))
@@ -162,11 +160,7 @@ def build_channel_budget_policy(
             "keyword": {
                 "fusion_strategy": "budgeted_rrf",
                 "fusion_budgets": dict(keyword_budgets),
-                "fusion_min_scores": (
-                    {"sparse": 0.01}
-                    if int(keyword_budgets.get("sparse", 0) or 0) > 0
-                    else {}
-                ),
+                "fusion_min_scores": ({"sparse": 0.01} if int(keyword_budgets.get("sparse", 0) or 0) > 0 else {}),
             },
             "vector": {
                 "fusion_strategy": "budgeted_rrf",

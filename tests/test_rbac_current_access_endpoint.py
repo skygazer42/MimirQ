@@ -1,4 +1,3 @@
-
 import uuid
 from types import SimpleNamespace
 

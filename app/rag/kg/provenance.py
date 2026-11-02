@@ -5,7 +5,6 @@ This module is intentionally dependency-light so it can be used by both
 indexing and API layers without pulling in DB/LLM components.
 """
 
-
 from typing import Any
 from uuid import UUID
 
@@ -19,12 +18,10 @@ def _safe_uuid_str(value: Any) -> str | None:
     return str(UUID(str(value)))
 
 
-
 def _safe_int(value: Any) -> int | None:
     if value is None:
         return None
     return int(value)
-
 
 
 def _safe_str(value: Any, *, max_len: int) -> str | None:
@@ -168,8 +165,7 @@ def build_kg_path_provenance(
     )
     pairs = sorted(((eid, typ) for eid, typ in dedup.items()), key=lambda x: (x[1], x[0]))
     return [
-        {"entity_id": str(entity_id), "type": str(entity_type or "unknown")}
-        for entity_id, entity_type in pairs[:lim]
+        {"entity_id": str(entity_id), "type": str(entity_type or "unknown")} for entity_id, entity_type in pairs[:lim]
     ]
 
 

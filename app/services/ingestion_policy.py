@@ -11,7 +11,6 @@ Security hardening:
 - Best-effort regex ReDoS guard (nested quantifiers)
 """
 
-
 import json
 import re
 from dataclasses import dataclass

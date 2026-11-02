@@ -1,5 +1,3 @@
-
-
 def test_build_kg_path_provenance_is_bounded_and_pii_safe() -> None:
     from app.rag.kg.provenance import build_kg_path_provenance
 
@@ -28,4 +26,3 @@ def test_build_kg_path_provenance_caps_entities() -> None:
     raw_entities = [{"entity_id": f"e{i}", "type": "T"} for i in range(10)]
     out = build_kg_path_provenance(entities=raw_entities, key_entity_ids=None, max_entities=3)
     assert len(out) == 3
-

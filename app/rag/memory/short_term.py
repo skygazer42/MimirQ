@@ -10,7 +10,6 @@ Features:
 - ShortTermMemoryManager: Unified short-term memory interface
 """
 
-
 from collections.abc import Callable
 from functools import wraps
 from typing import Any
@@ -51,7 +50,7 @@ def _estimate_tokens(text: str) -> int:
         return 0
 
     # Count CJK characters
-    cjk_count = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
+    cjk_count = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
     non_cjk_count = len(text) - cjk_count
 
     # CJK: ~2 chars/token, English: ~4 chars/token
@@ -236,7 +235,7 @@ async def summarize_messages(
     if llm is None:
         # Fallback: simple truncation-based summary
         logger.debug("No LLM provided for summarization, using truncation fallback")
-        truncated = full_conversation[:max_summary_tokens * 4]  # ~4 chars per token
+        truncated = full_conversation[: max_summary_tokens * 4]  # ~4 chars per token
         if len(full_conversation) > len(truncated):
             truncated += "..."
         return f"[Previous conversation summary]\n{truncated}"
@@ -250,11 +249,11 @@ async def summarize_messages(
 Summary (be concise, focus on key facts and decisions):"""
 
         response = await llm.ainvoke(summary_prompt)
-        summary = response.content if hasattr(response, 'content') else str(response)
+        summary = response.content if hasattr(response, "content") else str(response)
         return f"[Conversation summary]\n{summary}"
     except Exception as e:
         logger.warning("LLM summarization failed: %s", e)
-        return f"[Previous conversation]\n{full_conversation[:max_summary_tokens * 4]}..."
+        return f"[Previous conversation]\n{full_conversation[: max_summary_tokens * 4]}..."
 
 
 class ShortTermMemoryManager:
@@ -331,9 +330,7 @@ class ShortTermMemoryManager:
                 # running (offloads to a worker thread) so sync callers get a
                 # real LLM summary instead of the degraded simple fallback.
                 try:
-                    summary = run_coroutine_sync(
-                        lambda: summarize_messages(old_messages, self.llm)
-                    )
+                    summary = run_coroutine_sync(lambda: summarize_messages(old_messages, self.llm))
                 except Exception:
                     summary = self._simple_summary(old_messages)
 
@@ -499,6 +496,7 @@ class SummarizationMiddleware:
         """
         Decorator to wrap a function with summarization middleware.
         """
+
         @wraps(func)
         async def async_wrapper(state: dict[str, Any], *args, **kwargs):
             state = await self.abefore_model(state)
@@ -511,6 +509,7 @@ class SummarizationMiddleware:
 
         # Check if function is async
         import asyncio
+
         if asyncio.iscoroutinefunction(func):
             return async_wrapper
         return sync_wrapper

@@ -7,7 +7,6 @@ Useful for fan-out operations like multi-query retrieval.
 Pattern: Split -> [Task1, Task2, ...] (parallel) -> Aggregate -> Result
 """
 
-
 import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -274,6 +273,7 @@ def create_multi_query_aggregator() -> Callable[[list[dict[str, Any]]], Awaitabl
 
     Deduplicates and ranks contexts from multiple queries.
     """
+
     async def aggregator(results: list[dict[str, Any]]) -> dict[str, Any]:
         await asyncio.sleep(0)
         all_contexts = []

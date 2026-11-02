@@ -6,7 +6,6 @@ conversation per selected benchmark row: user question, assistant answer, and
 one feedback record on the assistant message.
 """
 
-
 import argparse
 import json
 import random
@@ -155,12 +154,7 @@ def classify_audit_row(row: dict[str, Any]) -> AuditRowQuality:
             issue="未命中知识库",
             tag="quality:missed_context",
         )
-    if (
-        business_score < 0.65
-        or clause_coverage < 0.6
-        or subquestion_coverage < 0.5
-        or wrong_evidence_rate >= 0.35
-    ):
+    if business_score < 0.65 or clause_coverage < 0.6 or subquestion_coverage < 0.5 or wrong_evidence_rate >= 0.35:
         return AuditRowQuality(
             bucket="bad_answer",
             rating=2,

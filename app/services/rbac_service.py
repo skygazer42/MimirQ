@@ -4,7 +4,6 @@ Tenant-scoped RBAC utilities.
 Centralizes role/permission checks so API endpoints avoid ad-hoc role sets.
 """
 
-
 from uuid import UUID
 
 from fastapi import HTTPException, status

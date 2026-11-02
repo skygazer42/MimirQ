@@ -9,7 +9,6 @@ Targets Terraform-style HCL with blocks such as:
 The chunker splits by top-level blocks (brace-aware) and preserves offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any

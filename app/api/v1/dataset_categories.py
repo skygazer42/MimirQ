@@ -1,6 +1,5 @@
 """Dataset categories API (tree + CRUD + move)."""
 
-
 from typing import Annotated
 from uuid import UUID
 

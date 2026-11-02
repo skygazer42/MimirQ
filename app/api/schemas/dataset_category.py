@@ -1,6 +1,5 @@
 """Dataset category schemas (tree + membership)."""
 
-
 from uuid import UUID
 
 from pydantic import BaseModel, Field

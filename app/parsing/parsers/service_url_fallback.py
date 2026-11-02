@@ -1,4 +1,3 @@
-
 from urllib.parse import urlsplit, urlunsplit
 
 DOCKER_LOCALHOST_FALLBACK = "127.0.0.1"

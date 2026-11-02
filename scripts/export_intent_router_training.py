@@ -3,7 +3,6 @@
 Export intent-router training rows from retrieval traces / metrics payloads.
 """
 
-
 import argparse
 import json
 from pathlib import Path

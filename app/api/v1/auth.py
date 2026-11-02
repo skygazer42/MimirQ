@@ -1,6 +1,7 @@
 """
 Auth endpoints: register, login, me.
 """
+
 import hashlib
 import hmac
 from typing import Annotated

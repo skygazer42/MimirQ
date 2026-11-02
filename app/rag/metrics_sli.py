@@ -7,7 +7,6 @@ Design goals:
   otherwise values are collapsed to "all".
 """
 
-
 from prometheus_client import Counter, Histogram
 
 from app.core.config import settings
@@ -98,4 +97,3 @@ def observe_rag_sli(
 
 
 __all__ = ["observe_rag_sli"]
-

@@ -7,7 +7,6 @@ Provides a reference implementation of `@wrap_tool_call`:
 - Optionally emits JSONL metrics via `log_metrics` (guarded by settings)
 """
 
-
 import asyncio
 import time
 from collections.abc import Callable

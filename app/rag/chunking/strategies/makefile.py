@@ -9,7 +9,6 @@ The chunker splits by target blocks (target line + recipe) and groups multiple
 targets per chunk to respect chunk_size/overlap while preserving offsets.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 

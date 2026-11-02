@@ -4,7 +4,6 @@ LangChain TokenTextSplitter wrapper.
 Splits text by token count using tiktoken encoding.
 """
 
-
 from langchain_core.documents import Document
 from langchain_text_splitters import TokenTextSplitter
 

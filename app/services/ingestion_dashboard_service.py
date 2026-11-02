@@ -7,7 +7,6 @@ Design goals:
 - Practical: works with current schema (processed_at may be null for many rows).
 """
 
-
 import re
 from collections import Counter
 from datetime import UTC, datetime, timedelta
@@ -24,6 +23,7 @@ _TERMINAL_STATUSES = ("completed", "failed", "quarantined", "cancelled")
 
 def _now_utc() -> datetime:
     return datetime.now(UTC)
+
 
 def _coerce_bucket_config(bucket_minutes: int) -> tuple[int, str]:
     """
@@ -136,10 +136,7 @@ def summarize_ingestion_dashboard(
 
     # Current state distribution (backlog/health).
     rows = (
-        db.query(DBDocument.status, func.count(DBDocument.id))
-        .filter(*base_filters)
-        .group_by(DBDocument.status)
-        .all()
+        db.query(DBDocument.status, func.count(DBDocument.id)).filter(*base_filters).group_by(DBDocument.status).all()
     )
     by_status: dict[str, int] = {str(status or "unknown"): int(cnt or 0) for status, cnt in rows}
 

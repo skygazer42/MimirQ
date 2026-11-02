@@ -150,10 +150,7 @@ def test_manual_preview_reuse_validates_local_refs_alongside_minio_refs(monkeypa
         binding={"tenant_id": tenant_id, "account_id": "other-account"},
     )
     existing_id = f"{tenant_id}:{dataset_id}:{document_id}:asset0"
-    content = (
-        f"![stored](/api/v1/documents/image-url/{existing_id})\n"
-        f"![preview](/api/v1/documents/image/{image_id})"
-    )
+    content = f"![stored](/api/v1/documents/image-url/{existing_id})\n![preview](/api/v1/documents/image/{image_id})"
 
     monkeypatch.setattr(documents_module.settings, "MINIO_ENABLED", True, raising=False)
 

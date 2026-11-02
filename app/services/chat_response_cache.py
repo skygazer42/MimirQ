@@ -11,7 +11,6 @@ Security posture:
 - best-effort fail-open (cache errors never break chat)
 """
 
-
 import asyncio
 import contextlib
 import hashlib
@@ -409,11 +408,7 @@ async def set_cached_chat_response_async(
 ) -> bool:
     if not bool(getattr(settings, "CHAT_RESPONSE_CACHE_ENABLED", False)):
         return False
-    ttl = int(
-        ttl_sec
-        if ttl_sec is not None
-        else (getattr(settings, "CHAT_RESPONSE_CACHE_TTL_SEC", 300) or 0)
-    )
+    ttl = int(ttl_sec if ttl_sec is not None else (getattr(settings, "CHAT_RESPONSE_CACHE_TTL_SEC", 300) or 0))
     max_bytes = int(
         max_value_bytes
         if max_value_bytes is not None
@@ -600,9 +595,7 @@ def resolve_inflight_chat_response(key: str, payload: dict[str, Any]) -> None:
                 _chat_response_singleflight_result_key(key),
                 payload,
                 ttl_sec=_CHAT_RESPONSE_SINGLEFLIGHT_TRANSIENT_RESULT_TTL_SEC,
-                max_value_bytes=int(
-                    getattr(settings, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 200_000) or 0
-                ),
+                max_value_bytes=int(getattr(settings, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 200_000) or 0),
             )
         )
         _inflight_response_result_write_tasks[key] = task

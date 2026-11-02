@@ -2,7 +2,6 @@
 Deterministic multi-hop citation chain evaluation helpers.
 """
 
-
 from typing import Any
 
 
@@ -19,7 +18,7 @@ def _coerce_dict(value: Any) -> dict[str, Any]:
 def _extract_chain_ids(evidence_chain: Any) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
-    for item in (evidence_chain or []):
+    for item in evidence_chain or []:
         row = _coerce_dict(item)
         cid = str(row.get("chunk_id") or "").strip()
         if not cid:
@@ -35,7 +34,7 @@ def _extract_citation_rank_map(citations: Any, *, top_k: int = 20) -> dict[str, 
     rows: dict[str, int] = {}
     k = max(1, int(top_k or 1))
     rank = 0
-    for item in (citations or []):
+    for item in citations or []:
         row = _coerce_dict(item)
         cid = str(row.get("chunk_id") or "").strip()
         if not cid:

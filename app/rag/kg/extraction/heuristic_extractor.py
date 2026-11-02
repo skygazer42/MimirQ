@@ -1,4 +1,3 @@
-
 import asyncio
 import re
 from collections import OrderedDict
@@ -10,12 +9,8 @@ from app.rag.kg.utils import get_logger
 
 logger = get_logger("kg.extract.heuristic")
 
-_ACRONYM_OR_STANDARD_RE = re.compile(
-    r"\b(?:RFC\s?-?\d{3,5}|HTTP/[0-9.]+|[A-Z][A-Z0-9][A-Z0-9.+/_-]+)\b"
-)
-_TITLE_PHRASE_RE = re.compile(
-    r"\b[A-Z][A-Za-z0-9.+/_-]{2,}(?:\s+[A-Z][A-Za-z0-9.+/_-]{2,}){0,4}\b"
-)
+_ACRONYM_OR_STANDARD_RE = re.compile(r"\b(?:RFC\s?-?\d{3,5}|HTTP/[0-9.]+|[A-Z][A-Z0-9][A-Z0-9.+/_-]+)\b")
+_TITLE_PHRASE_RE = re.compile(r"\b[A-Z][A-Za-z0-9.+/_-]{2,}(?:\s+[A-Z][A-Za-z0-9.+/_-]{2,}){0,4}\b")
 _CJK_TERM_RE = re.compile(
     r"[\u4e00-\u9fffA-Za-z0-9]{2,18}(?:协议|模型|系统|知识库|数据集|检索|图谱|实体|切块|治理|解析|入库)"
 )

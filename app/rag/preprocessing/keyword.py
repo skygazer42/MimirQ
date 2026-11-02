@@ -9,7 +9,6 @@ Supported providers:
 - `simple`: lightweight regex-based fallback
 """
 
-
 import importlib.util
 import os
 import re
@@ -241,11 +240,7 @@ class SimpleKeywordExtractor:
 
         counts = Counter(tokens)
         top_k = max_keywords_per_chunk if max_keywords_per_chunk is not None else None
-        ranked = (
-            [w for w, _ in counts.most_common(cast(int, top_k))]
-            if top_k
-            else [w for w, _ in counts.most_common()]
-        )
+        ranked = [w for w, _ in counts.most_common(cast(int, top_k))] if top_k else [w for w, _ in counts.most_common()]
         return set(ranked)
 
 
@@ -368,8 +363,7 @@ class HanLPKeywordExtractor:
                 continue
 
         raise RuntimeError(
-            "HanLP tokenizer model is not available. "
-            "Set HANLP_TOKENIZER_MODEL to a valid model identifier."
+            "HanLP tokenizer model is not available. Set HANLP_TOKENIZER_MODEL to a valid model identifier."
         ) from last_exc
 
     def extract_keywords(self, text: str, max_keywords_per_chunk: int | None = 10) -> set[str]:
@@ -387,11 +381,7 @@ class HanLPKeywordExtractor:
 
         counts = Counter(tokens)
         top_k = max_keywords_per_chunk if max_keywords_per_chunk is not None else None
-        ranked = (
-            [w for w, _ in counts.most_common(cast(int, top_k))]
-            if top_k
-            else [w for w, _ in counts.most_common()]
-        )
+        ranked = [w for w, _ in counts.most_common(cast(int, top_k))] if top_k else [w for w, _ in counts.most_common()]
         return set(self._expand_tokens_with_subtokens(set(ranked)))
 
     @staticmethod

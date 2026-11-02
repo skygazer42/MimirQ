@@ -1,4 +1,3 @@
-
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from typing import Any
@@ -94,7 +93,7 @@ def _collect_connector_reconcile_documents(
     documents_considered = 0
     documents_without_identity = 0
 
-    for doc in (documents or []):
+    for doc in documents or []:
         documents_scanned += 1
         identity = extract_connector_source_identity(doc)
         if identity.get("connector_id") != connector_id:

@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from app.services.table_schema_graph import (

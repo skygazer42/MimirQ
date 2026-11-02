@@ -7,7 +7,6 @@ exception block together. For timestamped application logs, prefer log_events.
 Offsets are preserved.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any

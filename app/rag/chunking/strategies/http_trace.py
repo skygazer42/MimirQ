@@ -5,7 +5,6 @@ Targets HTTP request/response transcripts such as curl -v output or raw
 HTTP dumps. The chunker splits by request blocks and preserves offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any

@@ -12,7 +12,6 @@ Supports:
 - Multiple formats (PDF, DOCX, PPTX, HTML, etc.)
 """
 
-
 import html as _html
 import re
 from collections.abc import Callable
@@ -225,19 +224,9 @@ class DoclingParser(BaseAdvancedParser):
         return (ok, "" if ok else reason)
 
     def _call_parse_method(
-        self,
-        parser: Any,
-        file_path: Path,
-        binary: bytes | None,
-        callback: Callable[[float, str], None],
-        **kwargs
+        self, parser: Any, file_path: Path, binary: bytes | None, callback: Callable[[float, str], None], **kwargs
     ) -> tuple[list, list]:
-        return parser.parse_pdf(
-            filepath=str(file_path),
-            binary=binary,
-            callback=callback,
-            **kwargs
-        )
+        return parser.parse_pdf(filepath=str(file_path), binary=binary, callback=callback, **kwargs)
 
     def _process_document(self, doc: Document) -> list[Document]:
         meta = dict(doc.metadata or {})

@@ -47,9 +47,7 @@ def _load_accessible_conversation(
 ) -> Conversation:
     DatasetService.ensure_member(db, tenant_id, account_id)
     conversation = (
-        db.query(Conversation)
-        .filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id)
-        .first()
+        db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id).first()
     )
     if not conversation:
         raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND_DETAIL)

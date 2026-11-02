@@ -39,12 +39,7 @@ class BaseService(Generic[ModelType]):
     model: type[ModelType] | None = None  # Subclasses must set.
 
     @classmethod
-    def get_by_id(
-        cls,
-        db: Session,
-        id: UUID,
-        raise_404: bool = True
-    ) -> ModelType | None:
+    def get_by_id(cls, db: Session, id: UUID, raise_404: bool = True) -> ModelType | None:
         """
         Get resource by ID.
 
@@ -58,20 +53,11 @@ class BaseService(Generic[ModelType]):
         """
         resource = db.query(cls.model).filter(cls.model.id == id).first()
         if not resource and raise_404:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"{cls.model.__name__} not found"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"{cls.model.__name__} not found")
         return resource
 
     @classmethod
-    def get_by_tenant(
-        cls,
-        db: Session,
-        tenant_id: UUID,
-        id: UUID,
-        raise_404: bool = True
-    ) -> ModelType | None:
+    def get_by_tenant(cls, db: Session, tenant_id: UUID, id: UUID, raise_404: bool = True) -> ModelType | None:
         """
         Get resource by tenant ID and resource ID.
 
@@ -84,26 +70,13 @@ class BaseService(Generic[ModelType]):
         Returns:
             Resource or None.
         """
-        resource = db.query(cls.model).filter(
-            cls.model.id == id,
-            cls.model.tenant_id == tenant_id
-        ).first()
+        resource = db.query(cls.model).filter(cls.model.id == id, cls.model.tenant_id == tenant_id).first()
         if not resource and raise_404:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"{cls.model.__name__} not found"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"{cls.model.__name__} not found")
         return resource
 
     @classmethod
-    def list_by_tenant(
-        cls,
-        db: Session,
-        tenant_id: UUID,
-        skip: int = 0,
-        limit: int = 50,
-        **filters
-    ) -> list[ModelType]:
+    def list_by_tenant(cls, db: Session, tenant_id: UUID, skip: int = 0, limit: int = 50, **filters) -> list[ModelType]:
         """
         List resources under a tenant.
 
@@ -124,12 +97,7 @@ class BaseService(Generic[ModelType]):
         return query.offset(skip).limit(limit).all()
 
     @classmethod
-    def count_by_tenant(
-        cls,
-        db: Session,
-        tenant_id: UUID,
-        **filters
-    ) -> int:
+    def count_by_tenant(cls, db: Session, tenant_id: UUID, **filters) -> int:
         """
         Get total resource count under a tenant.
 
@@ -148,11 +116,7 @@ class BaseService(Generic[ModelType]):
         return query.count()
 
     @classmethod
-    def create(
-        cls,
-        db: Session,
-        **kwargs
-    ) -> ModelType:
+    def create(cls, db: Session, **kwargs) -> ModelType:
         """
         Create resource.
 
@@ -170,12 +134,7 @@ class BaseService(Generic[ModelType]):
         return resource
 
     @classmethod
-    def update(
-        cls,
-        db: Session,
-        resource: ModelType,
-        **kwargs
-    ) -> ModelType:
+    def update(cls, db: Session, resource: ModelType, **kwargs) -> ModelType:
         """
         Update resource.
 
@@ -195,11 +154,7 @@ class BaseService(Generic[ModelType]):
         return resource
 
     @classmethod
-    def delete(
-        cls,
-        db: Session,
-        resource: ModelType
-    ) -> None:
+    def delete(cls, db: Session, resource: ModelType) -> None:
         """
         Delete resource.
 
@@ -211,12 +166,7 @@ class BaseService(Generic[ModelType]):
         db.commit()
 
     @classmethod
-    def ensure_member(
-        cls,
-        db: Session,
-        tenant_id: UUID,
-        account_id: str
-    ) -> TenantMember:
+    def ensure_member(cls, db: Session, tenant_id: UUID, account_id: str) -> TenantMember:
         """
         Ensure user is a tenant member.
 
@@ -231,15 +181,13 @@ class BaseService(Generic[ModelType]):
         Raises:
             HTTPException: 403 Forbidden.
         """
-        member = db.query(TenantMember).filter(
-            TenantMember.tenant_id == tenant_id,
-            TenantMember.user_id == account_id
-        ).first()
+        member = (
+            db.query(TenantMember)
+            .filter(TenantMember.tenant_id == tenant_id, TenantMember.user_id == account_id)
+            .first()
+        )
         if not member:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not a tenant member"
-            )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a tenant member")
         return member
 
     @classmethod
@@ -255,10 +203,7 @@ class BaseService(Generic[ModelType]):
         """
         role = (member.role or "").lower()
         if role not in EDIT_ROLES:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No permission to edit"
-            )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No permission to edit")
 
 
 __all__ = [

@@ -4,6 +4,7 @@ Ollama embedding model implementation.
 Supports local embedding models via Ollama API.
 See https://ollama.com/blog/embedding-models for available models.
 """
+
 import httpx
 
 from app.core.config import settings
@@ -41,9 +42,7 @@ class OllamaEmbedding(BaseEmbeddingModel):
             api_key: Not used for Ollama (can be None)
         """
         super().__init__(**kwargs)
-        self.base_url = self.base_url or get_docker_safe_url(
-            "http://localhost:11434/api/embed"
-        )
+        self.base_url = self.base_url or get_docker_safe_url("http://localhost:11434/api/embed")
 
         # Use shared external HTTP clients (no internal tenant/user headers).
         pool = get_http_client_pool()
@@ -65,9 +64,7 @@ class OllamaEmbedding(BaseEmbeddingModel):
                 if not isinstance(vec, list):
                     raise ValueError(f"Invalid embedding vector at index {idx}: {type(vec)}")
                 if len(vec) != expected:
-                    raise ValueError(
-                        f"Ollama Embedding dimension mismatch: expected {expected}, got {len(vec)}"
-                    )
+                    raise ValueError(f"Ollama Embedding dimension mismatch: expected {expected}, got {len(vec)}")
         return embeddings
 
     def _encode_one_batch(self, texts: list[str]) -> list[list[float]]:

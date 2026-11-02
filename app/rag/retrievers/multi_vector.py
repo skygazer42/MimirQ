@@ -24,7 +24,6 @@ Usage:
     results = retriever.retrieve(query)
 """
 
-
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Callable
@@ -43,6 +42,7 @@ logger = get_logger("rag.retrievers.multi_vector")
 
 class RepresentationType(str, Enum):
     """Types of document representations."""
+
     RAW = "raw"  # Original document content
     SUMMARY = "summary"  # Document summary
     HYPOTHETICAL_QUESTION = "hypothetical_question"  # Generated questions (HyDE)
@@ -53,6 +53,7 @@ class RepresentationType(str, Enum):
 @dataclass
 class DocumentRepresentation:
     """A single representation of a document."""
+
     id: str
     doc_id: str  # ID of the original document
     type: RepresentationType
@@ -222,11 +223,13 @@ class MultiVectorRetriever(BaseRetriever):
             for doc_id, doc, reps in zip(ids, documents, representations, strict=False):
                 for rep in reps:
                     texts_to_embed.append(rep)
-                    metadatas.append({
-                        **doc.metadata,
-                        self.id_key: doc_id,
-                        "representation_type": representation_type.value,
-                    })
+                    metadatas.append(
+                        {
+                            **doc.metadata,
+                            self.id_key: doc_id,
+                            "representation_type": representation_type.value,
+                        }
+                    )
 
         # Add to vectorstore
         if self.vectorstore is not None and texts_to_embed:
@@ -234,7 +237,9 @@ class MultiVectorRetriever(BaseRetriever):
 
         logger.info(
             "Added %d documents with %d representations (type=%s)",
-            len(documents), len(texts_to_embed), representation_type.value
+            len(documents),
+            len(texts_to_embed),
+            representation_type.value,
         )
 
         return ids
@@ -330,20 +335,19 @@ class MultiVectorRetriever(BaseRetriever):
         for parent_id, _parent_doc, children in zip(parent_ids, parent_documents, child_chunks, strict=False):
             for child in children:
                 texts_to_embed.append(child.page_content)
-                metadatas.append({
-                    **child.metadata,
-                    self.id_key: parent_id,
-                    "representation_type": RepresentationType.SMALLER_CHUNK.value,
-                    "parent_id": parent_id,
-                })
+                metadatas.append(
+                    {
+                        **child.metadata,
+                        self.id_key: parent_id,
+                        "representation_type": RepresentationType.SMALLER_CHUNK.value,
+                        "parent_id": parent_id,
+                    }
+                )
 
         if self.vectorstore is not None and texts_to_embed:
             self.vectorstore.add_texts(texts_to_embed, metadatas=metadatas)
 
-        logger.info(
-            "Added %d parent documents with %d child chunks",
-            len(parent_documents), len(texts_to_embed)
-        )
+        logger.info("Added %d parent documents with %d child chunks", len(parent_documents), len(texts_to_embed))
 
         return parent_ids
 
@@ -365,13 +369,9 @@ class MultiVectorRetriever(BaseRetriever):
 
         # Search vectorstore
         if self.search_type == "mmr":
-            results = self.vectorstore.max_marginal_relevance_search(
-                query, **self.search_kwargs
-            )
+            results = self.vectorstore.max_marginal_relevance_search(query, **self.search_kwargs)
         else:
-            results = self.vectorstore.similarity_search(
-                query, **self.search_kwargs
-            )
+            results = self.vectorstore.similarity_search(query, **self.search_kwargs)
 
         # Extract document IDs
         doc_ids = []
@@ -408,10 +408,7 @@ class MultiVectorRetriever(BaseRetriever):
     ) -> list[Document]:
         """Async version of _get_relevant_documents."""
         # For now, just call sync version
-        return self._get_relevant_documents(
-            query,
-            run_manager=CallbackManagerForRetrieverRun.get_noop_manager()
-        )
+        return self._get_relevant_documents(query, run_manager=CallbackManagerForRetrieverRun.get_noop_manager())
 
 
 def create_summary_retriever(
@@ -436,9 +433,7 @@ def create_summary_retriever(
     from langchain_core.prompts import ChatPromptTemplate
 
     # Generate summaries
-    prompt = ChatPromptTemplate.from_template(
-        "Summarize the following document in 2-3 sentences:\n\n{doc}"
-    )
+    prompt = ChatPromptTemplate.from_template("Summarize the following document in 2-3 sentences:\n\n{doc}")
     chain = prompt | llm | StrOutputParser()
 
     summaries = []

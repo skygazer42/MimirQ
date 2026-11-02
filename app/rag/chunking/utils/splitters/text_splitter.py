@@ -143,6 +143,7 @@ class TextSplitter(BaseDocumentTransformer, ABC):
 
         def _huggingface_tokenizer_length(text: str) -> int:
             return len(tokenizer.encode(text))
+
         return cls(length_function=lambda x: [_huggingface_tokenizer_length(text) for text in x], **kwargs)
 
     def transform_documents(self, documents: Sequence[Document], **kwargs: Any) -> Sequence[Document]:
@@ -157,6 +158,7 @@ class TextSplitter(BaseDocumentTransformer, ABC):
 @dataclass(frozen=True)
 class Tokenizer:
     """Tokenizer configuration for token-based splitting."""
+
     chunk_overlap: int
     tokens_per_chunk: int
     decode: Callable[[list[int]], str]

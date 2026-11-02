@@ -1,4 +1,3 @@
-
 import asyncio
 import contextlib
 import threading
@@ -511,8 +510,7 @@ async def stream_graph_chat_session_events(
         metrics=metrics_data,
         retrieval_mode_default=effective_rag_config.retrieval_mode,
         vector_backend_default=settings.VECTOR_BACKEND,
-        structured=bool(metrics_data.get("structured_parse_ok"))
-        and structured_data is not None,
+        structured=bool(metrics_data.get("structured_parse_ok")) and structured_data is not None,
         structured_data=structured_data,
     )
 

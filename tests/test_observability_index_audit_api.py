@@ -128,9 +128,7 @@ def test_index_audit_exposes_channel_summary(monkeypatch) -> None:  # noqa: ANN0
         raising=True,
     )
 
-    response = _make_client(tenant_id=tenant_id).get(
-        f"/api/v1/observability/index-audit?dataset_id={dataset_id}"
-    )
+    response = _make_client(tenant_id=tenant_id).get(f"/api/v1/observability/index-audit?dataset_id={dataset_id}")
 
     assert response.status_code == 200, response.text
     body = response.json()

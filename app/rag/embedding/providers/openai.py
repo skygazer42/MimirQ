@@ -10,6 +10,7 @@ Supports any embedding API that follows the OpenAI embeddings format:
 - ModelScope
 - Any OpenAI-compatible endpoint
 """
+
 import httpx
 
 from app.core.config import settings

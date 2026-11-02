@@ -9,7 +9,6 @@ Defaults are PII-safe:
 Use --include-text if you explicitly want to print raw text fields.
 """
 
-
 import argparse
 import json
 import sys
@@ -99,4 +98,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

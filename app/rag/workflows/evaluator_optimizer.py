@@ -7,7 +7,6 @@ and optimized until quality threshold is met.
 Pattern: Generate -> Evaluate -> (Score < threshold) -> Optimize -> Evaluate -> ... -> Result
 """
 
-
 import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -144,14 +143,14 @@ class EvaluatorOptimizerWorkflow(BaseWorkflow):
         prompt = f"""Answer the following question based on the provided context.
 
 Context:
-{context_text if context_text else 'No context available.'}
+{context_text if context_text else "No context available."}
 
 Question: {question}
 
 Provide a clear, comprehensive answer:"""
 
         response = await self._llm.ainvoke(prompt)
-        return response.content if hasattr(response, 'content') else str(response)
+        return response.content if hasattr(response, "content") else str(response)
 
     async def _default_evaluate(
         self,
@@ -190,7 +189,7 @@ Overall: [average score]
 Feedback: [specific feedback for improvement]"""
 
         response = await self._llm.ainvoke(prompt)
-        content = response.content if hasattr(response, 'content') else str(response)
+        content = response.content if hasattr(response, "content") else str(response)
         return self._parse_evaluation_response(content)
 
     @staticmethod
@@ -262,7 +261,7 @@ Feedback for Improvement:
 Provide an improved answer that addresses the feedback:"""
 
         response = await self._llm.ainvoke(prompt)
-        return response.content if hasattr(response, 'content') else str(response)
+        return response.content if hasattr(response, "content") else str(response)
 
     async def run(self, state: dict[str, Any]) -> WorkflowResult:
         """
@@ -315,19 +314,18 @@ Provide an improved answer that addresses the feedback:"""
             execution_path.append(f"evaluate:{iteration}")
             try:
                 eval_result = await evaluate(question, answer, contexts)
-                evaluation_history.append({
-                    "iteration": iteration,
-                    "score": eval_result.score,
-                    "feedback": eval_result.feedback,
-                    "criteria": eval_result.criteria_scores,
-                })
+                evaluation_history.append(
+                    {
+                        "iteration": iteration,
+                        "score": eval_result.score,
+                        "feedback": eval_result.feedback,
+                        "criteria": eval_result.criteria_scores,
+                    }
+                )
                 current_state["score"] = eval_result.score
                 current_state["evaluation_feedback"] = eval_result.feedback
 
-                logger.debug(
-                    "Iteration %d: score=%.2f, threshold=%.2f",
-                    iteration, eval_result.score, self.threshold
-                )
+                logger.debug("Iteration %d: score=%.2f, threshold=%.2f", iteration, eval_result.score, self.threshold)
 
             except Exception as e:
                 logger.exception("Evaluation failed: %s", e)

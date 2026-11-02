@@ -61,7 +61,9 @@ def _upload_file(*, filename: str, content: bytes) -> UploadFile:
 
 
 @pytest.mark.asyncio
-async def test_upload_parsing_document_persists_selected_dataset(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+async def test_upload_parsing_document_persists_selected_dataset(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     import app.api.v1.parsing as parsing_module
 
     tenant_id = uuid.uuid4()
@@ -158,7 +160,9 @@ async def test_upload_parsing_document_uses_selected_dataset_for_object_storage(
     )
     monkeypatch.setattr(parsing_module, "document_object_storage_enabled", lambda: True, raising=True)
     monkeypatch.setattr(parsing_module, "get_document_object_store", lambda: _Store(), raising=True)
-    monkeypatch.setattr(parsing_module, "is_object_storage_uri", lambda value: str(value).startswith("minio://"), raising=True)
+    monkeypatch.setattr(
+        parsing_module, "is_object_storage_uri", lambda value: str(value).startswith("minio://"), raising=True
+    )
     monkeypatch.setattr(
         parsing_module,
         "document_object_store_metadata",
@@ -202,7 +206,9 @@ async def test_upload_parsing_document_uses_selected_dataset_for_object_storage(
     ]
 
 
-def test_list_parsing_documents_default_scope_includes_owner_bound_company_docs(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_list_parsing_documents_default_scope_includes_owner_bound_company_docs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import app.api.v1.parsing as parsing_module
 
     tenant_id = uuid.uuid4()

@@ -287,8 +287,10 @@ class LexicalDBMixin:
                 continue
             cid, result = parsed
             existing = results_by_id.get(cid)
-            if not replace_if_higher or existing is None or float(existing.get("score", 0.0) or 0.0) < float(
-                result.get("score", 0.0) or 0.0
+            if (
+                not replace_if_higher
+                or existing is None
+                or float(existing.get("score", 0.0) or 0.0) < float(result.get("score", 0.0) or 0.0)
             ):
                 results_by_id[cid] = result
 
@@ -343,7 +345,7 @@ class LexicalDBMixin:
             row = db.execute(text("SELECT 1 FROM pg_extension WHERE extname='pg_trgm' LIMIT 1;")).first()
             pg_trgm_available = bool(row)
         except Exception as exc:
-            _log_retriever_fallback('_search_lexical_db', exc)
+            _log_retriever_fallback("_search_lexical_db", exc)
             pg_trgm_available = False
         self._lexical_pg_trgm_available = pg_trgm_available
         return bool(pg_trgm_available)

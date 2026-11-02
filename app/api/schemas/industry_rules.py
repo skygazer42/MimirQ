@@ -11,7 +11,6 @@ Because ``schema`` shadows a Pydantic ``BaseModel`` attribute, the field is name
 wire format stays ``schema``.
 """
 
-
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field

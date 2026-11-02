@@ -7,7 +7,6 @@ Design goals:
 - Optional: enabled only when PROMETHEUS_ENABLED=true.
 """
 
-
 import re
 
 from prometheus_client import Counter, Gauge, Histogram
@@ -125,4 +124,3 @@ __all__ = [
     "observe_ingestion_run_finished",
     "adjust_processing_stage_gauge",
 ]
-

@@ -44,9 +44,7 @@ class TaskConfig(BaseModel):
     source_name: str | None = Field(default=None, description="Source name")
     background: str | None = Field(default=None, description="Global background info")
 
-    load: ConversationLoadConfig | DocumentLoadConfig | None = Field(
-        default=None, description="Load stage config"
-    )
+    load: ConversationLoadConfig | DocumentLoadConfig | None = Field(default=None, description="Load stage config")
     extract: ExtractBaseConfig | None = Field(default=None, description="Extract stage config")
     search: SearchBaseConfig | None = Field(default=None, description="Search stage config")
 

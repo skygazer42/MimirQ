@@ -4,7 +4,6 @@ Prometheus metrics primitives.
 Designed to be optional: metrics are enabled only when PROMETHEUS_ENABLED=true.
 """
 
-
 import time
 from collections.abc import Iterable
 

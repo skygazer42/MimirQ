@@ -1,6 +1,5 @@
 """Evidence repair schemas (PII-safe)."""
 
-
 from typing import Any
 from uuid import UUID
 
@@ -53,4 +52,3 @@ class EvidenceReferenceRepairResponse(BaseModel):
 
     changes_truncated: bool = False
     changes: list[EvidenceReferenceRepairChangeOut] = Field(default_factory=list)
-

@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -196,19 +195,13 @@ def build_kg_quality_report(
     relation_count = int(relation_count_q.scalar() or 0)
 
     # How many entities participate in at least one relation (degree>0).
-    rel_sub = (
-        db.query(KgRelation.subject_entity_id.label("eid"))
-        .filter(
-            KgRelation.tenant_id == tenant_id,
-            KgRelation.document_id.in_(document_ids),
-        )
+    rel_sub = db.query(KgRelation.subject_entity_id.label("eid")).filter(
+        KgRelation.tenant_id == tenant_id,
+        KgRelation.document_id.in_(document_ids),
     )
-    rel_obj = (
-        db.query(KgRelation.object_entity_id.label("eid"))
-        .filter(
-            KgRelation.tenant_id == tenant_id,
-            KgRelation.document_id.in_(document_ids),
-        )
+    rel_obj = db.query(KgRelation.object_entity_id.label("eid")).filter(
+        KgRelation.tenant_id == tenant_id,
+        KgRelation.document_id.in_(document_ids),
     )
     rel_sub = _apply_relation_pipeline_scope(rel_sub, pipeline_hash=pipeline_hash)
     rel_obj = _apply_relation_pipeline_scope(rel_obj, pipeline_hash=pipeline_hash)

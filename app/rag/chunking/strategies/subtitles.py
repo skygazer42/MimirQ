@@ -8,7 +8,6 @@ Targets subtitle documents with timecode cue lines, e.g.:
 The chunker keeps whole cues together and uses cue-level overlap.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -35,9 +34,7 @@ class _Cue:
     end_ts: str
 
 
-_TIMECODE_RE = re.compile(
-    r"^\s*(?P<start>\d{2}:\d{2}:\d{2}[,\.]\d{3})\s*-->\s*(?P<end>\d{2}:\d{2}:\d{2}[,\.]\d{3})\b"
-)
+_TIMECODE_RE = re.compile(r"^\s*(?P<start>\d{2}:\d{2}:\d{2}[,\.]\d{3})\s*-->\s*(?P<end>\d{2}:\d{2}:\d{2}[,\.]\d{3})\b")
 
 
 def _iter_lines(text: str) -> list[_Line]:

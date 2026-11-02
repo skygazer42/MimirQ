@@ -4,7 +4,6 @@ Optional OpenTelemetry tracing initialization.
 Enabled when OTEL_ENABLED=true.
 """
 
-
 import logging
 
 from app.core.config import settings

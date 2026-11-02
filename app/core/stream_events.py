@@ -9,7 +9,6 @@ Implementation notes:
 - Emission is best-effort and never raises to callers.
 """
 
-
 import asyncio
 import contextvars
 from dataclasses import dataclass, field
@@ -100,4 +99,3 @@ __all__ = [
     "get_stream_emitter",
     "emit_stream_event",
 ]
-

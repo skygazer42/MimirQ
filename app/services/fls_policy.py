@@ -6,7 +6,6 @@ This layer is intentionally declarative:
 - Matching is regex-based with conservative validation to reduce ReDoS risk.
 """
 
-
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass

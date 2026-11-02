@@ -6,7 +6,6 @@ Groups are tenant-scoped and are intended to support enterprise directory needs:
 - optional IdP-driven provisioning (OIDC group claims / SCIM)
 """
 
-
 from datetime import datetime
 from uuid import UUID
 
@@ -90,4 +89,3 @@ class TenantGroupMembersUpdateRequest(BaseModel):
 
 class TenantGroupMembersUpdateResponse(BaseModel):
     updated: int
-

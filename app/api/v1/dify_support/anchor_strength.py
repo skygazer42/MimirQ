@@ -83,17 +83,12 @@ def _record_is_full_answer_chunk(record: dict[str, Any]) -> bool:
 
 def _record_is_composite_exact_anchor_answer(record: dict[str, Any]) -> bool:
     return any(
-        bool(metadata.get("dify_composite_exact_anchor_slots"))
-        for metadata in _iter_record_metadata_layers(record)
+        bool(metadata.get("dify_composite_exact_anchor_slots")) for metadata in _iter_record_metadata_layers(record)
     )
 
 
 def _composite_stitched_section_text(records: list[dict[str, Any]]) -> str:
-    section_texts = [
-        text
-        for text in (_composite_section_text(record) for record in records or [])
-        if text
-    ]
+    section_texts = [text for text in (_composite_section_text(record) for record in records or []) if text]
     if not section_texts:
         return ""
     return "合并章节原文：\n" + "\n".join(section_texts)

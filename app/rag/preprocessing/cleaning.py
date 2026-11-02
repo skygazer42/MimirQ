@@ -370,11 +370,7 @@ def build_common_line_signatures(
         return set()
 
     line_docs, _samples = _common_line_stats(texts, max_line_length=max_line_length)
-    return {
-        key
-        for key, count in line_docs.items()
-        if count >= min_docs and (count / doc_count) >= min_ratio
-    }
+    return {key for key, count in line_docs.items() if count >= min_docs and (count / doc_count) >= min_ratio}
 
 
 def build_repeated_line_signatures(
@@ -697,23 +693,14 @@ def _collapse_spaced_letters(line: str) -> str:
             letters = [ch]
             # Keep collapsing only when each letter is separated by spaces, i.e. avoid
             # accidentally consuming the first character of a normal word like "t e s t".
-            while (
-                j + 2 < n
-                and line[j + 1] == " "
-                and line[j + 2].isalpha()
-                and (j + 3 >= n or line[j + 3] == " ")
-            ):
+            while j + 2 < n and line[j + 1] == " " and line[j + 2].isalpha() and (j + 3 >= n or line[j + 3] == " "):
                 letters.append(line[j + 2])
                 j += 2
 
             if len(letters) >= 5:
                 word = "".join(letters)
                 # Skip ALL-CAPS sequences to avoid mangling acronyms like "U S A F".
-                if (
-                    not word.isupper()
-                    and not _UPPER_RUN_RE.search(word)
-                    and sum(1 for c in word if c.islower()) >= 2
-                ):
+                if not word.isupper() and not _UPPER_RUN_RE.search(word) and sum(1 for c in word if c.islower()) >= 2:
                     out.append(word)
                     i = j + 1
                     continue
@@ -813,8 +800,4 @@ def _is_cjk(text: str) -> bool:
         return False
     ch = text[0]
     code = ord(ch)
-    return (
-        0x4E00 <= code <= 0x9FFF
-        or 0x3400 <= code <= 0x4DBF
-        or 0xF900 <= code <= 0xFAFF
-    )
+    return 0x4E00 <= code <= 0x9FFF or 0x3400 <= code <= 0x4DBF or 0xF900 <= code <= 0xFAFF

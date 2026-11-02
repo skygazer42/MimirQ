@@ -15,7 +15,6 @@ RecursiveCharacterTextSplitter inside each section to respect chunk_size and
 chunk_overlap while preserving character offsets.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -89,6 +88,7 @@ _CN_SECTIONS: dict[str, str] = {
     "附录": "appendix",
     "补充材料": "supplementary",
 }
+
 
 def _normalize_section(title: str) -> str | None:
     raw = (title or "").strip()

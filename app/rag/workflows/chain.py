@@ -7,7 +7,6 @@ becomes the next step's input.
 Pattern: Step1 -> Step2 -> Step3 -> ... -> Result
 """
 
-
 from collections.abc import Awaitable, Callable
 from typing import Any
 

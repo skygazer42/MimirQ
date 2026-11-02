@@ -8,7 +8,6 @@ This complements event/entity extraction by capturing process knowledge:
 - tags
 """
 
-
 import math
 from typing import Any
 

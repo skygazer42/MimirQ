@@ -16,7 +16,6 @@ This module implements a conservative, dependency-light *auto route* decision:
 The decision is explainable (route + reason + stats) and safe (bounded reads).
 """
 
-
 import csv
 import io
 from dataclasses import dataclass
@@ -28,6 +27,7 @@ from app.core.optional_deps import optional_import
 from app.rag.core.logging import get_logger
 
 logger = get_logger("services.table_routing")
+
 
 @lru_cache(maxsize=1)
 def _get_openpyxl():  # noqa: ANN201

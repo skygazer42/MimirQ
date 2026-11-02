@@ -29,9 +29,7 @@ def test_default_tenant_bootstrap_requires_implicit_default_tenant_resolution(mo
     tenant_id = uuid4()
     monkeypatch.delenv("ENV", raising=False)
     monkeypatch.setattr("app.services.dataset_service.settings.AUTH_MODE", "header", raising=False)
-    monkeypatch.setattr(
-        "app.services.dataset_service.settings.LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED", True, raising=False
-    )
+    monkeypatch.setattr("app.services.dataset_service.settings.LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED", True, raising=False)
     monkeypatch.setattr("app.services.dataset_service.settings.DEFAULT_TENANT_ID", str(tenant_id), raising=False)
 
     token = bind_request_state(SimpleNamespace(tenant_id_source="header", client_host="127.0.0.1"))
@@ -50,9 +48,7 @@ def test_default_tenant_bootstrap_requires_loopback_header_auth(monkeypatch: pyt
     tenant_id = uuid4()
     monkeypatch.delenv("ENV", raising=False)
     monkeypatch.setattr("app.services.dataset_service.settings.AUTH_MODE", "header", raising=False)
-    monkeypatch.setattr(
-        "app.services.dataset_service.settings.LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED", True, raising=False
-    )
+    monkeypatch.setattr("app.services.dataset_service.settings.LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED", True, raising=False)
     monkeypatch.setattr("app.services.dataset_service.settings.DEFAULT_TENANT_ID", str(tenant_id), raising=False)
 
     token = bind_request_state(SimpleNamespace(tenant_id_source="default", client_host="198.51.100.8"))
@@ -73,9 +69,7 @@ def test_default_tenant_bootstrap_allows_loopback_header_auth_without_client_ten
     tenant_id = uuid4()
     monkeypatch.delenv("ENV", raising=False)
     monkeypatch.setattr("app.services.dataset_service.settings.AUTH_MODE", "header", raising=False)
-    monkeypatch.setattr(
-        "app.services.dataset_service.settings.LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED", True, raising=False
-    )
+    monkeypatch.setattr("app.services.dataset_service.settings.LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED", True, raising=False)
     monkeypatch.setattr("app.services.dataset_service.settings.DEFAULT_TENANT_ID", str(tenant_id), raising=False)
 
     token = bind_request_state(SimpleNamespace(tenant_id_source="default", client_host="127.0.0.1"))

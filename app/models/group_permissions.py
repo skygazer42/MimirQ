@@ -6,7 +6,6 @@ Notes:
 - Group membership is stored separately (tenant_groups / tenant_group_members).
 """
 
-
 import uuid
 from datetime import UTC, datetime
 

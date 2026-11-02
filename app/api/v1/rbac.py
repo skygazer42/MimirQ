@@ -7,7 +7,6 @@ Notes:
 - This router provides a small admin surface to view/update member roles.
 """
 
-
 from typing import Annotated
 from uuid import UUID
 

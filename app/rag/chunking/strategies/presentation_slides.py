@@ -11,7 +11,6 @@ RecursiveCharacterTextSplitter inside each slide to respect chunk_size and
 chunk_overlap while preserving character offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -174,4 +173,3 @@ class PresentationSlidesChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

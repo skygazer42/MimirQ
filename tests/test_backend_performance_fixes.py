@@ -179,9 +179,7 @@ async def test_retrieval_limiter_drops_cancelled_queued_work(
     first_task = asyncio.create_task(limiter.run_blocking_retrieval_call(first_work))
     assert await asyncio.to_thread(first_started.wait, 1)
 
-    queued_task = asyncio.create_task(
-        limiter.run_blocking_retrieval_call(lambda: queued_work_ran.set())
-    )
+    queued_task = asyncio.create_task(limiter.run_blocking_retrieval_call(lambda: queued_work_ran.set()))
     await asyncio.sleep(0.05)
     queued_task.cancel()
     with pytest.raises(asyncio.CancelledError):
@@ -313,9 +311,7 @@ async def test_dify_final_reranker_shares_retrieval_admission_gate(
         {"content": "second", "score": 0.8, "title": "second.txt", "metadata": {}},
     ]
     tasks = [
-        asyncio.create_task(
-            dify_api._final_rerank_records_for_query(records, query=query, top_k=2)
-        )
+        asyncio.create_task(dify_api._final_rerank_records_for_query(records, query=query, top_k=2))
         for query in ("query one", "query two")
     ]
     try:
@@ -486,6 +482,7 @@ async def test_stream_extractive_fallback_runs_retrieval_off_event_loop(
         metrics_data={},
         structured_data=None,
     )
+
     async def _prepare_stream_runtime(**_kwargs):  # noqa: ANN202
         return runtime
 

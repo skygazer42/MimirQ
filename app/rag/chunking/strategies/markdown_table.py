@@ -8,7 +8,6 @@ substring of the original text so highlight offsets remain valid).
 Non-table text is chunked with a fallback RecursiveCharacterTextSplitter.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -259,7 +258,7 @@ class MarkdownTableChunker(BaseChunker):
 
     def _split_table_block(self, text: str, base_meta: dict[str, Any], block: _Block) -> list[Document]:
         header_end = int(block.header_end or block.start)
-        header_text = text[block.start:header_end]
+        header_text = text[block.start : header_end]
         rows = _iter_table_rows(text, start=block.start, end=block.end, header_end=header_end)
         if not rows:
             meta = self._table_meta(

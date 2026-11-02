@@ -6,7 +6,6 @@ strategy safe for backend-only workflows while exposing the metadata contract
 needed for future offline batch re-chunking.
 """
 
-
 from langchain_core.documents import Document
 
 from app.rag.chunking.base import BaseChunker

@@ -3,7 +3,6 @@
 Generate a compact intent-router model artifact from exported training rows.
 """
 
-
 import argparse
 import json
 import re
@@ -137,4 +136,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

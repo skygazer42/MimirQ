@@ -1,4 +1,3 @@
-
 from collections.abc import Sequence
 from typing import Any
 
@@ -28,10 +27,7 @@ class KGReranker(BaseReranker):
 
         Note: KG Reranker is asynchronous, please use the arerank_kg() method.
         """
-        raise NotImplementedError(
-            "KGReranker only supports async operations. "
-            "Please use arerank_kg() method instead."
-        )
+        raise NotImplementedError("KGReranker only supports async operations. Please use arerank_kg() method instead.")
 
     async def arerank_kg(
         self,
@@ -72,9 +68,7 @@ class KGReranker(BaseReranker):
 
         items = list(result.get("events", []))
         score_map = {
-            str(item.get("id")): float(item.get("score", 0.0) or 0.0)
-            for item in items
-            if item.get("id") is not None
+            str(item.get("id")): float(item.get("score", 0.0) or 0.0) for item in items if item.get("id") is not None
         }
         ordered_ids = [str(item.get("id")) for item in items if item.get("id") is not None]
 

@@ -4,7 +4,6 @@ Field-level security (FLS) / redacted view policy schemas.
 Policies are stored in dataset metadata and enforced server-side on structured responses.
 """
 
-
 from pydantic import BaseModel, Field
 
 
@@ -38,4 +37,3 @@ class FlsRule(BaseModel):
 class FlsPolicy(BaseModel):
     version: str = Field(default="1", description="Policy schema version")
     rules: list[FlsRule] = Field(default_factory=list)
-

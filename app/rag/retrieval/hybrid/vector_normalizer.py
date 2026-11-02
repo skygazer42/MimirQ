@@ -1,4 +1,3 @@
-
 from typing import Any, Callable, Mapping
 
 
@@ -37,11 +36,7 @@ def _apply_vector_client_filter(
         vector_client_filter.pop("embedding_space_hash", None)
     if not vector_client_filter:
         return results
-    return [
-        result
-        for result in results
-        if match_metadata_filter((result.get("metadata") or {}), vector_client_filter)
-    ]
+    return [result for result in results if match_metadata_filter((result.get("metadata") or {}), vector_client_filter)]
 
 
 def _backfill_chunk_ids(

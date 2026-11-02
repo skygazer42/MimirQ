@@ -8,7 +8,6 @@ after the app has produced the response. This middleware is still useful for
 headers produced by the application stack.
 """
 
-
 from collections.abc import Callable, Iterable
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -46,4 +45,3 @@ class ResponseHeaderSanitizerMiddleware(BaseHTTPMiddleware):
             if name in response.headers:
                 del response.headers[name]
         return response
-

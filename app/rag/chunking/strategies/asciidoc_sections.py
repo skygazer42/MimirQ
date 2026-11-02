@@ -9,7 +9,6 @@ Targets AsciiDoc-like documents with headings such as:
 The chunker splits by heading blocks and preserves character offsets.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 

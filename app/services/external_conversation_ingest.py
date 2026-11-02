@@ -1,4 +1,3 @@
-
 import ast
 import json
 from datetime import UTC, datetime, timedelta
@@ -311,18 +310,14 @@ def _normalize_mimirq_citation(value: Any) -> dict[str, Any] | None:
     document_id = _normalize_uuid_text(value.get("document_id") or metadata.get("document_id"))
     chunk_id = _normalize_uuid_text(value.get("chunk_id") or metadata.get("chunk_id"))
     chunk_content = str(
-        _first_non_empty(value, _CITATION_CONTENT_KEYS)
-        or _first_non_empty(metadata, _CITATION_CONTENT_KEYS)
-        or ""
+        _first_non_empty(value, _CITATION_CONTENT_KEYS) or _first_non_empty(metadata, _CITATION_CONTENT_KEYS) or ""
     ).strip()
 
     if not document_id or not chunk_id or not chunk_content:
         return None
 
     document_name = str(
-        _first_non_empty(value, _CITATION_TITLE_KEYS)
-        or _first_non_empty(metadata, _CITATION_TITLE_KEYS)
-        or "Document"
+        _first_non_empty(value, _CITATION_TITLE_KEYS) or _first_non_empty(metadata, _CITATION_TITLE_KEYS) or "Document"
     ).strip()
 
     out: dict[str, Any] = {

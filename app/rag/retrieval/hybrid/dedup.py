@@ -787,6 +787,7 @@ class DedupDiversityMixin:
             rest = [r for r in results if self._result_key(r) not in used_keys]
             out_all = selected + rest
         if any(isinstance(item, dict) and item.get("fusion_budgeted_prefix_rank") is not None for item in out_all):
+
             def _budgeted_prefix_sort_key(item: dict[str, Any]) -> tuple[int, float, str]:
                 return (
                     0 if item.get("fusion_budgeted_prefix_rank") is not None else 1,

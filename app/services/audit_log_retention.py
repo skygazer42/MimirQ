@@ -9,7 +9,6 @@ Notes:
 - Keep outputs PII-minimal: return counts only by default.
 """
 
-
 import contextlib
 from collections.abc import Sequence
 from datetime import datetime

@@ -5,7 +5,6 @@ Defines the abstract base class for all workflow patterns
 and the WorkflowMode enumeration.
 """
 
-
 import asyncio
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
@@ -19,6 +18,7 @@ from app.core.config import settings
 
 class WorkflowMode(str, Enum):
     """Available workflow modes."""
+
     CHAIN = "chain"
     ROUTING = "routing"
     PARALLEL = "parallel"
@@ -29,6 +29,7 @@ class WorkflowMode(str, Enum):
 
 class WorkflowState(TypedDict, total=False):
     """Standard workflow state structure."""
+
     question: str
     query: str
     history: list[dict[str, str]]
@@ -50,6 +51,7 @@ class WorkflowState(TypedDict, total=False):
 @dataclass
 class WorkflowResult:
     """Result of a workflow execution."""
+
     success: bool
     state: dict[str, Any]
     answer: str = ""

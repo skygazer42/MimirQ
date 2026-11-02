@@ -10,7 +10,6 @@ The initial implementation focuses on:
 - Extensibility (connector_id + config JSON)
 """
 
-
 import uuid
 
 from sqlalchemy import Column, DateTime, ForeignKey, ForeignKeyConstraint, String, Text

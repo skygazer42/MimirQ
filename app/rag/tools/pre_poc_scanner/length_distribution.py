@@ -1,4 +1,3 @@
-
 from math import ceil
 
 _BINS = (

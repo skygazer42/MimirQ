@@ -6,7 +6,6 @@ Provides:
 - Integration with LangGraph's official prebuilt components
 """
 
-
 import langchain
 
 if not hasattr(langchain, "debug"):

@@ -13,7 +13,6 @@ Security posture:
 - Best-effort fail-open: cache errors never break retrieval
 """
 
-
 import concurrent.futures
 import copy
 import hashlib

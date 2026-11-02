@@ -6,7 +6,6 @@ We treat dataset prompt settings as *fallbacks*:
 - Otherwise, apply the dataset default (if present).
 """
 
-
 from collections.abc import Iterable
 from typing import Any
 from uuid import UUID
@@ -51,11 +50,7 @@ def merge_prompt_defaults_with_dataset(
             except Exception as exc:
                 logger.debug("Ignoring malformed default prompt template id: %s", exc)
 
-    if (
-        eff_id is None
-        and "prompt_template_key" not in provided
-        and not (eff_key or "").strip()
-    ):
+    if eff_id is None and "prompt_template_key" not in provided and not (eff_key or "").strip():
         raw = meta.get("default_prompt_template_key")
         if isinstance(raw, str) and raw.strip():
             eff_key = raw.strip()

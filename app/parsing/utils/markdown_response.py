@@ -1,4 +1,3 @@
-
 from typing import Any
 
 _MARKDOWN_CANDIDATE_KEYS = ("markdown", "md", "content", "text", "output")

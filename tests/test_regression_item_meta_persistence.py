@@ -1,5 +1,3 @@
-
-
 def test_regression_item_model_has_meta_column():
     from app.models.evaluation import RagasRegressionItem
 

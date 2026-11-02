@@ -2,7 +2,6 @@
 Backend metadata schemas.
 """
 
-
 from pydantic import BaseModel, Field
 
 

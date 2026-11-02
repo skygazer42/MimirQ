@@ -11,7 +11,6 @@ Design:
   then the extractor's built-in defaults.
 """
 
-
 from collections.abc import Sequence
 from uuid import UUID
 
@@ -72,4 +71,3 @@ def resolve_allowed_predicates(
             return cleaned
 
     return [str(p).strip() for p in (fallback_default or []) if str(p).strip()]
-

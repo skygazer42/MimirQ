@@ -1,4 +1,3 @@
-
 from types import SimpleNamespace
 
 from app.rag.core.conversation import format_history_text

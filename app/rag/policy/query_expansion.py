@@ -10,7 +10,6 @@ Constraints:
 - Deterministic and safe for logs/storage
 """
 
-
 import re
 
 from app.rag.policy.clause_refs import extract_clause_refs

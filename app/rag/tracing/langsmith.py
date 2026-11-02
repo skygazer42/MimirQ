@@ -19,7 +19,6 @@ Usage:
         ...
 """
 
-
 import functools
 import os
 import time
@@ -59,6 +58,7 @@ F = TypeVar("F", bound=Callable)
 @dataclass
 class SpanContext:
     """Context for a trace span."""
+
     run_id: str = field(default_factory=lambda: str(uuid4()))
     parent_id: str | None = None
     name: str = ""
@@ -381,6 +381,7 @@ def trace_function(
     Returns:
         Decorated function
     """
+
     def decorator(func: F) -> F:
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
@@ -418,6 +419,7 @@ def trace_async_function(
     Returns:
         Decorated function
     """
+
     def decorator(func: F) -> F:
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
@@ -451,6 +453,7 @@ def trace_rag_query(func: F) -> F:
     Returns:
         Decorated function
     """
+
     @functools.wraps(func)
     async def wrapper(*args, **kwargs):
         client = get_tracing_client()
@@ -496,6 +499,7 @@ def trace_retrieval(func: F) -> F:
     Returns:
         Decorated function
     """
+
     @functools.wraps(func)
     async def wrapper(*args, **kwargs):
         client = get_tracing_client()
@@ -534,6 +538,7 @@ def trace_llm_call(func: F) -> F:
     Returns:
         Decorated function
     """
+
     @functools.wraps(func)
     async def wrapper(*args, **kwargs):
         client = get_tracing_client()
@@ -541,10 +546,7 @@ def trace_llm_call(func: F) -> F:
         async with client.atrace(
             name="llm_call",
             run_type="llm",
-            inputs={
-                "model": kwargs.get("model", "unknown"),
-                "prompt_length": len(str(kwargs.get("prompt", "")))
-            },
+            inputs={"model": kwargs.get("model", "unknown"), "prompt_length": len(str(kwargs.get("prompt", "")))},
             tags=["llm"],
         ) as span:
             result = await func(*args, **kwargs)

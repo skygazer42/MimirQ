@@ -12,7 +12,6 @@ Example:
     --strict
 """
 
-
 import argparse
 import json
 import sys
@@ -109,4 +108,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

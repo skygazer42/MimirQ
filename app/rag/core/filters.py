@@ -2,7 +2,6 @@
 Small, dependency-light filter helpers shared across modules.
 """
 
-
 from typing import Any
 
 from app.rag.pipeline_plugins.contracts import INDEXED_METADATA_KEY

@@ -1,4 +1,3 @@
-
 import asyncio
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -103,13 +102,10 @@ class _FakeQuery:
     def join(self, model, *_args, **_kwargs):  # noqa: ANN001,D401
         if self._model is MessageFeedback and model is Conversation:
             self._joined_conversations = {
-                (row.tenant_id, row.id): row
-                for row in self._related_rows.get(Conversation, [])
+                (row.tenant_id, row.id): row for row in self._related_rows.get(Conversation, [])
             }
             self._items = [
-                row
-                for row in self._items
-                if (row.tenant_id, row.conversation_id) in self._joined_conversations
+                row for row in self._items if (row.tenant_id, row.conversation_id) in self._joined_conversations
             ]
         return self
 
@@ -680,9 +676,7 @@ def test_eval_case_candidate_falls_back_to_trace_citations() -> None:
         ]
     )
 
-    assert out["eval_case_candidates"][0]["reference_sources"] == [
-        {"document_id": "doc-1", "chunk_id": "chunk-1"}
-    ]
+    assert out["eval_case_candidates"][0]["reference_sources"] == [{"document_id": "doc-1", "chunk_id": "chunk-1"}]
 
     promoted = build_feedback_loop_candidates(
         [

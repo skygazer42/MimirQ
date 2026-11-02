@@ -7,7 +7,6 @@ These schemas power the Evidence Workbench (enterprise ground-truth evidence man
 - Sync into RAGAS regression cases for retrieval-only evaluation
 """
 
-
 from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID

@@ -5,7 +5,6 @@ Exports are resolved lazily so callers can import a specific reranker submodule
 without pulling in every provider implementation and its optional dependencies.
 """
 
-
 from importlib import import_module
 
 _MODULE_BASE = "app.rag.reranker.base"

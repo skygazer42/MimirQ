@@ -1,4 +1,3 @@
-
 import asyncio
 import contextlib
 from collections.abc import Callable, Iterable
@@ -166,9 +165,8 @@ def _row_named_value(row: Any, key: str) -> Any:
 
 def _add_chunk_metadata_img_ids(db: Session, *, tenant_id: UUID, document_id: UUID, img_ids: set[str]) -> None:
     img_id_column = DocumentChunk.doc_metadata["img_id"].astext.label("img_id")
-    chunks = (
-        db.query(img_id_column)
-        .filter(DocumentChunk.document_id == document_id, DocumentChunk.tenant_id == tenant_id)
+    chunks = db.query(img_id_column).filter(
+        DocumentChunk.document_id == document_id, DocumentChunk.tenant_id == tenant_id
     )
     for chunk in _iter_query_rows(chunks, batch_size=_CHUNK_METADATA_SCAN_BATCH_SIZE):
         img_id = _row_named_value(chunk, "img_id")

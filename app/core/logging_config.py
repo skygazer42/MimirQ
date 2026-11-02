@@ -6,7 +6,6 @@ This module:
 - Optionally configures JSON logging when LOG_FORMAT=json
 """
 
-
 import json
 import logging
 import sys
@@ -76,6 +75,7 @@ def set_request_tenant_id(tenant_id: str) -> None:
     rather than an untrusted header.
     """
     _tenant_id.set((tenant_id or "").strip())
+
 
 def set_request_route(route: str) -> None:
     """

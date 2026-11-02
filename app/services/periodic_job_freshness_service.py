@@ -11,7 +11,6 @@ Design goals:
 - Cheap: at most one indexed query per job (latest audit log row).
 """
 
-
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -152,7 +151,7 @@ def build_periodic_job_freshness_snapshot(
             if isinstance(latest.get("created_at"), datetime):
                 created_at = _as_utc(latest["created_at"])
             rid = latest.get("resource_id")
-            resource_id = (str(rid) if rid is not None else None)
+            resource_id = str(rid) if rid is not None else None
 
         age_seconds: int | None = None
         stale = True

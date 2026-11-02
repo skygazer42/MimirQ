@@ -1,4 +1,3 @@
-
 import contextlib
 import sys
 from typing import Any
@@ -76,27 +75,15 @@ def _apply_document_access_from_config(
     access: dict | None,
     connector_id: str | None = None,
 ) -> None:
-    access_mode = (
-        str(access.get("mode") or "inherit").strip().lower()
-        if isinstance(access, dict)
-        else "inherit"
-    )
+    access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
     access_members = access.get("partial_member_list") if isinstance(access, dict) else None
     if not isinstance(access_members, list):
         access_members = []
-    access_members = [
-        str(v).strip()
-        for v in access_members
-        if isinstance(v, (str, int, float)) and str(v).strip()
-    ]
+    access_members = [str(v).strip() for v in access_members if isinstance(v, (str, int, float)) and str(v).strip()]
     access_groups = access.get("partial_group_list") if isinstance(access, dict) else None
     if not isinstance(access_groups, list):
         access_groups = []
-    access_groups = [
-        str(v).strip()
-        for v in access_groups
-        if isinstance(v, (str, int, float)) and str(v).strip()
-    ]
+    access_groups = [str(v).strip() for v in access_groups if isinstance(v, (str, int, float)) and str(v).strip()]
 
     try:
         doc.access_mode = None if access_mode == "inherit" else access_mode
@@ -104,28 +91,18 @@ def _apply_document_access_from_config(
             doc.owner_id = requested_by
 
         if access_mode == "partial_members":
-            DocumentPermissionService.update_partial_member_list(
-                db, tenant_id, doc.id, list(access_members)
-            )
-            DocumentGroupPermissionService.update_partial_group_list(
-                db, tenant_id, doc.id, list(access_groups)
-            )
+            DocumentPermissionService.update_partial_member_list(db, tenant_id, doc.id, list(access_members))
+            DocumentGroupPermissionService.update_partial_group_list(db, tenant_id, doc.id, list(access_groups))
         else:
-            DocumentPermissionService.clear_partial_member_list(
-                db, tenant_id, doc.id
-            )
-            DocumentGroupPermissionService.clear_partial_group_list(
-                db, tenant_id, doc.id
-            )
+            DocumentPermissionService.clear_partial_member_list(db, tenant_id, doc.id)
+            DocumentGroupPermissionService.clear_partial_group_list(db, tenant_id, doc.id)
     except Exception:
         with contextlib.suppress(Exception):
             from app.services.connector_acl_prometheus_metrics import (
                 observe_connector_acl_apply_error,
             )
 
-            observe_connector_acl_apply_error(
-                connector_id=connector_id, mode=access_mode
-            )
+            observe_connector_acl_apply_error(connector_id=connector_id, mode=access_mode)
         raise
     else:
         with contextlib.suppress(Exception):
@@ -322,11 +299,7 @@ def _normalize_jira_issue_scope(
     normalized_base_url = str(base_url or "").strip().rstrip("/")
     normalized_project_key = str(project_key or "").strip().upper()
     normalized_issue_url = str(issue_url or "").strip()
-    normalized_seen_urls = {
-        str(url or "").strip()
-        for url in (seen_urls or set())
-        if str(url or "").strip()
-    }
+    normalized_seen_urls = {str(url or "").strip() for url in (seen_urls or set()) if str(url or "").strip()}
     if not normalized_base_url or not normalized_project_key or not normalized_issue_url:
         return None
     return dataset_id, normalized_base_url, normalized_project_key, normalized_issue_url, normalized_seen_urls

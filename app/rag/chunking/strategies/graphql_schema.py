@@ -7,7 +7,6 @@ Targets .graphql/.gql schema files and splits by top-level definitions such as:
 Offsets are preserved.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 

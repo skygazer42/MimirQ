@@ -9,7 +9,6 @@ Targets .proto files and splits by top-level blocks such as:
 Offsets are preserved.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any

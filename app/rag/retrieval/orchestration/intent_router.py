@@ -687,7 +687,7 @@ def route_adaptive_retrieval_overrides(
 
     matched_rule_ids: list[str] = []
     overrides: dict[str, Any] = {}
-    for rule in (policy.get("rules") or []):
+    for rule in policy.get("rules") or []:
         if not isinstance(rule, dict):
             continue
         if not _adaptive_rule_matches(

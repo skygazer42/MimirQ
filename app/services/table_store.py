@@ -7,7 +7,6 @@ Design goals:
 - Keep SQL table names internal and generated (avoid SQL injection via identifiers).
 """
 
-
 import re
 from dataclasses import dataclass
 from pathlib import Path

@@ -11,7 +11,6 @@ Config via env/.env:
 - QIANFAN_OCR_LAYOUT_AS_THOUGHT=false
 """
 
-
 import json
 import re
 from pathlib import Path

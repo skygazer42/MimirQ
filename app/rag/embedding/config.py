@@ -4,6 +4,7 @@ Default embedding model configurations.
 This module defines the supported embedding models with their configurations.
 Models are identified by "provider/model_name" format.
 """
+
 from pydantic import BaseModel, ConfigDict, Field
 
 DEFAULT_BGE_M3_NAME = "BAAI/bge-m3"
@@ -195,8 +196,4 @@ def get_models_by_provider(provider: str) -> dict[str, EmbedModelInfo]:
     Returns:
         Dictionary of model_id to EmbedModelInfo
     """
-    return {
-        k: v
-        for k, v in DEFAULT_EMBED_MODELS.items()
-        if k.startswith(f"{provider}/")
-    }
+    return {k: v for k, v in DEFAULT_EMBED_MODELS.items() if k.startswith(f"{provider}/")}

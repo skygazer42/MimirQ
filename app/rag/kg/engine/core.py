@@ -1,6 +1,7 @@
 """
 Lightweight KG engine to run Extract -> Search using local adapters.
 """
+
 from collections.abc import Sequence
 from uuid import UUID
 
@@ -49,9 +50,7 @@ class KGEngine:
                 settings.KG_EXTRACT_REPLACE_EXISTING if replace_existing is None else replace_existing
             ),
             prune_orphan_entities=bool(
-                settings.KG_EXTRACT_PRUNE_ORPHAN_ENTITIES
-                if prune_orphan_entities is None
-                else prune_orphan_entities
+                settings.KG_EXTRACT_PRUNE_ORPHAN_ENTITIES if prune_orphan_entities is None else prune_orphan_entities
             ),
             prompt_template_id=prompt_template_id,
             prompt_template_key=prompt_template_key,

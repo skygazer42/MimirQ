@@ -8,7 +8,6 @@ We persist evidence (quote + best-effort char span) for:
 This module is intentionally dependency-light and deterministic.
 """
 
-
 import re
 import unicodedata
 from dataclasses import dataclass

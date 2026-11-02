@@ -1,4 +1,3 @@
-
 import json
 import re
 from pathlib import Path
@@ -187,7 +186,7 @@ def predict_learned_router_hint(
         }
 
     best: tuple[float, dict[str, Any] | None, int] = (0.0, None, 0)
-    for rule in (mdl.get("rules") or []):
+    for rule in mdl.get("rules") or []:
         if not isinstance(rule, dict):
             continue
         toks = [str(v) for v in (rule.get("tokens") or []) if str(v).strip()]

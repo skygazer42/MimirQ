@@ -1,4 +1,3 @@
-
 import re
 from typing import Any, Callable
 
@@ -126,9 +125,7 @@ def prepare_retrieval_document(
     display_content = str(meta.get(_RETRIEVAL_DISPLAY_CONTENT_KEY) or doc.page_content or "")
     indexed_content = meta.get(_RETRIEVAL_TEXT_KEY)
     retrieval_base = (
-        str(indexed_content)
-        if isinstance(indexed_content, str) and indexed_content.strip()
-        else display_content
+        str(indexed_content) if isinstance(indexed_content, str) and indexed_content.strip() else display_content
     )
     retrieval_content, applied = augment_retrieval_corpus_text(content=retrieval_base, metadata=meta)
     meta[_RETRIEVAL_DISPLAY_CONTENT_KEY] = display_content

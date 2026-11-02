@@ -1,4 +1,3 @@
-
 import datetime as _datetime
 import sys
 from datetime import timezone
@@ -221,9 +220,7 @@ def test_resolve_metrics_uses_aliases_defaults_and_rejects_unknown(
     fake_metrics.ContextPrecision = lambda: _Metric(name="context_precision")
     fake_metrics.IDBasedContextRecall = lambda: _Metric(name="id_based_context_recall")
     fake_metrics.IDBasedContextPrecision = lambda: _Metric(name="id_based_context_precision")
-    fake_metrics.LLMContextPrecisionWithoutReference = lambda: _Metric(
-        name="llm_context_precision_without_reference"
-    )
+    fake_metrics.LLMContextPrecisionWithoutReference = lambda: _Metric(name="llm_context_precision_without_reference")
     monkeypatch.setitem(sys.modules, "ragas.metrics", fake_metrics)
     monkeypatch.setattr(ragas_module, "_resolve_response_relevancy_strictness", lambda: 7)
 

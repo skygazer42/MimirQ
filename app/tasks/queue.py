@@ -5,7 +5,6 @@ API compatibility:
 - If TASK_QUEUE_ENABLED=false, callers can still use BackgroundTasks.
 """
 
-
 import asyncio
 import threading
 from typing import Any

@@ -1,4 +1,3 @@
-
 import datetime as dt
 
 from langchain_core.documents import Document

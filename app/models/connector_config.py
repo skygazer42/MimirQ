@@ -5,7 +5,6 @@ Connector runs (app.models.connector) represent individual ingestion executions.
 Connector configs represent saved, reusable connector definitions per dataset.
 """
 
-
 import uuid
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKeyConstraint, String, Text

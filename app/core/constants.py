@@ -12,30 +12,32 @@ NON_CRITICAL_EXCEPTION_LOG_MESSAGE = "Skipping item after non-critical exception
 # Timeout constants (seconds)
 # =============================================================================
 
+
 class Timeouts:
     """HTTP and operation timeout constants."""
 
     # API request timeouts.
-    API_DEFAULT = 60          # embedding providers, LLM API calls
-    API_SHORT = 30            # Fast API requests
-    API_UPLOAD = 300          # File uploads
-    API_LONG_RUNNING = 600    # Long-running tasks
+    API_DEFAULT = 60  # embedding providers, LLM API calls
+    API_SHORT = 30  # Fast API requests
+    API_UPLOAD = 300  # File uploads
+    API_LONG_RUNNING = 600  # Long-running tasks
 
     # Document parsing timeouts.
-    PARSE_DEFAULT = 1800      # Document parsing (30 minutes)
-    PARSE_VALIDATION = 5      # Health checks/validation
+    PARSE_DEFAULT = 1800  # Document parsing (30 minutes)
+    PARSE_VALIDATION = 5  # Health checks/validation
 
     # Streaming operation timeouts.
-    STREAM_DEFAULT = 5.0      # Streaming writes
-    STREAM_SHORT = 1.0        # Short streaming operations
+    STREAM_DEFAULT = 5.0  # Streaming writes
+    STREAM_SHORT = 1.0  # Short streaming operations
 
     # Thread/process timeouts.
-    THREAD_JOIN = 2.0         # Thread join timeout
+    THREAD_JOIN = 2.0  # Thread join timeout
 
 
 # =============================================================================
 # File type constants
 # =============================================================================
+
 
 class FileTypes:
     """Supported file types."""
@@ -60,32 +62,26 @@ class FileTypes:
     JSON = ".json"
 
     # Supported extension sets
-    DOCUMENT_EXTENSIONS: frozenset[str] = frozenset({
-        ".pdf", ".txt", ".md", ".doc", DOCX, ".ppt", PPTX
-    })
+    DOCUMENT_EXTENSIONS: frozenset[str] = frozenset({".pdf", ".txt", ".md", ".doc", DOCX, ".ppt", PPTX})
 
-    SPREADSHEET_EXTENSIONS: frozenset[str] = frozenset({
-        ".xls", XLSX, ".csv"
-    })
+    SPREADSHEET_EXTENSIONS: frozenset[str] = frozenset({".xls", XLSX, ".csv"})
 
-    WEB_EXTENSIONS: frozenset[str] = frozenset({
-        HTML, ".htm", JSON
-    })
+    WEB_EXTENSIONS: frozenset[str] = frozenset({HTML, ".htm", JSON})
 
-    ALL_SUPPORTED: frozenset[str] = frozenset({
-        ".pdf", ".txt", ".md", ".doc", DOCX, ".ppt", PPTX,
-        ".xls", XLSX, ".csv", HTML, ".htm", JSON
-    })
+    ALL_SUPPORTED: frozenset[str] = frozenset(
+        {".pdf", ".txt", ".md", ".doc", DOCX, ".ppt", PPTX, ".xls", XLSX, ".csv", HTML, ".htm", JSON}
+    )
 
     # MarkItDown special support
-    MARKITDOWN_EXTENSIONS: frozenset[str] = frozenset({
-        ".doc", DOCX, ".ppt", PPTX, ".xls", XLSX, ".csv", HTML, ".htm", JSON
-    })
+    MARKITDOWN_EXTENSIONS: frozenset[str] = frozenset(
+        {".doc", DOCX, ".ppt", PPTX, ".xls", XLSX, ".csv", HTML, ".htm", JSON}
+    )
 
 
 # =============================================================================
 # Document processing status
 # =============================================================================
+
 
 class DocumentStatus:
     """Document processing status constants."""
@@ -98,19 +94,16 @@ class DocumentStatus:
     CANCELLED = "cancelled"
 
     # Terminal states
-    TERMINAL_STATES: frozenset[str] = frozenset({
-        "completed", "failed", "quarantined", "cancelled"
-    })
+    TERMINAL_STATES: frozenset[str] = frozenset({"completed", "failed", "quarantined", "cancelled"})
 
     # Active states
-    ACTIVE_STATES: frozenset[str] = frozenset({
-        "pending", "processing"
-    })
+    ACTIVE_STATES: frozenset[str] = frozenset({"pending", "processing"})
 
 
 # =============================================================================
 # Milvus vector database config
 # =============================================================================
+
 
 class MilvusConfig:
     """Milvus config constants."""
@@ -148,6 +141,7 @@ class MilvusConfig:
 # Embedding providers
 # =============================================================================
 
+
 class EmbeddingProviders:
     """Embedding provider constants."""
 
@@ -158,9 +152,9 @@ class EmbeddingProviders:
     OLLAMA = "ollama"
     DETERMINISTIC_TEST = "deterministic_test"
 
-    ALL: frozenset[str] = frozenset({
-        "openai", "openai_compatible", "local", "dashscope", "ollama", "deterministic_test"
-    })
+    ALL: frozenset[str] = frozenset(
+        {"openai", "openai_compatible", "local", "dashscope", "ollama", "deterministic_test"}
+    )
 
     # Provider map (alias -> canonical name)
     PROVIDER_MAP = {
@@ -177,6 +171,7 @@ class EmbeddingProviders:
 # PDF parsing backends
 # =============================================================================
 
+
 class PDFBackends:
     """PDF parsing backend constants."""
 
@@ -191,14 +186,26 @@ class PDFBackends:
     DOCLING = "docling"
     TCADP = "tcadp"
 
-    ALL: frozenset[str] = frozenset({
-        "auto", "basic", "mineru", "deepdoc", "deepseek_ocr", "qianfan_ocr", "textin", "markitdown", "docling", "tcadp"
-    })
+    ALL: frozenset[str] = frozenset(
+        {
+            "auto",
+            "basic",
+            "mineru",
+            "deepdoc",
+            "deepseek_ocr",
+            "qianfan_ocr",
+            "textin",
+            "markitdown",
+            "docling",
+            "tcadp",
+        }
+    )
 
 
 # =============================================================================
 # Retrieval modes
 # =============================================================================
+
 
 class RetrievalModes:
     """Retrieval mode constants."""
@@ -209,14 +216,13 @@ class RetrievalModes:
     MMR = "mmr"
     AUTO = "auto"
 
-    ALL: frozenset[str] = frozenset({
-        "vector", "keyword", "hybrid", "mmr", "auto"
-    })
+    ALL: frozenset[str] = frozenset({"vector", "keyword", "hybrid", "mmr", "auto"})
 
 
 # =============================================================================
 # User roles
 # =============================================================================
+
 
 class UserRoles:
     """User role constants."""
@@ -229,19 +235,16 @@ class UserRoles:
     VIEWER = "viewer"
 
     # Editable roles
-    EDIT_ROLES: frozenset[str] = frozenset({
-        "owner", "admin", "editor", "dataset_operator"
-    })
+    EDIT_ROLES: frozenset[str] = frozenset({"owner", "admin", "editor", "dataset_operator"})
 
     # Admin roles
-    ADMIN_ROLES: frozenset[str] = frozenset({
-        "owner", "admin"
-    })
+    ADMIN_ROLES: frozenset[str] = frozenset({"owner", "admin"})
 
 
 # =============================================================================
 # Proxy environment variables
 # =============================================================================
+
 
 class ProxyEnvKeys:
     """Proxy-related environment variables."""
@@ -261,6 +264,7 @@ class ProxyEnvKeys:
 # Chunk parameter limits
 # =============================================================================
 
+
 class ChunkLimits:
     """Chunk parameter limits."""
 
@@ -276,6 +280,7 @@ class ChunkLimits:
 # =============================================================================
 # API pagination limits
 # =============================================================================
+
 
 class PaginationLimits:
     """Pagination parameter limits."""
