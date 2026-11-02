@@ -311,6 +311,13 @@
 - `ConnectorRun.connector_id` 在 ORM 中为非空字符串，worker 的公开入口参数也是 `str`；去掉两处 `str(connector_id or "")`，保留 `.strip()` 及大小写匹配方式。队列 resolver 仍在实际执行时延迟导入 connector 聚合器，以保留分拆模块的 helper 初始化。
 - Ruff check、Ruff format --check、语法与 diff --check 通过；静态引用扫描确认 API 调用同一 resolver，worker 入口仍调用相同服务。没有运行 Python 测试或导入应用，连接器完整执行流程未运行。
 
+## 第四批：上传 pipeline 配置所有权（2026-11-03）
+
+- `pipeline_options` utility now owns the multipart pipeline JSON parser and chunk overlap validation next to the existing schema adapter. `documents.py` keeps direct exports for the parser, validator, constant and override type.
+- `document_upload` directly imports ingestion policy and governance profile resolution, parser/chunker factories, pipeline merge/effective resolution, `PipelineOptions`, pipeline metadata helpers and identity functions. Its request parsing keeps the same unset tokens, form length limit, Pydantic schema and production-safe 400 detail; rule selection, override merge, parser defaults and integrated-strategy boundary are unchanged.
+- Preview and chunk preview call the utility parser directly; the preview route retains its local documents import for separate parsing/governance helpers. Nine existing pipeline patch bindings in the upload concurrency test now target `document_upload`; test cases and assertions are unchanged.
+- Ruff check/format, parser/validator AST comparison, error-message comparison, route signatures and diff check passed. Python tests and application imports were not run; runtime pipeline behavior remains unverified.
+
 ## 第四批：上传提交确认读取（2026-11-03）
 
 - `_fresh_session_document_exists` 直接导入 `DBDocument`，以 `Callable[[], Session]` 表达 session factory 并调用 SQLAlchemy `Session.get`。删除从 `documents` 路由动态取模型以及对 `get`／`query` 的形状探测；factory 注入保持不变。

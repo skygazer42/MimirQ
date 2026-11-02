@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import DocumentParsePreview, ParsedSegment
-from app.api.utils.pipeline_options import PipelineOptionOverrides, to_pipeline_options
+from app.api.utils.pipeline_options import PipelineOptionOverrides, _parse_pipeline_json, to_pipeline_options
 from app.api.utils.upload import _sanitize_filename, save_upload_file
 from app.core.config import settings
 from app.core.database import get_db
@@ -422,7 +422,7 @@ async def preview_document(
             dataset_id=dataset_id,
         )
         pipeline_options = to_pipeline_options(
-            pipeline=documents_module._parse_pipeline_json(pipeline),
+            pipeline=_parse_pipeline_json(pipeline),
             overrides=pipeline_overrides,
         )
         pipeline_effective = resolve_pipeline_effective(

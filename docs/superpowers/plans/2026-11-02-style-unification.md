@@ -172,6 +172,8 @@ URL 入库的 `UrlUploadRequest` 归入现有文档 schema；上传和连接器�
 
 文件名与来源路径规则归入现有 `app/api/utils/upload.py`；`documents.py` 保留已引用名称的直接导出，上传及预览入口直接调用 utility。原路径折叠、FakePath、Windows drive、长度限制、文件名清理错误和测试 patch 行为保持不变。
 
+`pipeline_options` utility 同时拥有 multipart pipeline JSON 解析与 chunk overlap 校验；上传直接依赖 ingestion policy、governance、parser、chunker、pipeline config 和 identity owners。既有表单大小限制、schema 错误、默认策略及 override 顺序保持原样。
+
 **本批产出：** 上传到任务的输入输出和失败路径一致，同一字段映射与权限规则只有一个业务维护点。
 
 ### Task 5：RAG 与模型调用

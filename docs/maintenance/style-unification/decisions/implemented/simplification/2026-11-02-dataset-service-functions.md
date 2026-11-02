@@ -30,8 +30,6 @@ URL 入库请求 `UrlUploadRequest` 归入 `app/api/schemas/document.py`，与�
 
 文件名清理、上传路径段归一化与上传 key 生成由 `app/api/utils/upload.py` 负责；共享 streaming 上传逻辑仍在同一 API utility。控制字符、Windows drive 前缀、FakePath、`..` 折叠、路径长度限制、文件名叶子截取及其 400 文案保持原函数规则。`documents.py` 直接重导出被现有调用方引用的名称，上传与预览入口直接依赖 utility。
 
-文件名清理、上传路径段归一化与上传 key 生成由 `app/api/utils/upload.py` 负责；共享 streaming 上传逻辑仍在同一 API utility。控制字符、Windows drive 前缀、FakePath、`..` 折叠、路径长度限制、文件名叶子截取及其 400 文案保持原函数规则。`documents.py` 直接重导出被现有调用方引用的名称，上传与预览入口直接依赖 utility。
-
 入库运行记录由 `ingestion_run_service` 的五个模块函数负责，入口位于私有统计与锁帮助函数之前。上传模块直接调用实际服务，不再从文档路由装配器取静态类；两个只为取得服务而接收整个模块的参数同时退出。数据库与模型已声明的字段直接使用，JSON 统计和文档元数据仍保留真实形状适配。
 
 创建运行记录的数据库失败由调用方决定处理方式；绑定与收尾维持 best-effort，状态通知的 `required` 模式仍在回滚后抛错。运行行锁先于关联行锁、重复绑定幂等、唯一约束、提交与观测顺序、统计 top 上限及空批失败规则继续保持。已有并发夹具仅补齐模型的 config 字段和 Session.flush，并同步服务引用，不增加用例或断言。
@@ -54,6 +52,8 @@ MinerU 的 `_normalize_batch_status` 已提供七个状态字段，API 直接消
 
 API 请求的 `PipelineOptionOverrides` 和 `to_pipeline_options` 由 `app/api/utils/pipeline_options.py` 统一维护。手工入库、上传、文件预览与分块预览都直接导入；`documents` 路由保留原有类型名称的直接重导出。外部 schema 解析、覆盖字段顺序、None 过滤、`PipelineOptions` 默认结果及 400 错误的生产文案继续保持一致。
 
+multipart 表单的 pipeline JSON 解析与 chunk overlap 约束也由该 API utility 负责。解析保留空值／`null`／`none`／`undefined` 的处理、表单长度上限、schema 校验和生产错误脱敏；overlap 仍在非集成 chunk strategy 上与 chunk size 比较。上传直接依赖 ingestion policy、governance profile、parser、chunker、pipeline config、pipeline types 与 document identity 的实际所有者。`documents.py` 保留旧 parser、validator、常量的直接导出。
+
 preview 图片引用解析、本地临时文件读取与 owner sidecar 验证、legacy 记录查询和 MinIO 存储由已有 `document_preview_utils` 共同负责。手工分块直接导入该 owner，documents 对外保留原名称的直接导出。legacy 查询仅在 owner 校验路径中局部导入，因为 `document_preview_legacy` 的正则直接来自本模块，顶层互相导入会产生循环。
 
 RBAC 与配额继续依赖这些成员契约，具体边界见[权限与配额决定](2026-11-02-permission-quota-contracts.md)。
@@ -62,7 +62,7 @@ RBAC 与配额继续依赖这些成员契约，具体边界见[权限与配额�
 
 ## Alternatives considered
 
-- 把文件名规则继续留在 `documents.py` 可以少搬函数，但上传模块需要由路由聚合器取验证逻辑。新建独立 filename service 又会把同一上传边界拆成两处。当前复用已有 `app/api/utils/upload.py`，它已拥有上传流和落盘规则。
+- 继续把 JSON 表单解析与 chunk overlap 检查放在 `documents.py` 可以少迁移几个名字，但上传、预览和分块预览会依赖路由聚合器。单建 upload pipeline 模块则会与现有 API `pipeline_options` utility 重叠。当前沿用该 utility 作为表单到 pipeline 类型的边界，并从现有业务模块导入策略、parser、chunker 和 metadata 规则。
 
 - 把文件名规则继续留在 `documents.py` 可以少搬函数，但上传模块需要由路由聚合器取验证逻辑。新建独立 filename service 又会把同一上传边界拆成两处。当前复用已有 `app/api/utils/upload.py`，它已拥有上传流和落盘规则。
 
@@ -103,4 +103,4 @@ URL 上传模型的单一声明位于文档 schema；上传与连接器入口不
 
 上传文件名和来源路径规则集中在现有上传 utility；旧 route export 仍有效，直接依赖的入口不再为归一化加载 `documents.py`。输入边界、拒绝错误与字符串长度约束保持原样。
 
-上传文件名和来源路径规则集中在现有上传 utility；旧 route export 仍有效，直接依赖的入口不再为归一化加载 `documents.py`。输入边界、拒绝错误与字符串长度约束保持原样。
+pipeline 的 JSON parser 和 chunk overlap validator 归入 `pipeline_options` utility 后，所有相关 endpoint 仍使用相同 schema、默认值、合并次序及 400 错误边界；上传配置流程不再从 documents 路由装配器读取其直接业务依赖。

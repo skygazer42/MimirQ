@@ -62,35 +62,35 @@ def _patch_minimal_document_resolution(
     monkeypatch.setattr(
         document_upload.dataset_service, "resolve_writable_dataset", lambda *args, **kwargs: dataset, raising=True
     )
-    monkeypatch.setattr(documents_module, "_parse_pipeline_json", lambda raw: None, raising=True)
+    monkeypatch.setattr(document_upload, "_parse_pipeline_json", lambda raw: None, raising=True)
     monkeypatch.setattr(
         document_upload,
         "to_pipeline_options",
-        lambda *args, **kwargs: documents_module.PipelineOptions(),
+        lambda *args, **kwargs: document_upload.PipelineOptions(),
         raising=True,
     )
-    monkeypatch.setattr(documents_module, "match_ingestion_rule", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(document_upload, "match_ingestion_rule", lambda *args, **kwargs: None, raising=True)
     monkeypatch.setattr(
-        documents_module.parser_factory,
+        document_upload.parser_factory,
         "resolve_backend",
         lambda *args, **kwargs: "auto",
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module.chunker_factory,
+        document_upload.chunker_factory,
         "resolve_strategy",
         lambda *args, **kwargs: "langchain_recursive",
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module,
+        document_upload,
         "resolve_pipeline_effective",
         lambda *args, **kwargs: SimpleNamespace(chunk_size=1000, chunk_overlap=100),
         raising=True,
     )
-    monkeypatch.setattr(documents_module, "_validate_chunk_params", lambda *args, **kwargs: None, raising=True)
-    monkeypatch.setattr(documents_module, "upsert_pipeline_metadata", lambda *args, **kwargs: None, raising=True)
-    monkeypatch.setattr(documents_module, "_compute_pipeline_hash", lambda meta: pipeline_hash, raising=True)
+    monkeypatch.setattr(document_upload, "_validate_chunk_params", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(document_upload, "upsert_pipeline_metadata", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(document_upload, "compute_pipeline_hash", lambda meta: pipeline_hash, raising=True)
     monkeypatch.setattr(documents_module, "_find_duplicate_document", lambda *args, **kwargs: None, raising=True)
     monkeypatch.setattr(documents_module, "_find_duplicate_document_by_sha", lambda *args, **kwargs: None, raising=True)
     monkeypatch.setattr(

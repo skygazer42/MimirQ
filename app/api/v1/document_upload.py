@@ -17,7 +17,12 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import DocumentBatchUploadResponse, DocumentDetail, UrlUploadRequest
 from app.api.utils.document_dispatch import schedule_document_processing
-from app.api.utils.pipeline_options import PipelineOptionOverrides, to_pipeline_options
+from app.api.utils.pipeline_options import (
+    PipelineOptionOverrides,
+    _parse_pipeline_json,
+    _validate_chunk_params,
+    to_pipeline_options,
+)
 from app.api.utils.upload import (
     _normalize_upload_key,
     _normalize_upload_path_parts,
@@ -27,15 +32,25 @@ from app.api.utils.upload import (
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.document import Document as DBDocument
+from app.parsing.factory import parser_factory
+from app.rag.chunking.factory import chunker_factory
 from app.rag.core.logging import get_logger
 from app.services import dataset_service, ingestion_run_service
 from app.services.document_identity import (
     build_document_dedup_key,
+    compute_pipeline_hash,
     get_content_sha256,
+    set_content_sha256,
     sync_pipeline_execution_identity,
 )
 from app.services.document_index_channel_service import reconcile_document_index_channels
 from app.services.document_metadata_service import apply_user_metadata_patch
+from app.services.ingestion_policy import (
+    match_ingestion_rule,
+    parse_ingestion_policy_from_metadata,
+    resolve_governance_profile_ref,
+)
+from app.services.pipeline_config import merge_pipeline_options, resolve_pipeline_effective, upsert_pipeline_metadata
 from app.storage.object.minio import minio_service as minio_service
 from app.storage.object.runtime import (
     document_object_storage_enabled,
@@ -47,6 +62,7 @@ from app.storage.object.runtime import (
     parse_object_storage_uri,
 )
 from app.tasks.locks import task_job_lock_ttl_sec
+from app.types.pipeline import PipelineOptions
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -601,8 +617,6 @@ def _resolve_governance_policy_patch(
     matched_rule: Any,
     governance_profile_cache: dict[str, Any] | None,
 ) -> tuple[dict[str, Any], str | None]:
-    from app.api.v1 import documents as documents_module
-
     patch_dict = dict(getattr(matched_rule, "pipeline_patch", None) or {})
     profile_ref = getattr(matched_rule, "governance_profile_ref", None)
     if not isinstance(profile_ref, str) or not profile_ref.strip():
@@ -612,7 +626,7 @@ def _resolve_governance_policy_patch(
     cached = None if governance_profile_cache is None else governance_profile_cache.get(ref)
     if cached is None:
         try:
-            cached = documents_module.resolve_governance_profile_ref(
+            cached = resolve_governance_profile_ref(
                 db=db,
                 tenant_id=tenant_id,
                 profile_ref=ref,
@@ -665,12 +679,10 @@ def _resolve_parser_backend(
     file_ext: str,
     parser_backend_choice: str,
 ) -> str:
-    from app.api.v1 import documents as documents_module
-
     requested_parser_backend = (parser_backend_choice or "").strip().lower()
     if file_ext == ".pdf" and requested_parser_backend in {"", "auto"}:
         return "auto"
-    return documents_module.parser_factory.resolve_backend(file_ext, parser_backend_choice)
+    return parser_factory.resolve_backend(file_ext, parser_backend_choice)
 
 
 def _validate_pipeline_chunk_settings(
@@ -679,18 +691,13 @@ def _validate_pipeline_chunk_settings(
     pipeline_options: Any,
     resolved_chunk_strategy: str,
 ) -> None:
-    from app.api.v1 import documents as documents_module
-
-    pipeline_effective = documents_module.resolve_pipeline_effective(
+    pipeline_effective = resolve_pipeline_effective(
         dataset_metadata=(dataset_meta or {}),
         document_metadata={},
         request_overrides=pipeline_options,
     )
-    if resolved_chunk_strategy not in documents_module.chunker_factory.INTEGRATED_PIPELINE_STRATEGIES:
-        documents_module._validate_chunk_params(
-            pipeline_effective.chunk_size,
-            pipeline_effective.chunk_overlap,
-        )
+    if resolved_chunk_strategy not in chunker_factory.INTEGRATED_PIPELINE_STRATEGIES:
+        _validate_chunk_params(pipeline_effective.chunk_size, pipeline_effective.chunk_overlap)
 
 
 def _resolve_upload_pipeline(
@@ -705,20 +712,18 @@ def _resolve_upload_pipeline(
     defaults: _UploadDefaultSelection,
     governance_profile_cache: dict[str, Any] | None = None,
 ) -> _ResolvedUploadPipeline:
-    from app.api.v1 import documents as documents_module
-
     pipeline_options = to_pipeline_options(
         pipeline=pipeline_parsed,
         overrides=pipeline_overrides,
     )
-    matched_rule = documents_module.match_ingestion_rule(
+    matched_rule = match_ingestion_rule(
         policy,
         filename=identity.upload_key or identity.filename,
         file_ext=identity.file_ext,
     )
     parser_backend_choice = defaults.parser_backend_base
     chunk_strategy_choice = defaults.chunk_strategy_base
-    policy_patch = documents_module.PipelineOptions()
+    policy_patch = PipelineOptions()
     ingestion_meta: dict[str, Any] | None = None
     if matched_rule is not None:
         parser_backend_choice, chunk_strategy_choice = _apply_matched_rule_defaults(
@@ -736,19 +741,19 @@ def _resolve_upload_pipeline(
             governance_profile_cache=governance_profile_cache,
         )
         if patch_dict:
-            policy_patch = documents_module.PipelineOptions(**patch_dict)
+            policy_patch = PipelineOptions(**patch_dict)
         ingestion_meta = _build_ingestion_meta(
             policy=policy,
             matched_rule=matched_rule,
             preprocess_steps=preprocess_steps,
             governance_profile_ref=governance_profile_ref,
         )
-    pipeline_options = documents_module.merge_pipeline_options(policy_patch, pipeline_options)
+    pipeline_options = merge_pipeline_options(policy_patch, pipeline_options)
     resolved_parser_backend = _resolve_parser_backend(
         file_ext=identity.file_ext,
         parser_backend_choice=parser_backend_choice,
     )
-    resolved_chunk_strategy = documents_module.chunker_factory.resolve_strategy(chunk_strategy_choice)
+    resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy_choice)
     _validate_pipeline_chunk_settings(
         dataset_meta=dataset_meta,
         pipeline_options=pipeline_options,
@@ -828,8 +833,6 @@ def _build_document_metadata(
     user_patch: dict[str, Any] | None,
     upload_only: bool,
 ) -> _PreparedDocumentMetadata:
-    from app.api.v1 import documents as documents_module
-
     requested_parser_backend = (request_parser_backend or "").strip().lower()
     doc_metadata = {
         "parser_backend": resolved_pipeline.resolved_parser_backend,
@@ -845,8 +848,8 @@ def _build_document_metadata(
     if identity.source_path:
         doc_metadata["source_path"] = identity.source_path
     if isinstance(file_sha256, str) and file_sha256:
-        documents_module.set_content_sha256(doc_metadata, file_sha256)
-    documents_module.upsert_pipeline_metadata(doc_metadata, options=resolved_pipeline.pipeline_options)
+        set_content_sha256(doc_metadata, file_sha256)
+    upsert_pipeline_metadata(doc_metadata, options=resolved_pipeline.pipeline_options)
     if resolved_pipeline.ingestion_meta:
         doc_metadata["ingestion"] = resolved_pipeline.ingestion_meta
     if isinstance(user_patch, dict) and user_patch:
@@ -857,7 +860,7 @@ def _build_document_metadata(
         )
     if upload_only:
         doc_metadata["ingest_stage"] = "uploaded_only"
-    pipeline_hash = documents_module._compute_pipeline_hash(doc_metadata)
+    pipeline_hash = compute_pipeline_hash(doc_metadata)
     doc_metadata["pipeline_hash"] = pipeline_hash
     doc_metadata.setdefault("active_pipeline_hash", pipeline_hash)
     doc_metadata.setdefault("active_pipeline_ready", False)
@@ -882,8 +885,6 @@ def _merge_duplicate_document_metadata(
     user_patch: dict[str, Any] | None,
     ingest_lock: _IngestLockLease,
 ) -> dict[str, Any]:
-    from app.api.v1 import documents as documents_module
-
     meta_any = dict(getattr(duplicate_document, "doc_metadata", None) or {})
     requested_parser_backend = (request_parser_backend or "").strip().lower()
     meta_any["parser_backend"] = resolved_pipeline.resolved_parser_backend
@@ -903,7 +904,7 @@ def _merge_duplicate_document_metadata(
         file_sha256=file_sha256,
         pipeline_hash=pipeline_hash,
     )
-    documents_module.upsert_pipeline_metadata(meta_any, options=resolved_pipeline.pipeline_options)
+    upsert_pipeline_metadata(meta_any, options=resolved_pipeline.pipeline_options)
     if resolved_pipeline.ingestion_meta:
         meta_any["ingestion"] = resolved_pipeline.ingestion_meta
     if isinstance(user_patch, dict) and user_patch:
@@ -1666,9 +1667,9 @@ def _apply_precheck_policy_suggestion(
         documents_module.logger.warning("Precheck-first policy apply failed: %s", str(exc)[:200])
 
 
-def _refresh_batch_policy(documents_module: Any, dataset: Any) -> Any:
+def _refresh_batch_policy(dataset: Any) -> Any:
     dataset_meta = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
-    return documents_module.parse_ingestion_policy_from_metadata(dataset_meta if isinstance(dataset_meta, dict) else {})  # type: ignore[arg-type]
+    return parse_ingestion_policy_from_metadata(dataset_meta if isinstance(dataset_meta, dict) else {})
 
 
 def _finalize_batch_ingestion_run(
@@ -1964,10 +1965,8 @@ async def _upload_document_impl(
     chunk_strategy = form.chunk_strategy
     dataset = dataset_service.resolve_writable_dataset(db, tenant_id, account_id, form.dataset_id)
     dataset_meta = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
-    policy = documents_module.parse_ingestion_policy_from_metadata(
-        dataset_meta if isinstance(dataset_meta, dict) else {}
-    )  # type: ignore[arg-type]
-    pipeline_parsed = documents_module._parse_pipeline_json(form.pipeline)
+    policy = parse_ingestion_policy_from_metadata(dataset_meta if isinstance(dataset_meta, dict) else {})  # type: ignore[arg-type]
+    pipeline_parsed = _parse_pipeline_json(form.pipeline)
     pipeline_overrides = PipelineOptionOverrides(**asdict(overrides_form))
     dataset_default_pb, dataset_default_cs = _dataset_upload_defaults(dataset_meta)
     defaults = _select_upload_defaults(
@@ -2221,11 +2220,11 @@ async def upload_documents_batch(
     precheck_first = form.precheck_first
     precheck_only = form.precheck_only
     upload_only = form.upload_only
-    pipeline_parsed = documents_module._parse_pipeline_json(form.pipeline)
+    pipeline_parsed = _parse_pipeline_json(form.pipeline)
     user_meta_by_key = _parse_batch_user_metadata_map(form.user_metadata_map)
     dataset = dataset_service.resolve_writable_dataset(db, tenant_id, account_id, form.dataset_id)
     dataset_meta = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
-    policy = _refresh_batch_policy(documents_module, dataset)
+    policy = _refresh_batch_policy(dataset)
     dataset_default_pb, dataset_default_cs = _dataset_upload_defaults(dataset_meta)
     defaults = _select_upload_defaults(
         parser_backend=parser_backend,
@@ -2289,7 +2288,7 @@ async def upload_documents_batch(
             with contextlib.suppress(Exception):
                 db.refresh(dataset)
             dataset_meta = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
-            policy = _refresh_batch_policy(documents_module, dataset)
+            policy = _refresh_batch_policy(dataset)
             dataset_default_pb, dataset_default_cs = _dataset_upload_defaults(dataset_meta)
             defaults = _select_upload_defaults(
                 parser_backend=parser_backend,

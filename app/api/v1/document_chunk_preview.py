@@ -24,17 +24,19 @@ from app.api.schemas.document import (
     ChunkPreviewReviewSignals,
     ChunkPreviewStats,
 )
-from app.api.utils.pipeline_options import to_pipeline_options
+from app.api.utils.pipeline_options import (
+    CHUNK_OVERLAP_LESS_THAN_SIZE_DETAIL,
+    _parse_pipeline_json,
+    to_pipeline_options,
+)
 from app.api.utils.upload import _sanitize_filename, save_upload_file_with_hash
 from app.api.v1.documents import (
-    CHUNK_OVERLAP_LESS_THAN_SIZE_DETAIL,
     POSITION_TAG_RE,
     _coerce_bool_preview,
     _coerce_float_preview,
     _coerce_int_preview,
     _decode_escaped_input_preview,
     _filter_chunker_kwargs_for_strategy,
-    _parse_pipeline_json,
     logger,
 )
 from app.core.config import settings

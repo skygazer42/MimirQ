@@ -25,7 +25,18 @@ from sqlalchemy.orm import Session
 
 from app.api.schemas.document import DocumentPipelineOptions, UrlUploadRequest
 from app.api.utils.document_dispatch import schedule_document_processing
-from app.api.utils.pipeline_options import PipelineOptionOverrides as PipelineOptionOverrides
+from app.api.utils.pipeline_options import (
+    CHUNK_OVERLAP_LESS_THAN_SIZE_DETAIL as CHUNK_OVERLAP_LESS_THAN_SIZE_DETAIL,
+)
+from app.api.utils.pipeline_options import (
+    PipelineOptionOverrides as PipelineOptionOverrides,
+)
+from app.api.utils.pipeline_options import (
+    _parse_pipeline_json as _parse_pipeline_json,
+)
+from app.api.utils.pipeline_options import (
+    _validate_chunk_params as _validate_chunk_params,
+)
 from app.api.utils.upload import FILENAME_INVALID_CHARS_DETAIL as FILENAME_INVALID_CHARS_DETAIL
 from app.api.utils.upload import _normalize_upload_key as _normalize_upload_key
 from app.api.utils.upload import _normalize_upload_path_parts as _normalize_upload_path_parts
@@ -189,7 +200,6 @@ from app.api.v1.document_versions import (
 )
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.core.env import is_production_env
 from app.models.dataset import Dataset
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.models.document import Document as DBDocument
@@ -342,7 +352,6 @@ PIPELINE_HASH_TOO_LONG_DETAIL = "pipeline_hash too long"
 CHUNK_NOT_FOUND_DETAIL = "Chunk not found"
 CHUNK_NOT_ACTIVE_PIPELINE_DETAIL = "Chunk is not in the active pipeline version"
 DOCUMENT_DEDUP_CONSTRAINT_NAME = "uq_documents_tenant_dataset_dedup_key_active"
-CHUNK_OVERLAP_LESS_THAN_SIZE_DETAIL = "chunk_overlap must be less than chunk_size"
 MANUAL_FILE_PATH_PREFIX = "manual://"
 CHUNK_PATCH_OPERATION = "chunk.patch"
 
@@ -442,34 +451,8 @@ def _filter_chunker_kwargs_for_strategy(strategy: str, kwargs: dict[str, Any]) -
         return {}
 
 
-def _parse_pipeline_json(pipeline: str | None) -> DocumentPipelineOptions | None:
-    raw = (pipeline or "").strip()
-    if not raw or raw.lower() in {"null", "none", "undefined"}:
-        return None
-    max_len = int(settings.PIPELINE_FORM_JSON_MAX_CHARS or 200_000)
-    if max_len > 0 and len(raw) > max_len:
-        raise HTTPException(status_code=400, detail="pipeline is too large")
-    try:
-        payload = json.loads(raw)
-        if not isinstance(payload, dict):
-            raise ValueError("pipeline must be a JSON object")
-        return DocumentPipelineOptions.model_validate(payload)
-    except Exception as exc:  # noqa: BLE001
-        msg = (str(exc) or exc.__class__.__name__)[:200]
-        detail = "Invalid pipeline JSON" if is_production_env() else f"Invalid pipeline JSON: {msg}"
-        raise HTTPException(status_code=400, detail=detail) from exc
-
-
 def _compute_pipeline_hash(doc_metadata: dict) -> str:
     return compute_pipeline_hash(doc_metadata)
-
-
-def _validate_chunk_params(chunk_size: int, chunk_overlap: int) -> None:
-    if chunk_overlap >= chunk_size:
-        raise HTTPException(
-            status_code=400,
-            detail=CHUNK_OVERLAP_LESS_THAN_SIZE_DETAIL,
-        )
 
 
 def _get_document_for_chunk_ops(db: Session, tenant_id: UUID, document_id: UUID) -> DBDocument | None:
