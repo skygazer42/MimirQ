@@ -1,3 +1,4 @@
+from typing import NoReturn
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -8,26 +9,21 @@ from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
 from app.services import dataset_service, tenant_group_service
-from app.services.dataset_service import EDIT_ROLES
-from app.services.document_permission_service import DocumentGroupPermissionService
+from app.services.document_permission_service import get_document_partial_group_list
 
 NO_DOCUMENT_ACCESS_DETAIL = "No document access"
 NO_UNASSIGNED_DOCUMENT_WRITE_DETAIL = "No permission to manage unassigned documents"
 
 
-def _raise_no_document_access() -> None:
+def _raise_no_document_access() -> NoReturn:
     raise HTTPException(status_code=403, detail=NO_DOCUMENT_ACCESS_DETAIL)
 
 
 def _document_acl_owner_allowed(*, account_id: str, document: DBDocument, dataset: Dataset | None) -> bool:
-    if dataset is not None and str(getattr(dataset, "owner_id", "") or "") == account_id:
+    if dataset is not None and (dataset.owner_id or "") == account_id:
         return True
-    owner_id = (str(getattr(document, "owner_id", "") or "")).strip()
+    owner_id = (document.owner_id or "").strip()
     return bool(owner_id and owner_id == account_id)
-
-
-def _document_acl_inherited_allowed(*, dataset: Dataset | None) -> bool:
-    return dataset is not None
 
 
 def _document_acl_partial_member_allowed(
@@ -52,7 +48,7 @@ def _document_acl_partial_member_allowed(
     group_ids = tenant_group_service.resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
     if not group_ids:
         return False
-    allowlist_groups = DocumentGroupPermissionService.get_document_partial_group_list(
+    allowlist_groups = get_document_partial_group_list(
         db,
         tenant_id,
         document.id,
@@ -81,7 +77,7 @@ def assert_document_acl_readable(
     if not account_id:
         return
 
-    mode = (str(getattr(document, "access_mode", "") or "")).strip().lower()
+    mode = (document.access_mode or "").strip().lower()
     if _document_acl_owner_allowed(account_id=account_id, document=document, dataset=dataset):
         return
 
@@ -89,7 +85,7 @@ def assert_document_acl_readable(
         return
 
     if not mode or mode == "inherit":
-        if _document_acl_inherited_allowed(dataset=dataset):
+        if dataset is not None:
             return
         _raise_no_document_access()
 
@@ -119,7 +115,7 @@ def assert_document_readable_for_lifecycle(
     document: DBDocument,
 ) -> None:
     dataset: Dataset | None = None
-    if getattr(document, "dataset_id", None):
+    if document.dataset_id:
         dataset = dataset_service.get_dataset(db, tenant_id, document.dataset_id)
         dataset_service.assert_dataset_readable(db, dataset, account_id)
 
@@ -140,13 +136,13 @@ def assert_document_writable_for_unassigned_target(
     document: DBDocument,
 ) -> None:
     member = dataset_service.ensure_member(db, tenant_id, account_id)
-    role = (getattr(member, "role", None) or "").lower()
+    role = (member.role or "").lower()
     if role in UserRoles.ADMIN_ROLES:
         return
-    if role not in EDIT_ROLES:
+    if role not in UserRoles.EDIT_ROLES:
         raise HTTPException(status_code=403, detail=NO_UNASSIGNED_DOCUMENT_WRITE_DETAIL)
 
-    owner_id = (str(getattr(document, "owner_id", "") or "")).strip()
+    owner_id = (document.owner_id or "").strip()
     if owner_id and owner_id == account_id:
         return
 
@@ -161,7 +157,7 @@ def assert_document_access_manageable(
     document: DBDocument,
 ) -> None:
     """Authorize ACL repair without requiring the current document ACL."""
-    if getattr(document, "dataset_id", None):
+    if document.dataset_id:
         dataset = dataset_service.get_dataset(db, tenant_id, document.dataset_id)
         dataset_service.assert_dataset_writable(db, dataset, account_id)
         return
@@ -182,7 +178,7 @@ def assert_document_writable_for_lifecycle(
     document: DBDocument,
 ) -> None:
     dataset: Dataset | None = None
-    if getattr(document, "dataset_id", None):
+    if document.dataset_id:
         dataset = dataset_service.get_dataset(db, tenant_id, document.dataset_id)
         dataset_service.assert_dataset_writable(db, dataset, account_id)
         assert_document_acl_readable(

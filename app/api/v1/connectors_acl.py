@@ -8,10 +8,7 @@ from sqlalchemy.orm import Session
 from app.models.connector import ConnectorRun, ConnectorRunDocument
 from app.models.document import Document as DBDocument
 from app.rag.core.logging import get_logger
-from app.services.document_permission_service import (
-    DocumentGroupPermissionService,
-    DocumentPermissionService,
-)
+from app.services import document_permission_service
 
 _leader_module = None
 _CONNECTORS_MODULE_NAME = "app.api.v1.connectors"
@@ -91,11 +88,11 @@ def _apply_document_access_from_config(
             doc.owner_id = requested_by
 
         if access_mode == "partial_members":
-            DocumentPermissionService.update_partial_member_list(db, tenant_id, doc.id, list(access_members))
-            DocumentGroupPermissionService.update_partial_group_list(db, tenant_id, doc.id, list(access_groups))
+            document_permission_service.update_partial_member_list(db, tenant_id, doc.id, list(access_members))
+            document_permission_service.update_partial_group_list(db, tenant_id, doc.id, list(access_groups))
         else:
-            DocumentPermissionService.clear_partial_member_list(db, tenant_id, doc.id)
-            DocumentGroupPermissionService.clear_partial_group_list(db, tenant_id, doc.id)
+            document_permission_service.clear_partial_member_list(db, tenant_id, doc.id)
+            document_permission_service.clear_partial_group_list(db, tenant_id, doc.id)
     except Exception:
         with contextlib.suppress(Exception):
             from app.services.connector_acl_prometheus_metrics import (

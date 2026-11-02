@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -19,8 +20,8 @@ _DOC_ACCESS_DEFAULTS = {"", "inherit"}
 _DOC_ACCESS_ALL = "all_team_members"
 _DOC_ACCESS_OWNER_ONLY = "only_me"
 _DOC_ACCESS_PARTIAL = "partial_members"
-_DocumentAclRow = tuple[UUID, UUID | None, object, object]
-_AccessibleDocumentAclRow = tuple[UUID, UUID | None, object, object, object]
+_DocumentAclRow = tuple[UUID, UUID | None, str | None, str | None]
+_AccessibleDocumentAclRow = tuple[UUID, UUID | None, str | None, str | None, datetime | None]
 
 
 @dataclass(frozen=True)
@@ -29,16 +30,6 @@ class _DocumentAllowlistState:
     member_doc_ids: set[UUID]
     group_doc_ids: set[UUID]
     group_ids: set[UUID]
-
-
-def _resolve_account_group_ids(db: Session, *, tenant_id: UUID, account_id: str) -> set[UUID]:
-    """
-    Resolve tenant-scoped group ids for an account.
-
-    Note: this is a low-level helper used by permission checks; it must not raise
-    for missing memberships (empty set means "no groups").
-    """
-    return tenant_group_service.resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
 
 
 def build_dataset_read_filter(*, tenant_id: UUID, account_id: str) -> ColumnElement[bool]:
@@ -107,15 +98,15 @@ def build_document_read_filter(
     )
 
 
-def _normalize_doc_access_mode(value: object) -> str:
-    return (str(value or "")).strip().lower()
+def _normalize_doc_access_mode(value: str | None) -> str:
+    return (value or "").strip().lower()
 
 
 def _doc_access_allows(
     *,
     doc_id: UUID,
-    access_mode: object,
-    owner_id: object,
+    access_mode: str | None,
+    owner_id: str | None,
     account_id: str,
     allowlist_doc_ids: set[UUID],
     has_dataset: bool,
@@ -128,7 +119,7 @@ def _doc_access_allows(
     - Unknown modes fail closed for defense-in-depth.
     """
     mode = _normalize_doc_access_mode(access_mode)
-    owner = (str(owner_id or "")).strip()
+    owner = (owner_id or "").strip()
 
     if mode in _DOC_ACCESS_DEFAULTS:
         return has_dataset or bool(owner and owner == account_id)
@@ -178,10 +169,10 @@ def _resolve_allowed_dataset_ids(
             )
             .all()
         )
-        member_allowed_dataset_ids = {row[0] for row in rows if row and row[0]}
+        member_allowed_dataset_ids = {dataset_id for (dataset_id,) in rows}
         allowed_dataset_ids.update(member_allowed_dataset_ids)
 
-        group_ids = _resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
+        group_ids = tenant_group_service.resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
         group_allowed_dataset_ids: set[UUID] = set()
         if group_ids:
             rows = (
@@ -193,7 +184,7 @@ def _resolve_allowed_dataset_ids(
                 )
                 .all()
             )
-            group_allowed_dataset_ids = {row[0] for row in rows if row and row[0]}
+            group_allowed_dataset_ids = {dataset_id for (dataset_id,) in rows}
             allowed_dataset_ids.update(group_allowed_dataset_ids)
 
         # Group permission checks are a fallback after explicit (member) allowlists.
@@ -216,7 +207,7 @@ def _doc_ids_needing_allowlist(
     doc_ids: list[UUID] = []
     for doc_id, _dataset_id, access_mode, owner_id, *_rest in documents:
         mode = _normalize_doc_access_mode(access_mode)
-        if mode == _DOC_ACCESS_PARTIAL and (str(owner_id or "").strip() != account_id):
+        if mode == _DOC_ACCESS_PARTIAL and (owner_id or "").strip() != account_id:
             doc_ids.append(doc_id)
     return doc_ids
 
@@ -240,8 +231,8 @@ def _resolve_document_allowlist_state(
         )
         .all()
     )
-    member_doc_ids = {row[0] for row in rows if row and row[0]}
-    group_ids = _resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
+    member_doc_ids = {doc_id for (doc_id,) in rows}
+    group_ids = tenant_group_service.resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
     group_doc_ids: set[UUID] = set()
     if group_ids:
         rows = (
@@ -253,7 +244,7 @@ def _resolve_document_allowlist_state(
             )
             .all()
         )
-        group_doc_ids = {row[0] for row in rows if row and row[0]}
+        group_doc_ids = {doc_id for (doc_id,) in rows}
     return _DocumentAllowlistState(
         all_doc_ids=member_doc_ids | group_doc_ids,
         member_doc_ids=member_doc_ids,
@@ -265,15 +256,15 @@ def _resolve_document_allowlist_state(
 def _observe_partial_document_group_result(
     *,
     doc_id: UUID,
-    access_mode: object,
-    owner_id: object,
+    access_mode: str | None,
+    owner_id: str | None,
     account_id: str,
     allowlist_state: _DocumentAllowlistState,
 ) -> None:
     mode = _normalize_doc_access_mode(access_mode)
     if mode != _DOC_ACCESS_PARTIAL:
         return
-    if str(owner_id or "").strip() == account_id or doc_id in allowlist_state.member_doc_ids:
+    if (owner_id or "").strip() == account_id or doc_id in allowlist_state.member_doc_ids:
         return
     if not allowlist_state.group_ids:
         observe_group_permission_check(resource="document", action="read", result="deny_no_groups")
@@ -284,24 +275,12 @@ def _observe_partial_document_group_result(
     observe_group_permission_check(resource="document", action="read", result="deny_no_match")
 
 
-def _dataset_owner_can_access(
-    dataset_map: dict[UUID, Dataset],
-    *,
-    dataset_id: UUID | None,
-    account_id: str,
-) -> bool:
-    if dataset_id is None:
-        return False
-    dataset = dataset_map.get(dataset_id)
-    return dataset is not None and str(getattr(dataset, "owner_id", "") or "") == account_id
-
-
 def _document_is_accessible(
     *,
     doc_id: UUID,
     dataset_id: UUID | None,
-    access_mode: object,
-    owner_id: object,
+    access_mode: str | None,
+    owner_id: str | None,
     account_id: str,
     dataset_map: dict[UUID, Dataset],
     allowed_dataset_ids: set[UUID],
@@ -326,7 +305,7 @@ def _document_is_accessible(
         )
     if dataset_id not in dataset_map or dataset_id not in allowed_dataset_ids:
         return False
-    if _dataset_owner_can_access(dataset_map, dataset_id=dataset_id, account_id=account_id):
+    if (dataset_map[dataset_id].owner_id or "") == account_id:
         return True
     return _doc_access_allows(
         doc_id=doc_id,
@@ -396,7 +375,6 @@ def get_allowed_document_id_sets(
     doc_ids: list[UUID] | None,
     *,
     check_member: bool = True,
-    _check_member: bool | None = None,
 ) -> tuple[set[UUID], set[UUID]]:
     """
     Resolve (allowed_ids, missing_ids) for a set of document IDs.
@@ -404,8 +382,7 @@ def get_allowed_document_id_sets(
     - missing_ids: document ids not found under the tenant
     - allowed_ids: ids the account can read; unbound documents require an explicit ACL or ownership
     """
-    check_member0 = bool(_check_member) if _check_member is not None else bool(check_member)
-    if check_member0:
+    if check_member:
         dataset_service.ensure_member(db, tenant_id, account_id)
     if not doc_ids:
         return set(), set()
@@ -497,7 +474,7 @@ def list_accessible_document_ids(
     if dataset_id is not None:
         query = query.filter(DBDocument.dataset_id == dataset_id)
     if status:
-        if str(status).lower() == "completed":
+        if status.lower() == "completed":
             # Versioning: allow documents that are currently reprocessing/failed/cancelled,
             # as long as they still have an active pipeline that was completed before.
             query = query.filter(

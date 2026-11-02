@@ -8,16 +8,26 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from pydantic import BaseModel, Field
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
+from app.api.schemas.chunk_preset import (
+    ChunkPresetCreateRequest,
+    ChunkPresetListResponse,
+    ChunkPresetResponse,
+    ChunkPresetUpdateRequest,
+)
 from app.core.database import get_db
 from app.models.chunk_preset import ChunkPreset
 from app.models.dataset import Dataset
 from app.services import dataset_service
+from app.services.chunk_preset_service import create_chunk_preset as _create_chunk_preset_row
+from app.services.chunk_preset_service import delete_chunk_preset as _delete_chunk_preset_row
+from app.services.chunk_preset_service import get_chunk_preset as _get_chunk_preset_row
+from app.services.chunk_preset_service import list_chunk_presets as _list_chunk_preset_rows
+from app.services.chunk_preset_service import update_chunk_preset as _update_chunk_preset_row
 from app.services.document_access import build_dataset_read_filter
 from app.services.rbac_service import assert_edit_role
 
@@ -32,132 +42,13 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
-class ChunkPresetCreateRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
-    description: str | None = Field(default=None, max_length=10_000)
-    payload: dict[str, Any] = Field(default_factory=dict)
-
-
-class ChunkPresetUpdateRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
-    description: str | None = Field(default=None, max_length=10_000)
-    payload: dict[str, Any] = Field(default_factory=dict)
-
-
-class ChunkPresetResponse(BaseModel):
-    id: str
-    name: str
-    description: str | None = None
-    payload: dict[str, Any] = Field(default_factory=dict)
-
-
-class ChunkPresetListResponse(BaseModel):
-    items: list[ChunkPresetResponse] = Field(default_factory=list)
-
-
-def _row_to_response(row: Any) -> ChunkPresetResponse:
+def _row_to_response(row: ChunkPreset) -> ChunkPresetResponse:
     return ChunkPresetResponse(
         id=str(row.id),
-        name=str(row.name or ""),
+        name=row.name,
         description=row.description,
         payload=dict(row.payload or {}),
     )
-
-
-def _list_chunk_preset_rows(
-    *,
-    db: Session,
-    tenant_id: UUID,
-    q: str | None,
-    limit: int,
-    dataset_id: UUID | None,
-    include_global: bool,
-    readable_dataset_ids: set[UUID] | None = None,
-) -> list[Any]:
-    q = (q or "").strip()
-    limit = max(1, min(int(limit or 50), 200))
-    include_global = bool(include_global)
-
-    query = db.query(ChunkPreset).filter(ChunkPreset.tenant_id == tenant_id)
-    if dataset_id is not None:
-        if include_global:
-            query = query.filter(or_(ChunkPreset.dataset_id == dataset_id, ChunkPreset.dataset_id.is_(None)))
-        else:
-            query = query.filter(ChunkPreset.dataset_id == dataset_id)
-    elif readable_dataset_ids is not None:
-        query = query.filter(or_(ChunkPreset.dataset_id.is_(None), ChunkPreset.dataset_id.in_(readable_dataset_ids)))
-    if q:
-        query = query.filter(ChunkPreset.name.ilike(f"%{q}%"))
-
-    return (
-        query.order_by(ChunkPreset.updated_at.desc().nullslast(), ChunkPreset.created_at.desc().nullslast())
-        .limit(limit)
-        .all()
-    )
-
-
-def _get_chunk_preset_row(*, db: Session, tenant_id: UUID, preset_id: str) -> Any | None:
-    try:
-        pid = UUID(str(preset_id))
-    except Exception:  # noqa: BLE001
-        return None
-
-    return db.query(ChunkPreset).filter(ChunkPreset.tenant_id == tenant_id).filter(ChunkPreset.id == pid).first()
-
-
-def _create_chunk_preset_row(
-    *,
-    db: Session,
-    tenant_id: UUID,
-    dataset_id: UUID | None,
-    name: str,
-    description: str | None,
-    payload: dict,
-) -> Any:
-    row = ChunkPreset(
-        tenant_id=tenant_id,
-        dataset_id=dataset_id,
-        name=str(name or "").strip(),
-        description=description,
-        payload=payload or {},
-    )
-    db.add(row)
-    db.commit()
-    db.refresh(row)
-    return row
-
-
-def _update_chunk_preset_row(
-    *,
-    db: Session,
-    tenant_id: UUID,
-    preset_id: str,
-    dataset_id: UUID | None,
-    name: str,
-    description: str | None,
-    payload: dict,
-) -> Any | None:
-    row = _get_chunk_preset_row(db=db, tenant_id=tenant_id, preset_id=preset_id)
-    if not row:
-        return None
-
-    row.dataset_id = dataset_id
-    row.name = str(name or "").strip()
-    row.description = description
-    row.payload = payload or {}
-
-    db.commit()
-    db.refresh(row)
-    return row
-
-
-def _delete_chunk_preset_row(*, db: Session, tenant_id: UUID, preset_id: str) -> bool:
-    row = _get_chunk_preset_row(db=db, tenant_id=tenant_id, preset_id=preset_id)
-    if not row:
-        return False
-    db.delete(row)
-    db.commit()
-    return True
 
 
 def _dataset_uuid_from_payload(payload: dict[str, Any]) -> UUID | None:
@@ -169,14 +60,8 @@ def _dataset_uuid_from_payload(payload: dict[str, Any]) -> UUID | None:
         return None
     try:
         return UUID(s)
-    except Exception as exc:  # noqa: BLE001
+    except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"invalid payload.dataset_id: {s[:64]}") from exc
-
-
-def _get_scoped_dataset(*, db: Session, tenant_id: UUID, dataset_id: UUID | None):
-    if dataset_id is None:
-        return None
-    return dataset_service.get_dataset(db, tenant_id, dataset_id)
 
 
 @router.get("", response_model=ChunkPresetListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -189,15 +74,15 @@ def list_chunk_presets(
     db: Annotated[Session, Depends(get_db)],
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
-):
+) -> ChunkPresetListResponse:
     dataset_service.ensure_member(db, tenant_id, account_id)
     dataset_uuid: UUID | None = None
-    if dataset_id is not None and str(dataset_id).strip():
+    if dataset_id is not None and dataset_id.strip():
         try:
-            dataset_uuid = UUID(str(dataset_id))
-        except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=400, detail=f"invalid dataset_id: {str(dataset_id)[:64]}") from exc
-        dataset = _get_scoped_dataset(db=db, tenant_id=tenant_id, dataset_id=dataset_uuid)
+            dataset_uuid = UUID(dataset_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"invalid dataset_id: {dataset_id[:64]}") from exc
+        dataset = dataset_service.get_dataset(db, tenant_id, dataset_uuid)
         dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     readable_dataset_ids: set[UUID] | None = None
@@ -215,9 +100,9 @@ def list_chunk_presets(
         db=db,
         tenant_id=tenant_id,
         q=q,
-        limit=int(limit or 100),
+        limit=limit,
         dataset_id=dataset_uuid,
-        include_global=bool(include_global),
+        include_global=include_global,
         readable_dataset_ids=readable_dataset_ids,
     )
     return ChunkPresetListResponse(items=[_row_to_response(r) for r in rows])
@@ -230,12 +115,12 @@ def create_chunk_preset(
     db: Annotated[Session, Depends(get_db)],
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
-):
+) -> ChunkPresetResponse:
     member = dataset_service.ensure_member(db, tenant_id, account_id)
     assert_edit_role(member)
     dataset_uuid = _dataset_uuid_from_payload(req.payload)
     if dataset_uuid is not None:
-        dataset = _get_scoped_dataset(db=db, tenant_id=tenant_id, dataset_id=dataset_uuid)
+        dataset = dataset_service.get_dataset(db, tenant_id, dataset_uuid)
         dataset_service.assert_dataset_writable(db, dataset, account_id)
     row = _create_chunk_preset_row(
         db=db,
@@ -256,18 +141,18 @@ def update_chunk_preset(
     db: Annotated[Session, Depends(get_db)],
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
-):
+) -> ChunkPresetResponse:
     member = dataset_service.ensure_member(db, tenant_id, account_id)
     assert_edit_role(member)
     existing = _get_chunk_preset_row(db=db, tenant_id=tenant_id, preset_id=preset_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Chunk preset not found")
-    if getattr(existing, "dataset_id", None) is not None:
-        existing_dataset = _get_scoped_dataset(db=db, tenant_id=tenant_id, dataset_id=existing.dataset_id)
+    if existing.dataset_id is not None:
+        existing_dataset = dataset_service.get_dataset(db, tenant_id, existing.dataset_id)
         dataset_service.assert_dataset_writable(db, existing_dataset, account_id)
     dataset_uuid = _dataset_uuid_from_payload(req.payload)
     if dataset_uuid is not None:
-        dataset = _get_scoped_dataset(db=db, tenant_id=tenant_id, dataset_id=dataset_uuid)
+        dataset = dataset_service.get_dataset(db, tenant_id, dataset_uuid)
         dataset_service.assert_dataset_writable(db, dataset, account_id)
     row = _update_chunk_preset_row(
         db=db,
@@ -288,14 +173,14 @@ def delete_chunk_preset(
     db: Annotated[Session, Depends(get_db)],
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
-):
+) -> Response:
     member = dataset_service.ensure_member(db, tenant_id, account_id)
     assert_edit_role(member)
     existing = _get_chunk_preset_row(db=db, tenant_id=tenant_id, preset_id=preset_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Chunk preset not found")
-    if getattr(existing, "dataset_id", None) is not None:
-        dataset = _get_scoped_dataset(db=db, tenant_id=tenant_id, dataset_id=existing.dataset_id)
+    if existing.dataset_id is not None:
+        dataset = dataset_service.get_dataset(db, tenant_id, existing.dataset_id)
         dataset_service.assert_dataset_writable(db, dataset, account_id)
     ok = _delete_chunk_preset_row(db=db, tenant_id=tenant_id, preset_id=preset_id)
     if not ok:

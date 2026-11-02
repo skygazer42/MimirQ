@@ -1,4 +1,3 @@
-import uuid
 from typing import Annotated
 from uuid import UUID
 
@@ -11,10 +10,9 @@ from app.api.schemas.document import DocumentAccessInfo, DocumentAccessUpdateReq
 from app.core.database import get_db
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
-from app.services import dataset_service
+from app.services import dataset_service, document_permission_service
 from app.services.audit_log_service import audit_log_event
 from app.services.document_access_service import assert_document_access_manageable, assert_document_acl_readable
-from app.services.document_permission_service import DocumentGroupPermissionService, DocumentPermissionService
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -31,12 +29,12 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 @router.get("/{document_id}/access", response_model=DocumentAccessInfo, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_document_access(
-    document_id: uuid.UUID,
+    document_id: UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> DocumentAccessInfo:
     """Get document-level ACL settings (requires document read access)."""
     dataset_service.ensure_member(db, tenant_id, account_id)
 
@@ -50,16 +48,16 @@ def get_document_access(
         dataset_service.assert_dataset_readable(db, dataset, account_id)
     assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=dataset)
 
-    mode = (str(getattr(document, "access_mode", "") or "")).strip().lower() or "inherit"
+    mode = (document.access_mode or "").strip().lower() or "inherit"
     allowlist: list[str] | None = None
     allowlist_groups: list[UUID] | None = None
     if mode == "partial_members":
-        allowlist = DocumentPermissionService.get_document_partial_member_list(db, tenant_id, document_id)
-        allowlist_groups = DocumentGroupPermissionService.get_document_partial_group_list(db, tenant_id, document_id)
+        allowlist = document_permission_service.get_document_partial_member_list(db, tenant_id, document_id)
+        allowlist_groups = document_permission_service.get_document_partial_group_list(db, tenant_id, document_id)
 
     return DocumentAccessInfo(
         mode=mode,  # type: ignore[arg-type]
-        owner_id=(getattr(document, "owner_id", None) or None),
+        owner_id=(document.owner_id or None),
         partial_member_list=allowlist,
         partial_group_list=allowlist_groups,
     )
@@ -67,13 +65,13 @@ def get_document_access(
 
 @router.put("/{document_id}/access", response_model=DocumentAccessInfo, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def put_document_access(
-    document_id: uuid.UUID,
+    document_id: UUID,
     payload: DocumentAccessUpdateRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> DocumentAccessInfo:
     """Update document ACL settings using dataset or unassigned-document ownership policy."""
     dataset_service.ensure_member(db, tenant_id, account_id)
 
@@ -88,28 +86,28 @@ def put_document_access(
         document=document,
     )
 
-    mode = str(payload.mode or "inherit").strip().lower()
+    mode = payload.mode
     document.access_mode = None if mode == "inherit" else mode
 
-    if not (getattr(document, "owner_id", None) or "").strip():
+    if not (document.owner_id or "").strip():
         document.owner_id = account_id
 
     if mode == "partial_members":
-        DocumentPermissionService.update_partial_member_list(
+        document_permission_service.update_partial_member_list(
             db,
             tenant_id,
             document_id,
-            list(payload.partial_member_list or []),
+            payload.partial_member_list or [],
         )
-        DocumentGroupPermissionService.update_partial_group_list(
+        document_permission_service.update_partial_group_list(
             db,
             tenant_id,
             document_id,
-            list(payload.partial_group_list or []),
+            payload.partial_group_list or [],
         )
     else:
-        DocumentPermissionService.clear_partial_member_list(db, tenant_id, document_id)
-        DocumentGroupPermissionService.clear_partial_group_list(db, tenant_id, document_id)
+        document_permission_service.clear_partial_member_list(db, tenant_id, document_id)
+        document_permission_service.clear_partial_group_list(db, tenant_id, document_id)
 
     db.commit()
     db.refresh(document)
@@ -117,8 +115,8 @@ def put_document_access(
     allowlist: list[str] | None = None
     allowlist_groups: list[UUID] | None = None
     if mode == "partial_members":
-        allowlist = DocumentPermissionService.get_document_partial_member_list(db, tenant_id, document_id)
-        allowlist_groups = DocumentGroupPermissionService.get_document_partial_group_list(db, tenant_id, document_id)
+        allowlist = document_permission_service.get_document_partial_member_list(db, tenant_id, document_id)
+        allowlist_groups = document_permission_service.get_document_partial_group_list(db, tenant_id, document_id)
 
     audit_log_event(
         db,
@@ -129,9 +127,9 @@ def put_document_access(
         resource_id=str(document_id),
         details={
             "mode": mode,
-            "dataset_id": str(getattr(document, "dataset_id", None) or "") or None,
-            "partial_member_count": int(len(allowlist or [])),
-            "partial_group_count": int(len(allowlist_groups or [])),
+            "dataset_id": str(document.dataset_id) if document.dataset_id is not None else None,
+            "partial_member_count": len(allowlist or []),
+            "partial_group_count": len(allowlist_groups or []),
         },
     )
     try:
@@ -141,7 +139,7 @@ def put_document_access(
 
     return DocumentAccessInfo(
         mode=mode,  # type: ignore[arg-type]
-        owner_id=(getattr(document, "owner_id", None) or None),
+        owner_id=(document.owner_id or None),
         partial_member_list=allowlist,
         partial_group_list=allowlist_groups,
     )
