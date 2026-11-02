@@ -8,7 +8,6 @@ This is a minimal v1 implementation focused on:
 
 import importlib
 import sys
-from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter
@@ -50,6 +49,16 @@ from app.core.secrets import (
     encrypt_connector_config_secrets as encrypt_connector_config_secrets,
 )
 from app.services.audit_log_service import audit_log_event as audit_log_event
+from app.services.connector_config_operations import (
+    _DB_CONNECTOR_IDS as _DB_CONNECTOR_IDS,
+)
+from app.services.connector_config_operations import (
+    CONNECTOR_CONFIG_NOT_FOUND_DETAIL as CONNECTOR_CONFIG_NOT_FOUND_DETAIL,
+)
+from app.services.connector_config_operations import (
+    _config_out as _config_out,
+)
+from app.services.connector_execution.shared.runtime import _now as _now
 from app.services.connector_reconcile_service import (
     plan_connector_reconcile as plan_connector_reconcile,
 )
@@ -57,6 +66,21 @@ from app.services.connector_reconcile_service import (
     resolve_connector_reconcile_source_refs as resolve_connector_reconcile_source_refs,
 )
 from app.services.connector_registry import get_connector_definition as get_connector_definition
+from app.services.connector_schedule_operations import (
+    _schedule_due as _schedule_due,
+)
+from app.services.connector_schedule_operations import (
+    _schedule_elapsed_seconds as _schedule_elapsed_seconds,
+)
+from app.services.connector_schedule_operations import (
+    _schedule_interval_from_parts as _schedule_interval_from_parts,
+)
+from app.services.connector_schedule_operations import (
+    _schedule_interval_seconds as _schedule_interval_seconds,
+)
+from app.services.connector_schedule_operations import (
+    _schedule_positive_int as _schedule_positive_int,
+)
 from app.services.connector_sync_state import (
     build_persisted_state as build_persisted_state,
 )
@@ -80,20 +104,12 @@ connectors_jira._leader_module = _THIS_MODULE
 connectors_minio_bucket._leader_module = _THIS_MODULE
 connectors_web_crawl._leader_module = _THIS_MODULE
 
-_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
-    400: {"description": "Bad Request"},
-    403: {"description": "Forbidden"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    416: {"description": "Range Not Satisfiable"},
-}
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = connectors_common._DEFAULT_HTTP_EXCEPTION_RESPONSES
 
 _router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 _router.routes.extend(connectors_catalog.router.routes)
 _router.routes.extend(connectors_validation.router.routes)
-_DB_CONNECTOR_IDS = {"mysql_catalog", "sqlserver_catalog"}
 URL_SHA256_PREFIX = "url_sha256:"
-CONNECTOR_CONFIG_NOT_FOUND_DETAIL = "Connector config not found"
 JIRA_UPDATED_SOURCE = "connector:jira:updated"
 UNSUPPORTED_CONNECTOR_ID_DETAIL = "Unsupported connector_id"
 URL_INGEST_DISABLED_DETAIL = "URL ingestion is disabled"
@@ -149,12 +165,6 @@ _unknown_tenant_groups = connectors_state._unknown_tenant_groups
 _normalize_doc_access_mode = connectors_state._normalize_doc_access_mode
 _fetch_connector_run_acl_summaries = connectors_state._fetch_connector_run_acl_summaries
 _run_out = connectors_state._run_out
-_config_out = connectors_state._config_out
-_schedule_elapsed_seconds = connectors_state._schedule_elapsed_seconds
-_schedule_positive_int = connectors_state._schedule_positive_int
-_schedule_interval_from_parts = connectors_state._schedule_interval_from_parts
-_schedule_interval_seconds = connectors_state._schedule_interval_seconds
-_schedule_due = connectors_state._schedule_due
 _sync_connector_config_from_run = connectors_state._sync_connector_config_from_run
 _apply_document_access_from_config = connectors_acl._apply_document_access_from_config
 _delta_sync_connector_documents_acl_by_source_url = connectors_acl._delta_sync_connector_documents_acl_by_source_url
@@ -392,10 +402,6 @@ _finalize_cancelled_web_crawl_run = connectors_web_crawl._finalize_cancelled_web
 _reconcile_removed_web_crawl_urls = connectors_web_crawl._reconcile_removed_web_crawl_urls
 _finalize_web_crawl_run_success = connectors_web_crawl._finalize_web_crawl_run_success
 _mark_web_crawl_run_failed = connectors_web_crawl._mark_web_crawl_run_failed
-
-
-def _now() -> datetime:
-    return datetime.now(UTC)
 
 
 async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:

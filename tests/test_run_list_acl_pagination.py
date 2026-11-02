@@ -243,6 +243,8 @@ def test_list_connector_runs_applies_acl_before_count_and_pagination(monkeypatch
 
 
 def test_list_connector_configs_applies_acl_before_count_and_pagination(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.services.connector_config_operations as config_operations
+
     tenant_id, runs, allowed_dataset_ids = _build_runs()
     configs = [
         _FakeConfig(id=run.id, tenant_id=run.tenant_id, dataset_id=run.dataset_id, created_at=run.created_at)
@@ -250,20 +252,19 @@ def test_list_connector_configs_applies_acl_before_count_and_pagination(monkeypa
         if run.dataset_id is not None
     ]
     db = _FakeSession(query=_FakeQuery(runs=configs))
-    assert connectors_configs_module.connectors_module is connectors_facade
     calls = _install_acl_guards(
         monkeypatch,
-        dataset_service=connectors_configs_module.dataset_service,
+        dataset_service=config_operations.dataset_service,
         allowed_dataset_ids=allowed_dataset_ids,
     )
     monkeypatch.setattr(
-        connectors_configs_module,
+        config_operations,
         "_writable_dataset_ids_subquery",
         lambda **_kwargs: list(allowed_dataset_ids),
         raising=True,
     )
     monkeypatch.setattr(
-        connectors_configs_module.connectors_module,
+        config_operations,
         "_config_out",
         lambda cfg: {"id": cfg.id, "dataset_id": cfg.dataset_id},
         raising=True,

@@ -1,12 +1,11 @@
 import contextlib
-from datetime import datetime
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
-from app.api.schemas.connector import ConnectorConfigOut, ConnectorRunOut
+from app.api.schemas.connector import ConnectorRunOut
 from app.core.secrets import redact_secrets
 from app.models.connector import ConnectorRun, ConnectorRunDocument
 from app.models.connector_config import ConnectorConfig
@@ -14,19 +13,11 @@ from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
 from app.models.group_permissions import DocumentGroupPermission
 from app.models.tenant_group import TenantGroup
+from app.services.connector_execution.shared.runtime import _now as _now
 from app.services.connector_sync_state import build_saved_state_snapshot
 from app.services.security_redaction import redact_connection_info
 
 _leader_module = None
-
-
-def _now() -> datetime:
-    leader = globals().get("_leader_module")
-    if leader is not None and hasattr(leader, "_now"):
-        return leader._now()
-    from datetime import UTC
-
-    return datetime.now(UTC)
 
 
 def _unknown_tenant_groups(
@@ -237,101 +228,6 @@ def _run_out(
             for d in docs
         ],
     )
-
-
-def _config_out(cfg: ConnectorConfig) -> ConnectorConfigOut:
-    leader = globals().get("_leader_module")
-    db_connectors = getattr(leader, "_DB_CONNECTOR_IDS", set()) if leader is not None else set()
-    connector_id = str(cfg.connector_id or "").strip()
-    config = redact_secrets(dict(cfg.config or {}))
-    config = redact_connection_info(config, enabled=connector_id in db_connectors)
-    return ConnectorConfigOut(
-        id=cfg.id,
-        tenant_id=cfg.tenant_id,
-        dataset_id=cfg.dataset_id,
-        connector_id=connector_id,
-        name=str(cfg.name or ""),
-        enabled=bool(cfg.enabled),
-        schedule_cron=(
-            str(cfg.schedule_cron).strip() if isinstance(cfg.schedule_cron, str) and cfg.schedule_cron.strip() else None
-        ),
-        config=config,
-        state=dict(cfg.state or {}),
-        last_run_at=(cfg.last_run_at or None),
-        last_error=(cfg.last_error or None),
-        created_at=cfg.created_at,
-        updated_at=cfg.updated_at,
-    )
-
-
-def _schedule_elapsed_seconds(*, now: datetime, last_run_at: datetime | None) -> float:
-    if last_run_at is None:
-        return 10**18
-    try:
-        return (now - last_run_at).total_seconds()
-    except Exception:
-        return 10**18
-
-
-def _schedule_positive_int(raw: str) -> int | None:
-    try:
-        return max(1, int(raw))
-    except Exception:
-        return None
-
-
-def _schedule_interval_from_parts(
-    minute: str,
-    hour: str,
-    day: str,
-    month: str,
-    dow: str,
-) -> int | None:
-    step_patterns = (
-        (minute.startswith("*/") and hour == "*" and day == "*" and month == "*" and dow == "*", minute[2:], 60),
-        (minute == "0" and hour.startswith("*/") and day == "*" and month == "*" and dow == "*", hour[2:], 60 * 60),
-        (minute == "0" and hour == "0" and day.startswith("*/") and month == "*" and dow == "*", day[2:], 60 * 60 * 24),
-    )
-    for matched, raw_value, multiplier in step_patterns:
-        if not matched:
-            continue
-        value = _schedule_positive_int(raw_value)
-        return None if value is None else multiplier * value
-    return None
-
-
-def _schedule_interval_seconds(schedule: str) -> int | None:
-    raw = str(schedule or "").strip().lower()
-    if not raw:
-        return None
-
-    fixed_intervals = {
-        "@hourly": 60 * 60,
-        "@daily": 60 * 60 * 24,
-        "@weekly": 60 * 60 * 24 * 7,
-        "@monthly": 60 * 60 * 24 * 30,
-    }
-    if raw in fixed_intervals:
-        return fixed_intervals[raw]
-
-    parts = raw.split()
-    if len(parts) != 5:
-        return None
-
-    minute, hour, day, month, dow = parts
-    return _schedule_interval_from_parts(minute, hour, day, month, dow)
-
-
-def _schedule_due(
-    *,
-    schedule: str,
-    now: datetime,
-    last_run_at: datetime | None,
-) -> bool:
-    interval_sec = _schedule_interval_seconds(schedule)
-    if interval_sec is None:
-        return False
-    return _schedule_elapsed_seconds(now=now, last_run_at=last_run_at) >= interval_sec
 
 
 def _sync_connector_config_from_run(db: Session, *, run: ConnectorRun) -> None:

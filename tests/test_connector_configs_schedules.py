@@ -167,6 +167,7 @@ def test_shared_connector_enqueue_helper_rejects_unsupported_connector_before_ha
 
 def test_run_connector_config_uses_shared_enqueue_helper(monkeypatch) -> None:  # noqa: ANN001
     import app.api.v1.connectors_configs as configs_api
+    import app.services.connector_config_operations as config_operations
 
     tenant_id = uuid4()
     dataset_id = uuid4()
@@ -183,25 +184,24 @@ def test_run_connector_config_uses_shared_enqueue_helper(monkeypatch) -> None:  
     queued: list[dict[str, object]] = []
 
     monkeypatch.setattr(
-        configs_api.dataset_service,
+        config_operations.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
     monkeypatch.setattr(
-        configs_api.dataset_service,
+        config_operations.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=dataset_id),
         raising=True,
     )
     monkeypatch.setattr(
-        configs_api.dataset_service,
+        config_operations.dataset_service,
         "assert_dataset_writable",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
-    monkeypatch.setattr(configs_api.connectors_module.settings, "URL_INGEST_ENABLED", True, raising=False)
-    monkeypatch.setattr(configs_api, "validate_db_connector_config", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(config_operations.settings, "URL_INGEST_ENABLED", True, raising=False)
 
     async def _fake_enqueue(db, *, background_tasks, run, tenant_id, requested_by):  # noqa: ANN001, ANN202
         queued.append(
@@ -216,8 +216,8 @@ def test_run_connector_config_uses_shared_enqueue_helper(monkeypatch) -> None:  
         return {"id": run.id, "task_id": getattr(run, "task_id", None)}
 
     monkeypatch.setattr(
-        configs_api,
-        "_enqueue_or_schedule_connector_run",
+        config_operations,
+        "enqueue_or_schedule_run",
         _fake_enqueue,
         raising=True,
     )
@@ -244,7 +244,7 @@ def test_run_connector_config_uses_shared_enqueue_helper(monkeypatch) -> None:  
 
 
 def test_scheduled_config_claim_dedupes_same_window_and_uses_shared_enqueue_helper(monkeypatch) -> None:  # noqa: ANN001
-    import app.api.v1.connectors_schedules as schedules_api
+    import app.services.connector_schedule_operations as schedule_operations
 
     tenant_id = uuid4()
     dataset_id = uuid4()
@@ -273,11 +273,21 @@ def test_scheduled_config_claim_dedupes_same_window_and_uses_shared_enqueue_help
         queued.append(run.id)
         return {"id": run.id}
 
-    monkeypatch.setattr(schedules_api, "_enqueue_or_schedule_connector_run", _fake_enqueue, raising=True)
-    monkeypatch.setattr(schedules_api, "_config_dataset_is_writable", lambda *_args, **_kwargs: True, raising=True)
-    monkeypatch.setattr(schedules_api, "_disabled_connector_error", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(schedule_operations, "enqueue_or_schedule_run", _fake_enqueue, raising=True)
+    monkeypatch.setattr(
+        schedule_operations,
+        "_config_dataset_is_writable",
+        lambda *_args, **_kwargs: True,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        schedule_operations,
+        "_disabled_connector_error",
+        lambda *_args, **_kwargs: None,
+        raising=True,
+    )
 
-    ctx = schedules_api._ScheduledTickContext(  # noqa: SLF001
+    ctx = schedule_operations._ScheduledTickContext(  # noqa: SLF001
         background_tasks=BackgroundTasks(),
         db=db,
         tenant_id=tenant_id,
@@ -285,8 +295,8 @@ def test_scheduled_config_claim_dedupes_same_window_and_uses_shared_enqueue_help
         now=now,
     )
 
-    first = asyncio.run(schedules_api._process_scheduled_config(ctx, cfg_a))  # noqa: SLF001
-    second = asyncio.run(schedules_api._process_scheduled_config(ctx, cfg_b))  # noqa: SLF001
+    first = asyncio.run(schedule_operations._process_scheduled_config(ctx, cfg_a))  # noqa: SLF001
+    second = asyncio.run(schedule_operations._process_scheduled_config(ctx, cfg_b))  # noqa: SLF001
 
     assert first == "enqueued"
     assert second == "skipped"
@@ -299,6 +309,8 @@ def test_scheduled_config_claim_dedupes_same_window_and_uses_shared_enqueue_help
 def test_run_connector_config_fails_closed_when_queue_handoff_fails(monkeypatch) -> None:  # noqa: ANN001
     import app.api.v1.connectors_configs as configs_api
     import app.api.v1.connectors_runs as runs_api
+    import app.services.connector_config_operations as config_operations
+    import app.services.connector_run_operations as run_operations
 
     tenant_id = uuid4()
     dataset_id = uuid4()
@@ -319,26 +331,26 @@ def test_run_connector_config_fails_closed_when_queue_handoff_fails(monkeypatch)
         return None
 
     monkeypatch.setattr(
-        configs_api.dataset_service,
+        config_operations.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
     monkeypatch.setattr(
-        configs_api.dataset_service,
+        config_operations.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=dataset_id),
         raising=True,
     )
     monkeypatch.setattr(
-        configs_api.dataset_service,
+        config_operations.dataset_service,
         "assert_dataset_writable",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
-    monkeypatch.setattr(configs_api.connectors_module.settings, "URL_INGEST_ENABLED", True, raising=False)
-    monkeypatch.setattr(runs_api.connectors_module.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(runs_api.connectors_module, "enqueue_connector_run", _enqueue_none, raising=True)
+    monkeypatch.setattr(config_operations.settings, "URL_INGEST_ENABLED", True, raising=False)
+    monkeypatch.setattr(run_operations.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(run_operations, "enqueue_connector_run", _enqueue_none, raising=True)
 
     background_tasks = BackgroundTasks()
     with pytest.raises(HTTPException) as exc_info:
@@ -363,7 +375,8 @@ def test_run_connector_config_fails_closed_when_queue_handoff_fails(monkeypatch)
 
 def test_scheduled_config_fails_closed_when_queue_handoff_fails(monkeypatch) -> None:  # noqa: ANN001
     import app.api.v1.connectors_runs as runs_api
-    import app.api.v1.connectors_schedules as schedules_api
+    import app.services.connector_run_operations as run_operations
+    import app.services.connector_schedule_operations as schedule_operations
 
     tenant_id = uuid4()
     dataset_id = uuid4()
@@ -381,13 +394,23 @@ def test_scheduled_config_fails_closed_when_queue_handoff_fails(monkeypatch) -> 
     async def _enqueue_none(**_kwargs):  # noqa: ANN003, ANN202
         return None
 
-    monkeypatch.setattr(schedules_api, "_config_dataset_is_writable", lambda *_args, **_kwargs: True, raising=True)
-    monkeypatch.setattr(schedules_api, "_disabled_connector_error", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(runs_api.connectors_module.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(runs_api.connectors_module, "enqueue_connector_run", _enqueue_none, raising=True)
+    monkeypatch.setattr(
+        schedule_operations,
+        "_config_dataset_is_writable",
+        lambda *_args, **_kwargs: True,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        schedule_operations,
+        "_disabled_connector_error",
+        lambda *_args, **_kwargs: None,
+        raising=True,
+    )
+    monkeypatch.setattr(run_operations.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(run_operations, "enqueue_connector_run", _enqueue_none, raising=True)
 
     background_tasks = BackgroundTasks()
-    ctx = schedules_api._ScheduledTickContext(  # noqa: SLF001
+    ctx = schedule_operations._ScheduledTickContext(  # noqa: SLF001
         background_tasks=background_tasks,
         db=db,
         tenant_id=tenant_id,
@@ -396,7 +419,7 @@ def test_scheduled_config_fails_closed_when_queue_handoff_fails(monkeypatch) -> 
     )
 
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(schedules_api._process_scheduled_config(ctx, cfg))  # noqa: SLF001
+        asyncio.run(schedule_operations._process_scheduled_config(ctx, cfg))  # noqa: SLF001
 
     assert exc_info.value.status_code == 503
     assert exc_info.value.detail == runs_api.CONNECTOR_QUEUE_UNAVAILABLE_DETAIL
