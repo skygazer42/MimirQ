@@ -31,11 +31,11 @@ _CARD_CANDIDATE_RE = re.compile(r"\b(?:\d[ -]*){13,19}\b")
 
 
 def pii_redaction_enabled() -> bool:
-    return bool(settings.PII_REDACTION_ENABLED)
+    return settings.PII_REDACTION_ENABLED
 
 
 def _current_mask() -> str:
-    mask = str(getattr(settings, "PII_REDACTION_MASK", DEFAULT_MASK) or DEFAULT_MASK).strip()
+    mask = (settings.PII_REDACTION_MASK or DEFAULT_MASK).strip()
     return mask or DEFAULT_MASK
 
 
@@ -66,12 +66,12 @@ class PIIRedactor:
         def _mark(kind: str, n: int = 1) -> None:
             meta["redacted"] = True
             hits = meta["hits"]
-            hits[kind] = int(hits.get(kind, 0) or 0) + int(n or 0)
+            hits[kind] = hits.get(kind, 0) + n
 
         out = raw
 
         # Key/value style secrets: keep the key name but mask the value.
-        def _kv_repl(match: re.Match) -> str:
+        def _kv_repl(match: re.Match[str]) -> str:
             _mark("secret_kv")
             return f"{match.group(1)}={self.mask}"
 
@@ -89,7 +89,7 @@ class PIIRedactor:
                 _mark(kind, n)
 
         # Credit card candidates: validate with Luhn to reduce false positives.
-        def _card_repl(match: re.Match) -> str:
+        def _card_repl(match: re.Match[str]) -> str:
             s = match.group(0) or ""
             digits = "".join(ch for ch in s if ch.isdigit())
             if _luhn_ok(digits):
@@ -115,8 +115,7 @@ class PIIRedactor:
 
 @lru_cache(maxsize=8)
 def _get_redactor(mask: str) -> PIIRedactor:
-    normalized_mask = str(mask or DEFAULT_MASK).strip() or DEFAULT_MASK
-    return PIIRedactor(mask=normalized_mask)
+    return PIIRedactor(mask=mask)
 
 
 def redact_text(text: str) -> str:
