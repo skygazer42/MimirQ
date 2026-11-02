@@ -255,3 +255,11 @@
 - MinerU 服务已保证七个状态字段，API 不再二次填 pending／零值。目录树直接使用已声明类型，保留深度夹取、可空路径、JSON 字段筛选和排序；统计保留 PostgreSQL SUM 所需的数值转换。重复文档保留 SQL 失败后的既有扫描、历史 JSON 适配与时间戳降级。
 - 11 个完整模块经 62 条明确规则规范化后 AST 一致；59 个保留参数契约、七个路由、十处 HTTP 错误、两份数据集谓词及三处生命周期分支核对通过。扫描 1,803 个跟踪 Python 源码，91 个文件的 725 处确定调用匹配签名，无动态参数待解；五个边界模块字节不变。原有 91 条断言、用例及参数保持原样，只同步一个 patch 目标。
 - Ruff check、format --check、diff --check 通过；没有新增或运行 Python 测试，没有导入应用或启动服务，运行时回归未验证。覆盖对应全部 3,642 个跟踪路径：111 已调整、29 已符合、958 保留、2,544 待审核。原文档 schema 用户修改保留，处理／队列和其余领域仍待继续；证据见 document-read-views/ 及 logs/task-4-read-views-*.log。
+
+## 第四批：文档处理、重试与队列调度（2026-11-02）
+
+- 状态、取消、重试与删除直接调用现有文档 ACL、生命周期、管线身份、解析器、对象存储及索引通道所有者；去除 `document_processing.py` 对 `app.api.v1.documents` 的动态反向依赖和整模块 `Any` 参数。上传、批量上传、URL 入库及重试共用 `app/api/utils/document_dispatch.py` 的调度实现。
+- 任务 ID、队列启用与必需分支、空队列返回差异、状态提交与回滚、取消后的 best-effort abort、有限 JSONB 扫描、对象路径权限映射及对象存储临时文件 finally 清理保持原策略。队列配置读取与 ARQ 的 job/status 使用声明类型；worker 边界的 UUID 字符串化与选项快照保留。
+- 完整核对 12 个 Python 模块的规范化 AST、309 个参数契约、7 个路由、64 个 HTTPException 构造、1,285 处静态绑定调用及 378 条既有断言；未发现未解的静态调用。两个原调度实现与共享所有者的对应完整分支已按 AST 核对。
+- Ruff check、Ruff format --check、语法解析和 diff --check 通过。按用户要求未新增、扩写或运行 Python 测试，没有导入应用或启动队列、数据库、解析器及模型；运行时回归未验证。ARQ JobStatus 枚举在本机已安装库源码中确认使用小写 wire value。
+- 覆盖表现为 3,643 个路径：116 已调整、29 已符合、961 按要求保留、2,537 待审核。测试文件只同步已删除所有者的 import／patch，既有用例和断言不变。原有 `app/api/schemas/document.py` 修改保留。静态快照及验证器位于忽略的执行工作区 `document-processing-dispatch/`。

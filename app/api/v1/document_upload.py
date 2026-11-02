@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import DocumentBatchUploadResponse, DocumentDetail
+from app.api.utils.document_dispatch import schedule_document_processing
 from app.api.v1.documents import UrlUploadRequest
 from app.core.config import settings
 from app.core.database import get_db
@@ -482,102 +483,6 @@ async def _persist_uploaded_document(db: Session, db_document: Any, *, file_path
         db.refresh(db_document)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Document committed but refresh failed: %s", str(exc)[:200])
-
-
-async def _run_document_processing_with_cleanup(
-    file_path: Path,
-    document_id: UUID,
-    tenant_id: UUID,
-    parser_backend: str,
-    chunk_strategy: str,
-) -> None:
-    from app.api.v1 import documents as documents_module
-
-    try:
-        await documents_module.run_document_processing_limited(
-            file_path,
-            document_id,
-            tenant_id,
-            parser_backend,
-            chunk_strategy,
-        )
-    finally:
-        _unlink_upload(file_path)
-
-
-async def _schedule_document_processing(
-    *,
-    background_tasks: BackgroundTasks,
-    file_path: Path,
-    document_id: UUID,
-    tenant_id: UUID,
-    account_id: str,
-    pipeline_hash: str,
-    parser_backend: str,
-    chunk_strategy: str,
-    db: Session,
-    db_document: Any,
-) -> bool:
-    from app.api.v1 import documents as documents_module
-
-    object_backed = is_object_storage_uri(str(getattr(db_document, "file_path", "") or ""))
-    job_id = f"doc:{tenant_id}:{document_id}:{pipeline_hash}"
-    queue_required = documents_module._task_queue_required()
-    task_id = None
-    try:
-        task_id = await documents_module.enqueue_document_processing(
-            tenant_id=tenant_id,
-            document_id=document_id,
-            requested_by=account_id,
-            job_id=job_id,
-        )
-    except Exception as exc:  # noqa: BLE001
-        if queue_required:
-            logger.error("Document queue unavailable while handoff is required: %s", str(exc)[:200])
-            documents_module._raise_document_processing_queue_unavailable(db=db, db_document=db_document, exc=exc)
-        logger.warning("Document queue unavailable; using API background task: %s", str(exc)[:200])
-
-    if task_id:
-        try:
-            meta = dict(db_document.doc_metadata or {})
-            meta["task_id"] = task_id
-            db_document.doc_metadata = meta
-            db.commit()
-            db.refresh(db_document)
-        except Exception as exc:  # noqa: BLE001
-            with contextlib.suppress(Exception):
-                db.rollback()
-            logger.warning("Document task queued but task metadata refresh failed: %s", str(exc)[:200])
-        return not object_backed
-
-    if queue_required:
-        logger.error("Document queue returned no task id while handoff is required")
-        documents_module._raise_document_processing_queue_unavailable(db=db, db_document=db_document)
-
-    try:
-        if object_backed:
-            background_tasks.add_task(
-                _run_document_processing_with_cleanup,
-                file_path,
-                document_id,
-                tenant_id,
-                parser_backend,
-                chunk_strategy,
-            )
-        else:
-            background_tasks.add_task(
-                documents_module.run_document_processing_limited,
-                file_path,
-                document_id,
-                tenant_id,
-                parser_backend,
-                chunk_strategy,
-            )
-    except Exception as exc:
-        documents_module._mark_document_processing_schedule_failed(db=db, db_document=db_document)
-        logger.error("Failed to register document background task: %s", str(exc)[:200])
-        raise
-    return True
 
 
 @dataclass(frozen=True)
@@ -1296,12 +1201,12 @@ async def _finalize_batch_document(
             reset_enabled_to_pending=True,
             commit=True,
         )
-    keep_local_file = await _schedule_document_processing(
+    keep_local_file = await schedule_document_processing(
         background_tasks=background_tasks,
         file_path=file_path,
         document_id=document.id,
         tenant_id=document.tenant_id,
-        account_id=str(getattr(document, "owner_id", "") or ""),
+        requested_by=str(getattr(document, "owner_id", "") or ""),
         pipeline_hash=pipeline_hash,
         parser_backend=resolved_pipeline.resolved_parser_backend,
         chunk_strategy=resolved_pipeline.resolved_chunk_strategy,
@@ -2245,12 +2150,12 @@ async def _upload_document_impl(
         if not is_object_storage_uri(str(stored_path)):
             file_lease.transfer()
 
-        keep_local_file = await _schedule_document_processing(
+        keep_local_file = await schedule_document_processing(
             background_tasks=background_tasks,
             file_path=file_path,
             document_id=file_id,
             tenant_id=tenant_id,
-            account_id=account_id,
+            requested_by=account_id,
             pipeline_hash=pipeline_hash,
             parser_backend=resolved_pipeline.resolved_parser_backend,
             chunk_strategy=resolved_pipeline.resolved_chunk_strategy,

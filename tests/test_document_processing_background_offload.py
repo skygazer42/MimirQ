@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from app.api.v1 import documents as documents_module
+from app.api.utils import document_dispatch as documents_module
 
 
 @pytest.fixture(autouse=True)

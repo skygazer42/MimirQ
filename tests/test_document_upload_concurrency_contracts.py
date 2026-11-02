@@ -9,6 +9,7 @@ from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy.exc import IntegrityError
 from starlette.datastructures import UploadFile
 
+from app.api.utils import document_dispatch
 from app.api.v1 import documents as documents_module
 
 document_upload = documents_module.document_upload
@@ -811,7 +812,7 @@ async def test_single_upload_skips_ingest_lock_when_queue_disabled(monkeypatch: 
     monkeypatch.setattr("app.tasks.queue.get_queue", _queue, raising=False)
     monkeypatch.setattr(document_upload, "_persist_uploaded_document", _persist, raising=True)
     monkeypatch.setattr(document_upload, "_store_document_source", _store, raising=True)
-    monkeypatch.setattr(document_upload, "_schedule_document_processing", _schedule, raising=True)
+    monkeypatch.setattr(document_upload, "schedule_document_processing", _schedule, raising=True)
 
     db = _FakeItemSession("single-disabled")
     result = await document_upload.upload_document(
@@ -868,7 +869,7 @@ async def test_single_upload_releases_ingest_lock_without_worker_handoff(monkeyp
     monkeypatch.setattr("app.tasks.locks.release_lock", _release, raising=False)
     monkeypatch.setattr(document_upload, "_persist_uploaded_document", _persist, raising=True)
     monkeypatch.setattr(document_upload, "_store_document_source", _store, raising=True)
-    monkeypatch.setattr(document_upload, "_schedule_document_processing", _schedule, raising=True)
+    monkeypatch.setattr(document_upload, "schedule_document_processing", _schedule, raising=True)
 
     db = _FakeItemSession("single")
     result = await document_upload.upload_document(
@@ -1215,14 +1216,14 @@ async def test_single_upload_preserves_local_source_when_queue_handoff_fails_aft
         assert kwargs["file_path"].exists()
         raise HTTPException(
             status_code=503,
-            detail=documents_module.DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL,
+            detail=document_dispatch.DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL,
         )
 
     monkeypatch.setattr("app.tasks.queue.get_queue", _queue, raising=False)
     monkeypatch.setattr("app.tasks.locks.acquire_lock", _acquire, raising=False)
     monkeypatch.setattr(document_upload, "_persist_uploaded_document", _persist, raising=True)
     monkeypatch.setattr(document_upload, "_store_document_source", _store, raising=True)
-    monkeypatch.setattr(document_upload, "_schedule_document_processing", _schedule, raising=True)
+    monkeypatch.setattr(document_upload, "schedule_document_processing", _schedule, raising=True)
 
     db = _FakeItemSession("single-local-queue-fail")
     with pytest.raises(HTTPException) as exc_info:
@@ -1243,7 +1244,7 @@ async def test_single_upload_preserves_local_source_when_queue_handoff_fails_aft
         )
 
     assert exc_info.value.status_code == 503
-    assert exc_info.value.detail == documents_module.DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL
+    assert exc_info.value.detail == document_dispatch.DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL
     assert len(captured_paths) == 1
     assert captured_paths[0].exists()
 
@@ -1469,7 +1470,7 @@ async def test_single_upload_returns_existing_document_after_dedup_constraint_co
     async def _schedule(**_kwargs) -> bool:  # noqa: ANN003, ANN202
         raise AssertionError("dedup conflict should return the winning document without requeueing")
 
-    monkeypatch.setattr(document_upload, "_schedule_document_processing", _schedule, raising=True)
+    monkeypatch.setattr(document_upload, "schedule_document_processing", _schedule, raising=True)
 
     db = _ConflictDB()
     result = await document_upload.upload_document(

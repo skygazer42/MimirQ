@@ -28,6 +28,7 @@ from app.api.dependencies.tenant import _preferred_jwt_tenant_id
 from app.api.schemas.document import (
     DocumentPipelineOptions,
 )
+from app.api.utils.document_dispatch import schedule_document_processing
 from app.api.utils.upload import compute_file_hash, save_upload_file_with_hash
 from app.api.utils.url_ingest import URLDownloadOptions, download_url_to_path, validate_url_for_ingest
 from app.api.v1 import (
@@ -167,7 +168,6 @@ from app.api.v1.document_versions import (
 from app.api.v1.document_versions import (
     list_document_versions as list_document_versions,
 )
-from app.core.async_bridge import run_coroutine_in_thread
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.env import is_production_env
@@ -176,7 +176,6 @@ from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.parsing.factory import parser_factory
-from app.parsing.processors.processor import document_processor
 from app.parsing.subprocess_runner import run_subprocess_worker
 from app.rag.chunking.factory import chunker_factory
 from app.rag.core.logging import get_logger
@@ -228,7 +227,6 @@ from app.storage.object.runtime import (
     parse_object_storage_uri,
 )
 from app.storage.object.runtime import resolve_document_object_reference as resolve_document_object_reference
-from app.tasks.queue import enqueue_document_processing
 from app.types.pipeline import PipelineOptions
 
 logger = get_logger("api.documents")
@@ -239,36 +237,6 @@ _assert_document_readable_for_lifecycle = document_access_service.assert_documen
 _assert_document_writable_for_lifecycle = document_access_service.assert_document_writable_for_lifecycle
 _assert_document_writable_for_unassigned_target = document_access_service.assert_document_writable_for_unassigned_target
 _get_document_for_lifecycle = document_access_service.get_document_for_lifecycle
-
-_background_processing_semaphores: dict[int, tuple[int, asyncio.Semaphore]] = {}
-
-
-def _get_background_processing_semaphore() -> asyncio.Semaphore:
-    limit = max(1, int(settings.API_DOCUMENT_BACKGROUND_MAX_CONCURRENCY or 2))
-    loop_id = id(asyncio.get_running_loop())
-    cached = _background_processing_semaphores.get(loop_id)
-    if cached is None or cached[0] != limit:
-        sem = asyncio.Semaphore(limit)
-        _background_processing_semaphores[loop_id] = (limit, sem)
-        return sem
-    return cached[1]
-
-
-def _log_cancelled_background_processing_error(exc: BaseException) -> None:
-    logger.warning(
-        "Background document processing failed after request cancellation",
-        exc_info=(type(exc), exc, exc.__traceback__),
-    )
-
-
-async def run_document_processing_limited(*args: Any, **kwargs: Any) -> Any:
-    sem = _get_background_processing_semaphore()
-    async with sem:
-        return await run_coroutine_in_thread(
-            lambda: document_processor.process_document(*args, **kwargs),
-            on_cancelled_worker_error=_log_cancelled_background_processing_error,
-        )
-
 
 __all__ = [
     "DBDatasetPrecheckScanRun",
@@ -1651,41 +1619,6 @@ def _unlink_ingest_temp(path: Path) -> None:
         path.unlink(missing_ok=True)
 
 
-DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL = "Document processing queue unavailable"
-
-
-def _task_queue_required() -> bool:
-    return bool(settings.TASK_QUEUE_ENABLED)
-
-
-def _mark_document_processing_schedule_failed(*, db: Session, db_document: DBDocument) -> None:
-    meta = dict(getattr(db_document, "doc_metadata", None) or {})
-    meta.pop("task_id", None)
-    meta.pop("kg_task_id", None)
-    db_document.doc_metadata = meta
-    db_document.status = "failed"
-    db_document.current_stage = "failed"
-    db_document.error_message = "document_processing_schedule_failed"
-    try:
-        db.commit()
-    except Exception as exc:  # noqa: BLE001
-        with contextlib.suppress(Exception):
-            db.rollback()
-        logger.error("Failed to mark unscheduled document as failed: %s", str(exc)[:200])
-
-
-def _raise_document_processing_queue_unavailable(
-    *,
-    db: Session,
-    db_document: DBDocument,
-    exc: Exception | None = None,
-) -> None:
-    _mark_document_processing_schedule_failed(db=db, db_document=db_document)
-    if exc is not None:
-        raise HTTPException(status_code=503, detail=DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL) from exc
-    raise HTTPException(status_code=503, detail=DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL)
-
-
 def _document_matches_dedup_identity(
     document: Any,
     *,
@@ -1873,107 +1806,6 @@ def _add_document_to_ingestion_run(
             initial_status=str(getattr(db_document, "status", "") or "pending"),
             doc_meta=dict(doc_metadata),
         )
-
-
-async def _run_document_processing_with_cleanup(
-    file_path: Path,
-    document_id: UUID,
-    tenant_id: UUID,
-    parser_backend: str,
-    chunk_strategy: str,
-) -> None:
-    try:
-        await run_document_processing_limited(
-            file_path,
-            document_id,
-            tenant_id,
-            parser_backend,
-            chunk_strategy,
-        )
-    finally:
-        _unlink_ingest_temp(file_path)
-
-
-async def _schedule_document_processing(
-    *,
-    db: Session,
-    background_tasks: BackgroundTasks | None,
-    tenant_id: UUID,
-    document_id: UUID,
-    file_path: Path,
-    requested_by: str,
-    pipeline_hash: str,
-    parser_backend: str,
-    chunk_strategy: str,
-    db_document: DBDocument,
-) -> bool:
-    job_id = f"doc:{tenant_id}:{document_id}:{pipeline_hash}"
-    object_backed = is_object_storage_uri(str(getattr(db_document, "file_path", "") or ""))
-    queue_required = _task_queue_required()
-    task_id = None
-    try:
-        task_id = await enqueue_document_processing(
-            tenant_id=tenant_id,
-            document_id=document_id,
-            requested_by=requested_by,
-            job_id=job_id,
-        )
-    except Exception as exc:  # noqa: BLE001
-        if queue_required:
-            logger.error("Document queue unavailable while handoff is required: %s", str(exc)[:200])
-            _raise_document_processing_queue_unavailable(db=db, db_document=db_document, exc=exc)
-        logger.warning("Document queue unavailable; using local processing fallback: %s", str(exc)[:200])
-    if task_id:
-        try:
-            meta = dict(db_document.doc_metadata or {})
-            meta["task_id"] = task_id
-            db_document.doc_metadata = meta
-            db.commit()
-            db.refresh(db_document)
-        except Exception as exc:  # noqa: BLE001
-            with contextlib.suppress(Exception):
-                db.rollback()
-            logger.warning("Document task queued but task metadata refresh failed: %s", str(exc)[:200])
-        return not object_backed
-
-    if queue_required:
-        logger.error("Document queue returned no task id while handoff is required")
-        _raise_document_processing_queue_unavailable(db=db, db_document=db_document)
-
-    if background_tasks is not None:
-        try:
-            if object_backed:
-                background_tasks.add_task(
-                    _run_document_processing_with_cleanup,
-                    file_path,
-                    document_id,
-                    tenant_id,
-                    parser_backend,
-                    chunk_strategy,
-                )
-            else:
-                background_tasks.add_task(
-                    run_document_processing_limited,
-                    file_path,
-                    document_id,
-                    tenant_id,
-                    parser_backend,
-                    chunk_strategy,
-                )
-        except Exception as exc:
-            _mark_document_processing_schedule_failed(db=db, db_document=db_document)
-            logger.error("Failed to register document background task: %s", str(exc)[:200])
-            raise
-        return True
-
-    await run_document_processing_limited(
-        file_path,
-        document_id,
-        tenant_id,
-        parser_backend,
-        chunk_strategy,
-    )
-    return not object_backed
 
 
 async def _download_url_ingest_file(*, url: str, body: UrlUploadRequest, tenant_id: UUID) -> UrlIngestFile:
@@ -2342,7 +2174,7 @@ async def _persist_and_process_ingested_document(
         doc_metadata=doc_metadata,
     )
     try:
-        keep_local_processing_file = await _schedule_document_processing(
+        keep_local_processing_file = await schedule_document_processing(
             db=db,
             background_tasks=background_tasks,
             tenant_id=tenant_id,

@@ -610,7 +610,7 @@ async def test_retry_document_processing_enforces_membership_then_write_gate(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    documents_module = document_processing._documents_module()
+    documents_module = document_processing
     source = tmp_path / "retry.txt"
     source.write_text("hello", encoding="utf-8")
     document = _make_retry_document(file_path=str(source))
@@ -625,7 +625,7 @@ async def test_retry_document_processing_enforces_membership_then_write_gate(
         raise HTTPException(status_code=403, detail="denied")
 
     monkeypatch.setattr(documents_module.dataset_service, "ensure_member", _ensure_member, raising=True)
-    monkeypatch.setattr(documents_module, "_assert_document_writable_for_lifecycle", _deny, raising=True)
+    monkeypatch.setattr(documents_module, "assert_document_writable_for_lifecycle", _deny, raising=True)
 
     with pytest.raises(HTTPException) as exc_info:
         await document_processing.retry_document_processing(
@@ -658,7 +658,7 @@ async def test_retry_document_processing_rejects_non_retryable_states(
     force: bool,
     expected_detail: str,
 ) -> None:
-    documents_module = document_processing._documents_module()
+    documents_module = document_processing
     document = _make_retry_document(
         status=status,
         file_path=file_path,
@@ -669,7 +669,7 @@ async def test_retry_document_processing_rejects_non_retryable_states(
     monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
         documents_module,
-        "_assert_document_writable_for_lifecycle",
+        "assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
@@ -694,7 +694,7 @@ async def test_retry_document_processing_skip_if_unchanged_is_idempotent_and_ret
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    documents_module = document_processing._documents_module()
+    documents_module = document_processing
     source = tmp_path / "retry.txt"
     source.write_text("hello", encoding="utf-8")
     document = _make_retry_document(
@@ -717,11 +717,11 @@ async def test_retry_document_processing_skip_if_unchanged_is_idempotent_and_ret
     monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
         documents_module,
-        "_assert_document_writable_for_lifecycle",
+        "assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
-    monkeypatch.setattr(documents_module, "_compute_pipeline_hash", lambda _meta: "stable-pipeline", raising=True)
+    monkeypatch.setattr(documents_module, "compute_pipeline_hash", lambda _meta: "stable-pipeline", raising=True)
     monkeypatch.setattr(
         documents_module,
         "audit_log_event",
@@ -774,7 +774,7 @@ async def test_retry_document_processing_preserves_existing_versions_and_stable_
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    documents_module = document_processing._documents_module()
+    documents_module = document_processing
     source = tmp_path / "retry.txt"
     source.write_text("hello", encoding="utf-8")
     document = _make_retry_document(
@@ -799,11 +799,11 @@ async def test_retry_document_processing_preserves_existing_versions_and_stable_
     monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
         documents_module,
-        "_assert_document_writable_for_lifecycle",
+        "assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
-    monkeypatch.setattr(documents_module, "_compute_pipeline_hash", lambda _meta: "next-pipeline", raising=True)
+    monkeypatch.setattr(documents_module, "compute_pipeline_hash", lambda _meta: "next-pipeline", raising=True)
     monkeypatch.setattr(documents_module, "enqueue_document_processing", _enqueue, raising=True)
     monkeypatch.setattr(
         documents_module,
@@ -859,7 +859,7 @@ async def test_retry_document_processing_object_store_fallback_cleans_temp_file_
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    documents_module = document_processing._documents_module()
+    documents_module = document_processing
     tenant_id = uuid.uuid4()
     document = _make_retry_document(
         status="failed",
@@ -906,7 +906,7 @@ async def test_retry_document_processing_object_store_fallback_cleans_temp_file_
     monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
         documents_module,
-        "_assert_document_writable_for_lifecycle",
+        "assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
@@ -918,8 +918,8 @@ async def test_retry_document_processing_object_store_fallback_cleans_temp_file_
         raising=True,
     )
     monkeypatch.setattr(documents_module, "enqueue_document_processing", _no_task, raising=True)
-    monkeypatch.setattr(documents_module, "_task_queue_required", lambda: False, raising=True)
-    monkeypatch.setattr(documents_module, "run_document_processing_limited", _process, raising=True)
+    monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", False, raising=True)
+    monkeypatch.setattr(documents_module.document_dispatch, "run_document_processing_limited", _process, raising=True)
     monkeypatch.setattr(
         documents_module,
         "reconcile_document_index_channels",

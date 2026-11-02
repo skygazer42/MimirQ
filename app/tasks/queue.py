@@ -5,18 +5,24 @@ API compatibility:
 - If TASK_QUEUE_ENABLED=false, callers can still use BackgroundTasks.
 """
 
+from __future__ import annotations
+
 import asyncio
 import threading
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from app.core.config import settings
 from app.rag.core.logging import get_logger
 
+if TYPE_CHECKING:
+    from arq.connections import ArqRedis, RedisSettings
+    from arq.jobs import Job
+
 logger = get_logger("tasks.queue")
 
 # arq is optional: when TASK_QUEUE_ENABLED=false, do not require arq.
-_queue: Any | None = None
+_queue: ArqRedis | None = None
 _queue_lock = asyncio.Lock()
 
 
@@ -34,7 +40,7 @@ def is_queue_initialized() -> bool:
     return _queue is not None
 
 
-def _redis_settings():
+def _redis_settings() -> RedisSettings:
     # arq RedisSettings supports full DSN.
     from arq.connections import RedisSettings
 
@@ -45,13 +51,13 @@ class WorkerHealthSettings:
     """Lightweight settings for ``arq --check`` without importing worker jobs."""
 
     redis_settings = _redis_settings()
-    queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
+    queue_name = settings.TASK_QUEUE_NAME
 
 
 async def init_queue() -> None:
     """Initialize queue connection on startup (optional)."""
     global _queue
-    if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+    if not settings.TASK_QUEUE_ENABLED:
         return
     if _queue is not None:
         return
@@ -61,7 +67,7 @@ async def init_queue() -> None:
         from arq import create_pool
 
         _queue = await create_pool(_redis_settings())
-        logger.info("Task queue initialized (arq) queue=%s", getattr(settings, "TASK_QUEUE_NAME", "mimirq"))
+        logger.info("Task queue initialized (arq) queue=%s", settings.TASK_QUEUE_NAME)
 
 
 async def close_queue() -> None:
@@ -77,9 +83,9 @@ async def close_queue() -> None:
         _queue = None
 
 
-async def get_queue() -> Any | None:
+async def get_queue() -> ArqRedis | None:
     """Get queue connection (lazy init)."""
-    if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+    if not settings.TASK_QUEUE_ENABLED:
         return None
     if _queue is None:
         await init_queue()
@@ -93,14 +99,14 @@ async def get_task_job_status(job_id: str) -> str | None:
         return None
     from arq.jobs import Job
 
-    queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
-    status = await Job(str(job_id), q, _queue_name=queue_name).status()
-    return str(getattr(status, "value", status) or "").strip().lower() or None
+    queue_name = settings.TASK_QUEUE_NAME
+    status = await Job(job_id, q, _queue_name=queue_name).status()
+    return status.value
 
 
-async def _resolve_scan_job_handoff(job: Any, *, job_id: str | None) -> str | None:
+async def _resolve_scan_job_handoff(job: Job | None, *, job_id: str | None) -> str | None:
     if job is not None:
-        return getattr(job, "job_id", None) or job_id
+        return job.job_id or job_id
     if not job_id:
         raise TaskEnqueueRejectedError("scan job was not accepted by arq")
     status = await get_task_job_status(job_id)
@@ -116,7 +122,7 @@ def _local_scan_run_key(
     dataset_id: UUID | str,
     scan_run_id: UUID | str,
 ) -> str:
-    return f"{str(kind or '').strip().lower()}:{tenant_id}:{dataset_id}:{scan_run_id}"
+    return f"{kind.strip().lower()}:{tenant_id}:{dataset_id}:{scan_run_id}"
 
 
 def register_local_scan_run_active(
@@ -189,7 +195,7 @@ async def enqueue_document_processing(
     if q is None:
         return None
 
-    queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
+    queue_name = settings.TASK_QUEUE_NAME
     # Arq job_id can dedupe (behavior depends on arq version); we still enforce
     # idempotency with Redis locks on the worker side.
     job = await q.enqueue_job(
@@ -201,7 +207,7 @@ async def enqueue_document_processing(
         _job_id=job_id,
         _job_try=1,
     )
-    return getattr(job, "job_id", None) or job_id
+    return (job.job_id or job_id) if job is not None else job_id
 
 
 async def enqueue_kg_extraction(
@@ -221,23 +227,23 @@ async def enqueue_kg_extraction(
     q = await get_queue()
     if q is None:
         return None
-    queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
+    queue_name = settings.TASK_QUEUE_NAME
     job = await q.enqueue_job(
         "extract_kg_job",
         str(tenant_id),
         str(document_id),
         requested_by,
-        bool(replace_existing) if replace_existing is not None else None,
-        bool(prune_orphan_entities) if prune_orphan_entities is not None else None,
-        bool(extract_relations) if extract_relations is not None else None,
-        bool(extract_skills) if extract_skills is not None else None,
-        str(pipeline_hash) if pipeline_hash is not None else None,
+        replace_existing,
+        prune_orphan_entities,
+        extract_relations,
+        extract_skills,
+        pipeline_hash,
         dict(effective_options) if effective_options is not None else None,
         _queue_name=queue_name,
         _job_id=job_id,
         _job_try=1,
     )
-    return getattr(job, "job_id", None) if job is not None else None
+    return job.job_id if job is not None else None
 
 
 async def enqueue_rebuild_indexes(
@@ -251,7 +257,7 @@ async def enqueue_rebuild_indexes(
     q = await get_queue()
     if q is None:
         return None
-    queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
+    queue_name = settings.TASK_QUEUE_NAME
     job = await q.enqueue_job(
         "rebuild_indexes_job",
         str(tenant_id),
@@ -261,7 +267,7 @@ async def enqueue_rebuild_indexes(
         _job_id=job_id,
         _job_try=1,
     )
-    return getattr(job, "job_id", None) if job is not None else None
+    return job.job_id if job is not None else None
 
 
 async def enqueue_index_audit_reconcile_job(
@@ -278,20 +284,20 @@ async def enqueue_index_audit_reconcile_job(
     q = await get_queue()
     if q is None:
         return None
-    queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
+    queue_name = settings.TASK_QUEUE_NAME
     job = await q.enqueue_job(
         "reconcile_index_audit_job",
         str(tenant_id),
         str(dataset_id),
         requested_by,
         str(document_id) if document_id is not None else None,
-        int(limit or 0),
-        bool(dry_run),
+        limit,
+        dry_run,
         _queue_name=queue_name,
         _job_id=job_id,
         _job_try=1,
     )
-    return getattr(job, "job_id", None) if job is not None else None
+    return job.job_id if job is not None else None
 
 
 async def enqueue_dataset_profile_scan(
@@ -306,7 +312,7 @@ async def enqueue_dataset_profile_scan(
     q = await get_queue()
     if q is None:
         return None
-    queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
+    queue_name = settings.TASK_QUEUE_NAME
     job = await q.enqueue_job(
         "dataset_profile_scan_job",
         str(tenant_id),
@@ -332,7 +338,7 @@ async def enqueue_dataset_precheck_scan(
     q = await get_queue()
     if q is None:
         return None
-    queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
+    queue_name = settings.TASK_QUEUE_NAME
     job = await q.enqueue_job(
         "dataset_precheck_scan_job",
         str(tenant_id),
@@ -357,7 +363,7 @@ async def enqueue_connector_run(
     q = await get_queue()
     if q is None:
         return None
-    queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
+    queue_name = settings.TASK_QUEUE_NAME
     job = await q.enqueue_job(
         "connector_run_job",
         str(tenant_id),
@@ -367,7 +373,7 @@ async def enqueue_connector_run(
         _job_id=job_id,
         _job_try=1,
     )
-    return getattr(job, "job_id", None) or job_id
+    return (job.job_id or job_id) if job is not None else job_id
 
 
 async def enqueue_evidence_reference_sources_repair(
@@ -393,20 +399,20 @@ async def enqueue_evidence_reference_sources_repair(
     q = await get_queue()
     if q is None:
         return None
-    queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
+    queue_name = settings.TASK_QUEUE_NAME
     job = await q.enqueue_job(
         "evidence_reference_sources_repair_job",
         str(tenant_id),
         str(suite_id),
         requested_by,
-        bool(apply),
-        bool(allow_approved),
-        bool(include_archived_items),
-        int(max_items or 0),
-        int(max_refs_per_item or 0),
-        int(max_changes or 0),
+        apply,
+        allow_approved,
+        include_archived_items,
+        max_items,
+        max_refs_per_item,
+        max_changes,
         _queue_name=queue_name,
         _job_id=job_id,
         _job_try=1,
     )
-    return getattr(job, "job_id", None) or job_id
+    return (job.job_id or job_id) if job is not None else job_id

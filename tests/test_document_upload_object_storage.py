@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import BackgroundTasks, HTTPException
 
+from app.api.utils import document_dispatch
 from app.api.v1 import documents as documents_module
 
 document_upload = documents_module.document_upload
@@ -121,8 +122,6 @@ async def test_store_document_source_removes_temp_when_minio_upload_fails(monkey
 async def test_schedule_document_processing_cleans_object_temp_after_fallback_failure(
     monkeypatch, tmp_path: Path
 ) -> None:
-    from app.api.v1 import documents as documents_module
-
     source = tmp_path / "source.txt"
     source.write_text("hello", encoding="utf-8")
     tenant_id = uuid.uuid4()
@@ -136,15 +135,15 @@ async def test_schedule_document_processing_cleans_object_temp_after_fallback_fa
     async def _fail_processing(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
         raise RuntimeError("processing failed")
 
-    monkeypatch.setattr(documents_module, "enqueue_document_processing", _no_queue, raising=True)
-    monkeypatch.setattr(documents_module, "run_document_processing_limited", _fail_processing, raising=True)
+    monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _no_queue, raising=True)
+    monkeypatch.setattr(document_dispatch, "run_document_processing_limited", _fail_processing, raising=True)
 
-    keep_local_file = await document_upload._schedule_document_processing(
+    keep_local_file = await document_dispatch.schedule_document_processing(
         background_tasks=background_tasks,
         file_path=source,
         document_id=document_id,
         tenant_id=tenant_id,
-        account_id="account-1",
+        requested_by="account-1",
         pipeline_hash="pipeline-hash",
         parser_backend="auto",
         chunk_strategy="langchain_recursive",
@@ -162,8 +161,6 @@ async def test_schedule_document_processing_cleans_object_temp_after_fallback_fa
 async def test_schedule_document_processing_returns_object_temp_to_request_after_queueing(
     monkeypatch, tmp_path: Path
 ) -> None:
-    from app.api.v1 import documents as documents_module
-
     source = tmp_path / "source.txt"
     source.write_text("hello", encoding="utf-8")
     db_document = SimpleNamespace(doc_metadata={}, file_path="minio://documents/documents/t/d/source.txt")
@@ -178,14 +175,14 @@ async def test_schedule_document_processing_returns_object_temp_to_request_after
         def refresh(self, _document) -> None:  # noqa: ANN001
             return None
 
-    monkeypatch.setattr(documents_module, "enqueue_document_processing", _queued, raising=True)
+    monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _queued, raising=True)
 
-    keep_local_file = await document_upload._schedule_document_processing(
+    keep_local_file = await document_dispatch.schedule_document_processing(
         background_tasks=BackgroundTasks(),
         file_path=source,
         document_id=uuid.uuid4(),
         tenant_id=uuid.uuid4(),
-        account_id="account-1",
+        requested_by="account-1",
         pipeline_hash="pipeline-hash",
         parser_backend="auto",
         chunk_strategy="langchain_recursive",
@@ -213,15 +210,15 @@ async def test_schedule_document_processing_falls_back_when_enqueue_fails(monkey
         processed.append(file_path)
 
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", False, raising=False)
-    monkeypatch.setattr(documents_module, "enqueue_document_processing", _fail_enqueue, raising=True)
-    monkeypatch.setattr(documents_module, "run_document_processing_limited", _process, raising=True)
+    monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _fail_enqueue, raising=True)
+    monkeypatch.setattr(document_dispatch, "run_document_processing_limited", _process, raising=True)
 
-    keep_local_file = await document_upload._schedule_document_processing(
+    keep_local_file = await document_dispatch.schedule_document_processing(
         background_tasks=background_tasks,
         file_path=source,
         document_id=uuid.uuid4(),
         tenant_id=uuid.uuid4(),
-        account_id="account-1",
+        requested_by="account-1",
         pipeline_hash="pipeline-hash",
         parser_backend="auto",
         chunk_strategy="langchain_recursive",
@@ -266,15 +263,15 @@ async def test_schedule_document_processing_fails_closed_when_queue_handoff_fail
             return None
 
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module, "enqueue_document_processing", _fail_enqueue, raising=True)
+    monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _fail_enqueue, raising=True)
 
     with pytest.raises(HTTPException) as exc_info:
-        await document_upload._schedule_document_processing(
+        await document_dispatch.schedule_document_processing(
             background_tasks=BackgroundTasks(),
             file_path=source,
             document_id=uuid.uuid4(),
             tenant_id=uuid.uuid4(),
-            account_id="account-1",
+            requested_by="account-1",
             pipeline_hash="pipeline-hash",
             parser_backend="auto",
             chunk_strategy="langchain_recursive",
@@ -283,7 +280,7 @@ async def test_schedule_document_processing_fails_closed_when_queue_handoff_fail
         )
 
     assert exc_info.value.status_code == 503
-    assert exc_info.value.detail == documents_module.DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL
+    assert exc_info.value.detail == document_dispatch.DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL
     assert commits == ["commit"]
     assert db_document.status == "failed"
     assert db_document.current_stage == "failed"
@@ -308,14 +305,14 @@ async def test_schedule_document_processing_ignores_task_metadata_commit_failure
         def rollback(self) -> None:
             rollbacks.append(True)
 
-    monkeypatch.setattr(documents_module, "enqueue_document_processing", _queued, raising=True)
+    monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _queued, raising=True)
 
-    keep_local_file = await document_upload._schedule_document_processing(
+    keep_local_file = await document_dispatch.schedule_document_processing(
         background_tasks=BackgroundTasks(),
         file_path=source,
         document_id=uuid.uuid4(),
         tenant_id=uuid.uuid4(),
-        account_id="account-1",
+        requested_by="account-1",
         pipeline_hash="pipeline-hash",
         parser_backend="auto",
         chunk_strategy="langchain_recursive",
@@ -581,7 +578,7 @@ async def test_upload_document_finally_cleans_unowned_temp(monkeypatch, tmp_path
             SimpleNamespace(),
             SimpleNamespace(),
             tenant_id=uuid.uuid4(),
-            account_id="account-1",
+            requested_by="account-1",
             db=SimpleNamespace(),
         )
 
@@ -606,7 +603,7 @@ async def test_upload_document_finally_preserves_transferred_file(monkeypatch, t
         SimpleNamespace(),
         SimpleNamespace(),
         tenant_id=uuid.uuid4(),
-        account_id="account-1",
+        requested_by="account-1",
         db=SimpleNamespace(),
     )
 

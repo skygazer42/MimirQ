@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import BackgroundTasks, HTTPException
 
+from app.api.utils import document_dispatch
 from app.api.utils.url_ingest import DownloadedURL
 from app.api.v1 import documents as documents_module
 from app.types.pipeline import PipelineOptions
@@ -46,9 +47,9 @@ async def test_queued_ingest_ignores_task_metadata_commit_failure(monkeypatch, t
         def rollback(self) -> None:
             return None
 
-    monkeypatch.setattr(documents_module, "enqueue_document_processing", _queued, raising=True)
+    monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _queued, raising=True)
 
-    keep_local = await documents_module._schedule_document_processing(
+    keep_local = await document_dispatch.schedule_document_processing(
         db=_FailingDB(),
         background_tasks=BackgroundTasks(),
         tenant_id=uuid.uuid4(),
@@ -79,10 +80,10 @@ async def test_schedule_document_processing_falls_back_when_enqueue_fails(monkey
         processed.append(file_path)
 
     monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", False, raising=False)
-    monkeypatch.setattr(documents_module, "enqueue_document_processing", _fail_enqueue, raising=True)
-    monkeypatch.setattr(documents_module, "run_document_processing_limited", _process, raising=True)
+    monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _fail_enqueue, raising=True)
+    monkeypatch.setattr(document_dispatch, "run_document_processing_limited", _process, raising=True)
 
-    keep_local = await documents_module._schedule_document_processing(
+    keep_local = await document_dispatch.schedule_document_processing(
         db=_DB(),
         background_tasks=background_tasks,
         tenant_id=uuid.uuid4(),
@@ -131,10 +132,10 @@ async def test_schedule_document_processing_fails_closed_when_queue_handoff_fail
             return None
 
     monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module, "enqueue_document_processing", _fail_enqueue, raising=True)
+    monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _fail_enqueue, raising=True)
 
     with pytest.raises(HTTPException) as exc_info:
-        await documents_module._schedule_document_processing(
+        await document_dispatch.schedule_document_processing(
             db=_FailingQueueDB(),
             background_tasks=BackgroundTasks(),
             tenant_id=uuid.uuid4(),
@@ -148,7 +149,7 @@ async def test_schedule_document_processing_fails_closed_when_queue_handoff_fail
         )
 
     assert exc_info.value.status_code == 503
-    assert exc_info.value.detail == documents_module.DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL
+    assert exc_info.value.detail == document_dispatch.DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL
     assert commits == ["commit"]
     assert db_document.status == "failed"
     assert db_document.current_stage == "failed"
@@ -318,7 +319,7 @@ async def test_ingest_url_request_persists_minio_uri_and_cleans_temp_after_queue
     )
     monkeypatch.setattr(documents_module, "_prepare_document_ingestion", lambda **_kwargs: _prepared(), raising=True)
     monkeypatch.setattr(documents_module, "_create_url_ingestion_run", lambda **_kwargs: None, raising=True)
-    monkeypatch.setattr(documents_module, "enqueue_document_processing", _queued, raising=True)
+    monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _queued, raising=True)
     monkeypatch.setattr(documents_module.minio_service, "upload_document_file", _upload, raising=True)
 
     body = documents_module.UrlUploadRequest(
@@ -362,7 +363,7 @@ async def test_ingest_local_html_request_persists_minio_uri_and_cleans_temp_afte
     )
     monkeypatch.setattr(documents_module, "_prepare_document_ingestion", lambda **_kwargs: _prepared(), raising=True)
     monkeypatch.setattr(documents_module, "_create_local_html_ingestion_run", lambda **_kwargs: None, raising=True)
-    monkeypatch.setattr(documents_module, "enqueue_document_processing", _queued, raising=True)
+    monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _queued, raising=True)
     monkeypatch.setattr(
         documents_module.minio_service,
         "upload_document_file",
