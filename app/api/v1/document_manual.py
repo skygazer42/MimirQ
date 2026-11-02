@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import DocumentDetail, ManualDocumentCreate
+from app.api.utils.pipeline_options import to_pipeline_options
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.models.dataset import Dataset
@@ -41,7 +42,7 @@ def _build_manual_document_metadata(
     docs_mod: Any,
     request: ManualDocumentCreate,
 ) -> tuple[dict[str, Any], Any]:
-    pipeline_options = docs_mod._to_pipeline_options(pipeline=request.pipeline)
+    pipeline_options = to_pipeline_options(pipeline=request.pipeline)
     doc_metadata = dict(request.metadata or {})
     docs_mod.upsert_pipeline_metadata(doc_metadata, options=pipeline_options)
     doc_metadata.setdefault("parser_backend", "manual")
@@ -185,7 +186,7 @@ def _index_manual_document_chunks(
     dataset: Dataset,
     db_document: DBDocument,
 ) -> None:
-    pipeline_options = docs_mod._to_pipeline_options(pipeline=request.pipeline)
+    pipeline_options = to_pipeline_options(pipeline=request.pipeline)
     pipeline_effective = docs_mod.resolve_pipeline_effective(
         dataset_metadata=(getattr(dataset, "dataset_metadata", None) or {}),
         document_metadata=dict(db_document.doc_metadata or {}),

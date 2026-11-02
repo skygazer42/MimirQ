@@ -11,11 +11,11 @@ import os
 import re
 import shutil
 import uuid
-from dataclasses import asdict, dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Form, HTTPException
@@ -29,6 +29,7 @@ from app.api.schemas.document import (
     DocumentPipelineOptions,
 )
 from app.api.utils.document_dispatch import schedule_document_processing
+from app.api.utils.pipeline_options import PipelineOptionOverrides as PipelineOptionOverrides
 from app.api.utils.upload import compute_file_hash, save_upload_file_with_hash
 from app.api.utils.url_ingest import URLDownloadOptions, download_url_to_path, validate_url_for_ingest
 from app.api.v1 import (
@@ -1033,66 +1034,6 @@ def _parse_pipeline_json(pipeline: str | None) -> DocumentPipelineOptions | None
 
 def _compute_pipeline_hash(doc_metadata: dict) -> str:
     return compute_pipeline_hash(doc_metadata)
-
-
-@dataclass(frozen=True)
-class PipelineOptionOverrides:
-    governance_enabled: bool | None = None
-    governance_remove_toc_lines: bool | None = None
-    governance_remove_noise_lines: bool | None = None
-    governance_unwrap_lines: bool | None = None
-    governance_remove_common_lines: bool | None = None
-    governance_unwrap_max_line_length: int | None = None
-    governance_noise_min_chars: int | None = None
-    governance_noise_ratio_threshold: float | None = None
-    governance_common_lines_min_docs: int | None = None
-    governance_common_lines_min_ratio: float | None = None
-    chunk_size: int | None = None
-    chunk_overlap: int | None = None
-    chunk_vector_enabled: bool | None = None
-    bm25_index_enabled: bool | None = None
-    kg_enabled: bool | None = None
-    event_vector_enabled: bool | None = None
-    entity_vector_enabled: bool | None = None
-
-
-def _resolve_pipeline_option_overrides(
-    *,
-    overrides: PipelineOptionOverrides | None,
-    legacy_overrides: dict[str, Any],
-) -> PipelineOptionOverrides:
-    base = overrides or PipelineOptionOverrides()
-    if not legacy_overrides:
-        return base
-    return cast(PipelineOptionOverrides, replace(base, **legacy_overrides))
-
-
-def _to_pipeline_options(
-    *,
-    pipeline: DocumentPipelineOptions | None = None,
-    overrides: PipelineOptionOverrides | None = None,
-    **legacy_overrides: Any,
-) -> PipelineOptions:
-    resolved_overrides = _resolve_pipeline_option_overrides(overrides=overrides, legacy_overrides=legacy_overrides)
-    overrides_dict = {k: v for k, v in asdict(resolved_overrides).items() if v is not None}
-
-    if pipeline is None:
-        pipeline = DocumentPipelineOptions(**overrides_dict) if overrides_dict else None
-    elif overrides_dict:
-        try:
-            merged = pipeline.model_dump()
-            merged.update(overrides_dict)
-            pipeline = DocumentPipelineOptions(**merged)
-        except Exception as exc:  # noqa: BLE001
-            msg = (str(exc) or exc.__class__.__name__)[:200]
-            detail = "Invalid pipeline options" if is_production_env() else f"Invalid pipeline options: {msg}"
-            raise HTTPException(status_code=400, detail=detail) from exc
-
-    if pipeline is None:
-        return PipelineOptions()
-
-    data = pipeline.model_dump(exclude_none=True)
-    return PipelineOptions(**data) if data else PipelineOptions()
 
 
 def _validate_chunk_params(chunk_size: int, chunk_overlap: int) -> None:

@@ -436,9 +436,14 @@ def test_index_manual_document_chunks_characterizes_metadata_merging_and_image_t
     monkeypatch.setattr(manual_module.settings, "MINIO_ENABLED", True, raising=False)
     monkeypatch.setattr(manual_module.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(manual_module, "Indexer", _FakeIndexer)
+    monkeypatch.setattr(
+        manual_module,
+        "to_pipeline_options",
+        lambda pipeline: {"requested": pipeline},
+        raising=True,
+    )
 
     docs_mod = SimpleNamespace(
-        _to_pipeline_options=lambda pipeline: {"requested": pipeline},
         resolve_pipeline_effective=lambda **_kwargs: SimpleNamespace(kg_enabled=False),
         build_indexing_options=lambda _pipeline_effective: {"mode": "manual"},
         MINIO_IMAGE_REF_RE=re.compile(r"/image-url/([^)\"]+)"),

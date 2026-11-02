@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import DocumentParsePreview, ParsedSegment
+from app.api.utils.pipeline_options import PipelineOptionOverrides, to_pipeline_options
 from app.api.utils.upload import save_upload_file
 from app.core.config import settings
 from app.core.database import get_db
@@ -388,7 +389,7 @@ async def preview_document(
     parser_backend = form.parser_backend
     dataset_id = form.dataset_id
     pipeline = form.pipeline
-    pipeline_overrides = documents_module.PipelineOptionOverrides(**asdict(gov_overrides_form))
+    pipeline_overrides = PipelineOptionOverrides(**asdict(gov_overrides_form))
     file_ext = _validate_preview_extension(file.filename)
 
     upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "preview"
@@ -420,7 +421,7 @@ async def preview_document(
             account_id=account_id,
             dataset_id=dataset_id,
         )
-        pipeline_options = documents_module._to_pipeline_options(
+        pipeline_options = to_pipeline_options(
             pipeline=documents_module._parse_pipeline_json(pipeline),
             overrides=pipeline_overrides,
         )

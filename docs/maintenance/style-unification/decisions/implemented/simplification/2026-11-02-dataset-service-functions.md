@@ -42,6 +42,8 @@ MinerU 的 `_normalize_batch_status` 已提供七个状态字段，API 直接消
 
 队列模块以配置声明和 arq 的 Job／JobStatus 类型表达契约；arq 状态值由枚举提供。文档、连接器及证据修复仍在空任务对象时返回请求的 job ID；KG、索引重建和审计协调仍返回空值；两类数据集扫描仍确认 job 接受状态后返回 ID。worker 边界的 UUID 字符串化和有效选项快照保持不变。
 
+API 请求的 `PipelineOptionOverrides` 和 `to_pipeline_options` 由 `app/api/utils/pipeline_options.py` 统一维护。手工入库、上传、文件预览与分块预览都直接导入；`documents` 路由保留原有类型名称的直接重导出。外部 schema 解析、覆盖字段顺序、None 过滤、`PipelineOptions` 默认结果及 400 错误的生产文案继续保持一致。
+
 RBAC 与配额继续依赖这些成员契约，具体边界见[权限与配额决定](2026-11-02-permission-quota-contracts.md)。
 
 ## Alternatives considered
@@ -53,6 +55,7 @@ RBAC 与配额继续依赖这些成员契约，具体边界见[权限与配额�
 - 将成员校验再抽出一个模块能够进一步拆分文件，但会同时影响本地引导与 RBAC 的所有者边界。本批维持现有所有者，减少跨领域调整。
 - 分别保留上传与 URL 的队列调度能让日志和入口参数各自独立，但会保留两套队列必需判断、任务元数据提交和后台任务注册流程；当前沿用 API utilities 所在层的一份调度实现，保留两种入口本来的同步与后台执行方式。
 - 把 `BackgroundTasks` 和 HTTP 错误转换迁入任务队列模块会令基础队列依赖 FastAPI；当前由 API 工具层转换错误并调用既有队列所有者，队列客户端继续只管理 arq 连接与入队返回值。
+- 保留 pipeline option 转换在 `documents.py` 可以少移动代码，但会让多个 API 入口继续依赖路由装配模块；移入 `app/services/pipeline_config.py` 则会把 Pydantic 请求校验和 HTTP 错误文案交给处理内部有效选项的服务。当前由 API utility 持有请求适配与 override 合并，内部有效管线解析仍由现有 pipeline config 服务负责。
 
 ## Consequences
 
@@ -61,3 +64,5 @@ RBAC 与配额继续依赖这些成员契约，具体边界见[权限与配额�
 移除旧类涉及调用方和现有测试引用的同步。按用户 2026-11-02 的要求，不新增或运行 Python 测试；仅运行 Ruff、语法及调用方静态检查。静态检查不能证明运行时行为回归，完整后端批次仍未验收。
 
 共享调度将并发与临时文件生命周期留在一个 API 工具所有者，相关入口不再重复维护队列交接。该批次运行 Ruff 和静态 AST、路由、错误、调用签名及既有断言核对；按用户要求，未新增或运行 Python 测试，运行时回归仍未验证。
+
+共享 pipeline adapter 让调用方不再经 documents 路由模块取转换函数；documents 对外可见的 overrides 类型仍由原名称直接重导出。四个现有调用领域经完整 AST 与固定错误构造核对；必要的测试 patch 只改到新的函数所有者，没有修改断言或增加测试。

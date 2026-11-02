@@ -62,8 +62,8 @@ def _patch_minimal_document_resolution(
     monkeypatch.setattr(documents_module, "_resolve_writable_dataset", lambda *args, **kwargs: dataset, raising=True)
     monkeypatch.setattr(documents_module, "_parse_pipeline_json", lambda raw: None, raising=True)
     monkeypatch.setattr(
-        documents_module,
-        "_to_pipeline_options",
+        document_upload,
+        "to_pipeline_options",
         lambda *args, **kwargs: documents_module.PipelineOptions(),
         raising=True,
     )

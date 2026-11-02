@@ -264,6 +264,12 @@
 - Ruff check、Ruff format --check、语法解析和 diff --check 通过。按用户要求未新增、扩写或运行 Python 测试，没有导入应用或启动队列、数据库、解析器及模型；运行时回归未验证。ARQ JobStatus 枚举在本机已安装库源码中确认使用小写 wire value。
 - 覆盖表现为 3,643 个路径：116 已调整、29 已符合、961 按要求保留、2,537 待审核。测试文件只同步已删除所有者的 import／patch，既有用例和断言不变。原有 `app/api/schemas/document.py` 修改保留。静态快照及验证器位于忽略的执行工作区 `document-processing-dispatch/`。
 
+## 第四批：Pipeline Options 请求转换（2026-11-02）
+
+- `PipelineOptionOverrides`、legacy keyword merge 和 `DocumentPipelineOptions` 到 `PipelineOptions` 的适配从 `documents.py` 移到 `app/api/utils/pipeline_options.py`。手工入库、上传、文件预览和分块预览的五处调用直接依赖该所有者；既有 documents 类型名称由同一类直接重导出。
+- 完整核对 7 个修改前模块 AST，并逐项比较迁移后的完整转换实现、17 个字段及默认值。schema 解析、override 顺序、None 过滤、生产错误脱敏、81 个 HTTP 错误构造、4 组路由声明与 response_model 保持一致。两个测试 fixture 的 patch 指向新函数所有者；125 条既有断言、用例签名和装饰器不变。
+- Ruff check、Ruff format --check、语法解析和 diff --check 通过；tracked Python 源码不再引用旧转换函数。按用户要求未运行 Python 测试，运行时回归未验证。
+
 ## 第四批：批量文档生命周期（2026-11-02）
 
 - 四个禁用／启用／归档／取消归档路由共用一个逐项状态更新函数；保留成员校验、文档写权限、按需生成单次批量时间戳、审计字段与动作、成功计数及条件提交。

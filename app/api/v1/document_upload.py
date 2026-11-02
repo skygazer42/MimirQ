@@ -17,6 +17,7 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import DocumentBatchUploadResponse, DocumentDetail
 from app.api.utils.document_dispatch import schedule_document_processing
+from app.api.utils.pipeline_options import PipelineOptionOverrides, to_pipeline_options
 from app.api.v1.documents import UrlUploadRequest
 from app.core.config import settings
 from app.core.database import get_db
@@ -710,7 +711,7 @@ def _resolve_upload_pipeline(
 ) -> _ResolvedUploadPipeline:
     from app.api.v1 import documents as documents_module
 
-    pipeline_options = documents_module._to_pipeline_options(
+    pipeline_options = to_pipeline_options(
         pipeline=pipeline_parsed,
         overrides=pipeline_overrides,
     )
@@ -1977,7 +1978,7 @@ async def _upload_document_impl(
         dataset_meta if isinstance(dataset_meta, dict) else {}
     )  # type: ignore[arg-type]
     pipeline_parsed = documents_module._parse_pipeline_json(form.pipeline)
-    pipeline_overrides = documents_module.PipelineOptionOverrides(**asdict(overrides_form))
+    pipeline_overrides = PipelineOptionOverrides(**asdict(overrides_form))
     dataset_default_pb, dataset_default_cs = _dataset_upload_defaults(dataset_meta)
     defaults = _select_upload_defaults(
         parser_backend=parser_backend,
@@ -2226,7 +2227,7 @@ async def upload_documents_batch(
         additional_bytes=0,
     )
 
-    pipeline_overrides = documents_module.PipelineOptionOverrides(**asdict(overrides_form))
+    pipeline_overrides = PipelineOptionOverrides(**asdict(overrides_form))
     parser_backend = form.parser_backend
     chunk_strategy = form.chunk_strategy
     precheck_first = form.precheck_first

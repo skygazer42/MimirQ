@@ -24,6 +24,7 @@ from app.api.schemas.document import (
     ChunkPreviewReviewSignals,
     ChunkPreviewStats,
 )
+from app.api.utils.pipeline_options import to_pipeline_options
 from app.api.utils.upload import save_upload_file_with_hash
 from app.api.v1.documents import (
     CHUNK_OVERLAP_LESS_THAN_SIZE_DETAIL,
@@ -38,7 +39,6 @@ from app.api.v1.documents import (
     _filter_chunker_kwargs_for_strategy,
     _parse_pipeline_json,
     _sanitize_filename,
-    _to_pipeline_options,
     logger,
 )
 from app.core.config import settings
@@ -381,7 +381,7 @@ def _resolve_preview_pipeline_state(
     dataset_meta: dict[str, Any],
     params: ChunkPreviewRequestFields,
 ) -> PreviewPipelineState:
-    pipeline_options = _to_pipeline_options(
+    pipeline_options = to_pipeline_options(
         pipeline=_parse_pipeline_json(params.pipeline),
         governance_enabled=params.governance_enabled,
         governance_remove_toc_lines=params.governance_remove_toc_lines,
