@@ -166,6 +166,8 @@ preview 图片引用归一化、文件定位与读取、owner sidecar／legacy �
 
 URL 入库的 `UrlUploadRequest` 归入现有文档 schema；上传和连接器直接导入请求类型，`documents.py` 只保留同名直接导出兼容既有 Python 引用。请求字段与默认值按原 class AST 核对，连接器其他尚待迁移的动态 helper 继续纳入后续文件审核。
 
+队列服务集中维护 connector ID 到执行函数的唯一映射，HTTP connector run 路由复用该 resolver。执行期延迟导入保留，因为当前 connector 聚合器负责给分拆模块绑定共享 helper；该初始化契约纳入后续连接器边界审核。
+
 **本批产出：** 上传到任务的输入输出和失败路径一致，同一字段映射与权限规则只有一个业务维护点。
 
 ### Task 5：RAG 与模型调用

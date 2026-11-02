@@ -31,6 +31,7 @@ from app.models.group_permissions import DatasetGroupPermission
 from app.models.tenant_group import TenantGroupMember
 from app.services import dataset_service
 from app.services.connector_egress_policy import validate_db_connector_config
+from app.services.connector_run_executor import ConnectorExecutor, get_connector_run_executor
 from app.services.dataset_service import EDIT_ROLES
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
@@ -58,17 +59,6 @@ _CONNECTOR_CONFIG_MODELS: dict[str, Any] = {
     "jira_project": JiraProjectConnectorConfig,
     "mysql_catalog": MySQLCatalogConnectorConfig,
     "sqlserver_catalog": SQLServerCatalogConnectorConfig,
-}
-_CONNECTOR_RUN_DISPATCHER_NAMES = {
-    "url_batch": "_execute_url_batch_run",
-    "web_crawl": "_execute_web_crawl_run",
-    "github_repo": "_execute_github_repo_run",
-    "drive_files": "_execute_drive_files_run",
-    "minio_bucket": "_execute_minio_bucket_run",
-    "confluence_space": "_execute_confluence_space_run",
-    "jira_project": "_execute_jira_project_run",
-    "mysql_catalog": "_execute_db_catalog_run",
-    "sqlserver_catalog": "_execute_db_catalog_run",
 }
 _DB_CONNECTOR_PERMISSION_DETAIL = "No permission to run DB connectors"
 
@@ -149,11 +139,11 @@ def _assert_connector_run_dataset_writable(db: Session, *, run: ConnectorRun, te
     dataset_service.assert_dataset_writable(db, dataset, account_id)
 
 
-def _connector_run_dispatcher(connector_id: str) -> Any:
-    dispatcher_name = _CONNECTOR_RUN_DISPATCHER_NAMES.get(connector_id)
-    if not dispatcher_name:
+def _connector_run_dispatcher(connector_id: str) -> ConnectorExecutor:
+    dispatcher = get_connector_run_executor(connector_id)
+    if dispatcher is None:
         raise HTTPException(status_code=400, detail=connectors_module.UNSUPPORTED_CONNECTOR_ID_DETAIL)
-    return getattr(connectors_module, dispatcher_name)
+    return dispatcher
 
 
 def _validate_connector_run_enabled(connector_id: str) -> None:

@@ -304,3 +304,9 @@
 - `UrlUploadRequest` 完整 class AST 与 HEAD 中的原定义一致；字段、`extra="forbid"`、解析器和分块策略默认值不变。现有连接器配置测试只把 fake constructor patch 从动态 owner 移到 `connectors_drive_files.UrlUploadRequest`，断言未改。
 - Ruff check 对 11 个 Python 文件通过，10 个文件 Ruff format --check 通过；schema 文件仅因保留的原有首行空行未通过文件级格式检查，去除该行的内存副本通过格式检查。diff --check 与决定记录 tree／format checks 通过。
 - 按用户要求未运行 Python 测试、未导入应用；Pydantic 运行时 schema 与上传流程未验证。schema 和连接器文件保持待文件级语义审核。
+
+## 第四批：连接器执行映射归属（2026-11-03）
+
+- 队列服务是 connector ID 执行映射的唯一所有者；`connectors_runs` 路由直接调用该 resolver，不再维护重复的九项 dispatcher 名称表。原 HTTP 400 和队列 `False` 的 unsupported ID 处理保持不变。
+- `ConnectorRun.connector_id` 在 ORM 中为非空字符串，worker 的公开入口参数也是 `str`；去掉两处 `str(connector_id or "")`，保留 `.strip()` 及大小写匹配方式。队列 resolver 仍在实际执行时延迟导入 connector 聚合器，以保留分拆模块的 helper 初始化。
+- Ruff check、Ruff format --check、语法与 diff --check 通过；静态引用扫描确认 API 调用同一 resolver，worker 入口仍调用相同服务。没有运行 Python 测试或导入应用，连接器完整执行流程未运行。

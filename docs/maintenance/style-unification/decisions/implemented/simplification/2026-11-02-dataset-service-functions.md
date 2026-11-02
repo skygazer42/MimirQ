@@ -46,6 +46,8 @@ MinerU 的 `_normalize_batch_status` 已提供七个状态字段，API 直接消
 
 队列模块以配置声明和 arq 的 Job／JobStatus 类型表达契约；arq 状态值由枚举提供。文档、连接器及证据修复仍在空任务对象时返回请求的 job ID；KG、索引重建和审计协调仍返回空值；两类数据集扫描仍确认 job 接受状态后返回 ID。worker 边界的 UUID 字符串化和有效选项快照保持不变。
 
+连接器执行器由 `connector_run_executor` 维护唯一的 connector ID 到函数名映射；队列执行和 HTTP 路由都调用同一 resolver。`connectors_runs` 不再复制九项映射或从路由模块按名称取 dispatcher。resolver 接收 ORM 非空 `connector_id` 字符串，保留去空格与未知 ID 结果，不再把任意值转成字符串或空串。服务仍在实际执行时延迟导入 `app.api.v1.connectors`，因为聚合模块会为分拆的 connector 模块设置 `_leader_module`；提前直接导入叶子模块会跳过这层既有 helper 绑定。
+
 API 请求的 `PipelineOptionOverrides` 和 `to_pipeline_options` 由 `app/api/utils/pipeline_options.py` 统一维护。手工入库、上传、文件预览与分块预览都直接导入；`documents` 路由保留原有类型名称的直接重导出。外部 schema 解析、覆盖字段顺序、None 过滤、`PipelineOptions` 默认结果及 400 错误的生产文案继续保持一致。
 
 preview 图片引用解析、本地临时文件读取与 owner sidecar 验证、legacy 记录查询和 MinIO 存储由已有 `document_preview_utils` 共同负责。手工分块直接导入该 owner，documents 对外保留原名称的直接导出。legacy 查询仅在 owner 校验路径中局部导入，因为 `document_preview_legacy` 的正则直接来自本模块，顶层互相导入会产生循环。
@@ -64,6 +66,8 @@ RBAC 与配额继续依赖这些成员契约，具体边界见[权限与配额�
 - 将可写数据集选择留在 `documents.py` 或让 `connectors.py` 再转发，能缩小新调用范围，却会令共享 API 流程依赖路由聚合模块。当前把选择规则放在已有 `dataset_service`，与租户校验、写权限和默认数据集创建共用实际所有者。
 - 将 `UrlUploadRequest` 留在 `documents.py` 可以避免迁移导入，但 `document_upload.py` 需要从正在装配它的路由模块取请求类型，继续形成反向依赖。当前把请求类型放在现有 schema 所有者，并由路由直接重导出旧名称。
 - 让连接器继续通过字符串名称解析 `UrlUploadRequest` 可以少改调用点，但会让类型来源依赖运行时路由注册。当前连接器直接导入 schema，其他业务 helper 的既有解析仍留待各自所有者迁移。
+- 让 HTTP 路由继续维护 dispatcher 名称表可以避免依赖执行服务，但队列和路由各维护一份相同映射，新增 connector 时容易只更新一边。当前两者共同调用执行服务的 resolver，未知 ID 仍由 API 转成原有 400。
+- 在 worker 导入阶段直接导入各 connector 叶子模块可以去掉运行时字符串解析，但会绕开聚合模块对 `_leader_module` 的初始化，也会在队列启动时加载所有 API 模块。当前保留执行时的延迟导入；彻底移除该依赖需先迁移叶子模块的共享 helper 所有权。
 - 只让手工路由导入 documents 中的图片重写函数，改动较少但继续依赖路由装配器；建立新图片服务则会与已有 preview 图片归属和 materialization 分成两份 owner。当前把完整重写流程移入现有 `document_preview_utils`，按需延后 legacy 查询以断开其 regex 反向导入。
 - 分别保留上传与 URL 的队列调度能让日志和入口参数各自独立，但会保留两套队列必需判断、任务元数据提交和后台任务注册流程；当前沿用 API utilities 所在层的一份调度实现，保留两种入口本来的同步与后台执行方式。
 - 把 `BackgroundTasks` 和 HTTP 错误转换迁入任务队列模块会令基础队列依赖 FastAPI；当前由 API 工具层转换错误并调用既有队列所有者，队列客户端继续只管理 arq 连接与入队返回值。
@@ -86,3 +90,5 @@ RBAC 与配额继续依赖这些成员契约，具体边界见[权限与配额�
 资产请求 helpers 迁到实际 route owner 后，header／JWT 身份来源、租户选择、文件根目录约束和流式响应处理不再经过 documents module 参数；对外 HTTP 路由和错误文案维持原样。兼容重导出仅保留仍被追踪调用的 symbol 名称。
 
 URL 上传模型的单一声明位于文档 schema；上传与连接器入口不再为构造该类型访问 documents 路由聚合器。兼容导出保留既有外部 Python 引用，模型字段与默认值维持原样。
+
+队列和 API 路由共用一份 connector executor 映射。无效 connector ID 仍分别得到队列的 `False` 和 API 原有的 400；连接器聚合器仍只在实际执行时导入，直到共享 helper 绑定迁移完成。
