@@ -47,7 +47,7 @@ def _derive_hint(
     detail: dict[str, Any] | None,
 ) -> str | None:
     # 1) Explicit hint takes precedence.
-    if isinstance(detail, dict):
+    if detail is not None:
         raw_hint = detail.get("hint")
         if isinstance(raw_hint, str) and raw_hint.strip():
             return raw_hint.strip()
@@ -59,8 +59,7 @@ def _derive_hint(
                 return mapped
 
     # 2) Heuristics for legacy string-only HTTPException details.
-    msg = str(message or "").strip()
-    norm = msg.lower()
+    norm = message.strip().lower()
 
     if status_code == HTTP_413_CONTENT_TOO_LARGE or "file too large" in norm:
         return _HINT_BY_KEY.get("payload_too_large")
@@ -131,7 +130,7 @@ class MimirQError(Exception):
         error_code: str = "INTERNAL_ERROR",
         status_code: int = HTTP_500_INTERNAL_SERVER_ERROR,
         detail: dict[str, Any] | None = None,
-    ):
+    ) -> None:
         self.message = message
         self.error_code = error_code
         self.status_code = status_code
@@ -181,7 +180,7 @@ class ValidationError(MimirQError):
         message: str,
         field: str | None = None,
         detail: dict[str, Any] | None = None,
-    ):
+    ) -> None:
         merged_detail: dict[str, Any] = dict(detail or {})
         if field:
             merged_detail["field"] = field
@@ -194,7 +193,7 @@ class ValidationError(MimirQError):
 
 
 class RateLimitError(MimirQError):
-    def __init__(self, retry_after: float = 60.0):
+    def __init__(self, retry_after: float = 60.0) -> None:
         super().__init__(
             message="Too many requests. Please try again later.",
             error_code="RATE_LIMIT_EXCEEDED",
@@ -204,7 +203,7 @@ class RateLimitError(MimirQError):
 
 
 class LLMError(MimirQError):
-    def __init__(self, message: str, provider: str | None = None):
+    def __init__(self, message: str, provider: str | None = None) -> None:
         detail: dict[str, Any] = {}
         if provider:
             detail["provider"] = provider
@@ -242,7 +241,7 @@ class ConfigError(Exception):
 class LLMTimeoutError(LLMError):
     """LLM timeout error."""
 
-    def __init__(self, message: str = "LLM request timed out", provider: str | None = None):
+    def __init__(self, message: str = "LLM request timed out", provider: str | None = None) -> None:
         super().__init__(message=message, provider=provider)
 
 
@@ -267,9 +266,9 @@ def mimirq_exception_handler(request: Request, exc: MimirQError) -> JSONResponse
         request_id,
     )
     hint = _derive_hint(
-        status_code=int(exc.status_code),
-        error_code=str(exc.error_code or "INTERNAL_ERROR"),
-        message=str(exc.message or ""),
+        status_code=exc.status_code,
+        error_code=exc.error_code or "INTERNAL_ERROR",
+        message=exc.message or "",
         detail=exc.detail if isinstance(exc.detail, dict) else None,
     )
     return JSONResponse(
@@ -318,9 +317,9 @@ def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse
         detail = None
 
     hint = _derive_hint(
-        status_code=int(exc.status_code),
-        error_code=str(error_code),
-        message=str(message),
+        status_code=exc.status_code,
+        error_code=error_code,
+        message=message,
         detail=detail,
     )
 

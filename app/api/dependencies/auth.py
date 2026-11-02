@@ -5,6 +5,7 @@ Parses user identity from request headers.
 """
 
 import asyncio
+from typing import Any
 from uuid import UUID
 
 from fastapi import Header, HTTPException, Request
@@ -20,25 +21,25 @@ logger = get_logger("api.auth")
 INVALID_TOKEN_DETAIL = "Invalid token"  # noqa: S105
 
 
-def _coerce_uuid(raw: object) -> str | None:
+def _parse_tenant_uuid(raw: object) -> UUID | None:
     value = str(raw or "").strip()
     if not value:
         return None
     try:
-        return str(UUID(value))
+        return UUID(value)
     except ValueError:
         return None
 
 
-def _get_jwt_tenant_id(payload: dict) -> str | None:
-    claim = str(settings.JWT_TENANT_CLAIM or "").strip()
+def _get_jwt_tenant_id(payload: dict[str, Any]) -> UUID | None:
+    claim = (settings.JWT_TENANT_CLAIM or "").strip()
     if not claim:
         return None
     raw = payload.get(claim)
     if raw is None:
         return None
-    tenant_id = _coerce_uuid(raw)
-    if not tenant_id:
+    tenant_id = _parse_tenant_uuid(raw)
+    if tenant_id is None:
         # If a tenant claim is configured but invalid, treat it as an invalid token.
         raise HTTPException(status_code=401, detail=INVALID_TOKEN_DETAIL)
     return tenant_id
@@ -48,13 +49,13 @@ def _best_effort_client_ip(request: Request) -> str | None:
     client = request.client
     if client is None:
         return None
-    return str(client.host).strip() or None
+    return client.host.strip() or None
 
 
 def _resolve_header_mode_user(*, x_user_id: str | None, request: Request | None) -> str:
     if not x_user_id:
         raise HTTPException(status_code=401, detail="X-User-ID header required")
-    user_id = str(x_user_id)
+    user_id = x_user_id
     if request is not None:
         request.state.user_id = user_id
     set_request_user_id(user_id)
@@ -70,14 +71,14 @@ def _bearer_token_or_401(authorization: str | None) -> str:
     return token[7:].strip()
 
 
-def _cached_jwt_payload(request: Request | None) -> dict | None:
+def _cached_jwt_payload(request: Request | None) -> dict[str, Any] | None:
     if request is None:
         return None
     cached = getattr(request.state, "_jwt_payload", None)
     return cached if isinstance(cached, dict) and cached else None
 
 
-async def _decode_or_cached_jwt_payload(*, token: str, request: Request | None) -> dict:
+async def _decode_or_cached_jwt_payload(*, token: str, request: Request | None) -> dict[str, Any]:
     if payload := _cached_jwt_payload(request):
         return payload
     try:
@@ -93,38 +94,38 @@ async def _decode_or_cached_jwt_payload(*, token: str, request: Request | None) 
     return payload
 
 
-def _enforce_tenant_header_match(*, jwt_tenant_id: str | None, x_tenant_id: str | None) -> None:
-    if not bool(settings.JWT_ENFORCE_TENANT_HEADER_MATCH):
+def _enforce_tenant_header_match(*, jwt_tenant_id: UUID | None, x_tenant_id: str | None) -> None:
+    if not settings.JWT_ENFORCE_TENANT_HEADER_MATCH:
         return
-    if not jwt_tenant_id:
+    if jwt_tenant_id is None:
         raise HTTPException(status_code=401, detail=INVALID_TOKEN_DETAIL)
 
-    header_tenant_id = _coerce_uuid(x_tenant_id)
-    if not header_tenant_id:
+    header_tenant_id = _parse_tenant_uuid(x_tenant_id)
+    if header_tenant_id is None:
         raise HTTPException(status_code=400, detail="X-Tenant-ID header required")
     if header_tenant_id != jwt_tenant_id:
         raise HTTPException(status_code=401, detail=INVALID_TOKEN_DETAIL)
 
 
-def _set_authenticated_context(*, user_id: str, jwt_tenant_id: str | None, request: Request | None) -> None:
+def _set_authenticated_context(*, user_id: str, jwt_tenant_id: UUID | None, request: Request | None) -> None:
     if request is not None:
         request.state.user_id = user_id
     set_request_user_id(user_id)
-    if not jwt_tenant_id:
+    if jwt_tenant_id is None:
         return
-    set_request_tenant_id(jwt_tenant_id)
+    set_request_tenant_id(str(jwt_tenant_id))
     if request is not None:
-        request.state.tenant_id = UUID(jwt_tenant_id)
+        request.state.tenant_id = jwt_tenant_id
 
 
-def _maybe_sync_jwt_groups(*, jwt_tenant_id: str, user_id: str, payload: dict) -> None:
-    if not bool(settings.JWT_GROUPS_SYNC_ENABLED):
+def _maybe_sync_jwt_groups(*, jwt_tenant_id: UUID, user_id: str, payload: dict[str, Any]) -> None:
+    if not settings.JWT_GROUPS_SYNC_ENABLED:
         return
     try:
         from app.services.jwt_group_sync_service import maybe_sync_jwt_groups  # noqa: WPS433
 
         maybe_sync_jwt_groups(
-            tenant_id=UUID(jwt_tenant_id),
+            tenant_id=jwt_tenant_id,
             account_id=user_id,
             jwt_payload=payload,
         )
@@ -142,8 +143,8 @@ def _request_provisioning_context(request: Request | None) -> tuple[str | None, 
     return request_id, ip, user_agent
 
 
-def _maybe_auto_provision_tenant_member(*, jwt_tenant_id: str, user_id: str, request: Request | None) -> None:
-    if not bool(settings.JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED):
+def _maybe_auto_provision_tenant_member(*, jwt_tenant_id: UUID, user_id: str, request: Request | None) -> None:
+    if not settings.JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED:
         return
     try:
         from app.core.database import SessionLocal  # noqa: WPS433
@@ -154,7 +155,7 @@ def _maybe_auto_provision_tenant_member(*, jwt_tenant_id: str, user_id: str, req
         request_id, ip, user_agent = _request_provisioning_context(request)
         maybe_auto_provision_jwt_tenant_member_best_effort(
             db_factory=SessionLocal,
-            tenant_id=UUID(jwt_tenant_id),
+            tenant_id=jwt_tenant_id,
             user_id=user_id,
             request_id=request_id,
             ip=ip,
@@ -165,7 +166,9 @@ def _maybe_auto_provision_tenant_member(*, jwt_tenant_id: str, user_id: str, req
         logger.debug("JWT tenant member auto-provisioning failed during auth; continuing: %s", exc)
 
 
-def _run_optional_jwt_db_work(*, jwt_tenant_id: str, user_id: str, payload: dict, request: Request | None) -> None:
+def _run_optional_jwt_db_work(
+    *, jwt_tenant_id: UUID, user_id: str, payload: dict[str, Any], request: Request | None
+) -> None:
     _maybe_sync_jwt_groups(jwt_tenant_id=jwt_tenant_id, user_id=user_id, payload=payload)
     _maybe_auto_provision_tenant_member(jwt_tenant_id=jwt_tenant_id, user_id=user_id, request=request)
 
@@ -198,9 +201,7 @@ async def get_current_account_id_from_headers(
     _enforce_tenant_header_match(jwt_tenant_id=jwt_tenant_id, x_tenant_id=x_tenant_id)
     user_id = str(user_id)
     _set_authenticated_context(user_id=user_id, jwt_tenant_id=jwt_tenant_id, request=request)
-    optional_db_work_enabled = bool(settings.JWT_GROUPS_SYNC_ENABLED) or bool(
-        settings.JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED
-    )
+    optional_db_work_enabled = settings.JWT_GROUPS_SYNC_ENABLED or settings.JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED
     if jwt_tenant_id and optional_db_work_enabled:
         await asyncio.to_thread(
             _run_optional_jwt_db_work,
@@ -226,7 +227,7 @@ async def get_current_account_id(
     """
     tenant_value = x_tenant_id
     if not tenant_value:
-        tenant_header = str(settings.TENANT_HEADER or "X-Tenant-ID").strip() or "X-Tenant-ID"
+        tenant_header = (settings.TENANT_HEADER or "X-Tenant-ID").strip() or "X-Tenant-ID"
         if tenant_header.lower() != "x-tenant-id":
             tenant_value = (request.headers.get(tenant_header) or "").strip() or None
     return await get_current_account_id_from_headers(

@@ -62,18 +62,17 @@ alembic/versions/0025_scan_run_active_uniqueness.py,inventory,preserved,preserve
 alembic/versions/0026_add_index_drift_items.py,inventory,preserved,preserved,Published historical migration; preserve migration identity,inventory
 alembic/versions/0027_add_document_index_channels.py,inventory,preserved,preserved,Published historical migration; preserve migration identity,inventory
 app/__init__.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/dependencies/__init__.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/dependencies/auth.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/dependencies/error_handlers.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/dependencies/logging.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/dependencies/tenant.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/middleware/__init__.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/middleware/body_size_limit.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/middleware/process_time.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/middleware/rate_limit.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/middleware/request_id.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/middleware/response_header_sanitizer.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/middleware/security_headers.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/api/dependencies/__init__.py,3,conforms,conforms,Complete source review; framework and external-input boundaries retained,Task 3 common API: Ruff/format/AST/signatures; source-only verification; no Python tests
+app/api/dependencies/auth.py,3,adjusted,adjusted,Explicit UUID/config/framework contracts; duplicate internal conversions removed; policies retained,Task 3 common API: Ruff/format/AST/signatures; source-only verification; no Python tests
+app/api/dependencies/logging.py,3,conforms,adjusted,Complete source review; framework and external-input boundaries retained,Task 3 common API: Ruff/format/AST/signatures; source-only verification; no Python tests
+app/api/dependencies/tenant.py,3,adjusted,conforms,Explicit UUID/config/framework contracts; duplicate internal conversions removed; policies retained,Task 3 common API: Ruff/format/AST/signatures; source-only verification; no Python tests
+app/api/middleware/__init__.py,3,conforms,conforms,Complete source review; framework and external-input boundaries retained,Task 3 common API: Ruff/format/AST/signatures; source-only verification; no Python tests
+app/api/middleware/body_size_limit.py,3,adjusted,conforms,Explicit UUID/config/framework contracts; duplicate internal conversions removed; policies retained,Task 3 common API: Ruff/format/AST/signatures; source-only verification; no Python tests
+app/api/middleware/process_time.py,3,adjusted,adjusted,Explicit UUID/config/framework contracts; duplicate internal conversions removed; policies retained,Task 3 common API: Ruff/format/AST/signatures; source-only verification; no Python tests
+app/api/middleware/rate_limit.py,3,adjusted,conforms,Explicit UUID/config/framework contracts; duplicate internal conversions removed; policies retained,Task 3 common API: Ruff/format/AST/signatures; source-only verification; no Python tests
+app/api/middleware/request_id.py,3,adjusted,conforms,Explicit UUID/config/framework contracts; duplicate internal conversions removed; policies retained,Task 3 common API: Ruff/format/AST/signatures; source-only verification; no Python tests
+app/api/middleware/response_header_sanitizer.py,3,adjusted,adjusted,Explicit UUID/config/framework contracts; duplicate internal conversions removed; policies retained,Task 3 common API: Ruff/format/AST/signatures; source-only verification; no Python tests
+app/api/middleware/security_headers.py,3,adjusted,conforms,Explicit UUID/config/framework contracts; duplicate internal conversions removed; policies retained,Task 3 common API: Ruff/format/AST/signatures; source-only verification; no Python tests
 app/api/schemas/__init__.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/auth.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/base.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -115,8 +114,8 @@ app/api/schemas/regression.py,3,pending,conforms,Awaiting file-level convention 
 app/api/schemas/report.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/table_store.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/utils/__init__.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/utils/http_exception_responses.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/utils/response_headers.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/api/utils/http_exception_responses.py,3,conforms,conforms,Complete source review; framework and external-input boundaries retained,Task 3 common API: Ruff/format/AST/signatures; source-only verification; no Python tests
+app/api/utils/response_headers.py,3,conforms,adjusted,Complete source review; framework and external-input boundaries retained,Task 3 common API: Ruff/format/AST/signatures; source-only verification; no Python tests
 app/api/utils/upload.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/utils/url_ingest.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/v1/__init__.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -244,7 +243,7 @@ app/core/cost_tracker.py,3,pending,conforms,Awaiting file-level convention and c
 app/core/database.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/database_singleton.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/env.py,3,conforms,adjusted,Environment reader already has a single explicit typed responsibility,task-3-configuration-static; complete source review
-app/core/exceptions.py,3,adjusted,conforms,Shared business errors include NotFoundError with the existing HTTP 404 error code,Task 2 auth contracts; Task 3 group/SCIM error contracts
+app/core/exceptions.py,3,adjusted,conforms,Explicit UUID/config/framework contracts; duplicate internal conversions removed; policies retained,Task 3 common API: Ruff/format/AST/signatures; source-only verification; no Python tests
 app/core/health_checks.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/http_client.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/http_env.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -441,7 +440,7 @@ app/deepdoc/vision/seeit.py,inventory,preserved,preserved,Vendored implementatio
 app/deepdoc/vision/t_ocr.py,inventory,preserved,preserved,Vendored implementation; preserve upstream form,inventory
 app/deepdoc/vision/t_recognizer.py,inventory,preserved,preserved,Vendored implementation; preserve upstream form,inventory
 app/deepdoc/vision/table_structure_recognizer.py,inventory,preserved,preserved,Vendored implementation; preserve upstream form,inventory
-app/main.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/main.py,7,adjusted,conforms,Explicit UUID/config/framework contracts; duplicate internal conversions removed; policies retained,Task 3 common API: Ruff/format/AST/signatures; source-only verification; no Python tests
 app/middleware/__init__.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/models/__init__.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/models/_all.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -1794,6 +1793,9 @@ docs/llama_index_config.md,inventory,preserved,preserved,"Documentation, static 
 docs/maintenance/style-unification/README.md,1,preserved,preserved,Migration plan or verification record,Task 1 inventory
 docs/maintenance/style-unification/baseline-python-failures.txt,1,preserved,preserved,Migration plan or verification record,Task 1 inventory
 docs/maintenance/style-unification/coverage.csv,1,preserved,preserved,Migration plan or verification record,Task 1 inventory
+docs/maintenance/style-unification/decisions/implemented/simplification/2026-11-02-common-api-boundaries.md,inventory,preserved,preserved,Maintenance decision for common API contracts and removed unused wrappers,Task 3 common API; note tree/format/archive verification
+docs/maintenance/style-unification/decisions/implemented/simplification/2026-11-02-configuration-validation-contracts.md,3,preserved,preserved,Configuration validation decision record; documentation scope,task-3-configuration-static
+docs/maintenance/style-unification/decisions/implemented/simplification/2026-11-02-dataset-service-functions.md,3,preserved,preserved,Dataset service decision record; documentation scope,task-3-dataset-final
 docs/maintenance/style-unification/decisions/implemented/simplification/2026-11-02-permission-quota-contracts.md,3,preserved,preserved,Decision record for permission and quota simplification; source and validation limits documented,task-3-permission-quota; Agent Note tree/format/archive verification
 docs/maintenance/style-unification/verification.md,1,preserved,preserved,Migration plan or verification record,Task 1 inventory
 docs/migrations/20241210_multitenant.sql,7,pending,pending,Awaiting file-level convention and contract review,
@@ -3634,5 +3636,3 @@ web/workers/graph-parser.worker.ts,6,pending,pending,Awaiting file-level convent
 web/workers/pdf-page-render.worker.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/workers/pdf-preview.worker.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/workers/report-transforms.worker.ts,6,pending,pending,Awaiting file-level convention and contract review,
-docs/maintenance/style-unification/decisions/implemented/simplification/2026-11-02-dataset-service-functions.md,3,preserved,preserved,Dataset service decision record; documentation scope,task-3-dataset-final
-docs/maintenance/style-unification/decisions/implemented/simplification/2026-11-02-configuration-validation-contracts.md,3,preserved,preserved,Configuration validation decision record; documentation scope,task-3-configuration-static

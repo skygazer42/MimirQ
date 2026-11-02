@@ -4,6 +4,7 @@ Tenant identification dependency.
 Parses tenant ID from request headers with default value fallback.
 """
 
+from typing import Any
 from uuid import UUID
 
 from fastapi import Header, HTTPException, Request
@@ -32,7 +33,7 @@ def _extract_bearer_token(authorization: str) -> str:
     return token[7:].strip()
 
 
-async def _decode_tenant_jwt_payload(token: str) -> dict:
+async def _decode_tenant_jwt_payload(token: str) -> dict[str, Any]:
     try:
         return await decode_access_token(token)
     except ExpiredSignatureError as exc:
@@ -41,7 +42,7 @@ async def _decode_tenant_jwt_payload(token: str) -> dict:
         raise HTTPException(status_code=401, detail="Invalid token") from exc
 
 
-def _tenant_uuid_from_claim(payload: dict, claim: str) -> UUID | None:
+def _tenant_uuid_from_claim(payload: dict[str, Any], claim: str) -> UUID | None:
     raw_claim = payload.get(claim)
     if raw_claim is None:
         return None
@@ -52,12 +53,12 @@ def _tenant_uuid_from_claim(payload: dict, claim: str) -> UUID | None:
         raise HTTPException(status_code=401, detail="Invalid token") from exc
 
 
-def _cache_jwt_identity(request: Request, *, payload: dict, tenant_uuid: UUID) -> None:
+def _cache_jwt_identity(request: Request, *, payload: dict[str, Any], tenant_uuid: UUID) -> None:
     request.state._jwt_payload = payload  # noqa: SLF001
     request.state.tenant_id = tenant_uuid
     request.state.tenant_id_source = "jwt"
     if request.client is not None:
-        request.state.client_host = str(request.client.host or "").strip()
+        request.state.client_host = (request.client.host or "").strip()
     raw_sub = payload.get("sub")
     if raw_sub:
         request.state.user_id = str(raw_sub)
@@ -68,7 +69,7 @@ async def _preferred_jwt_tenant_id(request: Request) -> UUID | None:
         return tenant_uuid
 
     auth_mode = (settings.AUTH_MODE or "jwt").lower()
-    claim = str(settings.JWT_TENANT_CLAIM or "").strip()
+    claim = (settings.JWT_TENANT_CLAIM or "").strip()
     authorization = (request.headers.get("authorization") or "").strip()
     if auth_mode != "jwt" or not claim or not authorization:
         return None
@@ -83,7 +84,7 @@ async def _preferred_jwt_tenant_id(request: Request) -> UUID | None:
 
 def _tenant_header_value(request: Request, x_tenant_id: str | None) -> tuple[str | None, str]:
     raw = (x_tenant_id or "").strip() or None
-    tenant_header = str(settings.TENANT_HEADER or "X-Tenant-ID").strip() or "X-Tenant-ID"
+    tenant_header = (settings.TENANT_HEADER or "X-Tenant-ID").strip() or "X-Tenant-ID"
     if not raw and tenant_header.lower() != "x-tenant-id":
         raw = (request.headers.get(tenant_header) or "").strip() or None
     return raw, tenant_header
@@ -98,13 +99,13 @@ def _tenant_uuid_from_header_or_default(request: Request, x_tenant_id: str | Non
         raw = settings.DEFAULT_TENANT_ID
         source = "default"
     try:
-        tenant_uuid = UUID(str(raw))
+        tenant_uuid = UUID(raw)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid tenant id") from exc
     request.state.tenant_id = tenant_uuid
     request.state.tenant_id_source = source
     if request.client is not None:
-        request.state.client_host = str(request.client.host or "").strip()
+        request.state.client_host = (request.client.host or "").strip()
     return tenant_uuid
 
 

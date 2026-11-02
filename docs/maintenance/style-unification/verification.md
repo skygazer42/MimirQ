@@ -119,3 +119,13 @@
 - 静态比较在首次改写后抓到一处表达式替换丢失括号的问题，已在提交前修复，全部函数比较重新通过。临时改写器与验证脚本仅留在 ignored 执行工作区，没有作为生产工具加入仓库。
 - 最终 5 个模块 Ruff check、Ruff format --check 和语法解析通过；新增配置职责决定的目录、格式及归档检查通过。完整证据为执行工作区 logs/task-3-configuration-static.json 及 configuration-refactor/ 修改前快照。
 - 按用户要求未新增、扩写或运行 Python 测试，未导入业务模块或启动数据库、解析器、模型；源码检查不能证明运行时回归通过。覆盖表只关闭这 5 个已完整审核模块，通用入口与后续批次继续执行。
+
+## 第三批：通用 API、请求中间件与应用装配（2026-11-02）
+
+- 完整审核 15 个保留生产模块，并删除无调用、导入、动态命名或注册的 error_handlers 模块及五个通用校验包装；5 个未修改模块登记已符合，其余 10 个登记已调整。原有 document.py 修改保留。
+- JWT／请求头的 UUID 校验留在原入口，内部直接传递 UUID；日志输出字符串，请求状态直接保存 UUID。4 个公开认证／租户依赖签名、24 处错误响应构造和 5 个完整错误边界函数体保持一致；18 处确定认证调用匹配签名。
+- 33 个认证／租户／异常函数经明确的类型转换与 UUID 表示规则规范化后 AST 一致。无效 claim、无效缓存回退、400／401、可选数据库线程工作及其既有 best-effort 政策保留，没有统一原有入口差异。
+- 7 个完整中间件经已审阅规范化后 AST 一致；37 个函数的参数名和默认值不变。TokenBucket、RateLimiter、RedisRateLimiter 三个完整类 AST 原样匹配。上传流累计、413、429、Retry-After、安全头只补缺项、Redis fail-open、锁和线程边界保留。框架类型来自本地已安装 Starlette 源码。
+- 完整 main.py 装配经明确配置、类型标注与目录字符串规则规范化后 AST 一致，覆盖 43 处声明配置读取与 30 个顶层函数；路由、中间件、启动与关闭顺序保留。两个探针补返回标注时显式 response_model=None；依据已安装 FastAPI 源码核对原推断行为，未运行 OpenAPI 导出。
+- 最终 15 个保留模块 Ruff check、Ruff format --check 与语法解析通过；决定记录目录、格式及归档检查通过。覆盖清单仍精确对应 3,637 个最终跟踪路径：43 已调整、8 已符合、953 登记保留、2,633 待语义审核。
+- 未新增、扩写或运行 Python 测试，未导入应用模块或启动外部服务；运行时回归未验证。证据位于执行工作区 common-api-refactor/ 及 logs/task-3-common-api-static.json、task-3-middleware-static.json、task-3-app-entry-static.json。

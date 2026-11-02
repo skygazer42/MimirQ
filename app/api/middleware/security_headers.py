@@ -8,17 +8,16 @@ knowledge-base deployments:
 - Keep referrer data minimal by default
 """
 
-from collections.abc import Callable
-
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
+from starlette.types import ASGIApp
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     def __init__(
         self,
-        app,
+        app: ASGIApp,
         *,
         x_content_type_options: str = "nosniff",
         x_frame_options: str = "DENY",
@@ -29,15 +28,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         cross_origin_resource_policy: str = "",
     ) -> None:
         super().__init__(app)
-        self.x_content_type_options = str(x_content_type_options or "").strip()
-        self.x_frame_options = str(x_frame_options or "").strip()
-        self.referrer_policy = str(referrer_policy or "").strip()
-        self.strict_transport_security = str(strict_transport_security or "").strip()
-        self.permissions_policy = str(permissions_policy or "").strip()
-        self.cross_origin_opener_policy = str(cross_origin_opener_policy or "").strip()
-        self.cross_origin_resource_policy = str(cross_origin_resource_policy or "").strip()
+        self.x_content_type_options = (x_content_type_options or "").strip()
+        self.x_frame_options = (x_frame_options or "").strip()
+        self.referrer_policy = (referrer_policy or "").strip()
+        self.strict_transport_security = (strict_transport_security or "").strip()
+        self.permissions_policy = (permissions_policy or "").strip()
+        self.cross_origin_opener_policy = (cross_origin_opener_policy or "").strip()
+        self.cross_origin_resource_policy = (cross_origin_resource_policy or "").strip()
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         response = await call_next(request)
 
         if self.x_content_type_options and "X-Content-Type-Options" not in response.headers:

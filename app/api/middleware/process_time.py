@@ -6,18 +6,18 @@ Adds a lightweight timing header to responses for debugging/perf checks:
 - Server-Timing (optional)
 """
 
-from collections.abc import Callable
 from time import perf_counter
 
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
+from starlette.types import ASGIApp
 
 
 class ProcessTimeMiddleware(BaseHTTPMiddleware):
     def __init__(
         self,
-        app,
+        app: ASGIApp,
         *,
         header_name: str = "X-Process-Time-Ms",
         server_timing_enabled: bool = True,
@@ -26,11 +26,11 @@ class ProcessTimeMiddleware(BaseHTTPMiddleware):
     ) -> None:
         super().__init__(app)
         self.header_name = header_name
-        self.server_timing_enabled = bool(server_timing_enabled)
-        self.server_timing_header = str(server_timing_header or "Server-Timing")
-        self.server_timing_metric = str(server_timing_metric or "app")
+        self.server_timing_enabled = server_timing_enabled
+        self.server_timing_header = server_timing_header or "Server-Timing"
+        self.server_timing_metric = server_timing_metric or "app"
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         start = perf_counter()
         response = await call_next(request)
         elapsed_ms = (perf_counter() - start) * 1000.0
