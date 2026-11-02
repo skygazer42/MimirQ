@@ -26,6 +26,8 @@ API 的 `DatasetBase` 与 `DatasetUpdate` 使用 `list[UUID]` 校验组 ID；复
 
 分块预设的四个模型归到 schema，五个数据库操作归到所属服务；路由只组织鉴权、数据集授权与响应。旧私有操作名称直接导入实际函数，保留既有 patch 引用，没有转发壳。列表上限继续由 Query 校验，非法路径 ID 仍返回未找到，payload 与查询中的非法数据集 ID 仍按原格式返回 400。
 
+URL 入库请求 `UrlUploadRequest` 归入 `app/api/schemas/document.py`，与其引用的 `DocumentPipelineOptions` 及其他文档请求模型共用 schema 所有者。上传和连接器调用方直接导入该类型；`documents.py` 保留直接导出同名类型，兼容现有 Python 引用。字段、`extra="forbid"`、解析器与分块策略默认值不变。
+
 入库运行记录由 `ingestion_run_service` 的五个模块函数负责，入口位于私有统计与锁帮助函数之前。上传模块直接调用实际服务，不再从文档路由装配器取静态类；两个只为取得服务而接收整个模块的参数同时退出。数据库与模型已声明的字段直接使用，JSON 统计和文档元数据仍保留真实形状适配。
 
 创建运行记录的数据库失败由调用方决定处理方式；绑定与收尾维持 best-effort，状态通知的 `required` 模式仍在回滚后抛错。运行行锁先于关联行锁、重复绑定幂等、唯一约束、提交与观测顺序、统计 top 上限及空批失败规则继续保持。已有并发夹具仅补齐模型的 config 字段和 Session.flush，并同步服务引用，不增加用例或断言。
@@ -60,6 +62,8 @@ RBAC 与配额继续依赖这些成员契约，具体边界见[权限与配额�
 - 为用户 patch 新建独立模块能让旧运行时文件保持不动，但文档元数据又多一个维护入口；当前合入更名后的已有服务，三项公共操作直接导入。
 - 将成员校验再抽出一个模块能够进一步拆分文件，但会同时影响本地引导与 RBAC 的所有者边界。本批维持现有所有者，减少跨领域调整。
 - 将可写数据集选择留在 `documents.py` 或让 `connectors.py` 再转发，能缩小新调用范围，却会令共享 API 流程依赖路由聚合模块。当前把选择规则放在已有 `dataset_service`，与租户校验、写权限和默认数据集创建共用实际所有者。
+- 将 `UrlUploadRequest` 留在 `documents.py` 可以避免迁移导入，但 `document_upload.py` 需要从正在装配它的路由模块取请求类型，继续形成反向依赖。当前把请求类型放在现有 schema 所有者，并由路由直接重导出旧名称。
+- 让连接器继续通过字符串名称解析 `UrlUploadRequest` 可以少改调用点，但会让类型来源依赖运行时路由注册。当前连接器直接导入 schema，其他业务 helper 的既有解析仍留待各自所有者迁移。
 - 只让手工路由导入 documents 中的图片重写函数，改动较少但继续依赖路由装配器；建立新图片服务则会与已有 preview 图片归属和 materialization 分成两份 owner。当前把完整重写流程移入现有 `document_preview_utils`，按需延后 legacy 查询以断开其 regex 反向导入。
 - 分别保留上传与 URL 的队列调度能让日志和入口参数各自独立，但会保留两套队列必需判断、任务元数据提交和后台任务注册流程；当前沿用 API utilities 所在层的一份调度实现，保留两种入口本来的同步与后台执行方式。
 - 把 `BackgroundTasks` 和 HTTP 错误转换迁入任务队列模块会令基础队列依赖 FastAPI；当前由 API 工具层转换错误并调用既有队列所有者，队列客户端继续只管理 arq 连接与入队返回值。
@@ -80,3 +84,5 @@ RBAC 与配额继续依赖这些成员契约，具体边界见[权限与配额�
 15 个图片 rewrite helper 按原函数体迁移到已有 service owner；图片上传错误、body 和 start_index、reuse owner、无 MinIO 认领、大小限制及 HTTP 403／422 行为保持一致。57 条既有测试断言未修改，按用户要求没有运行相关 Python 测试。
 
 资产请求 helpers 迁到实际 route owner 后，header／JWT 身份来源、租户选择、文件根目录约束和流式响应处理不再经过 documents module 参数；对外 HTTP 路由和错误文案维持原样。兼容重导出仅保留仍被追踪调用的 symbol 名称。
+
+URL 上传模型的单一声明位于文档 schema；上传与连接器入口不再为构造该类型访问 documents 路由聚合器。兼容导出保留既有外部 Python 引用，模型字段与默认值维持原样。

@@ -8,6 +8,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session, selectinload
 
+from app.api.schemas.document import UrlUploadRequest
 from app.models.connector import ConnectorRun, ConnectorRunDocument
 
 
@@ -275,7 +276,7 @@ async def _ingest_minio_bucket_object(
         object_name=object_name,
         expires=int(settings_map.get("expiry") or 3600),
     )
-    body = _resolve_connectors_helper("UrlUploadRequest")(
+    body = UrlUploadRequest(
         url=url,
         dataset_id=run.dataset_id,
         filename=Path(object_name).name,

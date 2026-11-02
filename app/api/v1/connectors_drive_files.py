@@ -5,6 +5,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session, selectinload
 
+from app.api.schemas.document import UrlUploadRequest
 from app.models.connector import ConnectorRun, ConnectorRunDocument
 
 
@@ -316,7 +317,7 @@ async def _ingest_drive_file_source(
             )
         )
 
-    body = _resolve_connectors_helper("UrlUploadRequest")(
+    body = UrlUploadRequest(
         url=dl_url,
         dataset_id=run.dataset_id,
         filename=settings_map.get("filename"),

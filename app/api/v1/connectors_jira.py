@@ -11,6 +11,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session, selectinload
 
+from app.api.schemas.document import UrlUploadRequest
 from app.models.connector import ConnectorRun, ConnectorRunDocument
 from app.models.document import Document as DBDocument
 
@@ -1486,7 +1487,7 @@ async def _ingest_single_jira_linked_artifact(
         )
         else None
     )
-    link_body = _resolve_connectors_helper("UrlUploadRequest")(
+    link_body = UrlUploadRequest(
         url=link_url,
         dataset_id=run.dataset_id,
         filename=None,
@@ -1727,7 +1728,7 @@ async def _ingest_single_jira_attachment(
     attachment_id = str(attachment_ref.get("attachment_id") or "").strip()
     filename = str(attachment_ref.get("filename") or "").strip()
     download_url = str(attachment_ref.get("download_url") or "").strip()
-    att_body = _resolve_connectors_helper("UrlUploadRequest")(
+    att_body = UrlUploadRequest(
         url=download_url,
         dataset_id=run.dataset_id,
         filename=filename,

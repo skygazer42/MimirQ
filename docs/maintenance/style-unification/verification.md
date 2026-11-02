@@ -297,3 +297,10 @@
 - header auth 的匿名 opt-in、JWT header-only bearer 解析、tenant 优先级／冲突拒绝、403／404 隐藏 ACL、下载路径租户 containment、304 与 Range 返回、minio stat/upload 错误和 no-store 响应头保持原逻辑。asset error constants 与既有 root import 名称保持相同。
 - 完整核对 asset module AST、七个 request/cache helpers、五个错误常量以及三个路由；现有资产鉴权测试的用例、装饰器和断言保持原样，patch 指向新的 route/service owner。
 - Ruff check、Ruff format --check、语法解析与 diff --check 通过。没有运行 Python 测试或启动外部依赖，runtime behavior 未验证。
+
+## 第四批：URL 入库请求 schema 所有权（2026-11-03）
+
+- 将 `UrlUploadRequest` 从 `documents.py` 移到现有 `app/api/schemas/document.py`；`documents.py` 直接重导出旧名称，上传路由与七个连接器模块改为直接导入 schema。九处连接器构造点不再通过字符串解析从路由模块取得请求类型。
+- `UrlUploadRequest` 完整 class AST 与 HEAD 中的原定义一致；字段、`extra="forbid"`、解析器和分块策略默认值不变。现有连接器配置测试只把 fake constructor patch 从动态 owner 移到 `connectors_drive_files.UrlUploadRequest`，断言未改。
+- Ruff check 对 11 个 Python 文件通过，10 个文件 Ruff format --check 通过；schema 文件仅因保留的原有首行空行未通过文件级格式检查，去除该行的内存副本通过格式检查。diff --check 与决定记录 tree／format checks 通过。
+- 按用户要求未运行 Python 测试、未导入应用；Pydantic 运行时 schema 与上传流程未验证。schema 和连接器文件保持待文件级语义审核。

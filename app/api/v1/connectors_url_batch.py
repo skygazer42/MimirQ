@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session, selectinload
 
+from app.api.schemas.document import UrlUploadRequest
 from app.models.connector import ConnectorRun, ConnectorRunDocument
 
 
@@ -140,7 +141,6 @@ async def _ingest_url_batch_url(
     settings_map: dict[str, Any],
 ) -> str:
     from app.api.v1 import connectors as connectors_module  # Local import to preserve monkeypatch surface.
-    from app.api.v1.documents import UrlUploadRequest
 
     body = UrlUploadRequest(
         url=url,

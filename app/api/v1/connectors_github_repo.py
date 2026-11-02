@@ -7,6 +7,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session, selectinload
 
+from app.api.schemas.document import UrlUploadRequest
 from app.models.connector import ConnectorRun, ConnectorRunDocument
 
 
@@ -312,7 +313,7 @@ async def _ingest_github_repo_file(
         source_acl_context=source_acl_context,
     )
 
-    body = _resolve_connectors_helper("UrlUploadRequest")(
+    body = UrlUploadRequest(
         url=raw_url,
         dataset_id=run.dataset_id,
         filename=Path(path).name,

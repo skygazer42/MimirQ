@@ -9,6 +9,7 @@ from uuid import UUID
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.core.config import settings
 from app.rag.pipeline_plugins.refs import clean_python_plugin_ref
 
 from .base import OrmModel
@@ -482,6 +483,24 @@ class DocumentPipelineOptions(BaseModel):
             expected_stage="kg",
         )
         return self
+
+
+class UrlUploadRequest(BaseModel):
+    """Upload a document by fetching a remote URL (connector skeleton)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    url: str = Field(..., max_length=2000)
+    dataset_id: UUID | None = None
+    filename: str | None = Field(
+        default=None, max_length=500, description="Optional override filename (used for extension + display)"
+    )
+    # Optional: authenticated fetch (cookie/bearer/basic) for private pages.
+    fetch_headers: dict[str, str] | None = None
+    user_agent: str | None = Field(default=None, max_length=200)
+    parser_backend: str = Field(default=settings.DEFAULT_PARSER_BACKEND)
+    chunk_strategy: str = Field(default=settings.DEFAULT_CHUNK_STRATEGY)
+    pipeline: DocumentPipelineOptions | None = None
 
 
 DocumentAccessMode = Literal["inherit", "only_me", "all_team_members", "partial_members"]

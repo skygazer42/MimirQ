@@ -15,10 +15,9 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
-from app.api.schemas.document import DocumentBatchUploadResponse, DocumentDetail
+from app.api.schemas.document import DocumentBatchUploadResponse, DocumentDetail, UrlUploadRequest
 from app.api.utils.document_dispatch import schedule_document_processing
 from app.api.utils.pipeline_options import PipelineOptionOverrides, to_pipeline_options
-from app.api.v1.documents import UrlUploadRequest
 from app.core.config import settings
 from app.core.database import get_db
 from app.rag.core.logging import get_logger

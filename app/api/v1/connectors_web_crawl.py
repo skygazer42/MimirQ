@@ -5,6 +5,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session, selectinload
 
+from app.api.schemas.document import UrlUploadRequest
 from app.models.connector import ConnectorRun, ConnectorRunDocument
 
 
@@ -108,7 +109,7 @@ async def _ingest_web_crawl_url(
     url: str,
     settings_map: dict[str, Any],
 ) -> Any:
-    body = _resolve_connectors_helper("UrlUploadRequest")(
+    body = UrlUploadRequest(
         url=url,
         dataset_id=run.dataset_id,
         filename=settings_map.get("filename"),

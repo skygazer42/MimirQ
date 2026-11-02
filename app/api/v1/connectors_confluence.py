@@ -7,6 +7,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session, selectinload
 
+from app.api.schemas.document import UrlUploadRequest
 from app.core.config import settings
 from app.models.connector import ConnectorRun
 from app.models.document import Document as DBDocument
@@ -1002,7 +1003,7 @@ async def _ingest_confluence_page_webui(
     filename: str | None,
     settings_map: dict[str, Any],
 ):
-    body = _resolve_connectors_helper("UrlUploadRequest")(
+    body = UrlUploadRequest(
         url=page_url,
         dataset_id=run.dataset_id,
         filename=filename,
@@ -1263,7 +1264,7 @@ async def _ingest_single_confluence_attachment(
     attachment_id = str(attachment_ref.get("attachment_id") or "").strip()
     filename = str(attachment_ref.get("filename") or "").strip()
     download_url = str(attachment_ref.get("download_url") or "").strip()
-    att_body = _resolve_connectors_helper("UrlUploadRequest")(
+    att_body = UrlUploadRequest(
         url=download_url,
         dataset_id=run.dataset_id,
         filename=filename,

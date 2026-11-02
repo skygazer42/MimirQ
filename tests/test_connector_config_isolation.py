@@ -91,7 +91,6 @@ def test_drive_files_acl_paths_use_run_config_id(monkeypatch) -> None:
         SimpleNamespace(
             _drive_direct_download_url=lambda file_id: f"https://download/{file_id}",
             _delta_sync_connector_documents_acl_by_source_url=lambda *_args, **kwargs: delta_calls.append(kwargs) or 2,
-            UrlUploadRequest=lambda **kwargs: SimpleNamespace(**kwargs),
             _ingest_url_upload_request=_ingest_url_upload_request,
             _apply_document_access_from_config=lambda *_args, **_kwargs: None,
             _apply_connector_identity_metadata=lambda *_args, **_kwargs: None,
@@ -104,6 +103,12 @@ def test_drive_files_acl_paths_use_run_config_id(monkeypatch) -> None:
             ),
         ),
         raising=False,
+    )
+    monkeypatch.setattr(
+        connectors_drive_files,
+        "UrlUploadRequest",
+        lambda **kwargs: SimpleNamespace(**kwargs),
+        raising=True,
     )
 
     result = asyncio.run(

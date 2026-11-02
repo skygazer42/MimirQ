@@ -164,6 +164,8 @@ preview 图片引用归一化、文件定位与读取、owner sidecar／legacy �
 
 下载、preview 和 image-url 的请求 tenant/account 解析归入 `document_assets` 路由模块，ACL 直接导入 `document_access_service`；这三个 endpoint 不再解析 `documents` 路由模块。保留 header／JWT 差异、匿名 header 图片访问显式开关、tenant 冲突拒绝、路径租户限制、Range／ETag／304 和对象存储错误映射。
 
+URL 入库的 `UrlUploadRequest` 归入现有文档 schema；上传和连接器直接导入请求类型，`documents.py` 只保留同名直接导出兼容既有 Python 引用。请求字段与默认值按原 class AST 核对，连接器其他尚待迁移的动态 helper 继续纳入后续文件审核。
+
 **本批产出：** 上传到任务的输入输出和失败路径一致，同一字段映射与权限规则只有一个业务维护点。
 
 ### Task 5：RAG 与模型调用

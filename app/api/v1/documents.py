@@ -23,9 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.schemas.document import (
-    DocumentPipelineOptions,
-)
+from app.api.schemas.document import DocumentPipelineOptions, UrlUploadRequest
 from app.api.utils.document_dispatch import schedule_document_processing
 from app.api.utils.pipeline_options import PipelineOptionOverrides as PipelineOptionOverrides
 from app.api.utils.upload import compute_file_hash, save_upload_file_with_hash
@@ -578,24 +576,6 @@ def _assert_document_writable_for_chunk_ops(
         account_id=account_id,
         document=document,
     )
-
-
-class UrlUploadRequest(BaseModel):
-    """Upload a document by fetching a remote URL (connector skeleton)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    url: str = Field(..., max_length=2000)
-    dataset_id: UUID | None = None
-    filename: str | None = Field(
-        default=None, max_length=500, description="Optional override filename (used for extension + display)"
-    )
-    # Optional: authenticated fetch (cookie/bearer/basic) for private pages.
-    fetch_headers: dict[str, str] | None = None
-    user_agent: str | None = Field(default=None, max_length=200)
-    parser_backend: str = Field(default=settings.DEFAULT_PARSER_BACKEND)
-    chunk_strategy: str = Field(default=settings.DEFAULT_CHUNK_STRATEGY)
-    pipeline: DocumentPipelineOptions | None = None
 
 
 def _parse_datetime_best_effort(raw: str | None) -> datetime | None:
