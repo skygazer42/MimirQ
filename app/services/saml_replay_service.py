@@ -9,7 +9,7 @@ from app.core.redis_client import LazyRedisClient
 _redis_client_slot = LazyRedisClient(
     url=lambda: settings.REDIS_URL,
     kwargs={"decode_responses": False},
-    enabled=lambda: bool(getattr(settings, "SAML_REPLAY_REDIS_ENABLED", False)),
+    enabled=lambda: bool(settings.SAML_REPLAY_REDIS_ENABLED),
     skip_empty_url=True,
     strip_url=True,
 )
@@ -39,11 +39,11 @@ def ensure_saml_assertion_not_replayed(assertion_id: str, *, minimum_ttl_sec: in
     if not aid:
         raise HTTPException(status_code=401, detail="Missing SAML replay identifier")
 
-    configured_ttl_sec = max(1, int(getattr(settings, "SAML_REPLAY_TTL_SEC", 300) or 300))
+    configured_ttl_sec = max(1, int(settings.SAML_REPLAY_TTL_SEC or 300))
     ttl_sec = max(configured_ttl_sec, max(0, int(minimum_ttl_sec or 0)))
     key = f"saml:assertion:{aid}"
 
-    redis_enabled = bool(getattr(settings, "SAML_REPLAY_REDIS_ENABLED", False))
+    redis_enabled = bool(settings.SAML_REPLAY_REDIS_ENABLED)
     if not redis_enabled:
         _claim_in_memory(key, ttl_sec)
         return

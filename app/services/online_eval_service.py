@@ -259,21 +259,21 @@ def _quality_alerts(
 ) -> list[dict[str, Any]]:
     if not timestamps:
         return []
-    minimum_samples = int(getattr(settings, "ONLINE_EVAL_ALERT_MIN_SAMPLES_PER_BUCKET", 10) or 10)
+    minimum_samples = int(settings.ONLINE_EVAL_ALERT_MIN_SAMPLES_PER_BUCKET or 10)
     if samples[-1] < minimum_samples:
         return []
     candidates = [
         _quality_alert(
             metric="faithfulness_det",
             value=faithfulness[-1] if faithfulness else None,
-            threshold=float(getattr(settings, "ONLINE_EVAL_ALERT_FAITHFULNESS_DET_MIN", 0.6) or 0.6),
+            threshold=float(settings.ONLINE_EVAL_ALERT_FAITHFULNESS_DET_MIN or 0.6),
             bucket_ts_ms=timestamps[-1],
             samples=samples[-1],
         ),
         _quality_alert(
             metric="chunk_utilization",
             value=utilization[-1] if utilization else None,
-            threshold=float(getattr(settings, "ONLINE_EVAL_ALERT_CHUNK_UTILIZATION_MIN", 0.12) or 0.12),
+            threshold=float(settings.ONLINE_EVAL_ALERT_CHUNK_UTILIZATION_MIN or 0.12),
             bucket_ts_ms=timestamps[-1],
             samples=samples[-1],
         ),
@@ -288,10 +288,8 @@ def summarize_online_quality(
     bucket_minutes: int = 5,
     max_bytes: int = 5_000_000,
 ) -> OnlineQualitySummary:
-    enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False)) and bool(
-        getattr(settings, "ONLINE_EVAL_ENABLED", False)
-    )
-    path_str = str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl")
+    enabled = bool(settings.ENABLE_METRICS_LOG) and bool(settings.ONLINE_EVAL_ENABLED)
+    path_str = str(settings.METRICS_LOG_PATH or "./logs/rag_metrics.jsonl")
     path = Path(path_str)
 
     window_minutes = max(1, int(window_minutes or 0))
@@ -337,7 +335,7 @@ def summarize_online_quality(
 # ========================== Async sampling worker ==========================
 
 
-_queue_max = max(10, int(getattr(settings, "ONLINE_EVAL_QUEUE_MAX", 500) or 500))
+_queue_max = max(10, int(settings.ONLINE_EVAL_QUEUE_MAX or 500))
 _eval_queue: queue.Queue[dict[str, Any]] = queue.Queue(maxsize=_queue_max)
 _worker_started = False
 _worker_lock = threading.Lock()
@@ -420,13 +418,11 @@ def maybe_enqueue_online_eval(
 
     Returns a small debug dict (PII-minimal) intended for in-memory metrics/debugging only.
     """
-    enabled = bool(getattr(settings, "ONLINE_EVAL_ENABLED", False)) and bool(
-        getattr(settings, "ENABLE_METRICS_LOG", False)
-    )
+    enabled = bool(settings.ONLINE_EVAL_ENABLED) and bool(settings.ENABLE_METRICS_LOG)
     if not enabled:
         return {"enabled": False, "enqueued": False, "reason": "disabled"}
 
-    rate = float(getattr(settings, "ONLINE_EVAL_SAMPLE_RATE", 0.05) or 0.05)
+    rate = float(settings.ONLINE_EVAL_SAMPLE_RATE or 0.05)
     if not _stable_sample(tenant_id=str(tenant_id) if tenant_id else None, request_id=str(request_id or ""), rate=rate):
         return {"enabled": True, "enqueued": False, "reason": "not_sampled", "sample_rate": rate}
 

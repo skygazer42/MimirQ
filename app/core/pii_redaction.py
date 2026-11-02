@@ -31,7 +31,7 @@ _CARD_CANDIDATE_RE = re.compile(r"\b(?:\d[ -]*){13,19}\b")
 
 
 def pii_redaction_enabled() -> bool:
-    return bool(getattr(settings, "PII_REDACTION_ENABLED", False))
+    return bool(settings.PII_REDACTION_ENABLED)
 
 
 def _current_mask() -> str:

@@ -290,7 +290,7 @@ def _replay_bm25_patch(*, db: Session, item: IndexDriftItem, document: DBDocumen
         tenant_id=item.tenant_id,
         document_id=item.document_id,
         default_source=str(getattr(document, "filename", "") or "unknown"),
-        enable_bm25=bool(getattr(settings, "BM25_INDEX_ENABLED", True)),
+        enable_bm25=bool(settings.BM25_INDEX_ENABLED),
     )
 
 
@@ -551,7 +551,7 @@ def compute_index_audit_summary(
     return {
         "tenant_id": str(tenant_id),
         "dataset_id": str(dataset_id),
-        "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
+        "vector_backend": str(settings.VECTOR_BACKEND or ""),
         "active_documents": int(active_documents),
         "active_chunks": int(active_chunks),
         "vector_id_missing": int(vector_id_missing),
@@ -1043,7 +1043,7 @@ async def enqueue_index_audit_reconcile(
             "reason": "dataset_scoped_reconcile_not_supported_by_current_worker",
             "task_id": None,
         }
-    if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+    if not bool(settings.TASK_QUEUE_ENABLED):
         return {
             "schema": "mimirq.index_audit_reconcile.v1",
             "tenant_id": str(tenant_id),
@@ -1291,7 +1291,7 @@ def _run_dataset_index_audit_core(
     )
     vector_ids_checked = [str(row[0]) for row in vec_rows if row and row[0]]
 
-    vector_backend = str(getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").strip().lower()
+    vector_backend = str(settings.VECTOR_BACKEND or "milvus").strip().lower()
     vector_ids_existing = _milvus_existing_vector_ids(vector_ids_checked) if vector_backend == "milvus" else None
     milvus_ids_sample = (
         _milvus_ids_sample(tenant_id=tenant_id, dataset_id=dataset_id, milvus_list_limit=milvus_list_limit)

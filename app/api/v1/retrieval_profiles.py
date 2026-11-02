@@ -39,15 +39,15 @@ _SCHEMA = "mimirq.retrieval_profiles.v1"
 
 def _runtime_baseline() -> dict[str, Any]:
     return {
-        "top_k": int(getattr(settings, "RETRIEVAL_TOP_K", 5) or 5),
-        "score_threshold": float(getattr(settings, "SIMILARITY_THRESHOLD", 0.0) or 0.0),
+        "top_k": int(settings.RETRIEVAL_TOP_K or 5),
+        "score_threshold": float(settings.SIMILARITY_THRESHOLD or 0.0),
         "retrieval_mode": settings.RETRIEVAL_MODE,
-        "enable_reranker": bool(getattr(settings, "ENABLE_RERANKER", False)),
-        "reranker_provider": str(getattr(settings, "RERANKER_PROVIDER", "llm") or "llm"),
-        "reranker_top_n": int(getattr(settings, "RERANKER_TOP_N", 20) or 20),
+        "enable_reranker": bool(settings.ENABLE_RERANKER),
+        "reranker_provider": str(settings.RERANKER_PROVIDER or "llm"),
+        "reranker_top_n": int(settings.RERANKER_TOP_N or 20),
         "enable_weight_rerank": True,
-        "sparse_retrieval_enabled": bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False)),
-        "sparse_retrieval_provider": str(getattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "") or "").strip() or None,
+        "sparse_retrieval_enabled": bool(settings.SPARSE_RETRIEVAL_ENABLED),
+        "sparse_retrieval_provider": str(settings.SPARSE_RETRIEVAL_PROVIDER or "").strip() or None,
         "retrieval_contract_mode": None,
         "visible_evidence_only": False,
     }
@@ -95,7 +95,7 @@ def _public_profile_definition(name: str, *, baseline: dict[str, Any]) -> dict[s
 @router.get("/profiles", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_retrieval_profiles() -> dict[str, Any]:
     baseline = _runtime_baseline()
-    chat_default_profile = str(getattr(settings, "CHAT_DEFAULT_RETRIEVAL_PROFILE", "") or "").strip().lower() or None
+    chat_default_profile = str(settings.CHAT_DEFAULT_RETRIEVAL_PROFILE or "").strip().lower() or None
     request_defaults = apply_retrieval_profile_overrides(
         profile=None,
         top_k=int(baseline.get("top_k") or 0),

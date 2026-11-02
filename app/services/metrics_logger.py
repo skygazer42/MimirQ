@@ -359,7 +359,7 @@ def _strip_text_fields_for_metrics(record: dict[str, Any]) -> dict[str, Any]:
     Important: this is separate from PII_REDACTION. Stripping is a stronger guarantee:
     the content is not persisted at all (instead of being best-effort redacted).
     """
-    if bool(getattr(settings, "METRICS_LOG_INCLUDE_TEXT", False)):
+    if bool(settings.METRICS_LOG_INCLUDE_TEXT):
         return record
 
     event = str(record.get("event") or "")
@@ -440,7 +440,7 @@ class _MetricsWriter:
     def _write_lines(self, lines: list[str]) -> None:
         if not lines:
             return
-        path = Path(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl")
+        path = Path(settings.METRICS_LOG_PATH or "./logs/rag_metrics.jsonl")
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             with path.open("a", encoding="utf-8") as f:
@@ -522,7 +522,7 @@ def log_metrics(payload: dict[str, Any]) -> None:
     This call is safe to use in hot paths: it only enqueues a record when enabled.
     """
 
-    if not bool(getattr(settings, "ENABLE_METRICS_LOG", False)):
+    if not bool(settings.ENABLE_METRICS_LOG):
         return
 
     try:

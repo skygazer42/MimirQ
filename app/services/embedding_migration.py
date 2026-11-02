@@ -117,9 +117,7 @@ def _progress_key(
     target_collection: str,
     target_space_hash: str,
 ) -> str:
-    prefix = (
-        str(getattr(settings, "EMBEDDING_MIGRATION_PROGRESS_REDIS_PREFIX", "embmig") or "embmig").strip() or "embmig"
-    )
+    prefix = str(settings.EMBEDDING_MIGRATION_PROGRESS_REDIS_PREFIX or "embmig").strip() or "embmig"
     scope = str(dataset_id) if dataset_id is not None else "all"
     return f"{prefix}:{tenant_id}:{scope}:{target_collection}:{target_space_hash}"
 
@@ -176,24 +174,24 @@ def resolve_shadow_embedding_config() -> dict[str, str] | None:
 
     Returns a small dict safe to log/return (no API keys).
     """
-    if not bool(getattr(settings, "EMBEDDING_SHADOW_ENABLED", False)):
+    if not bool(settings.EMBEDDING_SHADOW_ENABLED):
         return None
 
-    shadow_collection = str(getattr(settings, "MILVUS_SHADOW_COLLECTION_NAME", "") or "").strip()
-    shadow_model = str(getattr(settings, "EMBEDDING_SHADOW_MODEL", "") or "").strip()
+    shadow_collection = str(settings.MILVUS_SHADOW_COLLECTION_NAME or "").strip()
+    shadow_model = str(settings.EMBEDDING_SHADOW_MODEL or "").strip()
     if not shadow_collection or not shadow_model:
         return None
 
     provider_raw = (
-        str(getattr(settings, "EMBEDDING_SHADOW_PROVIDER", "") or "").strip().lower()
-        or str(getattr(settings, "EMBEDDING_PROVIDER", "openai_compatible") or "openai_compatible").strip().lower()
+        str(settings.EMBEDDING_SHADOW_PROVIDER or "").strip().lower()
+        or str(settings.EMBEDDING_PROVIDER or "openai_compatible").strip().lower()
     )
     mapped_provider = EmbeddingProviders.PROVIDER_MAP.get(provider_raw, "openai_compatible")
 
     base_url = (
-        str(getattr(settings, "EMBEDDING_SHADOW_API_BASE", "") or "").strip()
-        or str(getattr(settings, "EMBEDDING_API_BASE", "") or "").strip()
-        or str(getattr(settings, "LLM_API_BASE", "") or "").strip()
+        str(settings.EMBEDDING_SHADOW_API_BASE or "").strip()
+        or str(settings.EMBEDDING_API_BASE or "").strip()
+        or str(settings.LLM_API_BASE or "").strip()
     )
     shadow_space = _embedding_space_hash_for_shadow_config(
         provider=mapped_provider,
@@ -217,9 +215,9 @@ def _init_shadow_embeddings():  # noqa: ANN202
         raise RuntimeError("shadow embedding config not enabled")
 
     api_key = (
-        str(getattr(settings, "EMBEDDING_SHADOW_API_KEY", "") or "").strip()
-        or str(getattr(settings, "EMBEDDING_API_KEY", "") or "").strip()
-        or str(getattr(settings, "LLM_API_KEY", "") or "").strip()
+        str(settings.EMBEDDING_SHADOW_API_KEY or "").strip()
+        or str(settings.EMBEDDING_API_KEY or "").strip()
+        or str(settings.LLM_API_KEY or "").strip()
     )
     return _create_embeddings_from_config(
         provider=str(cfg["provider"]),
@@ -277,9 +275,9 @@ def _build_shadow_embedding_text(
                 raw_body,
                 document_title=document_title,
                 meta=meta,
-                max_prefix_chars=int(getattr(settings, "CONTEXTUAL_RETRIEVAL_PREFIX_MAX_CHARS", 240) or 240),
-                keywords_top_k=int(getattr(settings, "CONTEXTUAL_RETRIEVAL_KEYWORDS_TOP_K", 6) or 6),
-                keywords_max_chars=int(getattr(settings, "CONTEXTUAL_RETRIEVAL_KEYWORDS_MAX_CHARS", 2000) or 2000),
+                max_prefix_chars=int(settings.CONTEXTUAL_RETRIEVAL_PREFIX_MAX_CHARS or 240),
+                keywords_top_k=int(settings.CONTEXTUAL_RETRIEVAL_KEYWORDS_TOP_K or 6),
+                keywords_max_chars=int(settings.CONTEXTUAL_RETRIEVAL_KEYWORDS_MAX_CHARS or 2000),
             )
             if prefix:
                 embed_text = prefix + "\n" + raw_body
@@ -378,7 +376,7 @@ def _build_backfill_payload(
 ) -> tuple[dict[str, Any], str, str]:
     shadow_collection = str(cfg["collection"])
     shadow_space = str(cfg["embedding_space_hash"])
-    primary_collection = str(getattr(settings, "MILVUS_COLLECTION_NAME", "documents") or "documents").strip()
+    primary_collection = str(settings.MILVUS_COLLECTION_NAME or "documents").strip()
     primary_space = _current_space_hash()
     payload: dict[str, Any] = {
         "schema": "mimirq.embedding_blue_green_backfill.v1",
@@ -457,7 +455,7 @@ def _build_backfill_runtime(
         target_collection=shadow_collection,
         target_space_hash=shadow_space,
     )
-    effective_batch_size = int(embed_batch_size or getattr(settings, "EMBEDDING_API_BATCH_SIZE", 64) or 64)
+    effective_batch_size = int(embed_batch_size or settings.EMBEDDING_API_BATCH_SIZE or 64)
     effective_batch_size = max(1, min(256, effective_batch_size))
     return _BackfillRuntime(
         payload=payload,
@@ -562,7 +560,7 @@ def _persist_backfill_progress(
 
 def _write_vector_docs(runtime: _BackfillRuntime, *, vector_docs: list[dict[str, Any]]) -> int:
     written = 0
-    write_batch_size = int(getattr(settings, "VECTOR_WRITE_BATCH_SIZE", 256) or 256)
+    write_batch_size = int(settings.VECTOR_WRITE_BATCH_SIZE or 256)
     for batch in _batched(vector_docs, batch_size=runtime.embed_batch_size):
         texts = [str(item.get("content") or "") for item in batch]
         embeddings = runtime.embeddings.embed_documents(texts)
@@ -770,7 +768,7 @@ def _build_overlap_runtime(
 ) -> _OverlapRuntime:
     shadow_collection = str(cfg["collection"])
     shadow_space = str(cfg["embedding_space_hash"])
-    primary_collection = str(getattr(settings, "MILVUS_COLLECTION_NAME", "documents") or "documents").strip()
+    primary_collection = str(settings.MILVUS_COLLECTION_NAME or "documents").strip()
     primary_space = _current_space_hash()
     payload = _build_overlap_payload(
         tenant_id=tenant_id,

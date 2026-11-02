@@ -125,16 +125,16 @@ def _candidate_matches_source_keys(candidate: _TableCandidate, expected_source_k
 
 
 def _enabled_reason() -> tuple[bool, str]:
-    if not bool(getattr(settings, "CHAT_TAG_ENABLED", False)):
+    if not bool(settings.CHAT_TAG_ENABLED):
         return False, "CHAT_TAG_ENABLED=false"
-    if not bool(getattr(settings, "TABLE_NL2SQL_ENABLED", False)):
+    if not bool(settings.TABLE_NL2SQL_ENABLED):
         return False, "TABLE_NL2SQL_ENABLED=false"
-    if not bool(getattr(settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", False)):
+    if not bool(settings.TABLE_LLM_ALLOW_RESULT_EGRESS):
         # Chat will inject query results into the LLM context; treat this as "result egress".
         return False, "TABLE_LLM_ALLOW_RESULT_EGRESS=false"
-    has_llm_key = bool(str(getattr(settings, "LLM_API_KEY", "") or "").strip())
-    deterministic_ok = bool(getattr(settings, "TABLE_NL2SQL_DETERMINISTIC_ONLY", False)) or bool(
-        getattr(settings, "TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED", True)
+    has_llm_key = bool(str(settings.LLM_API_KEY or "").strip())
+    deterministic_ok = bool(settings.TABLE_NL2SQL_DETERMINISTIC_ONLY) or bool(
+        settings.TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED
     )
     if not has_llm_key and not deterministic_ok:
         return False, "LLM_API_KEY is not configured"
@@ -272,7 +272,7 @@ def build_chat_tag_context_docs(
         meta["reason"] = "no_document_ids"
         return [], meta
 
-    max_doc_ids = int(getattr(settings, "CHAT_TAG_MAX_DOC_IDS", 1000) or 1000)
+    max_doc_ids = int(settings.CHAT_TAG_MAX_DOC_IDS or 1000)
     if max_doc_ids > 0 and len(doc_ids) > max_doc_ids:
         meta["reason"] = f"too_many_document_ids (max {max_doc_ids})"
         meta["document_ids"] = len(doc_ids)
@@ -447,7 +447,7 @@ def _apply_source_key_match(
     meta: dict[str, Any],
 ) -> tuple[list[_TableCandidate], list[str]]:
     expected_source_keys = normalize_source_keys(must_recall_expected_source_keys)
-    source_key_match_enabled = bool(getattr(settings, "CHAT_TAG_MUST_RECALL_SOURCE_KEY_MATCH", True))
+    source_key_match_enabled = bool(settings.CHAT_TAG_MUST_RECALL_SOURCE_KEY_MATCH)
     meta["must_recall_source_key_match_enabled"] = bool(source_key_match_enabled)
     if expected_source_keys:
         meta["must_recall_expected_source_keys"] = expected_source_keys[:20]
@@ -476,7 +476,7 @@ def _pick_candidates(
     intent: bool,
     meta: dict[str, Any],
 ) -> list[_TableCandidate]:
-    min_score = int(getattr(settings, "CHAT_TAG_MIN_MATCH_SCORE", 1) or 1)
+    min_score = int(settings.CHAT_TAG_MIN_MATCH_SCORE or 1)
     best_score = max((candidate.score for candidate in candidates), default=0)
     if not _passes_match_threshold(candidates, doc_ids=doc_ids, best_score=best_score, intent=intent, meta=meta):
         return []
@@ -517,7 +517,7 @@ def _passes_match_threshold(
     intent: bool,
     meta: dict[str, Any],
 ) -> bool:
-    min_score = int(getattr(settings, "CHAT_TAG_MIN_MATCH_SCORE", 1) or 1)
+    min_score = int(settings.CHAT_TAG_MIN_MATCH_SCORE or 1)
     if not intent and best_score < min_score:
         meta["reason"] = "no_intent_and_no_match"
         meta["best_score"] = int(best_score)
@@ -552,7 +552,7 @@ def _table_pick_policy(
     intent: bool,
     complex_query: bool,
 ) -> tuple[int, str]:
-    max_tables = int(getattr(settings, "CHAT_TAG_MAX_TABLES", 2) or 2)
+    max_tables = int(settings.CHAT_TAG_MAX_TABLES or 2)
     max_tables = max(0, min(max_tables, 5))
     high_conf = [candidate for candidate in candidates if int(candidate.score) >= int(min_score)]
     if max_tables > 1 and complex_query and len(candidates) >= 2 and intent:
@@ -563,9 +563,9 @@ def _table_pick_policy(
 
 
 def _query_limits() -> _TableQueryLimits:
-    max_rows = int(getattr(settings, "CHAT_TAG_MAX_ROWS", 50) or 50)
-    max_cols = int(getattr(settings, "CHAT_TAG_MAX_COLS", 30) or 30)
-    max_bytes = int(getattr(settings, "CHAT_TAG_MAX_BYTES", 200_000) or 200_000)
+    max_rows = int(settings.CHAT_TAG_MAX_ROWS or 50)
+    max_cols = int(settings.CHAT_TAG_MAX_COLS or 30)
+    max_bytes = int(settings.CHAT_TAG_MAX_BYTES or 200_000)
     if max_rows <= 0:
         max_rows = 50
     if max_cols <= 0:
@@ -799,7 +799,7 @@ def _planner_execution_mismatch(result: dict[str, Any]) -> dict[str, Any] | None
 
 
 def _raise_for_strict_planner_mismatch(planner_execution_mismatch: dict[str, Any] | None) -> None:
-    mismatch_strict = bool(getattr(settings, "TABLE_TAG_PLANNER_MISMATCH_STRICT", False))
+    mismatch_strict = bool(settings.TABLE_TAG_PLANNER_MISMATCH_STRICT)
     if mismatch_strict and planner_execution_mismatch and bool(planner_execution_mismatch.get("mismatch")):
         raise ValueError("planner_execution_mismatch")
 
@@ -1012,12 +1012,10 @@ def _single_table_sql_plan(
     planner_diagnostics: dict[str, Any] | None = None
     sql_generation_mode = "llm"
     sql_fingerprint = ""
-    has_llm_key = bool(str(getattr(settings, "LLM_API_KEY", "") or "").strip())
-    deterministic_only = bool(getattr(settings, "TABLE_NL2SQL_DETERMINISTIC_ONLY", False))
-    deterministic_fallback = bool(getattr(settings, "TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED", True))
-    dbrows_sql_first = bool(
-        getattr(settings, "CHAT_TAG_DBROWS_SQL_FIRST_ENABLED", True) and _is_dbrows_candidate(candidate)
-    )
+    has_llm_key = bool(str(settings.LLM_API_KEY or "").strip())
+    deterministic_only = bool(settings.TABLE_NL2SQL_DETERMINISTIC_ONLY)
+    deterministic_fallback = bool(settings.TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED)
+    dbrows_sql_first = bool(settings.CHAT_TAG_DBROWS_SQL_FIRST_ENABLED and _is_dbrows_candidate(candidate))
 
     if deterministic_only or dbrows_sql_first or (not has_llm_key and deterministic_fallback):
         sql, sql_generation_mode, sql_meta = generate_sql_for_table_with_metadata(

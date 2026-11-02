@@ -39,7 +39,7 @@ CONNECTOR_ACL_APPLY_ERRORS_TOTAL = Counter(
 
 
 def _enabled() -> bool:
-    return bool(getattr(settings, "PROMETHEUS_ENABLED", False))
+    return bool(settings.PROMETHEUS_ENABLED)
 
 
 def _norm_connector_id(value: str | None) -> str:

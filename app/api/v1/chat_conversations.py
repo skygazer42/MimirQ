@@ -278,7 +278,7 @@ def create_conversation(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Create a new conversation."""
-    allow_empty_docs = bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True))
+    allow_empty_docs = bool(settings.CHAT_ALLOW_EMPTY_DOCUMENTS)
     requested_title = str(request.title or "").strip()
 
     scope_dataset_id: UUID | None = None

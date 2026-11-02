@@ -1164,7 +1164,7 @@ def generate_synthetic_hardcases(
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    if not bool(getattr(settings, "KG_ENABLED", False)):
+    if not bool(settings.KG_ENABLED):
         raise HTTPException(status_code=503, detail=_DETAIL_KG_DISABLED)
 
     ds = DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
@@ -2356,7 +2356,7 @@ async def run_kg_search_diagnostics(
 
     Seed source: RAGAS regression cases (human-verified evidence pointers).
     """
-    if not bool(getattr(settings, "KG_ENABLED", False)):
+    if not bool(settings.KG_ENABLED):
         raise HTTPException(status_code=503, detail=_DETAIL_KG_DISABLED)
 
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -2375,47 +2375,29 @@ async def run_kg_search_diagnostics(
             # Pydantic's default `model_dump()` returns UUID objects; use mode="json" to coerce to strings.
             params: dict[str, Any] = dict(payload.model_dump(mode="json") if hasattr(payload, "model_dump") else {})
             params["settings_snapshot"] = {
-                "KG_ENABLED": bool(getattr(settings, "KG_ENABLED", False)),
-                "KG_RELATION_ENABLED": bool(getattr(settings, "KG_RELATION_ENABLED", False)),
-                "KG_SKILL_ENABLED": bool(getattr(settings, "KG_SKILL_ENABLED", False)),
-                "KG_EXTRACT_EVIDENCE_REQUIRED": bool(getattr(settings, "KG_EXTRACT_EVIDENCE_REQUIRED", False)),
-                "KG_SKILL_EVIDENCE_REQUIRED": bool(getattr(settings, "KG_SKILL_EVIDENCE_REQUIRED", False)),
-                "KG_SEARCH_VECTOR_RECALL_ENABLED": bool(getattr(settings, "KG_SEARCH_VECTOR_RECALL_ENABLED", True)),
-                "KG_SEARCH_GRAPH_EMBEDDINGS_ENABLED": bool(
-                    getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_ENABLED", False)
-                ),
-                "KG_SEARCH_GRAPH_EMBEDDINGS_DIM": int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_DIM", 0) or 0),
-                "KG_SEARCH_GRAPH_EMBEDDINGS_NUM_WALKS": int(
-                    getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_NUM_WALKS", 0) or 0
-                ),
-                "KG_SEARCH_GRAPH_EMBEDDINGS_WALK_LENGTH": int(
-                    getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_WALK_LENGTH", 0) or 0
-                ),
-                "KG_SEARCH_GRAPH_EMBEDDINGS_WINDOW_SIZE": int(
-                    getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_WINDOW_SIZE", 0) or 0
-                ),
-                "KG_SEARCH_GRAPH_EMBEDDINGS_SEED": int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_SEED", 0) or 0),
-                "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_EVENTS": int(
-                    getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_EVENTS", 0) or 0
-                ),
-                "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_ENTITIES": int(
-                    getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_ENTITIES", 0) or 0
-                ),
-                "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_RELATIONS": int(
-                    getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_RELATIONS", 0) or 0
-                ),
-                "KG_SEARCH_GRAPH_EMBEDDINGS_TOP_K": int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_TOP_K", 0) or 0),
+                "KG_ENABLED": bool(settings.KG_ENABLED),
+                "KG_RELATION_ENABLED": bool(settings.KG_RELATION_ENABLED),
+                "KG_SKILL_ENABLED": bool(settings.KG_SKILL_ENABLED),
+                "KG_EXTRACT_EVIDENCE_REQUIRED": bool(settings.KG_EXTRACT_EVIDENCE_REQUIRED),
+                "KG_SKILL_EVIDENCE_REQUIRED": bool(settings.KG_SKILL_EVIDENCE_REQUIRED),
+                "KG_SEARCH_VECTOR_RECALL_ENABLED": bool(settings.KG_SEARCH_VECTOR_RECALL_ENABLED),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_ENABLED": bool(settings.KG_SEARCH_GRAPH_EMBEDDINGS_ENABLED),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_DIM": int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_DIM or 0),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_NUM_WALKS": int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_NUM_WALKS or 0),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_WALK_LENGTH": int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_WALK_LENGTH or 0),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_WINDOW_SIZE": int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_WINDOW_SIZE or 0),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_SEED": int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_SEED or 0),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_EVENTS": int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_MAX_EVENTS or 0),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_ENTITIES": int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_MAX_ENTITIES or 0),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_RELATIONS": int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_MAX_RELATIONS or 0),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_TOP_K": int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_TOP_K or 0),
                 "KG_SEARCH_GRAPH_EMBEDDINGS_MIN_SIMILARITY": float(
-                    getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_MIN_SIMILARITY", 0.0) or 0.0
+                    settings.KG_SEARCH_GRAPH_EMBEDDINGS_MIN_SIMILARITY or 0.0
                 ),
-                "KG_SEARCH_RELATION_EXPANSION_ENABLED": bool(
-                    getattr(settings, "KG_SEARCH_RELATION_EXPANSION_ENABLED", False)
-                ),
-                "KG_SEARCH_RELATION_MIN_CONFIDENCE": float(
-                    getattr(settings, "KG_SEARCH_RELATION_MIN_CONFIDENCE", 0.0) or 0.0
-                ),
-                "KG_SEARCH_RELATION_MAX_EDGES": int(getattr(settings, "KG_SEARCH_RELATION_MAX_EDGES", 0) or 0),
-                "KG_SEARCH_RELATION_MAX_NEIGHBORS": int(getattr(settings, "KG_SEARCH_RELATION_MAX_NEIGHBORS", 0) or 0),
+                "KG_SEARCH_RELATION_EXPANSION_ENABLED": bool(settings.KG_SEARCH_RELATION_EXPANSION_ENABLED),
+                "KG_SEARCH_RELATION_MIN_CONFIDENCE": float(settings.KG_SEARCH_RELATION_MIN_CONFIDENCE or 0.0),
+                "KG_SEARCH_RELATION_MAX_EDGES": int(settings.KG_SEARCH_RELATION_MAX_EDGES or 0),
+                "KG_SEARCH_RELATION_MAX_NEIGHBORS": int(settings.KG_SEARCH_RELATION_MAX_NEIGHBORS or 0),
             }
 
             summary_obj = getattr(resp, "summary", None)
@@ -2506,7 +2488,7 @@ def list_kg_search_diagnostics_runs(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    if not bool(getattr(settings, "KG_ENABLED", False)):
+    if not bool(settings.KG_ENABLED):
         raise HTTPException(status_code=503, detail=_DETAIL_KG_DISABLED)
 
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -2534,7 +2516,7 @@ def get_kg_search_diagnostics_run(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    if not bool(getattr(settings, "KG_ENABLED", False)):
+    if not bool(settings.KG_ENABLED):
         raise HTTPException(status_code=503, detail=_DETAIL_KG_DISABLED)
 
     run = (
@@ -2570,7 +2552,7 @@ def get_kg_quality_report(
 
     This is intentionally best-effort and returns only aggregate statistics (counts/ratios).
     """
-    if not bool(getattr(settings, "KG_ENABLED", False)):
+    if not bool(settings.KG_ENABLED):
         raise HTTPException(status_code=503, detail=_DETAIL_KG_DISABLED)
 
     DatasetService.ensure_member(db, tenant_id, account_id)

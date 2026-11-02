@@ -89,16 +89,16 @@ def _profile_from_mode(mode: str) -> str:
 
 
 def _retrieval_knobs_appear_omitted(config: Any) -> bool:
-    default_top_k = int(getattr(settings, "RETRIEVAL_TOP_K", 10) or 10)
-    default_score_threshold = float(getattr(settings, "SIMILARITY_THRESHOLD", 0.0) or 0.0)
-    default_reranker_provider = str(getattr(settings, "RERANKER_PROVIDER", "") or "").strip().lower()
+    default_top_k = int(settings.RETRIEVAL_TOP_K or 10)
+    default_score_threshold = float(settings.SIMILARITY_THRESHOLD or 0.0)
+    default_reranker_provider = str(settings.RERANKER_PROVIDER or "").strip().lower()
     return (
         int(config.top_k or 0) == int(default_top_k)
         and abs(float(config.score_threshold or 0.0) - float(default_score_threshold)) <= 1e-9
         and str(config.retrieval_mode or "").strip().lower() == "hybrid"
-        and bool(config.enable_reranker) is bool(getattr(settings, "ENABLE_RERANKER", False))
+        and bool(config.enable_reranker) is bool(settings.ENABLE_RERANKER)
         and str(config.reranker_provider or "").strip().lower() == default_reranker_provider
-        and int(config.reranker_top_n or 0) == int(getattr(settings, "RERANKER_TOP_N", 20) or 20)
+        and int(config.reranker_top_n or 0) == int(settings.RERANKER_TOP_N or 20)
         and bool(config.enable_weight_rerank) is True
     )
 
@@ -106,7 +106,7 @@ def _retrieval_knobs_appear_omitted(config: Any) -> bool:
 def _default_profile_for_omitted_knobs(config: Any) -> str:
     if not _retrieval_knobs_appear_omitted(config):
         return ""
-    return str(getattr(settings, "CHAT_DEFAULT_RETRIEVAL_PROFILE", "") or "").strip().lower()
+    return str(settings.CHAT_DEFAULT_RETRIEVAL_PROFILE or "").strip().lower()
 
 
 def _apply_profile_value_overrides(config: Any, applied: dict[str, Any]) -> None:
@@ -588,7 +588,7 @@ class ChatRAGConfig(BaseModel):
             visible_evidence_only=self.visible_evidence_only,
         )
         _apply_profile_value_overrides(self, applied)
-        if default_profile_applied and bool(getattr(settings, "CHAT_DEFAULT_VISIBLE_EVIDENCE_ONLY", False)):
+        if default_profile_applied and bool(settings.CHAT_DEFAULT_VISIBLE_EVIDENCE_ONLY):
             self.visible_evidence_only = True
         return self
 

@@ -10,7 +10,7 @@ ROUTER_DECISION_TOTAL = Counter(
 
 
 def observe_router_layers(layers: dict | None) -> None:
-    if not bool(getattr(settings, "PROMETHEUS_ENABLED", False)):
+    if not bool(settings.PROMETHEUS_ENABLED):
         return
     payload = layers if isinstance(layers, dict) else {}
     for level in ("entity", "intent", "composite"):

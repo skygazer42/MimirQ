@@ -246,7 +246,7 @@ async def _resolve_document_asset_request_context(request: Request) -> tuple[Any
 
 
 def _asset_cache_control_value(docs_mod: Any) -> str:
-    max_age = max(0, int(getattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 0) or 0))
+    max_age = max(0, int(settings.ASSET_CACHE_MAX_AGE_SEC or 0))
     return docs_mod._asset_cache_control(max_age=max_age)
 
 

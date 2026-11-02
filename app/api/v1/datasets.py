@@ -179,7 +179,7 @@ async def _expire_stale_dataset_profile_scan_runs(db: Session, *, tenant_id: UUI
         status = str(getattr(row, "status", "") or "").strip().lower()
         if not _is_stale_scan_run(row, now=now):
             continue
-        if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+        if bool(settings.TASK_QUEUE_ENABLED):
             job_id = f"dataset_profile_scan:{tenant_id}:{dataset_id}:{row.id}"
             job_status: str | None = None
             try:
@@ -309,11 +309,9 @@ def _dataset_table_routing_defaults(
 
 def _global_table_routing_defaults() -> dict[str, bool]:
     return {
-        "table_store_enabled": bool(getattr(settings, "TABLE_STORE_ENABLED", False)),
-        "table_store_auto_route": bool(getattr(settings, "TABLE_STORE_AUTO_ROUTE", False)),
-        "table_store_sidecar_exclusive_routing": bool(
-            getattr(settings, "TABLE_STORE_SIDECAR_EXCLUSIVE_ROUTING", False)
-        ),
+        "table_store_enabled": bool(settings.TABLE_STORE_ENABLED),
+        "table_store_auto_route": bool(settings.TABLE_STORE_AUTO_ROUTE),
+        "table_store_sidecar_exclusive_routing": bool(settings.TABLE_STORE_SIDECAR_EXCLUSIVE_ROUTING),
     }
 
 
@@ -1852,7 +1850,7 @@ def _cleanup_dataset_table_store(tenant_id: UUID, dataset_id: UUID) -> None:
     try:
         from app.services.path_safety import resolve_under_base
 
-        root = Path(str(getattr(settings, "TABLE_STORE_DIR", "./uploads/table_store") or "./uploads/table_store"))
+        root = Path(str(settings.TABLE_STORE_DIR or "./uploads/table_store"))
         ds_dir = (root / str(tenant_id) / str(dataset_id)).resolve(strict=False)
         safe_dir = resolve_under_base(ds_dir, base=root)
         if safe_dir is not None and safe_dir.exists():
@@ -1865,7 +1863,7 @@ def _cleanup_dataset_precheck_artifacts(tenant_id: UUID, precheck_run_ids: list[
     try:
         from app.services.path_safety import resolve_under_base
 
-        upload_root = Path(getattr(settings, "UPLOAD_DIR", "./uploads") or "./uploads")
+        upload_root = Path(settings.UPLOAD_DIR or "./uploads")
         tenant_root = upload_root / str(tenant_id)
         for run_id in precheck_run_ids:
             with contextlib.suppress(Exception):
@@ -3200,7 +3198,7 @@ def _dataset_bundle_document_payloads(
 
 
 def _dataset_bundle_kg_stats(db: Session, tenant_id: UUID, docs: list[DBDocument]) -> dict[str, Any]:
-    if not bool(getattr(settings, "KG_ENABLED", False)):
+    if not bool(settings.KG_ENABLED):
         return {}
     try:
         from app.rag.kg.models import KgSourceEvent  # noqa: WPS433
@@ -3233,8 +3231,8 @@ def _dataset_bundle_artifacts_payload(
         "exported_at": _dt_to_json(exported_at),
         "tenant_id": str(tenant_id),
         "dataset_id": str(dataset_id),
-        "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
-        "kg_enabled": bool(getattr(settings, "KG_ENABLED", False)),
+        "vector_backend": str(settings.VECTOR_BACKEND or ""),
+        "kg_enabled": bool(settings.KG_ENABLED),
         "documents": artifacts_docs,
     }
     payload.update(_dataset_bundle_kg_stats(db, tenant_id, docs))

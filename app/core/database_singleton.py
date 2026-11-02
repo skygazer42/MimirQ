@@ -25,14 +25,14 @@ from app.core.config import settings
 
 def _build_engine_kwargs(url: str) -> dict[str, Any]:
     parsed_url = make_url(url)
-    engine_kwargs: dict[str, Any] = {"pool_pre_ping": bool(getattr(settings, "DB_POOL_PRE_PING", True))}
+    engine_kwargs: dict[str, Any] = {"pool_pre_ping": bool(settings.DB_POOL_PRE_PING)}
     if not (parsed_url.drivername or "").startswith("sqlite"):
         engine_kwargs.update(
             {
-                "pool_size": int(getattr(settings, "DB_POOL_SIZE", 10)),
-                "max_overflow": int(getattr(settings, "DB_MAX_OVERFLOW", 20)),
-                "pool_timeout": int(getattr(settings, "DB_POOL_TIMEOUT_SEC", 30)),
-                "pool_recycle": int(getattr(settings, "DB_POOL_RECYCLE_SEC", 1800)),
+                "pool_size": int(settings.DB_POOL_SIZE),
+                "max_overflow": int(settings.DB_MAX_OVERFLOW),
+                "pool_timeout": int(settings.DB_POOL_TIMEOUT_SEC),
+                "pool_recycle": int(settings.DB_POOL_RECYCLE_SEC),
             }
         )
     return engine_kwargs

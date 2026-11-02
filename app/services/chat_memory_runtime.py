@@ -25,7 +25,7 @@ def _retrieve_long_term_messages(
     Simple long-term memory recall using BM25 over past messages.
     Used to enrich history context only; it does not modify storage.
     """
-    max_messages = int(getattr(settings, "LONG_TERM_MEMORY_MAX_MESSAGES", 200) or 0)
+    max_messages = int(settings.LONG_TERM_MEMORY_MAX_MESSAGES or 0)
     query_builder = (
         db.query(Message.content, Message.role, Message.created_at)
         .filter(

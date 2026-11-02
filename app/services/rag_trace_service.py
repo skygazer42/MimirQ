@@ -1066,8 +1066,8 @@ def list_rag_traces(
     window_minutes: int = 60,
     max_bytes: int = 5_000_000,
 ) -> RagTraceListResponse:
-    enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
-    path_str = str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl")
+    enabled = bool(settings.ENABLE_METRICS_LOG)
+    path_str = str(settings.METRICS_LOG_PATH or "./logs/rag_metrics.jsonl")
     path = Path(path_str)
 
     window_minutes = max(1, int(window_minutes or 0))

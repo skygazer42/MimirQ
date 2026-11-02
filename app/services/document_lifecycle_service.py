@@ -103,7 +103,7 @@ def _document_task_ids(document: DBDocument) -> list[str]:
 
 
 async def _abort_document_tasks_before_delete(*, document_id: UUID, task_ids: list[str]) -> None:
-    if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)) or not task_ids:
+    if not bool(settings.TASK_QUEUE_ENABLED) or not task_ids:
         return
     try:
         from arq.jobs import Job
@@ -113,7 +113,7 @@ async def _abort_document_tasks_before_delete(*, document_id: UUID, task_ids: li
         q = await get_queue()
         if q is None:
             return
-        queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
+        queue_name = settings.TASK_QUEUE_NAME
         for task_id in task_ids:
             job = Job(task_id, q, _queue_name=queue_name)
             with contextlib.suppress(TimeoutError, asyncio.TimeoutError):

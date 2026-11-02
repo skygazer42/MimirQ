@@ -495,7 +495,7 @@ def summarize_rag_metrics(
     """
     Build a small dashboard summary from the metrics JSONL file.
     """
-    enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
+    enabled = bool(settings.ENABLE_METRICS_LOG)
     window_minutes = _normalize_window_minutes(window_minutes)
     record_window = _load_metrics_record_window(
         tenant_id=tenant_id,
@@ -652,7 +652,7 @@ def summarize_rag_cost_attribution(
     Output is PII-safe by construction (numeric/categorical fields only).
     """
 
-    enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
+    enabled = bool(settings.ENABLE_METRICS_LOG)
     window_minutes = _normalize_window_minutes(window_minutes)
     record_window = _load_metrics_record_window(
         tenant_id=tenant_id,
@@ -876,13 +876,13 @@ class _QueryAnomalyBucketStats:
 
 
 def _query_anomaly_config(window_minutes: int) -> _QueryAnomalyConfig | None:
-    if not bool(getattr(settings, "OBS_ANOMALY_ENABLED", True)):
+    if not bool(settings.OBS_ANOMALY_ENABLED):
         return None
     window_minutes = max(1, int(window_minutes or 0))
-    baseline_win = max(1, int(getattr(settings, "OBS_ANOMALY_BASELINE_WINDOW_MINUTES", 60) or 60))
-    current_win = max(1, int(getattr(settings, "OBS_ANOMALY_CURRENT_WINDOW_MINUTES", 5) or 5))
-    min_reqs = max(1, int(getattr(settings, "OBS_ANOMALY_MIN_REQUESTS_PER_BUCKET", 5) or 5))
-    min_baseline_buckets = max(1, int(getattr(settings, "OBS_ANOMALY_MIN_BASELINE_BUCKETS", 10) or 10))
+    baseline_win = max(1, int(settings.OBS_ANOMALY_BASELINE_WINDOW_MINUTES or 60))
+    current_win = max(1, int(settings.OBS_ANOMALY_CURRENT_WINDOW_MINUTES or 5))
+    min_reqs = max(1, int(settings.OBS_ANOMALY_MIN_REQUESTS_PER_BUCKET or 5))
+    min_baseline_buckets = max(1, int(settings.OBS_ANOMALY_MIN_BASELINE_BUCKETS or 10))
 
     current_win = min(current_win, window_minutes)
     baseline_win = min(baseline_win, max(0, window_minutes - current_win))
@@ -894,12 +894,12 @@ def _query_anomaly_config(window_minutes: int) -> _QueryAnomalyConfig | None:
         current_window_minutes=current_win,
         min_requests_per_bucket=min_reqs,
         min_baseline_buckets=min_baseline_buckets,
-        zero_hit_abs_threshold=float(getattr(settings, "OBS_ANOMALY_ZERO_HIT_RATE_ABS_THRESHOLD", 0.6) or 0.6),
-        zero_hit_ratio_threshold=float(getattr(settings, "OBS_ANOMALY_ZERO_HIT_RATE_RATIO_THRESHOLD", 2.0) or 2.0),
-        zero_hit_zscore_threshold=float(getattr(settings, "OBS_ANOMALY_ZERO_HIT_RATE_ZSCORE_THRESHOLD", 3.0) or 3.0),
-        error_abs_threshold=float(getattr(settings, "OBS_ANOMALY_ERROR_RATE_ABS_THRESHOLD", 0.05) or 0.05),
-        error_ratio_threshold=float(getattr(settings, "OBS_ANOMALY_ERROR_RATE_RATIO_THRESHOLD", 3.0) or 3.0),
-        error_zscore_threshold=float(getattr(settings, "OBS_ANOMALY_ERROR_RATE_ZSCORE_THRESHOLD", 3.0) or 3.0),
+        zero_hit_abs_threshold=float(settings.OBS_ANOMALY_ZERO_HIT_RATE_ABS_THRESHOLD or 0.6),
+        zero_hit_ratio_threshold=float(settings.OBS_ANOMALY_ZERO_HIT_RATE_RATIO_THRESHOLD or 2.0),
+        zero_hit_zscore_threshold=float(settings.OBS_ANOMALY_ZERO_HIT_RATE_ZSCORE_THRESHOLD or 3.0),
+        error_abs_threshold=float(settings.OBS_ANOMALY_ERROR_RATE_ABS_THRESHOLD or 0.05),
+        error_ratio_threshold=float(settings.OBS_ANOMALY_ERROR_RATE_RATIO_THRESHOLD or 3.0),
+        error_zscore_threshold=float(settings.OBS_ANOMALY_ERROR_RATE_ZSCORE_THRESHOLD or 3.0),
     )
 
 
@@ -1345,7 +1345,7 @@ def summarize_rag_query_analytics(
     - Aggregates are numeric/categorical
     """
 
-    enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
+    enabled = bool(settings.ENABLE_METRICS_LOG)
     window_minutes = _normalize_window_minutes(window_minutes)
     top_n = max(1, min(200, int(top_n or 0)))
     slow_threshold_sec = max(0.0, float(slow_threshold_sec or 0.0))
@@ -1794,7 +1794,7 @@ def build_rag_trace_bundle(
     returns a small, sanitized set of records matching the request_id.
     """
 
-    enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
+    enabled = bool(settings.ENABLE_METRICS_LOG)
     request_id = str(request_id or "").strip()
     if not request_id:
         return None

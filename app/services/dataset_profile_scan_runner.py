@@ -75,7 +75,7 @@ def _download_object_storage_document_to_temp(
     store.download_object_to_path(
         object_name=ref.object_name,
         destination=out,
-        max_bytes=int(getattr(settings, "MAX_FILE_SIZE", 0) or 0),
+        max_bytes=int(settings.MAX_FILE_SIZE or 0),
     )
     return out
 
@@ -95,9 +95,7 @@ def _ensure_local_path(
         raise ValueError("document_file_not_available")
 
     if is_object_storage_uri(raw):
-        if not bool(getattr(settings, "MINIO_ENABLED", False)) and not bool(
-            getattr(settings, "OBJECT_STORAGE_ENABLED", False)
-        ):
+        if not bool(settings.MINIO_ENABLED) and not bool(settings.OBJECT_STORAGE_ENABLED):
             raise ValueError("object_storage_disabled")
         temp_dir = (temp_root / str(tenant_id) / ".tmp").resolve(strict=False)
         temp_path = _download_object_storage_document_to_temp(
@@ -383,7 +381,7 @@ def _maybe_backfill_pdf_quality(
         quality = score_pdf_quality(
             local_path,
             sample_pages=3,
-            use_ocr_validation=bool(getattr(settings, "RAPIDOCR_ENABLED", False)),
+            use_ocr_validation=bool(settings.RAPIDOCR_ENABLED),
         )
         if not isinstance(quality, dict) or not quality:
             return False
@@ -818,7 +816,7 @@ def run_dataset_profile_deep_scan(
         )
 
     stats = _DeepScanStats(documents=len(docs))
-    temp_root = Path(getattr(settings, "UPLOAD_DIR", "./uploads") or "./uploads")
+    temp_root = Path(settings.UPLOAD_DIR or "./uploads")
     last_progress_write = time.monotonic()
 
     for idx, doc in enumerate(docs, start=1):

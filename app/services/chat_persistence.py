@@ -120,8 +120,8 @@ def _extractive_fallback_cost_attribution(
             "source": "extractive_fallback",
         },
         "embeddings": {
-            "provider": str(getattr(settings, "EMBEDDING_PROVIDER", "") or ""),
-            "model": str(getattr(settings, "EMBEDDING_MODEL", "") or ""),
+            "provider": str(settings.EMBEDDING_PROVIDER or ""),
+            "model": str(settings.EMBEDDING_MODEL or ""),
             "query_count": int(query_count),
             "query_chars": int(query_chars),
             "query_tokens": int(query_tokens),

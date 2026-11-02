@@ -67,8 +67,8 @@ async def _preferred_jwt_tenant_id(request: Request) -> UUID | None:
     if tenant_uuid := _tenant_uuid_from_state(request):
         return tenant_uuid
 
-    auth_mode = (getattr(settings, "AUTH_MODE", "jwt") or "jwt").lower()
-    claim = str(getattr(settings, "JWT_TENANT_CLAIM", "") or "").strip()
+    auth_mode = (settings.AUTH_MODE or "jwt").lower()
+    claim = str(settings.JWT_TENANT_CLAIM or "").strip()
     authorization = (request.headers.get("authorization") or "").strip()
     if auth_mode != "jwt" or not claim or not authorization:
         return None
@@ -83,7 +83,7 @@ async def _preferred_jwt_tenant_id(request: Request) -> UUID | None:
 
 def _tenant_header_value(request: Request, x_tenant_id: str | None) -> tuple[str | None, str]:
     raw = (x_tenant_id or "").strip() or None
-    tenant_header = str(getattr(settings, "TENANT_HEADER", "") or "X-Tenant-ID").strip() or "X-Tenant-ID"
+    tenant_header = str(settings.TENANT_HEADER or "X-Tenant-ID").strip() or "X-Tenant-ID"
     if not raw and tenant_header.lower() != "x-tenant-id":
         raw = (request.headers.get(tenant_header) or "").strip() or None
     return raw, tenant_header

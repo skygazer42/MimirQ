@@ -510,7 +510,7 @@ def _filter_preview_chunks(
     if merge_min > 0 and documents and chunks:
         chunks = _merge_small_chunks_preview(documents=documents, chunks=chunks, min_chars=merge_min)
 
-    min_chars = max(0, int(getattr(settings, "CHUNK_MIN_CHARS", 0) or 0))
+    min_chars = max(0, int(settings.CHUNK_MIN_CHARS or 0))
     if min_chars > 0 and chunks:
         before = len(chunks)
         original_chunks = chunks
@@ -973,11 +973,11 @@ async def _load_preview_parsed_payload(
     config: PreviewRequestConfig,
     file_sha256: str | None,
 ) -> tuple[list[dict[str, Any]], str, bool, int | None, int]:
-    cache_enabled = bool(getattr(settings, "PREVIEW_PARSE_CACHE_ENABLED", False))
-    cache_ttl_sec = int(getattr(settings, "PREVIEW_PARSE_CACHE_TTL_SEC", 0) or 0)
-    cache_max_entries = int(getattr(settings, "PREVIEW_PARSE_CACHE_MAX_ENTRIES", 0) or 0)
-    cache_max_doc_chars = int(getattr(settings, "PREVIEW_PARSE_CACHE_MAX_DOC_CHARS", 0) or 0)
-    cache_version = str(getattr(settings, "PREVIEW_PARSE_CACHE_VERSION", "v1") or "v1").strip() or "v1"
+    cache_enabled = bool(settings.PREVIEW_PARSE_CACHE_ENABLED)
+    cache_ttl_sec = int(settings.PREVIEW_PARSE_CACHE_TTL_SEC or 0)
+    cache_max_entries = int(settings.PREVIEW_PARSE_CACHE_MAX_ENTRIES or 0)
+    cache_max_doc_chars = int(settings.PREVIEW_PARSE_CACHE_MAX_DOC_CHARS or 0)
+    cache_version = str(settings.PREVIEW_PARSE_CACHE_VERSION or "v1").strip() or "v1"
     cache_key: str | None = None
     parsed_docs_payload: list[dict[str, Any]] | None = None
     resolved_backend = str(config.parser_backend)
@@ -1434,7 +1434,7 @@ def _build_chunk_preview_response(
 
 
 def _should_inline_preview_parse(file_ext: str) -> bool:
-    if not bool(getattr(settings, "PREVIEW_INLINE_TEXT_PARSE_ENABLED", True)):
+    if not bool(settings.PREVIEW_INLINE_TEXT_PARSE_ENABLED):
         return False
     ext = str(file_ext or "").strip().lower()
     return ext == ".md" or ext in parser_factory.PLAIN_TEXT_EXTENSIONS
@@ -1580,10 +1580,10 @@ def preview_chunking_by_sha(
             detail="Integrated pipeline strategies do not support by-sha preview; please upload the file",
         )
 
-    cache_enabled = bool(getattr(settings, "PREVIEW_PARSE_CACHE_ENABLED", False))
-    cache_ttl_sec = int(getattr(settings, "PREVIEW_PARSE_CACHE_TTL_SEC", 0) or 0)
-    cache_max_entries = int(getattr(settings, "PREVIEW_PARSE_CACHE_MAX_ENTRIES", 0) or 0)
-    cache_version = str(getattr(settings, "PREVIEW_PARSE_CACHE_VERSION", "v1") or "v1").strip() or "v1"
+    cache_enabled = bool(settings.PREVIEW_PARSE_CACHE_ENABLED)
+    cache_ttl_sec = int(settings.PREVIEW_PARSE_CACHE_TTL_SEC or 0)
+    cache_max_entries = int(settings.PREVIEW_PARSE_CACHE_MAX_ENTRIES or 0)
+    cache_version = str(settings.PREVIEW_PARSE_CACHE_VERSION or "v1").strip() or "v1"
     if not (cache_enabled and config.use_parse_cache and cache_ttl_sec > 0 and cache_max_entries > 0):
         raise HTTPException(status_code=400, detail="parse cache disabled; please upload the file")
 

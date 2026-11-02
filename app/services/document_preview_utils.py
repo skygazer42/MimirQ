@@ -486,8 +486,8 @@ def _materialize_extracted_images_for_preview(
 
 
 def _preview_local_image_limits() -> tuple[int, int]:
-    max_inline_images = max(0, int(getattr(settings, "MAX_INLINE_IMAGES", 0) or 0))
-    max_image_bytes = int(getattr(settings, "MAX_INLINE_IMAGE_BYTES", 10_000_000) or 10_000_000)
+    max_inline_images = max(0, int(settings.MAX_INLINE_IMAGES or 0))
+    max_image_bytes = int(settings.MAX_INLINE_IMAGE_BYTES or 10_000_000)
     return max_inline_images, max(1_000_000, max_image_bytes)
 
 

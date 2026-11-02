@@ -52,7 +52,7 @@ class HTTPClientPool:
 
         if rid and "X-Request-ID" not in request.headers:
             request.headers["X-Request-ID"] = rid
-        tenant_header = str(getattr(settings, "TENANT_HEADER", "") or "X-Tenant-ID").strip() or "X-Tenant-ID"
+        tenant_header = str(settings.TENANT_HEADER or "X-Tenant-ID").strip() or "X-Tenant-ID"
         if tenant_id and tenant_header not in request.headers:
             request.headers[tenant_header] = tenant_id
         if tenant_id and tenant_header.lower() != "x-tenant-id" and "X-Tenant-ID" not in request.headers:
@@ -93,21 +93,21 @@ class HTTPClientPool:
 
     def _build_limits(self) -> httpx.Limits:
         return httpx.Limits(
-            max_connections=int(getattr(settings, "HTTP_CLIENT_MAX_CONNECTIONS", 100)),
-            max_keepalive_connections=int(getattr(settings, "HTTP_CLIENT_MAX_KEEPALIVE_CONNECTIONS", 20)),
-            keepalive_expiry=float(getattr(settings, "HTTP_CLIENT_KEEPALIVE_EXPIRY_SEC", 30.0)),
+            max_connections=int(settings.HTTP_CLIENT_MAX_CONNECTIONS),
+            max_keepalive_connections=int(settings.HTTP_CLIENT_MAX_KEEPALIVE_CONNECTIONS),
+            keepalive_expiry=float(settings.HTTP_CLIENT_KEEPALIVE_EXPIRY_SEC),
         )
 
     def _build_timeout(self) -> httpx.Timeout:
         return httpx.Timeout(
-            connect=float(getattr(settings, "HTTP_CLIENT_TIMEOUT_CONNECT_SEC", 10.0)),
-            read=float(getattr(settings, "HTTP_CLIENT_TIMEOUT_READ_SEC", 60.0)),
-            write=float(getattr(settings, "HTTP_CLIENT_TIMEOUT_WRITE_SEC", 30.0)),
-            pool=float(getattr(settings, "HTTP_CLIENT_TIMEOUT_POOL_SEC", 5.0)),
+            connect=float(settings.HTTP_CLIENT_TIMEOUT_CONNECT_SEC),
+            read=float(settings.HTTP_CLIENT_TIMEOUT_READ_SEC),
+            write=float(settings.HTTP_CLIENT_TIMEOUT_WRITE_SEC),
+            pool=float(settings.HTTP_CLIENT_TIMEOUT_POOL_SEC),
         )
 
     def _build_http2(self) -> bool:
-        return bool(getattr(settings, "HTTP_CLIENT_HTTP2_ENABLED", True)) and _HTTP2_AVAILABLE
+        return bool(settings.HTTP_CLIENT_HTTP2_ENABLED) and _HTTP2_AVAILABLE
 
     def _build_trust_env(self) -> bool:
         return httpx_trust_env(logger=logger)
@@ -327,16 +327,12 @@ class HTTPClientPool:
         client = await (self.get_external_client() if use_external_client else self.get_client())
         last_exception = None
 
-        max_retries = int(
-            max_retries if max_retries is not None else getattr(settings, "HTTP_CLIENT_RETRY_MAX_RETRIES", 3)
-        )
-        retry_delay = float(
-            retry_delay if retry_delay is not None else getattr(settings, "HTTP_CLIENT_RETRY_INITIAL_DELAY_SEC", 1.0)
-        )
+        max_retries = int(max_retries if max_retries is not None else settings.HTTP_CLIENT_RETRY_MAX_RETRIES)
+        retry_delay = float(retry_delay if retry_delay is not None else settings.HTTP_CLIENT_RETRY_INITIAL_DELAY_SEC)
         backoff_factor = float(
-            backoff_factor if backoff_factor is not None else getattr(settings, "HTTP_CLIENT_RETRY_BACKOFF_FACTOR", 2.0)
+            backoff_factor if backoff_factor is not None else settings.HTTP_CLIENT_RETRY_BACKOFF_FACTOR
         )
-        jitter = float(jitter if jitter is not None else getattr(settings, "HTTP_CLIENT_RETRY_JITTER_SEC", 0.0))
+        jitter = float(jitter if jitter is not None else settings.HTTP_CLIENT_RETRY_JITTER_SEC)
 
         current_delay = retry_delay
 

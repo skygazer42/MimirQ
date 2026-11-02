@@ -128,7 +128,7 @@ def _sqlite_timeout_sec() -> float:
     - Keep requests responsive by capping excessively large values.
     - Allow 0 to fail fast when the DB is locked.
     """
-    raw = getattr(settings, "TABLE_STORE_SQLITE_TIMEOUT_SEC", 30.0)
+    raw = settings.TABLE_STORE_SQLITE_TIMEOUT_SEC
     try:
         timeout = float(raw)  # type: ignore[arg-type]
     except Exception:
@@ -411,7 +411,7 @@ def _excel_sheet_names(xls: Any) -> list[str]:
 
 
 def _bounded_excel_sheet_names(sheet_names: list[str]) -> tuple[list[str], bool]:
-    max_sheets = int(getattr(settings, "TABLE_STORE_MAX_SHEETS", 0) or 0)
+    max_sheets = int(settings.TABLE_STORE_MAX_SHEETS or 0)
     if max_sheets > 0 and len(sheet_names) > max_sheets:
         return sheet_names[: max(0, int(max_sheets))], True
     return sheet_names, False
@@ -672,7 +672,7 @@ def import_docx_tables(  # noqa: PLR0913 - public importer keeps explicit API fi
     body = getattr(getattr(doc, "element", None), "body", None)
     children = list(body.iterchildren()) if body is not None else []
 
-    max_sheets = int(getattr(settings, "TABLE_STORE_MAX_SHEETS", 0) or 0)
+    max_sheets = int(settings.TABLE_STORE_MAX_SHEETS or 0)
 
     prev_paras: list[str] = []
     assets: list[TableAsset] = []
@@ -817,7 +817,7 @@ def import_markdown_tables(  # noqa: PLR0913 - public importer keeps explicit AP
 
     max_rows_i = max(0, int(max_rows or 0))
     max_cols_i = max(0, int(max_cols or 0))
-    max_sheets = int(getattr(settings, "TABLE_STORE_MAX_SHEETS", 0) or 0)
+    max_sheets = int(settings.TABLE_STORE_MAX_SHEETS or 0)
 
     assets: list[TableAsset] = []
     sheet_index = 0
@@ -1106,9 +1106,9 @@ def evaluate_planner_execution_mismatch(
 
 
 def _clamped_table_query_limits(*, max_rows: int, max_cols: int, max_bytes: int) -> TableQueryLimits:
-    hard_rows = int(getattr(settings, "TABLE_QUERY_MAX_ROWS", 0) or 0)
-    hard_cols = int(getattr(settings, "TABLE_QUERY_MAX_COLS", 0) or 0)
-    hard_bytes = int(getattr(settings, "TABLE_QUERY_MAX_BYTES", 0) or 0)
+    hard_rows = int(settings.TABLE_QUERY_MAX_ROWS or 0)
+    hard_cols = int(settings.TABLE_QUERY_MAX_COLS or 0)
+    hard_bytes = int(settings.TABLE_QUERY_MAX_BYTES or 0)
     if hard_rows > 0:
         max_rows = min(int(max_rows or 0) or hard_rows, hard_rows)
     if hard_cols > 0:
@@ -1121,7 +1121,7 @@ def _clamped_table_query_limits(*, max_rows: int, max_cols: int, max_bytes: int)
 def _validate_table_query_sql(raw_sql: str) -> None:
     if not raw_sql.strip():
         raise ValueError("sql is required")
-    max_sql_chars = int(getattr(settings, "TABLE_QUERY_MAX_SQL_CHARS", 20_000) or 20_000)
+    max_sql_chars = int(settings.TABLE_QUERY_MAX_SQL_CHARS or 20_000)
     if max_sql_chars > 0 and len(raw_sql) > int(max_sql_chars):
         raise ValueError(f"sql_too_long (max {int(max_sql_chars)})")
     if ";" in raw_sql:
@@ -1156,15 +1156,13 @@ def _query_allowed_tables(*, sql_table: str, allowed_sql_tables: list[str] | Non
 
 
 def _validate_query_table_refs(normalized_sql: str, *, allowed_tables: set[str]) -> None:
-    if _SQL_DISALLOWED_JOIN_RE.search(normalized_sql) and not bool(
-        getattr(settings, "TABLE_QUERY_ALLOW_CROSS_JOIN", False)
-    ):
+    if _SQL_DISALLOWED_JOIN_RE.search(normalized_sql) and not bool(settings.TABLE_QUERY_ALLOW_CROSS_JOIN):
         raise ValueError("join_type_not_allowed")
 
     referenced_tables = _extract_sql_table_refs(normalized_sql)
     if not referenced_tables:
         return
-    max_join_tables = int(getattr(settings, "TABLE_QUERY_MAX_JOIN_TABLES", 4) or 4)
+    max_join_tables = int(settings.TABLE_QUERY_MAX_JOIN_TABLES or 4)
     if max_join_tables > 0 and len(set(referenced_tables)) > max_join_tables:
         raise ValueError(f"too_many_join_tables (max {max_join_tables})")
     if any(table not in allowed_tables for table in referenced_tables):
@@ -1173,8 +1171,8 @@ def _validate_query_table_refs(normalized_sql: str, *, allowed_tables: set[str])
 
 def _query_timeout_settings() -> tuple[float, int]:
     return (
-        float(getattr(settings, "TABLE_QUERY_TIMEOUT_SEC", 0.0) or 0.0),
-        int(getattr(settings, "TABLE_QUERY_PROGRESS_OPS", 0) or 0),
+        float(settings.TABLE_QUERY_TIMEOUT_SEC or 0.0),
+        int(settings.TABLE_QUERY_PROGRESS_OPS or 0),
     )
 
 

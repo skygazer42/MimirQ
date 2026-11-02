@@ -279,7 +279,7 @@ def _extract_markdown_pair_from_documents(documents: list[dict[str, Any]] | None
 
 
 def _should_inline_preview_parse(file_ext: str) -> bool:
-    if not bool(getattr(settings, "PREVIEW_INLINE_TEXT_PARSE_ENABLED", True)):
+    if not bool(settings.PREVIEW_INLINE_TEXT_PARSE_ENABLED):
         return False
     ext = str(file_ext or "").strip().lower()
     return ext == ".md" or ext in parser_factory.PLAIN_TEXT_EXTENSIONS
@@ -485,10 +485,10 @@ def _load_competition_weights() -> dict[str, float] | None:
     """
     Parse weights JSON (Opt 8) from settings, with a safe default.
     """
-    if not bool(getattr(settings, "PARSE_COMPETITION_MATRIX_ENABLED", False)):
+    if not bool(settings.PARSE_COMPETITION_MATRIX_ENABLED):
         return None
 
-    raw = str(getattr(settings, "PARSE_COMPETITION_MATRIX_WEIGHTS_JSON", "") or "").strip()
+    raw = str(settings.PARSE_COMPETITION_MATRIX_WEIGHTS_JSON or "").strip()
     if raw:
         try:
             obj = json.loads(raw)
@@ -507,12 +507,12 @@ def _append_pdf_fallback_candidate(candidates: list[str], *, name: str, enabled:
 
 
 def _magicpdf_fallback_available() -> bool:
-    if not bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
+    if not bool(settings.MAGIC_PDF_ENABLED):
         return False
-    if magicpdf_service_configured(getattr(settings, "MAGIC_PDF_API_URL", "")):
+    if magicpdf_service_configured(settings.MAGIC_PDF_API_URL):
         return True
-    cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
-    models_dir = resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
+    cli = (settings.MAGIC_PDF_CLI or "magic-pdf").strip() or "magic-pdf"
+    models_dir = resolve_magicpdf_models_dir(settings.MAGIC_PDF_MODELS_DIR)
     return bool(resolve_cli_command(cli) and models_dir)
 
 
@@ -527,37 +527,32 @@ def _build_pdf_fallback_candidates() -> list[str]:
     _append_pdf_fallback_candidate(
         candidates,
         name="mineru",
-        enabled=bool(getattr(settings, "MINERU_ENABLED", False))
-        and bool(getattr(settings, "MINERU_API_TOKEN", None) or getattr(settings, "MINERU_LOCAL_SERVER_URL", None)),
+        enabled=bool(settings.MINERU_ENABLED) and bool(settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL),
     )
     _append_pdf_fallback_candidate(
         candidates,
         name="deepseek_ocr",
-        enabled=bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False))
-        and bool((getattr(settings, "SILICONFLOW_API_KEY", "") or "").strip()),
+        enabled=bool(settings.DEEPSEEK_OCR_ENABLED) and bool((settings.SILICONFLOW_API_KEY or "").strip()),
     )
     _append_pdf_fallback_candidate(
         candidates,
         name="qianfan_ocr",
-        enabled=bool(getattr(settings, "QIANFAN_OCR_ENABLED", False))
-        and bool((getattr(settings, "QIANFAN_OCR_API_URL", "") or "").strip()),
+        enabled=bool(settings.QIANFAN_OCR_ENABLED) and bool((settings.QIANFAN_OCR_API_URL or "").strip()),
     )
     _append_pdf_fallback_candidate(
         candidates,
         name="etl4llm",
-        enabled=bool(getattr(settings, "ETL4LLM_ENABLED", False))
-        and bool((getattr(settings, "ETL4LLM_API_URL", "") or "").strip()),
+        enabled=bool(settings.ETL4LLM_ENABLED) and bool((settings.ETL4LLM_API_URL or "").strip()),
     )
     _append_pdf_fallback_candidate(
         candidates,
         name="deepdoc",
-        enabled=bool(getattr(settings, "DEEPDOC_ENABLED", False)),
+        enabled=bool(settings.DEEPDOC_ENABLED),
     )
     _append_pdf_fallback_candidate(
         candidates,
         name="docling",
-        enabled=bool(getattr(settings, "DOCLING_ENABLED", False))
-        and bool((getattr(settings, "DOCLING_API_URL", "") or "").strip()),
+        enabled=bool(settings.DOCLING_ENABLED) and bool((settings.DOCLING_API_URL or "").strip()),
     )
 
     # MagicPDF prefers service mode; local CLI remains a fallback.
@@ -573,7 +568,7 @@ def _build_pdf_fallback_candidates() -> list[str]:
     _append_pdf_fallback_candidate(
         candidates,
         name="markitdown",
-        enabled=bool(getattr(settings, "MARKITDOWN_ENABLED", False)),
+        enabled=bool(settings.MARKITDOWN_ENABLED),
     )
 
     # Always keep a basic fallback.
@@ -890,7 +885,7 @@ async def _resolve_workspace_source_path(
         store.download_object_to_path,
         object_name=ref.object_name,
         destination=temp_path,
-        max_bytes=int(getattr(settings, "MAX_FILE_SIZE", 0) or 0),
+        max_bytes=int(settings.MAX_FILE_SIZE or 0),
     )
     return temp_path
 
@@ -989,7 +984,7 @@ async def _parse_workspace_source(
 
 
 def _workspace_cross_page_merge_stats(artifact_docs: Any) -> dict[str, int] | None:
-    if not artifact_docs or not bool(getattr(settings, "CROSS_PAGE_MERGE_ENABLED", False)):
+    if not artifact_docs or not bool(settings.CROSS_PAGE_MERGE_ENABLED):
         return None
     try:
         _docs, cross_page_merge_stats = merge_cross_page_items(artifact_docs)
@@ -1138,9 +1133,9 @@ async def _run_workspace_pdf_fallbacks(
     markdown: str,
     pdf_quality: dict[str, Any] | None,
 ) -> tuple[str, ParsingQualityGate, Any, str, str, dict[str, int] | None, list[dict[str, Any]]]:
-    min_chars = max(0, int(getattr(settings, "PARSE_FALLBACK_MIN_CONTENT_CHARS", 120) or 120))
-    min_parse_score = max(0.0, float(getattr(settings, "PARSE_FALLBACK_MIN_PARSE_SCORE", 0.55) or 0.55))
-    max_retries = max(0, int(getattr(settings, "PARSE_FALLBACK_MAX_RETRIES", 1) or 1))
+    min_chars = max(0, int(settings.PARSE_FALLBACK_MIN_CONTENT_CHARS or 120))
+    min_parse_score = max(0.0, float(settings.PARSE_FALLBACK_MIN_PARSE_SCORE or 0.55))
+    max_retries = max(0, int(settings.PARSE_FALLBACK_MAX_RETRIES or 1))
     matrix_weights = _load_competition_weights()
     fallback_attempts: list[dict[str, Any]] = []
     cross_page_merge_stats = _workspace_cross_page_merge_stats(artifact_docs)
@@ -1278,9 +1273,7 @@ def _apply_workspace_vlm_correction(
     vlm_correction_enabled: bool | None,
 ) -> tuple[str, ParsingQualityGate, dict[str, Any] | None, bool]:
     vlm_correction_requested = (
-        bool(getattr(settings, "VLM_CORRECTION_ENABLED", False))
-        if vlm_correction_enabled is None
-        else bool(vlm_correction_enabled)
+        bool(settings.VLM_CORRECTION_ENABLED) if vlm_correction_enabled is None else bool(vlm_correction_enabled)
     )
     if file_ext != ".pdf" or not vlm_correction_requested:
         return markdown, gate, None, vlm_correction_requested
@@ -1293,12 +1286,12 @@ def _apply_workspace_vlm_correction(
         corrected_pages, audit = maybe_correct_markdown_pages(
             pages,
             enabled=True,
-            api_url=str(getattr(settings, "VLM_CORRECTION_API_URL", "") or ""),
-            timeout_sec=float(getattr(settings, "VLM_CORRECTION_TIMEOUT_SEC", 60) or 60),
-            max_pages=int(getattr(settings, "VLM_CORRECTION_MAX_PAGES", 3) or 3),
-            max_chars=int(getattr(settings, "VLM_CORRECTION_MAX_CHARS", 40_000) or 40_000),
+            api_url=str(settings.VLM_CORRECTION_API_URL or ""),
+            timeout_sec=float(settings.VLM_CORRECTION_TIMEOUT_SEC or 60),
+            max_pages=int(settings.VLM_CORRECTION_MAX_PAGES or 3),
+            max_chars=int(settings.VLM_CORRECTION_MAX_CHARS or 40_000),
             pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
-            min_table_quality=float(getattr(settings, "VLM_CORRECTION_MIN_TABLE_QUALITY", 0.6) or 0.6),
+            min_table_quality=float(settings.VLM_CORRECTION_MIN_TABLE_QUALITY or 0.6),
             meta={"tenant_id": str(tenant_id), "document_id": str(document_id)},
         )
         vlm_audit = audit.to_dict()
@@ -1319,7 +1312,7 @@ def _apply_workspace_vlm_correction(
         gate_after = _compute_parsing_quality_gate(
             markdown,
             pdf_quality=pdf_quality,
-            min_content_chars=max(0, int(getattr(settings, "PARSE_FALLBACK_MIN_CONTENT_CHARS", 120) or 120)),
+            min_content_chars=max(0, int(settings.PARSE_FALLBACK_MIN_CONTENT_CHARS or 120)),
             is_pdf=True,
         )
         next_evidence = dict(gate_after.evidence or {})
@@ -1368,8 +1361,8 @@ def _apply_workspace_image_enrichments(
             markdown, image_ocr_added, audit = add_image_ocr_blocks(
                 markdown,
                 origin_path=source_path,
-                max_images=max(0, int(getattr(settings, "IMAGE_OCR_MAX_IMAGES", 20) or 20)),
-                max_ocr_chars=max(0, int(getattr(settings, "IMAGE_OCR_MAX_CHARS", 2000) or 2000)),
+                max_images=max(0, int(settings.IMAGE_OCR_MAX_IMAGES or 20)),
+                max_ocr_chars=max(0, int(settings.IMAGE_OCR_MAX_CHARS or 2000)),
             )
             image_ocr_audit = audit.to_dict()
             markdown = _strip_storage_nul_chars(markdown)
@@ -1499,11 +1492,11 @@ def _apply_workspace_quality_metadata(
             "attempts": fallback_attempts,
             "min_content_chars": max(
                 0,
-                int(getattr(settings, "PARSE_FALLBACK_MIN_CONTENT_CHARS", 120) or 120),
+                int(settings.PARSE_FALLBACK_MIN_CONTENT_CHARS or 120),
             ),
             "max_retries": max(
                 0,
-                int(getattr(settings, "PARSE_FALLBACK_MAX_RETRIES", 1) or 1),
+                int(settings.PARSE_FALLBACK_MAX_RETRIES or 1),
             ),
         }
     next_meta.update(artifact_stats)
@@ -1801,7 +1794,7 @@ async def _run_workspace_parse_pipeline(
     gate = _compute_parsing_quality_gate(
         markdown,
         pdf_quality=pdf_quality,
-        min_content_chars=max(0, int(getattr(settings, "PARSE_FALLBACK_MIN_CONTENT_CHARS", 120) or 120)),
+        min_content_chars=max(0, int(settings.PARSE_FALLBACK_MIN_CONTENT_CHARS or 120)),
         is_pdf=(file_ext == ".pdf"),
     )
     (

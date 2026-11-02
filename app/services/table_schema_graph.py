@@ -369,7 +369,7 @@ def _cost_model_penalties(
     left_column: str,
     right_column: str,
 ) -> tuple[list[str], float, dict[str, Any]]:
-    if not bool(getattr(settings, "TABLE_TAG_COST_MODEL_ENABLED", True)):
+    if not bool(settings.TABLE_TAG_COST_MODEL_ENABLED):
         return [], 0.0, {"enabled": False}
 
     penalties: list[str] = []
@@ -382,10 +382,10 @@ def _cost_model_penalties(
         fanout_ratio = float(max(left_row_count, right_row_count)) / float(min(left_row_count, right_row_count))
         fanout_ratio = max(1.0, float(fanout_ratio))
         signals["fanout_ratio"] = round(float(fanout_ratio), 6)
-        alert = float(getattr(settings, "TABLE_TAG_COST_FANOUT_RATIO_ALERT", 20.0) or 20.0)
+        alert = float(settings.TABLE_TAG_COST_FANOUT_RATIO_ALERT or 20.0)
         alert = max(1.0, float(alert))
         if fanout_ratio >= alert:
-            weight = float(getattr(settings, "TABLE_TAG_COST_FANOUT_PENALTY_WEIGHT", 0.08) or 0.08)
+            weight = float(settings.TABLE_TAG_COST_FANOUT_PENALTY_WEIGHT or 0.08)
             over = (fanout_ratio / alert) - 1.0
             penalty = min(0.45, max(0.0, float(over) * float(weight)))
             if penalty > 0:
@@ -404,11 +404,11 @@ def _cost_model_penalties(
     selectivity_candidates = [v for v in (left_sel, right_sel) if v is not None]
     if selectivity_candidates:
         min_selectivity = min(float(v) for v in selectivity_candidates)
-        threshold = float(getattr(settings, "TABLE_TAG_COST_SELECTIVITY_MIN", 0.2) or 0.2)
+        threshold = float(settings.TABLE_TAG_COST_SELECTIVITY_MIN or 0.2)
         threshold = min(1.0, max(0.0, float(threshold)))
         signals["selectivity_threshold"] = round(float(threshold), 6)
         if min_selectivity < threshold and threshold > 0.0:
-            weight = float(getattr(settings, "TABLE_TAG_COST_SELECTIVITY_PENALTY_WEIGHT", 0.12) or 0.12)
+            weight = float(settings.TABLE_TAG_COST_SELECTIVITY_PENALTY_WEIGHT or 0.12)
             gap_ratio = (threshold - min_selectivity) / threshold
             # Add mild log scaling so extreme low-selectivity joins are clearly penalized.
             penalty = min(0.45, max(0.0, math.log1p(gap_ratio) * float(weight) * 2.0))

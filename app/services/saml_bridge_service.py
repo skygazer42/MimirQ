@@ -13,7 +13,7 @@ from app.core.redis_client import LazyRedisClient
 _redis_client_slot = LazyRedisClient(
     url=lambda: settings.REDIS_URL,
     kwargs={"decode_responses": False},
-    enabled=lambda: bool(getattr(settings, "SAML_REPLAY_REDIS_ENABLED", False)),
+    enabled=lambda: bool(settings.SAML_REPLAY_REDIS_ENABLED),
     skip_empty_url=True,
     strip_url=True,
 )
@@ -100,7 +100,7 @@ def _consume_in_memory(code: str) -> bytes | None:
 def issue_saml_bridge_session(session: SamlBridgeSession) -> str:
     payload = session.model_dump_json().encode("utf-8")
     ttl_sec = _ttl_sec_for(session)
-    redis_enabled = bool(getattr(settings, "SAML_REPLAY_REDIS_ENABLED", False))
+    redis_enabled = bool(settings.SAML_REPLAY_REDIS_ENABLED)
 
     for _ in range(4):
         code = secrets.token_urlsafe(24)
@@ -127,7 +127,7 @@ def consume_saml_bridge_session(code: str) -> SamlBridgeSession:
     if not normalized:
         raise HTTPException(status_code=401, detail="Invalid SAML bridge session")
 
-    redis_enabled = bool(getattr(settings, "SAML_REPLAY_REDIS_ENABLED", False))
+    redis_enabled = bool(settings.SAML_REPLAY_REDIS_ENABLED)
     if not redis_enabled:
         payload = _consume_in_memory(normalized)
     else:

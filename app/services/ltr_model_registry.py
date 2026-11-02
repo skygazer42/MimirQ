@@ -58,7 +58,7 @@ def _atomic_write_bytes(path: Path, data: bytes) -> None:
 
 
 def _registry_root() -> Path:
-    root = Path(getattr(settings, "UPLOAD_DIR", "./uploads") or "./uploads")
+    root = Path(settings.UPLOAD_DIR or "./uploads")
     return (root / ".ltr_registry").resolve(strict=False)
 
 

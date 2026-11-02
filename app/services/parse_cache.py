@@ -82,7 +82,7 @@ def build_parse_cache_object_name(
     key = str(cache_key or "").strip()
     if not tid or not did or not key:
         raise ValueError("invalid_parse_cache_object_name_components")
-    prefix = str(getattr(settings, "PARSE_CACHE_MINIO_PREFIX", "parse_cache") or "parse_cache").strip().strip("/")
+    prefix = str(settings.PARSE_CACHE_MINIO_PREFIX or "parse_cache").strip().strip("/")
     if not prefix:
         prefix = "parse_cache"
     return f"{prefix}/{tid}/{did}/{key}.json"
@@ -156,9 +156,9 @@ class ParseCacheService:
         """
         Return (entry, age_ms).
         """
-        if not bool(getattr(settings, "PARSE_CACHE_ENABLED", False)):
+        if not bool(settings.PARSE_CACHE_ENABLED):
             return None, None
-        if not bool(getattr(settings, "MINIO_ENABLED", False)):
+        if not bool(settings.MINIO_ENABLED):
             return None, None
         ttl_i = max(0, int(ttl_sec or 0))
         max_bytes_i = max(0, int(max_bytes or 0))
@@ -209,9 +209,9 @@ class ParseCacheService:
         entry: ParseCacheEntry,
         max_bytes: int,
     ) -> bool:
-        if not bool(getattr(settings, "PARSE_CACHE_ENABLED", False)):
+        if not bool(settings.PARSE_CACHE_ENABLED):
             return False
-        if not bool(getattr(settings, "MINIO_ENABLED", False)):
+        if not bool(settings.MINIO_ENABLED):
             return False
         max_bytes_i = max(0, int(max_bytes or 0))
         if max_bytes_i <= 0:

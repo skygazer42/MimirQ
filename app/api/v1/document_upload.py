@@ -304,9 +304,9 @@ async def _maybe_acquire_ingest_lock(
 ) -> None:
     if not file_sha256 or not pipeline_hash or dataset_id is None:
         return
-    if not bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)):
+    if not bool(settings.UPLOAD_DEDUP_ENABLED):
         return
-    if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+    if not bool(settings.TASK_QUEUE_ENABLED):
         return
     try:
         from app.tasks.locks import acquire_lock, make_lock_value
@@ -652,10 +652,9 @@ def _select_upload_defaults(
     dataset_default_pb: str | None,
     dataset_default_cs: str | None,
 ) -> _UploadDefaultSelection:
-    global_default_pb = str(getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto").strip().lower() or "auto"
+    global_default_pb = str(settings.DEFAULT_PARSER_BACKEND or "auto").strip().lower() or "auto"
     global_default_cs = (
-        str(getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower()
-        or "langchain_recursive"
+        str(settings.DEFAULT_CHUNK_STRATEGY or "langchain_recursive").strip().lower() or "langchain_recursive"
     )
     parser_backend_base = parser_backend
     chunk_strategy_base = chunk_strategy
@@ -1191,7 +1190,7 @@ def _build_batch_document(
         processing_progress=0,
         doc_metadata=doc_metadata,
     )
-    if bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)):
+    if bool(settings.UPLOAD_DEDUP_ENABLED):
         db_document.dedup_key = _build_document_dedup_key(file_sha256=file_sha256, pipeline_hash=pipeline_hash)
     return db_document
 
@@ -1216,11 +1215,7 @@ async def _maybe_resolve_upload_duplicate(
     ingest_lock: _IngestLockLease,
     cleanup_exact_duplicate: bool,
 ) -> Any | None:
-    if (
-        not bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False))
-        or not isinstance(file_sha256, str)
-        or not file_sha256
-    ):
+    if not bool(settings.UPLOAD_DEDUP_ENABLED) or not isinstance(file_sha256, str) or not file_sha256:
         return None
     duplicate = documents_module._find_duplicate_document(
         db,
@@ -1940,11 +1935,7 @@ async def _maybe_resolve_single_upload_duplicate(
     user_patch: dict[str, Any] | None,
     ingest_lock: _IngestLockLease,
 ) -> Any | None:
-    if (
-        not bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False))
-        or not isinstance(file_sha256, str)
-        or not file_sha256
-    ):
+    if not bool(settings.UPLOAD_DEDUP_ENABLED) or not isinstance(file_sha256, str) or not file_sha256:
         return None
     duplicate = documents_module._find_duplicate_document(
         db,
@@ -2209,7 +2200,7 @@ async def _upload_document_impl(
                 processing_progress=0,
                 doc_metadata=doc_metadata,
             )
-            if bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)):
+            if bool(settings.UPLOAD_DEDUP_ENABLED):
                 db_document.dedup_key = _build_document_dedup_key(file_sha256=file_sha256, pipeline_hash=pipeline_hash)
             persistence_started = True
             await _persist_uploaded_document(db, db_document, file_path=file_path)

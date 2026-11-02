@@ -79,11 +79,11 @@ def _parse_collection_id(collection_id: str) -> tuple[str, str]:
 
 
 def _similarity_axis_limit() -> int:
-    return max(1, int(getattr(settings, "RAGVIZ_SIMILARITY_MAX_AXIS_ITEMS", 500) or 500))
+    return max(1, int(settings.RAGVIZ_SIMILARITY_MAX_AXIS_ITEMS or 500))
 
 
 def _similarity_pair_limit() -> int:
-    return max(1, int(getattr(settings, "RAGVIZ_SIMILARITY_MAX_PAIRS", 200_000) or 200_000))
+    return max(1, int(settings.RAGVIZ_SIMILARITY_MAX_PAIRS or 200_000))
 
 
 def resolve_similarity_request_limits(

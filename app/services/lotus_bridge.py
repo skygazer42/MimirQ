@@ -42,26 +42,26 @@ def lotus_available() -> LotusAvailability:
 
     This returns whether semantic ops are *runnable* in the current environment.
     """
-    if not bool(getattr(settings, "TABLE_LOTUS_ENABLED", False)):
+    if not bool(settings.TABLE_LOTUS_ENABLED):
         return LotusAvailability(ok=False, reason="TABLE_LOTUS_ENABLED=false")
-    if not str(getattr(settings, "LLM_API_KEY", "") or "").strip():
+    if not str(settings.LLM_API_KEY or "").strip():
         return LotusAvailability(ok=False, reason="LLM_API_KEY is not configured")
-    if not bool(getattr(settings, "TABLE_LLM_ALLOW_ROW_EGRESS", False)):
+    if not bool(settings.TABLE_LLM_ALLOW_ROW_EGRESS):
         return LotusAvailability(ok=False, reason="TABLE_LLM_ALLOW_ROW_EGRESS=false")
     return LotusAvailability(ok=True)
 
 
 def _build_llm(*, temperature: float = 0.0) -> ChatOpenAI:
-    model_name = (getattr(settings, "LLM_MODEL_FAST", None) or getattr(settings, "LLM_MODEL", None) or "").strip()
+    model_name = (settings.LLM_MODEL_FAST or settings.LLM_MODEL or "").strip()
     if not model_name:
         model_name = "gpt-5.4-mini"
     return ChatOpenAI(
         model=model_name,
-        api_key=getattr(settings, "LLM_API_KEY", None),
-        base_url=normalize_openai_compatible_base_url(getattr(settings, "LLM_API_BASE", None)),
+        api_key=settings.LLM_API_KEY,
+        base_url=normalize_openai_compatible_base_url(settings.LLM_API_BASE),
         temperature=float(temperature),
-        timeout=float(getattr(settings, "LLM_TIMEOUT", 60) or 60),
-        max_retries=int(getattr(settings, "LLM_MAX_RETRIES", 2) or 2),
+        timeout=float(settings.LLM_TIMEOUT or 60),
+        max_retries=int(settings.LLM_MAX_RETRIES or 2),
         streaming=False,
     )
 
@@ -144,10 +144,10 @@ def _normalized_sem_filter_instruction(user_instruction: str) -> str:
 
 
 def _sem_filter_limits() -> tuple[int, int, int, int]:
-    max_in_rows = int(getattr(settings, "TABLE_SEM_FILTER_MAX_IN_ROWS", 2000) or 2000)
-    max_cols = int(getattr(settings, "TABLE_SEM_FILTER_MAX_COLS", 30) or 30)
-    max_cell_chars = int(getattr(settings, "TABLE_SEM_FILTER_MAX_CELL_CHARS", 200) or 200)
-    batch_size = int(getattr(settings, "TABLE_SEM_FILTER_BATCH_SIZE", 25) or 25)
+    max_in_rows = int(settings.TABLE_SEM_FILTER_MAX_IN_ROWS or 2000)
+    max_cols = int(settings.TABLE_SEM_FILTER_MAX_COLS or 30)
+    max_cell_chars = int(settings.TABLE_SEM_FILTER_MAX_CELL_CHARS or 200)
+    batch_size = int(settings.TABLE_SEM_FILTER_BATCH_SIZE or 25)
     return max_in_rows, max_cols, max_cell_chars, batch_size
 
 
@@ -232,7 +232,7 @@ def sem_filter(
     instr = _normalized_sem_filter_instruction(user_instruction)
     if not instr:
         raise ValueError("user_instruction is required")
-    if not bool(getattr(settings, "TABLE_LLM_ALLOW_ROW_EGRESS", False)):
+    if not bool(settings.TABLE_LLM_ALLOW_ROW_EGRESS):
         raise RuntimeError("TABLE_LLM_ALLOW_ROW_EGRESS=false")
 
     max_in_rows, max_cols, max_cell_chars, batch_size = _sem_filter_limits()

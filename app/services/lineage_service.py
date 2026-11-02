@@ -71,9 +71,9 @@ def load_answer_lineage_trace(
 ) -> dict[str, Any] | None:
     tenant_key = str(tenant_id)
     request_key = str(request_id or "").strip()
-    if not request_key or not bool(getattr(settings, "ENABLE_METRICS_LOG", False)):
+    if not request_key or not bool(settings.ENABLE_METRICS_LOG):
         return None
-    path = Path(str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl"))
+    path = Path(str(settings.METRICS_LOG_PATH or "./logs/rag_metrics.jsonl"))
     if not path.exists():
         return None
 
@@ -588,10 +588,8 @@ def get_chunk_lineage(
         "hits": [],
     }
 
-    if bool(getattr(settings, "ENABLE_METRICS_LOG", False)):
-        path = Path(
-            str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl")
-        )
+    if bool(settings.ENABLE_METRICS_LOG):
+        path = Path(str(settings.METRICS_LOG_PATH or "./logs/rag_metrics.jsonl"))
         if path.exists():
             records = _read_jsonl_tail(path, max_bytes=max_bytes)
             usage = summarize_chunk_retrieval_usage_from_records(

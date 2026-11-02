@@ -52,10 +52,10 @@ def jwt_secret_key_candidates() -> list[str]:
     - settings.SECRET_KEY is always tried first
     - settings.SECRET_KEY_FALLBACKS can include previous keys (comma-separated)
     """
-    current = str(getattr(settings, "SECRET_KEY", "") or "").strip()
+    current = str(settings.SECRET_KEY or "").strip()
     out: list[str] = [current] if current else []
 
-    raw_fallbacks = str(getattr(settings, "SECRET_KEY_FALLBACKS", "") or "").strip()
+    raw_fallbacks = str(settings.SECRET_KEY_FALLBACKS or "").strip()
     if not raw_fallbacks:
         return out
 
@@ -142,7 +142,7 @@ def _normalize_oidc_issuer(raw_issuer: str) -> str:
 
 
 async def _fetch_oidc_configuration(url: str) -> dict[str, Any]:
-    timeout_sec = float(getattr(settings, "JWT_OIDC_DISCOVERY_HTTP_TIMEOUT_SEC", 5.0) or 5.0)
+    timeout_sec = float(settings.JWT_OIDC_DISCOVERY_HTTP_TIMEOUT_SEC or 5.0)
     timeout = httpx.Timeout(timeout_sec)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, trust_env=True) as client:
         res = await client.get(str(url))
@@ -159,8 +159,8 @@ async def _fetch_oidc_configuration(url: str) -> dict[str, Any]:
 
 
 async def _get_oidc_jwks_uri(issuer: str, *, force_refresh: bool = False) -> str | None:
-    ttl_sec = float(getattr(settings, "JWT_OIDC_DISCOVERY_CACHE_TTL_SEC", 3600) or 3600)
-    max_stale_sec = float(getattr(settings, "JWT_OIDC_DISCOVERY_MAX_STALE_SEC", 86400) or 86400)
+    ttl_sec = float(settings.JWT_OIDC_DISCOVERY_CACHE_TTL_SEC or 3600)
+    max_stale_sec = float(settings.JWT_OIDC_DISCOVERY_MAX_STALE_SEC or 86400)
 
     issuer = str(issuer or "").strip()
     if not issuer:
@@ -222,7 +222,7 @@ async def _fetch_jwks_keys(url: str) -> list[dict[str, Any]]:
     Note: this intentionally does NOT reuse the global HTTP client pool to avoid
     propagating internal X-Request-ID/X-Tenant-ID headers to external IdPs.
     """
-    timeout_sec = float(getattr(settings, "JWT_JWKS_HTTP_TIMEOUT_SEC", 5.0) or 5.0)
+    timeout_sec = float(settings.JWT_JWKS_HTTP_TIMEOUT_SEC or 5.0)
     timeout = httpx.Timeout(timeout_sec)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, trust_env=True) as client:
         res = await client.get(str(url))
@@ -248,8 +248,8 @@ async def _fetch_jwks_keys(url: str) -> list[dict[str, Any]]:
 
 
 async def _get_jwks_keys(url: str, *, force_refresh: bool = False) -> list[dict[str, Any]]:
-    ttl_sec = float(getattr(settings, "JWT_JWKS_CACHE_TTL_SEC", 300) or 300)
-    max_stale_sec = float(getattr(settings, "JWT_JWKS_MAX_STALE_SEC", 3600) or 3600)
+    ttl_sec = float(settings.JWT_JWKS_CACHE_TTL_SEC or 300)
+    max_stale_sec = float(settings.JWT_JWKS_MAX_STALE_SEC or 3600)
 
     now = time.monotonic()
     cached = _jwks_cache.get(url)
@@ -298,9 +298,9 @@ def _find_jwk_for_kid(keys: list[dict[str, Any]], kid: str | None) -> dict[str, 
 
 
 async def _jwks_key_for_token(token: str) -> dict[str, Any]:
-    urls = parse_csv(str(getattr(settings, "JWT_JWKS_URLS", "") or ""))
-    if not urls and bool(getattr(settings, "JWT_JWKS_DISCOVERY_ENABLED", False)):
-        issuer = str(getattr(settings, "JWT_ISSUER", "") or "").strip()
+    urls = parse_csv(str(settings.JWT_JWKS_URLS or ""))
+    if not urls and bool(settings.JWT_JWKS_DISCOVERY_ENABLED):
+        issuer = str(settings.JWT_ISSUER or "").strip()
         jwks_uri = await _get_oidc_jwks_uri(issuer)
         urls = [jwks_uri] if jwks_uri else []
     if not urls:
@@ -335,10 +335,10 @@ async def decode_access_token(token: str) -> dict:
 
     Raises jwt.InvalidTokenError / jwt.ExpiredSignatureError on verification failures.
     """
-    algorithm = str(getattr(settings, "ALGORITHM", "HS256") or "HS256").strip() or "HS256"
+    algorithm = str(settings.ALGORITHM or "HS256").strip() or "HS256"
     algorithms = [algorithm]
-    issuer = str(getattr(settings, "JWT_ISSUER", "") or "").strip()
-    audience = str(getattr(settings, "JWT_AUDIENCE", "") or "").strip()
+    issuer = str(settings.JWT_ISSUER or "").strip()
+    audience = str(settings.JWT_AUDIENCE or "").strip()
 
     decode_kwargs: dict = {
         "algorithms": algorithms,

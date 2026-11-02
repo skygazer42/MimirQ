@@ -979,7 +979,7 @@ async def repair_evidence_suite_reference_sources(
 
     # Optional async enqueue: run repair as a queue job (default remains synchronous for compatibility).
     if bool(async_mode):
-        if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+        if not bool(settings.TASK_QUEUE_ENABLED):
             raise HTTPException(status_code=400, detail="Task queue is disabled (TASK_QUEUE_ENABLED=false)")
         try:
             task_id = await _enqueue_reference_repair_job(
@@ -1272,8 +1272,8 @@ def list_evidence_suite_hardcase_candidates(
         writable=False,
     )
 
-    enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
-    path_str = str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl")
+    enabled = bool(settings.ENABLE_METRICS_LOG)
+    path_str = str(settings.METRICS_LOG_PATH or "./logs/rag_metrics.jsonl")
     now = _now_utc()
 
     if not enabled:
@@ -2174,7 +2174,7 @@ def export_evidence_suite_ltr_training_bundle(
         q = q.filter(EvidenceItem.status != "archived")
     items = q.all()
 
-    spec_version = int(getattr(settings, "LTR_FEATURE_SPEC_VERSION", 1) or 1)
+    spec_version = int(settings.LTR_FEATURE_SPEC_VERSION or 1)
     spec = LTRFeatureSpec.from_version(spec_version)
     items_total = int(len(items))
     training_lines, hard_lines, items_with_snapshot, rows_total, hard_total = _collect_ltr_training_bundle_rows(

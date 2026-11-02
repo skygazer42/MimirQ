@@ -212,7 +212,7 @@ def run_embedding_drift_monitor(
 
     Output intentionally does NOT include chunk/document identifiers or raw content.
     """
-    vector_backend = str(getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").strip().lower()
+    vector_backend = str(settings.VECTOR_BACKEND or "milvus").strip().lower()
     current_space = str(current_embedding_space_hash() or "").strip() or None
 
     cap = max(0, int(sample_n or 0))

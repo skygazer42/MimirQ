@@ -268,7 +268,7 @@ def _build_history_for_llm(
 
     if (
         bool(getattr(request, "enable_structured_memory", False))
-        and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False))
+        and bool(settings.STRUCTURED_MEMORY_ENABLED)
         and conversation_id
     ):
         try:
@@ -276,13 +276,13 @@ def _build_history_for_llm(
                 db=db,
                 tenant_id=tenant_id,
                 conversation_id=conversation_id,
-                max_messages=int(getattr(settings, "STRUCTURED_MEMORY_LOOKBACK_MESSAGES", 80) or 80),
+                max_messages=int(settings.STRUCTURED_MEMORY_LOOKBACK_MESSAGES or 80),
             )
             ctx = build_structured_memory_context(
                 records=records,
-                max_entities=int(getattr(settings, "STRUCTURED_MEMORY_MAX_ENTITIES", 20) or 20),
-                max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
-                max_chars=int(getattr(settings, "STRUCTURED_MEMORY_MAX_CONTEXT_CHARS", 1200) or 1200),
+                max_entities=int(settings.STRUCTURED_MEMORY_MAX_ENTITIES or 20),
+                max_facts=int(settings.STRUCTURED_MEMORY_MAX_FACTS or 8),
+                max_chars=int(settings.STRUCTURED_MEMORY_MAX_CONTEXT_CHARS or 1200),
             )
         except Exception:
             ctx = ""
@@ -337,7 +337,7 @@ def prepare_chat_turn_session(
     long_term_messages: list[dict[str, Any]] = []
     if (
         bool(getattr(request, "enable_long_term_memory", False))
-        and bool(getattr(settings, "LONG_TERM_MEMORY_ENABLED", False))
+        and bool(settings.LONG_TERM_MEMORY_ENABLED)
         and conversation_id
     ):
         long_term_messages = _retrieve_long_term_messages(

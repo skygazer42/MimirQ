@@ -644,9 +644,7 @@ def _record_plugin_ref(record: dict[str, Any], *, fallback_plugin_refs: tuple[st
 
 
 def _dify_external_reranker_enabled() -> bool:
-    return bool(getattr(settings, "ENABLE_RERANKER", False)) and bool(
-        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RERANKER_ENABLED", True)
-    )
+    return bool(settings.ENABLE_RERANKER) and bool(settings.DIFY_EXTERNAL_KNOWLEDGE_RERANKER_ENABLED)
 
 
 def _record_needs_final_rerank(record: dict[str, Any]) -> bool:

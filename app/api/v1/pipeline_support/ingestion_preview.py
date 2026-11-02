@@ -35,10 +35,8 @@ def _ingestion_preview_defaults(
     parser_backend: str | None,
     chunk_strategy: str | None,
 ) -> tuple[str, str, str, str]:
-    default_pb = (getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto").strip().lower() or "auto"
-    default_cs = (
-        (getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower()
-    )
+    default_pb = (settings.DEFAULT_PARSER_BACKEND or "auto").strip().lower() or "auto"
+    default_cs = (settings.DEFAULT_CHUNK_STRATEGY or "langchain_recursive").strip().lower()
     base_pb = (parser_backend or default_pb).strip().lower() or default_pb
     base_cs = (chunk_strategy or default_cs).strip().lower() or default_cs
     return default_pb, default_cs, base_pb, base_cs

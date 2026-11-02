@@ -236,19 +236,19 @@ def get_default_limiter() -> RateLimiter | RedisRateLimiter:
     if _default_limiter is None:
         from app.core.config import settings
 
-        if bool(getattr(settings, "RATE_LIMIT_REDIS_ENABLED", False)) and bool(getattr(settings, "REDIS_URL", "")):
+        if bool(settings.RATE_LIMIT_REDIS_ENABLED) and bool(settings.REDIS_URL):
             _default_limiter = RedisRateLimiter(
-                redis_url=str(getattr(settings, "REDIS_URL", "") or ""),
+                redis_url=str(settings.REDIS_URL or ""),
                 namespace="default",
-                requests_per_second=getattr(settings, "RATE_LIMIT_REQUESTS_PER_SECOND", 10.0),
-                burst_size=getattr(settings, "RATE_LIMIT_BURST_SIZE", 20),
-                key_prefix=str(getattr(settings, "RATE_LIMIT_REDIS_PREFIX", "rl") or "rl"),
-                key_ttl_sec=int(getattr(settings, "RATE_LIMIT_REDIS_KEY_TTL_SEC", 600) or 600),
+                requests_per_second=settings.RATE_LIMIT_REQUESTS_PER_SECOND,
+                burst_size=settings.RATE_LIMIT_BURST_SIZE,
+                key_prefix=str(settings.RATE_LIMIT_REDIS_PREFIX or "rl"),
+                key_ttl_sec=int(settings.RATE_LIMIT_REDIS_KEY_TTL_SEC or 600),
             )
         else:
             _default_limiter = RateLimiter(
-                requests_per_second=getattr(settings, "RATE_LIMIT_REQUESTS_PER_SECOND", 10.0),
-                burst_size=getattr(settings, "RATE_LIMIT_BURST_SIZE", 20),
+                requests_per_second=settings.RATE_LIMIT_REQUESTS_PER_SECOND,
+                burst_size=settings.RATE_LIMIT_BURST_SIZE,
             )
     return _default_limiter
 
@@ -260,7 +260,7 @@ def _client_ip_from_request(request: Request) -> str:
 
 
 def _tenant_id_from_request(request: Request) -> str:
-    tenant_header = str(getattr(settings, "TENANT_HEADER", "") or "X-Tenant-ID").strip() or "X-Tenant-ID"
+    tenant_header = str(settings.TENANT_HEADER or "X-Tenant-ID").strip() or "X-Tenant-ID"
     tenant_id = (request.headers.get(tenant_header) or "").strip()
     if not tenant_id and tenant_header.lower() != "x-tenant-id":
         tenant_id = (request.headers.get("X-Tenant-ID") or "").strip()
@@ -275,7 +275,7 @@ def _jwt_bearer_token(request: Request) -> str:
 
 
 def _tenant_id_from_jwt_payload(payload: dict[str, Any]) -> str:
-    claim = str(getattr(settings, "JWT_TENANT_CLAIM", "") or "").strip()
+    claim = str(settings.JWT_TENANT_CLAIM or "").strip()
     if not claim:
         return ""
     raw = payload.get(claim)
@@ -307,7 +307,7 @@ async def get_client_key(request: Request) -> str:
     # - AUTH_MODE=jwt: JWT subject (ignore X-User-ID to avoid spoofing rate-limit keys)
     # - AUTH_MODE=header: X-User-ID (dev-only)
     user_id = str(getattr(request.state, "user_id", "") or "").strip()
-    mode = (getattr(settings, "AUTH_MODE", "jwt") or "jwt").lower()
+    mode = (settings.AUTH_MODE or "jwt").lower()
 
     if not user_id and mode == "header":
         user_id = (request.headers.get("X-User-ID") or "").strip()
@@ -332,17 +332,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     ) -> None:
         super().__init__(app)
 
-        use_redis = bool(getattr(settings, "RATE_LIMIT_REDIS_ENABLED", False)) and bool(
-            getattr(settings, "REDIS_URL", "")
-        )
+        use_redis = bool(settings.RATE_LIMIT_REDIS_ENABLED) and bool(settings.REDIS_URL)
         if use_redis:
             self.limiter = RedisRateLimiter(
-                redis_url=str(getattr(settings, "REDIS_URL", "") or ""),
+                redis_url=str(settings.REDIS_URL or ""),
                 namespace="default",
                 requests_per_second=requests_per_second,
                 burst_size=burst_size,
-                key_prefix=str(getattr(settings, "RATE_LIMIT_REDIS_PREFIX", "rl") or "rl"),
-                key_ttl_sec=int(getattr(settings, "RATE_LIMIT_REDIS_KEY_TTL_SEC", 600) or 600),
+                key_prefix=str(settings.RATE_LIMIT_REDIS_PREFIX or "rl"),
+                key_ttl_sec=int(settings.RATE_LIMIT_REDIS_KEY_TTL_SEC or 600),
             )
         else:
             self.limiter = RateLimiter(
@@ -354,12 +352,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if chat_requests_per_second is not None:
             if use_redis:
                 self.chat_limiter = RedisRateLimiter(
-                    redis_url=str(getattr(settings, "REDIS_URL", "") or ""),
+                    redis_url=str(settings.REDIS_URL or ""),
                     namespace="chat",
                     requests_per_second=float(chat_requests_per_second),
                     burst_size=chat_burst_size,
-                    key_prefix=str(getattr(settings, "RATE_LIMIT_REDIS_PREFIX", "rl") or "rl"),
-                    key_ttl_sec=int(getattr(settings, "RATE_LIMIT_REDIS_KEY_TTL_SEC", 600) or 600),
+                    key_prefix=str(settings.RATE_LIMIT_REDIS_PREFIX or "rl"),
+                    key_ttl_sec=int(settings.RATE_LIMIT_REDIS_KEY_TTL_SEC or 600),
                 )
             else:
                 self.chat_limiter = RateLimiter(

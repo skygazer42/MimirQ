@@ -71,10 +71,7 @@ def _get_adapter():  # noqa: ANN202
     global _adapter
     if _adapter is not None:
         return _adapter
-    name = (
-        str(getattr(settings, "SEMANTIC_CACHE_COLLECTION_NAME", "semantic_cache") or "semantic_cache").strip()
-        or "semantic_cache"
-    )
+    name = str(settings.SEMANTIC_CACHE_COLLECTION_NAME or "semantic_cache").strip() or "semantic_cache"
     _adapter = get_milvus_adapter(resolve_collection_name(name))
     return _adapter
 
@@ -140,7 +137,7 @@ def build_semantic_cache_scope_hash(
 
 
 def _redis_payload_key(*, tenant_id: str, vector_id: str) -> str:
-    prefix = str(getattr(settings, "SEMANTIC_CACHE_REDIS_PREFIX", "semc") or "semc").strip() or "semc"
+    prefix = str(settings.SEMANTIC_CACHE_REDIS_PREFIX or "semc").strip() or "semc"
     return f"{prefix}:{tenant_id}:{vector_id}"
 
 
@@ -176,12 +173,12 @@ def _semantic_cache_lookup_precheck(
     corpus_cache_token: str,
     document_ids: list[str],
 ) -> tuple[dict[str, Any], int]:
-    meta: dict[str, Any] = {"enabled": bool(getattr(settings, "SEMANTIC_CACHE_ENABLED", False)), "hit": False}
+    meta: dict[str, Any] = {"enabled": bool(settings.SEMANTIC_CACHE_ENABLED), "hit": False}
     if not meta["enabled"]:
         meta["skip_reason"] = "disabled"
         return meta, 0
 
-    ttl = int(getattr(settings, "SEMANTIC_CACHE_TTL_SEC", 300) or 0)
+    ttl = int(settings.SEMANTIC_CACHE_TTL_SEC or 0)
     if ttl <= 0:
         meta["skip_reason"] = "ttl_zero"
         return meta, ttl
@@ -392,8 +389,8 @@ def get_cached_semantic_payload(
     if meta.get("skip_reason"):
         return None, meta
 
-    threshold = float(getattr(settings, "SEMANTIC_CACHE_SCORE_THRESHOLD", 0.95) or 0.95)
-    search_k = int(getattr(settings, "SEMANTIC_CACHE_SEARCH_TOP_K", 5) or 5)
+    threshold = float(settings.SEMANTIC_CACHE_SCORE_THRESHOLD or 0.95)
+    search_k = int(settings.SEMANTIC_CACHE_SEARCH_TOP_K or 5)
     search_k = max(1, min(20, search_k))
 
     scope_hash = _semantic_cache_scope_hash_or_skip(
@@ -443,9 +440,9 @@ def get_cached_semantic_payload(
 
 
 def _semantic_cache_store_precheck() -> tuple[int, Any | None]:
-    if not bool(getattr(settings, "SEMANTIC_CACHE_ENABLED", False)):
+    if not bool(settings.SEMANTIC_CACHE_ENABLED):
         return 0, None
-    ttl = int(getattr(settings, "SEMANTIC_CACHE_TTL_SEC", 300) or 0)
+    ttl = int(settings.SEMANTIC_CACHE_TTL_SEC or 0)
     if ttl <= 0:
         return ttl, None
     return ttl, _get_redis_client()
@@ -494,7 +491,7 @@ def set_cached_semantic_payload(
         return False
     scope_hash, vector_id = scope_result
 
-    max_bytes = int(getattr(settings, "SEMANTIC_CACHE_MAX_VALUE_BYTES", 400_000) or 0)
+    max_bytes = int(settings.SEMANTIC_CACHE_MAX_VALUE_BYTES or 0)
     try:
         raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False, default=str).encode("utf-8")
     except Exception:  # noqa: BLE001

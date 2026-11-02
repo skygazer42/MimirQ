@@ -133,13 +133,13 @@ def prepare_chat_cache_lookup(
     **legacy_overrides: Any,
 ) -> tuple[bool, str | None, str | None]:
     lookup = _resolve_chat_cache_lookup_input(options=options, legacy_overrides=legacy_overrides)
-    cache_enabled = bool(getattr(settings, "CHAT_RESPONSE_CACHE_ENABLED", False))
-    singleflight_enabled = bool(getattr(settings, "CHAT_RESPONSE_SINGLEFLIGHT_ENABLED", False))
+    cache_enabled = bool(settings.CHAT_RESPONSE_CACHE_ENABLED)
+    singleflight_enabled = bool(settings.CHAT_RESPONSE_SINGLEFLIGHT_ENABLED)
     if not (cache_enabled or singleflight_enabled):
         return False, None, None
     if not lookup.document_ids and lookup.dataset_id is None:
         return cache_enabled, None, "missing_scope"
-    if bool(getattr(settings, "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY", True)):
+    if bool(settings.CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY):
         if (
             lookup.history
             or lookup.enable_long_term_memory
@@ -184,7 +184,7 @@ async def prepare_non_streaming_chat_cache_state(
         )
         metrics_data = annotate_chat_singleflight_metrics(
             metrics_data,
-            enabled=bool(getattr(settings, "CHAT_RESPONSE_SINGLEFLIGHT_ENABLED", False)),
+            enabled=bool(settings.CHAT_RESPONSE_SINGLEFLIGHT_ENABLED),
             hit=False,
             role=None,
         )
@@ -210,14 +210,14 @@ async def prepare_non_streaming_chat_cache_state(
     citations_data: list[Any] = []
     metrics_data: dict[str, Any] = {}
     structured_data: object | None = None
-    singleflight_feature_enabled = bool(getattr(settings, "CHAT_RESPONSE_SINGLEFLIGHT_ENABLED", False))
+    singleflight_feature_enabled = bool(settings.CHAT_RESPONSE_SINGLEFLIGHT_ENABLED)
     response_cache_ttl_sec = max(
         0,
-        int(getattr(settings, "CHAT_RESPONSE_CACHE_TTL_SEC", 300) or 0),
+        int(settings.CHAT_RESPONSE_CACHE_TTL_SEC or 0),
     )
     singleflight_wait_timeout_sec = max(
         1e-3,
-        float(getattr(settings, "CHAT_RESPONSE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC", 60.0) or 0.0),
+        float(settings.CHAT_RESPONSE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC or 0.0),
     )
     singleflight_key = cache_key if singleflight_feature_enabled and cache_key else None
     if singleflight_key:

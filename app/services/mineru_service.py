@@ -58,9 +58,9 @@ def _normalize_local_backend(value: Any) -> str:
 
 
 def _zip_safe_entries(zip_bytes: bytes) -> tuple[zipfile.ZipFile, list[zipfile.ZipInfo]]:
-    max_files = int(getattr(settings, "ZIP_MAX_FILES", 2000))
-    max_total = int(getattr(settings, "ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES", 500_000_000))
-    max_single = int(getattr(settings, "ZIP_MAX_SINGLE_UNCOMPRESSED_BYTES", 100_000_000))
+    max_files = int(settings.ZIP_MAX_FILES)
+    max_total = int(settings.ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES)
+    max_single = int(settings.ZIP_MAX_SINGLE_UNCOMPRESSED_BYTES)
     zip_file = zipfile.ZipFile(io.BytesIO(zip_bytes), "r")
     infos = zip_file.infolist()
     if len(infos) > max_files:
@@ -278,7 +278,7 @@ def _bounded_preview_refs(markdown: str) -> list[str]:
     refs = _preview_markdown_refs(markdown)
     if not refs:
         return []
-    max_images = max(0, int(getattr(settings, "ZIP_MAX_IMAGES", 0) or 0))
+    max_images = max(0, int(settings.ZIP_MAX_IMAGES or 0))
     if max_images and len(refs) > max_images:
         return refs[:max_images]
     return refs
@@ -293,7 +293,7 @@ def _preview_image_mapping(
     account_id: str | None,
 ) -> tuple[list[dict[str, str]], dict[str, dict[str, str]]]:
     member_by_key = _preview_image_members(zip_file)
-    max_bytes = int(getattr(settings, "MAX_INLINE_IMAGE_BYTES", 10_000_000) or 10_000_000)
+    max_bytes = int(settings.MAX_INLINE_IMAGE_BYTES or 10_000_000)
     max_bytes = max(1_000_000, max_bytes)
     image_exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
 
@@ -349,24 +349,22 @@ class MinerUService:
         - If the token looks like a JWT and is expired, treat online mode as disabled
           (best-effort) to avoid repeated 401 failures.
         """
-        self.api_base = (getattr(settings, "MINERU_API_BASE", "") or "").strip().rstrip(
-            "/"
-        ) or "https://mineru.net/api/v4"
-        self.api_token = (getattr(settings, "MINERU_API_TOKEN", "") or "").strip()
-        self.model_version = (getattr(settings, "MINERU_MODEL_VERSION", "") or "").strip() or "vlm"
-        self.local_backend = _normalize_local_backend(getattr(settings, "MINERU_BACKEND", "pipeline"))
+        self.api_base = (settings.MINERU_API_BASE or "").strip().rstrip("/") or "https://mineru.net/api/v4"
+        self.api_token = (settings.MINERU_API_TOKEN or "").strip()
+        self.model_version = (settings.MINERU_MODEL_VERSION or "").strip() or "vlm"
+        self.local_backend = _normalize_local_backend(settings.MINERU_BACKEND)
 
-        local_url = (getattr(settings, "MINERU_LOCAL_SERVER_URL", "") or "").strip()
+        local_url = (settings.MINERU_LOCAL_SERVER_URL or "").strip()
         self.local_server_url = local_url.rstrip("/") if local_url else None
 
         self._token_exp = try_get_jwt_exp(self.api_token) if self.api_token else None
         now = int(time.time())
         token_valid = bool(self.api_token) and (self._token_exp is None or int(self._token_exp) > now)
 
-        self.enabled = bool(getattr(settings, "MINERU_ENABLED", False)) and (token_valid or bool(self.local_server_url))
+        self.enabled = bool(settings.MINERU_ENABLED) and (token_valid or bool(self.local_server_url))
 
         if (
-            bool(getattr(settings, "MINERU_ENABLED", False))
+            bool(settings.MINERU_ENABLED)
             and self.api_token
             and self._token_exp is not None
             and int(self._token_exp) <= now
@@ -401,7 +399,7 @@ class MinerUService:
 
     def _ensure_online_enabled(self) -> None:
         self._refresh_config()
-        if not bool(getattr(settings, "MINERU_ENABLED", False)):
+        if not bool(settings.MINERU_ENABLED):
             raise RuntimeError("MinerU is disabled. Set MINERU_ENABLED=true to enable.")
         if not self.api_token:
             raise RuntimeError("MinerU online API requires MINERU_API_TOKEN.")
@@ -1018,7 +1016,7 @@ class MinerUService:
         }
 
         if data["backend"] == "vlm-http-client":
-            mineru_vl_server = getattr(settings, "MINERU_VL_SERVER", None)
+            mineru_vl_server = settings.MINERU_VL_SERVER
             if mineru_vl_server:
                 data["server_url"] = mineru_vl_server
 

@@ -115,7 +115,7 @@ def _build_materialized_runtime(
     structured_data: object | None,
     request: Any,
 ) -> ChatStreamRuntimeContext:
-    cancel_on_disconnect = bool(getattr(settings, "CHAT_STREAM_CANCEL_ON_DISCONNECT", True))
+    cancel_on_disconnect = bool(settings.CHAT_STREAM_CANCEL_ON_DISCONNECT)
     disconnect_check = http_request.is_disconnected if cancel_on_disconnect else None
     return ChatStreamRuntimeContext(
         request_id=request_id,
@@ -327,9 +327,9 @@ def _build_langchain_stream_options(
 ) -> LangChainChatStreamSessionInput:
     heartbeat_sec = max(
         0.0,
-        float(getattr(settings, "CHAT_STREAM_HEARTBEAT_SEC", 10.0) or 10.0),
+        float(settings.CHAT_STREAM_HEARTBEAT_SEC or 10.0),
     )
-    cancel_on_disconnect = bool(getattr(settings, "CHAT_STREAM_CANCEL_ON_DISCONNECT", True))
+    cancel_on_disconnect = bool(settings.CHAT_STREAM_CANCEL_ON_DISCONNECT)
     disconnect_check = http_request.is_disconnected if cancel_on_disconnect else None
     return LangChainChatStreamSessionInput(
         execution=execution_context,
@@ -584,7 +584,7 @@ async def stream_chat_sse_events(
         account_id=account_id,
     )
 
-    persist_in_background = bool(getattr(settings, "CHAT_STREAM_PERSIST_IN_BACKGROUND", False))
+    persist_in_background = bool(settings.CHAT_STREAM_PERSIST_IN_BACKGROUND)
     client_ip = getattr(getattr(http_request, "client", None), "host", None)
     user_agent = http_request.headers.get("user-agent")
     enable_summary_memory = bool(getattr(request, "enable_summary_memory", False))

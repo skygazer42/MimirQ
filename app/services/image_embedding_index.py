@@ -110,7 +110,7 @@ def _minio_object_name_for_img_id(img_id: str, *, extension: str = "jpg") -> str
 
 
 def _load_image_bytes_from_minio(*, img_id: str, max_bytes: int) -> bytes | None:
-    if not bool(getattr(settings, "MINIO_ENABLED", False)):
+    if not bool(settings.MINIO_ENABLED):
         return None
     obj = _minio_object_name_for_img_id(img_id, extension="jpg")
     if not obj:
@@ -166,9 +166,7 @@ def _image_ref_from_chunk_meta(meta: dict[str, Any]) -> tuple[str | None, str | 
 
 def _image_index_limits(*, max_chunks: int, max_image_bytes: int | None) -> tuple[int, int]:
     limit = max(1, min(int(max_chunks or 0), 20_000))
-    max_bytes = (
-        int(max_image_bytes) if max_image_bytes is not None else int(getattr(settings, "MINIO_IMAGE_MAX_BYTES", 0) or 0)
-    )
+    max_bytes = int(max_image_bytes) if max_image_bytes is not None else int(settings.MINIO_IMAGE_MAX_BYTES or 0)
     if max_bytes <= 0:
         max_bytes = 10_000_000
     return limit, max_bytes
@@ -246,7 +244,7 @@ def index_clip_image_embeddings_for_dataset(
     - Uses chunk_id as the vector primary key so results can be turned into citations.
     - Best-effort: skips chunks when images can't be loaded or embeddings fail.
     """
-    if not bool(getattr(settings, "IMAGE_EMBEDDING_ENABLED", False)):
+    if not bool(settings.IMAGE_EMBEDDING_ENABLED):
         return ImageIndexStats(indexed=0, skipped=0, failed=0, dim=0, errors=["IMAGE_EMBEDDING_ENABLED=false"])
 
     from app.models.document import Document as DBDocument  # noqa: WPS433
@@ -267,7 +265,7 @@ def index_clip_image_embeddings_for_dataset(
         .all()
     )
 
-    collection = str(getattr(settings, "IMAGE_EMBEDDING_COLLECTION_NAME", "") or "").strip() or "image_chunks"
+    collection = str(settings.IMAGE_EMBEDDING_COLLECTION_NAME or "").strip() or "image_chunks"
     adapter = get_milvus_adapter(
         collection_name=resolve_collection_name(collection), vector_field="embedding", text_field="content"
     )
@@ -356,7 +354,7 @@ def search_clip_images(
     Search image chunks by text query using CLIP (text->image embedding space).
     """
     _ = db
-    if not bool(getattr(settings, "IMAGE_EMBEDDING_ENABLED", False)):
+    if not bool(settings.IMAGE_EMBEDDING_ENABLED):
         return []
 
     q = str(query or "").strip()
@@ -367,7 +365,7 @@ def search_clip_images(
     if not vec:
         return []
 
-    collection = str(getattr(settings, "IMAGE_EMBEDDING_COLLECTION_NAME", "") or "").strip() or "image_chunks"
+    collection = str(settings.IMAGE_EMBEDDING_COLLECTION_NAME or "").strip() or "image_chunks"
     adapter = get_milvus_adapter(
         collection_name=resolve_collection_name(collection), vector_field="embedding", text_field="content"
     )

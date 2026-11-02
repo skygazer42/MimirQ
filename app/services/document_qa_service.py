@@ -230,7 +230,7 @@ Return JSON:
         api_key=settings.LLM_API_KEY,
         base_url=normalize_openai_compatible_base_url(settings.LLM_API_BASE),
         temperature=0.2,
-        timeout=int(getattr(settings, "LLM_TIMEOUT", 60) or 60),
+        timeout=int(settings.LLM_TIMEOUT or 60),
     )
     parser = JsonOutputParser()
     prompt = PromptTemplate(template=prompt_text, input_variables=["text", "num_pairs"])
@@ -381,7 +381,7 @@ def generate_and_index_document_qa(
             tenant_id=tenant_id,
             document_id=document_id,
             default_source=source_label,
-            enable_bm25=bool(getattr(settings, "BM25_INDEX_ENABLED", True)),
+            enable_bm25=bool(settings.BM25_INDEX_ENABLED),
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning(
@@ -517,7 +517,7 @@ def _log_delete_errors(
         logger.warning(
             "Document QA degraded: feature=%s dependency=%s reason=%s remediation=%s errors=%s first_error=%s",
             "qa_vector_delete",
-            str(getattr(settings, "VECTOR_BACKEND", "") or "vector_store"),
+            str(settings.VECTOR_BACKEND or "vector_store"),
             "delete_failed",
             "check vector backend health/permissions; stale vectors may remain",
             int(vector_delete_errors),
@@ -641,7 +641,7 @@ def _index_qa_records(
         logger.warning(
             _DOCUMENT_QA_DEGRADED_LOG_MSG,
             "qa_vector_index",
-            str(getattr(settings, "VECTOR_BACKEND", "") or "vector_store"),
+            str(settings.VECTOR_BACKEND or "vector_store"),
             "index_failed",
             "check vector backend health/config; chunks saved but may not be retrievable via vectors",
             str(exc)[:200],

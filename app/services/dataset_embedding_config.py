@@ -32,20 +32,20 @@ def _safe_collection_suffix(value: str) -> str:
 
 
 def _base_embedding_config() -> tuple[str, str, str, str]:
-    provider_raw = _clean(getattr(settings, "EMBEDDING_PROVIDER", "")) or "openai_compatible"
+    provider_raw = _clean(settings.EMBEDDING_PROVIDER) or "openai_compatible"
     provider = EmbeddingProviders.PROVIDER_MAP.get(provider_raw.lower(), provider_raw.lower())
-    model = _clean(getattr(settings, "EMBEDDING_MODEL", ""))
-    api_base = _clean(getattr(settings, "EMBEDDING_API_BASE", "")) or _clean(getattr(settings, "LLM_API_BASE", ""))
-    api_key = _clean(getattr(settings, "EMBEDDING_API_KEY", "")) or _clean(getattr(settings, "LLM_API_KEY", ""))
+    model = _clean(settings.EMBEDDING_MODEL)
+    api_base = _clean(settings.EMBEDDING_API_BASE) or _clean(settings.LLM_API_BASE)
+    api_key = _clean(settings.EMBEDDING_API_KEY) or _clean(settings.LLM_API_KEY)
     return provider, model, api_base, api_key
 
 
 def _vector_backend() -> str:
-    return _clean(getattr(settings, "VECTOR_BACKEND", "milvus")).lower() or "milvus"
+    return _clean(settings.VECTOR_BACKEND).lower() or "milvus"
 
 
 def collection_name_for_embedding_space(*, space_hash: str, dataset_scoped: bool) -> str:
-    base = _clean(getattr(settings, "MILVUS_COLLECTION_NAME", "")) or "documents"
+    base = _clean(settings.MILVUS_COLLECTION_NAME) or "documents"
     if not dataset_scoped:
         return base
     return f"{base}_emb_{_safe_collection_suffix(space_hash)}"

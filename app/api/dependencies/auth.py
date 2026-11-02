@@ -31,7 +31,7 @@ def _coerce_uuid(raw: object) -> str | None:
 
 
 def _get_jwt_tenant_id(payload: dict) -> str | None:
-    claim = str(getattr(settings, "JWT_TENANT_CLAIM", "") or "").strip()
+    claim = str(settings.JWT_TENANT_CLAIM or "").strip()
     if not claim:
         return None
     raw = payload.get(claim)
@@ -94,7 +94,7 @@ async def _decode_or_cached_jwt_payload(*, token: str, request: Request | None) 
 
 
 def _enforce_tenant_header_match(*, jwt_tenant_id: str | None, x_tenant_id: str | None) -> None:
-    if not bool(getattr(settings, "JWT_ENFORCE_TENANT_HEADER_MATCH", False)):
+    if not bool(settings.JWT_ENFORCE_TENANT_HEADER_MATCH):
         return
     if not jwt_tenant_id:
         raise HTTPException(status_code=401, detail=INVALID_TOKEN_DETAIL)
@@ -118,7 +118,7 @@ def _set_authenticated_context(*, user_id: str, jwt_tenant_id: str | None, reque
 
 
 def _maybe_sync_jwt_groups(*, jwt_tenant_id: str, user_id: str, payload: dict) -> None:
-    if not bool(getattr(settings, "JWT_GROUPS_SYNC_ENABLED", False)):
+    if not bool(settings.JWT_GROUPS_SYNC_ENABLED):
         return
     try:
         from app.services.jwt_group_sync_service import maybe_sync_jwt_groups  # noqa: WPS433
@@ -143,7 +143,7 @@ def _request_provisioning_context(request: Request | None) -> tuple[str | None, 
 
 
 def _maybe_auto_provision_tenant_member(*, jwt_tenant_id: str, user_id: str, request: Request | None) -> None:
-    if not bool(getattr(settings, "JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED", False)):
+    if not bool(settings.JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED):
         return
     try:
         from app.core.database import SessionLocal  # noqa: WPS433
@@ -183,7 +183,7 @@ async def get_current_account_id_from_headers(
     - AUTH_MODE=jwt: require Authorization: Bearer <token> and validate JWT.
     - AUTH_MODE=header (explicit local/dev option): require X-User-ID header (unsafe; forbidden in production).
     """
-    mode = (getattr(settings, "AUTH_MODE", "jwt") or "jwt").lower()
+    mode = (settings.AUTH_MODE or "jwt").lower()
 
     if mode == "header":
         return _resolve_header_mode_user(x_user_id=x_user_id, request=request)
@@ -198,8 +198,8 @@ async def get_current_account_id_from_headers(
     _enforce_tenant_header_match(jwt_tenant_id=jwt_tenant_id, x_tenant_id=x_tenant_id)
     user_id = str(user_id)
     _set_authenticated_context(user_id=user_id, jwt_tenant_id=jwt_tenant_id, request=request)
-    optional_db_work_enabled = bool(getattr(settings, "JWT_GROUPS_SYNC_ENABLED", False)) or bool(
-        getattr(settings, "JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED", False)
+    optional_db_work_enabled = bool(settings.JWT_GROUPS_SYNC_ENABLED) or bool(
+        settings.JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED
     )
     if jwt_tenant_id and optional_db_work_enabled:
         await asyncio.to_thread(
@@ -226,7 +226,7 @@ async def get_current_account_id(
     """
     tenant_value = x_tenant_id
     if not tenant_value:
-        tenant_header = str(getattr(settings, "TENANT_HEADER", "") or "X-Tenant-ID").strip() or "X-Tenant-ID"
+        tenant_header = str(settings.TENANT_HEADER or "X-Tenant-ID").strip() or "X-Tenant-ID"
         if tenant_header.lower() != "x-tenant-id":
             tenant_value = (request.headers.get(tenant_header) or "").strip() or None
     return await get_current_account_id_from_headers(

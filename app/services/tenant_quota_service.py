@@ -29,7 +29,7 @@ def _now_utc() -> datetime:
 
 
 def _tenant_quota_fail_closed_enabled() -> bool:
-    return bool(getattr(settings, "TENANT_QUOTA_FAIL_CLOSED", False))
+    return bool(settings.TENANT_QUOTA_FAIL_CLOSED)
 
 
 def _quota_error_type(exc: Exception) -> str:
@@ -150,12 +150,12 @@ def _enforce_upload_quota_limit(
 
 
 def _tenant_qps_quota_config() -> tuple[bool, float, int, str]:
-    enabled = bool(getattr(settings, "TENANT_QPS_QUOTA_ENABLED", False))
-    rps = float(getattr(settings, "TENANT_QPS_QUOTA_REQUESTS_PER_SECOND", 0.0) or 0.0)
-    burst = int(getattr(settings, "TENANT_QPS_QUOTA_BURST_SIZE", 0) or 0)
+    enabled = bool(settings.TENANT_QPS_QUOTA_ENABLED)
+    rps = float(settings.TENANT_QPS_QUOTA_REQUESTS_PER_SECOND or 0.0)
+    burst = int(settings.TENANT_QPS_QUOTA_BURST_SIZE or 0)
     if burst <= 0:
         burst = int(rps * 2) if rps > 0 else 1
-    mode = str(getattr(settings, "TENANT_QPS_QUOTA_MODE", "block") or "block").lower()
+    mode = str(settings.TENANT_QPS_QUOTA_MODE or "block").lower()
     return enabled, rps, burst, mode
 
 
@@ -247,15 +247,15 @@ def _get_tenant_qps_limiter():
     """
     global _tenant_qps_limiter, _tenant_qps_cfg
 
-    redis_url = str(getattr(settings, "REDIS_URL", "") or "").strip()
-    use_redis = bool(getattr(settings, "RATE_LIMIT_REDIS_ENABLED", False)) and bool(redis_url)
-    rps = float(getattr(settings, "TENANT_QPS_QUOTA_REQUESTS_PER_SECOND", 0.0) or 0.0)
-    burst = int(getattr(settings, "TENANT_QPS_QUOTA_BURST_SIZE", 0) or 0)
+    redis_url = str(settings.REDIS_URL or "").strip()
+    use_redis = bool(settings.RATE_LIMIT_REDIS_ENABLED) and bool(redis_url)
+    rps = float(settings.TENANT_QPS_QUOTA_REQUESTS_PER_SECOND or 0.0)
+    burst = int(settings.TENANT_QPS_QUOTA_BURST_SIZE or 0)
     if burst <= 0:
         burst = int(rps * 2) if rps > 0 else 1
 
-    key_prefix = str(getattr(settings, "TENANT_QPS_QUOTA_REDIS_PREFIX", "tq") or "tq").strip() or "tq"
-    ttl = int(getattr(settings, "TENANT_QPS_QUOTA_REDIS_KEY_TTL_SEC", 600) or 600)
+    key_prefix = str(settings.TENANT_QPS_QUOTA_REDIS_PREFIX or "tq").strip() or "tq"
+    ttl = int(settings.TENANT_QPS_QUOTA_REDIS_KEY_TTL_SEC or 600)
     ttl = max(30, ttl)
 
     cfg = (bool(use_redis), redis_url, float(rps), int(burst), key_prefix, int(ttl))
@@ -447,8 +447,8 @@ async def enforce_tenant_qps_quota_async(*, tenant_id: UUID, key: str = "chat") 
 
 
 def check_tenant_document_quota(db: Session, *, tenant_id: UUID) -> dict[str, Any]:
-    enabled = bool(getattr(settings, "TENANT_DOC_QUOTA_ENABLED", False))
-    limit = int(getattr(settings, "TENANT_DOC_QUOTA_LIMIT", 0) or 0)
+    enabled = bool(settings.TENANT_DOC_QUOTA_ENABLED)
+    limit = int(settings.TENANT_DOC_QUOTA_LIMIT or 0)
     if not enabled or limit <= 0:
         return {"enabled": False, "limit": 0, "used": 0, "exceeded": False}
 
@@ -461,8 +461,8 @@ def check_tenant_document_quota(db: Session, *, tenant_id: UUID) -> dict[str, An
 
 
 def check_tenant_storage_quota(db: Session, *, tenant_id: UUID) -> dict[str, Any]:
-    enabled = bool(getattr(settings, "TENANT_STORAGE_QUOTA_ENABLED", False))
-    limit_bytes = int(getattr(settings, "TENANT_STORAGE_QUOTA_LIMIT_BYTES", 0) or 0)
+    enabled = bool(settings.TENANT_STORAGE_QUOTA_ENABLED)
+    limit_bytes = int(settings.TENANT_STORAGE_QUOTA_LIMIT_BYTES or 0)
     if not enabled or limit_bytes <= 0:
         return {"enabled": False, "limit_bytes": 0, "used_bytes": 0, "exceeded": False}
 
@@ -487,10 +487,10 @@ def check_tenant_embedding_char_quota(db: Session, *, tenant_id: UUID) -> dict[s
     processed in the last N hours. This avoids per-chunk accounting and keeps the
     check cheap in production.
     """
-    enabled = bool(getattr(settings, "TENANT_EMBED_CHAR_QUOTA_ENABLED", False))
-    limit_chars = int(getattr(settings, "TENANT_EMBED_CHAR_QUOTA_LIMIT", 0) or 0)
-    window_hours = int(getattr(settings, "TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS", 24) or 24)
-    mode = str(getattr(settings, "TENANT_EMBED_CHAR_QUOTA_MODE", "block") or "block").lower()
+    enabled = bool(settings.TENANT_EMBED_CHAR_QUOTA_ENABLED)
+    limit_chars = int(settings.TENANT_EMBED_CHAR_QUOTA_LIMIT or 0)
+    window_hours = int(settings.TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS or 24)
+    mode = str(settings.TENANT_EMBED_CHAR_QUOTA_MODE or "block").lower()
 
     if not enabled or limit_chars <= 0:
         return {
@@ -538,10 +538,10 @@ def enforce_tenant_embedding_char_quota(
 
     Raises TenantQuotaExceededError when exceeded and mode=="block".
     """
-    enabled = bool(getattr(settings, "TENANT_EMBED_CHAR_QUOTA_ENABLED", False))
-    limit = int(getattr(settings, "TENANT_EMBED_CHAR_QUOTA_LIMIT", 0) or 0)
-    window_hours = max(1, int(getattr(settings, "TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS", 24) or 24))
-    mode = str(getattr(settings, "TENANT_EMBED_CHAR_QUOTA_MODE", "block") or "block").lower()
+    enabled = bool(settings.TENANT_EMBED_CHAR_QUOTA_ENABLED)
+    limit = int(settings.TENANT_EMBED_CHAR_QUOTA_LIMIT or 0)
+    window_hours = max(1, int(settings.TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS or 24))
+    mode = str(settings.TENANT_EMBED_CHAR_QUOTA_MODE or "block").lower()
     add = max(0, int(additional_chars or 0))
     if not enabled or limit <= 0:
         return {
@@ -628,8 +628,8 @@ def enforce_tenant_upload_quotas(
         db,
         tenant_id=tenant_id,
         fail_closed=fail_closed,
-        enabled=bool(getattr(settings, "TENANT_DOC_QUOTA_ENABLED", False)),
-        limit=int(getattr(settings, "TENANT_DOC_QUOTA_LIMIT", 0) or 0),
+        enabled=bool(settings.TENANT_DOC_QUOTA_ENABLED),
+        limit=int(settings.TENANT_DOC_QUOTA_LIMIT or 0),
         usage_fn=_document_quota_usage,
         quota="tenant_documents",
         scope="tenant_documents",
@@ -642,8 +642,8 @@ def enforce_tenant_upload_quotas(
         db,
         tenant_id=tenant_id,
         fail_closed=fail_closed,
-        enabled=bool(getattr(settings, "TENANT_STORAGE_QUOTA_ENABLED", False)),
-        limit=int(getattr(settings, "TENANT_STORAGE_QUOTA_LIMIT_BYTES", 0) or 0),
+        enabled=bool(settings.TENANT_STORAGE_QUOTA_ENABLED),
+        limit=int(settings.TENANT_STORAGE_QUOTA_LIMIT_BYTES or 0),
         usage_fn=_storage_quota_usage_bytes,
         quota="tenant_storage",
         scope="tenant_storage",

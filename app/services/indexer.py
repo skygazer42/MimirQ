@@ -98,34 +98,34 @@ def _dataset_scoped_cleanup_ambiguous(
 
 
 def _milvus_backend_enabled() -> bool:
-    return str(getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").strip().lower() == "milvus"
+    return str(settings.VECTOR_BACKEND or "milvus").strip().lower() == "milvus"
 
 
 def _shadow_vector_config() -> tuple[str, str, str, str, str] | None:
-    if not bool(getattr(settings, "EMBEDDING_SHADOW_ENABLED", False)):
+    if not bool(settings.EMBEDDING_SHADOW_ENABLED):
         return None
     if not _milvus_backend_enabled():
         return None
 
-    shadow_collection = str(getattr(settings, "MILVUS_SHADOW_COLLECTION_NAME", "") or "").strip()
-    shadow_model = str(getattr(settings, "EMBEDDING_SHADOW_MODEL", "") or "").strip()
+    shadow_collection = str(settings.MILVUS_SHADOW_COLLECTION_NAME or "").strip()
+    shadow_model = str(settings.EMBEDDING_SHADOW_MODEL or "").strip()
     if not shadow_collection or not shadow_model:
         return None
 
     provider_raw = (
-        str(getattr(settings, "EMBEDDING_SHADOW_PROVIDER", "") or "").strip().lower()
-        or str(getattr(settings, "EMBEDDING_PROVIDER", "openai_compatible") or "openai_compatible").strip().lower()
+        str(settings.EMBEDDING_SHADOW_PROVIDER or "").strip().lower()
+        or str(settings.EMBEDDING_PROVIDER or "openai_compatible").strip().lower()
     )
     mapped_provider = EmbeddingProviders.PROVIDER_MAP.get(provider_raw, "openai_compatible")
     api_key = (
-        str(getattr(settings, "EMBEDDING_SHADOW_API_KEY", "") or "").strip()
-        or str(getattr(settings, "EMBEDDING_API_KEY", "") or "").strip()
-        or str(getattr(settings, "LLM_API_KEY", "") or "").strip()
+        str(settings.EMBEDDING_SHADOW_API_KEY or "").strip()
+        or str(settings.EMBEDDING_API_KEY or "").strip()
+        or str(settings.LLM_API_KEY or "").strip()
     )
     base_url = (
-        str(getattr(settings, "EMBEDDING_SHADOW_API_BASE", "") or "").strip()
-        or str(getattr(settings, "EMBEDDING_API_BASE", "") or "").strip()
-        or str(getattr(settings, "LLM_API_BASE", "") or "").strip()
+        str(settings.EMBEDDING_SHADOW_API_BASE or "").strip()
+        or str(settings.EMBEDDING_API_BASE or "").strip()
+        or str(settings.LLM_API_BASE or "").strip()
     )
     return mapped_provider, shadow_model, api_key, base_url, shadow_collection
 
@@ -267,7 +267,7 @@ def _dual_write_shadow_vectors_best_effort(
         return
 
     try:
-        batch_size = int(getattr(settings, "VECTOR_WRITE_BATCH_SIZE", 256) or 256)
+        batch_size = int(settings.VECTOR_WRITE_BATCH_SIZE or 256)
         adapter.add_vectors(items, embeddings=vecs, batch_size=batch_size, upsert=True)
         _log_shadow_vector_write(ok=True, tenant_id=tenant_id, document_id=document_id, count=len(items))
     except Exception as exc:  # noqa: BLE001
@@ -292,7 +292,7 @@ def _safe_int(value: Any) -> int | None:
 
 
 def _tenant_quota_fail_closed_enabled() -> bool:
-    return bool(getattr(settings, "TENANT_QUOTA_FAIL_CLOSED", False))
+    return bool(settings.TENANT_QUOTA_FAIL_CLOSED)
 
 
 def _now_iso() -> str:
@@ -895,10 +895,10 @@ def _build_llm_contextual_summary(
 
 
 def _contextual_summary_limits() -> tuple[int, int] | None:
-    if not bool(getattr(settings, "CONTEXTUAL_RETRIEVAL_LLM_ENRICHMENT_ENABLED", False)):
+    if not bool(settings.CONTEXTUAL_RETRIEVAL_LLM_ENRICHMENT_ENABLED):
         return None
-    max_input_chars = max(0, int(getattr(settings, "CONTEXTUAL_RETRIEVAL_LLM_MAX_INPUT_CHARS", 2400) or 2400))
-    max_summary_chars = max(0, int(getattr(settings, "CONTEXTUAL_RETRIEVAL_LLM_MAX_SUMMARY_CHARS", 180) or 180))
+    max_input_chars = max(0, int(settings.CONTEXTUAL_RETRIEVAL_LLM_MAX_INPUT_CHARS or 2400))
+    max_summary_chars = max(0, int(settings.CONTEXTUAL_RETRIEVAL_LLM_MAX_SUMMARY_CHARS or 180))
     return (max_input_chars, max_summary_chars) if max_summary_chars > 0 else None
 
 
@@ -917,7 +917,7 @@ def _invoke_contextual_summary_llm(
         api_key=settings.LLM_API_KEY,
         base_url=settings.LLM_API_BASE,
         temperature=0,
-        timeout=max(5, int(getattr(settings, "LLM_TIMEOUT", 60) or 60)),
+        timeout=max(5, int(settings.LLM_TIMEOUT or 60)),
         max_retries=0,
         streaming=False,
     )
@@ -955,9 +955,9 @@ def _build_contextual_prefix_for_chunk(
         raw_body,
         document_title=document_title,
         meta=meta,
-        max_prefix_chars=int(getattr(settings, "CONTEXTUAL_RETRIEVAL_PREFIX_MAX_CHARS", 240) or 240),
-        keywords_top_k=int(getattr(settings, "CONTEXTUAL_RETRIEVAL_KEYWORDS_TOP_K", 6) or 6),
-        keywords_max_chars=int(getattr(settings, "CONTEXTUAL_RETRIEVAL_KEYWORDS_MAX_CHARS", 2000) or 2000),
+        max_prefix_chars=int(settings.CONTEXTUAL_RETRIEVAL_PREFIX_MAX_CHARS or 240),
+        keywords_top_k=int(settings.CONTEXTUAL_RETRIEVAL_KEYWORDS_TOP_K or 6),
+        keywords_max_chars=int(settings.CONTEXTUAL_RETRIEVAL_KEYWORDS_MAX_CHARS or 2000),
     )
 
 
@@ -1121,12 +1121,12 @@ def _event_vector_item(event: KgSourceEvent) -> tuple[dict[str, Any], list[float
 
 
 def _vector_write_batch_size() -> int:
-    return int(getattr(settings, "VECTOR_WRITE_BATCH_SIZE", 256) or 256)
+    return int(settings.VECTOR_WRITE_BATCH_SIZE or 256)
 
 
 def _vector_write_retry_policy() -> tuple[int, float]:
-    max_retries = int(getattr(settings, "VECTOR_WRITE_MAX_RETRIES", 1) or 1)
-    backoff = float(getattr(settings, "VECTOR_WRITE_RETRY_BACKOFF_SEC", 0.5) or 0.5)
+    max_retries = int(settings.VECTOR_WRITE_MAX_RETRIES or 1)
+    backoff = float(settings.VECTOR_WRITE_RETRY_BACKOFF_SEC or 0.5)
     return max_retries, backoff
 
 
@@ -1179,22 +1179,22 @@ class Indexer:
     def _resolve_chunk_vector_enabled(self, options: IndexingOptions | None) -> bool:
         if options and options.chunk_vector_enabled is not None:
             return bool(options.chunk_vector_enabled)
-        return bool(getattr(settings, "CHUNK_VECTOR_ENABLED", True))
+        return bool(settings.CHUNK_VECTOR_ENABLED)
 
     def _resolve_bm25_enabled(self, options: IndexingOptions | None) -> bool:
         if options and options.bm25_index_enabled is not None:
             return bool(options.bm25_index_enabled)
-        return bool(getattr(settings, "BM25_INDEX_ENABLED", True))
+        return bool(settings.BM25_INDEX_ENABLED)
 
     def _resolve_event_vector_enabled(self, options: IndexingOptions | None) -> bool:
         if options and options.event_vector_enabled is not None:
             return bool(options.event_vector_enabled)
-        return bool(getattr(settings, "EVENT_VECTOR_ENABLED", True))
+        return bool(settings.EVENT_VECTOR_ENABLED)
 
     def _resolve_entity_vector_enabled(self, options: IndexingOptions | None) -> bool:
         if options and options.entity_vector_enabled is not None:
             return bool(options.entity_vector_enabled)
-        return bool(getattr(settings, "ENTITY_VECTOR_ENABLED", True))
+        return bool(settings.ENTITY_VECTOR_ENABLED)
 
     def _load_document_for_channel_tracking(self, *, tenant_id: UUID, document_id: UUID) -> DBDocument | None:
         return (
@@ -1360,7 +1360,7 @@ class Indexer:
         document_id: UUID,
         metadata_filter: dict[str, Any] | None = None,
     ) -> None:
-        if str(getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").strip().lower() != "milvus":
+        if str(settings.VECTOR_BACKEND or "milvus").strip().lower() != "milvus":
             return
         try:
             runtime = self._embedding_runtime_for_document(tenant_id=tenant_id, document_id=document_id)
@@ -2542,7 +2542,7 @@ class Indexer:
         tenant_id: UUID,
         document_ids: list[UUID] | None = None,
     ) -> None:
-        if not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
+        if not bool(settings.BM25_INDEX_ENABLED):
             return
         count = hybrid_retriever.rebuild_bm25_index_for_operational_scope(
             self._db,
@@ -2568,7 +2568,7 @@ class Indexer:
         if document_ids:
             event_query = event_query.filter(KgSourceEvent.document_id.in_(document_ids))
         events = event_query.all()
-        if events and bool(getattr(settings, "EVENT_VECTOR_ENABLED", True)):
+        if events and bool(settings.EVENT_VECTOR_ENABLED):
             self._index_event_vectors(events)
 
         event_ids = [ev.id for ev in events]
@@ -2583,7 +2583,7 @@ class Indexer:
             return
 
         entities = self._db.query(KgEntity).filter(KgEntity.tenant_id == tenant_id, KgEntity.id.in_(entity_ids)).all()
-        if entities and bool(getattr(settings, "ENTITY_VECTOR_ENABLED", True)):
+        if entities and bool(settings.ENTITY_VECTOR_ENABLED):
             self._index_entity_vectors(entities)
 
     def _touch_chunk_retrieval_scope(

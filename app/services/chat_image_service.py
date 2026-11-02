@@ -83,7 +83,7 @@ def build_chat_image_context_docs(
 
     Returns: (docs, meta)
     """
-    enabled = bool(getattr(settings, "IMAGE_EMBEDDING_ENABLED", False))
+    enabled = bool(settings.IMAGE_EMBEDDING_ENABLED)
     meta: dict[str, Any] = {"enabled": bool(enabled), "used": False, "reason": "not_run"}
     if not enabled:
         meta["reason"] = "IMAGE_EMBEDDING_ENABLED=false"
@@ -96,7 +96,7 @@ def build_chat_image_context_docs(
     if not q:
         meta["reason"] = "empty_query"
         return [], meta
-    max_query_chars = int(getattr(settings, "RETRIEVAL_QUERY_MAX_CHARS", 8_000) or 8_000)
+    max_query_chars = int(settings.RETRIEVAL_QUERY_MAX_CHARS or 8_000)
     if len(q) > max_query_chars:
         raise ValueError(f"image retrieval query exceeds RETRIEVAL_QUERY_MAX_CHARS={max_query_chars}")
 

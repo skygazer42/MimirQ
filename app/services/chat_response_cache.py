@@ -84,7 +84,7 @@ def _get_inflight_response_lock() -> asyncio.Lock:
 def _chat_response_singleflight_wait_timeout_sec() -> float:
     return max(
         1e-3,
-        float(getattr(settings, "CHAT_RESPONSE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC", 60.0) or 0.0),
+        float(settings.CHAT_RESPONSE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC or 0.0),
     )
 
 
@@ -232,7 +232,7 @@ def build_chat_cache_key(
     We hash the full request signature to keep keys short and to avoid leaking sensitive content
     in Redis key names.
     """
-    prefix = str(getattr(settings, "CHAT_RESPONSE_CACHE_PREFIX", "chat") or "chat").strip() or "chat"
+    prefix = str(settings.CHAT_RESPONSE_CACHE_PREFIX or "chat").strip() or "chat"
 
     signature = {
         "v": 1,
@@ -308,7 +308,7 @@ def resolve_chat_response_cache_key(
 
 def get_cached_chat_response(key: str) -> dict[str, Any] | None:
     """Return cached payload dict or None."""
-    if not bool(getattr(settings, "CHAT_RESPONSE_CACHE_ENABLED", False)):
+    if not bool(settings.CHAT_RESPONSE_CACHE_ENABLED):
         return None
 
     client = _get_redis_client()
@@ -334,7 +334,7 @@ def get_cached_chat_response(key: str) -> dict[str, Any] | None:
 
 
 async def get_cached_chat_response_async(key: str) -> dict[str, Any] | None:
-    if not bool(getattr(settings, "CHAT_RESPONSE_CACHE_ENABLED", False)):
+    if not bool(settings.CHAT_RESPONSE_CACHE_ENABLED):
         return None
     payload = await get_best_effort_json_cache_value(key)
     return payload if isinstance(payload, dict) else None
@@ -342,11 +342,11 @@ async def get_cached_chat_response_async(key: str) -> dict[str, Any] | None:
 
 def set_cached_chat_response(key: str, payload: dict[str, Any]) -> bool:
     """Store payload; returns True when stored."""
-    if not bool(getattr(settings, "CHAT_RESPONSE_CACHE_ENABLED", False)):
+    if not bool(settings.CHAT_RESPONSE_CACHE_ENABLED):
         return False
 
-    ttl = int(getattr(settings, "CHAT_RESPONSE_CACHE_TTL_SEC", 300) or 0)
-    max_bytes = int(getattr(settings, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 200_000) or 0)
+    ttl = int(settings.CHAT_RESPONSE_CACHE_TTL_SEC or 0)
+    max_bytes = int(settings.CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES or 0)
     try:
         asyncio.get_running_loop()
     except RuntimeError:
@@ -406,13 +406,11 @@ async def set_cached_chat_response_async(
     ttl_sec: int | None = None,
     max_value_bytes: int | None = None,
 ) -> bool:
-    if not bool(getattr(settings, "CHAT_RESPONSE_CACHE_ENABLED", False)):
+    if not bool(settings.CHAT_RESPONSE_CACHE_ENABLED):
         return False
-    ttl = int(ttl_sec if ttl_sec is not None else (getattr(settings, "CHAT_RESPONSE_CACHE_TTL_SEC", 300) or 0))
+    ttl = int(ttl_sec if ttl_sec is not None else (settings.CHAT_RESPONSE_CACHE_TTL_SEC or 0))
     max_bytes = int(
-        max_value_bytes
-        if max_value_bytes is not None
-        else (getattr(settings, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 200_000) or 0)
+        max_value_bytes if max_value_bytes is not None else (settings.CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES or 0)
     )
     return await set_best_effort_json_cache_value(
         key,
@@ -460,7 +458,7 @@ async def wait_for_inflight_chat_response(
 def _chat_response_singleflight_lease_ttl_sec(response_cache_ttl_sec: int) -> int:
     admission_timeout_sec = max(
         15,
-        int(getattr(settings, "RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC", 15.0) or 15.0),
+        int(settings.RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC or 15.0),
     )
     response_ttl_sec = max(60, int(response_cache_ttl_sec or 0))
     return max(60, min(300, max(response_ttl_sec, admission_timeout_sec)))
@@ -595,7 +593,7 @@ def resolve_inflight_chat_response(key: str, payload: dict[str, Any]) -> None:
                 _chat_response_singleflight_result_key(key),
                 payload,
                 ttl_sec=_CHAT_RESPONSE_SINGLEFLIGHT_TRANSIENT_RESULT_TTL_SEC,
-                max_value_bytes=int(getattr(settings, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 200_000) or 0),
+                max_value_bytes=int(settings.CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES or 0),
             )
         )
         _inflight_response_result_write_tasks[key] = task

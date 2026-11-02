@@ -245,7 +245,7 @@ _background_processing_semaphores: dict[int, tuple[int, asyncio.Semaphore]] = {}
 
 
 def _get_background_processing_semaphore() -> asyncio.Semaphore:
-    limit = max(1, int(getattr(settings, "API_DOCUMENT_BACKGROUND_MAX_CONCURRENCY", 2) or 2))
+    limit = max(1, int(settings.API_DOCUMENT_BACKGROUND_MAX_CONCURRENCY or 2))
     loop_id = id(asyncio.get_running_loop())
     cached = _background_processing_semaphores.get(loop_id)
     if cached is None or cached[0] != limit:
@@ -368,12 +368,12 @@ def _preview_image_matches(text: str) -> list[re.Match[str]]:
     if "/api/v1/documents/image/" not in text:
         return []
     matches = list(PREVIEW_IMAGE_REF_RE.finditer(text))
-    max_inline_images = max(0, int(getattr(settings, "MAX_INLINE_IMAGES", 0) or 0))
+    max_inline_images = max(0, int(settings.MAX_INLINE_IMAGES or 0))
     return matches[:max_inline_images] if max_inline_images and len(matches) > max_inline_images else matches
 
 
 def _preview_image_max_bytes() -> int:
-    max_bytes = int(getattr(settings, "MAX_INLINE_IMAGE_BYTES", 10_000_000) or 10_000_000)
+    max_bytes = int(settings.MAX_INLINE_IMAGE_BYTES or 10_000_000)
     return max(1_000_000, max_bytes)
 
 
@@ -735,7 +735,7 @@ def _parse_uuid(value: str) -> UUID:
 
 def _asset_request_header_account(request, *, is_production: bool) -> str | None:
     account_id = (request.headers.get("x-user-id") or "").strip() or None
-    allow_anonymous = bool(getattr(settings, "ASSET_HEADER_AUTH_ALLOW_ANONYMOUS", False))
+    allow_anonymous = bool(settings.ASSET_HEADER_AUTH_ALLOW_ANONYMOUS)
     if not account_id and (is_production or not allow_anonymous):
         raise HTTPException(status_code=401, detail="X-User-ID header required")
     return account_id
@@ -757,7 +757,7 @@ async def _resolve_account_id_for_asset_request(request, *, tenant_id: UUID | No
     - AUTH_MODE=jwt: require an Authorization header; query-string bearer tokens are unsupported.
     """
     is_production = is_production_env()
-    auth_mode = (getattr(settings, "AUTH_MODE", "jwt") or "jwt").lower()
+    auth_mode = (settings.AUTH_MODE or "jwt").lower()
 
     if auth_mode == "header":
         return _asset_request_header_account(request, is_production=is_production)
@@ -778,7 +778,7 @@ def _get_tenant_id_from_request_if_provided(request) -> UUID | None:
     """
     Return tenant id from header/query if explicitly provided; otherwise None.
     """
-    tenant_header = str(getattr(settings, "TENANT_HEADER", "") or "X-Tenant-ID").strip() or "X-Tenant-ID"
+    tenant_header = str(settings.TENANT_HEADER or "X-Tenant-ID").strip() or "X-Tenant-ID"
     raw = (request.headers.get(tenant_header) or "").strip()
     if not raw and tenant_header.lower() != "x-tenant-id":
         raw = (request.headers.get("x-tenant-id") or "").strip()
@@ -825,7 +825,7 @@ async def _resolve_tenant_id_for_asset_request(
         return provided
 
     if is_production_env():
-        tenant_header = str(getattr(settings, "TENANT_HEADER", "") or "X-Tenant-ID").strip() or "X-Tenant-ID"
+        tenant_header = str(settings.TENANT_HEADER or "X-Tenant-ID").strip() or "X-Tenant-ID"
         raise HTTPException(status_code=400, detail=f"{tenant_header} header or tenant_id query param required")
     return _parse_uuid(str(settings.DEFAULT_TENANT_ID))
 
@@ -1103,7 +1103,7 @@ def _parse_pipeline_json(pipeline: str | None) -> DocumentPipelineOptions | None
     raw = (pipeline or "").strip()
     if not raw or raw.lower() in {"null", "none", "undefined"}:
         return None
-    max_len = int(getattr(settings, "PIPELINE_FORM_JSON_MAX_CHARS", 200_000) or 200_000)
+    max_len = int(settings.PIPELINE_FORM_JSON_MAX_CHARS or 200_000)
     if max_len > 0 and len(raw) > max_len:
         raise HTTPException(status_code=400, detail="pipeline is too large")
     try:
@@ -1529,16 +1529,10 @@ def _dataset_pipeline_defaults(dataset: Dataset | None) -> tuple[str, str]:
             dataset_default_pb = _normalized_dataset_default(ds_meta.get("default_parser_backend"))
             dataset_default_cs = _normalized_dataset_default(ds_meta.get("default_chunk_strategy"))
 
-    default_pb_eff = (
-        dataset_default_pb
-        or str(getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto").strip().lower()
-        or "auto"
-    )
+    default_pb_eff = dataset_default_pb or str(settings.DEFAULT_PARSER_BACKEND or "auto").strip().lower() or "auto"
     default_cs_eff = (
         dataset_default_cs
-        or str(getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive")
-        .strip()
-        .lower()
+        or str(settings.DEFAULT_CHUNK_STRATEGY or "langchain_recursive").strip().lower()
         or "langchain_recursive"
     )
     return default_pb_eff, default_cs_eff
@@ -1774,7 +1768,7 @@ DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL = "Document processing queue unavai
 
 
 def _task_queue_required() -> bool:
-    return bool(getattr(settings, "TASK_QUEUE_ENABLED", False))
+    return bool(settings.TASK_QUEUE_ENABLED)
 
 
 def _mark_document_processing_schedule_failed(*, db: Session, db_document: DBDocument) -> None:
@@ -2104,9 +2098,9 @@ async def _download_url_ingest_file(*, url: str, body: UrlUploadRequest, tenant_
         url,
         temp_path,
         options=URLDownloadOptions(
-            max_bytes=int(getattr(settings, "URL_INGEST_MAX_BYTES", 0) or settings.MAX_FILE_SIZE),
-            timeout_sec=float(getattr(settings, "URL_INGEST_TIMEOUT_SEC", 30.0) or 30.0),
-            follow_redirects=bool(getattr(settings, "URL_INGEST_FOLLOW_REDIRECTS", False)),
+            max_bytes=int(settings.URL_INGEST_MAX_BYTES or settings.MAX_FILE_SIZE),
+            timeout_sec=float(settings.URL_INGEST_TIMEOUT_SEC or 30.0),
+            follow_redirects=bool(settings.URL_INGEST_FOLLOW_REDIRECTS),
             user_agent=(body.user_agent or None),
             extra_headers=(body.fetch_headers or None),
         ),
@@ -2133,7 +2127,7 @@ def _write_local_html_ingest_file(*, body: LocalHtmlIngestRequest, tenant_id: UU
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     data = str(body.html or "").encode("utf-8", "ignore")
-    if int(getattr(settings, "MAX_FILE_SIZE", 0) or 0) > 0 and len(data) > int(settings.MAX_FILE_SIZE):
+    if int(settings.MAX_FILE_SIZE or 0) > 0 and len(data) > int(settings.MAX_FILE_SIZE):
         raise HTTPException(status_code=400, detail="File too large")
 
     safe_name = _sanitize_filename(body.filename or "confluence-page.html")
@@ -2391,7 +2385,7 @@ async def _persist_and_process_ingested_document(
         account_id=account_id,
         doc_metadata=doc_metadata,
     )
-    if bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)):
+    if bool(settings.UPLOAD_DEDUP_ENABLED):
         db_document.dedup_key = build_document_dedup_key(
             content_sha256=get_content_sha256(doc_metadata),
             pipeline_hash=pipeline_hash,
@@ -2495,7 +2489,7 @@ async def _ingest_url_upload_request(
     - Used by API endpoint and connector runs.
     - If task queue is disabled and `background_tasks` is None, processing runs inline (async).
     """
-    if not bool(getattr(settings, "URL_INGEST_ENABLED", False)):
+    if not bool(settings.URL_INGEST_ENABLED):
         raise HTTPException(status_code=400, detail="URL ingestion is disabled")
 
     url = await validate_url_for_ingest(str(body.url or ""))
@@ -2546,7 +2540,7 @@ async def _ingest_url_upload_request(
         parser_backend_resolved=str(doc_metadata.get("parser_backend_resolved") or "").strip() or None,
     )
 
-    if bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)) and ingest_file.content_sha256:
+    if bool(settings.UPLOAD_DEDUP_ENABLED) and ingest_file.content_sha256:
         duplicate = _find_duplicate_document(
             db,
             tenant_id=tenant_id,
@@ -2825,7 +2819,7 @@ async def _ingest_local_html_request(
       - Otherwise, when `background_tasks` is None, run inline (connector context)
     - Currently gated by URL_INGEST_ENABLED for backward-compatible security semantics.
     """
-    if not bool(getattr(settings, "URL_INGEST_ENABLED", False)):
+    if not bool(settings.URL_INGEST_ENABLED):
         raise HTTPException(status_code=400, detail="URL ingestion is disabled")
 
     dataset = _resolve_writable_dataset(db, tenant_id, account_id, body.dataset_id)
@@ -2877,7 +2871,7 @@ async def _ingest_local_html_request(
         default_kind="connector_html",
         parser_backend_resolved=str(doc_metadata.get("parser_backend_resolved") or "").strip() or None,
     )
-    if bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)) and ingest_file.content_sha256:
+    if bool(settings.UPLOAD_DEDUP_ENABLED) and ingest_file.content_sha256:
         duplicate = _find_duplicate_document(
             db,
             tenant_id=tenant_id,
@@ -2977,11 +2971,11 @@ def _apply_chunk_metadata_patch(*, current: dict, patch: dict) -> dict:
 
 
 def _normalize_index_consistency_strictness(*, patch_mode: bool = False) -> str:
-    strictness = str(getattr(settings, "INDEX_CONSISTENCY_STRICTNESS", "off") or "off").strip().lower()
+    strictness = str(settings.INDEX_CONSISTENCY_STRICTNESS or "off").strip().lower()
     if strictness not in {"off", "warn", "strict"}:
         strictness = "off"
-    enabled = bool(getattr(settings, "INDEX_CONSISTENCY_ENABLED", False))
-    patch_strict = bool(getattr(settings, "INDEX_CONSISTENCY_PATCH_CHUNK_STRICT", False))
+    enabled = bool(settings.INDEX_CONSISTENCY_ENABLED)
+    patch_strict = bool(settings.INDEX_CONSISTENCY_PATCH_CHUNK_STRICT)
     if patch_mode and patch_strict:
         return "strict"
     if not enabled and strictness != "strict":
@@ -3070,7 +3064,7 @@ async def _enqueue_index_drift_reconcile(
     document_id: UUID,
     requested_by: str,
 ) -> str | None:
-    if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+    if not bool(settings.TASK_QUEUE_ENABLED):
         return None
 
     try:
@@ -3140,7 +3134,7 @@ async def _record_chunk_index_drift(
 ) -> tuple[dict[str, Any], list[dict[str, Any]], str | None]:
     from app.services.index_audit_service import record_index_drift_item
 
-    emit_drift_markers = bool(getattr(settings, "INDEX_CONSISTENCY_EMIT_DRIFT_MARKERS", True))
+    emit_drift_markers = bool(settings.INDEX_CONSISTENCY_EMIT_DRIFT_MARKERS)
     drift_markers = _build_chunk_drift_markers(
         operation=operation,
         strictness=strictness,

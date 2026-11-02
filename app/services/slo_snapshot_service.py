@@ -25,13 +25,13 @@ def _now_utc() -> datetime:
 
 
 def _base_url() -> str:
-    raw = str(getattr(settings, "PROMETHEUS_QUERY_BASE_URL", "") or "").strip()
+    raw = str(settings.PROMETHEUS_QUERY_BASE_URL or "").strip()
     return raw.rstrip("/")
 
 
 def _timeout() -> float:
     try:
-        return max(0.5, float(getattr(settings, "PROMETHEUS_QUERY_TIMEOUT_SEC", 3.0) or 3.0))
+        return max(0.5, float(settings.PROMETHEUS_QUERY_TIMEOUT_SEC or 3.0))
     except Exception:
         return 3.0
 

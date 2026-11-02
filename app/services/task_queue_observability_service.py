@@ -62,38 +62,38 @@ def _now_utc() -> datetime:
 
 
 def _queue_enabled() -> bool:
-    return bool(getattr(settings, "TASK_QUEUE_ENABLED", False))
+    return bool(settings.TASK_QUEUE_ENABLED)
 
 
 def _queue_name() -> str:
-    name = str(getattr(settings, "TASK_QUEUE_NAME", "") or "").strip()
+    name = str(settings.TASK_QUEUE_NAME or "").strip()
     return name or "mimirq"
 
 
 def _heartbeat_interval_sec() -> float:
     try:
-        return max(1.0, float(getattr(settings, "TASK_WORKER_HEARTBEAT_INTERVAL_SEC", 5.0) or 5.0))
+        return max(1.0, float(settings.TASK_WORKER_HEARTBEAT_INTERVAL_SEC or 5.0))
     except Exception:
         return 5.0
 
 
 def _heartbeat_ttl_sec() -> int:
     try:
-        return max(5, int(getattr(settings, "TASK_WORKER_HEARTBEAT_TTL_SEC", 30) or 30))
+        return max(5, int(settings.TASK_WORKER_HEARTBEAT_TTL_SEC or 30))
     except Exception:
         return 30
 
 
 def _poll_interval_sec() -> float:
     try:
-        return max(2.0, float(getattr(settings, "TASK_QUEUE_OBSERVABILITY_POLL_INTERVAL_SEC", 10.0) or 10.0))
+        return max(2.0, float(settings.TASK_QUEUE_OBSERVABILITY_POLL_INTERVAL_SEC or 10.0))
     except Exception:
         return 10.0
 
 
 def _recent_job_outcomes_limit() -> int:
     try:
-        return max(1, min(200, int(getattr(settings, "TASK_QUEUE_RECENT_JOB_OUTCOMES_LIMIT", 20) or 20)))
+        return max(1, min(200, int(settings.TASK_QUEUE_RECENT_JOB_OUTCOMES_LIMIT or 20)))
     except Exception:
         return 20
 
@@ -359,7 +359,7 @@ async def refresh_task_queue_observability_snapshot(*, source: str) -> TaskQueue
     )
 
     # Update gauges (only when prometheus is enabled).
-    if bool(getattr(settings, "PROMETHEUS_ENABLED", False)):
+    if bool(settings.PROMETHEUS_ENABLED):
         try:
             TASK_QUEUE_BROKER_UP.labels(queue=q).set(1.0 if broker_up else 0.0)
             TASK_QUEUE_DEPTH.labels(queue=q).set(float(depth if depth is not None else -1))

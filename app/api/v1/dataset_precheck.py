@@ -133,7 +133,7 @@ async def _expire_stale_precheck_scan_runs(db: Session, *, tenant_id: UUID, data
         status = str(getattr(row, "status", "") or "").strip().lower()
         if not _is_stale_precheck_scan_run(row, now=now):
             continue
-        if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+        if bool(settings.TASK_QUEUE_ENABLED):
             job_id = f"dataset_precheck_scan:{tenant_id}:{dataset_id}:{row.id}"
             job_status: str | None = None
             try:

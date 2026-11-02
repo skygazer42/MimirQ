@@ -89,14 +89,14 @@ def get_rag_runtime_warmup_status() -> dict[str, Any]:
 
 
 def rag_runtime_warmup_ready() -> bool:
-    if not bool(getattr(settings, "RAG_RUNTIME_WARMUP_ENABLED", False)):
+    if not bool(settings.RAG_RUNTIME_WARMUP_ENABLED):
         return True
     return bool(get_rag_runtime_warmup_status().get("ready"))
 
 
 def _resolve_timeout_sec() -> float:
     try:
-        timeout_sec = float(getattr(settings, "RAG_RUNTIME_WARMUP_TIMEOUT_SEC", 15.0) or 15.0)
+        timeout_sec = float(settings.RAG_RUNTIME_WARMUP_TIMEOUT_SEC or 15.0)
     except (TypeError, ValueError):
         timeout_sec = 15.0
     return max(0.5, min(timeout_sec, 120.0))
@@ -105,9 +105,9 @@ def _resolve_timeout_sec() -> float:
 def _sanitize_error_message(exc: BaseException) -> str:
     message = str(exc or "").strip() or exc.__class__.__name__
     for secret in {
-        str(getattr(settings, "EMBEDDING_API_KEY", "") or ""),
-        str(getattr(settings, "RERANKER_API_KEY", "") or ""),
-        str(getattr(settings, "LLM_API_KEY", "") or ""),
+        str(settings.EMBEDDING_API_KEY or ""),
+        str(settings.RERANKER_API_KEY or ""),
+        str(settings.LLM_API_KEY or ""),
     }:
         if secret:
             message = message.replace(secret, "[redacted]")
@@ -117,9 +117,9 @@ def _sanitize_error_message(exc: BaseException) -> str:
 def _probe_embedding_runtime_sync() -> dict[str, Any]:
     from app.storage.vector.factory import get_embedding_client, get_vector_store
 
-    provider_name = str(getattr(settings, "EMBEDDING_PROVIDER", "") or "").strip().lower() or "openai_compatible"
-    model_name = str(getattr(settings, "EMBEDDING_MODEL", "") or "").strip() or None
-    vector_backend = str(getattr(settings, "VECTOR_BACKEND", "") or "milvus").strip().lower() or "milvus"
+    provider_name = str(settings.EMBEDDING_PROVIDER or "").strip().lower() or "openai_compatible"
+    model_name = str(settings.EMBEDDING_MODEL or "").strip() or None
+    vector_backend = str(settings.VECTOR_BACKEND or "milvus").strip().lower() or "milvus"
     probe = _new_probe_state("embedding")
     probe.update({"provider": provider_name, "model": model_name, "vector_backend": vector_backend})
     started = time.perf_counter()
@@ -157,9 +157,9 @@ def _probe_embedding_runtime_sync() -> dict[str, Any]:
 
 
 async def _probe_embedding_runtime(timeout_sec: float) -> dict[str, Any]:
-    provider_name = str(getattr(settings, "EMBEDDING_PROVIDER", "") or "").strip().lower() or None
-    model_name = str(getattr(settings, "EMBEDDING_MODEL", "") or "").strip() or None
-    vector_backend = str(getattr(settings, "VECTOR_BACKEND", "") or "milvus").strip().lower() or None
+    provider_name = str(settings.EMBEDDING_PROVIDER or "").strip().lower() or None
+    model_name = str(settings.EMBEDDING_MODEL or "").strip() or None
+    vector_backend = str(settings.VECTOR_BACKEND or "milvus").strip().lower() or None
     try:
         return await asyncio.wait_for(asyncio.to_thread(_probe_embedding_runtime_sync), timeout=timeout_sec)
     except asyncio.TimeoutError:
@@ -196,12 +196,12 @@ def _probe_reranker_runtime_sync(timeout_sec: float) -> dict[str, Any]:
     from app.rag.reranker.factory import describe_reranker_provider, get_reranker
     from app.rag.reranker.types import RerankCandidate
 
-    configured_provider = str(getattr(settings, "RERANKER_PROVIDER", "") or "").strip().lower() or "none"
+    configured_provider = str(settings.RERANKER_PROVIDER or "").strip().lower() or "none"
     probe = _new_probe_state("reranker")
     probe.update(
         {
             "provider": configured_provider,
-            "model": str(getattr(settings, "RERANKER_MODEL", "") or "").strip() or None,
+            "model": str(settings.RERANKER_MODEL or "").strip() or None,
         }
     )
     if configured_provider in {"none", "off", "false", "0"}:
@@ -221,7 +221,7 @@ def _probe_reranker_runtime_sync(timeout_sec: float) -> dict[str, Any]:
     started = time.perf_counter()
     init_kwargs: dict[str, Any] = {}
     if configured_provider in {"openai", "dashscope", "aliyun"}:
-        init_kwargs["timeout"] = min(timeout_sec, float(getattr(settings, "RERANKER_API_TIMEOUT_SEC", 30.0) or 30.0))
+        init_kwargs["timeout"] = min(timeout_sec, float(settings.RERANKER_API_TIMEOUT_SEC or 30.0))
 
     reranker = get_reranker(configured_provider, model_name=probe["model"], **init_kwargs)
     result = reranker.rerank(
@@ -251,8 +251,8 @@ def _probe_reranker_runtime_sync(timeout_sec: float) -> dict[str, Any]:
 
 
 async def _probe_reranker_runtime(timeout_sec: float) -> dict[str, Any]:
-    provider_name = str(getattr(settings, "RERANKER_PROVIDER", "") or "").strip().lower() or None
-    model_name = str(getattr(settings, "RERANKER_MODEL", "") or "").strip() or None
+    provider_name = str(settings.RERANKER_PROVIDER or "").strip().lower() or None
+    model_name = str(settings.RERANKER_MODEL or "").strip() or None
     try:
         return await asyncio.wait_for(
             asyncio.to_thread(_probe_reranker_runtime_sync, timeout_sec),
@@ -287,8 +287,8 @@ async def _probe_reranker_runtime(timeout_sec: float) -> dict[str, Any]:
 
 
 async def warmup_rag_runtime() -> dict[str, Any]:
-    required_for_ready = bool(getattr(settings, "RAG_RUNTIME_WARMUP_REQUIRED_FOR_READY", False))
-    if not bool(getattr(settings, "RAG_RUNTIME_WARMUP_ENABLED", False)):
+    required_for_ready = bool(settings.RAG_RUNTIME_WARMUP_REQUIRED_FOR_READY)
+    if not bool(settings.RAG_RUNTIME_WARMUP_ENABLED):
         embedding = _new_probe_state("embedding")
         reranker = _new_probe_state("reranker")
         embedding.update({"status": "skipped", "ready": True, "reason": "warmup_disabled", "elapsed_ms": 0.0})
@@ -369,8 +369,8 @@ def _log_runtime_warmup_task_result(task: Any) -> None:
 
 
 def start_rag_runtime_warmup(*, create_task: Any | None = None) -> Any | None:
-    required_for_ready = bool(getattr(settings, "RAG_RUNTIME_WARMUP_REQUIRED_FOR_READY", False))
-    if not bool(getattr(settings, "RAG_RUNTIME_WARMUP_ENABLED", False)):
+    required_for_ready = bool(settings.RAG_RUNTIME_WARMUP_REQUIRED_FOR_READY)
+    if not bool(settings.RAG_RUNTIME_WARMUP_ENABLED):
         _set_rag_runtime_warmup_status(
             enabled=False,
             required_for_ready=required_for_ready,

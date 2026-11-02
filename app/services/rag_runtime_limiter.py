@@ -55,11 +55,11 @@ class _DistributedAdmissionLease:
 
 
 def _configured_limit() -> int:
-    return max(0, int(getattr(settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 1) or 0))
+    return max(0, int(settings.RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY or 0))
 
 
 def _configured_admission_timeout_sec() -> float:
-    return max(0.0, float(getattr(settings, "RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC", 15.0) or 0.0))
+    return max(0.0, float(settings.RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC or 0.0))
 
 
 def _configured_distributed_limit(limit: int) -> int:
@@ -68,26 +68,22 @@ def _configured_distributed_limit(limit: int) -> int:
 
 
 def _configured_backend_limit() -> int:
-    configured = int(getattr(settings, "RAG_VECTOR_SHARD_GLOBAL_MAX_CONCURRENCY", 0) or 0)
+    configured = int(settings.RAG_VECTOR_SHARD_GLOBAL_MAX_CONCURRENCY or 0)
     if configured > 0:
         return configured
     return _configured_limit()
 
 
 def _distributed_admission_enabled(limit: int) -> bool:
-    return bool(getattr(settings, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED", False)) and (
-        _configured_distributed_limit(limit) > 0
-    )
+    return bool(settings.RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED) and (_configured_distributed_limit(limit) > 0)
 
 
 def _distributed_admission_prefix() -> str:
-    return (
-        str(getattr(settings, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX", "ragadm") or "ragadm").strip() or "ragadm"
-    )
+    return str(settings.RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX or "ragadm").strip() or "ragadm"
 
 
 def _distributed_backend_admission_enabled(limit: int) -> bool:
-    return bool(getattr(settings, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED", False)) and limit > 0
+    return bool(settings.RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED) and limit > 0
 
 
 def _distributed_backend_admission_prefix() -> str:

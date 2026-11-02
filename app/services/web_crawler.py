@@ -303,7 +303,7 @@ def _match_any(url: str, patterns: list[re.Pattern[str]]) -> bool:
 
 
 def _max_redirects() -> int:
-    max_redirects = int(getattr(settings, "URL_INGEST_MAX_REDIRECTS", 5) or 5)
+    max_redirects = int(settings.URL_INGEST_MAX_REDIRECTS or 5)
     return max(0, min(max_redirects, 20))
 
 
@@ -564,12 +564,10 @@ def _resolve_crawl_runtime(*, crawl_options: WebCrawlOptions, seeds: list[str]) 
     allowed_netlocs, credential_origins = _collect_seed_scope(seeds)
     headers, user_agent = _build_crawl_headers(crawl_options.headers, user_agent=crawl_options.user_agent)
     max_bytes_eff = int(
-        crawl_options.max_bytes
-        if crawl_options.max_bytes is not None
-        else getattr(settings, "URL_INGEST_MAX_BYTES", 0) or 0
+        crawl_options.max_bytes if crawl_options.max_bytes is not None else settings.URL_INGEST_MAX_BYTES or 0
     )
     if max_bytes_eff <= 0:
-        max_bytes_eff = int(getattr(settings, "MAX_FILE_SIZE", 0) or 50_000_000)
+        max_bytes_eff = int(settings.MAX_FILE_SIZE or 50_000_000)
     return _CrawlRuntime(
         max_pages=int(crawl_options.max_pages),
         max_depth=int(crawl_options.max_depth),
@@ -583,13 +581,13 @@ def _resolve_crawl_runtime(*, crawl_options: WebCrawlOptions, seeds: list[str]) 
         timeout_sec=float(
             crawl_options.timeout_sec
             if crawl_options.timeout_sec is not None
-            else getattr(settings, "URL_INGEST_TIMEOUT_SEC", 30.0) or 30.0
+            else settings.URL_INGEST_TIMEOUT_SEC or 30.0
         ),
         max_bytes=max_bytes_eff,
         follow_redirects=(
             bool(crawl_options.follow_redirects)
             if crawl_options.follow_redirects is not None
-            else bool(getattr(settings, "URL_INGEST_FOLLOW_REDIRECTS", False))
+            else bool(settings.URL_INGEST_FOLLOW_REDIRECTS)
         ),
         robots_cache=_RobotsCache() if crawl_options.respect_robots else None,
     )

@@ -125,7 +125,7 @@ async def explain_retrieval(
         ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
         DatasetService.assert_dataset_readable(db, ds, account_id)
         scope_dataset_id = body.dataset_id
-    elif not bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False)):
+    elif not bool(settings.CHAT_ALLOW_OPEN_SCOPE):
         raise HTTPException(status_code=400, detail="dataset_id is required when document_ids is empty")
 
     _enforce_non_empty_retrieval_scope(

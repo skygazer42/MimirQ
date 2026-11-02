@@ -47,8 +47,8 @@ def dispatch_chat_stream_persistence(
     )
 
     should_update_summary = (
-        bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_ENABLED", False))
-        and bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE", False))
+        bool(settings.PERSISTENT_SUMMARY_MEMORY_ENABLED)
+        and bool(settings.PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE)
         and bool(options.enable_summary_memory)
         and bool(options.conversation_id)
     )
@@ -73,13 +73,13 @@ def persist_chat_stream_turn_sync(
         metrics=options.metrics,
         citations=options.citations if isinstance(options.citations, list) else [],
     )
-    if options.enable_structured_memory and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False)):
+    if options.enable_structured_memory and bool(settings.STRUCTURED_MEMORY_ENABLED):
         try:
             message_metadata["structured_memory"] = extract_structured_memory_for_turn(
                 user_text=str(options.question or ""),
                 assistant_text=str(options.content or ""),
-                max_entities=int(getattr(settings, "STRUCTURED_MEMORY_MAX_ENTITIES", 20) or 20),
-                max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
+                max_entities=int(settings.STRUCTURED_MEMORY_MAX_ENTITIES or 20),
+                max_facts=int(settings.STRUCTURED_MEMORY_MAX_FACTS or 8),
             )
         except Exception as exc:
             logger.debug("Ignoring structured memory extraction failure for streamed chat turn: %s", exc)
@@ -152,8 +152,8 @@ async def persist_chat_stream_turn_background(
     enable_structured_memory = persist_input.enable_structured_memory
 
     should_update_summary = (
-        bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_ENABLED", False))
-        and bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE", False))
+        bool(settings.PERSISTENT_SUMMARY_MEMORY_ENABLED)
+        and bool(settings.PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE)
         and bool(enable_summary_memory)
         and bool(conversation_id)
     )
@@ -181,13 +181,13 @@ async def persist_chat_stream_turn_background(
                     metrics=metrics2,
                     citations=citations if isinstance(citations, list) else [],
                 )
-                if enable_structured_memory and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False)):
+                if enable_structured_memory and bool(settings.STRUCTURED_MEMORY_ENABLED):
                     try:
                         message_metadata["structured_memory"] = extract_structured_memory_for_turn(
                             user_text=str(question or ""),
                             assistant_text=str(content or ""),
-                            max_entities=int(getattr(settings, "STRUCTURED_MEMORY_MAX_ENTITIES", 20) or 20),
-                            max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
+                            max_entities=int(settings.STRUCTURED_MEMORY_MAX_ENTITIES or 20),
+                            max_facts=int(settings.STRUCTURED_MEMORY_MAX_FACTS or 8),
                         )
                     except Exception as exc:
                         logger.debug(

@@ -41,7 +41,7 @@ def _fallback_fernets() -> list[Fernet]:
     """
     Optional fallback keys for decrypting secrets encrypted with previous SECRET_KEY values.
     """
-    raw = str(getattr(settings, "SECRET_KEY_FALLBACKS", "") or "").strip()
+    raw = str(settings.SECRET_KEY_FALLBACKS or "").strip()
     if not raw:
         return []
     current = str(settings.SECRET_KEY or "").strip()

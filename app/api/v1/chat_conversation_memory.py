@@ -101,7 +101,7 @@ async def update_conversation_summary_endpoint(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    if not bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_ENABLED", False)):
+    if not bool(settings.PERSISTENT_SUMMARY_MEMORY_ENABLED):
         raise HTTPException(status_code=400, detail="Persistent summary memory is disabled")
 
     _load_accessible_conversation(

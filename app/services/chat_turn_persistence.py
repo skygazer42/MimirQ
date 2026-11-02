@@ -115,13 +115,13 @@ def persist_chat_turn_sync(
         metrics=options.metrics,
         citations=options.citations if isinstance(options.citations, list) else [],
     )
-    if options.enable_structured_memory and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False)):
+    if options.enable_structured_memory and bool(settings.STRUCTURED_MEMORY_ENABLED):
         try:
             message_metadata["structured_memory"] = extract_structured_memory_for_turn(
                 user_text=str(options.question or ""),
                 assistant_text=str(options.content or ""),
-                max_entities=int(getattr(settings, "STRUCTURED_MEMORY_MAX_ENTITIES", 20) or 20),
-                max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
+                max_entities=int(settings.STRUCTURED_MEMORY_MAX_ENTITIES or 20),
+                max_facts=int(settings.STRUCTURED_MEMORY_MAX_FACTS or 8),
             )
         except Exception as exc:
             logger.debug("Ignoring structured memory extraction failure for chat turn: %s", exc)

@@ -56,7 +56,7 @@ def _sanitize_preview_value(value: Any) -> Any:
 
 
 def _should_inline_preview_parse(file_ext: str) -> bool:
-    if not bool(getattr(settings, "PREVIEW_INLINE_TEXT_PARSE_ENABLED", True)):
+    if not bool(settings.PREVIEW_INLINE_TEXT_PARSE_ENABLED):
         return False
     ext = str(file_ext or "").strip().lower()
     return ext == ".md" or ext in parser_factory.PLAIN_TEXT_EXTENSIONS
@@ -282,7 +282,7 @@ def _build_preview_segments(documents: list[Document]) -> list[ParsedSegment]:
 
 
 def _cleanup_preview_artifacts(*, tenant_id: UUID, artifact_dirs: set[str]) -> None:
-    if not artifact_dirs or bool(getattr(settings, "MAGIC_PDF_KEEP_ARTIFACTS", False)):
+    if not artifact_dirs or bool(settings.MAGIC_PDF_KEEP_ARTIFACTS):
         return
     upload_root = Path(settings.UPLOAD_DIR).resolve(strict=False)
     tenant_root = (upload_root / str(tenant_id)).resolve(strict=False)

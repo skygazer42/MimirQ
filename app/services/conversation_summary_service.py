@@ -70,12 +70,8 @@ async def update_conversation_summary(
 
     This is intended to be called on-demand (API) or optionally after chat turns.
     """
-    max_summary_tokens = int(
-        max_summary_tokens or getattr(settings, "PERSISTENT_SUMMARY_MEMORY_MAX_SUMMARY_TOKENS", 500) or 500
-    )
-    lookback_messages = int(
-        lookback_messages or getattr(settings, "PERSISTENT_SUMMARY_MEMORY_LOOKBACK_MESSAGES", 20) or 20
-    )
+    max_summary_tokens = int(max_summary_tokens or settings.PERSISTENT_SUMMARY_MEMORY_MAX_SUMMARY_TOKENS or 500)
+    lookback_messages = int(lookback_messages or settings.PERSISTENT_SUMMARY_MEMORY_LOOKBACK_MESSAGES or 20)
     max_summary_tokens = max(50, max_summary_tokens)
     lookback_messages = max(2, min(200, lookback_messages))
 

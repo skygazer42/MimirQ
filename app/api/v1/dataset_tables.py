@@ -79,7 +79,7 @@ def _can_view_redacted_sql_role(role: str) -> bool:
 
 
 def _should_redact_table_rows_role(role: str) -> bool:
-    if not bool(getattr(settings, "TABLE_ROW_REDACTION_ENABLED", False)):
+    if not bool(settings.TABLE_ROW_REDACTION_ENABLED):
         return False
     # Admin/auditor roles can view raw rows; others see best-effort redaction.
     return not _can_view_redacted_sql_role(role)
@@ -90,10 +90,10 @@ def _redact_table_text(text: str) -> str:
     if not s:
         return s
 
-    secrets_mode = str(getattr(settings, "GOVERNANCE_SECRETS_MODE", "mask") or "mask").strip().lower()
-    secrets_mask = str(getattr(settings, "GOVERNANCE_SECRETS_MASK", "[SECRET]") or "[SECRET]")
-    pii_mode = str(getattr(settings, "GOVERNANCE_PII_MODE", "mask") or "mask").strip().lower()
-    pii_mask = str(getattr(settings, "GOVERNANCE_PII_MASK", "[REDACTED]") or "[REDACTED]")
+    secrets_mode = str(settings.GOVERNANCE_SECRETS_MODE or "mask").strip().lower()
+    secrets_mask = str(settings.GOVERNANCE_SECRETS_MASK or "[SECRET]")
+    pii_mode = str(settings.GOVERNANCE_PII_MODE or "mask").strip().lower()
+    pii_mask = str(settings.GOVERNANCE_PII_MASK or "[REDACTED]")
 
     secrets_mode = secrets_mode if secrets_mode in {"mask", "token"} else "mask"
     pii_mode = pii_mode if pii_mode in {"mask", "token"} else "mask"
@@ -455,9 +455,9 @@ def _table_asset_by_id_or_404(
 def _ensure_table_ask_enabled() -> None:
     if not tag_enabled():
         raise HTTPException(status_code=400, detail="TABLE_NL2SQL_ENABLED=false")
-    has_llm_key = bool(str(getattr(settings, "LLM_API_KEY", "") or "").strip())
-    deterministic_ok = bool(getattr(settings, "TABLE_NL2SQL_DETERMINISTIC_ONLY", False)) or bool(
-        getattr(settings, "TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED", True)
+    has_llm_key = bool(str(settings.LLM_API_KEY or "").strip())
+    deterministic_ok = bool(settings.TABLE_NL2SQL_DETERMINISTIC_ONLY) or bool(
+        settings.TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED
     )
     if not has_llm_key and not deterministic_ok:
         raise HTTPException(status_code=400, detail="LLM_API_KEY is not configured")
@@ -534,19 +534,19 @@ def _generate_table_answer(
 
 
 def _ensure_lotus_sem_filter_enabled() -> None:
-    if not bool(getattr(settings, "TABLE_LOTUS_ENABLED", False)):
+    if not bool(settings.TABLE_LOTUS_ENABLED):
         raise HTTPException(status_code=400, detail="TABLE_LOTUS_ENABLED=false")
-    if not str(getattr(settings, "LLM_API_KEY", "") or "").strip():
+    if not str(settings.LLM_API_KEY or "").strip():
         raise HTTPException(status_code=400, detail="LLM_API_KEY is not configured")
 
 
 def _lotus_input_limits() -> tuple[int, int]:
     max_in_rows = min(
-        int(getattr(settings, "TABLE_LOTUS_MAX_ROWS", 20_000) or 20_000),
-        int(getattr(settings, "TABLE_SEM_FILTER_MAX_IN_ROWS", 2000) or 2000),
+        int(settings.TABLE_LOTUS_MAX_ROWS or 20_000),
+        int(settings.TABLE_SEM_FILTER_MAX_IN_ROWS or 2000),
         100_000,
     )
-    max_in_cols = int(getattr(settings, "TABLE_SEM_FILTER_MAX_COLS", 30) or 30)
+    max_in_cols = int(settings.TABLE_SEM_FILTER_MAX_COLS or 30)
     return max_in_rows, max_in_cols
 
 
@@ -695,8 +695,8 @@ def _lotus_fallback_query_response(
         table_id=table_id,
         sql=sql,
         max_rows=output_rows,
-        max_cols=int(getattr(settings, "TABLE_QUERY_MAX_COLS", 200) or 200),
-        max_bytes=int(getattr(settings, "TABLE_QUERY_MAX_BYTES", 1_000_000) or 1_000_000),
+        max_cols=int(settings.TABLE_QUERY_MAX_COLS or 200),
+        max_bytes=int(settings.TABLE_QUERY_MAX_BYTES or 1_000_000),
     )
     payload = _maybe_redact_query_rows(dict(payload), redact_rows=redact_rows)
     payload = _mask_table_query_rows(
@@ -953,9 +953,9 @@ def preview_dataset_table(
         dataset_id=dataset_id,
         table_id=table_id,
         sql=f"SELECT * FROM {sql_table_q}",  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
-        max_rows=min(int(limit), int(getattr(settings, "TABLE_QUERY_MAX_ROWS", 200) or 200)),
-        max_cols=int(getattr(settings, "TABLE_QUERY_MAX_COLS", 200) or 200),
-        max_bytes=int(getattr(settings, "TABLE_QUERY_MAX_BYTES", 1_000_000) or 1_000_000),
+        max_rows=min(int(limit), int(settings.TABLE_QUERY_MAX_ROWS or 200)),
+        max_cols=int(settings.TABLE_QUERY_MAX_COLS or 200),
+        max_bytes=int(settings.TABLE_QUERY_MAX_BYTES or 1_000_000),
     )
     if redact_rows:
         payload = dict(payload)
@@ -1017,17 +1017,17 @@ def query_dataset_table(
 
     filter_allowed_document_ids(db, tenant_id, account_id, [parsed.document_id])
 
-    max_rows = int(body.max_rows or getattr(settings, "TABLE_QUERY_MAX_ROWS", 200) or 200)
-    max_cols = int(body.max_cols or getattr(settings, "TABLE_QUERY_MAX_COLS", 200) or 200)
+    max_rows = int(body.max_rows or settings.TABLE_QUERY_MAX_ROWS or 200)
+    max_cols = int(body.max_cols or settings.TABLE_QUERY_MAX_COLS or 200)
 
     payload = run_table_query(
         tenant_id=tenant_id,
         dataset_id=dataset_id,
         table_id=table_id,
         sql=str(body.sql or ""),
-        max_rows=min(max_rows, int(getattr(settings, "TABLE_QUERY_MAX_ROWS", 200) or 200)),
-        max_cols=min(max_cols, int(getattr(settings, "TABLE_QUERY_MAX_COLS", 200) or 200)),
-        max_bytes=int(getattr(settings, "TABLE_QUERY_MAX_BYTES", 1_000_000) or 1_000_000),
+        max_rows=min(max_rows, int(settings.TABLE_QUERY_MAX_ROWS or 200)),
+        max_cols=min(max_cols, int(settings.TABLE_QUERY_MAX_COLS or 200)),
+        max_bytes=int(settings.TABLE_QUERY_MAX_BYTES or 1_000_000),
     )
     raw_sql = str(payload.get("sql") or body.sql or "")
     _audit_table_query(
@@ -1110,8 +1110,8 @@ def ask_dataset_table(
     columns, sample_rows, sheet_name = _table_schema_for_table_id(doc, table_id=table_id)
 
     sql_table = sql_table_name_for_sheet(parsed.sheet_index)
-    max_rows = int(body.max_rows or getattr(settings, "TABLE_QUERY_MAX_ROWS", 200) or 200)
-    max_rows = min(max_rows, int(getattr(settings, "TABLE_QUERY_MAX_ROWS", 200) or 200))
+    max_rows = int(body.max_rows or settings.TABLE_QUERY_MAX_ROWS or 200)
+    max_rows = min(max_rows, int(settings.TABLE_QUERY_MAX_ROWS or 200))
 
     (
         sql,
@@ -1137,8 +1137,8 @@ def ask_dataset_table(
         table_id=table_id,
         sql=sql,
         max_rows=max_rows,
-        max_cols=int(getattr(settings, "TABLE_QUERY_MAX_COLS", 200) or 200),
-        max_bytes=int(getattr(settings, "TABLE_QUERY_MAX_BYTES", 1_000_000) or 1_000_000),
+        max_cols=int(settings.TABLE_QUERY_MAX_COLS or 200),
+        max_bytes=int(settings.TABLE_QUERY_MAX_BYTES or 1_000_000),
         planner_diagnostics=planner_diagnostics,
         expected_sql_fingerprint=sql_fingerprint,
     )
@@ -1146,12 +1146,12 @@ def ask_dataset_table(
         result.get("planner_execution_mismatch") if isinstance(result.get("planner_execution_mismatch"), dict) else None
     )
     if (
-        bool(getattr(settings, "TABLE_TAG_PLANNER_MISMATCH_STRICT", False))
+        bool(settings.TABLE_TAG_PLANNER_MISMATCH_STRICT)
         and planner_execution_mismatch
         and bool(planner_execution_mismatch.get("mismatch"))
     ):
         raise HTTPException(status_code=409, detail="planner_execution_mismatch")
-    if not bool(getattr(settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", False)):
+    if not bool(settings.TABLE_LLM_ALLOW_RESULT_EGRESS):
         raise HTTPException(
             status_code=400,
             detail="TABLE_LLM_ALLOW_RESULT_EGRESS=false (answer drafting requires sending query results to an LLM)",
@@ -1242,8 +1242,8 @@ def lotus_sem_filter_dataset_table(
 
     sql_table = sql_table_name_for_sheet(parsed.sheet_index)
     sql_table_q = quote_sqlite_ident(sql_table)
-    output_rows = int(body.max_rows or getattr(settings, "TABLE_QUERY_MAX_ROWS", 200) or 200)
-    output_rows = min(output_rows, int(getattr(settings, "TABLE_QUERY_MAX_ROWS", 200) or 200))
+    output_rows = int(body.max_rows or settings.TABLE_QUERY_MAX_ROWS or 200)
+    output_rows = min(output_rows, int(settings.TABLE_QUERY_MAX_ROWS or 200))
 
     avail = lotus_available()
     if avail.ok:

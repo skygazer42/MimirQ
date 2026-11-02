@@ -337,7 +337,7 @@ async def build_pipeline_plugin_chunk_report_endpoint(
 def _assert_unmarked_plugin_golden_chunks_allowed(include_unmarked_chunks: bool) -> None:
     if not include_unmarked_chunks:
         return
-    if bool(getattr(settings, "PYTHON_PIPELINE_PLUGIN_ALLOW_UNMARKED_GOLDEN_CHUNKS", False)):
+    if bool(settings.PYTHON_PIPELINE_PLUGIN_ALLOW_UNMARKED_GOLDEN_CHUNKS):
         return
     raise HTTPException(
         status_code=400,
@@ -598,12 +598,8 @@ def get_pipeline_capabilities(
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    default_parser_backend = (
-        normalize_parser_backend(getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto") or "auto"
-    )
-    default_chunk_strategy = (
-        (getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower()
-    )
+    default_parser_backend = normalize_parser_backend(settings.DEFAULT_PARSER_BACKEND or "auto") or "auto"
+    default_chunk_strategy = (settings.DEFAULT_CHUNK_STRATEGY or "langchain_recursive").strip().lower()
 
     pdf_backends = [_pipeline_parser_backend_info(name) for name in sorted(ParserFactory.SUPPORTED_PDF_BACKENDS)]
 
@@ -1291,7 +1287,7 @@ def clean_preview(
         result = clean_markdown(
             baseline_text,
             rules=rules,
-            regex_timeout_ms=int(getattr(settings, "GOVERNANCE_REGEX_TIMEOUT_MS", 100) or 100),
+            regex_timeout_ms=int(settings.GOVERNANCE_REGEX_TIMEOUT_MS or 100),
             normalize_line_endings=body.normalize_line_endings,
             trim_trailing_spaces=body.trim_trailing_spaces,
             collapse_blank_lines=body.collapse_blank_lines,

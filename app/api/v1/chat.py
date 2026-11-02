@@ -420,9 +420,9 @@ def _maybe_schedule_summary_update(
     tenant_id: UUID,
     conversation_id: UUID | None,
 ) -> None:
-    if not bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_ENABLED", False)):
+    if not bool(settings.PERSISTENT_SUMMARY_MEMORY_ENABLED):
         return
-    if not bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE", False)):
+    if not bool(settings.PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE):
         return
     if not bool(getattr(request, "enable_summary_memory", False)):
         return
@@ -497,8 +497,8 @@ async def chat(
     full_response = ""
     allowed_doc_ids: list[UUID] = []
     long_term_messages: list[dict] = []
-    allow_empty_docs = bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True))
-    allow_open_scope = bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False))
+    allow_empty_docs = bool(settings.CHAT_ALLOW_EMPTY_DOCUMENTS)
+    allow_open_scope = bool(settings.CHAT_ALLOW_OPEN_SCOPE)
 
     # Best-effort per-tenant aggregate QPS limiter.
     from app.services.tenant_quota_service import enforce_tenant_qps_quota_async
@@ -644,7 +644,7 @@ async def chat(
         )
         metrics_data = _annotate_chat_singleflight_metrics(
             metrics_data,
-            enabled=bool(getattr(settings, "CHAT_RESPONSE_SINGLEFLIGHT_ENABLED", False)),
+            enabled=bool(settings.CHAT_RESPONSE_SINGLEFLIGHT_ENABLED),
             hit=singleflight_hit,
             role=_singleflight_role(
                 singleflight_hit=singleflight_hit,
@@ -737,7 +737,7 @@ async def chat(
         "prompt_tokens": 0,
         "completion_tokens": total_tokens,
         "total_tokens": total_tokens,
-        "source": "mock" if bool(getattr(settings, "LLM_MOCK_ENABLED", False)) else "estimate",
+        "source": "mock" if bool(settings.LLM_MOCK_ENABLED) else "estimate",
     }
 
     return {
@@ -773,8 +773,8 @@ async def stream_chat(
     """
 
     long_term_messages: list[dict] = []
-    allow_empty_docs = bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True))
-    allow_open_scope = bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False))
+    allow_empty_docs = bool(settings.CHAT_ALLOW_EMPTY_DOCUMENTS)
+    allow_open_scope = bool(settings.CHAT_ALLOW_OPEN_SCOPE)
 
     # Best-effort per-tenant aggregate QPS limiter.
     from app.services.tenant_quota_service import enforce_tenant_qps_quota_async

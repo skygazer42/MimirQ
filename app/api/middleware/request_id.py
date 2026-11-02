@@ -41,13 +41,13 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         request.state.request_id = request_id
         state_token = bind_request_state(request.state)
 
-        tenant_header = str(getattr(settings, "TENANT_HEADER", "") or "X-Tenant-ID").strip() or "X-Tenant-ID"
+        tenant_header = str(settings.TENANT_HEADER or "X-Tenant-ID").strip() or "X-Tenant-ID"
         tenant_id = (request.headers.get(tenant_header) or "").strip()
         if not tenant_id and tenant_header.lower() != "x-tenant-id":
             tenant_id = (request.headers.get("X-Tenant-ID") or "").strip()
 
         # Security: when AUTH_MODE=jwt, do not trust X-User-ID (spoofable) for logging context.
-        mode = (getattr(settings, "AUTH_MODE", "jwt") or "jwt").lower()
+        mode = (settings.AUTH_MODE or "jwt").lower()
         user_id = ""
         if mode == "header":
             user_id = (request.headers.get("X-User-ID") or "").strip()

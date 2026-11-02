@@ -27,10 +27,10 @@ def check_chat_assistant_token_quota(
     - best-effort: failures disable enforcement
     - cheap enough for production (single aggregate query)
     """
-    enabled = bool(getattr(settings, "CHAT_ASSISTANT_TOKEN_QUOTA_ENABLED", False))
-    limit = int(getattr(settings, "CHAT_ASSISTANT_TOKEN_QUOTA_LIMIT", 0) or 0)
-    window_hours = int(getattr(settings, "CHAT_ASSISTANT_TOKEN_QUOTA_WINDOW_HOURS", 24) or 24)
-    mode = str(getattr(settings, "CHAT_ASSISTANT_TOKEN_QUOTA_MODE", "block") or "block").lower()
+    enabled = bool(settings.CHAT_ASSISTANT_TOKEN_QUOTA_ENABLED)
+    limit = int(settings.CHAT_ASSISTANT_TOKEN_QUOTA_LIMIT or 0)
+    window_hours = int(settings.CHAT_ASSISTANT_TOKEN_QUOTA_WINDOW_HOURS or 24)
+    mode = str(settings.CHAT_ASSISTANT_TOKEN_QUOTA_MODE or "block").lower()
 
     if not enabled or limit <= 0:
         return {"enabled": False, "limit": 0, "used": 0, "window_hours": window_hours, "exceeded": False, "mode": mode}

@@ -45,7 +45,7 @@ def create_access_token(
 
     Returns (token, expires_in_seconds).
     """
-    minutes = int(expires_minutes or getattr(settings, "ACCESS_TOKEN_EXPIRE_MINUTES", 30))
+    minutes = int(expires_minutes or settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     expires_delta = timedelta(minutes=max(1, minutes))
     now = datetime.now(UTC)
     expire_at = now + expires_delta
@@ -55,8 +55,8 @@ def create_access_token(
         "iat": now,
     }
     _merge_extra_claims(payload, extra_claims)
-    _set_string_claim(payload, "iss", getattr(settings, "JWT_ISSUER", ""))
-    _set_string_claim(payload, "aud", getattr(settings, "JWT_AUDIENCE", ""))
-    _set_string_claim(payload, getattr(settings, "JWT_TENANT_CLAIM", ""), tenant_id)
+    _set_string_claim(payload, "iss", settings.JWT_ISSUER)
+    _set_string_claim(payload, "aud", settings.JWT_AUDIENCE)
+    _set_string_claim(payload, settings.JWT_TENANT_CLAIM, tenant_id)
     token = jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return token, int(expires_delta.total_seconds())

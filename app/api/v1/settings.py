@@ -227,7 +227,7 @@ def _ensure_settings_readable(db: Session, tenant_id: UUID, account_id: str) -> 
 
 def _ensure_settings_writable(db: Session, tenant_id: UUID, account_id: str) -> None:
     try:
-        system_tenant_id = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
+        system_tenant_id = UUID(str(settings.DEFAULT_TENANT_ID or ""))
     except ValueError as exc:
         raise HTTPException(status_code=500, detail="DEFAULT_TENANT_ID is invalid") from exc
     if tenant_id != system_tenant_id:
@@ -755,7 +755,7 @@ def _apply_storage_runtime_settings(env_vars: dict[str, str], updated_keys: set[
             ("MINIO_DOCUMENTS_ENABLED", _parse_bool),
             (
                 "MINIO_IMAGE_MAX_BYTES",
-                lambda value: _parse_int(value, default=int(getattr(settings, "MINIO_IMAGE_MAX_BYTES", 0) or 0)),
+                lambda value: _parse_int(value, default=int(settings.MINIO_IMAGE_MAX_BYTES or 0)),
             ),
             ("MINIO_METRICS_LOG_PATH", str),
             ("OBJECT_STORAGE_PROVIDER", normalize_object_storage_provider_name),
@@ -795,7 +795,7 @@ def _apply_rag_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]
         (
             ("CHUNK_SIZE", lambda value: _parse_int(value, default=settings.CHUNK_SIZE)),
             ("CHUNK_OVERLAP", lambda value: _parse_int(value, default=settings.CHUNK_OVERLAP)),
-            ("CHUNK_MIN_CHARS", lambda value: _parse_int(value, default=getattr(settings, "CHUNK_MIN_CHARS", 0))),
+            ("CHUNK_MIN_CHARS", lambda value: _parse_int(value, default=settings.CHUNK_MIN_CHARS)),
             ("RETRIEVAL_TOP_K", lambda value: _parse_int(value, default=settings.RETRIEVAL_TOP_K)),
             ("SIMILARITY_THRESHOLD", lambda value: _parse_float(value, default=settings.SIMILARITY_THRESHOLD)),
             ("DEFAULT_PARSER_BACKEND", str),
@@ -806,13 +806,13 @@ def _apply_rag_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]
             ("SHOW_IMAGE_IN_ANSWER", _parse_bool),
             (
                 "IMAGE_APPEND_MAX",
-                lambda value: _parse_int(value, default=int(getattr(settings, "IMAGE_APPEND_MAX", 3) or 3)),
+                lambda value: _parse_int(value, default=int(settings.IMAGE_APPEND_MAX or 3)),
             ),
         ),
     )
 
     if "BM25_INDEX_ENABLED" in updated_keys and "BM25_INDEX_ENABLED" in env_vars:
-        old_bm25 = bool(getattr(settings, "BM25_INDEX_ENABLED", True))
+        old_bm25 = bool(settings.BM25_INDEX_ENABLED)
         new_bm25 = _parse_bool(env_vars["BM25_INDEX_ENABLED"])
         settings.BM25_INDEX_ENABLED = new_bm25
         if old_bm25 and not new_bm25:
@@ -831,15 +831,13 @@ def _apply_cache_runtime_settings(env_vars: dict[str, str], updated_keys: set[st
             ("CHAT_RESPONSE_CACHE_ENABLED", _parse_bool),
             (
                 "CHAT_RESPONSE_CACHE_TTL_SEC",
-                lambda value: _parse_int(
-                    value, default=int(getattr(settings, "CHAT_RESPONSE_CACHE_TTL_SEC", 300) or 300)
-                ),
+                lambda value: _parse_int(value, default=int(settings.CHAT_RESPONSE_CACHE_TTL_SEC or 300)),
             ),
             (
                 "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES",
                 lambda value: _parse_int(
                     value,
-                    default=int(getattr(settings, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 200_000) or 200_000),
+                    default=int(settings.CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES or 200_000),
                 ),
             ),
             ("CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY", _parse_bool),
@@ -855,11 +853,11 @@ def _apply_url_ingest_runtime_settings(env_vars: dict[str, str], updated_keys: s
             ("URL_INGEST_ENABLED", _parse_bool),
             (
                 "URL_INGEST_MAX_BYTES",
-                lambda value: _parse_int(value, default=getattr(settings, "URL_INGEST_MAX_BYTES", 0)),
+                lambda value: _parse_int(value, default=settings.URL_INGEST_MAX_BYTES),
             ),
             (
                 "URL_INGEST_TIMEOUT_SEC",
-                lambda value: _parse_float(value, default=getattr(settings, "URL_INGEST_TIMEOUT_SEC", 30.0)),
+                lambda value: _parse_float(value, default=settings.URL_INGEST_TIMEOUT_SEC),
             ),
             ("URL_INGEST_ALLOW_PRIVATE_IPS", _parse_bool),
             ("URL_INGEST_FOLLOW_REDIRECTS", _parse_bool),
@@ -964,15 +962,11 @@ def _apply_magicpdf_runtime_settings(env_vars: dict[str, str], updated_keys: set
             ("MAGIC_PDF_API_URL", str),
             (
                 "MAGIC_PDF_REQUEST_TIMEOUT_SEC",
-                lambda value: _parse_int(
-                    value, default=int(getattr(settings, "MAGIC_PDF_REQUEST_TIMEOUT_SEC", 600) or 600)
-                ),
+                lambda value: _parse_int(value, default=int(settings.MAGIC_PDF_REQUEST_TIMEOUT_SEC or 600)),
             ),
             (
                 "MAGIC_PDF_MAX_CONCURRENT_JOBS",
-                lambda value: _parse_int(
-                    value, default=int(getattr(settings, "MAGIC_PDF_MAX_CONCURRENT_JOBS", 1) or 1)
-                ),
+                lambda value: _parse_int(value, default=int(settings.MAGIC_PDF_MAX_CONCURRENT_JOBS or 1)),
             ),
             ("MAGIC_PDF_CLI", str),
             ("MAGIC_PDF_METHOD", str),
@@ -1028,7 +1022,7 @@ def _apply_chat_runtime_settings(env_vars: dict[str, str], updated_keys: set[str
         (
             (
                 "CHAT_STREAM_HEARTBEAT_SEC",
-                lambda value: _parse_float(value, default=getattr(settings, "CHAT_STREAM_HEARTBEAT_SEC", 10.0)),
+                lambda value: _parse_float(value, default=settings.CHAT_STREAM_HEARTBEAT_SEC),
             ),
             ("CHAT_STREAM_CANCEL_ON_DISCONNECT", _parse_bool),
         ),
@@ -1055,9 +1049,7 @@ def _apply_dify_runtime_settings(env_vars: dict[str, str], updated_keys: set[str
             ("DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", str),
             (
                 "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX",
-                lambda value: _parse_int(
-                    value, default=int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 5) or 5)
-                ),
+                lambda value: _parse_int(value, default=int(settings.DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX or 5)),
             ),
         ),
     )
@@ -1182,23 +1174,23 @@ def get_settings(
         feature_flags=FeatureFlags(
             kg_enabled=settings.KG_ENABLED,
             deepdoc_enabled=settings.DEEPDOC_ENABLED,
-            docling_enabled=bool(getattr(settings, "DOCLING_ENABLED", False)),
-            etl4llm_enabled=bool(getattr(settings, "ETL4LLM_ENABLED", False)),
-            marker_enabled=bool(getattr(settings, "MARKER_ENABLED", False)),
-            paddle_vl_enabled=bool(getattr(settings, "PADDLE_VL_ENABLED", False)),
-            textin_enabled=bool(getattr(settings, "TEXTIN_ENABLED", False)),
+            docling_enabled=bool(settings.DOCLING_ENABLED),
+            etl4llm_enabled=bool(settings.ETL4LLM_ENABLED),
+            marker_enabled=bool(settings.MARKER_ENABLED),
+            paddle_vl_enabled=bool(settings.PADDLE_VL_ENABLED),
+            textin_enabled=bool(settings.TEXTIN_ENABLED),
             markitdown_enabled=settings.MARKITDOWN_ENABLED,
             llama_index_enabled=settings.LLAMA_INDEX_ENABLED,
             mineru_enabled=settings.MINERU_ENABLED,
-            magicpdf_enabled=bool(getattr(settings, "MAGIC_PDF_ENABLED", False)),
+            magicpdf_enabled=bool(settings.MAGIC_PDF_ENABLED),
         ),
         kg=KGConfig(
             chat_enabled=settings.KG_CHAT_ENABLED,
-            extract_prompt_template_id=getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_ID", "") or "",
-            extract_prompt_template_key=getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", "") or "",
-            extract_prompt_ab_experiment_key=getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or "",
-            extract_replace_existing=bool(getattr(settings, "KG_EXTRACT_REPLACE_EXISTING", True)),
-            extract_prune_orphan_entities=bool(getattr(settings, "KG_EXTRACT_PRUNE_ORPHAN_ENTITIES", True)),
+            extract_prompt_template_id=settings.KG_EXTRACT_PROMPT_TEMPLATE_ID or "",
+            extract_prompt_template_key=settings.KG_EXTRACT_PROMPT_TEMPLATE_KEY or "",
+            extract_prompt_ab_experiment_key=settings.KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY or "",
+            extract_replace_existing=bool(settings.KG_EXTRACT_REPLACE_EXISTING),
+            extract_prune_orphan_entities=bool(settings.KG_EXTRACT_PRUNE_ORPHAN_ENTITIES),
         ),
         llm=LLMConfig(
             api_key=mask_secret(settings.LLM_API_KEY),
@@ -1222,116 +1214,110 @@ def get_settings(
             collection_name=settings.MILVUS_COLLECTION_NAME,
         ),
         minio=MinioConfig(
-            enabled=bool(getattr(settings, "MINIO_ENABLED", False)),
-            endpoint=str(getattr(settings, "MINIO_ENDPOINT", "localhost:9000") or ""),
-            access_key=mask_secret(str(getattr(settings, "MINIO_ACCESS_KEY", "") or "")),
-            secret_key=mask_secret(str(getattr(settings, "MINIO_SECRET_KEY", "") or "")),
-            bucket_name=str(getattr(settings, "MINIO_BUCKET_NAME", "mimirq") or "mimirq"),
-            use_ssl=bool(getattr(settings, "MINIO_USE_SSL", False)),
-            documents_enabled=bool(getattr(settings, "MINIO_DOCUMENTS_ENABLED", False)),
-            image_max_bytes=int(getattr(settings, "MINIO_IMAGE_MAX_BYTES", 0) or 0),
+            enabled=bool(settings.MINIO_ENABLED),
+            endpoint=str(settings.MINIO_ENDPOINT or ""),
+            access_key=mask_secret(str(settings.MINIO_ACCESS_KEY or "")),
+            secret_key=mask_secret(str(settings.MINIO_SECRET_KEY or "")),
+            bucket_name=str(settings.MINIO_BUCKET_NAME or "mimirq"),
+            use_ssl=bool(settings.MINIO_USE_SSL),
+            documents_enabled=bool(settings.MINIO_DOCUMENTS_ENABLED),
+            image_max_bytes=int(settings.MINIO_IMAGE_MAX_BYTES or 0),
         ),
         rag=RAGConfig(
             chunk_size=settings.CHUNK_SIZE,
             chunk_overlap=settings.CHUNK_OVERLAP,
-            chunk_min_chars=int(getattr(settings, "CHUNK_MIN_CHARS", 0) or 0),
+            chunk_min_chars=int(settings.CHUNK_MIN_CHARS or 0),
             retrieval_top_k=settings.RETRIEVAL_TOP_K,
             similarity_threshold=settings.SIMILARITY_THRESHOLD,
             default_parser_backend=settings.DEFAULT_PARSER_BACKEND,
             default_chunk_strategy=settings.DEFAULT_CHUNK_STRATEGY,
-            bm25_index_enabled=bool(getattr(settings, "BM25_INDEX_ENABLED", True)),
-            enable_reranker=bool(getattr(settings, "ENABLE_RERANKER", False)),
-            reranker_provider=str(getattr(settings, "RERANKER_PROVIDER", "llm") or "llm"),
-            reranker_top_n=int(getattr(settings, "RERANKER_TOP_N", 20) or 20),
-            show_image_in_answer=bool(getattr(settings, "SHOW_IMAGE_IN_ANSWER", True)),
-            image_append_max=int(getattr(settings, "IMAGE_APPEND_MAX", 3) or 0),
+            bm25_index_enabled=bool(settings.BM25_INDEX_ENABLED),
+            enable_reranker=bool(settings.ENABLE_RERANKER),
+            reranker_provider=str(settings.RERANKER_PROVIDER or "llm"),
+            reranker_top_n=int(settings.RERANKER_TOP_N or 20),
+            show_image_in_answer=bool(settings.SHOW_IMAGE_IN_ANSWER),
+            image_append_max=int(settings.IMAGE_APPEND_MAX or 0),
         ),
         cache=CacheConfig(
-            upload_dedup_enabled=bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)),
-            chat_response_cache_enabled=bool(getattr(settings, "CHAT_RESPONSE_CACHE_ENABLED", False)),
-            chat_response_cache_ttl_sec=int(getattr(settings, "CHAT_RESPONSE_CACHE_TTL_SEC", 300) or 0),
-            chat_response_cache_max_value_bytes=int(
-                getattr(settings, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 200_000) or 0
-            ),
-            chat_response_cache_require_empty_history=bool(
-                getattr(settings, "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY", True)
-            ),
+            upload_dedup_enabled=bool(settings.UPLOAD_DEDUP_ENABLED),
+            chat_response_cache_enabled=bool(settings.CHAT_RESPONSE_CACHE_ENABLED),
+            chat_response_cache_ttl_sec=int(settings.CHAT_RESPONSE_CACHE_TTL_SEC or 0),
+            chat_response_cache_max_value_bytes=int(settings.CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES or 0),
+            chat_response_cache_require_empty_history=bool(settings.CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY),
         ),
         url_ingest=UrlIngestConfig(
-            enabled=bool(getattr(settings, "URL_INGEST_ENABLED", False)),
-            max_bytes=int(getattr(settings, "URL_INGEST_MAX_BYTES", 0) or 0),
-            timeout_sec=float(getattr(settings, "URL_INGEST_TIMEOUT_SEC", 0.0) or 0.0),
-            allow_private_ips=bool(getattr(settings, "URL_INGEST_ALLOW_PRIVATE_IPS", False)),
-            follow_redirects=bool(getattr(settings, "URL_INGEST_FOLLOW_REDIRECTS", False)),
+            enabled=bool(settings.URL_INGEST_ENABLED),
+            max_bytes=int(settings.URL_INGEST_MAX_BYTES or 0),
+            timeout_sec=float(settings.URL_INGEST_TIMEOUT_SEC or 0.0),
+            allow_private_ips=bool(settings.URL_INGEST_ALLOW_PRIVATE_IPS),
+            follow_redirects=bool(settings.URL_INGEST_FOLLOW_REDIRECTS),
         ),
         governance=GovernanceConfig(
-            enabled=bool(getattr(settings, "GOVERNANCE_ENABLED", False)),
-            pii_anonymize=bool(getattr(settings, "GOVERNANCE_PII_ANONYMIZE", False)),
-            secrets_redact=bool(getattr(settings, "GOVERNANCE_SECRETS_REDACT", False)),
-            quarantine_on_drop=bool(getattr(settings, "GOVERNANCE_QUARANTINE_ON_DROP", False)),
+            enabled=bool(settings.GOVERNANCE_ENABLED),
+            pii_anonymize=bool(settings.GOVERNANCE_PII_ANONYMIZE),
+            secrets_redact=bool(settings.GOVERNANCE_SECRETS_REDACT),
+            quarantine_on_drop=bool(settings.GOVERNANCE_QUARANTINE_ON_DROP),
         ),
         mineru=MinerUConfig(
             api_token=mask_secret(settings.MINERU_API_TOKEN),
             api_base=settings.MINERU_API_BASE,
             model_version=settings.MINERU_MODEL_VERSION,
-            backend=_normalize_mineru_backend(getattr(settings, "MINERU_BACKEND", "pipeline")),
-            local_server_url=str(getattr(settings, "MINERU_LOCAL_SERVER_URL", "") or ""),
-            vl_server=str(getattr(settings, "MINERU_VL_SERVER", "") or ""),
+            backend=_normalize_mineru_backend(settings.MINERU_BACKEND),
+            local_server_url=str(settings.MINERU_LOCAL_SERVER_URL or ""),
+            vl_server=str(settings.MINERU_VL_SERVER or ""),
         ),
         etl4llm=Etl4LlmConfig(
-            api_url=getattr(settings, "ETL4LLM_API_URL", "") or "",
-            timeout_sec=int(getattr(settings, "ETL4LLM_TIMEOUT_SEC", 120) or 120),
-            mode=str(getattr(settings, "ETL4LLM_MODE", "partition") or "partition"),
-            force_ocr=bool(getattr(settings, "ETL4LLM_FORCE_OCR", False)),
-            enable_formula=bool(getattr(settings, "ETL4LLM_ENABLE_FORMULA", True)),
-            extract_images=bool(getattr(settings, "ETL4LLM_EXTRACT_IMAGES", True)),
-            filter_page_header_footer=bool(getattr(settings, "ETL4LLM_FILTER_PAGE_HEADER_FOOTER", False)),
+            api_url=settings.ETL4LLM_API_URL or "",
+            timeout_sec=int(settings.ETL4LLM_TIMEOUT_SEC or 120),
+            mode=str(settings.ETL4LLM_MODE or "partition"),
+            force_ocr=bool(settings.ETL4LLM_FORCE_OCR),
+            enable_formula=bool(settings.ETL4LLM_ENABLE_FORMULA),
+            extract_images=bool(settings.ETL4LLM_EXTRACT_IMAGES),
+            filter_page_header_footer=bool(settings.ETL4LLM_FILTER_PAGE_HEADER_FOOTER),
         ),
         marker=MarkerConfig(
-            api_url=str(getattr(settings, "MARKER_API_URL", "") or ""),
-            timeout_sec=int(getattr(settings, "MARKER_TIMEOUT_SEC", 600) or 600),
+            api_url=str(settings.MARKER_API_URL or ""),
+            timeout_sec=int(settings.MARKER_TIMEOUT_SEC or 600),
         ),
         docling=DoclingConfig(
-            api_url=str(getattr(settings, "DOCLING_API_URL", "") or ""),
-            api_key=mask_secret(str(getattr(settings, "DOCLING_API_KEY", "") or "")),
-            request_timeout_sec=int(getattr(settings, "DOCLING_REQUEST_TIMEOUT_SEC", 600) or 600),
-            health_timeout_sec=int(getattr(settings, "DOCLING_HEALTH_TIMEOUT_SEC", 5) or 5),
-            http_trust_env=bool(getattr(settings, "DOCLING_HTTP_TRUST_ENV", False)),
-            ocr_enabled=bool(getattr(settings, "DOCLING_OCR_ENABLED", True)),
+            api_url=str(settings.DOCLING_API_URL or ""),
+            api_key=mask_secret(str(settings.DOCLING_API_KEY or "")),
+            request_timeout_sec=int(settings.DOCLING_REQUEST_TIMEOUT_SEC or 600),
+            health_timeout_sec=int(settings.DOCLING_HEALTH_TIMEOUT_SEC or 5),
+            http_trust_env=bool(settings.DOCLING_HTTP_TRUST_ENV),
+            ocr_enabled=bool(settings.DOCLING_OCR_ENABLED),
         ),
         paddle_vl=PaddleVLConfig(
-            api_url=str(getattr(settings, "PADDLE_VL_API_URL", "") or ""),
-            timeout_sec=int(getattr(settings, "PADDLE_VL_TIMEOUT_SEC", 600) or 600),
-            pipeline_version=str(getattr(settings, "PADDLE_VL_PIPELINE_VERSION", "v1.5") or "v1.5"),
-            mode=str(getattr(settings, "PADDLE_VL_MODE", "doc_parser") or "doc_parser"),
+            api_url=str(settings.PADDLE_VL_API_URL or ""),
+            timeout_sec=int(settings.PADDLE_VL_TIMEOUT_SEC or 600),
+            pipeline_version=str(settings.PADDLE_VL_PIPELINE_VERSION or "v1.5"),
+            mode=str(settings.PADDLE_VL_MODE or "doc_parser"),
         ),
         textin=TextInConfig(
-            api_url=str(
-                getattr(settings, "TEXTIN_API_URL", "") or "https://api.textin.com/ai/service/v1/pdf_to_markdown"
-            ),
-            app_id=str(getattr(settings, "TEXTIN_APP_ID", "") or ""),
-            secret_code=mask_secret(str(getattr(settings, "TEXTIN_SECRET_CODE", "") or "")),
-            timeout_sec=int(getattr(settings, "TEXTIN_TIMEOUT_SEC", 180) or 180),
-            parse_mode=str(getattr(settings, "TEXTIN_PARSE_MODE", "auto") or "auto"),
-            table_flavor=str(getattr(settings, "TEXTIN_TABLE_FLAVOR", "html") or "html"),
-            apply_document_tree=bool(getattr(settings, "TEXTIN_APPLY_DOCUMENT_TREE", True)),
-            markdown_details=bool(getattr(settings, "TEXTIN_MARKDOWN_DETAILS", True)),
-            get_image=str(getattr(settings, "TEXTIN_GET_IMAGE", "none") or "none"),
-            dpi=int(getattr(settings, "TEXTIN_DPI", 144) or 144),
-            page_count=int(getattr(settings, "TEXTIN_PAGE_COUNT", 0) or 0),
+            api_url=str(settings.TEXTIN_API_URL or "https://api.textin.com/ai/service/v1/pdf_to_markdown"),
+            app_id=str(settings.TEXTIN_APP_ID or ""),
+            secret_code=mask_secret(str(settings.TEXTIN_SECRET_CODE or "")),
+            timeout_sec=int(settings.TEXTIN_TIMEOUT_SEC or 180),
+            parse_mode=str(settings.TEXTIN_PARSE_MODE or "auto"),
+            table_flavor=str(settings.TEXTIN_TABLE_FLAVOR or "html"),
+            apply_document_tree=bool(settings.TEXTIN_APPLY_DOCUMENT_TREE),
+            markdown_details=bool(settings.TEXTIN_MARKDOWN_DETAILS),
+            get_image=str(settings.TEXTIN_GET_IMAGE or "none"),
+            dpi=int(settings.TEXTIN_DPI or 144),
+            page_count=int(settings.TEXTIN_PAGE_COUNT or 0),
         ),
         magicpdf=MagicPDFConfig(
-            api_url=str(getattr(settings, "MAGIC_PDF_API_URL", "") or ""),
-            request_timeout_sec=int(getattr(settings, "MAGIC_PDF_REQUEST_TIMEOUT_SEC", 600) or 600),
-            max_concurrent_jobs=int(getattr(settings, "MAGIC_PDF_MAX_CONCURRENT_JOBS", 1) or 1),
-            cli=getattr(settings, "MAGIC_PDF_CLI", "magic-pdf") or "magic-pdf",
-            method=getattr(settings, "MAGIC_PDF_METHOD", "auto") or "auto",
-            lang=getattr(settings, "MAGIC_PDF_LANG", "") or "",
-            debug=bool(getattr(settings, "MAGIC_PDF_DEBUG", False)),
-            timeout_sec=int(getattr(settings, "MAGIC_PDF_TIMEOUT_SEC", 600) or 600),
-            models_dir=getattr(settings, "MAGIC_PDF_MODELS_DIR", "") or "",
-            device_mode=getattr(settings, "MAGIC_PDF_DEVICE_MODE", "cpu") or "cpu",
-            keep_artifacts=bool(getattr(settings, "MAGIC_PDF_KEEP_ARTIFACTS", False)),
+            api_url=str(settings.MAGIC_PDF_API_URL or ""),
+            request_timeout_sec=int(settings.MAGIC_PDF_REQUEST_TIMEOUT_SEC or 600),
+            max_concurrent_jobs=int(settings.MAGIC_PDF_MAX_CONCURRENT_JOBS or 1),
+            cli=settings.MAGIC_PDF_CLI or "magic-pdf",
+            method=settings.MAGIC_PDF_METHOD or "auto",
+            lang=settings.MAGIC_PDF_LANG or "",
+            debug=bool(settings.MAGIC_PDF_DEBUG),
+            timeout_sec=int(settings.MAGIC_PDF_TIMEOUT_SEC or 600),
+            models_dir=settings.MAGIC_PDF_MODELS_DIR or "",
+            device_mode=settings.MAGIC_PDF_DEVICE_MODE or "cpu",
+            keep_artifacts=bool(settings.MAGIC_PDF_KEEP_ARTIFACTS),
         ),
         observability=ObservabilityConfig(
             tool_call_log_enabled=settings.TOOL_CALL_LOG_ENABLED,
@@ -1340,8 +1326,8 @@ def get_settings(
             agent_log_enabled=settings.AGENT_LOG_ENABLED,
             agent_log_include_execution_path=settings.AGENT_LOG_INCLUDE_EXECUTION_PATH,
             agent_log_max_preview_chars=settings.AGENT_LOG_MAX_PREVIEW_CHARS,
-            metrics_log_enabled=bool(getattr(settings, "ENABLE_METRICS_LOG", False)),
-            metrics_log_include_text=bool(getattr(settings, "METRICS_LOG_INCLUDE_TEXT", False)),
+            metrics_log_enabled=bool(settings.ENABLE_METRICS_LOG),
+            metrics_log_include_text=bool(settings.METRICS_LOG_INCLUDE_TEXT),
         ),
         safety=SafetyConfig(
             pii_redaction_enabled=settings.PII_REDACTION_ENABLED,
@@ -1349,24 +1335,22 @@ def get_settings(
             pii_stream_holdback_chars=settings.PII_STREAM_HOLDBACK_CHARS,
         ),
         chat=ChatConfig(
-            stream_heartbeat_sec=float(getattr(settings, "CHAT_STREAM_HEARTBEAT_SEC", 10.0) or 10.0),
-            stream_cancel_on_disconnect=bool(getattr(settings, "CHAT_STREAM_CANCEL_ON_DISCONNECT", True)),
+            stream_heartbeat_sec=float(settings.CHAT_STREAM_HEARTBEAT_SEC or 10.0),
+            stream_cancel_on_disconnect=bool(settings.CHAT_STREAM_CANCEL_ON_DISCONNECT),
         ),
         langgraph=LangGraphConfig(
             use_subgraphs=settings.LANGGRAPH_USE_SUBGRAPHS,
         ),
         navigation=NavigationConfig(
-            user_visible_modules=normalize_navigation_modules(
-                getattr(settings, "NAVIGATION_USER_VISIBLE_MODULES", "") or ""
-            ),
+            user_visible_modules=normalize_navigation_modules(settings.NAVIGATION_USER_VISIBLE_MODULES or ""),
         ),
         dify_external_knowledge=DifyExternalKnowledgeConfig(
-            enabled=bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", False)),
-            api_keys=mask_secret(str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", "") or "")),
-            tenant_id=str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", "") or ""),
-            account_id=str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "") or _SYSTEM_DIFY_ACCOUNT_ID),
-            knowledge_map_json=str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", "") or ""),
-            top_k_max=int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 5) or 5),
+            enabled=bool(settings.DIFY_EXTERNAL_KNOWLEDGE_ENABLED),
+            api_keys=mask_secret(str(settings.DIFY_EXTERNAL_KNOWLEDGE_API_KEYS or "")),
+            tenant_id=str(settings.DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID or ""),
+            account_id=str(settings.DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID or _SYSTEM_DIFY_ACCOUNT_ID),
+            knowledge_map_json=str(settings.DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON or ""),
+            top_k_max=int(settings.DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX or 5),
             endpoint_path="/api/v1/integrations/dify/retrieval",
         ),
     )
@@ -1904,7 +1888,7 @@ def update_settings(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Update system config (write .env file)."""
-    if not bool(getattr(settings, "SETTINGS_ENV_WRITE_ENABLED", True)):
+    if not bool(settings.SETTINGS_ENV_WRITE_ENABLED):
         raise HTTPException(
             status_code=403,
             detail="Settings writes are disabled. Set SETTINGS_ENV_WRITE_ENABLED=true to allow updating .env.",
@@ -2071,10 +2055,10 @@ async def _build_probed_parser_status(
 
 
 def _build_textin_parser_status() -> dict[str, object]:
-    textin_enabled = bool(getattr(settings, "TEXTIN_ENABLED", False))
-    textin_api_url = bool((getattr(settings, "TEXTIN_API_URL", "") or "").strip())
-    textin_app_id = bool((getattr(settings, "TEXTIN_APP_ID", "") or "").strip())
-    textin_secret = bool((getattr(settings, "TEXTIN_SECRET_CODE", "") or "").strip())
+    textin_enabled = bool(settings.TEXTIN_ENABLED)
+    textin_api_url = bool((settings.TEXTIN_API_URL or "").strip())
+    textin_app_id = bool((settings.TEXTIN_APP_ID or "").strip())
+    textin_secret = bool((settings.TEXTIN_SECRET_CODE or "").strip())
     if not textin_enabled:
         message = "disabled"
     elif not textin_api_url:
@@ -2093,9 +2077,9 @@ def _build_textin_parser_status() -> dict[str, object]:
 
 
 def _build_mineru_parser_status() -> dict[str, object]:
-    mineru_enabled = bool(getattr(settings, "MINERU_ENABLED", False))
-    mineru_local = bool((getattr(settings, "MINERU_LOCAL_SERVER_URL", "") or "").strip())
-    mineru_token = (getattr(settings, "MINERU_API_TOKEN", "") or "").strip()
+    mineru_enabled = bool(settings.MINERU_ENABLED)
+    mineru_local = bool((settings.MINERU_LOCAL_SERVER_URL or "").strip())
+    mineru_token = (settings.MINERU_API_TOKEN or "").strip()
     mineru_exp = try_get_jwt_exp(mineru_token) if mineru_token else None
     mineru_token_expired = bool(mineru_exp is not None and int(mineru_exp) <= int(time.time()))
     if not mineru_enabled:
@@ -2120,11 +2104,11 @@ def _build_magicpdf_parser_status(
     resolve_cli_command: Callable[[str], str | None],
     resolve_magicpdf_models_dir: Callable[[str], str | None],
 ) -> dict[str, object]:
-    enabled = bool(getattr(settings, "MAGIC_PDF_ENABLED", False))
-    api_url = (getattr(settings, "MAGIC_PDF_API_URL", "") or "").strip()
-    cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
+    enabled = bool(settings.MAGIC_PDF_ENABLED)
+    api_url = (settings.MAGIC_PDF_API_URL or "").strip()
+    cli = (settings.MAGIC_PDF_CLI or "magic-pdf").strip() or "magic-pdf"
     cli_ok = bool(resolve_cli_command(cli))
-    models_dir = resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
+    models_dir = resolve_magicpdf_models_dir(settings.MAGIC_PDF_MODELS_DIR)
     if not enabled:
         message = "disabled"
         available = False
@@ -2152,53 +2136,53 @@ async def _build_parser_statuses(
     resolve_cli_command: Callable[[str], str | None],
     resolve_magicpdf_models_dir: Callable[[str], str | None],
 ) -> dict[str, dict[str, object]]:
-    pandoc_cli = (getattr(settings, "PANDOC_CLI", "") or "pandoc").strip() or "pandoc"
-    libreoffice_cli = (getattr(settings, "LIBREOFFICE_CLI", "") or "soffice").strip() or "soffice"
+    pandoc_cli = (settings.PANDOC_CLI or "pandoc").strip() or "pandoc"
+    libreoffice_cli = (settings.LIBREOFFICE_CLI or "soffice").strip() or "soffice"
     parsers: dict[str, dict[str, object]] = {
         "basic": {"enabled": True, "available": True, "message": "built-in"},
         "markitdown": _build_import_parser_status(
             "markitdown",
-            enabled=bool(getattr(settings, "MARKITDOWN_ENABLED", False)),
+            enabled=bool(settings.MARKITDOWN_ENABLED),
             available_message="installed",
         ),
         "pandoc": _build_cli_parser_status(
-            bool(getattr(settings, "PANDOC_ENABLED", False)),
+            bool(settings.PANDOC_ENABLED),
             resolve_cli_command(pandoc_cli) or "",
         ),
         "libreoffice": _build_cli_parser_status(
-            bool(getattr(settings, "LIBREOFFICE_ENABLED", False)),
+            bool(settings.LIBREOFFICE_ENABLED),
             resolve_cli_command(libreoffice_cli) or "",
         ),
         "deepdoc": _build_import_parser_status(
             "app.deepdoc.parser",
-            enabled=bool(getattr(settings, "DEEPDOC_ENABLED", False)),
+            enabled=bool(settings.DEEPDOC_ENABLED),
             available_message="available",
         ),
         "deepseek_ocr": _build_configured_parser_status(
-            bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False)),
-            bool((getattr(settings, "SILICONFLOW_API_KEY", "") or "").strip()),
+            bool(settings.DEEPSEEK_OCR_ENABLED),
+            bool((settings.SILICONFLOW_API_KEY or "").strip()),
             "missing api_key",
         ),
         "etl4llm": _build_configured_parser_status(
-            bool(getattr(settings, "ETL4LLM_ENABLED", False)),
-            bool((getattr(settings, "ETL4LLM_API_URL", "") or "").strip()),
+            bool(settings.ETL4LLM_ENABLED),
+            bool((settings.ETL4LLM_API_URL or "").strip()),
             _MISSING_API_URL_MESSAGE,
         ),
         "marker": _build_configured_parser_status(
-            bool(getattr(settings, "MARKER_ENABLED", False)),
-            bool((getattr(settings, "MARKER_API_URL", "") or "").strip()),
+            bool(settings.MARKER_ENABLED),
+            bool((settings.MARKER_API_URL or "").strip()),
             _MISSING_API_URL_MESSAGE,
         ),
         "textin": _build_textin_parser_status(),
         "docling": await _build_probed_parser_status(
-            enabled=bool(getattr(settings, "DOCLING_ENABLED", False)),
-            api_url=(getattr(settings, "DOCLING_API_URL", "") or "").strip(),
+            enabled=bool(settings.DOCLING_ENABLED),
+            api_url=(settings.DOCLING_API_URL or "").strip(),
             headers=(
-                {"X-Api-Key": str(getattr(settings, "DOCLING_API_KEY", "") or "").strip()}
-                if str(getattr(settings, "DOCLING_API_KEY", "") or "").strip()
+                {"X-Api-Key": str(settings.DOCLING_API_KEY or "").strip()}
+                if str(settings.DOCLING_API_KEY or "").strip()
                 else None
             ),
-            trust_env=bool(getattr(settings, "DOCLING_HTTP_TRUST_ENV", False)),
+            trust_env=bool(settings.DOCLING_HTTP_TRUST_ENV),
         ),
         "mineru": _build_mineru_parser_status(),
         "magicpdf": _build_magicpdf_parser_status(
@@ -2207,21 +2191,21 @@ async def _build_parser_statuses(
         ),
     }
     parsers["qianfan_ocr"] = await _build_probed_parser_status(
-        enabled=bool(getattr(settings, "QIANFAN_OCR_ENABLED", False)),
-        api_url=(getattr(settings, "QIANFAN_OCR_API_URL", "") or "").strip(),
+        enabled=bool(settings.QIANFAN_OCR_ENABLED),
+        api_url=(settings.QIANFAN_OCR_API_URL or "").strip(),
         success_message_builder=lambda data: _configured_parts_message(data.get("model"), data.get("mode")),
     )
     parsers["paddle_vl"] = await _build_probed_parser_status(
-        enabled=bool(getattr(settings, "PADDLE_VL_ENABLED", False)),
-        api_url=(getattr(settings, "PADDLE_VL_API_URL", "") or "").strip(),
+        enabled=bool(settings.PADDLE_VL_ENABLED),
+        api_url=(settings.PADDLE_VL_API_URL or "").strip(),
         success_message_builder=lambda data: _configured_parts_message(
             data.get("pipeline_version") or data.get("version"),
             data.get("mode"),
         ),
     )
     parsers["olmocr"] = await _build_probed_parser_status(
-        enabled=bool(getattr(settings, "OLMOCR_ENABLED", False)),
-        api_url=(getattr(settings, "OLMOCR_API_URL", "") or "").strip(),
+        enabled=bool(settings.OLMOCR_ENABLED),
+        api_url=(settings.OLMOCR_API_URL or "").strip(),
     )
     return parsers
 

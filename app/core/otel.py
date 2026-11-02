@@ -26,7 +26,7 @@ def init_otel() -> bool:
     if _initialized:
         return True
 
-    if not bool(getattr(settings, "OTEL_ENABLED", False)):
+    if not bool(settings.OTEL_ENABLED):
         return False
 
     from opentelemetry import trace
@@ -35,10 +35,10 @@ def init_otel() -> bool:
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-    service_name = str(getattr(settings, "OTEL_SERVICE_NAME", "mimirq") or "mimirq").strip() or "mimirq"
-    endpoint = str(getattr(settings, "OTEL_EXPORTER_OTLP_ENDPOINT", "") or "").strip()
-    headers = str(getattr(settings, "OTEL_EXPORTER_OTLP_HEADERS", "") or "").strip()
-    timeout_sec = float(getattr(settings, "OTEL_EXPORTER_OTLP_TIMEOUT_SEC", 10) or 10)
+    service_name = str(settings.OTEL_SERVICE_NAME or "mimirq").strip() or "mimirq"
+    endpoint = str(settings.OTEL_EXPORTER_OTLP_ENDPOINT or "").strip()
+    headers = str(settings.OTEL_EXPORTER_OTLP_HEADERS or "").strip()
+    timeout_sec = float(settings.OTEL_EXPORTER_OTLP_TIMEOUT_SEC or 10)
 
     exporter_kwargs: dict = {}
     if endpoint:

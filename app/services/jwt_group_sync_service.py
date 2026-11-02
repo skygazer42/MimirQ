@@ -107,7 +107,7 @@ def maybe_sync_jwt_groups(*, tenant_id: UUID, account_id: str, jwt_payload: dict
     """
     Throttled wrapper. Safe to call on every request.
     """
-    if not bool(getattr(settings, "JWT_GROUPS_SYNC_ENABLED", False)):
+    if not bool(settings.JWT_GROUPS_SYNC_ENABLED):
         return
     ttl = float(settings.JWT_GROUPS_SYNC_TTL_SEC)
     if not _should_sync(tenant_id=tenant_id, account_id=account_id, ttl_sec=ttl):
@@ -125,8 +125,8 @@ def sync_jwt_groups_best_effort(*, tenant_id: UUID, account_id: str, jwt_payload
     - tenant_groups (by name)
     - tenant_group_members (by tenant_id + group_id + user_id)
     """
-    claim = str(getattr(settings, "JWT_GROUPS_CLAIM", "") or "groups").strip()
-    max_groups = int(getattr(settings, "JWT_GROUPS_MAX_GROUPS", 200) or 200)
+    claim = str(settings.JWT_GROUPS_CLAIM or "groups").strip()
+    max_groups = int(settings.JWT_GROUPS_MAX_GROUPS or 200)
     max_groups = max(0, min(max_groups, 2000))
 
     group_names = parse_group_names_from_jwt_payload(jwt_payload, claim=claim, max_groups=max_groups)

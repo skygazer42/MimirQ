@@ -252,7 +252,7 @@ def _build_graph_stream_state(
 
 def _build_graph_stream_config(*, conversation_id: Any, request_id: str) -> dict[str, Any]:
     thread_id = str(conversation_id) if conversation_id else f"rag-{request_id}"
-    recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
+    recursion_limit = max(1, int(settings.LANGGRAPH_RECURSION_LIMIT or 25))
     return {"configurable": {"thread_id": thread_id}, "recursion_limit": recursion_limit}
 
 

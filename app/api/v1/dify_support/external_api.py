@@ -1019,10 +1019,10 @@ def _require_dify_actor(
     authorization: Annotated[str | None, Header(alias="Authorization")] = None,
 ) -> _DifyActor:
     api = _api()
-    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", False)):
+    if not bool(settings.DIFY_EXTERNAL_KNOWLEDGE_ENABLED):
         raise HTTPException(status_code=404, detail="Dify external knowledge is disabled")
 
-    expected_tokens = _split_items(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", ""))
+    expected_tokens = _split_items(settings.DIFY_EXTERNAL_KNOWLEDGE_API_KEYS)
     if not expected_tokens:
         raise HTTPException(status_code=503, detail="Dify external knowledge API key is not configured")
 
@@ -1030,7 +1030,7 @@ def _require_dify_actor(
     if not any(_token_matches(provided, expected) for expected in expected_tokens):
         raise HTTPException(status_code=401, detail="Invalid Dify API key")
 
-    raw_tenant = str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", "") or "").strip()
+    raw_tenant = str(settings.DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID or "").strip()
     if not raw_tenant:
         if api.is_production_env():
             raise HTTPException(
@@ -1038,11 +1038,10 @@ def _require_dify_actor(
                 detail="Dify external knowledge tenant is not configured",
             )
         raw_tenant = str(
-            request.headers.get(str(getattr(settings, "TENANT_HEADER", "X-Tenant-ID") or "X-Tenant-ID"))
-            or getattr(settings, "DEFAULT_TENANT_ID", "")
+            request.headers.get(str(settings.TENANT_HEADER or "X-Tenant-ID")) or settings.DEFAULT_TENANT_ID
         ).strip()
     tenant_id = _coerce_uuid(raw_tenant, label="Dify tenant id")
-    account_id = str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "") or "system:dify").strip()
+    account_id = str(settings.DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID or "system:dify").strip()
     if not account_id:
         raise HTTPException(status_code=503, detail="Dify external knowledge account is not configured")
     return _DifyActor(tenant_id=tenant_id, account_id=account_id)

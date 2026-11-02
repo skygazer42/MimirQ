@@ -1359,7 +1359,7 @@ def _load_kg_stats(
     db: Session, request: DatasetReportRequest, pipeline_hash_norm: str | None
 ) -> DatasetKGStatsOut | None:
     try:
-        if not bool(getattr(settings, "KG_ENABLED", False)):
+        if not bool(settings.KG_ENABLED):
             return None
 
         from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
@@ -1528,7 +1528,7 @@ def _load_metadata_summaries(
     try:
         metadatas, truncated = _load_report_metadatas(db, request, pipeline_hash_norm=pipeline_hash_norm)
         try:
-            low_threshold = float(getattr(settings, "RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD", 0.35) or 0.35)
+            low_threshold = float(settings.RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD or 0.35)
         except Exception:
             low_threshold = 0.35
         low_threshold = _clamp_ratio(low_threshold)

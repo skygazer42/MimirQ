@@ -124,8 +124,8 @@ def compute_document_retrieval_hit_frequency(
     max_bytes: int = 5_000_000,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
-    path_str = str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl")
+    enabled = bool(settings.ENABLE_METRICS_LOG)
+    path_str = str(settings.METRICS_LOG_PATH or "./logs/rag_metrics.jsonl")
     path = Path(path_str)
 
     window_minutes_i = max(1, min(int(window_minutes or 0), 60 * 24 * 30))

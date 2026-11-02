@@ -23,7 +23,7 @@ AUTHZ_GROUP_PERMISSION_TOTAL = Counter(
 
 
 def _enabled() -> bool:
-    return bool(getattr(settings, "PROMETHEUS_ENABLED", False))
+    return bool(settings.PROMETHEUS_ENABLED)
 
 
 def _norm(value: str | None, *, allowed: set[str], fallback: str = "unknown") -> str:

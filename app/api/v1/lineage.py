@@ -73,7 +73,7 @@ def _load_chunk_lineage_dependencies(
         "retrieval_modes": {},
         "hits": [],
     }
-    if bool(getattr(settings, "ENABLE_METRICS_LOG", False)):
+    if bool(settings.ENABLE_METRICS_LOG):
         path = Path(
             str(getattr(settings, "METRICS_LOG_PATH", _DEFAULT_RAG_METRICS_LOG_PATH) or _DEFAULT_RAG_METRICS_LOG_PATH)
         )

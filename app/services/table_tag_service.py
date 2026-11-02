@@ -75,16 +75,16 @@ def _iter_named_columns(columns: list[dict[str, Any]]):
 
 
 def _build_llm(*, temperature: float = 0.0) -> ChatOpenAI:
-    model_name = (getattr(settings, "LLM_MODEL_FAST", None) or getattr(settings, "LLM_MODEL", None) or "").strip()
+    model_name = (settings.LLM_MODEL_FAST or settings.LLM_MODEL or "").strip()
     if not model_name:
         model_name = "gpt-5.4-mini"
     return ChatOpenAI(
         model=model_name,
-        api_key=getattr(settings, "LLM_API_KEY", None),
-        base_url=normalize_openai_compatible_base_url(getattr(settings, "LLM_API_BASE", None)),
+        api_key=settings.LLM_API_KEY,
+        base_url=normalize_openai_compatible_base_url(settings.LLM_API_BASE),
         temperature=float(temperature),
-        timeout=float(getattr(settings, "LLM_TIMEOUT", 60) or 60),
-        max_retries=int(getattr(settings, "LLM_MAX_RETRIES", 2) or 2),
+        timeout=float(settings.LLM_TIMEOUT or 60),
+        max_retries=int(settings.LLM_MAX_RETRIES or 2),
         streaming=False,
     )
 
@@ -659,10 +659,10 @@ def _normalize_join_tables(tables: list[dict[str, Any]]) -> list[dict[str, Any]]
 
 
 def _build_join_planning_state(valid_tables: list[dict[str, Any]]) -> _JoinPlanningState:
-    top_n = max(1, int(getattr(settings, "TABLE_TAG_PLAN_CANDIDATES_TOP_N", 3) or 3))
-    ambiguity_gap = float(getattr(settings, "TABLE_TAG_AMBIGUITY_SCORE_GAP", 0.03) or 0.03)
-    strict_ambiguity = bool(getattr(settings, "TABLE_TAG_AMBIGUITY_STRICT_ENABLED", True))
-    max_join_tables = max(2, int(getattr(settings, "TABLE_QUERY_MAX_JOIN_TABLES", 4) or 4))
+    top_n = max(1, int(settings.TABLE_TAG_PLAN_CANDIDATES_TOP_N or 3))
+    ambiguity_gap = float(settings.TABLE_TAG_AMBIGUITY_SCORE_GAP or 0.03)
+    strict_ambiguity = bool(settings.TABLE_TAG_AMBIGUITY_STRICT_ENABLED)
+    max_join_tables = max(2, int(settings.TABLE_QUERY_MAX_JOIN_TABLES or 4))
     plan_candidates = score_join_plan_candidates(
         tables=valid_tables,
         top_n=top_n,
@@ -732,10 +732,10 @@ def _selected_plan_candidates(
 
 def _join_confidence_state(selected_candidate: dict[str, Any]) -> tuple[float, float, bool, bool]:
     selected_score = float(selected_candidate.get("score") or 0.0)
-    low_confidence_threshold = float(getattr(settings, "TABLE_TAG_PLAN_LOW_CONFIDENCE_THRESHOLD", 0.55) or 0.55)
+    low_confidence_threshold = float(settings.TABLE_TAG_PLAN_LOW_CONFIDENCE_THRESHOLD or 0.55)
     low_confidence_threshold = min(1.0, max(0.0, float(low_confidence_threshold)))
     low_confidence = float(selected_score) < float(low_confidence_threshold)
-    low_confidence_strict = bool(getattr(settings, "TABLE_TAG_PLAN_LOW_CONFIDENCE_STRICT_ENABLED", False))
+    low_confidence_strict = bool(settings.TABLE_TAG_PLAN_LOW_CONFIDENCE_STRICT_ENABLED)
     return selected_score, low_confidence_threshold, low_confidence, low_confidence_strict
 
 
@@ -1537,9 +1537,9 @@ def generate_sql_for_table_with_metadata(
     Backward compatibility: callers that only need `(sql, mode)` should keep using
     `generate_sql_for_table_with_mode`.
     """
-    deterministic_only = bool(getattr(settings, "TABLE_NL2SQL_DETERMINISTIC_ONLY", False))
-    deterministic_fallback = bool(getattr(settings, "TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED", True))
-    llm_key = str(getattr(settings, "LLM_API_KEY", "") or "").strip()
+    deterministic_only = bool(settings.TABLE_NL2SQL_DETERMINISTIC_ONLY)
+    deterministic_fallback = bool(settings.TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED)
+    llm_key = str(settings.LLM_API_KEY or "").strip()
 
     schema_link = score_schema_link_diagnostics(
         question=question,
@@ -1679,7 +1679,7 @@ def generate_answer_from_result(
     """
     Draft a user-facing answer grounded in the executed SQL result.
     """
-    if not bool(getattr(settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", False)):
+    if not bool(settings.TABLE_LLM_ALLOW_RESULT_EGRESS):
         raise RuntimeError("TABLE_LLM_ALLOW_RESULT_EGRESS=false")
 
     q = " ".join((question or "").strip().split())
@@ -1715,4 +1715,4 @@ def generate_answer_from_result(
 
 
 def tag_enabled() -> bool:
-    return bool(getattr(settings, "TABLE_NL2SQL_ENABLED", False))
+    return bool(settings.TABLE_NL2SQL_ENABLED)

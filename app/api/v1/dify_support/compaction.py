@@ -43,17 +43,17 @@ def _record_url_evidence_bonus(record: dict[str, Any], *, query: str = "") -> fl
 
 
 def _dify_fast_candidate_top_k(top_k: int) -> int:
-    configured = max(1, int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CANDIDATE_TOP_K_MAX", 3) or 3))
+    configured = max(1, int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_CANDIDATE_TOP_K_MAX or 3))
     return max(1, min(max(1, int(top_k or 1)), configured))
 
 
 def _dify_fast_response_top_k(top_k: int) -> int:
-    configured = max(1, int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_RESPONSE_TOP_K_MAX", 2) or 2))
+    configured = max(1, int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_RESPONSE_TOP_K_MAX or 2))
     return max(1, min(max(1, int(top_k or 1)), configured))
 
 
 def _dify_fast_content_max_chars() -> int:
-    return max(200, min(10000, int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS", 1400) or 1400)))
+    return max(200, min(10000, int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS or 1400)))
 
 
 def _dify_fast_total_content_max_chars() -> int:
@@ -61,7 +61,7 @@ def _dify_fast_total_content_max_chars() -> int:
         200,
         min(
             50000,
-            int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_TOTAL_CONTENT_MAX_CHARS", 2200) or 2200),
+            int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_TOTAL_CONTENT_MAX_CHARS or 2200),
         ),
     )
 

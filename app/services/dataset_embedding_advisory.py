@@ -39,8 +39,8 @@ def _normalized_model_id(*, provider: Any, model: Any) -> str:
 def _configured_language_models() -> dict[str, str]:
     supported = set(get_supported_model_ids())
     configured = {
-        "zh": _clean(getattr(settings, "EMBEDDING_MODEL_ZH", "")),
-        "mixed": _clean(getattr(settings, "EMBEDDING_MODEL_MIXED", "")),
+        "zh": _clean(settings.EMBEDDING_MODEL_ZH),
+        "mixed": _clean(settings.EMBEDDING_MODEL_MIXED),
     }
     return {key: value for key, value in configured.items() if value and value in supported}
 
@@ -85,12 +85,12 @@ def build_embedding_language_advisories(
     raw_defaults = metadata.get("embedding_defaults")
     defaults = dict(raw_defaults) if isinstance(raw_defaults, dict) else {}
     source = "dataset" if defaults else "global"
-    provider = _clean(defaults.get("provider")) or _clean(getattr(settings, "EMBEDDING_PROVIDER", ""))
-    model = _clean(defaults.get("model")) or _clean(getattr(settings, "EMBEDDING_MODEL", ""))
+    provider = _clean(defaults.get("provider")) or _clean(settings.EMBEDDING_PROVIDER)
+    model = _clean(defaults.get("model")) or _clean(settings.EMBEDDING_MODEL)
     model_id = _normalized_model_id(provider=provider, model=model)
 
     configured = _configured_language_models()
-    routing_enabled = bool(getattr(settings, "EMBEDDING_LANGUAGE_ROUTING_ENABLED", False))
+    routing_enabled = bool(settings.EMBEDDING_LANGUAGE_ROUTING_ENABLED)
     routed_for_observed_language = routing_enabled and bool(
         (language_counts["zh"] and configured.get("zh")) or (language_counts["mixed"] and configured.get("mixed"))
     )

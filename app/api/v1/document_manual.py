@@ -65,7 +65,7 @@ def _run_manual_kg_extraction(
     index_options: Any,
 ) -> None:
     prompt_template_id = None
-    raw_template_id = (getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_ID", "") or "").strip()
+    raw_template_id = (settings.KG_EXTRACT_PROMPT_TEMPLATE_ID or "").strip()
     if raw_template_id:
         try:
             prompt_template_id = UUID(raw_template_id)
@@ -83,9 +83,8 @@ def _run_manual_kg_extraction(
                 chunks=db_chunks,
                 index_options=index_options,
                 prompt_template_id=prompt_template_id,
-                prompt_template_key=(getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", "") or "").strip() or None,
-                prompt_ab_experiment_key=(getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or "").strip()
-                or None,
+                prompt_template_key=(settings.KG_EXTRACT_PROMPT_TEMPLATE_KEY or "").strip() or None,
+                prompt_ab_experiment_key=(settings.KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY or "").strip() or None,
                 ab_user_key=account_id,
             )
         )

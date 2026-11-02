@@ -543,7 +543,7 @@ def _is_local_scan_allowed_for_root(*, cfg: dict[str, Any], root: Path) -> bool:
     Internal mode (used by "precheck-first ingest") can allow scans of server-managed staging
     folders under UPLOAD_DIR even when LOCAL_SCAN_ENABLED=false.
     """
-    if bool(getattr(settings, "LOCAL_SCAN_ENABLED", False)):
+    if bool(settings.LOCAL_SCAN_ENABLED):
         return True
 
     # Internal allowlist: must be explicitly set by server code (not exposed in API schema)
@@ -568,7 +568,7 @@ def _assert_scan_root_allowed(root: Path) -> None:
     """
     upload_root = _upload_root_path()
     allowed: list[Path] = [upload_root]
-    for p in _parse_csv(str(getattr(settings, "LOCAL_SCAN_ROOTS", "") or "")):
+    for p in _parse_csv(str(settings.LOCAL_SCAN_ROOTS or "")):
         try:
             allowed.append(Path(p).expanduser().resolve(strict=False))
         except Exception:
@@ -982,7 +982,7 @@ def _mark_run_running(db: Session, run: DBDatasetPrecheckScanRun) -> None:
 
 
 def _build_scan_options(*, cfg: dict[str, Any]) -> _ScanOptions:
-    max_files_cap = safe_int(getattr(settings, "PRECHECK_SCAN_MAX_FILES", 20_000), default=20_000)
+    max_files_cap = safe_int(settings.PRECHECK_SCAN_MAX_FILES, default=20_000)
     requested_max_files = cfg.get("max_files")
     max_files_req = safe_int(requested_max_files, default=0)
     max_files = max_files_cap if max_files_req <= 0 else min(max_files_cap, max_files_req)
@@ -997,7 +997,7 @@ def _build_scan_options(*, cfg: dict[str, Any]) -> _ScanOptions:
             "sample_size": cfg.get("sample_size"),
         }
     )
-    configured_default_sample_size = safe_int(getattr(settings, "PRECHECK_SAMPLE_SIZE", 0), default=0)
+    configured_default_sample_size = safe_int(settings.PRECHECK_SAMPLE_SIZE, default=0)
     raw_sample_size = cfg.get("sample_size")
     if raw_sample_size is not None or configured_default_sample_size > 0:
         sample_size_override = int(thresholds["sample_size"])
@@ -1011,11 +1011,11 @@ def _build_scan_options(*, cfg: dict[str, Any]) -> _ScanOptions:
     near_dup_hamming_threshold = max(0, min(safe_int(cfg.get("near_dup_hamming_threshold") or 5, default=5), 32))
     near_dup_max_pairs = max(0, min(safe_int(cfg.get("near_dup_max_pairs") or 5000, default=5000), 200_000))
     spreadsheet_merged_ratio_threshold = _clamp_unit_ratio(
-        float(getattr(settings, "PRECHECK_SPREADSHEET_MERGED_RATIO_THRESHOLD", 0.15) or 0.15)
+        float(settings.PRECHECK_SPREADSHEET_MERGED_RATIO_THRESHOLD or 0.15)
     )
     directory_stats_limit = max(
         0,
-        min(safe_int(getattr(settings, "PRECHECK_DIRECTORY_STATS_LIMIT", 200), default=200), 2000),
+        min(safe_int(settings.PRECHECK_DIRECTORY_STATS_LIMIT, default=200), 2000),
     )
 
     redact_paths = bool(cfg.get("redact_paths", False))
@@ -1023,13 +1023,13 @@ def _build_scan_options(*, cfg: dict[str, Any]) -> _ScanOptions:
         cfg=cfg,
         root_path=str(cfg.get("root_path") or "").strip(),
         max_files=max_files,
-        max_total_bytes=safe_int(getattr(settings, "PRECHECK_SCAN_MAX_TOTAL_BYTES", 0), default=0),
+        max_total_bytes=safe_int(settings.PRECHECK_SCAN_MAX_TOTAL_BYTES, default=0),
         text_max_bytes=safe_int(
-            cfg.get("text_extract_max_bytes") or getattr(settings, "PRECHECK_TEXT_EXTRACT_MAX_BYTES", 2_000_000),
+            cfg.get("text_extract_max_bytes") or settings.PRECHECK_TEXT_EXTRACT_MAX_BYTES,
             default=2_000_000,
         ),
         pdf_sample_pages=safe_int(
-            cfg.get("pdf_sample_pages") or getattr(settings, "PRECHECK_PDF_SAMPLE_PAGES", 3),
+            cfg.get("pdf_sample_pages") or settings.PRECHECK_PDF_SAMPLE_PAGES,
             default=3,
         ),
         enable_pdf_quality=bool(cfg.get("enable_pdf_quality", True)),
@@ -1050,28 +1050,28 @@ def _build_scan_options(*, cfg: dict[str, Any]) -> _ScanOptions:
         enable_sampling=bool(cfg.get("enable_sampling", True)),
         sample_size_override=sample_size_override,
         pdf_scan_max_chars=safe_int(
-            cfg.get("pdf_min_text_chars_per_page") or getattr(settings, "PRECHECK_PDF_MIN_TEXT_CHARS_PER_PAGE", 50),
+            cfg.get("pdf_min_text_chars_per_page") or settings.PRECHECK_PDF_MIN_TEXT_CHARS_PER_PAGE,
             default=50,
         ),
         pdf_text_min_chars=safe_int(
-            cfg.get("pdf_text_chars_per_page") or getattr(settings, "PRECHECK_PDF_TEXT_CHARS_PER_PAGE", 200),
+            cfg.get("pdf_text_chars_per_page") or settings.PRECHECK_PDF_TEXT_CHARS_PER_PAGE,
             default=200,
         ),
         pdf_scan_ratio_threshold=float(thresholds["pdf_scan_ratio_threshold"]),
         spreadsheet_large_row_threshold=safe_int(
-            getattr(settings, "PRECHECK_SPREADSHEET_LARGE_ROW_THRESHOLD", 5000),
+            settings.PRECHECK_SPREADSHEET_LARGE_ROW_THRESHOLD,
             default=5000,
         ),
         spreadsheet_wide_col_threshold=safe_int(
-            getattr(settings, "PRECHECK_SPREADSHEET_WIDE_COL_THRESHOLD", 80),
+            settings.PRECHECK_SPREADSHEET_WIDE_COL_THRESHOLD,
             default=80,
         ),
         spreadsheet_sheet_threshold=safe_int(
-            getattr(settings, "PRECHECK_SPREADSHEET_SHEET_THRESHOLD", 5),
+            settings.PRECHECK_SPREADSHEET_SHEET_THRESHOLD,
             default=5,
         ),
         spreadsheet_merged_ratio_threshold=spreadsheet_merged_ratio_threshold,
-        language_min_chars=safe_int(getattr(settings, "PRECHECK_LANGUAGE_MIN_CHARS", 40), default=40),
+        language_min_chars=safe_int(settings.PRECHECK_LANGUAGE_MIN_CHARS, default=40),
         text_short_chars_threshold=int(thresholds["text_short_chars_threshold"]),
         text_density_threshold=float(thresholds["text_density_threshold"]),
         text_gibberish_density_threshold=float(thresholds["text_gibberish_density_threshold"]),

@@ -108,9 +108,9 @@ def _enforce_non_empty_retrieval_scope(
     allow_empty_scope: bool = False,
 ) -> None:
     dataset_ids = _unique_dataset_ids(scope_dataset_ids)
-    if allow_empty_scope and bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True)):
+    if allow_empty_scope and bool(settings.CHAT_ALLOW_EMPTY_DOCUMENTS):
         return
-    if bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True)) and scope_dataset_id is None and not dataset_ids:
+    if bool(settings.CHAT_ALLOW_EMPTY_DOCUMENTS) and scope_dataset_id is None and not dataset_ids:
         return
     if scope_document_ids:
         return
@@ -274,7 +274,7 @@ def _resolve_retrieval_scope(
         ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
         DatasetService.assert_dataset_readable(db, ds, account_id)
         scope_dataset_id = dataset_id
-    elif not bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False)):
+    elif not bool(settings.CHAT_ALLOW_OPEN_SCOPE):
         raise HTTPException(
             status_code=400,
             detail=DATASET_REQUIRED_WHEN_DOC_IDS_EMPTY_DETAIL,
@@ -470,8 +470,8 @@ async def _maybe_apply_iterative_retrieval_fallback(
     has_evidence: bool,
 ) -> dict[str, Any]:
     try:
-        iterative_enabled = bool(getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_ENABLED", False))
-        max_passes = max(1, int(getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_MAX_PASSES", 2) or 2))
+        iterative_enabled = bool(settings.EVIDENCE_ITERATIVE_RETRIEVE_ENABLED)
+        max_passes = max(1, int(settings.EVIDENCE_ITERATIVE_RETRIEVE_MAX_PASSES or 2))
     except Exception:
         iterative_enabled = False
         max_passes = 1
@@ -494,17 +494,11 @@ async def _maybe_apply_iterative_retrieval_fallback(
     from app.rag.core.text import normalize_retrieval_mode
     from app.rag.retrieval.orchestrator import run_retrieval
 
-    fallback_profile = (
-        str(getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_PROFILE", "coverage80") or "coverage80")
-        .strip()
-        .lower()
-    )
+    fallback_profile = str(settings.EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_PROFILE or "coverage80").strip().lower()
     if fallback_profile not in {"recall20", "recall50", "coverage80"}:
         fallback_profile = "coverage80"
 
-    fallback_mode = (
-        str(getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_MODE", "keyword") or "keyword").strip().lower()
-    )
+    fallback_mode = str(settings.EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_MODE or "keyword").strip().lower()
     fallback_mode = normalize_retrieval_mode(fallback_mode)
     if fallback_mode not in {"hybrid", "vector", "keyword", "mmr"}:
         fallback_mode = "keyword"
@@ -598,7 +592,7 @@ def _apply_min_top_relevance_gate(
     metrics: dict[str, Any],
     has_evidence: bool,
 ) -> bool:
-    min_top_rel = float(getattr(settings, "RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE", 0.0) or 0.0)
+    min_top_rel = float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0)
     if not has_evidence or min_top_rel <= 0.0:
         return has_evidence
 
@@ -665,7 +659,7 @@ def _build_evidence_capsule_payload(
     selected_pass: str,
 ) -> dict[str, Any] | None:
     try:
-        if not bool(getattr(settings, "RAG_EVIDENCE_CAPSULE_ENABLED", True)):
+        if not bool(settings.RAG_EVIDENCE_CAPSULE_ENABLED):
             return None
         from app.rag.core.evidence_capsule_builder import build_evidence_capsule
 

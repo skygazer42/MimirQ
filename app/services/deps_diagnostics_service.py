@@ -90,7 +90,7 @@ def _probe_redis() -> dict[str, Any]:
         import redis  # type: ignore
 
         client = redis.Redis.from_url(
-            getattr(settings, "REDIS_URL", "redis://localhost:6379/0"),
+            settings.REDIS_URL,
             socket_timeout=1,
             socket_connect_timeout=1,
             decode_responses=True,
@@ -120,7 +120,7 @@ def _probe_minio() -> dict[str, Any]:
     - Server version may not be available without admin APIs; we return client version.
     """
 
-    enabled = bool(getattr(settings, "MINIO_ENABLED", False))
+    enabled = bool(settings.MINIO_ENABLED)
     if not enabled:
         return {"status": "disabled", "enabled": False, "elapsed_ms": 0.0, "version": None}
 
@@ -155,7 +155,7 @@ def _probe_milvus() -> dict[str, Any]:
     Best-effort Milvus probe (when VECTOR_BACKEND=milvus).
     """
 
-    vector_backend = (getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").lower()
+    vector_backend = (settings.VECTOR_BACKEND or "milvus").lower()
     if vector_backend != "milvus":
         return {"status": "disabled", "backend": vector_backend, "elapsed_ms": 0.0, "version": None}
 

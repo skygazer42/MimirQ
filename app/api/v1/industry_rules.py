@@ -47,7 +47,7 @@ _UPDATE_SCHEMA = "mimirq.industry_rules_update.v1"
 
 def _ensure_write(db: Session, tenant_id: UUID, account_id: str) -> None:
     try:
-        system_tenant_id = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
+        system_tenant_id = UUID(str(settings.DEFAULT_TENANT_ID or ""))
     except ValueError as exc:
         raise HTTPException(status_code=500, detail="DEFAULT_TENANT_ID is invalid") from exc
     if tenant_id != system_tenant_id:

@@ -75,10 +75,10 @@ def is_model_provider_unavailable_error(exc: BaseException) -> bool:
 
 
 def _model_provider_circuit_key() -> str:
-    api_key = str(getattr(settings, "LLM_API_KEY", "") or "").strip()
-    model = str(getattr(settings, "LLM_MODEL", "") or "").strip()
-    api_base = str(getattr(settings, "LLM_API_BASE", "") or "").strip()
-    mock_enabled = bool(getattr(settings, "LLM_MOCK_ENABLED", False))
+    api_key = str(settings.LLM_API_KEY or "").strip()
+    model = str(settings.LLM_MODEL or "").strip()
+    api_base = str(settings.LLM_API_BASE or "").strip()
+    mock_enabled = bool(settings.LLM_MOCK_ENABLED)
     digest = hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:12] if api_key else ""
     return "|".join((api_base, model, digest, str(mock_enabled)))
 
@@ -102,7 +102,7 @@ def mark_model_provider_unavailable(*, ttl_sec: float = _MODEL_PROVIDER_UNAVAILA
 
 def is_model_provider_unavailable_circuit_open() -> bool:
     _ensure_model_provider_circuit_key()
-    if bool(getattr(settings, "LLM_MOCK_ENABLED", False)):
+    if bool(settings.LLM_MOCK_ENABLED):
         return False
     return time.monotonic() < _MODEL_PROVIDER_UNAVAILABLE_UNTIL
 
@@ -118,7 +118,7 @@ async def preflight_model_provider_fast() -> tuple[bool, str | None]:
 
     _ensure_model_provider_circuit_key()
     now = time.monotonic()
-    if bool(getattr(settings, "LLM_MOCK_ENABLED", False)):
+    if bool(settings.LLM_MOCK_ENABLED):
         _MODEL_PROVIDER_AVAILABLE_UNTIL = now + _MODEL_PROVIDER_AVAILABLE_TTL_SEC
         return True, None
     if now < _MODEL_PROVIDER_UNAVAILABLE_UNTIL:
@@ -126,9 +126,9 @@ async def preflight_model_provider_fast() -> tuple[bool, str | None]:
     if now < _MODEL_PROVIDER_AVAILABLE_UNTIL:
         return True, None
 
-    api_key = str(getattr(settings, "LLM_API_KEY", "") or "").strip()
-    model = str(getattr(settings, "LLM_MODEL", "") or "").strip()
-    api_base = str(getattr(settings, "LLM_API_BASE", "") or "").strip()
+    api_key = str(settings.LLM_API_KEY or "").strip()
+    model = str(settings.LLM_MODEL or "").strip()
+    api_base = str(settings.LLM_API_BASE or "").strip()
     if not api_key or not model or not api_base:
         mark_model_provider_unavailable()
         return False, "LLM_API_KEY/LLM_API_BASE/LLM_MODEL is not configured"
@@ -1019,7 +1019,7 @@ def execute_graph_chat_once(
     state.pop("db", None)
     db.rollback()
 
-    recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
+    recursion_limit = max(1, int(settings.LANGGRAPH_RECURSION_LIMIT or 25))
     config = {"configurable": {"thread_id": thread_id}, "recursion_limit": recursion_limit}
     graph_result = rag_workflow.invoke(state, config=config, context=runtime_context) or {}
 
