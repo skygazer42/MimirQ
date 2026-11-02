@@ -1,4 +1,3 @@
-import importlib
 import io
 import uuid
 from pathlib import Path
@@ -180,7 +179,6 @@ async def test_preview_document_inline_path_preserves_auth_pipeline_governance_a
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    documents_module = importlib.import_module("app.api.v1.documents")
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
     upload_root = tmp_path / "uploads"
@@ -305,7 +303,7 @@ async def test_preview_document_inline_path_preserves_auth_pipeline_governance_a
         lambda rules: call_order.append("build_rules") or rules,
         raising=True,
     )
-    monkeypatch.setattr(documents_module.governance_processor, "clean_documents", _clean_documents, raising=True)
+    monkeypatch.setattr(document_preview.governance_processor, "clean_documents", _clean_documents, raising=True)
 
     result = await document_preview.preview_document(
         request=_Request(),
@@ -392,7 +390,6 @@ async def test_preview_document_subprocess_path_preserves_payload_and_cleanup_sa
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    documents_module = importlib.import_module("app.api.v1.documents")
     tenant_id = uuid.uuid4()
     upload_root = tmp_path / "uploads"
     safe_inside_without_marker = upload_root / str(tenant_id) / "other" / "artifact"
@@ -458,7 +455,7 @@ async def test_preview_document_subprocess_path_preserves_payload_and_cleanup_sa
         lambda **_kwargs: _governance_effective(),
         raising=True,
     )
-    monkeypatch.setattr(documents_module, "run_subprocess_worker", _run_subprocess_worker, raising=True)
+    monkeypatch.setattr(document_preview, "run_subprocess_worker", _run_subprocess_worker, raising=True)
 
     result = await document_preview.preview_document(
         request=_Request(),
@@ -569,7 +566,6 @@ async def test_preview_document_maps_worker_errors_without_leaking_production_de
     status_code: int,
     detail: str,
 ) -> None:
-    documents_module = importlib.import_module("app.api.v1.documents")
     tenant_id = uuid.uuid4()
     upload_root = tmp_path / "uploads"
 
@@ -587,7 +583,7 @@ async def test_preview_document_maps_worker_errors_without_leaking_production_de
     monkeypatch.setattr(document_preview.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(document_preview, "save_upload_file", _save_upload, raising=True)
     monkeypatch.setattr(document_preview, "_sanitize_filename", lambda _name: "sanitized.pdf", raising=True)
-    monkeypatch.setattr(documents_module, "run_subprocess_worker", _raise, raising=True)
+    monkeypatch.setattr(document_preview, "run_subprocess_worker", _raise, raising=True)
     monkeypatch.setattr(document_preview, "is_production_env", lambda: production, raising=True)
 
     with pytest.raises(HTTPException) as exc_info:

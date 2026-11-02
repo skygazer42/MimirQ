@@ -22,8 +22,10 @@ from app.parsing.factory import parser_factory
 from app.parsing.subprocess_runner import (
     SubprocessCancelled,
     SubprocessWorkerError,
+    run_subprocess_worker,
 )
 from app.rag.core.logging import get_logger
+from app.rag.preprocessing.processor import governance_processor
 from app.rag.preprocessing.rules import build_governance_rules
 from app.services import dataset_service
 from app.services.pipeline_config import resolve_pipeline_effective
@@ -38,6 +40,7 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 }
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+logger = get_logger("api.documents")
 
 
 def _strip_preview_nul_chars(value: str) -> str:
@@ -115,7 +118,6 @@ def _validate_preview_extension(filename: str) -> str:
 
 async def _parse_preview_payload(
     *,
-    documents_module: Any,
     request: Request,
     temp_path: Path,
     tenant_id: UUID,
@@ -131,7 +133,7 @@ async def _parse_preview_payload(
             tenant_id=tenant_id,
             requested_backend=parser_backend,
         )
-    return await documents_module.run_subprocess_worker(
+    return await run_subprocess_worker(
         tenant_id=tenant_id,
         payload={
             "action": "parse_documents",
@@ -241,13 +243,12 @@ def _build_preview_governance_kwargs(pipeline_effective: Any) -> dict[str, Any]:
 
 def _apply_preview_governance(
     *,
-    documents_module: Any,
     documents: list[Document],
     pipeline_effective: Any,
 ) -> list[Document]:
     if not pipeline_effective.governance_enabled:
         return documents
-    cleaned_documents, _stats = documents_module.governance_processor.clean_documents(
+    cleaned_documents, _stats = governance_processor.clean_documents(
         documents,
         **_build_preview_governance_kwargs(pipeline_effective),
     )
@@ -313,14 +314,14 @@ def _cleanup_preview_artifacts(*, tenant_id: UUID, artifact_dirs: set[str]) -> N
             shutil.rmtree(path, ignore_errors=True)
 
 
-def _raise_preview_http_exception(documents_module: Any, exc: Exception) -> None:
+def _raise_preview_http_exception(exc: Exception) -> None:
     if isinstance(exc, SubprocessCancelled):
         raise HTTPException(status_code=499, detail="Client closed request") from None
     if isinstance(exc, SubprocessWorkerError):
         err_type = (exc.details or {}).get("type")
         if err_type == "ValueError":
             raise HTTPException(status_code=400, detail=f"Invalid input: {str(exc)[:100]}") from exc
-        documents_module.logger.error("Subprocess worker failed during preview: %s", str(exc)[:200])
+        logger.error("Subprocess worker failed during preview: %s", str(exc)[:200])
         msg = (str(exc) or "").strip()
         if not msg:
             details = exc.details or {}
@@ -331,11 +332,11 @@ def _raise_preview_http_exception(documents_module: Any, exc: Exception) -> None
     if isinstance(exc, ValueError):
         raise HTTPException(status_code=400, detail=f"Invalid input: {str(exc)[:100]}") from exc
     if isinstance(exc, IOError):
-        documents_module.logger.error("File read error during preview: %s", str(exc)[:200])
+        logger.error("File read error during preview: %s", str(exc)[:200])
         raise HTTPException(status_code=500, detail="File read error") from exc
     if isinstance(exc, HTTPException):
         raise exc
-    documents_module.logger.error("Unexpected error during document preview: %s", str(exc)[:200])
+    logger.error("Unexpected error during document preview: %s", str(exc)[:200])
     msg = (str(exc) or "").strip() or exc.__class__.__name__
     msg = msg[:200]
     detail = "Failed to parse document" if is_production_env() else f"Failed to parse document: {msg}"
@@ -381,8 +382,6 @@ async def preview_document(
     Only parses the document and returns structured segments; does not create
     a document record or persist data. Useful for frontend custom chunking.
     """
-    from app.api.v1 import documents as documents_module  # Other preview helpers remain owned there.
-
     dataset_service.ensure_member(db, tenant_id, account_id)
     file.filename = _sanitize_filename(file.filename)
 
@@ -403,7 +402,6 @@ async def preview_document(
     try:
         file_size = await save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
         parsed = await _parse_preview_payload(
-            documents_module=documents_module,
             request=request,
             temp_path=temp_path,
             tenant_id=tenant_id,
@@ -436,7 +434,6 @@ async def preview_document(
             pipeline_effective=pipeline_effective,
         )
         documents = _apply_preview_governance(
-            documents_module=documents_module,
             documents=documents,
             pipeline_effective=pipeline_effective,
         )
@@ -454,11 +451,11 @@ async def preview_document(
             analytics={"raw": raw_analytics, "cleaned": cleaned_analytics},
         )
     except Exception as exc:
-        _raise_preview_http_exception(documents_module, exc)
+        _raise_preview_http_exception(exc)
     finally:
         try:
             if run_dir.exists():
                 shutil.rmtree(run_dir, ignore_errors=True)
         except OSError as exc:
-            documents_module.logger.warning("Failed to clean up preview directory %s: %s", run_dir, exc)
+            logger.warning("Failed to clean up preview directory %s: %s", run_dir, exc)
         _cleanup_preview_artifacts(tenant_id=tenant_id, artifact_dirs=artifact_dirs)

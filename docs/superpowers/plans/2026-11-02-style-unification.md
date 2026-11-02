@@ -188,6 +188,8 @@ URL 上传与 connector HTML 入库共享的来源准备、配额、去重、持
 
 分块预览直接导入 parsing subprocess runner 和解析位置标记；预览参数归一化与 chunker 参数过滤由 `document_chunk_preview` 自身拥有。移除跨整个 `documents` 模块的 Any 传递，日志 category、解析取消、缓存锁、治理处理和响应策略保持原样。
 
+原文预览直接调用 parsing subprocess runner 与治理 processor；错误转换 helper 在 `document_preview` 本地使用相同 `api.documents` logger。移除向 parse、governance 和错误转换 helper 传递 `documents_module`，保留 400／499／500 映射、生产错误脱敏、disconnect 检查和 finally 临时目录清理顺序。
+
 **本批产出：** 上传到任务的输入输出和失败路径一致，同一字段映射与权限规则只有一个业务维护点。
 
 ### Task 5：RAG 与模型调用
