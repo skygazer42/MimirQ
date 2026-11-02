@@ -7,7 +7,6 @@ secrets.
 """
 
 import json
-import os
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse, urlunparse
@@ -15,6 +14,7 @@ from urllib.parse import urlparse, urlunparse
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import ArgumentError
 
+from app.core.build_info import get_build_sha, get_build_time
 from app.core.config import settings
 from app.rag.core.hashing import stable_hash
 from app.rag.core.retrieval_config_fingerprint import build_retrieval_config_fingerprint
@@ -62,22 +62,6 @@ def _redact_generic_url(url_str: str) -> str:
         return "<invalid-url>"
 
 
-def _get_build_sha() -> str | None:
-    value = (
-        os.getenv("MIMIRQ_BUILD_SHA")
-        or os.getenv("GIT_SHA")
-        or os.getenv("SOURCE_VERSION")
-        or os.getenv("GITHUB_SHA")
-        or ""
-    ).strip()
-    return value or None
-
-
-def _get_build_time() -> str | None:
-    value = (os.getenv("MIMIRQ_BUILD_TIME") or os.getenv("BUILD_TIME") or "").strip()
-    return value or None
-
-
 def _build_retrieval_config_for_fingerprint() -> dict[str, Any]:
     """
     Keep this bounded to avoid accidental leakage/high-cardinality payloads.
@@ -122,7 +106,7 @@ def build_ops_config_snapshot() -> OpsConfigSnapshot:
     retrieval_fp = build_retrieval_config_fingerprint(config=_build_retrieval_config_for_fingerprint())
 
     cfg: dict[str, Any] = {
-        "build": {"sha": _get_build_sha(), "time": _get_build_time()},
+        "build": {"sha": get_build_sha(), "time": get_build_time()},
         "features": {
             "auth_mode": settings.AUTH_MODE,
             "vector_backend": settings.VECTOR_BACKEND,

@@ -1,10 +1,10 @@
 import hashlib
 import json
-import os
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
+from app.core.build_info import get_build_sha
 from app.rag.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -12,23 +12,6 @@ logger = get_logger(__name__)
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
-
-
-def get_build_sha() -> str | None:
-    """
-    Best-effort build SHA for provenance/debug.
-
-    Mirrors the safe-to-expose metadata used by `/api/v1/meta` but is kept local to
-    avoid import cycles.
-    """
-    value = (
-        os.getenv("MIMIRQ_BUILD_SHA")
-        or os.getenv("GIT_SHA")
-        or os.getenv("SOURCE_VERSION")
-        or os.getenv("GITHUB_SHA")
-        or ""
-    ).strip()
-    return value or None
 
 
 def canonical_json_sha256(value: Any) -> str:

@@ -2,7 +2,6 @@
 Backend metadata endpoints for frontend/dev tooling.
 """
 
-import os
 import platform
 from datetime import UTC, datetime
 from typing import Annotated, Any
@@ -14,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.meta import MetaDetailsResponse, MetaResponse
+from app.core.build_info import get_build_sha, get_build_time
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.utils import parse_csv
@@ -40,29 +40,13 @@ def _ensure_admin(db: Session, tenant_id: UUID, account_id: str) -> None:
     )
 
 
-def _get_build_sha() -> str | None:
-    value = (
-        os.getenv("MIMIRQ_BUILD_SHA")
-        or os.getenv("GIT_SHA")
-        or os.getenv("SOURCE_VERSION")
-        or os.getenv("GITHUB_SHA")
-        or ""
-    ).strip()
-    return value or None
-
-
-def _get_build_time() -> str | None:
-    value = (os.getenv("MIMIRQ_BUILD_TIME") or os.getenv("BUILD_TIME") or "").strip()
-    return value or None
-
-
 def _build_public_meta() -> dict[str, Any]:
     return {
         "name": "MimirQ",
         "api_version": "v1",
         "build": {
-            "sha": _get_build_sha(),
-            "time": _get_build_time(),
+            "sha": get_build_sha(),
+            "time": get_build_time(),
         },
         "features": {
             "auth_mode": settings.AUTH_MODE,

@@ -104,7 +104,7 @@ app/api/schemas/industry_rules.py,3,pending,adjusted,Awaiting file-level convent
 app/api/schemas/ingestion_policy.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/ingestion_run.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/kg_diagnostics.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/schemas/meta.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/api/schemas/meta.py,3,conforms,adjusted,Public versus administrative metadata schema fields and framework models already express required boundaries,task-3-metadata: full exact schema AST; complete source review; Ruff/format; no Python tests
 app/api/schemas/pipeline.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/prompt_template.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/qa.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -197,7 +197,7 @@ app/api/v1/integrations_conversations.py,3,pending,adjusted,Awaiting file-level 
 app/api/v1/integrations_dify.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/v1/lineage.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/v1/ltr.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/v1/meta.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/api/v1/meta.py,3,adjusted,conforms,Public/detail metadata share build identity; admin permission patch seam and safe public shape retained,task-3-metadata: complete canonical AST and two exact moved functions; Ruff/format; no Python tests
 app/api/v1/metrics.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/v1/network_analysis.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/v1/observability.py,3,pending,conforms,Awaiting file-level convention and contract review; Dataset caller migration only; full module semantic review remains pending,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending; task-3-dataset-final: Ruff/AST/signature checks; no Python tests
@@ -236,6 +236,7 @@ app/connectors/registry.py,4,pending,adjusted,Awaiting file-level convention and
 app/connectors/types.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/__init__.py,3,conforms,conforms,Reviewed package marker; no side effects or exports to migrate,Complete module/parameter AST; 141 exact SQL literals; logs/task-3-utility-static.json; Ruff passed; Python tests deferred
 app/core/async_bridge.py,3,conforms,conforms,Async loop and cancellation boundaries reviewed; worker completion and exception policies retained,Task 3 resources: 9-module Ruff/format/AST; 49 signatures; 2 exact Lua scripts; Python tests deferred
+app/core/build_info.py,3,adjusted,conforms,Shared build identity owner used by API metadata ops snapshots and pipeline provenance,task-3-metadata: five original function copies exact AST; Ruff/format; no Python tests
 app/core/config.py,3,adjusted,conforms,Settings schema and validation order preserved; implicit dependency injection removed,task-3-configuration-static; full Settings AST; public reexports
 app/core/config_validation.py,3,adjusted,conforms,Typed Settings validation and direct owners; redundant field wrappers removed,task-3-configuration-static; 53 canonical bodies; 4 moved bodies; 313 bound calls
 app/core/constants.py,3,adjusted,adjusted,Complete constant namespace review and precise Milvus parameter return types; constants and class override behavior retained,Complete module/parameter AST; 141 exact SQL literals; logs/task-3-utility-static.json; Ruff passed; Python tests deferred
@@ -1248,7 +1249,7 @@ app/services/db_catalog_observability.py,3,pending,adjusted,Awaiting file-level 
 app/services/db_catalog_profile_cache.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/db_catalog_schema_doc_service.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/db_maintenance_jobs.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/services/deps_diagnostics_service.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/services/deps_diagnostics_service.py,3,adjusted,adjusted,Remove unused clock helper and redundant internal conversions; explicit best-effort probes and bounded output retained,task-3-metadata: full canonical probe module AST; SDK return contract reviewed; Ruff/format; no Python tests
 app/services/dify_integration/__init__.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/dify_integration/metadata_condition_helpers.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/dify_integration/policy_helpers.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -1305,7 +1306,7 @@ app/services/metrics_logger.py,3,pending,adjusted,Awaiting file-level convention
 app/services/mineru_service.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/navigation_visibility.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/online_eval_service.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/services/ops_config_snapshot_service.py,3,conforms,conforms,Snapshot redaction and representation conversions implement explicit protocol boundaries,task-3-configuration-static; complete source and caller review
+app/services/ops_config_snapshot_service.py,3,adjusted,conforms,Shared build identity replaces duplicate environment readers; redaction and fingerprint representation retained,task-3-configuration-static and task-3-metadata: complete canonical AST; exact moved functions; Ruff/format; no Python tests
 app/services/parse_cache.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/parser_strategy_policy.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/parsing_extract_service.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -1317,7 +1318,7 @@ app/services/periodic_job_freshness_service.py,3,pending,adjusted,Awaiting file-
 app/services/phoenix_adapter.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/pipeline_config.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/pipeline_patch_validator.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/services/pipeline_provenance_service.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/services/pipeline_provenance_service.py,3,pending,conforms,Shared build identity import migrated only; complete document provenance semantic audit remains with ingestion chain,task-3-metadata: exact moved SHA reader and complete remaining module AST; Ruff/format; no Python tests
 app/services/preview_cache.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/prompt_defaults.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/prompt_resolver.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending

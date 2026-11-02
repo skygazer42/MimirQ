@@ -21,10 +21,6 @@ logger = get_logger(__name__)
 _DEPS_DIAGNOSTICS_FALLBACK_LOG_MESSAGE = "Ignoring non-critical deps diagnostics fallback failure: %s"
 
 
-def _now_utc_iso() -> str:
-    return datetime.now(UTC).isoformat()
-
-
 def _probe_postgres() -> dict[str, Any]:
     """
     Best-effort Postgres probe.
@@ -72,7 +68,7 @@ def _probe_redis() -> dict[str, Any]:
     """
 
     usage = redis_usage_flags(settings)
-    redis_required = bool(usage["task_queue"])
+    redis_required = usage["task_queue"]
     enabled = any(usage.values())
     if not enabled:
         return {
@@ -120,7 +116,7 @@ def _probe_minio() -> dict[str, Any]:
     - Server version may not be available without admin APIs; we return client version.
     """
 
-    enabled = bool(settings.MINIO_ENABLED)
+    enabled = settings.MINIO_ENABLED
     if not enabled:
         return {"status": "disabled", "enabled": False, "elapsed_ms": 0.0, "version": None}
 
@@ -130,9 +126,8 @@ def _probe_minio() -> dict[str, Any]:
         from app.storage.object.minio import minio_service
 
         raw = minio_service.health_check()
-        if isinstance(raw, dict):
-            out["status"] = str(raw.get("status") or "unknown")
-            out["elapsed_ms"] = raw.get("elapsed_ms")
+        out["status"] = raw["status"]
+        out["elapsed_ms"] = raw.get("elapsed_ms")
     except Exception as exc:  # noqa: BLE001
         out["error"] = str(exc)[:200]
         out["elapsed_ms"] = 0.0
@@ -143,7 +138,7 @@ def _probe_minio() -> dict[str, Any]:
 
         v = importlib.metadata.version("minio")
         if v:
-            out["version"] = f"client:{str(v).strip()[:40]}"
+            out["version"] = f"client:{v.strip()[:40]}"
     except Exception as exc:
         logger.debug(_DEPS_DIAGNOSTICS_FALLBACK_LOG_MESSAGE, exc)
 
