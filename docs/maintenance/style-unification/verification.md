@@ -221,3 +221,11 @@
 - 12 个 Python 模块 Ruff check、format --check 与语法解析通过；四个预设类 AST 和四个完整 ORM 模型原样匹配。七个完整业务模块经明确规则规范化后 AST 一致，58 个保留参数契约及六个路由声明保持一致；扫描 1,803 个跟踪及本批新增 Python 源码，43 个文件中的 156 处确定调用匹配签名，没有动态调用待解或旧 ACL 类引用。
 - 权限领域文档同步真实服务与函数名称，既有数据集决定原地补充职责和字符串输入边界。覆盖精确对应 3,642 个跟踪路径：98 已调整、27 已符合、954 登记保留、2,563 待语义审核。连接器 ACL 只迁移调用，仍保持 pending；文档 schema 原有空行修改保留。
 - 未新增、扩写或运行 Python 测试，未导入应用或启动数据库、解析器及模型；运行时回归未验证。完整基线和核对器位于执行工作区 document-access-refactor/，结果位于 logs/task-4-document-access-static.json。
+
+## 第三批：SAML 交换、桥接与重放（2026-11-02）
+
+- 完整审核三个 SAML 服务；数据库参数明确为 Session，身份解析返回 User 与字符串组列表。声明的配置直接读取，保留提供方 JSON 的形状校验与外部字段适配；清理内部重复字符串、整数和布尔转换，组 claim 使用已经过滤的非空列表。
+- 桥接与重放的过期清理仍在原锁内，用同一个 monotonic 时间判断；清理后直接读取有效项，移除同一条件的二次校验。原 1～60 秒桥接期限、重放最低期限及配置零值取 300 秒规则保留；没有改变锁、Redis NX、四次碰撞重试和 Lua GET／DEL 单次消费。
+- XML parser、签名验证、issuer／destination／status、audience、subject confirmation、时间条件和 replay TTL 七个完整函数 AST 原样匹配。两个数据模型、Lua、认证路由与请求／响应 schema 保持一致；40 处 HTTP 错误构造和 29 个保留参数形状静态核对通过。
+- 三个完整模块经明确替换规则规范化后 AST 一致；扫描 1,803 个跟踪 Python 源码，七个文件中 52 处可确定调用匹配签名，无动态参数待解。Ruff check、format --check 与语法解析通过；一次替换缩进错误在提交前修正后重新核对全部本批文件。
+- 仅作模块内部整理，没有新增业务层、包装或重复决定笔记。按用户要求未新增、扩写或运行 Python 测试，未导入业务模块或启动依赖；运行时回归未验证。证据为 saml-refactor/ 与 logs/task-3-saml-{static,ruff,format-check}.log、task-3-saml-static.json。

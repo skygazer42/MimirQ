@@ -4,16 +4,17 @@ import uuid
 from base64 import b64decode
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
 from urllib.parse import urlparse
 
 from fastapi import HTTPException
 from lxml import etree
 from signxml import InvalidSignature, XMLSigner, XMLVerifier, methods
+from sqlalchemy.orm import Session
 
 from app.api.schemas.auth import SamlExchangeResponse, TokenResponse, UserPublic
 from app.core.config import settings
 from app.core.jwt_utils import create_access_token
+from app.models.user import User
 from app.services.saml_replay_service import ensure_saml_assertion_not_replayed
 from app.services.user_service import (
     get_current_tenant_id,
@@ -50,7 +51,7 @@ def _xml_parser() -> etree.XMLParser:
 
 
 def _parse_iso_datetime(raw: str | None) -> datetime | None:
-    value = str(raw or "").strip()
+    value = (raw or "").strip()
     if not value:
         return None
     if value.endswith("Z"):
@@ -62,7 +63,7 @@ def _parse_iso_datetime(raw: str | None) -> datetime | None:
 
 
 def _normalize_path(raw: str | None) -> str:
-    value = str(raw or "").strip()
+    value = (raw or "").strip()
     if not value:
         return "/"
     parsed = urlparse(value)
@@ -74,22 +75,19 @@ def _normalize_path(raw: str | None) -> str:
 
 
 def _first_pem_certificate_b64(cert_pem: str | None) -> str | None:
-    raw = str(cert_pem or "").strip()
+    raw = (cert_pem or "").strip()
     if not raw:
         return None
 
     begin = "-----BEGIN CERTIFICATE-----"
     end = "-----END CERTIFICATE-----"
     if begin in raw and end in raw:
-        try:
-            body = raw.split(begin, 1)[1].split(end, 1)[0]
-        except Exception:
-            body = raw
+        body = raw.split(begin, 1)[1].split(end, 1)[0]
     else:
         body = raw
 
-    lines = [line.strip() for line in str(body or "").splitlines() if line.strip()]
-    b64 = "".join([line for line in lines if not line.startswith("-----")])
+    lines = [line.strip() for line in body.splitlines() if line.strip()]
+    b64 = "".join(line for line in lines if not line.startswith("-----"))
     return b64 or None
 
 
@@ -102,14 +100,14 @@ def build_saml_sp_metadata_xml(*, provider_id: str | None = None) -> str:
     - Optional: include KeyDescriptor and sign the metadata (enterprise IdP compatibility)
     """
     provider = _resolve_provider(provider_id)
-    entity_id = str(provider.audience or "").strip()
-    acs_url = str(provider.acs_url or "").strip()
+    entity_id = provider.audience.strip()
+    acs_url = provider.acs_url.strip()
     if not entity_id or not acs_url:
         raise HTTPException(status_code=500, detail="SAML provider misconfigured")
 
-    sp_cert_pem = str(getattr(settings, "SAML_SP_CERT_PEM", "") or "").strip()
-    sp_key_pem = str(getattr(settings, "SAML_SP_PRIVATE_KEY_PEM", "") or "").strip()
-    sign_metadata = bool(getattr(settings, "SAML_SP_METADATA_SIGNED", False))
+    sp_cert_pem = settings.SAML_SP_CERT_PEM.strip()
+    sp_key_pem = settings.SAML_SP_PRIVATE_KEY_PEM.strip()
+    sign_metadata = settings.SAML_SP_METADATA_SIGNED
 
     metadata_id = f"md-{uuid.uuid4()}"
     nsmap = {None: _MD_NS, "ds": _DS_NS}
@@ -164,7 +162,7 @@ def build_saml_sp_metadata_xml(*, provider_id: str | None = None) -> str:
 
 
 def _load_saml_providers() -> list[SamlProvider]:
-    raw = str(getattr(settings, "SAML_PROVIDERS_JSON", "") or "").strip()
+    raw = settings.SAML_PROVIDERS_JSON.strip()
     if not raw:
         return []
     try:
@@ -205,7 +203,7 @@ def _resolve_provider(provider_id: str | None) -> SamlProvider:
     if not providers:
         raise HTTPException(status_code=400, detail="SAML not configured")
 
-    requested = str(provider_id or "").strip()
+    requested = (provider_id or "").strip()
     if requested:
         for provider in providers:
             if provider.id == requested:
@@ -218,10 +216,10 @@ def _resolve_provider(provider_id: str | None) -> SamlProvider:
 
 
 def _decode_saml_response(saml_response: str) -> etree._Element:
-    raw = str(saml_response or "").strip()
+    raw = saml_response.strip()
     if not raw:
         raise HTTPException(status_code=400, detail="Missing SAMLResponse")
-    max_bytes = max(1, int(getattr(settings, "SAML_MAX_RESPONSE_BYTES", 500_000) or 500_000))
+    max_bytes = max(1, settings.SAML_MAX_RESPONSE_BYTES or 500_000)
     try:
         xml_bytes = b64decode(raw, validate=True)
     except Exception as exc:  # noqa: BLE001
@@ -262,11 +260,11 @@ def _get_text(node: etree._Element | None, xpath: str) -> str:
     found = node.find(xpath, namespaces=_NS)
     if found is None or found.text is None:
         return ""
-    return str(found.text or "").strip()
+    return found.text.strip()
 
 
 def _collect_attribute_values(assertion: etree._Element, attr_name: str) -> list[str]:
-    name = str(attr_name or "").strip()
+    name = attr_name.strip()
     if not name:
         return []
     out: list[str] = []
@@ -379,7 +377,7 @@ def _validate_conditions(
     expected_acs = provider.acs_url
     expected_audience = provider.audience
     expected_issuer = provider.issuer
-    skew = max(0, int(getattr(settings, "SAML_ALLOWED_CLOCK_SKEW_SEC", 60) or 60))
+    skew = max(0, settings.SAML_ALLOWED_CLOCK_SKEW_SEC or 60)
     now = datetime.now(UTC)
 
     _validate_issuer_destination_and_status(
@@ -403,26 +401,25 @@ def _validate_conditions(
     )
 
 
-def _resolve_user_identity(db: Any, assertion: etree._Element, provider: SamlProvider):
+def _resolve_user_identity(db: Session, assertion: etree._Element, provider: SamlProvider) -> tuple[User, list[str]]:
     name_id = _get_text(assertion, "./saml:Subject/saml:NameID")
     emails = _collect_attribute_values(assertion, provider.email_attribute)
     groups = _collect_attribute_values(assertion, provider.groups_attribute)
 
-    email = str(emails[0] if emails else "").strip().lower()
-    name_id_normalized = str(name_id or "").strip()
+    email = emails[0].lower() if emails else ""
 
     user = None
     if email:
         user = get_user_by_email(db, email)
-    if user is None and name_id_normalized:
-        if "@" in name_id_normalized:
-            user = get_user_by_email(db, name_id_normalized.lower())
+    if user is None and name_id:
+        if "@" in name_id:
+            user = get_user_by_email(db, name_id.lower())
         if user is None:
-            user = get_user_by_username(db, name_id_normalized)
+            user = get_user_by_username(db, name_id)
 
     if user is None:
         raise HTTPException(status_code=403, detail="SAML account not provisioned")
-    if not bool(getattr(user, "is_active", False)):
+    if not user.is_active:
         raise HTTPException(status_code=403, detail="User disabled")
 
     return user, groups
@@ -430,7 +427,7 @@ def _resolve_user_identity(db: Any, assertion: etree._Element, provider: SamlPro
 
 def exchange_saml_response(
     *,
-    db: Any,
+    db: Session,
     provider_id: str | None,
     saml_response: str,
     relay_state: str | None = None,
@@ -448,12 +445,9 @@ def exchange_saml_response(
     mark_login(db, user)
 
     tenant_id = get_current_tenant_id(db, user_id=str(user.id))
-    extra_claims: dict[str, Any] = {}
-    normalized_groups = [group for group in groups if group]
-    if normalized_groups:
-        extra_claims[str(getattr(settings, "JWT_GROUPS_CLAIM", "groups") or "groups").strip() or "groups"] = (
-            normalized_groups
-        )
+    extra_claims: dict[str, list[str]] = {}
+    if groups:
+        extra_claims[settings.JWT_GROUPS_CLAIM.strip() or "groups"] = groups
 
     token, expires_in = create_access_token(
         str(user.id),
