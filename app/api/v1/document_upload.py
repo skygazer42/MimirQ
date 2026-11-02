@@ -22,7 +22,7 @@ from app.api.v1.documents import UrlUploadRequest
 from app.core.config import settings
 from app.core.database import get_db
 from app.rag.core.logging import get_logger
-from app.services import ingestion_run_service
+from app.services import dataset_service, ingestion_run_service
 from app.services.document_identity import (
     build_document_dedup_key,
     get_content_sha256,
@@ -1972,7 +1972,7 @@ async def _upload_document_impl(
     _require_upload_extension(identity.file_ext)
     parser_backend = form.parser_backend
     chunk_strategy = form.chunk_strategy
-    dataset = documents_module._resolve_writable_dataset(db, tenant_id, account_id, form.dataset_id)
+    dataset = dataset_service.resolve_writable_dataset(db, tenant_id, account_id, form.dataset_id)
     dataset_meta = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
     policy = documents_module.parse_ingestion_policy_from_metadata(
         dataset_meta if isinstance(dataset_meta, dict) else {}
@@ -2235,7 +2235,7 @@ async def upload_documents_batch(
     upload_only = form.upload_only
     pipeline_parsed = documents_module._parse_pipeline_json(form.pipeline)
     user_meta_by_key = _parse_batch_user_metadata_map(form.user_metadata_map)
-    dataset = documents_module._resolve_writable_dataset(db, tenant_id, account_id, form.dataset_id)
+    dataset = dataset_service.resolve_writable_dataset(db, tenant_id, account_id, form.dataset_id)
     dataset_meta = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
     policy = _refresh_batch_policy(documents_module, dataset)
     dataset_default_pb, dataset_default_cs = _dataset_upload_defaults(dataset_meta)

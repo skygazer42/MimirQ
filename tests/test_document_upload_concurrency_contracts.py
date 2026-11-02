@@ -59,7 +59,9 @@ def _patch_minimal_document_resolution(
     pipeline_hash: str = "pipeline-hash",
 ) -> SimpleNamespace:
     dataset = SimpleNamespace(id=dataset_id, dataset_metadata={})
-    monkeypatch.setattr(documents_module, "_resolve_writable_dataset", lambda *args, **kwargs: dataset, raising=True)
+    monkeypatch.setattr(
+        document_upload.dataset_service, "resolve_writable_dataset", lambda *args, **kwargs: dataset, raising=True
+    )
     monkeypatch.setattr(documents_module, "_parse_pipeline_json", lambda raw: None, raising=True)
     monkeypatch.setattr(
         document_upload,

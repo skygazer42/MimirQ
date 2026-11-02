@@ -37,9 +37,6 @@ from app.api.v1.connectors_validation import validate_connector_config as valida
 from app.api.v1.documents import (
     _ingest_url_upload_request as _ingest_url_upload_request,
 )
-from app.api.v1.documents import (
-    _resolve_writable_dataset as _resolve_writable_dataset,
-)
 from app.core.config import settings as settings
 from app.core.database import SessionLocal as SessionLocal
 from app.core.secrets import (

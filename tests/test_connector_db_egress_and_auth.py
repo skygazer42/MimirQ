@@ -227,8 +227,8 @@ def test_db_run_creation_reports_blocked_destination_as_client_error(
     monkeypatch.setattr(runs_api, "_validate_connector_run_enabled", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(runs_api, "ensure_tenant_permission", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
-        runs_api.connectors_module,
-        "_resolve_writable_dataset",
+        runs_api.dataset_service,
+        "resolve_writable_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=uuid.uuid4()),
     )
     monkeypatch.setattr(

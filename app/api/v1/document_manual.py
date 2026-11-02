@@ -385,7 +385,7 @@ def create_document_with_manual_chunks(
     Create a document from frontend custom chunks.
     """
     docs_mod = _documents_module()
-    dataset = docs_mod._resolve_writable_dataset(db, tenant_id, account_id, request.dataset_id)
+    dataset = dataset_service.resolve_writable_dataset(db, tenant_id, account_id, request.dataset_id)
 
     if not request.chunks:
         raise HTTPException(status_code=400, detail="Chunks cannot be empty")

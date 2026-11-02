@@ -172,7 +172,7 @@ from app.api.v1.document_versions import (
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.env import is_production_env
-from app.models.dataset import Dataset, DatasetPermissionEnum
+from app.models.dataset import Dataset
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
@@ -187,7 +187,6 @@ from app.rag.preprocessing.rules import build_governance_rules
 from app.services import dataset_service, document_access_service, ingestion_run_service
 from app.services.dataset_precheck_ingestion_suggestion import apply_ingestion_policy_suggestion
 from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
-from app.services.dataset_service import EDIT_ROLES
 from app.services.document_identity import (
     build_document_dedup_key,
     compute_pipeline_hash,
@@ -891,51 +890,6 @@ def _filter_chunker_kwargs_for_strategy(strategy: str, kwargs: dict[str, Any]) -
         return {k: v for k, v in kwargs.items() if k in accepted}
     except Exception:
         return {}
-
-
-def _resolve_writable_dataset(
-    db: Session,
-    tenant_id: UUID,
-    account_id: str,
-    dataset_id: UUID | None,
-) -> Dataset:
-    """
-    Resolve a dataset that the current user can write to.
-
-    - If dataset_id is provided: enforce writable permission.
-    - Otherwise: pick the earliest writable dataset in tenant, or auto-create a default one.
-    """
-    if dataset_id:
-        dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
-        dataset_service.assert_dataset_writable(db, dataset, account_id)
-        return dataset
-
-    # Ensure member exists and has edit role (assert_dataset_writable enforces it as well).
-    member = dataset_service.ensure_member(db, tenant_id, account_id)
-
-    datasets = db.query(Dataset).filter(Dataset.tenant_id == tenant_id).order_by(Dataset.created_at.asc()).all()
-    for ds in datasets:
-        try:
-            dataset_service.assert_dataset_writable(db, ds, account_id)
-            return ds
-        except HTTPException:
-            continue
-
-    # Validate user permission to create a dataset.
-    role = (getattr(member, "role", None) or "").lower()
-    if role not in EDIT_ROLES:
-        raise HTTPException(status_code=403, detail="No permission to create dataset. Please contact an administrator.")
-
-    # Auto-create a default dataset with restricted permission (ONLY_ME).
-    return dataset_service.create_dataset(
-        db=db,
-        tenant_id=tenant_id,
-        name="Default Dataset",
-        description="Auto-created (no dataset_id specified)",
-        permission=DatasetPermissionEnum.ONLY_ME,  # Restrict permission to avoid privilege escalation.
-        owner_id=account_id,
-        partial_members=[],
-    )
 
 
 _WINDOWS_DRIVE_LETTER_RE = re.compile(r"^[a-zA-Z]:$")
@@ -2153,7 +2107,7 @@ async def _ingest_url_upload_request(
         raise HTTPException(status_code=400, detail="URL ingestion is disabled")
 
     url = await validate_url_for_ingest(str(body.url or ""))
-    dataset = _resolve_writable_dataset(db, tenant_id, account_id, body.dataset_id)
+    dataset = dataset_service.resolve_writable_dataset(db, tenant_id, account_id, body.dataset_id)
     ingest_file = await _download_url_ingest_file(url=url, body=body, tenant_id=tenant_id)
     source = await _url_source_metadata(url=url, ingest_file=ingest_file)
     safe_name = _sanitize_filename(body.filename or Path(ingest_file.final_path).name)
@@ -2482,7 +2436,7 @@ async def _ingest_local_html_request(
     if not bool(settings.URL_INGEST_ENABLED):
         raise HTTPException(status_code=400, detail="URL ingestion is disabled")
 
-    dataset = _resolve_writable_dataset(db, tenant_id, account_id, body.dataset_id)
+    dataset = dataset_service.resolve_writable_dataset(db, tenant_id, account_id, body.dataset_id)
     ingest_file = _write_local_html_ingest_file(body=body, tenant_id=tenant_id)
     content_type = "text/html"
     source_url = str(body.source_url or "").strip() or None

@@ -357,6 +357,42 @@ def assert_dataset_writable(db: Session, dataset: Dataset, account_id: str) -> N
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No dataset write permission")
 
 
+def resolve_writable_dataset(
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID | None,
+) -> Dataset:
+    """Select a writable tenant dataset or create its restricted default."""
+    if dataset_id:
+        dataset = get_dataset(db, tenant_id, dataset_id)
+        assert_dataset_writable(db, dataset, account_id)
+        return dataset
+
+    member = ensure_member(db, tenant_id, account_id)
+    datasets = db.query(Dataset).filter(Dataset.tenant_id == tenant_id).order_by(Dataset.created_at.asc()).all()
+    for dataset in datasets:
+        try:
+            assert_dataset_writable(db, dataset, account_id)
+            return dataset
+        except HTTPException:
+            continue
+
+    role = (getattr(member, "role", None) or "").lower()
+    if role not in EDIT_ROLES:
+        raise HTTPException(status_code=403, detail="No permission to create dataset. Please contact an administrator.")
+
+    return create_dataset(
+        db=db,
+        tenant_id=tenant_id,
+        name="Default Dataset",
+        description="Auto-created (no dataset_id specified)",
+        permission=DatasetPermissionEnum.ONLY_ME,
+        owner_id=account_id,
+        partial_members=[],
+    )
+
+
 def get_dataset_partial_member_list(db: Session, tenant_id: UUID, dataset_id: UUID) -> list[str]:
     rows = (
         db.query(DatasetPermission)

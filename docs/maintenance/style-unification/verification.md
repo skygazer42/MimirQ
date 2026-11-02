@@ -276,3 +276,10 @@
 - 批量删除直接调用现有文档生命周期服务，并显式使用路由原有的权限与成员约束。404 仍记入 not_found，401／403 仍记入 denied，其他异常仍向上传递。五个路由的路径、HTTP 方法、参数和 response_model 未变。
 - 完整核对该模块规范化 AST：五个路由声明与参数保持一致，删除实现仅迁移到直接服务调用；其余模块内容 AST 原样不变。统一状态函数的四种字段／动作映射、单独一份审计调用、逐文档 HTTPException 分类和仅有更新时提交均静态核对通过；模型中的 disabled_at 与 archived_at 列声明已确认。
 - Ruff check、Ruff format --check、语法解析和 diff --check 通过；按用户要求未运行 Python 测试，运行时回归未验证。没有触及用户 schema 修改或历史未跟踪文件。
+
+## 第四批：可写数据集选择（2026-11-03）
+
+- 将 `_resolve_writable_dataset` 的实现移入 `dataset_service.resolve_writable_dataset`；文档、手工入库、上传、URL／HTML 入库和连接器的 6 处生产调用直接使用该所有者，删除 documents 与 connectors 聚合层的转发。
+- 指定数据集仍执行 tenant 限定查询和写权限检查；缺省时仍先 ensure_member，按 created_at 升序选择首个可写数据集；无可写项时仍以同一角色集拒绝或创建 ONLY_ME 默认集。原错误构造 AST 与事务来源未改变。
+- 完整核对 10 个修改前模块规范化 AST；移动后的函数体与原函数在所有者及局部名称归一化后相同。10 个路由声明、81 个 HTTP 错误构造、162 条既有测试断言和 54 个测试用例保持不变；6 个调用按服务签名核对，所有旧函数名引用清零。
+- Ruff check、Ruff format --check、语法解析和 diff --check 通过。按用户要求没有运行 Python 测试，默认数据集创建的运行时事务未验证。
