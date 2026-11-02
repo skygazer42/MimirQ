@@ -168,6 +168,8 @@ URL 入库的 `UrlUploadRequest` 归入现有文档 schema；上传和连接器�
 
 队列服务集中维护 connector ID 到执行函数的唯一映射，HTTP connector run 路由复用该 resolver。执行期延迟导入保留，因为当前 connector 聚合器负责给分拆模块绑定共享 helper；该初始化契约纳入后续连接器边界审核。
 
+上传提交异常后的存在性核对直接使用 `Session.get` 和 ORM model；核实 SQLAlchemy session 契约后移除路由模块模型读取及 query 形状 fallback。session 创建／查询失败的 unknown 状态、远端对象保留和关闭顺序保持原样。
+
 **本批产出：** 上传到任务的输入输出和失败路径一致，同一字段映射与权限规则只有一个业务维护点。
 
 ### Task 5：RAG 与模型调用

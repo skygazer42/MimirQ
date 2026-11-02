@@ -20,6 +20,7 @@ from app.api.utils.document_dispatch import schedule_document_processing
 from app.api.utils.pipeline_options import PipelineOptionOverrides, to_pipeline_options
 from app.core.config import settings
 from app.core.database import get_db
+from app.models.document import Document as DBDocument
 from app.rag.core.logging import get_logger
 from app.services import dataset_service, ingestion_run_service
 from app.services.document_identity import (
@@ -229,9 +230,7 @@ async def _cleanup_unpersisted_source(stored_path: str, *, document_metadata: di
         logger.warning("Failed to delete unpersisted document object: %s", str(exc)[:200])
 
 
-def _fresh_session_document_exists(*, session_factory: Any, document_id: UUID) -> bool | None:
-    from app.api.v1 import documents as documents_module
-
+def _fresh_session_document_exists(*, session_factory: Callable[[], Session], document_id: UUID) -> bool | None:
     try:
         check_db = session_factory()
     except Exception as exc:  # noqa: BLE001
@@ -239,13 +238,7 @@ def _fresh_session_document_exists(*, session_factory: Any, document_id: UUID) -
         return None
 
     try:
-        getter = getattr(check_db, "get", None)
-        if callable(getter):
-            return getter(documents_module.DBDocument, document_id) is not None
-        query = getattr(check_db, "query", None)
-        if callable(query):
-            row = query(documents_module.DBDocument).filter(documents_module.DBDocument.id == document_id).first()
-            return row is not None
+        return check_db.get(DBDocument, document_id) is not None
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to verify document existence after commit error: %s", str(exc)[:200])
         return None
@@ -258,7 +251,7 @@ def _fresh_session_document_exists(*, session_factory: Any, document_id: UUID) -
 
 async def _cleanup_commit_ambiguous_source(
     *,
-    session_factory: Any,
+    session_factory: Callable[[], Session],
     document_id: UUID,
     stored_path: str,
     file_path: Path,

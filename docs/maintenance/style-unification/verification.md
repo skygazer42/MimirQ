@@ -310,3 +310,9 @@
 - 队列服务是 connector ID 执行映射的唯一所有者；`connectors_runs` 路由直接调用该 resolver，不再维护重复的九项 dispatcher 名称表。原 HTTP 400 和队列 `False` 的 unsupported ID 处理保持不变。
 - `ConnectorRun.connector_id` 在 ORM 中为非空字符串，worker 的公开入口参数也是 `str`；去掉两处 `str(connector_id or "")`，保留 `.strip()` 及大小写匹配方式。队列 resolver 仍在实际执行时延迟导入 connector 聚合器，以保留分拆模块的 helper 初始化。
 - Ruff check、Ruff format --check、语法与 diff --check 通过；静态引用扫描确认 API 调用同一 resolver，worker 入口仍调用相同服务。没有运行 Python 测试或导入应用，连接器完整执行流程未运行。
+
+## 第四批：上传提交确认读取（2026-11-03）
+
+- `_fresh_session_document_exists` 直接导入 `DBDocument`，以 `Callable[[], Session]` 表达 session factory 并调用 SQLAlchemy `Session.get`。删除从 `documents` 路由动态取模型以及对 `get`／`query` 的形状探测；factory 注入保持不变。
+- session 创建或查询异常仍记录 warning 并返回 `None`，因此不会基于未知状态删除远端对象；成功创建后的 close 仍 best-effort。`False`、`True`、`None` 三类结果进入的对象清理分支不变。
+- Ruff check、Ruff format --check 和 diff --check 通过。未运行 Python 测试或应用流程；运行时行为只做源码契约核对。
