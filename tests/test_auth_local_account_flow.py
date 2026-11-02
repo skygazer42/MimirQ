@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -11,10 +11,70 @@ from sqlalchemy.pool import StaticPool
 import app.api.v1.auth as auth_module
 from app.core.config import settings
 from app.core.database import Base
+from app.core.exceptions import MimirQError, register_exception_handlers
 from app.core.security import hash_password
 from app.models.tenant import Tenant, TenantMember
 from app.models.user import User
-from app.services.user_service import UserService
+from app.services.user_service import (
+    authenticate_user,
+    create_user,
+    get_current_tenant_id,
+)
+
+
+@pytest.mark.parametrize(
+    ("active", "password", "status_code", "error_code"),
+    [
+        (True, "wrong-password", 401, "AUTHENTICATION_ERROR"),
+        (False, "correct-horse-battery-staple", 403, "AUTHORIZATION_ERROR"),
+    ],
+)
+def test_authentication_failures_use_application_errors(
+    active: bool, password: str, status_code: int, error_code: str
+) -> None:
+    engine, test_session, _app = _build_auth_test_client()
+    try:
+        with test_session() as db:
+            db.add(
+                User(
+                    email="owner@example.com",
+                    username="owner",
+                    password_hash=hash_password("correct-horse-battery-staple"),
+                    is_active=active,
+                )
+            )
+            db.commit()
+            with pytest.raises(MimirQError) as failure:
+                authenticate_user(db, "owner", password)
+            assert failure.value.status_code == status_code
+            assert failure.value.error_code == error_code
+    finally:
+        engine.dispose()
+
+
+def test_registration_configuration_failure_hides_internal_detail_and_rolls_back(monkeypatch) -> None:
+    monkeypatch.setenv("ENV", "development")
+    monkeypatch.setattr(settings, "DEFAULT_TENANT_ID", "invalid-tenant")
+    engine, test_session, app = _build_auth_test_client()
+    register_exception_handlers(app)
+    try:
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.post(
+                "/auth/register",
+                json={"email": "owner@example.com", "username": "owner", "password": "valid-password"},
+                headers={"X-Request-ID": "registration-config-error"},
+            )
+        assert response.status_code == 500
+        assert response.json() == {
+            "error": "INTERNAL_ERROR",
+            "message": "An unexpected error occurred. Please try again later.",
+            "request_id": "registration-config-error",
+        }
+        with test_session() as db:
+            assert db.query(User).count() == 0
+            assert db.query(TenantMember).count() == 0
+    finally:
+        engine.dispose()
 
 
 def _build_auth_test_client():
@@ -34,6 +94,7 @@ def _build_auth_test_client():
             db.close()
 
     app = FastAPI()
+    register_exception_handlers(app)
     app.include_router(auth_module.router, prefix="/auth")
     app.dependency_overrides[auth_module.get_db] = _get_test_db
     return engine, test_session, app
@@ -80,6 +141,7 @@ def test_local_account_bootstrap_login_and_me(monkeypatch) -> None:
                 json={"identifier": "OWNER@EXAMPLE.COM", "password": "wrong-password"},
             )
             assert invalid_login.status_code == 401
+            assert invalid_login.json() == {"error": "AUTHENTICATION_ERROR", "message": "Invalid credentials"}
 
             logged_in = client.post(
                 "/auth/login",
@@ -100,7 +162,8 @@ def test_local_account_bootstrap_login_and_me(monkeypatch) -> None:
                 },
             )
             assert later_registration.status_code == 409
-            assert later_registration.json()["detail"] == "Initial registration is closed; contact an administrator"
+            assert later_registration.json()["error"] == "CONFLICT"
+            assert later_registration.json()["message"] == "Initial registration is closed; contact an administrator"
 
         with test_session() as db:
             assert db.query(User).count() == 1
@@ -137,7 +200,7 @@ def test_production_bootstrap_registration_requires_token(monkeypatch) -> None:
                 },
             )
             assert denied.status_code == 403
-            assert denied.json()["detail"] == "Initial registration bootstrap token required"
+            assert denied.json()["message"] == "Initial registration bootstrap token required"
     finally:
         engine.dispose()
 
@@ -237,12 +300,13 @@ def test_production_existing_owner_registration_still_returns_conflict_without_t
                 },
             )
             assert second.status_code == 409
-            assert second.json()["detail"] == "Initial registration is closed; contact an administrator"
+            assert second.json()["message"] == "Initial registration is closed; contact an administrator"
     finally:
         engine.dispose()
 
 
-def test_get_current_tenant_id_ignores_inactive_memberships_and_tenants() -> None:
+@pytest.mark.parametrize("fallback_current", [False, None])
+def test_get_current_tenant_id_ignores_inactive_memberships_and_tenants(fallback_current: bool | None) -> None:
     engine, test_session, _app = _build_auth_test_client()
 
     try:
@@ -306,7 +370,11 @@ def test_get_current_tenant_id_ignores_inactive_memberships_and_tenants() -> Non
             )
             db.commit()
 
-            assert UserService.get_current_tenant_id(db, user_id=str(user.id)) == active_current_tenant.id
+            fallback_member = db.query(TenantMember).filter(TenantMember.tenant_id == active_fallback_tenant.id).one()
+            # Update after insertion so the legacy NULL is not replaced by the model's insert default.
+            fallback_member.is_current = fallback_current
+            db.commit()
+            assert get_current_tenant_id(db, user_id=str(user.id)) == active_current_tenant.id
 
             current_member = (
                 db.query(TenantMember)
@@ -320,7 +388,7 @@ def test_get_current_tenant_id_ignores_inactive_memberships_and_tenants() -> Non
             current_member.is_current = False
             db.commit()
 
-            assert UserService.get_current_tenant_id(db, user_id=str(user.id)) == active_fallback_tenant.id
+            assert get_current_tenant_id(db, user_id=str(user.id)) == active_fallback_tenant.id
 
             fallback_member = (
                 db.query(TenantMember)
@@ -334,7 +402,7 @@ def test_get_current_tenant_id_ignores_inactive_memberships_and_tenants() -> Non
             fallback_member.is_active = False
             db.commit()
 
-            assert UserService.get_current_tenant_id(db, user_id=str(user.id)) is None
+            assert get_current_tenant_id(db, user_id=str(user.id)) is None
     finally:
         engine.dispose()
 
@@ -363,11 +431,11 @@ def test_authenticate_rejects_ambiguous_identifier_collision() -> None:
             db.commit()
 
             for password in ("owner-password", "other-password"):
-                with pytest.raises(HTTPException) as excinfo:
-                    UserService.authenticate(db, "owner@example.com", password)
+                with pytest.raises(MimirQError) as excinfo:
+                    authenticate_user(db, "owner@example.com", password)
 
                 assert excinfo.value.status_code == 401
-                assert excinfo.value.detail == "Invalid credentials"
+                assert excinfo.value.message == "Invalid credentials"
     finally:
         engine.dispose()
 
@@ -387,22 +455,56 @@ def test_create_user_rejects_cross_field_namespace_collisions_case_insensitively
             )
             db.commit()
 
-            with pytest.raises(HTTPException) as username_exc:
-                UserService.create_user(
+            with pytest.raises(MimirQError) as username_exc:
+                create_user(
                     db,
                     email="other@example.com",
                     username="OWNER@example.com",
                     password="another-valid-password",
+                    password_min_length=settings.PASSWORD_MIN_LENGTH,
+                    default_tenant_id=settings.DEFAULT_TENANT_ID,
                 )
             assert username_exc.value.status_code == 400
 
-            with pytest.raises(HTTPException) as email_exc:
-                UserService.create_user(
+            with pytest.raises(MimirQError) as email_exc:
+                create_user(
                     db,
                     email="owner",
                     username="later",
                     password="another-valid-password",
+                    password_min_length=settings.PASSWORD_MIN_LENGTH,
+                    default_tenant_id=settings.DEFAULT_TENANT_ID,
                 )
             assert email_exc.value.status_code == 400
+    finally:
+        engine.dispose()
+
+
+def test_registration_password_policy_keeps_bad_request_response(monkeypatch) -> None:
+    monkeypatch.setenv("ENV", "development")
+    monkeypatch.setattr(settings, "PASSWORD_MIN_LENGTH", 12)
+    engine, test_session, app = _build_auth_test_client()
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/auth/register",
+                json={"email": "owner@example.com", "username": "owner", "password": "12345678"},
+            )
+        assert response.status_code == 400
+        assert response.json() == {"error": "BAD_REQUEST", "message": "Password must be at least 12 characters"}
+        with test_session() as db:
+            assert db.query(User).count() == 0
+    finally:
+        engine.dispose()
+
+
+def test_current_user_malformed_account_id_keeps_not_found_response() -> None:
+    engine, _test_session, app = _build_auth_test_client()
+    app.dependency_overrides[auth_module.get_current_account_id] = lambda: "not-a-uuid"
+    try:
+        with TestClient(app) as client:
+            response = client.get("/auth/me")
+        assert response.status_code == 404
+        assert response.json() == {"error": "NOT_FOUND", "message": "User not found"}
     finally:
         engine.dispose()

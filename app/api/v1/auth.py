@@ -24,6 +24,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.env import is_production_env
 from app.core.jwt_utils import create_access_token
+from app.models.user import User
 from app.services.saml_bridge_service import (
     consume_saml_bridge_session,
     issue_saml_bridge_session,
@@ -31,7 +32,14 @@ from app.services.saml_bridge_service import (
     saml_bridge_session_to_exchange,
 )
 from app.services.saml_service import build_saml_sp_metadata_xml, exchange_saml_response
-from app.services.user_service import UserService
+from app.services.user_service import (
+    authenticate_user,
+    create_user,
+    get_current_tenant_id,
+    get_default_tenant_member_count,
+    get_user_by_id,
+    mark_login,
+)
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -45,13 +53,9 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 _BOOTSTRAP_TOKEN_HEADER = "X-Bootstrap-Token"
 
 
-def _initial_registration_open(db: Session) -> bool:
-    return UserService.get_default_tenant_member_count(db) == 0
-
-
 def _bootstrap_token_matches(provided_token: str, expected_token: str) -> bool:
-    expected = str(expected_token or "").strip()
-    provided = str(provided_token or "").strip()
+    expected = expected_token.strip()
+    provided = provided_token.strip()
     if not expected or not provided:
         return False
     if expected.lower().startswith("sha256:"):
@@ -66,12 +70,23 @@ def _bootstrap_token_matches(provided_token: str, expected_token: str) -> bool:
 def _require_initial_registration_token(*, db: Session, bootstrap_token: str | None) -> None:
     if not is_production_env():
         return
-    if not _initial_registration_open(db):
+    if get_default_tenant_member_count(db, default_tenant_id=settings.DEFAULT_TENANT_ID) != 0:
         return
-    expected_token = str(getattr(settings, "INITIAL_REGISTRATION_TOKEN", "") or "").strip()
-    if _bootstrap_token_matches(str(bootstrap_token or ""), expected_token):
+    if _bootstrap_token_matches(bootstrap_token or "", settings.INITIAL_REGISTRATION_TOKEN):
         return
     raise HTTPException(status_code=403, detail="Initial registration bootstrap token required")
+
+
+def _build_auth_response(db: Session, user: User) -> AuthResponse:
+    tenant_id = None
+    if settings.JWT_TENANT_CLAIM.strip():
+        current_tenant = get_current_tenant_id(db, user_id=str(user.id))
+        tenant_id = str(current_tenant) if current_tenant else None
+    token, expires_in = create_access_token(str(user.id), tenant_id=tenant_id)
+    return AuthResponse(
+        user=user,
+        token=TokenResponse(access_token=token, expires_in=expires_in),
+    )
 
 
 @router.post("/register", status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -82,37 +97,23 @@ def register_user(
 ) -> AuthResponse:
     """Bootstrap the first tenant owner and return an access token."""
     _require_initial_registration_token(db=db, bootstrap_token=bootstrap_token)
-    user = UserService.create_user(
+    user = create_user(
         db,
         email=payload.email,
         username=payload.username,
         password=payload.password,
+        password_min_length=settings.PASSWORD_MIN_LENGTH,
+        default_tenant_id=settings.DEFAULT_TENANT_ID,
     )
-    tenant_id = None
-    if str(getattr(settings, "JWT_TENANT_CLAIM", "") or "").strip():
-        current_tenant = UserService.get_current_tenant_id(db, user_id=str(user.id))
-        tenant_id = str(current_tenant) if current_tenant else None
-    token, expires_in = create_access_token(str(user.id), tenant_id=tenant_id)
-    return AuthResponse(
-        user=user,
-        token=TokenResponse(access_token=token, expires_in=expires_in),
-    )
+    return _build_auth_response(db, user)
 
 
 @router.post("/login", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def login_user(payload: LoginRequest, db: Annotated[Session, Depends(get_db)]) -> AuthResponse:
     """Authenticate a user and issue an access token."""
-    user = UserService.authenticate(db, payload.identifier, payload.password)
-    UserService.mark_login(db, user)
-    tenant_id = None
-    if str(getattr(settings, "JWT_TENANT_CLAIM", "") or "").strip():
-        current_tenant = UserService.get_current_tenant_id(db, user_id=str(user.id))
-        tenant_id = str(current_tenant) if current_tenant else None
-    token, expires_in = create_access_token(str(user.id), tenant_id=tenant_id)
-    return AuthResponse(
-        user=user,
-        token=TokenResponse(access_token=token, expires_in=expires_in),
-    )
+    user = authenticate_user(db, payload.identifier, payload.password)
+    mark_login(db, user)
+    return _build_auth_response(db, user)
 
 
 @router.get("/me", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -122,7 +123,7 @@ def get_me(
     db: Annotated[Session, Depends(get_db)],
 ) -> UserPublic:
     """Return the authenticated user's public profile."""
-    user = UserService.get_by_id(db, account_id)
+    user = get_user_by_id(db, account_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user

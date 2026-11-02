@@ -150,6 +150,26 @@ class MimirQError(Exception):
 MimirQException = MimirQError
 
 
+class BadRequestError(MimirQError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="BAD_REQUEST", status_code=400)
+
+
+class AuthenticationError(MimirQError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="AUTHENTICATION_ERROR", status_code=401)
+
+
+class AuthorizationError(MimirQError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="AUTHORIZATION_ERROR", status_code=403)
+
+
+class ConflictError(MimirQError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="CONFLICT", status_code=409)
+
+
 class ValidationError(MimirQError):
     def __init__(
         self,

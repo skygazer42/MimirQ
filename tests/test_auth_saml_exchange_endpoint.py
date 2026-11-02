@@ -9,10 +9,12 @@ from sqlalchemy.orm import sessionmaker
 
 import app.api.v1.auth as auth_module
 from app.api.schemas.auth import SamlExchangeResponse, TokenResponse, UserPublic
-from app.core.config import settings
 from app.core.database import Base
+from app.core.exceptions import ConfigError, ConflictError
 from app.models.tenant import Tenant, TenantMember
-from app.services.user_service import UserService
+from app.services.user_service import (
+    ensure_default_membership,
+)
 
 
 def _build_app() -> FastAPI:
@@ -92,17 +94,16 @@ def test_saml_exchange_endpoint_surfaces_auth_errors(monkeypatch) -> None:
     assert res.json()["detail"] == "Invalid SAML signature"
 
 
-def test_default_membership_rejects_registration_after_first_owner(monkeypatch) -> None:
+def test_default_membership_rejects_registration_after_first_owner() -> None:
     tenant_id = uuid4()
-    monkeypatch.setattr(settings, "DEFAULT_TENANT_ID", str(tenant_id), raising=False)
 
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine, tables=[Tenant.__table__, TenantMember.__table__])
     db = sessionmaker(bind=engine)()
     try:
-        UserService.ensure_default_membership(db, user_id="first-user")
-        with pytest.raises(HTTPException) as conflict:
-            UserService.ensure_default_membership(db, user_id="later-user")
+        ensure_default_membership(db, user_id="first-user", default_tenant_id=str(tenant_id))
+        with pytest.raises(ConflictError) as conflict:
+            ensure_default_membership(db, user_id="later-user", default_tenant_id=str(tenant_id))
         db.flush()
 
         assert conflict.value.status_code == 409
@@ -113,10 +114,6 @@ def test_default_membership_rejects_registration_after_first_owner(monkeypatch) 
         engine.dispose()
 
 
-def test_default_membership_rejects_invalid_tenant_configuration(monkeypatch) -> None:
-    monkeypatch.setattr(settings, "DEFAULT_TENANT_ID", "not-a-uuid", raising=False)
-
-    with pytest.raises(HTTPException) as misconfigured:
-        UserService.ensure_default_membership(object(), user_id="first-user")
-
-    assert misconfigured.value.status_code == 500
+def test_default_membership_rejects_invalid_tenant_configuration() -> None:
+    with pytest.raises(ConfigError, match="DEFAULT_TENANT_ID is invalid"):
+        ensure_default_membership(object(), user_id="first-user", default_tenant_id="not-a-uuid")

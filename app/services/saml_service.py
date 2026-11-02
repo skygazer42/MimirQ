@@ -15,7 +15,12 @@ from app.api.schemas.auth import SamlExchangeResponse, TokenResponse, UserPublic
 from app.core.config import settings
 from app.core.jwt_utils import create_access_token
 from app.services.saml_replay_service import ensure_saml_assertion_not_replayed
-from app.services.user_service import UserService
+from app.services.user_service import (
+    get_current_tenant_id,
+    get_user_by_email,
+    get_user_by_username,
+    mark_login,
+)
 
 _NS = {
     "samlp": "urn:oasis:names:tc:SAML:2.0:protocol",
@@ -408,12 +413,12 @@ def _resolve_user_identity(db: Any, assertion: etree._Element, provider: SamlPro
 
     user = None
     if email:
-        user = UserService.get_by_email(db, email)
+        user = get_user_by_email(db, email)
     if user is None and name_id_normalized:
         if "@" in name_id_normalized:
-            user = UserService.get_by_email(db, name_id_normalized.lower())
+            user = get_user_by_email(db, name_id_normalized.lower())
         if user is None:
-            user = UserService.get_by_username(db, name_id_normalized)
+            user = get_user_by_username(db, name_id_normalized)
 
     if user is None:
         raise HTTPException(status_code=403, detail="SAML account not provisioned")
@@ -440,9 +445,9 @@ def exchange_saml_response(
     ensure_saml_assertion_not_replayed(replay_key, minimum_ttl_sec=minimum_replay_ttl_sec)
 
     user, groups = _resolve_user_identity(db, assertion, provider)
-    UserService.mark_login(db, user)
+    mark_login(db, user)
 
-    tenant_id = UserService.get_current_tenant_id(db, _user_id=str(user.id))
+    tenant_id = get_current_tenant_id(db, user_id=str(user.id))
     extra_claims: dict[str, Any] = {}
     normalized_groups = [group for group in groups if group]
     if normalized_groups:
