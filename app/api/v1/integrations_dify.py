@@ -20,7 +20,6 @@ from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from datetime import UTC, datetime
 from difflib import SequenceMatcher as SequenceMatcher
-from functools import lru_cache
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -492,7 +491,6 @@ from app.rag.retrieval.planner import (
     plan_dataset_scope,
     resolve_internal_candidate_top_k,
     retrieval_policy_fallback_multiplier,
-    retrieval_policy_mixed_intent_leading_noise_terms,
     retrieval_policy_mixed_intent_subject_terms,
     retrieval_policy_query_terms,
     retrieval_policy_response_compaction,
@@ -539,6 +537,9 @@ from app.services.dify_integration.policy_helpers import (
     apply_policy_fallback_candidate_multiplier as _service_apply_policy_fallback_candidate_multiplier,
 )
 from app.services.dify_integration.policy_helpers import (
+    fast_response_always_labels_for_policy_refs as _service_fast_response_always_labels_for_policy_refs,
+)
+from app.services.dify_integration.policy_helpers import (
     fast_response_field_rules_for_policy_refs as _service_fast_response_field_rules_for_policy_refs,
 )
 from app.services.dify_integration.policy_helpers import (
@@ -576,6 +577,9 @@ from app.services.dify_integration.policy_helpers import (
 )
 from app.services.dify_integration.policy_helpers import (
     retrieval_policy_filter_fields_for_plugin_refs as _service_retrieval_policy_filter_fields_for_plugin_refs,
+)
+from app.services.dify_integration.policy_helpers import (
+    retrieval_policy_for_plugin_ref as _retrieval_policy_for_plugin_ref,
 )
 from app.services.dify_integration.policy_helpers import (
     service_anchor_admin_aliases_for_policy_refs as _service_service_anchor_admin_aliases_for_policy_refs,
@@ -724,18 +728,6 @@ _ANCHOR_ONLY_QA_RECORD_PENALTY = 0.28
 _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH = 0.8
 _QUESTION_ANCHOR_BIGRAM_MIN_OVERLAP = 3
 _QUESTION_ANCHOR_BIGRAM_MIN_RATIO = 0.5
-_MIXED_INTENT_DEFAULT_LEADING_NOISE_TERMS = (
-    "关于",
-    "回答",
-    "告诉我",
-    "先帮我看下",
-    "帮我看下",
-    "看下",
-    "请同时说明",
-    "请说明",
-    "说明",
-    "请",
-)
 _MIXED_INTENT_SPLIT_RE = re.compile(
     r"(?:[，,。；;、：:]\s*)?"
     r"(?:另外|同时|以及|并且|还想|还要|一次知道|分别|顺便|请合并回答|请分别回答|合并回答|一并回答|一起回答|分别回答|分开回答|请合并|请分别)\s*"
@@ -1780,8 +1772,6 @@ def _response_hints_for_record(
     return _service_response_hints_for_record(
         record,
         policy_plugin_refs=policy_plugin_refs,
-        record_plugin_ref=lambda item, refs: _record_plugin_ref(item, fallback_plugin_refs=refs),
-        policy_resolver=_retrieval_policy_for_plugin_ref,
     )
 
 
@@ -1793,10 +1783,6 @@ def _response_hints_for_metadata(
     return _service_response_hints_for_metadata(
         metadata,
         policy_plugin_refs=policy_plugin_refs,
-        response_hints_for_record=lambda record, refs: _response_hints_for_record(
-            record,
-            policy_plugin_refs=refs,
-        ),
     )
 
 
@@ -2817,23 +2803,6 @@ def _record_mixed_intent_subquery_bonus(
     return min(best, 1.4)
 
 
-@lru_cache(maxsize=128)
-def _retrieval_policy_for_plugin_ref(plugin_ref: str) -> dict[str, Any]:
-    ref = str(plugin_ref or "").strip()
-    if not ref.startswith("plugin:"):
-        return {}
-    try:
-        from app.rag.pipeline_plugins.registry import resolve_registered_plugin_descriptor
-
-        descriptor = resolve_registered_plugin_descriptor(ref)
-    except Exception:  # noqa: BLE001
-        return {}
-    policy = getattr(descriptor, "retrieval_policy", None)
-    if isinstance(policy, dict) and policy.get("schema") == "mimirq.retrieval_policy.v1":
-        return dict(policy)
-    return {}
-
-
 def _policy_string_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...], key: str) -> tuple[str, ...]:
     return _service_policy_string_terms_for_policy_refs(
         policy_plugin_refs,
@@ -2857,12 +2826,7 @@ def _service_anchor_cutoff_terms_for_policy_refs(policy_plugin_refs: tuple[str, 
 
 
 def _service_anchor_admin_aliases_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
-    return _service_service_anchor_admin_aliases_for_policy_refs(
-        policy_plugin_refs,
-        policy_resolver=_retrieval_policy_for_plugin_ref,
-        metadata_terms=_metadata_terms,
-        normalize_term=_normalize_match_term,
-    )
+    return _service_service_anchor_admin_aliases_for_policy_refs(policy_plugin_refs)
 
 
 def _question_anchor_generic_subject_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
@@ -2870,25 +2834,17 @@ def _question_anchor_generic_subject_terms_for_policy_refs(policy_plugin_refs: t
 
 
 def _fast_response_always_labels_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
-    return _policy_string_terms_for_policy_refs(policy_plugin_refs, "fast_response_always_labels")
+    return _service_fast_response_always_labels_for_policy_refs(policy_plugin_refs)
 
 
 def _fast_response_field_rules_for_policy_refs(
     policy_plugin_refs: tuple[str, ...],
 ) -> tuple[tuple[str, tuple[str, ...]], ...]:
-    return _service_fast_response_field_rules_for_policy_refs(
-        policy_plugin_refs,
-        policy_resolver=_retrieval_policy_for_plugin_ref,
-        metadata_terms=_metadata_terms,
-    )
+    return _service_fast_response_field_rules_for_policy_refs(policy_plugin_refs)
 
 
 def _requested_label_prefixes_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
-    return _service_requested_label_prefixes_for_policy_refs(
-        policy_plugin_refs,
-        policy_resolver=_retrieval_policy_for_plugin_ref,
-        response_hint_dict_list=_response_hint_dict_list,
-    )
+    return _service_requested_label_prefixes_for_policy_refs(policy_plugin_refs)
 
 
 def _service_anchor_noise_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
@@ -2919,13 +2875,7 @@ def _service_anchor_query_rewrite_terms_for_policy_refs(
 
 
 def _mixed_intent_leading_noise_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
-    return _service_mixed_intent_leading_noise_terms_for_policy_refs(
-        policy_plugin_refs,
-        default_terms=_MIXED_INTENT_DEFAULT_LEADING_NOISE_TERMS,
-        policy_resolver=_retrieval_policy_for_plugin_ref,
-        terms_resolver=retrieval_policy_mixed_intent_leading_noise_terms,
-        normalize_term=_normalize_match_term,
-    )
+    return _service_mixed_intent_leading_noise_terms_for_policy_refs(policy_plugin_refs)
 
 
 def _mixed_intent_subject_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
