@@ -12,22 +12,9 @@ from pathlib import Path
 # =============================================================================
 
 
-def _find_project_root() -> Path:
-    """
-    Find project root.
-
-    Walk upward from this file until a directory containing app/ is found.
-
-    Returns:
-        Project root path.
-    """
-    current = Path(__file__).resolve()
-    # app/core/paths.py -> app/core -> app -> repo root
-    return current.parents[2]
-
-
 # Project root (repo root)
-PROJECT_ROOT: Path = _find_project_root()
+# app/core/paths.py -> app/core -> app -> repo root
+PROJECT_ROOT: Path = Path(__file__).resolve().parents[2]
 
 # App directory (app/)
 APP_DIR: Path = PROJECT_ROOT / "app"

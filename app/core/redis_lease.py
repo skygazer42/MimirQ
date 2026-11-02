@@ -2,7 +2,10 @@
 Small owner-safe Redis lease helpers shared by sync and async callers.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from redis import Redis
 
 _COMPARE_DELETE_LUA = """
 if redis.call("GET", KEYS[1]) == ARGV[1] then
@@ -20,7 +23,7 @@ return 0
 
 
 def try_acquire_redis_lease(
-    client: Any,
+    client: "Redis",
     key: str,
     *,
     value: str,
@@ -32,14 +35,14 @@ def try_acquire_redis_lease(
         client.set(
             key,
             value,
-            ex=max(1, int(ttl_sec)),
+            ex=ttl_sec,
             nx=True,
         )
     )
 
 
 def release_redis_lease(
-    client: Any,
+    client: "Redis",
     key: str,
     *,
     value: str,
@@ -50,7 +53,7 @@ def release_redis_lease(
 
 
 def extend_redis_lease(
-    client: Any,
+    client: "Redis",
     key: str,
     *,
     value: str,
@@ -64,6 +67,6 @@ def extend_redis_lease(
             1,
             key,
             value,
-            max(1, int(ttl_sec)),
+            ttl_sec,
         )
     )

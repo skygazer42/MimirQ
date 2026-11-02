@@ -235,18 +235,18 @@ app/connectors/db/profile_privacy.py,4,pending,adjusted,Awaiting file-level conv
 app/connectors/registry.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/connectors/types.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/__init__.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/core/async_bridge.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/core/async_bridge.py,3,conforms,conforms,Async loop and cancellation boundaries reviewed; worker completion and exception policies retained,Task 3 resources: 9-module Ruff/format/AST; 49 signatures; 2 exact Lua scripts; Python tests deferred
 app/core/config.py,3,adjusted,conforms,Settings schema and validation order preserved; implicit dependency injection removed,task-3-configuration-static; full Settings AST; public reexports
 app/core/config_validation.py,3,adjusted,conforms,Typed Settings validation and direct owners; redundant field wrappers removed,task-3-configuration-static; 53 canonical bodies; 4 moved bodies; 313 bound calls
 app/core/constants.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/cost_tracker.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/core/database.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/core/database_singleton.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/core/database.py,3,conforms,conforms,Required re-export boundary keeps SQLAlchemy singletons stable across module reloads,Task 3 resources: 9-module Ruff/format/AST; 49 signatures; 2 exact Lua scripts; Python tests deferred
+app/core/database_singleton.py,3,adjusted,conforms,Typed session dependency and pool settings; SQLite options and transaction cleanup retained,Task 3 resources: 9-module Ruff/format/AST; 49 signatures; 2 exact Lua scripts; Python tests deferred
 app/core/env.py,3,conforms,adjusted,Environment reader already has a single explicit typed responsibility,task-3-configuration-static; complete source review
 app/core/exceptions.py,3,adjusted,conforms,Explicit UUID/config/framework contracts; duplicate internal conversions removed; policies retained,Task 3 common API: Ruff/format/AST/signatures; source-only verification; no Python tests
 app/core/health_checks.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/core/http_client.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/core/http_env.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/core/http_client.py,3,adjusted,conforms,Typed HTTP options and response fields; unused compatibility entry and lock removed; pool lifecycle retained,Task 3 resources: 9-module Ruff/format/AST; 49 signatures; 2 exact Lua scripts; Python tests deferred
+app/core/http_env.py,3,conforms,conforms,Environment proxy boundary reviewed; explicit SOCKS degradation and logging retained,Task 3 resources: 9-module Ruff/format/AST; 49 signatures; 2 exact Lua scripts; Python tests deferred
 app/core/jwt_inspect.py,3,conforms,conforms,Unverified JWT inspection is an explicit diagnostic boundary; parsing checks retained,Task 3 identity: 10-module Ruff/format/AST; 35 signatures; 69 static calls; Python tests deferred
 app/core/jwt_utils.py,3,adjusted,conforms,Typed token creation and claim merge simplified; claim precedence and signing preserved,Task 3 identity: 10-module Ruff/format/AST; 35 signatures; 69 static calls; Python tests deferred
 app/core/jwt_verify.py,3,adjusted,conforms,Typed token verification reads simplified; HTTPS redirects and bounded cache policies retained,Task 3 identity: 10-module Ruff/format/AST; 35 signatures; 69 static calls; Python tests deferred
@@ -255,13 +255,13 @@ app/core/logging_config.py,3,pending,adjusted,Awaiting file-level convention and
 app/core/metrics.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/migrations.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/openai_compat.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/core/optional_deps.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/core/optional_deps.py,3,adjusted,conforms,Typed import diagnostics simplified; missing dependency and enabled feature failure policies retained,Task 3 resources: 9-module Ruff/format/AST; 49 signatures; 2 exact Lua scripts; Python tests deferred
 app/core/otel.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/core/paths.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/core/paths.py,3,adjusted,conforms,Single-use root wrapper inlined; external path containment and environment overrides retained,Task 3 resources: 9-module Ruff/format/AST; 49 signatures; 2 exact Lua scripts; Python tests deferred
 app/core/pii_redaction.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/pipeline_versions.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/core/redis_client.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/core/redis_lease.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/core/redis_client.py,3,adjusted,conforms,Redis return type is explicit without eager import; typed URL and lazy error policies retained,Task 3 resources: 9-module Ruff/format/AST; 49 signatures; 2 exact Lua scripts; Python tests deferred
+app/core/redis_lease.py,3,adjusted,conforms,Explicit Redis client and validated positive TTL; owner-safe Lua and boolean outcomes retained,Task 3 resources: 9-module Ruff/format/AST; 49 signatures; 2 exact Lua scripts; Python tests deferred
 app/core/regex_runtime.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/regex_safety.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/request_state.py,3,conforms,adjusted,Request-state context carrier follows framework dynamic attributes; absent request state and best-effort token cleanup are intentional boundaries,task-3-permission-quota: full source and dataset/group boundary review; no Python tests

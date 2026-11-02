@@ -14,25 +14,25 @@ when `app.core.database` is removed from `sys.modules`.
 """
 
 import contextlib
-from typing import Any
+from collections.abc import Iterator
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine.url import make_url
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 from app.core.config import settings
 
 
-def _build_engine_kwargs(url: str) -> dict[str, Any]:
+def _build_engine_kwargs(url: str) -> dict[str, bool | int]:
     parsed_url = make_url(url)
-    engine_kwargs: dict[str, Any] = {"pool_pre_ping": bool(settings.DB_POOL_PRE_PING)}
+    engine_kwargs: dict[str, bool | int] = {"pool_pre_ping": settings.DB_POOL_PRE_PING}
     if not (parsed_url.drivername or "").startswith("sqlite"):
         engine_kwargs.update(
             {
-                "pool_size": int(settings.DB_POOL_SIZE),
-                "max_overflow": int(settings.DB_MAX_OVERFLOW),
-                "pool_timeout": int(settings.DB_POOL_TIMEOUT_SEC),
-                "pool_recycle": int(settings.DB_POOL_RECYCLE_SEC),
+                "pool_size": settings.DB_POOL_SIZE,
+                "max_overflow": settings.DB_MAX_OVERFLOW,
+                "pool_timeout": settings.DB_POOL_TIMEOUT_SEC,
+                "pool_recycle": settings.DB_POOL_RECYCLE_SEC,
             }
         )
     return engine_kwargs
@@ -49,7 +49,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=
 Base = declarative_base()
 
 
-def get_db():  # noqa: ANN201
+def get_db() -> Iterator[Session]:
     """FastAPI dependency: yield a DB session."""
     db = SessionLocal()
     try:
