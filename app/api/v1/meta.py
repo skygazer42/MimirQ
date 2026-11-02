@@ -2,7 +2,6 @@
 Backend metadata endpoints for frontend/dev tooling.
 """
 
-
 import os
 import platform
 from datetime import UTC, datetime
@@ -66,7 +65,7 @@ def _build_public_meta() -> dict[str, Any]:
             "time": _get_build_time(),
         },
         "features": {
-            "auth_mode": str(getattr(settings, "AUTH_MODE", "header") or "header"),
+            "auth_mode": settings.AUTH_MODE,
         },
     }
 
@@ -76,16 +75,16 @@ def _build_detailed_meta() -> dict[str, Any]:
         **_build_public_meta(),
         "time": datetime.now(UTC).isoformat(),
         "features": {
-            "auth_mode": str(getattr(settings, "AUTH_MODE", "header") or "header"),
-            "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus"),
-            "kg_enabled": bool(getattr(settings, "KG_ENABLED", False)),
-            "task_queue_enabled": bool(getattr(settings, "TASK_QUEUE_ENABLED", False)),
-            "embedding_cache_enabled": bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", False)),
-            "minio_enabled": bool(getattr(settings, "MINIO_ENABLED", False)),
-            "use_langgraph_pipeline": bool(getattr(settings, "USE_LANGGRAPH_PIPELINE", False)),
-            "gzip_enabled": bool(getattr(settings, "GZIP_ENABLED", True)),
-            "rate_limit_enabled": bool(getattr(settings, "RATE_LIMIT_ENABLED", False)),
-            "cors_origins": parse_csv(getattr(settings, "CORS_ORIGINS", "")),
+            "auth_mode": settings.AUTH_MODE,
+            "vector_backend": settings.VECTOR_BACKEND,
+            "kg_enabled": settings.KG_ENABLED,
+            "task_queue_enabled": settings.TASK_QUEUE_ENABLED,
+            "embedding_cache_enabled": settings.EMBEDDING_CACHE_ENABLED,
+            "minio_enabled": settings.MINIO_ENABLED,
+            "use_langgraph_pipeline": settings.USE_LANGGRAPH_PIPELINE,
+            "gzip_enabled": settings.GZIP_ENABLED,
+            "rate_limit_enabled": settings.RATE_LIMIT_ENABLED,
+            "cors_origins": parse_csv(settings.CORS_ORIGINS),
         },
         "runtime": {
             "python": platform.python_version(),

@@ -6,7 +6,6 @@ incident response workflows (diff across deploys/environments) without leaking
 secrets.
 """
 
-
 import json
 import os
 from dataclasses import dataclass
@@ -14,6 +13,7 @@ from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 from sqlalchemy.engine.url import make_url
+from sqlalchemy.exc import ArgumentError
 
 from app.core.config import settings
 from app.rag.core.hashing import stable_hash
@@ -21,30 +21,25 @@ from app.rag.core.retrieval_config_fingerprint import build_retrieval_config_fin
 
 
 def _mask_secret(value: str) -> str:
-    raw = str(value or "")
-    if not raw:
+    if not value:
         return ""
-    if len(raw) < 8:
+    if len(value) < 8:
         return "***"
-    return raw[:4] + "***" + raw[-4:]
+    return value[:4] + "***" + value[-4:]
 
 
 def _redact_sqlalchemy_url(url_str: str) -> str:
-    raw = str(url_str or "").strip()
+    raw = url_str.strip()
     if not raw:
         return ""
     try:
-        u = make_url(raw)
-        password_field = "pass" + "word"
-        if getattr(u, password_field, None):
-            u = u.set(**{password_field: "***"})
-        return str(u)
-    except Exception:
+        return make_url(raw).render_as_string(hide_password=True)
+    except (ArgumentError, ValueError):
         return "<invalid-url>"
 
 
 def _redact_generic_url(url_str: str) -> str:
-    raw = str(url_str or "").strip()
+    raw = url_str.strip()
     if not raw:
         return ""
     try:
@@ -62,8 +57,8 @@ def _redact_generic_url(url_str: str) -> str:
             else:
                 auth = f"{username}@" if username else ""
         netloc = f"{auth}{hostname}{port}"
-        return urlunparse((p.scheme, netloc, p.path or "", p.params or "", p.query or "", p.fragment or ""))
-    except Exception:
+        return urlunparse((p.scheme, netloc, p.path, p.params, p.query, p.fragment))
+    except ValueError:
         return "<invalid-url>"
 
 
@@ -89,24 +84,24 @@ def _build_retrieval_config_for_fingerprint() -> dict[str, Any]:
     """
 
     return {
-        "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
-        "bm25_enabled": bool(getattr(settings, "BM25_INDEX_ENABLED", True)),
-        "lexical_enabled": bool(getattr(settings, "LEXICAL_DB_TRGM_ENABLED", False)),
-        "sparse_enabled": bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False)),
-        "colbert_enabled": bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)),
-        "colbert_provider": str(getattr(settings, "COLBERT_RETRIEVAL_PROVIDER", "") or ""),
-        "colbert_index_persist_enabled": bool(getattr(settings, "COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED", False)),
-        "colbert_max_docs": int(getattr(settings, "COLBERT_RETRIEVAL_MAX_DOCS", 0) or 0),
-        "enable_reranker": bool(getattr(settings, "ENABLE_RERANKER", False)),
-        "reranker_provider": str(getattr(settings, "RERANKER_PROVIDER", "") or ""),
-        "reranker_top_n": int(getattr(settings, "RERANKER_TOP_N", 0) or 0),
-        "retrieval_top_k": int(getattr(settings, "RETRIEVAL_TOP_K", 0) or 0),
-        "similarity_threshold": float(getattr(settings, "SIMILARITY_THRESHOLD", 0.0) or 0.0),
-        "retrieval_query_parallelism": int(getattr(settings, "RETRIEVAL_QUERY_PARALLELISM", 1) or 1),
-        "retrieval_fusion_strategy": str(getattr(settings, "RETRIEVAL_FUSION_STRATEGY", "") or ""),
-        "retrieval_rrf_k": int(getattr(settings, "RETRIEVAL_RRF_K", 0) or 0),
-        "retrieval_dedup_enabled": bool(getattr(settings, "RETRIEVAL_DEDUP_ENABLED", True)),
-        "retrieval_overfetch_multiplier": int(getattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 0) or 0),
+        "vector_backend": settings.VECTOR_BACKEND,
+        "bm25_enabled": settings.BM25_INDEX_ENABLED,
+        "lexical_enabled": settings.LEXICAL_DB_TRGM_ENABLED,
+        "sparse_enabled": settings.SPARSE_RETRIEVAL_ENABLED,
+        "colbert_enabled": settings.COLBERT_RETRIEVAL_ENABLED,
+        "colbert_provider": settings.COLBERT_RETRIEVAL_PROVIDER,
+        "colbert_index_persist_enabled": settings.COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED,
+        "colbert_max_docs": settings.COLBERT_RETRIEVAL_MAX_DOCS,
+        "enable_reranker": settings.ENABLE_RERANKER,
+        "reranker_provider": settings.RERANKER_PROVIDER,
+        "reranker_top_n": settings.RERANKER_TOP_N,
+        "retrieval_top_k": settings.RETRIEVAL_TOP_K,
+        "similarity_threshold": settings.SIMILARITY_THRESHOLD,
+        "retrieval_query_parallelism": settings.RETRIEVAL_QUERY_PARALLELISM,
+        "retrieval_fusion_strategy": settings.RETRIEVAL_FUSION_STRATEGY,
+        "retrieval_rrf_k": settings.RETRIEVAL_RRF_K,
+        "retrieval_dedup_enabled": settings.RETRIEVAL_DEDUP_ENABLED,
+        "retrieval_overfetch_multiplier": settings.RETRIEVAL_OVERFETCH_MULTIPLIER,
     }
 
 
@@ -129,73 +124,73 @@ def build_ops_config_snapshot() -> OpsConfigSnapshot:
     cfg: dict[str, Any] = {
         "build": {"sha": _get_build_sha(), "time": _get_build_time()},
         "features": {
-            "auth_mode": str(getattr(settings, "AUTH_MODE", "header") or "header"),
-            "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus"),
-            "task_queue_enabled": bool(getattr(settings, "TASK_QUEUE_ENABLED", False)),
-            "minio_enabled": bool(getattr(settings, "MINIO_ENABLED", False)),
-            "gzip_enabled": bool(getattr(settings, "GZIP_ENABLED", True)),
-            "rate_limit_enabled": bool(getattr(settings, "RATE_LIMIT_ENABLED", False)),
-            "prometheus_enabled": bool(getattr(settings, "PROMETHEUS_ENABLED", False)),
-            "metrics_log_enabled": bool(getattr(settings, "ENABLE_METRICS_LOG", False)),
-            "metrics_log_include_text": bool(getattr(settings, "METRICS_LOG_INCLUDE_TEXT", False)),
-            "pii_redaction_enabled": bool(getattr(settings, "PII_REDACTION_ENABLED", False)),
+            "auth_mode": settings.AUTH_MODE,
+            "vector_backend": settings.VECTOR_BACKEND,
+            "task_queue_enabled": settings.TASK_QUEUE_ENABLED,
+            "minio_enabled": settings.MINIO_ENABLED,
+            "gzip_enabled": settings.GZIP_ENABLED,
+            "rate_limit_enabled": settings.RATE_LIMIT_ENABLED,
+            "prometheus_enabled": settings.PROMETHEUS_ENABLED,
+            "metrics_log_enabled": settings.ENABLE_METRICS_LOG,
+            "metrics_log_include_text": settings.METRICS_LOG_INCLUDE_TEXT,
+            "pii_redaction_enabled": settings.PII_REDACTION_ENABLED,
         },
         "llm": {
-            "api_base": str(getattr(settings, "LLM_API_BASE", "") or ""),
-            "model": str(getattr(settings, "LLM_MODEL", "") or ""),
-            "temperature": float(getattr(settings, "LLM_TEMPERATURE", 0.0) or 0.0),
-            "timeout_sec": float(getattr(settings, "LLM_TIMEOUT", 0.0) or 0.0),
-            "max_retries": int(getattr(settings, "LLM_MAX_RETRIES", 0) or 0),
-            "api_key_masked": _mask_secret(str(getattr(settings, "LLM_API_KEY", "") or "")),
-            "api_key_set": bool(str(getattr(settings, "LLM_API_KEY", "") or "").strip()),
+            "api_base": settings.LLM_API_BASE,
+            "model": settings.LLM_MODEL,
+            "temperature": settings.LLM_TEMPERATURE,
+            "timeout_sec": float(settings.LLM_TIMEOUT),
+            "max_retries": settings.LLM_MAX_RETRIES,
+            "api_key_masked": _mask_secret(settings.LLM_API_KEY),
+            "api_key_set": bool(settings.LLM_API_KEY.strip()),
         },
         "embedding": {
-            "provider": str(getattr(settings, "EMBEDDING_PROVIDER", "") or ""),
-            "model": str(getattr(settings, "EMBEDDING_MODEL", "") or ""),
-            "api_base": str(getattr(settings, "EMBEDDING_API_BASE", "") or ""),
-            "api_key_masked": _mask_secret(str(getattr(settings, "EMBEDDING_API_KEY", "") or "")),
-            "api_key_set": bool(str(getattr(settings, "EMBEDDING_API_KEY", "") or "").strip()),
+            "provider": settings.EMBEDDING_PROVIDER,
+            "model": settings.EMBEDDING_MODEL,
+            "api_base": settings.EMBEDDING_API_BASE,
+            "api_key_masked": _mask_secret(settings.EMBEDDING_API_KEY),
+            "api_key_set": bool(settings.EMBEDDING_API_KEY.strip()),
         },
         "datastores": {
-            "database_url_redacted": _redact_sqlalchemy_url(str(getattr(settings, "DATABASE_URL", "") or "")),
-            "redis_url_redacted": _redact_generic_url(str(getattr(settings, "REDIS_URL", "") or "")),
+            "database_url_redacted": _redact_sqlalchemy_url(settings.DATABASE_URL),
+            "redis_url_redacted": _redact_generic_url(settings.REDIS_URL),
         },
         "vector_store": {
-            "backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
+            "backend": settings.VECTOR_BACKEND,
             "milvus": {
-                "host": str(getattr(settings, "MILVUS_HOST", "") or ""),
-                "port": str(getattr(settings, "MILVUS_PORT", "") or ""),
-                "user": str(getattr(settings, "MILVUS_USER", "") or ""),
-                "password_masked": _mask_secret(str(getattr(settings, "MILVUS_PASSWORD", "") or "")),
-                "password_set": bool(str(getattr(settings, "MILVUS_PASSWORD", "") or "").strip()),
-                "collection_name": str(getattr(settings, "MILVUS_COLLECTION_NAME", "") or ""),
+                "host": settings.MILVUS_HOST,
+                "port": str(settings.MILVUS_PORT),
+                "user": settings.MILVUS_USER,
+                "password_masked": _mask_secret(settings.MILVUS_PASSWORD),
+                "password_set": bool(settings.MILVUS_PASSWORD.strip()),
+                "collection_name": settings.MILVUS_COLLECTION_NAME,
             },
         },
         "minio": {
-            "enabled": bool(getattr(settings, "MINIO_ENABLED", False)),
-            "endpoint": str(getattr(settings, "MINIO_ENDPOINT", "") or ""),
-            "bucket": str(getattr(settings, "MINIO_BUCKET_NAME", "") or ""),
-            "use_ssl": bool(getattr(settings, "MINIO_USE_SSL", False)),
-            "documents_enabled": bool(getattr(settings, "MINIO_DOCUMENTS_ENABLED", True)),
-            "access_key_masked": _mask_secret(str(getattr(settings, "MINIO_ACCESS_KEY", "") or "")),
-            "secret_key_masked": _mask_secret(str(getattr(settings, "MINIO_SECRET_KEY", "") or "")),
+            "enabled": settings.MINIO_ENABLED,
+            "endpoint": settings.MINIO_ENDPOINT,
+            "bucket": settings.MINIO_BUCKET_NAME,
+            "use_ssl": settings.MINIO_USE_SSL,
+            "documents_enabled": settings.MINIO_DOCUMENTS_ENABLED,
+            "access_key_masked": _mask_secret(settings.MINIO_ACCESS_KEY),
+            "secret_key_masked": _mask_secret(settings.MINIO_SECRET_KEY),
         },
         "queue": {
-            "enabled": bool(getattr(settings, "TASK_QUEUE_ENABLED", False)),
-            "name": str(getattr(settings, "TASK_QUEUE_NAME", "") or ""),
-            "worker_max_jobs": int(getattr(settings, "TASK_WORKER_MAX_JOBS", 0) or 0),
+            "enabled": settings.TASK_QUEUE_ENABLED,
+            "name": settings.TASK_QUEUE_NAME,
+            "worker_max_jobs": settings.TASK_WORKER_MAX_JOBS,
         },
         "rate_limit": {
-            "enabled": bool(getattr(settings, "RATE_LIMIT_ENABLED", False)),
-            "requests_per_second": float(getattr(settings, "RATE_LIMIT_REQUESTS_PER_SECOND", 0.0) or 0.0),
-            "burst_size": int(getattr(settings, "RATE_LIMIT_BURST_SIZE", 0) or 0),
-            "chat_rps": float(getattr(settings, "RATE_LIMIT_CHAT_RPS", 0.0) or 0.0),
-            "chat_burst": int(getattr(settings, "RATE_LIMIT_CHAT_BURST", 0) or 0),
+            "enabled": settings.RATE_LIMIT_ENABLED,
+            "requests_per_second": settings.RATE_LIMIT_REQUESTS_PER_SECOND,
+            "burst_size": settings.RATE_LIMIT_BURST_SIZE,
+            "chat_rps": settings.RATE_LIMIT_CHAT_RPS,
+            "chat_burst": settings.RATE_LIMIT_CHAT_BURST,
         },
         "retrieval_fingerprint": retrieval_fp,
     }
 
-    payload = json.dumps(cfg, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+    payload = json.dumps(cfg, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     fp = stable_hash(payload, length=32)
     return OpsConfigSnapshot(schema="mimirq.ops_config_snapshot.v1", fingerprint=fp, config=cfg)
 
