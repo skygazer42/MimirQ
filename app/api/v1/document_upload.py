@@ -1,6 +1,8 @@
 import asyncio
 import contextlib
 import json
+import os
+import shutil
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass
@@ -30,12 +32,16 @@ from app.api.utils.upload import (
     save_upload_file_with_hash,
 )
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.database import SessionLocal, get_db
+from app.models.dataset import Dataset
+from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.models.document import Document as DBDocument
 from app.parsing.factory import parser_factory
 from app.rag.chunking.factory import chunker_factory
 from app.rag.core.logging import get_logger
 from app.services import dataset_service, ingestion_run_service
+from app.services.dataset_precheck_ingestion_suggestion import apply_ingestion_policy_suggestion
+from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
 from app.services.document_identity import (
     build_document_dedup_key,
     compute_pipeline_hash,
@@ -75,6 +81,7 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 logger = get_logger(__name__)
+document_logger = get_logger("api.documents")
 INGEST_LOCK_UNAVAILABLE_DETAIL = "Ingest lock unavailable"
 DOCUMENT_DEDUP_CONSTRAINT_NAME = "uq_documents_tenant_dataset_dedup_key_active"
 
@@ -1496,8 +1503,6 @@ def _cleanup_uploaded_batch_files(results: list[dict[str, Any]]) -> None:
 
 
 def _link_precheck_staging_tree(staged_successful: list[dict[str, Any]], *, staging_root: Path) -> bool:
-    from app.api.v1 import documents as documents_module
-
     linked_any = False
     staging_root_resolved = staging_root.resolve(strict=False)
     for idx, item in enumerate(staged_successful):
@@ -1519,11 +1524,11 @@ def _link_precheck_staging_tree(staged_successful: list[dict[str, Any]], *, stag
             suffix = getattr(item.get("file_id"), "hex", None) or uuid.uuid4().hex
             dst = dst.with_name(f"{dst.stem}.{suffix}{dst.suffix}")
         try:
-            documents_module.os.link(src, dst)
+            os.link(src, dst)
             linked_any = True
         except Exception:
             try:
-                documents_module.shutil.copy2(src, dst)
+                shutil.copy2(src, dst)
                 linked_any = True
             except Exception:
                 logger.debug("Skipping item after non-critical exception", exc_info=True)
@@ -1532,14 +1537,13 @@ def _link_precheck_staging_tree(staged_successful: list[dict[str, Any]], *, stag
 
 async def _run_precheck_scan(
     *,
-    documents_module: Any,
     db: Session,
     tenant_id: UUID,
     account_id: str,
-    dataset: Any,
+    dataset: Dataset,
     staged_successful: list[dict[str, Any]],
     precheck_only: bool,
-) -> Any:
+) -> DBDatasetPrecheckScanRun | None:
     upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
     staging_root = (upload_dir / ".tmp" / "precheck_ingest" / uuid.uuid4().hex).resolve(strict=False)
     staging_root.mkdir(parents=True, exist_ok=True)
@@ -1547,7 +1551,7 @@ async def _run_precheck_scan(
     try:
         if not _link_precheck_staging_tree(staged_successful, staging_root=staging_root):
             return None
-        scan_run = documents_module.DBDatasetPrecheckScanRun(
+        scan_run = DBDatasetPrecheckScanRun(
             tenant_id=tenant_id,
             dataset_id=dataset.id,
             requested_by=account_id,
@@ -1576,7 +1580,6 @@ async def _run_precheck_scan(
         db.refresh(scan_run)
         await asyncio.to_thread(
             _run_precheck_scan_job,
-            documents_module,
             tenant_id=tenant_id,
             dataset_id=dataset.id,
             scan_run_id=scan_run.id,
@@ -1585,7 +1588,6 @@ async def _run_precheck_scan(
             db.refresh(scan_run)
         if not precheck_only:
             _apply_precheck_policy_suggestion(
-                documents_module,
                 db=db,
                 dataset=dataset,
                 scan_run=scan_run,
@@ -1597,19 +1599,18 @@ async def _run_precheck_scan(
         return scan_run
     finally:
         with contextlib.suppress(Exception):
-            documents_module.shutil.rmtree(staging_root)
+            shutil.rmtree(staging_root)
 
 
 def _run_precheck_scan_job(
-    documents_module: Any,
     *,
     tenant_id: UUID,
     dataset_id: UUID,
     scan_run_id: UUID,
 ) -> None:
-    db2 = documents_module.SessionLocal()
+    db2 = SessionLocal()
     try:
-        documents_module.run_dataset_precheck_scan(
+        run_dataset_precheck_scan(
             db2,
             tenant_id=tenant_id,
             dataset_id=dataset_id,
@@ -1618,11 +1619,11 @@ def _run_precheck_scan_job(
     except Exception as exc:  # noqa: BLE001
         try:
             row = (
-                db2.query(documents_module.DBDatasetPrecheckScanRun)
+                db2.query(DBDatasetPrecheckScanRun)
                 .filter(
-                    documents_module.DBDatasetPrecheckScanRun.id == scan_run_id,
-                    documents_module.DBDatasetPrecheckScanRun.tenant_id == tenant_id,
-                    documents_module.DBDatasetPrecheckScanRun.dataset_id == dataset_id,
+                    DBDatasetPrecheckScanRun.id == scan_run_id,
+                    DBDatasetPrecheckScanRun.tenant_id == tenant_id,
+                    DBDatasetPrecheckScanRun.dataset_id == dataset_id,
                 )
                 .first()
             )
@@ -1632,7 +1633,7 @@ def _run_precheck_scan_job(
                 row.finished_at = datetime.now(UTC)
                 db2.commit()
         except Exception as mark_exc:  # noqa: BLE001
-            documents_module.logger.warning(
+            document_logger.warning(
                 "Failed to mark precheck scan run as failed: %s",
                 str(mark_exc)[:200],
             )
@@ -1642,15 +1643,14 @@ def _run_precheck_scan_job(
 
 
 def _apply_precheck_policy_suggestion(
-    documents_module: Any,
     *,
     db: Session,
-    dataset: Any,
-    scan_run: Any,
+    dataset: Dataset,
+    scan_run: DBDatasetPrecheckScanRun,
     tenant_id: UUID,
 ) -> None:
     try:
-        documents_module.apply_ingestion_policy_suggestion(
+        apply_ingestion_policy_suggestion(
             db,
             dataset=dataset,
             scan_run=scan_run,
@@ -1659,12 +1659,12 @@ def _apply_precheck_policy_suggestion(
         )
     except HTTPException as exc:
         if int(getattr(exc, "status_code", 0) or 0) != 409:
-            documents_module.logger.warning(
+            document_logger.warning(
                 "Precheck-first policy apply failed: %s",
                 str(getattr(exc, "detail", exc))[:200],
             )
     except Exception as exc:  # noqa: BLE001
-        documents_module.logger.warning("Precheck-first policy apply failed: %s", str(exc)[:200])
+        document_logger.warning("Precheck-first policy apply failed: %s", str(exc)[:200])
 
 
 def _refresh_batch_policy(dataset: Any) -> Any:
@@ -2276,7 +2276,6 @@ async def upload_documents_batch(
         scan_run = None
         if staged_successful:
             scan_run = await _run_precheck_scan(
-                documents_module=documents_module,
                 db=db,
                 tenant_id=tenant_id,
                 account_id=account_id,

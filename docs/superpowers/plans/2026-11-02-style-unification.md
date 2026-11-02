@@ -174,6 +174,8 @@ URL 入库的 `UrlUploadRequest` 归入现有文档 schema；上传和连接器�
 
 `pipeline_options` utility 同时拥有 multipart pipeline JSON 解析与 chunk overlap 校验；上传直接依赖 ingestion policy、governance、parser、chunker、pipeline config 和 identity owners。既有表单大小限制、schema 错误、默认策略及 override 顺序保持原样。
 
+Batch precheck helpers 直接依赖 staging file APIs、scan model/session 和已有扫描／策略服务；pending commit、threaded scan、失败标记、best-effort suggestion 及 staging cleanup 顺序保持原样，日志继续使用原 category。
+
 **本批产出：** 上传到任务的输入输出和失败路径一致，同一字段映射与权限规则只有一个业务维护点。
 
 ### Task 5：RAG 与模型调用

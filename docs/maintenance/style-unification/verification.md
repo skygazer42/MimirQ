@@ -318,6 +318,12 @@
 - Preview and chunk preview call the utility parser directly; the preview route retains its local documents import for separate parsing/governance helpers. Nine existing pipeline patch bindings in the upload concurrency test now target `document_upload`; test cases and assertions are unchanged.
 - Ruff check/format, parser/validator AST comparison, error-message comparison, route signatures and diff check passed. Python tests and application imports were not run; runtime pipeline behavior remains unverified.
 
+## 第四批：Batch precheck 资源所有权（2026-11-03）
+
+- Staging link/copy and cleanup use `os`/`shutil` directly; scan rows use `DBDatasetPrecheckScanRun`; isolated scans use `SessionLocal` plus `run_dataset_precheck_scan`; policy suggestions use `apply_ingestion_policy_suggestion`. The three helpers no longer receive the documents module.
+- Hardlink fallback to copy, staging-root containment, pending-row commit/refresh order, background-thread scan, failed-row update/rethrow, outer best-effort continue behavior, policy-suggestion 409 handling and cleanup remain in the same order. Scan/policy warnings retain the `api.documents` logger name.
+- Ruff check/format and diff check passed. Three existing test fixtures now patch the upload module's scan and policy owners; precheck `SessionLocal` patches follow the direct binding. No Python tests or application imports were run; full precheck integration remains unverified.
+
 ## 第四批：上传提交确认读取（2026-11-03）
 
 - `_fresh_session_document_exists` 直接导入 `DBDocument`，以 `Callable[[], Session]` 表达 session factory 并调用 SQLAlchemy `Session.get`。删除从 `documents` 路由动态取模型以及对 `get`／`query` 的形状探测；factory 注入保持不变。

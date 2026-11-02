@@ -54,6 +54,8 @@ API 请求的 `PipelineOptionOverrides` 和 `to_pipeline_options` 由 `app/api/u
 
 multipart 表单的 pipeline JSON 解析与 chunk overlap 约束也由该 API utility 负责。解析保留空值／`null`／`none`／`undefined` 的处理、表单长度上限、schema 校验和生产错误脱敏；overlap 仍在非集成 chunk strategy 上与 chunk size 比较。上传直接依赖 ingestion policy、governance profile、parser、chunker、pipeline config、pipeline types 与 document identity 的实际所有者。`documents.py` 保留旧 parser、validator、常量的直接导出。
 
+Batch precheck 的 staging tree、scan run 和 policy suggestion 由上传入口直接使用标准库、SQLAlchemy model/session 与两个所属服务。仍先创建 pending scan row、commit／refresh，再在线程内执行扫描；扫描异常时标记 failed 并重新抛出，调用层仍 best-effort 继续上传。policy suggestion 的 409 不告警，其他异常继续记录到 `api.documents` logger。finally 清理 staging root 的顺序保持不变。
+
 preview 图片引用解析、本地临时文件读取与 owner sidecar 验证、legacy 记录查询和 MinIO 存储由已有 `document_preview_utils` 共同负责。手工分块直接导入该 owner，documents 对外保留原名称的直接导出。legacy 查询仅在 owner 校验路径中局部导入，因为 `document_preview_legacy` 的正则直接来自本模块，顶层互相导入会产生循环。
 
 RBAC 与配额继续依赖这些成员契约，具体边界见[权限与配额决定](2026-11-02-permission-quota-contracts.md)。
@@ -63,6 +65,7 @@ RBAC 与配额继续依赖这些成员契约，具体边界见[权限与配额�
 ## Alternatives considered
 
 - 继续把 JSON 表单解析与 chunk overlap 检查放在 `documents.py` 可以少迁移几个名字，但上传、预览和分块预览会依赖路由聚合器。单建 upload pipeline 模块则会与现有 API `pipeline_options` utility 重叠。当前沿用该 utility 作为表单到 pipeline 类型的边界，并从现有业务模块导入策略、parser、chunker 和 metadata 规则。
+- 把 batch precheck helper 作为 `documents_module: Any` 传入可以少列几项依赖，但该流程直接使用标准库文件操作、扫描 model、session factory 和已有 scan/suggestion 服务。当前将这些边界直接导入上传模块，不另建 precheck service。
 
 - 把文件名规则继续留在 `documents.py` 可以少搬函数，但上传模块需要由路由聚合器取验证逻辑。新建独立 filename service 又会把同一上传边界拆成两处。当前复用已有 `app/api/utils/upload.py`，它已拥有上传流和落盘规则。
 
@@ -104,3 +107,5 @@ URL 上传模型的单一声明位于文档 schema；上传与连接器入口不
 上传文件名和来源路径规则集中在现有上传 utility；旧 route export 仍有效，直接依赖的入口不再为归一化加载 `documents.py`。输入边界、拒绝错误与字符串长度约束保持原样。
 
 pipeline 的 JSON parser 和 chunk overlap validator 归入 `pipeline_options` utility 后，所有相关 endpoint 仍使用相同 schema、默认值、合并次序及 400 错误边界；上传配置流程不再从 documents 路由装配器读取其直接业务依赖。
+
+batch precheck 不再传递整个 documents 模块；hardlink/copy fallback、scan 状态提交、失败标记、建议应用的 best-effort 和 staging 清理顺序保持原样。日志仍使用原 `api.documents` category。

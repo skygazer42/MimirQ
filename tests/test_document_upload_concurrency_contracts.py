@@ -411,9 +411,9 @@ async def test_upload_batch_closes_intake_after_attaching_successes_in_both_bran
 
     monkeypatch.setattr(documents_module.ingestion_run_service, "add_document", _add_document, raising=True)
     monkeypatch.setattr(documents_module.ingestion_run_service, "close_intake", _close_intake, raising=True)
-    monkeypatch.setattr(documents_module, "run_dataset_precheck_scan", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_upload, "run_dataset_precheck_scan", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        documents_module, "apply_ingestion_policy_suggestion", lambda *_args, **_kwargs: None, raising=True
+        document_upload, "apply_ingestion_policy_suggestion", lambda *_args, **_kwargs: None, raising=True
     )
 
     def _new_item_session() -> _FakeItemSession:
@@ -422,6 +422,7 @@ async def test_upload_batch_closes_intake_after_attaching_successes_in_both_bran
         return session
 
     monkeypatch.setattr(documents_module, "SessionLocal", _new_item_session, raising=True)
+    monkeypatch.setattr(document_upload, "SessionLocal", documents_module.SessionLocal, raising=True)
 
     result = await document_upload.upload_documents_batch(
         background_tasks=BackgroundTasks(),
@@ -1376,9 +1377,10 @@ async def test_batch_pending_duplicate_respects_pipeline_identity(
         lambda: SimpleNamespace(commit=lambda: None, refresh=lambda *_args: None, close=lambda: None),
         raising=True,
     )
-    monkeypatch.setattr(documents_module, "run_dataset_precheck_scan", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_upload, "SessionLocal", documents_module.SessionLocal, raising=True)
+    monkeypatch.setattr(document_upload, "run_dataset_precheck_scan", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        documents_module, "apply_ingestion_policy_suggestion", lambda *_args, **_kwargs: None, raising=True
+        document_upload, "apply_ingestion_policy_suggestion", lambda *_args, **_kwargs: None, raising=True
     )
 
     result = await document_upload.upload_documents_batch(
@@ -1538,9 +1540,10 @@ async def test_precheck_staged_batch_hands_retry_ingest_lock_to_worker(
         lambda: SimpleNamespace(commit=lambda: None, refresh=lambda *_args: None, close=lambda: None),
         raising=True,
     )
-    monkeypatch.setattr(documents_module, "run_dataset_precheck_scan", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_upload, "SessionLocal", documents_module.SessionLocal, raising=True)
+    monkeypatch.setattr(document_upload, "run_dataset_precheck_scan", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        documents_module, "apply_ingestion_policy_suggestion", lambda *_args, **_kwargs: None, raising=True
+        document_upload, "apply_ingestion_policy_suggestion", lambda *_args, **_kwargs: None, raising=True
     )
 
     async def _queue() -> object:
