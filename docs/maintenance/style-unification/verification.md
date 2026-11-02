@@ -84,3 +84,16 @@
 - Git 跟踪的生产 Python 文件中旧三个类符号已无引用；既有测试只保留独立 stub。两个特殊 fixture 已核对 patch 的实际服务所有者，运行时行为仍未验证。
 - 覆盖清单仅关闭已完整审阅的数据集服务；仅迁移引用的生产文件仍待完整模块审核。测试引用同步按用户暂缓测试的要求登记，不能视为测试质量审核。
 - 自动结构审查所需 TruffleHog 未在当前 PATH 找到；本轮使用源码、AST、签名和 diff 审阅，不能宣称结构审查工具通过。最终日志位于计划工作区 `logs/task-3-dataset-final-*.log` 及 `task-3-dataset-final-static.json`。
+
+## 第三批：权限、JWT 成员供应与配额（2026-11-02）
+
+- 数据集类别已经提交为 `2c16dedf8`。本批仅整理 RBAC schema／路由／服务、JWT 成员供应、token 配额和配额服务，共 6 个生产 Python 文件；请求状态载体经完整源码审核后登记已符合。
+- 6 个文件 Ruff check、Ruff format --check 和语法解析通过。21 个公开函数的参数形状保持一致，33 个文件中的 118 处可确定调用匹配签名，没有未解析的动态参数调用。
+- 4 个 RBAC 路由的装饰器与 HTTPException 构造 AST 相同；schema 的外部角色校验保留。另行核对 nullable ORM 字段、最后管理员判断、锁顺序、组／数据集／文档权限清理、审计与 commit／refresh 顺序。
+- JWT 成员供应的已验证身份入口、用户长度限制、租户存在性与已有成员分支保留；审计哈希只计算一次。数据库工厂类型明确，commit、异常 rollback 和 finally close 的既有 best-effort 政策保持原样。
+- QPS 的 6 个结果字段由同一构造函数生成；只在配额禁用或已定义的失败降级时使用允许默认值，启用态显式使用 limiter 返回值。同步和异步检查／执行入口在归一化 await 与 check 方法名后的 AST 相同。
+- 429、Retry-After 和带证据的后端失败策略各只有一份实现；fail-open、可配置 fail-closed、503、令牌消费边界、Redis 前缀／TTL／burst 策略和缓存配置指纹保留。3 个 SQL 聚合函数的执行体 AST 与修改前完全相同，仅移走重复局部导入。
+- 嵌入任务继续使用 TenantQuotaExceededError；上传配额的文档数／字节数检查顺序、超限载荷及数据库异常策略保留。版本化 `mimirq.tenant_token_quota.v1` 字段保持原样。
+- 覆盖表只关闭本批完整审核的 7 个生产文件，其他模块仍保持待审核；新增一篇权限与配额决定，并与已有数据集决定互链。
+- 本批未新增、扩写或运行 Python 测试，没有启动业务模块、数据库或外部服务。静态检查不证明运行时回归通过；自动审查仍因既有 TruffleHog 依赖缺失而未运行，没有重复尝试或安装新工具套装。
+- 静态核对证据：计划工作区 `logs/task-3-permission-quota-static.json`；完整修改前快照和核对脚本位于 `permission-quota-refactor/`。

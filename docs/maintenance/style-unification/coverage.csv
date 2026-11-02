@@ -110,7 +110,7 @@ app/api/schemas/pipeline.py,3,pending,conforms,Awaiting file-level convention an
 app/api/schemas/prompt_template.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/qa.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/rag_config_template.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/schemas/rbac.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/api/schemas/rbac.py,3,adjusted,adjusted,External role normalization and validation retained; validator input and return types declared,task-3-permission-quota: schema and route review; Ruff; AST; no Python tests
 app/api/schemas/regression.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/report.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/table_store.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -214,7 +214,7 @@ app/api/v1/prompt_templates.py,3,pending,conforms,Awaiting file-level convention
 app/api/v1/rag.py,3,pending,conforms,Awaiting file-level convention and contract review; Dataset caller migration only; full module semantic review remains pending,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending; task-3-dataset-final: Ruff/AST/signature checks; no Python tests
 app/api/v1/rag_config_templates.py,3,pending,conforms,Awaiting file-level convention and contract review; Dataset caller migration only; full module semantic review remains pending,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending; task-3-dataset-final: Ruff/AST/signature checks; no Python tests
 app/api/v1/ragviz.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/v1/rbac.py,3,pending,adjusted,Awaiting file-level convention and contract review; Dataset caller migration only; full module semantic review remains pending,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending; task-3-dataset-final: Ruff/AST/signature checks; no Python tests
+app/api/v1/rbac.py,3,adjusted,adjusted,Use schema roles and ORM fields directly; nullable booleans and final-admin lock/transaction policy retained,task-3-permission-quota: route/error AST parity; source transaction review; 118 bound calls; no Python tests
 app/api/v1/reports.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/v1/retrieval_config_hash.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/v1/retrieval_explain.py,3,pending,conforms,Awaiting file-level convention and contract review; Dataset caller migration only; full module semantic review remains pending,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending; task-3-dataset-final: Ruff/AST/signature checks; no Python tests
@@ -265,7 +265,7 @@ app/core/redis_client.py,3,pending,conforms,Awaiting file-level convention and c
 app/core/redis_lease.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/regex_runtime.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/regex_safety.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/core/request_state.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/core/request_state.py,3,conforms,adjusted,Request-state context carrier follows framework dynamic attributes; absent request state and best-effort token cleanup are intentional boundaries,task-3-permission-quota: full source and dataset/group boundary review; no Python tests
 app/core/secrets.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/secure_random.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/security.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -1336,7 +1336,7 @@ app/services/rag_trace_diff_service.py,3,pending,conforms,Awaiting file-level co
 app/services/rag_trace_service.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/ragas_conversation_readiness.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/ragviz_similarity.py,3,pending,conforms,Awaiting file-level convention and contract review; Dataset caller migration only; full module semantic review remains pending,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending; task-3-dataset-final: Ruff/AST/signature checks; no Python tests
-app/services/rbac_service.py,3,pending,adjusted,Awaiting file-level convention and contract review; Dataset caller migration only; full module semantic review remains pending,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending; task-3-dataset-final: Ruff/AST/signature checks; no Python tests
+app/services/rbac_service.py,3,adjusted,adjusted,Role permission checks reuse declared member fields and one permission policy; unknown permissions remain denied,task-3-permission-quota: full source review; Ruff; AST; public signatures; no Python tests
 app/services/regression_case_bundle.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/regression_leaderboard.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/regression_run_ablation_batch.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -1369,9 +1369,9 @@ app/services/table_store_service.py,3,pending,conforms,Awaiting file-level conve
 app/services/table_tag_service.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/task_queue_observability_service.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/tenant_group_service.py,3,adjusted,conforms,Module functions; explicit business errors; typed request cache and tenant-scoped member lookups,"Task 3: 134 passed / 1 skipped; cache reuse, isolation, membership rejection, SCIM errors"
-app/services/tenant_member_provisioning_service.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/services/tenant_quota.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/services/tenant_quota_service.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/services/tenant_member_provisioning_service.py,3,adjusted,adjusted,JWT member creation uses a typed session factory and one audit hash; best-effort lifecycle policy retained,task-3-permission-quota: auth caller and audit/transaction source review; Ruff; AST; no Python tests
+app/services/tenant_quota.py,3,adjusted,adjusted,"Typed quota arithmetic avoids repeated casts; clamps, warning/block policy and versioned schema retained",task-3-permission-quota: full source and tracked caller review; Ruff; AST; no Python tests
+app/services/tenant_quota_service.py,3,adjusted,adjusted,"Shared typed QPS results, 429 and backend-error policies; sync/async token paths and quota failure contracts retained",task-3-permission-quota: Ruff/AST/signatures; 3 exact SQL bodies; sync/async AST parity; no Python tests
 app/services/tenant_rls.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/user_service.py,2,adjusted,adjusted,Module user service; explicit configuration and domain errors; callers migrated; external auth contract preserved,Task 2: 34 focused / 127 expanded auth regressions passed; Ruff check and format passed
 app/services/web_crawler.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -1794,6 +1794,7 @@ docs/llama_index_config.md,inventory,preserved,preserved,"Documentation, static 
 docs/maintenance/style-unification/README.md,1,preserved,preserved,Migration plan or verification record,Task 1 inventory
 docs/maintenance/style-unification/baseline-python-failures.txt,1,preserved,preserved,Migration plan or verification record,Task 1 inventory
 docs/maintenance/style-unification/coverage.csv,1,preserved,preserved,Migration plan or verification record,Task 1 inventory
+docs/maintenance/style-unification/decisions/implemented/simplification/2026-11-02-permission-quota-contracts.md,3,preserved,preserved,Decision record for permission and quota simplification; source and validation limits documented,task-3-permission-quota; Agent Note tree/format/archive verification
 docs/maintenance/style-unification/verification.md,1,preserved,preserved,Migration plan or verification record,Task 1 inventory
 docs/migrations/20241210_multitenant.sql,7,pending,pending,Awaiting file-level convention and contract review,
 docs/migrations/20241211_dataset_permissions.sql,7,pending,pending,Awaiting file-level convention and contract review,

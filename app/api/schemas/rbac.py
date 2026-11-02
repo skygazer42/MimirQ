@@ -49,7 +49,7 @@ class TenantMemberUpdateRequest(BaseModel):
 
     @field_validator("role", mode="before")
     @classmethod
-    def _normalize_role(cls, v):  # noqa: ANN001
+    def _normalize_role(cls, v: object) -> str:
         return str(v or "").strip().lower()
 
     @field_validator("role")

@@ -16,6 +16,8 @@ API 的 `DatasetBase` 与 `DatasetUpdate` 使用 `list[UUID]` 校验组 ID；复
 
 本批保留 `HTTPException`：现有调用链包含对该类型的捕获与转换。业务异常迁移需要连同这些错误边界单独核对，避免只替换服务端异常而改变已有响应。
 
+RBAC 与配额继续依赖这些成员契约，具体边界见[权限与配额决定](2026-11-02-permission-quota-contracts.md)。
+
 ## Alternatives considered
 
 - 保留静态类能缩小引用变更范围，但继续存在三组无状态外壳，与已确认的模块函数约定不一致。

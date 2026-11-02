@@ -46,7 +46,7 @@ def _lock_active_admin_members(db: Session, tenant_id: UUID) -> list[TenantMembe
         .filter(
             TenantMember.tenant_id == tenant_id,
             TenantMember.is_active.is_(True),
-            TenantMember.role.in_(list(UserRoles.ADMIN_ROLES)),
+            TenantMember.role.in_(UserRoles.ADMIN_ROLES),
         )
         .order_by(TenantMember.id.asc())
         .with_for_update()
@@ -60,9 +60,9 @@ def get_current_tenant_access(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> TenantAccessOut:
     member = dataset_service.ensure_member(db, tenant_id, account_id)
-    role = str(getattr(member, "role", "") or "").strip().lower()
+    role = (member.role or "").strip().lower()
     permissions = [permission for permission in all_tenant_permissions() if role_allows(permission, role=role)]
     return TenantAccessOut(
         tenant_id=tenant_id,
@@ -70,8 +70,8 @@ def get_current_tenant_access(
         role=role,
         permissions=permissions,
         navigation_user_visible_modules=navigation_user_visible_modules_from_settings(settings),
-        is_active=bool(getattr(member, "is_active", True)),
-        is_current=bool(getattr(member, "is_current", False)),
+        is_active=bool(member.is_active),
+        is_current=bool(member.is_current),
     )
 
 
@@ -83,7 +83,7 @@ def list_tenant_members(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> TenantMemberListResponse:
     ensure_tenant_permission(
         db,
         tenant_id,
@@ -92,10 +92,10 @@ def list_tenant_members(
         detail="No permission to view tenant members",
     )
 
-    q = db.query(TenantMember).filter(TenantMember.tenant_id == tenant_id)
-    total = int(q.count())
+    members = db.query(TenantMember).filter(TenantMember.tenant_id == tenant_id)
+    total = members.count()
     items = (
-        q.order_by(
+        members.order_by(
             TenantMember.is_current.desc(),
             TenantMember.updated_at.desc().nullslast(),
             TenantMember.created_at.desc().nullslast(),
@@ -115,7 +115,7 @@ def patch_tenant_member_role(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> TenantMemberOut:
     ensure_tenant_permission(
         db,
         tenant_id,
@@ -124,7 +124,7 @@ def patch_tenant_member_role(
         detail="No permission to manage tenant member roles",
     )
 
-    uid = str(user_id or "").strip()
+    uid = user_id.strip()
     if not uid:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="user_id is required")
 
@@ -135,11 +135,11 @@ def patch_tenant_member_role(
         .with_for_update()
         .first()
     )
-    if not member:
+    if member is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant member not found")
 
-    next_role = str(payload.role or "").strip().lower()
-    current_role = str(getattr(member, "role", "") or "").strip().lower()
+    next_role = payload.role
+    current_role = (member.role or "").strip().lower()
     if current_role in UserRoles.ADMIN_ROLES and next_role not in UserRoles.ADMIN_ROLES and len(active_admins) <= 1:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="不能降级最后一个管理员")
 
@@ -160,7 +160,7 @@ def delete_tenant_member(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> TenantMemberDeleteResponse:
     ensure_tenant_permission(
         db,
         tenant_id,
@@ -169,10 +169,10 @@ def delete_tenant_member(
         detail="没有权限移除成员",
     )
 
-    uid = str(user_id or "").strip()
+    uid = user_id.strip()
     if not uid:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="缺少成员 ID")
-    if uid == str(account_id or "").strip():
+    if uid == account_id.strip():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="不能移除当前用户")
 
     active_admins = _lock_active_admin_members(db, tenant_id)
@@ -182,31 +182,27 @@ def delete_tenant_member(
         .with_for_update()
         .first()
     )
-    if not member:
+    if member is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到该成员")
 
-    member_role = str(getattr(member, "role", "") or "").strip().lower()
-    if member_role in UserRoles.ADMIN_ROLES and bool(getattr(member, "is_active", True)):
-        if len(active_admins) <= 1:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="不能移除最后一个管理员")
+    member_role = (member.role or "").strip().lower()
+    if member_role in UserRoles.ADMIN_ROLES and member.is_active and len(active_admins) <= 1:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="不能移除最后一个管理员")
 
-    revoked_groups = int(
+    revoked_groups = (
         db.query(TenantGroupMember)
         .filter(TenantGroupMember.tenant_id == tenant_id, TenantGroupMember.user_id == uid)
         .delete(synchronize_session=False)
-        or 0
     )
-    revoked_datasets = int(
+    revoked_datasets = (
         db.query(DatasetPermission)
         .filter(DatasetPermission.tenant_id == tenant_id, DatasetPermission.account_id == uid)
         .delete(synchronize_session=False)
-        or 0
     )
-    revoked_documents = int(
+    revoked_documents = (
         db.query(DocumentPermission)
         .filter(DocumentPermission.tenant_id == tenant_id, DocumentPermission.account_id == uid)
         .delete(synchronize_session=False)
-        or 0
     )
     db.delete(member)
 

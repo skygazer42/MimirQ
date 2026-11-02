@@ -5,8 +5,8 @@
 
 本目录记录全项目迁移。**当前仍在实施，不代表全仓语义审核已完成。**
 
-- [实施计划](../../superpowers/plans/2026-11-02-style-unification.md)：统一约定、Skill 分工、业务批次与验收；当前先收尾数据集服务已有改动。
-- `coverage.csv`：当前 3,634 个跟踪文件与逐文件处理状态，新增、删除和移动在所属批次同步。
+- [实施计划](../../superpowers/plans/2026-11-02-style-unification.md)：统一约定、Skill 分工、业务批次与验收；数据集类别已提交，权限与配额静态核对已完成，下一片为通用入口与 SCIM。
+- `coverage.csv`：当前 3,636 个文件与逐文件处理状态（含本批新增决定记录），新增、删除和移动在所属批次同步。
 - `baseline-python-failures.txt`：原始 Python 基线失败和收集错误的用例名称。
 - `verification.md`：基线及各批真实检查结果；历史结果不代表当前版本通过。
 

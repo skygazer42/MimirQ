@@ -15,18 +15,14 @@ Design:
 
 import contextlib
 import hashlib
-from typing import Any
+from collections.abc import Callable
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.constants import UserRoles
 from app.models.tenant import Tenant, TenantMember
 from app.services.audit_log_service import audit_log_event
-
-
-def _hash_pii(value: object) -> str:
-    raw = str(value or "").strip().encode("utf-8", "ignore")
-    return hashlib.sha256(raw).hexdigest()[:16]
 
 
 def ensure_tenant_member_for_jwt_user(
@@ -44,43 +40,44 @@ def ensure_tenant_member_for_jwt_user(
 
     Returns True when a new row is created, False otherwise.
     """
-    uid = str(user_id or "").strip()
+    uid = user_id.strip()
     if not uid or len(uid) > 255:
         return False
 
     # Tenant-safe: only provision when the tenant exists.
     tenant_exists = db.query(Tenant).filter_by(id=tenant_id).first()
-    if not tenant_exists:
+    if tenant_exists is None:
         return False
 
     existing = db.query(TenantMember).filter_by(tenant_id=tenant_id, user_id=uid).first()
-    if existing:
+    if existing is not None:
         return False
 
     member = TenantMember(
         tenant_id=tenant_id,
         user_id=uid,
-        role="viewer",
+        role=UserRoles.VIEWER,
         is_active=True,
         is_current=False,
     )
     db.add(member)
 
+    user_id_hash = hashlib.sha256(uid.encode("utf-8", "ignore")).hexdigest()[:16]
     audit_log_event(
         db,
         tenant_id=tenant_id,
-        actor_id=str(actor_id or "system:jwt"),
+        actor_id=actor_id or "system:jwt",
         action="auth.jwt.tenant_member.auto_provision",
         resource_type="tenant_member",
-        resource_id=_hash_pii(uid),
+        resource_id=user_id_hash,
         request_id=request_id,
         ip=ip,
         user_agent=user_agent,
         details={
             "tenant_id": str(tenant_id),
-            "user_id_hash": _hash_pii(uid),
-            "user_id_chars": int(len(uid)),
-            "role": "viewer",
+            "user_id_hash": user_id_hash,
+            "user_id_chars": len(uid),
+            "role": UserRoles.VIEWER,
         },
     )
     return True
@@ -88,7 +85,7 @@ def ensure_tenant_member_for_jwt_user(
 
 def maybe_auto_provision_jwt_tenant_member_best_effort(
     *,
-    db_factory: Any,
+    db_factory: Callable[[], Session],
     tenant_id: UUID,
     user_id: str,
     request_id: str | None = None,
@@ -113,7 +110,7 @@ def maybe_auto_provision_jwt_tenant_member_best_effort(
         )
         if created:
             db.commit()
-        return bool(created)
+        return created
     except Exception:  # noqa: BLE001
         with contextlib.suppress(Exception):
             db.rollback()
