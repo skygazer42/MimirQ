@@ -269,7 +269,7 @@ async def test_preview_document_inline_path_preserves_auth_pipeline_governance_a
     )
     monkeypatch.setattr(document_preview, "save_upload_file", _save_upload, raising=True)
     monkeypatch.setattr(
-        documents_module,
+        document_preview,
         "_sanitize_filename",
         lambda name: call_order.append("sanitize") or "sanitized.md",
         raising=True,
@@ -450,7 +450,7 @@ async def test_preview_document_subprocess_path_preserves_payload_and_cleanup_sa
     monkeypatch.setattr(document_preview.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(document_preview.dataset_service, "get_dataset", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(document_preview, "save_upload_file", _save_upload, raising=True)
-    monkeypatch.setattr(documents_module, "_sanitize_filename", lambda _name: "sanitized.pdf", raising=True)
+    monkeypatch.setattr(document_preview, "_sanitize_filename", lambda _name: "sanitized.pdf", raising=True)
     monkeypatch.setattr(document_preview, "compute_document_analytics", _analytics, raising=True)
     monkeypatch.setattr(
         document_preview,
@@ -586,7 +586,7 @@ async def test_preview_document_maps_worker_errors_without_leaking_production_de
     monkeypatch.setattr(document_preview.settings, "ALLOWED_EXTENSIONS", ".pdf", raising=False)
     monkeypatch.setattr(document_preview.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(document_preview, "save_upload_file", _save_upload, raising=True)
-    monkeypatch.setattr(documents_module, "_sanitize_filename", lambda _name: "sanitized.pdf", raising=True)
+    monkeypatch.setattr(document_preview, "_sanitize_filename", lambda _name: "sanitized.pdf", raising=True)
     monkeypatch.setattr(documents_module, "run_subprocess_worker", _raise, raising=True)
     monkeypatch.setattr(document_preview, "is_production_env", lambda: production, raising=True)
 

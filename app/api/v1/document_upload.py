@@ -18,6 +18,12 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import DocumentBatchUploadResponse, DocumentDetail, UrlUploadRequest
 from app.api.utils.document_dispatch import schedule_document_processing
 from app.api.utils.pipeline_options import PipelineOptionOverrides, to_pipeline_options
+from app.api.utils.upload import (
+    _normalize_upload_key,
+    _normalize_upload_path_parts,
+    _sanitize_filename,
+    save_upload_file_with_hash,
+)
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.document import Document as DBDocument
@@ -509,12 +515,10 @@ class _PreparedDocumentMetadata:
 
 
 def _normalize_upload_identity(file: UploadFile) -> _UploadIdentity:
-    from app.api.v1 import documents as documents_module
-
     raw_filename = file.filename
-    upload_key = documents_module._normalize_upload_key(raw_filename)
+    upload_key = _normalize_upload_key(raw_filename)
     source_path = upload_key if "/" in upload_key else None
-    file.filename = documents_module._sanitize_filename(raw_filename)
+    file.filename = _sanitize_filename(raw_filename)
     return _UploadIdentity(
         filename=str(file.filename or ""),
         file_ext=Path(str(file.filename or "")).suffix.lower(),
@@ -792,8 +796,6 @@ def _parse_single_user_metadata(user_metadata: str | None) -> dict[str, Any] | N
 
 
 def _parse_batch_user_metadata_map(user_metadata_map: str | None) -> dict[str, dict[str, Any]]:
-    from app.api.v1 import documents as documents_module
-
     user_meta_by_key: dict[str, dict[str, Any]] = {}
     if not isinstance(user_metadata_map, str) or not user_metadata_map.strip():
         return user_meta_by_key
@@ -810,7 +812,7 @@ def _parse_batch_user_metadata_map(user_metadata_map: str | None) -> dict[str, d
     for key, value in obj.items():
         if not isinstance(key, str) or not isinstance(value, dict):
             continue
-        normalized = documents_module._normalize_upload_key(key)
+        normalized = _normalize_upload_key(key)
         if normalized:
             user_meta_by_key[normalized] = value
     return user_meta_by_key
@@ -1042,10 +1044,8 @@ def _build_batch_response(
 
 
 def _safe_staging_relpath(item: dict[str, Any], *, idx: int) -> Path:
-    from app.api.v1 import documents as documents_module
-
     raw = str(item.get("upload_key") or item.get("filename") or f"FILE_{idx:06d}").strip()
-    parts = documents_module._normalize_upload_path_parts(raw)
+    parts = _normalize_upload_path_parts(raw)
     if not parts:
         parts = [str(item.get("filename") or f"FILE_{idx:06d}")]
     safe_parts: list[str] = []
@@ -1381,7 +1381,7 @@ async def _process_live_batch_upload(
             )
         file_id = uuid.uuid4()
         file_path = _document_upload_path(tenant_id, file_id, identity.file_ext)
-        file_size, file_sha256 = await documents_module.save_upload_file_with_hash(
+        file_size, file_sha256 = await save_upload_file_with_hash(
             file,
             file_path,
             max_bytes=settings.MAX_FILE_SIZE,
@@ -1440,8 +1440,6 @@ async def _stage_upload_for_precheck(
     *,
     tenant_id: UUID,
 ) -> dict[str, Any]:
-    from app.api.v1 import documents as documents_module
-
     identity = _normalize_upload_identity(file)
     if not _upload_extension_allowed(identity.file_ext):
         return _failure_result(
@@ -1452,7 +1450,7 @@ async def _stage_upload_for_precheck(
     file_id = uuid.uuid4()
     file_path = _document_upload_path(tenant_id, file_id, identity.file_ext)
     try:
-        file_size, file_sha256 = await documents_module.save_upload_file_with_hash(
+        file_size, file_sha256 = await save_upload_file_with_hash(
             file,
             file_path,
             max_bytes=settings.MAX_FILE_SIZE,
@@ -1992,9 +1990,7 @@ async def _upload_document_impl(
     file_path = _document_upload_path(tenant_id, file_id, identity.file_ext)
     file_lease.acquire(file_path)
 
-    file_size, file_sha256 = await documents_module.save_upload_file_with_hash(
-        file, file_path, max_bytes=settings.MAX_FILE_SIZE
-    )
+    file_size, file_sha256 = await save_upload_file_with_hash(file, file_path, max_bytes=settings.MAX_FILE_SIZE)
 
     from app.services.tenant_quota_service import enforce_tenant_upload_quotas
 

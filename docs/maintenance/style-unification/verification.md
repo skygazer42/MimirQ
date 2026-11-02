@@ -316,3 +316,9 @@
 - `_fresh_session_document_exists` 直接导入 `DBDocument`，以 `Callable[[], Session]` 表达 session factory 并调用 SQLAlchemy `Session.get`。删除从 `documents` 路由动态取模型以及对 `get`／`query` 的形状探测；factory 注入保持不变。
 - session 创建或查询异常仍记录 warning 并返回 `None`，因此不会基于未知状态删除远端对象；成功创建后的 close 仍 best-effort。`False`、`True`、`None` 三类结果进入的对象清理分支不变。
 - Ruff check、Ruff format --check 和 diff --check 通过。未运行 Python 测试或应用流程；运行时行为只做源码契约核对。
+
+## 第四批：上传文件名与路径归一化所有权（2026-11-03）
+
+- 文件名校验、路径段处理、Windows drive/FakePath 归一化、`..` 折叠和上传 key 上限迁到现有 `app/api/utils/upload.py`；原 error detail 与各函数 AST 保持一致。`documents.py` 继续直接导出旧 helper 和常量。
+- 文件上传、批量 metadata map、staging path、文档预览和分块预览直接导入实际 utility。`document_preview` 仍从 `documents.py` 读取其他 parse/governance helper；只移除 sanitizer 对该聚合模块的依赖。测试只把三个 sanitizer 与 19 个上传保存 helper 的 patch 指向调用模块。
+- Ruff check/format、AST 比较、diff --check 通过。已有 route、错误状态、source path 和文件名限制按原函数体保留。按用户要求没有运行 Python 测试或导入应用，上传与预览运行时未验证。

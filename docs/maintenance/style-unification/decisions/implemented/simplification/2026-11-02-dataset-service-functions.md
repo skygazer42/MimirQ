@@ -28,6 +28,10 @@ API 的 `DatasetBase` 与 `DatasetUpdate` 使用 `list[UUID]` 校验组 ID；复
 
 URL 入库请求 `UrlUploadRequest` 归入 `app/api/schemas/document.py`，与其引用的 `DocumentPipelineOptions` 及其他文档请求模型共用 schema 所有者。上传和连接器调用方直接导入该类型；`documents.py` 保留直接导出同名类型，兼容现有 Python 引用。字段、`extra="forbid"`、解析器与分块策略默认值不变。
 
+文件名清理、上传路径段归一化与上传 key 生成由 `app/api/utils/upload.py` 负责；共享 streaming 上传逻辑仍在同一 API utility。控制字符、Windows drive 前缀、FakePath、`..` 折叠、路径长度限制、文件名叶子截取及其 400 文案保持原函数规则。`documents.py` 直接重导出被现有调用方引用的名称，上传与预览入口直接依赖 utility。
+
+文件名清理、上传路径段归一化与上传 key 生成由 `app/api/utils/upload.py` 负责；共享 streaming 上传逻辑仍在同一 API utility。控制字符、Windows drive 前缀、FakePath、`..` 折叠、路径长度限制、文件名叶子截取及其 400 文案保持原函数规则。`documents.py` 直接重导出被现有调用方引用的名称，上传与预览入口直接依赖 utility。
+
 入库运行记录由 `ingestion_run_service` 的五个模块函数负责，入口位于私有统计与锁帮助函数之前。上传模块直接调用实际服务，不再从文档路由装配器取静态类；两个只为取得服务而接收整个模块的参数同时退出。数据库与模型已声明的字段直接使用，JSON 统计和文档元数据仍保留真实形状适配。
 
 创建运行记录的数据库失败由调用方决定处理方式；绑定与收尾维持 best-effort，状态通知的 `required` 模式仍在回滚后抛错。运行行锁先于关联行锁、重复绑定幂等、唯一约束、提交与观测顺序、统计 top 上限及空批失败规则继续保持。已有并发夹具仅补齐模型的 config 字段和 Session.flush，并同步服务引用，不增加用例或断言。
@@ -57,6 +61,10 @@ RBAC 与配额继续依赖这些成员契约，具体边界见[权限与配额�
 文件下载、preview 和 image-url 的 tenant／account 解析归入 `document_assets` 路由模块，ACL 直接导入 `document_access_service`；手工 owner 与 legacy data lookup 继续留在对应服务。documents 只直接重导出仍有旧 Python 引用的错误常量和共享资产入口，不为资产读取、缓存或认证提供代理函数。header auth、JWT claim、查询 tenant、文件根目录和 Range 规则保持各自原有入口语义。
 
 ## Alternatives considered
+
+- 把文件名规则继续留在 `documents.py` 可以少搬函数，但上传模块需要由路由聚合器取验证逻辑。新建独立 filename service 又会把同一上传边界拆成两处。当前复用已有 `app/api/utils/upload.py`，它已拥有上传流和落盘规则。
+
+- 把文件名规则继续留在 `documents.py` 可以少搬函数，但上传模块需要由路由聚合器取验证逻辑。新建独立 filename service 又会把同一上传边界拆成两处。当前复用已有 `app/api/utils/upload.py`，它已拥有上传流和落盘规则。
 
 - 保留静态类能缩小引用变更范围，但继续存在无状态外壳，与已确认的模块函数约定不一致。
 - 增加旧类转发层可以兼容旧符号，但会保留两套入口。当前仓库调用方同批迁移，因此不增加这层维护点。
@@ -92,3 +100,7 @@ RBAC 与配额继续依赖这些成员契约，具体边界见[权限与配额�
 URL 上传模型的单一声明位于文档 schema；上传与连接器入口不再为构造该类型访问 documents 路由聚合器。兼容导出保留既有外部 Python 引用，模型字段与默认值维持原样。
 
 队列和 API 路由共用一份 connector executor 映射。无效 connector ID 仍分别得到队列的 `False` 和 API 原有的 400；连接器聚合器仍只在实际执行时导入，直到共享 helper 绑定迁移完成。
+
+上传文件名和来源路径规则集中在现有上传 utility；旧 route export 仍有效，直接依赖的入口不再为归一化加载 `documents.py`。输入边界、拒绝错误与字符串长度约束保持原样。
+
+上传文件名和来源路径规则集中在现有上传 utility；旧 route export 仍有效，直接依赖的入口不再为归一化加载 `documents.py`。输入边界、拒绝错误与字符串长度约束保持原样。

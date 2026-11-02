@@ -25,7 +25,7 @@ from app.api.schemas.document import (
     ChunkPreviewStats,
 )
 from app.api.utils.pipeline_options import to_pipeline_options
-from app.api.utils.upload import save_upload_file_with_hash
+from app.api.utils.upload import _sanitize_filename, save_upload_file_with_hash
 from app.api.v1.documents import (
     CHUNK_OVERLAP_LESS_THAN_SIZE_DETAIL,
     POSITION_TAG_RE,
@@ -35,7 +35,6 @@ from app.api.v1.documents import (
     _decode_escaped_input_preview,
     _filter_chunker_kwargs_for_strategy,
     _parse_pipeline_json,
-    _sanitize_filename,
     logger,
 )
 from app.core.config import settings

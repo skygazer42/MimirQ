@@ -26,7 +26,14 @@ from sqlalchemy.orm import Session
 from app.api.schemas.document import DocumentPipelineOptions, UrlUploadRequest
 from app.api.utils.document_dispatch import schedule_document_processing
 from app.api.utils.pipeline_options import PipelineOptionOverrides as PipelineOptionOverrides
-from app.api.utils.upload import compute_file_hash, save_upload_file_with_hash
+from app.api.utils.upload import FILENAME_INVALID_CHARS_DETAIL as FILENAME_INVALID_CHARS_DETAIL
+from app.api.utils.upload import _normalize_upload_key as _normalize_upload_key
+from app.api.utils.upload import _normalize_upload_path_parts as _normalize_upload_path_parts
+from app.api.utils.upload import (
+    _sanitize_filename,
+    compute_file_hash,
+    save_upload_file_with_hash,
+)
 from app.api.utils.url_ingest import URLDownloadOptions, download_url_to_path, validate_url_for_ingest
 from app.api.v1 import (
     document_access,
@@ -332,7 +339,6 @@ DOC_NOT_FOUND_DETAIL = "Document not found"
 DUPLICATE_DOCUMENT_PROCESSING_DETAIL = "Duplicate document is currently processing"
 HTML_FILE_EXTENSION = ".html"
 PIPELINE_HASH_TOO_LONG_DETAIL = "pipeline_hash too long"
-FILENAME_INVALID_CHARS_DETAIL = "Filename contains invalid characters"
 CHUNK_NOT_FOUND_DETAIL = "Chunk not found"
 CHUNK_NOT_ACTIVE_PIPELINE_DETAIL = "Chunk is not in the active pipeline version"
 DOCUMENT_DEDUP_CONSTRAINT_NAME = "uq_documents_tenant_dataset_dedup_key_active"
@@ -434,82 +440,6 @@ def _filter_chunker_kwargs_for_strategy(strategy: str, kwargs: dict[str, Any]) -
         return {k: v for k, v in kwargs.items() if k in accepted}
     except Exception:
         return {}
-
-
-_WINDOWS_DRIVE_LETTER_RE = re.compile(r"^[a-zA-Z]:$")
-_UPLOAD_SOURCE_PATH_MAX_LEN = 500
-
-
-def _assert_upload_filename_has_no_control_chars(raw: str) -> None:
-    if "\x7f" in raw or any(ord(ch) < 32 for ch in raw):
-        raise HTTPException(status_code=400, detail=FILENAME_INVALID_CHARS_DETAIL)
-
-
-def _split_upload_path_parts(cleaned: str) -> list[str]:
-    parts = [p.strip() for p in cleaned.split("/") if p.strip() and p.strip() != "."]
-    if parts and _WINDOWS_DRIVE_LETTER_RE.fullmatch(parts[0]):
-        return parts[1:]
-    return parts
-
-
-def _collapse_upload_path_parts(parts: list[str]) -> list[str]:
-    stack: list[str] = []
-    for p in parts:
-        if p == "..":
-            if stack:
-                stack.pop()
-            continue
-        stack.append(p)
-    return stack
-
-
-def _drop_fakepath_prefix(parts: list[str]) -> list[str]:
-    if len(parts) == 2 and parts[0].lower() == "fakepath":
-        return [parts[1]]
-    return parts
-
-
-def _normalize_upload_path_parts(filename: str) -> list[str]:
-    raw = str(filename or "")
-    if not raw:
-        return []
-    _assert_upload_filename_has_no_control_chars(raw)
-
-    cleaned = raw.replace("\\", "/").strip()
-    if not cleaned:
-        return []
-
-    parts = _split_upload_path_parts(cleaned)
-    if not parts:
-        return []
-
-    return _drop_fakepath_prefix(_collapse_upload_path_parts(parts))
-
-
-def _normalize_upload_key(filename: str) -> str:
-    parts = _normalize_upload_path_parts(filename)
-    if not parts:
-        return _sanitize_filename(filename)
-    key = "/".join(parts)
-    if len(key) > _UPLOAD_SOURCE_PATH_MAX_LEN:
-        key = key[:_UPLOAD_SOURCE_PATH_MAX_LEN]
-    return key
-
-
-def _sanitize_filename(filename: str) -> str:
-    if not filename:
-        raise HTTPException(status_code=400, detail="Filename is required")
-
-    cleaned = filename.replace("\\", "/").rsplit("/", 1)[-1].strip()
-    if not cleaned:
-        raise HTTPException(status_code=400, detail="Filename is required")
-    if len(cleaned) > 255:
-        raise HTTPException(status_code=400, detail="Filename too long (max 255 characters)")
-    if "\x7f" in cleaned or any(ord(ch) < 32 for ch in cleaned):
-        raise HTTPException(status_code=400, detail=FILENAME_INVALID_CHARS_DETAIL)
-    if cleaned in {".", ".."}:
-        raise HTTPException(status_code=400, detail=FILENAME_INVALID_CHARS_DETAIL)
-    return cleaned
 
 
 def _parse_pipeline_json(pipeline: str | None) -> DocumentPipelineOptions | None:

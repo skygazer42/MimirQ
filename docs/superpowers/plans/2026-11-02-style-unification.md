@@ -170,6 +170,8 @@ URL 入库的 `UrlUploadRequest` 归入现有文档 schema；上传和连接器�
 
 上传提交异常后的存在性核对直接使用 `Session.get` 和 ORM model；核实 SQLAlchemy session 契约后移除路由模块模型读取及 query 形状 fallback。session 创建／查询失败的 unknown 状态、远端对象保留和关闭顺序保持原样。
 
+文件名与来源路径规则归入现有 `app/api/utils/upload.py`；`documents.py` 保留已引用名称的直接导出，上传及预览入口直接调用 utility。原路径折叠、FakePath、Windows drive、长度限制、文件名清理错误和测试 patch 行为保持不变。
+
 **本批产出：** 上传到任务的输入输出和失败路径一致，同一字段映射与权限规则只有一个业务维护点。
 
 ### Task 5：RAG 与模型调用

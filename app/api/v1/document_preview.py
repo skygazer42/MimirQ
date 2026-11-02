@@ -14,7 +14,7 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import DocumentParsePreview, ParsedSegment
 from app.api.utils.pipeline_options import PipelineOptionOverrides, to_pipeline_options
-from app.api.utils.upload import save_upload_file
+from app.api.utils.upload import _sanitize_filename, save_upload_file
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.env import is_production_env
@@ -381,10 +381,10 @@ async def preview_document(
     Only parses the document and returns structured segments; does not create
     a document record or persist data. Useful for frontend custom chunking.
     """
-    from app.api.v1 import documents as documents_module  # Local import to avoid router circular import.
+    from app.api.v1 import documents as documents_module  # Other preview helpers remain owned there.
 
     dataset_service.ensure_member(db, tenant_id, account_id)
-    file.filename = documents_module._sanitize_filename(file.filename)
+    file.filename = _sanitize_filename(file.filename)
 
     parser_backend = form.parser_backend
     dataset_id = form.dataset_id

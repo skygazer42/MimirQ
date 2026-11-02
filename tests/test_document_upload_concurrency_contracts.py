@@ -279,7 +279,7 @@ async def test_upload_batch_cancellation_cleans_staged_temp_file(
         await asyncio.Event().wait()
         return len(data), f"sha-{file.filename}"
 
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _slow_save, raising=True)
+    monkeypatch.setattr(document_upload, "save_upload_file_with_hash", _slow_save, raising=True)
 
     task = asyncio.create_task(
         document_upload.upload_documents_batch(
@@ -324,7 +324,7 @@ async def test_upload_batch_uses_isolated_item_sessions_and_response_survives_cl
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
     monkeypatch.setattr(documents_module, "DBDocument", _DetachedStatusDocument, raising=True)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(document_upload, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
 
     def _new_item_session() -> _FakeItemSession:
         session = _FakeItemSession(name=f"item-{len(item_sessions) + 1}")
@@ -391,7 +391,7 @@ async def test_upload_batch_closes_intake_after_attaching_successes_in_both_bran
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
     monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", False, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(document_upload, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
     monkeypatch.setattr(
         documents_module,
         "_find_duplicate_document",
@@ -467,7 +467,7 @@ async def test_single_upload_releases_ingest_lock_on_dedup_hit(monkeypatch: pyte
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
     monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(document_upload, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
     monkeypatch.setattr(
         documents_module,
         "_find_duplicate_document",
@@ -520,7 +520,7 @@ async def test_single_upload_uses_timeout_based_ingest_lock_ttl(monkeypatch: pyt
     monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "TASK_JOB_TIMEOUT_SEC", 4_000, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(document_upload, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
     monkeypatch.setattr(
         documents_module,
         "_find_duplicate_document",
@@ -611,7 +611,7 @@ async def test_single_upload_returns_pending_same_pipeline_follower(monkeypatch:
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
     monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", False, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(document_upload, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
     monkeypatch.setattr(
         documents_module,
         "_find_duplicate_document_by_sha",
@@ -654,7 +654,7 @@ async def test_single_upload_keeps_pending_different_pipeline_conflict(monkeypat
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
     monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", False, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(document_upload, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
     monkeypatch.setattr(
         documents_module,
         "_find_duplicate_document_by_sha",
@@ -720,7 +720,7 @@ async def test_single_upload_fails_closed_when_ingest_lock_queue_unavailable(mon
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
     monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(document_upload, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
 
     async def _queue() -> object:
         raise RuntimeError("redis unavailable")
@@ -756,7 +756,7 @@ async def test_single_upload_fails_closed_when_ingest_lock_set_fails(monkeypatch
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
     monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(document_upload, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
 
     class _FailingRedis:
         async def set(self, *_args, **_kwargs) -> bool:  # noqa: ANN002, ANN003
@@ -797,7 +797,7 @@ async def test_single_upload_skips_ingest_lock_when_queue_disabled(monkeypatch: 
     monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", False, raising=False)
     monkeypatch.setattr(documents_module, "DBDocument", _DetachedStatusDocument, raising=True)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(document_upload, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
 
     async def _queue() -> object:
         raise AssertionError("queue probe should be skipped when disabled")
@@ -846,7 +846,7 @@ async def test_single_upload_releases_ingest_lock_without_worker_handoff(monkeyp
     monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
     monkeypatch.setattr(documents_module, "DBDocument", _DetachedStatusDocument, raising=True)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(document_upload, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
 
     async def _queue() -> object:
         return object()
@@ -909,7 +909,7 @@ async def test_single_upload_hands_retry_ingest_lock_to_worker(monkeypatch: pyte
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
     monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(document_upload, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
     monkeypatch.setattr(
         documents_module,
         "_find_duplicate_document_by_sha",
@@ -979,7 +979,7 @@ async def test_single_upload_reuses_matching_sha_only_duplicate_while_pending_or
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
     monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", False, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(document_upload, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
     monkeypatch.setattr(
         documents_module.ingestion_run_service, "create_run", lambda *args, **kwargs: None, raising=True
     )
@@ -1019,7 +1019,7 @@ async def test_single_upload_releases_ingest_lock_on_exception(monkeypatch: pyte
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
     monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(document_upload, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
 
     async def _queue() -> object:
         return object()
@@ -1199,7 +1199,7 @@ async def test_single_upload_preserves_local_source_when_queue_handoff_fails_aft
     monkeypatch.setattr(document_upload.settings, "MINIO_ENABLED", False, raising=False)
     monkeypatch.setattr(document_upload.settings, "MINIO_DOCUMENTS_ENABLED", False, raising=False)
     monkeypatch.setattr(documents_module, "DBDocument", _DetachedStatusDocument, raising=True)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(document_upload, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
 
     async def _queue() -> object:
         return object()
@@ -1266,7 +1266,7 @@ async def test_batch_upload_hands_retry_ingest_lock_to_worker(monkeypatch: pytes
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
     monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(document_upload, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
     monkeypatch.setattr(
         documents_module,
         "_find_duplicate_document_by_sha",
@@ -1363,7 +1363,7 @@ async def test_batch_pending_duplicate_respects_pipeline_identity(
     monkeypatch.setattr(document_upload.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(document_upload.settings, "MINIO_ENABLED", False, raising=False)
     monkeypatch.setattr(document_upload.settings, "MINIO_DOCUMENTS_ENABLED", False, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(document_upload, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
     monkeypatch.setattr(
         documents_module,
         "_find_duplicate_document_by_sha",
@@ -1457,7 +1457,7 @@ async def test_single_upload_returns_existing_document_after_dedup_constraint_co
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
     monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", False, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(document_upload, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
 
     duplicate_hits = {"count": 0}
 
@@ -1525,7 +1525,7 @@ async def test_precheck_staged_batch_hands_retry_ingest_lock_to_worker(
     monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(document_upload, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
     monkeypatch.setattr(
         documents_module,
         "_find_duplicate_document_by_sha",
