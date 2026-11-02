@@ -1,4 +1,3 @@
-import importlib
 import mimetypes
 import uuid
 from pathlib import Path
@@ -9,15 +8,26 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
+from app.api.dependencies.auth import get_current_account_id_from_headers
+from app.api.dependencies.tenant import _preferred_jwt_tenant_id
 from app.api.utils.response_headers import set_content_disposition
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.env import is_production_env
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.rag.core.logging import get_logger
 from app.services import dataset_service
+from app.services.document_access_service import assert_document_acl_readable
+from app.services.document_lifecycle_service import DOC_NOT_FOUND_DETAIL, MANUAL_FILE_PATH_PREFIX
 from app.services.document_preview_legacy import find_legacy_preview_document_ids
-from app.services.document_preview_utils import _load_preview_owner_binding, _write_preview_owner_binding
+from app.services.document_preview_utils import (
+    IMAGE_FILE_EXT_JPEG,
+    IMAGE_FILE_EXT_WEBP,
+    _load_preview_owner_binding,
+    _write_preview_owner_binding,
+)
+from app.storage.object.minio import minio_service
 from app.storage.object.runtime import is_object_storage_uri, resolve_document_object_reference
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -29,6 +39,123 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 }
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+
+DOCUMENT_FILE_ACCESS_DENIED_DETAIL = "Document file access denied"
+DOCUMENT_FILE_NOT_FOUND_DETAIL = "Document file not found"
+IMAGE_NOT_FOUND_DETAIL = "Image not found"
+IMAGE_JPEG_MEDIA_TYPE = "image/jpeg"
+INVALID_RANGE_HEADER_DETAIL = "Invalid Range header"
+
+
+def _asset_cache_control(*, max_age: int) -> str:
+    del max_age
+    return "private, no-store"
+
+
+def _parse_uuid(value: str) -> UUID:
+    try:
+        return UUID(str(value))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid tenant id") from exc
+
+
+def _asset_request_header_account(request, *, is_production: bool) -> str | None:
+    account_id = (request.headers.get("x-user-id") or "").strip() or None
+    allow_anonymous = bool(settings.ASSET_HEADER_AUTH_ALLOW_ANONYMOUS)
+    if not account_id and (is_production or not allow_anonymous):
+        raise HTTPException(status_code=401, detail="X-User-ID header required")
+    return account_id
+
+
+def _asset_request_authorization(request) -> str:
+    authorization = (request.headers.get("authorization") or "").strip()
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return authorization
+
+
+async def _resolve_account_id_for_asset_request(request, *, tenant_id: UUID | None = None) -> str | None:
+    """
+    Resolve account id for asset endpoints that may be requested by <img src>.
+
+    - AUTH_MODE=header: require X-User-ID unless local/dev explicitly opts into
+      anonymous asset fetches via ASSET_HEADER_AUTH_ALLOW_ANONYMOUS=true.
+    - AUTH_MODE=jwt: require an Authorization header; query-string bearer tokens are unsupported.
+    """
+    is_production = is_production_env()
+    auth_mode = (settings.AUTH_MODE or "jwt").lower()
+
+    if auth_mode == "header":
+        return _asset_request_header_account(request, is_production=is_production)
+
+    authorization = _asset_request_authorization(request)
+    tenant_value = str(tenant_id).strip() if tenant_id is not None else None
+    try:
+        return await get_current_account_id_from_headers(
+            authorization=authorization,
+            x_user_id=None,
+            x_tenant_id=tenant_value,
+        )
+    except HTTPException:
+        raise HTTPException(status_code=401, detail="Authentication required") from None
+
+
+def _get_tenant_id_from_request_if_provided(request) -> UUID | None:
+    """
+    Return tenant id from header/query if explicitly provided; otherwise None.
+    """
+    tenant_header = str(settings.TENANT_HEADER or "X-Tenant-ID").strip() or "X-Tenant-ID"
+    raw = (request.headers.get(tenant_header) or "").strip()
+    if not raw and tenant_header.lower() != "x-tenant-id":
+        raw = (request.headers.get("x-tenant-id") or "").strip()
+    if raw:
+        return _parse_uuid(raw)
+
+    for key in ("tenant_id", "x_tenant_id", "tenant"):
+        raw = (request.query_params.get(key) or "").strip()
+        if raw:
+            return _parse_uuid(raw)
+
+    return None
+
+
+async def _resolve_tenant_id_for_asset_request(
+    request,
+    *,
+    fallback_tenant_id: UUID | None = None,
+    conflict_detail: str = "Asset access denied for this tenant",
+) -> UUID:
+    """
+    Resolve tenant id for asset endpoints.
+
+    Priority:
+    1) Verified JWT tenant claim (when configured)
+    2) TENANT_HEADER (default: X-Tenant-ID)
+    3) ?tenant_id=... query param (or aliases)
+    4) settings.DEFAULT_TENANT_ID in non-production
+    """
+    provided = _get_tenant_id_from_request_if_provided(request)
+    preferred = await _preferred_jwt_tenant_id(request)
+    if preferred is not None:
+        for candidate in (provided, fallback_tenant_id):
+            if candidate is not None and candidate != preferred:
+                raise HTTPException(status_code=403, detail=conflict_detail)
+        return preferred
+
+    if fallback_tenant_id is not None:
+        if provided is not None and provided != fallback_tenant_id:
+            raise HTTPException(status_code=403, detail=conflict_detail)
+        return fallback_tenant_id
+
+    if provided is not None:
+        return provided
+
+    if is_production_env():
+        tenant_header = str(settings.TENANT_HEADER or "X-Tenant-ID").strip() or "X-Tenant-ID"
+        raise HTTPException(status_code=400, detail=f"{tenant_header} header or tenant_id query param required")
+    return _parse_uuid(str(settings.DEFAULT_TENANT_ID))
+
+
 logger = get_logger(__name__)
 
 _ACTIVE_CONTENT_MEDIA_TYPES = {
@@ -48,7 +175,6 @@ _ACTIVE_CONTENT_MEDIA_TYPES = {
 def _authorize_bound_preview_document(
     *,
     db: Session,
-    docs_mod: Any,
     tenant_id: UUID,
     account_id: str | None,
     dataset_id: UUID,
@@ -60,7 +186,7 @@ def _authorize_bound_preview_document(
     if account_id:
         dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
         dataset_service.assert_dataset_readable(db, dataset, account_id)
-        docs_mod._assert_document_acl_readable(
+        assert_document_acl_readable(
             db,
             tenant_id=tenant_id,
             account_id=account_id,
@@ -70,13 +196,17 @@ def _authorize_bound_preview_document(
     return document
 
 
-def _locate_preview_image_asset(*, images_dir: Path, preview_id: str, docs_mod: Any) -> tuple[Path, str] | None:
+def _locate_preview_image_asset(
+    *,
+    images_dir: Path,
+    preview_id: str,
+) -> tuple[Path, str] | None:
     images_dir_resolved = images_dir.resolve(strict=False)
     candidates: list[tuple[str, str]] = [
         (".png", "image/png"),
-        (".jpg", docs_mod.IMAGE_JPEG_MEDIA_TYPE),
-        (docs_mod.IMAGE_FILE_EXT_JPEG, docs_mod.IMAGE_JPEG_MEDIA_TYPE),
-        (docs_mod.IMAGE_FILE_EXT_WEBP, "image/webp"),
+        (".jpg", IMAGE_JPEG_MEDIA_TYPE),
+        (IMAGE_FILE_EXT_JPEG, IMAGE_JPEG_MEDIA_TYPE),
+        (IMAGE_FILE_EXT_WEBP, "image/webp"),
         (".gif", "image/gif"),
         (".bmp", "image/bmp"),
     ]
@@ -94,7 +224,6 @@ def _locate_preview_image_asset(*, images_dir: Path, preview_id: str, docs_mod: 
 def _resolve_legacy_preview_binding(
     *,
     db: Session,
-    docs_mod: Any,
     images_dir: Path,
     tenant_id: UUID,
     account_id: str | None,
@@ -129,7 +258,6 @@ def _resolve_legacy_preview_binding(
     for document_id in sorted(document_ids, key=str):
         binding = _authorize_legacy_preview_candidate(
             db=db,
-            docs_mod=docs_mod,
             tenant_id=tenant_id,
             account_id=account_id,
             document_id=document_id,
@@ -158,10 +286,6 @@ _ACTIVE_CONTENT_SUFFIXES = {
 }
 
 
-def _documents_module() -> Any:
-    return importlib.import_module("app.api.v1.documents")
-
-
 def _asset_disposition_type(*, inline: bool, filename: str | None, media_type: str | None) -> str:
     if not inline:
         return "attachment"
@@ -176,7 +300,6 @@ def _asset_disposition_type(*, inline: bool, filename: str | None, media_type: s
 def _authorize_legacy_preview_candidate(
     *,
     db: Session,
-    docs_mod: Any,
     tenant_id: UUID,
     account_id: str,
     document_id: UUID,
@@ -198,7 +321,7 @@ def _authorize_legacy_preview_candidate(
     if dataset is None:
         return None
     try:
-        docs_mod._assert_document_acl_readable(
+        assert_document_acl_readable(
             db=db,
             tenant_id=tenant_id,
             account_id=account_id,
@@ -238,16 +361,15 @@ def _get_readable_preview_dataset(
     return dataset
 
 
-async def _resolve_document_asset_request_context(request: Request) -> tuple[Any, UUID, str | None]:
-    docs_mod = _documents_module()
-    tenant_id = await docs_mod._resolve_tenant_id_for_asset_request(request)
-    account_id = await docs_mod._resolve_account_id_for_asset_request(request, tenant_id=tenant_id)
-    return docs_mod, tenant_id, account_id
+async def _resolve_document_asset_request_context(request: Request) -> tuple[UUID, str | None]:
+    tenant_id = await _resolve_tenant_id_for_asset_request(request)
+    account_id = await _resolve_account_id_for_asset_request(request, tenant_id=tenant_id)
+    return tenant_id, account_id
 
 
-def _asset_cache_control_value(docs_mod: Any) -> str:
+def _asset_cache_control_value() -> str:
     max_age = max(0, int(settings.ASSET_CACHE_MAX_AGE_SEC or 0))
-    return docs_mod._asset_cache_control(max_age=max_age)
+    return _asset_cache_control(max_age=max_age)
 
 
 def _quoted_etag(raw_value: str | None) -> str | None:
@@ -329,7 +451,6 @@ def _parse_range_request(
 def _resolve_document_download(
     *,
     db: Session,
-    docs_mod: Any,
     tenant_id: UUID,
     account_id: str | None,
     document_id: UUID,
@@ -338,13 +459,13 @@ def _resolve_document_download(
         dataset_service.ensure_member(db, tenant_id, account_id)
     document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
-        raise HTTPException(status_code=404, detail=docs_mod.DOC_NOT_FOUND_DETAIL)
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
     dataset: Dataset | None = None
     if document.dataset_id and account_id:
         dataset = dataset_service.get_dataset(db, tenant_id, document.dataset_id)
         dataset_service.assert_dataset_readable(db, dataset, account_id)
     if account_id:
-        docs_mod._assert_document_acl_readable(
+        assert_document_acl_readable(
             db,
             tenant_id=tenant_id,
             account_id=account_id,
@@ -362,7 +483,6 @@ def _resolve_document_media_type(filename: str | None) -> str:
 def _stream_object_storage_document(
     *,
     document: DBDocument,
-    docs_mod: Any,
     tenant_id: UUID,
     request: Request,
     inline: bool,
@@ -381,19 +501,19 @@ def _stream_object_storage_document(
         raise HTTPException(status_code=503, detail="Object storage is disabled") from exc
     except ValueError as exc:
         if str(exc) in {"object_bucket_denied", "object_key_denied"}:
-            raise HTTPException(status_code=403, detail=docs_mod.DOCUMENT_FILE_ACCESS_DENIED_DETAIL) from exc
+            raise HTTPException(status_code=403, detail=DOCUMENT_FILE_ACCESS_DENIED_DETAIL) from exc
         raise HTTPException(status_code=404, detail="Document file not available") from exc
 
     try:
         stat = store.stat_object(object_name=ref.object_name)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Document asset stat failed for %r: %r", ref.object_name[:200], str(exc)[:200])
-        raise HTTPException(status_code=404, detail=docs_mod.DOCUMENT_FILE_NOT_FOUND_DETAIL) from exc
+        raise HTTPException(status_code=404, detail=DOCUMENT_FILE_NOT_FOUND_DETAIL) from exc
 
     total_size = int(getattr(stat, "size", 0) or 0)
     if total_size <= 0:
-        raise HTTPException(status_code=404, detail=docs_mod.DOCUMENT_FILE_NOT_FOUND_DETAIL)
-    cache_control = _asset_cache_control_value(docs_mod)
+        raise HTTPException(status_code=404, detail=DOCUMENT_FILE_NOT_FOUND_DETAIL)
+    cache_control = _asset_cache_control_value()
     etag = _quoted_etag(getattr(stat, "etag", ""))
     range_header = (request.headers.get("range") or "").strip()
     if not range_header:
@@ -403,7 +523,7 @@ def _stream_object_storage_document(
     offset, length, status_code, extra_headers = _parse_range_request(
         range_header=range_header,
         total_size=total_size,
-        invalid_detail=docs_mod.INVALID_RANGE_HEADER_DETAIL,
+        invalid_detail=INVALID_RANGE_HEADER_DETAIL,
     )
     headers = _asset_response_headers(cache_control=cache_control, etag=etag, accept_ranges=True)
     headers.update(extra_headers)
@@ -424,13 +544,13 @@ def _stream_object_storage_document(
 def _serve_local_document_file(*, document: DBDocument, tenant_id: UUID, inline: bool) -> FileResponse:
     path = Path(str(document.file_path or "")).resolve(strict=False)
     if not path.exists() or not path.is_file():
-        raise HTTPException(status_code=404, detail=_documents_module().DOCUMENT_FILE_NOT_FOUND_DETAIL)
+        raise HTTPException(status_code=404, detail=DOCUMENT_FILE_NOT_FOUND_DETAIL)
     upload_root = Path(settings.UPLOAD_DIR).resolve(strict=False)
     tenant_root = (upload_root / str(tenant_id)).resolve(strict=False)
     try:
         path.relative_to(tenant_root)
     except ValueError as exc:
-        raise HTTPException(status_code=403, detail=_documents_module().DOCUMENT_FILE_ACCESS_DENIED_DETAIL) from exc
+        raise HTTPException(status_code=403, detail=DOCUMENT_FILE_ACCESS_DENIED_DETAIL) from exc
     media_type = _resolve_document_media_type(path.name)
     return FileResponse(
         path,
@@ -441,14 +561,13 @@ def _serve_local_document_file(*, document: DBDocument, tenant_id: UUID, inline:
             filename=document.filename,
             media_type=media_type,
         ),
-        headers=_asset_response_headers(cache_control=_asset_cache_control_value(_documents_module())),
+        headers=_asset_response_headers(cache_control=_asset_cache_control_value()),
     )
 
 
 def _resolve_preview_binding_for_asset(
     *,
     db: Session,
-    docs_mod: Any,
     images_dir: Path,
     tenant_id: UUID,
     account_id: str | None,
@@ -459,7 +578,6 @@ def _resolve_preview_binding_for_asset(
     if preview_binding is None:
         preview_binding = _resolve_legacy_preview_binding(
             db=db,
-            docs_mod=docs_mod,
             images_dir=images_dir,
             tenant_id=tenant_id,
             account_id=account_id,
@@ -467,14 +585,13 @@ def _resolve_preview_binding_for_asset(
         )
         legacy_binding_authorized = preview_binding is not None
     if preview_binding is None or preview_binding.get("tenant_id") != str(tenant_id):
-        raise HTTPException(status_code=404, detail=docs_mod.IMAGE_NOT_FOUND_DETAIL)
+        raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL)
     return preview_binding, legacy_binding_authorized
 
 
 def _assert_preview_binding_access(
     *,
     db: Session,
-    docs_mod: Any,
     tenant_id: UUID,
     account_id: str | None,
     preview_binding: dict[str, str],
@@ -483,25 +600,24 @@ def _assert_preview_binding_access(
     bound_account_id = str(preview_binding.get("account_id") or "").strip()
     if bound_account_id:
         if not account_id or bound_account_id != str(account_id):
-            raise HTTPException(status_code=404, detail=docs_mod.IMAGE_NOT_FOUND_DETAIL)
+            raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL)
         return
     try:
         document_uuid = UUID(str(preview_binding.get("document_id") or ""))
         dataset_uuid = UUID(str(preview_binding.get("dataset_id") or ""))
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=docs_mod.IMAGE_NOT_FOUND_DETAIL) from exc
+        raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL) from exc
     if legacy_binding_authorized:
         return
     document = _authorize_bound_preview_document(
         db=db,
-        docs_mod=docs_mod,
         tenant_id=tenant_id,
         account_id=account_id,
         dataset_id=dataset_uuid,
         document_id=document_uuid,
     )
     if document is None:
-        raise HTTPException(status_code=404, detail=docs_mod.IMAGE_NOT_FOUND_DETAIL)
+        raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL)
 
 
 def _file_etag(file_path: Path) -> tuple[Any, str | None]:
@@ -528,7 +644,6 @@ def _tenant_from_image_url_id(img_id: str) -> UUID | None:
 def _authorize_image_url_request(
     *,
     db: Session,
-    docs_mod: Any,
     tenant_id: UUID,
     account_id: str | None,
     img_id: str,
@@ -539,19 +654,19 @@ def _authorize_image_url_request(
             dataset_uuid = UUID(dataset_part)
             document_uuid = UUID(document_part)
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=404, detail=docs_mod.IMAGE_NOT_FOUND_DETAIL) from exc
+            raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL) from exc
         document = (
             db.query(DBDocument).filter(DBDocument.id == document_uuid, DBDocument.tenant_id == tenant_id).first()
         )
         if not document or (document.dataset_id and document.dataset_id != dataset_uuid):
-            raise HTTPException(status_code=404, detail=docs_mod.IMAGE_NOT_FOUND_DETAIL)
+            raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL)
         if not account_id:
             return
         dataset: Dataset | None = None
         if document.dataset_id:
             dataset = dataset_service.get_dataset(db, tenant_id, document.dataset_id)
             dataset_service.assert_dataset_readable(db, dataset, account_id)
-        docs_mod._assert_document_acl_readable(
+        assert_document_acl_readable(
             db,
             tenant_id=tenant_id,
             account_id=account_id,
@@ -562,7 +677,7 @@ def _authorize_image_url_request(
     try:
         dataset_uuid = UUID(img_id.split("-", 1)[0])
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=404, detail=docs_mod.IMAGE_NOT_FOUND_DETAIL) from exc
+        raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL) from exc
     if account_id:
         dataset = dataset_service.get_dataset(db, tenant_id, dataset_uuid)
         dataset_service.assert_dataset_readable(db, dataset, account_id)
@@ -583,16 +698,16 @@ def _image_object_name(img_id: str) -> str | None:
     return f"images/{dataset_part}/{chunk_id}.{extension}"
 
 
-def _stream_minio_image(*, docs_mod: Any, request: Request, object_name: str) -> Response:
+def _stream_minio_image(*, request: Request, object_name: str) -> Response:
     try:
-        stat = docs_mod.minio_service.stat_object(object_name=object_name)
+        stat = minio_service.stat_object(object_name=object_name)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Image asset stat failed for %r: %r", object_name[:200], str(exc)[:200])
-        raise HTTPException(status_code=404, detail=docs_mod.IMAGE_NOT_FOUND_DETAIL) from exc
+        raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL) from exc
     total_size = int(getattr(stat, "size", 0) or 0)
     if total_size <= 0:
-        raise HTTPException(status_code=404, detail=docs_mod.IMAGE_NOT_FOUND_DETAIL)
-    cache_control = _asset_cache_control_value(docs_mod)
+        raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL)
+    cache_control = _asset_cache_control_value()
     etag = _quoted_etag(getattr(stat, "etag", ""))
     range_header = (request.headers.get("range") or "").strip()
     if not range_header:
@@ -602,14 +717,14 @@ def _stream_minio_image(*, docs_mod: Any, request: Request, object_name: str) ->
     offset, length, status_code, extra_headers = _parse_range_request(
         range_header=range_header,
         total_size=total_size,
-        invalid_detail=docs_mod.INVALID_RANGE_HEADER_DETAIL,
+        invalid_detail=INVALID_RANGE_HEADER_DETAIL,
     )
     headers = _asset_response_headers(cache_control=cache_control, etag=etag, accept_ranges=True)
     headers.update(extra_headers)
     return StreamingResponse(
-        docs_mod.minio_service.iter_object_bytes(object_name=object_name, offset=offset, length=length),
+        minio_service.iter_object_bytes(object_name=object_name, offset=offset, length=length),
         status_code=status_code,
-        media_type=docs_mod.IMAGE_JPEG_MEDIA_TYPE,
+        media_type=IMAGE_JPEG_MEDIA_TYPE,
         headers=headers,
     )
 
@@ -628,21 +743,19 @@ async def download_document(
     JWT-authenticated requests must supply an Authorization header.
     Tenant selection may still be provided via header or query parameter.
     """
-    docs_mod, tenant_id, account_id = await _resolve_document_asset_request_context(request)
+    tenant_id, account_id = await _resolve_document_asset_request_context(request)
     document = _resolve_document_download(
         db=db,
-        docs_mod=docs_mod,
         tenant_id=tenant_id,
         account_id=account_id,
         document_id=document_id,
     )
     raw_path = str(document.file_path or "").strip()
-    if not raw_path or raw_path.startswith(docs_mod.MANUAL_FILE_PATH_PREFIX):
+    if not raw_path or raw_path.startswith(MANUAL_FILE_PATH_PREFIX):
         raise HTTPException(status_code=404, detail="Document file not available")
     if is_object_storage_uri(raw_path):
         return _stream_object_storage_document(
             document=document,
-            docs_mod=docs_mod,
             tenant_id=tenant_id,
             request=request,
             inline=inline,
@@ -661,22 +774,21 @@ async def get_image(
     Return stored image by image_id.
     Standard path: {UPLOAD_DIR}/{tenant_id}/images/{image_id}(.png|.jpg|.jpeg|.webp|.gif|.bmp)
     """
-    docs_mod, tenant_id, account_id = await _resolve_document_asset_request_context(request)
+    tenant_id, account_id = await _resolve_document_asset_request_context(request)
     if account_id:
         dataset_service.ensure_member(db, tenant_id, account_id)
     images_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "images"
     try:
         safe_id = uuid.UUID(image_id).hex
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=docs_mod.IMAGE_NOT_FOUND_DETAIL) from exc
+        raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL) from exc
 
-    image_asset = _locate_preview_image_asset(images_dir=images_dir, preview_id=safe_id, docs_mod=docs_mod)
+    image_asset = _locate_preview_image_asset(images_dir=images_dir, preview_id=safe_id)
     if image_asset is None:
-        raise HTTPException(status_code=404, detail=docs_mod.IMAGE_NOT_FOUND_DETAIL)
+        raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL)
     file_path, media_type = image_asset
     preview_binding, legacy_binding_authorized = _resolve_preview_binding_for_asset(
         db=db,
-        docs_mod=docs_mod,
         images_dir=images_dir,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -684,13 +796,12 @@ async def get_image(
     )
     _assert_preview_binding_access(
         db=db,
-        docs_mod=docs_mod,
         tenant_id=tenant_id,
         account_id=account_id,
         preview_binding=preview_binding,
         legacy_binding_authorized=legacy_binding_authorized,
     )
-    cache_control = _asset_cache_control_value(docs_mod)
+    cache_control = _asset_cache_control_value()
     stat_result, etag = _file_etag(file_path)
     cached = _not_modified_response(request, etag=etag, cache_control=cache_control)
     if cached is not None:
@@ -714,17 +825,16 @@ async def get_image_url(
     """
     Get MinIO image bytes by img_id.
     """
-    docs_mod = _documents_module()
     if not settings.MINIO_ENABLED:
         raise HTTPException(status_code=503, detail="MinIO is disabled; cannot retrieve image URL")
     tenant_in_img = _tenant_from_image_url_id(img_id)
-    tenant_id = await docs_mod._resolve_tenant_id_for_asset_request(
+    tenant_id = await _resolve_tenant_id_for_asset_request(
         request,
         fallback_tenant_id=tenant_in_img,
         conflict_detail="Image access denied for this tenant",
     )
 
-    account_id = await docs_mod._resolve_account_id_for_asset_request(
+    account_id = await _resolve_account_id_for_asset_request(
         request,
         tenant_id=tenant_id,
     )
@@ -733,12 +843,11 @@ async def get_image_url(
         dataset_service.ensure_member(db, tenant_id, account_id)
     _authorize_image_url_request(
         db=db,
-        docs_mod=docs_mod,
         tenant_id=tenant_id,
         account_id=account_id,
         img_id=img_id,
     )
     object_name = _image_object_name(img_id)
     if not object_name:
-        raise HTTPException(status_code=404, detail=docs_mod.IMAGE_NOT_FOUND_DETAIL)
-    return _stream_minio_image(docs_mod=docs_mod, request=request, object_name=object_name)
+        raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL)
+    return _stream_minio_image(request=request, object_name=object_name)

@@ -290,3 +290,10 @@
 - 服务的既有图片正则、大小和 inline image 数量边界、digest 去重、本地与 MinIO 分支、owner scope、403／422 错误、失败时跳过上传策略和资源关闭行为均按原函数体核对；MinIO 图片错误日志沿用 `api.documents` logger。为避免 utility 与 legacy lookup 的现存正则导入循环，只在归属校验函数中局部导入 legacy 查询。
 - Ruff check、Ruff format --check、语法解析及 diff --check 通过；手工路由完成规范化 AST 与所有者检查，preview 图片测试 patch 已指向真实 utility。57 条既有断言和用例定义未变。
 - 按用户要求没有运行 Python 测试、导入应用或连接存储；运行时验证未做。更新覆盖表中的手工路由与测试同步结论，较大的 preview utility 与 chunk preview 其他职责继续保留待审。
+
+## 第四批：文档资产认证与响应（2026-11-03）
+
+- 下载、preview image、image-url 的请求 tenant/account 解析移入 `document_assets`；ACL 直接调用 `document_access_service`，对象存储直接依赖现有 store。删除资产路由对 documents module 的动态解析及整模块参数。
+- header auth 的匿名 opt-in、JWT header-only bearer 解析、tenant 优先级／冲突拒绝、403／404 隐藏 ACL、下载路径租户 containment、304 与 Range 返回、minio stat/upload 错误和 no-store 响应头保持原逻辑。asset error constants 与既有 root import 名称保持相同。
+- 完整核对 asset module AST、七个 request/cache helpers、五个错误常量以及三个路由；现有资产鉴权测试的用例、装饰器和断言保持原样，patch 指向新的 route/service owner。
+- Ruff check、Ruff format --check、语法解析与 diff --check 通过。没有运行 Python 测试或启动外部依赖，runtime behavior 未验证。

@@ -50,6 +50,8 @@ preview 图片引用解析、本地临时文件读取与 owner sidecar 验证、
 
 RBAC 与配额继续依赖这些成员契约，具体边界见[权限与配额决定](2026-11-02-permission-quota-contracts.md)。
 
+文件下载、preview 和 image-url 的 tenant／account 解析归入 `document_assets` 路由模块，ACL 直接导入 `document_access_service`；手工 owner 与 legacy data lookup 继续留在对应服务。documents 只直接重导出仍有旧 Python 引用的错误常量和共享资产入口，不为资产读取、缓存或认证提供代理函数。header auth、JWT claim、查询 tenant、文件根目录和 Range 规则保持各自原有入口语义。
+
 ## Alternatives considered
 
 - 保留静态类能缩小引用变更范围，但继续存在无状态外壳，与已确认的模块函数约定不一致。
@@ -76,3 +78,5 @@ RBAC 与配额继续依赖这些成员契约，具体边界见[权限与配额�
 移动可写数据集选择器后，现有 404／403 映射、成员检查次数、数据集升序查询、默认角色拒绝及 ONLY_ME 创建调用顺序保持原样。10 个修改前模块按精确所有者／名称迁移规则核对，调用 fixture 只迁移 patch 目标；没有运行 Python 测试，运行时事务仍未验证。
 
 15 个图片 rewrite helper 按原函数体迁移到已有 service owner；图片上传错误、body 和 start_index、reuse owner、无 MinIO 认领、大小限制及 HTTP 403／422 行为保持一致。57 条既有测试断言未修改，按用户要求没有运行相关 Python 测试。
+
+资产请求 helpers 迁到实际 route owner 后，header／JWT 身份来源、租户选择、文件根目录约束和流式响应处理不再经过 documents module 参数；对外 HTTP 路由和错误文案维持原样。兼容重导出仅保留仍被追踪调用的 symbol 名称。

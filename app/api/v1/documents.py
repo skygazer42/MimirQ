@@ -23,8 +23,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_account_id_from_headers
-from app.api.dependencies.tenant import _preferred_jwt_tenant_id
 from app.api.schemas.document import (
     DocumentPipelineOptions,
 )
@@ -60,6 +58,21 @@ from app.api.v1.document_access import (
 )
 from app.api.v1.document_access import (
     put_document_access as put_document_access,
+)
+from app.api.v1.document_assets import (
+    DOCUMENT_FILE_ACCESS_DENIED_DETAIL as DOCUMENT_FILE_ACCESS_DENIED_DETAIL,
+)
+from app.api.v1.document_assets import (
+    DOCUMENT_FILE_NOT_FOUND_DETAIL as DOCUMENT_FILE_NOT_FOUND_DETAIL,
+)
+from app.api.v1.document_assets import (
+    IMAGE_JPEG_MEDIA_TYPE as IMAGE_JPEG_MEDIA_TYPE,
+)
+from app.api.v1.document_assets import (
+    IMAGE_NOT_FOUND_DETAIL as IMAGE_NOT_FOUND_DETAIL,
+)
+from app.api.v1.document_assets import (
+    INVALID_RANGE_HEADER_DETAIL as INVALID_RANGE_HEADER_DETAIL,
 )
 from app.api.v1.document_assets import (
     download_document as download_document,
@@ -318,130 +331,16 @@ preview_document = document_preview.preview_document
 POSITION_TAG_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##")
 
 DOC_NOT_FOUND_DETAIL = "Document not found"
-INVALID_RANGE_HEADER_DETAIL = "Invalid Range header"
-IMAGE_NOT_FOUND_DETAIL = "Image not found"
-IMAGE_JPEG_MEDIA_TYPE = "image/jpeg"
 DUPLICATE_DOCUMENT_PROCESSING_DETAIL = "Duplicate document is currently processing"
 HTML_FILE_EXTENSION = ".html"
 PIPELINE_HASH_TOO_LONG_DETAIL = "pipeline_hash too long"
 FILENAME_INVALID_CHARS_DETAIL = "Filename contains invalid characters"
 CHUNK_NOT_FOUND_DETAIL = "Chunk not found"
 CHUNK_NOT_ACTIVE_PIPELINE_DETAIL = "Chunk is not in the active pipeline version"
-DOCUMENT_FILE_ACCESS_DENIED_DETAIL = "Document file access denied"
-DOCUMENT_FILE_NOT_FOUND_DETAIL = "Document file not found"
 DOCUMENT_DEDUP_CONSTRAINT_NAME = "uq_documents_tenant_dataset_dedup_key_active"
 CHUNK_OVERLAP_LESS_THAN_SIZE_DETAIL = "chunk_overlap must be less than chunk_size"
 MANUAL_FILE_PATH_PREFIX = "manual://"
 CHUNK_PATCH_OPERATION = "chunk.patch"
-
-
-def _asset_cache_control(*, max_age: int) -> str:
-    del max_age
-    return "private, no-store"
-
-
-def _parse_uuid(value: str) -> UUID:
-    try:
-        return UUID(str(value))
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Invalid tenant id") from exc
-
-
-def _asset_request_header_account(request, *, is_production: bool) -> str | None:
-    account_id = (request.headers.get("x-user-id") or "").strip() or None
-    allow_anonymous = bool(settings.ASSET_HEADER_AUTH_ALLOW_ANONYMOUS)
-    if not account_id and (is_production or not allow_anonymous):
-        raise HTTPException(status_code=401, detail="X-User-ID header required")
-    return account_id
-
-
-def _asset_request_authorization(request) -> str:
-    authorization = (request.headers.get("authorization") or "").strip()
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authentication required")
-    return authorization
-
-
-async def _resolve_account_id_for_asset_request(request, *, tenant_id: UUID | None = None) -> str | None:
-    """
-    Resolve account id for asset endpoints that may be requested by <img src>.
-
-    - AUTH_MODE=header: require X-User-ID unless local/dev explicitly opts into
-      anonymous asset fetches via ASSET_HEADER_AUTH_ALLOW_ANONYMOUS=true.
-    - AUTH_MODE=jwt: require an Authorization header; query-string bearer tokens are unsupported.
-    """
-    is_production = is_production_env()
-    auth_mode = (settings.AUTH_MODE or "jwt").lower()
-
-    if auth_mode == "header":
-        return _asset_request_header_account(request, is_production=is_production)
-
-    authorization = _asset_request_authorization(request)
-    tenant_value = str(tenant_id).strip() if tenant_id is not None else None
-    try:
-        return await get_current_account_id_from_headers(
-            authorization=authorization,
-            x_user_id=None,
-            x_tenant_id=tenant_value,
-        )
-    except HTTPException:
-        raise HTTPException(status_code=401, detail="Authentication required") from None
-
-
-def _get_tenant_id_from_request_if_provided(request) -> UUID | None:
-    """
-    Return tenant id from header/query if explicitly provided; otherwise None.
-    """
-    tenant_header = str(settings.TENANT_HEADER or "X-Tenant-ID").strip() or "X-Tenant-ID"
-    raw = (request.headers.get(tenant_header) or "").strip()
-    if not raw and tenant_header.lower() != "x-tenant-id":
-        raw = (request.headers.get("x-tenant-id") or "").strip()
-    if raw:
-        return _parse_uuid(raw)
-
-    for key in ("tenant_id", "x_tenant_id", "tenant"):
-        raw = (request.query_params.get(key) or "").strip()
-        if raw:
-            return _parse_uuid(raw)
-
-    return None
-
-
-async def _resolve_tenant_id_for_asset_request(
-    request,
-    *,
-    fallback_tenant_id: UUID | None = None,
-    conflict_detail: str = "Asset access denied for this tenant",
-) -> UUID:
-    """
-    Resolve tenant id for asset endpoints.
-
-    Priority:
-    1) Verified JWT tenant claim (when configured)
-    2) TENANT_HEADER (default: X-Tenant-ID)
-    3) ?tenant_id=... query param (or aliases)
-    4) settings.DEFAULT_TENANT_ID in non-production
-    """
-    provided = _get_tenant_id_from_request_if_provided(request)
-    preferred = await _preferred_jwt_tenant_id(request)
-    if preferred is not None:
-        for candidate in (provided, fallback_tenant_id):
-            if candidate is not None and candidate != preferred:
-                raise HTTPException(status_code=403, detail=conflict_detail)
-        return preferred
-
-    if fallback_tenant_id is not None:
-        if provided is not None and provided != fallback_tenant_id:
-            raise HTTPException(status_code=403, detail=conflict_detail)
-        return fallback_tenant_id
-
-    if provided is not None:
-        return provided
-
-    if is_production_env():
-        tenant_header = str(settings.TENANT_HEADER or "X-Tenant-ID").strip() or "X-Tenant-ID"
-        raise HTTPException(status_code=400, detail=f"{tenant_header} header or tenant_id query param required")
-    return _parse_uuid(str(settings.DEFAULT_TENANT_ID))
 
 
 def _coerce_bool_preview(value: Any) -> bool | None:

@@ -14,7 +14,7 @@
 
 - 工作区：`E:/MimirQ`；分支：`codex/local-account-registration`。不新建分支或 worktree。
 - 原始基线：`77b6adc1bce523482f0509302a454ce20e01c41c`；数据集服务已提交为 `2c16dedf8`。前两批及第三批此前结果保留，不重新执行。
-- 当前覆盖表有 3,644 个文件：119 个已调整、29 个已符合、964 个登记保留、2,532 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
+- 当前覆盖表有 3,644 个文件：120 个已调整、29 个已符合、964 个登记保留、2,531 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
 - Task 3A 的 125 个 Python 文件已完成最终静态核对并按数据集类别提交；Task 3B 的权限、配额、SCIM、配置、通用 API、身份令牌、共享资源与健康观测已完成本轮代码整理与静态检查，继续核对其余基础模块。原有 `app/api/schemas/document.py` 修改另行保留。
 - 原工作区的 1,625 个未跟踪文件及其他既有修改保留；只按本批明确文件清单暂存，不使用 `git add .`，不执行全仓清理或重置。
 - 用户执行要求：提交按完整业务类别归并，不按函数、文件或每个检查步骤频繁提交；同一类别的定义、调用方、必要引用和验证记录一起提交。纯格式化仍独立成类。
@@ -161,6 +161,8 @@ Skill 安装目录为 `C:/Users/jiahuanl/.codex/skills/`。项目已选规则和
 tenant-scoped 可写数据集选择规则归入 `dataset_service.resolve_writable_dataset`，文档、手工入库、上传与连接器入口直接调用。指定 ID 仍先执行同租户查询与写权限检查；没有 ID 时仍按创建时间升序选择第一个可写数据集，全部拒绝后仅允许编辑角色创建 `ONLY_ME` 默认数据集。路由与连接器装配模块不再转发该规则。
 
 preview 图片引用归一化、文件定位与读取、owner sidecar／legacy 归属判断、MinIO 上传和文档内容替换统一归到现有 `document_preview_utils`。15 个 helper 的调用次序及 403／422 映射保持原样；`documents.py` 保留旧 helper 名称的直接导出，手工入库直接依赖图片 utility、生命周期、管线及身份服务。
+
+下载、preview 和 image-url 的请求 tenant/account 解析归入 `document_assets` 路由模块，ACL 直接导入 `document_access_service`；这三个 endpoint 不再解析 `documents` 路由模块。保留 header／JWT 差异、匿名 header 图片访问显式开关、tenant 冲突拒绝、路径租户限制、Range／ETag／304 和对象存储错误映射。
 
 **本批产出：** 上传到任务的输入输出和失败路径一致，同一字段映射与权限规则只有一个业务维护点。
 
