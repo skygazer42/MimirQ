@@ -10,18 +10,48 @@ import os
 import tempfile
 import threading
 import time
+from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Annotated, Any, Callable
+from typing import Annotated, Any
 from urllib.parse import urlparse, urlunparse
 from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
+from app.api.schemas.settings import (
+    SYSTEM_DIFY_ACCOUNT_ID,
+    CacheConfig,
+    ChatConfig,
+    DifyExternalKnowledgeConfig,
+    DoclingConfig,
+    EmbeddingConfig,
+    Etl4LlmConfig,
+    FeatureFlags,
+    GovernanceConfig,
+    KGConfig,
+    LangGraphConfig,
+    LLMConfig,
+    MagicPDFConfig,
+    MarkerConfig,
+    MilvusConfig,
+    MinerUConfig,
+    MinioConfig,
+    NavigationConfig,
+    ObservabilityConfig,
+    PaddleVLConfig,
+    RAGConfig,
+    SafetyConfig,
+    SystemSettings,
+    TestLLMRequest,
+    TextInConfig,
+    UpdateSettingsRequest,
+    UrlIngestConfig,
+    normalize_mineru_backend,
+)
 from app.api.utils.url_ingest import (
     _URL_HOST_RESOLUTION_FAILED_DETAIL,
     _build_pinned_http_clients,
@@ -54,8 +84,6 @@ ENV_FILE = Path(__file__).parent.parent.parent.parent / ".env"
 _ENV_UPDATE_LOCK = threading.Lock()
 _MISSING_API_URL_MESSAGE = "missing api_url"
 _CONFIGURED_HEALTH_UNREACHABLE_MESSAGE = "configured (health_unreachable)"
-_MINERU_BACKENDS = {"pipeline", "vlm-http-client"}
-_SYSTEM_DIFY_ACCOUNT_ID = "system:dify"
 _VECTOR_STORE_EMBEDDING_RESET_KEYS = frozenset(
     {
         "EMBEDDING_PROVIDER",
@@ -96,23 +124,8 @@ _OBJECT_STORAGE_RUNTIME_KEYS = frozenset(
 )
 
 
-def _normalize_mineru_backend(value: Any) -> str:
-    backend = str(value or "pipeline").strip().lower().replace("_", "-")
-    aliases = {
-        "": "pipeline",
-        "auto": "pipeline",
-        "vlm": "vlm-http-client",
-        "vlm-http": "vlm-http-client",
-        "vlm-httpclient": "vlm-http-client",
-    }
-    backend = aliases.get(backend, backend)
-    if backend not in _MINERU_BACKENDS:
-        raise ValueError("MinerU backend must be pipeline or vlm-http-client")
-    return backend
-
-
 @contextlib.contextmanager
-def _env_file_lock():
+def _env_file_lock() -> Iterator[None]:
     """
     Best-effort cross-process lock for `.env` updates.
 
@@ -142,8 +155,8 @@ def _env_file_lock():
                     fcntl.flock(lockf.fileno(), fcntl.LOCK_UN)
 
 
-def _sanitize_env_value(key: str, value: Any) -> str:
-    text = "" if value is None else str(value)
+def _sanitize_env_value(key: str, value: str) -> str:
+    text = value
     if "\x00" in text or "\n" in text or "\r" in text:
         raise HTTPException(status_code=400, detail=f"Invalid value for {key}")
     if len(text) > 10_000:
@@ -157,7 +170,7 @@ def _convert_service_url_to_health_url(api_url: str) -> str:
     - .../convert -> .../health
     - otherwise: join path with /health
     """
-    raw = (api_url or "").strip()
+    raw = api_url.strip()
     if not raw:
         return ""
 
@@ -192,18 +205,18 @@ async def _probe_http_json(
 
     Returns (data, error). `data` is only returned when the payload is a JSON object.
     """
-    url = (url or "").strip()
+    url = url.strip()
     if not url:
         return None, "empty url"
 
     try:
-        async with httpx.AsyncClient(timeout=float(timeout_sec or 0.6), trust_env=trust_env) as client:
+        async with httpx.AsyncClient(timeout=timeout_sec or 0.6, trust_env=trust_env) as client:
             resp = await client.get(url, headers=headers)
     except Exception as exc:  # noqa: BLE001
         return None, f"request_failed: {str(exc)[:160]}"
 
-    if int(getattr(resp, "status_code", 0) or 0) != 200:
-        return None, f"bad_status: {int(getattr(resp, 'status_code', 0) or 0)}"
+    if resp.status_code != 200:
+        return None, f"bad_status: {resp.status_code}"
 
     try:
         data = resp.json()
@@ -227,7 +240,7 @@ def _ensure_settings_readable(db: Session, tenant_id: UUID, account_id: str) -> 
 
 def _ensure_settings_writable(db: Session, tenant_id: UUID, account_id: str) -> None:
     try:
-        system_tenant_id = UUID(str(settings.DEFAULT_TENANT_ID or ""))
+        system_tenant_id = UUID(settings.DEFAULT_TENANT_ID)
     except ValueError as exc:
         raise HTTPException(status_code=500, detail="DEFAULT_TENANT_ID is invalid") from exc
     if tenant_id != system_tenant_id:
@@ -239,7 +252,7 @@ def _ensure_settings_writable(db: Session, tenant_id: UUID, account_id: str) -> 
         TenantPermissions.SETTINGS_WRITE,
         detail="No permission to manage system settings",
     )
-    if str(getattr(member, "role", "") or "").strip().lower() != "owner":
+    if (member.role or "").strip().lower() != "owner":
         raise HTTPException(status_code=403, detail="No permission to manage system settings")
 
 
@@ -263,398 +276,29 @@ async def _validate_public_base_url(base_url: str) -> _ValidatedFetchTarget:
         raise HTTPException(status_code=400, detail=detail) from exc
 
 
-class FeatureFlags(BaseModel):
-    """Feature flags."""
-
-    kg_enabled: bool = False
-    deepdoc_enabled: bool = False
-    docling_enabled: bool = False
-    etl4llm_enabled: bool = False
-    marker_enabled: bool = False
-    paddle_vl_enabled: bool = False
-    textin_enabled: bool = False
-    markitdown_enabled: bool = False
-    llama_index_enabled: bool = False
-    mineru_enabled: bool = False
-    magicpdf_enabled: bool = False
-
-
-class KGConfig(BaseModel):
-    """KG-related config."""
-
-    chat_enabled: bool = False
-    extract_prompt_template_id: str = ""
-    extract_prompt_template_key: str = ""
-    extract_prompt_ab_experiment_key: str = ""
-    extract_replace_existing: bool = True
-    extract_prune_orphan_entities: bool = True
-
-
-def _default_llm_api_base() -> str:
-    return settings.LLM_API_BASE
-
-
-class LLMConfig(BaseModel):
-    """LLM config."""
-
-    api_key: str = ""
-    api_base: str = Field(default_factory=_default_llm_api_base)
-    model: str = "gpt-5.4-mini"
-    temperature: float = 0.7
-    timeout: int = 60
-    max_retries: int = 3
-
-
-class EmbeddingConfig(BaseModel):
-    """Embedding config."""
-
-    provider: str = "openai_compatible"
-    model: str = "text-embedding-3-small"
-    api_key: str = ""
-    api_base: str = ""
-
-
-class MilvusConfig(BaseModel):
-    """Milvus config."""
-
-    host: str = "localhost"
-    port: int = 19530
-    user: str = ""
-    password: str = ""
-    collection_name: str = "documents"
-
-
-class MinioConfig(BaseModel):
-    """MinIO / S3-compatible object storage config."""
-
-    enabled: bool = False
-    endpoint: str = "localhost:9000"
-    access_key: str = ""
-    secret_key: str = ""
-    bucket_name: str = "mimirq"
-    use_ssl: bool = False
-    documents_enabled: bool = False
-    image_max_bytes: int = Field(default=0, ge=0)
-
-
-class RAGConfig(BaseModel):
-    """RAG parameter config."""
-
-    chunk_size: int = 1000
-    chunk_overlap: int = 200
-    chunk_min_chars: int = 30
-    retrieval_top_k: int = 5
-    similarity_threshold: float = 0.7
-    default_parser_backend: str = "auto"
-    default_chunk_strategy: str = "langchain_recursive"
-    bm25_index_enabled: bool = True
-    enable_reranker: bool = False
-    reranker_provider: str = "llm"
-    reranker_top_n: int = Field(default=20, ge=1, le=200)
-    show_image_in_answer: bool = True
-    image_append_max: int = Field(default=3, ge=0, le=10)
-
-    @field_validator("reranker_provider", mode="before")
-    @classmethod
-    def _normalize_reranker_provider(cls, value):  # noqa: ANN001
-        provider = str(value or "llm").strip().lower().replace("-", "_")
-        aliases = {
-            "sentence_transformers": "cross_encoder",
-            "sentence_transformer": "cross_encoder",
-            "sentence-transformers": "cross_encoder",
-            "crossencoder": "cross_encoder",
-            "cross-encoder": "cross_encoder",
-            "parent_child": "pc",
-            "bge_v2_m3": "local_bge_v2_m3",
-            "xgboost_ltr": "ltr",
-            "off": "none",
-            "false": "none",
-            "0": "none",
-        }
-        provider = aliases.get(provider, provider)
-        valid = {
-            "llm",
-            "pc",
-            "weighted",
-            "openai",
-            "dashscope",
-            "aliyun",
-            "colbert",
-            "late_interaction",
-            "ltr",
-            "cross_encoder",
-            "local_bge_v2_m3",
-            "long_context",
-            "mmr",
-            "kg_pagerank",
-            "kg_rrf",
-            "none",
-        }
-        if provider not in valid:
-            raise ValueError(f"reranker_provider must be one of: {', '.join(sorted(valid))}")
-        return provider
-
-
-class UrlIngestConfig(BaseModel):
-    """URL ingestion config (server-side fetch; connectors)."""
-
-    enabled: bool = False
-    max_bytes: int = 50_000_000
-    timeout_sec: float = 30.0
-    allow_private_ips: bool = False
-    follow_redirects: bool = False
-
-
-class GovernanceConfig(BaseModel):
-    """Global governance defaults (used when pipeline overrides are absent)."""
-
-    enabled: bool = False
-    pii_anonymize: bool = False
-    secrets_redact: bool = False
-    quarantine_on_drop: bool = False
-
-
-class ObservabilityConfig(BaseModel):
-    """Observability/debug config."""
-
-    tool_call_log_enabled: bool = False
-    tool_call_log_include_preview: bool = False
-    tool_call_log_max_preview_chars: int = Field(default=500, ge=0, le=5000)
-
-    agent_log_enabled: bool = False
-    agent_log_include_execution_path: bool = False
-    agent_log_max_preview_chars: int = Field(default=500, ge=0, le=5000)
-
-    # JSONL metrics log (RAG trace dashboard)
-    metrics_log_enabled: bool = False
-    metrics_log_include_text: bool = False
-
-
-class SafetyConfig(BaseModel):
-    """Security/privacy config."""
-
-    pii_redaction_enabled: bool = False
-    pii_redaction_mask: str = "[REDACTED]"
-    pii_stream_holdback_chars: int = Field(default=128, ge=0, le=4096)
-
-
-class ChatConfig(BaseModel):
-    """Chat streaming/runtime config."""
-
-    stream_heartbeat_sec: float = Field(default=10.0, ge=0.0, le=120.0)
-    stream_cancel_on_disconnect: bool = True
-
-
-class LangGraphConfig(BaseModel):
-    """LangGraph execution mode config."""
-
-    use_subgraphs: bool = False
-
-
-class CacheConfig(BaseModel):
-    """Performance / cache config."""
-
-    upload_dedup_enabled: bool = False
-
-    # Chat response cache (Redis, best-effort).
-    chat_response_cache_enabled: bool = False
-    chat_response_cache_ttl_sec: int = Field(default=300, ge=0, le=86_400)
-    chat_response_cache_max_value_bytes: int = Field(default=200_000, ge=0, le=5_000_000)
-    chat_response_cache_require_empty_history: bool = True
-
-
-class MinerUConfig(BaseModel):
-    """MinerU config."""
-
-    api_token: str = ""
-    api_base: str = "https://mineru.net/api/v4"
-    model_version: str = "vlm"
-    backend: str = "pipeline"
-    local_server_url: str = ""
-    vl_server: str = ""
-
-    @field_validator("backend", mode="before")
-    @classmethod
-    def _normalize_backend(cls, value):  # noqa: ANN001
-        return _normalize_mineru_backend(value)
-
-
-class MagicPDFConfig(BaseModel):
-    """MagicPDF (magic-pdf) config."""
-
-    api_url: str = ""
-    request_timeout_sec: int = 600
-    max_concurrent_jobs: int = 1
-    cli: str = "magic-pdf"
-    method: str = "auto"  # auto | ocr | txt
-    lang: str = ""
-    debug: bool = False
-    timeout_sec: int = 600
-    models_dir: str = ""
-    device_mode: str = "cpu"
-    keep_artifacts: bool = False
-
-
-class Etl4LlmConfig(BaseModel):
-    """ETL4LLM (layout/table/image parsing) config."""
-
-    api_url: str = ""
-    timeout_sec: int = 120
-    mode: str = "partition"  # partition | text
-    force_ocr: bool = False
-    enable_formula: bool = True
-    extract_images: bool = True
-    filter_page_header_footer: bool = False
-
-
-class MarkerConfig(BaseModel):
-    """Marker external PDF->Markdown service config."""
-
-    api_url: str = ""
-    timeout_sec: int = 600
-
-
-class DoclingConfig(BaseModel):
-    """External Docling Serve config."""
-
-    api_url: str = ""
-    api_key: str = ""
-    request_timeout_sec: int = Field(default=600, ge=1, le=86_400)
-    health_timeout_sec: int = Field(default=5, ge=1, le=120)
-    http_trust_env: bool = False
-    ocr_enabled: bool = True
-
-
-class PaddleVLConfig(BaseModel):
-    """PaddleOCR-VL external PDF->Markdown service config."""
-
-    api_url: str = ""
-    timeout_sec: int = 600
-    # Display/audit only: expected service pipeline version/mode (not used by the backend parser directly).
-    pipeline_version: str = "v1.5"
-    mode: str = "doc_parser"
-
-
-class TextInConfig(BaseModel):
-    """TextIn xParse external document->Markdown API config."""
-
-    api_url: str = "https://api.textin.com/ai/service/v1/pdf_to_markdown"
-    app_id: str = ""
-    secret_code: str = ""
-    timeout_sec: int = 180
-    parse_mode: str = "auto"
-    table_flavor: str = "html"
-    apply_document_tree: bool = True
-    markdown_details: bool = True
-    get_image: str = "none"
-    dpi: int = 144
-    page_count: int = 0
-
-
-class NavigationConfig(BaseModel):
-    """Frontend navigation visibility for ordinary tenant members."""
-
-    user_visible_modules: list[str] = Field(default_factory=list)
-
-    @field_validator("user_visible_modules", mode="before")
-    @classmethod
-    def _normalize_modules(cls, value):  # noqa: ANN001
-        return normalize_navigation_modules(value, reject_unknown=True)
-
-
-class DifyExternalKnowledgeConfig(BaseModel):
-    """Dify External Knowledge API adapter settings."""
-
-    enabled: bool = False
-    api_keys: str = ""
-    tenant_id: str = ""
-    account_id: str = _SYSTEM_DIFY_ACCOUNT_ID
-    knowledge_map_json: str = ""
-    top_k_max: int = Field(default=5, ge=1, le=200)
-    endpoint_path: str = "/api/v1/integrations/dify/retrieval"
-
-
-class SystemSettings(BaseModel):
-    """Full system config."""
-
-    feature_flags: FeatureFlags
-    kg: KGConfig
-    llm: LLMConfig
-    embedding: EmbeddingConfig
-    milvus: MilvusConfig
-    minio: MinioConfig
-    rag: RAGConfig
-    cache: CacheConfig
-    url_ingest: UrlIngestConfig
-    governance: GovernanceConfig
-    mineru: MinerUConfig
-    etl4llm: Etl4LlmConfig
-    marker: MarkerConfig
-    docling: DoclingConfig
-    paddle_vl: PaddleVLConfig
-    textin: TextInConfig
-    magicpdf: MagicPDFConfig
-    observability: ObservabilityConfig
-    safety: SafetyConfig
-    chat: ChatConfig
-    langgraph: LangGraphConfig
-    navigation: NavigationConfig
-    dify_external_knowledge: DifyExternalKnowledgeConfig
-
-
-class UpdateSettingsRequest(BaseModel):
-    """Update config request."""
-
-    feature_flags: FeatureFlags | None = None
-    kg: KGConfig | None = None
-    llm: LLMConfig | None = None
-    embedding: EmbeddingConfig | None = None
-    milvus: MilvusConfig | None = None
-    minio: MinioConfig | None = None
-    rag: RAGConfig | None = None
-    cache: CacheConfig | None = None
-    url_ingest: UrlIngestConfig | None = None
-    governance: GovernanceConfig | None = None
-    mineru: MinerUConfig | None = None
-    etl4llm: Etl4LlmConfig | None = None
-    marker: MarkerConfig | None = None
-    docling: DoclingConfig | None = None
-    paddle_vl: PaddleVLConfig | None = None
-    textin: TextInConfig | None = None
-    magicpdf: MagicPDFConfig | None = None
-    observability: ObservabilityConfig | None = None
-    safety: SafetyConfig | None = None
-    chat: ChatConfig | None = None
-    langgraph: LangGraphConfig | None = None
-    navigation: NavigationConfig | None = None
-    dify_external_knowledge: DifyExternalKnowledgeConfig | None = None
-
-
-def _parse_bool(value: Any) -> bool:
-    if isinstance(value, bool):
-        return value
-    text = str(value or "").strip().lower()
+def _parse_bool(value: str) -> bool:
+    text = value.strip().lower()
     return text in {"1", "true", "yes", "y", "on"}
 
 
-def _parse_int(value: Any, *, default: int = 0) -> int:
+def _parse_int(value: str, *, default: int = 0) -> int:
     try:
         return int(value)
-    except Exception:
+    except ValueError:
         return default
 
 
-def _parse_float(value: Any, *, default: float = 0.0) -> float:
+def _parse_float(value: str, *, default: float = 0.0) -> float:
     try:
         return float(value)
-    except Exception:
+    except ValueError:
         return default
 
 
 def _apply_runtime_specs(
     env_vars: dict[str, str],
     updated_keys: set[str],
-    specs: tuple[tuple[str, Callable[[str], Any]], ...],
+    specs: tuple[tuple[str, Callable[[str], str | bool | int | float]], ...],
 ) -> None:
     for key, parser in specs:
         if key in updated_keys and key in env_vars:
@@ -755,7 +399,7 @@ def _apply_storage_runtime_settings(env_vars: dict[str, str], updated_keys: set[
             ("MINIO_DOCUMENTS_ENABLED", _parse_bool),
             (
                 "MINIO_IMAGE_MAX_BYTES",
-                lambda value: _parse_int(value, default=int(settings.MINIO_IMAGE_MAX_BYTES or 0)),
+                lambda value: _parse_int(value, default=settings.MINIO_IMAGE_MAX_BYTES),
             ),
             ("MINIO_METRICS_LOG_PATH", str),
             ("OBJECT_STORAGE_PROVIDER", normalize_object_storage_provider_name),
@@ -806,13 +450,13 @@ def _apply_rag_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]
             ("SHOW_IMAGE_IN_ANSWER", _parse_bool),
             (
                 "IMAGE_APPEND_MAX",
-                lambda value: _parse_int(value, default=int(settings.IMAGE_APPEND_MAX or 3)),
+                lambda value: _parse_int(value, default=settings.IMAGE_APPEND_MAX or 3),
             ),
         ),
     )
 
     if "BM25_INDEX_ENABLED" in updated_keys and "BM25_INDEX_ENABLED" in env_vars:
-        old_bm25 = bool(settings.BM25_INDEX_ENABLED)
+        old_bm25 = settings.BM25_INDEX_ENABLED
         new_bm25 = _parse_bool(env_vars["BM25_INDEX_ENABLED"])
         settings.BM25_INDEX_ENABLED = new_bm25
         if old_bm25 and not new_bm25:
@@ -831,13 +475,13 @@ def _apply_cache_runtime_settings(env_vars: dict[str, str], updated_keys: set[st
             ("CHAT_RESPONSE_CACHE_ENABLED", _parse_bool),
             (
                 "CHAT_RESPONSE_CACHE_TTL_SEC",
-                lambda value: _parse_int(value, default=int(settings.CHAT_RESPONSE_CACHE_TTL_SEC or 300)),
+                lambda value: _parse_int(value, default=settings.CHAT_RESPONSE_CACHE_TTL_SEC or 300),
             ),
             (
                 "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES",
                 lambda value: _parse_int(
                     value,
-                    default=int(settings.CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES or 200_000),
+                    default=settings.CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES or 200_000,
                 ),
             ),
             ("CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY", _parse_bool),
@@ -886,7 +530,7 @@ def _apply_mineru_runtime_settings(env_vars: dict[str, str], updated_keys: set[s
             ("MINERU_API_TOKEN", str),
             ("MINERU_API_BASE", str),
             ("MINERU_MODEL_VERSION", str),
-            ("MINERU_BACKEND", _normalize_mineru_backend),
+            ("MINERU_BACKEND", normalize_mineru_backend),
             ("MINERU_LOCAL_SERVER_URL", str),
             ("MINERU_VL_SERVER", str),
         ),
@@ -962,11 +606,11 @@ def _apply_magicpdf_runtime_settings(env_vars: dict[str, str], updated_keys: set
             ("MAGIC_PDF_API_URL", str),
             (
                 "MAGIC_PDF_REQUEST_TIMEOUT_SEC",
-                lambda value: _parse_int(value, default=int(settings.MAGIC_PDF_REQUEST_TIMEOUT_SEC or 600)),
+                lambda value: _parse_int(value, default=settings.MAGIC_PDF_REQUEST_TIMEOUT_SEC or 600),
             ),
             (
                 "MAGIC_PDF_MAX_CONCURRENT_JOBS",
-                lambda value: _parse_int(value, default=int(settings.MAGIC_PDF_MAX_CONCURRENT_JOBS or 1)),
+                lambda value: _parse_int(value, default=settings.MAGIC_PDF_MAX_CONCURRENT_JOBS or 1),
             ),
             ("MAGIC_PDF_CLI", str),
             ("MAGIC_PDF_METHOD", str),
@@ -1049,7 +693,7 @@ def _apply_dify_runtime_settings(env_vars: dict[str, str], updated_keys: set[str
             ("DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", str),
             (
                 "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX",
-                lambda value: _parse_int(value, default=int(settings.DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX or 5)),
+                lambda value: _parse_int(value, default=settings.DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX or 5),
             ),
         ),
     )
@@ -1098,7 +742,7 @@ def read_env_file() -> dict[str, str]:
     return env_vars
 
 
-def write_env_file(env_vars: dict[str, str]):
+def write_env_file(env_vars: dict[str, str]) -> None:
     """Write .env file, preserving comments and formatting (atomic best-effort)."""
     lines = []
     existing_keys = set()
@@ -1167,30 +811,30 @@ def get_settings(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> SystemSettings:
     """Get current system config."""
     _ensure_settings_readable(db, tenant_id, account_id)
     return SystemSettings(
         feature_flags=FeatureFlags(
             kg_enabled=settings.KG_ENABLED,
             deepdoc_enabled=settings.DEEPDOC_ENABLED,
-            docling_enabled=bool(settings.DOCLING_ENABLED),
-            etl4llm_enabled=bool(settings.ETL4LLM_ENABLED),
-            marker_enabled=bool(settings.MARKER_ENABLED),
-            paddle_vl_enabled=bool(settings.PADDLE_VL_ENABLED),
-            textin_enabled=bool(settings.TEXTIN_ENABLED),
+            docling_enabled=settings.DOCLING_ENABLED,
+            etl4llm_enabled=settings.ETL4LLM_ENABLED,
+            marker_enabled=settings.MARKER_ENABLED,
+            paddle_vl_enabled=settings.PADDLE_VL_ENABLED,
+            textin_enabled=settings.TEXTIN_ENABLED,
             markitdown_enabled=settings.MARKITDOWN_ENABLED,
             llama_index_enabled=settings.LLAMA_INDEX_ENABLED,
             mineru_enabled=settings.MINERU_ENABLED,
-            magicpdf_enabled=bool(settings.MAGIC_PDF_ENABLED),
+            magicpdf_enabled=settings.MAGIC_PDF_ENABLED,
         ),
         kg=KGConfig(
             chat_enabled=settings.KG_CHAT_ENABLED,
-            extract_prompt_template_id=settings.KG_EXTRACT_PROMPT_TEMPLATE_ID or "",
-            extract_prompt_template_key=settings.KG_EXTRACT_PROMPT_TEMPLATE_KEY or "",
-            extract_prompt_ab_experiment_key=settings.KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY or "",
-            extract_replace_existing=bool(settings.KG_EXTRACT_REPLACE_EXISTING),
-            extract_prune_orphan_entities=bool(settings.KG_EXTRACT_PRUNE_ORPHAN_ENTITIES),
+            extract_prompt_template_id=settings.KG_EXTRACT_PROMPT_TEMPLATE_ID,
+            extract_prompt_template_key=settings.KG_EXTRACT_PROMPT_TEMPLATE_KEY,
+            extract_prompt_ab_experiment_key=settings.KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY,
+            extract_replace_existing=settings.KG_EXTRACT_REPLACE_EXISTING,
+            extract_prune_orphan_entities=settings.KG_EXTRACT_PRUNE_ORPHAN_ENTITIES,
         ),
         llm=LLMConfig(
             api_key=mask_secret(settings.LLM_API_KEY),
@@ -1214,110 +858,110 @@ def get_settings(
             collection_name=settings.MILVUS_COLLECTION_NAME,
         ),
         minio=MinioConfig(
-            enabled=bool(settings.MINIO_ENABLED),
-            endpoint=str(settings.MINIO_ENDPOINT or ""),
-            access_key=mask_secret(str(settings.MINIO_ACCESS_KEY or "")),
-            secret_key=mask_secret(str(settings.MINIO_SECRET_KEY or "")),
-            bucket_name=str(settings.MINIO_BUCKET_NAME or "mimirq"),
-            use_ssl=bool(settings.MINIO_USE_SSL),
-            documents_enabled=bool(settings.MINIO_DOCUMENTS_ENABLED),
-            image_max_bytes=int(settings.MINIO_IMAGE_MAX_BYTES or 0),
+            enabled=settings.MINIO_ENABLED,
+            endpoint=settings.MINIO_ENDPOINT,
+            access_key=mask_secret(settings.MINIO_ACCESS_KEY),
+            secret_key=mask_secret(settings.MINIO_SECRET_KEY),
+            bucket_name=settings.MINIO_BUCKET_NAME or "mimirq",
+            use_ssl=settings.MINIO_USE_SSL,
+            documents_enabled=settings.MINIO_DOCUMENTS_ENABLED,
+            image_max_bytes=settings.MINIO_IMAGE_MAX_BYTES,
         ),
         rag=RAGConfig(
             chunk_size=settings.CHUNK_SIZE,
             chunk_overlap=settings.CHUNK_OVERLAP,
-            chunk_min_chars=int(settings.CHUNK_MIN_CHARS or 0),
+            chunk_min_chars=settings.CHUNK_MIN_CHARS,
             retrieval_top_k=settings.RETRIEVAL_TOP_K,
             similarity_threshold=settings.SIMILARITY_THRESHOLD,
             default_parser_backend=settings.DEFAULT_PARSER_BACKEND,
             default_chunk_strategy=settings.DEFAULT_CHUNK_STRATEGY,
-            bm25_index_enabled=bool(settings.BM25_INDEX_ENABLED),
-            enable_reranker=bool(settings.ENABLE_RERANKER),
-            reranker_provider=str(settings.RERANKER_PROVIDER or "llm"),
-            reranker_top_n=int(settings.RERANKER_TOP_N or 20),
-            show_image_in_answer=bool(settings.SHOW_IMAGE_IN_ANSWER),
-            image_append_max=int(settings.IMAGE_APPEND_MAX or 0),
+            bm25_index_enabled=settings.BM25_INDEX_ENABLED,
+            enable_reranker=settings.ENABLE_RERANKER,
+            reranker_provider=settings.RERANKER_PROVIDER or "llm",
+            reranker_top_n=settings.RERANKER_TOP_N or 20,
+            show_image_in_answer=settings.SHOW_IMAGE_IN_ANSWER,
+            image_append_max=settings.IMAGE_APPEND_MAX,
         ),
         cache=CacheConfig(
-            upload_dedup_enabled=bool(settings.UPLOAD_DEDUP_ENABLED),
-            chat_response_cache_enabled=bool(settings.CHAT_RESPONSE_CACHE_ENABLED),
-            chat_response_cache_ttl_sec=int(settings.CHAT_RESPONSE_CACHE_TTL_SEC or 0),
-            chat_response_cache_max_value_bytes=int(settings.CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES or 0),
-            chat_response_cache_require_empty_history=bool(settings.CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY),
+            upload_dedup_enabled=settings.UPLOAD_DEDUP_ENABLED,
+            chat_response_cache_enabled=settings.CHAT_RESPONSE_CACHE_ENABLED,
+            chat_response_cache_ttl_sec=settings.CHAT_RESPONSE_CACHE_TTL_SEC,
+            chat_response_cache_max_value_bytes=settings.CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES,
+            chat_response_cache_require_empty_history=settings.CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY,
         ),
         url_ingest=UrlIngestConfig(
-            enabled=bool(settings.URL_INGEST_ENABLED),
-            max_bytes=int(settings.URL_INGEST_MAX_BYTES or 0),
-            timeout_sec=float(settings.URL_INGEST_TIMEOUT_SEC or 0.0),
-            allow_private_ips=bool(settings.URL_INGEST_ALLOW_PRIVATE_IPS),
-            follow_redirects=bool(settings.URL_INGEST_FOLLOW_REDIRECTS),
+            enabled=settings.URL_INGEST_ENABLED,
+            max_bytes=settings.URL_INGEST_MAX_BYTES,
+            timeout_sec=settings.URL_INGEST_TIMEOUT_SEC or 0.0,
+            allow_private_ips=settings.URL_INGEST_ALLOW_PRIVATE_IPS,
+            follow_redirects=settings.URL_INGEST_FOLLOW_REDIRECTS,
         ),
         governance=GovernanceConfig(
-            enabled=bool(settings.GOVERNANCE_ENABLED),
-            pii_anonymize=bool(settings.GOVERNANCE_PII_ANONYMIZE),
-            secrets_redact=bool(settings.GOVERNANCE_SECRETS_REDACT),
-            quarantine_on_drop=bool(settings.GOVERNANCE_QUARANTINE_ON_DROP),
+            enabled=settings.GOVERNANCE_ENABLED,
+            pii_anonymize=settings.GOVERNANCE_PII_ANONYMIZE,
+            secrets_redact=settings.GOVERNANCE_SECRETS_REDACT,
+            quarantine_on_drop=settings.GOVERNANCE_QUARANTINE_ON_DROP,
         ),
         mineru=MinerUConfig(
             api_token=mask_secret(settings.MINERU_API_TOKEN),
             api_base=settings.MINERU_API_BASE,
             model_version=settings.MINERU_MODEL_VERSION,
-            backend=_normalize_mineru_backend(settings.MINERU_BACKEND),
-            local_server_url=str(settings.MINERU_LOCAL_SERVER_URL or ""),
-            vl_server=str(settings.MINERU_VL_SERVER or ""),
+            backend=normalize_mineru_backend(settings.MINERU_BACKEND),
+            local_server_url=settings.MINERU_LOCAL_SERVER_URL,
+            vl_server=settings.MINERU_VL_SERVER,
         ),
         etl4llm=Etl4LlmConfig(
-            api_url=settings.ETL4LLM_API_URL or "",
-            timeout_sec=int(settings.ETL4LLM_TIMEOUT_SEC or 120),
-            mode=str(settings.ETL4LLM_MODE or "partition"),
-            force_ocr=bool(settings.ETL4LLM_FORCE_OCR),
-            enable_formula=bool(settings.ETL4LLM_ENABLE_FORMULA),
-            extract_images=bool(settings.ETL4LLM_EXTRACT_IMAGES),
-            filter_page_header_footer=bool(settings.ETL4LLM_FILTER_PAGE_HEADER_FOOTER),
+            api_url=settings.ETL4LLM_API_URL,
+            timeout_sec=settings.ETL4LLM_TIMEOUT_SEC or 120,
+            mode=settings.ETL4LLM_MODE or "partition",
+            force_ocr=settings.ETL4LLM_FORCE_OCR,
+            enable_formula=settings.ETL4LLM_ENABLE_FORMULA,
+            extract_images=settings.ETL4LLM_EXTRACT_IMAGES,
+            filter_page_header_footer=settings.ETL4LLM_FILTER_PAGE_HEADER_FOOTER,
         ),
         marker=MarkerConfig(
-            api_url=str(settings.MARKER_API_URL or ""),
-            timeout_sec=int(settings.MARKER_TIMEOUT_SEC or 600),
+            api_url=settings.MARKER_API_URL,
+            timeout_sec=settings.MARKER_TIMEOUT_SEC or 600,
         ),
         docling=DoclingConfig(
-            api_url=str(settings.DOCLING_API_URL or ""),
-            api_key=mask_secret(str(settings.DOCLING_API_KEY or "")),
-            request_timeout_sec=int(settings.DOCLING_REQUEST_TIMEOUT_SEC or 600),
-            health_timeout_sec=int(settings.DOCLING_HEALTH_TIMEOUT_SEC or 5),
-            http_trust_env=bool(settings.DOCLING_HTTP_TRUST_ENV),
-            ocr_enabled=bool(settings.DOCLING_OCR_ENABLED),
+            api_url=settings.DOCLING_API_URL,
+            api_key=mask_secret(settings.DOCLING_API_KEY),
+            request_timeout_sec=settings.DOCLING_REQUEST_TIMEOUT_SEC or 600,
+            health_timeout_sec=settings.DOCLING_HEALTH_TIMEOUT_SEC or 5,
+            http_trust_env=settings.DOCLING_HTTP_TRUST_ENV,
+            ocr_enabled=settings.DOCLING_OCR_ENABLED,
         ),
         paddle_vl=PaddleVLConfig(
-            api_url=str(settings.PADDLE_VL_API_URL or ""),
-            timeout_sec=int(settings.PADDLE_VL_TIMEOUT_SEC or 600),
-            pipeline_version=str(settings.PADDLE_VL_PIPELINE_VERSION or "v1.5"),
-            mode=str(settings.PADDLE_VL_MODE or "doc_parser"),
+            api_url=settings.PADDLE_VL_API_URL,
+            timeout_sec=settings.PADDLE_VL_TIMEOUT_SEC or 600,
+            pipeline_version=settings.PADDLE_VL_PIPELINE_VERSION or "v1.5",
+            mode=settings.PADDLE_VL_MODE or "doc_parser",
         ),
         textin=TextInConfig(
-            api_url=str(settings.TEXTIN_API_URL or "https://api.textin.com/ai/service/v1/pdf_to_markdown"),
-            app_id=str(settings.TEXTIN_APP_ID or ""),
-            secret_code=mask_secret(str(settings.TEXTIN_SECRET_CODE or "")),
-            timeout_sec=int(settings.TEXTIN_TIMEOUT_SEC or 180),
-            parse_mode=str(settings.TEXTIN_PARSE_MODE or "auto"),
-            table_flavor=str(settings.TEXTIN_TABLE_FLAVOR or "html"),
-            apply_document_tree=bool(settings.TEXTIN_APPLY_DOCUMENT_TREE),
-            markdown_details=bool(settings.TEXTIN_MARKDOWN_DETAILS),
-            get_image=str(settings.TEXTIN_GET_IMAGE or "none"),
-            dpi=int(settings.TEXTIN_DPI or 144),
-            page_count=int(settings.TEXTIN_PAGE_COUNT or 0),
+            api_url=settings.TEXTIN_API_URL or "https://api.textin.com/ai/service/v1/pdf_to_markdown",
+            app_id=settings.TEXTIN_APP_ID,
+            secret_code=mask_secret(settings.TEXTIN_SECRET_CODE),
+            timeout_sec=settings.TEXTIN_TIMEOUT_SEC or 180,
+            parse_mode=settings.TEXTIN_PARSE_MODE or "auto",
+            table_flavor=settings.TEXTIN_TABLE_FLAVOR or "html",
+            apply_document_tree=settings.TEXTIN_APPLY_DOCUMENT_TREE,
+            markdown_details=settings.TEXTIN_MARKDOWN_DETAILS,
+            get_image=settings.TEXTIN_GET_IMAGE or "none",
+            dpi=settings.TEXTIN_DPI or 144,
+            page_count=settings.TEXTIN_PAGE_COUNT,
         ),
         magicpdf=MagicPDFConfig(
-            api_url=str(settings.MAGIC_PDF_API_URL or ""),
-            request_timeout_sec=int(settings.MAGIC_PDF_REQUEST_TIMEOUT_SEC or 600),
-            max_concurrent_jobs=int(settings.MAGIC_PDF_MAX_CONCURRENT_JOBS or 1),
+            api_url=settings.MAGIC_PDF_API_URL,
+            request_timeout_sec=settings.MAGIC_PDF_REQUEST_TIMEOUT_SEC or 600,
+            max_concurrent_jobs=settings.MAGIC_PDF_MAX_CONCURRENT_JOBS or 1,
             cli=settings.MAGIC_PDF_CLI or "magic-pdf",
             method=settings.MAGIC_PDF_METHOD or "auto",
-            lang=settings.MAGIC_PDF_LANG or "",
-            debug=bool(settings.MAGIC_PDF_DEBUG),
-            timeout_sec=int(settings.MAGIC_PDF_TIMEOUT_SEC or 600),
-            models_dir=settings.MAGIC_PDF_MODELS_DIR or "",
+            lang=settings.MAGIC_PDF_LANG,
+            debug=settings.MAGIC_PDF_DEBUG,
+            timeout_sec=settings.MAGIC_PDF_TIMEOUT_SEC or 600,
+            models_dir=settings.MAGIC_PDF_MODELS_DIR,
             device_mode=settings.MAGIC_PDF_DEVICE_MODE or "cpu",
-            keep_artifacts=bool(settings.MAGIC_PDF_KEEP_ARTIFACTS),
+            keep_artifacts=settings.MAGIC_PDF_KEEP_ARTIFACTS,
         ),
         observability=ObservabilityConfig(
             tool_call_log_enabled=settings.TOOL_CALL_LOG_ENABLED,
@@ -1326,8 +970,8 @@ def get_settings(
             agent_log_enabled=settings.AGENT_LOG_ENABLED,
             agent_log_include_execution_path=settings.AGENT_LOG_INCLUDE_EXECUTION_PATH,
             agent_log_max_preview_chars=settings.AGENT_LOG_MAX_PREVIEW_CHARS,
-            metrics_log_enabled=bool(settings.ENABLE_METRICS_LOG),
-            metrics_log_include_text=bool(settings.METRICS_LOG_INCLUDE_TEXT),
+            metrics_log_enabled=settings.ENABLE_METRICS_LOG,
+            metrics_log_include_text=settings.METRICS_LOG_INCLUDE_TEXT,
         ),
         safety=SafetyConfig(
             pii_redaction_enabled=settings.PII_REDACTION_ENABLED,
@@ -1335,44 +979,36 @@ def get_settings(
             pii_stream_holdback_chars=settings.PII_STREAM_HOLDBACK_CHARS,
         ),
         chat=ChatConfig(
-            stream_heartbeat_sec=float(settings.CHAT_STREAM_HEARTBEAT_SEC or 10.0),
-            stream_cancel_on_disconnect=bool(settings.CHAT_STREAM_CANCEL_ON_DISCONNECT),
+            stream_heartbeat_sec=settings.CHAT_STREAM_HEARTBEAT_SEC or 10.0,
+            stream_cancel_on_disconnect=settings.CHAT_STREAM_CANCEL_ON_DISCONNECT,
         ),
         langgraph=LangGraphConfig(
             use_subgraphs=settings.LANGGRAPH_USE_SUBGRAPHS,
         ),
         navigation=NavigationConfig(
-            user_visible_modules=normalize_navigation_modules(settings.NAVIGATION_USER_VISIBLE_MODULES or ""),
+            user_visible_modules=normalize_navigation_modules(settings.NAVIGATION_USER_VISIBLE_MODULES),
         ),
         dify_external_knowledge=DifyExternalKnowledgeConfig(
-            enabled=bool(settings.DIFY_EXTERNAL_KNOWLEDGE_ENABLED),
-            api_keys=mask_secret(str(settings.DIFY_EXTERNAL_KNOWLEDGE_API_KEYS or "")),
-            tenant_id=str(settings.DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID or ""),
-            account_id=str(settings.DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID or _SYSTEM_DIFY_ACCOUNT_ID),
-            knowledge_map_json=str(settings.DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON or ""),
-            top_k_max=int(settings.DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX or 5),
+            enabled=settings.DIFY_EXTERNAL_KNOWLEDGE_ENABLED,
+            api_keys=mask_secret(settings.DIFY_EXTERNAL_KNOWLEDGE_API_KEYS),
+            tenant_id=settings.DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID,
+            account_id=str(settings.DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID or SYSTEM_DIFY_ACCOUNT_ID),
+            knowledge_map_json=settings.DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON,
+            top_k_max=settings.DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX or 5,
             endpoint_path="/api/v1/integrations/dify/retrieval",
         ),
     )
 
 
-def _set_bool_env(env_vars: dict[str, str], key: str, value: Any) -> None:
-    env_vars[key] = str(bool(value)).lower()
+def _set_bool_env(env_vars: dict[str, str], key: str, value: bool) -> None:
+    env_vars[key] = str(value).lower()
 
 
-def _set_int_env(env_vars: dict[str, str], key: str, value: Any) -> None:
-    env_vars[key] = str(int(value))
+def _set_non_negative_int_env(env_vars: dict[str, str], key: str, value: int) -> None:
+    env_vars[key] = str(max(0, value))
 
 
-def _set_float_env(env_vars: dict[str, str], key: str, value: Any) -> None:
-    env_vars[key] = str(float(value))
-
-
-def _set_non_negative_int_env(env_vars: dict[str, str], key: str, value: Any) -> None:
-    env_vars[key] = str(max(0, int(value or 0)))
-
-
-def _set_sanitized_env(env_vars: dict[str, str], key: str, value: Any) -> None:
+def _set_sanitized_env(env_vars: dict[str, str], key: str, value: str) -> None:
     env_vars[key] = _sanitize_env_value(key, value)
 
 
@@ -1390,7 +1026,7 @@ def _normalize_choice(value: str, *, default: str, allowed: set[str]) -> str:
 
 
 def _validate_optional_uuid_setting(key: str, value: str, *, detail: str) -> str:
-    sanitized = _sanitize_env_value(key, value or "")
+    sanitized = _sanitize_env_value(key, value)
     if sanitized:
         try:
             UUID(sanitized)
@@ -1406,7 +1042,7 @@ def _validate_json_object_setting(
     invalid_detail: str,
     non_object_detail: str,
 ) -> str:
-    sanitized = _sanitize_env_value(key, value or "")
+    sanitized = _sanitize_env_value(key, value)
     if not sanitized:
         return sanitized
     try:
@@ -1422,15 +1058,15 @@ def _update_feature_flag_env(env_vars: dict[str, str], updated_keys: list[str], 
     values = (
         ("KG_ENABLED", feature_flags.kg_enabled),
         ("DEEPDOC_ENABLED", feature_flags.deepdoc_enabled),
-        ("DOCLING_ENABLED", getattr(feature_flags, "docling_enabled", False)),
-        ("ETL4LLM_ENABLED", getattr(feature_flags, "etl4llm_enabled", False)),
-        ("MARKER_ENABLED", getattr(feature_flags, "marker_enabled", False)),
-        ("PADDLE_VL_ENABLED", getattr(feature_flags, "paddle_vl_enabled", False)),
-        ("TEXTIN_ENABLED", getattr(feature_flags, "textin_enabled", False)),
+        ("DOCLING_ENABLED", feature_flags.docling_enabled),
+        ("ETL4LLM_ENABLED", feature_flags.etl4llm_enabled),
+        ("MARKER_ENABLED", feature_flags.marker_enabled),
+        ("PADDLE_VL_ENABLED", feature_flags.paddle_vl_enabled),
+        ("TEXTIN_ENABLED", feature_flags.textin_enabled),
         ("MARKITDOWN_ENABLED", feature_flags.markitdown_enabled),
         ("LLAMA_INDEX_ENABLED", feature_flags.llama_index_enabled),
         ("MINERU_ENABLED", feature_flags.mineru_enabled),
-        ("MAGIC_PDF_ENABLED", getattr(feature_flags, "magicpdf_enabled", False)),
+        ("MAGIC_PDF_ENABLED", feature_flags.magicpdf_enabled),
     )
     for key, value in values:
         _set_bool_env(env_vars, key, value)
@@ -1441,13 +1077,13 @@ def _update_kg_env(env_vars: dict[str, str], updated_keys: list[str], kg: KGConf
     _set_bool_env(env_vars, "KG_CHAT_ENABLED", kg.chat_enabled)
     env_vars["KG_EXTRACT_PROMPT_TEMPLATE_ID"] = _validate_optional_uuid_setting(
         "KG_EXTRACT_PROMPT_TEMPLATE_ID",
-        kg.extract_prompt_template_id or "",
+        kg.extract_prompt_template_id,
         detail="Invalid KG_EXTRACT_PROMPT_TEMPLATE_ID",
     )
-    _set_sanitized_env(env_vars, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", kg.extract_prompt_template_key or "")
-    _set_sanitized_env(env_vars, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", kg.extract_prompt_ab_experiment_key or "")
-    _set_bool_env(env_vars, "KG_EXTRACT_REPLACE_EXISTING", getattr(kg, "extract_replace_existing", True))
-    _set_bool_env(env_vars, "KG_EXTRACT_PRUNE_ORPHAN_ENTITIES", getattr(kg, "extract_prune_orphan_entities", True))
+    _set_sanitized_env(env_vars, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", kg.extract_prompt_template_key)
+    _set_sanitized_env(env_vars, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", kg.extract_prompt_ab_experiment_key)
+    _set_bool_env(env_vars, "KG_EXTRACT_REPLACE_EXISTING", kg.extract_replace_existing)
+    _set_bool_env(env_vars, "KG_EXTRACT_PRUNE_ORPHAN_ENTITIES", kg.extract_prune_orphan_entities)
     updated_keys.extend(
         [
             "KG_CHAT_ENABLED",
@@ -1495,7 +1131,7 @@ def _update_minio_env(env_vars: dict[str, str], updated_keys: list[str], minio: 
     _set_sanitized_env(env_vars, "MINIO_BUCKET_NAME", minio.bucket_name)
     _set_bool_env(env_vars, "MINIO_USE_SSL", minio.use_ssl)
     _set_bool_env(env_vars, "MINIO_DOCUMENTS_ENABLED", minio.documents_enabled)
-    _set_non_negative_int_env(env_vars, "MINIO_IMAGE_MAX_BYTES", minio.image_max_bytes)
+    env_vars["MINIO_IMAGE_MAX_BYTES"] = str(minio.image_max_bytes)
     updated_keys.extend(
         [
             "MINIO_ENABLED",
@@ -1511,17 +1147,17 @@ def _update_minio_env(env_vars: dict[str, str], updated_keys: list[str], minio: 
 def _update_rag_env(env_vars: dict[str, str], updated_keys: list[str], rag: RAGConfig) -> None:
     env_vars["CHUNK_SIZE"] = str(rag.chunk_size)
     env_vars["CHUNK_OVERLAP"] = str(rag.chunk_overlap)
-    _set_non_negative_int_env(env_vars, "CHUNK_MIN_CHARS", getattr(rag, "chunk_min_chars", 0))
+    _set_non_negative_int_env(env_vars, "CHUNK_MIN_CHARS", rag.chunk_min_chars)
     env_vars["RETRIEVAL_TOP_K"] = str(rag.retrieval_top_k)
     env_vars["SIMILARITY_THRESHOLD"] = str(rag.similarity_threshold)
     _set_sanitized_env(env_vars, "DEFAULT_PARSER_BACKEND", rag.default_parser_backend)
     _set_sanitized_env(env_vars, "DEFAULT_CHUNK_STRATEGY", rag.default_chunk_strategy)
-    _set_bool_env(env_vars, "BM25_INDEX_ENABLED", getattr(rag, "bm25_index_enabled", True))
-    _set_bool_env(env_vars, "ENABLE_RERANKER", getattr(rag, "enable_reranker", False))
+    _set_bool_env(env_vars, "BM25_INDEX_ENABLED", rag.bm25_index_enabled)
+    _set_bool_env(env_vars, "ENABLE_RERANKER", rag.enable_reranker)
     _set_sanitized_env(env_vars, "RERANKER_PROVIDER", rag.reranker_provider)
-    env_vars["RERANKER_TOP_N"] = str(int(getattr(rag, "reranker_top_n", 20) or 20))
-    _set_bool_env(env_vars, "SHOW_IMAGE_IN_ANSWER", getattr(rag, "show_image_in_answer", True))
-    env_vars["IMAGE_APPEND_MAX"] = str(max(0, min(10, int(getattr(rag, "image_append_max", 3) or 0))))
+    env_vars["RERANKER_TOP_N"] = str(rag.reranker_top_n)
+    _set_bool_env(env_vars, "SHOW_IMAGE_IN_ANSWER", rag.show_image_in_answer)
+    env_vars["IMAGE_APPEND_MAX"] = str(rag.image_append_max)
     updated_keys.extend(
         [
             "CHUNK_SIZE",
@@ -1542,16 +1178,14 @@ def _update_rag_env(env_vars: dict[str, str], updated_keys: list[str], rag: RAGC
 
 
 def _update_cache_env(env_vars: dict[str, str], updated_keys: list[str], cache: CacheConfig) -> None:
-    _set_bool_env(env_vars, "UPLOAD_DEDUP_ENABLED", getattr(cache, "upload_dedup_enabled", False))
-    _set_bool_env(env_vars, "CHAT_RESPONSE_CACHE_ENABLED", getattr(cache, "chat_response_cache_enabled", False))
-    env_vars["CHAT_RESPONSE_CACHE_TTL_SEC"] = str(int(getattr(cache, "chat_response_cache_ttl_sec", 0) or 0))
-    env_vars["CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES"] = str(
-        int(getattr(cache, "chat_response_cache_max_value_bytes", 0) or 0)
-    )
+    _set_bool_env(env_vars, "UPLOAD_DEDUP_ENABLED", cache.upload_dedup_enabled)
+    _set_bool_env(env_vars, "CHAT_RESPONSE_CACHE_ENABLED", cache.chat_response_cache_enabled)
+    env_vars["CHAT_RESPONSE_CACHE_TTL_SEC"] = str(cache.chat_response_cache_ttl_sec)
+    env_vars["CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES"] = str(cache.chat_response_cache_max_value_bytes)
     _set_bool_env(
         env_vars,
         "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY",
-        getattr(cache, "chat_response_cache_require_empty_history", True),
+        cache.chat_response_cache_require_empty_history,
     )
     updated_keys.extend(
         [
@@ -1566,10 +1200,10 @@ def _update_cache_env(env_vars: dict[str, str], updated_keys: list[str], cache: 
 
 def _update_url_ingest_env(env_vars: dict[str, str], updated_keys: list[str], url_ingest: UrlIngestConfig) -> None:
     _set_bool_env(env_vars, "URL_INGEST_ENABLED", url_ingest.enabled)
-    _set_int_env(env_vars, "URL_INGEST_MAX_BYTES", getattr(url_ingest, "max_bytes", 0) or 0)
-    _set_float_env(env_vars, "URL_INGEST_TIMEOUT_SEC", getattr(url_ingest, "timeout_sec", 0.0) or 0.0)
-    _set_bool_env(env_vars, "URL_INGEST_ALLOW_PRIVATE_IPS", getattr(url_ingest, "allow_private_ips", False))
-    _set_bool_env(env_vars, "URL_INGEST_FOLLOW_REDIRECTS", getattr(url_ingest, "follow_redirects", False))
+    env_vars["URL_INGEST_MAX_BYTES"] = str(url_ingest.max_bytes)
+    env_vars["URL_INGEST_TIMEOUT_SEC"] = str(url_ingest.timeout_sec or 0.0)
+    _set_bool_env(env_vars, "URL_INGEST_ALLOW_PRIVATE_IPS", url_ingest.allow_private_ips)
+    _set_bool_env(env_vars, "URL_INGEST_FOLLOW_REDIRECTS", url_ingest.follow_redirects)
     updated_keys.extend(
         [
             "URL_INGEST_ENABLED",
@@ -1582,10 +1216,10 @@ def _update_url_ingest_env(env_vars: dict[str, str], updated_keys: list[str], ur
 
 
 def _update_governance_env(env_vars: dict[str, str], updated_keys: list[str], governance: GovernanceConfig) -> None:
-    _set_bool_env(env_vars, "GOVERNANCE_ENABLED", getattr(governance, "enabled", False))
-    _set_bool_env(env_vars, "GOVERNANCE_PII_ANONYMIZE", getattr(governance, "pii_anonymize", False))
-    _set_bool_env(env_vars, "GOVERNANCE_SECRETS_REDACT", getattr(governance, "secrets_redact", False))
-    _set_bool_env(env_vars, "GOVERNANCE_QUARANTINE_ON_DROP", getattr(governance, "quarantine_on_drop", False))
+    _set_bool_env(env_vars, "GOVERNANCE_ENABLED", governance.enabled)
+    _set_bool_env(env_vars, "GOVERNANCE_PII_ANONYMIZE", governance.pii_anonymize)
+    _set_bool_env(env_vars, "GOVERNANCE_SECRETS_REDACT", governance.secrets_redact)
+    _set_bool_env(env_vars, "GOVERNANCE_QUARANTINE_ON_DROP", governance.quarantine_on_drop)
     updated_keys.extend(
         [
             "GOVERNANCE_ENABLED",
@@ -1600,7 +1234,7 @@ def _update_mineru_env(env_vars: dict[str, str], updated_keys: list[str], mineru
     _set_maskable_secret_env(env_vars, updated_keys, "MINERU_API_TOKEN", mineru.api_token)
     _set_sanitized_env(env_vars, "MINERU_API_BASE", mineru.api_base)
     _set_sanitized_env(env_vars, "MINERU_MODEL_VERSION", mineru.model_version)
-    env_vars["MINERU_BACKEND"] = _normalize_mineru_backend(mineru.backend)
+    env_vars["MINERU_BACKEND"] = mineru.backend
     _set_sanitized_env(env_vars, "MINERU_LOCAL_SERVER_URL", mineru.local_server_url)
     _set_sanitized_env(env_vars, "MINERU_VL_SERVER", mineru.vl_server)
     updated_keys.extend(
@@ -1615,8 +1249,8 @@ def _update_mineru_env(env_vars: dict[str, str], updated_keys: list[str], mineru
 
 
 def _update_etl4llm_env(env_vars: dict[str, str], updated_keys: list[str], etl4llm: Etl4LlmConfig) -> None:
-    _set_sanitized_env(env_vars, "ETL4LLM_API_URL", etl4llm.api_url or "")
-    env_vars["ETL4LLM_TIMEOUT_SEC"] = str(int(etl4llm.timeout_sec or 0))
+    _set_sanitized_env(env_vars, "ETL4LLM_API_URL", etl4llm.api_url)
+    env_vars["ETL4LLM_TIMEOUT_SEC"] = str(etl4llm.timeout_sec)
     env_vars["ETL4LLM_MODE"] = _sanitize_env_value(
         "ETL4LLM_MODE",
         _normalize_choice(etl4llm.mode or "partition", default="partition", allowed={"partition", "text"}),
@@ -1639,16 +1273,16 @@ def _update_etl4llm_env(env_vars: dict[str, str], updated_keys: list[str], etl4l
 
 
 def _update_marker_env(env_vars: dict[str, str], updated_keys: list[str], marker: MarkerConfig) -> None:
-    _set_sanitized_env(env_vars, "MARKER_API_URL", marker.api_url or "")
-    env_vars["MARKER_TIMEOUT_SEC"] = str(int(marker.timeout_sec or 0))
+    _set_sanitized_env(env_vars, "MARKER_API_URL", marker.api_url)
+    env_vars["MARKER_TIMEOUT_SEC"] = str(marker.timeout_sec)
     updated_keys.extend(["MARKER_API_URL", "MARKER_TIMEOUT_SEC"])
 
 
 def _update_docling_env(env_vars: dict[str, str], updated_keys: list[str], docling: DoclingConfig) -> None:
-    _set_sanitized_env(env_vars, "DOCLING_API_URL", docling.api_url or "")
-    _set_maskable_secret_env(env_vars, updated_keys, "DOCLING_API_KEY", docling.api_key or "")
-    env_vars["DOCLING_REQUEST_TIMEOUT_SEC"] = str(max(1, int(docling.request_timeout_sec or 0)))
-    env_vars["DOCLING_HEALTH_TIMEOUT_SEC"] = str(max(1, int(docling.health_timeout_sec or 0)))
+    _set_sanitized_env(env_vars, "DOCLING_API_URL", docling.api_url)
+    _set_maskable_secret_env(env_vars, updated_keys, "DOCLING_API_KEY", docling.api_key)
+    env_vars["DOCLING_REQUEST_TIMEOUT_SEC"] = str(docling.request_timeout_sec)
+    env_vars["DOCLING_HEALTH_TIMEOUT_SEC"] = str(docling.health_timeout_sec)
     _set_bool_env(env_vars, "DOCLING_HTTP_TRUST_ENV", docling.http_trust_env)
     _set_bool_env(env_vars, "DOCLING_OCR_ENABLED", docling.ocr_enabled)
     updated_keys.extend(
@@ -1663,8 +1297,8 @@ def _update_docling_env(env_vars: dict[str, str], updated_keys: list[str], docli
 
 
 def _update_paddle_vl_env(env_vars: dict[str, str], updated_keys: list[str], paddle_vl: PaddleVLConfig) -> None:
-    _set_sanitized_env(env_vars, "PADDLE_VL_API_URL", paddle_vl.api_url or "")
-    env_vars["PADDLE_VL_TIMEOUT_SEC"] = str(int(paddle_vl.timeout_sec or 0))
+    _set_sanitized_env(env_vars, "PADDLE_VL_API_URL", paddle_vl.api_url)
+    env_vars["PADDLE_VL_TIMEOUT_SEC"] = str(paddle_vl.timeout_sec)
     pipeline_version = (paddle_vl.pipeline_version or "v1.5").strip() or "v1.5"
     env_vars["PADDLE_VL_PIPELINE_VERSION"] = _sanitize_env_value("PADDLE_VL_PIPELINE_VERSION", pipeline_version)
     env_vars["PADDLE_VL_MODE"] = _sanitize_env_value(
@@ -1675,10 +1309,10 @@ def _update_paddle_vl_env(env_vars: dict[str, str], updated_keys: list[str], pad
 
 
 def _update_textin_env(env_vars: dict[str, str], updated_keys: list[str], textin: TextInConfig) -> None:
-    _set_sanitized_env(env_vars, "TEXTIN_API_URL", textin.api_url or "")
-    _set_sanitized_env(env_vars, "TEXTIN_APP_ID", textin.app_id or "")
-    _set_maskable_secret_env(env_vars, updated_keys, "TEXTIN_SECRET_CODE", textin.secret_code or "")
-    env_vars["TEXTIN_TIMEOUT_SEC"] = str(int(textin.timeout_sec or 0))
+    _set_sanitized_env(env_vars, "TEXTIN_API_URL", textin.api_url)
+    _set_sanitized_env(env_vars, "TEXTIN_APP_ID", textin.app_id)
+    _set_maskable_secret_env(env_vars, updated_keys, "TEXTIN_SECRET_CODE", textin.secret_code)
+    env_vars["TEXTIN_TIMEOUT_SEC"] = str(textin.timeout_sec)
     env_vars["TEXTIN_PARSE_MODE"] = _sanitize_env_value(
         "TEXTIN_PARSE_MODE",
         _normalize_choice(
@@ -1715,13 +1349,13 @@ def _update_textin_env(env_vars: dict[str, str], updated_keys: list[str], textin
 
 def _update_magicpdf_env(env_vars: dict[str, str], updated_keys: list[str], magicpdf: MagicPDFConfig) -> None:
     _set_sanitized_env(env_vars, "MAGIC_PDF_API_URL", magicpdf.api_url)
-    env_vars["MAGIC_PDF_REQUEST_TIMEOUT_SEC"] = str(max(1, int(magicpdf.request_timeout_sec or 0)))
-    env_vars["MAGIC_PDF_MAX_CONCURRENT_JOBS"] = str(max(1, int(magicpdf.max_concurrent_jobs or 1)))
+    env_vars["MAGIC_PDF_REQUEST_TIMEOUT_SEC"] = str(max(1, magicpdf.request_timeout_sec))
+    env_vars["MAGIC_PDF_MAX_CONCURRENT_JOBS"] = str(max(1, magicpdf.max_concurrent_jobs or 1))
     _set_sanitized_env(env_vars, "MAGIC_PDF_CLI", magicpdf.cli)
     _set_sanitized_env(env_vars, "MAGIC_PDF_METHOD", magicpdf.method)
     _set_sanitized_env(env_vars, "MAGIC_PDF_LANG", magicpdf.lang)
     _set_bool_env(env_vars, "MAGIC_PDF_DEBUG", magicpdf.debug)
-    env_vars["MAGIC_PDF_TIMEOUT_SEC"] = str(int(magicpdf.timeout_sec or 0))
+    env_vars["MAGIC_PDF_TIMEOUT_SEC"] = str(magicpdf.timeout_sec)
     _set_sanitized_env(env_vars, "MAGIC_PDF_MODELS_DIR", magicpdf.models_dir)
     _set_sanitized_env(env_vars, "MAGIC_PDF_DEVICE_MODE", magicpdf.device_mode)
     _set_bool_env(env_vars, "MAGIC_PDF_KEEP_ARTIFACTS", magicpdf.keep_artifacts)
@@ -1749,10 +1383,10 @@ def _update_observability_env(
 ) -> None:
     _set_bool_env(env_vars, "TOOL_CALL_LOG_ENABLED", observability.tool_call_log_enabled)
     _set_bool_env(env_vars, "TOOL_CALL_LOG_INCLUDE_PREVIEW", observability.tool_call_log_include_preview)
-    env_vars["TOOL_CALL_LOG_MAX_PREVIEW_CHARS"] = str(int(observability.tool_call_log_max_preview_chars or 0))
+    env_vars["TOOL_CALL_LOG_MAX_PREVIEW_CHARS"] = str(observability.tool_call_log_max_preview_chars)
     _set_bool_env(env_vars, "AGENT_LOG_ENABLED", observability.agent_log_enabled)
     _set_bool_env(env_vars, "AGENT_LOG_INCLUDE_EXECUTION_PATH", observability.agent_log_include_execution_path)
-    env_vars["AGENT_LOG_MAX_PREVIEW_CHARS"] = str(int(observability.agent_log_max_preview_chars or 0))
+    env_vars["AGENT_LOG_MAX_PREVIEW_CHARS"] = str(observability.agent_log_max_preview_chars)
     updated_keys.extend(
         [
             "TOOL_CALL_LOG_ENABLED",
@@ -1763,26 +1397,26 @@ def _update_observability_env(
             "AGENT_LOG_MAX_PREVIEW_CHARS",
         ]
     )
-    model_fields_set = getattr(observability, "model_fields_set", set())
+    model_fields_set = observability.model_fields_set
     if "metrics_log_enabled" in model_fields_set:
-        _set_bool_env(env_vars, "ENABLE_METRICS_LOG", getattr(observability, "metrics_log_enabled", False))
+        _set_bool_env(env_vars, "ENABLE_METRICS_LOG", observability.metrics_log_enabled)
         updated_keys.append("ENABLE_METRICS_LOG")
     if "metrics_log_include_text" in model_fields_set:
-        _set_bool_env(env_vars, "METRICS_LOG_INCLUDE_TEXT", getattr(observability, "metrics_log_include_text", False))
+        _set_bool_env(env_vars, "METRICS_LOG_INCLUDE_TEXT", observability.metrics_log_include_text)
         updated_keys.append("METRICS_LOG_INCLUDE_TEXT")
 
 
 def _update_safety_env(env_vars: dict[str, str], updated_keys: list[str], safety: SafetyConfig) -> None:
     _set_bool_env(env_vars, "PII_REDACTION_ENABLED", safety.pii_redaction_enabled)
     _set_sanitized_env(env_vars, "PII_REDACTION_MASK", safety.pii_redaction_mask)
-    env_vars["PII_STREAM_HOLDBACK_CHARS"] = str(int(safety.pii_stream_holdback_chars or 0))
+    env_vars["PII_STREAM_HOLDBACK_CHARS"] = str(safety.pii_stream_holdback_chars)
     updated_keys.extend(["PII_REDACTION_ENABLED", "PII_REDACTION_MASK", "PII_STREAM_HOLDBACK_CHARS"])
 
 
 def _update_chat_env(env_vars: dict[str, str], updated_keys: list[str], chat: ChatConfig) -> None:
-    model_fields_set = getattr(chat, "model_fields_set", set())
+    model_fields_set = chat.model_fields_set
     if "stream_heartbeat_sec" in model_fields_set:
-        env_vars["CHAT_STREAM_HEARTBEAT_SEC"] = str(float(chat.stream_heartbeat_sec or 0.0))
+        env_vars["CHAT_STREAM_HEARTBEAT_SEC"] = str(chat.stream_heartbeat_sec or 0.0)
         updated_keys.append("CHAT_STREAM_HEARTBEAT_SEC")
     if "stream_cancel_on_disconnect" in model_fields_set:
         _set_bool_env(env_vars, "CHAT_STREAM_CANCEL_ON_DISCONNECT", chat.stream_cancel_on_disconnect)
@@ -1814,24 +1448,22 @@ def _update_dify_external_knowledge_env(
     )
     env_vars["DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID"] = _validate_optional_uuid_setting(
         "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID",
-        dify_external_knowledge.tenant_id or "",
+        dify_external_knowledge.tenant_id,
         detail="Invalid DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID",
     )
     _set_sanitized_env(
         env_vars,
         "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID",
-        dify_external_knowledge.account_id or _SYSTEM_DIFY_ACCOUNT_ID,
+        dify_external_knowledge.account_id or SYSTEM_DIFY_ACCOUNT_ID,
     )
     env_vars["DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON"] = _validate_json_object_setting(
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
-        dify_external_knowledge.knowledge_map_json or "",
+        dify_external_knowledge.knowledge_map_json,
         invalid_detail="Invalid DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
         non_object_detail="DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON must be a JSON object",
     )
-    top_k_max = int(dify_external_knowledge.top_k_max or 5)
-    if top_k_max < 1 or top_k_max > 200:
-        raise HTTPException(status_code=400, detail="DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX must be between 1 and 200")
-    env_vars["DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX"] = str(top_k_max)
+
+    env_vars["DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX"] = str(dify_external_knowledge.top_k_max)
     updated_keys.extend(
         [
             "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID",
@@ -1878,7 +1510,7 @@ def _apply_request_settings_updates(
             updater(env_vars, updated_keys, section)
 
 
-@router.put("", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.put("", response_model=None, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def update_settings(
     request: UpdateSettingsRequest,
     http_request: Request,
@@ -1886,9 +1518,9 @@ def update_settings(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> dict[str, object]:
     """Update system config (write .env file)."""
-    if not bool(settings.SETTINGS_ENV_WRITE_ENABLED):
+    if not settings.SETTINGS_ENV_WRITE_ENABLED:
         raise HTTPException(
             status_code=403,
             detail="Settings writes are disabled. Set SETTINGS_ENV_WRITE_ENABLED=true to allow updating .env.",
@@ -1914,7 +1546,9 @@ def update_settings(
 
             ip = None
             with contextlib.suppress(Exception):
-                ip = str(getattr(getattr(http_request, "client", None), "host", "") or "").strip() or None
+                client = http_request.client
+                if client is not None:
+                    ip = client.host.strip() or None
 
             user_agent = (http_request.headers.get("User-Agent") or "").strip() or None
 
@@ -1979,7 +1613,7 @@ def _health_not_ok_status_message(data: dict[str, Any]) -> str:
     return f"configured (health_not_ok: {str(reason)[:120]})"
 
 
-def _configured_parts_message(*parts: Any) -> str | None:
+def _configured_parts_message(*parts: object) -> str | None:
     text_parts = [part for part in parts if isinstance(part, str) and part.strip()]
     if not text_parts:
         return None
@@ -2007,7 +1641,7 @@ def _build_cli_parser_status(enabled: bool, cli: str) -> dict[str, object]:
 def _build_configured_parser_status(enabled: bool, configured: bool, missing_message: str) -> dict[str, object]:
     return {
         "enabled": enabled,
-        "available": bool(enabled and configured),
+        "available": enabled and configured,
         "message": _configured_status_message(enabled, configured, missing_message),
     }
 
@@ -2055,10 +1689,10 @@ async def _build_probed_parser_status(
 
 
 def _build_textin_parser_status() -> dict[str, object]:
-    textin_enabled = bool(settings.TEXTIN_ENABLED)
-    textin_api_url = bool((settings.TEXTIN_API_URL or "").strip())
-    textin_app_id = bool((settings.TEXTIN_APP_ID or "").strip())
-    textin_secret = bool((settings.TEXTIN_SECRET_CODE or "").strip())
+    textin_enabled = settings.TEXTIN_ENABLED
+    textin_api_url = bool(settings.TEXTIN_API_URL.strip())
+    textin_app_id = bool(settings.TEXTIN_APP_ID.strip())
+    textin_secret = bool(settings.TEXTIN_SECRET_CODE.strip())
     if not textin_enabled:
         message = "disabled"
     elif not textin_api_url:
@@ -2077,9 +1711,9 @@ def _build_textin_parser_status() -> dict[str, object]:
 
 
 def _build_mineru_parser_status() -> dict[str, object]:
-    mineru_enabled = bool(settings.MINERU_ENABLED)
-    mineru_local = bool((settings.MINERU_LOCAL_SERVER_URL or "").strip())
-    mineru_token = (settings.MINERU_API_TOKEN or "").strip()
+    mineru_enabled = settings.MINERU_ENABLED
+    mineru_local = bool(settings.MINERU_LOCAL_SERVER_URL.strip())
+    mineru_token = settings.MINERU_API_TOKEN.strip()
     mineru_exp = try_get_jwt_exp(mineru_token) if mineru_token else None
     mineru_token_expired = bool(mineru_exp is not None and int(mineru_exp) <= int(time.time()))
     if not mineru_enabled:
@@ -2104,8 +1738,8 @@ def _build_magicpdf_parser_status(
     resolve_cli_command: Callable[[str], str | None],
     resolve_magicpdf_models_dir: Callable[[str], str | None],
 ) -> dict[str, object]:
-    enabled = bool(settings.MAGIC_PDF_ENABLED)
-    api_url = (settings.MAGIC_PDF_API_URL or "").strip()
+    enabled = settings.MAGIC_PDF_ENABLED
+    api_url = settings.MAGIC_PDF_API_URL.strip()
     cli = (settings.MAGIC_PDF_CLI or "magic-pdf").strip() or "magic-pdf"
     cli_ok = bool(resolve_cli_command(cli))
     models_dir = resolve_magicpdf_models_dir(settings.MAGIC_PDF_MODELS_DIR)
@@ -2142,47 +1776,43 @@ async def _build_parser_statuses(
         "basic": {"enabled": True, "available": True, "message": "built-in"},
         "markitdown": _build_import_parser_status(
             "markitdown",
-            enabled=bool(settings.MARKITDOWN_ENABLED),
+            enabled=settings.MARKITDOWN_ENABLED,
             available_message="installed",
         ),
         "pandoc": _build_cli_parser_status(
-            bool(settings.PANDOC_ENABLED),
+            settings.PANDOC_ENABLED,
             resolve_cli_command(pandoc_cli) or "",
         ),
         "libreoffice": _build_cli_parser_status(
-            bool(settings.LIBREOFFICE_ENABLED),
+            settings.LIBREOFFICE_ENABLED,
             resolve_cli_command(libreoffice_cli) or "",
         ),
         "deepdoc": _build_import_parser_status(
             "app.deepdoc.parser",
-            enabled=bool(settings.DEEPDOC_ENABLED),
+            enabled=settings.DEEPDOC_ENABLED,
             available_message="available",
         ),
         "deepseek_ocr": _build_configured_parser_status(
-            bool(settings.DEEPSEEK_OCR_ENABLED),
-            bool((settings.SILICONFLOW_API_KEY or "").strip()),
+            settings.DEEPSEEK_OCR_ENABLED,
+            bool(settings.SILICONFLOW_API_KEY.strip()),
             "missing api_key",
         ),
         "etl4llm": _build_configured_parser_status(
-            bool(settings.ETL4LLM_ENABLED),
-            bool((settings.ETL4LLM_API_URL or "").strip()),
+            settings.ETL4LLM_ENABLED,
+            bool(settings.ETL4LLM_API_URL.strip()),
             _MISSING_API_URL_MESSAGE,
         ),
         "marker": _build_configured_parser_status(
-            bool(settings.MARKER_ENABLED),
-            bool((settings.MARKER_API_URL or "").strip()),
+            settings.MARKER_ENABLED,
+            bool(settings.MARKER_API_URL.strip()),
             _MISSING_API_URL_MESSAGE,
         ),
         "textin": _build_textin_parser_status(),
         "docling": await _build_probed_parser_status(
-            enabled=bool(settings.DOCLING_ENABLED),
-            api_url=(settings.DOCLING_API_URL or "").strip(),
-            headers=(
-                {"X-Api-Key": str(settings.DOCLING_API_KEY or "").strip()}
-                if str(settings.DOCLING_API_KEY or "").strip()
-                else None
-            ),
-            trust_env=bool(settings.DOCLING_HTTP_TRUST_ENV),
+            enabled=settings.DOCLING_ENABLED,
+            api_url=settings.DOCLING_API_URL.strip(),
+            headers=({"X-Api-Key": settings.DOCLING_API_KEY.strip()} if settings.DOCLING_API_KEY.strip() else None),
+            trust_env=settings.DOCLING_HTTP_TRUST_ENV,
         ),
         "mineru": _build_mineru_parser_status(),
         "magicpdf": _build_magicpdf_parser_status(
@@ -2191,63 +1821,32 @@ async def _build_parser_statuses(
         ),
     }
     parsers["qianfan_ocr"] = await _build_probed_parser_status(
-        enabled=bool(settings.QIANFAN_OCR_ENABLED),
-        api_url=(settings.QIANFAN_OCR_API_URL or "").strip(),
+        enabled=settings.QIANFAN_OCR_ENABLED,
+        api_url=settings.QIANFAN_OCR_API_URL.strip(),
         success_message_builder=lambda data: _configured_parts_message(data.get("model"), data.get("mode")),
     )
     parsers["paddle_vl"] = await _build_probed_parser_status(
-        enabled=bool(settings.PADDLE_VL_ENABLED),
-        api_url=(settings.PADDLE_VL_API_URL or "").strip(),
+        enabled=settings.PADDLE_VL_ENABLED,
+        api_url=settings.PADDLE_VL_API_URL.strip(),
         success_message_builder=lambda data: _configured_parts_message(
             data.get("pipeline_version") or data.get("version"),
             data.get("mode"),
         ),
     )
     parsers["olmocr"] = await _build_probed_parser_status(
-        enabled=bool(settings.OLMOCR_ENABLED),
-        api_url=(settings.OLMOCR_API_URL or "").strip(),
+        enabled=settings.OLMOCR_ENABLED,
+        api_url=settings.OLMOCR_API_URL.strip(),
     )
     return parsers
 
 
-def _get_database_status(session_local_factory: Callable[[], Any], text: Callable[[str], Any]) -> dict[str, object]:
-    status = {"connected": False, "message": ""}
-    try:
-        db_session = session_local_factory()
-        db_session.execute(text("SELECT 1"))
-        db_session.close()
-        status["connected"] = True
-        status["message"] = "connected"
-    except Exception as exc:  # noqa: BLE001
-        status["message"] = str(exc)[:100]
-    return status
-
-
-def _get_milvus_status(connections: Any) -> dict[str, object]:
-    status = {"connected": False, "message": ""}
-    try:
-        connections.connect(
-            alias="status_check",
-            host=settings.MILVUS_HOST,
-            port=settings.MILVUS_PORT,
-            user=settings.MILVUS_USER or None,
-            password=settings.MILVUS_PASSWORD or None,
-        )
-        connections.disconnect("status_check")
-        status["connected"] = True
-        status["message"] = "connected"
-    except Exception as exc:  # noqa: BLE001
-        status["message"] = str(exc)[:100]
-    return status
-
-
-@router.get("/status", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/status", response_model=None, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_system_status(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> dict[str, object]:
     """Get system status."""
     _ensure_settings_readable(db, tenant_id, account_id)
     from pymilvus import connections
@@ -2257,38 +1856,53 @@ async def get_system_status(
     from app.parsing.parsers.magic_pdf_parser import resolve_magicpdf_models_dir
     from app.parsing.utils.cli import resolve_cli_command
 
+    database_status = {"connected": False, "message": ""}
+    try:
+        db_session = SessionLocal()
+        db_session.execute(text("SELECT 1"))
+        db_session.close()
+        database_status["connected"] = True
+        database_status["message"] = "connected"
+    except Exception as exc:
+        database_status["message"] = str(exc)[:100]
+
+    milvus_status = {"connected": False, "message": ""}
+    try:
+        connections.connect(
+            alias="status_check",
+            host=settings.MILVUS_HOST,
+            port=settings.MILVUS_PORT,
+            user=settings.MILVUS_USER or None,
+            password=settings.MILVUS_PASSWORD or None,
+        )
+        connections.disconnect("status_check")
+        milvus_status["connected"] = True
+        milvus_status["message"] = "connected"
+    except Exception as exc:
+        milvus_status["message"] = str(exc)[:100]
+
     return {
-        "database": _get_database_status(SessionLocal, text),
-        "milvus": _get_milvus_status(connections),
+        "database": database_status,
+        "milvus": milvus_status,
         "llm": {"configured": bool(settings.LLM_API_KEY), "model": settings.LLM_MODEL},
         "embedding": {
             "configured": bool(settings.EMBEDDING_API_KEY or settings.LLM_API_KEY),
             "model": settings.EMBEDDING_MODEL,
         },
         "parsers": await _build_parser_statuses(
-            resolve_cli_command=resolve_cli_command,
-            resolve_magicpdf_models_dir=resolve_magicpdf_models_dir,
+            resolve_cli_command=resolve_cli_command, resolve_magicpdf_models_dir=resolve_magicpdf_models_dir
         ),
     }
 
 
-class TestLLMRequest(BaseModel):
-    api_key: str
-    api_base: str = Field(default_factory=_default_llm_api_base)
-    model: str
-    temperature: float = 0.0
-    timeout: int = 20
-    max_retries: int = 1
-
-
-@router.post("/llm/test", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/llm/test", response_model=None, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def test_llm_connection(
     request: TestLLMRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> dict[str, object]:
     """Test LLM connection (no config write)."""
     _ensure_settings_writable(db, tenant_id, account_id)
     from langchain_core.messages import HumanMessage
@@ -2320,15 +1934,15 @@ async def test_llm_connection(
                     model=request.model,
                     api_key=request.api_key,
                     base_url=validated_target.connect_url,
-                    temperature=float(request.temperature or 0.0),
+                    temperature=request.temperature or 0.0,
                     streaming=False,
                     timeout=timeout,
-                    max_retries=int(request.max_retries or 1),
+                    max_retries=request.max_retries or 1,
                     http_client=http_client,
                     http_async_client=http_async_client,
                 )
                 resp = await llm.ainvoke([HumanMessage(content="Say 1")])
-                content = (getattr(resp, "content", "") or "").strip()
+                content = (resp.content or "").strip()
                 if not content:
                     return {"success": False, "message": "Empty response"}
                 return {"success": True, "message": content[:200]}

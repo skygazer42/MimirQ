@@ -113,6 +113,7 @@ app/api/schemas/rag_config_template.py,3,pending,adjusted,Awaiting file-level co
 app/api/schemas/rbac.py,3,adjusted,adjusted,External role normalization and validation retained; validator input and return types declared,task-3-permission-quota: schema and route review; Ruff; AST; no Python tests
 app/api/schemas/regression.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/report.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/api/schemas/settings.py,3,adjusted,conforms,Own 26 system configuration models and shared MinerU normalization; retain defaults before validators and field constraints,Task 3 settings: original model/helper ASTs preserved apart from validator signatures; call-time LLM base default; Ruff/format
 app/api/schemas/table_store.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/utils/__init__.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/utils/http_exception_responses.py,3,conforms,conforms,Complete source review; framework and external-input boundaries retained,Task 3 common API: Ruff/format/AST/signatures; source-only verification; no Python tests
@@ -221,7 +222,7 @@ app/api/v1/retrieval_explain.py,3,pending,conforms,Awaiting file-level conventio
 app/api/v1/retrieval_profiles.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/v1/rtbf.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/v1/scim.py,3,adjusted,conforms,Typed SCIM internals and sequential membership PATCH retain protocol boundaries,Ruff and format; 13 route declarations; 42 error constructors; 99 bound calls; static source-order review; no Python tests
-app/api/v1/settings.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/api/v1/settings.py,3,adjusted,conforms,Move configuration models to schema owner; use declared scalar and request contracts; inline one-use status and serialization wrappers,Task 3 settings: 26 model ASTs; 188 fields; 84 canonical functions; 4 routes; 239 static calls; Ruff/format; Python tests deferred
 app/api/v1/usage.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/config/__init__.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/config/rerank_profile.py,7,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
