@@ -1,7 +1,7 @@
 # 全项目代码风格统一重构计划
 
 基线：`77b6adc1bce523482f0509302a454ce20e01c41c`（已推送的 codex/local-account-registration）。
-分支：codex/style-unification；独立检出。原工作区修改与未跟踪残留保留原处。
+执行分支：`codex/local-account-registration`，工作区为 `E:/MimirQ`。按用户 2026-11-02 的后续要求，已将前两批提交和第三批未提交改动迁回原分支；后续批次在该分支执行，不再另开分支。原工作区已有修改与未跟踪文件保留。
 
 ## 统一标准
 

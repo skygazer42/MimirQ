@@ -190,7 +190,7 @@ app/api/v1/evidence.py,3,pending,conforms,Awaiting file-level convention and con
 app/api/v1/evidence_capsules.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/v1/feedback.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/v1/governance.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/v1/groups.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/api/v1/groups.py,3,adjusted,conforms,Tenant-group routes use the module service and retain existing permission and audit boundaries,Task 3: group service and ACL regression; HTTP/business error mapping checked
 app/api/v1/health.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/v1/industry_rules.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/v1/ingestion_runs.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -244,7 +244,7 @@ app/core/cost_tracker.py,3,pending,conforms,Awaiting file-level convention and c
 app/core/database.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/database_singleton.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/env.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/core/exceptions.py,2,adjusted,adjusted,Module user service; explicit configuration and domain errors; callers migrated; external auth contract preserved,Task 2: 34 focused / 127 expanded auth regressions passed; Ruff check and format passed
+app/core/exceptions.py,3,adjusted,conforms,Shared business errors include NotFoundError with the existing HTTP 404 error code,Task 2 auth contracts; Task 3 group/SCIM error contracts
 app/core/health_checks.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/http_client.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/core/http_env.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -1368,7 +1368,7 @@ app/services/table_store.py,3,pending,adjusted,Awaiting file-level convention an
 app/services/table_store_service.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/table_tag_service.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/task_queue_observability_service.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/services/tenant_group_service.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/services/tenant_group_service.py,3,adjusted,conforms,Module functions; explicit business errors; typed request cache and tenant-scoped member lookups,"Task 3: 134 passed / 1 skipped; cache reuse, isolation, membership rejection, SCIM errors"
 app/services/tenant_member_provisioning_service.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/tenant_quota.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/tenant_quota_service.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -2543,6 +2543,7 @@ tests/test_table_tag_service_complexity.py,7,pending,adjusted,Awaiting file-leve
 tests/test_task_locks.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 tests/test_tcadp_parser_complexity.py,7,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 tests/test_tenant_dependency_prefers_verified_jwt_tenant.py,7,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+tests/test_tenant_group_service_contracts.py,3,adjusted,conforms,"SQLite regression for group validation, membership isolation, request cache and SCIM response",Task 3: 7 focused contracts in the 134-pass regression
 tests/test_tenant_quota.py,7,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 tests/test_tenant_rls.py,7,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 tests/test_test_inventory_contract.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
