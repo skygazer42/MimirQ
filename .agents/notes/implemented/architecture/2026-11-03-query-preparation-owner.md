@@ -14,6 +14,8 @@ The request adapter rejects malformed numeric rewrite and budget values before m
 
 `QueryVariantStageInput` carries optional int/float budget fields. Missing values retain the zero/unbounded contract; the variant stage trusts this typed boundary instead of converting malformed values into an unlimited budget.
 
+Retrieval config snapshot normalization treats malformed optional template versions as absent only for standard integer conversion failures.
+
 ## Alternatives considered
 
 - Keep flattened runtime fields as the authoritative query state: this minimizes each individual phase change, but allows phases to disagree about the prepared query and expansion results; not selected.
@@ -29,3 +31,4 @@ Query preparation, routing and query expansion have one typed owner. The orchest
 - `py_compile` and import smoke checks pass for the three modified retrieval modules.
 - All three agent-note tree, format and archive verifiers pass.
 - Python tests were not run per user instruction.
+- Ruff check and format checks pass for the query contract normalizer; Python tests were not run.

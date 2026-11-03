@@ -430,3 +430,8 @@
 
 - `query_options.py` keeps the mapping-to-typed-request boundary in one owner. Rewrite and budget numeric conversions reject malformed values; documented KG expansion defaults and multi-query caps were cross-checked against config and `.env.example`.
 - Ruff check 与 Ruff format --check 通过。本文件标记为已符合标准；Python tests 与 runtime retrieval 未运行。
+
+## 第五批：Query contract input review
+
+- `QueryContractNormalizationInput` 和层级设置保持具名 dataclass；四个生产构造点同步消费同一 `normalize_query_contract` owner。RAG template 的可选 version 字段只在标准整数转换失败时省略，超出转换边界的异常不会被吞掉。
+- Ruff check、Ruff format --check 和 diff 检查通过。本文件标记为已调整；Python tests 与 retrieval runtime 未运行。
