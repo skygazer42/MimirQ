@@ -213,7 +213,7 @@ def _retrieval_variant_counts(retrieval_plan: list[tuple[Any, Any, Any]]) -> dic
         variants: dict[str, int] = {}
         for kind, _q, _r in retrieval_plan:
             key = str(kind or "").strip() or "main"
-            variants[key] = int(variants.get(key, 0) or 0) + 1
+            variants[key] = variants.get(key, 0) + 1
         return variants
     except (TypeError, ValueError, AttributeError):
         return {}
@@ -257,7 +257,7 @@ def _citations_by_role(citations: list[dict[str, Any]]) -> dict[str, int]:
             if not isinstance(citation, dict):
                 continue
             role = str(citation.get("retrieval_role") or "main").strip().lower() or "main"
-            by_role[role] = int(by_role.get(role, 0) or 0) + 1
+            by_role[role] = by_role.get(role, 0) + 1
         return by_role
     except (TypeError, ValueError, AttributeError):
         return {}
