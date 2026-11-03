@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 
 
 def _clean_external_source(value: str) -> str:
-    source = str(value or "").strip().lower()
+    source = value.strip().lower()
     if not source:
         raise ValueError("source is required")
     if len(source) > 64:
@@ -32,7 +32,7 @@ class ExternalConversationMessageIn(BaseModel):
     @field_validator("content")
     @classmethod
     def _strip_content(cls, value: str) -> str:
-        content = str(value or "").strip()
+        content = value.strip()
         if not content:
             raise ValueError("content is required")
         return content
@@ -42,7 +42,7 @@ class ExternalConversationMessageIn(BaseModel):
     def _strip_optional_id(cls, value: str | None) -> str | None:
         if value is None:
             return None
-        cleaned = str(value).strip()
+        cleaned = value.strip()
         return cleaned or None
 
 
@@ -69,7 +69,7 @@ class ExternalConversationIngestRequest(BaseModel):
     @field_validator("source_conversation_id")
     @classmethod
     def _strip_source_conversation_id(cls, value: str) -> str:
-        cleaned = str(value or "").strip()
+        cleaned = value.strip()
         if not cleaned:
             raise ValueError("source_conversation_id is required")
         return cleaned
@@ -79,7 +79,7 @@ class ExternalConversationIngestRequest(BaseModel):
     def _strip_optional_text(cls, value: str | None) -> str | None:
         if value is None:
             return None
-        cleaned = str(value).strip()
+        cleaned = value.strip()
         return cleaned or None
 
 

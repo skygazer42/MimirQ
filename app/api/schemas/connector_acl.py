@@ -41,7 +41,7 @@ class SourcePrincipal(BaseModel):
 
     @model_validator(mode="after")
     def _normalize(self) -> "SourcePrincipal":
-        self.id = str(self.id or "").strip()
+        self.id = self.id.strip()
         if self.kind == "anyone":
             # Normal form: anyone has no id.
             self.id = ""
@@ -52,7 +52,7 @@ class SourcePrincipal(BaseModel):
             raise ValueError("id is required")
 
         if self.display is not None:
-            d = str(self.display or "").strip()
+            d = self.display.strip()
             self.display = d or None
         return self
 
@@ -78,9 +78,7 @@ class SourceAcl(BaseModel):
     def _normalize(self) -> "SourceAcl":
         cleaned: list[SourcePrincipal] = []
         seen: set[str] = set()
-        for p in self.principals or []:
-            if not isinstance(p, SourcePrincipal):
-                continue
+        for p in self.principals:
             k = p.key()
             if k in seen:
                 continue
@@ -140,12 +138,8 @@ class ConnectorSourceAclConfig(BaseModel):
         # De-dupe mapping rules (keep stable order; cap again for defense-in-depth).
         cleaned: list[SourceAclGroupMappingRule] = []
         seen: set[tuple[str, UUID]] = set()
-        for rule in self.group_mappings or []:
-            src = getattr(rule, "source", None)
-            gid = getattr(rule, "group_id", None)
-            if src is None or gid is None:
-                continue
-            key = (src.key(), gid)
+        for rule in self.group_mappings:
+            key = (rule.source.key(), rule.group_id)
             if key in seen:
                 continue
             seen.add(key)

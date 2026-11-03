@@ -477,6 +477,13 @@
 - Dataset profile summary and health response schemas use typed fields/default factories and compose the declared profile and ingestion owners. The dataset health route returns the matching response model; the profile service declares `DatasetProfileSummary` as its return type.
 - Ruff check 与 Ruff format --check 通过。两份 schema 标记为符合标准；Python tests 和 API runtime 未运行。
 
+## 第三批：Chat and integration request schemas
+
+- Chat fusion validators rely on Pydantic's declared `dict[str, int/float]` field types while retaining channel allowlists, value bounds, empty-map policy, retrieval-profile application, and TokenUsage `model_fields_set` behavior. `MessageSchema.citations` uses a per-instance default factory.
+- Connector ACL after-validators consume typed principals/rules directly; list bounds, `anyone` normalization, explicit opt-in, and fail-closed defaults remain. Evidence patch models read Pydantic v2 `model_fields_set` directly and still reject empty patches.
+- External conversation validators trim declared string fields after Pydantic type validation; source allowlist, string/list bounds, and non-empty requirements remain. Request/response schema fields did not change.
+- Ruff check、Ruff format --check 与 diff check 通过。Python tests 与 API runtime 未运行；invalid-input responses remain schema validation failures, but exact payloads were not runtime-tested.
+
 ## 第三批：Table SQL fingerprint utility
 
 - Fingerprint normalization consumes its declared string input directly; whitespace, identifier normalization, literal preservation, and default digest length remain unchanged. The four production callers pass SQL text; the table-store boundary performs its explicit conversion before calling.
