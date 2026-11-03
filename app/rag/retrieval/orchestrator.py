@@ -46,6 +46,13 @@ from app.rag.policy.must_recall_auto import (
     infer_required_anchor_fields,
 )
 from app.rag.policy.recall_obligation import build_must_recall_proof
+from app.rag.rerank_result_cache import (
+    build_evidence_post_rerank_cache_key,
+    fingerprint_rerank_candidates,
+    get_cached_evidence_post_rerank_result,
+    get_evidence_post_rerank_cache_backend,
+    set_cached_evidence_post_rerank_result,
+)
 from app.rag.reranker.types import RerankCandidate
 from app.rag.retrieval.contextual_followup import build_contextual_followup_query
 from app.rag.retrieval.contract import resolve_retrieval_contract_policy
@@ -358,13 +365,6 @@ from app.rag.retrieval.orchestration.out_of_scope_live_gate import (
 from app.rag.retrieval.orchestration.query_contract import (
     RetrievalConfigSnapshotInput,
     build_retrieval_config_snapshot,
-)
-from app.rag.rerank_result_cache import (
-    build_evidence_post_rerank_cache_key,
-    fingerprint_rerank_candidates,
-    get_cached_evidence_post_rerank_result,
-    get_evidence_post_rerank_cache_backend,
-    set_cached_evidence_post_rerank_result,
 )
 from app.rag.retrieval.orchestration.query_contracts import (
     QueryPreparationOverrides,
