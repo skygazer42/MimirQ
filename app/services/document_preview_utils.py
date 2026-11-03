@@ -453,7 +453,7 @@ def _preview_page_text_by_index(documents: list[Document]) -> dict[int, str]:
         meta = dict(getattr(doc, "metadata", None) or {})
         try:
             page_index = int(meta.get("page_index") or (i + 1))
-        except Exception:
+        except (OverflowError, TypeError, ValueError):
             page_index = i + 1
         page_text[page_index] = str(doc.page_content or "")
     return page_text
@@ -464,7 +464,7 @@ def _preview_page_index_of(chunk: Document) -> int | None:
     raw = meta.get("page_index")
     try:
         return int(raw) if raw is not None else None
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         return None
 
 
@@ -472,7 +472,7 @@ def _preview_local_range(meta: dict[str, Any]) -> tuple[int, int] | None:
     try:
         start = int(meta.get("start_char")) if meta.get("start_char") is not None else None
         end = int(meta.get("end_char")) if meta.get("end_char") is not None else None
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         return None
     if start is None or end is None or end < start:
         return None
@@ -1127,18 +1127,6 @@ def _compute_chunk_coverage_metrics_from_ranges(
     return compute_chunk_coverage_metrics_from_ranges(ranges, total_characters=total_characters)
 
 
-def _safe_nonnegative_int_values(values: list[int]) -> list[int]:
-    out: list[int] = []
-    for value in values or []:
-        try:
-            number = int(value)
-        except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
-        out.append(max(0, number))
-    return out
-
-
 def _chunk_histogram_step(max_value: int, *, unit: Literal["chars", "tokens"], target_bins: int) -> int:
     bins = max(3, min(12, int(target_bins or 8)))
     base = 25 if unit == "tokens" else 50
@@ -1184,7 +1172,7 @@ def _compute_chunk_length_histogram(
     - Bin bounds are best-effort; the UI should treat them as descriptive, not strict.
     - We keep bin widths "round" to keep charts readable.
     """
-    values = _safe_nonnegative_int_values(lengths)
+    values = lengths
     if not values:
         return []
 
@@ -1198,7 +1186,7 @@ def _compute_chunk_length_histogram(
 def _chunk_preview_int(value: object, *, default: int = 0) -> int:
     try:
         return int(value) if value is not None else default
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         return default
 
 
