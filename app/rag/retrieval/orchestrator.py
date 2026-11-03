@@ -30,18 +30,12 @@ from app.rag.core.evidence_expectations import (
 )
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
-from app.rag.core.query_rewrite_strategy import (
-    build_query_rewrite_strategy_spec,
-    get_query_rewrite_prompt_template,
-)
 from app.rag.core.temporal import (
     apply_recency_boost,
-    detect_temporal_intent,
     fetch_document_updated_ts,
 )
 from app.rag.engine_support.doc_utils import DocUtilsMixin
 from app.rag.engine_support.query_model_calls import EngineQueryModels
-from app.rag.industry_rules.runtime import apply_industry_rules_query_expansion
 from app.rag.policy.must_recall import (
     MUST_RECALL_FAIL_REASON_TAXONOMY_V1,
     build_must_recall_fail_reasons,
@@ -377,16 +371,26 @@ from app.rag.retrieval.orchestration.query_contract import (
     RetrievalConfigSnapshotInput,
     build_retrieval_config_snapshot,
 )
-from app.rag.retrieval.orchestration.query_contracts import KGQueryRequest, KGQueryScope, ModelQuerySettings
+from app.rag.retrieval.orchestration.query_contracts import (
+    KGQueryRequest,
+    KGQueryScope,
+    ModelQuerySettings,
+    QueryPreparationOverrides,
+    RetrievalRequest,
+)
 from app.rag.retrieval.orchestration.query_invocation import (
     QueryInvocationRecordInput,
     build_query_invocation_record,
 )
 from app.rag.retrieval.orchestration.query_options import (
+    QUERY_PLANNING_OPTION_KEYS,
     parse_model_query_overrides,
+    parse_query_expansion_budget,
     resolve_kg_expansion_settings,
     resolve_model_query_settings,
+    resolve_query_preparation_request,
 )
+from app.rag.retrieval.orchestration.query_planning import prepare_query
 from app.rag.retrieval.orchestration.query_variants import (
     QueryVariantStageInput,
     build_query_variant_stage,
@@ -479,13 +483,6 @@ def get_rag_engine():  # noqa: ANN201
     from app.rag.engine import get_rag_engine as _get_rag_engine
 
     return _get_rag_engine()
-
-
-def _get_langchain_text_pipeline_primitives() -> tuple[Any, Any]:
-    from langchain_core.output_parsers import StrOutputParser
-    from langchain_core.prompts import ChatPromptTemplate
-
-    return ChatPromptTemplate, StrOutputParser
 
 
 def _get_kg_search() -> Any:
@@ -1109,6 +1106,33 @@ def _filter_strict_span_citations(
     return filtered_items, missing_count
 
 
+def _build_retrieval_request(state: dict[str, Any], *, question: str, history_text: str) -> RetrievalRequest:
+    rewrite_temperature = state.get("query_rewrite_temperature")
+    rewrite_max_chars = state.get("query_rewrite_max_chars")
+    overrides = QueryPreparationOverrides(
+        enable_rewrite=None if state.get("enable_query_rewrite") is None else bool(state["enable_query_rewrite"]),
+        rewrite_strategy=state.get("query_rewrite_strategy"),
+        rewrite_temperature=None if rewrite_temperature is None else float(rewrite_temperature),
+        rewrite_max_chars=None if rewrite_max_chars is None else int(rewrite_max_chars),
+        sparse_enabled=(
+            None if state.get("sparse_retrieval_enabled") is None else bool(state["sparse_retrieval_enabled"])
+        ),
+        sparse_provider=state.get("sparse_retrieval_provider"),
+        industry_enabled=(
+            None if state.get("industry_rules_enabled") is None else bool(state["industry_rules_enabled"])
+        ),
+        industry_rulesets=state.get("industry_rules_rulesets"),
+    )
+    preparation = resolve_query_preparation_request(
+        question,
+        history_text,
+        overrides,
+        temporal_enabled=bool(getattr(settings, "RAG_TEMPORAL_INTENT_ENABLED", False)),
+    )
+    options = {key: state[key] for key in QUERY_PLANNING_OPTION_KEYS if key in state}
+    return RetrievalRequest(preparation, options, parse_query_expansion_budget(options))
+
+
 def _prepare_query_phase(
     state: dict[str, Any],
     *,
@@ -1116,145 +1140,29 @@ def _prepare_query_phase(
     history_text: str,
     llm_engine_factory: Any,
 ) -> dict[str, Any]:
-    from app.rag.retrieval.sparse import normalize_sparse_provider_name
-
-    query_for_retrieval = question
-    rewrite_elapsed = 0.0
-    rewrite_used = False
-    rewrite_model_used = None
-    rewrite_strategy_id: str | None = None
-    rewrite_strategy_hash: str | None = None
-    rewrite_temperature: float | None = None
-    rewrite_max_chars: int | None = None
-
-    sparse_enabled_override = state.get("sparse_retrieval_enabled")
-    sparse_enabled = (
-        bool(sparse_enabled_override)
-        if sparse_enabled_override is not None
-        else bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False))
+    request = _build_retrieval_request(state, question=question, history_text=history_text)
+    prepared = prepare_query(
+        request.preparation,
+        models=EngineQueryModels(llm_engine_factory),
     )
-    sparse_provider_raw = state.get("sparse_retrieval_provider")
-    sparse_provider = normalize_sparse_provider_name(
-        str(
-            sparse_provider_raw
-            if sparse_provider_raw is not None
-            else (getattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "deterministic") or "deterministic")
-        )
-    )
-
-    industry_rules_meta: dict[str, Any] = {"enabled": False, "used": False}
-    temporal_intent_enabled = bool(getattr(settings, "RAG_TEMPORAL_INTENT_ENABLED", False))
-    temporal_intent_meta: dict[str, Any] = {"detected": False, "reason_codes": []}
-    temporal_recency_meta: dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
-
-    rewrite_enabled_req = state.get("enable_query_rewrite")
-    rewrite_enabled = (
-        bool(rewrite_enabled_req) if rewrite_enabled_req is not None else bool(settings.ENABLE_QUERY_REWRITE)
-    )
-    if rewrite_enabled:
-        spec = build_query_rewrite_strategy_spec(
-            state.get("query_rewrite_strategy") or getattr(settings, "QUERY_REWRITE_STRATEGY", None)
-        )
-        rewrite_strategy_id = str(spec.get("strategy_id") or "").strip() or None
-        rewrite_strategy_hash = str(spec.get("strategy_hash") or "").strip() or None
-        try:
-            rewrite_temperature = float(
-                (
-                    settings.QUERY_REWRITE_TEMPERATURE
-                    if state.get("query_rewrite_temperature") is None
-                    else state.get("query_rewrite_temperature")
-                )
-                or 0.0
-            )
-        except (TypeError, ValueError, AttributeError):
-            rewrite_temperature = 0.0
-        try:
-            rewrite_max_chars = int(
-                (
-                    settings.QUERY_REWRITE_MAX_CHARS
-                    if state.get("query_rewrite_max_chars") is None
-                    else state.get("query_rewrite_max_chars")
-                )
-                or 0
-            )
-        except (TypeError, ValueError, AttributeError):
-            rewrite_max_chars = 0
-
-    if (
-        bool(rewrite_enabled)
-        and history_text != "(No conversation history)"
-        and len(question) <= int(rewrite_max_chars or 0)
-        and should_rewrite_query(question)
-    ):
-        rewrite_engine = llm_engine_factory()
-        rewrite_llm = rewrite_engine.models.get("fast") or rewrite_engine.models.get("default")  # type: ignore[attr-defined]
-        rewrite_model_used = getattr(rewrite_llm, "model_name", None) or getattr(rewrite_llm, "model", None)
-        try:
-            chat_prompt_template_cls, str_output_parser_cls = _get_langchain_text_pipeline_primitives()
-            prompt_template = get_query_rewrite_prompt_template(rewrite_strategy_id)
-            rewrite_prompt = chat_prompt_template_cls.from_template(prompt_template)
-            rewrite_chain = rewrite_prompt | rewrite_llm.bind(temperature=rewrite_temperature) | str_output_parser_cls()
-            rewrite_start = time.time()
-            rewritten = rewrite_chain.invoke({"history": history_text, "question": question})
-            rewrite_elapsed = time.time() - rewrite_start
-            rewritten = (rewritten or "").strip().strip('"')
-            if rewritten:
-                query_for_retrieval = rewritten
-        except Exception as exc:  # noqa: BLE001
-            _log_orchestrator_fallback("_prepare_query_phase", exc)
-            query_for_retrieval = question
-            rewrite_elapsed = 0.0
-        rewrite_used = query_for_retrieval != question
-
-    industry_rules_enabled_req = state.get("industry_rules_enabled")
-    industry_rules_enabled = (
-        bool(industry_rules_enabled_req)
-        if industry_rules_enabled_req is not None
-        else bool(getattr(settings, "RAG_INDUSTRY_RULES_ENABLED", False))
-    )
-    try:
-        query_for_retrieval, industry_rules_meta = apply_industry_rules_query_expansion(
-            query_for_retrieval,
-            enabled=industry_rules_enabled,
-            ruleset_names=(
-                state.get("industry_rules_rulesets")
-                if state.get("industry_rules_rulesets") is not None
-                else getattr(settings, "RAG_INDUSTRY_RULES_RULESETS", "")
-            ),
-            max_aliases=int(getattr(settings, "RAG_INDUSTRY_RULES_MAX_ALIASES", 16) or 16),
-            max_query_chars=int(getattr(settings, "RAG_INDUSTRY_RULES_MAX_QUERY_CHARS", 2000) or 2000),
-        )
-    except Exception as exc:  # noqa: BLE001
-        _log_orchestrator_fallback("_prepare_query_phase", exc)
-        industry_rules_meta = {
-            "enabled": bool(industry_rules_enabled),
-            "used": False,
-            "error": f"industry_rules_exception:{str(exc)[:160]}",
-        }
-
-    if temporal_intent_enabled:
-        try:
-            temporal_intent_meta = detect_temporal_intent(query_for_retrieval)
-        except Exception as exc:  # noqa: BLE001
-            _log_orchestrator_fallback("_prepare_query_phase", exc)
-            temporal_intent_meta = {"detected": False, "reason_codes": [], "error": str(exc)[:200]}
-
+    rewrite = prepared.rewrite
+    rewrite_configuration = rewrite.configuration
     return {
-        "query_for_retrieval": query_for_retrieval,
-        "rewrite_elapsed": rewrite_elapsed,
-        "rewrite_used": rewrite_used,
-        "rewrite_model_used": rewrite_model_used,
-        "rewrite_strategy_id": rewrite_strategy_id,
-        "rewrite_strategy_hash": rewrite_strategy_hash,
-        "rewrite_temperature": rewrite_temperature,
-        "rewrite_max_chars": rewrite_max_chars,
-        "rewrite_enabled": rewrite_enabled,
-        "sparse_enabled": sparse_enabled,
-        "sparse_provider": sparse_provider,
-        "industry_rules_meta": industry_rules_meta,
-        "temporal_intent_enabled": temporal_intent_enabled,
-        "temporal_intent_meta": temporal_intent_meta,
-        "temporal_recency_meta": temporal_recency_meta,
+        "query_for_retrieval": prepared.query,
+        "rewrite_elapsed": rewrite.elapsed_sec,
+        "rewrite_used": rewrite.used,
+        "rewrite_model_used": rewrite.model_used,
+        "rewrite_strategy_id": rewrite.strategy_id,
+        "rewrite_strategy_hash": rewrite.strategy_hash,
+        "rewrite_temperature": rewrite_configuration.temperature if rewrite_configuration else None,
+        "rewrite_max_chars": rewrite_configuration.max_chars if rewrite_configuration else None,
+        "rewrite_enabled": rewrite.enabled,
+        "sparse_enabled": prepared.sparse.enabled,
+        "sparse_provider": prepared.sparse.provider,
+        "industry_rules_meta": prepared.industry.metadata,
+        "temporal_intent_enabled": prepared.temporal.enabled,
+        "temporal_intent_meta": prepared.temporal.metadata,
+        "temporal_recency_meta": {"enabled": False, "used": False, "reason": "not_run"},
     }
 
 
