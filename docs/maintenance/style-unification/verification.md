@@ -445,3 +445,8 @@
 
 - Anchor annotation reads the declared `Document.id` and metadata fields directly; optional list elements are still skipped unless they are `Document` instances. Float metadata retains defaults for standard numeric conversion failures, including overflow.
 - Ruff check、Ruff format --check、diff check 和 stale-guard scan 通过。本文件标记为已调整；Python tests 与 retrieval runtime 未运行。
+
+## 第三批：Conversation title service
+
+- Conversation title/title_source 与 message content 按声明 ORM 字段读取；title_source 的 migration 是 NOT NULL。自动标题派生保留 None/空标题处理，latest-user query 保持 tenant/conversation/role 过滤及时间、ID 排序。
+- Ruff check、Ruff format --check 与 `git diff --check` 通过。本文件标记为已调整；Python tests 和数据库流程未运行。
