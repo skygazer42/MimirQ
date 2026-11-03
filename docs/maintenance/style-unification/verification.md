@@ -499,6 +499,11 @@
 - Helper now declares `dict[str, Any] | None` and uses the typed boolean value directly; malformed/missing telemetry layers still produce bounded `unknown` labels so optional metrics do not affect retrieval.
 - Ruff check、Ruff format --check 与 diff check 通过。本文件标记为已调整；Python tests 与 metrics runtime 未运行。
 
+## 第三批：QA, feedback, and ingestion-run schemas
+
+- QA generation request bounds and response fields align with `document_qa_service`; feedback request/output fields align with the route and ORM model; ingestion-run response models align with the route projection and use factories for JSON/list defaults.
+- Ruff check 与 Ruff format --check 通过。三份 schema 标记为符合标准；Python tests 与 API runtime 未运行。
+
 ## 第三批：Corpus cache invalidation transaction
 
 - Single-dataset lookup now returns no token when the tenant-scoped dataset row is missing, matching document and multi-dataset scope behavior. Cache invalidation requires `Session.flush()` and propagates database failure; the service does not take ownership of commit.
