@@ -33,7 +33,7 @@ INGESTION_PROCESSING_STAGE_TOTAL = Gauge(
 
 
 def _enabled() -> bool:
-    return bool(settings.PROMETHEUS_ENABLED)
+    return settings.PROMETHEUS_ENABLED
 
 
 def _norm_kind(value: str | None) -> str:
