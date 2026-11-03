@@ -4,7 +4,7 @@ import * as React from "react"
 import { useTranslations } from 'next-intl'
 import { cn } from "@/lib/utils"
 
-interface PageLoadingProps {
+type PageLoadingProps = {
   /**
    * 中文提示文字，默认 "正在加载..."
    */

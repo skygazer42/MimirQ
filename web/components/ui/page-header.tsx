@@ -3,7 +3,7 @@ import { MANAGEMENT_HERO_PANEL_CLASS } from "@/components/ui/knowledge-ops-hero"
 import { PageTitleIcon, type PageTitleIconName } from "@/components/ui/page-title-icon"
 import { cn } from "@/lib/utils"
 
-interface PageHeaderProps {
+type PageHeaderProps = {
   title: React.ReactNode
   description?: React.ReactNode
   icon?: LucideIcon

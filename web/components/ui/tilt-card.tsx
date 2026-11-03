@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from "react"
 import { motion, useMotionValue, useReducedMotion, useSpring, useTransform } from "framer-motion"
 import { cn } from "@/lib/utils"
 
-interface TiltCardProps {
+type TiltCardProps = {
   children: React.ReactNode
   className?: string
   onClick?: () => void

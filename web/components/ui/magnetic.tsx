@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from "react"
 import { motion, useMotionValue, useReducedMotion, useSpring } from "framer-motion"
 
-interface MagneticProps {
+type MagneticProps = {
   children: React.ReactElement
   strength?: number
 }

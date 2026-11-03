@@ -4,8 +4,7 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-export interface SwitchProps
-  extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "onChange"> {
+export type SwitchProps = Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'onChange'> & {
   readonly checked?: boolean
   readonly defaultChecked?: boolean
   readonly onCheckedChange?: (checked: boolean) => void

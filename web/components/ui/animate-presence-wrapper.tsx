@@ -33,7 +33,7 @@ const presets = {
 
 type Preset = keyof typeof presets
 
-interface AnimatedPresenceProps extends Omit<HTMLMotionProps<"div">, "initial" | "animate" | "exit" | "transition"> {
+type AnimatedPresenceProps = Omit<HTMLMotionProps<'div'>, 'initial' | 'animate' | 'exit' | 'transition'> & {
   show: boolean
   preset?: Preset
   children: React.ReactNode

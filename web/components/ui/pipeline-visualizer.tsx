@@ -4,7 +4,7 @@ import { FileText, ScanLine, Scissors, Database, CheckCircle2 } from "lucide-rea
 import { useTranslations } from 'next-intl'
 import { cn } from "@/lib/utils"
 
-interface PipelineVisualizerProps {
+type PipelineVisualizerProps = {
   progress: number // 0 - 100
   stage?: string
   className?: string

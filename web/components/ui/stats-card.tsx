@@ -3,7 +3,7 @@
 import { cn } from '@/lib/utils'
 import { LucideIcon } from 'lucide-react'
 
-interface StatCardProps {
+type StatCardProps = {
   icon: LucideIcon
   label: string
   value: string | number

@@ -28,9 +28,7 @@ const panelVariants = cva(
   }
 )
 
-export interface PanelProps
-  extends React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof panelVariants> {}
+export type PanelProps = React.HTMLAttributes<HTMLDivElement> & VariantProps<typeof panelVariants>
 
 export function Panel({ className, variant, padding, ...props }: Readonly<PanelProps>) {
   return <div className={cn(panelVariants({ variant, padding }), className)} {...props} />

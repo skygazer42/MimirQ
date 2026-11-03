@@ -23,7 +23,7 @@ const STREAM_WAIT_MS = 50
 const NEWLINE_DELAY_MS = 60
 const PUNCTUATION_DELAY_MS = 140
 
-interface CinematicTypewriterProps {
+type CinematicTypewriterProps = {
   readonly content: string
   readonly onComplete?: () => void
   readonly isStreaming?: boolean

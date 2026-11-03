@@ -3,12 +3,12 @@
 import { cn } from '@/lib/utils'
 import { Check } from 'lucide-react'
 
-interface Step {
+type Step = {
   label: string
   description?: string
 }
 
-interface StepIndicatorProps {
+type StepIndicatorProps = {
   steps: Step[]
   currentStep: number
   className?: string

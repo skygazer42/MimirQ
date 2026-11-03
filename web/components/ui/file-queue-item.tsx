@@ -71,7 +71,7 @@ function getFileQueueSelectionClass(isSelected: boolean): string {
 
 export type FileStatus = 'pending' | 'parsing' | 'parsed' | 'error'
 
-export interface FileQueueItemData {
+export type FileQueueItemData = {
   id: string
   name: string
   size: number
@@ -87,7 +87,7 @@ export interface FileQueueItemData {
   governanceStatus?: 'draft' | 'ready' | 'submitted'
 }
 
-interface FileQueueItemProps {
+type FileQueueItemProps = {
   file: FileQueueItemData
   isActive?: boolean
   isSelected?: boolean
