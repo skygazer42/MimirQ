@@ -3,9 +3,9 @@
 import { SettingsSwitch } from '@/components/settings/settings-switch'
 import { Input } from '@/components/ui/input'
 import { settingsTextTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
-import type { ObservabilityConfig } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { Eye, FileSearch, Settings2 } from 'lucide-react'
+import type { ObservabilityConfig } from '@/types/settings'
 
 type ObservabilitySectionProps = {
   observability: ObservabilityConfig
