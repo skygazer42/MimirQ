@@ -16,8 +16,8 @@ class WatermarkSuppressResult:
     def to_metadata(self) -> dict[str, Any]:
         return {
             "schema": "mimirq.watermark_suppressor.v1",
-            "changed": bool(self.changed),
-            "masked_regions": int(self.masked_regions),
+            "changed": self.changed,
+            "masked_regions": self.masked_regions,
             "reasons": list(self.reasons),
         }
 
@@ -51,7 +51,7 @@ def suppress_watermark_regions(
     draw = ImageDraw.Draw(out)
     masked = 0
     reasons: list[str] = []
-    for box in boxes or []:
+    for box in boxes:
         rect = _bbox(box, width=width, height=height)
         if rect is None:
             continue
@@ -73,7 +73,7 @@ def suppress_watermark_file(
     if result.changed:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         result.image.save(output_path)
-    return bool(result.changed), result.to_metadata()
+    return result.changed, result.to_metadata()
 
 
 __all__ = ["WatermarkSuppressResult", "suppress_watermark_file", "suppress_watermark_regions"]
