@@ -1210,7 +1210,7 @@ def _query_previous_scan_run(
 
 
 def _resolve_reusable_jsonl_path(*, tenant_id: UUID, prev_run: DBDatasetPrecheckScanRun) -> Path | None:
-    prev_artifacts = getattr(prev_run, "artifacts", None)
+    prev_artifacts = prev_run.artifacts
     prev_artifacts = prev_artifacts if isinstance(prev_artifacts, dict) else {}
     prev_jsonl_raw = str(prev_artifacts.get("files_jsonl") or "").strip()
     prev_jsonl = Path(prev_jsonl_raw) if prev_jsonl_raw else None
@@ -1257,7 +1257,7 @@ def _load_previous_records(
     if prev_run is None:
         return {}
 
-    prev_cfg = dict(getattr(prev_run, "config", None) or {})
+    prev_cfg = dict(prev_run.config or {})
     prev_root = str(prev_cfg.get("root_path") or "").strip()
     if not prev_root or prev_root != options.root_path or bool(prev_cfg.get("redact_paths", False)):
         logger.info("Skip reuse_unchanged_files due to root_path mismatch or redacted prev run")
@@ -1265,7 +1265,7 @@ def _load_previous_records(
     if _reuse_cfg_subset(options.cfg) != _reuse_cfg_subset(prev_cfg):
         logger.info(
             "Skip reuse_unchanged_files due to config mismatch (scan_run_id=%s)",
-            str(getattr(prev_run, "id", "")),
+            str(prev_run.id),
         )
         return {}
 
@@ -2506,7 +2506,7 @@ def run_dataset_precheck_scan(
     dataset_metadata = dict(dataset_metadata_raw) if isinstance(dataset_metadata_raw, dict) else {}
     _mark_run_running(db, run)
 
-    cfg = dict(getattr(run, "config", None) or {})
+    cfg = dict(run.config or {})
     options = _build_scan_options(cfg=cfg)
     root = _validate_scan_root(cfg=cfg, root_path=options.root_path)
     reuse_from_scan_run_id = _parse_reuse_scan_run_id(cfg)
@@ -2559,7 +2559,7 @@ def run_dataset_precheck_scan(
         db.commit()
         try:
             db.refresh(run)
-            if str(getattr(run, "status", "") or "").lower() == "cancelled":
+            if str(run.status or "").lower() == "cancelled":
                 state.cancelled = True
         except Exception as exc:
             logger.debug(_PRECHECK_RUNNER_FALLBACK_LOG_MESSAGE, exc)

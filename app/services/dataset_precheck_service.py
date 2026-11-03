@@ -81,7 +81,7 @@ def _precheck_sample_reviews_path_for_row(
     *,
     tenant_id: UUID,
 ) -> Path:
-    artifacts = getattr(row, "artifacts", None)
+    artifacts = row.artifacts
     artifacts = artifacts if isinstance(artifacts, dict) else {}
 
     raw = str(artifacts.get("sample_reviews_json") or "").strip()
@@ -120,7 +120,7 @@ def get_dataset_for_precheck(
 
 
 def _scan_run_out_from_row(row: DBDatasetPrecheckScanRun) -> dict[str, Any]:
-    cfg = getattr(row, "config", None)
+    cfg = row.config
     if not isinstance(cfg, dict):
         cfg = {}
     # Redact root_path in API responses when requested.
@@ -128,10 +128,10 @@ def _scan_run_out_from_row(row: DBDatasetPrecheckScanRun) -> dict[str, Any]:
         cfg = dict(cfg)
         cfg["root_path"] = "[REDACTED]"
 
-    summary = getattr(row, "summary", None)
+    summary = row.summary
     if not isinstance(summary, dict):
         summary = {}
-    artifacts = getattr(row, "artifacts", None)
+    artifacts = row.artifacts
     if not isinstance(artifacts, dict):
         artifacts = {}
     if bool(cfg.get("redact_paths", False)) and "root_path" in artifacts:
@@ -142,23 +142,23 @@ def _scan_run_out_from_row(row: DBDatasetPrecheckScanRun) -> dict[str, Any]:
         "id": row.id,
         "tenant_id": row.tenant_id,
         "dataset_id": row.dataset_id,
-        "requested_by": getattr(row, "requested_by", None),
-        "kind": str(getattr(row, "kind", "") or "path"),
-        "status": str(getattr(row, "status", "") or "pending"),
-        "progress": int(getattr(row, "progress", 0) or 0),
+        "requested_by": row.requested_by,
+        "kind": str(row.kind or "path"),
+        "status": str(row.status or "pending"),
+        "progress": int(row.progress or 0),
         "config": cfg,
         "summary": summary,
         "artifacts": artifacts,
-        "error_message": getattr(row, "error_message", None),
-        "started_at": getattr(row, "started_at", None),
-        "finished_at": getattr(row, "finished_at", None),
-        "created_at": getattr(row, "created_at", None),
-        "updated_at": getattr(row, "updated_at", None),
+        "error_message": row.error_message,
+        "started_at": row.started_at,
+        "finished_at": row.finished_at,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
     }
 
 
 def load_precheck_summary_from_row(row: DBDatasetPrecheckScanRun) -> DatasetPrecheckSummary:
-    raw = getattr(row, "summary", None)
+    raw = row.summary
     if not isinstance(raw, dict) or not raw:
         raise HTTPException(status_code=404, detail="Summary not available")
     try:
@@ -307,7 +307,7 @@ def load_precheck_samples_from_row(
     """
     size_n = max(0, min(int(size or 0), 2000))
 
-    artifacts = getattr(row, "artifacts", None)
+    artifacts = row.artifacts
     artifacts = artifacts if isinstance(artifacts, dict) else {}
 
     if prefer_artifact:
@@ -412,7 +412,7 @@ def upsert_precheck_sample_review_for_row(
     reviews[str(file_name)] = review
     path.write_text(json.dumps(reviews, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    artifacts = dict(getattr(row, "artifacts", None) or {})
+    artifacts = dict(row.artifacts or {})
     artifacts["sample_reviews_json"] = str(path)
     row.artifacts = artifacts
     return review
@@ -423,7 +423,7 @@ def load_precheck_near_dups_from_row(
     *,
     tenant_id: UUID,
 ) -> dict[str, Any]:
-    artifacts = getattr(row, "artifacts", None)
+    artifacts = row.artifacts
     artifacts = artifacts if isinstance(artifacts, dict) else {}
     raw = str(artifacts.get("near_dups_json") or "").strip()
     if not raw:
@@ -481,7 +481,7 @@ def _jsonl_path_from_row(
     *,
     tenant_id: UUID,
 ) -> Path:
-    artifacts = getattr(row, "artifacts", None)
+    artifacts = row.artifacts
     if not isinstance(artifacts, dict):
         artifacts = {}
     return _jsonl_path_from_artifacts(artifacts, tenant_id=tenant_id)
@@ -546,7 +546,7 @@ def list_precheck_finding_files(
     if row is None:
         raise HTTPException(status_code=404, detail="Scan run not found")
 
-    artifacts = getattr(row, "artifacts", None)
+    artifacts = row.artifacts
     if not isinstance(artifacts, dict):
         artifacts = {}
     jsonl_path = _jsonl_path_from_artifacts(artifacts, tenant_id=tenant_id)
@@ -583,7 +583,7 @@ def list_precheck_files_by_dir_prefix(
     if row is None:
         raise HTTPException(status_code=404, detail="Scan run not found")
 
-    artifacts = getattr(row, "artifacts", None)
+    artifacts = row.artifacts
     if not isinstance(artifacts, dict):
         artifacts = {}
     jsonl_path = _jsonl_path_from_artifacts(artifacts, tenant_id=tenant_id)
