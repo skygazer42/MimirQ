@@ -1,6 +1,6 @@
 import type { Citation } from '@/types'
 
-export interface RankedEvidenceCitation {
+export type RankedEvidenceCitation = {
   citation: Citation
   score: number
   hits: string[]

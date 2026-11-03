@@ -6,7 +6,7 @@ import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { cn } from "@/lib/utils"
 
-interface HolographicRadarProps {
+type HolographicRadarProps = {
   data: Array<{ subject: string; score: number; fullMark: number }>
   className?: string
 }

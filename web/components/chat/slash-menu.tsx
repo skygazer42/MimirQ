@@ -19,7 +19,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 
-interface SlashMenuProps {
+type SlashMenuProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSelect: (command: string) => void

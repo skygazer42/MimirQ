@@ -5,7 +5,7 @@ import { X, Mic, MicOff } from "lucide-react"
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 
-interface VoiceModeOverlayProps {
+type VoiceModeOverlayProps = {
     isOpen: boolean
     onClose: () => void
     onSend: (text: string) => void

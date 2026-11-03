@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import MiniSearch from 'minisearch'
 
-interface SearchItem {
+type SearchItem = {
   id: string
   [key: string]: unknown
 }

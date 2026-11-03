@@ -12,7 +12,7 @@ import { IconButton } from '@/components/ui/icon-button'
 import { cn, formatDate } from '@/lib/utils'
 import type { DocumentVersionList } from '@/types'
 
-interface DocumentVersionsDialogProps {
+type DocumentVersionsDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   activePipelineHash: string | null | undefined

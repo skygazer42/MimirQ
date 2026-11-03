@@ -52,7 +52,7 @@ const COLOR_MAP = {
   magicpdf: { bg: 'bg-accent/10', text: 'text-accent' },
 }
 
-interface ParserDropdownProps {
+type ParserDropdownProps = {
   value: string
   onChange: (value: string) => void
   className?: string

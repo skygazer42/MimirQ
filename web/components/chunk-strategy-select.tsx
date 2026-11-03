@@ -6,7 +6,7 @@ import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { Layers } from 'lucide-react'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 
-interface ChunkStrategySelectProps {
+type ChunkStrategySelectProps = {
   label?: string
   className?: string
   compact?: boolean

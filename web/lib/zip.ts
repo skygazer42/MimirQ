@@ -1,4 +1,4 @@
-export interface ExtractedZipFile {
+export type ExtractedZipFile = {
   file: File
   path: string
 }

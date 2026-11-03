@@ -9,7 +9,7 @@ import { ProviderIcon } from '@/components/provider-icon'
 import { Badge } from '@/components/ui/badge'
 import type { ModelProvider } from '@/types/models'
 
-interface ModelProviderCardProps {
+type ModelProviderCardProps = {
   provider: ModelProvider
   onConfigure: (provider: ModelProvider) => void
 }

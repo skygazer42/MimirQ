@@ -4,7 +4,7 @@
  */
 import Image from 'next/image'
 
-interface ProviderIconProps {
+type ProviderIconProps = {
   providerId: string
   className?: string
 }

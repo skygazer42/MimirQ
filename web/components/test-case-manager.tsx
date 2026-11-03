@@ -55,7 +55,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
-interface TestCaseManagerProps {
+type TestCaseManagerProps = {
   datasetId?: string | null
   onRunTests?: (caseIds: string[]) => void
   onCaseSelected?: (caseId: string | null) => void

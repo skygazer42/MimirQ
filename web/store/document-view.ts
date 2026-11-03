@@ -41,7 +41,7 @@ export type DocumentViewLayout = {
   textScrollTop?: number
 }
 
-interface DocumentViewState {
+type DocumentViewState = {
   authScope: string
   isOpen: boolean
   documentId: string | null

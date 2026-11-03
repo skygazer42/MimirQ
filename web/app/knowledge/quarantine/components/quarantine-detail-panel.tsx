@@ -11,7 +11,7 @@ import {
   reasonLabel,
 } from '../quarantine-signals'
 
-interface QuarantineDetailPanelProps {
+type QuarantineDetailPanelProps = {
   selected: Document | null
 }
 

@@ -214,7 +214,7 @@ function serializeWorkflowLayout(nodes: WorkflowEditorNode[], edges: WorkflowEdi
   }
 }
 
-export interface WorkflowEditorProps {
+export type WorkflowEditorProps = {
   graph: GraphData
   workflowLayout?: JsonRecord | null
   onWorkflowLayoutChange?: (layout: WorkflowLayout) => void

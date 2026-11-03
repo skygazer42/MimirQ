@@ -31,7 +31,7 @@ import type { ModelProvider, ProviderConfig } from '@/types/models'
 
 type ModelEntryMode = 'preset' | 'custom'
 
-interface ModelConfigDialogProps {
+type ModelConfigDialogProps = {
   provider: ModelProvider | null
   open: boolean
   onClose: () => void

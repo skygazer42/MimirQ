@@ -82,7 +82,7 @@ const RECOMMENDATION_SECTIONS: ChunkStrategyRecommendation[] = [
   'integrated',
 ]
 
-interface ChunkStrategyDropdownProps {
+type ChunkStrategyDropdownProps = {
   value: string
   onChange: (value: string) => void
   className?: string

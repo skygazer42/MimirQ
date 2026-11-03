@@ -29,7 +29,7 @@ import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { ParserDropdown } from '@/components/business/parser-dropdown'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 
-interface ManualUploadDialogProps {
+type ManualUploadDialogProps = {
   onUploaded?: () => void
 }
 

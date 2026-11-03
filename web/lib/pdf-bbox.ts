@@ -2,7 +2,7 @@ import type { ParsingPosition } from '@/lib/parsing-positions'
 
 export type PdfBboxCoordinateSpace = 'absolute' | 'normalized-1000'
 
-export interface PdfOverlayRect {
+export type PdfOverlayRect = {
   left: number
   top: number
   width: number

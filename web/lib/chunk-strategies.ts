@@ -1,6 +1,6 @@
 import type { ChunkStrategyInfo } from '@/types'
 
-export interface ChunkStrategyOption {
+export type ChunkStrategyOption = {
   value: string
   label: string
   description: string
@@ -133,7 +133,7 @@ export type ChunkStrategyRecommendation =
   | 'optional'
   | 'integrated'
 
-export interface ChunkStrategyCatalogItem extends ChunkStrategyOption {
+export type ChunkStrategyCatalogItem = ChunkStrategyOption & {
   available?: boolean
   notes?: string | null
   recommendation: ChunkStrategyRecommendation

@@ -20,7 +20,7 @@ export type PdfPreviewBox = {
   position: ParsingPosition
 }
 
-export interface PdfPreviewComputationResult {
+export type PdfPreviewComputationResult = {
   blocksWithPositions: ParsingBlockWithRange[]
   blockRanges: BlockRangeLike[]
   chunkRanges: PdfPreviewChunkRange[]

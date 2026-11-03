@@ -41,7 +41,7 @@ import type {
   DocumentVersionList,
 } from '@/types'
 
-interface DocumentDetailDialogProps {
+type DocumentDetailDialogProps = {
   document: Document
   trigger?: ReactNode
 }

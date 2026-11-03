@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { Waypoints, GitCommitHorizontal, Shapes } from 'lucide-react'
 
-interface GraphStatsBarProps {
+type GraphStatsBarProps = {
   readonly nodeCount: number
   readonly linkCount: number
   readonly entityTypeCount: number

@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import type { DocumentAccessMode } from '@/types'
 
-interface DocumentAccessDialogProps {
+type DocumentAccessDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   ownerId: string | null | undefined

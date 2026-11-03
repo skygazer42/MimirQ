@@ -28,7 +28,7 @@ import type { ActingState } from '../types'
 import { QuarantineDetailPanel } from './quarantine-detail-panel'
 import { StatusPill } from './status-pill'
 
-interface QuarantineReviewDrawerProps {
+type QuarantineReviewDrawerProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   selected: Document | null

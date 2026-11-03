@@ -30,7 +30,7 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 
-interface TestGenerationDialogProps {
+type TestGenerationDialogProps = {
   open: boolean
   onClose: () => void
   onGenerated?: () => void

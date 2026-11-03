@@ -3,7 +3,7 @@
  * Parses .graphml XML content into { nodes, links } format for react-force-graph
  */
 
-export interface GraphNode {
+export type GraphNode = {
   id: string
   label: string
   val?: number // size
@@ -24,7 +24,7 @@ export interface GraphNode {
   vz?: number | null
 }
 
-export interface GraphLink {
+export type GraphLink = {
   source: string
   target: string
   id?: string | number | null
@@ -41,7 +41,7 @@ export interface GraphLink {
   meta?: Record<string, unknown>
 }
 
-export interface GraphData {
+export type GraphData = {
   nodes: GraphNode[]
   links: GraphLink[]
 }

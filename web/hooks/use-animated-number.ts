@@ -3,7 +3,7 @@
 import { useMotionValue, useSpring, useReducedMotion } from "framer-motion"
 import { useEffect, useState } from "react"
 
-interface UseAnimatedNumberOptions {
+type UseAnimatedNumberOptions = {
   /** Spring stiffness (default 120) */
   stiffness?: number
   /** Spring damping (default 20) */

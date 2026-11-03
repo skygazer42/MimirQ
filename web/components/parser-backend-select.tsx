@@ -7,7 +7,7 @@ import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { ParserDropdown } from '@/components/business/parser-dropdown'
 import { Panel } from '@/components/ui/panel'
 
-interface ParserBackendSelectProps {
+type ParserBackendSelectProps = {
   label?: string
   className?: string
   compact?: boolean

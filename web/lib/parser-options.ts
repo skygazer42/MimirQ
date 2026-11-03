@@ -1,4 +1,4 @@
-export interface ParserBackendOption {
+export type ParserBackendOption = {
   value: string
   label: string
   description: string
