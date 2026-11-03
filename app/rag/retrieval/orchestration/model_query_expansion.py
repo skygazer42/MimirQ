@@ -72,7 +72,7 @@ def _failure_metadata(failure: Exception) -> dict[str, Any]:
 def _normalized_queries(raw: object, *, query: str, count: int, max_chars: int) -> list[str]:
     if not isinstance(raw, list) or any(not isinstance(item, str) for item in raw):
         raise QueryModelOutputError("Model queries must be an array of text")
-    seen = set()
+    seen: set[str] = set()
     queries = []
     for item in raw:
         candidate = item.strip().strip('"').strip()
