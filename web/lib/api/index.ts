@@ -57,10 +57,16 @@ export type {
   KGSearchDiagnosticsResponse,
   KGSearchDiagnosticsRunDetail,
   KGSearchDiagnosticsRunList,
+  KGSearchDiagnosticsRunListParams,
   KGSearchDiagnosticsRunOut,
+  RagasConversationReadinessItem,
+  RagasConversationReadinessRequest,
+  RagasConversationReadinessResponse,
   RagasItem,
   RagasRun,
+  RagasRunCreateRequest,
   RagasRunDetail,
+  RagasRunList,
 } from './evaluation'
 export type { PromptTemplate, PromptTemplateCreate, PromptTemplateNewVersion, PromptTemplateUpdate } from './prompts'
 export type { BackendMeta, BackendMetaDetails } from './meta'
