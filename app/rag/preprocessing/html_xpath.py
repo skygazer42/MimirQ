@@ -11,6 +11,9 @@ This module never performs any network access.
 from dataclasses import dataclass
 
 from app.core.optional_deps import optional_import
+from app.rag.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -86,8 +89,8 @@ def _extract_html_text(fragments_html: str) -> tuple[bool, str]:
     if callable(extract_text):
         try:
             return True, extract_text(fragments_html or "", guess_layout=True) or ""
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Optional html-text extraction failed (%s)", type(exc).__name__)
     return False, ""
 
 
