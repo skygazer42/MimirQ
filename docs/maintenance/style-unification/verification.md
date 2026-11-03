@@ -440,3 +440,8 @@
 
 - Query invocation records now use their declared string, boolean, float, integer, and Document-list fields directly. Empty kind still maps to `main`, optional docs still map to an empty list, and error truncation is unchanged.
 - Ruff check、Ruff format --check、diff check 与调用方引用扫描通过。Python tests 未运行。
+
+## 第五批：Metadata exact-anchor typed fields
+
+- Anchor annotation reads the declared `Document.id` and metadata fields directly; optional list elements are still skipped unless they are `Document` instances. Float metadata retains defaults for standard numeric conversion failures, including overflow.
+- Ruff check、Ruff format --check、diff check 和 stale-guard scan 通过。本文件标记为已调整；Python tests 与 retrieval runtime 未运行。

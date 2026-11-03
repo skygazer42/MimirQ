@@ -171,7 +171,7 @@ def _metadata_exact_anchor_match(query: str, meta: dict[str, Any]) -> dict[str, 
 def _float_or_default(value: Any, default: float = 0.0) -> float:
     try:
         return float(value)
-    except (TypeError, ValueError):
+    except (OverflowError, TypeError, ValueError):
         return float(default)
 
 
@@ -250,9 +250,7 @@ def _annotate_anchor_docs(
                 if key in result:
                     doc_meta[key] = result.get(key)
             if "score" in result:
-                old_score = _float_or_default(
-                    doc.metadata.get("score") if isinstance(doc.metadata, dict) else None, 0.0
-                )
+                old_score = _float_or_default(doc_meta.get("score"), 0.0)
                 new_score = _float_or_default(result.get("score"), 0.0)
                 if new_score > old_score:
                     promoted += 1
@@ -260,7 +258,7 @@ def _annotate_anchor_docs(
             doc = Document(
                 page_content=doc.page_content,
                 metadata=doc_meta,
-                id=getattr(doc, "id", None) or doc_meta.get("chunk_id"),
+                id=doc.id or doc_meta.get("chunk_id"),
             )
         rows.append((doc, idx))
     return rows, annotated, promoted
@@ -272,7 +270,7 @@ def _metadata_exact_anchor_sort_key(
     best_anchor_score: float,
 ) -> tuple[float, float, int]:
     doc, idx = row
-    doc_meta = doc.metadata if isinstance(doc.metadata, dict) else {}
+    doc_meta = doc.metadata
     metadata_score = _float_or_default(doc_meta.get("metadata_exact_match_score"), 0.0)
     score = _float_or_default(doc_meta.get("score"), 0.0)
     if best_anchor_score >= 0.65:
@@ -305,7 +303,7 @@ def _apply_metadata_exact_anchor_doc_ordering(
     before_top = _doc_key(rows[0][0]) if rows else ""
     best_anchor_score = max(
         _float_or_default(
-            row[0].metadata.get("metadata_exact_match_score") if isinstance(row[0].metadata, dict) else None,
+            row[0].metadata.get("metadata_exact_match_score"),
             0.0,
         )
         for row in rows
