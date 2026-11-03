@@ -571,6 +571,11 @@
 - `web/components/settings/settings-switch.tsx` 已符合具名组件导出、局部 props type 和 shared Switch owner 约定，全部直接调用点已静态扫描；当前无需改代码。
 - 未修改 UI；本地 `web/node_modules` 不存在，Prettier 检查未运行，format_status 保持 pending。
 
+## 并行类别分支：Health、Metadata 与 Usage API
+
+- Task 6 system API branch `6f3c5014` 经独立审查通过并合并。health endpoint 使用 generated response owner，同时保留 Zod validation；usage token/cost methods 共用与两条 OpenAPI operation 完全相同的 window 参数；meta aliases 和 api-client barrel 未改。
+- Endpoint、methods、query fields、response/error propagation 和兼容导出经 diff/caller/schema review。因 `web/node_modules` 缺失且 pnpm 版本不符，ESLint、Prettier、TypeScript、tests 和 live API checks 均未运行。
+
 ## 并行类别分支：文档处理派发
 
 - Task 4 分支已合并。`app/tasks/jobs.py` 的文档处理 handoff 显式传入文件、文档、租户、parser 和 chunk strategy，并沿用 worker 的 session 所有权；`process_document_flow.py` 的 31 个 `service` 参数使用 `TYPE_CHECKING` 下的 `DocumentProcessorService` 前向引用，避免 `processor.py` 的反向导入形成 runtime cycle。
@@ -591,6 +596,11 @@
 
 - Task 5 分支 `229928a95` 合并后只包含 `hybrid/dedup.py` 和 `hybrid/post_process.py` 的代码 diff。重复 identity key 转发到 `result_values.result_key`；anchor annotation/order 转发到 `metadata_ordering.order_metadata_anchors`。`candidate_ranking` 的 protected result、排序、dedup、rerank mapping、多样性和诊断调用顺序保持。
 - 在 `style-rag-fusion` worktree 根目录使用其 `ruff.toml`，两文件 Ruff check/format 通过；AST、调用方扫描、review 和 `git show --check` 通过。未运行 Python tests、vector/lexical/database/reranker runtime。
+
+## 并行类别分支：Hybrid Channel Results
+
+- Task 5 channel retrieval branch `d9528115` 仅改 `hybrid/channel_results.py`：已声明 channel lists 直接迭代，局部初始化的 `annotated`/`promoted` 计数直接递增；provider item shape check 与 vector normalization boundary 保留。
+- 独立审查通过，Ruff check/format、四模块 AST、caller scan 与 `git show --check` 通过。未运行 Python tests、vector/lexical/sparse/ColBERT/cache/reranker services。
 
 ## 并行类别分支：解析模型缓存与 Manifest
 

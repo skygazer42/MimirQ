@@ -1095,7 +1095,7 @@ app/rag/retrieval/hybrid/bm25_index.py,5,pending,conforms,Awaiting file-level co
 app/rag/retrieval/hybrid/cache_scope.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/hybrid/channel_diagnostics.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/hybrid/channel_health.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/rag/retrieval/hybrid/channel_results.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/rag/retrieval/hybrid/channel_results.py,5,adjusted,adjusted,Channel result inputs and locally owned counters use their declared types,Ruff check/format; caller contract, ordering, and diagnostics reviewed; tests not run
 app/rag/retrieval/hybrid/candidate_ranking.py,5,pending,conforms,仅核对 reranker owner 调用边界；整文件审核待完成,Ruff check/format; disabled provider is gated before factory; Python tests not run
 app/rag/retrieval/hybrid/colbert_index.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/hybrid/common.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -3375,13 +3375,13 @@ web/lib/api/evidence.ts,6,pending,pending,Awaiting file-level convention and con
 web/lib/api/feedback.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/governance.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/graph.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/health.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/lib/api/health.ts,6,adjusted,pending,Health API response types use the generated owner directly,Validation schema endpoint methods and error propagation reviewed; frontend tools unavailable
 web/lib/api/index.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/industry-rules.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/integrations.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/lineage.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/ltr.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/meta.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/lib/api/meta.ts,6,conforms,pending,Backend metadata aliases retain the generated response owner and barrel contract,Direct type/export usage reviewed; frontend tools unavailable
 web/lib/api/observability.auth.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/observability.index-audit.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/observability.ts,6,pending,pending,Awaiting file-level convention and contract review,
@@ -3394,7 +3394,7 @@ web/lib/api/rtbf.ts,6,pending,pending,Awaiting file-level convention and contrac
 web/lib/api/scim.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/settings.ts,6,adjusted,pending,Settings API methods and public exports retain their existing contract,Caller and legacy export review passed; frontend tooling unavailable so format/type checks remain pending
 web/lib/api/streaming.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/usage.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/lib/api/usage.ts,6,adjusted,pending,Token and cost usage queries share their matching OpenAPI window parameters,Generated query fields endpoints and error propagation reviewed; frontend tools unavailable
 web/lib/auth-headers.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/auth-headers.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/auth-storage.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
