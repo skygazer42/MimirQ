@@ -231,7 +231,6 @@ def bootstrap_selected_models(
     convert_onnx: bool = False,
     onnx_opset: int = 17,
 ) -> dict[str, Any]:
-    manifest_path = Path(manifest_path).resolve()
     output_root = Path(output_root).resolve()
     manifest = load_small_model_manifest(manifest_path, base_dir=_REPO_ROOT)
     specs = _iter_hf_specs(manifest, selections=list(selections), all_optional=bool(all_optional))
