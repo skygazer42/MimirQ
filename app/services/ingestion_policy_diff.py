@@ -22,14 +22,14 @@ def _canonical_rule(rule: IngestionRule) -> str:
 
 
 def diff_ingestion_policies(before: IngestionPolicy | None, after: IngestionPolicy | None) -> dict[str, Any]:
-    before_rules = list((before.rules if before is not None else []) or [])
-    after_rules = list((after.rules if after is not None else []) or [])
+    before_rules = before.rules if before is not None else []
+    after_rules = after.rules if after is not None else []
 
-    before_by_id = {str(r.id): r for r in before_rules if getattr(r, "id", None)}
-    after_by_id = {str(r.id): r for r in after_rules if getattr(r, "id", None)}
+    before_by_id = {rule.id: rule for rule in before_rules}
+    after_by_id = {rule.id: rule for rule in after_rules}
 
-    before_ids = set(before_by_id.keys())
-    after_ids = set(after_by_id.keys())
+    before_ids = set(before_by_id)
+    after_ids = set(after_by_id)
 
     added = sorted(after_ids - before_ids)
     removed = sorted(before_ids - after_ids)
@@ -44,11 +44,11 @@ def diff_ingestion_policies(before: IngestionPolicy | None, after: IngestionPoli
             changed.append(rid)
 
     return {
-        "before_rule_count": int(len(before_rules)),
-        "after_rule_count": int(len(after_rules)),
+        "before_rule_count": len(before_rules),
+        "after_rule_count": len(after_rules),
         "added_rule_ids": added,
         "removed_rule_ids": removed,
-        "changed_rule_ids": sorted(set(changed)),
+        "changed_rule_ids": sorted(changed),
     }
 
 
