@@ -14,7 +14,7 @@
 
 - 主工作区：`E:/MimirQ`；分支：`codex/local-account-registration`。为提速，独立业务类别可从当前 HEAD 建立 `codex/*` 分支和 worktree；类别代码与调用方完成审阅后合并回此分支。
 - 原始基线：`77b6adc1bce523482f0509302a454ce20e01c41c`；数据集服务已提交为 `2c16dedf8`。前两批及第三批此前结果保留，不重新执行。
-- 当前覆盖表有 3,757 个文件：186 个已调整、77 个已符合、985 个登记保留、2,509 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
+- 当前覆盖表有 3,757 个文件：189 个已调整、78 个已符合、985 个登记保留、2,505 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
 - Task 3A 的 125 个 Python 文件已完成最终静态核对并按数据集类别提交；Task 3B 的权限、配额、SCIM、配置、通用 API、身份令牌、共享资源与健康观测已完成本轮代码整理与静态检查，继续核对其余基础模块。原有 `app/api/schemas/document.py` 修改另行保留。
 - 原工作区的 1,625 个未跟踪文件及其他既有修改保留；只按本批明确文件清单暂存，不使用 `git add .`，不执行全仓清理或重置。
 - 用户执行要求：提交按完整业务类别归并，不按函数、文件或每个检查步骤频繁提交；同一类别的定义、调用方、必要引用和验证记录一起提交。纯格式化仍独立成类。
@@ -275,7 +275,7 @@ Document API slice 已合并：`documents.ts` 与 `document-helpers.ts` 保持 e
 
 System API slice 已合并：health response uses its backend type owner, usage token/cost share the identical generated query shape, and metadata aliases remain. Endpoint/validation/error behavior is unchanged; TypeScript/ESLint/Prettier and tests remain unverified because frontend dependencies are unavailable.
 
-`web/components/settings/settings-switch.tsx` already follows the named component and type ownership rules and delegates state to the shared Switch; callsites were scanned, no code change was needed. Prettier status remains pending with the unavailable web dependencies.
+`web/components/settings/settings-switch.tsx` already follows the named component and type ownership rules and delegates state to the shared Switch; callsites were scanned, no code change was needed. The Dify/object-storage/parser settings sections now import generated settings/parser types from their owners; the model-provider section conforms unchanged. No JSX/state change was made. Prettier status remains pending with the unavailable web dependencies.
 
 The settings `feature-flags`, `frontend-preferences`, and `system-status` sections were audited as conforming named components with local props types and direct settings/API owners. No UI or state behavior changed; formatting remains pending because Prettier is unavailable.
 

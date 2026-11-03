@@ -2870,17 +2870,17 @@ web/app/reports/reports-visual-density.source.test.ts,6,pending,pending,Awaiting
 web/app/reports/types.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/app/reports/use-dataset-report-query.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/app/reports/use-flat-report-folders.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/app/settings/_sections/dify-integration-section.tsx,6,pending,pending,Awaiting file-level convention and contract review,
+web/app/settings/_sections/dify-integration-section.tsx,6,adjusted,pending,Integration section imports Dataset and SystemSettings from their type owners,Type-only import change; JSX and state unchanged; frontend tools unavailable
 web/app/settings/_sections/feature-flags-section.tsx,6,conforms,pending,Feature flag section uses named component and locally owned typed props,Settings switch and generated FeatureFlags owners reviewed; Prettier unavailable
 web/app/settings/_sections/frontend-preferences-section.tsx,6,conforms,pending,Frontend preference section uses named component and explicit props,Parser/chunk strategy owners remain direct; no UI change; Prettier unavailable
 web/app/settings/_sections/governance-section.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/app/settings/_sections/industry-rules-section.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/app/settings/_sections/ltr-model-registry-section.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/app/settings/_sections/model-providers-section.tsx,6,pending,pending,Awaiting file-level convention and contract review,
+web/app/settings/_sections/model-providers-section.tsx,6,conforms,pending,Model provider section retains its declared settings type owner,Audited unchanged; frontend tools unavailable
 web/app/settings/_sections/navigation-visibility-section.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/app/settings/_sections/object-storage-section.tsx,6,pending,pending,Awaiting file-level convention and contract review,
+web/app/settings/_sections/object-storage-section.tsx,6,adjusted,pending,Object storage section imports SystemSettings from its type owner,Type-only import change; JSX and state unchanged; frontend tools unavailable
 web/app/settings/_sections/observability-section.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/app/settings/_sections/parser-services-section.tsx,6,pending,pending,Awaiting file-level convention and contract review,
+web/app/settings/_sections/parser-services-section.tsx,6,adjusted,pending,Parser service section imports parser config types from their owner,Type-only import change; JSX and state unchanged; frontend tools unavailable
 web/app/settings/_sections/rag-section.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/app/settings/_sections/runtime-controls-section.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/app/settings/_sections/system-status-section.tsx,6,conforms,pending,System status section composes health and metadata owners with local view helpers,Optional parser status follows the declared API contract; no UI change; Prettier unavailable

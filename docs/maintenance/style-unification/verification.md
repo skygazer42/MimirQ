@@ -576,6 +576,11 @@
 - `feature-flags-section.tsx`、`frontend-preferences-section.tsx` 与 `system-status-section.tsx` 经静态审阅后登记为符合：具名组件、局部 props 类型、直接依赖 settings/API owners。SettingsSwitch、ParserDropdown、ChunkStrategyDropdown 等现有组件保持使用；没有改 UI 或交互。
 - 受影响视觉行为为零；没有页面截图。本地 `web/node_modules` 不存在，Prettier 未运行，format_status 保持 pending。
 
+## Settings Integration Sections
+
+- Task 6 integration-section branch `a700447b` 经独立审查通过并合并。Dify、object-storage、parser-service sections 仅把 settings/parser types 改为直接 owner imports；model-providers section 经审阅符合标准且未修改。
+- JSX、props、state、callbacks、submission/error flows 和 visible UI 未变。依赖 `web/node_modules` 缺失且 pnpm 版本不符，ESLint/Prettier/TypeScript/browser checks 未运行；format_status 保留 pending。
+
 ## Shared Common Frontend Types
 
 - Task 6 common-types branch commit `5aa80b6e` 经独立审查通过并合并。`PermissionEnum` now aliases the generated `DatasetPermissionEnum` schema; the literal union matches exactly. `DocumentAccessMode` retains `inherit`, while `LooseString` and `JsonObject` remain unchanged; direct consumers and the public barrel retain the same names.
