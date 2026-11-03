@@ -7,20 +7,20 @@ import { cn } from '@/lib/utils'
 import { buildTypeColorMap, EVENT_COLOR } from './graph-colors'
 import { EDGE_KIND_COLORS } from './graph-viewer'
 
-interface EntityTypeEntry {
+type EntityTypeEntry = {
   type: string
   color: string
   count: number
 }
 
-interface EdgeKindEntry {
+type EdgeKindEntry = {
   kind: string
   label: string
   color: string
   count: number
 }
 
-interface GraphLegendProps {
+type GraphLegendProps = {
   readonly nodes: readonly unknown[]
   readonly links?: readonly unknown[]
   readonly activeTypeFilters?: readonly string[]

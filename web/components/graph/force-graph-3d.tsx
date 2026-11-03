@@ -191,7 +191,7 @@ const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
   ),
 }) as unknown as ComponentType<ForceGraph3DComponentProps>
 
-export interface KnowledgeGraph3DRef {
+export type KnowledgeGraph3DRef = {
   zoomIn: () => void
   zoomOut: () => void
   zoomToFit: () => void
@@ -200,7 +200,7 @@ export interface KnowledgeGraph3DRef {
   exportSvgString: () => string | null
 }
 
-interface ForceGraph3DProps {
+type ForceGraph3DProps = {
   readonly data: GraphRenderData
   readonly onNodeClick?: (node: GraphNodeDatum) => void
   readonly onNodeRightClick?: (node: GraphNodeDatum, event: MouseEvent) => void

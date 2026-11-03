@@ -915,7 +915,7 @@ const ForceGraph2DNoSSR = dynamic(
 const LARGE_GRAPH_NODE_THRESHOLD = 600
 const LARGE_GRAPH_LINK_THRESHOLD = 1200
 
-export interface GraphViewerRef {
+export type GraphViewerRef = {
   zoomIn: () => void
   zoomOut: () => void
   zoomToFit: () => void
@@ -926,7 +926,7 @@ export interface GraphViewerRef {
 
 export type LayoutMode = 'force' | 'tree' | 'radial'
 
-interface GraphViewerProps {
+type GraphViewerProps = {
   readonly data: GraphRenderData
   readonly onNodeClick?: (node: GraphNodeDatum) => void
   readonly onNodeRightClick?: (node: GraphNodeDatum, event: MouseEvent) => void
