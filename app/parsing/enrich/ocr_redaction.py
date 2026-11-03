@@ -28,7 +28,7 @@ def redact_ocr_text(
     Returns:
       (redacted_text, pii_hits, secrets_hits)
     """
-    s = str(text or "")
+    s = text
     if not s:
         return s, {}, {}
 

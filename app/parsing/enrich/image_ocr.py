@@ -38,13 +38,13 @@ class ImageOcrAudit:
 
     def to_dict(self) -> dict[str, object]:
         return {
-            "applied": bool(self.applied),
-            "ocr_blocks_added": int(self.ocr_blocks_added),
-            "images_attempted": int(self.images_attempted),
-            "images_succeeded": int(self.images_succeeded),
-            "elapsed_ms": int(self.elapsed_ms),
-            "backend": str(self.backend or ""),
-            "error": (str(self.error)[:200] if self.error else None),
+            "applied": self.applied,
+            "ocr_blocks_added": self.ocr_blocks_added,
+            "images_attempted": self.images_attempted,
+            "images_succeeded": self.images_succeeded,
+            "elapsed_ms": self.elapsed_ms,
+            "backend": self.backend,
+            "error": (self.error[:200] if self.error else None),
         }
 
 
@@ -70,7 +70,7 @@ def _build_image_ocr_audit(
 
 def _next_non_empty_line(lines: list[str], start: int, *, limit: int = 4) -> str:
     for index in range(start + 1, min(len(lines), start + limit)):
-        candidate = (lines[index] or "").strip()
+        candidate = lines[index].strip()
         if candidate:
             return candidate
     return ""
@@ -155,7 +155,7 @@ def add_image_ocr_blocks(
     max_image_bytes: int = 5_000_000,
     max_ocr_chars: int = 2000,
 ) -> tuple[str, int, ImageOcrAudit]:
-    raw = str(markdown or "")
+    raw = markdown
     if not raw:
         return (
             "",
@@ -191,7 +191,7 @@ def add_image_ocr_blocks(
 
     lines = raw.splitlines()
     for index, line in enumerate(lines):
-        if _FENCE_RE.match(line or ""):
+        if _FENCE_RE.match(line):
             in_fence = not in_fence
             out_lines.append(line)
             continue
