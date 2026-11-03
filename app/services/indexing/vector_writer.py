@@ -36,7 +36,7 @@ class DatasetScopedEmbeddingRuntimeResolutionError(RuntimeError):
     """Raised when a dataset-scoped document cannot safely resolve its embedding runtime."""
 
 
-def _dataset_scoped_runtime_unavailable(
+def dataset_scoped_runtime_unavailable(
     *, document_id: UUID, tenant_id: UUID
 ) -> DatasetScopedEmbeddingRuntimeResolutionError:
     return DatasetScopedEmbeddingRuntimeResolutionError(
@@ -45,14 +45,14 @@ def _dataset_scoped_runtime_unavailable(
     )
 
 
-def _milvus_backend_enabled() -> bool:
+def milvus_backend_enabled() -> bool:
     return settings.VECTOR_BACKEND.strip().lower() == "milvus"
 
 
 def _shadow_vector_config() -> tuple[str, str, str, str, str] | None:
     if not settings.EMBEDDING_SHADOW_ENABLED:
         return None
-    if not _milvus_backend_enabled():
+    if not milvus_backend_enabled():
         return None
 
     shadow_collection = settings.MILVUS_SHADOW_COLLECTION_NAME.strip()
@@ -87,15 +87,12 @@ def _cache_shadow_vector_writer(
 
 
 def _shadow_embedding_space_hash(*, provider: str, model: str, base_url: str) -> str:
-    try:
-        return embedding_space_hash_for_config(
-            provider=provider,
-            model=model,
-            base_url=base_url,
-            length=16,
-        )
-    except Exception:
-        return ""
+    return embedding_space_hash_for_config(
+        provider=provider,
+        model=model,
+        base_url=base_url,
+        length=16,
+    )
 
 
 def _resolve_shadow_vector_writer() -> tuple[Any, Any, str] | None:
@@ -134,7 +131,11 @@ def _resolve_shadow_vector_writer() -> tuple[Any, Any, str] | None:
         logger.warning("Shadow Milvus adapter init failed; dual-write disabled: %s", str(exc)[:200])
         return _cache_shadow_vector_writer(sig, None)
 
-    shadow_space = _shadow_embedding_space_hash(provider=mapped_provider, model=shadow_model, base_url=base_url)
+    try:
+        shadow_space = _shadow_embedding_space_hash(provider=mapped_provider, model=shadow_model, base_url=base_url)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Shadow embedding-space hash failed; dual-write disabled: %s", type(exc).__name__)
+        return _cache_shadow_vector_writer(sig, None)
     return _cache_shadow_vector_writer(sig, (emb, adapter, shadow_space))
 
 
@@ -181,7 +182,7 @@ def _log_shadow_vector_write(
     log_metrics(payload)
 
 
-def _dual_write_shadow_vectors_best_effort(
+def dual_write_shadow_vectors_best_effort(
     docs: list[dict[str, Any]],
     *,
     document_id: UUID,
@@ -306,14 +307,14 @@ class ChunkVectorWriter:
                 .first()
             )
             if row is None:
-                raise _dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id)
+                raise dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id)
             return resolve_dataset_embedding_runtime(
                 self._load_dataset_metadata(tenant_id=tenant_id, dataset_id=row[0])
             )
         except (DatasetScopedEmbeddingRuntimeResolutionError, ValueError):
             raise
         except Exception as exc:
-            raise _dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id) from exc
+            raise dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id) from exc
 
     def _dataset_scoped_vector_collections_for_document(
         self,
@@ -394,7 +395,7 @@ class ChunkVectorWriter:
         document_id: UUID,
         metadata_filter: dict[str, Any],
     ) -> None:
-        if _milvus_backend_enabled():
+        if milvus_backend_enabled():
             self._delete_dataset_scoped_chunk_vectors(
                 tenant_id=tenant_id,
                 document_id=document_id,
@@ -588,7 +589,7 @@ class ChunkVectorWriter:
         for attempt in range(max_retries + 1):
             try:
                 ids = list(vector_store.add_documents(batch, document_id, tenant_id))
-                _dual_write_shadow_vectors_best_effort(batch, document_id=document_id, tenant_id=tenant_id)
+                dual_write_shadow_vectors_best_effort(batch, document_id=document_id, tenant_id=tenant_id)
                 return ids, backoff
             except Exception as exc:  # noqa: BLE001
                 if attempt >= max_retries:
@@ -645,7 +646,7 @@ class ChunkVectorWriter:
 
         runtime = embedding_runtime
         try:
-            if runtime.dataset_scoped and _milvus_backend_enabled():
+            if runtime.dataset_scoped and milvus_backend_enabled():
                 return self._write_dataset_scoped_chunk_vectors(
                     docs,
                     document_id=document_id,
@@ -693,7 +694,7 @@ class ChunkVectorWriter:
             return
         chunk_ids = list({str(doc["metadata"]["chunk_id"]) for doc in docs})
         metadata_filter = {"chunk_id": {"$in": chunk_ids}}
-        if runtime.dataset_scoped and _milvus_backend_enabled():
+        if runtime.dataset_scoped and milvus_backend_enabled():
             get_milvus_adapter(resolve_collection_name(runtime.collection_name)).delete_by_document_id_and_filter(
                 document_id=document_id,
                 tenant_id=tenant_id,

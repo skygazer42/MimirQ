@@ -14,7 +14,7 @@
 
 - 工作区：`E:/MimirQ`；分支：`codex/local-account-registration`。不新建分支或 worktree。
 - 原始基线：`77b6adc1bce523482f0509302a454ce20e01c41c`；数据集服务已提交为 `2c16dedf8`。前两批及第三批此前结果保留，不重新执行。
-- 当前覆盖表有 3,646 个文件：124 个已调整、29 个已符合、964 个登记保留、2,529 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
+- 当前覆盖表有 3,648 个文件：124 个已调整、29 个已符合、964 个登记保留、2,531 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
 - Task 3A 的 125 个 Python 文件已完成最终静态核对并按数据集类别提交；Task 3B 的权限、配额、SCIM、配置、通用 API、身份令牌、共享资源与健康观测已完成本轮代码整理与静态检查，继续核对其余基础模块。原有 `app/api/schemas/document.py` 修改另行保留。
 - 原工作区的 1,625 个未跟踪文件及其他既有修改保留；只按本批明确文件清单暂存，不使用 `git add .`，不执行全仓清理或重置。
 - 用户执行要求：提交按完整业务类别归并，不按函数、文件或每个检查步骤频繁提交；同一类别的定义、调用方、必要引用和验证记录一起提交。纯格式化仍独立成类。
@@ -196,9 +196,11 @@ Chunk-write routes 直接依赖 ORM、`Indexer`、ACL、审计和 index-audit ow
 
 **本批产出：** 上传到任务的输入输出和失败路径一致，同一字段映射与权限规则只有一个业务维护点。
 
-### Task 5：RAG 与模型调用
+### Task 5：RAG 与模型调用（进行中）
 
-入口：`app/api/v1/rag.py`、`app/rag/engine.py`、`app/rag/engine_support/`、`app/rag/retrieval/orchestration/`、`app/rag/embedding/`、`app/rag/reranker/`、`app/rag/llm/`；同批覆盖其实际检索、索引、KG、评估与工具调用模块。
+入口：`app/api/v1/rag.py`、`app/rag/engine.py`、`app/rag/engine_support/`、`app/rag/retrieval/orchestration/`、`app/rag/embedding/`、`app/rag/reranker/`、`app/rag/llm/`，以及实际索引所有者 `app/services/indexer.py`、`app/services/indexing/`、`app/services/dataset_embedding_config.py` 和 `app/storage/vector/`；同批覆盖其实际检索、索引、KG、评估与工具调用模块。
+
+已开始核对索引写入切片：`vector_writer.py` 统一持有 Milvus 模式判断、shadow writer 配置／缓存、运行时异常和可选双写；`indexer.py` 与 `chunks.py` 直接调用该所有者。当前仅完成此切片的静态核对，三份文件的整体语义审核仍在清单中待办。
 
 - [ ] 按查询准备 → 通道召回 → 融合／重排 → 上下文 → 模型／流式返回的顺序追踪数据和预算，再处理各条依赖链。
 - [ ] 合并经证实重复的参数映射与控制流，核对动态取值和无依据默认值；保留供应商协议适配、可选插件边界和有状态资源。

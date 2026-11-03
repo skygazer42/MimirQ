@@ -51,7 +51,7 @@ from app.services.indexing.tracking import (
 from app.services.indexing.vector_writer import (
     ChunkVectorWriter,
     DatasetScopedEmbeddingRuntimeResolutionError,
-    _dataset_scoped_runtime_unavailable,
+    dataset_scoped_runtime_unavailable,
 )
 from app.types.indexing import (
     ChunkInput,
@@ -102,7 +102,7 @@ class ChunkIndexer:
             runtime = self._vectors.resolve_document_runtime(tenant_id=tenant_id, document_id=document_id)
             document = load_document_for_channel_tracking(self._db, tenant_id=tenant_id, document_id=document_id)
             if document is None:
-                raise _dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id)
+                raise dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id)
             metadata = document.doc_metadata
             return ChunkIndexContext(
                 embedding_runtime=runtime,
@@ -113,7 +113,7 @@ class ChunkIndexer:
         except (ValueError, DatasetScopedEmbeddingRuntimeResolutionError):
             raise
         except Exception as exc:
-            raise _dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id) from exc
+            raise dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id) from exc
 
     def _chunk_index_option_flags(self, options: IndexingOptions | None) -> ChunkEmbeddingFlags:
         return ChunkEmbeddingFlags(

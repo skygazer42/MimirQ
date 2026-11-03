@@ -17,15 +17,12 @@ from langchain_core.documents import Document as LCDocument
 from sqlalchemy.orm import Session, aliased
 
 from app.core.config import settings
-from app.core.constants import EmbeddingProviders
 from app.models.dataset import Dataset as DBDataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.query.normalize import normalize_query
 from app.rag.chunking.utils.hierarchical import apply_sequence_hierarchy_metadata
 from app.rag.core.metadata import ensure_hierarchy_overlay_metadata, normalize_image_metadata
-from app.rag.embedding import create_langchain_embeddings_from_config
-from app.rag.embedding.utils import embedding_space_hash_for_config
 from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
 from app.rag.kg.provenance import build_event_entity_provenance
 from app.rag.pipeline_plugins.contracts import (
@@ -48,6 +45,12 @@ from app.services.document_index_channel_service import (
     DOCUMENT_INDEX_CHANNEL_SKIPPED,
     transition_document_index_channel,
 )
+from app.services.indexing.vector_writer import (
+    DatasetScopedEmbeddingRuntimeResolutionError,
+    dataset_scoped_runtime_unavailable,
+    dual_write_shadow_vectors_best_effort,
+    milvus_backend_enabled,
+)
 from app.services.metrics_logger import log_metrics
 from app.storage.vector.factory import get_vector_store
 from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
@@ -66,23 +69,7 @@ logger = logging.getLogger("indexer")
 _INDEXER_FALLBACK_LOG_MESSAGE = "Ignoring non-critical indexer fallback failure: %s"
 _CHUNK_METADATA_SCAN_BATCH_SIZE = 256
 
-_shadow_vector_writer_sig: str | None = None
-_shadow_vector_writer: tuple[Any, Any, str] | None = None  # (embeddings, adapter, embedding_space_hash)
-_SHADOW_VECTOR_WRITE_EVENT = "ingest.shadow_vector_write"
 _INGEST_GATE_ACTION = "document.ingest_gate"
-
-
-class DatasetScopedEmbeddingRuntimeResolutionError(RuntimeError):
-    """Raised when a dataset-scoped document cannot safely resolve its embedding runtime."""
-
-
-def _dataset_scoped_runtime_unavailable(
-    *, document_id: UUID, tenant_id: UUID
-) -> DatasetScopedEmbeddingRuntimeResolutionError:
-    return DatasetScopedEmbeddingRuntimeResolutionError(
-        "dataset-scoped embedding runtime unavailable during indexing "
-        f"(tenant_id={tenant_id}, document_id={document_id})"
-    )
 
 
 def _dataset_scoped_cleanup_ambiguous(
@@ -95,191 +82,6 @@ def _dataset_scoped_cleanup_ambiguous(
         "dataset-scoped vector cleanup target ambiguous from persisted metadata "
         f"(tenant_id={tenant_id}, document_id={document_id}, embedding_space_hash={embedding_space_hash})"
     )
-
-
-def _milvus_backend_enabled() -> bool:
-    return str(settings.VECTOR_BACKEND or "milvus").strip().lower() == "milvus"
-
-
-def _shadow_vector_config() -> tuple[str, str, str, str, str] | None:
-    if not bool(settings.EMBEDDING_SHADOW_ENABLED):
-        return None
-    if not _milvus_backend_enabled():
-        return None
-
-    shadow_collection = str(settings.MILVUS_SHADOW_COLLECTION_NAME or "").strip()
-    shadow_model = str(settings.EMBEDDING_SHADOW_MODEL or "").strip()
-    if not shadow_collection or not shadow_model:
-        return None
-
-    provider_raw = (
-        str(settings.EMBEDDING_SHADOW_PROVIDER or "").strip().lower()
-        or str(settings.EMBEDDING_PROVIDER or "openai_compatible").strip().lower()
-    )
-    mapped_provider = EmbeddingProviders.PROVIDER_MAP.get(provider_raw, "openai_compatible")
-    api_key = (
-        str(settings.EMBEDDING_SHADOW_API_KEY or "").strip()
-        or str(settings.EMBEDDING_API_KEY or "").strip()
-        or str(settings.LLM_API_KEY or "").strip()
-    )
-    base_url = (
-        str(settings.EMBEDDING_SHADOW_API_BASE or "").strip()
-        or str(settings.EMBEDDING_API_BASE or "").strip()
-        or str(settings.LLM_API_BASE or "").strip()
-    )
-    return mapped_provider, shadow_model, api_key, base_url, shadow_collection
-
-
-def _cache_shadow_vector_writer(
-    sig: str,
-    writer: tuple[Any, Any, str] | None,
-) -> tuple[Any, Any, str] | None:
-    global _shadow_vector_writer_sig, _shadow_vector_writer
-    _shadow_vector_writer_sig = sig
-    _shadow_vector_writer = writer
-    return writer
-
-
-def _shadow_embedding_space_hash(*, provider: str, model: str, base_url: str) -> str:
-    try:
-        return embedding_space_hash_for_config(
-            provider=provider,
-            model=model,
-            base_url=base_url,
-            length=16,
-        )
-    except Exception:
-        return ""
-
-
-def _resolve_shadow_vector_writer() -> tuple[Any, Any, str] | None:
-    """
-    Best-effort resolve (embeddings, milvus_adapter, shadow_space_hash) for dual-write.
-
-    This is used by Gap5 embedding blue-green migrations: when enabled, ingestion writes
-    vectors into both the primary collection (settings.MILVUS_COLLECTION_NAME) and the
-    shadow collection (settings.MILVUS_SHADOW_COLLECTION_NAME) using a potentially
-    different embedding model.
-    """
-    config = _shadow_vector_config()
-    if config is None:
-        return None
-    mapped_provider, shadow_model, api_key, base_url, shadow_collection = config
-    sig = f"{mapped_provider}|{shadow_model}|{base_url}|{shadow_collection}"
-
-    if _shadow_vector_writer is not None and _shadow_vector_writer_sig == sig:
-        return _shadow_vector_writer
-
-    try:
-        emb = create_langchain_embeddings_from_config(
-            provider=mapped_provider,
-            model=shadow_model,
-            api_key=api_key,
-            base_url=base_url,
-            dimension=None,  # Auto-detect
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Shadow embeddings init failed; dual-write disabled: %s", str(exc)[:200])
-        return _cache_shadow_vector_writer(sig, None)
-
-    try:
-        adapter = get_milvus_adapter(resolve_collection_name(shadow_collection))
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Shadow Milvus adapter init failed; dual-write disabled: %s", str(exc)[:200])
-        return _cache_shadow_vector_writer(sig, None)
-
-    shadow_space = _shadow_embedding_space_hash(provider=mapped_provider, model=shadow_model, base_url=base_url)
-    return _cache_shadow_vector_writer(sig, (emb, adapter, shadow_space))
-
-
-def _prepare_shadow_vector_items(
-    docs: list[dict[str, Any]],
-    *,
-    shadow_space: str,
-) -> tuple[list[dict[str, Any]], list[str]]:
-    items: list[dict[str, Any]] = []
-    texts: list[str] = []
-    for doc in docs:
-        meta0 = doc.get("metadata") if isinstance(doc, dict) else None
-        meta = dict(meta0 or {}) if isinstance(meta0, dict) else {}
-        chunk_id = str(meta.get("chunk_id") or "").strip()
-        if not chunk_id:
-            continue
-        content = str(doc.get("content") or "")
-        meta["embedding_space_hash"] = shadow_space
-        items.append({"id": chunk_id, "content": content, "metadata": meta})
-        texts.append(content)
-    return items, texts
-
-
-def _log_shadow_vector_write(
-    *,
-    ok: bool,
-    tenant_id: UUID,
-    document_id: UUID,
-    count: int,
-    reason: str | None = None,
-    error: Exception | None = None,
-) -> None:
-    payload: dict[str, Any] = {
-        "event": _SHADOW_VECTOR_WRITE_EVENT,
-        "ok": ok,
-        "tenant_id": str(tenant_id),
-        "document_id": str(document_id),
-        "count": int(count),
-    }
-    if reason:
-        payload["reason"] = reason
-    if error is not None:
-        payload["error"] = str(error)[:200]
-    log_metrics(payload)
-
-
-def _dual_write_shadow_vectors_best_effort(
-    docs: list[dict[str, Any]],
-    *,
-    document_id: UUID,
-    tenant_id: UUID,
-) -> None:
-    writer = _resolve_shadow_vector_writer()
-    if writer is None:
-        return
-    embeddings, adapter, shadow_space = writer
-
-    if not docs:
-        return
-
-    items, texts = _prepare_shadow_vector_items(docs, shadow_space=shadow_space)
-    if not items:
-        return
-
-    try:
-        vecs = embeddings.embed_documents(texts)
-    except Exception as exc:  # noqa: BLE001
-        _log_shadow_vector_write(
-            ok=False,
-            reason="embed_failed",
-            tenant_id=tenant_id,
-            document_id=document_id,
-            count=len(items),
-            error=exc,
-        )
-        return
-
-    try:
-        batch_size = int(settings.VECTOR_WRITE_BATCH_SIZE or 256)
-        adapter.add_vectors(items, embeddings=vecs, batch_size=batch_size, upsert=True)
-        _log_shadow_vector_write(ok=True, tenant_id=tenant_id, document_id=document_id, count=len(items))
-    except Exception as exc:  # noqa: BLE001
-        _log_shadow_vector_write(
-            ok=False,
-            reason="milvus_write_failed",
-            tenant_id=tenant_id,
-            document_id=document_id,
-            count=len(items),
-            error=exc,
-        )
-        return
 
 
 def _safe_int(value: Any) -> int | None:
@@ -1273,7 +1075,7 @@ class Indexer:
                 .first()
             )
             if row is None and strict:
-                raise _dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id)
+                raise dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id)
             dataset_id = row[0] if row else None
             return resolve_dataset_embedding_runtime(
                 self._load_dataset_metadata(
@@ -1288,7 +1090,7 @@ class Indexer:
             raise
         except Exception as exc:
             if strict:
-                raise _dataset_scoped_runtime_unavailable(
+                raise dataset_scoped_runtime_unavailable(
                     document_id=document_id,
                     tenant_id=tenant_id,
                 ) from exc
@@ -1392,7 +1194,7 @@ class Indexer:
         document_id: UUID,
         metadata_filter: dict[str, Any],
     ) -> None:
-        if _milvus_backend_enabled():
+        if milvus_backend_enabled():
             self._delete_dataset_scoped_chunk_vectors(
                 tenant_id=tenant_id,
                 document_id=document_id,
@@ -1594,7 +1396,7 @@ class Indexer:
             )
             db_document = self._load_document_for_channel_tracking(tenant_id=tenant_id, document_id=document_id)
             if db_document is None:
-                raise _dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id)
+                raise dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id)
             doc_meta = db_document.doc_metadata
             return {
                 "embedding_runtime": embedding_runtime,
@@ -1611,7 +1413,7 @@ class Indexer:
         except DatasetScopedEmbeddingRuntimeResolutionError:
             raise
         except Exception as exc:
-            raise _dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id) from exc
+            raise dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id) from exc
 
     def _chunk_index_option_flags(self, options: IndexingOptions | None) -> dict[str, bool]:
         return {
@@ -2760,7 +2562,7 @@ class Indexer:
         for attempt in range(max_retries + 1):
             try:
                 ids = list(vector_store.add_documents(batch, document_id, tenant_id))
-                _dual_write_shadow_vectors_best_effort(batch, document_id=document_id, tenant_id=tenant_id)
+                dual_write_shadow_vectors_best_effort(batch, document_id=document_id, tenant_id=tenant_id)
                 return ids, backoff
             except Exception as exc:  # noqa: BLE001
                 if attempt >= max_retries:
@@ -2816,7 +2618,7 @@ class Indexer:
             return [None] * len(docs)
 
         runtime = embedding_runtime or resolve_dataset_embedding_runtime(None)
-        if runtime.dataset_scoped and _milvus_backend_enabled():
+        if runtime.dataset_scoped and milvus_backend_enabled():
             return self._write_dataset_scoped_chunk_vectors(
                 docs,
                 document_id=document_id,

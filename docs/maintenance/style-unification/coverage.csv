@@ -1294,7 +1294,9 @@ app/services/hardcase_discovery_service.py,3,pending,conforms,Awaiting file-leve
 app/services/image_embedding_index.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/incident_bundle_service.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/index_audit_service.py,3,pending,conforms,Awaiting file-level convention and contract review; Dataset caller migration only; full module semantic review remains pending,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending; task-3-dataset-final: Ruff/AST/signature checks; no Python tests
-app/services/indexer.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/services/indexer.py,5,pending,conforms,本批仅核对向量写入 owner 与调用点；整文件审核待完成,Ruff check/format and owner-reference scan; Python tests not run
+app/services/indexing/chunks.py,5,pending,conforms,本批仅核对向量写入 owner 与调用点；整文件审核待完成,Ruff check/format and owner-reference scan; Python tests not run
+app/services/indexing/vector_writer.py,5,pending,conforms,本批仅核对向量写入 owner 与调用点；整文件审核待完成,Ruff check/format and owner-reference scan; Python tests not run
 app/services/ingest_dead_letter_service.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/ingest_pre_poc_quality_gate.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/ingestion_dashboard_service.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending

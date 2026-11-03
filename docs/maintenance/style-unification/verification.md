@@ -381,3 +381,9 @@
 
 - `ConnectorRun.connector_id` 是 ORM 中声明的非空 `String(80)`。`connector_run_job` 直接读取并 `.strip()`，保留未知 ID 的 `unsupported_connector_id` 失败状态；移除 `getattr`、`str` 和空串默认转换。
 - Ruff check、格式和语法检查通过。未运行 Python 测试或 connector queue 集成。
+
+## 第五批：索引向量写入 owner（首个切片）
+
+- `app.services.indexing.vector_writer` 统一持有 Milvus 模式判断、shadow writer 配置与缓存、embedding-space hash、双写和 dataset-scoped runtime 异常。`indexer.py` 与 `chunks.py` 直接调用该 owner；移除 `indexer.py` 中重复的 shadow writer 实现，并将四处旧异常工厂调用改到共享定义。
+- shadow hash 失败时记录 warning 并停用可选 shadow writer；主向量写入仍保持成功路径，不再将空 hash 写入 shadow metadata。外部 embedding 与 Milvus adapter 的既有 best-effort 降级保留，主向量写入的 retry 顺序不变。
+- Ruff check、Ruff format --check、`git diff --check` 及 owner 引用扫描通过。未运行 Python 测试、应用导入或数据库／向量库调用；运行时行为未验证。三份文件的覆盖状态只记录本切片，文件级审核仍待完成。
