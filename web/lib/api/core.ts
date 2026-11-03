@@ -1,5 +1,5 @@
 import axios, { AxiosHeaders } from 'axios'
-import type { AxiosRequestConfig, AxiosResponse } from 'axios'
+import type { AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 
 import { extractBackendMessage, extractBackendRequestId, extractRateLimitDetail } from '@/lib/api-errors'
 import { getAuthHeaders } from '@/lib/auth-headers'
@@ -261,7 +261,7 @@ async function handleApiClientError(error: unknown) {
   throw apiError
 }
 
-apiClient.interceptors.request.use((config) => {
+function prepareApiRequest(config: InternalAxiosRequestConfig): InternalAxiosRequestConfig {
   const headers = AxiosHeaders.from(config.headers)
   const authHeaders = getAuthHeaders()
   for (const [key, value] of Object.entries(authHeaders)) {
@@ -273,34 +273,34 @@ apiClient.interceptors.request.use((config) => {
   getOrCreateRequestId(headers)
   config.headers = headers
   return config
-})
+}
 
-apiClient.interceptors.response.use(
-  (response) => {
-    const responseType = response.config?.responseType
-    const expectsJson = !responseType || responseType === 'json'
-    if (expectsJson) {
-      const contentType = String(response.headers?.['content-type'] || '').toLowerCase()
-      if (typeof response.data === 'string') {
-        const trimmed = response.data.trimStart().slice(0, 200).toLowerCase()
-        const looksHtml = trimmed.startsWith('<!doctype html') || trimmed.startsWith('<html')
-        if (looksHtml || contentType.includes('text/html')) {
-          const err: HtmlResponseError = new Error(
-            'Backend returned HTML (可能 API 地址配错了；请检查 NEXT_PUBLIC_API_URL / 反向代理配置)'
-          )
-          err.code = 'ERR_BAD_RESPONSE'
-          err.response = response
-          err.config = response.config
-          err.request = response.request
-          return Promise.reject(err)
-        }
+function rejectUnexpectedHtmlResponse(response: AxiosResponse): AxiosResponse | Promise<never> {
+  const responseType = response.config?.responseType
+  const expectsJson = !responseType || responseType === 'json'
+  if (expectsJson) {
+    const contentType = String(response.headers?.['content-type'] || '').toLowerCase()
+    if (typeof response.data === 'string') {
+      const trimmed = response.data.trimStart().slice(0, 200).toLowerCase()
+      const looksHtml = trimmed.startsWith('<!doctype html') || trimmed.startsWith('<html')
+      if (looksHtml || contentType.includes('text/html')) {
+        const err: HtmlResponseError = new Error(
+          'Backend returned HTML (可能 API 地址配错了；请检查 NEXT_PUBLIC_API_URL / 反向代理配置)'
+        )
+        err.code = 'ERR_BAD_RESPONSE'
+        err.response = response
+        err.config = response.config
+        err.request = response.request
+        return Promise.reject(err)
       }
     }
+  }
 
-    return response
-  },
-  handleApiClientError
-)
+  return response
+}
+
+apiClient.interceptors.request.use(prepareApiRequest)
+apiClient.interceptors.response.use(rejectUnexpectedHtmlResponse, handleApiClientError)
 
 export const openapiRequest = createOpenApiAxiosClient(apiClient)
 
