@@ -241,7 +241,7 @@ def update_document_access(
 
     for document_id in payload.document_ids:
         try:
-            document_access_service.update_access(
+            document_access_service.update_document_access(
                 document_id=document_id,
                 payload=payload.access,
                 db=db,

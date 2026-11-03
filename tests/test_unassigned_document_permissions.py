@@ -477,9 +477,14 @@ def test_document_access_put_uses_shared_acl_management_policy(monkeypatch: pyte
     db = _DB(document)
     sentinel = HTTPException(status_code=403, detail="shared-write-policy")
 
-    monkeypatch.setattr(document_access.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        document_access,
+        document_access_service.dataset_service,
+        "ensure_member",
+        lambda *_args, **_kwargs: None,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        document_access_service,
         "assert_document_access_manageable",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(sentinel),
         raising=True,

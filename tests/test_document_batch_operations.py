@@ -123,11 +123,11 @@ def test_document_access_route_delegates_to_shared_operation(monkeypatch: pytest
     result = SimpleNamespace(mode="all_team_members")
     captured = {}
 
-    def update_access(**kwargs):
+    def update_document_access(**kwargs):
         captured.update(kwargs)
         return result
 
-    monkeypatch.setattr(document_access_service, "update_access", update_access, raising=False)
+    monkeypatch.setattr(document_access_service, "update_document_access", update_document_access, raising=True)
     assert (
         document_access.put_document_access(
             document_id=document_id,
