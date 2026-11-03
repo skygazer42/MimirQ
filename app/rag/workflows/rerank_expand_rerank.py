@@ -1,7 +1,7 @@
 from collections.abc import Callable, Sequence
 
 from app.rag.reranker.types import RerankCandidate, RerankResult
-from app.rag.retrieval.context_expansion import expand_reranked_ids_by_score
+from app.rag.retrieval.neighbor_expand import expand_neighbors_by_score
 
 
 def run_rerank_expand_rerank(
@@ -20,7 +20,7 @@ def run_rerank_expand_rerank(
     base_candidates = list(candidates or [])
     first_pass = rerank_fn(str(query or ""), base_candidates, top_n=max(1, int(top_n or 1)))
     first_ranked = [{"id": cid, "score": float(first_pass.score_map.get(cid, 0.0))} for cid in first_pass.ordered_ids]
-    expanded = expand_reranked_ids_by_score(
+    expanded = expand_neighbors_by_score(
         ranked_items=first_ranked,
         get_adjacent_ids=get_adjacent_ids,
         high_threshold=high_threshold,
