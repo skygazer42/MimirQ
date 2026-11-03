@@ -681,3 +681,13 @@
 
 - Task 6 branch `7429355fa` passed independent review and merged. Nine feedback DTOs moved unchanged into `web/types/feedback.ts`; `chat.ts` re-exports the old names so both `@/types/chat` and the root `@/types` barrel remain compatible. API requests, chat feedback controls, and feedback inbox behavior did not change.
 - Type content comparison and caller/barrel checks passed. Frontend tests/lint/Prettier/TypeScript/runtime checks were not run because the web dependency tree is unavailable and pnpm is mismatched.
+
+## OCR Enrichment
+
+- Task 4 OCR branch `bf87f0db` passed independent review and merged. Formula/image text helpers and OCR redaction consume declared local contracts directly; provider inputs, caps, redaction, image order, thresholds, region/page metadata, and best-effort behavior remain.
+- Ruff check/format on four files, AST, caller scan, diff check, and review passed. No Python tests, OCR/PIL/PDF/model services, or downloads were run.
+
+## Retrieval Trace Diagnostics
+
+- Task 5 branch `6fe43912` passed independent review and merged. `finalize_trace.py` increments local counters directly; `debug_sanitize.py` retains validation at raw debug/PII boundaries. Trace keys/order, optional fields, and error diagnostics remain.
+- Ruff check/format on the changed finalizer, three-file AST, caller scan, diff check, and review passed. No tests or data services were run.
