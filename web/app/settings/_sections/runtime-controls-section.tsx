@@ -4,11 +4,11 @@ import { DangerZonePanel } from '@/components/settings/danger-zone-panel'
 import { SettingsSwitch } from '@/components/settings/settings-switch'
 import { Input } from '@/components/ui/input'
 import { settingsTextTokens } from '@/components/ui/system-page-tokens'
-import type { CacheConfig, ChatConfig, LangGraphConfig, SafetyConfig } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { Database, EyeOff, Network, Server } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
+import type { CacheConfig, ChatConfig, LangGraphConfig, SafetyConfig } from '@/types/settings'
 
 type RuntimeControlsSectionProps = {
   chat: ChatConfig

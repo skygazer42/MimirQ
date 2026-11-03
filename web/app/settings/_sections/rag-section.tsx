@@ -10,11 +10,11 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { SettingsSwitch } from '@/components/settings/settings-switch'
-import type { SystemSettings } from '@/lib/api'
 import { RERANKER_PROVIDER_OPTIONS } from '@/lib/reranker-provider-options'
 import { HelpCircle, Sliders } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { systemPageTokens } from '@/components/ui/system-page-tokens'
+import type { SystemSettings } from '@/types/settings'
 
 type RagSettings = NonNullable<SystemSettings['rag']>
 

@@ -8,8 +8,8 @@ import {
   type AdminControlledNavigationModule,
   normalizeNavigationModules,
 } from '@/lib/navigation-visibility'
-import type { NavigationConfig } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import type { NavigationConfig } from '@/types/settings'
 
 type NavigationVisibilitySectionProps = {
   navigation: NavigationConfig
