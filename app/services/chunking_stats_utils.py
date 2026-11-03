@@ -19,10 +19,10 @@ from app.services.dataset_profile_utils import CHUNK_LENGTH_BINS, CHUNK_TOKEN_BI
 def _percentile_from_sorted(sorted_values: list[int], p: int) -> int:
     if not sorted_values:
         return 0
-    pp = max(0, min(100, int(p)))
+    pp = max(0, min(100, p))
     pos = int((pp / 100.0) * (len(sorted_values) - 1))
     pos = max(0, min(len(sorted_values) - 1, pos))
-    return int(sorted_values[pos] or 0)
+    return sorted_values[pos]
 
 
 def compute_chunking_stats_from_lengths(
@@ -37,8 +37,9 @@ def compute_chunking_stats_from_lengths(
     Compute lightweight chunking stats.
 
     Notes:
-    - `lengths` should already be based on stripped content where possible.
-    - `duplicate_count` is best-effort; callers may provide 0 when not available.
+    - `lengths` should already be based on stripped content where possible; values that
+      cannot be converted to integers or are nonpositive are skipped.
+    - `duplicate_count` is best-effort, clamped to zero or higher, and may be 0 when unknown.
     """
     values: list[int] = []
     for raw in lengths:
@@ -55,24 +56,24 @@ def compute_chunking_stats_from_lengths(
         return None
 
     values.sort()
-    total = int(sum(values))
-    short = int(sum(1 for n in values if n < int(short_threshold or 0)))
+    total = sum(values)
+    short = sum(1 for n in values if n < short_threshold)
 
-    hist = histogram(values, list(bins or CHUNK_LENGTH_BINS))
+    hist = histogram(values, bins or CHUNK_LENGTH_BINS)
 
     return {
-        "unit": str(unit or "chars"),
-        "count": int(len(values)),
-        "total": int(total),
-        "min": int(values[0]),
-        "max": int(values[-1]),
-        "avg": int(round(total / len(values))) if values else 0,
+        "unit": unit or "chars",
+        "count": len(values),
+        "total": total,
+        "min": values[0],
+        "max": values[-1],
+        "avg": round(total / len(values)),
         "median": _percentile_from_sorted(values, 50),
         "p10": _percentile_from_sorted(values, 10),
         "p90": _percentile_from_sorted(values, 90),
-        "short_threshold": int(short_threshold),
-        "short_count": int(short),
-        "duplicate_count": int(max(0, int(duplicate_count or 0))),
+        "short_threshold": short_threshold,
+        "short_count": short,
+        "duplicate_count": max(0, duplicate_count),
         "histogram": hist,
     }
 
@@ -107,7 +108,7 @@ def compute_chunking_stats_from_texts(
     return compute_chunking_stats_from_lengths(
         lengths,
         short_threshold=short_threshold,
-        duplicate_count=int(dup_count),
+        duplicate_count=dup_count,
         unit=unit,
     )
 
@@ -132,7 +133,7 @@ def compute_chunking_stats_from_texts_tokens(
         text = str(raw or "").strip()
         if not text:
             continue
-        lengths.append(int(estimate_tokens(text) or 0))
+        lengths.append(estimate_tokens(text))
 
         digest = hashlib.sha256(text.encode("utf-8", "ignore")).hexdigest()
         if digest in seen:
@@ -142,8 +143,8 @@ def compute_chunking_stats_from_texts_tokens(
 
     return compute_chunking_stats_from_lengths(
         lengths,
-        short_threshold=int(short_threshold or 0),
-        duplicate_count=int(dup_count),
+        short_threshold=short_threshold,
+        duplicate_count=dup_count,
         unit="tokens",
         bins=CHUNK_TOKEN_BINS,
     )
