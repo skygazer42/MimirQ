@@ -2,17 +2,21 @@ import hashlib
 import re
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import httpx
 from langchain_core.documents import Document
 from sqlalchemy.orm import Session
 
+from app.api.schemas.chat import ChatRAGConfig, ChatRequest
 from app.core.config import settings
 from app.core.openai_compat import normalize_openai_compatible_base_url
 from app.rag.core.http import httpx_trust_env
 from app.rag.retrieval.source_labels import derive_document_title, maybe_build_source_identification_answer
+
+if TYPE_CHECKING:
+    from app.rag.engine import RAGEngine
 
 
 @dataclass(frozen=True)
@@ -28,14 +32,14 @@ class ChatExecutionContext:
     db: Session
     tenant_id: UUID
     account_id: str
-    request: Any
+    request: ChatRequest
     conversation_id: UUID | None
     request_id: str
     doc_ids_to_use: list[UUID]
     history_for_llm: list[dict[str, Any]]
     scope_dataset_id: UUID | None
     dataset_id_used: UUID | None
-    effective_rag_config: Any
+    effective_rag_config: ChatRAGConfig
     effective_prompt_template_id: UUID | None
     effective_prompt_template_key: str | None
     effective_prompt_ab_experiment_key: str | None
@@ -577,12 +581,12 @@ def execute_extractive_fallback_once(
     db: Session,
     tenant_id: UUID,
     account_id: str,
-    request: Any,
+    request: ChatRequest,
     doc_ids_to_use: list[UUID],
     history_for_llm: list[dict[str, Any]],
     scope_dataset_id: UUID | None,
     dataset_id_used: UUID | None,
-    effective_rag_config: Any,
+    effective_rag_config: ChatRAGConfig,
     original_error: BaseException | None = None,
     reason: str = "model_provider_unavailable",
 ) -> ExecutedGraphChatOnceResult:
@@ -743,7 +747,7 @@ def _graph_runtime_context(
     }
 
 
-def _graph_modality_meta(*, request: Any) -> tuple[str, dict[str, Any]]:
+def _graph_modality_meta(*, request: ChatRequest) -> tuple[str, dict[str, Any]]:
     multimodal_meta: dict[str, Any] = {"enabled": True, "modality": "text", "reasons": []}
     try:
         from app.rag.policy.modality_router import classify_query_modality
@@ -764,8 +768,8 @@ def _graph_tag_context_docs(
     db: Session,
     tenant_id: UUID,
     doc_ids_to_use: list[UUID],
-    request: Any,
-    effective_rag_config: Any,
+    request: ChatRequest,
+    effective_rag_config: ChatRAGConfig,
 ) -> tuple[list[Any], dict[str, Any]]:
     try:
         import inspect
@@ -790,7 +794,7 @@ def _graph_image_context_docs(
     db: Session,
     tenant_id: UUID,
     account_id: str,
-    request: Any,
+    request: ChatRequest,
     modality: str,
     dataset_id_used: UUID | None,
     scope_dataset_id: UUID | None,
@@ -822,11 +826,11 @@ def _graph_multimodal_enrichment(
     db: Session,
     tenant_id: UUID,
     account_id: str,
-    request: Any,
+    request: ChatRequest,
     doc_ids_to_use: list[UUID],
     dataset_id_used: UUID | None,
     scope_dataset_id: UUID | None,
-    effective_rag_config: Any,
+    effective_rag_config: ChatRAGConfig,
 ) -> tuple[list[Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
     modality, multimodal_meta = _graph_modality_meta(request=request)
     tag_docs, tag_meta = _graph_tag_context_docs(
@@ -885,7 +889,7 @@ def _setdefault_graph_metrics(
 def _parse_graph_structured_output(
     *,
     parse_json_from_text,
-    request: Any,
+    request: ChatRequest,
     full_response: str,
     metrics_data: dict[str, Any],
 ) -> object | None:
@@ -1057,7 +1061,7 @@ def execute_graph_chat_once(
 
 async def execute_langchain_chat_once(
     *,
-    engine: Any,
+    engine: "RAGEngine",
     context: ChatExecutionContext,
 ) -> ExecutedGraphChatOnceResult:
     db = context.db

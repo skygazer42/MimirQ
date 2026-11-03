@@ -178,6 +178,7 @@ def _chat_turn_persist_input(
         tenant_id=options.tenant_id,
         conversation_id=options.conversation_id,
         account_id=options.account_id,
+        audit_action="chat.ask",
         assistant_message_id=options.assistant_message_id,
         request_id=options.request_id,
         question=options.question,
