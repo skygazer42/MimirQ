@@ -3200,7 +3200,7 @@ web/components/settings/danger-zone-panel.tsx,6,pending,pending,Awaiting file-le
 web/components/settings/governance-ops-panel.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/settings/saml-ops-panel.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/settings/scim-provisioning-panel.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/settings/settings-switch.tsx,6,pending,pending,Awaiting file-level convention and contract review,
+web/components/settings/settings-switch.tsx,6,conforms,pending,Shared settings switch uses named exports and stays owned by the settings module,Direct component callsites reviewed; visible behavior unchanged; Prettier unavailable
 web/components/settings/visual-boundary.source.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/sidebar.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/sonner-toaster.tsx,6,pending,pending,Awaiting file-level convention and contract review,

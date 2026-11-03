@@ -566,6 +566,11 @@
 - Bootstrap-token trimming/header、SAML text response、endpoint/method/body/path encoding 和 Axios/OpenAPI error propagation 均经 caller/schema scan 核对。无 UI 或测试更改。
 - `web/node_modules` 缺失且 Corepack pnpm 12.4.1 不符合项目要求 10.26.0，故 ESLint、Prettier、TypeScript 和运行时 API checks 未运行；未安装或绕过依赖。
 
+## Settings Switch 组件审阅
+
+- `web/components/settings/settings-switch.tsx` 已符合具名组件导出、局部 props type 和 shared Switch owner 约定，全部直接调用点已静态扫描；当前无需改代码。
+- 未修改 UI；本地 `web/node_modules` 不存在，Prettier 检查未运行，format_status 保持 pending。
+
 ## 并行类别分支：文档处理派发
 
 - Task 4 分支已合并。`app/tasks/jobs.py` 的文档处理 handoff 显式传入文件、文档、租户、parser 和 chunk strategy，并沿用 worker 的 session 所有权；`process_document_flow.py` 的 31 个 `service` 参数使用 `TYPE_CHECKING` 下的 `DocumentProcessorService` 前向引用，避免 `processor.py` 的反向导入形成 runtime cycle。

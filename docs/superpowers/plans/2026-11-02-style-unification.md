@@ -14,7 +14,7 @@
 
 - 主工作区：`E:/MimirQ`；分支：`codex/local-account-registration`。为提速，独立业务类别可从当前 HEAD 建立 `codex/*` 分支和 worktree；类别代码与调用方完成审阅后合并回此分支。
 - 原始基线：`77b6adc1bce523482f0509302a454ce20e01c41c`；数据集服务已提交为 `2c16dedf8`。前两批及第三批此前结果保留，不重新执行。
-- 当前覆盖表有 3,757 个文件：174 个已调整、61 个已符合、985 个登记保留、2,537 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
+- 当前覆盖表有 3,757 个文件：174 个已调整、62 个已符合、985 个登记保留、2,536 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
 - Task 3A 的 125 个 Python 文件已完成最终静态核对并按数据集类别提交；Task 3B 的权限、配额、SCIM、配置、通用 API、身份令牌、共享资源与健康观测已完成本轮代码整理与静态检查，继续核对其余基础模块。原有 `app/api/schemas/document.py` 修改另行保留。
 - 原工作区的 1,625 个未跟踪文件及其他既有修改保留；只按本批明确文件清单暂存，不使用 `git add .`，不执行全仓清理或重置。
 - 用户执行要求：提交按完整业务类别归并，不按函数、文件或每个检查步骤频繁提交；同一类别的定义、调用方、必要引用和验证记录一起提交。纯格式化仍独立成类。
@@ -260,6 +260,8 @@ Hybrid candidate fusion reuses the shared stable `result_key` owner and metadata
 Shared API core slice 已合并：request/response interceptors 仅提取为具名内部 handlers，注册顺序和行为保持；auth、OIDC refresh/retry、cancellation、request ID、rate-limit、HTML response 和错误传播经独立审阅。Barrel re-export surface 未改；工具链因 `web/node_modules` 缺失及 pnpm 版本不符未运行。
 
 Auth/access API 首片已合并：`auth.ts` 与 `access.ts` 的 duplicate request/response shapes 改为直接使用 OpenAPI owners，`tenant-permissions.ts` reuse generated `TenantAccessOut`; SAML/bootstrap token, member/group paths and role payloads retain their existing wire contracts. No UI change; frontend lint/type/runtime checks remain unverified because the required web dependency tree is unavailable.
+
+`web/components/settings/settings-switch.tsx` already follows the named component and type ownership rules and delegates state to the shared Switch; callsites were scanned, no code change was needed. Prettier status remains pending with the unavailable web dependencies.
 
 ### Task 7：脚本与全仓收尾
 
