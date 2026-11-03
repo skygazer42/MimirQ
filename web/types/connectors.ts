@@ -6,7 +6,7 @@ import type { DocumentAccessUpdateRequest } from './documents'
 export type ConnectorId = string
 export type ConnectorRunStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
 
-export interface ConnectorInfo {
+export type ConnectorInfo = {
   id: ConnectorId
   name: string
   description?: string
@@ -14,7 +14,7 @@ export interface ConnectorInfo {
   supports_resume?: boolean
 }
 
-export interface UrlBatchConnectorConfig {
+export type UrlBatchConnectorConfig = {
   [key: string]: unknown
   urls: string[]
   filename?: string | null
@@ -24,7 +24,7 @@ export interface UrlBatchConnectorConfig {
   access?: DocumentAccessUpdateRequest | null
 }
 
-export interface MinioBucketConnectorConfig {
+export type MinioBucketConnectorConfig = {
   [key: string]: unknown
   bucket?: string | null
   prefix?: string | null
@@ -37,7 +37,7 @@ export interface MinioBucketConnectorConfig {
   access?: DocumentAccessUpdateRequest | null
 }
 
-export interface WebCrawlAuthConfig {
+export type WebCrawlAuthConfig = {
   type: 'none' | 'cookie' | 'bearer' | 'basic'
   cookie?: string | null
   token?: string | null
@@ -45,26 +45,26 @@ export interface WebCrawlAuthConfig {
   password?: string | null
 }
 
-export interface SourcePrincipal {
+export type SourcePrincipal = {
   system: 'github' | 'confluence' | 'jira' | 'drive' | 'generic'
   kind: 'user' | 'group' | 'team' | 'role' | 'policy' | 'domain' | 'anyone'
   id: string
   display?: string | null
 }
 
-export interface ConnectorSourceAclGroupMappingRule {
+export type ConnectorSourceAclGroupMappingRule = {
   source: SourcePrincipal
   group_id: string
 }
 
-export interface ConnectorSourceAclConfig {
+export type ConnectorSourceAclConfig = {
   mode?: 'disabled' | 'inherit'
   group_mappings?: ConnectorSourceAclGroupMappingRule[]
   allow_anyone?: boolean
   fallback_mode?: DocumentAccessMode
 }
 
-export interface WebCrawlConnectorConfig {
+export type WebCrawlConnectorConfig = {
   [key: string]: unknown
   start_urls: string[]
   max_pages?: number
@@ -86,7 +86,7 @@ export interface WebCrawlConnectorConfig {
   access?: DocumentAccessUpdateRequest | null
 }
 
-export interface MySQLCatalogConnectorConfig {
+export type MySQLCatalogConnectorConfig = {
   [key: string]: unknown
   host: string
   port?: number
@@ -99,7 +99,7 @@ export interface MySQLCatalogConnectorConfig {
   profile_enabled?: boolean
 }
 
-export interface SQLServerCatalogConnectorConfig {
+export type SQLServerCatalogConnectorConfig = {
   [key: string]: unknown
   host: string
   port?: number
@@ -112,7 +112,7 @@ export interface SQLServerCatalogConnectorConfig {
   profile_enabled?: boolean
 }
 
-export interface JiraProjectConnectorConfig {
+export type JiraProjectConnectorConfig = {
   [key: string]: unknown
   base_url: string
   project_key: string
@@ -163,13 +163,13 @@ export type ConnectorRunCreateRequest =
       config: SQLServerCatalogConnectorConfig
     }
 
-export interface ConnectorValidateRequest {
+export type ConnectorValidateRequest = {
   connector_id: string
   config?: Record<string, unknown>
   check_connectivity: boolean
 }
 
-export interface ConnectorValidateResponse {
+export type ConnectorValidateResponse = {
   ok: boolean
   connector_id: string
   config?: Record<string, unknown>
@@ -178,13 +178,13 @@ export interface ConnectorValidateResponse {
   checks?: Record<string, unknown>
 }
 
-export interface ConnectorRunDocumentOut {
+export type ConnectorRunDocumentOut = {
   document_id: string
   source_ref?: string | null
   status?: string
 }
 
-export interface ConnectorRunAclSummaryOut {
+export type ConnectorRunAclSummaryOut = {
   mode: string
   documents_total: number
   access_mode_counts?: Record<string, number>
@@ -196,7 +196,7 @@ export interface ConnectorRunAclSummaryOut {
   partial_group_count_max?: number | null
 }
 
-export interface ConnectorRunOut {
+export type ConnectorRunOut = {
   id: string
   tenant_id: string
   dataset_id?: string | null
@@ -214,19 +214,19 @@ export interface ConnectorRunOut {
   documents?: ConnectorRunDocumentOut[]
 }
 
-export interface ConnectorRunListResponse {
+export type ConnectorRunListResponse = {
   total: number
   items: ConnectorRunOut[]
 }
 
-export interface IngestionRunDocumentOut {
+export type IngestionRunDocumentOut = {
   document_id: string
   status: string
   source_ref?: string | null
   created_at?: string | null
 }
 
-export interface IngestionRunOut {
+export type IngestionRunOut = {
   id: string
   tenant_id: string
   dataset_id?: string | null
@@ -242,18 +242,18 @@ export interface IngestionRunOut {
   documents?: IngestionRunDocumentOut[]
 }
 
-export interface IngestionRunListResponse {
+export type IngestionRunListResponse = {
   total: number
   items: IngestionRunOut[]
 }
 
-export interface IngestionRunCompareResponse {
+export type IngestionRunCompareResponse = {
   run_a: IngestionRunOut
   run_b: IngestionRunOut
   diff: JsonObject
 }
 
-export interface ConnectorConfigCreateRequest {
+export type ConnectorConfigCreateRequest = {
   connector_id: string
   dataset_id: string
   name: string
@@ -262,7 +262,7 @@ export interface ConnectorConfigCreateRequest {
   config?: Record<string, unknown>
 }
 
-export interface ConnectorConfigUpdateRequest {
+export type ConnectorConfigUpdateRequest = {
   name?: string | null
   enabled?: boolean | null
   schedule_cron?: string | null
@@ -270,7 +270,7 @@ export interface ConnectorConfigUpdateRequest {
   state?: Record<string, unknown> | null
 }
 
-export interface ConnectorConfigOut {
+export type ConnectorConfigOut = {
   id: string
   tenant_id: string
   dataset_id: string
@@ -286,7 +286,7 @@ export interface ConnectorConfigOut {
   updated_at: string
 }
 
-export interface ConnectorConfigListResponse {
+export type ConnectorConfigListResponse = {
   total: number
   items: ConnectorConfigOut[]
 }

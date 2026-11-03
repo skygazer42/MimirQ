@@ -4,7 +4,7 @@
 
 export type ProviderCategory = 'model' | 'embedding' | 'reranker'
 
-export interface ModelProvider {
+export type ModelProvider = {
   id: string
   name: string
   description: string
@@ -16,7 +16,7 @@ export interface ModelProvider {
   config?: ProviderConfig
 }
 
-export interface ModelConfig {
+export type ModelConfig = {
   id: string
   name: string
   displayName: string
@@ -29,7 +29,7 @@ export interface ModelConfig {
   }
 }
 
-export interface ProviderConfig {
+export type ProviderConfig = {
   apiKey?: string
   apiBase?: string
   model?: string

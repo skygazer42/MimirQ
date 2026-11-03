@@ -7,7 +7,7 @@ import type { Citation } from './processing'
 
 // ==================== 对话相关类型 ====================
 
-export interface Message {
+export type Message = {
   id: string
   role: 'user' | 'assistant'
   content: string
@@ -17,7 +17,7 @@ export interface Message {
   created_at: string
 }
 
-export interface Conversation {
+export type Conversation = {
   id: string
   title?: string
   last_message?: string
@@ -27,7 +27,7 @@ export interface Conversation {
   updated_at: string
 }
 
-export interface ConversationListResponse {
+export type ConversationListResponse = {
   total: number
   returned?: number
   has_more?: boolean
@@ -35,7 +35,7 @@ export interface ConversationListResponse {
   items: Conversation[]
 }
 
-export interface ConversationDetail {
+export type ConversationDetail = {
   conversation_id: string
   returned?: number
   has_more?: boolean
@@ -44,14 +44,14 @@ export interface ConversationDetail {
 
 // ==================== RAG Trace (Visualization) ====================
 
-export interface RagTraceStep {
+export type RagTraceStep = {
   key: string
   label: string
   elapsed_sec?: number | null
   meta?: Record<string, unknown>
 }
 
-export interface RagTraceCitation {
+export type RagTraceCitation = {
   document_id?: string | null
   chunk_id?: string | null
   chunk_index?: number | null
@@ -92,7 +92,7 @@ export interface RagTraceCitation {
   kg_path_provenance?: Record<string, unknown> | null
 }
 
-export interface RagTraceRetrievalQuery {
+export type RagTraceRetrievalQuery = {
   kind?: string | null
   query_chars?: number | null
   elapsed_sec?: number | null
@@ -100,7 +100,7 @@ export interface RagTraceRetrievalQuery {
   retriever_debug?: JsonObject | null
 }
 
-export interface RagTraceRetrieval {
+export type RagTraceRetrieval = {
   mode?: string | null
   requested_mode?: string | null
   auto_routed?: boolean | null
@@ -121,7 +121,7 @@ export interface RagTraceRetrieval {
   elapsed_sec?: number | null
 }
 
-export interface RagTraceRerank {
+export type RagTraceRerank = {
   enabled: boolean
   provider?: string | null
   top_n?: number | null
@@ -129,7 +129,7 @@ export interface RagTraceRerank {
   model_used?: string | null
 }
 
-export interface RagTrace {
+export type RagTrace = {
   schema_version: number
   ts_ms: number
   request_id?: string | null
@@ -141,7 +141,7 @@ export interface RagTrace {
   steps: RagTraceStep[]
 }
 
-export interface RagTraceListResponse {
+export type RagTraceListResponse = {
   enabled: boolean
   path: string
   window_minutes: number
@@ -150,18 +150,18 @@ export interface RagTraceListResponse {
   items: RagTrace[]
 }
 
-export interface StreamEvent {
+export type StreamEvent = {
   type: 'citations' | 'token' | 'done' | 'error' | 'route' | 'rewrite' | 'graph' | 'event'
   data: unknown
   request_id?: string
 }
 
-export interface ChatHistoryMessage {
+export type ChatHistoryMessage = {
   role: LooseString<'user' | 'assistant'>
   content: string
 }
 
-export interface ChatRequest {
+export type ChatRequest = {
   conversation_id?: string
   message: string
   history?: ChatHistoryMessage[]
@@ -199,24 +199,24 @@ export interface ChatRequest {
   }
 }
 
-export interface ConversationSummaryResponse {
+export type ConversationSummaryResponse = {
   available: boolean
   summary?: string | null
 }
 
-export interface ConversationSummaryUpdateResponse {
+export type ConversationSummaryUpdateResponse = {
   summary: string
 }
 
 // ==================== Usage / Quotas ====================
 
-export interface ChatTokenUsageRow {
+export type ChatTokenUsageRow = {
   dataset_id?: string | null
   assistant_messages: number
   assistant_tokens: number
 }
 
-export interface ChatTokenUsageSummary {
+export type ChatTokenUsageSummary = {
   window_start: string
   window_end: string
   total_assistant_messages: number
@@ -224,7 +224,7 @@ export interface ChatTokenUsageSummary {
   by_dataset: ChatTokenUsageRow[]
 }
 
-export interface ChatCostUsageRow {
+export type ChatCostUsageRow = {
   dataset_id?: string | null
   assistant_messages: number
   llm_prompt_tokens: number
@@ -236,7 +236,7 @@ export interface ChatCostUsageRow {
   rerank_elapsed_sec_sum: number
 }
 
-export interface ChatCostUsageSummary {
+export type ChatCostUsageSummary = {
   window_start: string
   window_end: string
   total_assistant_messages: number
@@ -250,7 +250,7 @@ export interface ChatCostUsageSummary {
   by_dataset: ChatCostUsageRow[]
 }
 
-export interface ChatTokenQuotaStatus {
+export type ChatTokenQuotaStatus = {
   enabled: boolean
   mode: string
   limit: number
@@ -262,7 +262,7 @@ export interface ChatTokenQuotaStatus {
   window_end: string
 }
 
-export interface TenantDocumentQuotaStatus {
+export type TenantDocumentQuotaStatus = {
   enabled: boolean
   limit: number
   used: number
@@ -270,7 +270,7 @@ export interface TenantDocumentQuotaStatus {
   exceeded: boolean
 }
 
-export interface TenantStorageQuotaStatus {
+export type TenantStorageQuotaStatus = {
   enabled: boolean
   limit_bytes: number
   used_bytes: number
@@ -278,7 +278,7 @@ export interface TenantStorageQuotaStatus {
   exceeded: boolean
 }
 
-export interface TenantEmbeddingCharQuotaStatus {
+export type TenantEmbeddingCharQuotaStatus = {
   enabled: boolean
   mode: string
   limit_chars: number
@@ -290,7 +290,7 @@ export interface TenantEmbeddingCharQuotaStatus {
   window_end: string
 }
 
-export interface TenantQpsQuotaConfig {
+export type TenantQpsQuotaConfig = {
   enabled: boolean
   mode: string
   rps: number
@@ -298,7 +298,7 @@ export interface TenantQpsQuotaConfig {
   scopes?: string[]
 }
 
-export interface TenantQuotaSummary {
+export type TenantQuotaSummary = {
   documents: TenantDocumentQuotaStatus
   storage: TenantStorageQuotaStatus
   embedding_chars: TenantEmbeddingCharQuotaStatus
@@ -307,7 +307,7 @@ export interface TenantQuotaSummary {
 
 // ==================== Audit Logs ====================
 
-export interface AuditLogItem {
+export type AuditLogItem = {
   id: string
   tenant_id: string
   actor_id?: string | null
@@ -321,12 +321,12 @@ export interface AuditLogItem {
   created_at: string
 }
 
-export interface AuditLogListResponse {
+export type AuditLogListResponse = {
   total: number
   items: AuditLogItem[]
 }
 
-export interface ChatResponse {
+export type ChatResponse = {
   conversation_id: string
   assistant_message_id: string
   request_id: string
@@ -343,7 +343,7 @@ export interface ChatResponse {
   structured_data?: unknown
 }
 
-export interface CheckpointItem {
+export type CheckpointItem = {
   checkpoint_id?: string | null
   checkpoint_ns?: string
   created_at?: string | null
@@ -352,12 +352,12 @@ export interface CheckpointItem {
   values?: JsonObject | null
 }
 
-export interface CheckpointListResponse {
+export type CheckpointListResponse = {
   thread_id: string
   items: CheckpointItem[]
 }
 
-export interface CheckpointDetailResponse {
+export type CheckpointDetailResponse = {
   thread_id: string
   checkpoint_id?: string | null
   checkpoint_ns?: string
@@ -372,7 +372,7 @@ export interface CheckpointDetailResponse {
 export type FeedbackCategory = 'retrieval_miss' | 'wrong_answer' | 'out_of_scope' | 'other'
 export type FeedbackCategorySource = 'user' | 'llm_auto' | 'reviewer'
 
-export interface MessageFeedback {
+export type MessageFeedback = {
   id: string
   tenant_id: string
   conversation_id: string
@@ -393,7 +393,7 @@ export interface MessageFeedback {
   updated_at: string
 }
 
-export interface MessageFeedbackCreate {
+export type MessageFeedbackCreate = {
   message_id: string
   rating: number
   reason?: string
@@ -403,23 +403,23 @@ export interface MessageFeedbackCreate {
   extra?: JsonObject
 }
 
-export interface MessageFeedbackListResponse {
+export type MessageFeedbackListResponse = {
   total: number
   items: MessageFeedback[]
 }
 
-export interface MessageFeedbackEnriched extends MessageFeedback {
+export type MessageFeedbackEnriched = MessageFeedback & {
   conversation_title?: string
   message_content?: string
   message_created_at?: string
 }
 
-export interface MessageFeedbackEnrichedListResponse {
+export type MessageFeedbackEnrichedListResponse = {
   total: number
   items: MessageFeedbackEnriched[]
 }
 
-export interface FeedbackLoopCandidatesResponse {
+export type FeedbackLoopCandidatesResponse = {
   schema: string
   summary: JsonObject
   hard_negative_records: JsonObject[]
@@ -428,7 +428,7 @@ export interface FeedbackLoopCandidatesResponse {
   rules_suggestions: JsonObject
 }
 
-export interface FeedbackLoopHardNegativeExportResponse {
+export type FeedbackLoopHardNegativeExportResponse = {
   schema: string
   trigger: string
   realtime_listener_enabled: boolean

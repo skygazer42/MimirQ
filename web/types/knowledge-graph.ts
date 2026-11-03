@@ -6,25 +6,25 @@ import type { JsonObject } from './common'
 
 // ==================== KG 相关类型 ====================
 
-export interface KGExtractResponse {
+export type KGExtractResponse = {
   document_id: string
   chunk_count: number
   event_count: number
   message: string
 }
 
-export interface KGSearchRequest {
+export type KGSearchRequest = {
   query: string
   tenant_id?: string
   document_ids?: string[]
 }
 
-export interface KGSearchResponse {
+export type KGSearchResponse = {
   result: JsonObject
   query: string
 }
 
-export interface KGGraphNode {
+export type KGGraphNode = {
   id: string
   label: string
   group?: number
@@ -32,7 +32,7 @@ export interface KGGraphNode {
   meta?: JsonObject
 }
 
-export interface KGGraphLink {
+export type KGGraphLink = {
   source: string
   target: string
   label?: string
@@ -40,13 +40,13 @@ export interface KGGraphLink {
   meta?: JsonObject
 }
 
-export interface KGGraphResponse {
+export type KGGraphResponse = {
   nodes: KGGraphNode[]
   links: KGGraphLink[]
   stats?: JsonObject
 }
 
-export interface KGEntityItem {
+export type KGEntityItem = {
   id: string
   name: string
   type: string
@@ -57,7 +57,7 @@ export interface KGEntityItem {
   updated_at?: string | null
 }
 
-export interface KGEventItem {
+export type KGEventItem = {
   id: string
   title: string
   summary: string
@@ -70,37 +70,37 @@ export interface KGEventItem {
   updated_at?: string | null
 }
 
-export interface KGEventEntityItem {
+export type KGEventEntityItem = {
   entity: KGEntityItem
   weight?: number
   role?: string | null
 }
 
-export interface KGEventDetailResponse {
+export type KGEventDetailResponse = {
   event: KGEventItem
   entities: KGEventEntityItem[]
 }
 
-export interface KGEntityNeighbor {
+export type KGEntityNeighbor = {
   entity_id: string
   name: string
   type: string
   count: number
 }
 
-export interface KGEntityDetailResponse {
+export type KGEntityDetailResponse = {
   entity: KGEntityItem
   events: KGEventItem[]
   neighbors: KGEntityNeighbor[]
   stats?: JsonObject
 }
 
-export interface KGEntityTypeCount {
+export type KGEntityTypeCount = {
   type: string
   count: number
 }
 
-export interface KGStatsResponse {
+export type KGStatsResponse = {
   events: number
   entities: number
   links: number
@@ -108,13 +108,13 @@ export interface KGStatsResponse {
   updated_at?: string | null
 }
 
-export interface KGDeleteResponse {
+export type KGDeleteResponse = {
   document_id: string
   events_deleted: number
   entities_pruned: number
 }
 
-export interface KGManualEntityInput {
+export type KGManualEntityInput = {
   key?: string | null
   name: string
   type: string
@@ -129,7 +129,7 @@ export type KGManualEntityRef = string | {
   type?: string | null
 }
 
-export interface KGManualRelationInput {
+export type KGManualRelationInput = {
   subject: KGManualEntityRef
   predicate: string
   object: KGManualEntityRef
@@ -141,7 +141,7 @@ export interface KGManualRelationInput {
   extra_data?: JsonObject
 }
 
-export interface KGManualImportRequest {
+export type KGManualImportRequest = {
   name?: string
   import_id?: string | null
   dataset_id?: string | null
@@ -155,7 +155,7 @@ export interface KGManualImportRequest {
   relations?: KGManualRelationInput[]
 }
 
-export interface KGManualImportStats {
+export type KGManualImportStats = {
   entities: number
   relations: number
   events: number
@@ -164,14 +164,14 @@ export interface KGManualImportStats {
   warnings: number
 }
 
-export interface KGManualImportIssue {
+export type KGManualImportIssue = {
   level: string
   message: string
   row?: number | null
   field?: string | null
 }
 
-export interface KGManualImportPreviewResponse {
+export type KGManualImportPreviewResponse = {
   import_id: string
   pipeline_hash: string
   name: string
@@ -180,7 +180,7 @@ export interface KGManualImportPreviewResponse {
   issues: KGManualImportIssue[]
 }
 
-export interface KGManualImportResponse extends KGManualImportPreviewResponse {
+export type KGManualImportResponse = KGManualImportPreviewResponse & {
   dataset_id?: string | null
   document_id?: string | null
   inserted?: JsonObject
@@ -188,7 +188,7 @@ export interface KGManualImportResponse extends KGManualImportPreviewResponse {
   message: string
 }
 
-export interface KGManualImportListItem {
+export type KGManualImportListItem = {
   import_id: string
   name: string
   pipeline_hash: string
@@ -199,11 +199,11 @@ export interface KGManualImportListItem {
   updated_at?: string | null
 }
 
-export interface KGManualImportListResponse {
+export type KGManualImportListResponse = {
   items: KGManualImportListItem[]
 }
 
-export interface KGManualImportDeleteResponse {
+export type KGManualImportDeleteResponse = {
   import_id: string
   document_id: string
   events_deleted: number
@@ -213,48 +213,48 @@ export interface KGManualImportDeleteResponse {
   message: string
 }
 
-export interface KGEntityMergeRequest {
+export type KGEntityMergeRequest = {
   source_entity_id: string
   target_entity_id: string
 }
 
-export interface KGEntityMergePreviewResponse {
+export type KGEntityMergePreviewResponse = {
   source_entity_id: string
   target_entity_id: string
   stats?: JsonObject
 }
 
-export interface KGEntityMergeResponse {
+export type KGEntityMergeResponse = {
   action_id: string
   source_entity_id: string
   target_entity_id: string
   stats?: JsonObject
 }
 
-export interface KGEntityResolutionUndoResponse {
+export type KGEntityResolutionUndoResponse = {
   action_id: string
   status: string
   stats?: JsonObject
 }
 
-export interface KGEntitySplitRequest {
+export type KGEntitySplitRequest = {
   entity_id: string
   new_entity_name: string
   event_ids: string[]
 }
 
-export interface KGEntitySplitResponse {
+export type KGEntitySplitResponse = {
   action_id: string
   original_entity_id: string
   new_entity_id: string
   stats?: JsonObject
 }
 
-export interface KGEntityAliasCreateRequest {
+export type KGEntityAliasCreateRequest = {
   alias: string
 }
 
-export interface KGEntityAliasItem {
+export type KGEntityAliasItem = {
   id: string
   canonical_entity_id: string
   alias: string
@@ -265,13 +265,13 @@ export interface KGEntityAliasItem {
   updated_at?: string | null
 }
 
-export interface KGEntityAliasesResponse {
+export type KGEntityAliasesResponse = {
   entity_id: string
   resolved_entity_id: string
   aliases: KGEntityAliasItem[]
 }
 
-export interface KGEntityAliasSuggestionItem {
+export type KGEntityAliasSuggestionItem = {
   entity_id: string
   name: string
   type: string
@@ -279,14 +279,14 @@ export interface KGEntityAliasSuggestionItem {
   reason?: string
 }
 
-export interface KGEntityAliasSuggestionsResponse {
+export type KGEntityAliasSuggestionsResponse = {
   entity_id: string
   suggestions: KGEntityAliasSuggestionItem[]
   mode?: string
   stats?: JsonObject
 }
 
-export interface KGPredicateOntologyItem {
+export type KGPredicateOntologyItem = {
   id: string
   tenant_id: string
   predicate: string
@@ -298,20 +298,20 @@ export interface KGPredicateOntologyItem {
   updated_at?: string | null
 }
 
-export interface KGPredicateOntologyCreateRequest {
+export type KGPredicateOntologyCreateRequest = {
   predicate: string
   display_name?: string | null
   description?: string | null
   is_enabled?: boolean
 }
 
-export interface KGPredicateOntologyUpdateRequest {
+export type KGPredicateOntologyUpdateRequest = {
   display_name?: string | null
   description?: string | null
   is_enabled?: boolean | null
 }
 
-export interface KGPredicateOntologyListResponse {
+export type KGPredicateOntologyListResponse = {
   predicates: KGPredicateOntologyItem[]
 }
 
