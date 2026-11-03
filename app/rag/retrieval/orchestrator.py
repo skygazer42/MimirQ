@@ -360,6 +360,7 @@ from app.rag.retrieval.orchestration.kg_merge_boost import (
 from app.rag.retrieval.orchestration.kg_merge_boost import (
     _resolve_kg_scope as _resolve_kg_scope,
 )
+from app.rag.retrieval.orchestration.kg_query_expansion import expand_kg_query, raise_for_rejected_response
 from app.rag.retrieval.orchestration.model_query_expansion import (
     decompose_query,
     generate_hyde_query,
@@ -376,12 +377,16 @@ from app.rag.retrieval.orchestration.query_contract import (
     RetrievalConfigSnapshotInput,
     build_retrieval_config_snapshot,
 )
-from app.rag.retrieval.orchestration.query_contracts import ModelQuerySettings
+from app.rag.retrieval.orchestration.query_contracts import KGQueryRequest, KGQueryScope, ModelQuerySettings
 from app.rag.retrieval.orchestration.query_invocation import (
     QueryInvocationRecordInput,
     build_query_invocation_record,
 )
-from app.rag.retrieval.orchestration.query_options import parse_model_query_overrides, resolve_model_query_settings
+from app.rag.retrieval.orchestration.query_options import (
+    parse_model_query_overrides,
+    resolve_kg_expansion_settings,
+    resolve_model_query_settings,
+)
 from app.rag.retrieval.orchestration.query_variants import (
     QueryVariantStageInput,
     build_query_variant_stage,
@@ -1499,66 +1504,6 @@ def _run_kg_search_sync(kg_kwargs: dict[str, Any]) -> Any:
     return asyncio.run(coro)
 
 
-def _score_kg_query_entities(
-    entities: list[Any],
-    *,
-    exclude_all: bool,
-    exclude_fold: set[str],
-    min_weight: float,
-) -> list[tuple[float, str]]:
-    scored: list[tuple[float, str]] = []
-    for entity in entities:
-        if not isinstance(entity, dict) or exclude_all:
-            continue
-        entity_type = str(entity.get("type") or "").strip()
-        if entity_type and entity_type.casefold() in exclude_fold:
-            continue
-        name = str(entity.get("name") or "").strip()
-        if not name:
-            continue
-        try:
-            weight = float(entity.get("weight", 0.0) or 0.0)
-        except (TypeError, ValueError, AttributeError):
-            weight = 0.0
-        if weight >= min_weight:
-            scored.append((weight, name))
-    return sorted(scored, key=lambda item: (-item[0], item[1]))
-
-
-def _select_kg_query_entity_names(
-    scored: list[tuple[float, str]],
-    *,
-    query: str,
-    max_entities: int,
-) -> list[str]:
-    seen_names: set[str] = set()
-    base_folded = query.casefold()
-    selected_names: list[str] = []
-    for _weight, name in scored:
-        key = name.casefold() if name.isascii() else name
-        if key in seen_names:
-            continue
-        seen_names.add(key)
-        if key and key in base_folded:
-            continue
-        selected_names.append(name)
-        if max_entities > 0 and len(selected_names) >= max_entities:
-            break
-    return selected_names
-
-
-def _build_kg_query_expansions(query: str, names: list[str], *, max_queries: int) -> list[str]:
-    queries: list[str] = []
-    for name in names:
-        expanded = f"{query} {name}".strip()
-        if len(expanded) > 500:
-            expanded = expanded[:500] + "..."
-        queries.append(expanded)
-        if max_queries > 0 and len(queries) >= max_queries:
-            break
-    return queries
-
-
 def _run_retrieval_kg_query_expansion_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
     ctx.kg_query_expansion_enabled = _coerce_optional_bool(
         ctx.state.get("enable_kg_query_expansion"),
@@ -1571,69 +1516,33 @@ def _run_retrieval_kg_query_expansion_phase(ctx: RetrievalRuntimeState) -> dict[
     ctx.kg_query_expansion_entities_selected = 0
     ctx.kg_query_expansion_queries: list[str] = []
     ctx.kg_query_expansion_entity_names: list[str] = []
+    ctx.kg_result_cached = None
     try:
         tenant_id = ctx.state.get("tenant_id")
         account_id = ctx.state.get("account_id")
         kg_document_ids, kg_dataset_id, kg_dataset_ids = _resolve_kg_scope(ctx.state)
-
-        if (
-            ctx.kg_query_expansion_enabled
-            and bool(getattr(settings, "KG_ENABLED", False))
-            and bool(getattr(settings, "KG_CHAT_ENABLED", False))
-            and tenant_id is not None
-            and (kg_document_ids or kg_dataset_id is not None or kg_dataset_ids)
-            and (account_id is not None or (kg_dataset_id is None and not kg_dataset_ids))
-        ):
-            kg_kwargs = {
-                "query": ctx.query_for_retrieval,
-                "tenant_id": tenant_id,
-                "document_ids": kg_document_ids or None,
-                "dataset_id": kg_dataset_id,
-                "account_id": account_id,
-            }
-            if kg_dataset_ids:
-                kg_kwargs["dataset_ids"] = kg_dataset_ids
-            t0 = time.time()
-            kg_result = _run_kg_search_sync(kg_kwargs)
-
-            ctx.kg_result_cached = kg_result if isinstance(kg_result, dict) else None
-            ctx.kg_query_expansion_elapsed = time.time() - t0
-
-            entities = (kg_result or {}).get("entities") or []
-            entities = entities if isinstance(entities, list) else []
-            ctx.kg_query_expansion_entities_total = len(entities)
-
-            max_entities = max(0, int(getattr(settings, "RAG_KG_QUERY_EXPANSION_MAX_ENTITIES", 5) or 5))
-            max_queries = max(0, int(getattr(settings, "RAG_KG_QUERY_EXPANSION_MAX_QUERIES", 5) or 5))
-            min_weight = float(getattr(settings, "RAG_KG_QUERY_EXPANSION_MIN_ENTITY_WEIGHT", 0.15) or 0.15)
-            exclude_types = parse_csv(str(getattr(settings, "RAG_KG_QUERY_EXPANSION_EXCLUDE_ENTITY_TYPES", "") or ""))
-            exclude_all = "*" in exclude_types
-            exclude_fold = {t.casefold() for t in exclude_types if str(t or "").strip() and t != "*"}
-
-            scored = _score_kg_query_entities(
-                entities,
-                exclude_all=exclude_all,
-                exclude_fold=exclude_fold,
-                min_weight=min_weight,
-            )
-            selected_names = _select_kg_query_entity_names(
-                scored,
-                query=ctx.query_for_retrieval,
-                max_entities=max_entities,
-            )
-
-            ctx.kg_query_expansion_entities_selected = len(selected_names)
-            ctx.kg_query_expansion_entity_names = selected_names[
-                : max_queries if max_queries > 0 else len(selected_names)
-            ]
-
-            ctx.kg_query_expansion_queries = _build_kg_query_expansions(
-                ctx.query_for_retrieval,
-                ctx.kg_query_expansion_entity_names,
-                max_queries=max_queries,
-            )
-
-            ctx.kg_query_expansion_used = bool(ctx.kg_query_expansion_queries)
+        request = KGQueryRequest(
+            query=ctx.query_for_retrieval,
+            scope=KGQueryScope(
+                tenant_id=tenant_id,
+                account_id=account_id,
+                document_ids=tuple(kg_document_ids),
+                dataset_id=kg_dataset_id,
+                dataset_ids=tuple(kg_dataset_ids),
+            ),
+        )
+        expansion_settings = resolve_kg_expansion_settings(enabled=ctx.kg_query_expansion_enabled)
+        expansion = expand_kg_query(request, settings=expansion_settings)
+        raise_for_rejected_response(expansion)
+        ctx.kg_result_cached = expansion.response
+        ctx.kg_query_expansion_elapsed = expansion.elapsed_sec
+        ctx.kg_query_expansion_entities_total = expansion.entities_total
+        ctx.kg_query_expansion_entities_selected = expansion.entities_selected
+        ctx.kg_query_expansion_queries = list(expansion.queries)
+        ctx.kg_query_expansion_entity_names = list(expansion.entity_names)
+        ctx.kg_query_expansion_used = expansion.used
+        if expansion.failure is not None:
+            ctx.kg_query_expansion_error = str(expansion.failure)[:200]
     except Exception as exc:  # noqa: BLE001
         _log_orchestrator_fallback("run_retrieval", exc)
         ctx.kg_query_expansion_used = False
