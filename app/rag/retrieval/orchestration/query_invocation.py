@@ -36,25 +36,27 @@ class QueryInvocationRecordOutput:
 
 
 def build_retrieval_per_query_item(payload: RetrievalPerQueryItemInput) -> dict[str, Any]:
+    kind = payload.kind.strip() or "main"
     out: dict[str, Any] = {
-        "kind": str(payload.kind or "").strip() or "main",
-        "query_chars": len(payload.query or ""),
-        "query_tokens": num_tokens_from_string(payload.query or ""),
-        "elapsed_sec": round(float(payload.elapsed_sec or 0.0), 3),
-        "ok": bool(payload.ok),
+        "kind": kind,
+        "query_chars": len(payload.query),
+        "query_tokens": num_tokens_from_string(payload.query),
+        "elapsed_sec": round(payload.elapsed_sec, 3),
+        "ok": payload.ok,
         "retriever_debug": payload.retriever_debug,
     }
     if payload.hop is not None:
-        out["hop"] = int(payload.hop)
+        out["hop"] = payload.hop
     return out
 
 
 def format_retrieval_error(kind: str, error: str | None) -> str:
-    return f"{str(kind or '').strip() or 'main'}:{str(error or '')[:160]}"
+    normalized_kind = kind.strip() or "main"
+    return f"{normalized_kind}:{(error or '')[:160]}"
 
 
 def build_query_invocation_record(payload: QueryInvocationRecordInput) -> QueryInvocationRecordOutput:
-    kind = str(payload.kind or "").strip() or "main"
+    kind = payload.kind.strip() or "main"
     return QueryInvocationRecordOutput(
         per_query_item=build_retrieval_per_query_item(
             RetrievalPerQueryItemInput(

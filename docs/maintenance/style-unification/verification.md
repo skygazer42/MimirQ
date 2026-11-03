@@ -435,3 +435,8 @@
 
 - `QueryContractNormalizationInput` 和层级设置保持具名 dataclass；四个生产构造点同步消费同一 `normalize_query_contract` owner。RAG template 的可选 version 字段只在标准整数转换失败时省略，超出转换边界的异常不会被吞掉。
 - Ruff check、Ruff format --check 和 diff 检查通过。本文件标记为已调整；Python tests 与 retrieval runtime 未运行。
+
+## 第五批：Query invocation record types
+
+- Query invocation records now use their declared string, boolean, float, integer, and Document-list fields directly. Empty kind still maps to `main`, optional docs still map to an empty list, and error truncation is unchanged.
+- Ruff check、Ruff format --check、diff check 与调用方引用扫描通过。Python tests 未运行。
