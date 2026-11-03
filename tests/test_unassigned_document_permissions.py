@@ -16,7 +16,7 @@ from app.api.schemas.document import (
 )
 from app.api.schemas.qa import DocumentQAGenerateRequest
 from app.api.v1 import document_mutations, document_processing, document_versions
-from app.services import document_access_service
+from app.services import document_access_service, document_processing_operations
 
 
 class _Query:
@@ -267,7 +267,7 @@ async def test_unassigned_document_processing_and_mutation_writes_require_edit_r
         raising=True,
     )
     monkeypatch.setattr(
-        document_processing.dataset_service,
+        document_processing_operations.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="viewer"),
         raising=True,
