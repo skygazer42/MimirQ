@@ -54,10 +54,7 @@ import {
 import { usePathname, useRouter } from '@/i18n/navigation'
 import { feedbackApi } from '@/lib/api'
 import { cn, formatDate } from '@/lib/utils'
-import type {
-  FeedbackLoopCandidatesResponse,
-  MessageFeedbackEnriched,
-} from '@/types'
+import type { FeedbackLoopCandidatesResponse, MessageFeedbackEnriched } from '@/types/feedback'
 import { formatApiError } from '@/lib/api-errors'
 import { Badge } from '@/components/ui/badge'
 

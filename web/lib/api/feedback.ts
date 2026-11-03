@@ -1,14 +1,13 @@
+import type { EvidenceItem, RegressionCase } from '@/types/evaluation'
 import type {
-  EvidenceItem,
+  FeedbackCategory,
+  FeedbackLoopCandidatesResponse,
+  FeedbackLoopHardNegativeExportResponse,
   MessageFeedback,
   MessageFeedbackCreate,
   MessageFeedbackEnrichedListResponse,
-  FeedbackLoopHardNegativeExportResponse,
-  FeedbackLoopCandidatesResponse,
-  FeedbackCategory,
   MessageFeedbackListResponse,
-  RegressionCase,
-} from '@/types'
+} from '@/types/feedback'
 
 import { apiClient, type ApiRequestOptions } from '@/lib/api/core'
 
