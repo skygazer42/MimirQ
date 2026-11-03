@@ -1203,21 +1203,21 @@ app/services/access_graph_diff_service.py,3,pending,adjusted,Awaiting file-level
 app/services/audit_log_retention.py,3,adjusted,conforms,Single-column UUID Row unpack; existing deletion owner shared across all purge paths,Task 3 audit row contract; transaction source comparison; Ruff and format
 app/services/audit_log_service.py,3,adjusted,conforms,One owner for 7 audit filters; typed chat detail construction; original writer policy retained,Task 3 audit shared-filter AST; 123 bound calls; Ruff and format
 app/services/authz_prometheus_metrics.py,3,adjusted,conforms,Direct enabled setting and bounded label normalization without redundant wrapper,Task 3 tenant boundary normalized AST; fixed label sets and Counter unchanged
-app/services/chat_bootstrap_runtime.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/services/chat_cache_runtime.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/services/chat_bootstrap_runtime.py,3,adjusted,adjusted,Chat bootstrap uses declared request and ORM contracts,Ruff check/format; schema and metadata-loader contracts plus callers reviewed; tests not run
+app/services/chat_cache_runtime.py,3,adjusted,adjusted,Cache inputs use explicit container types,Ruff check/format; serialized payload validation and cache policy retained; tests not run
 app/services/chat_conversation_access.py,3,adjusted,conforms,Conversation owner, legacy user ID, dataset, and timestamp use declared ORM fields,Ruff check/format; owner fallback, tenant ACL, and 403 behavior preserved; Python tests not run
 app/services/chat_conversation_titles.py,3,adjusted,conforms,Conversation title fields read by declared ORM types; query remains tenant-scoped,Ruff check/format; title_source migration is NOT NULL; Python tests not run
 app/services/chat_execution_runtime.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/chat_image_service.py,3,pending,adjusted,Awaiting file-level convention and contract review; Dataset caller migration only; full module semantic review remains pending,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending; task-3-dataset-final: Ruff/AST/signature checks; no Python tests
 app/services/chat_memory_runtime.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/services/chat_persistence.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/services/chat_response_cache.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/services/chat_persistence.py,3,adjusted,conforms,Chat persistence container annotations are explicit,Ruff check/format; caller fields and existing error handling reviewed; tests not run
+app/services/chat_response_cache.py,3,adjusted,adjusted,Cache key dependency uses the SQLAlchemy Session contract,Ruff check/format; Session owner and callers reviewed; tests not run
 app/services/chat_runtime.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/chat_scope.py,3,adjusted,adjusted,Conversation dataset and query results use declared contracts, account identity is not re-coerced,Ruff check/format; tenant/owner and scope behavior preserved; Python tests not run
 app/services/chat_stream_common.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/chat_stream_graph.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/chat_stream_langchain.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/services/chat_stream_orchestrator.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/services/chat_stream_orchestrator.py,3,adjusted,conforms,Stream entry uses the ChatRequest schema contract,Ruff check/format; route and bootstrap caller types reviewed; tests not run
 app/services/chat_stream_persistence.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/chat_tag_service.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/chat_turn_persistence.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -3650,12 +3650,14 @@ web/workers/graph-parser.worker.ts,6,pending,pending,Awaiting file-level convent
 web/workers/pdf-page-render.worker.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/workers/pdf-preview.worker.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/workers/report-transforms.worker.ts,6,pending,pending,Awaiting file-level convention and contract review,
-.agents/notes/implemented/architecture/2026-11-03-kg-query-expansion-owner.md,inventory,preserved,preserved,Tracked agent decision documentation; not application source,Note tree format and archive validation passed
+.agents/notes/implemented/architecture/2026-11-03-kg-query-expansion-owner.md,inventory,adjusted,preserved,Tracked agent decision note with portable references,Removed cross-link to ignored local-only note; note tree references remain portable
 .agents/notes/implemented/architecture/2026-11-03-query-preparation-owner.md,inventory,preserved,preserved,Tracked agent decision documentation; not application source,Note tree format and archive validation passed
 .agents/notes/implemented/bug-fix/2026-11-03-corpus-cache-invalidation-transaction.md,inventory,preserved,preserved,Tracked agent decision documentation; not application source,Note tree format and archive validation passed
 .agents/notes/implemented/bug-fix/2026-11-03-dataset-default-complete-scope.md,inventory,preserved,preserved,Tracked agent decision documentation; not application source,Note tree format and archive validation passed
 .agents/notes/implemented/bug-fix/2026-11-03-reranker-provider-fallback-boundary.md,inventory,preserved,preserved,Tracked agent decision documentation; not application source,Note tree format and archive validation passed
+.agents/notes/implemented/simplification/2026-11-03-chat-runtime-typed-contracts.md,inventory,preserved,preserved,Tracked agent decision documentation; not application source,Registered with the completed chat runtime category
 .agents/notes/implemented/simplification/2026-11-03-dataset-fusion-map-validation-owner.md,inventory,preserved,preserved,Tracked agent decision documentation; not application source,Note tree format and archive validation passed
+.agents/notes/implemented/simplification/2026-11-03-document-batch-orm-contract.md,inventory,preserved,preserved,Tracked agent decision documentation; not application source,Registered with the completed document ingestion category
 .agents/notes/implemented/simplification/2026-11-03-indexer-vector-writer-owner.md,inventory,preserved,preserved,Tracked agent decision documentation; not application source,Note tree format and archive validation passed
 .agents/notes/implemented/simplification/2026-11-03-shared-scalar-coercion-owner.md,inventory,preserved,preserved,Tracked agent decision documentation; not application source,Note tree format and archive validation passed
 .agents/notes/implemented/simplification/2026-11-03-trust-validated-source-acl.md,inventory,preserved,preserved,Tracked agent decision documentation; not application source,Note tree format and archive validation passed
@@ -3724,7 +3726,7 @@ app/services/dify_integration/scoring.py,5,pending,conforms,Newly inventoried tr
 app/services/dify_integration/tracing.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
 app/services/dify_integration/warmup.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
 app/services/document_asset_access.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
-app/services/document_batch_ingestion.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/document_batch_ingestion.py,4,adjusted,conforms,Batch ingestion helpers use the DBDocument ORM contract,Ruff check/format; required and nullable model fields plus duplicate/task callers reviewed; tests not run
 app/services/document_batch_operations.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
 app/services/document_chunk_operations.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
 app/services/document_governance.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory

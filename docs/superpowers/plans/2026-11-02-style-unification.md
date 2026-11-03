@@ -12,12 +12,13 @@
 
 ## 1. 当前进度与执行位置
 
-- 工作区：`E:/MimirQ`；分支：`codex/local-account-registration`。不新建分支或 worktree。
+- 主工作区：`E:/MimirQ`；分支：`codex/local-account-registration`。为提速，独立业务类别可从当前 HEAD 建立 `codex/*` 分支和 worktree；类别代码与调用方完成审阅后合并回此分支。
 - 原始基线：`77b6adc1bce523482f0509302a454ce20e01c41c`；数据集服务已提交为 `2c16dedf8`。前两批及第三批此前结果保留，不重新执行。
-- 当前覆盖表有 3,755 个文件：144 个已调整、55 个已符合、984 个登记保留、2,572 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
+- 当前覆盖表有 3,757 个文件：151 个已调整、55 个已符合、985 个登记保留、2,566 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
 - Task 3A 的 125 个 Python 文件已完成最终静态核对并按数据集类别提交；Task 3B 的权限、配额、SCIM、配置、通用 API、身份令牌、共享资源与健康观测已完成本轮代码整理与静态检查，继续核对其余基础模块。原有 `app/api/schemas/document.py` 修改另行保留。
 - 原工作区的 1,625 个未跟踪文件及其他既有修改保留；只按本批明确文件清单暂存，不使用 `git add .`，不执行全仓清理或重置。
 - 用户执行要求：提交按完整业务类别归并，不按函数、文件或每个检查步骤频繁提交；同一类别的定义、调用方、必要引用和验证记录一起提交。纯格式化仍独立成类。
+- 已完成并合并的并行类别分支：Task 5 dataset route planning、Task 3 chat runtime、Task 4 document batch ingestion；后续分支均以最新主工作区提交为基线，不能把原有未提交文件带入提交。
 
 ## 2. 已选定的统一标准
 
@@ -135,6 +136,8 @@ Skill 安装目录为 `C:/Users/jiahuanl/.codex/skills/`。项目已选规则和
 
 **本批产出：** 用户、成员、权限和配额各有明确所有者；调用方式统一，错误与事务归属可追踪。
 
+Chat runtime 独立类别分支已合并：`ChatRequest`、`ChatRAGConfig`、`RagConfigTemplate` 和 SQLAlchemy `Session` 作为内部类型契约；数据集 metadata loader 的字典返回契约直接使用。Redis 序列化校验、best-effort、singleflight、租约、事务、超时与取消策略保留。5 个生产文件完成调用方静态复核；Python tests 未运行。
+
 ### Task 4：文档处理链（进行中）
 
 入口：`app/api/v1/documents.py`、`document_batch_upload.py`、`document_batches.py`；权限涉及 `app/services/document_access.py`、`document_access_service.py`、`document_permission_service.py`；处理涉及 `app/services/ingestion_run_service.py`、`connector_run_executor.py`、`app/parsing/processors/support/process_document_flow.py`、`app/tasks/jobs.py`、`app/tasks/worker.py`、`app/storage/object/`。
@@ -177,6 +180,8 @@ URL 入库的 `UrlUploadRequest` 归入现有文档 schema；上传和连接器�
 Batch precheck helpers 直接依赖 staging file APIs、scan model/session 和已有扫描／策略服务；pending commit、threaded scan、失败标记、best-effort suggestion 及 staging cleanup 顺序保持原样，日志继续使用原 category。
 
 去重查询和 bounded metadata fallback 归入 `document_dedup_service`；文件上传与 URL 入库复用同一实现，`documents.py` 保留兼容导出。tenant/dataset/archived 条件、updated/created 排序、JSONB fast path、5,000 行上限、查询异常后的 scan fallback 与持久化冲突处理顺序保持不变。
+
+批量入库独立类别分支已合并：批量文档构造、结果快照、完成处理和重复查询明确接收 `DBDocument`，直接读取 ORM 必需字段；nullable owner 的任务映射保持现状。删除无调用包装及重复导入。其他文档处理、上传、解析和任务链仍按后续类别继续审核；Python tests 未运行。
 
 文件上传的 single/batch document 构造和 batch finalization 直接依赖 `DBDocument` model；仅为创建该 ORM row 的 documents module 参数退出，字段值与租户查询条件保持一致。
 

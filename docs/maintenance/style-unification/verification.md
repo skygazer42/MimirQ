@@ -541,3 +541,11 @@
 - Single-dataset lookup now returns no token when the tenant-scoped dataset row is missing, matching document and multi-dataset scope behavior. Cache invalidation requires `Session.flush()` and propagates database failure; the service does not take ownership of commit.
 - The observability endpoint commits the revision update. RTBF retries the full dataset set after rollback; retention keeps cache invalidation best-effort but rolls back and logs before continuing. KG-job invalidation retains its existing commit/rollback behavior.
 - Ruff check、Ruff format --check 与 diff check 通过。未运行 Python tests、database runtime 或 Redis；observability、RTBF、retention 文件仍待完整审核。
+
+## 并行类别分支：聊天运行时与批量入库
+
+- Chat runtime 分支 `1e69e726e` 已合并到 `codex/local-account-registration`。5 个生产文件将请求、RAG 配置、模板 ORM 和数据库依赖写为明确类型；dataset metadata 直接使用 loader 的字典契约。Redis payload 校验、缓存降级、singleflight、事务顺序、超时与取消策略保留。
+- Document batch ingestion 分支 `3324df667` 已合并。批量构造、快照、完成与去重流程使用 `DBDocument` 的 ORM 字段；nullable owner 映射保留，删除无调用包装及重复导入。
+- 合并后对 6 个生产文件运行 Ruff check、Ruff format --check；全部通过。`git diff --check e85d308e1..HEAD` 通过；调用方与 schema/ORM 契约已静态核对。按用户要求未运行或新增 Python tests；Redis、数据库及解析运行时未验证。
+- KG query expansion 决策记录移除指向 `.agents/` 忽略文件的本地链接，避免干净 worktree 中出现断链；被忽略的本地文件未纳入提交。
+- 覆盖表与 Git 跟踪路径复核后均为 3,757 项，无缺项或过期项；两个新决策记录登记为保留文件。

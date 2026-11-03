@@ -12,7 +12,7 @@ The orchestrator builds a typed `KGQueryRequest` from the current retrieval scop
 
 The separate KG chunk-injection sync bridge returns the pipeline result directly. It does not convert a non-object response to `{}`, so a broken result cannot masquerade as an empty KG search.
 
-The existing `_run_kg_search_sync` bridge remains for the separate KG chunk-injection path, which fetches candidate documents rather than query variants. This is separate from [model query expansion](2026-11-03-model-query-expansion-owner.md).
+The existing `_run_kg_search_sync` bridge remains for the separate KG chunk-injection path, which fetches candidate documents rather than query variants. This is separate from model-based query expansion.
 
 ## Alternatives considered
 
