@@ -1,4 +1,4 @@
-import type { DocumentPipelineOptions } from '@/types'
+import type { DocumentPipelineOptions } from '@/types/backend'
 
 import { appendPipelineOptionsToFormData } from '@/lib/form-data'
 

@@ -1,8 +1,4 @@
 import type {
-  BatchFileInfo,
-  BatchTaskStatus,
-  BatchUploadResponse,
-  ChunkPreviewResponse,
   Document,
   DocumentAccessInfo,
   DocumentAccessUpdateRequest,
@@ -26,14 +22,10 @@ import type {
   DocumentChunkUpdateRequest,
   DocumentDuplicateList,
   DocumentFolderTreeResponse,
-  DocumentHealthCard,
-  DocumentLifecycleMetadata,
-  DocumentLifecycleMetadataUpdateRequest,
   DocumentList,
   DocumentParsedContentResponse,
   DocumentPipelineOptions,
   DocumentPipelinePatchRequest,
-  DocumentPreview,
   DocumentQAGenerateRequest,
   DocumentQAGenerateResponse,
   DocumentStats,
@@ -44,6 +36,14 @@ import type {
   DocumentVersionList,
   IngestDeadLetterList,
   IngestDeadLetterReplayResponse,
+  OpenApiSchema,
+} from '@/types/backend'
+import type {
+  ChunkPreviewResponse,
+  DocumentHealthCard,
+  DocumentLifecycleMetadata,
+  DocumentLifecycleMetadataUpdateRequest,
+  DocumentPreview,
   JsonObject,
   ManualChunk,
 } from '@/types'
@@ -63,6 +63,10 @@ import {
 type FileWithRelativePath = File & {
   webkitRelativePath?: string
 }
+
+type BatchFileInfo = OpenApiSchema<'BatchFileInfo'>
+type BatchTaskStatus = OpenApiSchema<'BatchTaskStatus'>
+type BatchUploadResponse = OpenApiSchema<'BatchUploadResponse'>
 
 function uploadFilename(file: File): string {
   return String((file as FileWithRelativePath).webkitRelativePath || file.name)
