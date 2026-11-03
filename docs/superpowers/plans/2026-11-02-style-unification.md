@@ -14,11 +14,11 @@
 
 - 主工作区：`E:/MimirQ`；分支：`codex/local-account-registration`。为提速，独立业务类别可从当前 HEAD 建立 `codex/*` 分支和 worktree；类别代码与调用方完成审阅后合并回此分支。
 - 原始基线：`77b6adc1bce523482f0509302a454ce20e01c41c`；数据集服务已提交为 `2c16dedf8`。前两批及第三批此前结果保留，不重新执行。
-- 当前覆盖表有 3,758 个文件：209 个已调整、83 个已符合、985 个登记保留、2,481 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
+- 当前覆盖表有 3,758 个文件：213 个已调整、85 个已符合、985 个登记保留、2,475 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
 - Task 3A 的 125 个 Python 文件已完成最终静态核对并按数据集类别提交；Task 3B 的权限、配额、SCIM、配置、通用 API、身份令牌、共享资源与健康观测已完成本轮代码整理与静态检查，继续核对其余基础模块。原有 `app/api/schemas/document.py` 修改另行保留。
 - 原工作区的 1,625 个未跟踪文件及其他既有修改保留；只按本批明确文件清单暂存，不使用 `git add .`，不执行全仓清理或重置。
 - 用户执行要求：提交按完整业务类别归并，不按函数、文件或每个检查步骤频繁提交；同一类别的定义、调用方、必要引用和验证记录一起提交。纯格式化仍独立成类。
-- 已完成并合并的并行类别分支：Task 5 dataset route planning/query preparation/hybrid fusion/channel retrieval/lexical-sparse/context expansion/rerank cache/retrieval policy/trace diagnostics、Task 3 chat runtime/turn persistence/memory、Task 4 batch ingestion/document dispatch/parser models/parser backends/parser structure/table rendering/OCR enrichment、Task 6 settings/system/auth/access/documents/chat APIs/common/feedback types、Task 7 model bootstrap/diagnostics CLIs；后续分支以最新主工作区提交为基线，不能把原有未提交文件带入提交。
+- 已完成并合并的并行类别分支：Task 5 dataset route planning/query preparation/hybrid fusion/channel retrieval/lexical-sparse/context expansion/rerank cache/retrieval policy/trace diagnostics、Task 3 chat runtime/turn persistence/memory/dataset profile、Task 4 batch ingestion/document dispatch/identity-lifecycle/parser models/parser backends/parser structure/table rendering/OCR enrichment、Task 6 settings API/settings sections/system/auth/access/documents/chat APIs/common/feedback types、Task 7 model bootstrap/diagnostics CLIs；后续分支以最新主工作区提交为基线，不能把原有未提交文件带入提交。
 
 ## 2. 已选定的统一标准
 
@@ -142,6 +142,8 @@ Chat turn execution/persistence slice 已合并：`ChatStreamPersistInput` 归�
 
 Chat memory runtime slice 已合并：long-term、summary 与 structured-memory flows 使用声明的 tenant/conversation inputs；flags、retrieval order、limits、transaction and best-effort boundaries 经独立审查，冗余 no-op guards 与 dynamic reads 按真实类型清理。Ruff/AST/caller checks 通过；Python tests 与 storage/runtime services 未运行。
 
+Dataset profile slice 已合并：scan runner 和 profile service 使用声明的 ORM/schema fields；profile utils 对 serialized metadata 的 coercion 继续保留在边界。tenant/read ACL scope、scan inputs/order、cache/diagnostics、transaction 和 failure marking 经独立审查；Ruff/AST/caller checks passed，Python tests 与 storage/parser services 未运行。
+
 ### Task 4：文档处理链（进行中）
 
 入口：`app/api/v1/documents.py`、`document_batch_upload.py`、`document_batches.py`；权限涉及 `app/services/document_access.py`、`document_access_service.py`、`document_permission_service.py`；处理涉及 `app/services/ingestion_run_service.py`、`connector_run_executor.py`、`app/parsing/processors/support/process_document_flow.py`、`app/tasks/jobs.py`、`app/tasks/worker.py`、`app/storage/object/`。
@@ -206,6 +208,8 @@ Chunk-write routes 直接依赖 ORM、`Indexer`、ACL、审计和 index-audit ow
 **本批产出：** 上传到任务的输入输出和失败路径一致，同一字段映射与权限规则只有一个业务维护点。
 
 Task 4 document-dispatch slice is merged. `jobs.py` now passes the declared processor inputs directly and leaves session ownership with the worker. `process_document_flow.py` annotates all 31 processor references through a `TYPE_CHECKING` forward reference to avoid a runtime cycle. Independent review and explicit six-file Ruff/format/AST/caller checks passed; upload, parser and worker modules not touched by this diff remain pending.
+
+Document identity/ACL provenance/lifecycle slice 已合并：`DBDocument` and non-null ORM fields are read directly; tenant/ACL, tombstone, commit/rollback and metadata-only best-effort boundaries remain. `document_identity.py` retains validation at serialized-metadata/external-hash boundaries. Independent review and scoped Ruff/AST/caller scans passed; Python tests and DB/object-store/queue services 未运行。
 
 Task 4 parser model-cache/manifest slice is merged. Model cache snapshots now consume the documented path-like result directly; manifest fields retain their declared types and normalization. The loader remains the owner of resolving the manifest and the CLI serializes its resolved `manifest.path`, preserving the prior absolute result for relative inputs. Ruff/format, four-file AST, caller scan and scoped review passed; model downloads and parser runtime were not run.
 

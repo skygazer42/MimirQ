@@ -696,3 +696,13 @@
 
 - Task 5 branch `6fe43912` passed independent review and merged. `finalize_trace.py` increments local counters directly; `debug_sanitize.py` retains validation at raw debug/PII boundaries. Trace keys/order, optional fields, and error diagnostics remain.
 - Ruff check/format on the changed finalizer, three-file AST, caller scan, diff check, and review passed. No tests or data services were run.
+
+## Dataset Profile Service
+
+- Task 3 branch `dffd9c137` passed independent review and merged. Profile scan/service read declared ORM/schema fields directly; profile-utils conversion remains at serialized metadata boundaries. Tenant/read ACL scope, scan order, cache keys, diagnostics, transactions and failure marking are unchanged.
+- Ruff check/format, three scope modules and direct caller AST, caller scan, and diff check passed. No Python tests or DB/queue/parser/model/storage services were run.
+
+## Document Identity and Lifecycle
+
+- Task 4 branch `1c76da483` passed independent review and merged. ACL provenance uses explicit `DBDocument`, and deletion-audit detail reads non-null ORM fields directly; external hash/serialized metadata validation stays at its boundary.
+- Tenant/ACL checks, tombstones, transactions, rollback, best-effort policy, direct error paths and callers were reviewed unchanged. Ruff/AST/caller/error-path scans passed; Python tests and DB/object-store/queue services were not run.
