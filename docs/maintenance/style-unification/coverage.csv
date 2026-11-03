@@ -577,7 +577,7 @@ app/parsing/processors/support/assets.py,4,pending,conforms,Awaiting file-level 
 app/parsing/processors/support/chunk_postprocess.py,4,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/parsing/processors/support/common.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/parsing/processors/support/parse_io.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/parsing/processors/support/process_document_flow.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/parsing/processors/support/process_document_flow.py,4,adjusted,adjusted,Flow helpers use the actual DocumentProcessorService owner through a type-only reference,Ruff check/format from the branch worktree; six-file AST and caller scan; review finding closed; tests not run
 app/parsing/processors/support/quality.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/parsing/processors/support/recovery.py,4,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/parsing/processors/support/results.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -1400,7 +1400,7 @@ app/storage/vector/milvus_prometheus_metrics.py,4,pending,adjusted,Awaiting file
 app/storage/vector/pgvector.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/storage/vector/qdrant.py,4,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/tasks/__init__.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/tasks/jobs.py,4,pending,conforms,Connector worker uses the declared non-null string ID and preserves trim/unsupported handling; full jobs review remains pending,task-4-connector-worker-id-contract: removed generic getattr/string/empty fallback; Ruff check/format/syntax passed; Python tests not run
+app/tasks/jobs.py,4,adjusted,conforms,Connector IDs and document processor inputs use their declared contracts,Connector ID behavior retained; document handoff contract and session ownership reviewed; Ruff/AST/call scan; tests not run
 app/tasks/locks.py,4,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/tasks/queue.py,4,adjusted,adjusted,Declared settings and ARQ contracts used directly; distinct enqueue return policies preserved,task-4-document-processing-dispatch: Ruff check and format; complete normalized AST for 12 modules; 309 parameter contracts; 7 routes; 64 HTTP errors; 1285 bound calls in 103 files; 378 existing assertions unchanged; Python tests not run
 app/tasks/worker.py,4,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -3392,7 +3392,7 @@ web/lib/api/rag.ts,6,pending,pending,Awaiting file-level convention and contract
 web/lib/api/reports.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/rtbf.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/scim.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/settings.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/lib/api/settings.ts,6,adjusted,pending,Settings API methods and public exports retain their existing contract,Caller and legacy export review passed; frontend tooling unavailable so format/type checks remain pending
 web/lib/api/streaming.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/usage.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/auth-headers.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
@@ -3679,7 +3679,7 @@ app/rag/retrieval/hybrid/runtime_scope.py,5,pending,conforms,Newly inventoried t
 app/rag/retrieval/hybrid/vector_search.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
 app/rag/retrieval/orchestration/model_query_expansion.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
 app/rag/retrieval/orchestration/query_contracts.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
-app/rag/retrieval/orchestration/query_planning.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/rag/retrieval/orchestration/query_planning.py,5,adjusted,conforms,Query stage inputs are shared without changing KG-before-model failure order,Ruff/format and AST passed; caller/order scan; Important review finding fixed and re-reviewed; tests not run
 app/rag/retrieval/orchestration/query_routing.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
 app/services/connector_config_operations.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
 app/services/connector_document_access.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
@@ -3755,4 +3755,4 @@ tests/test_document_batch_operations.py,4,preserved,preserved,Python test retain
 tests/test_document_chunk_import_contracts.py,4,preserved,preserved,Python test retained; user deferred Python test audit and execution,No tests added expanded or run and no test-quality review claimed
 tests/test_document_manual_ingestion.py,4,preserved,preserved,Python test retained; user deferred Python test audit and execution,No tests added expanded or run and no test-quality review claimed
 tests/test_document_mutation_service_routes.py,4,preserved,preserved,Python test retained; user deferred Python test audit and execution,No tests added expanded or run and no test-quality review claimed
-web/types/settings.ts,6,pending,pending,Tracked frontend settings types were missing from the inventory; semantic review pending,Local Prettier dependency is unavailable and frontend typecheck was not run
+web/types/settings.ts,6,adjusted,pending,Settings response shapes use explicit shared types,OpenAPI request types and response fields reviewed; Prettier and TypeScript unavailable in the worktree

@@ -14,11 +14,11 @@
 
 - 主工作区：`E:/MimirQ`；分支：`codex/local-account-registration`。为提速，独立业务类别可从当前 HEAD 建立 `codex/*` 分支和 worktree；类别代码与调用方完成审阅后合并回此分支。
 - 原始基线：`77b6adc1bce523482f0509302a454ce20e01c41c`；数据集服务已提交为 `2c16dedf8`。前两批及第三批此前结果保留，不重新执行。
-- 当前覆盖表有 3,757 个文件：151 个已调整、55 个已符合、985 个登记保留、2,566 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
+- 当前覆盖表有 3,757 个文件：156 个已调整、55 个已符合、985 个登记保留、2,561 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
 - Task 3A 的 125 个 Python 文件已完成最终静态核对并按数据集类别提交；Task 3B 的权限、配额、SCIM、配置、通用 API、身份令牌、共享资源与健康观测已完成本轮代码整理与静态检查，继续核对其余基础模块。原有 `app/api/schemas/document.py` 修改另行保留。
 - 原工作区的 1,625 个未跟踪文件及其他既有修改保留；只按本批明确文件清单暂存，不使用 `git add .`，不执行全仓清理或重置。
 - 用户执行要求：提交按完整业务类别归并，不按函数、文件或每个检查步骤频繁提交；同一类别的定义、调用方、必要引用和验证记录一起提交。纯格式化仍独立成类。
-- 已完成并合并的并行类别分支：Task 5 dataset route planning、Task 3 chat runtime、Task 4 document batch ingestion；后续分支均以最新主工作区提交为基线，不能把原有未提交文件带入提交。
+- 已完成并合并的并行类别分支：Task 5 dataset route planning/query preparation、Task 3 chat runtime、Task 4 batch ingestion/document dispatch、Task 6 settings API/types；后续分支以最新主工作区提交为基线，不能把原有未提交文件带入提交。
 
 ## 2. 已选定的统一标准
 
@@ -201,6 +201,8 @@ Chunk-write routes 直接依赖 ORM、`Indexer`、ACL、审计和 index-audit ow
 
 **本批产出：** 上传到任务的输入输出和失败路径一致，同一字段映射与权限规则只有一个业务维护点。
 
+Task 4 document-dispatch slice is merged. `jobs.py` now passes the declared processor inputs directly and leaves session ownership with the worker. `process_document_flow.py` annotates all 31 processor references through a `TYPE_CHECKING` forward reference to avoid a runtime cycle. Independent review and explicit six-file Ruff/format/AST/caller checks passed; upload, parser and worker modules not touched by this diff remain pending.
+
 ### Task 5：RAG 与模型调用（进行中）
 
 入口：`app/api/v1/rag.py`、`app/rag/engine.py`、`app/rag/engine_support/`、`app/rag/retrieval/orchestration/`、`app/rag/embedding/`、`app/rag/reranker/`、`app/rag/llm/`，以及实际索引所有者 `app/services/indexer.py`、`app/services/indexing/`、`app/services/dataset_embedding_config.py` 和 `app/storage/vector/`；同批覆盖其实际检索、索引、KG、评估与工具调用模块。
@@ -221,6 +223,8 @@ Query variant budget stage now consumes typed int/float fields; omitted values r
 
 Query contract snapshot normalization treats the optional template version as absent only for standard integer conversion errors; the typed normalization inputs and callers were reviewed.
 
+Query planner input mapping now uses shared private values while keeping KG expansion ahead of model override parsing in both sync and async paths. An independent review caught the earlier ordering regression; the fix preserves explicit parse failures and KG diagnostic order, then passed scoped re-review. Python tests were not run.
+
 - [ ] 按查询准备 → 通道召回 → 融合／重排 → 上下文 → 模型／流式返回的顺序追踪数据和预算，再处理各条依赖链。
 - [ ] 合并经证实重复的参数映射与控制流，核对动态取值和无依据默认值；保留供应商协议适配、可选插件边界和有状态资源。
 - [ ] 核对排名、阈值、缓存键、配置指纹、超时、取消、预算和流事件；不为缩短函数改变策略或事件顺序。
@@ -240,6 +244,8 @@ Query contract snapshot normalization treats the optional template version as ab
 - [ ] 按 `oil-frontend` 和 `oil-ui-pro` 检查受影响真实页面与必要状态，复用现有浏览器会话；设计方向继续沿用，仅补受影响的判断。纯格式化单独提交，语义批次运行相关前端检查。
 
 **本批产出：** 各领域页面采用一致的组织与声明方式；共享实现有明确职责，真实交互和数据归属可核对。
+
+设置 API 与共享类型首片已合并：保留 `settingsApi` 的四个方法、`settingsApiLegacy` 兼容导出、endpoint 与错误传播；手工响应形状明确为共享类型。该 worktree 缺少 `web/node_modules`，ESLint、Prettier、TypeScript 和前端 tests 未运行，因此格式状态仍为 pending。
 
 ### Task 7：脚本与全仓收尾
 

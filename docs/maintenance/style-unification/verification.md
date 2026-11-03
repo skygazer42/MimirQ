@@ -549,3 +549,19 @@
 - 合并后对 6 个生产文件运行 Ruff check、Ruff format --check；全部通过。`git diff --check e85d308e1..HEAD` 通过；调用方与 schema/ORM 契约已静态核对。按用户要求未运行或新增 Python tests；Redis、数据库及解析运行时未验证。
 - KG query expansion 决策记录移除指向 `.agents/` 忽略文件的本地链接，避免干净 worktree 中出现断链；被忽略的本地文件未纳入提交。
 - 覆盖表与 Git 跟踪路径复核后均为 3,757 项，无缺项或过期项；两个新决策记录登记为保留文件。
+
+## 并行类别分支：设置 API 与共享类型
+
+- 分支提交 `cd3eae192` 经独立审查通过并合并。`settingsApi` 的 `get`、`update`、`getStatus`、`testLLM` endpoint、方法、请求体和错误传播保持原样；`settingsApiLegacy` 仍从原路径导出。设置响应的公共 `success`／`message` 字段使用明确共享类型，`updated_keys` 保留。
+- `git show --check` 通过；静态调用点和兼容导出核对通过。工作树没有 `web/node_modules`，因此 ESLint、Prettier、TypeScript 与前端 tests 均未运行；未安装依赖。两个文件已完成语义审阅，format_status 保留 pending。
+
+## 并行类别分支：文档处理派发
+
+- Task 4 分支已合并。`app/tasks/jobs.py` 的文档处理 handoff 显式传入文件、文档、租户、parser 和 chunk strategy，并沿用 worker 的 session 所有权；`process_document_flow.py` 的 31 个 `service` 参数使用 `TYPE_CHECKING` 下的 `DocumentProcessorService` 前向引用，避免 `processor.py` 的反向导入形成 runtime cycle。
+- Task review 要求补齐该类型迁移和 Ruff 证据；两项 fix finding 均经复审关闭。明确从 `style-doc-dispatch` worktree、使用其 `ruff.toml`，对 6 个目标文件运行 Ruff check 与 format check，全部通过；六文件 AST、caller scan 和 `git diff --check` 通过。
+- Python tests 未运行。仅 `jobs.py` 与 `process_document_flow.py` 在本类别分支中有代码 diff；`document_ingestion.py`、manual ingestion、dispatch service 和 worker 的其他职责仍待语义审核。
+
+## 并行类别分支：查询准备与扩展
+
+- Task 5 的查询准备分支提交 `589e5b6f` 经审查发现 Important 顺序回归：模型覆盖参数中的 `int()`／`float()` 解析可能早于 KG 扩展失败。修复提交 `f38123ea` 让同步和异步路径都在 KG 扩展后解析模型参数；解析错误仍显式传播，KG 诊断顺序恢复。
+- 修复经定向复审通过并合并；Ruff check/format、AST、调用方和阶段顺序扫描及 diff/show check 通过。未运行 Python tests；实际 KG、模型和流式运行时未验证。四个目标模块中只有 `query_planning.py` 本轮发生代码调整，其他三个仍待语义审核。
