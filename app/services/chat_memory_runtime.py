@@ -25,7 +25,7 @@ def _retrieve_long_term_messages(
     Simple long-term memory recall using BM25 over past messages.
     Used to enrich history context only; it does not modify storage.
     """
-    max_messages = int(settings.LONG_TERM_MEMORY_MAX_MESSAGES or 0)
+    max_messages = settings.LONG_TERM_MEMORY_MAX_MESSAGES
     query_builder = (
         db.query(Message.content, Message.role, Message.created_at)
         .filter(
@@ -94,7 +94,7 @@ def _retrieve_structured_memory_records(
     - Best-effort: only assistant messages can carry records (we write them there).
     - Keeps DB reads bounded by max_messages.
     """
-    lim = max(0, int(max_messages or 0))
+    lim = max(0, max_messages)
     if lim <= 0:
         return []
     rows = (
@@ -122,12 +122,8 @@ def _touch_conversation_after_turn(
     *,
     db: Session,
     tenant_id: UUID,
-    conversation_id: UUID | None,
+    conversation_id: UUID,
 ) -> None:
-    if conversation_id is None:
-        return
-    if not hasattr(db, "query"):
-        return
     db.query(Conversation).filter(
         Conversation.id == conversation_id,
         Conversation.tenant_id == tenant_id,
