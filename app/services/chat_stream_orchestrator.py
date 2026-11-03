@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
+from app.api.schemas.chat import ChatRequest
 from app.core.config import settings
 from app.core.env import is_production_env
 from app.rag.core.logging import get_logger
@@ -562,7 +563,7 @@ async def stream_chat_sse_events(
     db: Session,
     tenant_id: UUID,
     account_id: str,
-    request: Any,
+    request: ChatRequest,
     conversation_id: UUID | None,
     scope_dataset_id: UUID | None,
     allowed_doc_ids: list[UUID],

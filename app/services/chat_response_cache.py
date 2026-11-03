@@ -19,6 +19,8 @@ from collections.abc import Sequence
 from typing import Any
 from uuid import UUID, uuid4
 
+from sqlalchemy.orm import Session
+
 from app.core.config import settings
 from app.core.redis_client import LazyRedisClient
 from app.core.redis_lease import extend_redis_lease, release_redis_lease, try_acquire_redis_lease
@@ -260,7 +262,7 @@ def build_chat_cache_key(
 
 def resolve_chat_response_cache_key(
     *,
-    db: Any,
+    db: Session,
     tenant_id: UUID,
     account_id: str,
     dataset_id: UUID | None,

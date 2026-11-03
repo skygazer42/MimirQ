@@ -60,7 +60,7 @@ def store_chat_response_cache_if_needed(
     cache_hit: bool,
     cache_key: str | None,
     content: str,
-    citations: list[dict[str, Any]] | list | None,
+    citations: list[Any] | None,
     metrics: dict[str, Any],
     structured_data: object | None,
 ) -> bool | None:
@@ -89,7 +89,7 @@ class ChatCacheLookupInput:
     document_ids: list[UUID]
     history: list[Any]
     enable_long_term_memory: bool
-    long_term_messages: list[dict]
+    long_term_messages: list[dict[str, Any]]
     enable_structured_memory: bool
     question: str
     rag_config: dict[str, Any]
