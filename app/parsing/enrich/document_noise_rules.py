@@ -27,7 +27,7 @@ class DocumentNoiseMatch:
 
 
 def classify_document_noise_text(text: str) -> DocumentNoiseMatch | None:
-    raw = str(text or "").strip()
+    raw = text.strip()
     if not raw or raw in _COMMON_SHORT_REPEAT_TEXT:
         return None
     for kind, rule, pattern in _NOISE_PATTERNS:

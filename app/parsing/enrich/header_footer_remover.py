@@ -76,7 +76,7 @@ def _text_value(element: Mapping[str, Any]) -> str:
 
 
 def _normalize_repeated_text(text: str) -> str:
-    normalized = _SPACE_RE.sub(" ", str(text or "").strip().lower())
+    normalized = _SPACE_RE.sub(" ", text.strip().lower())
     normalized = _DIGIT_RE.sub("#", normalized)
     return normalized.strip()
 
@@ -167,7 +167,7 @@ def remove_repeated_header_footer_elements(
         zone = _edge_zone(item, bounds, band_ratio=band_ratio)
         if zone is None:
             continue
-        key_text = _normalize_repeated_text(str(item["text"]))
+        key_text = _normalize_repeated_text(item["text"])
         if not key_text:
             continue
         key = (zone, key_text)
