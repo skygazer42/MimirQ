@@ -19,6 +19,7 @@ from app.rag.retrieval.hybrid.common import (
     _log_retriever_fallback,
     logger,
 )
+from app.rag.retrieval.hybrid.result_values import candidate_metadata_from_doc
 from app.rag.retrieval.sparse import SparseVector
 
 
@@ -573,7 +574,7 @@ class SparseIndexMixin:
                 matcher=self._match_metadata_filter,
             ):
                 continue
-            out_meta = self._candidate_metadata_from_doc(meta, chunk_id=doc.id)
+            out_meta = candidate_metadata_from_doc(meta, chunk_id=doc.id)
             out_meta["sparse_score"] = float(score)
             results.append(
                 {

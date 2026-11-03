@@ -23,12 +23,11 @@ from app.models.document import DocumentChunk
 from app.rag.core.hashing import stable_hash
 from app.rag.preprocessing.tokenization import tokenize_for_bm25
 from app.rag.retrieval.hybrid.common import (
-    _PIPELINE_PLUGIN_METADATA_KEYS,
-    _PLATFORM_METADATA_VIEW_KEYS,
     NON_CRITICAL_RETRIEVER_FALLBACK_LOG,
     _log_retriever_fallback,
     logger,
 )
+from app.rag.retrieval.hybrid.result_values import candidate_metadata_from_doc
 
 
 class Bm25IndexMixin:
@@ -1402,36 +1401,6 @@ class Bm25IndexMixin:
             and not self._match_metadata_filter(metadata, metadata_filter)
         )
 
-    @staticmethod
-    def _candidate_metadata_from_doc(meta: dict[str, Any], *, chunk_id: Any = None) -> dict[str, Any]:
-        pipeline_meta = meta.get("pipeline") if isinstance(meta.get("pipeline"), dict) else {}
-        out = {
-            "tenant_id": meta.get("tenant_id"),
-            "dataset_id": meta.get("dataset_id"),
-            "document_id": meta.get("document_id"),
-            "source": meta.get("source", "unknown"),
-            "page": meta.get("page"),
-            "page_number": meta.get("page_number"),
-            "chunk_index": meta.get("chunk_index"),
-            "chunk_id": meta.get("chunk_id") or chunk_id,
-            "img_id": meta.get("img_id"),
-            "image_id": meta.get("image_id"),
-            "image_url": meta.get("image_url"),
-        }
-        for key in _PIPELINE_PLUGIN_METADATA_KEYS:
-            value = meta.get(key) or pipeline_meta.get(key)
-            if value:
-                out[key] = value
-        for key in ("doc_pipeline_key", "pipeline_hash", "active_pipeline_hash"):
-            value = meta.get(key) or pipeline_meta.get(key)
-            if value:
-                out[key] = value
-        for key in _PLATFORM_METADATA_VIEW_KEYS:
-            value = meta.get(key)
-            if isinstance(value, dict) and value:
-                out[key] = value
-        return out
-
     def _bm25_result_from_doc(
         self,
         *,
@@ -1441,7 +1410,7 @@ class Bm25IndexMixin:
         question_channel_score: float,
     ) -> dict[str, Any]:
         meta = doc.metadata or {}
-        out_meta = self._candidate_metadata_from_doc(meta, chunk_id=doc.id)
+        out_meta = candidate_metadata_from_doc(meta, chunk_id=doc.id)
         out_meta.update(
             {
                 "bm25_score": float(final_score),
