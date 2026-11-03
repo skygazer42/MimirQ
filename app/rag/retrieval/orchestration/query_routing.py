@@ -9,6 +9,7 @@ from typing import Any
 from app.core.config import settings
 from app.rag.core.evidence_expectations import DEFAULT_EVIDENCE_ANCHOR_FIELDS, normalize_anchor_fields
 from app.rag.core.retrieval_profiles import is_recall_first_profile
+from app.rag.core.text import guess_recall_bucket
 from app.rag.policy.must_recall import normalize_source_keys
 from app.rag.policy.must_recall_auto import infer_expected_source_keys, infer_required_anchor_fields
 from app.rag.retrieval.contract import resolve_retrieval_contract_policy
@@ -27,6 +28,7 @@ from app.rag.retrieval.orchestration.query_contracts import (
     StreamQueryRoutingDecision,
 )
 from app.rag.retrieval.orchestration.query_options import query_contract_defaults
+from app.rag.retrieval.orchestration.text_helpers import normalize_retrieval_mode
 
 
 def _resolve_must_recall_enabled(
@@ -558,6 +560,9 @@ def resolve_query_routing(
 ) -> QueryRoutingDecision:
     effective = dict(options)
     evidence = resolve_evidence_contract(effective, query=query)
+    contract_mode = str(evidence.get("retrieval_contract_mode") or "").strip()
+    if contract_mode and not str(effective.get("retrieval_contract_mode") or "").strip():
+        effective["retrieval_contract_mode"] = contract_mode
     intent = _apply_intent_router(
         state=effective,
         query_for_retrieval=query,
@@ -604,6 +609,9 @@ def resolve_stream_query_routing(
     """Apply the stream's recall buckets/profile, then its existing complexity route."""
     effective = dict(options)
     evidence = resolve_evidence_contract(effective, query=query)
+    contract_mode = str(evidence.get("retrieval_contract_mode") or "").strip()
+    if contract_mode and not str(effective.get("retrieval_contract_mode") or "").strip():
+        effective["retrieval_contract_mode"] = contract_mode
     intent = _apply_intent_router(
         state=effective,
         query_for_retrieval=query,
@@ -621,6 +629,16 @@ def resolve_stream_query_routing(
             effective[key] = default
     effective["reranker_provider"] = effective.get("reranker_provider") or settings.RERANKER_PROVIDER or "llm"
     effective["reranker_top_n"] = effective.get("reranker_top_n") or settings.RERANKER_TOP_N or 20
+    mode_auto = normalize_retrieval_mode(effective.get("retrieval_mode") or "hybrid") == "auto"
+    recall_bucket = None
+    if mode_auto and settings.RAG_RECALL_BUCKETS_ENABLED:
+        recall_bucket = guess_recall_bucket(query)
+        if recall_bucket in {"schema", "policy", "definition"}:
+            effective.update(retrieval_mode="keyword", score_threshold=0.0, vector_weight=0.2, keyword_weight=0.8)
+        elif recall_bucket == "procedure":
+            effective.update(vector_weight=0.7, keyword_weight=0.3)
+        elif recall_bucket == "numeric":
+            effective.update(vector_weight=0.5, keyword_weight=0.5)
     normal = normalize_query_contract(
         QueryContractNormalizationInput(
             state=effective,
@@ -639,10 +657,10 @@ def resolve_stream_query_routing(
                 overfetch_factor=effective.get("hierarchy_overfetch_factor") or 1,
             ),
             defaults=query_contract_defaults(),
-            recall_bucket_routing=settings.RAG_RECALL_BUCKETS_ENABLED,
-            must_recall=bool(effective.get("must_recall")),
         )
     )
+    if mode_auto and recall_bucket is not None:
+        normal = replace(normal, retrieval_mode_routed=True)
     effective.update(normal.state_updates)
     for key in (
         "enable_weight_rerank",
@@ -690,4 +708,5 @@ def resolve_stream_query_routing(
             updates,
         ),
         dict(complexity_overrides),
+        recall_bucket,
     )

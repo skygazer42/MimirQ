@@ -510,6 +510,7 @@ async def emit_abstention_result(runtime: StandardStreamState) -> AsyncGenerator
 async def recall_kg_context(runtime: StandardStreamState) -> None:
     # Step 2: Additional KG event recall (optional).
     runtime.data.kg_context = ""
+    runtime.data.kg_context_failure = None
     if (
         (not runtime.data.strict_visible)
         and settings.KG_ENABLED
@@ -518,11 +519,20 @@ async def recall_kg_context(runtime: StandardStreamState) -> None:
         and runtime.data.document_ids
     ):
         try:
-            runtime.data.kg_result = runtime.data.kg_result_cached or await runtime.module.kg_search(
-                query=runtime.data.question,
-                tenant_id=runtime.data.tenant_id,
-                document_ids=runtime.data.document_ids,
-            )
+            kg_expansion = getattr(getattr(runtime.data, "query_plan", None), "kg", None)
+            if kg_expansion is not None and kg_expansion.failure is not None:
+                runtime.data.kg_context_failure = kg_expansion.failure
+                runtime.data.kg_result = None
+            elif kg_expansion is not None and kg_expansion.response is not None:
+                runtime.data.kg_result = kg_expansion.response
+            elif runtime.data.kg_result_cached is not None:
+                runtime.data.kg_result = runtime.data.kg_result_cached
+            else:
+                runtime.data.kg_result = await runtime.module.kg_search(
+                    query=runtime.data.question,
+                    tenant_id=runtime.data.tenant_id,
+                    document_ids=runtime.data.document_ids,
+                )
             runtime.data.events = (runtime.data.kg_result or {}).get("events") or []
             if runtime.data.events:
                 runtime.data.parts = []
@@ -546,8 +556,9 @@ async def recall_kg_context(runtime: StandardStreamState) -> None:
                     and len(runtime.data.kg_context) > settings.RAG_CONTEXT_MAX_KG_CHARS
                 ):
                     runtime.data.kg_context = runtime.data.kg_context[: settings.RAG_CONTEXT_MAX_KG_CHARS] + "..."
-        except Exception:
+        except Exception as exc:
             runtime.data.kg_context = ""
+            runtime.data.kg_context_failure = exc
 
     # Step 3: Build context (document chunks + optional KG events).
     runtime.data.chunk_context = ""

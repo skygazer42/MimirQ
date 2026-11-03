@@ -65,13 +65,18 @@ class TextQueryModelCall:
 
 class EngineQueryModels:
     def __init__(
-        self, engine_factory: Callable[[], "RAGEngine"], *, fallback_model: BaseLanguageModel | None = None
+        self,
+        engine_factory: Callable[[], "RAGEngine"],
+        *,
+        fallback_model: BaseLanguageModel | None = None,
+        selected_model: BaseLanguageModel | None = None,
     ) -> None:
         self.engine_factory = engine_factory
         self.fallback_model = fallback_model
+        self.selected_model = selected_model
 
     def _selected_model(self, engine: "RAGEngine") -> tuple[BaseLanguageModel, str | None]:
-        model = engine.models.get("fast") or self.fallback_model or engine.models["default"]
+        model = self.selected_model or engine.models.get("fast") or self.fallback_model or engine.models["default"]
         return model, getattr(model, "model_name", None) or getattr(model, "model", None)
 
     def rewrite(self, *, strategy_id: str, temperature: float) -> RewriteModelCall:

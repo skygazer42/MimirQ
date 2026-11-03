@@ -28,98 +28,16 @@ async def build_retriever_and_base_queries(runtime: StandardStreamState) -> Asyn
     )
     if runtime.data.status_event is not None:
         yield runtime.data.status_event
-    runtime.data.retriever_update: dict[str, Any] = {
-        "k": runtime.data.top_k,
-        "score_threshold": runtime.data.score_threshold_used,
-        "alpha": runtime.data.alpha_val,
-        "fusion_strategy": str(runtime.data.fusion_strategy or "").strip().lower()
-        or settings.RETRIEVAL_FUSION_STRATEGY,
-        "fusion_budgets": runtime.data.fusion_budgets,
-        "fusion_min_scores": runtime.data.fusion_min_scores,
-        "fusion_weights": runtime.data.fusion_weights,
-        "retrieval_overfetch_multiplier": runtime.data.retrieval_overfetch_multiplier,
-        "retrieval_overfetch_max_k": runtime.data.retrieval_overfetch_max_k,
-        "tenant_id": runtime.data.tenant_id,
-        "account_id": runtime.data.account_id,
-        "dataset_id": runtime.data.dataset_id,
-        "dataset_ids": runtime.data.dataset_ids,
-        "document_ids": runtime.data.document_ids,
-        "metadata_filter": runtime.data.metadata_filter,
-        "lexical_db_hybrid_fallback_only": runtime.data.lexical_db_hybrid_fallback_only,
-        "lexical_db_hybrid_metadata_exact_fallback_enabled": (
-            runtime.data.lexical_db_hybrid_metadata_exact_fallback_enabled
-        ),
-        "metadata_exact_db_fallback_enabled": runtime.data.metadata_exact_db_fallback_enabled,
-        "retrieval_mode": runtime.data.mode_used,
-        "retrieval_profile": runtime.data.profile_norm or None,
-        "sparse_retrieval_enabled": runtime.data.sparse_retrieval_enabled,
-        "sparse_retrieval_provider": runtime.data.sparse_retrieval_provider,
-        "context_neighbor_window": runtime.data.profile_applied.get("context_neighbor_window"),
-        "context_neighbor_max_added": runtime.data.profile_applied.get("context_neighbor_max_added"),
-        "context_neighbor_score_driven": runtime.data.profile_applied.get("context_neighbor_score_driven"),
-        "context_neighbor_high_threshold": runtime.data.profile_applied.get("context_neighbor_high_threshold"),
-        "context_neighbor_mid_threshold": runtime.data.profile_applied.get("context_neighbor_mid_threshold"),
-        "context_neighbor_high_span": runtime.data.profile_applied.get("context_neighbor_high_span"),
-        "context_neighbor_mid_span": runtime.data.profile_applied.get("context_neighbor_mid_span"),
-        "enable_weight_rerank": runtime.data.weight_rerank,
-        "vector_weight": runtime.data.vec_w,
-        "keyword_weight": runtime.data.kw_w,
-        "mmr_lambda": runtime.data.mmr_lambda_val,
-        "enable_reranker": runtime.data.rerank_on,
-        "reranker_provider": runtime.data.rerank_provider,
-        "reranker_top_n": runtime.data.rerank_top_n,
-        "enable_hierarchy_recall": bool(runtime.data.enable_hierarchy_recall),
-        "hierarchy_family_collapse": bool(runtime.data.hierarchy_family_collapse),
-        "hierarchy_overfetch_factor": int(runtime.data.hierarchy_overfetch_factor or 1),
-    }
-    if runtime.module.is_recall_first_profile(runtime.data.profile_norm):
-        # Recall-first profiles: do not drop candidates due to dedup/diversity heuristics.
-        runtime.data.retriever_update.update(
-            {
-                "dedup_enabled": False,
-                "max_chunks_per_doc": 0,
-                "max_chunks_per_page": 0,
-                "min_distinct_docs": 0,
-            }
-        )
-
+    plan = runtime.data.query_plan
+    runtime.data.retriever_update = dict(plan.retriever_options)
     runtime.data.retriever = runtime.module.hybrid_retriever.model_copy(update=runtime.data.retriever_update)
-
-    runtime.data.retrieval_queries_base: list[tuple[str, str]] = [("main", runtime.data.query_for_retrieval)]
-    for runtime.data.q in runtime.data.alias_queries:
-        runtime.data.retrieval_queries_base.append(("alias", runtime.data.q))
-    for runtime.data.e in runtime.data.dict_expansions:
-        runtime.data.q = runtime.data.e.get("expanded_text") if isinstance(runtime.data.e, dict) else None
-        if runtime.data.q:
-            runtime.data.retrieval_queries_base.append(("dict", str(runtime.data.q)))
-    for runtime.data.q in runtime.data.kg_query_expansion_queries:
-        runtime.data.retrieval_queries_base.append(("kgq", runtime.data.q))
-    # Policy/manual "fast lane": when users mention clause numbers, add a clause-only
-    # retrieval query to improve exact-match recall without invoking the LLM.
-    for runtime.data.q in runtime.module.build_clause_fastlane_queries(runtime.data.query_for_retrieval):
-        runtime.data.retrieval_queries_base.append(("clause", runtime.data.q))
+    runtime.data.retrieval_queries_base = [query for query in plan.queries if query[0] != "mq"]
+    runtime.data.retrieval_queries = list(plan.queries)
 
 
 async def extend_queries_and_prepare_plan(runtime: StandardStreamState) -> None:
-    if bool(getattr(settings, "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_ENABLED", False)):
-        for runtime.data.q in runtime.module.build_lightweight_subquery_queries(
-            runtime.data.query_for_retrieval,
-            max_queries=int(getattr(settings, "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_MAX_QUERIES", 3) or 3),
-            min_query_chars=int(getattr(settings, "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_MIN_QUERY_CHARS", 28) or 28),
-        ):
-            runtime.data.retrieval_queries_base.append(("lite_subq", runtime.data.q))
-    if runtime.data.step_back_used and runtime.data.step_back_query:
-        runtime.data.retrieval_queries_base.append(("step_back", runtime.data.step_back_query))
-    for runtime.data.q in runtime.data.sub_questions:
-        runtime.data.retrieval_queries_base.append(("subq", runtime.data.q))
-    if runtime.data.hyde_used and runtime.data.hyde_text:
-        runtime.data.retrieval_queries_base.append(("hyde", runtime.data.hyde_text))
-
-    runtime.data.retrieval_queries: list[tuple[str, str]] = list(runtime.data.retrieval_queries_base)
-    for runtime.data.q in runtime.data.multi_queries:
-        runtime.data.retrieval_queries.append(("mq", runtime.data.q))
-    runtime.data.retrieval_queries = runtime.engine._dedup_retrieval_queries(runtime.data.retrieval_queries)
-
+    runtime.data.retrieval_queries_base = [query for query in runtime.data.query_plan.queries if query[0] != "mq"]
+    runtime.data.retrieval_queries = list(runtime.data.query_plan.queries)
     runtime.data.docs_by_query: list[list[Document]] = []
     runtime.data.docs_by_query_kinds: list[str] = []
     runtime.data.t_retrieval_start = time.time()

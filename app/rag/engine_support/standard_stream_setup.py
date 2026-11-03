@@ -6,10 +6,15 @@ from typing import Any
 from uuid import UUID
 
 from app.core.config import settings
+from app.rag.engine_support.query_model_calls import EngineQueryModels
 from app.rag.engine_support.standard_stream_state import (
     StandardStreamState,
     StreamOperation,
 )
+from app.rag.retrieval.orchestration.query_contracts import QueryPreparationOverrides, SparseQuerySettings
+from app.rag.retrieval.orchestration.query_options import QUERY_PLANNING_OPTION_KEYS, resolve_query_preparation_request
+from app.rag.retrieval.orchestration.query_planning import prepare_query_async, resolve_sparse_selection
+from app.rag.retrieval.orchestration.query_routing import resolve_stream_query_routing
 
 
 async def agentic_phase(runtime: StandardStreamState) -> AsyncGenerator[dict[str, Any], None]:
@@ -195,55 +200,41 @@ async def select_model_and_prompt(runtime: StandardStreamState) -> AsyncGenerato
 
 
 async def rewrite_and_apply_industry_rules(runtime: StandardStreamState) -> AsyncGenerator[dict[str, Any], None]:
-    if runtime.data.rewrite_enabled:
-        runtime.data.spec = runtime.module.build_query_rewrite_strategy_spec(
-            getattr(settings, "QUERY_REWRITE_STRATEGY", None)
-        )
-        runtime.data.rewrite_strategy_id = str(runtime.data.spec.get("strategy_id") or "").strip() or None
-        runtime.data.rewrite_strategy_hash = str(runtime.data.spec.get("strategy_hash") or "").strip() or None
-        try:
-            runtime.data.rewrite_temperature = float(settings.QUERY_REWRITE_TEMPERATURE or 0.0)
-        except Exception:
-            runtime.data.rewrite_temperature = 0.0
-        try:
-            runtime.data.rewrite_max_chars = int(settings.QUERY_REWRITE_MAX_CHARS or 0)
-        except Exception:
-            runtime.data.rewrite_max_chars = 0
+    request = resolve_query_preparation_request(
+        runtime.data.question,
+        runtime.data.history_text,
+        QueryPreparationOverrides(
+            sparse_enabled=runtime.data.sparse_retrieval_enabled,
+            sparse_provider=runtime.data.sparse_retrieval_provider,
+            industry_enabled=runtime.data.industry_rules_enabled,
+            industry_rulesets=runtime.data.industry_rules_rulesets,
+        ),
+        temporal_enabled=bool(getattr(settings, "RAG_TEMPORAL_INTENT_ENABLED", False)),
+    )
+    prepared = await prepare_query_async(
+        request,
+        models=EngineQueryModels(lambda: runtime.engine, selected_model=runtime.data.llm),
+    )
+    runtime.data.prepared_query_outcome = prepared
+    runtime.data.query_for_retrieval = prepared.query
+    runtime.data.rewrite_enabled = prepared.rewrite.enabled
+    runtime.data.rewrite_elapsed = prepared.rewrite.elapsed_sec
+    runtime.data.rewrite_used = prepared.rewrite.used
+    runtime.data.rewrite_model_used = prepared.rewrite.model_used
+    runtime.data.rewrite_strategy_id = prepared.rewrite.strategy_id
+    runtime.data.rewrite_strategy_hash = prepared.rewrite.strategy_hash
+    configuration = prepared.rewrite.configuration
+    runtime.data.rewrite_temperature = configuration.temperature if configuration is not None else None
+    runtime.data.rewrite_max_chars = configuration.max_chars if configuration is not None else None
+    runtime.data.sparse_retrieval_enabled = prepared.sparse.enabled
+    runtime.data.sparse_retrieval_provider = prepared.sparse.provider
+    runtime.data.industry_rules_enabled_effective = bool(prepared.industry.metadata.get("enabled"))
+    runtime.data.industry_rules_meta = dict(prepared.industry.metadata)
+    runtime.data.temporal_intent_enabled = prepared.temporal.enabled
+    runtime.data.temporal_intent_meta = dict(prepared.temporal.metadata)
+    runtime.data.temporal_recency_meta = {"enabled": False, "used": False, "reason": "not_run"}
 
-    # Step 0: Query Rewrite (optional).
-    if (
-        runtime.data.rewrite_enabled
-        and runtime.data.history_text != "(No conversation history)"
-        and len(runtime.data.question) <= int(runtime.data.rewrite_max_chars or 0)
-        and runtime.module.should_rewrite_query(runtime.data.question)
-    ):
-        runtime.data.rewrite_llm = runtime.engine.models.get("fast") or runtime.data.llm
-        runtime.data.rewrite_model_used = getattr(runtime.data.rewrite_llm, "model_name", None) or getattr(
-            runtime.data.rewrite_llm, "model", None
-        )
-        try:
-            runtime.data.prompt_template = runtime.module.get_query_rewrite_prompt_template(
-                runtime.data.rewrite_strategy_id
-            )
-            runtime.data.rewrite_prompt = runtime.module.ChatPromptTemplate.from_template(runtime.data.prompt_template)
-            runtime.data.rewrite_chain = (
-                runtime.data.rewrite_prompt
-                | runtime.data.rewrite_llm.bind(temperature=runtime.data.rewrite_temperature)
-                | runtime.module.StrOutputParser()
-            )
-            runtime.data.rw_start = time.time()
-            runtime.data.rewritten = await runtime.data.rewrite_chain.ainvoke(
-                {"history": runtime.data.history_text, "question": runtime.data.question}
-            )
-            runtime.data.rewrite_elapsed = time.time() - runtime.data.rw_start
-            runtime.data.rewritten = (runtime.data.rewritten or "").strip().strip('"')
-            if runtime.data.rewritten:
-                runtime.data.query_for_retrieval = runtime.data.rewritten
-        except Exception:
-            runtime.data.query_for_retrieval = runtime.data.question
-            runtime.data.rewrite_elapsed = 0.0
-
-        runtime.data.rewrite_used = runtime.data.query_for_retrieval != runtime.data.question
+    if prepared.rewrite.attempted:
         yield {
             "type": "rewrite",
             "data": {
@@ -255,36 +246,6 @@ async def rewrite_and_apply_industry_rules(runtime: StandardStreamState) -> Asyn
                 "strategy_id": runtime.data.rewrite_strategy_id,
                 "strategy_hash": runtime.data.rewrite_strategy_hash,
             },
-        }
-
-    runtime.data.industry_rules_enabled_effective = (
-        bool(runtime.data.industry_rules_enabled)
-        if runtime.data.industry_rules_enabled is not None
-        else bool(getattr(settings, "RAG_INDUSTRY_RULES_ENABLED", False))
-    )
-    runtime.data.industry_rules_meta: dict[str, Any] = {
-        "enabled": bool(runtime.data.industry_rules_enabled_effective),
-        "used": False,
-    }
-    try:
-        from app.rag.industry_rules.runtime import apply_industry_rules_query_expansion
-
-        runtime.data.query_for_retrieval, runtime.data.industry_rules_meta = apply_industry_rules_query_expansion(
-            runtime.data.query_for_retrieval,
-            enabled=runtime.data.industry_rules_enabled_effective,
-            ruleset_names=(
-                runtime.data.industry_rules_rulesets
-                if runtime.data.industry_rules_rulesets is not None
-                else getattr(settings, "RAG_INDUSTRY_RULES_RULESETS", "")
-            ),
-            max_aliases=int(getattr(settings, "RAG_INDUSTRY_RULES_MAX_ALIASES", 16) or 16),
-            max_query_chars=int(getattr(settings, "RAG_INDUSTRY_RULES_MAX_QUERY_CHARS", 2000) or 2000),
-        )
-    except Exception as exc:  # noqa: BLE001
-        runtime.data.industry_rules_meta = {
-            "enabled": bool(runtime.data.industry_rules_enabled_effective),
-            "used": False,
-            "error": f"industry_rules_exception:{str(exc)[:160]}",
         }
 
     # Step 0.2: Multi-modal query router (deterministic, no LLM).
@@ -307,268 +268,86 @@ async def classify_modality_and_contract(runtime: StandardStreamState) -> None:
         runtime.data.multimodal_modality = "text"
         runtime.data.multimodal_reasons = [f"router_exception:{str(exc)[:80]}"]
 
-    # Capture caller intent (kept for trace/metrics).
-    runtime.data.mode_req = runtime.data.retrieval_mode or "hybrid"
-    runtime.data.profile_req = runtime.data.retrieval_profile
-    runtime.data.contract_req = (
-        runtime.data.retrieval_contract_mode
-        if runtime.data.retrieval_contract_mode is not None
-        else getattr(settings, "RETRIEVAL_CONTRACT_MODE", "")
-    )
-    if bool(runtime.data.must_recall) and not str(runtime.data.contract_req or "").strip():
-        runtime.data.contract_req = "must_recall_strict"
-    runtime.data.retrieval_contract_policy = runtime.module.resolve_retrieval_contract_policy(
-        mode=runtime.data.contract_req,
-        requested_top_k=int(runtime.data.top_k or 0),
-        hard_fallback_enabled_setting=bool(getattr(settings, "RETRIEVAL_HARD_FALLBACK_ENABLED", False)),
-        hard_fallback_mode_setting=str(getattr(settings, "RETRIEVAL_HARD_FALLBACK_MODE", "keyword") or "keyword"),
-        hard_fallback_top_k_setting=int(getattr(settings, "RETRIEVAL_HARD_FALLBACK_TOP_K", 30) or 30),
-        visible_evidence_only_setting=bool(getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False)),
-        evidence_span_strict_setting=bool(getattr(settings, "RAG_EVIDENCE_REQUIRE_SPANS_ENABLED", False)),
-    )
-    runtime.data.retrieval_contract_mode_effective = str(
-        runtime.data.retrieval_contract_policy.get("mode") or ""
-    ).strip()
 
-    # Step 0.25: Deterministic intent router (optional).
-    #
-    # Goal: map query "shape" (log/api/howto/faq) to retrieval presets and safe toggles.
-    # Must be deterministic + PII-safe (no raw query in meta payloads).
-    runtime.data.intent_router_enabled = (
-        bool(runtime.data.intent_router)
-        if runtime.data.intent_router is not None
-        else bool(getattr(settings, "RAG_INTENT_ROUTER_ENABLED", False))
-    )
-    runtime.data.intent_router_meta: dict[str, Any] = {
-        "enabled": bool(runtime.data.intent_router_enabled),
-        "used": False,
-    }
-
-
-def _apply_intent_core_overrides(runtime: StandardStreamState) -> None:
-    overrides = runtime.data.overrides
-    if overrides.get("retrieval_mode") is not None:
-        runtime.data.retrieval_mode = str(overrides.get("retrieval_mode") or "").strip() or runtime.data.retrieval_mode
-    if overrides.get("retrieval_profile") is not None:
-        runtime.data.retrieval_profile = (
-            str(overrides.get("retrieval_profile") or "").strip() or runtime.data.retrieval_profile
-        )
-    if overrides.get("top_k") is not None:
-        runtime.data.top_k = int(overrides.get("top_k") or 0)
-    if overrides.get("score_threshold") is not None:
-        runtime.data.score_threshold = float(overrides.get("score_threshold") or 0.0)
-    if overrides.get("enable_reranker") is not None:
-        runtime.data.enable_reranker = bool(overrides.get("enable_reranker"))
-
-
-def _apply_intent_feature_overrides(runtime: StandardStreamState) -> None:
-    overrides = runtime.data.overrides
-    if overrides.get("reranker_provider") is not None:
-        runtime.data.reranker_provider = (
-            str(overrides.get("reranker_provider") or "").strip() or runtime.data.reranker_provider
-        )
-    if overrides.get("reranker_top_n") is not None:
-        runtime.data.reranker_top_n = int(overrides.get("reranker_top_n") or 0)
-    if overrides.get("enable_weight_rerank") is not None:
-        runtime.data.enable_weight_rerank = bool(overrides.get("enable_weight_rerank"))
-    if overrides.get("enable_multi_query") is not None:
-        runtime.data.enable_multi_query = bool(overrides.get("enable_multi_query"))
-    if overrides.get("enable_query_alias_expansion") is not None:
-        runtime.data.enable_query_alias_expansion = bool(overrides.get("enable_query_alias_expansion"))
-
-
-async def apply_intent_router(runtime: StandardStreamState) -> None:
-    if not runtime.data.intent_router_enabled:
-        return
-    try:
-        runtime.data.overrides, runtime.data.intent_router_meta = runtime.module.route_retrieval_preset(
-            query=runtime.data.query_for_retrieval,
-            retrieval_mode=str(runtime.data.mode_req or ""),
-            retrieval_profile=(str(runtime.data.profile_req).strip() if runtime.data.profile_req is not None else None),
-            top_k=int(runtime.data.top_k or 0),
-            score_threshold=float(runtime.data.score_threshold or 0.0),
-            enable_reranker=bool(runtime.data.enable_reranker),
-            enable_weight_rerank=bool(runtime.data.enable_weight_rerank),
-            enable_multi_query=runtime.data.enable_multi_query,
-            enable_query_alias_expansion=runtime.data.enable_query_alias_expansion,
-            intent_router_policy=runtime.data.intent_router_policy,
-        )
-        if isinstance(runtime.data.overrides, dict):
-            _apply_intent_core_overrides(runtime)
-            _apply_intent_feature_overrides(runtime)
-    except Exception as exc:  # noqa: BLE001
-        runtime.data.intent_router_meta = {
-            "enabled": True,
-            "used": False,
-            "error": f"intent_router_exception:{str(exc)[:160]}",
-        }
-
-
-async def normalize_retrieval_route(runtime: StandardStreamState) -> None:
-
-    runtime.data.mode_used = runtime.module.normalize_retrieval_mode(runtime.data.retrieval_mode or "hybrid")
-    runtime.data.mode_auto = False
-    runtime.data.recall_bucket: str | None = None
-    runtime.data.recall_bucket_routing = bool(getattr(settings, "RAG_RECALL_BUCKETS_ENABLED", False))
-    runtime.data.mode_norm = (runtime.data.mode_used or "hybrid").lower().strip()
-    if runtime.data.mode_norm == "auto":
-        runtime.data.mode_auto = True
-        if runtime.data.recall_bucket_routing:
-            runtime.data.recall_bucket = runtime.module.guess_recall_bucket(runtime.data.query_for_retrieval)
-            if runtime.data.recall_bucket in ("schema", "policy", "definition"):
-                runtime.data.mode_used = "keyword"
-            else:
-                runtime.data.mode_used = runtime.module.guess_retrieval_mode(runtime.data.query_for_retrieval)
-        else:
-            runtime.data.mode_used = runtime.module.guess_retrieval_mode(runtime.data.query_for_retrieval)
-        runtime.data.mode_norm = runtime.data.mode_used.lower().strip()
-    if runtime.data.mode_norm not in ("hybrid", "vector", "keyword", "mmr"):
-        runtime.data.mode_used = "hybrid"
-        runtime.data.mode_norm = "hybrid"
-    runtime.data.alpha_val = runtime.data.alpha if runtime.data.alpha is not None else 0.6
-    runtime.data.weight_rerank = bool(runtime.data.enable_weight_rerank)
-    runtime.data.vec_w = runtime.data.vector_weight if runtime.data.vector_weight is not None else 0.6
-    runtime.data.kw_w = runtime.data.keyword_weight if runtime.data.keyword_weight is not None else 0.4
-    runtime.data.mmr_lambda_val = (
-        runtime.data.mmr_lambda if runtime.data.mmr_lambda is not None else settings.RETRIEVAL_MMR_LAMBDA
-    )
-    runtime.data.rerank_on = bool(runtime.data.enable_reranker)
-    runtime.data.rerank_provider = runtime.data.reranker_provider or settings.RERANKER_PROVIDER or "llm"
-    runtime.data.rerank_top_n = int(runtime.data.reranker_top_n or settings.RERANKER_TOP_N or 20)
-    runtime.data.score_threshold_used = float(runtime.data.score_threshold or 0.0)
-
-
-async def apply_recall_bucket_and_profile(runtime: StandardStreamState) -> None:
-
-    if runtime.data.mode_auto and runtime.data.recall_bucket_routing and runtime.data.recall_bucket:
-        if runtime.data.recall_bucket in ("schema", "policy", "definition"):
-            runtime.data.score_threshold_used = 0.0
-            runtime.data.vec_w = 0.2
-            runtime.data.kw_w = 0.8
-        elif runtime.data.recall_bucket == "procedure":
-            runtime.data.vec_w = 0.7
-            runtime.data.kw_w = 0.3
-        elif runtime.data.recall_bucket == "numeric":
-            runtime.data.vec_w = 0.5
-            runtime.data.kw_w = 0.5
-
-    runtime.data.profile_applied = runtime.module.apply_retrieval_profile_overrides(
-        profile=runtime.data.retrieval_profile,
-        top_k=int(runtime.data.top_k or 0),
-        score_threshold=float(runtime.data.score_threshold_used or 0.0),
-        retrieval_mode=runtime.data.mode_used,
-        enable_reranker=runtime.data.rerank_on,
-        reranker_provider=runtime.data.rerank_provider,
-        reranker_top_n=runtime.data.rerank_top_n,
-        enable_weight_rerank=runtime.data.enable_weight_rerank,
-        retrieval_contract_mode=(
-            runtime.data.retrieval_contract_mode
-            if runtime.data.retrieval_contract_mode is not None
-            else getattr(settings, "RETRIEVAL_CONTRACT_MODE", "")
-        ),
-        visible_evidence_only=(
-            bool(runtime.data.visible_evidence_only) if runtime.data.visible_evidence_only is not None else None
-        ),
-    )
-    runtime.data.profile_norm = str(runtime.data.profile_applied.get("retrieval_profile") or "").strip().lower()
-    runtime.data.retrieval_profile = runtime.data.profile_applied.get("retrieval_profile")
-    runtime.data.top_k = int(runtime.data.profile_applied.get("top_k") or 0)
-    runtime.data.score_threshold_used = float(runtime.data.profile_applied.get("score_threshold") or 0.0)
-    runtime.data.mode_used = str(runtime.data.profile_applied.get("retrieval_mode") or runtime.data.mode_used)
-    if runtime.data.profile_applied.get("enable_reranker") is not None:
-        runtime.data.rerank_on = bool(runtime.data.profile_applied.get("enable_reranker"))
-    if runtime.data.profile_applied.get("reranker_provider"):
-        runtime.data.rerank_provider = str(
-            runtime.data.profile_applied.get("reranker_provider") or runtime.data.rerank_provider
-        )
-    if runtime.data.profile_applied.get("reranker_top_n") is not None:
-        runtime.data.rerank_top_n = int(
-            runtime.data.profile_applied.get("reranker_top_n") or runtime.data.rerank_top_n or 0
-        )
-
-
-async def apply_profile_feature_overrides(runtime: StandardStreamState) -> None:
-    if runtime.data.profile_applied.get("enable_weight_rerank") is not None:
-        runtime.data.enable_weight_rerank = bool(runtime.data.profile_applied.get("enable_weight_rerank"))
-    if runtime.data.profile_applied.get("sparse_retrieval_enabled") is not None:
-        runtime.data.sparse_retrieval_enabled = bool(runtime.data.profile_applied.get("sparse_retrieval_enabled"))
-    if runtime.data.profile_applied.get("sparse_retrieval_provider"):
-        runtime.data.sparse_retrieval_provider = str(runtime.data.profile_applied.get("sparse_retrieval_provider"))
-    if runtime.data.profile_applied.get("enable_hierarchy_recall") is not None:
-        runtime.data.enable_hierarchy_recall = bool(runtime.data.profile_applied.get("enable_hierarchy_recall"))
-    if runtime.data.profile_applied.get("hierarchy_family_collapse") is not None:
-        runtime.data.hierarchy_family_collapse = bool(runtime.data.profile_applied.get("hierarchy_family_collapse"))
-    if runtime.data.profile_applied.get("hierarchy_overfetch_factor") is not None:
-        runtime.data.hierarchy_overfetch_factor = int(
-            runtime.data.profile_applied.get("hierarchy_overfetch_factor") or 1
-        )
-    if runtime.data.profile_applied.get("hierarchy_family_aggregation") is not None:
-        runtime.data.hierarchy_family_aggregation = (
-            str(runtime.data.profile_applied.get("hierarchy_family_aggregation") or "").strip().lower() or None
-        )
-
-
-async def refresh_contract_and_adaptive_route(runtime: StandardStreamState) -> None:
-    if runtime.data.profile_applied.get("hierarchy_tree_dedup") is not None:
-        runtime.data.hierarchy_tree_dedup = bool(runtime.data.profile_applied.get("hierarchy_tree_dedup"))
-    if runtime.data.profile_applied.get("hierarchy_parent_depth") is not None:
-        runtime.data.hierarchy_parent_depth = max(
-            0, int(runtime.data.profile_applied.get("hierarchy_parent_depth") or 0)
-        )
-    if runtime.data.profile_applied.get("hierarchy_sibling_window") is not None:
-        runtime.data.hierarchy_sibling_window = max(
-            0, int(runtime.data.profile_applied.get("hierarchy_sibling_window") or 0)
-        )
-    if runtime.data.profile_applied.get("retrieval_contract_mode") is not None:
-        runtime.data.retrieval_contract_mode = (
-            str(runtime.data.profile_applied.get("retrieval_contract_mode") or "").strip() or None
-        )
-    if runtime.data.profile_applied.get("visible_evidence_only") is not None:
-        runtime.data.visible_evidence_only = bool(runtime.data.profile_applied.get("visible_evidence_only"))
-
-    runtime.data.contract_req = (
-        runtime.data.retrieval_contract_mode
-        if runtime.data.retrieval_contract_mode is not None
-        else getattr(settings, "RETRIEVAL_CONTRACT_MODE", "")
-    )
-    if bool(runtime.data.must_recall) and not str(runtime.data.contract_req or "").strip():
-        runtime.data.contract_req = "must_recall_strict"
-    runtime.data.retrieval_contract_policy = runtime.module.resolve_retrieval_contract_policy(
-        mode=runtime.data.contract_req,
-        requested_top_k=int(runtime.data.top_k or 0),
-        hard_fallback_enabled_setting=bool(getattr(settings, "RETRIEVAL_HARD_FALLBACK_ENABLED", False)),
-        hard_fallback_mode_setting=str(getattr(settings, "RETRIEVAL_HARD_FALLBACK_MODE", "keyword") or "keyword"),
-        hard_fallback_top_k_setting=int(getattr(settings, "RETRIEVAL_HARD_FALLBACK_TOP_K", 30) or 30),
-        visible_evidence_only_setting=bool(getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False)),
-        evidence_span_strict_setting=bool(getattr(settings, "RAG_EVIDENCE_REQUIRE_SPANS_ENABLED", False)),
-    )
-    runtime.data.retrieval_contract_mode_effective = str(
-        runtime.data.retrieval_contract_policy.get("mode") or ""
-    ).strip()
-    runtime.data.adaptive_retrieval_overrides = runtime.engine._route_retrieval_params(runtime.data.complexity_score)
-    runtime.data.adaptive_retrieval_used = bool(runtime.data.adaptive_retrieval_overrides)
-
-
-async def apply_adaptive_route(runtime: StandardStreamState) -> None:
-    if runtime.data.adaptive_retrieval_overrides:
-        if runtime.data.adaptive_retrieval_overrides.get("top_k") is not None:
-            runtime.data.top_k = max(
-                1, int(runtime.data.adaptive_retrieval_overrides.get("top_k") or runtime.data.top_k or 1)
+async def route_query(runtime: StandardStreamState) -> None:
+    prepared = getattr(runtime.data, "prepared_query_outcome", None)
+    if prepared is not None:
+        sparse = prepared.sparse
+    else:
+        sparse = resolve_sparse_selection(
+            SparseQuerySettings(
+                bool(
+                    settings.SPARSE_RETRIEVAL_ENABLED
+                    if runtime.data.sparse_retrieval_enabled is None
+                    else runtime.data.sparse_retrieval_enabled
+                ),
+                str(runtime.data.sparse_retrieval_provider or settings.SPARSE_RETRIEVAL_PROVIDER),
             )
-        if runtime.data.adaptive_retrieval_overrides.get("enable_multi_query") is not None:
-            runtime.data.enable_multi_query = bool(runtime.data.adaptive_retrieval_overrides.get("enable_multi_query"))
-        if runtime.data.adaptive_retrieval_overrides.get("multi_query_count") is not None:
-            runtime.data.multi_query_count = max(
-                0, int(runtime.data.adaptive_retrieval_overrides.get("multi_query_count") or 0)
-            )
-        if runtime.data.adaptive_retrieval_overrides.get("retrieval_profile") is not None:
-            runtime.data.retrieval_profile = (
-                str(runtime.data.adaptive_retrieval_overrides.get("retrieval_profile") or "").strip()
-                or runtime.data.retrieval_profile
-            )
-            runtime.data.profile_norm = str(runtime.data.retrieval_profile or "").strip().lower()
-            if runtime.module.is_recall_first_profile(runtime.data.profile_norm):
-                runtime.data.score_threshold_used = 0.0
+        )
+
+    options = {key: getattr(runtime.data, key) for key in QUERY_PLANNING_OPTION_KEYS if hasattr(runtime.data, key)}
+    complexity_overrides = runtime.engine._route_retrieval_params(runtime.data.complexity_score)
+    decision = resolve_stream_query_routing(
+        runtime.data.query_for_retrieval,
+        options=options,
+        sparse=sparse,
+        complexity_overrides=complexity_overrides,
+    )
+    routing = decision.routing
+    normalization = routing.normalization
+    effective_options = routing.effective_options
+    retriever_update = normalization.retriever_update
+
+    runtime.data.query_routing_outcome = routing
+    runtime.data.recall_bucket = decision.recall_bucket
+    runtime.data.adaptive_retrieval_overrides = dict(decision.complexity_overrides)
+    runtime.data.adaptive_retrieval_used = bool(decision.complexity_overrides)
+    runtime.data.intent_router_meta = dict(routing.intent_metadata)
+    runtime.data.intent_router_enabled = bool(runtime.data.intent_router_meta.get("enabled"))
+    runtime.data.adaptive_router_meta = dict(routing.adaptive_metadata)
+    runtime.data.channel_budget_policy_meta = dict(routing.channel_metadata)
+
+    for key, value in routing.evidence_contract.items():
+        setattr(runtime.data, key, value)
+    for key, value in effective_options.items():
+        if key in QUERY_PLANNING_OPTION_KEYS:
+            setattr(runtime.data, key, value)
+
+    runtime.data.requested_retrieval_mode = routing.evidence_contract["requested_retrieval_mode"]
+    runtime.data.requested_retrieval_profile = routing.evidence_contract["requested_retrieval_profile"]
+    runtime.data.mode_req = runtime.data.requested_retrieval_mode
+    runtime.data.profile_req = runtime.data.requested_retrieval_profile
+    runtime.data.mode_auto = str(runtime.data.requested_retrieval_mode or "").strip().lower() == "auto"
+    runtime.data.retrieval_mode_routed = normalization.retrieval_mode_routed
+    runtime.data.retrieval_contract_policy = normalization.retrieval_contract_policy
+    runtime.data.retrieval_contract_mode_effective = normalization.retrieval_contract_mode
+    runtime.data.contract_req = effective_options.get("retrieval_contract_mode") or settings.RETRIEVAL_CONTRACT_MODE
+    runtime.data.profile_applied = normalization.profile_applied
+    runtime.data.profile_norm = normalization.profile_norm or ""
+    runtime.data.retrieval_profile = normalization.profile_norm
+    runtime.data.retriever_update = dict(retriever_update)
+    runtime.data.mode_used = str(retriever_update["retrieval_mode"] or "hybrid")
+    runtime.data.mode_norm = runtime.data.mode_used.lower().strip()
+    runtime.data.top_k = int(retriever_update["k"])
+    runtime.data.score_threshold = float(retriever_update["score_threshold"])
+    runtime.data.score_threshold_used = runtime.data.score_threshold
+    runtime.data.alpha_val = float(retriever_update["alpha"])
+    runtime.data.weight_rerank = bool(retriever_update["enable_weight_rerank"])
+    runtime.data.vec_w = float(retriever_update["vector_weight"])
+    runtime.data.kw_w = float(retriever_update["keyword_weight"])
+    runtime.data.mmr_lambda_val = float(retriever_update["mmr_lambda"])
+    runtime.data.rerank_on = bool(retriever_update["enable_reranker"])
+    runtime.data.rerank_provider = str(retriever_update["reranker_provider"])
+    runtime.data.rerank_top_n = int(retriever_update["reranker_top_n"])
+    runtime.data.sparse_retrieval_enabled = normalization.sparse_enabled
+    runtime.data.sparse_retrieval_provider = normalization.sparse_provider
+    runtime.data.hierarchy_recall_enabled = normalization.hierarchy.enabled
+    runtime.data.hierarchy_family_collapse = normalization.hierarchy.family_collapse
+    runtime.data.hierarchy_family_aggregation = normalization.hierarchy.family_aggregation
+    runtime.data.hierarchy_tree_dedup = normalization.hierarchy.tree_dedup
+    runtime.data.hierarchy_parent_depth = normalization.hierarchy.parent_depth
+    runtime.data.hierarchy_sibling_window = normalization.hierarchy.sibling_window
+    runtime.data.hierarchy_overfetch_factor = normalization.hierarchy.overfetch_factor
 
 
 SETUP_OPERATIONS = (
@@ -576,12 +355,7 @@ SETUP_OPERATIONS = (
     StreamOperation(select_model_and_prompt, streams=True),
     StreamOperation(rewrite_and_apply_industry_rules, streams=True),
     StreamOperation(classify_modality_and_contract, streams=False),
-    StreamOperation(apply_intent_router, streams=False),
-    StreamOperation(normalize_retrieval_route, streams=False),
-    StreamOperation(apply_recall_bucket_and_profile, streams=False),
-    StreamOperation(apply_profile_feature_overrides, streams=False),
-    StreamOperation(refresh_contract_and_adaptive_route, streams=False),
-    StreamOperation(apply_adaptive_route, streams=False),
+    StreamOperation(route_query, streams=False),
 )
 
 __all__ = ["SETUP_OPERATIONS"]

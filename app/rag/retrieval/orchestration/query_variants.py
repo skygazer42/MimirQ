@@ -23,6 +23,7 @@ class QueryVariantStageInput:
     query_expansion_token_budget_raw: Any
     query_expansion_latency_budget_ms_raw: Any
     query_expansion_elapsed_ms: float
+    multi_query_last: bool = False
 
 
 @dataclass(frozen=True)
@@ -79,12 +80,15 @@ def _build_retrieval_queries(payload: QueryVariantStageInput) -> list[tuple[str,
     _extend_queries(retrieval_queries, "kgq", payload.kg_query_expansion_queries)
     _extend_queries(retrieval_queries, "clause", payload.clause_fastlane_queries)
     _extend_queries(retrieval_queries, "lite_subq", payload.lightweight_subqueries)
-    _extend_queries(retrieval_queries, "mq", payload.multi_queries)
+    if not payload.multi_query_last:
+        _extend_queries(retrieval_queries, "mq", payload.multi_queries)
     if payload.step_back_used and payload.step_back_query:
         retrieval_queries.append(("step_back", payload.step_back_query))
     _extend_queries(retrieval_queries, "subq", payload.sub_questions)
     if payload.hyde_used and payload.hyde_text:
         retrieval_queries.append(("hyde", payload.hyde_text))
+    if payload.multi_query_last:
+        _extend_queries(retrieval_queries, "mq", payload.multi_queries)
     return _dedupe_query_variants(retrieval_queries)
 
 

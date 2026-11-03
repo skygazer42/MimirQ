@@ -390,6 +390,7 @@ class QueryRoutingDecision:
 class StreamQueryRoutingDecision:
     routing: QueryRoutingDecision
     complexity_overrides: Mapping[str, Any]
+    recall_bucket: str | None = None
 
 
 @dataclass(frozen=True)
