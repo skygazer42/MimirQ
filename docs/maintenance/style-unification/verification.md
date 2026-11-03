@@ -571,6 +571,11 @@
 - `web/components/settings/settings-switch.tsx` 已符合具名组件导出、局部 props type 和 shared Switch owner 约定，全部直接调用点已静态扫描；当前无需改代码。
 - 未修改 UI；本地 `web/node_modules` 不存在，Prettier 检查未运行，format_status 保持 pending。
 
+## Shared Common Frontend Types
+
+- Task 6 common-types branch commit `5aa80b6e` 经独立审查通过并合并。`PermissionEnum` now aliases the generated `DatasetPermissionEnum` schema; the literal union matches exactly. `DocumentAccessMode` retains `inherit`, while `LooseString` and `JsonObject` remain unchanged; direct consumers and the public barrel retain the same names.
+- No UI or runtime change. `web/node_modules` is absent and pnpm is mismatched, so ESLint, Prettier, TypeScript and tests were not run.
+
 ## Document API 与 Preview Helpers
 
 - Task 6 分支 `80a8d97a` 经独立审查通过并合并，改动仅在 `documents.ts` 与 `document-helpers.ts`。审查确认 endpoint/method/path、FormData、relative filename、parser resolution、timeout/abort、Zod/OpenAPI responses 和 error propagation 保持；branch name 与 brief 相差一个复数 `s`，不影响代码或目标分支合并。
@@ -616,6 +621,11 @@
 
 - Task 5 branch `753ff540` 仅调整 `bm25_index.py` 与 `sparse_index.py`：统一复用 `result_values.candidate_metadata_from_doc`，BM25/sparse 专属分数与结果构造保持，消除 sparse 通过 mixin MRO 获取私有映射函数的耦合。`text_preparation.py` 与 `lexical_search.py` 审阅后符合标准，未修改。
 - Root 用 `style-rag-lexical-sparse` worktree 的 Ruff 配置对两个改动文件补跑 Ruff check/format；AST/caller scan、`git show --check` 和独立 review 通过。Python tests 与数据库/BM25/sparse/vector/model services 未运行。
+
+## 并行类别分支：Context Expansion
+
+- Task 5 branch `2cda543d` 独立审查通过并合并；仅移除 `context_expansion.expand_reranked_ids_by_score` 转发 wrapper，并让 `rerank_expand_rerank.py` 直接调用 `neighbor_expand.expand_neighbors_by_score`。Hierarchy wrapper 保留，因为它补充 `framework`/`strategy` diagnostics。
+- Worktree Ruff check/format、六个 scoped context modules 与直接 caller 的 AST、caller scan 和 `git show --check` 通过。没有改 tenant/document scope、ordering、dedup、spans/budgets/provenance/failure policy。Python tests 和 runtime services 未运行。
 
 ## 并行类别分支：解析模型缓存与 Manifest
 

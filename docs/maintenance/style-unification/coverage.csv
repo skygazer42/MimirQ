@@ -1083,13 +1083,13 @@ app/rag/reranker/registry.py,5,pending,adjusted,Awaiting file-level convention a
 app/rag/reranker/types.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/__init__.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/colbert_ann.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/rag/retrieval/context_expansion.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/rag/retrieval/contextual_followup.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/rag/retrieval/context_expansion.py,5,adjusted,conforms,Context expansion delegates score-neighbor work to its actual owner,Ruff check/format; hierarchy diagnostics wrapper retained; review passed; tests not run
+app/rag/retrieval/contextual_followup.py,5,conforms,conforms,Contextual follow-up construction retains its declared owner and budget,Caller and latency policy reviewed unchanged; no code diff
 app/rag/retrieval/contract.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/decomposition_chain.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/rag/retrieval/document_structure.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/rag/retrieval/document_structure.py,5,conforms,adjusted,Document structure citation shape and extraction owner reviewed,No code diff; caller and output contract retained
 app/rag/retrieval/evidence_gap.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/rag/retrieval/hierarchy_expand.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/rag/retrieval/hierarchy_expand.py,5,conforms,conforms,Hierarchy expansion owner retains cache and scope behavior,Direct callers and diagnostics wrapper reviewed unchanged; no code diff
 app/rag/retrieval/hybrid/__init__.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/hybrid/bm25_index.py,5,adjusted,conforms,BM25 results use the shared candidate metadata projection,Ruff check/format; appended BM25 score fields and result ordering retained; tests not run
 app/rag/retrieval/hybrid/cache_scope.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -1107,7 +1107,7 @@ app/rag/retrieval/hybrid/sparse_index.py,5,adjusted,conforms,Sparse results call
 app/rag/retrieval/hybrid/text_preparation.py,5,conforms,adjusted,Typed text inputs and normalization remain owned by the preparation stage,Caller and tokenization contract reviewed; no code change; runtime unverified
 app/rag/retrieval/hybrid/vector_normalizer.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/metrics.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/rag/retrieval/neighbor_expand.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/rag/retrieval/neighbor_expand.py,5,conforms,adjusted,Neighbor owner signature and expanded result shape remain stable,Thresholds spans and direct workflow caller reviewed; no code diff
 app/rag/retrieval/orchestration/__init__.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestration/anchors.py,5,adjusted,conforms,Typed Document fields used directly; standard float failures preserved as defaultable metadata,Ruff check/format; list type guard retained; Python tests not run
 app/rag/retrieval/orchestration/channel_budget.py,5,conforms,conforms,External policy JSON validation and malformed optional entries have explicit outcomes,Ruff check/format; schema version and partial budget behavior reviewed; Python tests not run
@@ -1140,7 +1140,7 @@ app/rag/retrieval/plugin_policy.py,5,pending,adjusted,Awaiting file-level conven
 app/rag/retrieval/query_phrase_match.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/retriever_options.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/retriever_policy.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/rag/retrieval/sibling_expand.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/rag/retrieval/sibling_expand.py,5,conforms,adjusted,Sibling expansion ordering and bounds remain at the existing owner,Caller and scope contract reviewed unchanged; no code diff
 app/rag/retrieval/source_labels.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/sparse.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/sparse_prometheus_metrics.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -1194,7 +1194,7 @@ app/rag/workflows/parallelization.py,5,pending,adjusted,Awaiting file-level conv
 app/rag/workflows/planner_worker.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/workflows/query_rewrite.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/workflows/react.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/rag/workflows/rerank_expand_rerank.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/rag/workflows/rerank_expand_rerank.py,5,adjusted,adjusted,Rerank workflow calls the neighbor owner directly with the same inputs,Ruff check/format; threshold/span order and output mapping reviewed; tests not run
 app/rag/workflows/routing.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/workflows/self_rag.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/workflows/self_route.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -3626,7 +3626,7 @@ web/tsconfig.json,inventory,preserved,preserved,"Documentation, static resource,
 web/types/backend.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/types/chat.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/types/clean-preview-rule-stats.typecheck.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/types/common.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/types/common.ts,6,adjusted,pending,PermissionEnum reuses the generated DatasetPermissionEnum owner,Literal union and direct consumers/barrel reviewed; frontend tools unavailable
 web/types/connectors.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/types/datasets.ts,2,adjusted,adjusted,"Named component, shared type aliases, one pipeline mapping and explicit query states; ESM plugin imports; framework default entry retained",Task 2: 6 Chrome scenarios and 421 frontend unit tests passed; scoped ESLint and Prettier passed
 web/types/documents.ts,6,pending,pending,Awaiting file-level convention and contract review,
