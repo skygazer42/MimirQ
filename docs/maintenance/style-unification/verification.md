@@ -467,6 +467,11 @@
 - The API utility and Dify package initializers contain documentation only; submodules are imported explicitly. Dify support's parent-module boundary is documented, with the facade responsible for re-exports.
 - 三个 initializer 的 Ruff check 与 Ruff format --check 通过；import 扫描未发现隐式 package-level utility imports。Python tests 未运行。
 
+## 第三批：Indexing schema compatibility module
+
+- `app/api/schemas/indexing.py` contains no schema or business logic and re-exports the internal dataclasses from `app.types.indexing`. No in-repository imports of the old path remain; it is retained for external Python import compatibility.
+- Ruff check 与 Ruff format --check 通过。本文件按兼容性理由标记为保留；Python tests 未运行。
+
 ## 第三批：Table SQL fingerprint utility
 
 - Fingerprint normalization consumes its declared string input directly; whitespace, identifier normalization, literal preservation, and default digest length remain unchanged. The four production callers pass SQL text; the table-store boundary performs its explicit conversion before calling.
