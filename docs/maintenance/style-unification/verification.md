@@ -692,6 +692,11 @@
 - Task 5 query-contracts branch `9adb1019` passed independent review and merged. Only `model_query_expansion.py` changes a local dedup set to `set[str]`; validated model output, normalization, truncation, first-seen ordering and output shape remain.
 - Ruff check/format, AST/caller scan, `git show --check`, and review passed. No Python tests or model/provider runtime were run.
 
+## Query Variant Contract
+
+- Task 5 commit `b26d9793` passed independent review and merged. `QueryVariant` names the existing `(kind, query)` pair; `QueryPlan.queries` still returns the same retrieval-stage list by reference and order.
+- Ruff check/format, AST/caller scan and `git show --check` passed. No Python tests or model/provider services were run.
+
 ## Parser Table Structure and Rendering
 
 - Task 4 branch `fbdf728eb` 独立审查通过并合并。Four table helpers removed only contract-redundant conversions while preserving row/cell order, padding, page/bbox metadata, OCR normalization, escaping, thresholds and renderer error policies.
