@@ -4,13 +4,18 @@ from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.api.schemas.document import DocumentLifecycleMetadata, DocumentLifecycleMetadataUpdateRequest
+from app.api.schemas.document import (
+    DocumentBatchDeleteRequest,
+    DocumentBatchLifecycleRequest,
+    DocumentLifecycleMetadata,
+    DocumentLifecycleMetadataUpdateRequest,
+)
 from app.core.async_bridge import run_blocking_in_thread
 from app.core.config import settings
 from app.core.database import SessionLocal
@@ -700,3 +705,92 @@ async def _delete_document_lifecycle(
         # it does not retain stale ORM state written by the isolated sessions.
         with contextlib.suppress(Exception):
             db.expire_all()
+
+
+def update_document_lifecycle_state(
+    payload: DocumentBatchLifecycleRequest,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    db: Session,
+    state_field: Literal["disabled_at", "archived_at"],
+    audit_action: Literal["document.disable", "document.enable", "document.archive", "document.unarchive"],
+    set_timestamp: bool,
+) -> dict[str, int | list[UUID]]:
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    updated = 0
+    not_found: list[UUID] = []
+    denied: list[UUID] = []
+    conflicts: list[UUID] = []
+    timestamp = datetime.now(UTC) if set_timestamp else None
+
+    for document_id in payload.document_ids:
+        document = get_document_for_lifecycle(db, tenant_id, document_id)
+        if document is None:
+            not_found.append(document_id)
+            continue
+        try:
+            assert_document_writable_for_lifecycle(
+                db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                document=document,
+            )
+        except HTTPException:
+            denied.append(document_id)
+            continue
+
+        current_timestamp = document.disabled_at if state_field == "disabled_at" else document.archived_at
+        if (set_timestamp and current_timestamp is not None) or (not set_timestamp and current_timestamp is None):
+            continue
+        if state_field == "disabled_at":
+            document.disabled_at = timestamp
+        else:
+            document.archived_at = timestamp
+        updated += 1
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action=audit_action,
+            resource_type="document",
+            resource_id=str(document_id),
+            details={state_field: timestamp.isoformat() if timestamp is not None else None},
+        )
+
+    if updated:
+        db.commit()
+    return {"updated": updated, "not_found": not_found, "denied": denied, "conflicts": conflicts}
+
+
+async def delete_documents(
+    payload: DocumentBatchDeleteRequest,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    db: Session,
+) -> dict[str, int | list[UUID]]:
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    deleted = 0
+    not_found: list[UUID] = []
+    denied: list[UUID] = []
+
+    for document_id in payload.document_ids:
+        try:
+            await _delete_document_lifecycle(
+                document_id=document_id,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                db=db,
+                enforce_permissions=True,
+            )
+            deleted += 1
+        except HTTPException as exc:
+            if exc.status_code == 404:
+                not_found.append(document_id)
+                continue
+            if exc.status_code in (401, 403):
+                denied.append(document_id)
+                continue
+            raise
+    return {"deleted": deleted, "not_found": not_found, "denied": denied}

@@ -1,8 +1,7 @@
-from datetime import UTC, datetime
-from typing import Annotated, Literal
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -14,13 +13,7 @@ from app.api.schemas.document import (
     DocumentBatchLifecycleResponse,
 )
 from app.core.database import get_db
-from app.services import dataset_service
-from app.services.audit_log_service import audit_log_event
-from app.services.document_access_service import (
-    assert_document_writable_for_lifecycle,
-    get_document_for_lifecycle,
-)
-from app.services.document_lifecycle_service import _delete_document_lifecycle
+from app.services import document_lifecycle_service
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -29,12 +22,14 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     409: {"description": "Conflict"},
     416: {"description": "Range Not Satisfiable"},
 }
-
+_update_document_lifecycle_state = document_lifecycle_service.update_document_lifecycle_state
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 @router.post(
-    "/batch/disable", response_model=DocumentBatchLifecycleResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+    "/batch/disable",
+    response_model=DocumentBatchLifecycleResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def batch_disable_documents(
     payload: DocumentBatchLifecycleRequest,
@@ -43,7 +38,6 @@ def batch_disable_documents(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, int | list[UUID]]:
-    """Batch disable documents (best-effort)."""
     return _update_document_lifecycle_state(
         payload,
         tenant_id=tenant_id,
@@ -56,7 +50,9 @@ def batch_disable_documents(
 
 
 @router.post(
-    "/batch/enable", response_model=DocumentBatchLifecycleResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+    "/batch/enable",
+    response_model=DocumentBatchLifecycleResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def batch_enable_documents(
     payload: DocumentBatchLifecycleRequest,
@@ -65,7 +61,6 @@ def batch_enable_documents(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, int | list[UUID]]:
-    """Batch enable documents (best-effort)."""
     return _update_document_lifecycle_state(
         payload,
         tenant_id=tenant_id,
@@ -78,7 +73,9 @@ def batch_enable_documents(
 
 
 @router.post(
-    "/batch/archive", response_model=DocumentBatchLifecycleResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+    "/batch/archive",
+    response_model=DocumentBatchLifecycleResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def batch_archive_documents(
     payload: DocumentBatchLifecycleRequest,
@@ -87,7 +84,6 @@ def batch_archive_documents(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, int | list[UUID]]:
-    """Batch archive documents (best-effort)."""
     return _update_document_lifecycle_state(
         payload,
         tenant_id=tenant_id,
@@ -100,7 +96,9 @@ def batch_archive_documents(
 
 
 @router.post(
-    "/batch/unarchive", response_model=DocumentBatchLifecycleResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+    "/batch/unarchive",
+    response_model=DocumentBatchLifecycleResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def batch_unarchive_documents(
     payload: DocumentBatchLifecycleRequest,
@@ -109,7 +107,6 @@ def batch_unarchive_documents(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, int | list[UUID]]:
-    """Batch unarchive documents (best-effort)."""
     return _update_document_lifecycle_state(
         payload,
         tenant_id=tenant_id,
@@ -121,101 +118,21 @@ def batch_unarchive_documents(
     )
 
 
-@router.post("/batch-delete", response_model=DocumentBatchDeleteResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/batch-delete",
+    response_model=DocumentBatchDeleteResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def batch_delete_documents(
     payload: DocumentBatchDeleteRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    """
-    Batch delete documents (best-effort per id).
-    """
-    dataset_service.ensure_member(db, tenant_id, account_id)
-
-    deleted = 0
-    not_found: list[UUID] = []
-    denied: list[UUID] = []
-
-    for document_id in payload.document_ids:
-        try:
-            await _delete_document_lifecycle(
-                document_id=document_id,
-                tenant_id=tenant_id,
-                account_id=account_id,
-                db=db,
-                enforce_permissions=True,
-            )
-            deleted += 1
-        except HTTPException as exc:
-            if exc.status_code == 404:
-                not_found.append(document_id)
-                continue
-            if exc.status_code in (401, 403):
-                denied.append(document_id)
-                continue
-            raise
-
-    return {"deleted": deleted, "not_found": not_found, "denied": denied}
-
-
-def _update_document_lifecycle_state(
-    payload: DocumentBatchLifecycleRequest,
-    *,
-    tenant_id: UUID,
-    account_id: str,
-    db: Session,
-    state_field: Literal["disabled_at", "archived_at"],
-    audit_action: Literal["document.disable", "document.enable", "document.archive", "document.unarchive"],
-    set_timestamp: bool,
 ) -> dict[str, int | list[UUID]]:
-    dataset_service.ensure_member(db, tenant_id, account_id)
-
-    updated = 0
-    not_found: list[UUID] = []
-    denied: list[UUID] = []
-    conflicts: list[UUID] = []
-    timestamp = datetime.now(UTC) if set_timestamp else None
-
-    for document_id in payload.document_ids:
-        document = get_document_for_lifecycle(db, tenant_id, document_id)
-        if document is None:
-            not_found.append(document_id)
-            continue
-
-        try:
-            assert_document_writable_for_lifecycle(
-                db,
-                tenant_id=tenant_id,
-                account_id=account_id,
-                document=document,
-            )
-        except HTTPException:
-            denied.append(document_id)
-            continue
-
-        current_timestamp = document.disabled_at if state_field == "disabled_at" else document.archived_at
-        if (set_timestamp and current_timestamp is not None) or (not set_timestamp and current_timestamp is None):
-            continue
-
-        if state_field == "disabled_at":
-            document.disabled_at = timestamp
-        else:
-            document.archived_at = timestamp
-        updated += 1
-
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=account_id,
-            action=audit_action,
-            resource_type="document",
-            resource_id=str(document_id),
-            details={state_field: timestamp.isoformat() if timestamp is not None else None},
-        )
-
-    if updated:
-        db.commit()
-
-    return {"updated": updated, "not_found": not_found, "denied": denied, "conflicts": conflicts}
+    return await document_lifecycle_service.delete_documents(
+        payload,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        db=db,
+    )
