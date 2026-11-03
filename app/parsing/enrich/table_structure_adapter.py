@@ -13,17 +13,17 @@ class TableStructureDetection:
 
     def to_metadata(self) -> dict[str, Any]:
         out: dict[str, Any] = {
-            "label": str(self.label or ""),
-            "score": round(float(self.score), 6),
+            "label": self.label,
+            "score": round(self.score, 6),
         }
         if isinstance(self.bbox, Mapping):
             out["bbox"] = dict(self.bbox)
         return out
 
 
-def _normalize_rows(rows: Sequence[Sequence[Any]] | None, col_count: int) -> list[list[str]]:
+def _normalize_rows(rows: Sequence[Sequence[Any]], col_count: int) -> list[list[str]]:
     out: list[list[str]] = []
-    for raw in rows or []:
+    for raw in rows:
         row = [str(cell or "").strip() for cell in list(raw)[:col_count]]
         row += [""] * max(0, int(col_count) - len(row))
         if any(row):
@@ -76,12 +76,12 @@ def _intersection(a: Mapping[str, float], b: Mapping[str, float]) -> dict[str, f
 
 
 def _is_row(label: str) -> bool:
-    normalized = str(label or "").lower()
+    normalized = label.lower()
     return "row" in normalized and "header" not in normalized and "spanning" not in normalized
 
 
 def _is_column(label: str) -> bool:
-    normalized = str(label or "").lower()
+    normalized = label.lower()
     return "column" in normalized and "header" not in normalized and "spanning" not in normalized
 
 
@@ -130,13 +130,13 @@ def table_extraction_from_structure_detections(
 ) -> TableExtraction | None:
     rows: list[dict[str, Any]] = []
     columns: list[dict[str, Any]] = []
-    for detection in detections or []:
-        if float(detection.score) < float(min_score):
+    for detection in detections:
+        if detection.score < min_score:
             continue
         box = _bbox_xyxy(detection.bbox, image_size=image_size)
         if box is None:
             continue
-        label = str(detection.label or "")
+        label = detection.label
         if _is_row(label):
             rows.append({"bbox": box, "detection": detection})
         elif _is_column(label):
