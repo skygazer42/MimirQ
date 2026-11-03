@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Mapping, Protocol
 from uuid import UUID
 
+QueryVariant = tuple[str, str]
+
 if TYPE_CHECKING:
     from app.rag.retrieval.orchestration.query_contract import QueryContractNormalizationOutput
     from app.rag.retrieval.orchestration.query_variants import QueryVariantStageOutput
@@ -420,7 +422,7 @@ class QueryPlan:
         return self.prepared.query
 
     @property
-    def queries(self) -> list[tuple[str, str]]:
+    def queries(self) -> list[QueryVariant]:
         return self.variant_stage.retrieval_queries
 
     @property
