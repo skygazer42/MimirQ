@@ -456,3 +456,9 @@
 - Access helper reads the declared owner, legacy user ID, dataset ID and update timestamp fields. The legacy UUID-to-account string owner fallback remains; unused database/tenant parameters were removed from the private owner check.
 - Chat scope uses direct Conversation fields and explicit query-not-found handling. Tenant filters, owner denial, dataset readability, missing-document pruning/commit, and existing 403/404/409 responses remain in their original order.
 - Ruff check、Ruff format --check、stale-guard scan 与 diff check 通过。Python tests 和 database flows 未运行。
+
+## 第三批：Corpus cache invalidation transaction
+
+- Single-dataset lookup now returns no token when the tenant-scoped dataset row is missing, matching document and multi-dataset scope behavior. Cache invalidation requires `Session.flush()` and propagates database failure; the service does not take ownership of commit.
+- The observability endpoint commits the revision update. RTBF retries the full dataset set after rollback; retention keeps cache invalidation best-effort but rolls back and logs before continuing. KG-job invalidation retains its existing commit/rollback behavior.
+- Ruff check、Ruff format --check 与 diff check 通过。未运行 Python tests、database runtime 或 Redis；observability、RTBF、retention 文件仍待完整审核。

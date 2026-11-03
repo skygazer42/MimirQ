@@ -1009,11 +1009,13 @@ def invalidate_dataset_cache_namespace_endpoint(
 ):
     _ensure_admin(db, tenant_id, account_id)
     try:
-        return invalidate_dataset_cache_namespace(
+        result = invalidate_dataset_cache_namespace(
             db,
             tenant_id=tenant_id,
             dataset_id=dataset_id,
         )
+        db.commit()
+        return result
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

@@ -588,12 +588,16 @@ def _archive_expired_documents(
         summary["documents"]["errors"] += int(archived_count)
         return
     summary["documents"]["archived"] += int(archived_count)
-    with contextlib.suppress(Exception):
+    try:
         summary["cache_invalidation"] = invalidate_dataset_cache_namespace(
             db,
             tenant_id=tenant_id,
             dataset_id=dataset_id,
         )
+    except Exception as exc:
+        with contextlib.suppress(Exception):
+            db.rollback()
+        logger.warning("Dataset cache invalidation failed after archive: %s", str(exc)[:200])
 
 
 async def _delete_expired_documents(
@@ -631,12 +635,16 @@ async def _delete_expired_documents(
                 summary["documents"]["conflicts"] += 1
             else:
                 summary["documents"]["errors"] += 1
-    with contextlib.suppress(Exception):
+    try:
         summary["cache_invalidation"] = invalidate_dataset_cache_namespace(
             db,
             tenant_id=tenant_id,
             dataset_id=dataset_id,
         )
+    except Exception as exc:
+        with contextlib.suppress(Exception):
+            db.rollback()
+        logger.warning("Dataset cache invalidation failed after deletion: %s", str(exc)[:200])
     with contextlib.suppress(Exception):
         db.commit()
 

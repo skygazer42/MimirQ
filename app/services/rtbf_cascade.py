@@ -133,20 +133,18 @@ def _invalidate_dataset_caches(
     dataset_ids: set[UUID],
     max_retries: int,
 ) -> int:
-    invalidated = 0
     retries = max(0, int(max_retries or 0))
-    for dataset_id in sorted(dataset_ids):
-        attempts = 0
-        while attempts <= retries:
-            attempts += 1
-            try:
+    ordered_dataset_ids = sorted(dataset_ids)
+    for attempt in range(retries + 1):
+        try:
+            for dataset_id in ordered_dataset_ids:
                 invalidate_dataset_cache_namespace(db, tenant_id=tenant_id, dataset_id=dataset_id)
-                invalidated += 1
-                break
-            except Exception:
-                if attempts > retries:
-                    raise
-    return invalidated
+            return len(ordered_dataset_ids)
+        except Exception:
+            db.rollback()
+            if attempt == retries:
+                raise
+    raise RuntimeError("dataset cache invalidation retries exhausted")
 
 
 def _rtbf_summary_documents(candidates: list[dict[str, object]], *, dry_run: bool) -> list[dict[str, object]]:

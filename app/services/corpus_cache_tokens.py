@@ -16,21 +16,15 @@ from sqlalchemy.orm import Session
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.rag.core.hashing import stable_hash
-from app.rag.core.logging import get_logger
 from app.rag.rerank_result_cache import clear_evidence_post_rerank_cache
 from app.services.dataset_embedding_config import resolve_dataset_embedding_runtime
-
-logger = get_logger(__name__)
 
 
 def _as_iso(value: Any) -> str | None:
     if value is None:
         return None
     if isinstance(value, datetime):
-        try:
-            return value.isoformat()
-        except Exception:
-            return None
+        return value.isoformat()
     text = str(value or "").strip()
     return text or None
 
@@ -193,8 +187,9 @@ def resolve_corpus_cache_token(
             .filter(Dataset.tenant_id == tenant_id, Dataset.id == dataset_id)
             .first()
         )
-        updated_at = row[0] if row else None
-        dataset_meta = row[1] if row and len(row) > 1 else None
+        if row is None:
+            return None
+        updated_at, dataset_meta = row
         return build_dataset_scope_corpus_cache_token(
             dataset_id=str(dataset_id),
             updated_at=updated_at,
@@ -246,12 +241,7 @@ def invalidate_dataset_cache_namespace(
     invalidated_at = datetime.now(UTC)
     dataset.updated_at = invalidated_at
 
-    try:
-        flush = getattr(db, "flush", None)
-        if callable(flush):
-            flush()
-    except Exception as exc:
-        logger.debug("Ignoring corpus cache namespace flush failure: %s", exc)
+    db.flush()
 
     current_token = resolve_corpus_cache_token(
         db,
