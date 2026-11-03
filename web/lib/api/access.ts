@@ -7,14 +7,17 @@ import type {
   TenantGroupMembersUpdateResponse,
   TenantGroupOut,
   TenantGroupUpdateRequest,
+  TenantMemberUpdateRequest,
 } from '@/types/backend'
+import type { paths } from '@/types/openapi'
 
 import { apiClient } from '@/lib/api/core'
-import type { TenantAccess } from '@/lib/tenant-permissions'
 
 export type TenantMember = OpenApiSchema<'TenantMemberOut'>
 export type TenantMemberListResponse = OpenApiSchema<'TenantMemberListResponse'>
 export type TenantMemberDeleteResponse = OpenApiSchema<'TenantMemberDeleteResponse'>
+type TenantAccess = OpenApiSchema<'TenantAccessOut'>
+type ListParams = NonNullable<paths['/api/v1/rbac/members']['get']['parameters']['query']>
 
 export const rbacApi = {
   async getCurrentTenantAccess(): Promise<TenantAccess> {
@@ -22,12 +25,12 @@ export const rbacApi = {
     return data
   },
 
-  async listTenantMembers(params: { skip?: number; limit?: number } = {}): Promise<TenantMemberListResponse> {
+  async listTenantMembers(params: ListParams = {}): Promise<TenantMemberListResponse> {
     const { data } = await apiClient.get('/rbac/members', { params })
     return data
   },
 
-  async patchTenantMemberRole(userId: string, payload: { role: string }): Promise<TenantMember> {
+  async patchTenantMemberRole(userId: string, payload: TenantMemberUpdateRequest): Promise<TenantMember> {
     const { data } = await apiClient.patch(`/rbac/members/${encodeURIComponent(userId)}`, payload)
     return data
   },
@@ -39,7 +42,7 @@ export const rbacApi = {
 }
 
 export const groupApi = {
-  async listGroups(params: { skip?: number; limit?: number } = {}): Promise<TenantGroupListResponse> {
+  async listGroups(params: ListParams = {}): Promise<TenantGroupListResponse> {
     const { data } = await apiClient.get('/groups', { params })
     return data
   },
