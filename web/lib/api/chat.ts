@@ -8,7 +8,7 @@ import type {
   ConversationSummaryUpdateResponse,
   Message,
   RagTraceListResponse,
-} from '@/types'
+} from '@/types/chat'
 import { z } from 'zod'
 import type { OpenApiOkResponse, OpenApiRequestBody } from '@/types/openapi-helpers'
 
