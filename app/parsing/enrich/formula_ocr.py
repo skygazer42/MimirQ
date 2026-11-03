@@ -33,7 +33,7 @@ _MINIO_URL_HINT = "/api/v1/documents/image-url/"
 
 
 def _clean_latex(raw: str, *, max_chars: int) -> str:
-    text = re.sub(r"\s+", " ", str(raw or "")).strip()
+    text = re.sub(r"\s+", " ", raw).strip()
     if not text:
         return ""
     if text.startswith("$$") and text.endswith("$$") and len(text) >= 4:
@@ -46,20 +46,20 @@ def _clean_latex(raw: str, *, max_chars: int) -> str:
 
 
 def _looks_like_table_row(line: str) -> bool:
-    s = (line or "").strip()
+    s = line.strip()
     return s.startswith("|") and s.endswith("|") and s.count("|") >= 2
 
 
 def _extract_md_images(line: str) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
-    for alt, src in _MD_IMAGE_RE.findall(line or ""):
-        out.append((alt or "", src or ""))
+    for alt, src in _MD_IMAGE_RE.findall(line):
+        out.append((alt, src))
     return out
 
 
 def _extract_html_imgs(line: str) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
-    for tag in _HTML_IMG_TAG_RE.findall(line or ""):
+    for tag in _HTML_IMG_TAG_RE.findall(line):
         alt = ""
         src = ""
         for key, _q, val in _HTML_IMG_ATTR_RE.findall(tag):
@@ -68,18 +68,18 @@ def _extract_html_imgs(line: str) -> list[tuple[str, str]]:
                 alt = val
             elif k == "src":
                 src = val
-        out.append((alt or "", src or ""))
+        out.append((alt, src))
     return out
 
 
 def _is_formula_candidate(*, alt: str, src: str) -> bool:
-    hint = f"{alt or ''} {src or ''}".strip()
+    hint = f"{alt} {src}".strip()
     if not hint:
         return False
     if _FORMULA_HINT_RE.search(hint):
         return True
     # Common filename patterns.
-    return bool(re.search(r"(formula|equation|math|eqn)", (src or ""), flags=re.IGNORECASE))
+    return bool(re.search(r"(formula|equation|math|eqn)", src, flags=re.IGNORECASE))
 
 
 def _normalize_local_image_ref(raw: str) -> tuple[str | None, str | None]:
@@ -233,20 +233,20 @@ class FormulaOcrAudit:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "applied": bool(self.applied),
-            "formulas_added": int(self.formulas_added),
-            "images_attempted": int(self.images_attempted),
-            "images_succeeded": int(self.images_succeeded),
-            "elapsed_ms": int(self.elapsed_ms),
-            "backend": str(self.backend or ""),
-            "error": (str(self.error)[:200] if self.error else None),
+            "applied": self.applied,
+            "formulas_added": self.formulas_added,
+            "images_attempted": self.images_attempted,
+            "images_succeeded": self.images_succeeded,
+            "elapsed_ms": self.elapsed_ms,
+            "backend": self.backend,
+            "error": (self.error[:200] if self.error else None),
             "formula_elements": list(self.formula_elements or []),
         }
 
 
 def _next_non_empty_line(lines: list[str], start: int, *, limit: int = 4) -> str:
     for index in range(start + 1, min(len(lines), start + limit)):
-        candidate = (lines[index] or "").strip()
+        candidate = lines[index].strip()
         if candidate:
             return candidate
     return ""
@@ -364,7 +364,7 @@ def add_formula_latex_blocks(
     - Skips code fences and markdown tables.
     - Does not remove the image; it only appends an explicit LaTeX representation.
     """
-    raw = str(markdown or "")
+    raw = markdown
     if not raw:
         return (
             "",
@@ -380,7 +380,7 @@ def add_formula_latex_blocks(
             ),
         )
 
-    url = str(api_url or "").strip()
+    url = api_url.strip()
     if not url:
         return (
             raw,
@@ -422,7 +422,7 @@ def add_formula_latex_blocks(
 
     lines = raw.splitlines()
     for i, line in enumerate(lines):
-        if _FENCE_RE.match(line or ""):
+        if _FENCE_RE.match(line):
             in_fence = not in_fence
             out_lines.append(line)
             continue
