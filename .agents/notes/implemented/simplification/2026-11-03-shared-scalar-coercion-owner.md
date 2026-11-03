@@ -10,7 +10,7 @@ Status: implemented
 
 `common.py` keeps `_safe_int` and `_safe_float` as the shared numeric conversion owners. Callers pass their original default, minimum, and maximum explicitly. Missing and malformed optional numbers retain their existing fallback values; only standard numeric conversion failures (`OverflowError`, `TypeError`, `ValueError`) use those defaults. The typed LangChain `Document.id` field is read directly.
 
-`kg_merge_boost._coerce_optional_int` remains local because it returns `None` for an absent metadata field; that is a different contract from a defaulting integer conversion.
+`kg_merge_boost._coerce_optional_int` remains local because it returns `None` for an absent metadata field; that is a different contract from a defaulting integer conversion. Its invalid-value path catches only standard numeric conversion failures.
 
 Citation parse-quality summaries use the same standard numeric conversion error list. A malformed optional score tries the next declared metadata field; unexpected errors are not treated as missing metadata.
 

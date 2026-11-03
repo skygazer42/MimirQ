@@ -1118,7 +1118,7 @@ app/rag/retrieval/orchestration/debug_sanitize.py,5,pending,adjusted,Awaiting fi
 app/rag/retrieval/orchestration/finalize_trace.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestration/hierarchy.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestration/intent_router.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/rag/retrieval/orchestration/kg_merge_boost.py,5,pending,conforms,本批仅迁移共享 float coercion 调用；整文件审核待完成,Call sites pass minimum explicitly; local metadata int helper retained because absence maps to None; Python tests not run
+app/rag/retrieval/orchestration/kg_merge_boost.py,5,pending,conforms,本批核对共享 float 与 optional metadata int 转换；整文件审核待完成,Call sites pass minimum explicitly; metadata int keeps None-on-missing and catches standard conversion errors; Python tests not run
 app/rag/retrieval/orchestration/kg_query_expansion.py,5,conforms,conforms,现有 KG owner 的响应契约、sync/async 边界与可选失败策略符合标准,Ruff check/format; KGResponseContractError is explicit; Python tests not run
 app/rag/retrieval/orchestration/out_of_scope_live_gate.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestration/query_contract.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending

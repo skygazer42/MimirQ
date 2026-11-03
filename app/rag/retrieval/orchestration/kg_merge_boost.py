@@ -69,7 +69,7 @@ def _coerce_optional_int(meta: dict[str, Any], key: str) -> int | None:
         return None
     try:
         return int(raw_value)
-    except (TypeError, ValueError, AttributeError):
+    except (OverflowError, TypeError, ValueError):
         return None
 
 
