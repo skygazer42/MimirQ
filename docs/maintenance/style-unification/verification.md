@@ -462,6 +462,11 @@
 - Fingerprint normalization consumes its declared string input directly; whitespace, identifier normalization, literal preservation, and default digest length remain unchanged. The four production callers pass SQL text; the table-store boundary performs its explicit conversion before calling.
 - Ruff check、Ruff format --check 与 `git diff --check` 通过。本文件标记为已调整；Python tests 未运行。
 
+## 第三批：Router Prometheus metrics helper
+
+- Helper now declares `dict[str, Any] | None` and uses the typed boolean value directly; malformed/missing telemetry layers still produce bounded `unknown` labels so optional metrics do not affect retrieval.
+- Ruff check、Ruff format --check 与 diff check 通过。本文件标记为已调整；Python tests 与 metrics runtime 未运行。
+
 ## 第三批：Corpus cache invalidation transaction
 
 - Single-dataset lookup now returns no token when the tenant-scoped dataset row is missing, matching document and multi-dataset scope behavior. Cache invalidation requires `Session.flush()` and propagates database failure; the service does not take ownership of commit.

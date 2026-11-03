@@ -1,3 +1,5 @@
+from typing import Any
+
 from prometheus_client import Counter
 
 from app.core.config import settings
@@ -9,14 +11,14 @@ ROUTER_DECISION_TOTAL = Counter(
 )
 
 
-def observe_router_layers(layers: dict | None) -> None:
+def observe_router_layers(layers: dict[str, Any] | None) -> None:
     if not bool(settings.PROMETHEUS_ENABLED):
         return
     payload = layers if isinstance(layers, dict) else {}
     for level in ("entity", "intent", "composite"):
         item = payload.get(level) if isinstance(payload.get(level), dict) else {}
         decision = str(item.get("decision") or "unknown").strip().lower() or "unknown"
-        used = str(bool(item.get("used") or False)).lower()
+        used = str(bool(item.get("used"))).lower()
         ROUTER_DECISION_TOTAL.labels(level=level, decision=decision, used=used).inc()
 
 
