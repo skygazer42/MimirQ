@@ -571,6 +571,11 @@
 - `web/components/settings/settings-switch.tsx` 已符合具名组件导出、局部 props type 和 shared Switch owner 约定，全部直接调用点已静态扫描；当前无需改代码。
 - 未修改 UI；本地 `web/node_modules` 不存在，Prettier 检查未运行，format_status 保持 pending。
 
+## Settings Section Audit
+
+- `feature-flags-section.tsx`、`frontend-preferences-section.tsx` 与 `system-status-section.tsx` 经静态审阅后登记为符合：具名组件、局部 props 类型、直接依赖 settings/API owners。SettingsSwitch、ParserDropdown、ChunkStrategyDropdown 等现有组件保持使用；没有改 UI 或交互。
+- 受影响视觉行为为零；没有页面截图。本地 `web/node_modules` 不存在，Prettier 未运行，format_status 保持 pending。
+
 ## Shared Common Frontend Types
 
 - Task 6 common-types branch commit `5aa80b6e` 经独立审查通过并合并。`PermissionEnum` now aliases the generated `DatasetPermissionEnum` schema; the literal union matches exactly. `DocumentAccessMode` retains `inherit`, while `LooseString` and `JsonObject` remain unchanged; direct consumers and the public barrel retain the same names.
