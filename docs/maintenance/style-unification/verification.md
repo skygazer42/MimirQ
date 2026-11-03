@@ -509,6 +509,11 @@
 - Ingestion policy schema owns the declarative shape while `ingestion_policy` service owns supported-step validation/normalization. Industry rules retain the `schema_` alias for the `schema` wire field. RAG template patches reuse `DatasetRAGDefaults` and retain existing version/traffic bounds.
 - Ruff check 与 Ruff format --check 通过。三个 schema 与 route/service 构造点核对一致；Python tests 与 API runtime 未运行。
 
+## 第三批：FLS, DB catalog, KG diagnostics, evaluation, and prompt schemas
+
+- FLS rule bounds/defaults align with the dataset schema and FLS service normalizer. DB catalog outputs map to ORM-backed route serialization. KG diagnostics and evaluation request limits/types match their route and engine/service constructors. Prompt template models retain their field bounds, version, and traffic-weight constraints used by the route.
+- Six schema/package files passed Ruff check and Ruff format check; all route/service usages were mapped. Schemas are marked conforming; Python tests and API runtime were not run.
+
 ## 第三批：Corpus cache invalidation transaction
 
 - Single-dataset lookup now returns no token when the tenant-scoped dataset row is missing, matching document and multi-dataset scope behavior. Cache invalidation requires `Session.flush()` and propagates database failure; the service does not take ownership of commit.
