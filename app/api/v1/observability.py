@@ -11,6 +11,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -18,6 +19,7 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.api.utils.response_headers import download_response_headers
 from app.core.config import settings
 from app.core.database import get_db
+from app.rag.core.logging import get_logger
 from app.services import dataset_service
 from app.services.corpus_cache_tokens import invalidate_dataset_cache_namespace
 from app.services.metrics_logger import log_metrics
@@ -41,6 +43,7 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 }
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+logger = get_logger(__name__)
 
 
 def _ensure_admin(db: Session, tenant_id: UUID, account_id: str) -> None:
@@ -551,11 +554,12 @@ def _audit_index_reconcile_request(
             details=details,
         )
         db.commit()
-    except Exception:  # noqa: BLE001
+    except SQLAlchemyError as exc:
         try:
             db.rollback()
-        except Exception:  # noqa: BLE001
-            pass
+        except SQLAlchemyError as rollback_error:
+            logger.warning("Index audit rollback failed (%s)", type(rollback_error).__name__)
+        logger.warning("Index audit event commit failed (%s)", type(exc).__name__)
 
 
 class IndexDriftItemResponse(BaseModel):
