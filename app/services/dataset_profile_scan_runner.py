@@ -59,17 +59,17 @@ def _download_object_storage_document_to_temp(
     """
     Download a document stored in object storage to a local temp path.
     """
-    raw_path = str(getattr(document, "file_path", "") or "").strip()
+    raw_path = str(document.file_path or "").strip()
     store, ref = resolve_document_object_reference(
         raw_path,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
         document_id=document.id,
         file_type=document.file_type,
-        document_metadata=dict(getattr(document, "doc_metadata", None) or {}),
+        document_metadata=dict(document.doc_metadata or {}),
     )
 
-    suffix = f".{(document.file_type or '').lower()}" if str(getattr(document, "file_type", "") or "").strip() else ""
+    suffix = f".{(document.file_type or '').lower()}" if str(document.file_type or "").strip() else ""
     temp_dir.mkdir(parents=True, exist_ok=True)
     out = temp_dir / f"{str(document.id)}{suffix}"
     store.download_object_to_path(
@@ -90,7 +90,7 @@ def _ensure_local_path(
     """
     Return (local_path, temp_path_if_downloaded).
     """
-    raw = str(getattr(document, "file_path", "") or "").strip()
+    raw = str(document.file_path or "").strip()
     if not raw or raw.startswith("manual://"):
         raise ValueError("document_file_not_available")
 
@@ -243,7 +243,7 @@ def _mark_deep_scan_running(db: Session, run: DBDatasetProfileScanRun) -> None:
 
 
 def _build_deep_scan_options(run: DBDatasetProfileScanRun) -> _DeepScanOptions:
-    cfg = dict(getattr(run, "config", None) or {})
+    cfg = dict(run.config or {})
     max_docs_raw = cfg.get("max_documents")
     max_documents = int(max_docs_raw) if isinstance(max_docs_raw, (int, float)) and int(max_docs_raw) > 0 else None
     return _DeepScanOptions(
@@ -366,7 +366,7 @@ def _maybe_backfill_pdf_quality(
 ) -> bool:
     if not options.backfill_pdf_quality:
         return False
-    if str(getattr(document, "file_type", "") or "").strip().lower() != "pdf":
+    if str(document.file_type or "").strip().lower() != "pdf":
         return False
     if isinstance(meta.get("pdf_quality"), dict) and meta.get("pdf_quality"):
         return False
@@ -525,7 +525,7 @@ def _maybe_backfill_chunk_coverage(
         return False
     existing = meta.get("chunk_coverage")
     has_coverage = isinstance(existing, dict) and (existing.get("coverage_ratio") is not None)
-    total_characters = int(getattr(document, "total_characters", 0) or 0)
+    total_characters = int(document.total_characters or 0)
     if has_coverage or total_characters <= 0:
         return False
 
@@ -623,8 +623,8 @@ def _maybe_backfill_chunk_quality_gate(
             "overlap_waste_ratio": float(coverage.get("overlap_waste_ratio") or 0.0),
             "gap_count": int(coverage.get("gap_count") or 0),
         },
-        total_chunks=int(getattr(document, "chunk_count", 0) or 0),
-        total_characters=int(getattr(document, "total_characters", 0) or 0),
+        total_chunks=int(document.chunk_count or 0),
+        total_characters=int(document.total_characters or 0),
         chunk_size=_safe_int(effective.get("chunk_size")),
         chunk_overlap=_safe_int(effective.get("chunk_overlap")),
         original_text_included=False,
@@ -691,7 +691,7 @@ def _process_deep_scan_document(
     options: _DeepScanOptions,
     stats: _DeepScanStats,
 ) -> bool:
-    meta = dict(getattr(document, "doc_metadata", None) or {})
+    meta = dict(document.doc_metadata or {})
     changed = _maybe_backfill_pdf_quality(
         meta,
         document=document,
@@ -832,7 +832,7 @@ def run_dataset_profile_deep_scan(
             )
         except Exception as exc:  # noqa: BLE001
             stats.errors += 1
-            logger.warning("Deep scan failed for doc=%s: %s", str(getattr(doc, "id", "")), str(exc)[:200])
+            logger.warning("Deep scan failed for doc=%s: %s", str(doc.id), str(exc)[:200])
         else:
             if changed and stats.updated_docs % 20 == 0:
                 db.commit()

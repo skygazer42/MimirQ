@@ -871,7 +871,7 @@ def _build_chunk_token_target_checks(
             )
         ]
 
-    tok_p50 = int(getattr(chunk_token_percentiles, "p50", 0) or 0)
+    tok_p50 = int(chunk_token_percentiles.p50 or 0)
     status = "pass"
     if tok_p50 <= 0:
         status = "warn"
@@ -956,7 +956,7 @@ def _build_chunk_coverage_check(
                 suggestions=["开启 backfill_chunk_coverage 或在入库时持久化 chunk offsets。"],
             )
         ]
-    cov_p50 = int(getattr(chunk_coverage_percentiles, "p50", 0) or 0)
+    cov_p50 = int(chunk_coverage_percentiles.p50 or 0)
     cov_status = "pass"
     if cov_p50 <= 0:
         cov_status = "warn"
@@ -999,7 +999,7 @@ def _build_chunk_overlap_waste_check(
                 suggestions=["开启 backfill_chunk_coverage 或在入库时持久化 chunk offsets。"],
             )
         ]
-    waste_p50 = int(getattr(chunk_overlap_waste_percentiles, "p50", 0) or 0)
+    waste_p50 = int(chunk_overlap_waste_percentiles.p50 or 0)
     waste_status = "pass"
     if waste_p50 >= int(thresholds["waste_fail"]):
         waste_status = "fail"
@@ -1269,7 +1269,7 @@ def compute_dataset_profile_summary(
         account_id=account_id,
         dataset_id=dataset_id,
     )
-    dataset_meta = dict(getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
+    dataset_meta = dict(dataset.dataset_metadata or {})
 
     # Optional pipeline version filter: use active_pipeline_hash when present (fallback to pipeline_hash).
     pipeline_hash_norm = str(pipeline_hash or "").strip() or None
@@ -1319,14 +1319,14 @@ def compute_dataset_profile_summary(
         if row is not None:
             latest_run = DatasetProfileScanRunSummary(
                 id=row.id,
-                kind=str(getattr(row, "kind", "") or "deep"),
-                status=str(getattr(row, "status", "") or "pending"),
-                progress=int(getattr(row, "progress", 0) or 0),
-                requested_by=getattr(row, "requested_by", None),
-                created_at=getattr(row, "created_at", None),
-                started_at=getattr(row, "started_at", None),
-                finished_at=getattr(row, "finished_at", None),
-                error_message=getattr(row, "error_message", None),
+                kind=str(row.kind or "deep"),
+                status=str(row.status or "pending"),
+                progress=int(row.progress or 0),
+                requested_by=row.requested_by,
+                created_at=row.created_at,
+                started_at=row.started_at,
+                finished_at=row.finished_at,
+                error_message=row.error_message,
             )
     except Exception:
         latest_run = None
@@ -1534,9 +1534,9 @@ def list_finding_documents(
                 status=str(doc.status or ""),
                 chunk_count=int(doc.chunk_count or 0),
                 total_characters=int(doc.total_characters or 0),
-                created_at=getattr(doc, "created_at", None),
-                updated_at=getattr(doc, "updated_at", None),
-                error_message=getattr(doc, "error_message", None),
+                created_at=doc.created_at,
+                updated_at=doc.updated_at,
+                error_message=doc.error_message,
                 metadata=dict(doc.doc_metadata or {}),
             )
         )
