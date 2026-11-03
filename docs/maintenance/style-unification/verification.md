@@ -657,6 +657,11 @@
 - Task 5 branch `2cf14439` passed independent review and merged. `kg_merge_boost.py` directly consumes `is_kg` and `kg_score` from the local row owner; promotion order, score, thresholds, and diagnostics are unchanged. `intent_router.py` and `out_of_scope_live_gate.py` were audited as conforming owners; normalization, policy precedence, scope, and provider failure boundaries remain.
 - Ruff check/format on `kg_merge_boost.py`, AST/caller scan for the three scoped modules and orchestrator, and `git show --check` passed. No Python tests or graph/vector/database/model services were run.
 
+## Hierarchy Retrieval Owner
+
+- Task 5 hierarchy-owner commit `55e872c2` passed independent review and merged. The optional `if refill` guard remains before direct iteration, preserving `None`/empty refill behavior; primary-before-refill order, duplicate removal, ancestor-wins logic, stable survivor order and metadata remain.
+- Ruff check/format on `hierarchy.py`, AST/caller scan, `git show --check` and review passed. Python tests and graph/database/vector/model/cache runtime were not run.
+
 ## 并行类别分支：解析模型缓存与 Manifest
 
 - Task 4 分支提交 `a39c1ce48` 的路径输出问题经复审后修复为 `c7d792bb9` 并合并。`load_small_model_manifest` 仍按进程工作目录解析输入路径，`base_dir` 只决定 manifest 中模型资源的根目录；bootstrap 使用返回的 canonical `manifest.path` 序列化结果，保留显式相对 CLI 路径原有的绝对输出。

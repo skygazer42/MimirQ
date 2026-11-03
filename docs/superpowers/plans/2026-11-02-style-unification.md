@@ -14,11 +14,11 @@
 
 - 主工作区：`E:/MimirQ`；分支：`codex/local-account-registration`。为提速，独立业务类别可从当前 HEAD 建立 `codex/*` 分支和 worktree；类别代码与调用方完成审阅后合并回此分支。
 - 原始基线：`77b6adc1bce523482f0509302a454ce20e01c41c`；数据集服务已提交为 `2c16dedf8`。前两批及第三批此前结果保留，不重新执行。
-- 当前覆盖表有 3,758 个文件：218 个已调整、85 个已符合、985 个登记保留、2,470 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
+- 当前覆盖表有 3,758 个文件：222 个已调整、89 个已符合、985 个登记保留、2,462 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
 - Task 3A 的 125 个 Python 文件已完成最终静态核对并按数据集类别提交；Task 3B 的权限、配额、SCIM、配置、通用 API、身份令牌、共享资源与健康观测已完成本轮代码整理与静态检查，继续核对其余基础模块。原有 `app/api/schemas/document.py` 修改另行保留。
 - 原工作区的 1,625 个未跟踪文件及其他既有修改保留；只按本批明确文件清单暂存，不使用 `git add .`，不执行全仓清理或重置。
 - 用户执行要求：提交按完整业务类别归并，不按函数、文件或每个检查步骤频繁提交；同一类别的定义、调用方、必要引用和验证记录一起提交。纯格式化仍独立成类。
-- 已完成并合并的并行类别分支：Task 5 dataset route planning/query contracts/query preparation/hybrid fusion/channel retrieval/lexical-sparse/context expansion/rerank cache/retrieval policy/trace diagnostics、Task 3 chat runtime/turn persistence/memory/dataset profile、Task 4 batch ingestion/document dispatch/identity-lifecycle/parser models/parser backends/parser structure/table rendering/OCR enrichment、Task 6 settings API/settings sections/system/auth/access/documents/chat APIs/common/feedback types、Task 7 model bootstrap/diagnostics CLIs；后续分支以最新主工作区提交为基线，不能把原有未提交文件带入提交。
+- 已完成并合并的并行类别分支：Task 5 dataset route planning/query contracts/query preparation/hybrid fusion/channel retrieval/lexical-sparse/context expansion/hierarchy owner/rerank cache/retrieval policy/trace diagnostics、Task 3 chat runtime/turn persistence/memory/dataset profile/precheck、Task 4 batch ingestion/document dispatch/identity-lifecycle/parser models/parser backends/parser structure/table rendering/OCR enrichment、Task 6 settings API/settings sections/system/auth/access/documents/chat APIs/common/feedback types、Task 7 model bootstrap/diagnostics CLIs；后续分支以最新主工作区提交为基线，不能把原有未提交文件带入提交。
 
 ## 2. 已选定的统一标准
 
@@ -144,6 +144,8 @@ Chat memory runtime slice 已合并：long-term、summary 与 structured-memory 
 
 Dataset profile slice 已合并：scan runner 和 profile service 使用声明的 ORM/schema fields；profile utils 对 serialized metadata 的 coercion 继续保留在边界。tenant/read ACL scope、scan inputs/order、cache/diagnostics、transaction 和 failure marking 经独立审查；Ruff/AST/caller checks passed，Python tests 与 storage/parser services 未运行。
 
+Dataset precheck slice 已合并：typed scan-run/dataset fields 替代了 ORM 边界 dynamic access；serialized JSON/artifact, tenant-root path, optional scanner, failure/status, cancellation, lock/session, cleanup and best-effort policies保持。classification/diff/near-duplicate/risk helpers audited conform; Ruff/AST/caller/error-path review passed，Python tests与外部服务未运行。
+
 ### Task 4：文档处理链（进行中）
 
 入口：`app/api/v1/documents.py`、`document_batch_upload.py`、`document_batches.py`；权限涉及 `app/services/document_access.py`、`document_access_service.py`、`document_permission_service.py`；处理涉及 `app/services/ingestion_run_service.py`、`connector_run_executor.py`、`app/parsing/processors/support/process_document_flow.py`、`app/tasks/jobs.py`、`app/tasks/worker.py`、`app/storage/object/`。
@@ -256,6 +258,8 @@ Context expansion removes only the score-neighbor forwarding wrapper and calls `
 Rerank cache has one canonical owner: the orchestrator imports `app.rag.rerank_result_cache` directly, while the prior orchestration path re-exports the same public symbols. Corpus-token invalidation therefore targets the populated cache. Cache keys, TTL, provider/fallback semantics, and error policy remain unchanged; Ruff/import checks and independent review passed.
 
 Retrieval intent/KG/out-of-scope policy slice keeps the orchestrator stage order and provider/scope boundaries. KG boost rows are constructed locally with `is_kg: bool` and bounded `kg_score: float`, so eligibility reads those fields directly; score, order, thresholds and diagnostics stay unchanged. Ruff/format and independent review passed; services/tests were not run.
+
+Hierarchy orchestration retains its optional refill guard and now iterates the declared list directly. Primary/refill order, duplicate handling, ancestor-wins behavior, survivor order, metadata and diagnostics are unchanged; Ruff/AST/caller checks and independent review passed. Runtime graph/database services and Python tests were not run.
 
 Retrieval trace finalization now increments its locally initialized integer counters directly; debug sanitization remains defensive at the raw debug/PII boundary. Trace schema, ordering, and error diagnostics remain unchanged; Ruff/AST/caller scan and independent review passed.
 
