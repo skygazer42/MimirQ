@@ -4,7 +4,7 @@
 
 import type { ChunkPreviewResponse, JsonObject } from '@/types'
 
-export interface ChunkOverride {
+export type ChunkOverride = {
   content?: string
   metadata?: JsonObject
   disabled?: boolean
@@ -14,7 +14,7 @@ export interface ChunkOverride {
 export type ChunkOverrides = Record<number, ChunkOverride>
 export type ChunkPreviewProcessedStatus = 'pending' | 'processing' | 'success' | 'error'
 
-export interface ChunkPreviewProps {
+export type ChunkPreviewProps = {
   onConfirm?: (params: { chunk_size: number; chunk_overlap: number }) => void
   onClose?: () => void
 }
@@ -32,7 +32,7 @@ export type ChunkPreviewFileItem = {
   documentId?: string | null
 }
 
-export interface ChunkPreviewState {
+export type ChunkPreviewState = {
   // 文件状态
   fileList: ChunkPreviewFileItem[]
   currentFileIndex: number
@@ -103,7 +103,7 @@ export interface ChunkPreviewState {
   onClose?: () => void
 }
 
-export interface ChunkPreviewActions {
+export type ChunkPreviewActions = {
   // 文件操作
   addFiles: (files: File[]) => void
   removeFile: (index: number) => void

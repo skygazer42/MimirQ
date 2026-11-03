@@ -14,7 +14,7 @@ import { cn, detachPromise } from '@/lib/utils'
 import type { ChunkPreviewItem } from '@/types'
 import { getChunkSectionLabel } from '@/components/chunk-preview/utils/sections'
 
-interface ChunkCardProps {
+type ChunkCardProps = {
   chunk: ChunkPreviewItem
   index: number
   unit?: 'chars' | 'tokens'

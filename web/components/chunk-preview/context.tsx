@@ -305,7 +305,7 @@ export function useChunkPreview() {
   return context
 }
 
-interface ChunkPreviewProviderProps {
+type ChunkPreviewProviderProps = {
   children: ReactNode
   onConfirm?: (params: { chunk_size: number; chunk_overlap: number }) => void
   onClose?: () => void

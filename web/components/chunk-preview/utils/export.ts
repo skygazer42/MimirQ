@@ -12,7 +12,7 @@ import type { ChunkOverrides } from '../types'
 
 export { sanitizeFilename } from '@/lib/sanitize'
 
-interface ChunkPreviewReviewReportChunk {
+type ChunkPreviewReviewReportChunk = {
   index: number
   page_number: number | null
   start_index: number
@@ -35,7 +35,7 @@ interface ChunkPreviewReviewReportChunk {
   content_preview: string
 }
 
-interface ChunkPreviewReviewReport {
+type ChunkPreviewReviewReport = {
   schema: 'mimirq.chunk_review.v1'
   generated_at: string
   file: {
