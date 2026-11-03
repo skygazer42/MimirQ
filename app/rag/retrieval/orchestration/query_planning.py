@@ -1,6 +1,7 @@
 """Query preparation operations with explicit inputs, model calls and stage outcomes."""
 
 import time
+from dataclasses import dataclass
 
 from app.core.config import settings as configured_settings
 from app.rag.core.query_rewrite_strategy import build_query_rewrite_strategy_spec
@@ -21,6 +22,7 @@ from app.rag.retrieval.orchestration.query_contracts import (
     DeterministicQueryExpansions,
     DictionaryQueryOutcome,
     IndustryQueryOutcome,
+    KGExpansionSettings,
     KGQueryExpansion,
     KGQueryRequest,
     KGQueryScope,
@@ -50,6 +52,20 @@ from app.rag.retrieval.orchestration.query_routing import resolve_query_routing
 from app.rag.retrieval.orchestration.query_variants import QueryVariantStageInput, build_query_variant_stage
 from app.rag.retrieval.orchestration.text_helpers import should_rewrite_query
 from app.rag.retrieval.sparse import normalize_sparse_provider_name
+
+
+@dataclass(frozen=True)
+class _QueryPlanStageInputs:
+    deterministic: DeterministicQueryExpansions
+    aliases: AliasQuerySettings
+    kg_request: KGQueryRequest
+    kg_settings: KGExpansionSettings
+
+
+@dataclass(frozen=True)
+class _ModelQueryPlanStageInputs:
+    model_settings: ModelQuerySettings
+    model_request: ModelQueryRequest
 
 
 def _rewrite_configuration(request: QueryPreparationRequest) -> RewriteConfiguration | None:
@@ -219,30 +235,43 @@ def _deterministic_and_kg_request(
     return deterministic, aliases, kg_request
 
 
-def complete_query_plan(request: QueryExpansionRequest, *, models: QueryVariantModels) -> QueryPlan:
+def _resolve_query_plan_stage_inputs(request: QueryExpansionRequest) -> _QueryPlanStageInputs:
     options = request.routing.effective_options
     deterministic, aliases, kg_request = _deterministic_and_kg_request(request)
-    kg = kg_query_expansion.expand_kg_query(
-        kg_request, settings=resolve_kg_expansion_settings(enabled=options.get("enable_kg_query_expansion"))
+    return _QueryPlanStageInputs(
+        deterministic,
+        aliases,
+        kg_request,
+        resolve_kg_expansion_settings(enabled=options.get("enable_kg_query_expansion")),
     )
-    model_config = resolve_model_query_settings(parse_model_query_overrides(options))
-    generated = model_query_expansion.expand_model_queries(
-        ModelQueryRequest(request.prepared.query, request.model_retrieval_mode, model_config), models=models
+
+
+def _resolve_model_query_plan_stage_inputs(request: QueryExpansionRequest) -> _ModelQueryPlanStageInputs:
+    model_settings = resolve_model_query_settings(parse_model_query_overrides(request.routing.effective_options))
+    return _ModelQueryPlanStageInputs(
+        model_settings,
+        ModelQueryRequest(request.prepared.query, request.model_retrieval_mode, model_settings),
     )
-    return _complete_query_plan(request, deterministic, aliases, kg, generated, model_config)
+
+
+def complete_query_plan(request: QueryExpansionRequest, *, models: QueryVariantModels) -> QueryPlan:
+    inputs = _resolve_query_plan_stage_inputs(request)
+    kg = kg_query_expansion.expand_kg_query(inputs.kg_request, settings=inputs.kg_settings)
+    model_inputs = _resolve_model_query_plan_stage_inputs(request)
+    generated = model_query_expansion.expand_model_queries(model_inputs.model_request, models=models)
+    return _complete_query_plan(
+        request, inputs.deterministic, inputs.aliases, kg, generated, model_inputs.model_settings
+    )
 
 
 async def complete_query_plan_async(request: QueryExpansionRequest, *, models: AsyncQueryVariantModels) -> QueryPlan:
-    options = request.routing.effective_options
-    deterministic, aliases, kg_request = _deterministic_and_kg_request(request)
-    kg = await kg_query_expansion.expand_kg_query_async(
-        kg_request, settings=resolve_kg_expansion_settings(enabled=options.get("enable_kg_query_expansion"))
+    inputs = _resolve_query_plan_stage_inputs(request)
+    kg = await kg_query_expansion.expand_kg_query_async(inputs.kg_request, settings=inputs.kg_settings)
+    model_inputs = _resolve_model_query_plan_stage_inputs(request)
+    generated = await model_query_expansion.expand_model_queries_async(model_inputs.model_request, models=models)
+    return _complete_query_plan(
+        request, inputs.deterministic, inputs.aliases, kg, generated, model_inputs.model_settings
     )
-    model_config = resolve_model_query_settings(parse_model_query_overrides(options))
-    generated = await model_query_expansion.expand_model_queries_async(
-        ModelQueryRequest(request.prepared.query, request.model_retrieval_mode, model_config), models=models
-    )
-    return _complete_query_plan(request, deterministic, aliases, kg, generated, model_config)
 
 
 def _complete_query_plan(
