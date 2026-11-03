@@ -60,6 +60,10 @@ class _QueryPlanStageInputs:
     aliases: AliasQuerySettings
     kg_request: KGQueryRequest
     kg_settings: KGExpansionSettings
+
+
+@dataclass(frozen=True)
+class _ModelQueryPlanStageInputs:
     model_settings: ModelQuerySettings
     model_request: ModelQueryRequest
 
@@ -234,12 +238,17 @@ def _deterministic_and_kg_request(
 def _resolve_query_plan_stage_inputs(request: QueryExpansionRequest) -> _QueryPlanStageInputs:
     options = request.routing.effective_options
     deterministic, aliases, kg_request = _deterministic_and_kg_request(request)
-    model_settings = resolve_model_query_settings(parse_model_query_overrides(options))
     return _QueryPlanStageInputs(
         deterministic,
         aliases,
         kg_request,
         resolve_kg_expansion_settings(enabled=options.get("enable_kg_query_expansion")),
+    )
+
+
+def _resolve_model_query_plan_stage_inputs(request: QueryExpansionRequest) -> _ModelQueryPlanStageInputs:
+    model_settings = resolve_model_query_settings(parse_model_query_overrides(request.routing.effective_options))
+    return _ModelQueryPlanStageInputs(
         model_settings,
         ModelQueryRequest(request.prepared.query, request.model_retrieval_mode, model_settings),
     )
@@ -248,15 +257,21 @@ def _resolve_query_plan_stage_inputs(request: QueryExpansionRequest) -> _QueryPl
 def complete_query_plan(request: QueryExpansionRequest, *, models: QueryVariantModels) -> QueryPlan:
     inputs = _resolve_query_plan_stage_inputs(request)
     kg = kg_query_expansion.expand_kg_query(inputs.kg_request, settings=inputs.kg_settings)
-    generated = model_query_expansion.expand_model_queries(inputs.model_request, models=models)
-    return _complete_query_plan(request, inputs.deterministic, inputs.aliases, kg, generated, inputs.model_settings)
+    model_inputs = _resolve_model_query_plan_stage_inputs(request)
+    generated = model_query_expansion.expand_model_queries(model_inputs.model_request, models=models)
+    return _complete_query_plan(
+        request, inputs.deterministic, inputs.aliases, kg, generated, model_inputs.model_settings
+    )
 
 
 async def complete_query_plan_async(request: QueryExpansionRequest, *, models: AsyncQueryVariantModels) -> QueryPlan:
     inputs = _resolve_query_plan_stage_inputs(request)
     kg = await kg_query_expansion.expand_kg_query_async(inputs.kg_request, settings=inputs.kg_settings)
-    generated = await model_query_expansion.expand_model_queries_async(inputs.model_request, models=models)
-    return _complete_query_plan(request, inputs.deterministic, inputs.aliases, kg, generated, inputs.model_settings)
+    model_inputs = _resolve_model_query_plan_stage_inputs(request)
+    generated = await model_query_expansion.expand_model_queries_async(model_inputs.model_request, models=models)
+    return _complete_query_plan(
+        request, inputs.deterministic, inputs.aliases, kg, generated, model_inputs.model_settings
+    )
 
 
 def _complete_query_plan(
