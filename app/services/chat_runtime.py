@@ -1,7 +1,5 @@
 import re
-from dataclasses import dataclass, replace
-from typing import Any, cast
-from uuid import UUID
+from typing import Any
 
 from app.rag.core.logging import get_logger
 from app.services.chat_bootstrap_runtime import (
@@ -52,6 +50,7 @@ from app.services.chat_execution_runtime import (
 from app.services.chat_execution_runtime import (
     execute_langchain_chat_once as execute_langchain_chat_once,
 )
+from app.services.chat_stream_persistence import ChatStreamPersistInput as ChatStreamPersistInput
 
 logger = get_logger("services.chat_runtime")
 
@@ -128,41 +127,6 @@ def apply_chat_runtime_metrics_context(
         fields=dataset_prompt_defaults_applied_fields,
     )
     return out
-
-
-@dataclass(frozen=True)
-class ChatStreamPersistInput:
-    tenant_id: UUID
-    conversation_id: UUID
-    account_id: str
-    assistant_message_id: UUID
-    request_id: str
-    question: str
-    document_count: int
-    content: str
-    citations: list
-    metrics: dict
-    dataset_id_used: UUID | None
-    cache_hit: bool
-    cache_key: str | None
-    cache_eligible: bool
-    structured_data: object | None
-    ip: str | None
-    user_agent: str | None
-    enable_summary_memory: bool
-    enable_structured_memory: bool
-
-
-def _resolve_chat_stream_persist_input(
-    *,
-    options: ChatStreamPersistInput | None,
-    legacy_overrides: dict[str, Any],
-) -> ChatStreamPersistInput:
-    if options is None:
-        return ChatStreamPersistInput(**legacy_overrides)
-    if not legacy_overrides:
-        return options
-    return cast(ChatStreamPersistInput, replace(options, **legacy_overrides))
 
 
 def format_stream_error_message(exc: Exception) -> str:

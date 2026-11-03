@@ -7,7 +7,6 @@ from typing import Any, AsyncIterator, Callable, cast
 from app.core.config import settings
 from app.services.chat_execution_runtime import ChatExecutionContext
 from app.services.chat_runtime import (
-    ChatStreamPersistInput,
     annotate_chat_cache_metrics,
     apply_chat_runtime_metrics_context,
     store_chat_response_cache_if_needed,
@@ -16,7 +15,7 @@ from app.services.chat_stream_common import (
     build_chat_stream_done_event,
     log_chat_stream_completion_metrics,
 )
-from app.services.chat_stream_persistence import dispatch_chat_stream_persistence
+from app.services.chat_stream_persistence import ChatStreamPersistInput, dispatch_chat_stream_persistence
 
 _SYNC_STREAM_END = object()
 

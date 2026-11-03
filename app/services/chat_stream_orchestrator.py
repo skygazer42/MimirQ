@@ -18,10 +18,10 @@ from app.services.chat_execution_runtime import (
     preflight_model_provider_fast,
 )
 from app.services.chat_runtime import (
-    ChatStreamPersistInput,
     format_stream_error_message,
     prepare_stream_chat_runtime,
 )
+from app.services.chat_stream_persistence import ChatStreamPersistInput
 from app.services.chat_stream_common import (
     ChatStreamPersistenceContext,
     ChatStreamRuntimeContext,
