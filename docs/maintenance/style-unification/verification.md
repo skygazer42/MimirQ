@@ -514,6 +514,12 @@
 - Precheck request constraints align with the privileged local-scan route; its response models match the precheck service and route constructors. Dataset report models cover every field built by `ReportService`, and the API declares `DatasetReportOut` as the response model.
 - Ruff check 与 Ruff format --check passed for both files. Schemas are marked conforming; Python tests, API runtime, and filesystem/database flows were not run.
 
+## 覆盖清单重对齐
+
+- 用 `git -c core.quotePath=false ls-files` 与 `coverage.csv` 按完整路径比较：tracked 3,755，coverage 3,755，缺项 0，stale 项 0。先前出现的中文文档路径差异来自 Git 路径转义，重对齐时已消除。
+- 新纳入的 84 个生产 Python 文件 Ruff check/format 通过，但逐文件语义审核仍为 pending；10 个 tracked Python test 文件按用户要求标记 preserved，没有运行或评价测试质量。9 个 tracked agent decision notes 作为文档保留。
+- `web/types/settings.ts` 纳入 Task 6 待审核；当前 `web/node_modules` 中无 Prettier 安装，故格式状态保留 pending。前端类型检查未运行。
+
 ## 第三批：Dataset schema module audit
 
 - `DatasetRAGDefaults` relies on its `dict[str, int/float]` field contracts for shape and value typing. Its after-validator retains the dataset-specific allowed-channel check; redundant dict checks and discarded numeric casts were removed. Effective fusion value bounds remain in `ChatRAGConfig` after dataset defaults merge.

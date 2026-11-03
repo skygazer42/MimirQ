@@ -3650,3 +3650,107 @@ web/workers/graph-parser.worker.ts,6,pending,pending,Awaiting file-level convent
 web/workers/pdf-page-render.worker.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/workers/pdf-preview.worker.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/workers/report-transforms.worker.ts,6,pending,pending,Awaiting file-level convention and contract review,
+.agents/notes/implemented/architecture/2026-11-03-kg-query-expansion-owner.md,inventory,preserved,preserved,Tracked agent decision documentation; not application source,Note tree format and archive validation passed
+.agents/notes/implemented/architecture/2026-11-03-query-preparation-owner.md,inventory,preserved,preserved,Tracked agent decision documentation; not application source,Note tree format and archive validation passed
+.agents/notes/implemented/bug-fix/2026-11-03-corpus-cache-invalidation-transaction.md,inventory,preserved,preserved,Tracked agent decision documentation; not application source,Note tree format and archive validation passed
+.agents/notes/implemented/bug-fix/2026-11-03-dataset-default-complete-scope.md,inventory,preserved,preserved,Tracked agent decision documentation; not application source,Note tree format and archive validation passed
+.agents/notes/implemented/bug-fix/2026-11-03-reranker-provider-fallback-boundary.md,inventory,preserved,preserved,Tracked agent decision documentation; not application source,Note tree format and archive validation passed
+.agents/notes/implemented/simplification/2026-11-03-dataset-fusion-map-validation-owner.md,inventory,preserved,preserved,Tracked agent decision documentation; not application source,Note tree format and archive validation passed
+.agents/notes/implemented/simplification/2026-11-03-indexer-vector-writer-owner.md,inventory,preserved,preserved,Tracked agent decision documentation; not application source,Note tree format and archive validation passed
+.agents/notes/implemented/simplification/2026-11-03-shared-scalar-coercion-owner.md,inventory,preserved,preserved,Tracked agent decision documentation; not application source,Note tree format and archive validation passed
+.agents/notes/implemented/simplification/2026-11-03-trust-validated-source-acl.md,inventory,preserved,preserved,Tracked agent decision documentation; not application source,Note tree format and archive validation passed
+app/api/dependencies/document_assets.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/api/schemas/document_ingestion.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/api/utils/document_pipeline_input.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/rag/core/json_text.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/rag/engine_support/query_model_calls.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/rag/retrieval/corpus_artifacts.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/rag/retrieval/corpus_index.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/rag/retrieval/hybrid/candidate_retrieval.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/rag/retrieval/hybrid/channel_collection.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/rag/retrieval/hybrid/corpus_channels.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/rag/retrieval/hybrid/lexical_search.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/rag/retrieval/hybrid/metadata_ordering.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/rag/retrieval/hybrid/metadata_scope.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/rag/retrieval/hybrid/result_values.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/rag/retrieval/hybrid/runtime_scope.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/rag/retrieval/hybrid/vector_search.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/rag/retrieval/orchestration/model_query_expansion.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/rag/retrieval/orchestration/query_contracts.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/rag/retrieval/orchestration/query_planning.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/rag/retrieval/orchestration/query_routing.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/connector_config_operations.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/connector_document_access.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/connector_execution/__init__.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/connector_execution/confluence.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/connector_execution/db_catalog.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/connector_execution/drive_files.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/connector_execution/github_repo.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/connector_execution/jira.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/connector_execution/minio_bucket.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/connector_execution/plans/__init__.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/connector_execution/plans/github_repo.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/connector_execution/plans/web_crawl.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/connector_execution/shared/__init__.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/connector_execution/shared/artifacts.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/connector_execution/shared/common.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/connector_execution/shared/external.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/connector_execution/shared/runtime.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/connector_execution/url_batch.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/connector_execution/web_crawl.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/connector_run_operations.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/connector_schedule_operations.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/dify_integration/anchor_strength.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/dify_integration/answer_hints.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/dify_integration/auth.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/dify_integration/chunk_hydration.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/dify_integration/citation_records.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/dify_integration/common.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/dify_integration/compaction.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/dify_integration/conversation_turns.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/dify_integration/evidence_adapter.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/dify_integration/kg_on_demand.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/dify_integration/knowledge_scope.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/dify_integration/metadata_anchor.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/dify_integration/query_policy.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/dify_integration/query_terms.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/dify_integration/record_processing.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/dify_integration/record_ranking.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/dify_integration/records.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/dify_integration/request_preferences.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/dify_integration/response_cache.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/dify_integration/retrieval.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/dify_integration/scoring.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/dify_integration/tracing.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/dify_integration/warmup.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/document_asset_access.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/document_batch_ingestion.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/document_batch_operations.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/document_chunk_operations.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/document_governance.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/document_ingestion_policy.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/document_ingestion_sources.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/document_ingestion.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/document_manual_ingestion.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/document_metadata_operations.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/document_processing_dispatch.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/document_processing_operations.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/document_source_persistence.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/document_user_metadata.py,4,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/indexing/__init__.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/indexing/chunk_preparation.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/indexing/events.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/indexing/quota.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/services/indexing/tracking.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/types/dify_integration.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+tests/test_dify_integration_service_owners.py,5,preserved,preserved,Python test retained; user deferred Python test audit and execution,No tests added expanded or run and no test-quality review claimed
+tests/test_dify_knowledge_scope_service.py,5,preserved,preserved,Python test retained; user deferred Python test audit and execution,No tests added expanded or run and no test-quality review claimed
+tests/test_dify_metadata_anchor_service.py,5,preserved,preserved,Python test retained; user deferred Python test audit and execution,No tests added expanded or run and no test-quality review claimed
+tests/test_dify_record_processing_service.py,5,preserved,preserved,Python test retained; user deferred Python test audit and execution,No tests added expanded or run and no test-quality review claimed
+tests/test_dify_response_cache_service.py,5,preserved,preserved,Python test retained; user deferred Python test audit and execution,No tests added expanded or run and no test-quality review claimed
+tests/test_dify_retrieval_service.py,5,preserved,preserved,Python test retained; user deferred Python test audit and execution,No tests added expanded or run and no test-quality review claimed
+tests/test_document_batch_operations.py,4,preserved,preserved,Python test retained; user deferred Python test audit and execution,No tests added expanded or run and no test-quality review claimed
+tests/test_document_chunk_import_contracts.py,4,preserved,preserved,Python test retained; user deferred Python test audit and execution,No tests added expanded or run and no test-quality review claimed
+tests/test_document_manual_ingestion.py,4,preserved,preserved,Python test retained; user deferred Python test audit and execution,No tests added expanded or run and no test-quality review claimed
+tests/test_document_mutation_service_routes.py,4,preserved,preserved,Python test retained; user deferred Python test audit and execution,No tests added expanded or run and no test-quality review claimed
+web/types/settings.ts,6,pending,pending,Tracked frontend settings types were missing from the inventory; semantic review pending,Local Prettier dependency is unavailable and frontend typecheck was not run
