@@ -1135,7 +1135,7 @@ app/rag/retrieval/orchestrator_support_hierarchy.py,5,pending,conforms,Awaiting 
 app/rag/retrieval/orchestrator_support_post_rerank.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestrator_support_runtime.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/plaid.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/rag/retrieval/planner.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/rag/retrieval/planner.py,5,adjusted,conforms,Internal dataset route state uses typed frozen fields instead of string-key mapping,Ruff check/format; caller and routing order reviewed; Python tests not run
 app/rag/retrieval/plugin_policy.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/query_phrase_match.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/retriever_options.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
