@@ -9,18 +9,18 @@ from app.core.config import settings
 from app.rag.core.hashing import stable_hash
 from app.rag.policy.must_recall import MUST_RECALL_FAIL_REASON_TAXONOMY_V1
 from app.rag.retrieval.orchestration.common import _log_orchestrator_fallback
+from app.rag.retrieval.orchestration.query_contracts import QueryPlan
 
 
 @dataclass(frozen=True)
 class RetrievalTraceStageInput:
-    query_for_retrieval: str
+    query_plan: QueryPlan
     requested_retrieval_mode: Any
     request_retrieval_mode: str
     retrieval_mode_routed: bool
     requested_retrieval_profile: Any
     profile_norm: str | None
     retrieval_contract_mode: str | None
-    retrieval_contract_policy: dict[str, Any]
     contract_deterministic_recall: bool
     must_recall_enabled: bool
     must_recall_status: str
@@ -81,7 +81,6 @@ class RetrievalTraceStageInput:
     rewrite_strategy_hash: str | None
     rewrite_temperature: float | None
     rewrite_max_chars: int | None
-    rewrite_used: bool
     rewrite_elapsed: float
     rewrite_model_used: Any
     query_expansion_budget_meta: dict[str, Any]
@@ -104,7 +103,6 @@ class RetrievalTraceStageInput:
     lightweight_subqueries: list[str]
     mq_enabled: bool
     multi_query_used: bool
-    multi_queries: list[str]
     multi_query_elapsed: float
     multi_query_model_used: Any
     multi_query_parse_meta: dict[str, Any]
@@ -187,6 +185,22 @@ class RetrievalTraceStageInput:
     parse_quality_gate_reason: str | None
     parse_risk: dict[str, Any]
     metrics: dict[str, Any]
+
+    @property
+    def query_for_retrieval(self) -> str:
+        return self.query_plan.query
+
+    @property
+    def retrieval_contract_policy(self) -> dict[str, Any]:
+        return self.query_plan.routing.normalization.retrieval_contract_policy
+
+    @property
+    def rewrite_used(self) -> bool:
+        return self.query_plan.prepared.rewrite.used
+
+    @property
+    def multi_queries(self) -> list[str]:
+        return self.query_plan.models.multi_query.queries
 
 
 @dataclass(frozen=True)

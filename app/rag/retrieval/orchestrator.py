@@ -45,9 +45,7 @@ from app.rag.policy.must_recall_auto import (
     infer_expected_source_keys,
     infer_required_anchor_fields,
 )
-from app.rag.policy.query_expansion import build_clause_fastlane_queries, build_lightweight_subquery_queries
 from app.rag.policy.recall_obligation import build_must_recall_proof
-from app.rag.query_expansion import generate_alias_queries
 from app.rag.reranker.types import RerankCandidate
 from app.rag.retrieval.contextual_followup import build_contextual_followup_query
 from app.rag.retrieval.contract import resolve_retrieval_contract_policy
@@ -354,12 +352,8 @@ from app.rag.retrieval.orchestration.kg_merge_boost import (
 from app.rag.retrieval.orchestration.kg_merge_boost import (
     _resolve_kg_scope as _resolve_kg_scope,
 )
-from app.rag.retrieval.orchestration.kg_query_expansion import expand_kg_query, raise_for_rejected_response
 from app.rag.retrieval.orchestration.model_query_expansion import (
     decompose_query,
-    generate_hyde_query,
-    generate_multi_queries,
-    generate_step_back_query,
 )
 from app.rag.retrieval.orchestration.out_of_scope_live_gate import (
     maybe_apply_out_of_scope_live_guard as maybe_apply_out_of_scope_live_guard,
@@ -372,9 +366,6 @@ from app.rag.retrieval.orchestration.query_contract import (
     build_retrieval_config_snapshot,
 )
 from app.rag.retrieval.orchestration.query_contracts import (
-    KGQueryRequest,
-    KGQueryScope,
-    ModelQuerySettings,
     QueryPreparationOverrides,
     RetrievalRequest,
 )
@@ -386,15 +377,10 @@ from app.rag.retrieval.orchestration.query_options import (
     QUERY_PLANNING_OPTION_KEYS,
     parse_model_query_overrides,
     parse_query_expansion_budget,
-    resolve_kg_expansion_settings,
     resolve_model_query_settings,
     resolve_query_preparation_request,
 )
-from app.rag.retrieval.orchestration.query_planning import prepare_query
-from app.rag.retrieval.orchestration.query_variants import (
-    QueryVariantStageInput,
-    build_query_variant_stage,
-)
+from app.rag.retrieval.orchestration.query_planning import prepare_query_plan
 from app.rag.retrieval.orchestration.rerank_result_cache import (
     build_evidence_post_rerank_cache_key,
     fingerprint_rerank_candidates,
@@ -1133,39 +1119,6 @@ def _build_retrieval_request(state: dict[str, Any], *, question: str, history_te
     return RetrievalRequest(preparation, options, parse_query_expansion_budget(options))
 
 
-def _prepare_query_phase(
-    state: dict[str, Any],
-    *,
-    question: str,
-    history_text: str,
-    llm_engine_factory: Any,
-) -> dict[str, Any]:
-    request = _build_retrieval_request(state, question=question, history_text=history_text)
-    prepared = prepare_query(
-        request.preparation,
-        models=EngineQueryModels(llm_engine_factory),
-    )
-    rewrite = prepared.rewrite
-    rewrite_configuration = rewrite.configuration
-    return {
-        "query_for_retrieval": prepared.query,
-        "rewrite_elapsed": rewrite.elapsed_sec,
-        "rewrite_used": rewrite.used,
-        "rewrite_model_used": rewrite.model_used,
-        "rewrite_strategy_id": rewrite.strategy_id,
-        "rewrite_strategy_hash": rewrite.strategy_hash,
-        "rewrite_temperature": rewrite_configuration.temperature if rewrite_configuration else None,
-        "rewrite_max_chars": rewrite_configuration.max_chars if rewrite_configuration else None,
-        "rewrite_enabled": rewrite.enabled,
-        "sparse_enabled": prepared.sparse.enabled,
-        "sparse_provider": prepared.sparse.provider,
-        "industry_rules_meta": prepared.industry.metadata,
-        "temporal_intent_enabled": prepared.temporal.enabled,
-        "temporal_intent_meta": prepared.temporal.metadata,
-        "temporal_recency_meta": {"enabled": False, "used": False, "reason": "not_run"},
-    }
-
-
 def _resolve_contract_phase(
     state: dict[str, Any],
     *,
@@ -1217,184 +1170,71 @@ def _apply_routing_phase(
 
 
 def _run_retrieval_bootstrap_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
-    ctx.engine: Any | None = None
+    engine: Any | None = None
 
-    def _llm_engine() -> Any:
-        if ctx.engine is None:
-            ctx.engine = get_rag_engine()
-        return ctx.engine
+    def llm_engine() -> Any:
+        nonlocal engine
+        if engine is None:
+            engine = get_rag_engine()
+        return engine
 
-    ctx._llm_engine = _llm_engine
+    request = _build_retrieval_request(ctx.state, question=ctx.question, history_text=ctx.history_text)
+    ctx.query_plan = prepare_query_plan(request, models=EngineQueryModels(llm_engine))
 
-    # KG search output can be reused by multiple retrieval steps (query expansion / chunk injection).
-    ctx.kg_result_cached: dict[str, Any] | None = None
-    ctx.intent_router_meta: dict[str, Any] = {"enabled": False, "used": False}
-    ctx.adaptive_router_meta: dict[str, Any] = {"enabled": False, "used": False}
-    ctx.channel_budget_policy_meta: dict[str, Any] = {"enabled": False, "used": False}
-    query_phase = _prepare_query_phase(
-        ctx.state,
-        question=ctx.question,
-        history_text=ctx.history_text,
-        llm_engine_factory=_llm_engine,
-    )
-    ctx.query_for_retrieval = str(query_phase["query_for_retrieval"])
-    ctx.rewrite_elapsed = float(query_phase["rewrite_elapsed"])
-    ctx.rewrite_used = bool(query_phase["rewrite_used"])
-    ctx.rewrite_model_used = query_phase["rewrite_model_used"]
-    ctx.rewrite_strategy_id = query_phase["rewrite_strategy_id"]
-    ctx.rewrite_strategy_hash = query_phase["rewrite_strategy_hash"]
-    ctx.rewrite_temperature = query_phase["rewrite_temperature"]
-    ctx.rewrite_max_chars = query_phase["rewrite_max_chars"]
-    ctx.rewrite_enabled = bool(query_phase["rewrite_enabled"])
-    ctx.sparse_enabled = bool(query_phase["sparse_enabled"])
-    ctx.sparse_provider = str(query_phase["sparse_provider"] or "")
-    ctx.industry_rules_meta = dict(query_phase["industry_rules_meta"])
-    ctx.temporal_intent_enabled = bool(query_phase["temporal_intent_enabled"])
-    ctx.temporal_intent_meta = dict(query_phase["temporal_intent_meta"])
-    ctx.temporal_recency_meta = dict(query_phase["temporal_recency_meta"])
+    plan = ctx.query_plan
+    prepared, routing = plan.prepared, plan.routing
+    evidence, normalization = routing.evidence_contract, routing.normalization
+    rewrite = prepared.rewrite
+    rewrite_configuration = rewrite.configuration
+    ctx.rewrite_enabled = rewrite.enabled
+    ctx.rewrite_elapsed = rewrite.elapsed_sec
+    ctx.rewrite_model_used = rewrite.model_used
+    ctx.rewrite_strategy_id = rewrite.strategy_id
+    ctx.rewrite_strategy_hash = rewrite.strategy_hash
+    ctx.rewrite_temperature = rewrite_configuration.temperature if rewrite_configuration else None
+    ctx.rewrite_max_chars = rewrite_configuration.max_chars if rewrite_configuration else None
+    ctx.sparse_enabled, ctx.sparse_provider = prepared.sparse.enabled, prepared.sparse.provider
+    ctx.industry_rules_meta = prepared.industry.metadata
+    ctx.temporal_intent_enabled = prepared.temporal.enabled
+    ctx.temporal_intent_meta = prepared.temporal.metadata
+    ctx.temporal_recency_meta = {"enabled": False, "used": False, "reason": "not_run"}
+    ctx.kg_result_cached = plan.kg.response
 
-    contract_phase = _resolve_contract_phase(
-        ctx.state,
-        query_for_retrieval=ctx.query_for_retrieval,
-    )
-    ctx.requested_retrieval_mode = contract_phase["requested_retrieval_mode"]
-    ctx.requested_retrieval_profile = contract_phase["requested_retrieval_profile"]
-    ctx.retrieval_contract_policy = dict(contract_phase["retrieval_contract_policy"])
-    ctx.retrieval_contract_mode = str(contract_phase["retrieval_contract_mode"])
-    ctx.contract_deterministic_recall = bool(contract_phase["contract_deterministic_recall"])
-    ctx.contract_must_recall_strict = bool(contract_phase["contract_must_recall_strict"])
-    ctx.must_recall_requested = contract_phase["must_recall_requested"]
-    ctx.must_recall_enabled = bool(contract_phase["must_recall_enabled"])
-    ctx.must_recall_expected_source_keys = list(contract_phase["must_recall_expected_source_keys"])
-    ctx.must_recall_auto_expected_source_keys_enabled = bool(
-        contract_phase["must_recall_auto_expected_source_keys_enabled"]
-    )
-    ctx.must_recall_auto_expected_source_keys = list(contract_phase["must_recall_auto_expected_source_keys"])
-    ctx.must_recall_auto_expected_source_keys_reason_codes = list(
-        contract_phase["must_recall_auto_expected_source_keys_reason_codes"]
-    )
-    ctx.must_recall_auto_expected_source_keys_confidence = str(
-        contract_phase["must_recall_auto_expected_source_keys_confidence"]
-    )
-    ctx.must_recall_auto_expected_source_keys_applied = bool(
-        contract_phase["must_recall_auto_expected_source_keys_applied"]
-    )
-    ctx.must_recall_required_anchor_fields = list(contract_phase["must_recall_required_anchor_fields"])
-    ctx.must_recall_auto_required_anchor_fields_enabled = bool(
-        contract_phase["must_recall_auto_required_anchor_fields_enabled"]
-    )
-    ctx.must_recall_auto_required_anchor_fields = list(contract_phase["must_recall_auto_required_anchor_fields"])
-    ctx.must_recall_auto_required_anchor_fields_reason_codes = list(
-        contract_phase["must_recall_auto_required_anchor_fields_reason_codes"]
-    )
-    ctx.must_recall_auto_required_anchor_fields_applied = bool(
-        contract_phase["must_recall_auto_required_anchor_fields_applied"]
-    )
-    ctx.must_recall_second_pass_enabled = bool(contract_phase["must_recall_second_pass_enabled"])
-    ctx.must_recall_second_pass_mode = str(contract_phase["must_recall_second_pass_mode"])
-    ctx.must_recall_second_pass_top_k = int(contract_phase["must_recall_second_pass_top_k"])
-    ctx.contextual_followup_enabled = bool(contract_phase["contextual_followup_enabled"])
-    ctx.contextual_followup_mode = str(contract_phase["contextual_followup_mode"])
-    ctx.contextual_followup_top_k = int(contract_phase["contextual_followup_top_k"])
-    ctx.contextual_followup_max_docs = int(contract_phase["contextual_followup_max_docs"])
-    ctx.contextual_followup_max_terms = int(contract_phase["contextual_followup_max_terms"])
-    ctx.contextual_followup_min_term_chars = int(contract_phase["contextual_followup_min_term_chars"])
-    ctx.contextual_followup_max_query_chars = int(contract_phase["contextual_followup_max_query_chars"])
-    ctx.contextual_followup_max_hops = int(contract_phase["contextual_followup_max_hops"])
-    ctx.contextual_followup_latency_budget_ms = float(contract_phase["contextual_followup_latency_budget_ms"])
-    ctx.hierarchy_recall_enabled = bool(contract_phase["hierarchy_recall_enabled"])
-    ctx.hierarchy_family_collapse = bool(contract_phase["hierarchy_family_collapse"])
-    ctx.hierarchy_family_aggregation = str(contract_phase["hierarchy_family_aggregation"])
-    ctx.hierarchy_tree_dedup = bool(contract_phase["hierarchy_tree_dedup"])
-    ctx.hierarchy_parent_depth = int(contract_phase["hierarchy_parent_depth"])
-    ctx.hierarchy_sibling_window = int(contract_phase["hierarchy_sibling_window"])
-    ctx.hierarchy_overfetch_factor = int(contract_phase["hierarchy_overfetch_factor"])
-
-    routing_phase = _apply_routing_phase(
-        ctx.state,
-        query_for_retrieval=ctx.query_for_retrieval,
-        requested_retrieval_mode=ctx.requested_retrieval_mode,
-        requested_retrieval_profile=ctx.requested_retrieval_profile,
-        sparse_enabled=bool(ctx.sparse_enabled),
-        sparse_provider=str(ctx.sparse_provider or ""),
-        hierarchy_recall_enabled=bool(ctx.hierarchy_recall_enabled),
-        hierarchy_family_collapse=bool(ctx.hierarchy_family_collapse),
-        hierarchy_family_aggregation=str(ctx.hierarchy_family_aggregation),
-        hierarchy_tree_dedup=bool(ctx.hierarchy_tree_dedup),
-        hierarchy_parent_depth=int(ctx.hierarchy_parent_depth),
-        hierarchy_sibling_window=int(ctx.hierarchy_sibling_window),
-        hierarchy_overfetch_factor=int(ctx.hierarchy_overfetch_factor),
-    )
-    ctx.intent_router_meta = dict(routing_phase["intent_router_meta"])
-    ctx.adaptive_router_meta = dict(routing_phase["adaptive_router_meta"])
-    ctx.channel_budget_policy_meta = dict(routing_phase["channel_budget_policy_meta"])
-    ctx.request_retrieval_mode = str(routing_phase["request_retrieval_mode"])
-    ctx.retrieval_mode_routed = bool(routing_phase["retrieval_mode_routed"])
-    ctx.profile_norm = str(routing_phase["profile_norm"] or "")
-    ctx.retrieval_contract_policy = dict(routing_phase["retrieval_contract_policy"])
-    ctx.retrieval_contract_mode = str(routing_phase["retrieval_contract_mode"])
-    ctx.contract_deterministic_recall = bool(routing_phase["contract_deterministic_recall"])
-    ctx.sparse_enabled = bool(routing_phase["sparse_enabled"])
-    ctx.sparse_provider = str(routing_phase["sparse_provider"] or "")
-    ctx.hierarchy_recall_enabled = bool(routing_phase["hierarchy_recall_enabled"])
-    ctx.hierarchy_family_collapse = bool(routing_phase["hierarchy_family_collapse"])
-    ctx.hierarchy_family_aggregation = str(routing_phase["hierarchy_family_aggregation"])
-    ctx.hierarchy_tree_dedup = bool(routing_phase["hierarchy_tree_dedup"])
-    ctx.hierarchy_parent_depth = int(routing_phase["hierarchy_parent_depth"])
-    ctx.hierarchy_sibling_window = int(routing_phase["hierarchy_sibling_window"])
-    ctx.hierarchy_overfetch_factor = int(routing_phase["hierarchy_overfetch_factor"])
-    ctx.retriever_update = dict(routing_phase["retriever_update"])
-    ctx.retriever = routing_phase["retriever"]
+    for key, value in evidence.items():
+        if key not in {"retrieval_contract_policy", "hierarchy_recall_enabled"}:
+            setattr(ctx, key, value)
+    ctx.request_retrieval_mode = normalization.request_retrieval_mode
+    ctx.retrieval_mode_routed = normalization.retrieval_mode_routed
+    ctx.retrieval_contract_mode = normalization.retrieval_contract_mode
+    ctx.contract_deterministic_recall = normalization.contract_deterministic_recall
+    ctx.contract_must_recall_strict = bool(evidence["contract_must_recall_strict"])
+    ctx.profile_norm = normalization.profile_norm or ""
+    ctx.retrieval_profile = normalization.profile_norm
+    ctx.intent_router_meta = routing.intent_metadata
+    ctx.adaptive_router_meta = routing.adaptive_metadata
+    ctx.channel_budget_policy_meta = routing.channel_metadata
+    ctx.hierarchy_family_collapse = normalization.hierarchy.family_collapse
+    ctx.hierarchy_family_aggregation = normalization.hierarchy.family_aggregation
+    ctx.hierarchy_tree_dedup = normalization.hierarchy.tree_dedup
+    ctx.hierarchy_parent_depth = normalization.hierarchy.parent_depth
+    ctx.hierarchy_sibling_window = normalization.hierarchy.sibling_window
+    ctx.hierarchy_overfetch_factor = normalization.hierarchy.overfetch_factor
+    ctx.retriever_update = dict(plan.retriever_options)
+    ctx.retriever = hybrid_retriever.model_copy(update=ctx.retriever_update)
+    ctx.retrieval_mode = ctx.retriever_update["retrieval_mode"]
     return None
 
 
 def _run_retrieval_alias_dictionary_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
-    ctx.alias_elapsed = 0.0
-    ctx.alias_used = False
-    ctx.alias_meta: dict[str, Any] = {"enabled": False, "used": False}
-    ctx.alias_queries: list[str] = []
-
-    ctx.alias_enabled = ctx.state.get("enable_query_alias_expansion")
-    aliases = ctx.state.get("query_aliases")
-    if ctx.alias_enabled is None:
-        ctx.alias_enabled = bool(aliases)
-    if bool(ctx.alias_enabled):
-        t0 = time.time()
-        ctx.alias_queries, ctx.alias_meta = generate_alias_queries(
-            query=ctx.query_for_retrieval,
-            aliases=aliases,
-            max_queries=(
-                5
-                if ctx.state.get("query_alias_max_queries") is None
-                else int(ctx.state.get("query_alias_max_queries") or 0)
-            ),
-        )
-        ctx.alias_elapsed = time.time() - t0
-        ctx.alias_used = bool(ctx.alias_queries)
-
-    # Deterministic dictionary expansion (bounded, auditable).
-    ctx.dict_elapsed = 0.0
-    ctx.dict_used = False
-    ctx.dict_meta: dict[str, Any] = {"enabled": False, "used": False}
-    ctx.dict_expansions: list[dict[str, Any]] = []
-    try:
-        from app.query.expand import generate_dictionary_expansions, load_base_dictionary_rules
-
-        t0 = time.time()
-        ctx.dict_expansions, ctx.dict_meta = generate_dictionary_expansions(
-            query=ctx.query_for_retrieval,
-            rules=load_base_dictionary_rules(),
-            max_expansions_total=5,
-            max_expansions_per_rule=1,
-        )
-        ctx.dict_elapsed = time.time() - t0
-        ctx.dict_used = bool(ctx.dict_expansions)
-    except Exception as exc:  # noqa: BLE001
-        _log_orchestrator_fallback("run_retrieval", exc)
-        ctx.dict_elapsed = 0.0
-        ctx.dict_used = False
-        ctx.dict_expansions = []
-        ctx.dict_meta = {"enabled": False, "used": False, "error": str(exc)[:200]}
+    deterministic = ctx.query_plan.deterministic
+    ctx.alias_elapsed = deterministic.alias.elapsed_sec
+    ctx.alias_used = bool(deterministic.alias.queries)
+    ctx.alias_meta = deterministic.alias.metadata
+    ctx.alias_enabled = ctx.query_plan.alias_settings.enabled
+    ctx.dict_elapsed = deterministic.dictionary.elapsed_sec
+    ctx.dict_used = bool(deterministic.dictionary.expansions)
+    ctx.dict_meta = deterministic.dictionary.metadata
+    ctx.dict_expansions = list(deterministic.dictionary.expansions)
     return None
 
 
@@ -1413,203 +1253,86 @@ def _run_kg_search_sync(kg_kwargs: dict[str, Any]) -> Any:
 
 
 def _run_retrieval_kg_query_expansion_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
-    ctx.kg_query_expansion_enabled = _coerce_optional_bool(
-        ctx.state.get("enable_kg_query_expansion"),
-        default=bool(getattr(settings, "RAG_KG_QUERY_EXPANSION_ENABLED", False)),
-    )
-    ctx.kg_query_expansion_used = False
-    ctx.kg_query_expansion_elapsed = 0.0
-    ctx.kg_query_expansion_error: str | None = None
-    ctx.kg_query_expansion_entities_total = 0
-    ctx.kg_query_expansion_entities_selected = 0
-    ctx.kg_query_expansion_queries: list[str] = []
-    ctx.kg_query_expansion_entity_names: list[str] = []
-    ctx.kg_result_cached = None
-    try:
-        tenant_id = ctx.state.get("tenant_id")
-        account_id = ctx.state.get("account_id")
-        kg_document_ids, kg_dataset_id, kg_dataset_ids = _resolve_kg_scope(ctx.state)
-        request = KGQueryRequest(
-            query=ctx.query_for_retrieval,
-            scope=KGQueryScope(
-                tenant_id=tenant_id,
-                account_id=account_id,
-                document_ids=tuple(kg_document_ids),
-                dataset_id=kg_dataset_id,
-                dataset_ids=tuple(kg_dataset_ids),
-            ),
-        )
-        expansion_settings = resolve_kg_expansion_settings(enabled=ctx.kg_query_expansion_enabled)
-        expansion = expand_kg_query(request, settings=expansion_settings)
-        raise_for_rejected_response(expansion)
-        ctx.kg_result_cached = expansion.response
-        ctx.kg_query_expansion_elapsed = expansion.elapsed_sec
-        ctx.kg_query_expansion_entities_total = expansion.entities_total
-        ctx.kg_query_expansion_entities_selected = expansion.entities_selected
-        ctx.kg_query_expansion_queries = list(expansion.queries)
-        ctx.kg_query_expansion_entity_names = list(expansion.entity_names)
-        ctx.kg_query_expansion_used = expansion.used
-        if expansion.failure is not None:
-            ctx.kg_query_expansion_error = str(expansion.failure)[:200]
-    except Exception as exc:  # noqa: BLE001
-        _log_orchestrator_fallback("run_retrieval", exc)
-        ctx.kg_query_expansion_used = False
-        ctx.kg_query_expansion_queries = []
-        ctx.kg_query_expansion_entity_names = []
-        ctx.kg_query_expansion_error = str(exc)[:200]
+    expansion = ctx.query_plan.kg
+    ctx.kg_result_cached = expansion.response
+    ctx.kg_query_expansion_enabled = expansion.enabled
+    ctx.kg_query_expansion_used = expansion.used
+    ctx.kg_query_expansion_elapsed = expansion.elapsed_sec
+    ctx.kg_query_expansion_entities_total = expansion.entities_total
+    ctx.kg_query_expansion_entities_selected = expansion.entities_selected
+    ctx.kg_query_expansion_queries = list(expansion.queries)
+    ctx.kg_query_expansion_entity_names = list(expansion.entity_names)
+    ctx.kg_query_expansion_error = str(expansion.failure)[:200] if expansion.failure is not None else None
     return None
 
 
-def _query_model_components(ctx: RetrievalRuntimeState) -> tuple[ModelQuerySettings, EngineQueryModels]:
-    settings_for_query = resolve_model_query_settings(parse_model_query_overrides(ctx.state))
-    return settings_for_query, EngineQueryModels(ctx._llm_engine)
-
-
 def _run_retrieval_multi_query_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
-    ctx.multi_query_elapsed = 0.0
-    ctx.multi_query_used = False
-    ctx.multi_query_model_used = None
-    ctx.multi_query_parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
-    ctx.multi_queries: list[str] = []
-    model_settings, models = _query_model_components(ctx)
-    multi_query_settings = model_settings.multi_query
-    experiment = multi_query_settings.experiment
+    multi = ctx.query_plan.models.multi_query
+    multi_settings = ctx.query_plan.model_settings.multi_query
+    experiment = multi_settings.experiment
     ctx.multi_query_ab_test_key = experiment.key
     ctx.multi_query_ab_variant = experiment.variant
     ctx.multi_query_ab_seed = experiment.seed
     ctx.multi_query_ab_forced = experiment.forced
-    ctx.mq_enabled = multi_query_settings.enabled
-    ctx.mq_n = multi_query_settings.count
-    ctx.mq_temp = multi_query_settings.temperature
-    ctx.mq_max_chars = multi_query_settings.max_chars
-
-    outcome = generate_multi_queries(ctx.query_for_retrieval, settings=multi_query_settings, models=models)
-    ctx.multi_query_elapsed = outcome.elapsed_sec
-    ctx.multi_query_used = outcome.used
-    ctx.multi_query_model_used = outcome.model_used
-    ctx.multi_query_parse_meta = outcome.parse_metadata
-    ctx.multi_queries = list(outcome.queries)
+    ctx.mq_enabled = multi_settings.enabled
+    ctx.mq_n = multi_settings.count
+    ctx.mq_temp = multi_settings.temperature
+    ctx.mq_max_chars = multi_settings.max_chars
+    ctx.multi_query_elapsed = multi.elapsed_sec
+    ctx.multi_query_used = multi.used
+    ctx.multi_query_model_used = multi.model_used
+    ctx.multi_query_parse_meta = multi.parse_metadata
     return None
 
 
 def _run_retrieval_hyde_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
-    ctx.hyde_used = False
-    ctx.hyde_elapsed = 0.0
-    ctx.hyde_model_used = None
-    ctx.hyde_text = ""
-    model_settings, models = _query_model_components(ctx)
-    hyde_settings = model_settings.hyde
-    ctx.hyde_enabled = hyde_settings.enabled
-    outcome = generate_hyde_query(
-        ctx.query_for_retrieval,
-        retrieval_mode=str(ctx.request_retrieval_mode or "hybrid"),
-        settings=hyde_settings,
-        models=models,
-    )
-    ctx.hyde_text = outcome.text
-    ctx.hyde_elapsed = outcome.elapsed_sec
-    ctx.hyde_model_used = outcome.model_used
-    ctx.hyde_used = outcome.used
+    hyde = ctx.query_plan.models.hyde
+    ctx.hyde_enabled = ctx.query_plan.model_settings.hyde.enabled
+    ctx.hyde_text = hyde.text
+    ctx.hyde_elapsed = hyde.elapsed_sec
+    ctx.hyde_model_used = hyde.model_used
+    ctx.hyde_used = hyde.used
     return None
 
 
 def _run_retrieval_step_back_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
-    ctx.step_back_elapsed = 0.0
-    ctx.step_back_used = False
-    ctx.step_back_model_used = None
-    ctx.step_back_parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
-    ctx.step_back_query = ""
-    model_settings, models = _query_model_components(ctx)
-    step_back_settings = model_settings.step_back
+    step_back = ctx.query_plan.models.step_back
+    step_back_settings = ctx.query_plan.model_settings.step_back
     ctx.step_back_enabled = step_back_settings.enabled
     ctx.step_back_max_chars = step_back_settings.max_chars
     ctx.step_back_temp = step_back_settings.temperature
     ctx.step_back_output_max = step_back_settings.output_max_chars
-    outcome = generate_step_back_query(ctx.query_for_retrieval, settings=step_back_settings, models=models)
-    ctx.step_back_query = outcome.text
-    ctx.step_back_elapsed = outcome.elapsed_sec
-    ctx.step_back_model_used = outcome.model_used
-    ctx.step_back_parse_meta = outcome.parse_metadata
-    ctx.step_back_used = outcome.used
+    ctx.step_back_query = step_back.text
+    ctx.step_back_elapsed = step_back.elapsed_sec
+    ctx.step_back_model_used = step_back.model_used
+    ctx.step_back_parse_meta = step_back.parse_metadata
+    ctx.step_back_used = step_back.used
     return None
 
 
 def _run_retrieval_decomposition_variants_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
-    ctx.decompose_elapsed = 0.0
-    ctx.decompose_used = False
-    ctx.decompose_model_used = None
-    ctx.decompose_parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
-    ctx.sub_questions: list[str] = []
-
-    ctx.decompose_enabled = (
-        bool(settings.ENABLE_QUERY_DECOMPOSITION)
-        if ctx.state.get("enable_query_decomposition") is None
-        else bool(ctx.state.get("enable_query_decomposition"))
-    )
-    decompose_result = _decompose_query(ctx.query_for_retrieval, ctx.engine, enabled=ctx.decompose_enabled)
-    if isinstance(decompose_result, tuple) and len(decompose_result) == 4:
-        ctx.sub_questions, ctx.decompose_elapsed, ctx.decompose_model_used, ctx.decompose_parse_meta = decompose_result
-    elif isinstance(decompose_result, list):
-        ctx.sub_questions = [str(item).strip() for item in decompose_result if str(item or "").strip()]
-        if ctx.sub_questions:
-            ctx.decompose_parse_meta = {"ok": True, "method": "patched", "error": None}
-
-    ctx.decompose_used = bool(ctx.sub_questions)
+    decomposition = ctx.query_plan.models.decomposition
+    ctx.decompose_enabled = ctx.query_plan.model_settings.decomposition.enabled
+    ctx.decompose_elapsed = decomposition.elapsed_sec
+    ctx.decompose_used = decomposition.used
+    ctx.decompose_model_used = decomposition.model_used
+    ctx.decompose_parse_meta = decomposition.parse_metadata
+    ctx.sub_questions = list(decomposition.queries)
     ctx.decompose_chain_enabled = bool(getattr(settings, "RAG_DECOMPOSITION_CHAIN_ENABLED", False))
     ctx.decompose_chain_requested = bool(ctx.decompose_chain_enabled and ctx.sub_questions)
     ctx.decompose_chain_used = False
     ctx.decompose_chain_steps = 0
     ctx.decompose_chain_elapsed = 0.0
     ctx.decompose_chain_queries: list[str] = []
-
-    ctx.clause_fastlane_queries = build_clause_fastlane_queries(ctx.query_for_retrieval)
-    if bool(getattr(settings, "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_ENABLED", False)):
-        ctx.lightweight_subqueries = build_lightweight_subquery_queries(
-            ctx.query_for_retrieval,
-            max_queries=int(getattr(settings, "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_MAX_QUERIES", 3) or 3),
-            min_query_chars=int(getattr(settings, "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_MIN_QUERY_CHARS", 28) or 28),
-        )
-    else:
-        ctx.lightweight_subqueries = []
-    query_expansion_elapsed_ms = float(
-        (
-            ctx.alias_elapsed
-            + ctx.dict_elapsed
-            + ctx.kg_query_expansion_elapsed
-            + ctx.multi_query_elapsed
-            + ctx.step_back_elapsed
-            + ctx.hyde_elapsed
-            + ctx.decompose_elapsed
-        )
-        * 1000.0
-    )
-    query_variant_stage = build_query_variant_stage(
-        QueryVariantStageInput(
-            query_for_retrieval=ctx.query_for_retrieval,
-            alias_queries=list(ctx.alias_queries or []),
-            dict_expansions=list(ctx.dict_expansions or []),
-            kg_query_expansion_queries=list(ctx.kg_query_expansion_queries or []),
-            clause_fastlane_queries=list(ctx.clause_fastlane_queries or []),
-            lightweight_subqueries=list(ctx.lightweight_subqueries or []),
-            multi_queries=list(ctx.multi_queries or []),
-            step_back_used=bool(ctx.step_back_used),
-            step_back_query=str(ctx.step_back_query or ""),
-            sub_questions=list(ctx.sub_questions or []),
-            hyde_used=bool(ctx.hyde_used),
-            hyde_text=str(ctx.hyde_text or ""),
-            query_expansion_max_queries_raw=ctx.state.get("query_expansion_max_queries"),
-            query_expansion_max_candidates_raw=ctx.state.get("query_expansion_max_candidates"),
-            query_expansion_token_budget_raw=ctx.state.get("query_expansion_token_budget"),
-            query_expansion_latency_budget_ms_raw=ctx.state.get("query_expansion_latency_budget_ms"),
-            query_expansion_elapsed_ms=query_expansion_elapsed_ms,
-        )
-    )
-    ctx.retrieval_queries = list(query_variant_stage.retrieval_queries or [])
-    ctx.query_expansion_budget_meta = dict(query_variant_stage.query_expansion_budget_meta or {})
-    ctx.query_expansion_budget_max_queries = int(query_variant_stage.query_expansion_budget_max_queries or 0)
-    ctx.query_expansion_budget_max_candidates = int(query_variant_stage.query_expansion_budget_max_candidates or 0)
-    ctx.query_expansion_budget_token_budget = int(query_variant_stage.query_expansion_budget_token_budget or 0)
-    ctx.query_expansion_budget_latency_ms = float(query_variant_stage.query_expansion_budget_latency_ms or 0.0)
+    ctx.clause_fastlane_queries = list(ctx.query_plan.clause_queries)
+    ctx.lightweight_subqueries = list(ctx.query_plan.lightweight_queries)
+    variant_stage = ctx.query_plan.variant_stage
+    ctx.retrieval_queries = list(variant_stage.retrieval_queries)
+    ctx.query_expansion_budget_meta = dict(variant_stage.query_expansion_budget_meta)
+    ctx.query_expansion_budget_max_queries = variant_stage.query_expansion_budget_max_queries
+    ctx.query_expansion_budget_max_candidates = variant_stage.query_expansion_budget_max_candidates
+    ctx.query_expansion_budget_token_budget = variant_stage.query_expansion_budget_token_budget
+    ctx.query_expansion_budget_latency_ms = variant_stage.query_expansion_budget_latency_ms
     return None
 
 
@@ -3873,14 +3596,13 @@ def _run_retrieval_query_debug_phase(ctx: RetrievalRuntimeState) -> dict[str, An
 def _run_retrieval_retrieval_trace_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
     ctx.retrieval_trace = build_retrieval_trace_stage(
         RetrievalTraceStageInput(
-            query_for_retrieval=ctx.query_for_retrieval,
+            query_plan=ctx.query_plan,
             requested_retrieval_mode=ctx.requested_retrieval_mode,
             request_retrieval_mode=ctx.request_retrieval_mode,
             retrieval_mode_routed=bool(ctx.retrieval_mode_routed),
             requested_retrieval_profile=ctx.requested_retrieval_profile,
             profile_norm=ctx.profile_norm or None,
             retrieval_contract_mode=ctx.retrieval_contract_mode or None,
-            retrieval_contract_policy=dict(ctx.retrieval_contract_policy or {}),
             contract_deterministic_recall=bool(ctx.contract_deterministic_recall),
             must_recall_enabled=bool(ctx.must_recall_enabled),
             must_recall_status=str(ctx.must_recall_status),
@@ -3949,7 +3671,6 @@ def _run_retrieval_retrieval_trace_phase(ctx: RetrievalRuntimeState) -> dict[str
             rewrite_strategy_hash=ctx.rewrite_strategy_hash,
             rewrite_temperature=ctx.rewrite_temperature,
             rewrite_max_chars=ctx.rewrite_max_chars,
-            rewrite_used=bool(ctx.rewrite_used),
             rewrite_elapsed=float(ctx.rewrite_elapsed or 0.0),
             rewrite_model_used=ctx.rewrite_model_used,
             query_expansion_budget_meta=dict(ctx.query_expansion_budget_meta),
@@ -3972,7 +3693,6 @@ def _run_retrieval_retrieval_trace_phase(ctx: RetrievalRuntimeState) -> dict[str
             lightweight_subqueries=list(ctx.lightweight_subqueries or []),
             mq_enabled=bool(ctx.mq_enabled),
             multi_query_used=bool(ctx.multi_query_used),
-            multi_queries=list(ctx.multi_queries or []),
             multi_query_elapsed=float(ctx.multi_query_elapsed or 0.0),
             multi_query_model_used=ctx.multi_query_model_used,
             multi_query_parse_meta=dict(ctx.multi_query_parse_meta or {}),
