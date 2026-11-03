@@ -457,6 +457,11 @@
 - Chat scope uses direct Conversation fields and explicit query-not-found handling. Tenant filters, owner denial, dataset readability, missing-document pruning/commit, and existing 403/404/409 responses remain in their original order.
 - Ruff check、Ruff format --check、stale-guard scan 与 diff check 通过。Python tests 和 database flows 未运行。
 
+## 第三批：Table SQL fingerprint utility
+
+- Fingerprint normalization consumes its declared string input directly; whitespace, identifier normalization, literal preservation, and default digest length remain unchanged. The four production callers pass SQL text; the table-store boundary performs its explicit conversion before calling.
+- Ruff check、Ruff format --check 与 `git diff --check` 通过。本文件标记为已调整；Python tests 未运行。
+
 ## 第三批：Corpus cache invalidation transaction
 
 - Single-dataset lookup now returns no token when the tenant-scoped dataset row is missing, matching document and multi-dataset scope behavior. Cache invalidation requires `Session.flush()` and propagates database failure; the service does not take ownership of commit.

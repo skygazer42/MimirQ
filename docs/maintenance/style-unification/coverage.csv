@@ -1375,7 +1375,7 @@ app/services/structured_memory_service.py,3,pending,conforms,Awaiting file-level
 app/services/table_join_stats.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/table_routing.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/table_schema_graph.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/services/table_sql_fingerprint.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/services/table_sql_fingerprint.py,3,adjusted,conforms,typed SQL input is used directly; normalization and digest length behavior retained,Ruff check/format; all four callers pass SQL text; Python tests not run
 app/services/table_store.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/table_store_service.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/table_tag_service.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
