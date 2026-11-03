@@ -16,7 +16,7 @@ from app.api.schemas.document import (
 )
 from app.api.schemas.qa import DocumentQAGenerateRequest
 from app.api.v1 import document_mutations, document_processing, document_versions
-from app.services import document_access_service, document_processing_operations
+from app.services import document_access_service, document_batch_operations, document_processing_operations
 
 
 class _Query:
@@ -601,7 +601,6 @@ def test_document_chunk_write_endpoints_use_shared_unassigned_acl(monkeypatch: p
 
 
 def test_document_batch_mutations_use_shared_unassigned_acl(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.documents as documents_module
     from app.api.v1 import document_batches
 
     document = _unassigned_document(access_mode="all_team_members")
@@ -609,14 +608,14 @@ def test_document_batch_mutations_use_shared_unassigned_acl(monkeypatch: pytest.
     sentinel = HTTPException(status_code=403, detail="shared-write-policy")
 
     monkeypatch.setattr(
-        document_batches.dataset_service,
+        document_batch_operations.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="editor"),
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module,
-        "_assert_document_writable_for_lifecycle",
+        document_access_service,
+        "assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(sentinel),
         raising=True,
     )
@@ -627,8 +626,8 @@ def test_document_batch_mutations_use_shared_unassigned_acl(monkeypatch: pytest.
         account_id="acct-1",
         db=db,
     )
-    assert metadata_result["updated"] == 0
-    assert metadata_result["denied"] == [document.id]
+    assert metadata_result.updated == 0
+    assert metadata_result.denied == [document.id]
 
     move_result = document_batches.batch_move_documents(
         payload=DocumentBatchMoveRequest(document_ids=[document.id], target_dataset_id=None),
@@ -636,12 +635,11 @@ def test_document_batch_mutations_use_shared_unassigned_acl(monkeypatch: pytest.
         account_id="acct-1",
         db=db,
     )
-    assert move_result["moved"] == 0
-    assert move_result["denied"] == [document.id]
+    assert move_result.moved == 0
+    assert move_result.denied == [document.id]
 
 
 def test_batch_move_to_unassigned_denies_non_owner_editor(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.documents as documents_module
     from app.api.v1 import document_batches
 
     document = _unassigned_document(owner_id="other-owner", access_mode="all_team_members")
@@ -649,14 +647,14 @@ def test_batch_move_to_unassigned_denies_non_owner_editor(monkeypatch: pytest.Mo
     db = _BatchDB([document])
 
     monkeypatch.setattr(
-        document_batches.dataset_service,
+        document_batch_operations.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="editor"),
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module,
-        "_assert_document_writable_for_lifecycle",
+        document_access_service,
+        "assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
@@ -668,13 +666,12 @@ def test_batch_move_to_unassigned_denies_non_owner_editor(monkeypatch: pytest.Mo
         db=db,
     )
 
-    assert move_result["moved"] == 0
-    assert move_result["denied"] == [document.id]
+    assert move_result.moved == 0
+    assert move_result.denied == [document.id]
     assert document.dataset_id is not None
 
 
 def test_batch_move_to_unassigned_allows_owner_editor(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.documents as documents_module
     from app.api.v1 import document_batches
 
     document = _unassigned_document(owner_id="editor-account", access_mode="all_team_members")
@@ -683,14 +680,14 @@ def test_batch_move_to_unassigned_allows_owner_editor(monkeypatch: pytest.Monkey
     db = _BatchDB([document])
 
     monkeypatch.setattr(
-        document_batches.dataset_service,
+        document_batch_operations.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="editor"),
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module,
-        "_assert_document_writable_for_lifecycle",
+        document_access_service,
+        "assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
@@ -702,13 +699,12 @@ def test_batch_move_to_unassigned_allows_owner_editor(monkeypatch: pytest.Monkey
         db=db,
     )
 
-    assert move_result["moved"] == 1
-    assert move_result["denied"] == []
+    assert move_result.moved == 1
+    assert move_result.denied == []
     assert document.dataset_id is None
 
 
 def test_batch_move_to_unassigned_allows_admin_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.documents as documents_module
     from app.api.v1 import document_batches
 
     document = _unassigned_document(owner_id="other-owner", access_mode="only_me")
@@ -717,14 +713,14 @@ def test_batch_move_to_unassigned_allows_admin_override(monkeypatch: pytest.Monk
     db = _BatchDB([document])
 
     monkeypatch.setattr(
-        document_batches.dataset_service,
+        document_batch_operations.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="admin"),
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module,
-        "_assert_document_writable_for_lifecycle",
+        document_access_service,
+        "assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
@@ -736,8 +732,8 @@ def test_batch_move_to_unassigned_allows_admin_override(monkeypatch: pytest.Monk
         db=db,
     )
 
-    assert move_result["moved"] == 1
-    assert move_result["denied"] == []
+    assert move_result.moved == 1
+    assert move_result.denied == []
     assert document.dataset_id is None
 
 

@@ -95,6 +95,7 @@ def _document(*, tenant_id: uuid.UUID, document_id: uuid.UUID, **overrides) -> S
 
 def test_batch_reingest_classifies_patch_failures_without_retry(monkeypatch) -> None:
     from app.api.v1 import document_batches
+    from app.services import document_batch_operations, document_metadata_operations, document_processing_operations
 
     tenant_id = uuid.uuid4()
     document_ids = [uuid.uuid4() for _ in range(4)]
@@ -112,15 +113,11 @@ def test_batch_reingest_classifies_patch_failures_without_retry(monkeypatch) -> 
 
     async def _retry_document_processing(**kwargs):
         retry_ids.append(kwargs["document_id"])
-        return {"status": "pending"}
+        return SimpleNamespace(status="pending")
 
-    monkeypatch.setattr(
-        document_batches.document_mutations, "patch_document_pipeline", _patch_document_pipeline, raising=True
-    )
-    monkeypatch.setattr(
-        document_batches.document_processing, "retry_document_processing", _retry_document_processing, raising=True
-    )
-    monkeypatch.setattr(document_batches.dataset_service, "ensure_member", lambda *_a, **_k: None)
+    monkeypatch.setattr(document_metadata_operations, "patch_pipeline", _patch_document_pipeline, raising=True)
+    monkeypatch.setattr(document_processing_operations, "retry_document", _retry_document_processing, raising=True)
+    monkeypatch.setattr(document_batch_operations.dataset_service, "ensure_member", lambda *_a, **_k: None)
 
     result = asyncio.run(
         document_batches.batch_reingest_documents(
@@ -137,7 +134,7 @@ def test_batch_reingest_classifies_patch_failures_without_retry(monkeypatch) -> 
         )
     )
 
-    assert result == {
+    assert result.model_dump() == {
         "queued": 1,
         "skipped": 0,
         "not_found": [document_ids[0]],
