@@ -398,3 +398,8 @@
 
 - `KGEngine.search` 与 `app.rag.kg.pipeline.kg_search` 都声明返回对象；orchestrator 的 KG chunk-injection wrapper 直接返回 pipeline 结果，不再把错误类型伪装成空对象。KG query expansion 保持其 `KGResponseContractError` 校验。
 - 修改文件 Ruff check、Ruff format --check 和 `git diff --check` 通过。未运行 Python tests、KG backend 或数据库流程；orchestrator 全文件审核仍待完成。
+
+## 第五批：KG query expansion owner 文件审核
+
+- `kg_query_expansion.py` 的同步／异步路径共用相同 scope、实体校验、筛选和排名；non-object response 以 `KGResponseContractError` 区分，optional KG failure 记录在 expansion outcome 并不生成查询。
+- Ruff check 与 Ruff format --check 通过。本文件标记为已符合标准；未运行 Python tests 或 KG runtime。
