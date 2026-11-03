@@ -2,7 +2,7 @@ type JsonRecord = Record<string, unknown>
 
 export type DiagnosticDecision = 'disabled' | 'marked'
 
-export interface SimilarityDiagnosticsNode {
+export type SimilarityDiagnosticsNode = {
   id: string
   axis: 'x' | 'y'
   label: string
@@ -18,7 +18,7 @@ export interface SimilarityDiagnosticsNode {
   isDisabled: boolean
 }
 
-export interface SimilarityDiagnosticsLink {
+export type SimilarityDiagnosticsLink = {
   id: string
   source: string
   target: string
@@ -30,7 +30,7 @@ export interface SimilarityDiagnosticsLink {
   isMarked: boolean
 }
 
-export interface SimilarityDiagnosticsOutlier {
+export type SimilarityDiagnosticsOutlier = {
   id: string
   xId: string
   yId: string
@@ -43,7 +43,7 @@ export interface SimilarityDiagnosticsOutlier {
   decision: DiagnosticDecision | null
 }
 
-export interface SimilarityDiagnosticsSummary {
+export type SimilarityDiagnosticsSummary = {
   nodeCount: number
   totalNodes: number
   linkCount: number
@@ -54,7 +54,7 @@ export interface SimilarityDiagnosticsSummary {
   disabledCount: number
 }
 
-export interface SimilarityDiagnosticsResult {
+export type SimilarityDiagnosticsResult = {
   nodes: SimilarityDiagnosticsNode[]
   links: SimilarityDiagnosticsLink[]
   outliers: SimilarityDiagnosticsOutlier[]
@@ -66,7 +66,7 @@ export type SimilarityDiagnosticLink = SimilarityDiagnosticsLink
 export type SimilarityDiagnosticOutlier = SimilarityDiagnosticsOutlier
 export type SimilarityDiagnosticsModel = SimilarityDiagnosticsResult
 
-interface BuildSimilarityDiagnosticsInput {
+type BuildSimilarityDiagnosticsInput = {
   matrix: Array<Array<number | null>>
   xItems: JsonRecord[]
   yItems: JsonRecord[]
@@ -220,8 +220,12 @@ export function buildSimilarityDiagnostics({
   const safeRowCount = Math.min(matrix.length, yItems.length, yLabels.length)
   const safeColCount = safeRowCount > 0 ? Math.min(matrix[0]?.length || 0, xItems.length, xLabels.length) : 0
 
-  const yStats = Array.from({ length: safeRowCount }, (_, rowIndex) => axisStats((matrix[rowIndex] ?? []).slice(0, safeColCount)))
-  const xStats = Array.from({ length: safeColCount }, (_, columnIndex) => axisStats(columnAt(matrix, columnIndex, safeRowCount)))
+  const yStats = Array.from({ length: safeRowCount }, (_, rowIndex) =>
+    axisStats((matrix[rowIndex] ?? []).slice(0, safeColCount))
+  )
+  const xStats = Array.from({ length: safeColCount }, (_, columnIndex) =>
+    axisStats(columnAt(matrix, columnIndex, safeRowCount))
+  )
 
   const outliers: SimilarityDiagnosticsOutlier[] = []
   const activeOutlierNodeIds = new Set<string>()
@@ -255,7 +259,13 @@ export function buildSimilarityDiagnostics({
         yLabel: yLabels[rowIndex] || `Y ${rowIndex + 1}`,
         similarity,
         lexicalOverlap: lexicalScore,
-        score: outlierScore(similarity, lexicalScore, xAxis.supportCount, yAxis.supportCount, Math.max(xAxis.topGap, yAxis.topGap)),
+        score: outlierScore(
+          similarity,
+          lexicalScore,
+          xAxis.supportCount,
+          yAxis.supportCount,
+          Math.max(xAxis.topGap, yAxis.topGap)
+        ),
         reason: buildReason(lexicalScore, xAxis.supportCount, yAxis.supportCount, Math.max(xAxis.topGap, yAxis.topGap)),
         decision,
       })
@@ -309,7 +319,11 @@ export function buildSimilarityDiagnostics({
   }
 
   for (let rowIndex = 0; rowIndex < safeRowCount; rowIndex += 1) {
-    for (const neighbor of pickTopNeighbors((matrix[rowIndex] ?? []).slice(0, safeColCount), linkTopK, minLinkSimilarity)) {
+    for (const neighbor of pickTopNeighbors(
+      (matrix[rowIndex] ?? []).slice(0, safeColCount),
+      linkTopK,
+      minLinkSimilarity
+    )) {
       addLink(rowIndex, neighbor.index)
     }
   }
