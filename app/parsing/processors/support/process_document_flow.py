@@ -11,7 +11,7 @@ import time
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from langchain_core.documents import Document
@@ -21,6 +21,9 @@ from app.core.config import settings
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentParsedContent
+
+if TYPE_CHECKING:
+    from app.parsing.processors.processor import DocumentProcessorService
 from app.parsing.preprocess.file_preprocessor import preprocess_file
 from app.parsing.preprocess.image_preprocess import preprocess_image_document
 from app.parsing.processors.cross_page_merge import merge_cross_page_documents
@@ -264,7 +267,7 @@ def _dataset_metadata(db: Session, *, db_document: DBDocument, tenant_id: UUID) 
 
 
 def _initialize_prepared_process_document_state(
-    service: Any,
+    service: "DocumentProcessorService",
     db: Session,
     *,
     db_document: DBDocument,
@@ -293,7 +296,7 @@ def _initialize_prepared_process_document_state(
 
 
 async def _resume_from_indexed_checkpoint(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     db_document: DBDocument,
@@ -377,7 +380,7 @@ async def _resume_from_indexed_checkpoint(
 
 
 async def _run_pre_poc_quality_gate(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     db_document: DBDocument,
@@ -536,7 +539,7 @@ def _apply_image_preprocess(
 
 
 async def _maybe_import_tabular_document(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     db_document: DBDocument,
@@ -714,7 +717,7 @@ async def _maybe_import_docx_table_sidecar(
 
 
 async def prepare_process_document_pipeline(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     db_document: DBDocument,
@@ -1065,7 +1068,7 @@ def _parse_fallback_candidates(*, current_backend: str) -> list[str]:
 
 
 async def begin_process_document(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     tenant_id: UUID,
@@ -1112,7 +1115,7 @@ async def begin_process_document(
 
 
 async def handle_document_cancelled(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     db_document: DBDocument,
@@ -1137,7 +1140,7 @@ async def handle_document_cancelled(
 
 
 async def handle_asyncio_cancelled(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     db_document: DBDocument,
@@ -1182,7 +1185,7 @@ def handle_retry_boundary_failure(*, tenant_id: UUID, document_id: UUID, error: 
 
 
 async def handle_tenant_quota_exceeded(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     db_document: DBDocument,
@@ -1264,7 +1267,7 @@ async def handle_tenant_quota_exceeded(
 
 
 async def handle_process_document_failure(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     db_document: DBDocument,
@@ -1289,7 +1292,7 @@ async def handle_process_document_failure(
 
 
 async def run_process_document_body(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     file_path: Path,
@@ -1614,7 +1617,7 @@ def _persist_parse_cache_entry(
 
 
 async def _maybe_apply_parse_quality_gate(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     db_document: DBDocument,
@@ -1756,7 +1759,7 @@ async def _maybe_apply_parse_quality_gate(
 
 
 async def execute_parse_pipeline(
-    service: Any,
+    service: "DocumentProcessorService",
     parsing_stage: Any,
     *,
     db: Session,
@@ -1963,7 +1966,7 @@ async def _maybe_apply_vlm_correction_to_documents(
 
 
 def _maybe_import_pdf_table_sidecars(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     db_document: DBDocument,
@@ -1984,7 +1987,7 @@ def _maybe_import_pdf_table_sidecars(
 
 
 async def _prepare_parsed_documents_for_continuation(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     db_document: DBDocument,
@@ -2118,7 +2121,7 @@ def _apply_governance_python_plugin_if_needed(
 
 
 def _maybe_build_governance_audit_patch(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     before_items: list[Document] | None,
     after_items: list[Document] | None,
@@ -2137,7 +2140,7 @@ def _maybe_build_governance_audit_patch(
 
 
 async def _maybe_apply_llm_auto_tagging_audit(
-    service: Any,
+    service: "DocumentProcessorService",
     items: list[Document],
     *,
     pipeline_effective: PipelineEffective,
@@ -2154,7 +2157,7 @@ async def _maybe_apply_llm_auto_tagging_audit(
 
 
 async def _maybe_return_governance_drop_result(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     db_document: DBDocument,
@@ -2248,7 +2251,7 @@ def _should_record_governance_enrichment(
 
 
 def _maybe_record_governance_enrichment(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     tenant_id: UUID,
@@ -2275,7 +2278,7 @@ def _maybe_record_governance_enrichment(
 
 
 def _maybe_persist_parsed_content(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     db_document: DBDocument,
@@ -2310,7 +2313,7 @@ def _maybe_persist_parsed_content(
 
 
 async def _run_chunk_governance_flow(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     db_document: DBDocument,
@@ -2392,7 +2395,7 @@ async def _run_chunk_governance_flow(
 
 
 async def _run_document_governance_flow(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     db_document: DBDocument,
@@ -2488,7 +2491,7 @@ async def _run_document_governance_flow(
 
 
 async def _chunk_governed_documents(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     tenant_id: UUID,
@@ -2803,7 +2806,7 @@ def _truncate_chunks_for_document(
 
 
 def _record_chunk_postprocess_metadata_if_needed(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     tenant_id: UUID,
@@ -2844,7 +2847,7 @@ def _record_chunk_postprocess_metadata_if_needed(
 
 
 def _apply_common_chunk_postprocess(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     db_document: DBDocument,
@@ -2923,7 +2926,7 @@ def _apply_common_chunk_postprocess(
 
 
 def _maybe_record_governance_metadata(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     tenant_id: UUID,
@@ -2945,7 +2948,7 @@ def _maybe_record_governance_metadata(
 
 
 async def _maybe_return_no_chunks_result(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     db_document: DBDocument,
@@ -3013,7 +3016,7 @@ async def _maybe_return_no_chunks_result(
 
 
 def _record_chunking_stats_metadata_with_guard(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     tenant_id: UUID,
@@ -3043,7 +3046,7 @@ def _selected_chunk_strategy_counts(chunks: list[Document]) -> dict[str, int]:
 
 
 def _apply_chunk_asset_stage_and_metadata(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     db_document: DBDocument,
@@ -3161,7 +3164,7 @@ def _run_index_stage(
 
 
 async def _finalize_indexed_document(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     db_document: DBDocument,
@@ -3278,7 +3281,7 @@ async def _finalize_indexed_document(
 
 
 async def continue_process_document_flow(
-    service: Any,
+    service: "DocumentProcessorService",
     *,
     db: Session,
     db_document: DBDocument,
