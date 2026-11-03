@@ -420,3 +420,8 @@
 
 - Parse-quality helpers read LangChain `Document.metadata` and `Document.id` directly. The typed document list explicitly skips `None` entries; metadata score parsing continues to the next supported field only for `OverflowError`, `TypeError` or `ValueError`.
 - Ruff check、Ruff format --check 和 `git diff --check` 通过。本文件标记为已调整；Python tests 与 retrieval runtime 未运行。
+
+## 第五批：Query variant budget type boundary
+
+- `QueryVariantStageInput` budget fields now use int/float optional types from `QueryExpansionBudget`; the duplicate broad-catching coercion helpers are removed. `None` and zero still mean no configured limit; invalid numeric values no longer silently become an unlimited budget.
+- Existing query-planning, option-parser, and test constructors retain their field names; the only current production caller passes the normalized budget. Ruff check/format and `git diff --check` passed. Python tests were not run.

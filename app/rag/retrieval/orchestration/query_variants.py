@@ -18,10 +18,10 @@ class QueryVariantStageInput:
     sub_questions: list[str]
     hyde_used: bool
     hyde_text: str
-    query_expansion_max_queries_raw: Any
-    query_expansion_max_candidates_raw: Any
-    query_expansion_token_budget_raw: Any
-    query_expansion_latency_budget_ms_raw: Any
+    query_expansion_max_queries_raw: int | None
+    query_expansion_max_candidates_raw: int | None
+    query_expansion_token_budget_raw: int | None
+    query_expansion_latency_budget_ms_raw: float | None
     query_expansion_elapsed_ms: float
     multi_query_last: bool = False
 
@@ -34,20 +34,6 @@ class QueryVariantStageOutput:
     query_expansion_budget_max_candidates: int
     query_expansion_budget_token_budget: int
     query_expansion_budget_latency_ms: float
-
-
-def _coerce_budget_int(raw: Any) -> int:
-    try:
-        return max(0, int(raw or 0))
-    except (TypeError, ValueError, AttributeError):
-        return 0
-
-
-def _coerce_budget_float(raw: Any) -> float:
-    try:
-        return max(0.0, float(raw or 0.0))
-    except (TypeError, ValueError, AttributeError):
-        return 0.0
 
 
 def _dedupe_query_variants(retrieval_queries: list[tuple[str, str]]) -> list[tuple[str, str]]:
@@ -158,10 +144,24 @@ def _filter_budgeted_queries(
 def build_query_variant_stage(payload: QueryVariantStageInput) -> QueryVariantStageOutput:
     retrieval_queries = _build_retrieval_queries(payload)
 
-    query_expansion_budget_max_queries = _coerce_budget_int(payload.query_expansion_max_queries_raw)
-    query_expansion_budget_max_candidates = _coerce_budget_int(payload.query_expansion_max_candidates_raw)
-    query_expansion_budget_token_budget = _coerce_budget_int(payload.query_expansion_token_budget_raw)
-    query_expansion_budget_latency_ms = _coerce_budget_float(payload.query_expansion_latency_budget_ms_raw)
+    query_expansion_budget_max_queries = max(
+        0, int(payload.query_expansion_max_queries_raw) if payload.query_expansion_max_queries_raw is not None else 0
+    )
+    query_expansion_budget_max_candidates = max(
+        0,
+        int(payload.query_expansion_max_candidates_raw)
+        if payload.query_expansion_max_candidates_raw is not None
+        else 0,
+    )
+    query_expansion_budget_token_budget = max(
+        0, int(payload.query_expansion_token_budget_raw) if payload.query_expansion_token_budget_raw is not None else 0
+    )
+    query_expansion_budget_latency_ms = max(
+        0.0,
+        float(payload.query_expansion_latency_budget_ms_raw)
+        if payload.query_expansion_latency_budget_ms_raw is not None
+        else 0.0,
+    )
     query_expansion_budget_meta = _budget_meta(
         retrieval_queries=retrieval_queries,
         max_queries=query_expansion_budget_max_queries,
