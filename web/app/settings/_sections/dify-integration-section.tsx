@@ -7,9 +7,10 @@ import { SettingsSwitch } from '@/components/settings/settings-switch'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { settingsTextTokens } from '@/components/ui/system-page-tokens'
-import { datasetApi, type SystemSettings } from '@/lib/api'
+import { datasetApi } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import type { Dataset } from '@/types'
+import type { Dataset } from '@/types/datasets'
+import type { SystemSettings } from '@/types/settings'
 
 type DifyExternalKnowledgeSettings = NonNullable<SystemSettings['dify_external_knowledge']>
 
