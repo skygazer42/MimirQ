@@ -387,3 +387,9 @@
 - `app.services.indexing.vector_writer` 统一持有 Milvus 模式判断、shadow writer 配置与缓存、embedding-space hash、双写和 dataset-scoped runtime 异常。`indexer.py` 与 `chunks.py` 直接调用该 owner；移除 `indexer.py` 中重复的 shadow writer 实现，并将四处旧异常工厂调用改到共享定义。
 - shadow hash 失败时记录 warning 并停用可选 shadow writer；主向量写入仍保持成功路径，不再将空 hash 写入 shadow metadata。外部 embedding 与 Milvus adapter 的既有 best-effort 降级保留，主向量写入的 retry 顺序不变。
 - Ruff check、Ruff format --check、`git diff --check` 及 owner 引用扫描通过。未运行 Python 测试、应用导入或数据库／向量库调用；运行时行为未验证。三份文件的覆盖状态只记录本切片，文件级审核仍待完成。
+
+## 第五批：Reranker factory 错误边界
+
+- `reranker_factory` 使用 `RerankCandidate` 的声明字段并在一次遍历中构造 identity 结果；分数字段的标准转换错误仍按既有策略落为 `0.0`。
+- 空 provider 与 registry 的 `none/off/false/0` aliases 明确映射到 identity；可选 provider module 缺失仍降级为 identity，结果带 `fallback=identity`。真实 factory 的未知 provider `ValueError` 和其他初始化错误不再被宽泛捕获。
+- Hybrid ranking 在调用 factory 前跳过关闭的 provider。两份相关文件 Ruff check 与 format 检查通过；未运行 Python tests 或模型流程。覆盖表只关闭 shim 文件的本次审核，hybrid ranking 文件仍待完整审核。

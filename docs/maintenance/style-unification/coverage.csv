@@ -1096,6 +1096,7 @@ app/rag/retrieval/hybrid/cache_scope.py,5,pending,adjusted,Awaiting file-level c
 app/rag/retrieval/hybrid/channel_diagnostics.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/hybrid/channel_health.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/hybrid/channel_results.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/rag/retrieval/hybrid/candidate_ranking.py,5,pending,conforms,仅核对 reranker owner 调用边界；整文件审核待完成,Ruff check/format; disabled provider is gated before factory; Python tests not run
 app/rag/retrieval/hybrid/colbert_index.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/hybrid/common.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/hybrid/dedup.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -1123,7 +1124,7 @@ app/rag/retrieval/orchestration/query_contract.py,5,pending,conforms,Awaiting fi
 app/rag/retrieval/orchestration/query_invocation.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestration/query_variants.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestration/rerank_result_cache.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/rag/retrieval/orchestration/reranker_factory.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/rag/retrieval/orchestration/reranker_factory.py,5,adjusted,conforms,Typed candidate handling; explicit disabled and optional-module fallback boundaries,Ruff check/format; none aliases map to identity; unknown provider errors propagate; Python tests not run
 app/rag/retrieval/orchestration/retriever_shim.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestration/text_helpers.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestrator.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
