@@ -338,7 +338,7 @@ def _normalize_mimirq_citation(value: Any) -> dict[str, Any] | None:
     if score is not None:
         try:
             out["relevance_score"] = float(score)
-        except Exception:
+        except (OverflowError, TypeError, ValueError):
             pass
 
     return out
@@ -357,10 +357,10 @@ def _citation_items_from_value(value: Any) -> list[dict[str, Any]]:
     parsed: Any
     try:
         parsed = json.loads(text)
-    except Exception:
+    except (json.JSONDecodeError, RecursionError):
         try:
             parsed = ast.literal_eval(text)
-        except Exception:
+        except (RecursionError, SyntaxError, TypeError, ValueError):
             return []
     if not isinstance(parsed, list):
         return []
