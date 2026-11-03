@@ -7,7 +7,7 @@ import type { Remote } from 'comlink'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { AlertCircle, Loader2, RotateCcw } from 'lucide-react'
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
-import { ParsingBlock } from '@/lib/parsing-positions'
+import type { ParsingBlock } from '@/lib/parsing-positions'
 import type { ParsingEditFocusHint } from '@/lib/parsing-edit-focus'
 import { classifyParsingBlock } from '@/lib/parsing-layout'
 import {
@@ -33,7 +33,7 @@ type Box = BboxOverlayItem
 type PdfJsModule = typeof import('pdfjs-dist/build/pdf.mjs')
 type PageBaseSize = { width: number; height: number }
 
-interface PdfViewerProps {
+type PdfViewerProps = {
  file?: File | null
  fileUrl?: string | null
  scrollToPageIndex?: number | null

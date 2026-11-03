@@ -1,4 +1,4 @@
-export interface ParsingPosition {
+export type ParsingPosition = {
   pages: number[]
   left: number
   right: number
@@ -7,7 +7,7 @@ export interface ParsingPosition {
   raw: string
 }
 
-export interface ParsingBlock {
+export type ParsingBlock = {
   id: string
   text: string
   positions: ParsingPosition[]
@@ -18,7 +18,7 @@ export type PositionTagRange = {
   end: number
 }
 
-export interface ParsingBlockWithRange extends ParsingBlock {
+export type ParsingBlockWithRange = ParsingBlock & {
   rawStart: number
   rawEnd: number
 }

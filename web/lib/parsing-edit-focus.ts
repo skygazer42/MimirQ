@@ -1,16 +1,16 @@
 import type { ParsingLayoutEntry } from './parsing-layout'
 
-export interface ParsingEditSelection {
+export type ParsingEditSelection = {
   start: number
   end: number
 }
 
-export interface ParsingEditFocusHint {
+export type ParsingEditFocusHint = {
   xRatio: number
   yRatio: number
 }
 
-export interface ParsingBlockEditTarget {
+export type ParsingBlockEditTarget = {
   blockId: string
   content: string
   range: ParsingEditSelection

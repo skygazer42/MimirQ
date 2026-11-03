@@ -19,14 +19,14 @@ import type { ParsingElement } from '@/lib/api/parsing'
 export const ROOT_FOLDER_ID = 'root'
 const PARSED_FILES_STORAGE_KEY = 'mimirq_parsed_files'
 
-export interface FolderNode {
+export type FolderNode = {
   id: string
   name: string
   parentId: string
   createdAt: string
 }
 
-export interface ParsedFileData {
+export type ParsedFileData = {
   id: string
   filename: string
   fileType: string
@@ -90,7 +90,7 @@ function clearParsedFileUpdateVersionsForScope(scope: string) {
   }
 }
 
-interface ParsedFilesState {
+type ParsedFilesState = {
   files: ParsedFileData[]
   folders: FolderNode[]
   activeFolderId: string
