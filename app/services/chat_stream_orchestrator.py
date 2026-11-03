@@ -21,7 +21,6 @@ from app.services.chat_runtime import (
     format_stream_error_message,
     prepare_stream_chat_runtime,
 )
-from app.services.chat_stream_persistence import ChatStreamPersistInput
 from app.services.chat_stream_common import (
     ChatStreamPersistenceContext,
     ChatStreamRuntimeContext,
@@ -31,6 +30,7 @@ from app.services.chat_stream_common import (
 )
 from app.services.chat_stream_graph import GraphChatStreamSessionInput, stream_graph_chat_session_events
 from app.services.chat_stream_langchain import LangChainChatStreamSessionInput, stream_langchain_chat_session_events
+from app.services.chat_stream_persistence import ChatStreamPersistInput
 from app.services.metrics_logger import set_metrics_context
 from app.services.rag_runtime_limiter import (
     RetrievalAdmissionTimeoutError,

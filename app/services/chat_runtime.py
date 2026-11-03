@@ -1,5 +1,6 @@
 import re
 from typing import Any
+from uuid import UUID
 
 from app.rag.core.logging import get_logger
 from app.services.chat_bootstrap_runtime import (
