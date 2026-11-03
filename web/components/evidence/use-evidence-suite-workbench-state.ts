@@ -774,8 +774,8 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
     if (!whyMissedRanRetrieve) return null
     return buildWhyMissedReport({
       reference_sources: selectedItem.reference_sources || [],
-      citations: whyMissedCitations || [],
-      drifted_references: whyMissedDriftedRefs || [],
+      citations: whyMissedCitations,
+      drifted_references: whyMissedDriftedRefs,
     })
   }, [selectedItem, whyMissedCitations, whyMissedDriftedRefs, whyMissedRanRetrieve])
 
