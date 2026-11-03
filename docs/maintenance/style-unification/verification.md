@@ -514,6 +514,12 @@
 - Precheck request constraints align with the privileged local-scan route; its response models match the precheck service and route constructors. Dataset report models cover every field built by `ReportService`, and the API declares `DatasetReportOut` as the response model.
 - Ruff check 与 Ruff format --check passed for both files. Schemas are marked conforming; Python tests, API runtime, and filesystem/database flows were not run.
 
+## 第三批：Dataset schema module audit
+
+- `DatasetRAGDefaults` relies on its `dict[str, int/float]` field contracts for shape and value typing. Its after-validator retains the dataset-specific allowed-channel check; redundant dict checks and discarded numeric casts were removed. Effective fusion value bounds remain in `ChatRAGConfig` after dataset defaults merge.
+- Dataset request/response models were mapped to route/service owners: create/update distinguish optional field presence, dataset out/list/ingestion stats have matching builders, config bundle import/export covers its nested policy/default fields, and clone/purge request/response types match their endpoints.
+- Ruff check、Ruff format --check、diff check and stale-helper scan passed. Python tests and API/database runtime were not run.
+
 ## 第三批：FLS, DB catalog, KG diagnostics, evaluation, and prompt schemas
 
 - FLS rule bounds/defaults align with the dataset schema and FLS service normalizer. DB catalog outputs map to ORM-backed route serialization. KG diagnostics and evaluation request limits/types match their route and engine/service constructors. Prompt template models retain their field bounds, version, and traffic-weight constraints used by the route.

@@ -25,33 +25,12 @@ HIERARCHY_FAMILY_AGGREGATION_VALUES = ("frequency", "score", "combined")
 FUSION_CHANNELS = {"vector", "bm25", "lexical", "sparse"}
 
 
-def _validate_fusion_map_keys(raw: Any, *, field_name: str) -> dict | None:
-    if raw is None:
-        return None
-    if not isinstance(raw, dict):
-        raise ValueError(f"{field_name} must be an object/dict when provided")
-    for key in (str(k or "").strip().lower() for k in raw):
-        if key and key not in FUSION_CHANNELS:
-            raise ValueError(f"{field_name} keys must be one of: vector, bm25, lexical, sparse")
-    return raw
-
-
-def _validate_fusion_map_values(raw: dict | None, *, field_name: str, value_type: type) -> None:
+def _validate_fusion_map_keys(raw: dict[str, Any] | None, *, field_name: str) -> None:
     if raw is None:
         return
-    for value in raw.values():
-        if value is None:
-            continue
-        try:
-            value_type(value)
-        except Exception as exc:
-            label = "integers" if value_type is int else "numbers"
-            raise ValueError(f"{field_name} values must be {label}") from exc
-
-
-def _validate_fusion_map(raw: Any, *, field_name: str, value_type: type) -> None:
-    checked = _validate_fusion_map_keys(raw, field_name=field_name)
-    _validate_fusion_map_values(checked, field_name=field_name, value_type=value_type)
+    for key in (k.strip().lower() for k in raw):
+        if key and key not in FUSION_CHANNELS:
+            raise ValueError(f"{field_name} keys must be one of: vector, bm25, lexical, sparse")
 
 
 class DatasetChunkTargetsV2(BaseModel):
@@ -210,9 +189,9 @@ class DatasetRAGDefaults(BaseModel):
         Note: ChatRAGConfig re-validates these after merge; this is defense-in-depth
         for obviously invalid dataset metadata.
         """
-        _validate_fusion_map(self.fusion_budgets, field_name="fusion_budgets", value_type=int)
-        _validate_fusion_map(self.fusion_min_scores, field_name="fusion_min_scores", value_type=float)
-        _validate_fusion_map(self.fusion_weights, field_name="fusion_weights", value_type=float)
+        _validate_fusion_map_keys(self.fusion_budgets, field_name="fusion_budgets")
+        _validate_fusion_map_keys(self.fusion_min_scores, field_name="fusion_min_scores")
+        _validate_fusion_map_keys(self.fusion_weights, field_name="fusion_weights")
         return self
 
 
