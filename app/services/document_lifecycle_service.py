@@ -548,9 +548,9 @@ def _delete_document_record(
         resource_type="document",
         resource_id=str(document_id),
         details={
-            "dataset_id": str(document.dataset_id) if getattr(document, "dataset_id", None) else None,
-            "file_type": str(getattr(document, "file_type", "") or ""),
-            "file_size": int(getattr(document, "file_size", 0) or 0),
+            "dataset_id": str(document.dataset_id) if document.dataset_id else None,
+            "file_type": document.file_type,
+            "file_size": document.file_size,
         },
     )
     db.commit()
