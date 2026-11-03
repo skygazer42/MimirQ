@@ -224,8 +224,7 @@ def test_document_lifecycle_metadata_patch_rejects_self_supersedes(monkeypatch, 
 
 
 def test_document_qa_calls_the_qa_service(monkeypatch) -> None:
-    import app.api.v1.document_mutations as mutations_module
-    import app.api.v1.documents as documents_module
+    import app.services.document_qa_service as document_qa_service
 
     document_id = uuid.uuid4()
     tenant_id = uuid.uuid4()
@@ -244,15 +243,15 @@ def test_document_qa_calls_the_qa_service(monkeypatch) -> None:
         called.update(kwargs)
         return SimpleNamespace(mode="extract", deleted=0, created=1, chunk_ids=[], preview=[])
 
-    monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args: None, raising=True)
+    monkeypatch.setattr(document_qa_service.dataset_service, "ensure_member", lambda *_args: None, raising=True)
     monkeypatch.setattr(
-        mutations_module.document_access_service,
+        document_qa_service,
         "assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
-    monkeypatch.setattr(mutations_module, "audit_log_event", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(mutations_module, "generate_and_index_document_qa", _generate, raising=True)
+    monkeypatch.setattr(document_qa_service, "audit_log_event", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_qa_service, "generate_and_index_document_qa", _generate, raising=True)
 
     response = client.post(f"/api/v1/documents/{document_id}/qa/generate", json={"num_pairs": 3})
 

@@ -11,20 +11,27 @@ Design notes:
   include/exclude them via metadata_filter.
 """
 
+import contextlib
 import uuid
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
+from fastapi import HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.api.schemas.qa import DocumentQAGenerateRequest, DocumentQAGenerateResponse, QAPairPreview
 from app.core.config import settings
 from app.core.openai_compat import normalize_openai_compatible_base_url
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentParsedContent
 from app.rag.core.logging import get_logger
 from app.rag.retriever import hybrid_retriever
+from app.services import dataset_service
+from app.services.audit_log_service import audit_log_event
+from app.services.document_access_service import assert_document_writable_for_lifecycle
+from app.services.document_lifecycle_service import DOC_NOT_FOUND_DETAIL
 from app.services.indexer import Indexer
 from app.storage.vector.factory import get_vector_store
 
@@ -414,6 +421,62 @@ def generate_and_index_document_qa(
     )
 
 
+def generate_document_qa(
+    *,
+    document_id: UUID,
+    payload: DocumentQAGenerateRequest,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+) -> DocumentQAGenerateResponse:
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
+
+    assert_document_writable_for_lifecycle(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        document=document,
+    )
+
+    current_status = document.status.lower()
+    if current_status in {"pending", "processing"}:
+        raise HTTPException(status_code=409, detail=f"Cannot generate Q&A for a {current_status} document")
+
+    result = generate_and_index_document_qa(
+        db,
+        tenant_id=tenant_id,
+        document=document,
+        num_pairs=payload.num_pairs,
+        replace_existing=payload.replace_existing,
+        prefer_llm=payload.prefer_llm,
+        max_source_chars=payload.max_source_chars,
+        preview_pairs=payload.preview_pairs,
+    )
+    audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=account_id,
+        action="document.qa.generate",
+        resource_type="document",
+        resource_id=str(document_id),
+        details={"mode": result.mode, "deleted": result.deleted, "created": result.created},
+    )
+    with contextlib.suppress(Exception):
+        db.commit()
+
+    return DocumentQAGenerateResponse(
+        document_id=document_id,
+        mode=str(result.mode or "none"),
+        deleted=result.deleted,
+        created=result.created,
+        chunk_ids=result.chunk_ids,
+        preview=[QAPairPreview(**row) for row in result.preview],
+    )
+
+
 def _collect_active_qa_chunk_ids(
     db: Session,
     *,
@@ -706,5 +769,6 @@ __all__ = [
     "DocumentQAGenerateResult",
     "QAPair",
     "extract_qa_pairs_from_text",
+    "generate_document_qa",
     "generate_and_index_document_qa",
 ]

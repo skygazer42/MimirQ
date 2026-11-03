@@ -16,7 +16,13 @@ from app.api.schemas.document import (
 )
 from app.api.schemas.qa import DocumentQAGenerateRequest
 from app.api.v1 import document_mutations, document_processing, document_versions
-from app.services import document_access_service, document_batch_operations, document_processing_operations
+from app.services import (
+    document_access_service,
+    document_batch_operations,
+    document_metadata_operations,
+    document_processing_operations,
+    document_qa_service,
+)
 
 
 class _Query:
@@ -273,7 +279,7 @@ async def test_unassigned_document_processing_and_mutation_writes_require_edit_r
         raising=True,
     )
     monkeypatch.setattr(
-        document_mutations.dataset_service,
+        document_qa_service.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="viewer"),
         raising=True,
@@ -415,10 +421,19 @@ def test_document_mutation_endpoints_use_shared_unassigned_acl(monkeypatch: pyte
     sentinel = HTTPException(status_code=403, detail="shared-write-policy")
 
     monkeypatch.setattr(
-        document_mutations.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True
+        document_qa_service.dataset_service,
+        "ensure_member",
+        lambda *_args, **_kwargs: None,
+        raising=True,
     )
     monkeypatch.setattr(
-        document_mutations.document_access_service,
+        document_qa_service,
+        "assert_document_writable_for_lifecycle",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(sentinel),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        document_metadata_operations,
         "assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(sentinel),
         raising=True,
