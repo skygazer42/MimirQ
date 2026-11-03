@@ -28,6 +28,14 @@ def _model_cache_name(spec: SmallModelSpec) -> str:
     return "__".join([_slug(spec.task), _slug(spec.model_id), _slug(spec.repo_id or spec.model_id)])
 
 
+def _model_record(spec: SmallModelSpec) -> dict[str, Any]:
+    return {
+        "task": spec.task,
+        "model_id": spec.model_id,
+        "kind": spec.kind,
+    }
+
+
 def _iter_hf_specs(
     manifest: SmallModelManifest,
     *,
@@ -235,10 +243,8 @@ def bootstrap_selected_models(
         cpu_skip = _cpu_skip_reason(spec)
         if cpu_skip:
             models.append(
-                {
-                    "task": spec.task,
-                    "model_id": spec.model_id,
-                    "kind": spec.kind,
+                _model_record(spec)
+                | {
                     "repo_id": spec.repo_id,
                     "revision": spec.revision,
                     "status": "skipped",
@@ -248,10 +254,8 @@ def bootstrap_selected_models(
             continue
         if not spec.repo_id:
             models.append(
-                {
-                    "task": spec.task,
-                    "model_id": spec.model_id,
-                    "kind": spec.kind,
+                _model_record(spec)
+                | {
                     "status": "skipped",
                     "reason": "hf_repo_missing",
                 }
@@ -289,10 +293,8 @@ def bootstrap_selected_models(
             status = "downloaded_with_onnx"
 
         models.append(
-            {
-                "task": spec.task,
-                "model_id": spec.model_id,
-                "kind": spec.kind,
+            _model_record(spec)
+            | {
                 "repo_id": spec.repo_id,
                 "revision": spec.revision,
                 "status": status,
