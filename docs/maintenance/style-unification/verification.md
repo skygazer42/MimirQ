@@ -560,6 +560,12 @@
 - Task 6 分支提交 `dd346a767` 经独立审查通过并合并。`api/core.ts` 将 request preparation 与 unexpected HTML response guard 提取为具名内部 handlers，并以原顺序注册；auth header、preferred language、request ID、OIDC retry/redirect/session clearing、cancellation、rate limit、HTML guard 和错误传播边界保持。`api-client.ts` barrel 的导出与 legacy aliases 未变。
 - Direct importer scan、`git diff --check` 和 `git show --check` 通过。工作树缺少 `web/node_modules`，Corepack pnpm 为 12.4.1 而项目要求 10.26.0；因此 ESLint、Prettier、TypeScript 和前端 tests 未运行，未安装或绕过依赖限制。format_status 保留 pending。
 
+## 并行类别分支：Auth 与 Access API 类型
+
+- Task 6 分支 `a8363fbd` 经独立审查通过并合并。`auth.ts` 的 register/login/SAML payloads 与 `access.ts` 的 tenant/member/group requests 直接引用 generated OpenAPI owners；`tenant-permissions.ts` 复用 `TenantAccessOut`，并保留 optional `permissions` 的现有检查。
+- Bootstrap-token trimming/header、SAML text response、endpoint/method/body/path encoding 和 Axios/OpenAPI error propagation 均经 caller/schema scan 核对。无 UI 或测试更改。
+- `web/node_modules` 缺失且 Corepack pnpm 12.4.1 不符合项目要求 10.26.0，故 ESLint、Prettier、TypeScript 和运行时 API checks 未运行；未安装或绕过依赖。
+
 ## 并行类别分支：文档处理派发
 
 - Task 4 分支已合并。`app/tasks/jobs.py` 的文档处理 handoff 显式传入文件、文档、租户、parser 和 chunk strategy，并沿用 worker 的 session 所有权；`process_document_flow.py` 的 31 个 `service` 参数使用 `TYPE_CHECKING` 下的 `DocumentProcessorService` 前向引用，避免 `processor.py` 的反向导入形成 runtime cycle。
@@ -585,6 +591,16 @@
 
 - Task 4 分支提交 `a39c1ce48` 的路径输出问题经复审后修复为 `c7d792bb9` 并合并。`load_small_model_manifest` 仍按进程工作目录解析输入路径，`base_dir` 只决定 manifest 中模型资源的根目录；bootstrap 使用返回的 canonical `manifest.path` 序列化结果，保留显式相对 CLI 路径原有的绝对输出。
 - `hf_cache.py` 直接使用 path-like 下载结果，manifest 的字段解析、默认选择、cache path 和异常策略保持。Ruff check/format、四文件 AST、调用方扫描、diff check 和修复复审通过；未运行 Python tests、模型下载、HF/ONNX 加载或 parser service。
+
+## 并行类别分支：Chat Memory Runtime
+
+- Task 3 chat memory commit `418da77a` 独立审查通过并合并。long-term、summary 与 structured-memory 输入使用已声明的 tenant/conversation 类型；flag gating、检索顺序、limits、事务边界及 best-effort 路径保持。
+- Ruff check/format、AST、调用方扫描和 diff check 通过；未运行 Python tests、数据库、Redis 或 memory/model services。
+
+## 并行类别分支：Parser Backend Resolution
+
+- Task 4 backend resolution branch `1d39083f` 经独立只读审查通过并合并。仅在 `diagnostics.py` 将自身 sampling helper 保证返回的字典字段直接读取；`backends.py`、`factory.py`、`errors.py` 分别维持 canonical alias、stateful parser cache/plugin factory、subprocess error classifier owner。
+- 四文件 Ruff check/format、AST、caller scan 和 diff check 通过。未运行 Python tests、parser providers 或 runtime services。
 
 ## 并行类别分支：查询准备与扩展
 

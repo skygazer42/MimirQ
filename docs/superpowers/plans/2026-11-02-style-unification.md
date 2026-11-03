@@ -14,11 +14,11 @@
 
 - 主工作区：`E:/MimirQ`；分支：`codex/local-account-registration`。为提速，独立业务类别可从当前 HEAD 建立 `codex/*` 分支和 worktree；类别代码与调用方完成审阅后合并回此分支。
 - 原始基线：`77b6adc1bce523482f0509302a454ce20e01c41c`；数据集服务已提交为 `2c16dedf8`。前两批及第三批此前结果保留，不重新执行。
-- 当前覆盖表有 3,757 个文件：169 个已调整、58 个已符合、985 个登记保留、2,545 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
+- 当前覆盖表有 3,757 个文件：174 个已调整、61 个已符合、985 个登记保留、2,537 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
 - Task 3A 的 125 个 Python 文件已完成最终静态核对并按数据集类别提交；Task 3B 的权限、配额、SCIM、配置、通用 API、身份令牌、共享资源与健康观测已完成本轮代码整理与静态检查，继续核对其余基础模块。原有 `app/api/schemas/document.py` 修改另行保留。
 - 原工作区的 1,625 个未跟踪文件及其他既有修改保留；只按本批明确文件清单暂存，不使用 `git add .`，不执行全仓清理或重置。
 - 用户执行要求：提交按完整业务类别归并，不按函数、文件或每个检查步骤频繁提交；同一类别的定义、调用方、必要引用和验证记录一起提交。纯格式化仍独立成类。
-- 已完成并合并的并行类别分支：Task 5 dataset route planning/query preparation/hybrid fusion、Task 3 chat runtime/turn persistence、Task 4 batch ingestion/document dispatch/parser models、Task 6 settings API/types、Task 7 model bootstrap CLI；后续分支以最新主工作区提交为基线，不能把原有未提交文件带入提交。
+- 已完成并合并的并行类别分支：Task 5 dataset route planning/query preparation/hybrid fusion、Task 3 chat runtime/turn persistence/memory、Task 4 batch ingestion/document dispatch/parser models/parser backends、Task 6 settings API/core/auth-access、Task 7 model bootstrap CLI；后续分支以最新主工作区提交为基线，不能把原有未提交文件带入提交。
 
 ## 2. 已选定的统一标准
 
@@ -140,6 +140,8 @@ Chat runtime 独立类别分支已合并：`ChatRequest`、`ChatRAGConfig`、`Ra
 
 Chat turn execution/persistence slice 已合并：`ChatStreamPersistInput` 归入流持久化 owner，turn/stream callers 使用显式输入类型；9 个生产文件经独立审查与复审。发现并修复 UUID 类型导入及 Ruff import-order 错误，最终 Ruff check/format、AST 与 diff checks 通过；事务、会话范围和流事件顺序保留。Python tests 未运行。
 
+Chat memory runtime slice 已合并：long-term、summary 与 structured-memory flows 使用声明的 tenant/conversation inputs；flags、retrieval order、limits、transaction and best-effort boundaries 经独立审查，冗余 no-op guards 与 dynamic reads 按真实类型清理。Ruff/AST/caller checks 通过；Python tests 与 storage/runtime services 未运行。
+
 ### Task 4：文档处理链（进行中）
 
 入口：`app/api/v1/documents.py`、`document_batch_upload.py`、`document_batches.py`；权限涉及 `app/services/document_access.py`、`document_access_service.py`、`document_permission_service.py`；处理涉及 `app/services/ingestion_run_service.py`、`connector_run_executor.py`、`app/parsing/processors/support/process_document_flow.py`、`app/tasks/jobs.py`、`app/tasks/worker.py`、`app/storage/object/`。
@@ -207,6 +209,8 @@ Task 4 document-dispatch slice is merged. `jobs.py` now passes the declared proc
 
 Task 4 parser model-cache/manifest slice is merged. Model cache snapshots now consume the documented path-like result directly; manifest fields retain their declared types and normalization. The loader remains the owner of resolving the manifest and the CLI serializes its resolved `manifest.path`, preserving the prior absolute result for relative inputs. Ruff/format, four-file AST, caller scan and scoped review passed; model downloads and parser runtime were not run.
 
+Parser backend sub-slice reviewed four files: aliases remain owned by `backends.py`; the parser factory retains its class because it owns cached parser instances and lazy optional-plugin construction; `errors.py` keeps dynamic metadata at the subprocess boundary. `diagnostics.py` now consumes its own sampling helper's guaranteed `is_scanned` field directly. Ruff/format, AST and caller scan passed; parser providers were not run.
+
 ### Task 5：RAG 与模型调用（进行中）
 
 入口：`app/api/v1/rag.py`、`app/rag/engine.py`、`app/rag/engine_support/`、`app/rag/retrieval/orchestration/`、`app/rag/embedding/`、`app/rag/reranker/`、`app/rag/llm/`，以及实际索引所有者 `app/services/indexer.py`、`app/services/indexing/`、`app/services/dataset_embedding_config.py` 和 `app/storage/vector/`；同批覆盖其实际检索、索引、KG、评估与工具调用模块。
@@ -254,6 +258,8 @@ Hybrid candidate fusion reuses the shared stable `result_key` owner and metadata
 设置 API 与共享类型首片已合并：保留 `settingsApi` 的四个方法、`settingsApiLegacy` 兼容导出、endpoint 与错误传播；手工响应形状明确为共享类型。该 worktree 缺少 `web/node_modules`，ESLint、Prettier、TypeScript 和前端 tests 未运行，因此格式状态仍为 pending。
 
 Shared API core slice 已合并：request/response interceptors 仅提取为具名内部 handlers，注册顺序和行为保持；auth、OIDC refresh/retry、cancellation、request ID、rate-limit、HTML response 和错误传播经独立审阅。Barrel re-export surface 未改；工具链因 `web/node_modules` 缺失及 pnpm 版本不符未运行。
+
+Auth/access API 首片已合并：`auth.ts` 与 `access.ts` 的 duplicate request/response shapes 改为直接使用 OpenAPI owners，`tenant-permissions.ts` reuse generated `TenantAccessOut`; SAML/bootstrap token, member/group paths and role payloads retain their existing wire contracts. No UI change; frontend lint/type/runtime checks remain unverified because the required web dependency tree is unavailable.
 
 ### Task 7：脚本与全仓收尾
 

@@ -480,8 +480,8 @@ app/models/tenant_group.py,3,adjusted,conforms,Correct stale group ACL descripti
 app/models/user.py,3,conforms,conforms,Account constraints and nullable fields reviewed; ORM schema unchanged,Task 3 identity: 10-module Ruff/format/AST; 35 signatures; 69 static calls; Python tests deferred
 app/parsing/__init__.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/parsing/artifact_stats.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/parsing/backends.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/parsing/diagnostics.py,4,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/parsing/backends.py,4,conforms,adjusted,Typed backend alias normalization remains the single canonical owner,Ruff check/format; registry and route callers reviewed; aliases retained; tests not run
+app/parsing/diagnostics.py,4,adjusted,conforms,PDF sampling guarantees the diagnostic dict shape,Ruff check/format; direct `is_scanned` read; parsing callers scanned; tests not run
 app/parsing/enrich/__init__.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/parsing/enrich/caption_linker.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/parsing/enrich/chart_to_data.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -507,8 +507,8 @@ app/parsing/enrich/table_structure_adapter.py,4,pending,adjusted,Awaiting file-l
 app/parsing/enrich/vlm_image_caption.py,4,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/parsing/enrich/watermark_detector.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/parsing/enrich/watermark_suppressor.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/parsing/errors.py,4,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/parsing/factory.py,4,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/parsing/errors.py,4,conforms,conforms,Typed parse errors own stable classification at the subprocess boundary,Ruff check/format; exception adapter contract reviewed; tests not run
+app/parsing/factory.py,4,conforms,conforms,Stateful parser cache and lazy plugin factory remain explicit owners,Ruff check/format; registry dispatch, config gates, and fallback boundaries reviewed; tests not run
 app/parsing/models/__init__.py,4,conforms,conforms,Public parser-model exports remain a compatibility surface,Ruff/AST and caller scan reviewed; exports retained; tests not run
 app/parsing/models/hf_cache.py,4,adjusted,adjusted,Hugging Face snapshot path uses the declared path-like return contract,Ruff check/format; direct provisioning caller reviewed; downloads not run
 app/parsing/models/manifest.py,4,adjusted,adjusted,Manifest models use typed string inputs and retain normalization; path root and validation ownership stay explicit,Ruff check/format; caller and relative manifest output contract reviewed; tests not run
@@ -1209,7 +1209,7 @@ app/services/chat_conversation_access.py,3,adjusted,conforms,Conversation owner,
 app/services/chat_conversation_titles.py,3,adjusted,conforms,Conversation title fields read by declared ORM types; query remains tenant-scoped,Ruff check/format; title_source migration is NOT NULL; Python tests not run
 app/services/chat_execution_runtime.py,3,adjusted,conforms,Chat execution consumes explicit runtime contracts,Ruff check/format; callsites and fallback boundaries reviewed; tests not run
 app/services/chat_image_service.py,3,pending,adjusted,Awaiting file-level convention and contract review; Dataset caller migration only; full module semantic review remains pending,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending; task-3-dataset-final: Ruff/AST/signature checks; no Python tests
-app/services/chat_memory_runtime.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/services/chat_memory_runtime.py,3,adjusted,adjusted,Chat memory uses declared tenant/conversation inputs and explicit owners,Ruff check/format; flags, lookup order, limits and failure policy reviewed; tests not run
 app/services/chat_persistence.py,3,adjusted,conforms,Chat response persistence uses explicit payload contracts,Ruff check/format; transaction order and caller fields reviewed; tests not run
 app/services/chat_response_cache.py,3,adjusted,adjusted,Cache key dependency uses the SQLAlchemy Session contract,Ruff check/format; Session owner and callers reviewed; tests not run
 app/services/chat_runtime.py,3,adjusted,adjusted,Chat runtime imports and forwards its actual service owners,Ruff check/format; UUID annotation contract and callers reviewed; tests not run
@@ -3357,9 +3357,9 @@ web/lib/api-client.ts,6,conforms,pending,Compatibility barrel remains the single
 web/lib/api-error-reporting.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api-errors.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api-runtime-contracts.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/access.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/lib/api/access.ts,6,adjusted,pending,Access API requests use generated schemas for member and group contracts,Methods paths encoding and error propagation reviewed; frontend checks unavailable; tests not run
 web/lib/api/audit.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/auth.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/lib/api/auth.ts,6,adjusted,pending,Auth API uses generated request and response contracts,SAML and bootstrap-token semantics reviewed; frontend checks unavailable; tests not run
 web/lib/api/chat.auth-fetch.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/chat.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/connectors.ts,6,pending,pending,Awaiting file-level convention and contract review,
@@ -3496,7 +3496,7 @@ web/lib/source-test-utils.ts,6,pending,pending,Awaiting file-level convention an
 web/lib/sse-reader.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/sse.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/stale-chunk-recovery.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/tenant-permissions.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/lib/tenant-permissions.ts,6,adjusted,pending,TenantAccess response shape reuses the generated schema,Optional permissions behavior retained; direct callers reviewed; frontend checks unavailable
 web/lib/theme-surface.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/theme-surface.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/upload-extensions.ts,6,pending,pending,Awaiting file-level convention and contract review,
