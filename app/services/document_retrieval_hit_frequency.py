@@ -124,12 +124,12 @@ def compute_document_retrieval_hit_frequency(
     max_bytes: int = 5_000_000,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    enabled = bool(settings.ENABLE_METRICS_LOG)
-    path_str = str(settings.METRICS_LOG_PATH or "./logs/rag_metrics.jsonl")
+    enabled = settings.ENABLE_METRICS_LOG
+    path_str = settings.METRICS_LOG_PATH or "./logs/rag_metrics.jsonl"
     path = Path(path_str)
 
-    window_minutes_i = max(1, min(int(window_minutes or 0), 60 * 24 * 30))
-    max_bytes_i = max(1, min(int(max_bytes or 0), 50_000_000))
+    window_minutes_i = max(1, min(window_minutes, 60 * 24 * 30))
+    max_bytes_i = max(1, min(max_bytes, 50_000_000))
     now0 = now or datetime.now(UTC)
     cutoff_ms = int(now0.timestamp() * 1000) - (window_minutes_i * 60 * 1000)
 
@@ -149,7 +149,7 @@ def compute_document_retrieval_hit_frequency(
         cutoff_ms=cutoff_ms,
     )
 
-    hit_rate = (float(traces_with_hits) / float(traces_scanned)) if traces_scanned else None
+    hit_rate = traces_with_hits / traces_scanned if traces_scanned else None
 
     return {
         "enabled": True,
@@ -157,12 +157,12 @@ def compute_document_retrieval_hit_frequency(
         "path": path_str,
         "window_minutes": window_minutes_i,
         "max_bytes": max_bytes_i,
-        "truncated": bool(truncated),
-        "traces_scanned": int(traces_scanned),
-        "traces_with_hits": int(traces_with_hits),
-        "citations_matched": int(citations_matched),
-        "unique_chunks_matched": int(len(unique_chunk_ids)),
-        "hit_rate": (round(float(hit_rate), 4) if hit_rate is not None else None),
+        "truncated": truncated,
+        "traces_scanned": traces_scanned,
+        "traces_with_hits": traces_with_hits,
+        "citations_matched": citations_matched,
+        "unique_chunks_matched": len(unique_chunk_ids),
+        "hit_rate": round(hit_rate, 4) if hit_rate is not None else None,
     }
 
 
