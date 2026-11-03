@@ -42,19 +42,19 @@ _GENERIC_ALT_RE = re.compile(r"^(image|figure|photo|picture|diagram|chart|page\\
 
 
 def _normalize_caption_check(line: str) -> str:
-    s = (line or "").strip()
+    s = line.strip()
     while s.startswith(">"):
         s = s[1:].lstrip()
     return s.lower()
 
 
 def _looks_like_table_row(line: str) -> bool:
-    s = (line or "").strip()
+    s = line.strip()
     return s.startswith("|") and s.endswith("|") and s.count("|") >= 2
 
 
 def _clean_caption_text(s: str, *, max_chars: int) -> str:
-    cleaned = re.sub(r"\s+", " ", str(s or "")).strip()
+    cleaned = re.sub(r"\s+", " ", s).strip()
     if not cleaned:
         return ""
     if max_chars > 0 and len(cleaned) > max_chars:
@@ -64,18 +64,18 @@ def _clean_caption_text(s: str, *, max_chars: int) -> str:
 
 def _extract_md_images(line: str) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
-    for alt, src in _MD_IMAGE_RE.findall(line or ""):
-        out.append((alt or "", src or ""))
+    for alt, src in _MD_IMAGE_RE.findall(line):
+        out.append((alt, src))
     # Reference-style image doesn't include src; keep alt only.
-    for alt, _ref in _MD_IMAGE_REF_RE.findall(line or ""):
+    for alt, _ref in _MD_IMAGE_REF_RE.findall(line):
         if alt:
-            out.append((alt or "", ""))
+            out.append((alt, ""))
     return out
 
 
 def _extract_html_imgs(line: str) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
-    for tag in _HTML_IMG_TAG_RE.findall(line or ""):
+    for tag in _HTML_IMG_TAG_RE.findall(line):
         alt = ""
         src = ""
         for key, _q, val in _HTML_IMG_ATTR_RE.findall(tag):
@@ -84,7 +84,7 @@ def _extract_html_imgs(line: str) -> list[tuple[str, str]]:
                 alt = val
             elif k == "src":
                 src = val
-        out.append((alt or "", src or ""))
+        out.append((alt, src))
     return out
 
 
@@ -233,13 +233,13 @@ class VLMImageCaptionAudit:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "applied": bool(self.applied),
-            "captions_added": int(self.captions_added),
-            "images_attempted": int(self.images_attempted),
-            "images_succeeded": int(self.images_succeeded),
-            "elapsed_ms": int(self.elapsed_ms),
-            "backend": str(self.backend or ""),
-            "error": (str(self.error)[:200] if self.error else None),
+            "applied": self.applied,
+            "captions_added": self.captions_added,
+            "images_attempted": self.images_attempted,
+            "images_succeeded": self.images_succeeded,
+            "elapsed_ms": self.elapsed_ms,
+            "backend": self.backend,
+            "error": (self.error[:200] if self.error else None),
         }
 
 
@@ -264,18 +264,18 @@ def _invalid_vlm_result(
 
 
 def _extract_line_images(line: str) -> tuple[int, list[tuple[str, str]]]:
-    token_start = (line or "").find("![")
+    token_start = line.find("![")
     if token_start >= 0:
-        tail = (line or "")[token_start:]
+        tail = line[token_start:]
         tail_wo_images = _MD_IMAGE_RE.sub("", tail)
         tail_wo_images = _MD_IMAGE_REF_RE.sub("", tail_wo_images)
         if (_MD_IMAGE_RE.search(tail) or _MD_IMAGE_REF_RE.search(tail)) and not tail_wo_images.strip():
             return token_start, _extract_md_images(tail)
         return token_start, []
 
-    token_start = (line or "").lower().find("<img")
+    token_start = line.lower().find("<img")
     if token_start >= 0:
-        tail = (line or "")[token_start:]
+        tail = line[token_start:]
         if _HTML_IMG_TAG_RE.search(tail) and not _HTML_IMG_TAG_RE.sub("", tail).strip():
             return token_start, _extract_html_imgs(tail)
     return -1, []
@@ -287,7 +287,7 @@ def _next_line_has_caption(lines: list[str], idx: int) -> bool:
 
 
 def _filename_caption(src: str, *, max_caption_chars: int) -> str:
-    return _clean_caption_text(Path(unquote(str(src or "").strip())).name, max_chars=max_caption_chars)
+    return _clean_caption_text(Path(unquote(src.strip())).name, max_chars=max_caption_chars)
 
 
 def _resolve_vlm_caption(
@@ -333,7 +333,7 @@ def _resolve_line_captions(
     max_bytes: int,
     max_caption_chars: int,
 ) -> tuple[int, list[str], int, int]:
-    if remaining <= 0 or _looks_like_table_row(line) or not (line or "").strip() or _next_line_has_caption(lines, idx):
+    if remaining <= 0 or _looks_like_table_row(line) or not line.strip() or _next_line_has_caption(lines, idx):
         return -1, [], 0, 0
 
     token_start, images = _extract_line_images(line)
@@ -363,7 +363,7 @@ def _resolve_line_captions(
 
 
 def _advance_fence_state(line: str, *, in_fence: bool) -> tuple[bool, bool]:
-    if _FENCE_RE.match(line or ""):
+    if _FENCE_RE.match(line):
         return not in_fence, True
     return in_fence, bool(in_fence)
 
@@ -382,11 +382,11 @@ def add_vlm_image_captions(
     """
     Insert VLM captions after inline images in markdown (best-effort).
     """
-    raw = str(markdown or "")
+    raw = markdown
     if not raw:
         return _invalid_vlm_result("", error=None)
 
-    url = str(api_url or "").strip()
+    url = api_url.strip()
     if not url:
         return _invalid_vlm_result(raw, error="missing_api_url")
 

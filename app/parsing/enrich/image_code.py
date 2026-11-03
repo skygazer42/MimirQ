@@ -30,12 +30,12 @@ _MINIO_URL_HINT = "/api/v1/documents/image-url/"
 
 
 def _extract_md_images(line: str) -> list[tuple[str, str]]:
-    return [(alt or "", src or "") for alt, src in _MD_IMAGE_RE.findall(line or "")]
+    return list(_MD_IMAGE_RE.findall(line))
 
 
 def _extract_html_imgs(line: str) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
-    for tag in _HTML_IMG_TAG_RE.findall(line or ""):
+    for tag in _HTML_IMG_TAG_RE.findall(line):
         alt = ""
         src = ""
         for key, _q, val in _HTML_IMG_ATTR_RE.findall(tag):
@@ -44,7 +44,7 @@ def _extract_html_imgs(line: str) -> list[tuple[str, str]]:
                 alt = val
             elif k == "src":
                 src = val
-        out.append((alt or "", src or ""))
+        out.append((alt, src))
     return out
 
 
@@ -107,7 +107,7 @@ def _read_local_image_bytes(path_obj: Path, *, max_bytes: int) -> tuple[bytes | 
 
 
 def _safe_read_local_image_bytes(*, src: str, origin_path: Path, max_bytes: int) -> tuple[bytes | None, str]:
-    raw = str(src or "").strip()
+    raw = src.strip()
     if not raw:
         return None, "empty_src"
     if raw.startswith("data:"):
@@ -135,20 +135,20 @@ class ImageCodeAudit:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "applied": bool(self.applied),
-            "codes_added": int(self.codes_added),
-            "images_attempted": int(self.images_attempted),
-            "images_succeeded": int(self.images_succeeded),
-            "elapsed_ms": int(self.elapsed_ms),
-            "backend": str(self.backend or ""),
+            "applied": self.applied,
+            "codes_added": self.codes_added,
+            "images_attempted": self.images_attempted,
+            "images_succeeded": self.images_succeeded,
+            "elapsed_ms": self.elapsed_ms,
+            "backend": self.backend,
             "code_elements": list(self.code_elements or []),
-            "error": (str(self.error)[:200] if self.error else None),
+            "error": (self.error[:200] if self.error else None),
         }
 
 
 def _next_non_empty_line(lines: list[str], start: int, *, limit: int = 4) -> str:
     for index in range(start + 1, min(len(lines), start + limit)):
-        candidate = (lines[index] or "").strip()
+        candidate = lines[index].strip()
         if candidate:
             return candidate
     return ""
@@ -262,7 +262,7 @@ def add_image_code_blocks(
     max_image_bytes: int = 5_000_000,
     max_code_chars: int = 500,
 ) -> tuple[str, int, ImageCodeAudit]:
-    raw = str(markdown or "")
+    raw = markdown
     if not raw:
         return (
             "",
@@ -306,7 +306,7 @@ def add_image_code_blocks(
 
     lines = raw.splitlines()
     for index, line in enumerate(lines):
-        if _FENCE_RE.match(line or ""):
+        if _FENCE_RE.match(line):
             in_fence = not in_fence
             out_lines.append(line)
             continue
