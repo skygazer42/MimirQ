@@ -1,37 +1,36 @@
-import importlib
 from collections.abc import Awaitable, Callable
 from uuid import UUID
 
+from app.services.connector_execution.confluence import execute as _execute_confluence_space
+from app.services.connector_execution.db_catalog import execute as _execute_db_catalog
+from app.services.connector_execution.drive_files import execute as _execute_drive_files
+from app.services.connector_execution.github_repo import execute as _execute_github_repo
+from app.services.connector_execution.jira import execute as _execute_jira_project
+from app.services.connector_execution.minio_bucket import execute as _execute_minio_bucket
+from app.services.connector_execution.url_batch import execute as _execute_url_batch
+from app.services.connector_execution.web_crawl import execute as _execute_web_crawl
+
 ConnectorExecutor = Callable[..., Awaitable[None]]
 
-_CONNECTOR_EXECUTOR_NAMES = {
-    "url_batch": "_execute_url_batch_run",
-    "web_crawl": "_execute_web_crawl_run",
-    "github_repo": "_execute_github_repo_run",
-    "drive_files": "_execute_drive_files_run",
-    "minio_bucket": "_execute_minio_bucket_run",
-    "confluence_space": "_execute_confluence_space_run",
-    "jira_project": "_execute_jira_project_run",
-    "mysql_catalog": "_execute_db_catalog_run",
-    "sqlserver_catalog": "_execute_db_catalog_run",
+_CONNECTOR_EXECUTORS: dict[str, ConnectorExecutor] = {
+    "url_batch": _execute_url_batch,
+    "web_crawl": _execute_web_crawl,
+    "github_repo": _execute_github_repo,
+    "drive_files": _execute_drive_files,
+    "minio_bucket": _execute_minio_bucket,
+    "confluence_space": _execute_confluence_space,
+    "jira_project": _execute_jira_project,
+    "mysql_catalog": _execute_db_catalog,
+    "sqlserver_catalog": _execute_db_catalog,
 }
 
 
 def is_supported_connector_run(connector_id: str) -> bool:
-    return connector_id.strip() in _CONNECTOR_EXECUTOR_NAMES
+    return connector_id.strip() in _CONNECTOR_EXECUTORS
 
 
 def _resolve_connector_executor(connector_id: str) -> ConnectorExecutor | None:
-    executor_name = _CONNECTOR_EXECUTOR_NAMES.get(connector_id.strip())
-    if executor_name is None:
-        return None
-
-    # Connector executors still live behind the API module compatibility surface.
-    # Keep that dependency lazy and centralized so queue workers do not import API
-    # routers during module initialization or through scattered local imports.
-    connectors_module = importlib.import_module("app.api.v1.connectors")
-    executor = getattr(connectors_module, executor_name, None)
-    return executor if callable(executor) else None
+    return _CONNECTOR_EXECUTORS.get(connector_id.strip())
 
 
 get_connector_run_executor = _resolve_connector_executor
