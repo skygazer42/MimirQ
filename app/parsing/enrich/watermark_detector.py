@@ -25,8 +25,8 @@ class WatermarkRemovalResult:
         return {
             "schema": "mimirq.watermark_removal.v1",
             "method": self.method,
-            "changed": bool(self.changed),
-            "removed_count": int(self.removed_count),
+            "changed": self.changed,
+            "removed_count": self.removed_count,
             "removed_ids": list(self.removed_ids),
             "pages": list(self.pages),
             "reasons": dict(self.reasons),
@@ -66,12 +66,12 @@ def _kind_value(element: Mapping[str, Any]) -> str:
 def _page_value(element: Mapping[str, Any]) -> int | None:
     page = _coerce_int(element.get("page"))
     if page is not None and page > 0:
-        return int(page)
+        return page
     pages = element.get("pages")
     if isinstance(pages, list) and pages:
         first = _coerce_int(pages[0])
         if first is not None and first > 0:
-            return int(first)
+            return first
     return None
 
 
@@ -101,10 +101,10 @@ def _page_bounds(elements: Sequence[Mapping[str, Any]]) -> dict[int, tuple[float
         if y0 is None or y1 is None:
             continue
         if page not in bounds:
-            bounds[int(page)] = (float(y0), float(y1))
+            bounds[page] = (y0, y1)
             continue
-        top, bottom = bounds[int(page)]
-        bounds[int(page)] = (min(top, float(y0)), max(bottom, float(y1)))
+        top, bottom = bounds[page]
+        bounds[page] = (min(top, y0), max(bottom, y1))
     return bounds
 
 
@@ -117,15 +117,15 @@ def _is_center_overlay_candidate(element: Mapping[str, Any], bounds: Mapping[int
     y1 = _coerce_float(bbox.get("y1"))
     if y0 is None or y1 is None:
         return False
-    top, bottom = bounds.get(int(page), (0.0, 0.0))
-    height = max(1.0, float(bottom) - float(top))
-    cy = ((float(y0) + float(y1)) / 2.0) - float(top)
+    top, bottom = bounds.get(page, (0.0, 0.0))
+    height = max(1.0, bottom - top)
+    cy = ((y0 + y1) / 2.0) - top
     ratio = cy / height
     return 0.18 <= ratio <= 0.82
 
 
 def _normalize_text(text: str) -> str:
-    normalized = _SPACE_RE.sub("", str(text or "").strip().lower())
+    normalized = _SPACE_RE.sub("", text.strip().lower())
     return normalized
 
 
@@ -134,7 +134,7 @@ def _is_known_export_noise(text: str) -> bool:
 
 
 def _is_removable_kind(kind: str) -> bool:
-    return str(kind or "").strip().lower() not in {"table", "equation", "formula", "seal"}
+    return kind.strip().lower() not in {"table", "equation", "formula", "seal"}
 
 
 def _repeated_overlay_key(
@@ -178,7 +178,7 @@ def _collect_remove_indexes(
             continue
         page = _page_value(element)
         if page is not None:
-            repeated_candidates[candidate].append((index, int(page)))
+            repeated_candidates[candidate].append((index, page))
 
     for entries in repeated_candidates.values():
         candidate_pages = {page for _index, page in entries}
@@ -209,7 +209,7 @@ def _result_from_removed_indexes(
     return WatermarkRemovalResult(
         elements=kept,
         changed=True,
-        removed_count=int(len(remove_indexes)),
+        removed_count=len(remove_indexes),
         removed_ids=removed_ids,
         pages=pages,
         reasons=dict(reasons),
@@ -225,9 +225,9 @@ def remove_document_watermark_elements(
     if not original:
         return WatermarkRemovalResult(elements=[], changed=False, removed_count=0, removed_ids=[], pages=[])
 
-    pages = sorted({int(page) for item in original if (page := _page_value(item)) is not None})
+    pages = sorted({page for item in original if (page := _page_value(item)) is not None})
     bounds = _page_bounds(original)
-    threshold = max(2, int(min_pages or 2))
+    threshold = max(2, min_pages)
     remove_indexes, reason_by_index = _collect_remove_indexes(original, bounds=bounds, threshold=threshold)
     if not remove_indexes:
         return WatermarkRemovalResult(elements=original, changed=False, removed_count=0, removed_ids=[], pages=pages)
