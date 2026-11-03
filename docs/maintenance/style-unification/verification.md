@@ -484,6 +484,11 @@
 - External conversation validators trim declared string fields after Pydantic type validation; source allowlist, string/list bounds, and non-empty requirements remain. Request/response schema fields did not change.
 - Ruff check、Ruff format --check 与 diff check 通过。Python tests 与 API runtime 未运行；invalid-input responses remain schema validation failures, but exact payloads were not runtime-tested.
 
+## 第三批：Timeline, document health, and evidence schemas
+
+- Document timeline schemas expose the route's audit/synthetic fields and PII-minimal details. Document health schemas compose route-created parsing/chunking objects and optional best-effort diagnostics. Evidence audit and repair schemas match their service/API response constructors; repair controls keep explicit dry-run defaults and bounds for items, references, and changes.
+- Ruff check 与 Ruff format --check passed on all four files. Schemas are marked conforming; Python tests, API runtime, and database behavior were not tested.
+
 ## 第三批：Table SQL fingerprint utility
 
 - Fingerprint normalization consumes its declared string input directly; whitespace, identifier normalization, literal preservation, and default digest length remain unchanged. The four production callers pass SQL text; the table-store boundary performs its explicit conversion before calling.

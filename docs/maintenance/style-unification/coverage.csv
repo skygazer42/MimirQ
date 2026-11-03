@@ -89,12 +89,12 @@ app/api/schemas/dataset_profile.py,3,conforms,conforms,Profile response models u
 app/api/schemas/db_catalog.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/document.py,3,pending,conforms,UrlUploadRequest and LocalHtmlIngestRequest are schema-owned; preserve the user's leading blank; full file review remains pending,LocalHtmlIngestRequest class AST matches the former route definition; Ruff check passes; formatter's existing leading-blank issue is preserved
 app/api/schemas/document_folders.py,4,conforms,adjusted,Existing typed Pydantic tree and response models already follow selected conventions; bounds and recursive model registration retained,Task 4 read views: 11 normalized module ASTs; 59 parameter contracts; 7 routes; 10 HTTP errors; 725 bound calls; Ruff/format; no Python tests
-app/api/schemas/document_health.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/schemas/document_timeline.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/api/schemas/document_health.py,3,conforms,adjusted,Typed health response fields match the PII-safe route builder,Ruff check/format; detail/aggregate fields reviewed; Python tests not run
+app/api/schemas/document_timeline.py,3,conforms,adjusted,Typed timeline response models preserve the PII-minimal audit projection,Ruff check/format; route item constructors match fields; Python tests not run
 app/api/schemas/evaluation.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/evidence.py,3,adjusted,conforms,Pydantic v2 model_fields_set is read directly for empty patch rejection,Ruff check/format; patch response shape unchanged; Python tests not run
-app/api/schemas/evidence_audit.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/schemas/evidence_repair.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/api/schemas/evidence_audit.py,3,conforms,adjusted,Audit response uses typed counters and bounded PII-safe reference detail fields,Ruff check/format; service return constructor mapped; Python tests not run
+app/api/schemas/evidence_repair.py,3,conforms,adjusted,Repair requests retain explicit dry-run defaults and item/reference/change bounds,Ruff check/format; API response constructor mapped; Python tests not run
 app/api/schemas/external_conversation.py,3,adjusted,conforms,Typed string fields are trimmed directly after Pydantic validation,Ruff check/format; source and message bounds retained; Python tests not run
 app/api/schemas/feedback.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/fls_policy.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
