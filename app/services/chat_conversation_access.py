@@ -10,17 +10,17 @@ from app.services.document_access import get_allowed_document_id_sets
 CONVERSATION_NOT_ACCESSIBLE_DETAIL = "Conversation is not accessible"
 
 
-def _normalized_account_id(value: object) -> str | None:
-    account_id = str(value or "").strip()
+def _normalized_account_id(value: str | UUID | None) -> str | None:
+    account_id = str(value).strip() if value is not None else ""
     return account_id or None
 
 
 def _conversation_owner_account_id(conv: Conversation) -> str | None:
-    return _normalized_account_id(getattr(conv, "owner_account_id", None))
+    return _normalized_account_id(conv.owner_account_id)
 
 
 def _conversation_legacy_user_id(conv: Conversation) -> str | None:
-    return _normalized_account_id(getattr(conv, "user_id", None))
+    return _normalized_account_id(conv.user_id)
 
 
 def resolve_conversation_owner_account_id(conv: Conversation) -> str | None:
@@ -30,10 +30,9 @@ def resolve_conversation_owner_account_id(conv: Conversation) -> str | None:
     return _conversation_legacy_user_id(conv)
 
 
-def _ensure_conversation_owner(db: Session, tenant_id: UUID, account_id: str, conv: Conversation) -> None:
-    del db, tenant_id
+def _ensure_conversation_owner(account_id: str, conv: Conversation) -> None:
     owner_account_id = resolve_conversation_owner_account_id(conv)
-    if not owner_account_id or owner_account_id != str(account_id or "").strip():
+    if not owner_account_id or owner_account_id != account_id.strip():
         raise HTTPException(status_code=403, detail=CONVERSATION_NOT_ACCESSIBLE_DETAIL)
 
 
@@ -44,7 +43,7 @@ def ensure_conversation_dataset_access(
     account_id: str,
     conv: Conversation,
 ) -> None:
-    dataset_id = getattr(conv, "dataset_id", None)
+    dataset_id = conv.dataset_id
     if dataset_id is None:
         return
     dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
@@ -61,7 +60,7 @@ def ensure_conversation_access(
     Ensure the current user can access all documents bound to the conversation.
     Returns the allowed document ids, or an empty list if the conversation is unscoped.
     """
-    _ensure_conversation_owner(db, tenant_id, account_id, conv)
+    _ensure_conversation_owner(account_id, conv)
     ensure_conversation_dataset_access(
         db,
         tenant_id=tenant_id,
@@ -80,7 +79,7 @@ def ensure_conversation_access(
     )
     remaining = [doc_id for doc_id in doc_ids if doc_id not in missing_ids]
     if remaining != doc_ids:
-        preserved_updated_at = getattr(conv, "updated_at", None)
+        preserved_updated_at = conv.updated_at
         db.query(Conversation).filter(
             Conversation.id == conv.id,
             Conversation.tenant_id == tenant_id,

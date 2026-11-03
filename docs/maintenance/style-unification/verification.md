@@ -450,3 +450,9 @@
 
 - Conversation title/title_source 与 message content 按声明 ORM 字段读取；title_source 的 migration 是 NOT NULL。自动标题派生保留 None/空标题处理，latest-user query 保持 tenant/conversation/role 过滤及时间、ID 排序。
 - Ruff check、Ruff format --check 与 `git diff --check` 通过。本文件标记为已调整；Python tests 和数据库流程未运行。
+
+## 第三批：Conversation access and scope
+
+- Access helper reads the declared owner, legacy user ID, dataset ID and update timestamp fields. The legacy UUID-to-account string owner fallback remains; unused database/tenant parameters were removed from the private owner check.
+- Chat scope uses direct Conversation fields and explicit query-not-found handling. Tenant filters, owner denial, dataset readability, missing-document pruning/commit, and existing 403/404/409 responses remain in their original order.
+- Ruff check、Ruff format --check、stale-guard scan 与 diff check 通过。Python tests 和 database flows 未运行。

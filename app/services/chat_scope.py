@@ -162,7 +162,7 @@ def _get_existing_conversation_scope(
         conversation.dataset_id = None
         return None, allowed_doc_ids
 
-    scope_dataset_id = getattr(conversation, "dataset_id", None)
+    scope_dataset_id = conversation.dataset_id
     if scope_dataset_id is None and not allow_open_scope:
         raise HTTPException(status_code=400, detail=dataset_required_detail)
     return scope_dataset_id, []
@@ -216,7 +216,7 @@ def _load_conversation(
         )
         .first()
     )
-    if not conversation:
+    if conversation is None:
         raise HTTPException(status_code=404, detail=conversation_not_found_detail)
     ensure_conversation_access(db, tenant_id, account_id, conversation)
     return conversation
@@ -234,7 +234,7 @@ def _create_conversation(
     conversation = Conversation(
         id=uuid4(),
         tenant_id=tenant_id,
-        owner_account_id=str(account_id or "").strip() or None,
+        owner_account_id=account_id.strip() or None,
         title_source=CONVERSATION_TITLE_SOURCE_AUTO,
         dataset_id=scope_dataset_id,
         document_ids=allowed_doc_ids,
