@@ -204,6 +204,8 @@ Chunk-write routes 直接依赖 ORM、`Indexer`、ACL、审计和 index-audit ow
 
 Reranker shim 明确识别 registry 中的 disabled aliases，并仅在 provider module 缺失时退回 identity；未知 provider 和其他初始化错误保留为显式失败。Hybrid ranking 已在调用 factory 前跳过关闭的 provider。
 
+KG chunk-injection wrapper 直接返回 `KGEngine.search` 的声明结果，不把契约错误转换为空结果；query-expansion owner 的 `KGResponseContractError` 校验保持在原边界。
+
 - [ ] 按查询准备 → 通道召回 → 融合／重排 → 上下文 → 模型／流式返回的顺序追踪数据和预算，再处理各条依赖链。
 - [ ] 合并经证实重复的参数映射与控制流，核对动态取值和无依据默认值；保留供应商协议适配、可选插件边界和有状态资源。
 - [ ] 核对排名、阈值、缓存键、配置指纹、超时、取消、预算和流事件；不为缩短函数改变策略或事件顺序。

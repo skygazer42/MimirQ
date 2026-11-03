@@ -393,3 +393,8 @@
 - `reranker_factory` 使用 `RerankCandidate` 的声明字段并在一次遍历中构造 identity 结果；分数字段的标准转换错误仍按既有策略落为 `0.0`。
 - 空 provider 与 registry 的 `none/off/false/0` aliases 明确映射到 identity；可选 provider module 缺失仍降级为 identity，结果带 `fallback=identity`。真实 factory 的未知 provider `ValueError` 和其他初始化错误不再被宽泛捕获。
 - Hybrid ranking 在调用 factory 前跳过关闭的 provider。两份相关文件 Ruff check 与 format 检查通过；未运行 Python tests 或模型流程。覆盖表只关闭 shim 文件的本次审核，hybrid ranking 文件仍待完整审核。
+
+## 第五批：KG sync wrapper 结果契约
+
+- `KGEngine.search` 与 `app.rag.kg.pipeline.kg_search` 都声明返回对象；orchestrator 的 KG chunk-injection wrapper 直接返回 pipeline 结果，不再把错误类型伪装成空对象。KG query expansion 保持其 `KGResponseContractError` 校验。
+- 修改文件 Ruff check、Ruff format --check 和 `git diff --check` 通过。未运行 Python tests、KG backend 或数据库流程；orchestrator 全文件审核仍待完成。

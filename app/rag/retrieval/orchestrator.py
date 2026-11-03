@@ -492,7 +492,7 @@ async def kg_search(  # noqa: ANN201
     """
 
     fn = _get_kg_search()
-    result = await fn(
+    return await fn(
         query=query,
         tenant_id=tenant_id,
         document_ids=document_ids,
@@ -500,7 +500,6 @@ async def kg_search(  # noqa: ANN201
         dataset_ids=dataset_ids,
         account_id=account_id,
     )
-    return result if isinstance(result, dict) else {}
 
 
 def _build_history_text(history: list[dict[str, str]] | None) -> str:

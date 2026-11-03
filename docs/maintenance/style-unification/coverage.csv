@@ -1127,7 +1127,7 @@ app/rag/retrieval/orchestration/rerank_result_cache.py,5,pending,conforms,Awaiti
 app/rag/retrieval/orchestration/reranker_factory.py,5,adjusted,conforms,Typed candidate handling; explicit disabled and optional-module fallback boundaries,Ruff check/format; none aliases map to identity; unknown provider errors propagate; Python tests not run
 app/rag/retrieval/orchestration/retriever_shim.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestration/text_helpers.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/rag/retrieval/orchestrator.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/rag/retrieval/orchestrator.py,5,pending,conforms,本批仅核对 KG sync wrapper；整文件审核待完成,KGEngine and pipeline declare dict results; Ruff check/format; Python tests not run
 app/rag/retrieval/orchestrator_support_contracts.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestrator_support_hierarchy.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestrator_support_post_rerank.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
