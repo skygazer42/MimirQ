@@ -403,3 +403,9 @@
 
 - `kg_query_expansion.py` 的同步／异步路径共用相同 scope、实体校验、筛选和排名；non-object response 以 `KGResponseContractError` 区分，optional KG failure 记录在 expansion outcome 并不生成查询。
 - Ruff check 与 Ruff format --check 通过。本文件标记为已符合标准；未运行 Python tests 或 KG runtime。
+
+## 第五批：共享 numeric coercion owner
+
+- 删除 `common.py` 中与 `_safe_int`／`_safe_float` 重复的 optional wrappers；orchestrator 与 KG merge 调用改用既有 owner，并显式传入原有 minimum。KG merge 的本地 metadata int helper 保留，因为缺失值必须返回 `None`，与默认整数转换不同。
+- `Document.id` 来自 LangChain 声明的 `str | None` 字段，去掉 `getattr`。数值转换只把 `OverflowError`、`TypeError` 和 `ValueError` 归一到已有默认值。
+- 三份文件 Ruff check、Ruff format --check 和 `git diff --check` 通过；Python tests 未运行。`common.py` 本批审核完成，`orchestrator.py` 与 `kg_merge_boost.py` 的完整文件审核仍待继续。

@@ -10,9 +10,9 @@ from uuid import UUID
 from langchain_core.documents import Document
 
 from app.rag.retrieval.orchestration.common import (
-    _coerce_optional_float,
     _doc_key,
     _log_orchestrator_fallback,
+    _safe_float,
 )
 
 
@@ -249,12 +249,12 @@ def _kg_boost_row(doc: Document, *, index: int, weight: float) -> dict[str, Any]
     base_raw = row_meta.get("retrieval_score")
     if base_raw is None:
         base_raw = row_meta.get("score", 0.0)
-    base_score = _coerce_optional_float(base_raw, default=0.0, minimum=0.0)
+    base_score = _safe_float(base_raw, default=0.0, minimum=0.0)
     role = str(row_meta.get("retrieval_role") or "").strip().lower()
     kg_raw = row_meta.get("kg_pagerank")
     if kg_raw is None and role == "kg":
         kg_raw = row_meta.get("score", 0.0)
-    kg_score = _coerce_optional_float(kg_raw, default=0.0, minimum=0.0)
+    kg_score = _safe_float(kg_raw, default=0.0, minimum=0.0)
     is_kg = bool(role == "kg" or kg_score > 0.0)
     boosted_score = float(base_score) + (float(weight) * float(kg_score)) if is_kg else float(base_score)
     return {

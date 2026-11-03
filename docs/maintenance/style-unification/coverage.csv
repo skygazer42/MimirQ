@@ -1112,13 +1112,13 @@ app/rag/retrieval/orchestration/__init__.py,5,pending,conforms,Awaiting file-lev
 app/rag/retrieval/orchestration/anchors.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestration/channel_budget.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestration/citation_quality.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/rag/retrieval/orchestration/common.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/rag/retrieval/orchestration/common.py,5,adjusted,conforms,合并重复数值转换 helper；typed Document ID 直接读取,Ruff check/format; numeric defaults and clamps preserved at callers; Python tests not run
 app/rag/retrieval/orchestration/corpus_cache_tokens.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestration/debug_sanitize.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestration/finalize_trace.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestration/hierarchy.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestration/intent_router.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/rag/retrieval/orchestration/kg_merge_boost.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/rag/retrieval/orchestration/kg_merge_boost.py,5,pending,conforms,本批仅迁移共享 float coercion 调用；整文件审核待完成,Call sites pass minimum explicitly; local metadata int helper retained because absence maps to None; Python tests not run
 app/rag/retrieval/orchestration/kg_query_expansion.py,5,conforms,conforms,现有 KG owner 的响应契约、sync/async 边界与可选失败策略符合标准,Ruff check/format; KGResponseContractError is explicit; Python tests not run
 app/rag/retrieval/orchestration/out_of_scope_live_gate.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestration/query_contract.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -1128,7 +1128,7 @@ app/rag/retrieval/orchestration/rerank_result_cache.py,5,pending,conforms,Awaiti
 app/rag/retrieval/orchestration/reranker_factory.py,5,adjusted,conforms,Typed candidate handling; explicit disabled and optional-module fallback boundaries,Ruff check/format; none aliases map to identity; unknown provider errors propagate; Python tests not run
 app/rag/retrieval/orchestration/retriever_shim.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestration/text_helpers.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/rag/retrieval/orchestrator.py,5,pending,conforms,本批仅核对 KG sync wrapper；整文件审核待完成,KGEngine and pipeline declare dict results; Ruff check/format; Python tests not run
+app/rag/retrieval/orchestrator.py,5,pending,conforms,本批核对 KG sync wrapper 与 scalar coercion 调用；整文件审核待完成,KG result contract and _safe_int/_safe_float callers reviewed; Ruff check/format; Python tests not run
 app/rag/retrieval/orchestrator_support_contracts.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestrator_support_hierarchy.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestrator_support_post_rerank.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending

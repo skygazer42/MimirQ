@@ -168,12 +168,6 @@ from app.rag.retrieval.orchestration.common import (
     _coerce_optional_bool as _coerce_optional_bool,
 )
 from app.rag.retrieval.orchestration.common import (
-    _coerce_optional_float as _coerce_optional_float,
-)
-from app.rag.retrieval.orchestration.common import (
-    _coerce_optional_int as _coerce_optional_int,
-)
-from app.rag.retrieval.orchestration.common import (
     _doc_key as _doc_key,
 )
 from app.rag.retrieval.orchestration.common import (
@@ -1971,7 +1965,7 @@ def _run_retrieval_kg_injection_phase(ctx: RetrievalRuntimeState) -> dict[str, A
         ctx.state.get("enable_kg_chunk_injection"),
         default=bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False)),
     )
-    ctx.kg_chunk_injection_max_chunks = _coerce_optional_int(
+    ctx.kg_chunk_injection_max_chunks = _safe_int(
         ctx.state.get("kg_chunk_injection_max_chunks"),
         default=int(getattr(settings, "RAG_KG_CHUNK_INJECTION_MAX_CHUNKS", 5) or 5),
         minimum=0,
@@ -2095,13 +2089,13 @@ def _run_retrieval_tag_kg_boost_phase(ctx: RetrievalRuntimeState) -> dict[str, A
         ctx.state.get("enable_kg_chunk_boost"),
         default=bool(getattr(settings, "RAG_KG_CHUNK_BOOST_ENABLED", False)),
     )
-    kg_chunk_boost_weight = _coerce_optional_float(
+    kg_chunk_boost_weight = _safe_float(
         ctx.state.get("kg_chunk_boost_weight"),
         default=float(getattr(settings, "RAG_KG_CHUNK_BOOST_WEIGHT", 0.25) or 0.25),
         minimum=0.0,
         maximum=1.0,
     )
-    kg_chunk_boost_max_promoted = _coerce_optional_int(
+    kg_chunk_boost_max_promoted = _safe_int(
         ctx.state.get("kg_chunk_boost_max_promoted"),
         default=int(getattr(settings, "RAG_KG_CHUNK_BOOST_MAX_PROMOTED", 3) or 3),
         minimum=0,

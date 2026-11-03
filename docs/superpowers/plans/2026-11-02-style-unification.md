@@ -14,7 +14,7 @@
 
 - 工作区：`E:/MimirQ`；分支：`codex/local-account-registration`。不新建分支或 worktree。
 - 原始基线：`77b6adc1bce523482f0509302a454ce20e01c41c`；数据集服务已提交为 `2c16dedf8`。前两批及第三批此前结果保留，不重新执行。
-- 当前覆盖表有 3,650 个文件：125 个已调整、30 个已符合、964 个登记保留、2,531 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
+- 当前覆盖表有 3,650 个文件：126 个已调整、30 个已符合、964 个登记保留、2,530 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
 - Task 3A 的 125 个 Python 文件已完成最终静态核对并按数据集类别提交；Task 3B 的权限、配额、SCIM、配置、通用 API、身份令牌、共享资源与健康观测已完成本轮代码整理与静态检查，继续核对其余基础模块。原有 `app/api/schemas/document.py` 修改另行保留。
 - 原工作区的 1,625 个未跟踪文件及其他既有修改保留；只按本批明确文件清单暂存，不使用 `git add .`，不执行全仓清理或重置。
 - 用户执行要求：提交按完整业务类别归并，不按函数、文件或每个检查步骤频繁提交；同一类别的定义、调用方、必要引用和验证记录一起提交。纯格式化仍独立成类。
@@ -205,6 +205,8 @@ Chunk-write routes 直接依赖 ORM、`Indexer`、ACL、审计和 index-audit ow
 Reranker shim 明确识别 registry 中的 disabled aliases，并仅在 provider module 缺失时退回 identity；未知 provider 和其他初始化错误保留为显式失败。Hybrid ranking 已在调用 factory 前跳过关闭的 provider。
 
 KG chunk-injection wrapper 直接返回 `KGEngine.search` 的声明结果，不把契约错误转换为空结果；query-expansion owner 的 `KGResponseContractError` 校验保持在原边界。
+
+共享 numeric coercion 收敛到 `common.py` 的 `_safe_int`／`_safe_float`；调用处显式提供原有 default 和 clamp。JSON 型字段的 `Document.id` 使用声明类型直接读取。
 
 - [ ] 按查询准备 → 通道召回 → 融合／重排 → 上下文 → 模型／流式返回的顺序追踪数据和预算，再处理各条依赖链。
 - [ ] 合并经证实重复的参数映射与控制流，核对动态取值和无依据默认值；保留供应商协议适配、可选插件边界和有状态资源。
