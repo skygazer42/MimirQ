@@ -14,11 +14,11 @@
 
 - 主工作区：`E:/MimirQ`；分支：`codex/local-account-registration`。为提速，独立业务类别可从当前 HEAD 建立 `codex/*` 分支和 worktree；类别代码与调用方完成审阅后合并回此分支。
 - 原始基线：`77b6adc1bce523482f0509302a454ce20e01c41c`；数据集服务已提交为 `2c16dedf8`。前两批及第三批此前结果保留，不重新执行。
-- 当前覆盖表有 3,757 个文件：156 个已调整、55 个已符合、985 个登记保留、2,561 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
+- 当前覆盖表有 3,757 个文件：164 个已调整、56 个已符合、985 个登记保留、2,552 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
 - Task 3A 的 125 个 Python 文件已完成最终静态核对并按数据集类别提交；Task 3B 的权限、配额、SCIM、配置、通用 API、身份令牌、共享资源与健康观测已完成本轮代码整理与静态检查，继续核对其余基础模块。原有 `app/api/schemas/document.py` 修改另行保留。
 - 原工作区的 1,625 个未跟踪文件及其他既有修改保留；只按本批明确文件清单暂存，不使用 `git add .`，不执行全仓清理或重置。
 - 用户执行要求：提交按完整业务类别归并，不按函数、文件或每个检查步骤频繁提交；同一类别的定义、调用方、必要引用和验证记录一起提交。纯格式化仍独立成类。
-- 已完成并合并的并行类别分支：Task 5 dataset route planning/query preparation、Task 3 chat runtime、Task 4 batch ingestion/document dispatch、Task 6 settings API/types；后续分支以最新主工作区提交为基线，不能把原有未提交文件带入提交。
+- 已完成并合并的并行类别分支：Task 5 dataset route planning/query preparation、Task 3 chat runtime/turn persistence、Task 4 batch ingestion/document dispatch、Task 6 settings API/types、Task 7 model bootstrap CLI；后续分支以最新主工作区提交为基线，不能把原有未提交文件带入提交。
 
 ## 2. 已选定的统一标准
 
@@ -138,6 +138,8 @@ Skill 安装目录为 `C:/Users/jiahuanl/.codex/skills/`。项目已选规则和
 
 Chat runtime 独立类别分支已合并：`ChatRequest`、`ChatRAGConfig`、`RagConfigTemplate` 和 SQLAlchemy `Session` 作为内部类型契约；数据集 metadata loader 的字典返回契约直接使用。Redis 序列化校验、best-effort、singleflight、租约、事务、超时与取消策略保留。5 个生产文件完成调用方静态复核；Python tests 未运行。
 
+Chat turn execution/persistence slice 已合并：`ChatStreamPersistInput` 归入流持久化 owner，turn/stream callers 使用显式输入类型；9 个生产文件经独立审查与复审。发现并修复 UUID 类型导入及 Ruff import-order 错误，最终 Ruff check/format、AST 与 diff checks 通过；事务、会话范围和流事件顺序保留。Python tests 未运行。
+
 ### Task 4：文档处理链（进行中）
 
 入口：`app/api/v1/documents.py`、`document_batch_upload.py`、`document_batches.py`；权限涉及 `app/services/document_access.py`、`document_access_service.py`、`document_permission_service.py`；处理涉及 `app/services/ingestion_run_service.py`、`connector_run_executor.py`、`app/parsing/processors/support/process_document_flow.py`、`app/tasks/jobs.py`、`app/tasks/worker.py`、`app/storage/object/`。
@@ -250,6 +252,8 @@ Query planner input mapping now uses shared private values while keeping KG expa
 ### Task 7：脚本与全仓收尾
 
 范围：`scripts/`、`ci/`、`docker/` 下自研运行代码、入口及覆盖表中剩余文件；Python 测试仅按本轮暂缓约定登记，前端测试继续按职责维护。
+
+模型引导 CLI 首片已完成：`bootstrap_parsing_small_models.py` 合并重复结果字段构造，维持各状态的字段集合与顺序；`bootstrap_mimirq_models.py` 审阅后符合标准。Ruff/AST 检查通过；CLI、下载和转换未运行。
 
 - [ ] 核对脚本参数、退出码、输出、路径、配置和资源释放；命令行有意输出及必要兼容注明理由，不套用业务服务的错误转换。
 - [ ] 将覆盖表与最终 Git 跟踪列表重新对齐；新增、删除、移动都有去向，逐一检查 pending，不能因格式通过或改过一个引用就关单。

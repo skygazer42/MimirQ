@@ -561,6 +561,16 @@
 - Task review 要求补齐该类型迁移和 Ruff 证据；两项 fix finding 均经复审关闭。明确从 `style-doc-dispatch` worktree、使用其 `ruff.toml`，对 6 个目标文件运行 Ruff check 与 format check，全部通过；六文件 AST、caller scan 和 `git diff --check` 通过。
 - Python tests 未运行。仅 `jobs.py` 与 `process_document_flow.py` 在本类别分支中有代码 diff；`document_ingestion.py`、manual ingestion、dispatch service 和 worker 的其他职责仍待语义审核。
 
+## 并行类别分支：聊天轮次持久化
+
+- Task 3 分支提交 `6c5a8248` 调整 execution、turn persistence 和 streaming persistence contracts，修复提交 `657442d9` 补上 `UUID` 导入并整理 stream imports。独立审查未发现租户、会话、授权、事务或事件顺序回归；修复复审通过。
+- 在 `style-chat-turn` worktree 根目录使用该分支 `ruff.toml`，对 9 个变更文件运行 Ruff check 和 format check，全部通过；九文件 AST、调用方扫描与 `git show --check` 通过。Python tests 未运行；真实数据库、队列与缓存运行时未验证。
+
+## 并行类别分支：模型引导 CLI
+
+- Task 7 分支仅修改 `scripts/bootstrap_parsing_small_models.py`，将重复的 `task`、`model_id`、`kind` 字段归到 `_model_record()`；JSON 字段集合和插入顺序、`hf_repo_missing` 的差异保持。`scripts/bootstrap_mimirq_models.py` 经审阅后登记为符合标准。
+- 两个脚本的 Ruff check、Ruff format、AST 与 diff check 通过，独立代码审查通过。CLI、下载、ONNX 转换未运行；Python tests 未运行。
+
 ## 并行类别分支：查询准备与扩展
 
 - Task 5 的查询准备分支提交 `589e5b6f` 经审查发现 Important 顺序回归：模型覆盖参数中的 `int()`／`float()` 解析可能早于 KG 扩展失败。修复提交 `f38123ea` 让同步和异步路径都在 KG 扩展后解析模型参数；解析错误仍显式传播，KG 诊断顺序恢复。

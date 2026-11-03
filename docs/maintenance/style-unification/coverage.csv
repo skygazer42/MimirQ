@@ -1207,20 +1207,20 @@ app/services/chat_bootstrap_runtime.py,3,adjusted,adjusted,Chat bootstrap uses d
 app/services/chat_cache_runtime.py,3,adjusted,adjusted,Cache inputs use explicit container types,Ruff check/format; serialized payload validation and cache policy retained; tests not run
 app/services/chat_conversation_access.py,3,adjusted,conforms,Conversation owner, legacy user ID, dataset, and timestamp use declared ORM fields,Ruff check/format; owner fallback, tenant ACL, and 403 behavior preserved; Python tests not run
 app/services/chat_conversation_titles.py,3,adjusted,conforms,Conversation title fields read by declared ORM types; query remains tenant-scoped,Ruff check/format; title_source migration is NOT NULL; Python tests not run
-app/services/chat_execution_runtime.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/services/chat_execution_runtime.py,3,adjusted,conforms,Chat execution consumes explicit runtime contracts,Ruff check/format; callsites and fallback boundaries reviewed; tests not run
 app/services/chat_image_service.py,3,pending,adjusted,Awaiting file-level convention and contract review; Dataset caller migration only; full module semantic review remains pending,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending; task-3-dataset-final: Ruff/AST/signature checks; no Python tests
 app/services/chat_memory_runtime.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/services/chat_persistence.py,3,adjusted,conforms,Chat persistence container annotations are explicit,Ruff check/format; caller fields and existing error handling reviewed; tests not run
+app/services/chat_persistence.py,3,adjusted,conforms,Chat response persistence uses explicit payload contracts,Ruff check/format; transaction order and caller fields reviewed; tests not run
 app/services/chat_response_cache.py,3,adjusted,adjusted,Cache key dependency uses the SQLAlchemy Session contract,Ruff check/format; Session owner and callers reviewed; tests not run
-app/services/chat_runtime.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/services/chat_runtime.py,3,adjusted,adjusted,Chat runtime imports and forwards its actual service owners,Ruff check/format; UUID annotation contract and callers reviewed; tests not run
 app/services/chat_scope.py,3,adjusted,adjusted,Conversation dataset and query results use declared contracts, account identity is not re-coerced,Ruff check/format; tenant/owner and scope behavior preserved; Python tests not run
-app/services/chat_stream_common.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/services/chat_stream_graph.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/services/chat_stream_langchain.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/services/chat_stream_orchestrator.py,3,adjusted,conforms,Stream entry uses the ChatRequest schema contract,Ruff check/format; route and bootstrap caller types reviewed; tests not run
-app/services/chat_stream_persistence.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/services/chat_stream_common.py,3,adjusted,adjusted,Stream event inputs and persistence context use explicit types,Ruff check/format; stream result and event order reviewed; tests not run
+app/services/chat_stream_graph.py,3,adjusted,adjusted,Graph stream session inputs use a named contract,Ruff check/format; direct caller and event path reviewed; tests not run
+app/services/chat_stream_langchain.py,3,adjusted,adjusted,LangChain stream session inputs use a named contract,Ruff check/format; direct caller and event path reviewed; tests not run
+app/services/chat_stream_orchestrator.py,3,adjusted,conforms,Stream entry uses explicit request and persistence owners,Ruff check/format; caller types and import order reviewed; tests not run
+app/services/chat_stream_persistence.py,3,adjusted,conforms,Streaming persistence input contract belongs to its owner module,Ruff check/format; message/audit/commit order reviewed; tests not run
 app/services/chat_tag_service.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/services/chat_turn_persistence.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/services/chat_turn_persistence.py,3,adjusted,adjusted,Turn persistence inputs use an explicit contract,Ruff check/format; tenant/session scope and caller path reviewed; tests not run
 app/services/chunk_coverage_utils.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/services/chunk_preset_service.py,4,adjusted,conforms,Own five typed preset operations; remove repeated scalar and limit coercion after real API validation; preserve tenant filters and writes,Task 4 document access: 7 canonical modules; 4 schema ASTs; 58 parameter contracts; 6 routes; 156 bound calls; Ruff/format; no Python tests
 app/services/chunk_quality_gate.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -1868,8 +1868,8 @@ scripts/audit.ps1,7,pending,pending,Awaiting file-level convention and contract 
 scripts/backfill_kg_event_vector_metadata.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 scripts/backfill_minio_images.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 scripts/benchmark_io_concurrency.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-scripts/bootstrap_mimirq_models.py,7,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-scripts/bootstrap_parsing_small_models.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+scripts/bootstrap_mimirq_models.py,7,conforms,adjusted,Model bootstrap CLI paths and outputs were audited,Ruff check/format and AST passed; CLI/network behavior not run
+scripts/bootstrap_parsing_small_models.py,7,adjusted,conforms,Repeated model result fields share one private constructor,Ruff check/format and AST passed; output field sets/order retained; CLI not run
 scripts/build_answer_quality_summary.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 scripts/build_parsing_retrieval_fixture.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 scripts/build_parsing_retrieval_fixture_from_file.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
