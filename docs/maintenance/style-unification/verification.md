@@ -571,6 +571,11 @@
 - Task 7 分支仅修改 `scripts/bootstrap_parsing_small_models.py`，将重复的 `task`、`model_id`、`kind` 字段归到 `_model_record()`；JSON 字段集合和插入顺序、`hf_repo_missing` 的差异保持。`scripts/bootstrap_mimirq_models.py` 经审阅后登记为符合标准。
 - 两个脚本的 Ruff check、Ruff format、AST 与 diff check 通过，独立代码审查通过。CLI、下载、ONNX 转换未运行；Python tests 未运行。
 
+## 并行类别分支：Hybrid 候选融合
+
+- Task 5 分支 `229928a95` 合并后只包含 `hybrid/dedup.py` 和 `hybrid/post_process.py` 的代码 diff。重复 identity key 转发到 `result_values.result_key`；anchor annotation/order 转发到 `metadata_ordering.order_metadata_anchors`。`candidate_ranking` 的 protected result、排序、dedup、rerank mapping、多样性和诊断调用顺序保持。
+- 在 `style-rag-fusion` worktree 根目录使用其 `ruff.toml`，两文件 Ruff check/format 通过；AST、调用方扫描、review 和 `git show --check` 通过。未运行 Python tests、vector/lexical/database/reranker runtime。
+
 ## 并行类别分支：查询准备与扩展
 
 - Task 5 的查询准备分支提交 `589e5b6f` 经审查发现 Important 顺序回归：模型覆盖参数中的 `int()`／`float()` 解析可能早于 KG 扩展失败。修复提交 `f38123ea` 让同步和异步路径都在 KG 扩展后解析模型参数；解析错误仍显式传播，KG 诊断顺序恢复。

@@ -14,11 +14,11 @@
 
 - 主工作区：`E:/MimirQ`；分支：`codex/local-account-registration`。为提速，独立业务类别可从当前 HEAD 建立 `codex/*` 分支和 worktree；类别代码与调用方完成审阅后合并回此分支。
 - 原始基线：`77b6adc1bce523482f0509302a454ce20e01c41c`；数据集服务已提交为 `2c16dedf8`。前两批及第三批此前结果保留，不重新执行。
-- 当前覆盖表有 3,757 个文件：164 个已调整、56 个已符合、985 个登记保留、2,552 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
+- 当前覆盖表有 3,757 个文件：166 个已调整、56 个已符合、985 个登记保留、2,550 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
 - Task 3A 的 125 个 Python 文件已完成最终静态核对并按数据集类别提交；Task 3B 的权限、配额、SCIM、配置、通用 API、身份令牌、共享资源与健康观测已完成本轮代码整理与静态检查，继续核对其余基础模块。原有 `app/api/schemas/document.py` 修改另行保留。
 - 原工作区的 1,625 个未跟踪文件及其他既有修改保留；只按本批明确文件清单暂存，不使用 `git add .`，不执行全仓清理或重置。
 - 用户执行要求：提交按完整业务类别归并，不按函数、文件或每个检查步骤频繁提交；同一类别的定义、调用方、必要引用和验证记录一起提交。纯格式化仍独立成类。
-- 已完成并合并的并行类别分支：Task 5 dataset route planning/query preparation、Task 3 chat runtime/turn persistence、Task 4 batch ingestion/document dispatch、Task 6 settings API/types、Task 7 model bootstrap CLI；后续分支以最新主工作区提交为基线，不能把原有未提交文件带入提交。
+- 已完成并合并的并行类别分支：Task 5 dataset route planning/query preparation/hybrid fusion、Task 3 chat runtime/turn persistence、Task 4 batch ingestion/document dispatch、Task 6 settings API/types、Task 7 model bootstrap CLI；后续分支以最新主工作区提交为基线，不能把原有未提交文件带入提交。
 
 ## 2. 已选定的统一标准
 
@@ -226,6 +226,8 @@ Query variant budget stage now consumes typed int/float fields; omitted values r
 Query contract snapshot normalization treats the optional template version as absent only for standard integer conversion errors; the typed normalization inputs and callers were reviewed.
 
 Query planner input mapping now uses shared private values while keeping KG expansion ahead of model override parsing in both sync and async paths. An independent review caught the earlier ordering regression; the fix preserves explicit parse failures and KG diagnostic order, then passed scoped re-review. Python tests were not run.
+
+Hybrid candidate fusion reuses the shared stable `result_key` owner and metadata-anchor ordering owner. The `candidate_ranking` caller preserves protected-record merge, pre/post ordering, dedup, reranker mapping, diversity, score promotion, threshold, budget prefix and diagnostics; the diff changes only `dedup.py` and `post_process.py`. Ruff check/format and independent review passed; Python tests and live channel/reranker behavior were not verified.
 
 - [ ] 按查询准备 → 通道召回 → 融合／重排 → 上下文 → 模型／流式返回的顺序追踪数据和预算，再处理各条依赖链。
 - [ ] 合并经证实重复的参数映射与控制流，核对动态取值和无依据默认值；保留供应商协议适配、可选插件边界和有状态资源。

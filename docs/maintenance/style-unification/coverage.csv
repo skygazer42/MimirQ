@@ -1099,10 +1099,10 @@ app/rag/retrieval/hybrid/channel_results.py,5,pending,adjusted,Awaiting file-lev
 app/rag/retrieval/hybrid/candidate_ranking.py,5,pending,conforms,仅核对 reranker owner 调用边界；整文件审核待完成,Ruff check/format; disabled provider is gated before factory; Python tests not run
 app/rag/retrieval/hybrid/colbert_index.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/hybrid/common.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/rag/retrieval/hybrid/dedup.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/rag/retrieval/hybrid/dedup.py,5,adjusted,adjusted,Hybrid identity keys reuse the shared result identity owner,Ruff check/format; caller identity paths and stable key priority reviewed; tests not run
 app/rag/retrieval/hybrid/fusion.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/hybrid/lexical.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/rag/retrieval/hybrid/post_process.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/rag/retrieval/hybrid/post_process.py,5,adjusted,conforms,Metadata anchor ordering reuses its shared owner,Ruff check/format; caller, threshold, budget prefix, stable order, and diagnostics reviewed; tests not run
 app/rag/retrieval/hybrid/sparse_index.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/hybrid/text_preparation.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/hybrid/vector_normalizer.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
