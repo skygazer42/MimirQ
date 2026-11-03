@@ -10,7 +10,7 @@ import type {
   PaddleVLConfig,
   SystemSettings,
   TextInConfig,
-} from '@/lib/api'
+} from '@/types/settings'
 import { cn } from '@/lib/utils'
 import { LayoutGrid, ScanLine, Wand2 } from 'lucide-react'
 import {

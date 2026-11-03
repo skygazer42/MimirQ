@@ -3,11 +3,11 @@
 import { SettingsSwitch } from '@/components/settings/settings-switch'
 import { Input } from '@/components/ui/input'
 import { settingsTextTokens } from '@/components/ui/system-page-tokens'
-import type { SystemSettings } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { Archive, FileText, ImageIcon, LockKeyhole, Server } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
+import type { SystemSettings } from '@/types/settings'
 
 type MinIOSettings = NonNullable<SystemSettings['minio']>
 
