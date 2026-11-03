@@ -14,15 +14,21 @@ _TEXT_EXTS = {".txt", ".md", ".markdown", ".csv", ".json", ".jsonl", ".html", ".
 def _read_text_sample(path: Path, *, max_bytes: int) -> str:
     if path.suffix.lower() not in _TEXT_EXTS:
         return ""
-    data = path.read_bytes()[: max(0, int(max_bytes or 0))]
+    max_bytes = max(0, int(max_bytes or 0))
+    with path.open("rb") as source:
+        data = source.read(max_bytes)
     if not data:
         return ""
-    for encoding in ("utf-8", "utf-8-sig", "gb18030", "latin-1"):
-        try:
-            return data.decode(encoding, errors="ignore")
-        except Exception:
-            continue
-    return data.decode("utf-8", errors="ignore")
+    try:
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        if exc.reason == "unexpected end of data" and exc.end == len(data):
+            return data.decode("utf-8-sig", errors="ignore")
+
+    try:
+        return data.decode("gb18030")
+    except UnicodeDecodeError:
+        return data.decode("latin-1")
 
 
 def evaluate_ingest_pre_poc_quality_gate(
