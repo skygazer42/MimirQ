@@ -1091,7 +1091,7 @@ app/rag/retrieval/document_structure.py,5,pending,adjusted,Awaiting file-level c
 app/rag/retrieval/evidence_gap.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/hierarchy_expand.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/hybrid/__init__.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/rag/retrieval/hybrid/bm25_index.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/rag/retrieval/hybrid/bm25_index.py,5,adjusted,conforms,BM25 results use the shared candidate metadata projection,Ruff check/format; appended BM25 score fields and result ordering retained; tests not run
 app/rag/retrieval/hybrid/cache_scope.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/hybrid/channel_diagnostics.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/hybrid/channel_health.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -1103,8 +1103,8 @@ app/rag/retrieval/hybrid/dedup.py,5,adjusted,adjusted,Hybrid identity keys reuse
 app/rag/retrieval/hybrid/fusion.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/hybrid/lexical.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/hybrid/post_process.py,5,adjusted,conforms,Metadata anchor ordering reuses its shared owner,Ruff check/format; caller, threshold, budget prefix, stable order, and diagnostics reviewed; tests not run
-app/rag/retrieval/hybrid/sparse_index.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/rag/retrieval/hybrid/text_preparation.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/rag/retrieval/hybrid/sparse_index.py,5,adjusted,conforms,Sparse results call the metadata projection owner directly,Ruff check/format; MRO dependency removed; sparse score and result shape retained; tests not run
+app/rag/retrieval/hybrid/text_preparation.py,5,conforms,adjusted,Typed text inputs and normalization remain owned by the preparation stage,Caller and tokenization contract reviewed; no code change; runtime unverified
 app/rag/retrieval/hybrid/vector_normalizer.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/metrics.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/neighbor_expand.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -3671,7 +3671,7 @@ app/rag/retrieval/corpus_index.py,5,pending,conforms,Newly inventoried tracked s
 app/rag/retrieval/hybrid/candidate_retrieval.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
 app/rag/retrieval/hybrid/channel_collection.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
 app/rag/retrieval/hybrid/corpus_channels.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
-app/rag/retrieval/hybrid/lexical_search.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/rag/retrieval/hybrid/lexical_search.py,5,conforms,conforms,Lexical SQL scope and result cap remain at the lexical search owner,Caller and failure contract reviewed; no code change; runtime unverified
 app/rag/retrieval/hybrid/metadata_ordering.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
 app/rag/retrieval/hybrid/metadata_scope.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
 app/rag/retrieval/hybrid/result_values.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory

@@ -602,6 +602,11 @@
 - Task 5 channel retrieval branch `d9528115` 仅改 `hybrid/channel_results.py`：已声明 channel lists 直接迭代，局部初始化的 `annotated`/`promoted` 计数直接递增；provider item shape check 与 vector normalization boundary 保留。
 - 独立审查通过，Ruff check/format、四模块 AST、caller scan 与 `git show --check` 通过。未运行 Python tests、vector/lexical/sparse/ColBERT/cache/reranker services。
 
+## 并行类别分支：Lexical 与 Sparse Search
+
+- Task 5 branch `753ff540` 仅调整 `bm25_index.py` 与 `sparse_index.py`：统一复用 `result_values.candidate_metadata_from_doc`，BM25/sparse 专属分数与结果构造保持，消除 sparse 通过 mixin MRO 获取私有映射函数的耦合。`text_preparation.py` 与 `lexical_search.py` 审阅后符合标准，未修改。
+- Root 用 `style-rag-lexical-sparse` worktree 的 Ruff 配置对两个改动文件补跑 Ruff check/format；AST/caller scan、`git show --check` 和独立 review 通过。Python tests 与数据库/BM25/sparse/vector/model services 未运行。
+
 ## 并行类别分支：解析模型缓存与 Manifest
 
 - Task 4 分支提交 `a39c1ce48` 的路径输出问题经复审后修复为 `c7d792bb9` 并合并。`load_small_model_manifest` 仍按进程工作目录解析输入路径，`base_dir` 只决定 manifest 中模型资源的根目录；bootstrap 使用返回的 canonical `manifest.path` 序列化结果，保留显式相对 CLI 路径原有的绝对输出。
