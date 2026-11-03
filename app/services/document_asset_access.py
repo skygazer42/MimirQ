@@ -34,16 +34,56 @@ def authorize_document_asset(
     document = get_document_for_lifecycle(db, tenant_id, document_id)
     if document is None:
         raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
-    if account_id is None:
-        return document
-
     dataset: Dataset | None = None
-    if document.dataset_id is not None:
+    if account_id is not None and document.dataset_id is not None:
         dataset = dataset_service.get_dataset(db, tenant_id, document.dataset_id)
-        dataset_service.assert_dataset_readable(db, dataset, account_id)
-    else:
+    assert_document_asset_readable(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        document=document,
+        dataset=dataset,
+    )
+    return document
+
+
+def assert_document_asset_readable(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str | None,
+    document: DBDocument,
+    dataset: Dataset | None = None,
+) -> None:
+    if account_id is None:
+        return
+    if document.dataset_id is None:
         dataset_service.ensure_member(db, tenant_id, account_id)
+    else:
+        dataset = dataset or dataset_service.get_dataset(db, tenant_id, document.dataset_id)
+        dataset_service.assert_dataset_readable(db, dataset, account_id)
     assert_document_acl_readable(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        document=document,
+        dataset=dataset,
+    )
+
+
+def authorize_preview_document(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str | None,
+    dataset_id: UUID,
+    document_id: UUID,
+) -> DBDocument | None:
+    document = get_document_for_lifecycle(db, tenant_id, document_id)
+    if document is None or document.dataset_id != dataset_id:
+        return None
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id) if account_id is not None else None
+    assert_document_asset_readable(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -131,7 +171,7 @@ def _legacy_preview_binding(
     return None
 
 
-def _resolve_preview_binding(
+def resolve_preview_binding(
     *,
     db: Session,
     images_dir: Path,
@@ -172,18 +212,36 @@ def resolve_preview_image(
     if image_path is None:
         raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL)
 
-    binding, legacy_authorized = _resolve_preview_binding(
+    binding, legacy_authorized = resolve_preview_binding(
         db=db,
         images_dir=images_dir,
         tenant_id=tenant_id,
         account_id=account_id,
         preview_id=preview_id,
     )
+    assert_preview_binding_access(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        binding=binding,
+        legacy_authorized=legacy_authorized,
+    )
+    return image_path
+
+
+def assert_preview_binding_access(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str | None,
+    binding: dict[str, str],
+    legacy_authorized: bool,
+) -> None:
     bound_account_id = binding.get("account_id")
     if bound_account_id:
         if account_id is None or bound_account_id != account_id:
             raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL)
-        return image_path
+        return
 
     try:
         document_id = UUID(binding["document_id"])
@@ -191,15 +249,15 @@ def resolve_preview_image(
     except (KeyError, ValueError) as exc:
         raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL) from exc
     if not legacy_authorized:
-        document = authorize_document_asset(
+        document = authorize_preview_document(
             db=db,
             tenant_id=tenant_id,
             account_id=account_id,
+            dataset_id=dataset_id,
             document_id=document_id,
         )
-        if document.dataset_id != dataset_id:
+        if document is None:
             raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL)
-    return image_path
 
 
 def authorize_image_url(
@@ -235,4 +293,12 @@ def authorize_image_url(
         dataset_service.assert_dataset_readable(db, dataset, account_id)
 
 
-__all__ = ["authorize_document_asset", "authorize_image_url", "resolve_preview_image"]
+__all__ = [
+    "assert_document_asset_readable",
+    "assert_preview_binding_access",
+    "authorize_document_asset",
+    "authorize_image_url",
+    "authorize_preview_document",
+    "resolve_preview_binding",
+    "resolve_preview_image",
+]
