@@ -34,7 +34,7 @@ def _weighted_variants(variants: list[PromptTemplate]) -> tuple[list[float], flo
     weights: list[float] = []
     total = 0.0
     for variant in variants:
-        weight = float(getattr(variant, "ab_weight", 1.0) or 0.0)
+        weight = variant.ab_weight or 0.0
         if weight < 0:
             weight = 0.0
         weights.append(weight)
