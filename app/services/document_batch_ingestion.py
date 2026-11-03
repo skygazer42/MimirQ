@@ -60,7 +60,6 @@ from app.services.document_processing_dispatch import LocalProcessingSource, dis
 from app.services.ingestion_policy import IngestionPolicy, parse_ingestion_policy_from_metadata
 from app.services.tenant_quota_service import enforce_tenant_upload_quotas
 from app.storage.object.runtime import (
-    document_object_storage_enabled,
     document_object_store_metadata,
     get_document_object_store,
     is_object_storage_uri,
@@ -114,7 +113,7 @@ def _build_batch_document(
     doc_metadata: dict[str, Any],
     file_sha256: str | None,
     pipeline_hash: str,
-) -> Any:
+) -> DBDocument:
     db_document = DBDocument(
         id=file_id,
         tenant_id=tenant_id,
@@ -204,17 +203,13 @@ def _consume_gather_results(
             results[index] = exc
 
 
-def _document_object_storage_enabled() -> bool:
-    return document_object_storage_enabled()
-
-
-def _document_result_snapshot(document: Any, *, source_path: str | None) -> dict[str, Any]:
+def _document_result_snapshot(document: DBDocument, *, source_path: str | None) -> dict[str, Any]:
     return {
-        "document_id": str(getattr(document, "id", "") or ""),
-        "filename": str(getattr(document, "filename", "") or ""),
+        "document_id": str(document.id),
+        "filename": str(document.filename),
         "source_path": source_path,
-        "status": str(getattr(document, "status", "") or ""),
-        "doc_metadata": dict(getattr(document, "doc_metadata", None) or {}),
+        "status": str(document.status),
+        "doc_metadata": dict(document.doc_metadata or {}),
     }
 
 
@@ -231,13 +226,13 @@ async def _finalize_batch_document(
     *,
     background_tasks: BackgroundTasks,
     db: Session,
-    document: Any,
+    document: DBDocument,
     file_path: Path,
     pipeline_hash: str,
     resolved_pipeline: ingestion_plan.ResolvedUploadPipeline,
     upload_only: bool,
     ingest_lock: IngestLockLease,
-) -> Any:
+) -> DBDocument:
     if upload_only:
         with contextlib.suppress(Exception):
             reconcile_document_index_channels(
@@ -247,7 +242,7 @@ async def _finalize_batch_document(
                 reset_enabled_to_pending=True,
                 commit=True,
             )
-        if is_object_storage_uri(str(getattr(document, "file_path", "") or "")):
+        if is_object_storage_uri(document.file_path):
             source_persistence.unlink_source(file_path)
         return document
     with contextlib.suppress(Exception):
@@ -262,7 +257,7 @@ async def _finalize_batch_document(
         background_tasks=background_tasks,
         source=LocalProcessingSource(file_path),
         tenant_id=document.tenant_id,
-        requested_by=str(getattr(document, "owner_id", "") or ""),
+        requested_by=str(document.owner_id or ""),
         pipeline_hash=pipeline_hash,
         parser_backend=resolved_pipeline.resolved_parser_backend,
         chunk_strategy=resolved_pipeline.resolved_chunk_strategy,
@@ -409,7 +404,7 @@ async def _maybe_resolve_upload_duplicate(
     file_path: Path,
     ingest_lock: IngestLockLease,
     cleanup_exact_duplicate: bool,
-) -> Any | None:
+) -> DBDocument | None:
     if not settings.UPLOAD_DEDUP_ENABLED or not isinstance(file_sha256, str) or not file_sha256:
         return None
     duplicate = source_persistence.find_duplicate_document(
@@ -419,7 +414,7 @@ async def _maybe_resolve_upload_duplicate(
         file_sha256=file_sha256,
         pipeline_hash=pipeline_hash,
     )
-    if duplicate is not None and str(getattr(duplicate, "status", "") or "").lower() not in {"failed"}:
+    if duplicate is not None and duplicate.status.lower() != "failed":
         if cleanup_exact_duplicate:
             source_persistence.unlink_source(file_path)
         return duplicate
@@ -945,8 +940,6 @@ async def ingest_batch(
     account_id: str,
     db: Session,
 ) -> DocumentBatchUploadResponse:
-    from app.services.tenant_quota_service import enforce_tenant_upload_quotas
-
     max_concurrent = _validate_batch_upload_request(files, max_concurrent=form.max_concurrent)
     enforce_tenant_upload_quotas(
         db,
