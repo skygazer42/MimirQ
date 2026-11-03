@@ -297,7 +297,7 @@ def _first_non_empty(mapping: dict[str, Any], keys: tuple[str, ...]) -> Any:
 def _normalize_uuid_text(value: Any) -> str:
     try:
         return str(UUID(str(value)))
-    except Exception:
+    except ValueError:
         return ""
 
 
