@@ -359,6 +359,13 @@ from app.rag.retrieval.orchestration.query_contract import (
     RetrievalConfigSnapshotInput,
     build_retrieval_config_snapshot,
 )
+from app.rag.rerank_result_cache import (
+    build_evidence_post_rerank_cache_key,
+    fingerprint_rerank_candidates,
+    get_cached_evidence_post_rerank_result,
+    get_evidence_post_rerank_cache_backend,
+    set_cached_evidence_post_rerank_result,
+)
 from app.rag.retrieval.orchestration.query_contracts import (
     QueryPreparationOverrides,
     RetrievalRequest,
@@ -375,13 +382,6 @@ from app.rag.retrieval.orchestration.query_options import (
     resolve_query_preparation_request,
 )
 from app.rag.retrieval.orchestration.query_planning import prepare_query_plan
-from app.rag.rerank_result_cache import (
-    build_evidence_post_rerank_cache_key,
-    fingerprint_rerank_candidates,
-    get_cached_evidence_post_rerank_result,
-    get_evidence_post_rerank_cache_backend,
-    set_cached_evidence_post_rerank_result,
-)
 from app.rag.retrieval.orchestration.reranker_factory import (
     describe_reranker_provider as describe_reranker_provider,
 )
