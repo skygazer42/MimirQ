@@ -581,6 +581,11 @@
 - Task 6 integration-section branch `a700447b` 经独立审查通过并合并。Dify、object-storage、parser-service sections 仅把 settings/parser types 改为直接 owner imports；model-providers section 经审阅符合标准且未修改。
 - JSX、props、state、callbacks、submission/error flows 和 visible UI 未变。依赖 `web/node_modules` 缺失且 pnpm 版本不符，ESLint/Prettier/TypeScript/browser checks 未运行；format_status 保留 pending。
 
+## Governance Settings Type Imports
+
+- Task 6 branch `7f2ab3e3` passed independent review and merged. Governance, industry-rules, LTR registry, and observability sections only change type-import ownership; rendered JSX, state, callbacks, form submit/error paths and public component exports remain unchanged.
+- `web/node_modules` is absent and pnpm is version-incompatible; frontend ESLint/Prettier/TypeScript/browser checks did not run. No UI behavior changed and no screenshots were required.
+
 ## Shared Common Frontend Types
 
 - Task 6 common-types branch commit `5aa80b6e` 经独立审查通过并合并。`PermissionEnum` now aliases the generated `DatasetPermissionEnum` schema; the literal union matches exactly. `DocumentAccessMode` retains `inherit`, while `LooseString` and `JsonObject` remain unchanged; direct consumers and the public barrel retain the same names.
