@@ -682,6 +682,11 @@
 - Task 5 的查询准备分支提交 `589e5b6f` 经审查发现 Important 顺序回归：模型覆盖参数中的 `int()`／`float()` 解析可能早于 KG 扩展失败。修复提交 `f38123ea` 让同步和异步路径都在 KG 扩展后解析模型参数；解析错误仍显式传播，KG 诊断顺序恢复。
 - 修复经定向复审通过并合并；Ruff check/format、AST、调用方和阶段顺序扫描及 diff/show check 通过。未运行 Python tests；实际 KG、模型和流式运行时未验证。四个目标模块中只有 `query_planning.py` 本轮发生代码调整，其他三个仍待语义审核。
 
+## Query Model Expansion Type
+
+- Task 5 query-contracts branch `9adb1019` passed independent review and merged. Only `model_query_expansion.py` changes a local dedup set to `set[str]`; validated model output, normalization, truncation, first-seen ordering and output shape remain.
+- Ruff check/format, AST/caller scan, `git show --check`, and review passed. No Python tests or model/provider runtime were run.
+
 ## Parser Table Structure and Rendering
 
 - Task 4 branch `fbdf728eb` 独立审查通过并合并。Four table helpers removed only contract-redundant conversions while preserving row/cell order, padding, page/bbox metadata, OCR normalization, escaping, thresholds and renderer error policies.

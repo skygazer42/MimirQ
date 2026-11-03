@@ -3677,7 +3677,7 @@ app/rag/retrieval/hybrid/metadata_scope.py,5,pending,conforms,Newly inventoried 
 app/rag/retrieval/hybrid/result_values.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
 app/rag/retrieval/hybrid/runtime_scope.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
 app/rag/retrieval/hybrid/vector_search.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
-app/rag/retrieval/orchestration/model_query_expansion.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
+app/rag/retrieval/orchestration/model_query_expansion.py,5,adjusted,conforms,Model query deduplication set matches the validated string list,Ruff check/format and review passed; validation normalization ordering and output shape retained; tests not run
 app/rag/retrieval/orchestration/query_contracts.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
 app/rag/retrieval/orchestration/query_planning.py,5,adjusted,conforms,Query stage inputs are shared without changing KG-before-model failure order,Ruff/format and AST passed; caller/order scan; Important review finding fixed and re-reviewed; tests not run
 app/rag/retrieval/orchestration/query_routing.py,5,pending,conforms,Newly inventoried tracked source; file-level semantic review pending,Ruff check and format passed during tracked-source inventory
