@@ -41,24 +41,31 @@ export type {
   UrlIngestConfig,
 } from '@/types/settings'
 
+export async function getSettings(): Promise<SystemSettings> {
+  const { data } = await apiClient.get('/settings')
+  return data
+}
+
+export async function updateSettings(
+  settings: UpdateSettingsRequest
+): Promise<SettingsUpdateResponse> {
+  const { data } = await apiClient.put('/settings', settings)
+  return data
+}
+
+export async function getSystemStatus(): Promise<SystemStatus> {
+  const { data } = await apiClient.get('/settings/status')
+  return data
+}
+
+export async function testLLMConnection(params: TestLLMRequest): Promise<TestLLMResponse> {
+  const { data } = await apiClient.post('/settings/llm/test', params)
+  return data
+}
+
 export const settingsApi = {
-  async get(): Promise<SystemSettings> {
-    const { data } = await apiClient.get('/settings')
-    return data
-  },
-
-  async update(settings: UpdateSettingsRequest): Promise<SettingsUpdateResponse> {
-    const { data } = await apiClient.put('/settings', settings)
-    return data
-  },
-
-  async getStatus(): Promise<SystemStatus> {
-    const { data } = await apiClient.get('/settings/status')
-    return data
-  },
-
-  async testLLM(params: TestLLMRequest): Promise<TestLLMResponse> {
-    const { data } = await apiClient.post('/settings/llm/test', params)
-    return data
-  },
+  get: getSettings,
+  update: updateSettings,
+  getStatus: getSystemStatus,
+  testLLM: testLLMConnection,
 }

@@ -33,16 +33,16 @@ type BackendTestLLMRequest = OpenApiSchema<'TestLLMRequest'>
 export type TestLLMRequest = Pick<BackendTestLLMRequest, 'api_key' | 'model'> &
   Partial<Omit<BackendTestLLMRequest, 'api_key' | 'model'>>
 
-export type SettingsUpdateResponse = {
+type SettingsActionResponse = {
   success: boolean
   message: string
+}
+
+export type SettingsUpdateResponse = SettingsActionResponse & {
   updated_keys: string[]
 }
 
-export type TestLLMResponse = {
-  success: boolean
-  message: string
-}
+export type TestLLMResponse = SettingsActionResponse
 
 export type ParserBackendStatus = {
   enabled: boolean
