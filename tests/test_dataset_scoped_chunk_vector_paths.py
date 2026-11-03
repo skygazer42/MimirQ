@@ -122,6 +122,7 @@ def test_manual_chunk_mutations_route_vector_ops_through_indexer_helpers(
     from app.services import indexer as indexer_module
 
     chunk_routes = importlib.import_module("app.api.v1.document_chunks_write")
+    chunk_operations = importlib.import_module("app.services.document_chunk_operations")
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -156,31 +157,36 @@ def test_manual_chunk_mutations_route_vector_ops_through_indexer_helpers(
         lambda: pytest.fail("routes must not call the default vector store directly"),
         raising=True,
     )
-    monkeypatch.setattr(chunk_routes, "Indexer", _FakeIndexer, raising=False)
-    monkeypatch.setattr(chunk_routes.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(chunk_routes, "_assert_document_writable_for_chunk_ops", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(chunk_routes, "audit_log_event", lambda *_a, **_k: None, raising=False)
+    monkeypatch.setattr(chunk_operations, "Indexer", _FakeIndexer, raising=False)
+    monkeypatch.setattr(chunk_operations.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
-        chunk_routes, "_normalize_index_consistency_strictness", lambda **_k: "best_effort", raising=True
+        chunk_operations,
+        "_assert_document_writable_for_chunk_ops",
+        lambda *_a, **_k: None,
+        raising=True,
     )
-    monkeypatch.setattr(chunk_routes, "_build_index_channel_result", lambda **kwargs: kwargs, raising=True)
+    monkeypatch.setattr(chunk_operations, "audit_log_event", lambda *_a, **_k: None, raising=False)
     monkeypatch.setattr(
-        chunk_routes,
+        chunk_operations, "_normalize_index_consistency_strictness", lambda **_k: "best_effort", raising=True
+    )
+    monkeypatch.setattr(chunk_operations, "_build_index_channel_result", lambda **kwargs: kwargs, raising=True)
+    monkeypatch.setattr(
+        chunk_operations,
         "_build_chunk_index_operation_result",
         lambda **kwargs: {"success": True, **kwargs},
         raising=True,
     )
-    monkeypatch.setattr(chunk_routes, "_persist_chunk_index_operation_result", lambda **_kwargs: None, raising=True)
-    monkeypatch.setattr(chunk_routes, "_record_chunk_index_drift", _noop_drift, raising=True)
+    monkeypatch.setattr(chunk_operations, "_persist_chunk_index_operation_result", lambda **_kwargs: None, raising=True)
+    monkeypatch.setattr(chunk_operations, "_record_chunk_index_drift", _noop_drift, raising=True)
     monkeypatch.setattr(
-        chunk_routes,
+        chunk_operations,
         "_resolve_active_doc_pipeline_key",
         lambda doc_id, _meta: f"{doc_id}:active",
         raising=True,
     )
-    monkeypatch.setattr(chunk_routes, "_get_document_for_chunk_ops", lambda *_a, **_k: document, raising=True)
+    monkeypatch.setattr(chunk_operations, "_get_document_for_chunk_ops", lambda *_a, **_k: document, raising=True)
     monkeypatch.setattr(
-        chunk_routes,
+        chunk_operations,
         "_get_chunk_for_chunk_ops",
         lambda *_a, **_k: existing_chunk,
         raising=True,

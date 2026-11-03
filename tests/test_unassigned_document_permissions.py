@@ -520,12 +520,13 @@ def test_document_access_management_preserves_dataset_write_authority(monkeypatc
 
 def test_documents_chunk_write_helper_delegates_to_shared_policy(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.api.v1 import document_chunks_write
+    from app.services import document_chunk_operations
 
     document = _unassigned_document(access_mode="all_team_members")
     sentinel = HTTPException(status_code=403, detail="shared-write-policy")
 
     monkeypatch.setattr(
-        document_chunks_write,
+        document_chunk_operations,
         "_assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(sentinel),
         raising=True,
@@ -544,19 +545,20 @@ def test_documents_chunk_write_helper_delegates_to_shared_policy(monkeypatch: py
 
 def test_document_chunk_write_endpoints_use_shared_unassigned_acl(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.api.v1 import document_chunks_write
+    from app.services import document_chunk_operations
 
     document = _unassigned_document(access_mode="all_team_members")
     db = _DB(document)
     sentinel = HTTPException(status_code=403, detail="shared-write-policy")
 
     monkeypatch.setattr(
-        document_chunks_write.dataset_service,
+        document_chunk_operations.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
     monkeypatch.setattr(
-        document_chunks_write,
+        document_chunk_operations,
         "_assert_document_writable_for_chunk_ops",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(sentinel),
         raising=True,

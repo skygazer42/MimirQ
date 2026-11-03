@@ -2240,17 +2240,17 @@ def test_enrich_results_fails_closed_when_metadata_filter_fails(monkeypatch: pyt
 def test_chunk_mutations_rotate_document_corpus_version_before_commit() -> None:
     from pathlib import Path
 
-    source = Path("app/api/v1/document_chunks_write.py").read_text(encoding="utf-8")
+    source = Path("app/services/document_chunk_operations.py").read_text(encoding="utf-8")
     version_touch = "document.updated_at = datetime.now(UTC)"
-    for function_name, next_decorator in (
-        ("create_document_chunk", "@router.patch("),
-        ("patch_document_chunk", "@router.delete("),
-        ("delete_document_chunk", "@router.post("),
-        ("disable_document_chunk", "@router.post("),
-        ("enable_document_chunk", "@router.post("),
+    for function_name, next_function in (
+        ("create_chunk", "def patch_chunk("),
+        ("patch_chunk", "async def delete_chunk("),
+        ("delete_chunk", "async def disable_chunk("),
+        ("disable_chunk", "def enable_chunk("),
+        ("enable_chunk", "def reembed_chunks("),
     ):
         function_start = source.index(f"def {function_name}(")
-        function_source = source[function_start : source.index(next_decorator, function_start)]
+        function_source = source[function_start : source.index(next_function, function_start)]
         assert version_touch in function_source
         assert function_source.index(version_touch) < function_source.index("db.commit()")
 
