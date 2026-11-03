@@ -15,7 +15,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import type { LTRModelInfo } from '@/lib/api'
+import type { LTRModelInfo } from '@/lib/api/ltr'
 import { cn } from '@/lib/utils'
 import { systemDenseControls, systemPageTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
 import { AlertCircle, CheckCircle2, RefreshCw, UploadCloud, XCircle } from 'lucide-react'
