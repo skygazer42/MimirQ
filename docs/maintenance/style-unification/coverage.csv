@@ -3361,7 +3361,7 @@ web/lib/api/access.ts,6,adjusted,pending,Access API requests use generated schem
 web/lib/api/audit.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/auth.ts,6,adjusted,pending,Auth API uses generated request and response contracts,SAML and bootstrap-token semantics reviewed; frontend checks unavailable; tests not run
 web/lib/api/chat.auth-fetch.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/chat.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/lib/api/chat.ts,6,adjusted,pending,Chat API consumes its domain type owner directly,Endpoint types and streaming caller contracts reviewed; frontend tools unavailable
 web/lib/api/connectors.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/core.auth-refresh.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/core.ts,6,adjusted,pending,Named interceptor handlers clarify request and response responsibilities,Auth/error/cancel/retry/request-ID behavior reviewed; reviewer pass; frontend tools unavailable
@@ -3393,7 +3393,7 @@ web/lib/api/reports.ts,6,pending,pending,Awaiting file-level convention and cont
 web/lib/api/rtbf.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/scim.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/settings.ts,6,adjusted,pending,Settings API methods and public exports retain their existing contract,Caller and legacy export review passed; frontend tooling unavailable so format/type checks remain pending
-web/lib/api/streaming.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/lib/api/streaming.ts,6,conforms,pending,Precheck SSE owner retains request and event behavior,Auth request ID abort and event parsing reviewed unchanged; frontend tools unavailable
 web/lib/api/usage.ts,6,adjusted,pending,Token and cost usage queries share their matching OpenAPI window parameters,Generated query fields endpoints and error propagation reviewed; frontend tools unavailable
 web/lib/auth-headers.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/auth-headers.ts,6,pending,pending,Awaiting file-level convention and contract review,

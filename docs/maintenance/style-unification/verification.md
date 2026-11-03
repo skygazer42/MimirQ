@@ -576,6 +576,11 @@
 - Task 6 common-types branch commit `5aa80b6e` 经独立审查通过并合并。`PermissionEnum` now aliases the generated `DatasetPermissionEnum` schema; the literal union matches exactly. `DocumentAccessMode` retains `inherit`, while `LooseString` and `JsonObject` remain unchanged; direct consumers and the public barrel retain the same names.
 - No UI or runtime change. `web/node_modules` is absent and pnpm is mismatched, so ESLint, Prettier, TypeScript and tests were not run.
 
+## Chat API Type Owner
+
+- Task 6 chat API branch commit `2ae11295` passed independent review and merged. `chat.ts` imports the existing chat contracts directly from `web/types/chat.ts`; no request body, OpenAPI/Zod validation, endpoint, auth, SSE transport, event ordering, abort, error, or compatibility export changed. `streaming.ts` was reviewed as conforming and remained unchanged.
+- No visible UI change. Frontend tooling/tests/runtime are unavailable because `web/node_modules` is absent and pnpm does not match the project version.
+
 ## Document API 与 Preview Helpers
 
 - Task 6 分支 `80a8d97a` 经独立审查通过并合并，改动仅在 `documents.ts` 与 `document-helpers.ts`。审查确认 endpoint/method/path、FormData、relative filename、parser resolution、timeout/abort、Zod/OpenAPI responses 和 error propagation 保持；branch name 与 brief 相差一个复数 `s`，不影响代码或目标分支合并。
