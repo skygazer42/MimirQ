@@ -2,19 +2,19 @@
 from __future__ import annotations
 
 import argparse
-import dataclasses
 import hashlib
 import shutil
 import tempfile
 import time
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 
 WHEEL_DOWNLOAD_USER_AGENT = "MimirQ-CI/1.0 (+https://github.com/skygazer42/MimirQ)"
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclass(frozen=True)
 class WheelSpec:
     filename: str
     url: str
