@@ -571,6 +571,16 @@
 - `web/components/settings/settings-switch.tsx` 已符合具名组件导出、局部 props type 和 shared Switch owner 约定，全部直接调用点已静态扫描；当前无需改代码。
 - 未修改 UI；本地 `web/node_modules` 不存在，Prettier 检查未运行，format_status 保持 pending。
 
+## Document API 与 Preview Helpers
+
+- Task 6 分支 `80a8d97a` 经独立审查通过并合并，改动仅在 `documents.ts` 与 `document-helpers.ts`。审查确认 endpoint/method/path、FormData、relative filename、parser resolution、timeout/abort、Zod/OpenAPI responses 和 error propagation 保持；branch name 与 brief 相差一个复数 `s`，不影响代码或目标分支合并。
+- web/node_modules 缺失且 pnpm 版本不符，故 ESLint、Prettier、TypeScript、测试和 live document/upload runtime 未运行。
+
+## Diagnostics 与 Smoke CLI
+
+- Task 7 分支 `63da2012c` 独立审查通过并合并；`compose_diagnostics.py` 复用 `_collect_compose_ps`，但 services/ports 仍各自调用一次并保留命令参数、错误记录、JSON/JSONL 输出和主函数始终返回 `0` 的既有契约。api_ping/api_smoke/check_parsers 审阅后符合标准，没有代码改动。
+- Ruff check/format、四脚本 AST、caller scan、diff check 和独立审查通过。Docker/API/parser/network CLI 均未执行；Python tests 未运行。
+
 ## 并行类别分支：Health、Metadata 与 Usage API
 
 - Task 6 system API branch `6f3c5014` 经独立审查通过并合并。health endpoint 使用 generated response owner，同时保留 Zod validation；usage token/cost methods 共用与两条 OpenAPI operation 完全相同的 window 参数；meta aliases 和 api-client barrel 未改。

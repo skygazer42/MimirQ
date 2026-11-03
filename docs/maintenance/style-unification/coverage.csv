@@ -1860,8 +1860,8 @@ scripts/README.md,inventory,preserved,preserved,"Documentation, static resource,
 scripts/access_graph_diff.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 scripts/alembic_cli.py,7,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 scripts/answer_quality_gate.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-scripts/api_ping.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-scripts/api_smoke.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+scripts/api_ping.py,7,conforms,conforms,Health endpoints and loopback proxy behavior match the existing CLI contract,Invocation scan and four-file Ruff/AST checks passed; no CLI runtime run
+scripts/api_smoke.py,7,conforms,conforms,Retry and optional parser policies match the existing smoke CLI contract,Invocation scan and four-file Ruff/AST checks passed; no API/parser runtime run
 scripts/apply_fusion_weights_to_dataset.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 scripts/assemble_dify_benchmark_report.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 scripts/audit.ps1,7,pending,pending,Awaiting file-level convention and contract review,
@@ -1897,14 +1897,14 @@ scripts/changzhou_gov_plugin_test_evidence.py,7,pending,conforms,Awaiting file-l
 scripts/changzhou_local_3model_benchmark.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 scripts/chaos_dependency_outage.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 scripts/check_npm_audit.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-scripts/check_parsers.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+scripts/check_parsers.py,7,conforms,conforms,Parser configuration reporting remains status-only and offline,Invocation scan and four-file Ruff/AST checks passed; no parser service run
 scripts/check_retrieval_profile_compat.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 scripts/chunk_autotune.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 scripts/chunk_preview_batch_eval.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 scripts/chunking_grid_runner.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 scripts/chunking_strategy_matrix.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 scripts/clean.py,7,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-scripts/compose_diagnostics.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+scripts/compose_diagnostics.py,7,adjusted,conforms,Compose ps construction and JSONL parsing have one shared owner,Ruff/format and AST checks passed; two invocations/output/errors remain unchanged; reviewer pass
 scripts/convert_text_encoding.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 scripts/deepdoc_quality_gate.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 scripts/demo_ingestion_flow.ps1,7,pending,pending,Awaiting file-level convention and contract review,
@@ -3368,8 +3368,8 @@ web/lib/api/core.ts,6,adjusted,pending,Named interceptor handlers clarify reques
 web/lib/api/datasets.pagination.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/datasets.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/dify.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/document-helpers.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/documents.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/lib/api/document-helpers.ts,6,adjusted,pending,Chunk preview query and FormData mapping use one typed helper owner,Caller contract and field serialization reviewed; frontend tooling unavailable
+web/lib/api/documents.ts,6,adjusted,pending,Document API requests retain explicit endpoint and upload contracts,Paths FormData parser selection timeouts aborts and errors reviewed; frontend tooling unavailable
 web/lib/api/evaluation.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/evidence.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/feedback.ts,6,pending,pending,Awaiting file-level convention and contract review,
