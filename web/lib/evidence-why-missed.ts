@@ -1,6 +1,24 @@
 import type { Citation } from '@/types'
+import type {
+  WhyMissedDriftInfo,
+  WhyMissedReferenceHints,
+  WhyMissedReferenceReportRow,
+  WhyMissedReferenceStatus,
+  WhyMissedReport,
+  WhyMissedRetrievalInfo,
+  WhyMissedSummary,
+} from '@/types/evaluation'
 
-export type WhyMissedReferenceStatus = 'retrieved' | 'missing' | 'drifted' | 'unknown'
+export type {
+  WhyMissedDriftInfo,
+  WhyMissedReferenceHints,
+  WhyMissedReferenceReportRow,
+  WhyMissedReferenceStatus,
+  WhyMissedReport,
+  WhyMissedRetrievalInfo,
+  WhyMissedSummary,
+} from '@/types/evaluation'
+
 type WhyMissedUnknownRecord = Record<string, unknown>
 type WhyMissedReferenceSource = WhyMissedUnknownRecord & {
   document_id?: unknown
@@ -16,51 +34,6 @@ type WhyMissedDriftReference = WhyMissedUnknownRecord & {
   reason?: unknown
   expected?: unknown
   observed?: unknown
-}
-
-export interface WhyMissedReferenceHints {
-  /** Rank (1-based) of the first citation that matches the reference's document_id. */
-  document_hit_rank?: number
-  /** Rank (1-based) of the first citation that matches (document_id, chunk_index). */
-  chunk_index_hit_rank?: number
-  /** Rank (1-based) of the first citation that matches the reference's hierarchy family key. */
-  family_hit_rank?: number
-}
-
-export interface WhyMissedRetrievalInfo {
-  rank: number
-  hit_type?: string
-  score?: number
-}
-
-export interface WhyMissedDriftInfo {
-  reason: string
-  expected?: unknown
-  observed?: unknown
-}
-
-export interface WhyMissedReferenceReportRow {
-  document_id: string | null
-  chunk_id: string
-  chunk_index?: number
-  label?: string | null
-  status: WhyMissedReferenceStatus
-  retrieval?: WhyMissedRetrievalInfo
-  drift?: WhyMissedDriftInfo
-  hints?: WhyMissedReferenceHints
-}
-
-export interface WhyMissedSummary {
-  total_references: number
-  retrieved_references: number
-  missing_references: number
-  drifted_references: number
-  unknown_references: number
-}
-
-export interface WhyMissedReport {
-  summary: WhyMissedSummary
-  references: WhyMissedReferenceReportRow[]
 }
 
 function asNonEmptyString(value: unknown): string | null {

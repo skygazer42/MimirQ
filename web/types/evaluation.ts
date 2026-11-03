@@ -158,6 +158,53 @@ export type EvidenceReferenceRepairResponse = import('./backend').EvidenceRefere
 export type EvidenceHardcaseCandidate = import('./backend').EvidenceHardcaseCandidate
 export type EvidenceHardcaseDiscovery = import('./backend').EvidenceHardcaseDiscovery
 
+export type WhyMissedReferenceStatus = 'retrieved' | 'missing' | 'drifted' | 'unknown'
+
+export type WhyMissedReferenceHints = {
+  /** Rank (1-based) of the first citation matching the reference document. */
+  document_hit_rank?: number
+  /** Rank (1-based) of the first citation matching the document and chunk index. */
+  chunk_index_hit_rank?: number
+  /** Rank (1-based) of the first citation matching the reference hierarchy family. */
+  family_hit_rank?: number
+}
+
+export type WhyMissedRetrievalInfo = {
+  rank: number
+  hit_type?: string
+  score?: number
+}
+
+export type WhyMissedDriftInfo = {
+  reason: string
+  expected?: unknown
+  observed?: unknown
+}
+
+export type WhyMissedReferenceReportRow = {
+  document_id: string | null
+  chunk_id: string
+  chunk_index?: number
+  label?: string | null
+  status: WhyMissedReferenceStatus
+  retrieval?: WhyMissedRetrievalInfo
+  drift?: WhyMissedDriftInfo
+  hints?: WhyMissedReferenceHints
+}
+
+export type WhyMissedSummary = {
+  total_references: number
+  retrieved_references: number
+  missing_references: number
+  drifted_references: number
+  unknown_references: number
+}
+
+export type WhyMissedReport = {
+  summary: WhyMissedSummary
+  references: WhyMissedReferenceReportRow[]
+}
+
 export type GeneratedQuestion = {
   question: string
   expected_answer?: string
