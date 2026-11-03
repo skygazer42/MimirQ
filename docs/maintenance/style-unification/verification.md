@@ -509,6 +509,11 @@
 - Ingestion policy schema owns the declarative shape while `ingestion_policy` service owns supported-step validation/normalization. Industry rules retain the `schema_` alias for the `schema` wire field. RAG template patches reuse `DatasetRAGDefaults` and retain existing version/traffic bounds.
 - Ruff check 与 Ruff format --check 通过。三个 schema 与 route/service 构造点核对一致；Python tests 与 API runtime 未运行。
 
+## 第三批：Dataset precheck and report schemas
+
+- Precheck request constraints align with the privileged local-scan route; its response models match the precheck service and route constructors. Dataset report models cover every field built by `ReportService`, and the API declares `DatasetReportOut` as the response model.
+- Ruff check 与 Ruff format --check passed for both files. Schemas are marked conforming; Python tests, API runtime, and filesystem/database flows were not run.
+
 ## 第三批：FLS, DB catalog, KG diagnostics, evaluation, and prompt schemas
 
 - FLS rule bounds/defaults align with the dataset schema and FLS service normalizer. DB catalog outputs map to ORM-backed route serialization. KG diagnostics and evaluation request limits/types match their route and engine/service constructors. Prompt template models retain their field bounds, version, and traffic-weight constraints used by the route.
