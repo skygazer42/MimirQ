@@ -14,11 +14,11 @@
 
 - 主工作区：`E:/MimirQ`；分支：`codex/local-account-registration`。为提速，独立业务类别可从当前 HEAD 建立 `codex/*` 分支和 worktree；类别代码与调用方完成审阅后合并回此分支。
 - 原始基线：`77b6adc1bce523482f0509302a454ce20e01c41c`；数据集服务已提交为 `2c16dedf8`。前两批及第三批此前结果保留，不重新执行。
-- 当前覆盖表有 3,757 个文件：166 个已调整、56 个已符合、985 个登记保留、2,550 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
+- 当前覆盖表有 3,757 个文件：169 个已调整、58 个已符合、985 个登记保留、2,545 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
 - Task 3A 的 125 个 Python 文件已完成最终静态核对并按数据集类别提交；Task 3B 的权限、配额、SCIM、配置、通用 API、身份令牌、共享资源与健康观测已完成本轮代码整理与静态检查，继续核对其余基础模块。原有 `app/api/schemas/document.py` 修改另行保留。
 - 原工作区的 1,625 个未跟踪文件及其他既有修改保留；只按本批明确文件清单暂存，不使用 `git add .`，不执行全仓清理或重置。
 - 用户执行要求：提交按完整业务类别归并，不按函数、文件或每个检查步骤频繁提交；同一类别的定义、调用方、必要引用和验证记录一起提交。纯格式化仍独立成类。
-- 已完成并合并的并行类别分支：Task 5 dataset route planning/query preparation/hybrid fusion、Task 3 chat runtime/turn persistence、Task 4 batch ingestion/document dispatch、Task 6 settings API/types、Task 7 model bootstrap CLI；后续分支以最新主工作区提交为基线，不能把原有未提交文件带入提交。
+- 已完成并合并的并行类别分支：Task 5 dataset route planning/query preparation/hybrid fusion、Task 3 chat runtime/turn persistence、Task 4 batch ingestion/document dispatch/parser models、Task 6 settings API/types、Task 7 model bootstrap CLI；后续分支以最新主工作区提交为基线，不能把原有未提交文件带入提交。
 
 ## 2. 已选定的统一标准
 
@@ -205,6 +205,8 @@ Chunk-write routes 直接依赖 ORM、`Indexer`、ACL、审计和 index-audit ow
 
 Task 4 document-dispatch slice is merged. `jobs.py` now passes the declared processor inputs directly and leaves session ownership with the worker. `process_document_flow.py` annotates all 31 processor references through a `TYPE_CHECKING` forward reference to avoid a runtime cycle. Independent review and explicit six-file Ruff/format/AST/caller checks passed; upload, parser and worker modules not touched by this diff remain pending.
 
+Task 4 parser model-cache/manifest slice is merged. Model cache snapshots now consume the documented path-like result directly; manifest fields retain their declared types and normalization. The loader remains the owner of resolving the manifest and the CLI serializes its resolved `manifest.path`, preserving the prior absolute result for relative inputs. Ruff/format, four-file AST, caller scan and scoped review passed; model downloads and parser runtime were not run.
+
 ### Task 5：RAG 与模型调用（进行中）
 
 入口：`app/api/v1/rag.py`、`app/rag/engine.py`、`app/rag/engine_support/`、`app/rag/retrieval/orchestration/`、`app/rag/embedding/`、`app/rag/reranker/`、`app/rag/llm/`，以及实际索引所有者 `app/services/indexer.py`、`app/services/indexing/`、`app/services/dataset_embedding_config.py` 和 `app/storage/vector/`；同批覆盖其实际检索、索引、KG、评估与工具调用模块。
@@ -251,11 +253,13 @@ Hybrid candidate fusion reuses the shared stable `result_key` owner and metadata
 
 设置 API 与共享类型首片已合并：保留 `settingsApi` 的四个方法、`settingsApiLegacy` 兼容导出、endpoint 与错误传播；手工响应形状明确为共享类型。该 worktree 缺少 `web/node_modules`，ESLint、Prettier、TypeScript 和前端 tests 未运行，因此格式状态仍为 pending。
 
+Shared API core slice 已合并：request/response interceptors 仅提取为具名内部 handlers，注册顺序和行为保持；auth、OIDC refresh/retry、cancellation、request ID、rate-limit、HTML response 和错误传播经独立审阅。Barrel re-export surface 未改；工具链因 `web/node_modules` 缺失及 pnpm 版本不符未运行。
+
 ### Task 7：脚本与全仓收尾
 
 范围：`scripts/`、`ci/`、`docker/` 下自研运行代码、入口及覆盖表中剩余文件；Python 测试仅按本轮暂缓约定登记，前端测试继续按职责维护。
 
-模型引导 CLI 首片已完成：`bootstrap_parsing_small_models.py` 合并重复结果字段构造，维持各状态的字段集合与顺序；`bootstrap_mimirq_models.py` 审阅后符合标准。Ruff/AST 检查通过；CLI、下载和转换未运行。
+模型引导 CLI 首片已完成：`bootstrap_parsing_small_models.py` 合并重复结果字段构造，维持各状态的字段集合、顺序和 canonical manifest path；`bootstrap_mimirq_models.py` 审阅后符合标准。Ruff/AST 检查通过；CLI、下载和转换未运行。
 
 - [ ] 核对脚本参数、退出码、输出、路径、配置和资源释放；命令行有意输出及必要兼容注明理由，不套用业务服务的错误转换。
 - [ ] 将覆盖表与最终 Git 跟踪列表重新对齐；新增、删除、移动都有去向，逐一检查 pending，不能因格式通过或改过一个引用就关单。

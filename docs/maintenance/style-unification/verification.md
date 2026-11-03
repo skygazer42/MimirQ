@@ -555,6 +555,11 @@
 - 分支提交 `cd3eae192` 经独立审查通过并合并。`settingsApi` 的 `get`、`update`、`getStatus`、`testLLM` endpoint、方法、请求体和错误传播保持原样；`settingsApiLegacy` 仍从原路径导出。设置响应的公共 `success`／`message` 字段使用明确共享类型，`updated_keys` 保留。
 - `git show --check` 通过；静态调用点和兼容导出核对通过。工作树没有 `web/node_modules`，因此 ESLint、Prettier、TypeScript 与前端 tests 均未运行；未安装依赖。两个文件已完成语义审阅，format_status 保留 pending。
 
+## 并行类别分支：共享 API 核心
+
+- Task 6 分支提交 `dd346a767` 经独立审查通过并合并。`api/core.ts` 将 request preparation 与 unexpected HTML response guard 提取为具名内部 handlers，并以原顺序注册；auth header、preferred language、request ID、OIDC retry/redirect/session clearing、cancellation、rate limit、HTML guard 和错误传播边界保持。`api-client.ts` barrel 的导出与 legacy aliases 未变。
+- Direct importer scan、`git diff --check` 和 `git show --check` 通过。工作树缺少 `web/node_modules`，Corepack pnpm 为 12.4.1 而项目要求 10.26.0；因此 ESLint、Prettier、TypeScript 和前端 tests 未运行，未安装或绕过依赖限制。format_status 保留 pending。
+
 ## 并行类别分支：文档处理派发
 
 - Task 4 分支已合并。`app/tasks/jobs.py` 的文档处理 handoff 显式传入文件、文档、租户、parser 和 chunk strategy，并沿用 worker 的 session 所有权；`process_document_flow.py` 的 31 个 `service` 参数使用 `TYPE_CHECKING` 下的 `DocumentProcessorService` 前向引用，避免 `processor.py` 的反向导入形成 runtime cycle。
@@ -575,6 +580,11 @@
 
 - Task 5 分支 `229928a95` 合并后只包含 `hybrid/dedup.py` 和 `hybrid/post_process.py` 的代码 diff。重复 identity key 转发到 `result_values.result_key`；anchor annotation/order 转发到 `metadata_ordering.order_metadata_anchors`。`candidate_ranking` 的 protected result、排序、dedup、rerank mapping、多样性和诊断调用顺序保持。
 - 在 `style-rag-fusion` worktree 根目录使用其 `ruff.toml`，两文件 Ruff check/format 通过；AST、调用方扫描、review 和 `git show --check` 通过。未运行 Python tests、vector/lexical/database/reranker runtime。
+
+## 并行类别分支：解析模型缓存与 Manifest
+
+- Task 4 分支提交 `a39c1ce48` 的路径输出问题经复审后修复为 `c7d792bb9` 并合并。`load_small_model_manifest` 仍按进程工作目录解析输入路径，`base_dir` 只决定 manifest 中模型资源的根目录；bootstrap 使用返回的 canonical `manifest.path` 序列化结果，保留显式相对 CLI 路径原有的绝对输出。
+- `hf_cache.py` 直接使用 path-like 下载结果，manifest 的字段解析、默认选择、cache path 和异常策略保持。Ruff check/format、四文件 AST、调用方扫描、diff check 和修复复审通过；未运行 Python tests、模型下载、HF/ONNX 加载或 parser service。
 
 ## 并行类别分支：查询准备与扩展
 
