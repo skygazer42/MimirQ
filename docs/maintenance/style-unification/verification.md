@@ -647,6 +647,11 @@
 - Task 5 rerank-cache branch `230e9507` plus import-order fix `7f419794` passed independent review and merged. `orchestrator.py` imports the canonical `app.rag.rerank_result_cache`; the former orchestration path re-exports the same public symbols. Corpus-token invalidation now clears the cache populated by the orchestrator.
 - Cache key scope, TTL, provider behavior, serialization, best-effort I/O and ranking policy are unchanged. Ruff check/format on both changed files and `git show --check` passed after fixing I001; Python tests, Redis/cache and reranker services were not run.
 
+## Retrieval Intent and Policy Gates
+
+- Task 5 branch `2cf14439` passed independent review and merged. `kg_merge_boost.py` directly consumes `is_kg` and `kg_score` from the local row owner; promotion order, score, thresholds, and diagnostics are unchanged. `intent_router.py` and `out_of_scope_live_gate.py` were audited as conforming owners; normalization, policy precedence, scope, and provider failure boundaries remain.
+- Ruff check/format on `kg_merge_boost.py`, AST/caller scan for the three scoped modules and orchestrator, and `git show --check` passed. No Python tests or graph/vector/database/model services were run.
+
 ## 并行类别分支：解析模型缓存与 Manifest
 
 - Task 4 分支提交 `a39c1ce48` 的路径输出问题经复审后修复为 `c7d792bb9` 并合并。`load_small_model_manifest` 仍按进程工作目录解析输入路径，`base_dir` 只决定 manifest 中模型资源的根目录；bootstrap 使用返回的 canonical `manifest.path` 序列化结果，保留显式相对 CLI 路径原有的绝对输出。
