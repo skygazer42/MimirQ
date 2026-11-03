@@ -504,6 +504,11 @@
 - QA generation request bounds and response fields align with `document_qa_service`; feedback request/output fields align with the route and ORM model; ingestion-run response models align with the route projection and use factories for JSON/list defaults.
 - Ruff check 与 Ruff format --check 通过。三份 schema 标记为符合标准；Python tests 与 API runtime 未运行。
 
+## 第三批：Ingestion policy, industry rules, and RAG template schemas
+
+- Ingestion policy schema owns the declarative shape while `ingestion_policy` service owns supported-step validation/normalization. Industry rules retain the `schema_` alias for the `schema` wire field. RAG template patches reuse `DatasetRAGDefaults` and retain existing version/traffic bounds.
+- Ruff check 与 Ruff format --check 通过。三个 schema 与 route/service 构造点核对一致；Python tests 与 API runtime 未运行。
+
 ## 第三批：Corpus cache invalidation transaction
 
 - Single-dataset lookup now returns no token when the tenant-scoped dataset row is missing, matching document and multi-dataset scope behavior. Cache invalidation requires `Session.flush()` and propagates database failure; the service does not take ownership of commit.

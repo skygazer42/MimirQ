@@ -102,15 +102,15 @@ app/api/schemas/governance_profile.py,3,pending,adjusted,Awaiting file-level con
 app/api/schemas/group.py,3,adjusted,conforms,After validators consume declared strings and lists; retain ordering rejection and length constraints,Task 3 tenant boundary full AST; 16 schema fields; 3 after validators
 app/api/schemas/health.py,3,conforms,adjusted,Complete health response schema review; current field and framework inheritance contracts conform,Complete module and parameter AST review; logs/task-3-observation-static.json; Ruff check/format passed; Python tests deferred
 app/api/schemas/indexing.py,3,preserved,adjusted,Legacy import-path compatibility shim retained; internal definitions belong to app.types.indexing,Ruff check/format; no in-repo imports found; external Python compatibility retained
-app/api/schemas/industry_rules.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/api/schemas/ingestion_policy.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/api/schemas/industry_rules.py,3,conforms,adjusted,Versioned schema alias preserves the `schema` wire field; request/response fields are typed,Ruff check/format; API constructors and aliases checked; Python tests not run
+app/api/schemas/ingestion_policy.py,3,conforms,adjusted,Structural policy types and defaults are explicit; domain normalization remains in the service owner,Ruff check/format; service and routes construct/validate the same models; Python tests not run
 app/api/schemas/ingestion_run.py,3,conforms,conforms,Run/document response models match ingestion-run route projection,Ruff check/format; JSON payload defaults use factories; Python tests not run
 app/api/schemas/kg_diagnostics.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/meta.py,3,conforms,adjusted,Public versus administrative metadata schema fields and framework models already express required boundaries,task-3-metadata: full exact schema AST; complete source review; Ruff/format; no Python tests
 app/api/schemas/pipeline.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/prompt_template.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/qa.py,3,conforms,conforms,QA request bounds and response fields match document QA service,Ruff check/format; preview list uses a default factory; Python tests not run
-app/api/schemas/rag_config_template.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/api/schemas/rag_config_template.py,3,conforms,adjusted,Template patch reuses DatasetRAGDefaults and bounded template fields,Ruff check/format; request models align with template API; Python tests not run
 app/api/schemas/rbac.py,3,adjusted,adjusted,External role normalization and validation retained; validator input and return types declared,task-3-permission-quota: schema and route review; Ruff; AST; no Python tests
 app/api/schemas/regression.py,3,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/api/schemas/report.py,3,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
