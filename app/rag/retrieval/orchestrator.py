@@ -1327,7 +1327,6 @@ def _run_retrieval_decomposition_variants_phase(ctx: RetrievalRuntimeState) -> d
     ctx.clause_fastlane_queries = list(ctx.query_plan.clause_queries)
     ctx.lightweight_subqueries = list(ctx.query_plan.lightweight_queries)
     variant_stage = ctx.query_plan.variant_stage
-    ctx.retrieval_queries = list(variant_stage.retrieval_queries)
     ctx.query_expansion_budget_meta = dict(variant_stage.query_expansion_budget_meta)
     ctx.query_expansion_budget_max_queries = variant_stage.query_expansion_budget_max_queries
     ctx.query_expansion_budget_max_candidates = variant_stage.query_expansion_budget_max_candidates
@@ -1495,7 +1494,7 @@ def _run_retrieval_retrieval_execution_phase(ctx: RetrievalRuntimeState) -> dict
     ctx.retrieval_errors = []
     ctx.retrieval_per_query = []
     ctx.retrieval_parallelism = max(1, int(getattr(settings, "RETRIEVAL_QUERY_PARALLELISM", 1) or 1))
-    ctx.retrieval_plan = [(kind, query, _retriever_for_query_kind(ctx, kind)) for kind, query in ctx.retrieval_queries]
+    ctx.retrieval_plan = [(kind, query, _retriever_for_query_kind(ctx, kind)) for kind, query in ctx.query_plan.queries]
     started = time.time()
     _run_decomposition_chain(ctx)
     _run_retrieval_plan(ctx)
