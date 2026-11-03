@@ -276,7 +276,7 @@ def _kg_boost_rows(docs: list[Document], *, weight: float) -> tuple[list[dict[st
             continue
         row = _kg_boost_row(doc, index=index, weight=weight)
         rows.append(row)
-        if bool(row.get("is_kg")) and float(row.get("kg_score") or 0.0) > 0.0:
+        if row["is_kg"] and row["kg_score"] > 0.0:
             eligible_rows.append(row)
     return rows, eligible_rows
 
