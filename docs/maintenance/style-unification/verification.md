@@ -425,3 +425,8 @@
 
 - `QueryVariantStageInput` budget fields now use int/float optional types from `QueryExpansionBudget`; the duplicate broad-catching coercion helpers are removed. `None` and zero still mean no configured limit; invalid numeric values no longer silently become an unlimited budget.
 - Existing query-planning, option-parser, and test constructors retain their field names; the only current production caller passes the normalized budget. Ruff check/format and `git diff --check` passed. Python tests were not run.
+
+## 第五批：Query option adapter file review
+
+- `query_options.py` keeps the mapping-to-typed-request boundary in one owner. Rewrite and budget numeric conversions reject malformed values; documented KG expansion defaults and multi-query caps were cross-checked against config and `.env.example`.
+- Ruff check 与 Ruff format --check 通过。本文件标记为已符合标准；Python tests 与 runtime retrieval 未运行。
