@@ -14,11 +14,11 @@
 
 - 主工作区：`E:/MimirQ`；分支：`codex/local-account-registration`。为提速，独立业务类别可从当前 HEAD 建立 `codex/*` 分支和 worktree；类别代码与调用方完成审阅后合并回此分支。
 - 原始基线：`77b6adc1bce523482f0509302a454ce20e01c41c`；数据集服务已提交为 `2c16dedf8`。前两批及第三批此前结果保留，不重新执行。
-- 当前覆盖表有 3,757 个文件：189 个已调整、78 个已符合、985 个登记保留、2,505 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
+- 当前覆盖表有 3,757 个文件：194 个已调整、79 个已符合、985 个登记保留、2,499 个待语义审核。纯排版结果另记，不能据此关闭语义审核。
 - Task 3A 的 125 个 Python 文件已完成最终静态核对并按数据集类别提交；Task 3B 的权限、配额、SCIM、配置、通用 API、身份令牌、共享资源与健康观测已完成本轮代码整理与静态检查，继续核对其余基础模块。原有 `app/api/schemas/document.py` 修改另行保留。
 - 原工作区的 1,625 个未跟踪文件及其他既有修改保留；只按本批明确文件清单暂存，不使用 `git add .`，不执行全仓清理或重置。
 - 用户执行要求：提交按完整业务类别归并，不按函数、文件或每个检查步骤频繁提交；同一类别的定义、调用方、必要引用和验证记录一起提交。纯格式化仍独立成类。
-- 已完成并合并的并行类别分支：Task 5 dataset route planning/query preparation/hybrid fusion/channel retrieval/lexical-sparse/context expansion、Task 3 chat runtime/turn persistence/memory、Task 4 batch ingestion/document dispatch/parser models/parser backends、Task 6 settings/system/auth/access/documents/chat APIs/common types、Task 7 model bootstrap/diagnostics CLIs；后续分支以最新主工作区提交为基线，不能把原有未提交文件带入提交。
+- 已完成并合并的并行类别分支：Task 5 dataset route planning/query preparation/hybrid fusion/channel retrieval/lexical-sparse/context expansion/rerank cache、Task 3 chat runtime/turn persistence/memory、Task 4 batch ingestion/document dispatch/parser models/parser backends/parser structure、Task 6 settings/system/auth/access/documents/chat APIs/common types、Task 7 model bootstrap/diagnostics CLIs；后续分支以最新主工作区提交为基线，不能把原有未提交文件带入提交。
 
 ## 2. 已选定的统一标准
 
@@ -209,6 +209,8 @@ Task 4 document-dispatch slice is merged. `jobs.py` now passes the declared proc
 
 Task 4 parser model-cache/manifest slice is merged. Model cache snapshots now consume the documented path-like result directly; manifest fields retain their declared types and normalization. The loader remains the owner of resolving the manifest and the CLI serializes its resolved `manifest.path`, preserving the prior absolute result for relative inputs. Ruff/format, four-file AST, caller scan and scoped review passed; model downloads and parser runtime were not run.
 
+Parser structure helper slice removes only redundant coercion after local string/sequence contracts are established. Noise exemptions/regexes, region metadata/order, header/footer bands and reading-order metadata remain unchanged; four-file Ruff/AST/caller checks and independent review passed. OCR/parser runtime was not run.
+
 Parser backend sub-slice reviewed four files: aliases remain owned by `backends.py`; the parser factory retains its class because it owns cached parser instances and lazy optional-plugin construction; `errors.py` keeps dynamic metadata at the subprocess boundary. `diagnostics.py` now consumes its own sampling helper's guaranteed `is_scanned` field directly. Ruff/format, AST and caller scan passed; parser providers were not run.
 
 ### Task 5：RAG 与模型调用（进行中）
@@ -240,6 +242,8 @@ Hybrid channel result processing consumes its declared list inputs directly and 
 Lexical/sparse retrieval reuses `candidate_metadata_from_doc` for the shared projection; sparse calls the owner directly instead of depending on the hybrid mixin MRO. BM25/sparse score fields, cache/scope/filter/ordering behavior are unchanged. `text_preparation.py` and `lexical_search.py` were reviewed and already conform; changed files passed Ruff/format and review. Python tests and index/provider runtimes were not run.
 
 Context expansion removes only the score-neighbor forwarding wrapper and calls `neighbor_expand` directly from the rerank workflow with the same inputs and ordering. Hierarchy's wrapper remains because it adds public diagnostics fields; the other expansion owners were reviewed and conform. Python tests and retrieval services were not run.
+
+Rerank cache has one canonical owner: the orchestrator imports `app.rag.rerank_result_cache` directly, while the prior orchestration path re-exports the same public symbols. Corpus-token invalidation therefore targets the populated cache. Cache keys, TTL, provider/fallback semantics, and error policy remain unchanged; Ruff/import checks and independent review passed.
 
 - [ ] 按查询准备 → 通道召回 → 融合／重排 → 上下文 → 模型／流式返回的顺序追踪数据和预算，再处理各条依赖链。
 - [ ] 合并经证实重复的参数映射与控制流，核对动态取值和无依据默认值；保留供应商协议适配、可选插件边界和有状态资源。

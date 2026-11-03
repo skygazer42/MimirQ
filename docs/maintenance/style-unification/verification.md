@@ -642,10 +642,20 @@
 - Task 5 branch `2cda543d` 独立审查通过并合并；仅移除 `context_expansion.expand_reranked_ids_by_score` 转发 wrapper，并让 `rerank_expand_rerank.py` 直接调用 `neighbor_expand.expand_neighbors_by_score`。Hierarchy wrapper 保留，因为它补充 `framework`/`strategy` diagnostics。
 - Worktree Ruff check/format、六个 scoped context modules 与直接 caller 的 AST、caller scan 和 `git show --check` 通过。没有改 tenant/document scope、ordering、dedup、spans/budgets/provenance/failure policy。Python tests 和 runtime services 未运行。
 
+## Rerank Result Cache Ownership
+
+- Task 5 rerank-cache branch `230e9507` plus import-order fix `7f419794` passed independent review and merged. `orchestrator.py` imports the canonical `app.rag.rerank_result_cache`; the former orchestration path re-exports the same public symbols. Corpus-token invalidation now clears the cache populated by the orchestrator.
+- Cache key scope, TTL, provider behavior, serialization, best-effort I/O and ranking policy are unchanged. Ruff check/format on both changed files and `git show --check` passed after fixing I001; Python tests, Redis/cache and reranker services were not run.
+
 ## 并行类别分支：解析模型缓存与 Manifest
 
 - Task 4 分支提交 `a39c1ce48` 的路径输出问题经复审后修复为 `c7d792bb9` 并合并。`load_small_model_manifest` 仍按进程工作目录解析输入路径，`base_dir` 只决定 manifest 中模型资源的根目录；bootstrap 使用返回的 canonical `manifest.path` 序列化结果，保留显式相对 CLI 路径原有的绝对输出。
 - `hf_cache.py` 直接使用 path-like 下载结果，manifest 的字段解析、默认选择、cache path 和异常策略保持。Ruff check/format、四文件 AST、调用方扫描、diff check 和修复复审通过；未运行 Python tests、模型下载、HF/ONNX 加载或 parser service。
+
+## Parser Structure Cleanup
+
+- Task 4 branch `387bf59e7` 独立审查通过并合并。Noise rules、region algorithms、header/footer remover 与 reading-order fixer 只移除契约已保证的重复转换；pattern/threshold/page boundary/field/ordering behavior 保持。
+- Ruff check/format、四文件 AST、直接 caller scan 与 diff check 通过。未运行 Python tests、OCR/parser providers 或模型服务。
 
 ## 并行类别分支：Chat Memory Runtime
 

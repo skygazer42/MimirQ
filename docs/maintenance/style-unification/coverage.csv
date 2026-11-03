@@ -486,16 +486,16 @@ app/parsing/enrich/__init__.py,4,pending,adjusted,Awaiting file-level convention
 app/parsing/enrich/caption_linker.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/parsing/enrich/chart_to_data.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/parsing/enrich/cross_page_table_linker.py,4,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/parsing/enrich/document_noise_rules.py,4,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/parsing/enrich/document_region_algorithms.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/parsing/enrich/document_noise_rules.py,4,adjusted,conforms,Noise rules consume the declared text contract directly,Ruff/format and caller scan; trim exemptions and regex behavior reviewed; tests not run
+app/parsing/enrich/document_region_algorithms.py,4,adjusted,adjusted,Region algorithm inputs use their declared sequence contracts,Ruff/format and AST; iteration order and region metadata preserved; tests not run
 app/parsing/enrich/formula_ocr.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/parsing/enrich/header_footer_remover.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/parsing/enrich/header_footer_remover.py,4,adjusted,adjusted,Header/footer rules use normalized parser text and declared page regions,Ruff/format and caller scan; thresholds and removal order preserved; tests not run
 app/parsing/enrich/image_caption.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/parsing/enrich/image_code.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/parsing/enrich/image_ocr.py,4,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/parsing/enrich/image_understanding.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/parsing/enrich/ocr_redaction.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/parsing/enrich/reading_order_fixer.py,4,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/parsing/enrich/reading_order_fixer.py,4,adjusted,adjusted,Reading-order fixer consumes the typed boolean result directly,Ruff/format and AST; page/order metadata preserved; tests not run
 app/parsing/enrich/seal_recognition.py,4,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/parsing/enrich/section_tree.py,4,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/parsing/enrich/table_canonical.py,4,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -1125,11 +1125,11 @@ app/rag/retrieval/orchestration/query_contract.py,5,adjusted,conforms,typed norm
 app/rag/retrieval/orchestration/query_invocation.py,5,adjusted,conforms,Typed invocation inputs used directly; existing empty-kind fallback retained,Ruff check/format; all three production call sites reviewed; Python tests not run
 app/rag/retrieval/orchestration/query_options.py,5,conforms,conforms,Typed option adapters preserve documented defaults and reject malformed budget numbers,Ruff check/format; defaults cross-checked with config and .env.example; Python tests not run
 app/rag/retrieval/orchestration/query_variants.py,5,adjusted,conforms,typed budget inputs no longer turn malformed values into an unbounded budget,Ruff check/format; None retains zero/unbounded semantics; Python tests not run
-app/rag/retrieval/orchestration/rerank_result_cache.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/rag/retrieval/orchestration/rerank_result_cache.py,5,adjusted,conforms,Obsolete orchestration cache now re-exports the canonical owner,Ruff check/format and review passed; seven public functions and invalidation owner retained
 app/rag/retrieval/orchestration/reranker_factory.py,5,adjusted,conforms,Typed candidate handling; explicit disabled and optional-module fallback boundaries,Ruff check/format; none aliases map to identity; unknown provider errors propagate; Python tests not run
-app/rag/retrieval/orchestration/retriever_shim.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/rag/retrieval/orchestration/retriever_shim.py,5,conforms,conforms,Retriever shim retains its explicit optional-provider boundary,Missing-module fallback and unknown-provider failure reviewed unchanged; no code diff
 app/rag/retrieval/orchestration/text_helpers.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-app/rag/retrieval/orchestrator.py,5,pending,conforms,本批核对 KG sync wrapper 与 scalar coercion 调用；整文件审核待完成,KG result contract and _safe_int/_safe_float callers reviewed; Ruff check/format; Python tests not run
+app/rag/retrieval/orchestrator.py,5,pending,conforms,KG/scalar subscopes and rerank cache owner import reviewed; full module review remains pending,Rerank cache ownership/call and prior KG/coercion scopes reviewed; Ruff check/format; tests not run
 app/rag/retrieval/orchestrator_support_contracts.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestrator_support_hierarchy.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestrator_support_post_rerank.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
