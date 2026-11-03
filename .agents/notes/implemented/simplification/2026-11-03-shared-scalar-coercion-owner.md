@@ -12,6 +12,8 @@ Status: implemented
 
 `kg_merge_boost._coerce_optional_int` remains local because it returns `None` for an absent metadata field; that is a different contract from a defaulting integer conversion.
 
+Citation parse-quality summaries use the same standard numeric conversion error list. A malformed optional score tries the next declared metadata field; unexpected errors are not treated as missing metadata.
+
 ## Alternatives considered
 
 - Keep both common helper pairs: this avoids caller edits, but leaves two implementations of the same defaulting and clamping rules.
@@ -23,4 +25,4 @@ Numeric defaults and bounds are visible at each call site, and shared conversion
 
 ## Verification
 
-Ruff check, Ruff format --check, and `git diff --check` passed for the three affected Python files. Static reference scanning confirmed the common optional wrappers have no remaining callers; Python tests and runtime retrieval checks were not run.
+Ruff check, Ruff format --check, and `git diff --check` passed for the affected Python files. Static reference scanning confirmed the common optional wrappers have no remaining callers; Python tests and runtime retrieval checks were not run.

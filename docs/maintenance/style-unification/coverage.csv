@@ -1111,7 +1111,7 @@ app/rag/retrieval/neighbor_expand.py,5,pending,adjusted,Awaiting file-level conv
 app/rag/retrieval/orchestration/__init__.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestration/anchors.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestration/channel_budget.py,5,conforms,conforms,External policy JSON validation and malformed optional entries have explicit outcomes,Ruff check/format; schema version and partial budget behavior reviewed; Python tests not run
-app/rag/retrieval/orchestration/citation_quality.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+app/rag/retrieval/orchestration/citation_quality.py,5,adjusted,conforms,typed Document fields and standard numeric parse failures made explicit,Ruff check/format; None list entries remain skipped; optional score fields try next value; Python tests not run
 app/rag/retrieval/orchestration/common.py,5,adjusted,conforms,合并重复数值转换 helper；typed Document ID 直接读取,Ruff check/format; numeric defaults and clamps preserved at callers; Python tests not run
 app/rag/retrieval/orchestration/corpus_cache_tokens.py,5,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
 app/rag/retrieval/orchestration/debug_sanitize.py,5,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending

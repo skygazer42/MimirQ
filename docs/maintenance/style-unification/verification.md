@@ -414,3 +414,8 @@
 
 - `channel_budget.py` 的 JSON summary、schema version、profile selection、per-channel allowlist、budget bounds 与 missing/invalid policy 结果均有明确归属；错误 optional entries 保持跳过，部分有效预算仍按既有策略应用。
 - Ruff check 与 Ruff format --check 通过。本文件标记为已符合标准；未运行 Python tests 或 retrieval runtime。
+
+## 第五批：Citation quality typed metadata
+
+- Parse-quality helpers read LangChain `Document.metadata` and `Document.id` directly. The typed document list explicitly skips `None` entries; metadata score parsing continues to the next supported field only for `OverflowError`, `TypeError` or `ValueError`.
+- Ruff check、Ruff format --check 和 `git diff --check` 通过。本文件标记为已调整；Python tests 与 retrieval runtime 未运行。
