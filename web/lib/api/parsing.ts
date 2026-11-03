@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
 import { apiClient, openapiRequest } from '@/lib/api/core'
 
-export interface ParsingElement {
+export type ParsingElement = {
   id: string
   kind: 'heading' | 'paragraph' | 'list' | 'table' | 'image' | 'equation' | 'seal' | 'unknown'
   page?: number | null
@@ -23,14 +23,14 @@ export interface ParsingElement {
   attributes?: Record<string, unknown> | null
 }
 
-export interface ParsingExtractFieldSpec {
+export type ParsingExtractFieldSpec = {
   type?: 'string'
   source_kind?: string | null
   source_visual_kind?: string | null
   aliases?: string[]
 }
 
-export interface ParsingExtractRequest {
+export type ParsingExtractRequest = {
   mode?: 'schema' | 'prompt'
   schema?: Record<string, ParsingExtractFieldSpec> | null
   prompt?: string | null
@@ -38,7 +38,7 @@ export interface ParsingExtractRequest {
   max_evidence?: number
 }
 
-export interface ParsingExtractEvidence {
+export type ParsingExtractEvidence = {
   element_id?: string | null
   kind?: ParsingElement['kind'] | null
   page?: number | null
@@ -54,26 +54,45 @@ export interface ParsingExtractEvidence {
   score?: number | null
 }
 
-export interface ParsingExtractFieldResult {
+export type ParsingExtractFieldResult = {
   value?: string | null
   confidence?: number | null
   evidence: ParsingExtractEvidence[]
   strategy?: string | null
 }
 
-export interface ParsingExtractResponse {
+export type ParsingExtractResponse = {
   document_id: string
   mode: 'schema' | 'prompt'
   result: Record<string, ParsingExtractFieldResult>
 }
 
+type NormalizedParsingExtractFieldSpec = {
+  type: 'string'
+  source_kind?: string | null
+  source_visual_kind?: string | null
+  aliases?: string[]
+}
+
+type ParsingDocumentListParams = {
+  skip?: number
+  limit?: number
+  status?: string
+  dataset_id?: string
+}
+
+type ParsingDocumentListResponse = {
+  total: number
+  items: Document[]
+}
+
 function normalizeExtractFieldSpecMap(
   value: Record<string, ParsingExtractFieldSpec> | null | undefined
-): Record<string, { type: 'string'; source_kind?: string | null; aliases?: string[] }> | undefined {
+): Record<string, NormalizedParsingExtractFieldSpec> | undefined {
   if (!value) return undefined
   const entries = Object.entries(value)
   if (entries.length === 0) return undefined
-  const out: Record<string, { type: 'string'; source_kind?: string | null; source_visual_kind?: string | null; aliases?: string[] }> = {}
+  const out: Record<string, NormalizedParsingExtractFieldSpec> = {}
   for (const [key, spec] of entries) {
     out[key] = {
       type: 'string',
@@ -85,7 +104,7 @@ function normalizeExtractFieldSpecMap(
   return out
 }
 
-export interface ParsingContentResponse {
+export type ParsingContentResponse = {
   document_id: string
   parser_backend: string
   markdown_content: string
@@ -113,7 +132,7 @@ export interface ParsingContentResponse {
   elements?: ParsingElement[] | null
 }
 
-export interface ParsingContentUpdateRequest {
+export type ParsingContentUpdateRequest = {
   markdown_content: string
   original_markdown_content?: string | null
 }
@@ -146,7 +165,16 @@ const parsingQualityGateSchema = z
   .nullable()
   .optional()
 
-const parsingElementKindSchema = z.enum(['heading', 'paragraph', 'list', 'table', 'image', 'equation', 'seal', 'unknown'])
+const parsingElementKindSchema = z.enum([
+  'heading',
+  'paragraph',
+  'list',
+  'table',
+  'image',
+  'equation',
+  'seal',
+  'unknown',
+])
 
 const parsingElementSchema = z.looseObject({
   id: z.string(),
@@ -225,7 +253,7 @@ const parsingContentResponseTypedSchema = parsingContentResponseSchema as unknow
 const parsingExtractResponseTypedSchema = parsingExtractResponseSchema as unknown as z.ZodType<ParsingExtractResponse>
 
 export const parsingApi = {
-  async listDocuments(params?: { skip?: number; limit?: number; status?: string; dataset_id?: string }): Promise<{ total: number; items: Document[] }> {
+  async listDocuments(params?: ParsingDocumentListParams): Promise<ParsingDocumentListResponse> {
     const { data } = await apiClient.get('/parsing/documents', { params })
     return data
   },
@@ -256,9 +284,13 @@ export const parsingApi = {
       vlm_correction_enabled?: boolean
     } = {}
     if (options?.parser_backend) params.parser_backend = options.parser_backend
-    if (typeof options?.image_caption_enabled === 'boolean') params.image_caption_enabled = options.image_caption_enabled
+    if (typeof options?.image_caption_enabled === 'boolean') {
+      params.image_caption_enabled = options.image_caption_enabled
+    }
     if (typeof options?.image_ocr_enabled === 'boolean') params.image_ocr_enabled = options.image_ocr_enabled
-    if (typeof options?.vlm_correction_enabled === 'boolean') params.vlm_correction_enabled = options.vlm_correction_enabled
+    if (typeof options?.vlm_correction_enabled === 'boolean') {
+      params.vlm_correction_enabled = options.vlm_correction_enabled
+    }
 
     const data = await openapiRequest({
       path: '/api/v1/parsing/documents/{document_id}/parse',
