@@ -21,7 +21,7 @@ import { reportClientError } from '@/lib/client-logging'
 import { cn, detachPromise } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
-interface QualityIssue {
+type QualityIssue = {
   id: string
   type: 'error' | 'warning' | 'info'
   message: string
@@ -29,7 +29,7 @@ interface QualityIssue {
   fix?: () => void
 }
 
-interface QualityCheckerProps {
+type QualityCheckerProps = {
   content: string
   initialScore?: number
   initialIssues?: QualityIssue[]

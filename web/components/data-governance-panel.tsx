@@ -360,7 +360,7 @@ function mapParsingDocumentToGovernanceFile(
 }
 
 // 文件治理状态
-interface FileGovernanceState {
+type FileGovernanceState = {
   id: string
   originalContent: string
   cleanedContent: string

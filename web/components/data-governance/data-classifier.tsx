@@ -12,7 +12,7 @@ import { reportClientWarning } from '@/lib/client-logging'
 import { cn } from '@/lib/utils'
 import type { AutoDocumentTag } from '@/types'
 
-interface DataClassifierProps {
+type DataClassifierProps = {
   content: string
   initialCategory?: string | null
   initialTags?: string[]

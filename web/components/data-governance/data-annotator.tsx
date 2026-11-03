@@ -26,7 +26,7 @@ import { reportClientWarning } from '@/lib/client-logging'
 import { cn } from '@/lib/utils'
 import type { AutoAnnotationRequest, AutoDocumentTag } from '@/types'
 
-export interface Annotation {
+export type Annotation = {
   id: string
   text: string
   type: 'entity' | 'keyword' | 'sensitive' | 'custom'
@@ -35,7 +35,7 @@ export interface Annotation {
   end: number
 }
 
-interface DataAnnotatorProps {
+type DataAnnotatorProps = {
   content: string
   annotations?: Annotation[]
   onAnnotate: (annotations: Annotation[]) => void

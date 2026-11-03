@@ -34,7 +34,7 @@ import { computeCleanPreviewImpact } from '@/lib/clean-preview-impact'
 const SELECT_DEFAULT_VALUE = '__mimirq_default__'
 const DATA_CLEANER_INPUT_FORMAT_VALUES = ['markdown', 'html'] as const
 
-interface DataCleanerProps {
+type DataCleanerProps = {
   content: string
   cleanedContent?: string
   onClean: (cleaned: string) => void
