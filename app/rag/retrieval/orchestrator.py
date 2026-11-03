@@ -40,6 +40,7 @@ from app.rag.core.temporal import (
     fetch_document_updated_ts,
 )
 from app.rag.engine_support.doc_utils import DocUtilsMixin
+from app.rag.engine_support.query_model_calls import EngineQueryModels
 from app.rag.industry_rules.runtime import apply_industry_rules_query_expansion
 from app.rag.policy.must_recall import (
     MUST_RECALL_FAIL_REASON_TAXONOMY_V1,
@@ -359,6 +360,12 @@ from app.rag.retrieval.orchestration.kg_merge_boost import (
 from app.rag.retrieval.orchestration.kg_merge_boost import (
     _resolve_kg_scope as _resolve_kg_scope,
 )
+from app.rag.retrieval.orchestration.model_query_expansion import (
+    decompose_query,
+    generate_hyde_query,
+    generate_multi_queries,
+    generate_step_back_query,
+)
 from app.rag.retrieval.orchestration.out_of_scope_live_gate import (
     maybe_apply_out_of_scope_live_guard as maybe_apply_out_of_scope_live_guard,
 )
@@ -369,10 +376,12 @@ from app.rag.retrieval.orchestration.query_contract import (
     RetrievalConfigSnapshotInput,
     build_retrieval_config_snapshot,
 )
+from app.rag.retrieval.orchestration.query_contracts import ModelQuerySettings
 from app.rag.retrieval.orchestration.query_invocation import (
     QueryInvocationRecordInput,
     build_query_invocation_record,
 )
+from app.rag.retrieval.orchestration.query_options import parse_model_query_overrides, resolve_model_query_settings
 from app.rag.retrieval.orchestration.query_variants import (
     QueryVariantStageInput,
     build_query_variant_stage,
@@ -511,126 +520,19 @@ def _build_history_text(history: list[dict[str, str]] | None) -> str:
     return format_history_text(history, window=settings.CHAT_HISTORY_WINDOW)
 
 
-def _query_decomposition_settings(enabled: bool | None) -> tuple[bool, int, int, int, bool, str]:
-    dq_n = max(0, min(_safe_int(settings.QUERY_DECOMPOSITION_MAX_SUBQUESTIONS), 8))
-    dq_min_chars = max(0, _safe_int(settings.QUERY_DECOMPOSITION_MIN_CHARS))
-    dq_max_chars = max(0, _safe_int(settings.QUERY_DECOMPOSITION_MAX_CHARS))
-    dq_enabled = bool(settings.ENABLE_QUERY_DECOMPOSITION) if enabled is None else bool(enabled)
-    heuristic_enabled = bool(getattr(settings, "QUERY_DECOMPOSITION_HEURISTIC_FALLBACK_ENABLED", True))
-    llm_api_key = str(getattr(settings, "LLM_API_KEY", "") or "").strip()
-    return dq_enabled, dq_n, dq_min_chars, dq_max_chars, heuristic_enabled, llm_api_key
-
-
-def _query_decomposition_allowed(
-    query: str, *, enabled: bool, max_questions: int, min_chars: int, max_chars: int
-) -> bool:
-    return bool(
-        enabled and max_questions > 0 and len(query) >= min_chars and (max_chars <= 0 or len(query) <= max_chars)
-    )
-
-
-def _heuristic_decompose(query: str, *, max_questions: int) -> tuple[list[str], dict[str, Any]]:
-    from app.rag.core.text import heuristic_decompose_query
-
-    sub_questions = heuristic_decompose_query(query, max_subquestions=max_questions)
-    meta = (
-        {"ok": True, "method": "heuristic", "error": None}
-        if sub_questions
-        else {"ok": False, "method": None, "error": None}
-    )
-    return sub_questions, meta
-
-
-def _normalized_decomposed_question(item: Any, *, original_query: str, seen: set[str]) -> str:
-    if not isinstance(item, str):
-        return ""
-    question = (item or "").strip().strip('"').strip()
-    if not question or question == original_query or question in seen:
-        return ""
-    if len(question) > 500:
-        return question[:500] + "..."
-    return question
-
-
-def _normalize_decomposed_questions(raw: Any, *, original_query: str, max_questions: int) -> list[str]:
-    if not isinstance(raw, list):
-        return []
-    seen: set[str] = set()
-    out: list[str] = []
-    for item in raw:
-        question = _normalized_decomposed_question(item, original_query=original_query, seen=seen)
-        if not question:
-            continue
-        seen.add(question)
-        out.append(question)
-        if len(out) >= max_questions:
-            break
-    return out
-
-
-def _invoke_decomposition_chain(
-    query_for_retrieval: str,
-    engine: Any,
-    *,
-    max_questions: int,
-) -> tuple[list[str], float, str | None, dict[str, Any]]:
-    dq_llm = engine.models.get("fast") or engine.models.get("default")  # type: ignore[attr-defined]
-    model_used = getattr(dq_llm, "model_name", None) or getattr(dq_llm, "model", None)
-    try:
-        _, str_output_parser_cls = _get_langchain_text_pipeline_primitives()
-        dq_chain = (
-            engine.decompose_prompt  # type: ignore[attr-defined]
-            | dq_llm.bind(temperature=settings.QUERY_DECOMPOSITION_TEMPERATURE)
-            | str_output_parser_cls()
-        )
-        started_at = time.time()
-        raw = dq_chain.invoke({"query": query_for_retrieval, "n": max_questions})
-        elapsed = time.time() - started_at
-        data, parse_meta = parse_json_from_text(raw, expected="array")
-        questions = _normalize_decomposed_questions(
-            data,
-            original_query=query_for_retrieval,
-            max_questions=max_questions,
-        )
-        return questions, elapsed, model_used, parse_meta
-    except Exception as exc:  # noqa: BLE001
-        _log_orchestrator_fallback("_decompose_query", exc)
-        return [], 0.0, model_used, {"ok": False, "method": None, "error": str(exc)[:200]}
-
-
 def _decompose_query(
     query_for_retrieval: str,
     engine: Any | None,
     *,
     enabled: bool | None = None,
 ) -> tuple[list[str], float, str | None, dict[str, Any]]:
-    dq_enabled, dq_n, dq_min_chars, dq_max_chars, heuristic_enabled, llm_api_key = _query_decomposition_settings(
-        enabled
-    )
-    parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
-    if not _query_decomposition_allowed(
-        query_for_retrieval, enabled=dq_enabled, max_questions=dq_n, min_chars=dq_min_chars, max_chars=dq_max_chars
-    ):
-        return [], 0.0, None, parse_meta
-
-    if heuristic_enabled and not llm_api_key:
-        sub_questions, parse_meta = _heuristic_decompose(query_for_retrieval, max_questions=dq_n)
-        return sub_questions, 0.0, None, parse_meta
-
-    if engine is None:
-        engine = get_rag_engine()
-
-    sub_questions, elapsed, model_used, parse_meta = _invoke_decomposition_chain(
+    model_settings = resolve_model_query_settings(parse_model_query_overrides({"enable_query_decomposition": enabled}))
+    outcome = decompose_query(
         query_for_retrieval,
-        engine,
-        max_questions=dq_n,
+        settings=model_settings.decomposition,
+        models=EngineQueryModels(lambda: engine if engine is not None else get_rag_engine()),
     )
-    if heuristic_enabled and not sub_questions and not bool(parse_meta.get("ok")):
-        sub_questions, heuristic_meta = _heuristic_decompose(query_for_retrieval, max_questions=dq_n)
-        if sub_questions:
-            return sub_questions, 0.0, None, heuristic_meta
-
-    return sub_questions, elapsed, model_used, parse_meta
+    return list(outcome.queries), outcome.elapsed_sec, outcome.model_used, outcome.parse_metadata
 
 
 def _resolve_post_rerank_corpus_cache_token(state: dict[str, Any]) -> str | None:
@@ -1741,24 +1643,9 @@ def _run_retrieval_kg_query_expansion_phase(ctx: RetrievalRuntimeState) -> dict[
     return None
 
 
-def _normalize_multi_queries(raw: Any, *, query: str, limit: int) -> list[str]:
-    if not isinstance(raw, list):
-        return []
-    seen: set[str] = set()
-    queries: list[str] = []
-    for item in raw:
-        if not isinstance(item, str):
-            continue
-        candidate = item.strip().strip('"').strip()
-        if not candidate or candidate == query or candidate in seen:
-            continue
-        if len(candidate) > 400:
-            candidate = candidate[:400] + "..."
-        seen.add(candidate)
-        queries.append(candidate)
-        if len(queries) >= limit:
-            break
-    return queries
+def _query_model_components(ctx: RetrievalRuntimeState) -> tuple[ModelQuerySettings, EngineQueryModels]:
+    settings_for_query = resolve_model_query_settings(parse_model_query_overrides(ctx.state))
+    return settings_for_query, EngineQueryModels(ctx._llm_engine)
 
 
 def _run_retrieval_multi_query_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
@@ -1767,77 +1654,24 @@ def _run_retrieval_multi_query_phase(ctx: RetrievalRuntimeState) -> dict[str, An
     ctx.multi_query_model_used = None
     ctx.multi_query_parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
     ctx.multi_queries: list[str] = []
-    ctx.multi_query_ab_test_key = str(ctx.state.get("multi_query_ab_test_key") or "").strip() or None
-    ctx.multi_query_ab_variant = str(ctx.state.get("multi_query_ab_variant") or "").strip().lower() or None
-    ctx.multi_query_ab_seed = ctx.state.get("multi_query_ab_seed")
-    ctx.multi_query_ab_forced = bool(
-        ctx.state.get("enable_multi_query") is None
-        and ctx.multi_query_ab_variant in {"on", "enabled", "treatment", "mq"}
-    )
+    model_settings, models = _query_model_components(ctx)
+    multi_query_settings = model_settings.multi_query
+    experiment = multi_query_settings.experiment
+    ctx.multi_query_ab_test_key = experiment.key
+    ctx.multi_query_ab_variant = experiment.variant
+    ctx.multi_query_ab_seed = experiment.seed
+    ctx.multi_query_ab_forced = experiment.forced
+    ctx.mq_enabled = multi_query_settings.enabled
+    ctx.mq_n = multi_query_settings.count
+    ctx.mq_temp = multi_query_settings.temperature
+    ctx.mq_max_chars = multi_query_settings.max_chars
 
-    ctx.mq_enabled = (
-        bool(ctx.state.get("enable_multi_query"))
-        if ctx.state.get("enable_multi_query") is not None
-        else (bool(settings.ENABLE_MULTI_QUERY) or ctx.multi_query_ab_forced)
-    )
-    ctx.mq_n = (
-        settings.MULTI_QUERY_COUNT
-        if ctx.state.get("multi_query_count") is None
-        else int(ctx.state.get("multi_query_count") or 0)
-    )
-    ctx.mq_temp = (
-        settings.MULTI_QUERY_TEMPERATURE
-        if ctx.state.get("multi_query_temperature") is None
-        else float(ctx.state.get("multi_query_temperature") or 0.0)
-    )
-    ctx.mq_max_chars = (
-        settings.MULTI_QUERY_MAX_CHARS
-        if ctx.state.get("multi_query_max_chars") is None
-        else int(ctx.state.get("multi_query_max_chars") or 0)
-    )
-
-    mq_cap = max(0, int(getattr(settings, "MULTI_QUERY_COUNT_CAP", 8) or 8))
-    ctx.mq_n = max(0, min(int(ctx.mq_n or 0), int(mq_cap)))
-    ctx.mq_temp = min(2.0, max(0.0, float(ctx.mq_temp or 0.0)))
-    ctx.mq_max_chars = max(0, int(ctx.mq_max_chars or 0))
-
-    if ctx.mq_enabled and ctx.mq_n > 0 and ctx.mq_max_chars > 0 and len(ctx.query_for_retrieval) <= ctx.mq_max_chars:
-        mq_engine = ctx._llm_engine()
-        mq_llm = mq_engine.models.get("fast") or mq_engine.models.get("default")  # type: ignore[attr-defined]
-        ctx.multi_query_model_used = getattr(mq_llm, "model_name", None) or getattr(mq_llm, "model", None)
-        try:
-            _, str_output_parser_cls = _get_langchain_text_pipeline_primitives()
-            mq_chain = (
-                mq_engine.multi_query_prompt  # type: ignore[attr-defined]
-                | mq_llm.bind(temperature=ctx.mq_temp)
-                | str_output_parser_cls()
-            )
-            mq_start = time.time()
-            mq_raw = mq_chain.invoke({"query": ctx.query_for_retrieval, "n": ctx.mq_n})
-            ctx.multi_query_elapsed = time.time() - mq_start
-            mq_data, ctx.multi_query_parse_meta = parse_json_from_text(mq_raw, expected="array")
-
-            ctx.multi_queries = _normalize_multi_queries(
-                mq_data,
-                query=ctx.query_for_retrieval,
-                limit=ctx.mq_n,
-            )
-            if ctx.multi_query_ab_seed is not None and ctx.multi_queries:
-                seed_prefix = str(ctx.multi_query_ab_seed)
-                ctx.multi_queries = sorted(
-                    ctx.multi_queries,
-                    key=lambda item: (
-                        stable_hash(f"{seed_prefix}:{item}", length=16),
-                        item,
-                    ),
-                )
-        except Exception as exc:  # noqa: BLE001
-            _log_orchestrator_fallback("run_retrieval", exc)
-            ctx.multi_query_elapsed = 0.0
-            ctx.multi_query_parse_meta = {"ok": False, "method": None, "error": str(exc)[:200]}
-            ctx.multi_queries = []
-
-    ctx.multi_query_used = bool(ctx.multi_queries)
+    outcome = generate_multi_queries(ctx.query_for_retrieval, settings=multi_query_settings, models=models)
+    ctx.multi_query_elapsed = outcome.elapsed_sec
+    ctx.multi_query_used = outcome.used
+    ctx.multi_query_model_used = outcome.model_used
+    ctx.multi_query_parse_meta = outcome.parse_metadata
+    ctx.multi_queries = list(outcome.queries)
     return None
 
 
@@ -1846,85 +1680,40 @@ def _run_retrieval_hyde_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | No
     ctx.hyde_elapsed = 0.0
     ctx.hyde_model_used = None
     ctx.hyde_text = ""
-    hyde_max_chars = max(0, int(settings.HYDE_MAX_CHARS or 0))
-    retrieval_mode_norm = str(ctx.request_retrieval_mode or "hybrid").lower()
-    ctx.hyde_enabled = (
-        bool(settings.ENABLE_HYDE) if ctx.state.get("enable_hyde") is None else bool(ctx.state.get("enable_hyde"))
+    model_settings, models = _query_model_components(ctx)
+    hyde_settings = model_settings.hyde
+    ctx.hyde_enabled = hyde_settings.enabled
+    outcome = generate_hyde_query(
+        ctx.query_for_retrieval,
+        retrieval_mode=str(ctx.request_retrieval_mode or "hybrid"),
+        settings=hyde_settings,
+        models=models,
     )
-    if (
-        ctx.hyde_enabled
-        and retrieval_mode_norm not in ("keyword",)
-        and hyde_max_chars > 0
-        and len(ctx.query_for_retrieval) <= hyde_max_chars
-    ):
-        hyde_engine = ctx._llm_engine()
-        hyde_llm = hyde_engine.models.get("fast") or hyde_engine.models.get("default")  # type: ignore[attr-defined]
-        ctx.hyde_model_used = getattr(hyde_llm, "model_name", None) or getattr(hyde_llm, "model", None)
-        try:
-            _, str_output_parser_cls = _get_langchain_text_pipeline_primitives()
-            hyde_chain = (
-                hyde_engine.hyde_prompt  # type: ignore[attr-defined]
-                | hyde_llm.bind(temperature=settings.HYDE_TEMPERATURE)
-                | str_output_parser_cls()
-            )
-            hyde_start = time.time()
-            ctx.hyde_text = hyde_chain.invoke({"query": ctx.query_for_retrieval})
-            ctx.hyde_elapsed = time.time() - hyde_start
-            ctx.hyde_text = (ctx.hyde_text or "").strip()
-            out_max = max(0, int(settings.HYDE_OUTPUT_MAX_CHARS or 0))
-            if out_max and len(ctx.hyde_text) > out_max:
-                ctx.hyde_text = ctx.hyde_text[:out_max] + "..."
-            ctx.hyde_used = bool(ctx.hyde_text)
-        except Exception as exc:
-            _log_orchestrator_fallback("run_retrieval", exc)
-            ctx.hyde_text = ""
-            ctx.hyde_elapsed = 0.0
-            ctx.hyde_used = False
+    ctx.hyde_text = outcome.text
+    ctx.hyde_elapsed = outcome.elapsed_sec
+    ctx.hyde_model_used = outcome.model_used
+    ctx.hyde_used = outcome.used
     return None
 
 
 def _run_retrieval_step_back_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
-    ctx.step_back_enabled = bool(getattr(settings, "ENABLE_STEP_BACK_QUERY", False))
     ctx.step_back_elapsed = 0.0
     ctx.step_back_used = False
     ctx.step_back_model_used = None
     ctx.step_back_parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
     ctx.step_back_query = ""
-    ctx.step_back_max_chars = max(0, int(getattr(settings, "STEP_BACK_MAX_CHARS", 0) or 0))
-    ctx.step_back_temp = min(2.0, max(0.0, float(getattr(settings, "STEP_BACK_TEMPERATURE", 0.2) or 0.0)))
-    ctx.step_back_output_max = max(0, int(getattr(settings, "STEP_BACK_OUTPUT_MAX_CHARS", 0) or 0))
-    if (
-        ctx.step_back_enabled
-        and ctx.step_back_max_chars > 0
-        and len(ctx.query_for_retrieval) <= ctx.step_back_max_chars
-    ):
-        step_back_engine = ctx._llm_engine()
-        sb_llm = step_back_engine.models.get("fast") or step_back_engine.models.get("default")  # type: ignore[attr-defined]
-        ctx.step_back_model_used = getattr(sb_llm, "model_name", None) or getattr(sb_llm, "model", None)
-        try:
-            _, str_output_parser_cls = _get_langchain_text_pipeline_primitives()
-            sb_chain = (
-                step_back_engine.step_back_prompt  # type: ignore[attr-defined]
-                | sb_llm.bind(temperature=ctx.step_back_temp)
-                | str_output_parser_cls()
-            )
-            sb_start = time.time()
-            sb_raw = sb_chain.invoke({"query": ctx.query_for_retrieval})
-            ctx.step_back_elapsed = time.time() - sb_start
-            ctx.step_back_query = (sb_raw or "").strip().strip('"').strip()
-            if ctx.step_back_output_max > 0 and len(ctx.step_back_query) > ctx.step_back_output_max:
-                ctx.step_back_query = ctx.step_back_query[: ctx.step_back_output_max] + "..."
-            if ctx.step_back_query and ctx.step_back_query != ctx.query_for_retrieval:
-                ctx.step_back_parse_meta = {"ok": True, "method": "text", "error": None}
-            else:
-                ctx.step_back_query = ""
-                ctx.step_back_parse_meta = {"ok": False, "method": "text", "error": "empty_or_duplicate"}
-        except Exception as exc:  # noqa: BLE001
-            _log_orchestrator_fallback("run_retrieval", exc)
-            ctx.step_back_query = ""
-            ctx.step_back_elapsed = 0.0
-            ctx.step_back_parse_meta = {"ok": False, "method": None, "error": str(exc)[:200]}
-    ctx.step_back_used = bool(ctx.step_back_query)
+    model_settings, models = _query_model_components(ctx)
+    step_back_settings = model_settings.step_back
+    ctx.step_back_enabled = step_back_settings.enabled
+    ctx.step_back_max_chars = step_back_settings.max_chars
+    ctx.step_back_temp = step_back_settings.temperature
+    ctx.step_back_output_max = step_back_settings.output_max_chars
+    outcome = generate_step_back_query(ctx.query_for_retrieval, settings=step_back_settings, models=models)
+    ctx.step_back_query = outcome.text
+    ctx.step_back_elapsed = outcome.elapsed_sec
+    ctx.step_back_model_used = outcome.model_used
+    ctx.step_back_parse_meta = outcome.parse_metadata
+    ctx.step_back_used = outcome.used
     return None
 
 
