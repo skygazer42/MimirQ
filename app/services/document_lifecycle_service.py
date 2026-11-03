@@ -10,18 +10,168 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.api.schemas.document import DocumentLifecycleMetadata, DocumentLifecycleMetadataUpdateRequest
 from app.core.async_bridge import run_blocking_in_thread
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
+from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
 from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
+from app.services.document_access_service import assert_document_writable_for_lifecycle, get_document_for_lifecycle
 from app.storage.object.minio import minio_service
 from app.storage.object.runtime import is_object_storage_uri, resolve_document_object_reference
 
 logger = get_logger("services.document_lifecycle")
+
+
+def _lifecycle_metadata_response(document: DBDocument) -> DocumentLifecycleMetadata:
+    return DocumentLifecycleMetadata(
+        lifecycle_owner=document.lifecycle_owner,
+        review_due_at=document.review_due_at,
+        authority_level=document.authority_level,
+        supersedes_document_id=document.supersedes_document_id,
+        publication_status=str(document.publication_status or "published"),
+    )
+
+
+def _snapshot_lifecycle_metadata(document: DBDocument) -> dict[str, Any]:
+    return {
+        "lifecycle_owner": document.lifecycle_owner,
+        "review_due_at": document.review_due_at,
+        "authority_level": document.authority_level,
+        "supersedes_document_id": document.supersedes_document_id,
+        "publication_status": document.publication_status,
+    }
+
+
+def _apply_lifecycle_metadata_updates(
+    *,
+    document: DBDocument,
+    payload: DocumentLifecycleMetadataUpdateRequest,
+    fields_set: set[str],
+) -> None:
+    if "lifecycle_owner" in fields_set:
+        document.lifecycle_owner = payload.lifecycle_owner.strip() or None if payload.lifecycle_owner else None
+    if "review_due_at" in fields_set:
+        document.review_due_at = payload.review_due_at
+    if "authority_level" in fields_set:
+        document.authority_level = payload.authority_level
+    if "supersedes_document_id" in fields_set:
+        if payload.supersedes_document_id == document.id:
+            raise HTTPException(status_code=400, detail="supersedes_document_id cannot equal document_id")
+        document.supersedes_document_id = payload.supersedes_document_id
+    if "publication_status" in fields_set:
+        document.publication_status = str(payload.publication_status or "published")
+
+
+def _build_lifecycle_audit_details(
+    *,
+    before: dict[str, Any],
+    after: dict[str, Any],
+    fields_set: set[str],
+) -> dict[str, Any]:
+    changed_fields = [
+        field
+        for field in (
+            "lifecycle_owner",
+            "review_due_at",
+            "authority_level",
+            "supersedes_document_id",
+            "publication_status",
+        )
+        if field in fields_set and before.get(field) != after.get(field)
+    ]
+    details: dict[str, Any] = {
+        "fields": sorted(fields_set)[:50],
+        "changed_fields": changed_fields[:50],
+    }
+    if "lifecycle_owner" in fields_set:
+        owner = str(after.get("lifecycle_owner") or "")
+        details["lifecycle_owner_hash"] = stable_hash(owner, length=16) if owner else None
+    if "review_due_at" in fields_set:
+        review_due_at = after.get("review_due_at")
+        details["review_due_at"] = review_due_at.isoformat() if review_due_at is not None else None
+    if "authority_level" in fields_set:
+        details["authority_level"] = after.get("authority_level")
+    if "supersedes_document_id" in fields_set:
+        supersedes_document_id = after.get("supersedes_document_id")
+        details["supersedes_document_id"] = str(supersedes_document_id) if supersedes_document_id is not None else None
+    if "publication_status" in fields_set:
+        details["publication_status"] = after.get("publication_status")
+    return details
+
+
+def get_document_lifecycle_metadata(
+    *,
+    document_id: UUID,
+    tenant_id: UUID,
+    account_id: str,
+    db: Session,
+) -> DocumentLifecycleMetadata:
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    document = get_document_for_lifecycle(db, tenant_id, document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
+    assert_document_writable_for_lifecycle(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        document=document,
+    )
+    return _lifecycle_metadata_response(document)
+
+
+def patch_document_lifecycle_metadata(
+    *,
+    document_id: UUID,
+    payload: DocumentLifecycleMetadataUpdateRequest,
+    tenant_id: UUID,
+    account_id: str,
+    db: Session,
+) -> DocumentLifecycleMetadata:
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    document = get_document_for_lifecycle(db, tenant_id, document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
+    assert_document_writable_for_lifecycle(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        document=document,
+    )
+
+    fields_set = payload.model_fields_set
+    if not fields_set:
+        return _lifecycle_metadata_response(document)
+
+    before = _snapshot_lifecycle_metadata(document)
+    _apply_lifecycle_metadata_updates(document=document, payload=payload, fields_set=fields_set)
+    db.commit()
+    db.refresh(document)
+
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="document.lifecycle_metadata.patch",
+            resource_type="document",
+            resource_id=str(document_id),
+            details=_build_lifecycle_audit_details(
+                before=before,
+                after=_snapshot_lifecycle_metadata(document),
+                fields_set=fields_set,
+            ),
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    return _lifecycle_metadata_response(document)
+
 
 DOC_NOT_FOUND_DETAIL = "Document not found"
 MANUAL_FILE_PATH_PREFIX = "manual://"

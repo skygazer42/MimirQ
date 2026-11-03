@@ -283,7 +283,7 @@ def test_delete_document_version_falls_back_to_metadata_scan_and_restores_curren
 
 
 def test_lifecycle_patch_noop_returns_current_metadata_without_writes(monkeypatch) -> None:
-    from app.api.v1 import document_lifecycle
+    from app.services import document_lifecycle_service
 
     document_id = uuid.uuid4()
     tenant_id = uuid.uuid4()
@@ -299,22 +299,26 @@ def test_lifecycle_patch_noop_returns_current_metadata_without_writes(monkeypatc
     db = _QueuedDB([])
     audit_calls: list[dict[str, object]] = []
 
-    monkeypatch.setattr(document_lifecycle.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(document_lifecycle, "get_document_for_lifecycle", lambda *_a, **_k: document, raising=True)
     monkeypatch.setattr(
-        document_lifecycle,
+        document_lifecycle_service.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True
+    )
+    monkeypatch.setattr(
+        document_lifecycle_service, "get_document_for_lifecycle", lambda *_a, **_k: document, raising=True
+    )
+    monkeypatch.setattr(
+        document_lifecycle_service,
         "assert_document_writable_for_lifecycle",
         lambda *_a, **_k: None,
         raising=True,
     )
     monkeypatch.setattr(
-        document_lifecycle,
+        document_lifecycle_service,
         "audit_log_event",
         lambda *_a, **kwargs: audit_calls.append(kwargs),
         raising=True,
     )
 
-    result = document_lifecycle.patch_document_lifecycle_metadata(
+    result = document_lifecycle_service.patch_document_lifecycle_metadata(
         document_id=document_id,
         payload=DocumentLifecycleMetadataUpdateRequest(),
         tenant_id=tenant_id,
