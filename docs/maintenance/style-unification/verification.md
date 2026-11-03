@@ -457,6 +457,11 @@
 - Chat scope uses direct Conversation fields and explicit query-not-found handling. Tenant filters, owner denial, dataset readability, missing-document pruning/commit, and existing 403/404/409 responses remain in their original order.
 - Ruff check、Ruff format --check、stale-guard scan 与 diff check 通过。Python tests 和 database flows 未运行。
 
+## 第三批：Dataset defaults document scope
+
+- Dataset inference queries document IDs together with dataset IDs, compares the found IDs with the deduplicated request set, and returns a default only when every requested document exists in the tenant and all share one non-null dataset. Dataset JSON metadata is read through its declared ORM field.
+- Seven production callers were mapped. Ruff check、Ruff format --check 和 diff check 通过；Python tests 与 database runtime 未运行。
+
 ## 第三批：Table SQL fingerprint utility
 
 - Fingerprint normalization consumes its declared string input directly; whitespace, identifier normalization, literal preservation, and default digest length remain unchanged. The four production callers pass SQL text; the table-store boundary performs its explicit conversion before calling.
