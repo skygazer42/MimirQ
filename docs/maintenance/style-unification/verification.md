@@ -671,3 +671,13 @@
 
 - Task 5 的查询准备分支提交 `589e5b6f` 经审查发现 Important 顺序回归：模型覆盖参数中的 `int()`／`float()` 解析可能早于 KG 扩展失败。修复提交 `f38123ea` 让同步和异步路径都在 KG 扩展后解析模型参数；解析错误仍显式传播，KG 诊断顺序恢复。
 - 修复经定向复审通过并合并；Ruff check/format、AST、调用方和阶段顺序扫描及 diff/show check 通过。未运行 Python tests；实际 KG、模型和流式运行时未验证。四个目标模块中只有 `query_planning.py` 本轮发生代码调整，其他三个仍待语义审核。
+
+## Parser Table Structure and Rendering
+
+- Task 4 branch `fbdf728eb` 独立审查通过并合并。Four table helpers removed only contract-redundant conversions while preserving row/cell order, padding, page/bbox metadata, OCR normalization, escaping, thresholds and renderer error policies.
+- Ruff check/format, four-file AST, caller scan and `git show --check` passed. Python tests and parser/OCR/model services were not run.
+
+## Feedback Type Ownership
+
+- Task 6 branch `7429355fa` passed independent review and merged. Nine feedback DTOs moved unchanged into `web/types/feedback.ts`; `chat.ts` re-exports the old names so both `@/types/chat` and the root `@/types` barrel remain compatible. API requests, chat feedback controls, and feedback inbox behavior did not change.
+- Type content comparison and caller/barrel checks passed. Frontend tests/lint/Prettier/TypeScript/runtime checks were not run because the web dependency tree is unavailable and pnpm is mismatched.
