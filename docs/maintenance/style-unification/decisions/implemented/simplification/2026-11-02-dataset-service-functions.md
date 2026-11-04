@@ -125,12 +125,14 @@ batch precheck 不再传递整个 documents 模块；hardlink/copy fallback、sc
 
 文件上传与 URL 入库共用 tenant-scoped duplicate lookup。route 层只按各自的 commit/retry 约定处理结果；查询的 tenant/archive filters、排序、JSONB fast path 和 bounded scan fallback 只维护一份。
 
-URL 上传与 connector HTML 入库共用来源准备、配额、去重、持久化和处理调度；这组流程由 `document_source_ingestion` 单一模块函数所有。`document_upload` 与 connectors 直接调用该模块，`documents.py` 只直接重导出现有入口供兼容。`LocalHtmlIngestRequest` 位于文档 schema。dedup constraint、identity match、integrity-error 判断和 commit 冲突异常归 `document_dedup_service`，避免文件与来源入库各自维护一份规则。
+URL 上传与 connector HTML 入库共用来源准备、配额、去重、持久化和处理调度；这组流程由 `app/services/document_ingestion.py` 的模块函数持有。`document_upload` 与 connectors 直接调用该服务，`documents.py` 只直接重导出现有入口供兼容。`LocalHtmlIngestRequest` 位于文档 schema。dedup constraint、identity match、integrity-error 判断和 commit 冲突异常归 `document_dedup_service`，避免文件与来源入库各自维护一份规则。
 
 分块预览直接依赖 parsing subprocess runner 与治理 processor；preview 输入参数及 chunker kwargs 由调用模块自己归一化，解析位置标记来自 `parsing.artifact_stats`。整份 documents 模块不再作为参数传入；取消、缓存、错误与日志行为保持原样。
 
 原文解析预览直接依赖 subprocess runner 和治理 processor；错误映射与 `api.documents` 日志由预览模块自身负责。路由保留成员权限、400/499/500 状态、生产错误脱敏、请求断开检查和临时文件清理顺序。
 
-Chunk mutation routes directly depend on the ORM, indexer, ACL, audit and index-audit owners. Query helpers, index consistency policy and drift result/persistence helpers live in `document_chunks_write`; the `documents` aggregate only re-exports those existing names. Request order, transaction boundaries and best-effort vector/BM25 behavior remain unchanged.
+两个预览入口使用已有 `document_governance.build_governance_options` 构造 `GovernanceCleanOptions`，减少两份 40 字段映射。规则编译仍在各自原来的阶段执行，并通过独立的 `rules` 参数传入；分块预览继续显式设置 `remove_common_lines=False`，避免改变按页共同文本的处理。`PreviewPipelineState` 明确持有有效管线、治理选项和规则，来源元数据的可空入口及 RPC JSON 校验保留。文件上传和按 SHA 预览复用同一个租户、账户、文件哈希、解析器和版本缓存键。
+
+Chunk mutation routes delegate to `document_chunk_operations`, which owns ORM queries, ACL, audit, index consistency and drift persistence. `document_chunks_write` and the `documents` aggregate only expose the typed route/compatibility bindings. Request order, transaction boundaries and best-effort vector/BM25 behavior remain unchanged.
 
 `ConnectorRun.connector_id` is declared as non-null `String(80)`. The queue job reads that field directly, retaining `.strip()` before dispatch while allowing impossible missing/type-corrupt ORM state to fail instead of becoming an empty connector ID.
