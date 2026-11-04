@@ -9,3 +9,4 @@ public/
 openapi.json
 types/openapi.ts
 pnpm-lock.yaml
+/next-env.d.ts
