@@ -4,15 +4,9 @@ import { AlertTriangle } from 'lucide-react'
 
 import { EmptyState } from '@/components/ui/empty-state'
 
-import type {
-  DatasetReport,
-  DatasetReportPipelineVersion,
-} from '@/types'
+import type { DatasetReport, DatasetReportPipelineVersion } from '@/types'
 
-import {
-  reportPreviewEmptyDescription,
-  reportPreviewEmptyTitle,
-} from '../report-format'
+import { reportPreviewEmptyDescription, reportPreviewEmptyTitle } from '../report-format'
 import { ReportsDashboard } from './reports-dashboard'
 
 import type {
@@ -97,13 +91,7 @@ export function ReportsResultSection({
 }>) {
   if (!report) {
     if (reportErrorMessage && datasetId && !isLoadingReport) {
-      return (
-        <EmptyState
-          icon={AlertTriangle}
-          title="报告加载失败"
-          description={reportErrorMessage}
-        />
-      )
+      return <EmptyState icon={AlertTriangle} title="报告加载失败" description={reportErrorMessage} />
     }
     return (
       <EmptyState

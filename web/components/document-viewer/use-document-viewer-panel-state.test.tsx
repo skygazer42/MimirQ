@@ -97,7 +97,7 @@ describe('useDocumentViewerPanelState document switching', () => {
   it('ignores a stale document response after switching documents', async () => {
     const docA = deferred<never>()
     const docB = deferred<never>()
-    mocks.getDocument.mockImplementation((id: string) => id === 'doc-a' ? docA.promise : docB.promise)
+    mocks.getDocument.mockImplementation((id: string) => (id === 'doc-a' ? docA.promise : docB.promise))
 
     await act(async () => root.render(<Probe />))
     mocks.view.documentId = 'doc-b'

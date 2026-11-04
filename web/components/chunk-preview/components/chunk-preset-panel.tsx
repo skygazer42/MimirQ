@@ -180,7 +180,7 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
         limit: 200,
         ...(ds ? { dataset_id: ds, include_global: true } : {}),
       })
-      const next = (res?.items || [])
+      const next = res?.items || []
       setItems(next)
       if (selectedId && !next.some((p) => p.id === selectedId)) {
         setSelectedId('')
@@ -250,7 +250,7 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
     <div
       className={cn(
         'space-y-2.5 rounded-xl border border-border/55 bg-[linear-gradient(180deg,hsl(var(--background)/0.96),hsl(var(--muted)/0.18))] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]',
-        className
+        className,
       )}
     >
       <div className="flex items-center justify-between gap-2">
@@ -261,7 +261,9 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
           <div className="min-w-0">
             <div className="truncate text-[11px] font-semibold text-foreground/84">{t('chunkPresetPanel.title')}</div>
             <div className="truncate text-[9.5px] text-muted-foreground/72">
-              {selectedPreset ? t('chunkPresetPanel.statusActive', { name: selectedPreset.name }) : t('chunkPresetPanel.statusIdle')}
+              {selectedPreset
+                ? t('chunkPresetPanel.statusActive', { name: selectedPreset.name })
+                : t('chunkPresetPanel.statusIdle')}
             </div>
           </div>
         </div>
@@ -354,7 +356,11 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
           <div className="space-y-3">
             <div className="space-y-1">
               <div className="text-xs font-medium text-muted-foreground">{t('chunkPresetPanel.name')}</div>
-              <Input value={saveAsName} onChange={(e) => setSaveAsName(e.target.value)} placeholder={t('chunkPresetPanel.namePlaceholder')} />
+              <Input
+                value={saveAsName}
+                onChange={(e) => setSaveAsName(e.target.value)}
+                placeholder={t('chunkPresetPanel.namePlaceholder')}
+              />
             </div>
             <div className="space-y-1">
               <div className="text-xs font-medium text-muted-foreground">{t('chunkPresetPanel.description')}</div>

@@ -16,7 +16,8 @@ export function renderHook<T>(useHook: () => T, options: RenderHookOptions = {})
   document.body.appendChild(container)
   const root = createRoot(container)
   const resultRef = React.createRef<T>()
-  const Wrapper = options.wrapper ?? (({ children }: WrapperProps) => React.createElement(React.Fragment, null, children))
+  const Wrapper =
+    options.wrapper ?? (({ children }: WrapperProps) => React.createElement(React.Fragment, null, children))
 
   const Harness = React.forwardRef<T, object>(function HookHarness(_props, ref) {
     const value = useHook()

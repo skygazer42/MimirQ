@@ -20,10 +20,7 @@ const DEFAULT_LIST_PARAMS: DocumentListParams = {
   lifecycle: 'active',
 }
 
-function areDocumentListParamsEqual(
-  a: DocumentListParams,
-  b: DocumentListParams
-): boolean {
+function areDocumentListParamsEqual(a: DocumentListParams, b: DocumentListParams): boolean {
   return (
     a.skip === b.skip &&
     a.limit === b.limit &&
@@ -37,10 +34,7 @@ function areDocumentListParamsEqual(
   )
 }
 
-export function useDocumentList({
-  setActionError,
-  initialParams = DEFAULT_LIST_PARAMS,
-}: UseDocumentListOptions) {
+export function useDocumentList({ setActionError, initialParams = DEFAULT_LIST_PARAMS }: UseDocumentListOptions) {
   const queryClient = useQueryClient()
   const [listParams, setListParams] = useState<DocumentListParams>(initialParams)
   const lastListParamsRef = useRef<DocumentListParams>(initialParams)
@@ -68,21 +62,16 @@ export function useDocumentList({
 
   const updateCachedDocuments = useCallback<UpdateCachedDocuments>(
     (updater) => {
-      queryClient.setQueryData<DocumentListResponse>(
-        queryKeys.documents.list(lastListParamsRef.current),
-        updater
-      )
+      queryClient.setQueryData<DocumentListResponse>(queryKeys.documents.list(lastListParamsRef.current), updater)
     },
-    [queryClient]
+    [queryClient],
   )
 
   const loadDocuments = useCallback(
     async (params?: DocumentListParams) => {
       setActionError(null)
 
-      const effective = params
-        ? { ...lastListParamsRef.current, ...params }
-        : { ...lastListParamsRef.current }
+      const effective = params ? { ...lastListParamsRef.current, ...params } : { ...lastListParamsRef.current }
 
       lastListParamsRef.current = effective
       setListParams(effective)
@@ -97,7 +86,7 @@ export function useDocumentList({
         reportClientError('Load documents failed', err)
       }
     },
-    [queryClient, setActionError]
+    [queryClient, setActionError],
   )
 
   return {

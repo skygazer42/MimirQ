@@ -15,7 +15,12 @@ export function shouldRefreshParsingContentFromRemote(input: {
   fileType?: string | null
   originalMarkdownContent?: string | null
 }): boolean {
-  if (String(input.fileType || '').trim().toLowerCase() !== 'pdf') return false
+  if (
+    String(input.fileType || '')
+      .trim()
+      .toLowerCase() !== 'pdf'
+  )
+    return false
 
   const original = String(input.originalMarkdownContent || '')
   if (original.includes('layout://image')) return true

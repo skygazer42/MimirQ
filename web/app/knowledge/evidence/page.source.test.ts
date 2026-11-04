@@ -10,7 +10,9 @@ describe('knowledge evidence page source', () => {
 
     expect(src).toContain("import dynamic from 'next/dynamic'")
     expect(src).toContain("import { PageLoading } from '@/components/ui/page-loading'")
-    expect(src).toContain("const EvidenceWorkbench = dynamic(() => import('@/components/ragviz/evidence-workbench').then((mod) => mod.EvidenceWorkbench), {")
+    expect(src).toContain(
+      "const EvidenceWorkbench = dynamic(() => import('@/components/ragviz/evidence-workbench').then((mod) => mod.EvidenceWorkbench), {",
+    )
     expect(src).toContain('ssr: false')
     expect(src).toContain('正在加载 Evidence Workbench...')
     expect(src).not.toContain("import { EvidenceWorkbench } from '@/components/ragviz/evidence-workbench'")

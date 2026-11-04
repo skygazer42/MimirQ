@@ -78,16 +78,10 @@ export default function DatasetTablesPage() {
     enabled: Boolean(datasetId),
   })
   const dataset = (datasetQuery.data ?? null) as Dataset | null
-  const items: DatasetTableAsset[] = useMemo(
-    () => tablesQuery.data?.items || [],
-    [tablesQuery.data?.items]
-  )
+  const items: DatasetTableAsset[] = useMemo(() => tablesQuery.data?.items || [], [tablesQuery.data?.items])
   const isLoading = datasetQuery.isFetching || tablesQuery.isFetching
   const loadError = datasetQuery.error ?? tablesQuery.error
-  const loadErrorUpdatedAt = Math.max(
-    datasetQuery.errorUpdatedAt,
-    tablesQuery.errorUpdatedAt
-  )
+  const loadErrorUpdatedAt = Math.max(datasetQuery.errorUpdatedAt, tablesQuery.errorUpdatedAt)
 
   useEffect(() => {
     if (!loadError) return
@@ -134,7 +128,10 @@ export default function DatasetTablesPage() {
     if (!datasetId) return
     setSelected(table)
     try {
-      const full = await datasetApi.getTable(datasetId, table.table_id, { include_columns: true, include_sample_rows: true })
+      const full = await datasetApi.getTable(datasetId, table.table_id, {
+        include_columns: true,
+        include_sample_rows: true,
+      })
       setSelected(full)
       // Update default query target table for convenience.
       const sheetName = `sheet_${full.sheet_index || 0}`
@@ -182,7 +179,10 @@ export default function DatasetTablesPage() {
     setSemFilterRunning(true)
     setSemFilterRes(null)
     try {
-      const res = await datasetApi.lotusSemFilter(datasetId, selected.table_id, { user_instruction: semFilterInstruction.trim(), strategy: 'cot' })
+      const res = await datasetApi.lotusSemFilter(datasetId, selected.table_id, {
+        user_instruction: semFilterInstruction.trim(),
+        strategy: 'cot',
+      })
       setSemFilterRes(res)
     } catch (e: unknown) {
       reportClientError('Dataset table semantic filter failed', e)
@@ -219,15 +219,21 @@ export default function DatasetTablesPage() {
     )
   }, [selected])
 
-  const tablesHeroCard = 'relative overflow-hidden border-b border-border/60 bg-transparent px-1 py-2 shadow-none dark:border-border/70'
-  const tablePanelClass = 'overflow-hidden border border-border/60 bg-card shadow-none dark:border-border/70 dark:bg-card'
+  const tablesHeroCard =
+    'relative overflow-hidden border-b border-border/60 bg-transparent px-1 py-2 shadow-none dark:border-border/70'
+  const tablePanelClass =
+    'overflow-hidden border border-border/60 bg-card shadow-none dark:border-border/70 dark:bg-card'
   const tablePanelHeaderClass = 'border-b border-border/60 bg-card px-5 py-4 dark:border-border/70 dark:bg-card'
   const sectionTitleClass = 'text-[15px] font-bold tracking-[-0.015em] text-foreground dark:text-foreground'
   const mutedHintClass = 'text-[12px] leading-5 text-muted-foreground dark:text-muted-foreground'
-  const tableToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-lg border border-border/60 bg-card p-1 shadow-none dark:border-border/70 dark:bg-card'
-  const tableToolbarButtonClass = 'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-semibold text-muted-foreground shadow-none hover:bg-card hover:text-foreground hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
-  const tableMetricCardClass = 'relative overflow-hidden rounded-lg border border-border/60 bg-card px-4 py-3 shadow-none transition-colors hover:border-border dark:border-border/70 dark:bg-card'
-  const tableIconPillClass = 'flex size-9 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/20 text-foreground/85 shadow-none dark:border-border/70 dark:bg-muted/30 dark:text-foreground'
+  const tableToolbarGroupClass =
+    'inline-flex flex-wrap items-center gap-1 rounded-lg border border-border/60 bg-card p-1 shadow-none dark:border-border/70 dark:bg-card'
+  const tableToolbarButtonClass =
+    'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-semibold text-muted-foreground shadow-none hover:bg-card hover:text-foreground hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
+  const tableMetricCardClass =
+    'relative overflow-hidden rounded-lg border border-border/60 bg-card px-4 py-3 shadow-none transition-colors hover:border-border dark:border-border/70 dark:bg-card'
+  const tableIconPillClass =
+    'flex size-9 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/20 text-foreground/85 shadow-none dark:border-border/70 dark:bg-muted/30 dark:text-foreground'
   const totalRows = items.reduce((sum, item) => sum + (Number(item.row_count) || 0), 0)
   const totalColumns = items.reduce((sum, item) => sum + (Number(item.col_count) || 0), 0)
 
@@ -250,11 +256,16 @@ export default function DatasetTablesPage() {
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="truncate text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground dark:text-foreground">表格资产工作台</h1>
+                    <h1 className="truncate text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground dark:text-foreground">
+                      表格资产工作台
+                    </h1>
                     <span className="inline-flex h-5 items-center rounded-full border border-border bg-card/82 px-2 text-[10px] font-bold uppercase leading-none tracking-[0.12em] text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-border/60 dark:bg-muted/30 dark:text-muted-foreground">
                       table intelligence
                     </span>
-                    <Badge variant="soft" className="h-5 border-primary/20 bg-primary/10 px-2 text-[10px] font-bold leading-none text-primary">
+                    <Badge
+                      variant="soft"
+                      className="h-5 border-primary/20 bg-primary/10 px-2 text-[10px] font-bold leading-none text-primary"
+                    >
                       TAG / SQL
                     </Badge>
                   </div>
@@ -282,7 +293,9 @@ export default function DatasetTablesPage() {
                     <span className="inline-flex items-center gap-1.5">
                       <FileSearch className="size-3.5 text-muted-foreground/80" />
                       <span>当前表</span>
-                      <span className="max-w-[220px] truncate font-mono font-semibold text-foreground">{selected?.table_id || '--'}</span>
+                      <span className="max-w-[220px] truncate font-mono font-semibold text-foreground">
+                        {selected?.table_id || '--'}
+                      </span>
                     </span>
                   </div>
                 </div>
@@ -311,19 +324,39 @@ export default function DatasetTablesPage() {
         toolbar={
           <div className="flex w-full flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
             <div className={tableToolbarGroupClass}>
-              <Button size="sm" variant="ghost" className={tableToolbarButtonClass} onClick={() => router.push('/datasets')}>
+              <Button
+                size="sm"
+                variant="ghost"
+                className={tableToolbarButtonClass}
+                onClick={() => router.push('/datasets')}
+              >
                 <ArrowLeft className="size-3.5" />
                 返回
               </Button>
-              <Button size="sm" variant="ghost" className={tableToolbarButtonClass} onClick={() => router.push(`/datasets/${datasetId}/health`)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                className={tableToolbarButtonClass}
+                onClick={() => router.push(`/datasets/${datasetId}/health`)}
+              >
                 <Sparkles className="size-3.5" />
                 健康
               </Button>
-              <Button size="sm" variant="ghost" className={tableToolbarButtonClass} onClick={() => router.push(`/datasets/${datasetId}/profile`)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                className={tableToolbarButtonClass}
+                onClick={() => router.push(`/datasets/${datasetId}/profile`)}
+              >
                 <BarChart3 className="size-3.5" />
                 数据画像
               </Button>
-              <Button size="sm" variant="ghost" className={tableToolbarButtonClass} onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                className={tableToolbarButtonClass}
+                onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}
+              >
                 <Database className="size-3.5" />
                 入库策略
               </Button>
@@ -334,19 +367,47 @@ export default function DatasetTablesPage() {
         <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
           <div className="grid shrink-0 grid-cols-2 gap-3 md:grid-cols-4">
             {[
-              { icon: Table2, label: '表格资产', value: items.length, subValue: 'table assets', tone: 'text-info bg-info/10 border-info/20' },
-              { icon: BarChart3, label: '总行数', value: totalRows, subValue: 'sum(row_count)', tone: 'text-success bg-success/10 border-success/20' },
-              { icon: Database, label: '总列数', value: totalColumns, subValue: 'sum(col_count)', tone: 'text-warning bg-warning/10 border-warning/20' },
-              { icon: FileSearch, label: '当前表', value: selected?.sheet_name || selected?.table_id || '—', subValue: selected ? 'selected table' : 'waiting asset', tone: 'text-success bg-success/10 border-success/20' },
+              {
+                icon: Table2,
+                label: '表格资产',
+                value: items.length,
+                subValue: 'table assets',
+                tone: 'text-info bg-info/10 border-info/20',
+              },
+              {
+                icon: BarChart3,
+                label: '总行数',
+                value: totalRows,
+                subValue: 'sum(row_count)',
+                tone: 'text-success bg-success/10 border-success/20',
+              },
+              {
+                icon: Database,
+                label: '总列数',
+                value: totalColumns,
+                subValue: 'sum(col_count)',
+                tone: 'text-warning bg-warning/10 border-warning/20',
+              },
+              {
+                icon: FileSearch,
+                label: '当前表',
+                value: selected?.sheet_name || selected?.table_id || '—',
+                subValue: selected ? 'selected table' : 'waiting asset',
+                tone: 'text-success bg-success/10 border-success/20',
+              },
             ].map((item) => (
               <div key={item.label} className={tableMetricCardClass}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground/70 dark:text-muted-foreground">{item.label}</div>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground/70 dark:text-muted-foreground">
+                      {item.label}
+                    </div>
                     <div className="mt-1 truncate font-mono text-[17px] font-black leading-none tracking-[-0.02em] text-foreground tabular-nums dark:text-foreground">
                       {item.value}
                     </div>
-                    <div className="mt-1.5 truncate text-[11px] font-medium text-muted-foreground dark:text-muted-foreground">{item.subValue}</div>
+                    <div className="mt-1.5 truncate text-[11px] font-medium text-muted-foreground dark:text-muted-foreground">
+                      {item.subValue}
+                    </div>
                   </div>
                   <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-xl border', item.tone)}>
                     <item.icon className="size-4" />
@@ -357,277 +418,254 @@ export default function DatasetTablesPage() {
           </div>
 
           <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-hidden xl:grid-cols-[340px_minmax(0,1fr)]">
-          <Panel className={cn(tablePanelClass, 'flex min-h-0 flex-col')}>
-            <div className={cn(tablePanelHeaderClass, 'flex items-center justify-between gap-3')}>
-              <div className="flex min-w-0 items-start gap-3">
-                <div className={tableIconPillClass}>
-                  <Table2 className="size-4" />
-                </div>
-                <div className="min-w-0">
-                  <div className="mb-1 font-mono text-[10px] font-black uppercase tracking-[0.18em] text-info">Table assets</div>
-                  <div className="flex items-center gap-2">
-                    <div className={sectionTitleClass}>表格资产</div>
-                    <Badge variant="outline" className="h-5 rounded-full px-2 font-mono text-[10px] uppercase text-muted-foreground">
-                      {items.length} tables
-                    </Badge>
+            <Panel className={cn(tablePanelClass, 'flex min-h-0 flex-col')}>
+              <div className={cn(tablePanelHeaderClass, 'flex items-center justify-between gap-3')}>
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className={tableIconPillClass}>
+                    <Table2 className="size-4" />
                   </div>
-                  <div className={cn(mutedHintClass, 'mt-1')}>从入库结果中提取的结构化 sheet / table</div>
+                  <div className="min-w-0">
+                    <div className="mb-1 font-mono text-[10px] font-black uppercase tracking-[0.18em] text-info">
+                      Table assets
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className={sectionTitleClass}>表格资产</div>
+                      <Badge
+                        variant="outline"
+                        className="h-5 rounded-full px-2 font-mono text-[10px] uppercase text-muted-foreground"
+                      >
+                        {items.length} tables
+                      </Badge>
+                    </div>
+                    <div className={cn(mutedHintClass, 'mt-1')}>从入库结果中提取的结构化 sheet / table</div>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className={cn('min-h-0 flex-1 bg-muted/15 p-4 pr-3 dark:bg-muted/10', items.length ? 'space-y-2 overflow-auto no-scrollbar' : '')}>
-              {items.length === 0 && !isLoading ? (
-                <div className="rounded-lg border border-dashed border-info/30 bg-card p-4 shadow-none">
-                  <div className="flex items-start gap-3">
-                    <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-info/10 text-info">
-                      <Table2 className="size-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-[13px] font-bold text-foreground">暂无表格资产</div>
-                      <div className={cn(mutedHintClass, 'mt-1')}>
-                        需要在入库策略中开启表格存储，或对包含表格的文件重新入库后再查看。
+              <div
+                className={cn(
+                  'min-h-0 flex-1 bg-muted/15 p-4 pr-3 dark:bg-muted/10',
+                  items.length ? 'space-y-2 overflow-auto no-scrollbar' : '',
+                )}
+              >
+                {items.length === 0 && !isLoading ? (
+                  <div className="rounded-lg border border-dashed border-info/30 bg-card p-4 shadow-none">
+                    <div className="flex items-start gap-3">
+                      <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-info/10 text-info">
+                        <Table2 className="size-5" />
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="mt-3 h-8 rounded-xl bg-card px-2.5 text-[11px] font-semibold"
-                        onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}
-                      >
-                        检查入库策略
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              {items.map((t) => {
-                const active = selected?.table_id === t.table_id
-                return (
-                  <button
-                    key={t.table_id}
-                    type="button"
-                    onClick={() => selectTable(t)}
-                    className={cn(
-                      'group relative w-full overflow-hidden rounded-lg border px-3 py-3 text-left transition-all duration-200',
-                      active
-                        ? 'border-info/40 bg-info/5'
-                        : 'border-border/60 bg-card/78 hover:border-info/30 hover:bg-info/5 dark:bg-card/35'
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="truncate font-mono text-[11px] font-semibold text-foreground dark:text-foreground">
-                          {t.sheet_name || t.table_id}
+                        <div className="text-[13px] font-bold text-foreground">暂无表格资产</div>
+                        <div className={cn(mutedHintClass, 'mt-1')}>
+                          需要在入库策略中开启表格存储，或对包含表格的文件重新入库后再查看。
                         </div>
-                        {t.sheet_name ? (
-                          <div className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground/60">{t.table_id}</div>
-                        ) : null}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-3 h-8 rounded-xl bg-card px-2.5 text-[11px] font-semibold"
+                          onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}
+                        >
+                          检查入库策略
+                        </Button>
                       </div>
-                      <span className={cn('size-2 shrink-0 rounded-full', active ? 'bg-info' : 'bg-border group-hover:bg-info/30')} />
                     </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5 font-mono text-[10px] text-muted-foreground">
-                      <span className="rounded-md bg-muted/60 px-1.5 py-0.5 dark:bg-muted/30">rows {t.row_count}</span>
-                      <span className="rounded-md bg-muted/60 px-1.5 py-0.5 dark:bg-muted/30">cols {t.col_count}</span>
-                    </div>
-                    {t.document_filename ? (
-                      <div className="mt-1.5 truncate text-[10px] text-muted-foreground/60" title={t.document_filename}>
-                        {t.document_filename}
-                      </div>
-                    ) : null}
-                  </button>
-                )
-              })}
-            </div>
-          </Panel>
+                  </div>
+                ) : null}
 
-          <div className="min-h-0 space-y-3 overflow-y-auto pr-1 no-scrollbar">
-            {!selected ? (
-              <Panel className={cn(tablePanelClass, 'min-h-[360px] p-4')}>
-                <div className="flex min-h-[330px] flex-col items-center justify-center rounded-lg border border-dashed border-info/30 bg-card p-7 text-center">
-                  <div className="flex size-14 items-center justify-center rounded-lg border border-info/20 bg-card text-info shadow-none">
-                    <Table2 className="size-6" />
-                  </div>
-                  <div className="mt-4 text-[18px] font-bold tracking-[-0.02em] text-foreground">
-                    {isLoading ? '正在加载表格资产' : '选择表格后开始分析'}
-                  </div>
-                  <div className="mt-2 max-w-xl text-[13px] leading-6 text-muted-foreground">
-                    表格工作台只在存在 table asset 时展示 SQL 查询、TAG 问答和语义过滤，避免空数据时误操作。
-                  </div>
-                  <div className="mt-5 grid w-full max-w-2xl grid-cols-1 gap-2 md:grid-cols-3">
-                    {[
-                      ['SQL', '只读 SELECT / WITH 查询'],
-                      ['TAG', '自然语言转 SQL 并执行'],
-                      ['语义过滤', 'LOTUS 或 fallback NL→SQL'],
-                    ].map(([name, desc]) => (
-                      <div key={name} className="rounded-lg border border-border/60 bg-card px-4 py-3 text-left shadow-none">
-                        <div className="text-[13px] font-bold text-foreground">{name}</div>
-                        <div className="mt-1 text-[11px] leading-4 text-muted-foreground">{desc}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </Panel>
-            ) : (
-              <>
-                <Panel className={cn(tablePanelClass, 'p-4')}>
-                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                    <div>
-                      <div className={sectionTitleClass}>表格信息</div>
-                      <div className={cn(mutedHintClass, 'mt-0.5')}>字段结构、样例行和当前 table scope</div>
-                    </div>
-                    {selectedSummary}
-                  </div>
-
-                  <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(220px,0.45fr)_minmax(0,0.55fr)]">
-                    <div>
-                      <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/60">Columns</div>
-                      <div className="max-h-[180px] overflow-auto rounded-xl border border-border/50 bg-card/45 p-2 dark:bg-card/35">
-                        {(selected.columns || []).length === 0 ? (
-                          <div className="text-[11px] text-muted-foreground/60">未加载列信息</div>
-                        ) : (
-                          <div className="divide-y divide-border/40">
-                            {(selected.columns || []).map((c) => (
-                              <div key={c.name} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 py-1.5 font-mono text-[11px]">
-                                <span className="truncate text-foreground dark:text-foreground">{c.name}</span>
-                                <span className="truncate rounded-md bg-muted/60 px-1.5 py-0.5 text-[10px] text-muted-foreground dark:bg-muted/30">{c.dtype || 'unknown'}</span>
-                              </div>
-                            ))}
+                {items.map((t) => {
+                  const active = selected?.table_id === t.table_id
+                  return (
+                    <button
+                      key={t.table_id}
+                      type="button"
+                      onClick={() => selectTable(t)}
+                      className={cn(
+                        'group relative w-full overflow-hidden rounded-lg border px-3 py-3 text-left transition-all duration-200',
+                        active
+                          ? 'border-info/40 bg-info/5'
+                          : 'border-border/60 bg-card/78 hover:border-info/30 hover:bg-info/5 dark:bg-card/35',
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="truncate font-mono text-[11px] font-semibold text-foreground dark:text-foreground">
+                            {t.sheet_name || t.table_id}
                           </div>
-                        )}
+                          {t.sheet_name ? (
+                            <div className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground/60">
+                              {t.table_id}
+                            </div>
+                          ) : null}
+                        </div>
+                        <span
+                          className={cn(
+                            'size-2 shrink-0 rounded-full',
+                            active ? 'bg-info' : 'bg-border group-hover:bg-info/30',
+                          )}
+                        />
                       </div>
-                    </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5 font-mono text-[10px] text-muted-foreground">
+                        <span className="rounded-md bg-muted/60 px-1.5 py-0.5 dark:bg-muted/30">
+                          rows {t.row_count}
+                        </span>
+                        <span className="rounded-md bg-muted/60 px-1.5 py-0.5 dark:bg-muted/30">
+                          cols {t.col_count}
+                        </span>
+                      </div>
+                      {t.document_filename ? (
+                        <div
+                          className="mt-1.5 truncate text-[10px] text-muted-foreground/60"
+                          title={t.document_filename}
+                        >
+                          {t.document_filename}
+                        </div>
+                      ) : null}
+                    </button>
+                  )
+                })}
+              </div>
+            </Panel>
 
-                    <div>
-                      <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/60">Sample Rows</div>
-                      <div className="max-h-[180px] overflow-auto rounded-xl border border-border/50 bg-foreground/[0.025] p-2 dark:bg-muted/20">
-                        {(selected.sample_rows || []).length === 0 ? (
-                          <div className="text-[11px] text-muted-foreground/60">未加载样例，或已关闭 sample_rows</div>
-                        ) : (
-                          <pre className="text-[11px] font-mono leading-4 whitespace-pre-wrap break-words text-foreground/85 dark:text-muted-foreground">{JSON.stringify(selected.sample_rows || [], null, 2)}</pre>
-                        )}
-                      </div>
+            <div className="min-h-0 space-y-3 overflow-y-auto pr-1 no-scrollbar">
+              {!selected ? (
+                <Panel className={cn(tablePanelClass, 'min-h-[360px] p-4')}>
+                  <div className="flex min-h-[330px] flex-col items-center justify-center rounded-lg border border-dashed border-info/30 bg-card p-7 text-center">
+                    <div className="flex size-14 items-center justify-center rounded-lg border border-info/20 bg-card text-info shadow-none">
+                      <Table2 className="size-6" />
+                    </div>
+                    <div className="mt-4 text-[18px] font-bold tracking-[-0.02em] text-foreground">
+                      {isLoading ? '正在加载表格资产' : '选择表格后开始分析'}
+                    </div>
+                    <div className="mt-2 max-w-xl text-[13px] leading-6 text-muted-foreground">
+                      表格工作台只在存在 table asset 时展示 SQL 查询、TAG 问答和语义过滤，避免空数据时误操作。
+                    </div>
+                    <div className="mt-5 grid w-full max-w-2xl grid-cols-1 gap-2 md:grid-cols-3">
+                      {[
+                        ['SQL', '只读 SELECT / WITH 查询'],
+                        ['TAG', '自然语言转 SQL 并执行'],
+                        ['语义过滤', 'LOTUS 或 fallback NL→SQL'],
+                      ].map(([name, desc]) => (
+                        <div
+                          key={name}
+                          className="rounded-lg border border-border/60 bg-card px-4 py-3 text-left shadow-none"
+                        >
+                          <div className="text-[13px] font-bold text-foreground">{name}</div>
+                          <div className="mt-1 text-[11px] leading-4 text-muted-foreground">{desc}</div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </Panel>
-
-                <div className="grid grid-cols-1 gap-3 2xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
+              ) : (
+                <>
                   <Panel className={cn(tablePanelClass, 'p-4')}>
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                       <div>
-                        <div className={sectionTitleClass}>SQL 查询</div>
-                        <div className={mutedHintClass}>只读查询当前表，适合快速核对字段和样例数据</div>
+                        <div className={sectionTitleClass}>表格信息</div>
+                        <div className={cn(mutedHintClass, 'mt-0.5')}>字段结构、样例行和当前 table scope</div>
                       </div>
-                      <Button size="sm" className="h-8 gap-1.5 rounded-lg px-2.5 text-[11px]" onClick={runQuery} disabled={queryRunning}>
-                        <Play className={cn('size-3.5', queryRunning && 'animate-spin motion-reduce:animate-none')} />
-                        执行
-                      </Button>
+                      {selectedSummary}
                     </div>
-                    <div className="mt-3 space-y-2">
-                      <Textarea value={querySql} onChange={(e) => setQuerySql(e.target.value)} className="min-h-[112px] rounded-xl bg-foreground/[0.025] font-mono text-[12px] leading-5" />
-                      {queryRes ? (
-                        <div className="rounded-xl border border-border/55 bg-card/45 p-2 dark:bg-card/35">
-                          <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
-                            <span>cols:{(queryRes.columns || []).length}</span>
-                            <span>rows:{(queryRes.rows || []).length}</span>
-                            {queryRes.truncated ? <Badge variant="soft" className="h-5 px-1.5 font-mono text-[10px]">truncated</Badge> : null}
-                          </div>
-                          <div className="mt-2 overflow-auto">
-                            <table aria-label="数据表查询结果" className="min-w-full text-[11px]">
-                              <thead>
-                                <tr className="border-b border-border/60 bg-muted/40 dark:bg-muted/20">
-                                  {(queryRes.columns || []).map((c) => (
-                                    <th key={c} className="px-2 py-1.5 text-left font-mono font-semibold whitespace-nowrap">
-                                      {c}
-                                    </th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {(queryRes.rows || []).map((r, i) => (
-                                  <tr key={`query-row-${i}`} className="border-b border-border/35">
-                                    {(r || []).map((v, j) => (
-                                      <td key={`query-cell-${i}-${j}`} className="px-2 py-1.5 font-mono whitespace-nowrap">
-                                        {renderValue(v)}
-                                      </td>
-                                    ))}
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
+
+                    <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(220px,0.45fr)_minmax(0,0.55fr)]">
+                      <div>
+                        <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/60">
+                          Columns
                         </div>
-                      ) : null}
+                        <div className="max-h-[180px] overflow-auto rounded-xl border border-border/50 bg-card/45 p-2 dark:bg-card/35">
+                          {(selected.columns || []).length === 0 ? (
+                            <div className="text-[11px] text-muted-foreground/60">未加载列信息</div>
+                          ) : (
+                            <div className="divide-y divide-border/40">
+                              {(selected.columns || []).map((c) => (
+                                <div
+                                  key={c.name}
+                                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 py-1.5 font-mono text-[11px]"
+                                >
+                                  <span className="truncate text-foreground dark:text-foreground">{c.name}</span>
+                                  <span className="truncate rounded-md bg-muted/60 px-1.5 py-0.5 text-[10px] text-muted-foreground dark:bg-muted/30">
+                                    {c.dtype || 'unknown'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/60">
+                          Sample Rows
+                        </div>
+                        <div className="max-h-[180px] overflow-auto rounded-xl border border-border/50 bg-foreground/[0.025] p-2 dark:bg-muted/20">
+                          {(selected.sample_rows || []).length === 0 ? (
+                            <div className="text-[11px] text-muted-foreground/60">未加载样例，或已关闭 sample_rows</div>
+                          ) : (
+                            <pre className="text-[11px] font-mono leading-4 whitespace-pre-wrap break-words text-foreground/85 dark:text-muted-foreground">
+                              {JSON.stringify(selected.sample_rows || [], null, 2)}
+                            </pre>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </Panel>
 
-                  <div className="space-y-3">
+                  <div className="grid grid-cols-1 gap-3 2xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
                     <Panel className={cn(tablePanelClass, 'p-4')}>
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <div className="flex items-center gap-1.5">
-                            <Sparkles className="size-3.5 text-primary" />
-                            <div className={sectionTitleClass}>TAG 问答</div>
-                          </div>
-                          <div className={mutedHintClass}>NL→SQL→执行</div>
+                          <div className={sectionTitleClass}>SQL 查询</div>
+                          <div className={mutedHintClass}>只读查询当前表，适合快速核对字段和样例数据</div>
                         </div>
-                        <Button size="sm" className="h-8 gap-1.5 rounded-lg px-2.5 text-[11px]" onClick={ask} disabled={askRunning || !question.trim()}>
-                          <Sparkles className={cn('size-3.5', askRunning && 'animate-spin motion-reduce:animate-none')} />
-                          询问
+                        <Button
+                          size="sm"
+                          className="h-8 gap-1.5 rounded-lg px-2.5 text-[11px]"
+                          onClick={runQuery}
+                          disabled={queryRunning}
+                        >
+                          <Play className={cn('size-3.5', queryRunning && 'animate-spin motion-reduce:animate-none')} />
+                          执行
                         </Button>
                       </div>
                       <div className="mt-3 space-y-2">
-                        <Input value={question} onChange={(e) => setQuestion(e.target.value)} className="h-9 text-[12px]" placeholder="例如：按地区汇总销售额 TOP 10？" />
-                        <div className="min-h-[38px] rounded-xl border border-border/55 bg-card/45 p-2.5 text-[12px] leading-5 dark:bg-card/35">
-                          {askRes?.answer ? askRes.answer : <span className="text-[11px] text-muted-foreground/60">需要开启 TABLE_NL2SQL_ENABLED</span>}
-                        </div>
-                        {askRes?.sql ? (
-                          <pre className="max-h-[140px] overflow-auto rounded-xl border border-border/55 bg-foreground/[0.025] p-2 text-[11px] font-mono leading-4 whitespace-pre-wrap break-words text-foreground/85 dark:bg-muted/20 dark:text-muted-foreground">{askRes.sql}</pre>
-                        ) : null}
-                      </div>
-                    </Panel>
-
-                    <Panel className={cn(tablePanelClass, 'p-4')}>
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <div className={sectionTitleClass}>语义过滤</div>
-                          <div className={mutedHintClass}>LOTUS / fallback NL→SQL</div>
-                        </div>
-                        <Button size="sm" className="h-8 gap-1.5 rounded-lg px-2.5 text-[11px]" onClick={semFilter} disabled={semFilterRunning || !semFilterInstruction.trim()}>
-                          <Play className={cn('size-3.5', semFilterRunning && 'animate-spin motion-reduce:animate-none')} />
-                          运行
-                        </Button>
-                      </div>
-                      <div className="mt-3 space-y-2">
-                        <Input
-                          value={semFilterInstruction}
-                          onChange={(e) => setSemFilterInstruction(e.target.value)}
-                          className="h-9 text-[12px]"
-                          placeholder='例如："{客户名称} 是互联网公司"'
+                        <Textarea
+                          value={querySql}
+                          onChange={(e) => setQuerySql(e.target.value)}
+                          className="min-h-[112px] rounded-xl bg-foreground/[0.025] font-mono text-[12px] leading-5"
                         />
-                        {semFilterRes ? (
+                        {queryRes ? (
                           <div className="rounded-xl border border-border/55 bg-card/45 p-2 dark:bg-card/35">
                             <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
-                              <span>cols:{(semFilterRes.columns || []).length}</span>
-                              <span>rows:{(semFilterRes.rows || []).length}</span>
-                              {semFilterRes.truncated ? <Badge variant="soft" className="h-5 px-1.5 font-mono text-[10px]">truncated</Badge> : null}
+                              <span>cols:{(queryRes.columns || []).length}</span>
+                              <span>rows:{(queryRes.rows || []).length}</span>
+                              {queryRes.truncated ? (
+                                <Badge variant="soft" className="h-5 px-1.5 font-mono text-[10px]">
+                                  truncated
+                                </Badge>
+                              ) : null}
                             </div>
                             <div className="mt-2 overflow-auto">
-                              <table aria-label="数据表问答引用结果" className="min-w-full text-[11px]">
+                              <table aria-label="数据表查询结果" className="min-w-full text-[11px]">
                                 <thead>
                                   <tr className="border-b border-border/60 bg-muted/40 dark:bg-muted/20">
-                                    {(semFilterRes.columns || []).map((c) => (
-                                      <th key={c} className="px-2 py-1.5 text-left font-mono font-semibold whitespace-nowrap">
+                                    {(queryRes.columns || []).map((c) => (
+                                      <th
+                                        key={c}
+                                        className="px-2 py-1.5 text-left font-mono font-semibold whitespace-nowrap"
+                                      >
                                         {c}
                                       </th>
                                     ))}
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {(semFilterRes.rows || []).map((r, i) => (
-                                    <tr key={`sem-row-${i}`} className="border-b border-border/35">
+                                  {(queryRes.rows || []).map((r, i) => (
+                                    <tr key={`query-row-${i}`} className="border-b border-border/35">
                                       {(r || []).map((v, j) => (
-                                        <td key={`sem-cell-${i}-${j}`} className="px-2 py-1.5 font-mono whitespace-nowrap">
+                                        <td
+                                          key={`query-cell-${i}-${j}`}
+                                          className="px-2 py-1.5 font-mono whitespace-nowrap"
+                                        >
                                           {renderValue(v)}
                                         </td>
                                       ))}
@@ -640,11 +678,128 @@ export default function DatasetTablesPage() {
                         ) : null}
                       </div>
                     </Panel>
+
+                    <div className="space-y-3">
+                      <Panel className={cn(tablePanelClass, 'p-4')}>
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <Sparkles className="size-3.5 text-primary" />
+                              <div className={sectionTitleClass}>TAG 问答</div>
+                            </div>
+                            <div className={mutedHintClass}>NL→SQL→执行</div>
+                          </div>
+                          <Button
+                            size="sm"
+                            className="h-8 gap-1.5 rounded-lg px-2.5 text-[11px]"
+                            onClick={ask}
+                            disabled={askRunning || !question.trim()}
+                          >
+                            <Sparkles
+                              className={cn('size-3.5', askRunning && 'animate-spin motion-reduce:animate-none')}
+                            />
+                            询问
+                          </Button>
+                        </div>
+                        <div className="mt-3 space-y-2">
+                          <Input
+                            value={question}
+                            onChange={(e) => setQuestion(e.target.value)}
+                            className="h-9 text-[12px]"
+                            placeholder="例如：按地区汇总销售额 TOP 10？"
+                          />
+                          <div className="min-h-[38px] rounded-xl border border-border/55 bg-card/45 p-2.5 text-[12px] leading-5 dark:bg-card/35">
+                            {askRes?.answer ? (
+                              askRes.answer
+                            ) : (
+                              <span className="text-[11px] text-muted-foreground/60">
+                                需要开启 TABLE_NL2SQL_ENABLED
+                              </span>
+                            )}
+                          </div>
+                          {askRes?.sql ? (
+                            <pre className="max-h-[140px] overflow-auto rounded-xl border border-border/55 bg-foreground/[0.025] p-2 text-[11px] font-mono leading-4 whitespace-pre-wrap break-words text-foreground/85 dark:bg-muted/20 dark:text-muted-foreground">
+                              {askRes.sql}
+                            </pre>
+                          ) : null}
+                        </div>
+                      </Panel>
+
+                      <Panel className={cn(tablePanelClass, 'p-4')}>
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className={sectionTitleClass}>语义过滤</div>
+                            <div className={mutedHintClass}>LOTUS / fallback NL→SQL</div>
+                          </div>
+                          <Button
+                            size="sm"
+                            className="h-8 gap-1.5 rounded-lg px-2.5 text-[11px]"
+                            onClick={semFilter}
+                            disabled={semFilterRunning || !semFilterInstruction.trim()}
+                          >
+                            <Play
+                              className={cn('size-3.5', semFilterRunning && 'animate-spin motion-reduce:animate-none')}
+                            />
+                            运行
+                          </Button>
+                        </div>
+                        <div className="mt-3 space-y-2">
+                          <Input
+                            value={semFilterInstruction}
+                            onChange={(e) => setSemFilterInstruction(e.target.value)}
+                            className="h-9 text-[12px]"
+                            placeholder='例如："{客户名称} 是互联网公司"'
+                          />
+                          {semFilterRes ? (
+                            <div className="rounded-xl border border-border/55 bg-card/45 p-2 dark:bg-card/35">
+                              <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
+                                <span>cols:{(semFilterRes.columns || []).length}</span>
+                                <span>rows:{(semFilterRes.rows || []).length}</span>
+                                {semFilterRes.truncated ? (
+                                  <Badge variant="soft" className="h-5 px-1.5 font-mono text-[10px]">
+                                    truncated
+                                  </Badge>
+                                ) : null}
+                              </div>
+                              <div className="mt-2 overflow-auto">
+                                <table aria-label="数据表问答引用结果" className="min-w-full text-[11px]">
+                                  <thead>
+                                    <tr className="border-b border-border/60 bg-muted/40 dark:bg-muted/20">
+                                      {(semFilterRes.columns || []).map((c) => (
+                                        <th
+                                          key={c}
+                                          className="px-2 py-1.5 text-left font-mono font-semibold whitespace-nowrap"
+                                        >
+                                          {c}
+                                        </th>
+                                      ))}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {(semFilterRes.rows || []).map((r, i) => (
+                                      <tr key={`sem-row-${i}`} className="border-b border-border/35">
+                                        {(r || []).map((v, j) => (
+                                          <td
+                                            key={`sem-cell-${i}-${j}`}
+                                            className="px-2 py-1.5 font-mono whitespace-nowrap"
+                                          >
+                                            {renderValue(v)}
+                                          </td>
+                                        ))}
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      </Panel>
+                    </div>
                   </div>
-                </div>
-              </>
-            )}
-          </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </PageScaffold>

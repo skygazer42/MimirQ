@@ -20,10 +20,7 @@ const SETTINGS_SWITCH_TONE =
 const SETTINGS_SWITCH_THUMB =
   '[&>span]:relative [&>span]:z-10 [&>span]:h-[1.375rem] [&>span]:w-9 [&>span]:rounded-full [&>span]:border [&>span]:shadow-none [&>span]:transition-transform data-[switch-state=checked]:[&>span]:border-info data-[switch-state=checked]:[&>span]:bg-info data-[switch-state=unchecked]:[&>span]:border-border/70 data-[switch-state=unchecked]:[&>span]:bg-background/80'
 
-export function SettingsSwitchIndicator({
-  checked,
-  className,
-}: Readonly<SettingsSwitchIndicatorProps>) {
+export function SettingsSwitchIndicator({ checked, className }: Readonly<SettingsSwitchIndicatorProps>) {
   return (
     <span
       aria-hidden="true"
@@ -35,7 +32,7 @@ export function SettingsSwitchIndicator({
         SETTINGS_SWITCH_TONE,
         SETTINGS_SWITCH_THUMB,
         'pointer-events-none',
-        className
+        className,
       )}
     >
       <span
@@ -45,7 +42,7 @@ export function SettingsSwitchIndicator({
           'pointer-events-none block h-5 w-5 rounded-full bg-background ring-0 transition-all duration-150',
           checked
             ? 'translate-x-[var(--switch-translate-checked,2.5rem)] scale-[1.02]'
-            : 'translate-x-[var(--switch-translate-unchecked,0.25rem)]'
+            : 'translate-x-[var(--switch-translate-unchecked,0.25rem)]',
         )}
       />
     </span>
@@ -60,7 +57,7 @@ export function SettingsSwitch({ className, ...props }: Readonly<SwitchProps>) {
         SETTINGS_SWITCH_STATE,
         SETTINGS_SWITCH_TONE,
         SETTINGS_SWITCH_THUMB,
-        className
+        className,
       )}
       {...props}
     />

@@ -1,7 +1,7 @@
-import { Skeleton } from "@/components/ui/skeleton"
+import { Skeleton } from '@/components/ui/skeleton'
 
-const STAT_KEYS = ["st-1", "st-2", "st-3", "st-4"]
-const ROW_KEYS = ["r-1", "r-2", "r-3", "r-4"]
+const STAT_KEYS = ['st-1', 'st-2', 'st-3', 'st-4']
+const ROW_KEYS = ['r-1', 'r-2', 'r-3', 'r-4']
 
 export default function EvaluationsLoading() {
   return (

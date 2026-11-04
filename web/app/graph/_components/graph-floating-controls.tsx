@@ -102,7 +102,7 @@ export function GraphFloatingControls({
       <div
         className={cn(
           'overflow-hidden transition-[width,opacity,transform] duration-200 ease-out',
-          isCollapsed ? 'w-0 translate-x-2 opacity-0 pointer-events-none' : 'w-[3.125rem] translate-x-0 opacity-100'
+          isCollapsed ? 'w-0 translate-x-2 opacity-0 pointer-events-none' : 'w-[3.125rem] translate-x-0 opacity-100',
         )}
       >
         <div className="flex w-[3.125rem] flex-col gap-1 rounded-xl border border-info/15 bg-background/88 p-1.5 shadow-none">
@@ -113,7 +113,14 @@ export function GraphFloatingControls({
             <ZoomOut className="w-5 h-5" />
           </Button>
           <div className="h-px bg-muted mx-2 my-0.5" />
-          <Button variant="ghost" size="icon" onClick={onZoomToFit} className="rounded-lg" title="适应屏幕" aria-label="适应屏幕">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onZoomToFit}
+            className="rounded-lg"
+            title="适应屏幕"
+            aria-label="适应屏幕"
+          >
             <Maximize className="w-5 h-5" />
           </Button>
           <Button
@@ -217,7 +224,9 @@ export function GraphFloatingControls({
                   Copy SVG
                 </Button>
               </div>
-              <div className="px-2 pb-1 text-[11px] text-muted-foreground">当前视图：{viewMode === '3d' ? '3D' : '2D'}</div>
+              <div className="px-2 pb-1 text-[11px] text-muted-foreground">
+                当前视图：{viewMode === '3d' ? '3D' : '2D'}
+              </div>
             </PopoverContent>
           </Popover>
         </div>

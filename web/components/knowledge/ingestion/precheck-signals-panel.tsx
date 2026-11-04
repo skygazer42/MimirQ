@@ -14,11 +14,7 @@ type PrecheckSignalsPanelProps = {
   advisories: PrecheckEmbeddingAdvisoryView[]
 }
 
-export function PrecheckSignalsPanel({
-  advisories,
-  mode,
-  successPulseVisible,
-}: Readonly<PrecheckSignalsPanelProps>) {
+export function PrecheckSignalsPanel({ advisories, mode, successPulseVisible }: Readonly<PrecheckSignalsPanelProps>) {
   const showAdvisories = mode === 'sales-audit' && advisories.length > 0
   if (!successPulseVisible && !showAdvisories) return null
 
@@ -46,9 +42,7 @@ export function PrecheckSignalsPanel({
           <div className="flex items-start gap-2 text-[12px] text-warning">
             <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
             <div className="min-w-0">
-              <div className="font-medium text-foreground">
-                预检发现 embedding 建议
-              </div>
+              <div className="font-medium text-foreground">预检发现 embedding 建议</div>
               <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
                 当前摘要提示该语料更适合特定向量模型。这只是 warning，不表示系统已经自动切换模型。
               </div>
@@ -56,18 +50,14 @@ export function PrecheckSignalsPanel({
                 {advisories.flatMap((advisory) => {
                   const chips = [
                     `code=${advisory.code}`,
-                    advisory.effectiveEmbedding
-                      ? `current=${advisory.effectiveEmbedding}`
-                      : null,
-                    ...advisory.recommendedModelIds.map(
-                      (modelId) => `recommended=${modelId}`
-                    ),
+                    advisory.effectiveEmbedding ? `current=${advisory.effectiveEmbedding}` : null,
+                    ...advisory.recommendedModelIds.map((modelId) => `recommended=${modelId}`),
                   ].filter(Boolean) as string[]
                   return chips.map((chip) => (
                     <span
                       key={`${advisory.code}-${chip}`}
                       className={cn(
-                        'rounded-full border border-warning/20 bg-background/72 px-2 py-0.5 text-[10px] font-medium text-warning'
+                        'rounded-full border border-warning/20 bg-background/72 px-2 py-0.5 text-[10px] font-medium text-warning',
                       )}
                     >
                       {chip}

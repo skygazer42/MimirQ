@@ -54,7 +54,7 @@ export const parseGraphML = (xmlContent: string): GraphData => {
   const links: GraphLink[] = []
 
   // Get all keys to map IDs to attribute names (e.g., d0 -> label, d1 -> weight)
-  const keys: { [id: string]: { name: string, type: string } } = {}
+  const keys: { [id: string]: { name: string; type: string } } = {}
   xmlDoc.querySelectorAll('key').forEach((key) => {
     const id = key.getAttribute('id')
     const name = key.getAttribute('attr.name')
@@ -90,7 +90,7 @@ export const parseGraphML = (xmlContent: string): GraphData => {
 
     // Random color assignment if not present (can be improved)
     if (!nodeData.color) {
-      // nodeData.color = ... 
+      // nodeData.color = ...
     }
 
     nodes.push(nodeData)

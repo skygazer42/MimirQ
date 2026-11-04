@@ -89,10 +89,7 @@ export function WorkbenchScaffold({
   let resolvedMainPanel = mainPanel
   if (!resolvedMainPanel && children) {
     resolvedMainPanel = (
-      <WorkbenchPane
-        className={cn('flex-1', mainPaneClassName)}
-        bodyClassName={mainPaneBodyClassName}
-      >
+      <WorkbenchPane className={cn('flex-1', mainPaneClassName)} bodyClassName={mainPaneBodyClassName}>
         {children}
       </WorkbenchPane>
     )
@@ -104,10 +101,7 @@ export function WorkbenchScaffold({
 
   return (
     <div className={cn('flex h-full min-h-0 flex-col overflow-hidden', className)}>
-      <div className={cn(
-        'flex-shrink-0 relative z-10',
-        getWorkbenchHeaderSpacingClass(compactHeader)
-      )}>
+      <div className={cn('flex-shrink-0 relative z-10', getWorkbenchHeaderSpacingClass(compactHeader))}>
         <PageContainer size={size}>
           {header ? (
             <div className={cn('p-0', headerClassName)}>{header}</div>
@@ -133,39 +127,29 @@ export function WorkbenchScaffold({
 
       {toolbar ? (
         <PageHeaderBar className="z-20">
-          <div className={cn(
-            getWorkbenchToolbarSpacingClass(compactHeader),
-            toolbarClassName
-          )}>
+          <div className={cn(getWorkbenchToolbarSpacingClass(compactHeader), toolbarClassName)}>
             <PageContainer size={size}>{toolbar}</PageContainer>
           </div>
         </PageHeaderBar>
       ) : null}
 
-      <div className={cn(
-        'flex-1 min-h-0 overflow-hidden pb-8',
-        getWorkbenchBodySpacingClass(compactHeader),
-        bodyClassName
-      )}>
+      <div
+        className={cn(
+          'flex-1 min-h-0 overflow-hidden pb-8',
+          getWorkbenchBodySpacingClass(compactHeader),
+          bodyClassName,
+        )}
+      >
         <PageContainer size={size} className="h-full">
-          <div
-            data-workbench-pane-group="true"
-            className={cn('flex h-full min-h-0 gap-4', paneGroupClassName)}
-          >
+          <div data-workbench-pane-group="true" className={cn('flex h-full min-h-0 gap-4', paneGroupClassName)}>
             {leftPanel ? (
-              <aside className="hidden lg:flex w-[280px] min-h-0 overflow-hidden flex-col">
-                {leftPanel}
-              </aside>
+              <aside className="hidden lg:flex w-[280px] min-h-0 overflow-hidden flex-col">{leftPanel}</aside>
             ) : null}
 
-            <section className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col">
-              {resolvedMainPanel}
-            </section>
+            <section className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col">{resolvedMainPanel}</section>
 
             {rightPanel ? (
-              <aside className="hidden xl:flex w-[360px] min-h-0 overflow-hidden flex-col">
-                {rightPanel}
-              </aside>
+              <aside className="hidden xl:flex w-[360px] min-h-0 overflow-hidden flex-col">{rightPanel}</aside>
             ) : null}
           </div>
         </PageContainer>

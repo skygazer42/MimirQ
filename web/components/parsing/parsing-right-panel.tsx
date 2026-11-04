@@ -19,11 +19,7 @@ type DragState = {
   moved: boolean
 }
 
-export function ParsingRightPanel({
-  children,
-  className,
-  dragScroll = false,
-}: Readonly<ParsingRightPanelProps>) {
+export function ParsingRightPanel({ children, className, dragScroll = false }: Readonly<ParsingRightPanelProps>) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const dragStateRef = useRef<DragState | null>(null)
   const suppressClickRef = useRef(false)
@@ -58,7 +54,7 @@ export function ParsingRightPanel({
       suppressClickRef.current = false
       container.setPointerCapture?.(event.pointerId)
     },
-    [dragScroll]
+    [dragScroll],
   )
 
   const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
@@ -90,7 +86,7 @@ export function ParsingRightPanel({
       if (dragState?.pointerId !== event.pointerId) return
       clearDragState()
     },
-    [clearDragState]
+    [clearDragState],
   )
 
   const handleClickCapture = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
@@ -109,7 +105,7 @@ export function ParsingRightPanel({
         'min-h-0 min-w-0 overflow-y-auto overscroll-contain',
         dragScroll && 'cursor-grab',
         dragScroll && isDragging && 'cursor-grabbing select-none',
-        className
+        className,
       )}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}

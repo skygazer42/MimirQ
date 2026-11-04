@@ -50,7 +50,7 @@ export function useChat({
       stream.resetTransientState()
       await session.loadConversation(id)
     },
-    [session, stream]
+    [session, stream],
   )
 
   const resetConversation = useCallback(() => {

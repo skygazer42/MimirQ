@@ -5,18 +5,15 @@ import { describe, expect, it } from 'vitest'
 
 describe('retrieve-preview panel visual contract', () => {
   it('keeps retrieval workbench on a flat ruled surface without blur or decorative overlays', () => {
-    const src = fs.readFileSync(
-      path.resolve(__dirname, 'retrieve-preview-panel.tsx'),
-      'utf8'
-    )
+    const src = fs.readFileSync(path.resolve(__dirname, 'retrieve-preview-panel.tsx'), 'utf8')
 
     expect(src).toContain(
-      "const RETRIEVAL_PANEL_SURFACE_CLASS =\n  'border-foreground/10 bg-background shadow-none backdrop-blur-none"
+      "const RETRIEVAL_PANEL_SURFACE_CLASS =\n  'border-foreground/10 bg-background shadow-none backdrop-blur-none",
     )
+    expect(src).toContain("const RETRIEVAL_CONTROL_SURFACE_CLASS =\n  'border-foreground/10 bg-background shadow-none")
     expect(src).toContain(
-      "const RETRIEVAL_CONTROL_SURFACE_CLASS =\n  'border-foreground/10 bg-background shadow-none"
+      "className={cn(className, 'relative flex h-full min-h-0 flex-col overflow-hidden bg-background')}",
     )
-    expect(src).toContain("className={cn(className, 'relative flex h-full min-h-0 flex-col overflow-hidden bg-background')}")
     expect(src).toContain("className={cn('rounded-xl border', RETRIEVAL_PANEL_SURFACE_CLASS)}")
     expect(src).toContain("className={cn('rounded-lg border', RETRIEVAL_CONTROL_SURFACE_CLASS)}")
     expect(src).not.toContain('bg-[#F8FBFF]/75')
@@ -28,10 +25,7 @@ describe('retrieve-preview panel visual contract', () => {
   })
 
   it('preserves retrieval behavior and semantic states while simplifying chip chrome', () => {
-    const src = fs.readFileSync(
-      path.resolve(__dirname, 'retrieve-preview-panel.tsx'),
-      'utf8'
-    )
+    const src = fs.readFileSync(path.resolve(__dirname, 'retrieve-preview-panel.tsx'), 'utf8')
 
     expect(src).toContain('data-semantic-retrieval-mark="true"')
     expect(src).toContain('handleSearch()')

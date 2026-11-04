@@ -97,8 +97,8 @@ describe('history page delete action', () => {
         React.createElement(
           QueryClientProvider,
           { client: queryClient },
-          React.createElement(HistoryPageClient, { initialConversationId: null })
-        )
+          React.createElement(HistoryPageClient, { initialConversationId: null }),
+        ),
       )
     })
 
@@ -107,17 +107,15 @@ describe('history page delete action', () => {
         expect(chatApiMock.listConversations).toHaveBeenCalledWith({
           skip: 0,
           limit: 100,
-        })
+        }),
       )
-      await vi.waitFor(() =>
-        expect(container.querySelector('[data-history-empty-archive="true"]')).not.toBeNull()
-      )
-      await vi.waitFor(() =>
-        expect(container.querySelector('[data-history-main-empty="true"]')).not.toBeNull()
-      )
+      await vi.waitFor(() => expect(container.querySelector('[data-history-empty-archive="true"]')).not.toBeNull())
+      await vi.waitFor(() => expect(container.querySelector('[data-history-main-empty="true"]')).not.toBeNull())
     })
 
-    expect(container.querySelector('[data-history-main-empty="true"] a[href="/"]')?.textContent).toContain('startNewConversation')
+    expect(container.querySelector('[data-history-main-empty="true"] a[href="/"]')?.textContent).toContain(
+      'startNewConversation',
+    )
     expect(container.querySelector('[data-history-main-empty="true"] a[href="/evaluations"]')).toBeNull()
     expect(container.querySelector('[data-history-main-empty="true"] a[href="/observability"]')).toBeNull()
 
@@ -181,8 +179,8 @@ describe('history page delete action', () => {
           React.createElement(HistoryPageClient, {
             initialConversationId: selectedConversation.id,
             initialSelectedConversation: selectedConversation,
-          })
-        )
+          }),
+        ),
       )
     })
     await act(async () => {
@@ -193,7 +191,7 @@ describe('history page delete action', () => {
     expect(input).not.toBeNull()
     expect(input?.maxLength).toBe(500)
     const recentButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(
-      (button) => button.textContent === '最近'
+      (button) => button.textContent === '最近',
     )
     expect(recentButton).not.toBeUndefined()
     act(() => recentButton?.click())
@@ -209,7 +207,7 @@ describe('history page delete action', () => {
           skip: 0,
           limit: 100,
           q: 'needle',
-        })
+        }),
       )
       await vi.waitFor(() => expect(container.textContent).toContain(olderMatch.title))
     })
@@ -224,7 +222,7 @@ describe('history page delete action', () => {
           skip: 0,
           limit: 100,
           q: 'missing',
-        })
+        }),
       )
       await vi.waitFor(() => expect(container.textContent).toContain('noMatchedConversation'))
     })
@@ -279,8 +277,8 @@ describe('history page delete action', () => {
         React.createElement(
           QueryClientProvider,
           { client: queryClient },
-          React.createElement(HistoryPageClient, { initialConversationId: 'conversation-150' })
-        )
+          React.createElement(HistoryPageClient, { initialConversationId: 'conversation-150' }),
+        ),
       )
     })
 
@@ -289,7 +287,7 @@ describe('history page delete action', () => {
         expect(chatApiMock.getMessages).toHaveBeenCalledWith('conversation-150', {
           limit: 80,
           before: undefined,
-        })
+        }),
       )
       await vi.waitFor(() => expect(container.textContent).toContain('legacy answer'))
     })
@@ -316,15 +314,13 @@ describe('history page delete action', () => {
         React.createElement(
           QueryClientProvider,
           { client: queryClient },
-          React.createElement(HistoryPageClient, { initialConversationId: 'missing-conversation' })
-        )
+          React.createElement(HistoryPageClient, { initialConversationId: 'missing-conversation' }),
+        ),
       )
     })
 
     await act(async () => {
-      await vi.waitFor(() =>
-        expect(container.querySelector('[data-history-main-empty="true"]')).not.toBeNull()
-      )
+      await vi.waitFor(() => expect(container.querySelector('[data-history-main-empty="true"]')).not.toBeNull())
     })
 
     expect(container.querySelector('[aria-label="继续当前对话"]')).toBeNull()
@@ -375,14 +371,10 @@ describe('history page delete action', () => {
     }
 
     act(() => root.render(React.createElement(Harness)))
-    const deleteButton = container.querySelector<HTMLButtonElement>(
-      '[aria-label="deleteConversation"]'
-    )
+    const deleteButton = container.querySelector<HTMLButtonElement>('[aria-label="deleteConversation"]')
     expect(deleteButton).not.toBeNull()
     act(() => deleteButton?.click())
-    const confirmButton = container.querySelector<HTMLButtonElement>(
-      '[aria-label="confirmDeleteConversation"]'
-    )
+    const confirmButton = container.querySelector<HTMLButtonElement>('[aria-label="confirmDeleteConversation"]')
     expect(confirmButton).not.toBeNull()
     act(() => confirmButton?.click())
 

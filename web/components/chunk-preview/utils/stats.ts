@@ -49,7 +49,7 @@ function normalizeLength(value: unknown) {
 
 export function computeChunkLengthStats(
   chunks: Array<{ content?: string | null; length?: number | null }>,
-  options?: { shortThreshold?: number; histogramBins?: number; hashMaxChars?: number }
+  options?: { shortThreshold?: number; histogramBins?: number; hashMaxChars?: number },
 ): ChunkLengthStats | null {
   const shortThreshold = normalizeLength(options?.shortThreshold ?? 120)
   const histogramBins = clampInt(options?.histogramBins ?? 8, 3, 12)

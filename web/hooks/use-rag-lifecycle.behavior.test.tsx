@@ -90,7 +90,10 @@ beforeEach(() => {
   vi.clearAllMocks()
   miniSearchMock.instances = 0
   authStorage.getAccessToken.mockReturnValue(null)
-  vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(null, { status: 204 }))))
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => Promise.resolve(new Response(null, { status: 204 }))),
+  )
 })
 
 afterEach(() => {
@@ -119,12 +122,10 @@ describe('RAG hook lifecycle behavior', () => {
     documentApiMock.getStatus.mockReturnValue(
       new Promise((resolve) => {
         resolveStatus = resolve
-      })
+      }),
     )
     const setTimeoutSpy = vi.spyOn(window, 'setTimeout')
-    const harness = renderHook(() =>
-      useDocumentPolling({ updateCachedDocuments: vi.fn() })
-    )
+    const harness = renderHook(() => useDocumentPolling({ updateCachedDocuments: vi.fn() }))
 
     act(() => harness.current().pollDocumentStatus('doc-1'))
     setTimeoutSpy.mockClear()
@@ -140,13 +141,9 @@ describe('RAG hook lifecycle behavior', () => {
 
   it('does not rebuild MiniSearch for equal field arrays', () => {
     const data = [{ id: '1', title: 'Alpha' }]
-    const harness = renderHook(() =>
-      useLocalSearch(data, { fields: ['title'], storeFields: ['title'] })
-    )
+    const harness = renderHook(() => useLocalSearch(data, { fields: ['title'], storeFields: ['title'] }))
 
-    harness.render(() =>
-      useLocalSearch(data, { fields: ['title'], storeFields: ['title'] })
-    )
+    harness.render(() => useLocalSearch(data, { fields: ['title'], storeFields: ['title'] }))
 
     expect(miniSearchMock.instances).toBe(1)
     expect(miniSearchMock.addAll).toHaveBeenCalledOnce()

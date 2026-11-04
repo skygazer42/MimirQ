@@ -28,13 +28,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PageScaffold } from '@/components/ui/page-scaffold'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 import { TENANT_PERMISSIONS } from '@/lib/tenant-permissions'
@@ -72,10 +66,8 @@ const PRIMARY_BUTTON =
   'h-9 rounded-full bg-info px-3.5 text-[12px] font-semibold text-info-foreground shadow-none hover:bg-info/90'
 const INPUT_CLASS =
   'h-10 rounded-xl border-border/70 bg-muted/60 text-[13px] shadow-none placeholder:text-muted-foreground/60 focus-visible:border-info/35 focus-visible:ring-2 focus-visible:ring-info/10'
-const CARD_CLASS =
-  'rounded-xl border border-info/20 bg-background/72 shadow-none'
-const ICON_BUTTON =
-  'size-8 rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive'
+const CARD_CLASS = 'rounded-xl border border-info/20 bg-background/72 shadow-none'
+const ICON_BUTTON = 'size-8 rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive'
 
 function isPageSizeOption(value: number): value is PageSizeOption {
   return PAGE_SIZE_OPTIONS.includes(value as PageSizeOption)
@@ -117,10 +109,7 @@ function getListStatusLabel(loading: boolean, groupCount: number): string {
   return '无数据'
 }
 
-function getListStatusValueClassName(
-  loading: boolean,
-  groupCount: number
-): string {
+function getListStatusValueClassName(loading: boolean, groupCount: number): string {
   if (loading) return 'text-warning'
   if (groupCount > 0) return 'text-success'
   return 'text-muted-foreground'
@@ -128,10 +117,7 @@ function getListStatusValueClassName(
 
 export default function SettingsGroupsPage() {
   return (
-    <TenantPermissionGate
-      permission={TENANT_PERMISSIONS.SETTINGS_READ}
-      pageName="组管理"
-    >
+    <TenantPermissionGate permission={TENANT_PERMISSIONS.SETTINGS_READ} pageName="组管理">
       <SettingsGroupsPageContent />
     </TenantPermissionGate>
   )
@@ -144,13 +130,7 @@ function GroupSummaryStrip({ items }: Readonly<{ items: SummaryItem[] }>) {
         const Icon = item.icon
         const isTextValue = typeof item.value === 'string'
         return (
-          <div
-            key={item.label}
-            className={cn(
-              CARD_CLASS,
-              'group min-h-[78px] px-4 py-3'
-            )}
-          >
+          <div key={item.label} className={cn(CARD_CLASS, 'group min-h-[78px] px-4 py-3')}>
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
@@ -163,7 +143,7 @@ function GroupSummaryStrip({ items }: Readonly<{ items: SummaryItem[] }>) {
                       ? 'inline-flex rounded-full border border-border/60 bg-muted/45 px-2.5 py-1 text-[12px] font-semibold tracking-[0em]'
                       : 'text-[24px] font-semibold',
                     SUMMARY_VALUE_TONE_CLASS[item.tone],
-                    item.valueClassName
+                    item.valueClassName,
                   )}
                 >
                   {item.value}
@@ -172,7 +152,7 @@ function GroupSummaryStrip({ items }: Readonly<{ items: SummaryItem[] }>) {
               <div
                 className={cn(
                   'flex size-9 shrink-0 items-center justify-center rounded-xl border',
-                  SUMMARY_TONE_CLASS[item.tone]
+                  SUMMARY_TONE_CLASS[item.tone],
                 )}
               >
                 <Icon className="size-4" />
@@ -189,8 +169,7 @@ function SettingsGroupsPageContent() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const [query, setQuery] = useState('')
-  const [pageSize, setPageSize] =
-    useState<(typeof PAGE_SIZE_OPTIONS)[number]>(10)
+  const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(10)
   const [page, setPage] = useState(1)
 
   const [createOpen, setCreateOpen] = useState(false)
@@ -243,9 +222,8 @@ function SettingsGroupsPageContent() {
     },
     onSuccess: (groupId) => {
       toast.success('已删除组')
-      queryClient.setQueryData<TenantGroupOut[]>(
-        queryKeys.groups.list(GROUP_PAGE_LIST_PARAMS),
-        (prev) => (prev || []).filter((g) => g.id !== groupId)
+      queryClient.setQueryData<TenantGroupOut[]>(queryKeys.groups.list(GROUP_PAGE_LIST_PARAMS), (prev) =>
+        (prev || []).filter((g) => g.id !== groupId),
       )
       queryClient.invalidateQueries({ queryKey: queryKeys.groups.all })
     },
@@ -271,14 +249,8 @@ function SettingsGroupsPageContent() {
     })
   }, [groups, query])
 
-  const canCreate = useMemo(
-    () => String(nameDraft || '').trim().length > 0,
-    [nameDraft]
-  )
-  const pageCount = useMemo(
-    () => Math.max(1, Math.ceil(filtered.length / pageSize)),
-    [filtered.length, pageSize]
-  )
+  const canCreate = useMemo(() => String(nameDraft || '').trim().length > 0, [nameDraft])
+  const pageCount = useMemo(() => Math.max(1, Math.ceil(filtered.length / pageSize)), [filtered.length, pageSize])
   const visibleGroups = useMemo(() => {
     const start = (page - 1) * pageSize
     return filtered.slice(start, start + pageSize)
@@ -293,8 +265,7 @@ function SettingsGroupsPageContent() {
         value: getCreateStatusLabel(creating, createOpen),
         icon: CheckCircle2,
         tone: 'success',
-        valueClassName:
-          creating || createOpen ? 'text-warning' : 'text-success',
+        valueClassName: creating || createOpen ? 'text-warning' : 'text-success',
       },
       {
         label: '列表状态',
@@ -304,7 +275,7 @@ function SettingsGroupsPageContent() {
         valueClassName: getListStatusValueClassName(loading, groups.length),
       },
     ],
-    [groups.length, filtered.length, creating, createOpen, loading]
+    [groups.length, filtered.length, creating, createOpen, loading],
   )
 
   useEffect(() => {
@@ -340,12 +311,7 @@ function SettingsGroupsPageContent() {
                 groupsQuery.refetch()
               }}
             >
-              <RefreshCw
-                className={cn(
-                  'size-4',
-                  loading && 'animate-spin motion-reduce:animate-none'
-                )}
-              />
+              <RefreshCw className={cn('size-4', loading && 'animate-spin motion-reduce:animate-none')} />
               刷新
             </Button>
 
@@ -360,11 +326,7 @@ function SettingsGroupsPageContent() {
               }}
             >
               <DialogTrigger asChild>
-                <Button
-                  size="sm"
-                  data-settings-groups-create-action="true"
-                  className={PRIMARY_BUTTON}
-                >
+                <Button size="sm" data-settings-groups-create-action="true" className={PRIMARY_BUTTON}>
                   <Plus className="size-4" />
                   新建组
                 </Button>
@@ -390,9 +352,7 @@ function SettingsGroupsPageContent() {
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="group-external-id">
-                      外部组 ID（external_id）
-                    </Label>
+                    <Label htmlFor="group-external-id">外部组 ID（external_id）</Label>
                     <Input
                       className={INPUT_CLASS}
                       id="group-external-id"
@@ -432,12 +392,7 @@ function SettingsGroupsPageContent() {
           </div>
         }
       >
-        <div
-          className={cn(
-            CARD_CLASS,
-            'flex min-h-[calc(100dvh-22rem)] flex-1 flex-col overflow-hidden p-4'
-          )}
-        >
+        <div className={cn(CARD_CLASS, 'flex min-h-[calc(100dvh-22rem)] flex-1 flex-col overflow-hidden p-4')}>
           <div className="mb-4 flex flex-col gap-3.5 rounded-xl border border-info/15 bg-info/[0.025] p-3">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
@@ -445,12 +400,9 @@ function SettingsGroupsPageContent() {
                   <Users className="size-4" />
                 </div>
                 <div>
-                  <h2 className="text-base font-semibold tracking-[-0.025em] text-foreground">
-                    组列表
-                  </h2>
+                  <h2 className="text-base font-semibold tracking-[-0.025em] text-foreground">组列表</h2>
                   <p className="mt-0.5 text-[12px] leading-5 text-muted-foreground">
-                    管理组目录与外部身份映射，支持按名称、外部组 ID 或组 ID
-                    过滤
+                    管理组目录与外部身份映射，支持按名称、外部组 ID 或组 ID 过滤
                   </p>
                 </div>
               </div>
@@ -510,101 +462,87 @@ function SettingsGroupsPageContent() {
             </div>
 
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-              {hasVisibleGroups ? (
-                visibleGroups.map((g) => {
-                  const gid = String(g.id || '').trim()
-                  const deleting = Boolean(deletingId && deletingId === gid)
-                  const initial = String(g.name || gid || '?')
-                    .trim()
-                    .slice(0, 1)
-                    .toUpperCase()
-                  return (
-                    <div
-                      key={gid}
-                      className="grid grid-cols-12 items-center gap-3 border-t border-border/45 px-4 py-2.5 text-[12px] transition-colors hover:bg-info/[0.04]"
-                    >
-                      <button
-                        type="button"
-                        className="col-span-5 flex min-w-0 items-center gap-2.5 text-left"
-                        onClick={() =>
-                          router.push(
-                            `/settings/groups/${encodeURIComponent(gid)}`
-                          )
-                        }
+              {hasVisibleGroups
+                ? visibleGroups.map((g) => {
+                    const gid = String(g.id || '').trim()
+                    const deleting = Boolean(deletingId && deletingId === gid)
+                    const initial = String(g.name || gid || '?')
+                      .trim()
+                      .slice(0, 1)
+                      .toUpperCase()
+                    return (
+                      <div
+                        key={gid}
+                        className="grid grid-cols-12 items-center gap-3 border-t border-border/45 px-4 py-2.5 text-[12px] transition-colors hover:bg-info/[0.04]"
                       >
-                        <span className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-info/20 bg-info/10 text-[12px] font-semibold text-info">
-                          {initial}
-                        </span>
-                        <div className="min-w-0">
-                          <div className="truncate font-semibold text-foreground">
-                            {g.name}
+                        <button
+                          type="button"
+                          className="col-span-5 flex min-w-0 items-center gap-2.5 text-left"
+                          onClick={() => router.push(`/settings/groups/${encodeURIComponent(gid)}`)}
+                        >
+                          <span className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-info/20 bg-info/10 text-[12px] font-semibold text-info">
+                            {initial}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="truncate font-semibold text-foreground">{g.name}</div>
+                            <div className="mt-0.5 text-[11px] text-muted-foreground">点击查看成员与权限映射</div>
                           </div>
-                          <div className="mt-0.5 text-[11px] text-muted-foreground">
-                            点击查看成员与权限映射
-                          </div>
+                        </button>
+                        <div
+                          className="col-span-3 min-w-0 truncate rounded-full border border-border/50 bg-muted/35 px-2 py-1 font-mono text-[11px] text-muted-foreground"
+                          title={g.external_id || '-'}
+                        >
+                          {g.external_id || '-'}
                         </div>
-                      </button>
-                      <div
-                        className="col-span-3 min-w-0 truncate rounded-full border border-border/50 bg-muted/35 px-2 py-1 font-mono text-[11px] text-muted-foreground"
-                        title={g.external_id || '-'}
-                      >
-                        {g.external_id || '-'}
-                      </div>
-                      <div
-                        className="col-span-3 min-w-0 truncate font-mono text-[11px] text-muted-foreground"
-                        title={gid}
-                      >
-                        {gid}
-                      </div>
-                      <div className="col-span-1 flex justify-end">
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className={ICON_BUTTON}
-                              disabled={!gid || deleting}
-                              aria-label="删除组"
-                            >
-                              <Trash2
-                                className={cn(
-                                  'size-4',
-                                  deleting && 'opacity-60'
-                                )}
-                              />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>删除组？</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                将删除组{' '}
-                                <span className="font-mono">{g.name}</span>（
-                                {gid.slice(0, 8)}…）此操作不可撤销
-                                <div className="mt-2 text-xs text-muted-foreground">
-                                  注意：若该组被用于数据集/文档允许列表（allowlist），删除前请先移除引用
-                                </div>
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>取消</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => {
-                                  if (!gid) return
-                                  deleteMutation.mutate(gid)
-                                }}
-                                disabled={deleting}
+                        <div
+                          className="col-span-3 min-w-0 truncate font-mono text-[11px] text-muted-foreground"
+                          title={gid}
+                        >
+                          {gid}
+                        </div>
+                        <div className="col-span-1 flex justify-end">
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className={ICON_BUTTON}
+                                disabled={!gid || deleting}
+                                aria-label="删除组"
                               >
-                                {deleting ? '删除中…' : '删除'}
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                                <Trash2 className={cn('size-4', deleting && 'opacity-60')} />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>删除组？</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  将删除组 <span className="font-mono">{g.name}</span>（{gid.slice(0, 8)}
+                                  …）此操作不可撤销
+                                  <div className="mt-2 text-xs text-muted-foreground">
+                                    注意：若该组被用于数据集/文档允许列表（allowlist），删除前请先移除引用
+                                  </div>
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>取消</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => {
+                                    if (!gid) return
+                                    deleteMutation.mutate(gid)
+                                  }}
+                                  disabled={deleting}
+                                >
+                                  {deleting ? '删除中…' : '删除'}
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
                       </div>
-                    </div>
-                  )
-                })
-              ) : null}
+                    )
+                  })
+                : null}
               {!hasVisibleGroups && loading ? (
                 <div className="flex min-h-[360px] flex-1 items-center justify-center text-[13px] text-muted-foreground">
                   加载中…
@@ -617,9 +555,7 @@ function SettingsGroupsPageContent() {
                     <span className="absolute -right-1 top-2 size-2 rounded-full bg-info/35" />
                     <span className="absolute -left-2 top-8 size-1.5 rounded-full bg-info/25" />
                   </div>
-                  <h3 className="text-lg font-semibold tracking-[-0.03em] text-foreground">
-                    暂无组
-                  </h3>
+                  <h3 className="text-lg font-semibold tracking-[-0.03em] text-foreground">暂无组</h3>
                   <p className="mt-2.5 max-w-md text-[13px] leading-6 text-muted-foreground">
                     还没有创建任何组，或您没有查看权限
                   </p>
@@ -656,9 +592,7 @@ function SettingsGroupsPageContent() {
                   size="icon"
                   className="size-8 rounded-xl border-border/60 bg-background/70 hover:border-info/25 hover:bg-info/[0.07] hover:text-info"
                   disabled={page >= pageCount}
-                  onClick={() =>
-                    setPage((current) => Math.min(pageCount, current + 1))
-                  }
+                  onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
                   aria-label="下一页"
                 >
                   <ChevronRight className="size-4" />

@@ -94,9 +94,7 @@ export function decorateLinksForDisplay<T extends LinkDisplayDatum>(links: T[]):
     const src = endpointId(link.source)
     const dst = endpointId(link.target)
     const isSelf = src !== '' && src === dst
-    const groupKey = isSelf
-      ? `self:${src}`
-      : `pair:${[src, dst].sort((a, b) => a.localeCompare(b)).join('::')}`
+    const groupKey = isSelf ? `self:${src}` : `pair:${[src, dst].sort((a, b) => a.localeCompare(b)).join('::')}`
 
     const entry = { link, idx: i, sortKey: linkSortKey(link), src, dst }
     const bucket = groups.get(groupKey)

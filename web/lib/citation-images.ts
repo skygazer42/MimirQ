@@ -14,9 +14,7 @@ export function resolveSafeCitationImageUrl(rawUrl: string | null | undefined): 
   if (!raw) return null
 
   const resolved =
-    /^https?:\/\//i.test(raw) || /^data:/i.test(raw) || /^blob:/i.test(raw)
-      ? raw
-      : toAbsoluteBackendUrl(raw)
+    /^https?:\/\//i.test(raw) || /^data:/i.test(raw) || /^blob:/i.test(raw) ? raw : toAbsoluteBackendUrl(raw)
 
   let parsed: URL
   try {
@@ -30,8 +28,7 @@ export function resolveSafeCitationImageUrl(rawUrl: string | null | undefined): 
 
   // Only allow the dedicated backend image routes for citations.
   const path = parsed.pathname || ''
-  const ok =
-    path.includes('/api/v1/documents/image/') || path.includes('/api/v1/documents/image-url/')
+  const ok = path.includes('/api/v1/documents/image/') || path.includes('/api/v1/documents/image-url/')
   if (!ok) return null
 
   return parsed.toString()

@@ -12,19 +12,69 @@ const GRAPH_TYPE_COLOR_FAMILIES = [
   },
   {
     color: '#2563eb',
-    aliases: ['organization', 'organisation', 'org', 'company', 'institution', 'department', '机构', '组织', '单位', '公司', '部门'],
+    aliases: [
+      'organization',
+      'organisation',
+      'org',
+      'company',
+      'institution',
+      'department',
+      '机构',
+      '组织',
+      '单位',
+      '公司',
+      '部门',
+    ],
   },
   {
     color: '#10b981',
-    aliases: ['location', 'place', 'address', 'region', 'area', 'city', 'district', '地区', '地点', '地址', '区域', '城市'],
+    aliases: [
+      'location',
+      'place',
+      'address',
+      'region',
+      'area',
+      'city',
+      'district',
+      '地区',
+      '地点',
+      '地址',
+      '区域',
+      '城市',
+    ],
   },
   {
     color: '#8b5cf6',
-    aliases: ['regulation', 'policy', 'law', 'rule', 'statute', 'ordinance', '法规', '政策', '政策法规', '条例', '办法', '规范'],
+    aliases: [
+      'regulation',
+      'policy',
+      'law',
+      'rule',
+      'statute',
+      'ordinance',
+      '法规',
+      '政策',
+      '政策法规',
+      '条例',
+      '办法',
+      '规范',
+    ],
   },
   {
     color: '#ef4444',
-    aliases: ['material', 'document', 'certificate', 'license', 'form', 'file', '材料', '证件', '许可证', '表单', '文档'],
+    aliases: [
+      'material',
+      'document',
+      'certificate',
+      'license',
+      'form',
+      'file',
+      '材料',
+      '证件',
+      '许可证',
+      '表单',
+      '文档',
+    ],
   },
   {
     color: '#06b6d4',
@@ -49,7 +99,7 @@ const GRAPH_TYPE_COLOR_FAMILIES = [
 ]
 
 const GRAPH_TYPE_COLOR_ALIASES = new Map<string, string>(
-  GRAPH_TYPE_COLOR_FAMILIES.flatMap((family) => family.aliases.map((alias) => [alias, family.color] as const))
+  GRAPH_TYPE_COLOR_FAMILIES.flatMap((family) => family.aliases.map((alias) => [alias, family.color] as const)),
 )
 
 export const NODE_COLOR_PALETTE = [

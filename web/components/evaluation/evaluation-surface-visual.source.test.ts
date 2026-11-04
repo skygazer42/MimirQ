@@ -28,6 +28,8 @@ describe('evaluation support surfaces stay flat', () => {
     expect(ablationsSrc).not.toContain('shadow-[0_16px_42px_hsl(var(--primary)/0.12)]')
     expect(ablationsSrc).not.toContain('shadow-[0_14px_30px_hsl(var(--primary)/0.22)]')
     expect(ablationsSrc).not.toContain('shadow-[0_18px_44px_hsl(var(--warning)/0.32)]')
-    expect(ablationsSrc).not.toContain('bg-[linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--muted)/0.35)_40%,hsl(var(--background))_100%)]')
+    expect(ablationsSrc).not.toContain(
+      'bg-[linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--muted)/0.35)_40%,hsl(var(--background))_100%)]',
+    )
   })
 })

@@ -1,4 +1,4 @@
-"use client"
+'use client'
 
 import { useEffect, useMemo, useState } from 'react'
 import MiniSearch from 'minisearch'
@@ -12,10 +12,7 @@ function parseFields(serialized: string): string[] {
   return JSON.parse(serialized) as string[]
 }
 
-export function useLocalSearch<T extends SearchItem>(
-  data: T[],
-  options: { fields: string[]; storeFields?: string[] }
-) {
+export function useLocalSearch<T extends SearchItem>(data: T[], options: { fields: string[]; storeFields?: string[] }) {
   const [term, setTerm] = useState('')
   const fieldsKey = JSON.stringify(options.fields)
   const storeFieldsKey = JSON.stringify(options.storeFields || options.fields)
@@ -28,8 +25,8 @@ export function useLocalSearch<T extends SearchItem>(
       searchOptions: {
         boost: { filename: 2 },
         fuzzy: 0.2,
-        prefix: true
-      }
+        prefix: true,
+      },
     })
   }, [fieldsKey, storeFieldsKey])
 
@@ -42,17 +39,17 @@ export function useLocalSearch<T extends SearchItem>(
   // Perform search
   const results = useMemo(() => {
     if (!term.trim()) return data
-    
+
     const searchResults = miniSearch.search(term)
     // Map search results back to original data items or return stored fields
-    const resultIds = new Set(searchResults.map(r => r.id))
-    return data.filter(item => resultIds.has(item.id))
+    const resultIds = new Set(searchResults.map((r) => r.id))
+    return data.filter((item) => resultIds.has(item.id))
   }, [term, data, miniSearch])
 
   return {
     term,
     setTerm,
     results,
-    count: results.length
+    count: results.length,
   }
 }

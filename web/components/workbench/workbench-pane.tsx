@@ -22,7 +22,7 @@ export function WorkbenchPane({
         <div
           className={cn(
             'flex items-center justify-between gap-3 border-b border-sidebar-border/70 bg-sidebar/72 px-4 py-3 backdrop-blur-xl',
-            headerClassName
+            headerClassName,
           )}
         >
           {header}
@@ -33,7 +33,7 @@ export function WorkbenchPane({
         data-page-scroll-container="true"
         className={cn(
           'flex flex-1 min-h-0 flex-col overflow-y-auto overscroll-contain custom-scrollbar p-4',
-          bodyClassName
+          bodyClassName,
         )}
       >
         {children}

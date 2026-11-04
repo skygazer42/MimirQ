@@ -7,32 +7,14 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import {
-  Braces,
-  Copy,
-  FileText,
-  Pencil,
-  RotateCcw,
-  Save,
-  Sparkles,
-} from 'lucide-react'
+import { Braces, Copy, FileText, Pencil, RotateCcw, Save, Sparkles } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-  getChunkMetadata,
-  getStringValue,
-  isJsonObject,
-} from '@/components/chunk-preview/utils/metadata'
+import { getChunkMetadata, getStringValue, isJsonObject } from '@/components/chunk-preview/utils/metadata'
 import type { ChunkPreviewItem, JsonObject } from '@/types'
 import { getChunkSectionLabel } from '@/components/chunk-preview/utils/sections'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
@@ -46,11 +28,7 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
 }
 
-function buildEmbeddingText(
-  content: string,
-  meta: JsonObject | null,
-  sectionFull: string | null
-): string {
+function buildEmbeddingText(content: string, meta: JsonObject | null, sectionFull: string | null): string {
   const raw = String(content ?? '')
   if (!raw) return raw
   const header =
@@ -88,14 +66,10 @@ export function ChunkInspectorDialog({
   const pipelineCtx = usePipelineOptions()
   const [content, setContent] = useState('')
   const [metadataText, setMetadataText] = useState('{}')
-  const sectionLabel = useMemo(
-    () => (chunk ? getChunkSectionLabel(chunk) : null),
-    [chunk]
-  )
+  const sectionLabel = useMemo(() => (chunk ? getChunkSectionLabel(chunk) : null), [chunk])
 
   const title = useMemo(() => {
-    const name =
-      (sourceFilename || '').trim() || t('chunkInspector.documentFallback')
+    const name = (sourceFilename || '').trim() || t('chunkInspector.documentFallback')
     if (index == null) return name
     return t('chunkInspector.chunkLabel', { name, index: index + 1 })
   }, [index, sourceFilename, t])
@@ -138,21 +112,13 @@ export function ChunkInspectorDialog({
   }, [content])
 
   const disabled = !chunk || index == null
-  const embeddingPrefixEnabled = Boolean(
-    pipelineCtx.enabled && pipelineCtx.options.embedding_context_prefix_enabled
-  )
+  const embeddingPrefixEnabled = Boolean(pipelineCtx.enabled && pipelineCtx.options.embedding_context_prefix_enabled)
   const embeddingText = useMemo(() => {
     if (!embeddingPrefixEnabled) return String(content ?? '')
     const meta = parsedMetadata ?? (chunk ? getChunkMetadata(chunk) : null)
     const sectionFull = sectionLabel?.full || null
     return buildEmbeddingText(String(content ?? ''), meta, sectionFull)
-  }, [
-    chunk,
-    content,
-    embeddingPrefixEnabled,
-    parsedMetadata,
-    sectionLabel?.full,
-  ])
+  }, [chunk, content, embeddingPrefixEnabled, parsedMetadata, sectionLabel?.full])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -170,8 +136,7 @@ export function ChunkInspectorDialog({
             </div>
             {sectionLabel ? (
               <div className="text-[11px] text-muted-foreground">
-                {t('chunkInspector.sectionLabel')}:{' '}
-                <span title={sectionLabel.full}>{sectionLabel.full}</span>
+                {t('chunkInspector.sectionLabel')}: <span title={sectionLabel.full}>{sectionLabel.full}</span>
               </div>
             ) : null}
             <div className="text-[11px] text-muted-foreground">
@@ -221,10 +186,7 @@ export function ChunkInspectorDialog({
               </div>
             </div>
 
-            <Tabs
-              defaultValue="metadata"
-              className="flex min-h-0 flex-1 flex-col p-3"
-            >
+            <Tabs defaultValue="metadata" className="flex min-h-0 flex-1 flex-col p-3">
               <TabsList className="grid h-9 w-full grid-cols-2 rounded-xl bg-muted/60 p-1">
                 <TabsTrigger value="metadata" className="h-7 text-[12px]">
                   {t('chunkInspector.metadataTab')}
@@ -234,16 +196,11 @@ export function ChunkInspectorDialog({
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent
-                value="metadata"
-                className="mt-3 min-h-0 flex-1 data-[state=inactive]:hidden"
-              >
+              <TabsContent value="metadata" className="mt-3 min-h-0 flex-1 data-[state=inactive]:hidden">
                 <div className="flex h-full min-h-0 flex-col rounded-xl border border-border/55 bg-background/70">
                   <div className="flex items-start justify-between gap-3 border-b border-border/55 px-3 py-2.5">
                     <div className="min-w-0">
-                      <div className="text-xs font-semibold text-foreground">
-                        {t('chunkInspector.metadataLabel')}
-                      </div>
+                      <div className="text-xs font-semibold text-foreground">{t('chunkInspector.metadataLabel')}</div>
                       <div className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
                         {t('chunkInspector.metadataHelper')}
                       </div>
@@ -269,10 +226,7 @@ export function ChunkInspectorDialog({
                 </div>
               </TabsContent>
 
-              <TabsContent
-                value="embedding"
-                className="mt-3 min-h-0 flex-1 data-[state=inactive]:hidden"
-              >
+              <TabsContent value="embedding" className="mt-3 min-h-0 flex-1 data-[state=inactive]:hidden">
                 <div className="flex h-full min-h-0 flex-col rounded-xl border border-border/55 bg-background/70">
                   <div className="flex items-start justify-between gap-3 border-b border-border/55 px-3 py-2.5">
                     <div className="min-w-0">
@@ -281,9 +235,7 @@ export function ChunkInspectorDialog({
                         {t('chunkInspector.embeddingLabel')}
                       </div>
                       <div className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                        {embeddingPrefixEnabled
-                          ? t('chunkInspector.prefixOn')
-                          : t('chunkInspector.prefixOff')}
+                        {embeddingPrefixEnabled ? t('chunkInspector.prefixOn') : t('chunkInspector.prefixOff')}
                       </div>
                     </div>
                     <Button
@@ -293,9 +245,7 @@ export function ChunkInspectorDialog({
                       className="h-7 shrink-0 px-2 text-[11px]"
                       onClick={async () => {
                         try {
-                          await navigator.clipboard.writeText(
-                            embeddingText || ''
-                          )
+                          await navigator.clipboard.writeText(embeddingText || '')
                         } catch {
                           // ignore
                         }

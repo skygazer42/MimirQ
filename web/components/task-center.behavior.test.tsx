@@ -30,10 +30,7 @@ vi.mock('@/hooks/use-auth', () => ({
 }))
 vi.mock('@/hooks/use-backend-meta', () => ({
   useBackendMeta: () => ({
-    data:
-      backendMetaState.authMode
-        ? { features: { auth_mode: backendMetaState.authMode } }
-        : undefined,
+    data: backendMetaState.authMode ? { features: { auth_mode: backendMetaState.authMode } } : undefined,
   }),
 }))
 vi.mock('@/i18n/navigation', () => ({
@@ -44,15 +41,12 @@ vi.mock('next-intl', () => ({
   useTranslations: () => (key: string) => key,
 }))
 vi.mock('./ui/button', () => ({
-  Button: ({
-    children,
-    ...props
-  }: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>,
+  Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
+    <button {...props}>{children}</button>
+  ),
 }))
 vi.mock('./ui/scroll-area', () => ({
-  ScrollArea: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-    <div {...props}>{children}</div>
-  ),
+  ScrollArea: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => <div {...props}>{children}</div>,
 }))
 vi.mock('sonner', () => ({
   toast: {
@@ -72,9 +66,7 @@ function createWrapper() {
     },
   })
 
-  return function Wrapper({
-    children,
-  }: Readonly<{ children: React.ReactNode }>) {
+  return function Wrapper({ children }: Readonly<{ children: React.ReactNode }>) {
     return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   }
 }
@@ -89,7 +81,7 @@ function renderTaskCenter() {
     root.render(
       <Wrapper>
         <TaskCenter />
-      </Wrapper>
+      </Wrapper>,
     )
   })
 
@@ -164,7 +156,7 @@ describe('TaskCenter auth and polling gates', () => {
       root.render(
         <Wrapper>
           <TaskCenter />
-        </Wrapper>
+        </Wrapper>,
       )
     })
     await act(async () => {
@@ -179,7 +171,7 @@ describe('TaskCenter auth and polling gates', () => {
       root.render(
         <Wrapper>
           <TaskCenter />
-        </Wrapper>
+        </Wrapper>,
       )
       await Promise.resolve()
     })

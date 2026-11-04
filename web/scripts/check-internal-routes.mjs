@@ -5,13 +5,7 @@ import { fileURLToPath } from 'node:url'
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url))
 const webRoot = path.resolve(scriptsDir, '..')
 const appRoot = path.join(webRoot, 'app')
-const ignoredDirectories = new Set([
-  '.next',
-  '.next_build',
-  'coverage',
-  'node_modules',
-  'test-results',
-])
+const ignoredDirectories = new Set(['.next', '.next_build', 'coverage', 'node_modules', 'test-results'])
 
 function walk(directory, predicate) {
   const files = []
@@ -39,15 +33,12 @@ function routePatternForPage(pagePath) {
   return new RegExp(`^/${pattern}/?$`)
 }
 
-const pagePatterns = walk(appRoot, (filePath) => filePath.endsWith(`${path.sep}page.tsx`))
-  .map(routePatternForPage)
+const pagePatterns = walk(appRoot, (filePath) => filePath.endsWith(`${path.sep}page.tsx`)).map(routePatternForPage)
 
 const sourceFiles = walk(
   webRoot,
   (filePath) =>
-    /\.(?:ts|tsx)$/.test(filePath) &&
-    !/\.(?:test|spec)\.(?:ts|tsx)$/.test(filePath) &&
-    !filePath.endsWith('.d.ts')
+    /\.(?:ts|tsx)$/.test(filePath) && !/\.(?:test|spec)\.(?:ts|tsx)$/.test(filePath) && !filePath.endsWith('.d.ts'),
 )
 
 const navigationPatterns = [

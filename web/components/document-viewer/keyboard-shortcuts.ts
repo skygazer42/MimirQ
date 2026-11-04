@@ -7,16 +7,14 @@ export type ChunkKeyboardNavigationInput = {
 }
 
 export type ChunkKeyboardNavigationAction =
-  | { type: 'match'; nextIndex: number }
-  | { type: 'chunk'; nextIndex: number }
-  | null
+  { type: 'match'; nextIndex: number } | { type: 'chunk'; nextIndex: number } | null
 
 function normalizeLoopIndex(value: number, length: number) {
   return ((value % length) + length) % length
 }
 
 export function resolveChunkKeyboardNavigation(
-  input: Readonly<ChunkKeyboardNavigationInput>
+  input: Readonly<ChunkKeyboardNavigationInput>,
 ): ChunkKeyboardNavigationAction {
   const key = String(input.key || '').toLowerCase()
   if (key !== 'j' && key !== 'k') return null
@@ -32,12 +30,7 @@ export function resolveChunkKeyboardNavigation(
 
   if (input.loadedChunkCount <= 0) return null
 
-  const anchorIndex =
-    input.highlightIndex >= 0
-      ? input.highlightIndex
-      : delta > 0
-        ? -1
-        : 0
+  const anchorIndex = input.highlightIndex >= 0 ? input.highlightIndex : delta > 0 ? -1 : 0
 
   return {
     type: 'chunk',

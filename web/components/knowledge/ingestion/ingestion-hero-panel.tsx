@@ -118,7 +118,7 @@ export function IngestionHeroPanel({
           <div
             className={cn(
               'overflow-hidden transition-[max-height,opacity,margin] duration-200 ease-out',
-              headerBodyVisibilityClass
+              headerBodyVisibilityClass,
             )}
           >
             <div className="flex min-w-0 items-center gap-3">
@@ -134,7 +134,7 @@ export function IngestionHeroPanel({
                     <span
                       className={cn(
                         'inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium',
-                        taskQueueStatusTone
+                        taskQueueStatusTone,
                       )}
                     >
                       {taskQueueStatusLabel}
@@ -171,12 +171,7 @@ export function IngestionHeroPanel({
           ) : null}
           <IngestionViewSwitch compact tone="info" />
           {demoMode ? (
-            <Button
-              type="button"
-              variant="outline"
-              className="h-7 rounded-lg px-2 text-[9px]"
-              onClick={onExitDemoMode}
-            >
+            <Button type="button" variant="outline" className="h-7 rounded-lg px-2 text-[9px]" onClick={onExitDemoMode}>
               退出演示
             </Button>
           ) : null}
@@ -191,11 +186,7 @@ export function IngestionHeroPanel({
                 <UploadCloud className="mr-1.5 h-3.5 w-3.5" />
                 上传预检文件
               </Button>
-              <Button
-                type="button"
-                className="h-7 rounded-lg px-2 text-[9px]"
-                onClick={onUploadFormalIngest}
-              >
+              <Button type="button" className="h-7 rounded-lg px-2 text-[9px]" onClick={onUploadFormalIngest}>
                 <UploadCloud className="mr-1.5 h-3.5 w-3.5" />
                 正式入库
               </Button>
@@ -227,10 +218,7 @@ export function IngestionHeroPanel({
         <div className={cn('mt-2.5', summaryStripClassName)}>
           <div className="grid gap-px sm:grid-cols-4">
             {summaryStripItems.map(({ detail, icon: Icon, label, tone, value }) => (
-              <div
-                key={label}
-                className="relative min-h-[3.4rem] bg-background/78 px-2.5 py-2"
-              >
+              <div key={label} className="relative min-h-[3.4rem] bg-background/78 px-2.5 py-2">
                 <div className="flex items-start justify-between gap-2">
                   <div className="text-[7px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
                     {label}
@@ -239,14 +227,8 @@ export function IngestionHeroPanel({
                     <Icon className={cn('h-2.5 w-2.5 shrink-0', tone)} />
                   </span>
                 </div>
-                <div className="mt-1 font-mono text-[10px] tabular-nums leading-none text-foreground">
-                  {value}
-                </div>
-                {detail ? (
-                  <div className="mt-1 text-[7px] text-muted-foreground">
-                    {detail}
-                  </div>
-                ) : null}
+                <div className="mt-1 font-mono text-[10px] tabular-nums leading-none text-foreground">{value}</div>
+                {detail ? <div className="mt-1 text-[7px] text-muted-foreground">{detail}</div> : null}
               </div>
             ))}
           </div>

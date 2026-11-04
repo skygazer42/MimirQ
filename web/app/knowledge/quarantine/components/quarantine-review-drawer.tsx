@@ -1,24 +1,10 @@
 'use client'
 
-import {
-  CheckCircle2,
-  Eye,
-  Layers,
-  RefreshCw,
-  RotateCcw,
-  Settings2,
-  Trash2,
-} from 'lucide-react'
+import { CheckCircle2, Eye, Layers, RefreshCw, RotateCcw, Settings2, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { formatDate } from '@/lib/utils'
 import type { Document } from '@/types'
 
@@ -85,9 +71,7 @@ export function QuarantineReviewDrawer({
               </div>
               {selected ? (
                 <div className="shrink-0 pt-1">
-                  <StatusPill
-                    status={isReviewed(selected) ? 'completed' : 'quarantined'}
-                  />
+                  <StatusPill status={isReviewed(selected) ? 'completed' : 'quarantined'} />
                 </div>
               ) : null}
             </div>
@@ -109,13 +93,7 @@ export function QuarantineReviewDrawer({
                     disabled={acting?.id === selected.id}
                     onClick={() => onRelease(selected)}
                   >
-                    <RotateCcw
-                      className={getBusyIconClassName(
-                        acting,
-                        selected.id,
-                        'release'
-                      )}
-                    />
+                    <RotateCcw className={getBusyIconClassName(acting, selected.id, 'release')} />
                     放行并重试
                   </Button>
                   <Button
@@ -125,13 +103,7 @@ export function QuarantineReviewDrawer({
                     disabled={acting?.id === selected.id}
                     onClick={() => onRetry(selected)}
                   >
-                    <RefreshCw
-                      className={getBusyIconClassName(
-                        acting,
-                        selected.id,
-                        'retry'
-                      )}
-                    />
+                    <RefreshCw className={getBusyIconClassName(acting, selected.id, 'retry')} />
                     直接重试
                   </Button>
                 </div>
@@ -175,18 +147,10 @@ export function QuarantineReviewDrawer({
                     size="sm"
                     variant="outline"
                     className="h-9 flex-1 rounded-md border border-success/25 bg-success/[0.06] text-[11px] font-medium text-success hover:bg-success/[0.12]"
-                    disabled={
-                      acting?.id === selected.id || isReviewed(selected)
-                    }
+                    disabled={acting?.id === selected.id || isReviewed(selected)}
                     onClick={() => onMarkReviewed(selected)}
                   >
-                    <CheckCircle2
-                      className={getBusyIconClassName(
-                        acting,
-                        selected.id,
-                        'review'
-                      )}
-                    />
+                    <CheckCircle2 className={getBusyIconClassName(acting, selected.id, 'review')} />
                     标记为已解决
                   </Button>
 

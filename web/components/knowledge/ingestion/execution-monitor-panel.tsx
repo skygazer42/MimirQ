@@ -19,11 +19,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { EChart } from '@/components/ui/echart'
 import { cn, formatFileSize } from '@/lib/utils'
-import {
-  getDocumentStatusLabel,
-  getDocumentStatusTone,
-  getTaskProgress,
-} from '@/app/knowledge/ingestion/presentation'
+import { getDocumentStatusLabel, getDocumentStatusTone, getTaskProgress } from '@/app/knowledge/ingestion/presentation'
 import { formatDurationClock } from '@/app/knowledge/ingestion/document-signals'
 import type { Document } from '@/types'
 
@@ -111,7 +107,7 @@ function CompactEmptyVisual({
       data-execution-empty-visual="true"
       className={cn(
         'flex min-h-12 items-center justify-center gap-2 border-l-2 border-info/25 bg-muted/[0.05] px-3 py-2.5 text-center text-[11px] leading-4 text-muted-foreground',
-        className
+        className,
       )}
     >
       <Workflow className="size-4 text-info/70" />
@@ -149,10 +145,12 @@ export function ExecutionMonitorPanel({
 }: Readonly<ExecutionMonitorPanelProps>) {
   const fileTypeSummary = Object.entries(
     executionDocuments.reduce<Record<string, number>>((summary, document) => {
-      const fileType = String(document.file_type || '其他').trim().toUpperCase()
+      const fileType = String(document.file_type || '其他')
+        .trim()
+        .toUpperCase()
       summary[fileType] = (summary[fileType] ?? 0) + 1
       return summary
-    }, {})
+    }, {}),
   ).sort(([, left], [, right]) => right - left)
   const hasExecutionData = executionDocuments.length > 0
   const fileTypePalette = ['#0ea5e9', '#14b8a6', '#8b5cf6', '#f59e0b', '#64748b']
@@ -171,9 +169,7 @@ export function ExecutionMonitorPanel({
       ]
   const fileTypeDonutOption: EChartsOption = {
     animationDuration: 280,
-    tooltip: fileTypeSummary.length
-      ? { trigger: 'item', formatter: '{b}<br/>{c} 个 · {d}%' }
-      : { show: false },
+    tooltip: fileTypeSummary.length ? { trigger: 'item', formatter: '{b}<br/>{c} 个 · {d}%' } : { show: false },
     legend: {
       show: fileTypeSummary.length > 0,
       orient: 'vertical',
@@ -214,18 +210,20 @@ export function ExecutionMonitorPanel({
       className="bg-transparent"
     >
       <div>
-        <div data-monitor-overview-band="true" className="grid items-stretch border-y border-foreground/15 xl:grid-cols-[minmax(18rem,0.64fr)_minmax(0,1.36fr)]">
-          <section data-execution-file-type-summary="true" className="border-b border-foreground/10 px-3 py-3 xl:border-b-0 xl:border-r">
+        <div
+          data-monitor-overview-band="true"
+          className="grid items-stretch border-y border-foreground/15 xl:grid-cols-[minmax(18rem,0.64fr)_minmax(0,1.36fr)]"
+        >
+          <section
+            data-execution-file-type-summary="true"
+            className="border-b border-foreground/10 px-3 py-3 xl:border-b-0 xl:border-r"
+          >
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <Activity className="size-5 shrink-0 text-info" />
                 <div>
-                  <div className="text-[13px] font-semibold text-foreground text-balance">
-                    文件类型分布
-                  </div>
-                  <div className="mt-0.5 text-[10px] text-muted-foreground">
-                    按文件格式统计
-                  </div>
+                  <div className="text-[13px] font-semibold text-foreground text-balance">文件类型分布</div>
+                  <div className="mt-0.5 text-[10px] text-muted-foreground">按文件格式统计</div>
                 </div>
               </div>
               <span className="rounded-md border border-border/45 bg-muted/15 px-2 py-0.5 font-mono text-[10px] text-foreground">
@@ -237,7 +235,7 @@ export function ExecutionMonitorPanel({
               <div
                 className={cn(
                   'pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2 text-center',
-                  fileTypeSummary.length ? 'left-[34%]' : 'left-1/2'
+                  fileTypeSummary.length ? 'left-[34%]' : 'left-1/2',
                 )}
               >
                 <div className="font-mono text-[13px] font-semibold text-foreground tabular-nums">
@@ -251,9 +249,7 @@ export function ExecutionMonitorPanel({
           <section data-monitor-run-strip="true" data-monitor-pipeline-visual="true" className="px-3 py-3">
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2">
-                <div className="text-[13px] font-semibold text-foreground text-balance">
-                  处理流水线
-                </div>
+                <div className="text-[13px] font-semibold text-foreground text-balance">处理流水线</div>
                 <span className="rounded-md border border-info/20 bg-info/8 px-1.5 py-0.5 text-[10px] font-medium text-info">
                   {executionPipelineEstimateLabel}
                 </span>
@@ -303,9 +299,7 @@ export function ExecutionMonitorPanel({
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
-                          <span className="truncate text-[11px] font-semibold text-foreground">
-                            {card.label}
-                          </span>
+                          <span className="truncate text-[11px] font-semibold text-foreground">{card.label}</span>
                           <span className="inline-flex items-center gap-1 text-[9px] text-muted-foreground">
                             <span className={cn('size-1.5 rounded-full', card.statusTone)} />
                             {card.statusLabel}
@@ -329,9 +323,7 @@ export function ExecutionMonitorPanel({
                           <div className="truncate font-mono text-[10px] font-semibold text-foreground tabular-nums">
                             {value}
                           </div>
-                          <div className="truncate text-[9px] text-muted-foreground">
-                            {label}
-                          </div>
+                          <div className="truncate text-[9px] text-muted-foreground">{label}</div>
                         </div>
                       ))}
                     </div>
@@ -342,17 +334,17 @@ export function ExecutionMonitorPanel({
           </section>
         </div>
 
-        <section data-monitor-quality-kpis="true" data-monitor-flat-section="quality" className="border-b border-foreground/15 px-3 py-3">
+        <section
+          data-monitor-quality-kpis="true"
+          data-monitor-flat-section="quality"
+          className="border-b border-foreground/15 px-3 py-3"
+        >
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-2">
               <Activity className="size-5 shrink-0 text-info" />
               <div>
-                <div className="text-[13px] font-semibold text-foreground text-balance">
-                  质量与耗时
-                </div>
-                <div className="mt-0.5 text-[10px] text-muted-foreground text-pretty">
-                  解析质量、处理耗时与失败重试
-                </div>
+                <div className="text-[13px] font-semibold text-foreground text-balance">质量与耗时</div>
+                <div className="mt-0.5 text-[10px] text-muted-foreground text-pretty">解析质量、处理耗时与失败重试</div>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
@@ -369,31 +361,20 @@ export function ExecutionMonitorPanel({
             {executionKpiCards.map((item) => {
               const Icon = item.icon
               return (
-                <div
-                  key={item.label}
-                  className="bg-background/90 px-3 py-2"
-                >
+                <div key={item.label} className="bg-background/90 px-3 py-2">
                   <div className="flex items-center justify-between gap-1.5">
                     <div className="min-w-0">
-                      <div className="truncate text-[10px] text-muted-foreground">
-                        {item.label}
-                      </div>
+                      <div className="truncate text-[10px] text-muted-foreground">{item.label}</div>
                       <div className="mt-0.5 flex items-baseline gap-1">
                         <span className="truncate font-mono text-[14px] font-semibold text-foreground tabular-nums">
                           {item.value}
                         </span>
-                        {item.suffix ? (
-                          <span className="text-[10px] text-muted-foreground">
-                            {item.suffix}
-                          </span>
-                        ) : null}
+                        {item.suffix ? <span className="text-[10px] text-muted-foreground">{item.suffix}</span> : null}
                       </div>
                     </div>
                     <Icon className={cn('size-4 shrink-0', item.tone)} />
                   </div>
-                  <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
-                    {item.detail}
-                  </div>
+                  <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{item.detail}</div>
                 </div>
               )
             })}
@@ -405,9 +386,7 @@ export function ExecutionMonitorPanel({
             <div className="flex items-center gap-2">
               <FileSearch className="size-5 shrink-0 text-info" />
               <div>
-                <div className="text-[13px] font-semibold text-foreground">
-                  批次数据画像
-                </div>
+                <div className="text-[13px] font-semibold text-foreground">批次数据画像</div>
                 <div className="mt-0.5 text-[11px] text-muted-foreground text-pretty">
                   按 3/1000 抽代表样本，已出现的文件类型每类至少覆盖 1 个
                 </div>
@@ -432,9 +411,7 @@ export function ExecutionMonitorPanel({
               </div>
               <div className="divide-y divide-foreground/10 border-y border-foreground/10">
                 <div className="px-3 py-2.5">
-                  <div className="text-[10px] text-muted-foreground">
-                    预检样本
-                  </div>
+                  <div className="text-[10px] text-muted-foreground">预检样本</div>
                   <div className="mt-1 text-[18px] font-semibold text-foreground tabular-nums">
                     {executionBatchAnalysis.sampleTarget ?? 0} 个
                   </div>
@@ -443,15 +420,11 @@ export function ExecutionMonitorPanel({
                   </div>
                 </div>
                 <div className="px-3 py-2.5">
-                  <div className="text-[10px] text-muted-foreground">
-                    批次体量
-                  </div>
+                  <div className="text-[10px] text-muted-foreground">批次体量</div>
                   <div className="mt-1 font-mono text-[14px] font-semibold text-foreground tabular-nums">
                     {executionBatchAnalysis.totalSizeLabel}
                   </div>
-                  <div className="mt-1 text-[10px] text-muted-foreground">
-                    {executionBatchAnalysis.samplePoolLabel}
-                  </div>
+                  <div className="mt-1 text-[10px] text-muted-foreground">{executionBatchAnalysis.samplePoolLabel}</div>
                 </div>
                 <div className="px-3 py-2.5 text-[10px] leading-4 text-muted-foreground text-pretty">
                   {executionBatchAnalysis.imageProxyNote}
@@ -465,12 +438,13 @@ export function ExecutionMonitorPanel({
           )}
         </section>
 
-        <div data-monitor-analytics-grid="true" className="grid min-w-0 border-b border-foreground/15 xl:grid-cols-2 2xl:grid-cols-[1.1fr_0.9fr_0.9fr]">
+        <div
+          data-monitor-analytics-grid="true"
+          className="grid min-w-0 border-b border-foreground/15 xl:grid-cols-2 2xl:grid-cols-[1.1fr_0.9fr_0.9fr]"
+        >
           <section className="min-w-0 border-b border-foreground/10 px-3 py-3 xl:border-b-0 xl:border-r">
             <div className="flex items-center justify-between gap-3">
-              <div className="text-[13px] font-semibold text-foreground text-balance">
-                处理吞吐趋势
-              </div>
+              <div className="text-[13px] font-semibold text-foreground text-balance">处理吞吐趋势</div>
               {!hasExecutionData ? (
                 <span className="rounded-md bg-muted/25 px-1.5 py-0.5 text-[9px] text-muted-foreground">
                   暂无真实数据
@@ -484,9 +458,7 @@ export function ExecutionMonitorPanel({
 
           <section className="min-w-0 border-b border-foreground/10 px-3 py-3 xl:border-b-0 2xl:border-r">
             <div className="flex items-center justify-between gap-3">
-              <div className="text-[13px] font-semibold text-foreground text-balance">
-                成本雷达
-              </div>
+              <div className="text-[13px] font-semibold text-foreground text-balance">成本雷达</div>
               <div className="flex items-center gap-2">
                 {!hasExecutionData ? (
                   <span className="rounded-md bg-muted/25 px-1.5 py-0.5 text-[9px] text-muted-foreground">
@@ -503,9 +475,7 @@ export function ExecutionMonitorPanel({
 
           <section className="min-w-0 px-3 py-3 xl:col-span-2 xl:border-t xl:border-foreground/10 2xl:col-span-1 2xl:border-t-0">
             <div className="flex items-center justify-between gap-3">
-              <div className="text-[13px] font-semibold text-foreground text-balance">
-                运行日志（最近）
-              </div>
+              <div className="text-[13px] font-semibold text-foreground text-balance">运行日志（最近）</div>
               <span className="text-[10px] text-muted-foreground">
                 {recentQueueOutcomesCount ? '来自任务队列' : '来自文档状态'}
               </span>
@@ -517,20 +487,13 @@ export function ExecutionMonitorPanel({
                     key={log.id}
                     className="flex items-start gap-2.5 rounded-md border border-foreground/10 bg-background/78 px-2.5 py-2"
                   >
-                    <span
-                      className={cn(
-                        'mt-1 h-2.5 w-2.5 shrink-0 rounded-full',
-                        log.tone
-                      )}
-                    />
+                    <span className={cn('mt-1 h-2.5 w-2.5 shrink-0 rounded-full', log.tone)} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                         <span className="font-mono">{log.time}</span>
                         <span>{log.stage}</span>
                       </div>
-                      <div className="mt-0.5 truncate text-[11px] text-foreground">
-                        {log.detail}
-                      </div>
+                      <div className="mt-0.5 truncate text-[11px] text-foreground">{log.detail}</div>
                     </div>
                   </div>
                 ))}
@@ -543,12 +506,8 @@ export function ExecutionMonitorPanel({
 
         <section className="px-3 py-3">
           <div className="flex items-center justify-between gap-3">
-            <div className="text-[13px] font-semibold text-foreground text-balance">
-              任务列表
-            </div>
-            <div className="text-[10px] text-muted-foreground">
-              {executionTaskRows.length} 个任务
-            </div>
+            <div className="text-[13px] font-semibold text-foreground text-balance">任务列表</div>
+            <div className="text-[10px] text-muted-foreground">{executionTaskRows.length} 个任务</div>
           </div>
           <div className="mt-2 overflow-hidden border-y border-foreground/10">
             <table className="w-full text-left text-[11px]">
@@ -569,9 +528,7 @@ export function ExecutionMonitorPanel({
                   <tr className="border-t border-foreground/10">
                     <td colSpan={8} className="px-3 py-3">
                       <div className="mx-auto flex max-w-xl flex-col items-center px-4 py-1 text-center">
-                        <div className="text-[12px] font-semibold text-foreground">
-                          当前范围暂无执行任务
-                        </div>
+                        <div className="text-[12px] font-semibold text-foreground">当前范围暂无执行任务</div>
                         <div className="mt-1 max-w-md text-[11px] leading-4 text-muted-foreground">
                           这个监控范围可以直接打开，但当前知识库还没有解析任务。可以切到入库操作提交解析，或查看全部项目的运行态。
                         </div>
@@ -603,18 +560,9 @@ export function ExecutionMonitorPanel({
                   visibleExecutionTaskRows.map((document) => {
                     const progress = getTaskProgress(document)
                     const elapsedMinutes = (() => {
-                      const created = new Date(
-                        String(document.created_at || '')
-                      ).getTime()
-                      const updated = new Date(
-                        String(document.updated_at || '')
-                      ).getTime()
-                      if (
-                        !Number.isFinite(created) ||
-                        !Number.isFinite(updated) ||
-                        updated <= created
-                      )
-                        return '--'
+                      const created = new Date(String(document.created_at || '')).getTime()
+                      const updated = new Date(String(document.updated_at || '')).getTime()
+                      if (!Number.isFinite(created) || !Number.isFinite(updated) || updated <= created) return '--'
                       return formatDurationClock((updated - created) / 1000)
                     })()
                     const statusLabel = getDocumentStatusLabel(document.status)
@@ -622,9 +570,7 @@ export function ExecutionMonitorPanel({
 
                     return (
                       <tr key={document.id} className="border-t border-foreground/10">
-                        <td className="px-3 py-2 font-medium text-foreground">
-                          {document.filename}
-                        </td>
+                        <td className="px-3 py-2 font-medium text-foreground">{document.filename}</td>
                         <td className="px-3 py-2 text-muted-foreground">
                           {String(document.file_type || '').toUpperCase()}
                         </td>
@@ -634,14 +580,7 @@ export function ExecutionMonitorPanel({
                         <td className="px-3 py-2 text-muted-foreground">
                           {String(document.current_stage || 'Parser')}
                         </td>
-                        <td
-                          className={cn(
-                            'px-3 py-2 font-medium',
-                            statusTone
-                          )}
-                        >
-                          {statusLabel}
-                        </td>
+                        <td className={cn('px-3 py-2 font-medium', statusTone)}>{statusLabel}</td>
                         <td className="px-3 py-2">
                           <div className="flex items-center gap-2">
                             <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted/60">
@@ -652,14 +591,10 @@ export function ExecutionMonitorPanel({
                                 }}
                               />
                             </div>
-                            <span className="font-mono text-[10px] text-foreground">
-                              {progress}%
-                            </span>
+                            <span className="font-mono text-[10px] text-foreground">{progress}%</span>
                           </div>
                         </td>
-                        <td className="px-3 py-2 font-mono text-muted-foreground">
-                          {elapsedMinutes}
-                        </td>
+                        <td className="px-3 py-2 font-mono text-muted-foreground">{elapsedMinutes}</td>
                         <td className="px-3 py-2">
                           <button
                             type="button"
@@ -677,9 +612,7 @@ export function ExecutionMonitorPanel({
             </table>
           </div>
           <div className="mt-2 flex flex-col gap-2 border-t border-foreground/10 pt-2 text-[10px] text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-            <span className="font-mono tabular-nums">
-              共 {executionTaskRows.length} 条
-            </span>
+            <span className="font-mono tabular-nums">共 {executionTaskRows.length} 条</span>
             <div className="flex items-center justify-end gap-1.5">
               <Button
                 type="button"

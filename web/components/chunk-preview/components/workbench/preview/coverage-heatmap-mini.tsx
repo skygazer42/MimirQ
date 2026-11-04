@@ -46,10 +46,12 @@ function getCoverageWarningClass(active: boolean): string {
   return 'text-muted-foreground'
 }
 
-export function CoverageHeatmapMini(props: Readonly<{
-  stats?: ChunkPreviewStats
-  className?: string
-}>) {
+export function CoverageHeatmapMini(
+  props: Readonly<{
+    stats?: ChunkPreviewStats
+    className?: string
+  }>,
+) {
   const { stats, className } = props
 
   const backendStats = useMemo(() => {
@@ -97,7 +99,7 @@ export function CoverageHeatmapMini(props: Readonly<{
     <div
       className={cn(
         'flex items-center gap-2 rounded-md border border-border/60 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.22))] px-2 py-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]',
-        className
+        className,
       )}
       role="img"
       aria-label={aria}
@@ -122,10 +124,20 @@ export function CoverageHeatmapMini(props: Readonly<{
         <span className={cn('tabular-nums transition-colors duration-300 motion-reduce:transition-none', statusTone)}>
           覆盖 {coverageLabel}
         </span>
-        <span className={cn('tabular-nums transition-colors duration-300 motion-reduce:transition-none', getCoverageWarningClass(overlapWastePct > 8))}>
+        <span
+          className={cn(
+            'tabular-nums transition-colors duration-300 motion-reduce:transition-none',
+            getCoverageWarningClass(overlapWastePct > 8),
+          )}
+        >
           {overlapDisplayLabel}
         </span>
-        <span className={cn('tabular-nums transition-colors duration-300 motion-reduce:transition-none', getCoverageWarningClass(gapCount > 0))}>
+        <span
+          className={cn(
+            'tabular-nums transition-colors duration-300 motion-reduce:transition-none',
+            getCoverageWarningClass(gapCount > 0),
+          )}
+        >
           {gapDisplayLabel}
         </span>
       </div>

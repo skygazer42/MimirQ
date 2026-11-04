@@ -1,14 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import {
-  AlertTriangle,
-  Download,
-  Loader2,
-  Settings2,
-  ShieldCheck,
-  Trash2,
-} from 'lucide-react'
+import { AlertTriangle, Download, Loader2, Settings2, ShieldCheck, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 
@@ -20,10 +13,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { auditApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { useTenantAccess } from '@/hooks/use-tenant-access'
-import {
-  TENANT_PERMISSIONS,
-  tenantAccessAllows,
-} from '@/lib/tenant-permissions'
+import { TENANT_PERMISSIONS, tenantAccessAllows } from '@/lib/tenant-permissions'
 import { cn, detachPromise } from '@/lib/utils'
 
 export type AuditOperationFilters = {
@@ -107,10 +97,7 @@ export function AuditRetentionPanel({
   const [busy, setBusy] = useState<string | null>(null)
   const [result, setResult] = useState<OperationResult | null>(null)
   const tenantAccess = useTenantAccess()
-  const canManageAudit = tenantAccessAllows(
-    tenantAccess.data,
-    TENANT_PERMISSIONS.AUDIT_MANAGE
-  )
+  const canManageAudit = tenantAccessAllows(tenantAccess.data, TENANT_PERMISSIONS.AUDIT_MANAGE)
 
   const exportFilters = useMemo(() => {
     const out: AuditOperationFilters = {}
@@ -124,8 +111,7 @@ export function AuditRetentionPanel({
   const filterEntries = Object.entries(exportFilters)
   const filterCount = filterEntries.length || activeFilterCount
   const hasFilterScope = filterEntries.length > 0
-  const canRunPurge =
-    canManageAudit && (purgeScope === 'retention' || hasFilterScope)
+  const canRunPurge = canManageAudit && (purgeScope === 'retention' || hasFilterScope)
 
   async function exportLogs() {
     setBusy('export')
@@ -198,18 +184,14 @@ export function AuditRetentionPanel({
             <Settings2 className="size-4" />
           </div>
           <div className="min-w-0">
-            <div className="text-[13px] font-semibold tracking-[-0.01em] text-foreground">
-              {t('title')}
-            </div>
+            <div className="text-[13px] font-semibold tracking-[-0.01em] text-foreground">{t('title')}</div>
             <p className="mt-1 max-w-[720px] text-[11px] font-medium leading-4 text-muted-foreground">
               保留策略清旧日志；当前筛选只清上方筛选命中的日志。默认预演，不会直接删除。
             </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className={AUDIT_RETENTION_PILL_CLASS}>
-            当前结果 {typeof total === 'number' ? total : '-'} 条
-          </span>
+          <span className={AUDIT_RETENTION_PILL_CLASS}>当前结果 {typeof total === 'number' ? total : '-'} 条</span>
           <span className="rounded-full border border-border/60 bg-background/65 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
             筛选 {filterCount} 项
           </span>
@@ -234,28 +216,15 @@ export function AuditRetentionPanel({
 
         <ControlBlock label="执行模式">
           <div className="grid grid-cols-2 gap-1 rounded-xl border border-border/60 bg-muted/35 p-1">
-            <SegmentButton
-              active={dryRun}
-              label="预演"
-              onClick={() => setDryRun(true)}
-            />
-            <SegmentButton
-              active={!dryRun}
-              label="真实清理"
-              tone="danger"
-              onClick={() => setDryRun(false)}
-            />
+            <SegmentButton active={dryRun} label="预演" onClick={() => setDryRun(true)} />
+            <SegmentButton active={!dryRun} label="真实清理" tone="danger" onClick={() => setDryRun(false)} />
           </div>
         </ControlBlock>
 
         <ControlBlock label="导出选项">
           <div className="flex min-h-9 flex-wrap items-center gap-3">
             <Toggle label={t('gzip')} checked={gzip} onCheckedChange={setGzip} />
-            <Toggle
-              label={t('includeSensitive')}
-              checked={includeSensitive}
-              onCheckedChange={setIncludeSensitive}
-            />
+            <Toggle label={t('includeSensitive')} checked={includeSensitive} onCheckedChange={setIncludeSensitive} />
           </div>
         </ControlBlock>
       </div>
@@ -265,14 +234,12 @@ export function AuditRetentionPanel({
           {purgeScope === 'retention' ? (
             <>
               <span className="font-semibold text-foreground">保留策略：</span>
-              只清理早于 {retentionDays} 天的旧审计日志。若预演为 0，
-              说明当前结果仍在保留期内。
+              只清理早于 {retentionDays} 天的旧审计日志。若预演为 0， 说明当前结果仍在保留期内。
             </>
           ) : hasFilterScope ? (
             <>
               <span className="font-semibold text-foreground">当前筛选：</span>
-              将范围限制在上方 {filterEntries.length} 个筛选条件内，
-              适合清理测试/回放产生的噪声日志。
+              将范围限制在上方 {filterEntries.length} 个筛选条件内， 适合清理测试/回放产生的噪声日志。
             </>
           ) : (
             <span className="inline-flex items-center gap-2 font-bold text-warning">
@@ -288,11 +255,7 @@ export function AuditRetentionPanel({
           disabled={purgeScope === 'filtered'}
           onChange={setRetentionDays}
         />
-        <NumberField
-          label={t('maxDelete')}
-          value={maxDelete}
-          onChange={setMaxDelete}
-        />
+        <NumberField label={t('maxDelete')} value={maxDelete} onChange={setMaxDelete} />
 
         <div className="flex flex-wrap gap-2 xl:justify-end">
           <Button
@@ -325,11 +288,7 @@ export function AuditRetentionPanel({
               confirmDisabled={purgeDisabled}
               onConfirm={purgeLogs}
             >
-              <PurgeButton
-                busy={busy === 'purge'}
-                disabled={purgeDisabled}
-                label="确认清理"
-              />
+              <PurgeButton busy={busy === 'purge'} disabled={purgeDisabled} label="确认清理" />
             </ConfirmDialog>
           )}
         </div>
@@ -359,15 +318,10 @@ export function AuditRetentionPanel({
   )
 }
 
-function ControlBlock({
-  label,
-  children,
-}: Readonly<{ label: string; children: React.ReactNode }>) {
+function ControlBlock({ label, children }: Readonly<{ label: string; children: React.ReactNode }>) {
   return (
     <div className="space-y-1.5">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-        {label}
-      </div>
+      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
       {children}
     </div>
   )
@@ -390,14 +344,9 @@ function SegmentButton({
       aria-pressed={active}
       className={cn(
         'h-8 rounded-lg border px-3 text-[11px] font-semibold transition-colors',
-        active &&
-          tone === 'primary' &&
-          'border-info/25 bg-info/10 text-info',
-        active &&
-          tone === 'danger' &&
-          'border-destructive/25 bg-destructive/10 text-destructive',
-        !active &&
-          'border-transparent bg-transparent text-muted-foreground hover:bg-info/[0.05] hover:text-info'
+        active && tone === 'primary' && 'border-info/25 bg-info/10 text-info',
+        active && tone === 'danger' && 'border-destructive/25 bg-destructive/10 text-destructive',
+        !active && 'border-transparent bg-transparent text-muted-foreground hover:bg-info/[0.05] hover:text-info',
       )}
       onClick={onClick}
     >
@@ -419,15 +368,11 @@ function NumberField({
 }>) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-        {label}
-      </Label>
+      <Label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{label}</Label>
       <Input
         value={String(value)}
         disabled={disabled}
-        onChange={(event) =>
-          onChange(Number.parseInt(event.target.value || '0', 10) || value)
-        }
+        onChange={(event) => onChange(Number.parseInt(event.target.value || '0', 10) || value)}
         className="h-9 rounded-xl border-border/60 bg-background/72 text-xs font-semibold disabled:bg-muted disabled:text-muted-foreground"
         inputMode="numeric"
       />
@@ -454,11 +399,7 @@ function PurgeButton({
       disabled={disabled}
       onClick={onClick}
     >
-      {busy ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-      ) : (
-        <Trash2 className="h-3.5 w-3.5" />
-      )}
+      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
       {label}
     </Button>
   )
@@ -475,11 +416,7 @@ function Toggle({
 }>) {
   return (
     <label className="flex cursor-pointer select-none items-center gap-2">
-      <Switch
-        checked={checked}
-        onCheckedChange={onCheckedChange}
-        className={checked ? 'bg-info' : 'bg-muted'}
-      />
+      <Switch checked={checked} onCheckedChange={onCheckedChange} className={checked ? 'bg-info' : 'bg-muted'} />
       <span className="text-[11px] font-semibold text-muted-foreground">{label}</span>
     </label>
   )
@@ -489,9 +426,7 @@ function AuditResultStrip({ result }: Readonly<{ result: OperationResult }>) {
   if (result.kind === 'export') {
     const bytes = payloadNumber(result.payload, 'bytes')
     const gzip = Boolean(
-      result.payload &&
-        typeof result.payload === 'object' &&
-        (result.payload as Record<string, unknown>).gzip
+      result.payload && typeof result.payload === 'object' && (result.payload as Record<string, unknown>).gzip,
     )
     return (
       <ResultShell result={result}>
@@ -504,24 +439,18 @@ function AuditResultStrip({ result }: Readonly<{ result: OperationResult }>) {
   const deleted = payloadNumber(result.payload, 'deleted')
   const scope = payloadString(result.payload, 'scope')
   const dryRun = Boolean(
-    result.payload &&
-      typeof result.payload === 'object' &&
-      (result.payload as Record<string, unknown>).dry_run
+    result.payload && typeof result.payload === 'object' && (result.payload as Record<string, unknown>).dry_run,
   )
 
   return (
     <ResultShell result={result}>
-      {scope === 'filtered' ? '当前筛选' : '保留策略'} ·
-      可清理 {eligible.toLocaleString()} 条 · 已删除{' '}
+      {scope === 'filtered' ? '当前筛选' : '保留策略'} · 可清理 {eligible.toLocaleString()} 条 · 已删除{' '}
       {deleted.toLocaleString()} 条 · {dryRun ? '预演' : '已执行'}
     </ResultShell>
   )
 }
 
-function ResultShell({
-  result,
-  children,
-}: Readonly<{ result: OperationResult; children: React.ReactNode }>) {
+function ResultShell({ result, children }: Readonly<{ result: OperationResult; children: React.ReactNode }>) {
   return (
     <div className="mx-4 mb-4 rounded-xl border border-success/20 bg-success/10 px-3 py-2 text-[11px] text-success">
       <div className="flex flex-wrap items-center justify-between gap-2">

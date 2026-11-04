@@ -37,11 +37,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { ChunkCard } from '../../chunk-card'
 import { ChunkInspectorDialog } from '../../chunk-inspector-dialog'
-import { chunkIsReviewed, chunkNeedsReview, isChunkOverrideDisabled, isChunkOverrideEdited, isJsonObject } from '@/components/chunk-preview/utils/metadata'
+import {
+  chunkIsReviewed,
+  chunkNeedsReview,
+  isChunkOverrideDisabled,
+  isChunkOverrideEdited,
+  isJsonObject,
+} from '@/components/chunk-preview/utils/metadata'
 import type { ChunkPreviewItem, ChunkPreviewReviewSignals, JsonObject } from '@/types'
 import { computeRoleIndices, roughEstimateTokens } from '@/components/chunk-preview/utils/review-signals'
 import { getChunkSectionPath } from '@/components/chunk-preview/utils/sections'
-import { buildChunkSearchIndex, searchChunkIndex, type ChunkSearchResult } from '@/components/chunk-preview/utils/retrieval-search'
+import {
+  buildChunkSearchIndex,
+  searchChunkIndex,
+  type ChunkSearchResult,
+} from '@/components/chunk-preview/utils/retrieval-search'
 import { rerankChunkSearchResults, type RerankedChunkSearchResult } from '@/components/chunk-preview/utils/reranker-sim'
 import { writeClientStorage } from '@/lib/client-storage'
 import { detachPromise } from '@/lib/utils'
@@ -50,7 +60,6 @@ import {
   getStoredOriginalPreviewMode,
   shouldRevealPdfPreviewOnChunkSelect,
 } from './pdf-dock'
-
 
 const QUERY_DEBOUNCE_MS = 150
 type SortMode = 'index' | 'length_desc' | 'length_asc'
@@ -173,7 +182,7 @@ export function ChunkList() {
       setSelectedChunkIndex(nextIndex)
       scrollRef.current?.focus()
     },
-    [setOriginalPanelVisible, setSelectedChunkIndex, showOriginalPanel, supportsPdfDocking]
+    [setOriginalPanelVisible, setSelectedChunkIndex, showOriginalPanel, supportsPdfDocking],
   )
 
   const openDockedPdfPreview = useCallback(() => {
@@ -249,7 +258,6 @@ export function ChunkList() {
   }, [chunkOverrides])
 
   const effectiveChunks = useMemo(() => {
-
     const raw = previewData?.chunks || []
     if (!raw.length) return []
     return raw.map((chunk) => {
@@ -257,7 +265,7 @@ export function ChunkList() {
       const override = chunkOverrides?.[idx]
       if (!override) return chunk
       const content = String(override.content ?? chunk.content ?? '')
-      const metadata = (override.metadata ?? chunk.metadata ?? {})
+      const metadata = override.metadata ?? chunk.metadata ?? {}
       return {
         ...chunk,
         content,
@@ -319,19 +327,16 @@ export function ChunkList() {
   const reviewSignals = previewData?.review_signals ?? null
   const duplicateIndices = useMemo(
     () => toSignalSet(reviewSignals?.duplicate_indices),
-    [reviewSignals?.duplicate_indices]
+    [reviewSignals?.duplicate_indices],
   )
 
-  const shortIndices = useMemo(
-    () => toSignalSet(reviewSignals?.short_indices),
-    [reviewSignals?.short_indices]
-  )
+  const shortIndices = useMemo(() => toSignalSet(reviewSignals?.short_indices), [reviewSignals?.short_indices])
 
   const roleIndices = useMemo(() => computeRoleIndices(effectiveChunks), [effectiveChunks])
 
   const coverageSignals = useMemo(
     () => ({
-      basis: reviewSignals?.basis === 'child' ? 'child' as const : 'all' as const,
+      basis: reviewSignals?.basis === 'child' ? ('child' as const) : ('all' as const),
       gapIndices: toSignalSet(reviewSignals?.gap_indices),
       overlapIndices: toSignalSet(reviewSignals?.overlap_indices),
       gapBeforeByIndex: toSignalMap(reviewSignals?.gap_before_by_index),
@@ -343,7 +348,7 @@ export function ChunkList() {
       reviewSignals?.overlap_indices,
       reviewSignals?.gap_before_by_index,
       reviewSignals?.overlap_prev_by_index,
-    ]
+    ],
   )
 
   const needsReviewIndices = useMemo(() => {
@@ -381,7 +386,7 @@ export function ChunkList() {
       updateChunkOverride(index, { metadata })
       toast.success(reviewed ? t('chunkList.toasts.markedReviewed') : t('chunkList.toasts.restoredReview'))
     },
-    [effectiveChunks, t, updateChunkOverride]
+    [effectiveChunks, t, updateChunkOverride],
   )
 
   const inspectorChunk = useMemo(() => {
@@ -490,10 +495,10 @@ export function ChunkList() {
         }
       >()
 
-       for (const item of flatFilteredChunks) {
-         const sec = getChunkSectionPath(item.chunk)
-         const label = sec || t('chunkList.section.none')
-         const key = sec ? `sec:${sec}` : `sec:${SECTION_NONE_VALUE}`
+      for (const item of flatFilteredChunks) {
+        const sec = getChunkSectionPath(item.chunk)
+        const label = sec || t('chunkList.section.none')
+        const key = sec ? `sec:${sec}` : `sec:${SECTION_NONE_VALUE}`
         let g = groups.get(key)
         if (!g) {
           g = { label, items: [] }
@@ -549,7 +554,7 @@ export function ChunkList() {
 
     for (let idx = 0; idx < effectiveChunks.length; idx += 1) {
       const chunk = effectiveChunks[idx]
-      const meta = (chunk.metadata || {})
+      const meta = chunk.metadata || {}
       const role = typeof meta.chunk_role === 'string' ? meta.chunk_role : undefined
       const parentIdRaw = meta.parent_id ?? meta.parent_node_id
       const parentId = typeof parentIdRaw === 'string' && parentIdRaw.trim() ? parentIdRaw.trim() : null
@@ -579,8 +584,7 @@ export function ChunkList() {
       if (!g) continue
 
       const parentIdx = g.parentIndex ?? g.indices[0]
-      const childIdxs =
-        g.childIndices.length > 0 ? g.childIndices : g.indices.filter((i) => i !== parentIdx)
+      const childIdxs = g.childIndices.length > 0 ? g.childIndices : g.indices.filter((i) => i !== parentIdx)
 
       const hasVisibleChild = childIdxs.some((i) => matchIndexSet.has(i))
       const groupHasAnyVisible = matchIndexSet.has(parentIdx) || hasVisibleChild
@@ -753,9 +757,10 @@ export function ChunkList() {
       count: coverageSignals.gapIndices.size,
       active: onlyGap,
       label: t('chunkList.filters.gapLabel', { count: coverageSignals.gapIndices.size }),
-      title: coverageSignals.basis === 'child'
-        ? t('chunkList.filters.onlyGapTitleChildCoverage')
-        : t('chunkList.filters.onlyGapTitle'),
+      title:
+        coverageSignals.basis === 'child'
+          ? t('chunkList.filters.onlyGapTitleChildCoverage')
+          : t('chunkList.filters.onlyGapTitle'),
       toggle: () => setOnlyGap((v) => !v),
     },
     {
@@ -763,9 +768,10 @@ export function ChunkList() {
       count: coverageSignals.overlapIndices.size,
       active: onlyOverlap,
       label: t('chunkList.filters.overlapLabel', { count: coverageSignals.overlapIndices.size }),
-      title: coverageSignals.basis === 'child'
-        ? t('chunkList.filters.onlyOverlapTitleChildCoverage')
-        : t('chunkList.filters.onlyOverlapTitle'),
+      title:
+        coverageSignals.basis === 'child'
+          ? t('chunkList.filters.onlyOverlapTitleChildCoverage')
+          : t('chunkList.filters.onlyOverlapTitle'),
       toggle: () => setOnlyOverlap((v) => !v),
     },
     {
@@ -799,9 +805,10 @@ export function ChunkList() {
   const activeQualitySummaryItems = qualitySummaryItems.filter((item) => item.count > 0 || item.active)
   const healthyQualitySummaryCount = Math.max(0, qualitySummaryItems.length - activeQualitySummaryItems.length)
 
-  const filterButtonLabel = filterActiveCount > 0
-    ? t('chunkList.toolbar.filtersWithCount', { count: filterActiveCount })
-    : t('chunkList.toolbar.filters')
+  const filterButtonLabel =
+    filterActiveCount > 0
+      ? t('chunkList.toolbar.filtersWithCount', { count: filterActiveCount })
+      : t('chunkList.toolbar.filters')
 
   const showVirtualized = Boolean(previewData?.chunks && displayRows.length > 0)
   const listSurfaceKey = `chunk-list-surface:${viewMode}:${groupMode}`
@@ -810,7 +817,7 @@ export function ChunkList() {
       duration: reduceMotion ? 0 : 0.22,
       ease: [0.16, 1, 0.3, 1] as const,
     }),
-    [reduceMotion]
+    [reduceMotion],
   )
 
   const expandableGroupKeys = useMemo(() => {
@@ -836,21 +843,16 @@ export function ChunkList() {
     return expandableGroupKeys.every((k) => Boolean(collapsedGroups[k]))
   }, [collapsedGroups, expandableGroupKeys])
 
-  const sortLengthDescLabel = unit === 'tokens'
-    ? t('chunkList.sort.lengthDescTokens')
-    : t('chunkList.sort.lengthDescChars')
-  const sortLengthAscLabel = unit === 'tokens'
-    ? t('chunkList.sort.lengthAscTokens')
-    : t('chunkList.sort.lengthAscChars')
-  const lengthFilterLabel = unit === 'tokens'
-    ? t('chunkList.lengthFilter.labelTokens')
-    : t('chunkList.lengthFilter.labelChars')
-  const minLengthFilterAria = unit === 'tokens'
-    ? t('chunkList.lengthFilter.minAriaTokens')
-    : t('chunkList.lengthFilter.minAriaChars')
-  const maxLengthFilterAria = unit === 'tokens'
-    ? t('chunkList.lengthFilter.maxAriaTokens')
-    : t('chunkList.lengthFilter.maxAriaChars')
+  const sortLengthDescLabel =
+    unit === 'tokens' ? t('chunkList.sort.lengthDescTokens') : t('chunkList.sort.lengthDescChars')
+  const sortLengthAscLabel =
+    unit === 'tokens' ? t('chunkList.sort.lengthAscTokens') : t('chunkList.sort.lengthAscChars')
+  const lengthFilterLabel =
+    unit === 'tokens' ? t('chunkList.lengthFilter.labelTokens') : t('chunkList.lengthFilter.labelChars')
+  const minLengthFilterAria =
+    unit === 'tokens' ? t('chunkList.lengthFilter.minAriaTokens') : t('chunkList.lengthFilter.minAriaChars')
+  const maxLengthFilterAria =
+    unit === 'tokens' ? t('chunkList.lengthFilter.maxAriaTokens') : t('chunkList.lengthFilter.maxAriaChars')
   const allGroupsToggleTitle = allGroupsCollapsed
     ? t('chunkList.groupToggle.expandAllTitle')
     : t('chunkList.groupToggle.collapseAllTitle')
@@ -884,7 +886,9 @@ export function ChunkList() {
                   {previewData.total_chunks}
                 </span>
               ) : null}
-              {matchesLabel ? <span className="truncate font-mono text-[10.5px] text-muted-foreground">{matchesLabel}</span> : null}
+              {matchesLabel ? (
+                <span className="truncate font-mono text-[10.5px] text-muted-foreground">{matchesLabel}</span>
+              ) : null}
             </div>
           </div>
 
@@ -896,88 +900,92 @@ export function ChunkList() {
               data-chunk-list-search
               className="relative flex h-7 min-w-[150px] flex-1 items-center rounded-full border border-border/40 bg-background/90 px-2 shadow-sm"
             >
-                <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                <Input
-                  ref={searchRef}
-                  value={queryInput}
-                  onChange={(e) => setQueryInput(e.target.value)}
-                  placeholder={t('chunkList.searchPlaceholder')}
-                  className="h-full min-w-0 flex-1 border-0 bg-transparent px-1.5 pr-5 text-[11px] shadow-none placeholder:text-muted-foreground/65 focus-visible:ring-1 focus-visible:ring-primary/30"
-                />
-                {queryInput ? (
-                  <button
-                    type="button"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded text-muted-foreground transition-colors hover:text-foreground focus-ring"
-                    onClick={() => {
-                      setQueryInput('')
-                      setQuery('')
-                    }}
-                    aria-label={t('chunkList.clearSearch')}
-                    title={t('chunkList.clearSearch')}
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                ) : null}
-              </div>
-              {selectedChunkIndex == null ? null : (
-                <>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className={chunkListToolbarButtonClass}
-                    onClick={() => detachPromise(copySelectedChunk())}
-                  >
-                    {t('chunkList.actions.copySelected')}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className={chunkListToolbarButtonClass}
-                    onClick={() => selectChunkIndex(null)}
-                  >
-                    {t('chunkList.actions.clearSelection')}
-                  </Button>
-                </>
-              )}
-              {!showOriginalPanel && supportsPdfDocking ? (
+              <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <Input
+                ref={searchRef}
+                value={queryInput}
+                onChange={(e) => setQueryInput(e.target.value)}
+                placeholder={t('chunkList.searchPlaceholder')}
+                className="h-full min-w-0 flex-1 border-0 bg-transparent px-1.5 pr-5 text-[11px] shadow-none placeholder:text-muted-foreground/65 focus-visible:ring-1 focus-visible:ring-primary/30"
+              />
+              {queryInput ? (
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded text-muted-foreground transition-colors hover:text-foreground focus-ring"
+                  onClick={() => {
+                    setQueryInput('')
+                    setQuery('')
+                  }}
+                  aria-label={t('chunkList.clearSearch')}
+                  title={t('chunkList.clearSearch')}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              ) : null}
+            </div>
+            {selectedChunkIndex == null ? null : (
+              <>
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
                   className={chunkListToolbarButtonClass}
-                  onClick={openDockedPdfPreview}
-                  title={t('chunkList.actions.restorePdfDockTitle')}
+                  onClick={() => detachPromise(copySelectedChunk())}
                 >
-                  {t('chunkList.actions.restorePdfDock')}
+                  {t('chunkList.actions.copySelected')}
                 </Button>
-              ) : null}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className={chunkListToolbarButtonClass}
+                  onClick={() => selectChunkIndex(null)}
+                >
+                  {t('chunkList.actions.clearSelection')}
+                </Button>
+              </>
+            )}
+            {!showOriginalPanel && supportsPdfDocking ? (
               <Button
                 type="button"
-                variant={retrieveOpen ? 'secondary' : 'outline'}
+                variant="outline"
                 size="sm"
-                className={retrieveOpen || retrieveQuery.trim() ? chunkListToolbarActiveButtonClass : chunkListToolbarButtonClass}
-                onClick={() => setRetrieveOpen((v) => !v)}
-                title={t('chunkList.retrieve.triggerTitle')}
+                className={chunkListToolbarButtonClass}
+                onClick={openDockedPdfPreview}
+                title={t('chunkList.actions.restorePdfDockTitle')}
               >
-                <Search className="h-3.5 w-3.5 mr-1" />
-                {t('chunkList.retrieve.trigger')}
-                {retrieveQuery.trim() ? ` ${retrievalDisplayResults.length}` : ''}
+                {t('chunkList.actions.restorePdfDock')}
               </Button>
-              <Button
-                type="button"
-                variant={filtersOpen || filterActiveCount > 0 ? 'secondary' : 'outline'}
-                size="sm"
-                className={filtersOpen || filterActiveCount > 0 ? chunkListToolbarActiveButtonClass : chunkListToolbarButtonClass}
-                onClick={() => setFiltersOpen((v) => !v)}
-                aria-expanded={filtersOpen}
-                aria-controls="chunk-list-filter-panel"
-                title={filterButtonLabel}
-              >
-                <SlidersHorizontal className="h-3.5 w-3.5 mr-1" />
-                {filterButtonLabel}
-              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant={retrieveOpen ? 'secondary' : 'outline'}
+              size="sm"
+              className={
+                retrieveOpen || retrieveQuery.trim() ? chunkListToolbarActiveButtonClass : chunkListToolbarButtonClass
+              }
+              onClick={() => setRetrieveOpen((v) => !v)}
+              title={t('chunkList.retrieve.triggerTitle')}
+            >
+              <Search className="h-3.5 w-3.5 mr-1" />
+              {t('chunkList.retrieve.trigger')}
+              {retrieveQuery.trim() ? ` ${retrievalDisplayResults.length}` : ''}
+            </Button>
+            <Button
+              type="button"
+              variant={filtersOpen || filterActiveCount > 0 ? 'secondary' : 'outline'}
+              size="sm"
+              className={
+                filtersOpen || filterActiveCount > 0 ? chunkListToolbarActiveButtonClass : chunkListToolbarButtonClass
+              }
+              onClick={() => setFiltersOpen((v) => !v)}
+              aria-expanded={filtersOpen}
+              aria-controls="chunk-list-filter-panel"
+              title={filterButtonLabel}
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5 mr-1" />
+              {filterButtonLabel}
+            </Button>
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-1.5 rounded-2xl border border-border/40 bg-background/70 px-2 py-1">
@@ -985,21 +993,21 @@ export function ChunkList() {
               {effectiveChunks.length > 0 ? (
                 <>
                   {activeQualitySummaryItems.map((item) => {
-                  const Icon = item.icon
-                  return (
-                    <Button
-                      key={item.key}
-                      type="button"
-                      variant={item.active ? 'secondary' : 'ghost'}
-                      size="sm"
-                      className="h-6 rounded-md px-1.5 text-[10px]"
-                      onClick={item.toggle}
-                      title={item.title}
-                    >
-                      {Icon ? <Icon className="mr-1 h-3 w-3" /> : null}
-                      {item.label}
-                    </Button>
-                  )
+                    const Icon = item.icon
+                    return (
+                      <Button
+                        key={item.key}
+                        type="button"
+                        variant={item.active ? 'secondary' : 'ghost'}
+                        size="sm"
+                        className="h-6 rounded-md px-1.5 text-[10px]"
+                        onClick={item.toggle}
+                        title={item.title}
+                      >
+                        {Icon ? <Icon className="mr-1 h-3 w-3" /> : null}
+                        {item.label}
+                      </Button>
+                    )
                   })}
                   {healthyQualitySummaryCount > 0 ? (
                     <span className="inline-flex h-6 items-center gap-1 rounded-md border border-success/25 bg-success/10 px-1.5 text-[10px] font-medium text-success">
@@ -1023,332 +1031,352 @@ export function ChunkList() {
               className="rounded-lg border border-border/50 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.18))] p-2"
             >
               <div className="flex flex-wrap items-center gap-1.5">
-            {isParentChildStrategy ? (
-              <Select
-                value={viewMode}
-                onValueChange={(value) => {
-                  const next = value as ViewMode
-                  setViewMode(next)
-                  if (next === 'hierarchy') {
-                    setSortMode('index')
-                    setGroupMode('none')
-                  }
-                  if (next !== 'hierarchy') setCollapsedGroups({})
-                }}
-              >
-                <SelectTrigger className="h-[28px] w-[112px] rounded-lg border-border/60 bg-background text-[11px]">
-                  <SelectValue placeholder={t('chunkList.view.placeholder')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="flat">{t('chunkList.view.flat')}</SelectItem>
-                  <SelectItem value="hierarchy">{t('chunkList.view.hierarchy')}</SelectItem>
-                </SelectContent>
-              </Select>
-            ) : null}
-            {!isHierarchyView && (sectionOptions.list.length > 0 || sectionOptions.hasNone) ? (
-              <Select
-                value={groupMode}
-                onValueChange={(value) => {
-                  const next = value as GroupMode
-                  setGroupMode(next)
-                  setCollapsedGroups({})
-                  if (next === 'section') setSortMode('index')
-                }}
-              >
-                <SelectTrigger className="h-[28px] w-[112px] rounded-lg border-border/60 bg-background text-[11px]">
-                  <SelectValue placeholder={t('chunkList.group.placeholder')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">{t('chunkList.group.none')}</SelectItem>
-                  <SelectItem value="section">{t('chunkList.group.section')}</SelectItem>
-                </SelectContent>
-              </Select>
-            ) : null}
-            {(isHierarchyView || isSectionView) && expandableGroupKeys.length > 0 ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-[28px] rounded-lg px-2 text-[11px]"
-                onClick={() => {
-                  if (allGroupsCollapsed) {
-                    setCollapsedGroups({})
-                    return
-                  }
-                  const next: Record<string, boolean> = {}
-                  for (const k of expandableGroupKeys) next[k] = true
-                  setCollapsedGroups(next)
-                }}
-                title={allGroupsToggleTitle}
-              >
-                {allGroupsToggleLabel}
-              </Button>
-            ) : null}
-            <Select value={sortMode} onValueChange={(value) => setSortMode(value as SortMode)} disabled={isHierarchyView || isSectionView}>
-              <SelectTrigger className="h-[28px] w-[122px] rounded-lg border-border/60 bg-background text-[11px]">
-                <SelectValue placeholder={t('chunkList.sort.placeholder')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="index">{t('chunkList.sort.index')}</SelectItem>
-                <SelectItem value="length_desc">{sortLengthDescLabel}</SelectItem>
-                <SelectItem value="length_asc">{sortLengthAscLabel}</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={pageFilter} onValueChange={(value) => setPageFilter(value)}>
-              <SelectTrigger className="h-[28px] w-[98px] rounded-lg border-border/60 bg-background text-[11px]">
-                <SelectValue placeholder={t('chunkList.page.placeholder')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={PAGE_ALL_VALUE}>{t('chunkList.page.all')}</SelectItem>
-                {pageOptions.hasUnknown ? <SelectItem value={PAGE_UNKNOWN_VALUE}>{t('chunkList.page.unknown')}</SelectItem> : null}
-                {pageOptions.list.map((p) => (
-                  <SelectItem key={p} value={String(p)}>
-                    P.{p}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {sectionOptions.list.length > 0 || sectionOptions.hasNone ? (
-              <Select value={sectionFilter} onValueChange={(value) => setSectionFilter(value)}>
-                <SelectTrigger className="h-[28px] w-[138px] rounded-lg border-border/60 bg-background text-[11px]">
-                  <SelectValue placeholder={t('chunkList.section.placeholder')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={SECTION_ALL_VALUE}>{t('chunkList.section.all')}</SelectItem>
-                  {sectionOptions.hasNone ? <SelectItem value={SECTION_NONE_VALUE}>{t('chunkList.section.none')}</SelectItem> : null}
-                  {sectionOptions.list.map((sec) => (
-                    <SelectItem key={sec} value={sec}>
-                      <span className="block max-w-[520px] truncate" title={sec}>
-                        {sec}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : null}
-            <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-              <span className="mr-1">{lengthFilterLabel}</span>
-              <Input
-                value={minLen > 0 ? String(minLen) : ''}
-                onChange={(e) => {
-                  const raw = e.target.value.trim()
-                  const n = raw ? Number(raw) : 0
-                  if (raw) { if (Number.isFinite(n)) setMinLen(Math.max(0, Math.trunc(n))) } else { setMinLen(0) }
-                }}
-                placeholder={t('chunkList.lengthFilter.minPlaceholder')}
-                className="h-[28px] w-[58px] rounded-lg border-border/60 bg-background px-2 text-[11px] font-mono"
-                inputMode="numeric"
-                aria-label={minLengthFilterAria}
-              />
-              <span className="px-1 opacity-70">-</span>
-              <Input
-                value={maxLen > 0 ? String(maxLen) : ''}
-                onChange={(e) => {
-                  const raw = e.target.value.trim()
-                  const n = raw ? Number(raw) : 0
-                  if (raw) { if (Number.isFinite(n)) setMaxLen(Math.max(0, Math.trunc(n))) } else { setMaxLen(0) }
-                }}
-                placeholder={t('chunkList.lengthFilter.maxPlaceholder')}
-                className="h-[28px] w-[58px] rounded-lg border-border/60 bg-background px-2 text-[11px] font-mono"
-                inputMode="numeric"
-                aria-label={maxLengthFilterAria}
-              />
-              {(minLen > 0 || maxLen > 0) ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-[28px] rounded-lg px-2 text-[11px]"
-                  onClick={() => {
-                    setMinLen(0)
-                    setMaxLen(0)
-                  }}
+                {isParentChildStrategy ? (
+                  <Select
+                    value={viewMode}
+                    onValueChange={(value) => {
+                      const next = value as ViewMode
+                      setViewMode(next)
+                      if (next === 'hierarchy') {
+                        setSortMode('index')
+                        setGroupMode('none')
+                      }
+                      if (next !== 'hierarchy') setCollapsedGroups({})
+                    }}
+                  >
+                    <SelectTrigger className="h-[28px] w-[112px] rounded-lg border-border/60 bg-background text-[11px]">
+                      <SelectValue placeholder={t('chunkList.view.placeholder')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="flat">{t('chunkList.view.flat')}</SelectItem>
+                      <SelectItem value="hierarchy">{t('chunkList.view.hierarchy')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : null}
+                {!isHierarchyView && (sectionOptions.list.length > 0 || sectionOptions.hasNone) ? (
+                  <Select
+                    value={groupMode}
+                    onValueChange={(value) => {
+                      const next = value as GroupMode
+                      setGroupMode(next)
+                      setCollapsedGroups({})
+                      if (next === 'section') setSortMode('index')
+                    }}
+                  >
+                    <SelectTrigger className="h-[28px] w-[112px] rounded-lg border-border/60 bg-background text-[11px]">
+                      <SelectValue placeholder={t('chunkList.group.placeholder')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">{t('chunkList.group.none')}</SelectItem>
+                      <SelectItem value="section">{t('chunkList.group.section')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : null}
+                {(isHierarchyView || isSectionView) && expandableGroupKeys.length > 0 ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-[28px] rounded-lg px-2 text-[11px]"
+                    onClick={() => {
+                      if (allGroupsCollapsed) {
+                        setCollapsedGroups({})
+                        return
+                      }
+                      const next: Record<string, boolean> = {}
+                      for (const k of expandableGroupKeys) next[k] = true
+                      setCollapsedGroups(next)
+                    }}
+                    title={allGroupsToggleTitle}
+                  >
+                    {allGroupsToggleLabel}
+                  </Button>
+                ) : null}
+                <Select
+                  value={sortMode}
+                  onValueChange={(value) => setSortMode(value as SortMode)}
+                  disabled={isHierarchyView || isSectionView}
                 >
-                  {t('chunkList.lengthFilter.clear')}
-                </Button>
-              ) : null}
-            </div>
+                  <SelectTrigger className="h-[28px] w-[122px] rounded-lg border-border/60 bg-background text-[11px]">
+                    <SelectValue placeholder={t('chunkList.sort.placeholder')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="index">{t('chunkList.sort.index')}</SelectItem>
+                    <SelectItem value="length_desc">{sortLengthDescLabel}</SelectItem>
+                    <SelectItem value="length_asc">{sortLengthAscLabel}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={pageFilter} onValueChange={(value) => setPageFilter(value)}>
+                  <SelectTrigger className="h-[28px] w-[98px] rounded-lg border-border/60 bg-background text-[11px]">
+                    <SelectValue placeholder={t('chunkList.page.placeholder')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={PAGE_ALL_VALUE}>{t('chunkList.page.all')}</SelectItem>
+                    {pageOptions.hasUnknown ? (
+                      <SelectItem value={PAGE_UNKNOWN_VALUE}>{t('chunkList.page.unknown')}</SelectItem>
+                    ) : null}
+                    {pageOptions.list.map((p) => (
+                      <SelectItem key={p} value={String(p)}>
+                        P.{p}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {sectionOptions.list.length > 0 || sectionOptions.hasNone ? (
+                  <Select value={sectionFilter} onValueChange={(value) => setSectionFilter(value)}>
+                    <SelectTrigger className="h-[28px] w-[138px] rounded-lg border-border/60 bg-background text-[11px]">
+                      <SelectValue placeholder={t('chunkList.section.placeholder')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={SECTION_ALL_VALUE}>{t('chunkList.section.all')}</SelectItem>
+                      {sectionOptions.hasNone ? (
+                        <SelectItem value={SECTION_NONE_VALUE}>{t('chunkList.section.none')}</SelectItem>
+                      ) : null}
+                      {sectionOptions.list.map((sec) => (
+                        <SelectItem key={sec} value={sec}>
+                          <span className="block max-w-[520px] truncate" title={sec}>
+                            {sec}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : null}
+                <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <span className="mr-1">{lengthFilterLabel}</span>
+                  <Input
+                    value={minLen > 0 ? String(minLen) : ''}
+                    onChange={(e) => {
+                      const raw = e.target.value.trim()
+                      const n = raw ? Number(raw) : 0
+                      if (raw) {
+                        if (Number.isFinite(n)) setMinLen(Math.max(0, Math.trunc(n)))
+                      } else {
+                        setMinLen(0)
+                      }
+                    }}
+                    placeholder={t('chunkList.lengthFilter.minPlaceholder')}
+                    className="h-[28px] w-[58px] rounded-lg border-border/60 bg-background px-2 text-[11px] font-mono"
+                    inputMode="numeric"
+                    aria-label={minLengthFilterAria}
+                  />
+                  <span className="px-1 opacity-70">-</span>
+                  <Input
+                    value={maxLen > 0 ? String(maxLen) : ''}
+                    onChange={(e) => {
+                      const raw = e.target.value.trim()
+                      const n = raw ? Number(raw) : 0
+                      if (raw) {
+                        if (Number.isFinite(n)) setMaxLen(Math.max(0, Math.trunc(n)))
+                      } else {
+                        setMaxLen(0)
+                      }
+                    }}
+                    placeholder={t('chunkList.lengthFilter.maxPlaceholder')}
+                    className="h-[28px] w-[58px] rounded-lg border-border/60 bg-background px-2 text-[11px] font-mono"
+                    inputMode="numeric"
+                    aria-label={maxLengthFilterAria}
+                  />
+                  {minLen > 0 || maxLen > 0 ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-[28px] rounded-lg px-2 text-[11px]"
+                      onClick={() => {
+                        setMinLen(0)
+                        setMaxLen(0)
+                      }}
+                    >
+                      {t('chunkList.lengthFilter.clear')}
+                    </Button>
+                  ) : null}
+                </div>
               </div>
 
               <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-border/45 pt-2">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button type="button" variant="outline" size="sm" className="h-[28px] rounded-lg px-2 text-[11px]">
-                    {t('chunkList.batch.trigger')}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem
-                    disabled={matchCount === 0}
-                    onSelect={() => {
-                      const targets = Array.from(matchIndexSet)
-                      const delta = targets.filter((i) => !disabledIndices.has(i)).length
-                      setChunksDisabled(targets, true)
-                      toast.success(t('chunkList.batch.skipFilteredSuccess', { count: delta }))
-                    }}
-                  >
-                    {t('chunkList.batch.skipFiltered', { count: matchCount })}
-                  </DropdownMenuItem>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button type="button" variant="outline" size="sm" className="h-[28px] rounded-lg px-2 text-[11px]">
+                      {t('chunkList.batch.trigger')}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuItem
+                      disabled={matchCount === 0}
+                      onSelect={() => {
+                        const targets = Array.from(matchIndexSet)
+                        const delta = targets.filter((i) => !disabledIndices.has(i)).length
+                        setChunksDisabled(targets, true)
+                        toast.success(t('chunkList.batch.skipFilteredSuccess', { count: delta }))
+                      }}
+                    >
+                      {t('chunkList.batch.skipFiltered', { count: matchCount })}
+                    </DropdownMenuItem>
 
-                  <DropdownMenuSeparator />
+                    <DropdownMenuSeparator />
 
-                  <DropdownMenuItem
-                    disabled={duplicateIndices.size === 0}
-                    onSelect={() => {
-                      const targets = Array.from(duplicateIndices)
-                      const delta = targets.filter((i) => !disabledIndices.has(i)).length
-                      setChunksDisabled(targets, true)
-                      toast.success(t('chunkList.batch.skipDuplicatesSuccess', { count: delta }))
-                    }}
-                  >
-                    {t('chunkList.batch.skipDuplicates', { count: duplicateIndices.size })}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={shortIndices.size === 0}
-                    onSelect={() => {
-                      const targets = Array.from(shortIndices)
-                      const delta = targets.filter((i) => !disabledIndices.has(i)).length
-                      setChunksDisabled(targets, true)
-                      toast.success(t('chunkList.batch.skipShortSuccess', { count: delta }))
-                    }}
-                  >
-                    {t('chunkList.batch.skipShort', { count: shortIndices.size })}
-                  </DropdownMenuItem>
+                    <DropdownMenuItem
+                      disabled={duplicateIndices.size === 0}
+                      onSelect={() => {
+                        const targets = Array.from(duplicateIndices)
+                        const delta = targets.filter((i) => !disabledIndices.has(i)).length
+                        setChunksDisabled(targets, true)
+                        toast.success(t('chunkList.batch.skipDuplicatesSuccess', { count: delta }))
+                      }}
+                    >
+                      {t('chunkList.batch.skipDuplicates', { count: duplicateIndices.size })}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      disabled={shortIndices.size === 0}
+                      onSelect={() => {
+                        const targets = Array.from(shortIndices)
+                        const delta = targets.filter((i) => !disabledIndices.has(i)).length
+                        setChunksDisabled(targets, true)
+                        toast.success(t('chunkList.batch.skipShortSuccess', { count: delta }))
+                      }}
+                    >
+                      {t('chunkList.batch.skipShort', { count: shortIndices.size })}
+                    </DropdownMenuItem>
 
-                  {isParentChildStrategy ? (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        disabled={roleIndices.parents.size === 0}
-                        onSelect={() => {
-                          const targets = Array.from(roleIndices.parents)
-                          const delta = targets.filter((i) => !disabledIndices.has(i)).length
-                          setChunksDisabled(targets, true)
-                          toast.success(t('chunkList.batch.skipParentsSuccess', { count: delta }))
-                        }}
-                      >
-                        {t('chunkList.batch.skipParents', { count: roleIndices.parents.size })}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        disabled={roleIndices.children.size === 0}
-                        onSelect={() => {
-                          const targets = Array.from(roleIndices.children)
-                          const delta = targets.filter((i) => !disabledIndices.has(i)).length
-                          setChunksDisabled(targets, true)
-                          toast.success(t('chunkList.batch.skipChildrenSuccess', { count: delta }))
-                        }}
-                      >
-                        {t('chunkList.batch.skipChildren', { count: roleIndices.children.size })}
-                      </DropdownMenuItem>
-                    </>
-                  ) : null}
+                    {isParentChildStrategy ? (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          disabled={roleIndices.parents.size === 0}
+                          onSelect={() => {
+                            const targets = Array.from(roleIndices.parents)
+                            const delta = targets.filter((i) => !disabledIndices.has(i)).length
+                            setChunksDisabled(targets, true)
+                            toast.success(t('chunkList.batch.skipParentsSuccess', { count: delta }))
+                          }}
+                        >
+                          {t('chunkList.batch.skipParents', { count: roleIndices.parents.size })}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={roleIndices.children.size === 0}
+                          onSelect={() => {
+                            const targets = Array.from(roleIndices.children)
+                            const delta = targets.filter((i) => !disabledIndices.has(i)).length
+                            setChunksDisabled(targets, true)
+                            toast.success(t('chunkList.batch.skipChildrenSuccess', { count: delta }))
+                          }}
+                        >
+                          {t('chunkList.batch.skipChildren', { count: roleIndices.children.size })}
+                        </DropdownMenuItem>
+                      </>
+                    ) : null}
 
-                  <DropdownMenuSeparator />
+                    <DropdownMenuSeparator />
 
-                  <DropdownMenuItem
-                    disabled={disabledIndices.size === 0}
-                    onSelect={() => {
-                      const targets = Array.from(disabledIndices)
-                      setChunksDisabled(targets, false)
-                      toast.success(t('chunkList.batch.restoreAllSuccess', { count: targets.length }))
-                    }}
-                  >
-                    {t('chunkList.batch.restoreAll', { count: disabledIndices.size })}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={disabledIndices.size === 0 || matchCount === 0}
-                    onSelect={() => {
-                      const targets = Array.from(matchIndexSet)
-                      const delta = targets.filter((i) => disabledIndices.has(i)).length
-                      setChunksDisabled(targets, false)
-                      toast.success(t('chunkList.batch.restoreFilteredSuccess', { count: delta }))
-                    }}
-                  >
-                    {t('chunkList.batch.restoreFiltered')}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                    <DropdownMenuItem
+                      disabled={disabledIndices.size === 0}
+                      onSelect={() => {
+                        const targets = Array.from(disabledIndices)
+                        setChunksDisabled(targets, false)
+                        toast.success(t('chunkList.batch.restoreAllSuccess', { count: targets.length }))
+                      }}
+                    >
+                      {t('chunkList.batch.restoreAll', { count: disabledIndices.size })}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      disabled={disabledIndices.size === 0 || matchCount === 0}
+                      onSelect={() => {
+                        const targets = Array.from(matchIndexSet)
+                        const delta = targets.filter((i) => disabledIndices.has(i)).length
+                        setChunksDisabled(targets, false)
+                        toast.success(t('chunkList.batch.restoreFilteredSuccess', { count: delta }))
+                      }}
+                    >
+                      {t('chunkList.batch.restoreFiltered')}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
 
-              <Button
-                type="button"
-                variant={onlyShort ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-[28px] rounded-lg px-2 text-[11px]"
-                onClick={() => setOnlyShort((v) => !v)}
-                title={t('chunkList.filters.onlyShortTitle')}
-              >
-                <AlertCircle className="h-3.5 w-3.5 mr-1" />
-                {t('chunkList.filters.shortLabel', { count: shortIndices.size })}
-              </Button>
-              <Button
-                type="button"
-                variant={onlyDuplicate ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-[28px] rounded-lg px-2 text-[11px]"
-                onClick={() => setOnlyDuplicate((v) => !v)}
-                title={t('chunkList.filters.onlyDuplicateTitle')}
-              >
-                <Copy className="h-3.5 w-3.5 mr-1" />
-                {t('chunkList.filters.duplicateLabel', { count: duplicateIndices.size })}
-              </Button>
-              <Button
-                type="button"
-                variant={onlyGap ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-[28px] rounded-lg px-2 text-[11px]"
-                onClick={() => setOnlyGap((v) => !v)}
-                title={coverageSignals.basis === 'child'
-                  ? t('chunkList.filters.onlyGapTitleChildCoverage')
-                  : t('chunkList.filters.onlyGapTitle')}
-              >
-                {t('chunkList.filters.gapLabel', { count: coverageSignals.gapIndices.size })}
-              </Button>
-              <Button
-                type="button"
-                variant={onlyOverlap ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-[28px] rounded-lg px-2 text-[11px]"
-                onClick={() => setOnlyOverlap((v) => !v)}
-                title={coverageSignals.basis === 'child'
-                  ? t('chunkList.filters.onlyOverlapTitleChildCoverage')
-                  : t('chunkList.filters.onlyOverlapTitle')}
-              >
-                {t('chunkList.filters.overlapLabel', { count: coverageSignals.overlapIndices.size })}
-              </Button>
-              <Button
-                type="button"
-                variant={onlyNeedsReview ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-[28px] rounded-lg px-2 text-[11px]"
-                onClick={() => setOnlyNeedsReview((v) => !v)}
-                title={t('chunkList.filters.onlyNeedsReviewTitle')}
-              >
-                <Code2 className="h-3.5 w-3.5 mr-1" />
-                {t('chunkList.filters.reviewLabel', { count: needsReviewIndices.size })}
-              </Button>
-              <Button
-                type="button"
-                variant={onlyEdited ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-[28px] rounded-lg px-2 text-[11px]"
-                onClick={() => setOnlyEdited((v) => !v)}
-                title={t('chunkList.filters.onlyEditedTitle')}
-              >
-                <Pencil className="h-3.5 w-3.5 mr-1" />
-                {t('chunkList.filters.editedLabel', { count: editedIndices.size })}
-              </Button>
-              <Button
-                type="button"
-                variant={onlyDisabled ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-[28px] rounded-lg px-2 text-[11px]"
-                onClick={() => setOnlyDisabled((v) => !v)}
-                title={t('chunkList.filters.onlySkippedTitle')}
-              >
-                <EyeOff className="h-3.5 w-3.5 mr-1" />
-                {t('chunkList.filters.skippedLabel', { count: disabledIndices.size })}
-              </Button>
-            </div>
+                <Button
+                  type="button"
+                  variant={onlyShort ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-[28px] rounded-lg px-2 text-[11px]"
+                  onClick={() => setOnlyShort((v) => !v)}
+                  title={t('chunkList.filters.onlyShortTitle')}
+                >
+                  <AlertCircle className="h-3.5 w-3.5 mr-1" />
+                  {t('chunkList.filters.shortLabel', { count: shortIndices.size })}
+                </Button>
+                <Button
+                  type="button"
+                  variant={onlyDuplicate ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-[28px] rounded-lg px-2 text-[11px]"
+                  onClick={() => setOnlyDuplicate((v) => !v)}
+                  title={t('chunkList.filters.onlyDuplicateTitle')}
+                >
+                  <Copy className="h-3.5 w-3.5 mr-1" />
+                  {t('chunkList.filters.duplicateLabel', { count: duplicateIndices.size })}
+                </Button>
+                <Button
+                  type="button"
+                  variant={onlyGap ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-[28px] rounded-lg px-2 text-[11px]"
+                  onClick={() => setOnlyGap((v) => !v)}
+                  title={
+                    coverageSignals.basis === 'child'
+                      ? t('chunkList.filters.onlyGapTitleChildCoverage')
+                      : t('chunkList.filters.onlyGapTitle')
+                  }
+                >
+                  {t('chunkList.filters.gapLabel', { count: coverageSignals.gapIndices.size })}
+                </Button>
+                <Button
+                  type="button"
+                  variant={onlyOverlap ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-[28px] rounded-lg px-2 text-[11px]"
+                  onClick={() => setOnlyOverlap((v) => !v)}
+                  title={
+                    coverageSignals.basis === 'child'
+                      ? t('chunkList.filters.onlyOverlapTitleChildCoverage')
+                      : t('chunkList.filters.onlyOverlapTitle')
+                  }
+                >
+                  {t('chunkList.filters.overlapLabel', { count: coverageSignals.overlapIndices.size })}
+                </Button>
+                <Button
+                  type="button"
+                  variant={onlyNeedsReview ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-[28px] rounded-lg px-2 text-[11px]"
+                  onClick={() => setOnlyNeedsReview((v) => !v)}
+                  title={t('chunkList.filters.onlyNeedsReviewTitle')}
+                >
+                  <Code2 className="h-3.5 w-3.5 mr-1" />
+                  {t('chunkList.filters.reviewLabel', { count: needsReviewIndices.size })}
+                </Button>
+                <Button
+                  type="button"
+                  variant={onlyEdited ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-[28px] rounded-lg px-2 text-[11px]"
+                  onClick={() => setOnlyEdited((v) => !v)}
+                  title={t('chunkList.filters.onlyEditedTitle')}
+                >
+                  <Pencil className="h-3.5 w-3.5 mr-1" />
+                  {t('chunkList.filters.editedLabel', { count: editedIndices.size })}
+                </Button>
+                <Button
+                  type="button"
+                  variant={onlyDisabled ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-[28px] rounded-lg px-2 text-[11px]"
+                  onClick={() => setOnlyDisabled((v) => !v)}
+                  title={t('chunkList.filters.onlySkippedTitle')}
+                >
+                  <EyeOff className="h-3.5 w-3.5 mr-1" />
+                  {t('chunkList.filters.skippedLabel', { count: disabledIndices.size })}
+                </Button>
+              </div>
             </div>
           ) : null}
         </div>
@@ -1391,7 +1419,10 @@ export function ChunkList() {
             </Button>
             {rerankEnabled ? (
               <div className="flex items-center gap-2">
-                <span className="text-[11px] text-muted-foreground font-mono" title={t('chunkList.retrieve.alphaTitle')}>
+                <span
+                  className="text-[11px] text-muted-foreground font-mono"
+                  title={t('chunkList.retrieve.alphaTitle')}
+                >
                   {rerankAlphaPct}%
                 </span>
                 <input
@@ -1460,9 +1491,7 @@ export function ChunkList() {
               )}
             </div>
           ) : (
-            <div className="mt-2 text-[11px] text-muted-foreground">
-              {t('chunkList.retrieve.hint')}
-            </div>
+            <div className="mt-2 text-[11px] text-muted-foreground">{t('chunkList.retrieve.hint')}</div>
           )}
         </div>
       ) : null}
@@ -1487,146 +1516,224 @@ export function ChunkList() {
               position: showVirtualized ? 'relative' : undefined,
             }}
           >
-          {(() => {
-    if (previewData?.chunks) {
-        return (displayRows.length > 0 ? (rowVirtualizer.getVirtualItems().map((virtualRow) => {
-            const item = displayRows[virtualRow.index];
-            if (!item)
-                return null;
-            if (item.kind === 'section') {
-                const groupKey = item.key;
-                const isCollapsed = Boolean(collapsedGroups[groupKey]);
-                return (<div key={virtualRow.key} data-index={virtualRow.index} ref={rowVirtualizer.measureElement} style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: '100%',
-                        transform: `translateY(${virtualRow.start}px)`,
-                    }} className="pb-2">
-                      <div className="flex items-center gap-2 px-2 py-1.5 rounded-xl border border-border/60 bg-muted/40">
-                        <button
-                          type="button"
-                          className="h-6 w-6 inline-flex items-center justify-center rounded-md border border-border/60 bg-card text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-muted transition-colors focus-ring"
-                          onClick={() => setCollapsedGroups((prev) => ({ ...prev, [groupKey]: !prev[groupKey] }))}
-                          aria-label={isCollapsed ? t('chunkList.groupToggle.expandSection') : t('chunkList.groupToggle.collapseSection')}
-                          title={isCollapsed ? t('chunkList.groupToggle.expandSection') : t('chunkList.groupToggle.collapseSection')}
+            {(() => {
+              if (previewData?.chunks) {
+                return displayRows.length > 0 ? (
+                  rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                    const item = displayRows[virtualRow.index]
+                    if (!item) return null
+                    if (item.kind === 'section') {
+                      const groupKey = item.key
+                      const isCollapsed = Boolean(collapsedGroups[groupKey])
+                      return (
+                        <div
+                          key={virtualRow.key}
+                          data-index={virtualRow.index}
+                          ref={rowVirtualizer.measureElement}
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            width: '100%',
+                            transform: `translateY(${virtualRow.start}px)`,
+                          }}
+                          className="pb-2"
                         >
-                          {isCollapsed ? <ChevronRight className="h-4 w-4"/> : <ChevronDown className="h-4 w-4"/>}
-                        </button>
-                        <span className="min-w-0 flex-1 text-[11px] font-semibold truncate" title={item.label}>
-                          {item.label}
-                        </span>
-                        <span className="text-[11px] text-muted-foreground font-mono">{item.count}</span>
-                      </div>
-                    </div>);
-            }
-            const { chunk, index, indent } = item;
-            const isHovered = hoveredChunkIndex === index;
-            const isSelected = selectedChunkIndex === index;
-            const isShort = shortIndices.has(index);
-            const isDuplicate = duplicateIndices.has(index);
-            const isEdited = editedIndices.has(index);
-            const gapBefore = coverageSignals.gapBeforeByIndex.get(index);
-            const overlapPrev = coverageSignals.overlapPrevByIndex.get(index);
-            const isGap = coverageSignals.gapIndices.has(index);
-            const isOverlap = coverageSignals.overlapIndices.has(index);
-            const dimContext = Boolean(item.isContext) && !isHovered && !isSelected;
-            const canCollapse = isHierarchyView &&
-                indent === 0 &&
-                Boolean(item.groupKey) &&
-                (item.childCountTotal || 0) > 0;
-            const groupKey = item.groupKey || '';
-            const isCollapsed = canCollapse ? Boolean(collapsedGroups[groupKey]) : false;
-            return (<div key={virtualRow.key} data-index={virtualRow.index} ref={rowVirtualizer.measureElement} style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    transform: `translateY(${virtualRow.start}px)`,
-                }} className={isHierarchyView ? 'pb-3 flex gap-2 items-start' : 'pb-3'}>
-                    {isHierarchyView ? (<div className="w-6 shrink-0 pt-3 flex justify-center">
-                        {(() => {
-                        if (canCollapse) {
-                            return (<button type="button" className="h-6 w-6 inline-flex items-center justify-center rounded-md border border-border/60 bg-card text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-muted transition-colors focus-ring" onClick={(e) => {
-                                    e.stopPropagation();
-                                    const nextCollapsed = !collapsedGroups[groupKey];
-                                    setCollapsedGroups((prev) => ({ ...prev, [groupKey]: nextCollapsed }));
-                                    // Keep selection visible when collapsing a group.
-                                    if (nextCollapsed && selectedChunkIndex != null) {
-                                        const selMeta = (effectiveChunks[selectedChunkIndex]?.metadata || {});
-                                        const selParentRaw = selMeta.parent_id ?? selMeta.parent_node_id;
-                                        const selParent = typeof selParentRaw === 'string' && selParentRaw.trim() ? selParentRaw.trim() : null;
+                          <div className="flex items-center gap-2 px-2 py-1.5 rounded-xl border border-border/60 bg-muted/40">
+                            <button
+                              type="button"
+                              className="h-6 w-6 inline-flex items-center justify-center rounded-md border border-border/60 bg-card text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-muted transition-colors focus-ring"
+                              onClick={() => setCollapsedGroups((prev) => ({ ...prev, [groupKey]: !prev[groupKey] }))}
+                              aria-label={
+                                isCollapsed
+                                  ? t('chunkList.groupToggle.expandSection')
+                                  : t('chunkList.groupToggle.collapseSection')
+                              }
+                              title={
+                                isCollapsed
+                                  ? t('chunkList.groupToggle.expandSection')
+                                  : t('chunkList.groupToggle.collapseSection')
+                              }
+                            >
+                              {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                            </button>
+                            <span className="min-w-0 flex-1 text-[11px] font-semibold truncate" title={item.label}>
+                              {item.label}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground font-mono">{item.count}</span>
+                          </div>
+                        </div>
+                      )
+                    }
+                    const { chunk, index, indent } = item
+                    const isHovered = hoveredChunkIndex === index
+                    const isSelected = selectedChunkIndex === index
+                    const isShort = shortIndices.has(index)
+                    const isDuplicate = duplicateIndices.has(index)
+                    const isEdited = editedIndices.has(index)
+                    const gapBefore = coverageSignals.gapBeforeByIndex.get(index)
+                    const overlapPrev = coverageSignals.overlapPrevByIndex.get(index)
+                    const isGap = coverageSignals.gapIndices.has(index)
+                    const isOverlap = coverageSignals.overlapIndices.has(index)
+                    const dimContext = Boolean(item.isContext) && !isHovered && !isSelected
+                    const canCollapse =
+                      isHierarchyView && indent === 0 && Boolean(item.groupKey) && (item.childCountTotal || 0) > 0
+                    const groupKey = item.groupKey || ''
+                    const isCollapsed = canCollapse ? Boolean(collapsedGroups[groupKey]) : false
+                    return (
+                      <div
+                        key={virtualRow.key}
+                        data-index={virtualRow.index}
+                        ref={rowVirtualizer.measureElement}
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          transform: `translateY(${virtualRow.start}px)`,
+                        }}
+                        className={isHierarchyView ? 'pb-3 flex gap-2 items-start' : 'pb-3'}
+                      >
+                        {isHierarchyView ? (
+                          <div className="w-6 shrink-0 pt-3 flex justify-center">
+                            {(() => {
+                              if (canCollapse) {
+                                return (
+                                  <button
+                                    type="button"
+                                    className="h-6 w-6 inline-flex items-center justify-center rounded-md border border-border/60 bg-card text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-muted transition-colors focus-ring"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      const nextCollapsed = !collapsedGroups[groupKey]
+                                      setCollapsedGroups((prev) => ({ ...prev, [groupKey]: nextCollapsed }))
+                                      // Keep selection visible when collapsing a group.
+                                      if (nextCollapsed && selectedChunkIndex != null) {
+                                        const selMeta = effectiveChunks[selectedChunkIndex]?.metadata || {}
+                                        const selParentRaw = selMeta.parent_id ?? selMeta.parent_node_id
+                                        const selParent =
+                                          typeof selParentRaw === 'string' && selParentRaw.trim()
+                                            ? selParentRaw.trim()
+                                            : null
                                         if (selParent && selParent === groupKey && selectedChunkIndex !== index) {
-                                            selectChunkIndex(index);
+                                          selectChunkIndex(index)
                                         }
+                                      }
+                                    }}
+                                    aria-label={
+                                      isCollapsed
+                                        ? t('chunkList.groupToggle.expandGroup')
+                                        : t('chunkList.groupToggle.collapseGroup')
                                     }
-                                }} aria-label={isCollapsed ? t('chunkList.groupToggle.expandGroup') : t('chunkList.groupToggle.collapseGroup')} title={isCollapsed
-                                    ? t('chunkList.groupToggle.expandChildren', {
-                                      visible: item.childCountVisible ?? 0,
-                                      total: item.childCountTotal ?? 0,
-                                    })
-                                    : t('chunkList.groupToggle.collapseChildren', {
-                                      visible: item.childCountVisible ?? 0,
-                                      total: item.childCountTotal ?? 0,
-                                    })}>
-                            {isCollapsed ? (<ChevronRight className="h-4 w-4"/>) : (<ChevronDown className="h-4 w-4"/>)}
-                          </button>);
-                        }
-                        else if (indent === 1) {
-                                return (<div className="mt-1 h-2 w-2 rounded-full bg-muted-foreground/40"/>);
-                            }
-                            else {
-                                return null;
-                            }
-                    })()}
-                      </div>) : null}
-                    <div className={[
-                    'min-w-0 flex-1',
-                    (isHierarchyView || isSectionView) && indent === 1 ? 'pl-3 border-l border-border/50' : '',
-                    dimContext ? 'opacity-75' : '',
-                ]
-                    .filter(Boolean)
-                    .join(' ')}>
-                      <ChunkCard chunk={chunk} index={index} unit={unit} sourceFilename={previewData?.filename} isHovered={isHovered} isSelected={isSelected} isShort={isShort} isDuplicate={isDuplicate} isGap={isGap} gapBefore={gapBefore} isOverlap={isOverlap} overlapPrev={overlapPrev} isEdited={isEdited} isDisabled={disabledIndices.has(index)} isReviewed={chunkIsReviewed(chunk)} onToggleDisabled={() => toggleChunkDisabled(index)} onToggleReviewed={() => setChunkReviewed(index, !chunkIsReviewed(chunk))} query={query} onMouseEnter={() => setHoveredChunkIndex(index)} onMouseLeave={() => setHoveredChunkIndex(null)} onEdit={() => {
-                    setInspectorIndex(index);
-                    setInspectorOpen(true);
-                }} onToggleSelect={() => {
-                    selectChunkIndex(selectedChunkIndex === index ? null : index);
-                }}/>
+                                    title={
+                                      isCollapsed
+                                        ? t('chunkList.groupToggle.expandChildren', {
+                                            visible: item.childCountVisible ?? 0,
+                                            total: item.childCountTotal ?? 0,
+                                          })
+                                        : t('chunkList.groupToggle.collapseChildren', {
+                                            visible: item.childCountVisible ?? 0,
+                                            total: item.childCountTotal ?? 0,
+                                          })
+                                    }
+                                  >
+                                    {isCollapsed ? (
+                                      <ChevronRight className="h-4 w-4" />
+                                    ) : (
+                                      <ChevronDown className="h-4 w-4" />
+                                    )}
+                                  </button>
+                                )
+                              } else if (indent === 1) {
+                                return <div className="mt-1 h-2 w-2 rounded-full bg-muted-foreground/40" />
+                              } else {
+                                return null
+                              }
+                            })()}
+                          </div>
+                        ) : null}
+                        <div
+                          className={[
+                            'min-w-0 flex-1',
+                            (isHierarchyView || isSectionView) && indent === 1 ? 'pl-3 border-l border-border/50' : '',
+                            dimContext ? 'opacity-75' : '',
+                          ]
+                            .filter(Boolean)
+                            .join(' ')}
+                        >
+                          <ChunkCard
+                            chunk={chunk}
+                            index={index}
+                            unit={unit}
+                            sourceFilename={previewData?.filename}
+                            isHovered={isHovered}
+                            isSelected={isSelected}
+                            isShort={isShort}
+                            isDuplicate={isDuplicate}
+                            isGap={isGap}
+                            gapBefore={gapBefore}
+                            isOverlap={isOverlap}
+                            overlapPrev={overlapPrev}
+                            isEdited={isEdited}
+                            isDisabled={disabledIndices.has(index)}
+                            isReviewed={chunkIsReviewed(chunk)}
+                            onToggleDisabled={() => toggleChunkDisabled(index)}
+                            onToggleReviewed={() => setChunkReviewed(index, !chunkIsReviewed(chunk))}
+                            query={query}
+                            onMouseEnter={() => setHoveredChunkIndex(index)}
+                            onMouseLeave={() => setHoveredChunkIndex(null)}
+                            onEdit={() => {
+                              setInspectorIndex(index)
+                              setInspectorOpen(true)
+                            }}
+                            onToggleSelect={() => {
+                              selectChunkIndex(selectedChunkIndex === index ? null : index)
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2 py-12">
+                    <Search className="w-10 h-10 opacity-20" />
+                    <p className="text-xs text-muted-foreground">{t('chunkList.states.noMatches')}</p>
+                  </div>
+                )
+              } else if (isLoading) {
+                return (
+                  <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2 py-12">
+                    <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none opacity-20" />
+                    <p className="text-xs">{t('chunkList.states.loading')}</p>
+                  </div>
+                )
+              } else if (error) {
+                return (
+                  <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-3 px-5 py-12">
+                    <div
+                      role="alert"
+                      aria-live="polite"
+                      className="flex w-full max-w-[34rem] flex-col items-center rounded-2xl border border-destructive/20 bg-destructive/8 px-5 py-5 text-center shadow-[inset_0_1px_0_hsl(var(--background)/0.72)]"
+                    >
+                      <span className="grid size-11 place-items-center rounded-2xl bg-destructive/10 text-destructive">
+                        <AlertCircle className="size-5" />
+                      </span>
+                      <p className="mt-3 text-sm font-semibold text-foreground">{t('chunkList.states.error')}</p>
+                      <p className="mt-2 max-w-[30rem] break-words text-xs leading-5 text-muted-foreground">{error}</p>
                     </div>
-                  </div>);
-        })) : (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2 py-12">
-                <Search className="w-10 h-10 opacity-20"/>
-                <p className="text-xs text-muted-foreground">{t('chunkList.states.noMatches')}</p>
-              </div>));
-    }
-    else if (isLoading) {
-            return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2 py-12">
-              <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none opacity-20"/>
-              <p className="text-xs">{t('chunkList.states.loading')}</p>
-            </div>);
-        }
-        else if (error) {
-                return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-3 px-5 py-12">
-              <div role="alert" aria-live="polite" className="flex w-full max-w-[34rem] flex-col items-center rounded-2xl border border-destructive/20 bg-destructive/8 px-5 py-5 text-center shadow-[inset_0_1px_0_hsl(var(--background)/0.72)]">
-                <span className="grid size-11 place-items-center rounded-2xl bg-destructive/10 text-destructive">
-                  <AlertCircle className="size-5"/>
-                </span>
-                <p className="mt-3 text-sm font-semibold text-foreground">{t('chunkList.states.error')}</p>
-                <p className="mt-2 max-w-[30rem] break-words text-xs leading-5 text-muted-foreground">{error}</p>
-              </div>
-              <Button variant="outline" size="sm" className="h-8 px-3 text-[11px]" onClick={() => runPreview()}>
-                {t('chunkList.states.retry')}
-              </Button>
-            </div>);
-            }
-            else {
-                return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2 py-12">
-              <Layers className="w-12 h-12 opacity-10"/>
-              <p className="text-xs">{t('chunkList.states.waiting')}</p>
-            </div>);
-            }
-})()}
+                    <Button variant="outline" size="sm" className="h-8 px-3 text-[11px]" onClick={() => runPreview()}>
+                      {t('chunkList.states.retry')}
+                    </Button>
+                  </div>
+                )
+              } else {
+                return (
+                  <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2 py-12">
+                    <Layers className="w-12 h-12 opacity-10" />
+                    <p className="text-xs">{t('chunkList.states.waiting')}</p>
+                  </div>
+                )
+              }
+            })()}
           </motion.div>
         </AnimatePresence>
       </section>

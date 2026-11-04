@@ -4,14 +4,32 @@ import { startTransition, useCallback, useEffect, useMemo, useRef, useState } fr
 import { useParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { ArrowLeft, BarChart3, Database, Download, FileUp, Layers, Loader2, Save, Settings2, Table2 } from 'lucide-react'
+import {
+  ArrowLeft,
+  BarChart3,
+  Database,
+  Download,
+  FileUp,
+  Layers,
+  Loader2,
+  Save,
+  Settings2,
+  Table2,
+} from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Panel } from '@/components/ui/panel'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 
 import { WorkflowEditor } from '@/components/workflow/workflow-editor'
@@ -56,9 +74,12 @@ function normalizeImportedBundle(raw: unknown): DatasetConfigBundle | null {
   return raw
 }
 
-const workflowHeroCard = 'relative overflow-hidden border-b border-border/60 bg-transparent px-1 py-2 shadow-none dark:border-border/70'
-const workflowActionButtonClass = 'h-9 gap-1.5 rounded-md border border-border/60 bg-card px-3 text-[13px] shadow-none dark:border-border/70 dark:bg-card'
-const workflowPanelClass = 'overflow-hidden border border-border/60 bg-card shadow-none dark:border-border/70 dark:bg-card'
+const workflowHeroCard =
+  'relative overflow-hidden border-b border-border/60 bg-transparent px-1 py-2 shadow-none dark:border-border/70'
+const workflowActionButtonClass =
+  'h-9 gap-1.5 rounded-md border border-border/60 bg-card px-3 text-[13px] shadow-none dark:border-border/70 dark:bg-card'
+const workflowPanelClass =
+  'overflow-hidden border border-border/60 bg-card shadow-none dark:border-border/70 dark:bg-card'
 
 export default function DatasetWorkflowPage() {
   const router = useRouter()
@@ -99,10 +120,7 @@ export default function DatasetWorkflowPage() {
   const exportRes = (configQuery.data ?? null) as DatasetConfigExport | null
   const loading = datasetQuery.isFetching || configQuery.isFetching
   const loadError = datasetQuery.error ?? configQuery.error
-  const loadErrorUpdatedAt = Math.max(
-    datasetQuery.errorUpdatedAt,
-    configQuery.errorUpdatedAt
-  )
+  const loadErrorUpdatedAt = Math.max(datasetQuery.errorUpdatedAt, configQuery.errorUpdatedAt)
   const { refetch: refetchDataset } = datasetQuery
   const { refetch: refetchConfig } = configQuery
   const refreshWorkflow = useCallback(async () => {
@@ -143,10 +161,10 @@ export default function DatasetWorkflowPage() {
       return JSON.stringify(selectedJson, null, 2)
     } catch {
       if (
-        typeof selectedJson === 'string'
-        || typeof selectedJson === 'number'
-        || typeof selectedJson === 'boolean'
-        || typeof selectedJson === 'bigint'
+        typeof selectedJson === 'string' ||
+        typeof selectedJson === 'number' ||
+        typeof selectedJson === 'boolean' ||
+        typeof selectedJson === 'bigint'
       ) {
         return String(selectedJson)
       }
@@ -224,14 +242,17 @@ export default function DatasetWorkflowPage() {
     }
   }, [datasetId, importBundle, refreshWorkflow])
 
-  const onWorkflowLayoutChange = useCallback((workflowLayout: Record<string, unknown>) => {
-    startTransition(() => {
-      setWorkingConfig((prev) => ({
-        ...(prev ?? exportRes?.config),
-        workflow_layout: workflowLayout,
-      }))
-    })
-  }, [exportRes?.config])
+  const onWorkflowLayoutChange = useCallback(
+    (workflowLayout: Record<string, unknown>) => {
+      startTransition(() => {
+        setWorkingConfig((prev) => ({
+          ...(prev ?? exportRes?.config),
+          workflow_layout: workflowLayout,
+        }))
+      })
+    },
+    [exportRes?.config],
+  )
 
   const doSaveLayout = useCallback(async () => {
     if (!datasetId || !workingConfig) return
@@ -279,11 +300,16 @@ export default function DatasetWorkflowPage() {
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="truncate text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground dark:text-foreground">工作流配置</h1>
+                    <h1 className="truncate text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground dark:text-foreground">
+                      工作流配置
+                    </h1>
                     <span className="inline-flex h-5 items-center rounded-full border border-border/60 bg-card/70 px-2 text-[10px] font-medium leading-none text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-border/60 dark:bg-muted/30 dark:text-muted-foreground">
                       DatasetConfigBundle
                     </span>
-                    <Badge variant="soft" className="h-5 border-success/30 bg-success/10 px-2 text-[10px] font-medium leading-none text-success">
+                    <Badge
+                      variant="soft"
+                      className="h-5 border-success/30 bg-success/10 px-2 text-[10px] font-medium leading-none text-success"
+                    >
                       CONFIG GRAPH
                     </Badge>
                   </div>
@@ -317,13 +343,20 @@ export default function DatasetWorkflowPage() {
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2 lg:self-end">
-                <div className={cn(
-                  'inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]',
-                  hasUnsavedLayoutChanges
-                    ? 'border-warning/30 bg-warning/5 text-warning'
-                    : 'border-success/30 bg-success/5 text-success'
-                )}>
-                  <span className={cn('size-2 rounded-full', loading ? 'animate-pulse bg-info' : hasUnsavedLayoutChanges ? 'bg-warning' : 'bg-success')} />
+                <div
+                  className={cn(
+                    'inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]',
+                    hasUnsavedLayoutChanges
+                      ? 'border-warning/30 bg-warning/5 text-warning'
+                      : 'border-success/30 bg-success/5 text-success',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'size-2 rounded-full',
+                      loading ? 'animate-pulse bg-info' : hasUnsavedLayoutChanges ? 'bg-warning' : 'bg-success',
+                    )}
+                  />
                   {layoutStatusLabel}
                 </div>
               </div>
@@ -338,19 +371,31 @@ export default function DatasetWorkflowPage() {
                 返回
               </Button>
               {datasetId ? (
-                <Button variant="outline" onClick={() => router.push(`/datasets/${datasetId}/ingestion`)} className={workflowActionButtonClass}>
+                <Button
+                  variant="outline"
+                  onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}
+                  className={workflowActionButtonClass}
+                >
                   <Settings2 className="size-3.5" />
                   入库策略
                 </Button>
               ) : null}
               {datasetId ? (
-                <Button variant="outline" onClick={() => router.push(`/datasets/${datasetId}/profile`)} className={workflowActionButtonClass}>
+                <Button
+                  variant="outline"
+                  onClick={() => router.push(`/datasets/${datasetId}/profile`)}
+                  className={workflowActionButtonClass}
+                >
                   <BarChart3 className="size-3.5" />
                   数据画像
                 </Button>
               ) : null}
               {datasetId ? (
-                <Button variant="outline" onClick={() => router.push(`/datasets/${datasetId}/tables`)} className={workflowActionButtonClass}>
+                <Button
+                  variant="outline"
+                  onClick={() => router.push(`/datasets/${datasetId}/tables`)}
+                  className={workflowActionButtonClass}
+                >
                   <Table2 className="size-3.5" />
                   表格 / TAG
                 </Button>
@@ -362,15 +407,37 @@ export default function DatasetWorkflowPage() {
                 disabled={saving || !datasetId || !workingConfig || !hasUnsavedLayoutChanges}
                 className="h-10 min-w-[118px] gap-2 rounded-md border border-primary/20 bg-primary text-[13px] text-primary-foreground shadow-none hover:bg-primary/90 dark:border-primary/30"
               >
-                {saving ? <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" /> : <Save className="size-3.5" />}
+                {saving ? (
+                  <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
+                ) : (
+                  <Save className="size-3.5" />
+                )}
                 保存布局
               </Button>
-              <Button variant="outline" onClick={() => detachPromise(doExport())} disabled={exporting} className={workflowActionButtonClass}>
-                {exporting ? <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" /> : <Download className="size-3.5" />}
+              <Button
+                variant="outline"
+                onClick={() => detachPromise(doExport())}
+                disabled={exporting}
+                className={workflowActionButtonClass}
+              >
+                {exporting ? (
+                  <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
+                ) : (
+                  <Download className="size-3.5" />
+                )}
                 导出 JSON
               </Button>
-              <Button variant="outline" onClick={() => importInputRef.current?.click()} disabled={importing} className={workflowActionButtonClass}>
-                {importing ? <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" /> : <FileUp className="size-3.5" />}
+              <Button
+                variant="outline"
+                onClick={() => importInputRef.current?.click()}
+                disabled={importing}
+                className={workflowActionButtonClass}
+              >
+                {importing ? (
+                  <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
+                ) : (
+                  <FileUp className="size-3.5" />
+                )}
                 导入 JSON
               </Button>
               <input
@@ -390,11 +457,17 @@ export default function DatasetWorkflowPage() {
               <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/60 bg-card/65 px-3.5 py-2.5 dark:border-border/60 dark:bg-muted/20">
                 <div className="min-w-0">
                   <div className="text-sm font-semibold text-foreground dark:text-foreground">配置链路图</div>
-                  <div className="mt-0.5 text-[11px] text-muted-foreground">拖动节点只保存布局，不会改变业务配置值。</div>
+                  <div className="mt-0.5 text-[11px] text-muted-foreground">
+                    拖动节点只保存布局，不会改变业务配置值。
+                  </div>
                 </div>
                 <div className="hidden shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground md:flex">
-                  <span className="rounded-full border border-border/60 bg-card/70 px-2 py-1 dark:border-border/60 dark:bg-muted/30">version {configVersionLabel}</span>
-                  <span className="rounded-full border border-border/60 bg-card/70 px-2 py-1 dark:border-border/60 dark:bg-muted/30">{graph.nodes.length} nodes</span>
+                  <span className="rounded-full border border-border/60 bg-card/70 px-2 py-1 dark:border-border/60 dark:bg-muted/30">
+                    version {configVersionLabel}
+                  </span>
+                  <span className="rounded-full border border-border/60 bg-card/70 px-2 py-1 dark:border-border/60 dark:bg-muted/30">
+                    {graph.nodes.length} nodes
+                  </span>
                 </div>
               </div>
               <div className="min-h-0 flex-1">
@@ -416,7 +489,12 @@ export default function DatasetWorkflowPage() {
                   <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{selectedMetaStatusText}</div>
                 </div>
                 {selectedJsonText.trim() ? (
-                  <Button variant="outline" size="sm" onClick={() => detachPromise(copySelectedJson())} className="h-8 shrink-0 rounded-lg px-2.5 text-xs">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => detachPromise(copySelectedJson())}
+                    className="h-8 shrink-0 rounded-lg px-2.5 text-xs"
+                  >
                     复制 JSON
                   </Button>
                 ) : null}
@@ -425,10 +503,16 @@ export default function DatasetWorkflowPage() {
               <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-3 no-scrollbar">
                 {selectedSummary.length > 0 ? (
                   <div className="space-y-2">
-                    <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">摘要</div>
+                    <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
+                      摘要
+                    </div>
                     <div className="flex flex-wrap gap-1.5">
                       {selectedSummary.slice(0, 20).map((s) => (
-                        <Badge key={String(s)} variant="outline" className="rounded-lg border-border/60 bg-card/70 font-mono text-[11px] dark:border-border/60 dark:bg-muted/30">
+                        <Badge
+                          key={String(s)}
+                          variant="outline"
+                          className="rounded-lg border-border/60 bg-card/70 font-mono text-[11px] dark:border-border/60 dark:bg-muted/30"
+                        >
                           {String(s)}
                         </Badge>
                       ))}
@@ -437,7 +521,9 @@ export default function DatasetWorkflowPage() {
                 ) : null}
 
                 <div className="space-y-2">
-                  <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">JSON</div>
+                  <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
+                    JSON
+                  </div>
                   <Textarea
                     value={selectedJsonText || ''}
                     readOnly
@@ -448,7 +534,9 @@ export default function DatasetWorkflowPage() {
               </div>
 
               <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border/60 px-3.5 py-2.5 text-[11px] text-muted-foreground dark:border-border/60">
-                <span>导出版本 <span className="font-mono text-foreground">{configVersionLabel}</span></span>
+                <span>
+                  导出版本 <span className="font-mono text-foreground">{configVersionLabel}</span>
+                </span>
                 <span className="font-medium text-foreground">{layoutStatusLabel}</span>
               </div>
             </Panel>
@@ -499,7 +587,11 @@ export default function DatasetWorkflowPage() {
               >
                 取消
               </Button>
-              <Button onClick={() => detachPromise(doImport())} disabled={importing || !importBundle || !datasetId} className="gap-2">
+              <Button
+                onClick={() => detachPromise(doImport())}
+                disabled={importing || !importBundle || !datasetId}
+                className="gap-2"
+              >
                 {importing ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : null}
                 导入并覆盖
               </Button>

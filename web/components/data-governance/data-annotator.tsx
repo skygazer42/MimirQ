@@ -125,10 +125,15 @@ function getSelectionRoot(): HTMLElement | null {
 }
 
 function normalizeSelectedText(value: string): string {
-  return String(value || '').replace(/\s+/g, ' ').trim()
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
-function findSelectionRange(content: string, selectedText: string): { start: number; end: number; text: string } | null {
+function findSelectionRange(
+  content: string,
+  selectedText: string,
+): { start: number; end: number; text: string } | null {
   const text = String(selectedText || '').trim()
   if (!content || !text) return null
 
@@ -172,7 +177,7 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
         label: t(`types.${id}.label`),
         description: t(`types.${id}.description`),
       })),
-    [t]
+    [t],
   )
   const [selectedType, setSelectedType] = useState<AnnotationTypeId>('keyword')
   const [customLabel, setCustomLabel] = useState('')
@@ -228,7 +233,7 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
         return next
       })
     },
-    [onAnnotate]
+    [onAnnotate],
   )
 
   useEffect(() => {
@@ -322,9 +327,7 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
         onDocumentTags?.(nextSemanticTags.map((tag) => tag.value))
       }
       const candidates: Annotation[] = (response.annotations || []).map((item, index) => ({
-        id:
-          globalThis.crypto?.randomUUID?.() ??
-          `auto-${item.type}-${item.start}-${item.end}-${index}`,
+        id: globalThis.crypto?.randomUUID?.() ?? `auto-${item.type}-${item.start}-${item.end}-${index}`,
         text: item.text,
         type: item.type,
         label: item.label || annotationTypes.find((type) => type.id === item.type)?.label || item.type,
@@ -371,11 +374,13 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
                   'focus-ring rounded-xl border px-3 py-2 text-left transition-colors',
                   selected
                     ? 'border-primary/30 bg-primary/10 text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]'
-                    : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                    : 'border-border bg-card text-muted-foreground hover:bg-muted',
                 )}
               >
                 <div className="text-xs font-medium text-foreground">{t(`auto.providers.${option.id}.label`)}</div>
-                <div className="mt-1 text-[11px] leading-4 text-muted-foreground">{t(`auto.providers.${option.id}.description`)}</div>
+                <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                  {t(`auto.providers.${option.id}.description`)}
+                </div>
               </button>
             )
           })}
@@ -440,13 +445,13 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
                 onClick={() => setSelectedType(type.id)}
                 className={cn(
                   'focus-ring flex items-center gap-2 rounded-lg border p-2.5 text-left transition-colors duration-200 motion-reduce:transition-none',
-                  isSelected ? getToneStyles(type.tone).selected : 'border-border bg-muted hover:bg-muted'
+                  isSelected ? getToneStyles(type.tone).selected : 'border-border bg-muted hover:bg-muted',
                 )}
               >
                 <div
                   className={cn(
                     'flex h-7 w-7 items-center justify-center rounded-lg',
-                    getToneStyles(type.tone).iconWrap
+                    getToneStyles(type.tone).iconWrap,
                   )}
                 >
                   <Icon className={cn('h-3.5 w-3.5', getToneStyles(type.tone).icon)} />
@@ -455,7 +460,7 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
                   <div
                     className={cn(
                       'text-sm font-medium',
-                      isSelected ? getToneStyles(type.tone).text : 'text-foreground/80'
+                      isSelected ? getToneStyles(type.tone).text : 'text-foreground/80',
                     )}
                   >
                     {type.label}
@@ -533,12 +538,7 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
                 <div className="flex items-center gap-2">
                   <Icon className={cn('size-4', getToneStyles(type.tone).icon)} />
                   <span className="text-sm font-medium text-foreground/80">{type.label}</span>
-                  <span
-                    className={cn(
-                      'rounded-full border px-1.5 py-0.5 text-xs',
-                      getToneStyles(type.tone).pill
-                    )}
-                  >
+                  <span className={cn('rounded-full border px-1.5 py-0.5 text-xs', getToneStyles(type.tone).pill)}>
                     {items.length}
                   </span>
                 </div>
@@ -552,10 +552,7 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
               {isExpanded && (
                 <div className="space-y-2 border-t border-border p-3 pt-0">
                   {items.map((anno) => (
-                    <div
-                      key={anno.id}
-                      className="flex items-center justify-between rounded-lg bg-muted p-2"
-                    >
+                    <div key={anno.id} className="flex items-center justify-between rounded-lg bg-muted p-2">
                       <div className="min-w-0 flex-1">
                         <div className="text-xs text-muted-foreground">
                           {t('annotation.position', { start: anno.start, end: anno.end })}

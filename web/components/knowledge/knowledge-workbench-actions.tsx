@@ -13,11 +13,7 @@ import { KnowledgeUrlBatchDialog } from '@/components/knowledge/import/knowledge
 import { KnowledgeUrlImportDialog } from '@/components/knowledge/import/knowledge-url-import-dialog'
 import { KnowledgeWebCrawlDialog } from '@/components/knowledge/import/knowledge-web-crawl-dialog'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { cn } from '@/lib/utils'
 

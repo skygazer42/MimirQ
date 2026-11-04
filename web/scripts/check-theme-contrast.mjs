@@ -96,9 +96,7 @@ async function main() {
 
   for (const surface of surfaceNames) {
     const lightSurfaceBlock =
-      surface === 'ocean'
-        ? ''
-        : extractBlock(source, `html:not(.dark)[data-surface-theme="${surface}"]`)
+      surface === 'ocean' ? '' : extractBlock(source, `html:not(.dark)[data-surface-theme="${surface}"]`)
     const darkSurfaceBlock = extractBlock(source, `html.dark[data-surface-theme="${surface}"]`)
 
     if (lightSurfaceBlock === null || darkSurfaceBlock === null) {

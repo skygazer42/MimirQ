@@ -82,9 +82,7 @@ function isAuthSyncMessage(value: unknown): value is AuthSyncMessage {
   if (!value || typeof value !== 'object') return false
   const candidate = value as Partial<AuthSyncMessage>
   return (
-    typeof candidate.id === 'string' &&
-    typeof candidate.source === 'string' &&
-    candidate.type === AUTH_SYNC_CLEAR_TYPE
+    typeof candidate.id === 'string' && typeof candidate.source === 'string' && candidate.type === AUTH_SYNC_CLEAR_TYPE
   )
 }
 
@@ -166,7 +164,7 @@ globalThis.window?.addEventListener('storage', (event) => {
   }
   if (event.key === TENANT_ID_KEY) {
     notifyAuthScopeChanged(
-      buildAuthCacheScope(event.oldValue || process.env.NEXT_PUBLIC_TENANT_ID || null, getStoredUserId())
+      buildAuthCacheScope(event.oldValue || process.env.NEXT_PUBLIC_TENANT_ID || null, getStoredUserId()),
     )
     return
   }

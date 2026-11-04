@@ -1,15 +1,9 @@
 export type SimilarityTopKAxis = 'x' | 'y' | 'none'
 
-export function computeThresholdMask(
-  matrix: number[][],
-  minSim: number,
-  maxSim: number
-) {
+export function computeThresholdMask(matrix: number[][], minSim: number, maxSim: number) {
   const min = Math.min(minSim, maxSim)
   const max = Math.max(minSim, maxSim)
-  return matrix.map((row) =>
-    row.map((val) => Number.isFinite(val) && val >= min && val <= max)
-  )
+  return matrix.map((row) => row.map((val) => Number.isFinite(val) && val >= min && val <= max))
 }
 
 function matrixDimensions(matrix: readonly { length: number }[]) {
@@ -19,9 +13,7 @@ function matrixDimensions(matrix: readonly { length: number }[]) {
 }
 
 function createBooleanMatrix(rows: number, cols: number, value: boolean) {
-  return Array.from({ length: rows }, () =>
-    Array.from({ length: cols }, () => value)
-  )
+  return Array.from({ length: rows }, () => Array.from({ length: cols }, () => value))
 }
 
 function finiteRowScores(row: number[]) {
@@ -31,11 +23,7 @@ function finiteRowScores(row: number[]) {
     .sort((a, b) => b.v - a.v)
 }
 
-export function applyTopKByRow(
-  matrix: number[][],
-  mask: boolean[][],
-  k: number
-) {
+export function applyTopKByRow(matrix: number[][], mask: boolean[][], k: number) {
   for (let i = 0; i < matrix.length; i++) {
     for (const { j } of finiteRowScores(matrix[i]).slice(0, k)) {
       mask[i][j] = true
@@ -52,12 +40,7 @@ function finiteColumnScores(matrix: number[][], columnIndex: number) {
   return scored.sort((a, b) => b.v - a.v)
 }
 
-export function applyTopKByColumn(
-  matrix: number[][],
-  mask: boolean[][],
-  cols: number,
-  k: number
-) {
+export function applyTopKByColumn(matrix: number[][], mask: boolean[][], cols: number, k: number) {
   for (let j = 0; j < cols; j++) {
     for (const { i } of finiteColumnScores(matrix, j).slice(0, k)) {
       mask[i][j] = true
@@ -65,11 +48,7 @@ export function applyTopKByColumn(
   }
 }
 
-export function computeTopKMask(
-  matrix: number[][],
-  topK: number,
-  axis: 'x' | 'y'
-) {
+export function computeTopKMask(matrix: number[][], topK: number, axis: 'x' | 'y') {
   const { rows, cols } = matrixDimensions(matrix)
   if (rows === 0 || cols === 0) return []
   if (!topK || topK <= 0) return createBooleanMatrix(rows, cols, true)
@@ -84,9 +63,7 @@ export function computeTopKMask(
 export function combineWithAND(a: boolean[][], b: boolean[][]) {
   const rows = Math.min(a.length, b.length)
   const cols = rows > 0 ? Math.min(a[0]?.length || 0, b[0]?.length || 0) : 0
-  const out: boolean[][] = Array.from({ length: rows }, () =>
-    Array.from({ length: cols }, () => false)
-  )
+  const out: boolean[][] = Array.from({ length: rows }, () => Array.from({ length: cols }, () => false))
   for (let i = 0; i < rows; i++) {
     for (let j = 0; j < cols; j++) out[i][j] = Boolean(a[i][j] && b[i][j])
   }
@@ -97,13 +74,10 @@ export function combineWithOR(masks: boolean[][][]) {
   if (masks.length === 0) return []
   const rows = masks[0].length
   const cols = rows > 0 ? masks[0][0].length : 0
-  const out: boolean[][] = Array.from({ length: rows }, () =>
-    Array.from({ length: cols }, () => false)
-  )
+  const out: boolean[][] = Array.from({ length: rows }, () => Array.from({ length: cols }, () => false))
   for (const mask of masks) {
     for (let i = 0; i < rows; i++) {
-      for (let j = 0; j < cols; j++)
-        out[i][j] = out[i][j] || Boolean(mask[i][j])
+      for (let j = 0; j < cols; j++) out[i][j] = out[i][j] || Boolean(mask[i][j])
     }
   }
   return out
@@ -112,23 +86,17 @@ export function combineWithOR(masks: boolean[][][]) {
 export function computeFinalMask(
   matrix: number[][],
   range: { min: number; max: number },
-  topK: { value: number; axis: 'x' | 'y' }
+  topK: { value: number; axis: 'x' | 'y' },
 ) {
   const thresholdMask = computeThresholdMask(matrix, range.min, range.max)
   const topKMask = computeTopKMask(matrix, topK.value, topK.axis)
   return combineWithAND(thresholdMask, topKMask)
 }
 
-export function applyMask(
-  matrix: number[][],
-  mask: boolean[][]
-): Array<Array<number | null>> {
+export function applyMask(matrix: number[][], mask: boolean[][]): Array<Array<number | null>> {
   const rows = Math.min(matrix.length, mask.length)
-  const cols =
-    rows > 0 ? Math.min(matrix[0]?.length || 0, mask[0]?.length || 0) : 0
-  const out: Array<Array<number | null>> = Array.from({ length: rows }, () =>
-    Array.from({ length: cols }, () => null)
-  )
+  const cols = rows > 0 ? Math.min(matrix[0]?.length || 0, mask[0]?.length || 0) : 0
+  const out: Array<Array<number | null>> = Array.from({ length: rows }, () => Array.from({ length: cols }, () => null))
   for (let i = 0; i < rows; i++) {
     for (let j = 0; j < cols; j++) {
       out[i][j] = mask[i][j] ? matrix[i][j] : null
@@ -186,11 +154,7 @@ function countRowsWithoutMatch(mask: boolean[][], rows: number, cols: number) {
   return count
 }
 
-function countColumnsWithoutMatch(
-  mask: boolean[][],
-  rows: number,
-  cols: number
-) {
+function countColumnsWithoutMatch(mask: boolean[][], rows: number, cols: number) {
   let count = 0
   for (let j = 0; j < cols; j++) {
     if (!columnHasTrue(mask, j, rows)) count++
@@ -198,21 +162,13 @@ function countColumnsWithoutMatch(
   return count
 }
 
-function missingMatchCountByAxis(
-  mask: boolean[][],
-  rows: number,
-  cols: number,
-  topKAxis: SimilarityTopKAxis
-) {
+function missingMatchCountByAxis(mask: boolean[][], rows: number, cols: number, topKAxis: SimilarityTopKAxis) {
   if (topKAxis === 'x') return countRowsWithoutMatch(mask, rows, cols)
   if (topKAxis === 'y') return countColumnsWithoutMatch(mask, rows, cols)
   return 0
 }
 
-export function calculateNormalModeStatistics(
-  finalMask: boolean[][],
-  topKAxis: SimilarityTopKAxis
-): NormalModeStats {
+export function calculateNormalModeStatistics(finalMask: boolean[][], topKAxis: SimilarityTopKAxis): NormalModeStats {
   const { rows, cols } = matrixDimensions(finalMask)
   const totalCount = rows * cols
 
@@ -239,13 +195,10 @@ export type DifferenceModeStats = {
 
 export function calculateDifferenceModeStatistics(
   groundTruthMask: boolean[][],
-  currentMask: boolean[][]
+  currentMask: boolean[][],
 ): DifferenceModeStats {
   const rows = Math.min(groundTruthMask.length, currentMask.length)
-  const cols =
-    rows > 0
-      ? Math.min(groundTruthMask[0]?.length || 0, currentMask[0]?.length || 0)
-      : 0
+  const cols = rows > 0 ? Math.min(groundTruthMask[0]?.length || 0, currentMask[0]?.length || 0) : 0
 
   let truePositive = 0
   let trueNegative = 0
@@ -263,14 +216,8 @@ export function calculateDifferenceModeStatistics(
     }
   }
 
-  const contextRecall =
-    truePositive + falseNegative > 0
-      ? truePositive / (truePositive + falseNegative)
-      : 0
-  const contextPrecision =
-    truePositive + falsePositive > 0
-      ? truePositive / (truePositive + falsePositive)
-      : 0
+  const contextRecall = truePositive + falseNegative > 0 ? truePositive / (truePositive + falseNegative) : 0
+  const contextPrecision = truePositive + falsePositive > 0 ? truePositive / (truePositive + falsePositive) : 0
 
   return {
     truePositive,

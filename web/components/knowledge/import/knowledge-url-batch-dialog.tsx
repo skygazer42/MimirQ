@@ -21,7 +21,6 @@ import { formatApiError } from '@/lib/api-errors'
 import { connectorApi } from '@/lib/api'
 import { detachPromise } from '@/lib/utils'
 
-
 function parseUrlBatchUrls(raw: string): string[] {
   const parts = (raw || '')
     .split(/[\n,;]+/g)
@@ -178,7 +177,9 @@ export function KnowledgeUrlBatchDialog({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>URL 批量导入（Connector）</DialogTitle>
-          <DialogDescription>一次导入多个 URL，并生成导入运行记录（需要后端开启 URL_INGEST_ENABLED）。</DialogDescription>
+          <DialogDescription>
+            一次导入多个 URL，并生成导入运行记录（需要后端开启 URL_INGEST_ENABLED）。
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -190,7 +191,9 @@ export function KnowledgeUrlBatchDialog({
               placeholder={'https://example.com/doc1.pdf\nhttps://example.com/doc2.html'}
               className="font-mono min-h-[140px]"
             />
-            <div className="text-xs text-muted-foreground">已识别 {parsedUrls.length} 个 URL（仅统计 http/https）。</div>
+            <div className="text-xs text-muted-foreground">
+              已识别 {parsedUrls.length} 个 URL（仅统计 http/https）。
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

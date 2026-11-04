@@ -4,13 +4,7 @@ import type { LucideIcon } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import { IconButton } from '@/components/ui/icon-button'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 
 type WorkbenchPanelDialogProps = {
   open: boolean
@@ -41,25 +35,25 @@ export function WorkbenchPanelDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {(() => {
-    if (trigger) {
-        return (<DialogTrigger asChild>{trigger}</DialogTrigger>);
-    }
-    else if (TriggerIcon && triggerLabel) {
-            return (<DialogTrigger asChild>
-          <IconButton label={triggerLabel} variant="ghost">
-            <TriggerIcon className="size-4"/>
-          </IconButton>
-        </DialogTrigger>);
+        if (trigger) {
+          return <DialogTrigger asChild>{trigger}</DialogTrigger>
+        } else if (TriggerIcon && triggerLabel) {
+          return (
+            <DialogTrigger asChild>
+              <IconButton label={triggerLabel} variant="ghost">
+                <TriggerIcon className="size-4" />
+              </IconButton>
+            </DialogTrigger>
+          )
+        } else {
+          return null
         }
-        else {
-            return null;
-        }
-})()}
+      })()}
 
       <DialogContent
         className={cn(
           'w-[92vw] max-w-[92vw] h-[85vh] max-h-[85vh] p-0 overflow-hidden grid grid-rows-[auto_1fr]',
-          className
+          className,
         )}
       >
         <DialogHeader className="px-4 pt-4 pb-2">

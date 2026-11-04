@@ -24,7 +24,6 @@ import { coerceOneOf } from '@/lib/one-of'
 import { buildJiraProjectRunPayload } from './knowledge-jira-project-dialog.payload'
 import { detachPromise, trimTrailingSlashes } from '@/lib/utils'
 
-
 type KnowledgeJiraProjectDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -151,7 +150,7 @@ export function KnowledgeJiraProjectDialog({
           accessGroupIds,
           sourceAclEnabled,
           sourceAclFallbackMode,
-        })
+        }),
       )
 
       toast.success(`已创建 Jira 导入任务：${run.id.slice(0, 8)}`, {
@@ -235,11 +234,19 @@ export function KnowledgeJiraProjectDialog({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <div className="text-sm font-medium text-foreground/80">Jira Base URL</div>
-              <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://example.atlassian.net" />
+              <Input
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                placeholder="https://example.atlassian.net"
+              />
             </div>
             <div className="space-y-2">
               <div className="text-sm font-medium text-foreground/80">Project Key</div>
-              <Input value={projectKey} onChange={(e) => setProjectKey(e.target.value.toUpperCase())} placeholder="PLAT" />
+              <Input
+                value={projectKey}
+                onChange={(e) => setProjectKey(e.target.value.toUpperCase())}
+                placeholder="PLAT"
+              />
             </div>
           </div>
 
@@ -251,7 +258,9 @@ export function KnowledgeJiraProjectDialog({
               placeholder={'statusCategory != Done\nassignee = currentUser()'}
               className="font-mono min-h-[90px]"
             />
-            <div className="text-xs text-muted-foreground">会自动附加到 `project = &lt;KEY&gt;` 后面，用于进一步收窄同步范围。</div>
+            <div className="text-xs text-muted-foreground">
+              会自动附加到 `project = &lt;KEY&gt;` 后面，用于进一步收窄同步范围。
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -273,11 +282,23 @@ export function KnowledgeJiraProjectDialog({
             </div>
             <div className="space-y-2">
               <div className="text-sm font-medium text-foreground/80">Max issues</div>
-              <Input type="number" value={maxIssues} onChange={(e) => setMaxIssues(Number(e.target.value))} min={1} max={500} />
+              <Input
+                type="number"
+                value={maxIssues}
+                onChange={(e) => setMaxIssues(Number(e.target.value))}
+                min={1}
+                max={500}
+              />
             </div>
             <div className="space-y-2">
               <div className="text-sm font-medium text-foreground/80">Page size</div>
-              <Input type="number" value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} min={1} max={100} />
+              <Input
+                type="number"
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                min={1}
+                max={100}
+              />
             </div>
             <div className="space-y-2">
               <div className="text-sm font-medium text-foreground/80">Comments per issue</div>
@@ -304,7 +325,9 @@ export function KnowledgeJiraProjectDialog({
               <Checkbox checked={includeComments} onCheckedChange={(v) => setIncludeComments(v === true)} />
               <div>
                 <div className="text-sm font-medium text-foreground/90">Include comments</div>
-                <div className="text-xs text-muted-foreground">将 issue comment 一并渲染进 Jira ticket 文档，便于问答和审计追踪。</div>
+                <div className="text-xs text-muted-foreground">
+                  将 issue comment 一并渲染进 Jira ticket 文档，便于问答和审计追踪。
+                </div>
               </div>
             </div>
           </div>
@@ -312,7 +335,11 @@ export function KnowledgeJiraProjectDialog({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <div className="text-sm font-medium text-foreground/80">User-Agent（可选）</div>
-              <Input value={userAgent} onChange={(e) => setUserAgent(e.target.value)} placeholder="MimirQ/1.0 (+jira_project)" />
+              <Input
+                value={userAgent}
+                onChange={(e) => setUserAgent(e.target.value)}
+                placeholder="MimirQ/1.0 (+jira_project)"
+              />
             </div>
             <div className="space-y-2">
               <div className="text-sm font-medium text-foreground/80">Auth</div>
@@ -336,12 +363,11 @@ export function KnowledgeJiraProjectDialog({
           <div className="rounded-xl border border-border/60 bg-muted/20 px-4 py-4 space-y-4">
             <div className="space-y-2">
               <div className="text-sm font-medium text-foreground/90">Source ACL（高级）</div>
-	              <div className="text-xs text-muted-foreground">
-	                启用后，Jira connector 会尝试继承 issue 的安全级别、角色和 comment 可见性，并按{' '}
-	                <code>tenant_groups.external_id</code> 进行组匹配，例如{' '}
-	                <code>jira:policy:security-level/10001</code>、<code>jira:role:developers</code> 或{' '}
-	                <code>jira:group:jira-software-users</code>。
-	              </div>
+              <div className="text-xs text-muted-foreground">
+                启用后，Jira connector 会尝试继承 issue 的安全级别、角色和 comment 可见性，并按{' '}
+                <code>tenant_groups.external_id</code> 进行组匹配，例如 <code>jira:policy:security-level/10001</code>、
+                <code>jira:role:developers</code> 或 <code>jira:group:jira-software-users</code>。
+              </div>
               <div className="text-xs text-muted-foreground">
                 为避免误开放访问，当前 UI 只暴露可解释的继承模式和回退策略；更危险的手工映射规则仍保持隐藏。
               </div>
@@ -360,9 +386,7 @@ export function KnowledgeJiraProjectDialog({
                     仅在“文档访问控制”保持“继承数据集”时生效；这样不会和手工访问控制发生冲突。
                   </div>
                   {hasManualAccessOverride ? (
-                    <div className="text-xs text-warning">
-                      当前选择了手工文档访问控制，运行时会忽略 Source ACL。
-                    </div>
+                    <div className="text-xs text-warning">当前选择了手工文档访问控制，运行时会忽略 Source ACL。</div>
                   ) : null}
                 </div>
               </div>
@@ -373,7 +397,9 @@ export function KnowledgeJiraProjectDialog({
                 <div className="text-sm font-medium text-foreground/80">未映射 Jira ACL 时</div>
                 <Select
                   value={sourceAclFallbackMode}
-                  onValueChange={(value) => setSourceAclFallbackMode(coerceOneOf(SOURCE_ACL_FALLBACK_MODE_VALUES, value, 'partial_members'))}
+                  onValueChange={(value) =>
+                    setSourceAclFallbackMode(coerceOneOf(SOURCE_ACL_FALLBACK_MODE_VALUES, value, 'partial_members'))
+                  }
                   disabled={!sourceAclEnabled || hasManualAccessOverride}
                 >
                   <SelectTrigger className="h-10 bg-background">
@@ -417,7 +443,11 @@ export function KnowledgeJiraProjectDialog({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <div className="text-sm font-medium text-foreground/80">Username / Email</div>
-                <Input value={authUsername} onChange={(e) => setAuthUsername(e.target.value)} placeholder="bot@example.com" />
+                <Input
+                  value={authUsername}
+                  onChange={(e) => setAuthUsername(e.target.value)}
+                  placeholder="bot@example.com"
+                />
               </div>
               <div className="space-y-2">
                 <div className="text-sm font-medium text-foreground/80">Password / API Token</div>

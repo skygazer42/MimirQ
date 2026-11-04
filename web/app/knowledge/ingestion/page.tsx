@@ -34,11 +34,7 @@ function KnowledgeIngestionLoading() {
   const t = useTranslations('KnowledgeIngestionPage')
 
   return (
-    <PageLoading
-      className="min-h-dvh bg-background"
-      message={t('loadingMessage')}
-      srMessage={t('loadingSrMessage')}
-    />
+    <PageLoading className="min-h-dvh bg-background" message={t('loadingMessage')} srMessage={t('loadingSrMessage')} />
   )
 }
 

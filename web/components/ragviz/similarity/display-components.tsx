@@ -4,10 +4,7 @@ import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { SimilarityDiagnosticsGraph } from '@/components/ragviz/similarity-diagnostics-graph'
-import type {
-  DiagnosticDecision,
-  SimilarityDiagnosticsResult,
-} from '@/components/ragviz/similarity-diagnostics'
+import type { DiagnosticDecision, SimilarityDiagnosticsResult } from '@/components/ragviz/similarity-diagnostics'
 import { BarChart3, Filter, Grid3X3, Target } from 'lucide-react'
 import { heatmapLegendBackground, type ColorSchemeKey } from './color-schemes'
 import { formatHeatmapValue } from './similarity-matrix-math'
@@ -40,7 +37,7 @@ export function IconBtn({
         'flex h-9 w-9 items-center justify-center rounded-[0.95rem] border shadow-[inset_0_1px_0_hsl(var(--card)/0.52)] transition-colors',
         active
           ? 'border-info bg-info text-primary-foreground'
-          : 'border-border/36 bg-background/50 text-muted-foreground hover:border-primary/26 hover:bg-background/70 hover:text-primary'
+          : 'border-border/36 bg-background/50 text-muted-foreground hover:border-primary/26 hover:bg-background/70 hover:text-primary',
       )}
     >
       {icon}
@@ -48,16 +45,11 @@ export function IconBtn({
   )
 }
 
-export function EmptyControlTile({
-  icon,
-  label,
-}: Readonly<{ icon: ReactNode; label: string }>) {
+export function EmptyControlTile({ icon, label }: Readonly<{ icon: ReactNode; label: string }>) {
   return (
     <div className="flex min-h-[74px] flex-col items-center justify-center rounded-[1rem] border border-border/32 bg-background/42 text-muted-foreground">
       <div className="text-primary/58">{icon}</div>
-      <div className="mt-2 text-[11px] font-medium text-foreground/76">
-        {label}
-      </div>
+      <div className="mt-2 text-[11px] font-medium text-foreground/76">{label}</div>
     </div>
   )
 }
@@ -73,23 +65,17 @@ export function RightEmptyInfoCard({
 }>) {
   return (
     <section className="rounded-[1.25rem] border border-border/34 bg-card/58 p-3.5 shadow-[inset_0_1px_0_hsl(var(--card)/0.55)]">
-      {title ? (
-        <div className="mb-3 text-[14px] font-semibold text-foreground/86">
-          {title}
-        </div>
-      ) : null}
+      {title ? <div className="mb-3 text-[14px] font-semibold text-foreground/86">{title}</div> : null}
       <div
         className={cn(
           'flex flex-col items-center justify-center rounded-[1.15rem] border border-dashed border-border/34 bg-background/42 px-5 text-center',
-          title ? 'min-h-[188px]' : 'min-h-[160px]'
+          title ? 'min-h-[188px]' : 'min-h-[160px]',
         )}
       >
         <div className="flex size-11 items-center justify-center rounded-full border border-primary/14 bg-primary/[0.055] text-primary/58">
           {icon}
         </div>
-        <p className="mt-4 text-[12px] leading-5 text-muted-foreground/68">
-          {description}
-        </p>
+        <p className="mt-4 text-[12px] leading-5 text-muted-foreground/68">{description}</p>
       </div>
     </section>
   )
@@ -109,10 +95,7 @@ export function SimilarityEmptyState() {
             {Array.from({ length: 20 }, (_, barIndex) => barIndex).map((barIndex) => (
               <span
                 key={`empty-matrix-swatch-${barIndex}`}
-                className={cn(
-                  'h-4 rounded-[4px]',
-                  emptyMatrixSwatchClass(barIndex)
-                )}
+                className={cn('h-4 rounded-[4px]', emptyMatrixSwatchClass(barIndex))}
               />
             ))}
           </div>
@@ -126,23 +109,11 @@ export function SimilarityEmptyState() {
       </div>
 
       <div className="mt-5 flex w-full max-w-[560px] items-start justify-between rounded-full border border-border/32 bg-background/42 px-3 py-2">
-        <EmptyStep
-          index={1}
-          title="选择 X Collection"
-          description="从下拉框选择横坐标 Collection"
-        />
+        <EmptyStep index={1} title="选择 X Collection" description="从下拉框选择横坐标 Collection" />
         <EmptyStepConnector />
-        <EmptyStep
-          index={2}
-          title="选择 Y Collection"
-          description="从下拉框选择纵坐标 Collection"
-        />
+        <EmptyStep index={2} title="选择 Y Collection" description="从下拉框选择纵坐标 Collection" />
         <EmptyStepConnector />
-        <EmptyStep
-          index={3}
-          title="计算相似度"
-          description="点击“计算相似度”生成矩阵"
-        />
+        <EmptyStep index={3} title="计算相似度" description="点击“计算相似度”生成矩阵" />
       </div>
 
       <div className="mt-6 w-full max-w-[520px] rounded-[1.35rem] border border-border/34 bg-background/54 px-8 py-5 shadow-[inset_0_1px_0_hsl(var(--card)/0.62)]">
@@ -162,10 +133,7 @@ export function SimilarityEmptyState() {
               {Array.from({ length: 56 }, (_, cellIndex) => cellIndex).map((cellIndex) => (
                 <span
                   key={`empty-matrix-cell-${cellIndex}`}
-                  className={cn(
-                    'h-4 rounded-[3px]',
-                    emptyMatrixCellClass(cellIndex)
-                  )}
+                  className={cn('h-4 rounded-[3px]', emptyMatrixCellClass(cellIndex))}
                 />
               ))}
             </div>
@@ -204,20 +172,14 @@ function EmptyStep({
       <div className="flex size-7 items-center justify-center rounded-full bg-primary/[0.11] text-[12px] font-semibold text-primary ring-1 ring-primary/14">
         {index}
       </div>
-      <div className="mt-2 text-[12px] font-semibold text-foreground/84">
-        {title}
-      </div>
-      <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground/64">
-        {description}
-      </div>
+      <div className="mt-2 text-[12px] font-semibold text-foreground/84">{title}</div>
+      <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground/64">{description}</div>
     </div>
   )
 }
 
 function EmptyStepConnector() {
-  return (
-    <div className="mt-3.5 h-px flex-1 border-t border-dashed border-primary/18" />
-  )
+  return <div className="mt-3.5 h-px flex-1 border-t border-dashed border-primary/18" />
 }
 
 export function Panel({
@@ -235,18 +197,10 @@ export function Panel({
     <div className="h-full flex flex-col">
       <div className="relative mb-2.5 min-h-8 pr-9">
         <div>
-          <div className="text-[14px] font-semibold leading-5 tracking-[-0.012em] text-foreground/88">
-            {title}
-          </div>
-          {subtitle ? (
-            <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground/64">
-              {subtitle}
-            </div>
-          ) : null}
+          <div className="text-[14px] font-semibold leading-5 tracking-[-0.012em] text-foreground/88">{title}</div>
+          {subtitle ? <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground/64">{subtitle}</div> : null}
         </div>
-        {rightSlot ? (
-          <div className="absolute right-0 top-0">{rightSlot}</div>
-        ) : null}
+        {rightSlot ? <div className="absolute right-0 top-0">{rightSlot}</div> : null}
       </div>
       <div className="flex-1">{children}</div>
     </div>
@@ -258,10 +212,7 @@ export function SimilarityDiagnosticsView({
   onDecisionChange,
 }: Readonly<{
   diagnostics: SimilarityDiagnosticsResult
-  onDecisionChange: (
-    candidateId: string,
-    decision: DiagnosticDecision | null
-  ) => void
+  onDecisionChange: (candidateId: string, decision: DiagnosticDecision | null) => void
 }>) {
   return (
     <div className="h-full overflow-auto p-4">
@@ -294,26 +245,15 @@ export function SimilarityDiagnosticsView({
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                <LegendPill className="border-info/30 bg-info/10 text-info dark:bg-info/10">
-                  X 侧项目
-                </LegendPill>
-                <LegendPill className="border-success/20 bg-success/10 text-success">
-                  Y 侧项目
-                </LegendPill>
-                <LegendPill className="border-warning/30 bg-warning/10 text-warning">
-                  异常点候选
-                </LegendPill>
-                <LegendPill className="border-warning/30 bg-warning/10 text-warning">
-                  标记待审
-                </LegendPill>
+                <LegendPill className="border-info/30 bg-info/10 text-info dark:bg-info/10">X 侧项目</LegendPill>
+                <LegendPill className="border-success/20 bg-success/10 text-success">Y 侧项目</LegendPill>
+                <LegendPill className="border-warning/30 bg-warning/10 text-warning">异常点候选</LegendPill>
+                <LegendPill className="border-warning/30 bg-warning/10 text-warning">标记待审</LegendPill>
               </div>
             </div>
 
             <div className="mt-3">
-              <SimilarityDiagnosticsGraph
-                nodes={diagnostics.nodes}
-                links={diagnostics.links}
-              />
+              <SimilarityDiagnosticsGraph nodes={diagnostics.nodes} links={diagnostics.links} />
             </div>
           </section>
         </div>
@@ -344,18 +284,14 @@ export function SimilarityDiagnosticsView({
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="text-sm font-medium text-foreground">
-                          {candidate.xLabel}{' '}
-                          <span className="text-muted-foreground">→</span>{' '}
-                          {candidate.yLabel}
+                          {candidate.xLabel} <span className="text-muted-foreground">→</span> {candidate.yLabel}
                         </div>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {candidate.reason}
-                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">{candidate.reason}</p>
                       </div>
                       <span
                         className={cn(
                           'rounded-full border px-2 py-0.5 text-[11px]',
-                          diagnosticCandidateStatusClass(isDisabled, isMarked)
+                          diagnosticCandidateStatusClass(isDisabled, isMarked),
                         )}
                       >
                         {diagnosticCandidateStatusLabel(isDisabled, isMarked)}
@@ -363,16 +299,8 @@ export function SimilarityDiagnosticsView({
                     </div>
 
                     <div className="mt-3 grid grid-cols-2 gap-2">
-                      <DiagnosticMetricCard
-                        label="相似度"
-                        value={formatPercent(candidate.similarity)}
-                        compact
-                      />
-                      <DiagnosticMetricCard
-                        label="词面重叠"
-                        value={formatPercent(candidate.lexicalOverlap)}
-                        compact
-                      />
+                      <DiagnosticMetricCard label="相似度" value={formatPercent(candidate.similarity)} compact />
+                      <DiagnosticMetricCard label="词面重叠" value={formatPercent(candidate.lexicalOverlap)} compact />
                     </div>
 
                     <div className="mt-3 flex gap-2">
@@ -380,12 +308,7 @@ export function SimilarityDiagnosticsView({
                         variant={isDisabled ? 'default' : 'outline'}
                         size="sm"
                         className="flex-1"
-                        onClick={() =>
-                          onDecisionChange(
-                            candidate.id,
-                            isDisabled ? null : 'disabled'
-                          )
-                        }
+                        onClick={() => onDecisionChange(candidate.id, isDisabled ? null : 'disabled')}
                       >
                         {isDisabled ? '恢复候选' : '禁用候选'}
                       </Button>
@@ -393,12 +316,7 @@ export function SimilarityDiagnosticsView({
                         variant={isMarked ? 'default' : 'outline'}
                         size="sm"
                         className="flex-1"
-                        onClick={() =>
-                          onDecisionChange(
-                            candidate.id,
-                            isMarked ? null : 'marked'
-                          )
-                        }
+                        onClick={() => onDecisionChange(candidate.id, isMarked ? null : 'marked')}
                       >
                         {isMarked ? '取消标记' : '标记待审'}
                       </Button>
@@ -414,15 +332,8 @@ export function SimilarityDiagnosticsView({
   )
 }
 
-function LegendPill({
-  className,
-  children,
-}: Readonly<{ className?: string; children: ReactNode }>) {
-  return (
-    <span className={cn('rounded-full border px-2 py-0.5', className)}>
-      {children}
-    </span>
-  )
+function LegendPill({ className, children }: Readonly<{ className?: string; children: ReactNode }>) {
+  return <span className={cn('rounded-full border px-2 py-0.5', className)}>{children}</span>
 }
 
 export function HeatmapScaleLegend({
@@ -433,16 +344,12 @@ export function HeatmapScaleLegend({
     <div className="border-t border-sidebar-border/70 px-4 py-3">
       <div className="flex max-w-md items-center gap-3 text-xs font-medium text-foreground">
         <span>{isDifference ? '差值' : '相似度'}</span>
-        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
-          {isDifference ? '-1' : '0'}
-        </span>
+        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">{isDifference ? '-1' : '0'}</span>
         <div
           className="h-3 flex-1 rounded-full border border-border/50"
           style={{ backgroundImage: heatmapLegendBackground(colorScheme, isDifference) }}
         />
-        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
-          1
-        </span>
+        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">1</span>
       </div>
     </div>
   )
@@ -457,9 +364,7 @@ export function RelatedListCard({
 }>) {
   return (
     <section className="rounded-[1.1rem] border border-border/34 bg-card/58 p-3 shadow-[inset_0_1px_0_hsl(var(--card)/0.55)]">
-      <div className="mb-2 text-[12px] font-semibold text-foreground">
-        {title}
-      </div>
+      <div className="mb-2 text-[12px] font-semibold text-foreground">{title}</div>
       {items.length === 0 ? (
         <div className="text-xs text-muted-foreground">暂无可比较项</div>
       ) : (
@@ -469,13 +374,9 @@ export function RelatedListCard({
               key={`${item.label}-${item.index}`}
               className="grid grid-cols-[18px_minmax(0,1fr)_44px] items-center gap-2"
             >
-              <span className="text-[11px] font-medium text-muted-foreground">
-                {index + 1}
-              </span>
+              <span className="text-[11px] font-medium text-muted-foreground">{index + 1}</span>
               <div className="min-w-0">
-                <div className="truncate text-[12px] font-medium text-foreground">
-                  {item.label}
-                </div>
+                <div className="truncate text-[12px] font-medium text-foreground">{item.label}</div>
                 <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
                   <div
                     className="h-full rounded-full bg-[linear-gradient(90deg,#fb923c,#ef4444)]"
@@ -508,26 +409,10 @@ function DiagnosticMetricCard({
   compact?: boolean
 }>) {
   return (
-    <div
-      className={cn(
-        'rounded-[1rem] border border-border/34 bg-card/52',
-        compact ? 'p-3' : 'p-4'
-      )}
-    >
-      <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-        {label}
-      </div>
-      <div
-        className={cn(
-          'mt-1 font-semibold text-foreground',
-          compact ? 'text-base' : 'text-2xl'
-        )}
-      >
-        {value}
-      </div>
-      {hint ? (
-        <p className="mt-1 text-[11px] text-muted-foreground">{hint}</p>
-      ) : null}
+    <div className={cn('rounded-[1rem] border border-border/34 bg-card/52', compact ? 'p-3' : 'p-4')}>
+      <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</div>
+      <div className={cn('mt-1 font-semibold text-foreground', compact ? 'text-base' : 'text-2xl')}>{value}</div>
+      {hint ? <p className="mt-1 text-[11px] text-muted-foreground">{hint}</p> : null}
     </div>
   )
 }

@@ -2,7 +2,20 @@
 
 import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Ban, Calendar, CheckCircle2, Copy, FileText, GitBranch, Loader2, Pencil, RefreshCw, Save, Search, X } from 'lucide-react'
+import {
+  Ban,
+  Calendar,
+  CheckCircle2,
+  Copy,
+  FileText,
+  GitBranch,
+  Loader2,
+  Pencil,
+  RefreshCw,
+  Save,
+  Search,
+  X,
+} from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
@@ -106,7 +119,7 @@ function highlightText(text: string, query: string) {
     nodes.push(
       <mark key={`${matchAt}-${matched.length}`} className="rounded bg-primary/15 px-0.5 text-foreground">
         {matched}
-      </mark>
+      </mark>,
     )
 
     cursor = matchAt + needle.length
@@ -130,9 +143,7 @@ function ChunkLineageButton({ chunkId }: Readonly<{ chunkId: string }>) {
     enabled: open,
     queryFn: () => lineageApi.getChunkLineage(chunkId),
   })
-  const error = lineageQuery.error
-    ? formatApiError(lineageQuery.error, '加载 Chunk 血缘失败')
-    : null
+  const error = lineageQuery.error ? formatApiError(lineageQuery.error, '加载 Chunk 血缘失败') : null
 
   useEffect(() => {
     if (!error) return
@@ -147,7 +158,11 @@ function ChunkLineageButton({ chunkId }: Readonly<{ chunkId: string }>) {
         className="h-9 w-9 text-muted-foreground hover:text-foreground"
         onClick={() => setOpen(true)}
       >
-        {lineageQuery.isFetching ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <GitBranch className="h-4 w-4" />}
+        {lineageQuery.isFetching ? (
+          <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+        ) : (
+          <GitBranch className="h-4 w-4" />
+        )}
       </IconButton>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -159,9 +174,20 @@ function ChunkLineageButton({ chunkId }: Readonly<{ chunkId: string }>) {
             </DialogTitle>
             <DialogDescription className="font-mono text-xs">chunk_id={chunkId}</DialogDescription>
           </DialogHeader>
-          {error ? <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
-          <pre className={cn('max-h-[520px] overflow-auto rounded-lg border border-border/60 bg-muted/20 p-3 text-xs', 'whitespace-pre-wrap break-words')}>
-            {lineageQuery.isFetching ? 'Loading...' : prettyJson(lineageQuery.data ?? { message: '暂无 Chunk 血缘数据' })}
+          {error ? (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {error}
+            </div>
+          ) : null}
+          <pre
+            className={cn(
+              'max-h-[520px] overflow-auto rounded-lg border border-border/60 bg-muted/20 p-3 text-xs',
+              'whitespace-pre-wrap break-words',
+            )}
+          >
+            {lineageQuery.isFetching
+              ? 'Loading...'
+              : prettyJson(lineageQuery.data ?? { message: '暂无 Chunk 血缘数据' })}
           </pre>
         </DialogContent>
       </Dialog>
@@ -310,7 +336,7 @@ export function DocumentDetailActivityPanel({
                   className={cn(
                     'group rounded-xl border border-border/60 bg-card p-4 transition-colors',
                     'hover:border-primary/25 hover:shadow-soft/30',
-                    chunk.disabled_at ? 'opacity-70' : null
+                    chunk.disabled_at ? 'opacity-70' : null,
                   )}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -323,7 +349,9 @@ export function DocumentDetailActivityPanel({
                           P.{chunk.page_number}
                         </span>
                       ) : null}
-                      <span className="text-muted-foreground">{t('chunks.charCount', { count: (chunk.content || '').length })}</span>
+                      <span className="text-muted-foreground">
+                        {t('chunks.charCount', { count: (chunk.content || '').length })}
+                      </span>
                       {chunk.disabled_at ? (
                         <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-muted-foreground">
                           {t('chunks.disabledBadge')}
@@ -380,7 +408,13 @@ export function DocumentDetailActivityPanel({
                         disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}
                       />
                       <div className="flex items-center justify-end gap-2">
-                        <Button type="button" variant="outline" size="sm" onClick={onCancelEditChunk} disabled={chunkOpWorkingId === chunk.id}>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={onCancelEditChunk}
+                          disabled={chunkOpWorkingId === chunk.id}
+                        >
                           {commonT('cancel')}
                         </Button>
                         <Button
@@ -497,7 +531,12 @@ export function DocumentDetailActivityPanel({
                 }}
                 className="pb-3"
               >
-                <div className={cn('group rounded-xl border border-border/60 bg-card p-4 transition-colors', 'hover:border-primary/25 hover:shadow-soft/30')}>
+                <div
+                  className={cn(
+                    'group rounded-xl border border-border/60 bg-card p-4 transition-colors',
+                    'hover:border-primary/25 hover:shadow-soft/30',
+                  )}
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
@@ -513,9 +552,21 @@ export function DocumentDetailActivityPanel({
                       </div>
 
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        {ev.stage ? <span>{t('timeline.meta.stage')}: {ev.stage}</span> : null}
-                        {ev.status ? <span>{t('timeline.meta.status')}: {ev.status}</span> : null}
-                        {typeof ev.progress === 'number' ? <span>{t('timeline.meta.progress')}: {ev.progress}%</span> : null}
+                        {ev.stage ? (
+                          <span>
+                            {t('timeline.meta.stage')}: {ev.stage}
+                          </span>
+                        ) : null}
+                        {ev.status ? (
+                          <span>
+                            {t('timeline.meta.status')}: {ev.status}
+                          </span>
+                        ) : null}
+                        {typeof ev.progress === 'number' ? (
+                          <span>
+                            {t('timeline.meta.progress')}: {ev.progress}%
+                          </span>
+                        ) : null}
                         {ev.request_id ? (
                           <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 font-mono">
                             {t('timeline.meta.requestId')}: {ev.request_id}
@@ -548,8 +599,8 @@ export function DocumentDetailActivityPanel({
                               details: ev.details,
                             },
                             null,
-                            2
-                          )
+                            2,
+                          ),
                         )
                       }
                     >
@@ -596,7 +647,7 @@ export function DocumentDetailActivityPanel({
             tabIndex={activeView === 'chunks' ? 0 : -1}
             className={cn(
               'inline-flex h-8 items-center justify-center whitespace-nowrap rounded-sm px-3 text-sm font-medium transition-colors duration-150 motion-reduce:transition-none',
-              activeView === 'chunks' ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground'
+              activeView === 'chunks' ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground',
             )}
             onClick={() => onActiveViewChange('chunks')}
             onKeyDown={onViewTabKeyDown}
@@ -612,7 +663,7 @@ export function DocumentDetailActivityPanel({
             tabIndex={activeView === 'timeline' ? 0 : -1}
             className={cn(
               'inline-flex h-8 items-center justify-center whitespace-nowrap rounded-sm px-3 text-sm font-medium transition-colors duration-150 motion-reduce:transition-none',
-              activeView === 'timeline' ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground'
+              activeView === 'timeline' ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground',
             )}
             onClick={() => onActiveViewChange('timeline')}
             onKeyDown={onViewTabKeyDown}
@@ -644,8 +695,8 @@ export function DocumentDetailActivityPanel({
               <SelectItem value={ACTIVE_PIPELINE_VALUE}>{t('versions.active')}</SelectItem>
               {versions.items.map((version) => (
                 <SelectItem key={version.pipeline_hash} value={version.pipeline_hash}>
-                  {version.active ? t('versions.activeTag') : t('versions.historyTag')} {version.pipeline_hash.slice(0, 10)}… ·{' '}
-                  {t('versions.chunkCount', { count: version.chunk_count })}
+                  {version.active ? t('versions.activeTag') : t('versions.historyTag')}{' '}
+                  {version.pipeline_hash.slice(0, 10)}… · {t('versions.chunkCount', { count: version.chunk_count })}
                 </SelectItem>
               ))}
             </SelectContent>

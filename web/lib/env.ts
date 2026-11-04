@@ -6,7 +6,9 @@ function hasHttpProtocol(value: string): boolean {
 }
 
 function isLoopbackHost(value: string): boolean {
-  const host = String(value || '').trim().toLowerCase()
+  const host = String(value || '')
+    .trim()
+    .toLowerCase()
   return host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0'
 }
 
@@ -39,9 +41,7 @@ function resolveApiBaseUrl(): string {
       if (
         isLoopbackHost(apiHost) &&
         pageHost &&
-        (apiHost === '0.0.0.0' ||
-          !isLoopbackHost(pageHost) ||
-          apiHost !== pageHost)
+        (apiHost === '0.0.0.0' || !isLoopbackHost(pageHost) || apiHost !== pageHost)
       ) {
         url.hostname = pageHost
         return trimTrailingSlashes(url.toString())

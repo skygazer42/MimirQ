@@ -87,7 +87,7 @@ export function useDocumentPolling({ updateCachedDocuments }: UseDocumentPolling
 
       void pollOnce()
     },
-    [cancelDocumentPolling, updateCachedDocuments]
+    [cancelDocumentPolling, updateCachedDocuments],
   )
 
   useEffect(() => {

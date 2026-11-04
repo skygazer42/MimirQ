@@ -2,13 +2,7 @@ import { getDocumentKind } from '@/components/ingestion/monitor-utils'
 import { cn } from '@/lib/utils'
 import type { Document, DocumentPipelineOptions } from '@/types'
 
-import type {
-  ActingState,
-  JsonRecord,
-  QuarantineAction,
-  QuarantineSeverity,
-  UserMetadata,
-} from './types'
+import type { ActingState, JsonRecord, QuarantineAction, QuarantineSeverity, UserMetadata } from './types'
 
 export function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -56,23 +50,16 @@ export function extractTuningOverrides(doc: Document): DocumentPipelineOptions {
 
   const out: DocumentPipelineOptions = {}
 
-  if (typeof governance.drop_outline_only === 'boolean')
-    out.governance_drop_outline_only = governance.drop_outline_only
+  if (typeof governance.drop_outline_only === 'boolean') out.governance_drop_outline_only = governance.drop_outline_only
   if (typeof governance.drop_outline_min_content_chars === 'number')
-    out.governance_drop_outline_min_content_chars =
-      governance.drop_outline_min_content_chars
+    out.governance_drop_outline_min_content_chars = governance.drop_outline_min_content_chars
   if (typeof governance.drop_outline_max_heading_ratio === 'number')
-    out.governance_drop_outline_max_heading_ratio =
-      governance.drop_outline_max_heading_ratio
-  if (typeof governance.drop_low_density === 'boolean')
-    out.governance_drop_low_density = governance.drop_low_density
+    out.governance_drop_outline_max_heading_ratio = governance.drop_outline_max_heading_ratio
+  if (typeof governance.drop_low_density === 'boolean') out.governance_drop_low_density = governance.drop_low_density
   if (typeof governance.drop_low_density_threshold === 'number')
-    out.governance_drop_low_density_threshold =
-      governance.drop_low_density_threshold
-  if (typeof governance.pii_max_hits === 'number')
-    out.governance_pii_max_hits = governance.pii_max_hits
-  if (typeof governance.secrets_max_hits === 'number')
-    out.governance_secrets_max_hits = governance.secrets_max_hits
+    out.governance_drop_low_density_threshold = governance.drop_low_density_threshold
+  if (typeof governance.pii_max_hits === 'number') out.governance_pii_max_hits = governance.pii_max_hits
+  if (typeof governance.secrets_max_hits === 'number') out.governance_secrets_max_hits = governance.secrets_max_hits
   if (typeof governance.quarantine_on_drop === 'boolean')
     out.governance_quarantine_on_drop = governance.quarantine_on_drop
 
@@ -100,22 +87,11 @@ export function buildReviewAdvice(doc: Document): string[] {
   const reasons = new Set(getDropReasons(doc))
   const advice: string[] = []
 
-  if (reasons.has('outline_only'))
-    advice.push(
-      '如果正文有效但被判定为大纲文档，可关闭 outline_only 过滤后重试。'
-    )
-  if (reasons.has('low_density'))
-    advice.push(
-      '如果文本主要由表格或短句构成，可放宽 low_density 阈值后重新入库。'
-    )
-  if (reasons.has('pii_exceeded'))
-    advice.push(
-      '确认是否包含真实敏感信息；若仅为误报，建议先抽样预览再决定放行。'
-    )
-  if (reasons.has('secrets_exceeded'))
-    advice.push('优先确认命中的内容是否为真实密钥或凭证，再执行放行。')
-  if (!advice.length)
-    advice.push('先查看命中规则与原文片段，再决定放行、重试或删除。')
+  if (reasons.has('outline_only')) advice.push('如果正文有效但被判定为大纲文档，可关闭 outline_only 过滤后重试。')
+  if (reasons.has('low_density')) advice.push('如果文本主要由表格或短句构成，可放宽 low_density 阈值后重新入库。')
+  if (reasons.has('pii_exceeded')) advice.push('确认是否包含真实敏感信息；若仅为误报，建议先抽样预览再决定放行。')
+  if (reasons.has('secrets_exceeded')) advice.push('优先确认命中的内容是否为真实密钥或凭证，再执行放行。')
+  if (!advice.length) advice.push('先查看命中规则与原文片段，再决定放行、重试或删除。')
 
   return advice
 }
@@ -131,16 +107,10 @@ export function createReviewMetadataPatch(extra?: JsonRecord): JsonRecord {
   return patch
 }
 
-export function getBusyIconClassName(
-  acting: ActingState,
-  docId: string,
-  action: QuarantineAction
-): string {
+export function getBusyIconClassName(acting: ActingState, docId: string, action: QuarantineAction): string {
   return cn(
     'h-4 w-4 mr-1',
-    acting?.id === docId && acting.action === action
-      ? 'animate-spin motion-reduce:animate-none'
-      : ''
+    acting?.id === docId && acting.action === action ? 'animate-spin motion-reduce:animate-none' : '',
   )
 }
 
@@ -192,11 +162,7 @@ export function getQuarantineSeverity(doc: Document): QuarantineSeverity {
   ) {
     return '高'
   }
-  if (
-    reasons.has('low_density') ||
-    reasons.has('outline_only') ||
-    doc.status === 'quarantined'
-  ) {
+  if (reasons.has('low_density') || reasons.has('outline_only') || doc.status === 'quarantined') {
     return '中'
   }
   return '低'

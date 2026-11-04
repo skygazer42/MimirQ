@@ -82,11 +82,7 @@ function getFiniteNumberValue(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
-function getVisibleFileSize(
-  previewFileSize: unknown,
-  originalFileSize: unknown,
-  fallbackFileSize: number
-): number {
+function getVisibleFileSize(previewFileSize: unknown, originalFileSize: unknown, fallbackFileSize: number): number {
   const previewSize = getFiniteNumberValue(previewFileSize)
   if (previewSize !== undefined) return previewSize
 
@@ -96,10 +92,7 @@ function getVisibleFileSize(
   return fallbackFileSize
 }
 
-function getQualityGradeLabel(
-  grade: unknown,
-  labels: { pass: string; warn: string; fail: string }
-): string {
+function getQualityGradeLabel(grade: unknown, labels: { pass: string; warn: string; fail: string }): string {
   if (grade === 'pass') return labels.pass
   if (grade === 'warn') return labels.warn
   if (grade === 'fail') return labels.fail
@@ -125,11 +118,7 @@ function splitTopBarErrorMessage(cleaned: string): {
   const asciiColon = cleaned.indexOf(':')
   const fullwidthColon = cleaned.indexOf('：')
   const colonIndex =
-    asciiColon < 0
-      ? fullwidthColon
-      : fullwidthColon < 0
-        ? asciiColon
-        : Math.min(asciiColon, fullwidthColon)
+    asciiColon < 0 ? fullwidthColon : fullwidthColon < 0 ? asciiColon : Math.min(asciiColon, fullwidthColon)
 
   if (colonIndex < 0) return null
 
@@ -220,54 +209,40 @@ export function TopBar() {
   const effectiveChunkStrategy = previewData?.chunk_strategy || chunkStrategy
   const skippedCount = Object.values(chunkOverrides).reduce(
     (acc, override) => acc + (isChunkOverrideDisabled(override) ? 1 : 0),
-    0
+    0,
   )
 
-  const exportPreviewEnabledOnly = previewData
-    ? applyChunkOverridesToPreview(previewData, chunkOverrides)
-    : null
+  const exportPreviewEnabledOnly = previewData ? applyChunkOverridesToPreview(previewData, chunkOverrides) : null
   const exportPreviewAll = previewData
     ? applyChunkOverridesToPreview(previewData, chunkOverrides, { include_disabled: true })
     : null
-  const exportPreview = includeSkippedInExports
-    ? exportPreviewAll
-    : exportPreviewEnabledOnly
+  const exportPreview = includeSkippedInExports ? exportPreviewAll : exportPreviewEnabledOnly
 
   const shouldIncludeSeparatorSettings = effectiveChunkStrategy === 'separator'
-  const shouldIncludeParentChildSettings =
-    effectiveChunkStrategy === 'parent_child'
-  const selectedPreviewChunk =
-    selectedChunkIndex == null ? null : previewData?.chunks?.[selectedChunkIndex] || null
+  const shouldIncludeParentChildSettings = effectiveChunkStrategy === 'parent_child'
+  const selectedPreviewChunk = selectedChunkIndex == null ? null : previewData?.chunks?.[selectedChunkIndex] || null
   const selectedChunkStart =
-    typeof selectedPreviewChunk?.start_index === 'number' &&
-    Number.isFinite(selectedPreviewChunk.start_index)
+    typeof selectedPreviewChunk?.start_index === 'number' && Number.isFinite(selectedPreviewChunk.start_index)
       ? Math.trunc(selectedPreviewChunk.start_index)
       : null
   const selectedChunkEnd =
-    typeof selectedPreviewChunk?.end_index === 'number' &&
-    Number.isFinite(selectedPreviewChunk.end_index)
+    typeof selectedPreviewChunk?.end_index === 'number' && Number.isFinite(selectedPreviewChunk.end_index)
       ? Math.trunc(selectedPreviewChunk.end_index)
       : null
   const canOpenSelectedChunkInChatPage =
-    selectedChunkStart != null &&
-    selectedChunkEnd != null &&
-    selectedChunkEnd > selectedChunkStart
+    selectedChunkStart != null && selectedChunkEnd != null && selectedChunkEnd > selectedChunkStart
   const selectedDocumentChunkId = (() => {
     if (!selectedPreviewChunk || !isRecord(selectedPreviewChunk.metadata)) {
       return undefined
     }
-    const chunkId =
-      (getStringValue(selectedPreviewChunk.metadata, 'chunk_id') || '').trim()
+    const chunkId = (getStringValue(selectedPreviewChunk.metadata, 'chunk_id') || '').trim()
     return chunkId || undefined
   })()
   const canCompare = Boolean(
     previewData &&
-      (runHistory || []).filter(
-        (item) =>
-          item.fileName === currentFile.name &&
-          typeof item.cacheKey === 'string' &&
-          Boolean(item.cacheKey)
-      ).length >= 2
+    (runHistory || []).filter(
+      (item) => item.fileName === currentFile.name && typeof item.cacheKey === 'string' && Boolean(item.cacheKey),
+    ).length >= 2,
   )
 
   const serverTimingTitle = (() => {
@@ -298,9 +273,7 @@ export function TopBar() {
 
   const escapeForAnsiC = (value: string) => {
     // Used for bash $'...' strings in generated cURL.
-    return value
-      .replaceAll(SHELL_BACKSLASH, DOUBLE_SHELL_BACKSLASH)
-      .replaceAll("'", String.raw`\\'`)
+    return value.replaceAll(SHELL_BACKSLASH, DOUBLE_SHELL_BACKSLASH).replaceAll("'", String.raw`\\'`)
   }
   const escapeForDoubleQuotedShell = (value: string) =>
     value
@@ -317,32 +290,21 @@ export function TopBar() {
     'inline-flex h-7 items-center gap-1.5 rounded-lg border px-2.5 text-[10.5px] font-bold uppercase tracking-[-0.01em] antialiased shadow-[0_1px_0_rgba(255,255,255,0.7)_inset]'
   const actionButtonClass =
     'h-8 rounded-lg px-2.5 text-[11px] font-bold uppercase tracking-[-0.01em] text-muted-foreground/90 hover:bg-primary/8 hover:text-primary transition-all antialiased'
-  const visibleFileName =
-    currentFileItem.displayName || previewData?.filename || currentFile.name
+  const visibleFileName = currentFileItem.displayName || previewData?.filename || currentFile.name
   const visibleFileType =
-    previewData?.file_type ||
-    currentFileItem.originalFileType ||
-    currentFile.name.split('.').pop() ||
-    ''
-  const visibleFileSize = getVisibleFileSize(
-    previewData?.file_size,
-    currentFileItem.originalFileSize,
-    currentFile.size
-  )
+    previewData?.file_type || currentFileItem.originalFileType || currentFile.name.split('.').pop() || ''
+  const visibleFileSize = getVisibleFileSize(previewData?.file_size, currentFileItem.originalFileSize, currentFile.size)
   const visibleChunkSize =
-    typeof previewData?.params?.chunk_size === 'number' &&
-    Number.isFinite(previewData.params.chunk_size)
+    typeof previewData?.params?.chunk_size === 'number' && Number.isFinite(previewData.params.chunk_size)
       ? Math.trunc(previewData.params.chunk_size)
       : chunkSize
   const visibleChunkOverlap =
-    typeof previewData?.params?.chunk_overlap === 'number' &&
-    Number.isFinite(previewData.params.chunk_overlap)
+    typeof previewData?.params?.chunk_overlap === 'number' && Number.isFinite(previewData.params.chunk_overlap)
       ? Math.trunc(previewData.params.chunk_overlap)
       : chunkOverlap
   const visibleChunkUnit = previewData?.params?.unit || 'chars'
   const visiblePreviewDurationMs =
-    typeof previewData?.preview_duration_ms === 'number' &&
-    Number.isFinite(previewData.preview_duration_ms)
+    typeof previewData?.preview_duration_ms === 'number' && Number.isFinite(previewData.preview_duration_ms)
       ? Math.max(0, Math.round(previewData.preview_duration_ms))
       : lastPreviewDurationMs
   const visibleQualityGrade = previewData?.quality_gate?.grade
@@ -409,12 +371,8 @@ export function TopBar() {
 
     updateSettings({
       ...(nextStrategy ? { strategy: nextStrategy } : {}),
-      ...(nextSize === undefined
-        ? {}
-        : { chunkSize: Math.max(50, Math.min(4000, Math.trunc(nextSize))) }),
-      ...(nextOverlap === undefined
-        ? {}
-        : { chunkOverlap: Math.max(0, Math.min(1000, Math.trunc(nextOverlap))) }),
+      ...(nextSize === undefined ? {} : { chunkSize: Math.max(50, Math.min(4000, Math.trunc(nextSize))) }),
+      ...(nextOverlap === undefined ? {} : { chunkOverlap: Math.max(0, Math.min(1000, Math.trunc(nextOverlap))) }),
     })
 
     const separatorPresetValue = getStringValue(parsed, 'separator_preset')
@@ -431,16 +389,10 @@ export function TopBar() {
       updateSeparatorSettings({ keepSeparator: parsed.keep_separator })
     }
 
-    const separatorMaxChunkSizeValue = getFiniteNumber(
-      parsed,
-      'separator_max_chunk_size'
-    )
+    const separatorMaxChunkSizeValue = getFiniteNumber(parsed, 'separator_max_chunk_size')
     if (separatorMaxChunkSizeValue !== undefined) {
       updateSeparatorSettings({
-        separatorMaxChunkSize: Math.max(
-          0,
-          Math.min(20000, Math.trunc(separatorMaxChunkSizeValue))
-        ),
+        separatorMaxChunkSize: Math.max(0, Math.min(20000, Math.trunc(separatorMaxChunkSizeValue))),
       })
     }
 
@@ -453,7 +405,7 @@ export function TopBar() {
             ...pipelineCtx.options,
             ...pipeline,
           },
-        })
+        }),
       )
 
       if (!importResult.ok) {
@@ -490,7 +442,9 @@ export function TopBar() {
             <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
               {visibleFileType ? (
                 <span className={cn(fileMetaChipClass, 'border-primary/20 bg-primary/5 text-primary/90')}>
-                  <span className="font-black uppercase tracking-[0.18em]">{String(visibleFileType).toUpperCase()}</span>
+                  <span className="font-black uppercase tracking-[0.18em]">
+                    {String(visibleFileType).toUpperCase()}
+                  </span>
                 </span>
               ) : null}
               <span className={fileMetaChipClass}>
@@ -531,10 +485,7 @@ export function TopBar() {
 
             <span className={summaryChipClass}>
               <span className="opacity-50 tracking-[0.18em]">{t('topBar.paramsLabel')}</span>
-              <span
-                className="font-black tabular-nums text-foreground"
-                title={visibleChunkUnit}
-              >
+              <span className="font-black tabular-nums text-foreground" title={visibleChunkUnit}>
                 {visibleChunkSize}/{visibleChunkOverlap}
               </span>
             </span>
@@ -553,7 +504,7 @@ export function TopBar() {
                 <div
                   className={cn(
                     'h-1.5 w-1.5 rounded-full shadow-[0_0_8px_rgba(var(--primary-rgb),0.4)]',
-                    previewData.chunks_truncated ? 'bg-warning' : 'bg-primary'
+                    previewData.chunks_truncated ? 'bg-warning' : 'bg-primary',
                   )}
                 />
                 <span className="font-black tabular-nums text-foreground/90">
@@ -589,18 +540,20 @@ export function TopBar() {
 
             {visibleQualityGrade ? (
               <span
-                className={cn(
-                  stateChipClass,
-                  visibleQualityClass,
-                  'border-opacity-30'
-                )}
+                className={cn(stateChipClass, visibleQualityClass, 'border-opacity-30')}
                 title={(previewData?.quality_gate?.reasons || []).join(ESCAPED_NEWLINE)}
               >
                 <div className="flex items-center gap-1.5">
-                  <div className={cn('h-1.5 w-1.5 rounded-full', 
-                    visibleQualityGrade === 'pass' ? 'bg-success' : 
-                    visibleQualityGrade === 'fail' ? 'bg-destructive' : 'bg-warning'
-                  )} />
+                  <div
+                    className={cn(
+                      'h-1.5 w-1.5 rounded-full',
+                      visibleQualityGrade === 'pass'
+                        ? 'bg-success'
+                        : visibleQualityGrade === 'fail'
+                          ? 'bg-destructive'
+                          : 'bg-warning',
+                    )}
+                  />
                   {t('topBar.status.quality', {
                     grade: visibleQualityLabel,
                   })}
@@ -660,7 +613,7 @@ export function TopBar() {
             variant="ghost"
             size="sm"
             onClick={reset}
-            className={cn(actionButtonClass, "hover:bg-background hover:shadow-sm")}
+            className={cn(actionButtonClass, 'hover:bg-background hover:shadow-sm')}
           >
             <RotateCcw className="w-3.5 h-3.5 mr-1.5 text-muted-foreground/60" strokeWidth={2.5} />
             {t('topBar.actions.reset')}
@@ -688,25 +641,20 @@ export function TopBar() {
             onClick={toggleOriginalPanel}
             className={cn(
               actionButtonClass,
-              showOriginalPanel 
-                ? 'bg-primary/10 text-primary hover:bg-primary/15' 
-                : 'hover:bg-background hover:shadow-sm'
+              showOriginalPanel
+                ? 'bg-primary/10 text-primary hover:bg-primary/15'
+                : 'hover:bg-background hover:shadow-sm',
             )}
             aria-label={
-              showOriginalPanel
-                ? t('topBar.actions.hideOriginalPanel')
-                : t('topBar.actions.showOriginalPanel')
+              showOriginalPanel ? t('topBar.actions.hideOriginalPanel') : t('topBar.actions.showOriginalPanel')
             }
-            title={
-              showOriginalPanel
-                ? t('topBar.actions.hideOriginalPanel')
-                : t('topBar.actions.showOriginalPanel')
-            }
+            title={showOriginalPanel ? t('topBar.actions.hideOriginalPanel') : t('topBar.actions.showOriginalPanel')}
           >
-            <FileText className={cn("w-3.5 h-3.5 mr-1.5", showOriginalPanel ? "text-primary" : "text-muted-foreground/60")} strokeWidth={2.5} />
-            {showOriginalPanel
-              ? t('topBar.actions.hideOriginal')
-              : t('topBar.actions.showOriginal')}
+            <FileText
+              className={cn('w-3.5 h-3.5 mr-1.5', showOriginalPanel ? 'text-primary' : 'text-muted-foreground/60')}
+              strokeWidth={2.5}
+            />
+            {showOriginalPanel ? t('topBar.actions.hideOriginal') : t('topBar.actions.showOriginal')}
           </Button>
 
           <Button
@@ -714,7 +662,7 @@ export function TopBar() {
             variant="ghost"
             size="sm"
             onClick={() => setHelpOpen(true)}
-            className={cn(actionButtonClass, "hover:bg-background hover:shadow-sm")}
+            className={cn(actionButtonClass, 'hover:bg-background hover:shadow-sm')}
             aria-label={t('topBar.actions.helpTitle')}
             title={t('topBar.actions.helpTitle')}
           >
@@ -735,326 +683,291 @@ export function TopBar() {
                 <MoreVertical className="w-4 h-4" strokeWidth={2.5} />
               </Button>
             </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-60 rounded-2xl border-border/80 bg-popover/98 backdrop-blur-2xl shadow-strong p-1.5 ring-1 ring-black/5 animate-in fade-in zoom-in-95">
-            <input
-              ref={importConfigInputRef}
-              type="file"
-              accept="application/json"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0]
-                e.target.value = ''
-                if (!file) return
-                file
-                  .text()
-                  .then(async (text) => {
+            <DropdownMenuContent
+              align="end"
+              className="w-60 rounded-2xl border-border/80 bg-popover/98 backdrop-blur-2xl shadow-strong p-1.5 ring-1 ring-black/5 animate-in fade-in zoom-in-95"
+            >
+              <input
+                ref={importConfigInputRef}
+                type="file"
+                accept="application/json"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  e.target.value = ''
+                  if (!file) return
+                  file
+                    .text()
+                    .then(async (text) => {
+                      const ok = await applyConfigFromText(text)
+                      if (ok) {
+                        toast.success(t('topBar.toasts.importedFromFile'))
+                      }
+                    })
+                    .catch((error: unknown) =>
+                      toast.error(getErrorMessage(error, t('topBar.toasts.readConfigFileFailed'))),
+                    )
+                }}
+              />
+              <DropdownMenuItem
+                className="rounded-xl py-2 font-bold text-xs"
+                onSelect={() => {
+                  detachPromise(copyText(JSON.stringify(buildConfig(), null, 2), t('topBar.toasts.copiedConfig')))
+                }}
+              >
+                <Copy className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
+                {t('topBar.actions.copyConfig')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="rounded-xl py-2 font-bold text-xs"
+                onSelect={() => {
+                  const filename = `${sanitizeFilename(
+                    currentFileItem?.displayName || currentFile.name,
+                  )}.chunk-preview.config.json`
+                  downloadTextFile(filename, JSON.stringify(buildConfig(), null, 2), 'application/json;charset=utf-8')
+                  toast.success(t('topBar.toasts.exportedConfig'))
+                }}
+              >
+                <Download className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
+                {t('topBar.actions.exportConfig')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="rounded-xl py-2 font-bold text-xs"
+                onSelect={() => importConfigInputRef.current?.click()}
+              >
+                <Upload className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
+                {t('topBar.actions.importConfigFromFile')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="rounded-xl py-2 font-bold text-xs"
+                onSelect={async () => {
+                  try {
+                    if (!navigator.clipboard?.readText) {
+                      toast.error(t('topBar.toasts.clipboardReadUnsupported'))
+                      return
+                    }
+                    const text = await navigator.clipboard.readText()
                     const ok = await applyConfigFromText(text)
                     if (ok) {
-                      toast.success(t('topBar.toasts.importedFromFile'))
+                      toast.success(t('topBar.toasts.importedFromClipboard'))
                     }
-                  })
-                  .catch((error: unknown) =>
-                    toast.error(
-                      getErrorMessage(error, t('topBar.toasts.readConfigFileFailed'))
+                  } catch (error: unknown) {
+                    toast.error(getErrorMessage(error, t('topBar.toasts.importConfigFailed')))
+                  }
+                }}
+              >
+                <Copy className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
+                {t('topBar.actions.importConfigFromClipboard')}
+              </DropdownMenuItem>
+              {previewData && skippedCount > 0 ? (
+                <>
+                  <DropdownMenuSeparator className="bg-border/60 mx-1 my-1.5" />
+                  <DropdownMenuCheckboxItem
+                    className="rounded-xl py-2 font-bold text-xs"
+                    checked={includeSkippedInExports}
+                    onCheckedChange={(checked) => setIncludeSkippedInExports(Boolean(checked))}
+                  >
+                    {t('topBar.actions.includeSkippedInExports', {
+                      count: skippedCount,
+                    })}
+                  </DropdownMenuCheckboxItem>
+                </>
+              ) : null}
+
+              <DropdownMenuSeparator className="bg-border/60 mx-1 my-1.5" />
+
+              <DropdownMenuItem
+                className="rounded-xl py-2 font-bold text-xs"
+                disabled={!previewData}
+                onSelect={() => {
+                  if (!exportPreview) return
+                  const filename = `${sanitizeFilename(exportPreview.filename)}.chunks.json`
+                  downloadTextFile(
+                    filename,
+                    JSON.stringify(toChunkPreviewExport(exportPreview), null, 2),
+                    'application/json;charset=utf-8',
+                  )
+                  toast.success(t('topBar.toasts.exportedJson'))
+                }}
+              >
+                <Download className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
+                {t('topBar.actions.exportJson')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="rounded-xl py-2 font-bold text-xs"
+                disabled={!previewData}
+                onSelect={() => {
+                  if (!exportPreview) return
+                  const filename = `${sanitizeFilename(exportPreview.filename)}.chunks.md`
+                  downloadTextFile(filename, chunkPreviewToMarkdown(exportPreview), 'text/markdown;charset=utf-8')
+                  toast.success(t('topBar.toasts.exportedMarkdown'))
+                }}
+              >
+                <Download className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
+                {t('topBar.actions.exportMarkdown')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="rounded-xl py-2 font-bold text-xs"
+                disabled={!previewData}
+                onSelect={() => {
+                  if (!exportPreview) return
+                  const filename = `${sanitizeFilename(exportPreview.filename)}.chunks.csv`
+                  downloadTextFile(filename, chunkPreviewToCsv(exportPreview), 'text/csv;charset=utf-8')
+                  toast.success(t('topBar.toasts.exportedCsv'))
+                }}
+              >
+                <Download className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
+                {t('topBar.actions.exportCsv')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="rounded-xl py-2 font-bold text-xs"
+                disabled={!previewData}
+                onSelect={() => {
+                  if (!exportPreview) return
+                  const filename = `${sanitizeFilename(exportPreview.filename)}.chunks.jsonl`
+                  downloadTextFile(filename, chunkPreviewToJsonl(exportPreview), 'application/x-ndjson;charset=utf-8')
+                  toast.success(t('topBar.toasts.exportedJsonl'))
+                }}
+              >
+                <Download className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
+                {t('topBar.actions.exportJsonl')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="rounded-xl py-2 font-bold text-xs text-primary"
+                disabled={!previewData}
+                onSelect={() => {
+                  const payloadPreview = exportPreviewEnabledOnly
+                  if (!payloadPreview) return
+                  const payload = {
+                    filename: payloadPreview.filename,
+                    file_type: payloadPreview.file_type,
+                    file_size: payloadPreview.file_size,
+                    dataset_id: datasetId || undefined,
+                    chunks: (payloadPreview.chunks || []).map((chunk) => ({
+                      content: chunk.content ?? '',
+                      page_number: chunk.page_number,
+                      start_char: chunk.start_index,
+                      end_char: chunk.end_index,
+                      metadata: chunk.metadata ?? {},
+                    })),
+                    pipeline: pipelineOverridesEnabled
+                      ? {
+                          ...pipelineOptions,
+                          chunk_size: chunkSize,
+                          chunk_overlap: chunkOverlap,
+                        }
+                      : undefined,
+                  }
+                  detachPromise(copyText(JSON.stringify(payload, null, 2), t('topBar.toasts.copiedIngestPayload')))
+                }}
+              >
+                <Copy className="mr-2.5 h-4 w-4 opacity-80" strokeWidth={2.5} />
+                {t('topBar.actions.copyIngestPayload')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="rounded-xl py-2 font-bold text-xs"
+                disabled={!canCompare}
+                onSelect={() => setCompareOpen(true)}
+              >
+                <GitCompareArrows className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
+                {t('topBar.actions.comparePreview')}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="bg-border/60 mx-1 my-1.5" />
+              <DropdownMenuItem
+                className="rounded-xl py-2 font-bold text-xs"
+                onSelect={() => {
+                  const url = `${API_V1_BASE_URL}/documents/chunk-preview?chunk_size=${encodeURIComponent(
+                    String(chunkSize),
+                  )}&chunk_overlap=${encodeURIComponent(String(chunkOverlap))}`
+                  const pipeline = pipelineOverridesEnabled ? JSON.stringify(pipelineOptions || {}) : null
+                  const authHeaders = getAuthHeaders()
+                  const lines = [
+                    `curl -X POST "${url}" \\`,
+                    ...Object.entries(authHeaders).map(
+                      ([name, value]) => `  -H "${name}: ${escapeForDoubleQuotedShell(value)}" \\`,
+                    ),
+                    `  -F "file=@/path/to/your-file" \\`,
+                    `  -F "parser_backend=${effectiveParserBackend}" \\`,
+                    `  -F "chunk_strategy=${effectiveChunkStrategy}"`,
+                  ]
+                  if (datasetId) {
+                    lines.push(`  -F "dataset_id=${datasetId}"`)
+                  }
+                  if (shouldIncludeParentChildSettings) {
+                    lines.push(
+                      `  -F "child_ratio=${parentChildRatio}"`,
+                      `  -F "min_child_size=${parentChildMinChildSize}"`,
                     )
-                  )
-              }}
-            />
-            <DropdownMenuItem
-              className="rounded-xl py-2 font-bold text-xs"
-              onSelect={() => {
-                detachPromise(
-                  copyText(
-                    JSON.stringify(buildConfig(), null, 2),
-                    t('topBar.toasts.copiedConfig')
-                  )
-                )
-              }}
-            >
-              <Copy className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
-              {t('topBar.actions.copyConfig')}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="rounded-xl py-2 font-bold text-xs"
-              onSelect={() => {
-                const filename = `${sanitizeFilename(
-                  currentFileItem?.displayName || currentFile.name
-                )}.chunk-preview.config.json`
-                downloadTextFile(
-                  filename,
-                  JSON.stringify(buildConfig(), null, 2),
-                  'application/json;charset=utf-8'
-                )
-                toast.success(t('topBar.toasts.exportedConfig'))
-              }}
-            >
-              <Download className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
-              {t('topBar.actions.exportConfig')}
-            </DropdownMenuItem>
-            <DropdownMenuItem className="rounded-xl py-2 font-bold text-xs" onSelect={() => importConfigInputRef.current?.click()}>
-              <Upload className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
-              {t('topBar.actions.importConfigFromFile')}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="rounded-xl py-2 font-bold text-xs"
-              onSelect={async () => {
-                try {
-                  if (!navigator.clipboard?.readText) {
-                    toast.error(t('topBar.toasts.clipboardReadUnsupported'))
-                    return
                   }
-                  const text = await navigator.clipboard.readText()
-                  const ok = await applyConfigFromText(text)
-                  if (ok) {
-                    toast.success(t('topBar.toasts.importedFromClipboard'))
+                  if (shouldIncludeSeparatorSettings) {
+                    lines.push(`  -F "separator_preset=${separatorPreset}"`)
+                    if (separatorPreset === 'custom') {
+                      lines.push(`  -F $'separator=${escapeForAnsiC(separatorCustom)}'`)
+                    }
+                    lines.push(`  -F "keep_separator=${keepSeparator ? 'true' : 'false'}"`)
+                    if (typeof separatorMaxChunkSize === 'number' && separatorMaxChunkSize > 0) {
+                      lines.push(`  -F "separator_max_chunk_size=${separatorMaxChunkSize}"`)
+                    }
                   }
-                } catch (error: unknown) {
-                  toast.error(
-                    getErrorMessage(error, t('topBar.toasts.importConfigFailed'))
-                  )
-                }
-              }}
-            >
-              <Copy className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
-              {t('topBar.actions.importConfigFromClipboard')}
-            </DropdownMenuItem>
-            {previewData && skippedCount > 0 ? (
-              <>
-                <DropdownMenuSeparator className="bg-border/60 mx-1 my-1.5" />
-                <DropdownMenuCheckboxItem
-                  className="rounded-xl py-2 font-bold text-xs"
-                  checked={includeSkippedInExports}
-                  onCheckedChange={(checked) =>
-                    setIncludeSkippedInExports(Boolean(checked))
+                  if (pipeline) {
+                    const lastLine = lines.at(-1)
+                    if (lastLine) lines.splice(-1, 1, `${lastLine} ${SHELL_BACKSLASH}`)
+                    lines.push(`  -F 'pipeline=${pipeline}'`)
                   }
-                >
-                  {t('topBar.actions.includeSkippedInExports', {
-                    count: skippedCount,
-                  })}
-                </DropdownMenuCheckboxItem>
-              </>
-            ) : null}
-
-            <DropdownMenuSeparator className="bg-border/60 mx-1 my-1.5" />
-
-            <DropdownMenuItem
-              className="rounded-xl py-2 font-bold text-xs"
-              disabled={!previewData}
-              onSelect={() => {
-                if (!exportPreview) return
-                const filename = `${sanitizeFilename(exportPreview.filename)}.chunks.json`
-                downloadTextFile(
-                  filename,
-                  JSON.stringify(toChunkPreviewExport(exportPreview), null, 2),
-                  'application/json;charset=utf-8'
-                )
-                toast.success(t('topBar.toasts.exportedJson'))
-              }}
-            >
-              <Download className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
-              {t('topBar.actions.exportJson')}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="rounded-xl py-2 font-bold text-xs"
-              disabled={!previewData}
-              onSelect={() => {
-                if (!exportPreview) return
-                const filename = `${sanitizeFilename(exportPreview.filename)}.chunks.md`
-                downloadTextFile(
-                  filename,
-                  chunkPreviewToMarkdown(exportPreview),
-                  'text/markdown;charset=utf-8'
-                )
-                toast.success(t('topBar.toasts.exportedMarkdown'))
-              }}
-            >
-              <Download className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
-              {t('topBar.actions.exportMarkdown')}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="rounded-xl py-2 font-bold text-xs"
-              disabled={!previewData}
-              onSelect={() => {
-                if (!exportPreview) return
-                const filename = `${sanitizeFilename(exportPreview.filename)}.chunks.csv`
-                downloadTextFile(
-                  filename,
-                  chunkPreviewToCsv(exportPreview),
-                  'text/csv;charset=utf-8'
-                )
-                toast.success(t('topBar.toasts.exportedCsv'))
-              }}
-            >
-              <Download className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
-              {t('topBar.actions.exportCsv')}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="rounded-xl py-2 font-bold text-xs"
-              disabled={!previewData}
-              onSelect={() => {
-                if (!exportPreview) return
-                const filename = `${sanitizeFilename(exportPreview.filename)}.chunks.jsonl`
-                downloadTextFile(
-                  filename,
-                  chunkPreviewToJsonl(exportPreview),
-                  'application/x-ndjson;charset=utf-8'
-                )
-                toast.success(t('topBar.toasts.exportedJsonl'))
-              }}
-            >
-              <Download className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
-              {t('topBar.actions.exportJsonl')}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="rounded-xl py-2 font-bold text-xs text-primary"
-              disabled={!previewData}
-              onSelect={() => {
-                const payloadPreview = exportPreviewEnabledOnly
-                if (!payloadPreview) return
-                const payload = {
-                  filename: payloadPreview.filename,
-                  file_type: payloadPreview.file_type,
-                  file_size: payloadPreview.file_size,
-                  dataset_id: datasetId || undefined,
-                  chunks: (payloadPreview.chunks || []).map((chunk) => ({
-                    content: chunk.content ?? '',
-                    page_number: chunk.page_number,
-                    start_char: chunk.start_index,
-                    end_char: chunk.end_index,
-                    metadata: chunk.metadata ?? {},
-                  })),
-                  pipeline: pipelineOverridesEnabled
-                    ? {
-                        ...pipelineOptions,
-                        chunk_size: chunkSize,
-                        chunk_overlap: chunkOverlap,
+                  detachPromise(copyText(lines.join('\n'), t('topBar.toasts.copiedCurl')))
+                }}
+              >
+                <Copy className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
+                {t('topBar.actions.copyCurl')}
+              </DropdownMenuItem>
+              {createdDocumentId ? (
+                <>
+                  <DropdownMenuSeparator className="bg-border/60 mx-1 my-1.5" />
+                  <DropdownMenuItem
+                    className="rounded-xl py-2 font-bold text-xs"
+                    onSelect={() => {
+                      detachPromise(copyText(createdDocumentId, t('topBar.toasts.copiedDocumentId')))
+                    }}
+                  >
+                    <Copy className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
+                    {t('topBar.actions.copyDocumentId')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="rounded-xl py-2 font-bold text-xs" onSelect={() => setTestGenOpen(true)}>
+                    <TestTube2 className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
+                    {t('topBar.actions.generateEvalQuestions')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="rounded-xl py-2 font-bold text-xs"
+                    disabled={!canOpenSelectedChunkInChatPage}
+                    onSelect={() => {
+                      if (!canOpenSelectedChunkInChatPage) return
+                      const params = new URLSearchParams()
+                      params.set('doc', createdDocumentId)
+                      if (selectedDocumentChunkId) {
+                        params.set('chunk', selectedDocumentChunkId)
                       }
-                    : undefined,
-                }
-                detachPromise(
-                  copyText(
-                    JSON.stringify(payload, null, 2),
-                    t('topBar.toasts.copiedIngestPayload')
-                  )
-                )
-              }}
-            >
-              <Copy className="mr-2.5 h-4 w-4 opacity-80" strokeWidth={2.5} />
-              {t('topBar.actions.copyIngestPayload')}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="rounded-xl py-2 font-bold text-xs"
-              disabled={!canCompare}
-              onSelect={() => setCompareOpen(true)}
-            >
-              <GitCompareArrows className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
-              {t('topBar.actions.comparePreview')}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator className="bg-border/60 mx-1 my-1.5" />
-            <DropdownMenuItem
-              className="rounded-xl py-2 font-bold text-xs"
-              onSelect={() => {
-                const url = `${API_V1_BASE_URL}/documents/chunk-preview?chunk_size=${encodeURIComponent(
-                  String(chunkSize)
-                )}&chunk_overlap=${encodeURIComponent(String(chunkOverlap))}`
-                const pipeline = pipelineOverridesEnabled
-                  ? JSON.stringify(pipelineOptions || {})
-                  : null
-                const authHeaders = getAuthHeaders()
-                const lines = [
-                  `curl -X POST "${url}" \\`,
-                  ...Object.entries(authHeaders).map(
-                    ([name, value]) => `  -H "${name}: ${escapeForDoubleQuotedShell(value)}" \\`
-                  ),
-                  `  -F "file=@/path/to/your-file" \\`,
-                  `  -F "parser_backend=${effectiveParserBackend}" \\`,
-                  `  -F "chunk_strategy=${effectiveChunkStrategy}"`,
-                ]
-                if (datasetId) {
-                  lines.push(`  -F "dataset_id=${datasetId}"`)
-                }
-                if (shouldIncludeParentChildSettings) {
-                  lines.push(
-                    `  -F "child_ratio=${parentChildRatio}"`,
-                    `  -F "min_child_size=${parentChildMinChildSize}"`
-                  )
-                }
-                if (shouldIncludeSeparatorSettings) {
-                  lines.push(`  -F "separator_preset=${separatorPreset}"`)
-                  if (separatorPreset === 'custom') {
-                    lines.push(`  -F $'separator=${escapeForAnsiC(separatorCustom)}'`)
-                  }
-                  lines.push(`  -F "keep_separator=${keepSeparator ? 'true' : 'false'}"`)
-                  if (
-                    typeof separatorMaxChunkSize === 'number' &&
-                    separatorMaxChunkSize > 0
-                  ) {
-                    lines.push(`  -F "separator_max_chunk_size=${separatorMaxChunkSize}"`)
-                  }
-                }
-                if (pipeline) {
-                  const lastLine = lines.at(-1)
-                  if (lastLine) lines.splice(-1, 1, `${lastLine} ${SHELL_BACKSLASH}`)
-                  lines.push(`  -F 'pipeline=${pipeline}'`)
-                }
-                detachPromise(
-                  copyText(lines.join('\n'), t('topBar.toasts.copiedCurl'))
-                )
-              }}
-            >
-              <Copy className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
-              {t('topBar.actions.copyCurl')}
-            </DropdownMenuItem>
-            {createdDocumentId ? (
-              <>
-                <DropdownMenuSeparator className="bg-border/60 mx-1 my-1.5" />
-                <DropdownMenuItem
-                  className="rounded-xl py-2 font-bold text-xs"
-                  onSelect={() => {
-                    detachPromise(
-                      copyText(createdDocumentId, t('topBar.toasts.copiedDocumentId'))
-                    )
-                  }}
-                >
-                  <Copy className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
-                  {t('topBar.actions.copyDocumentId')}
-                </DropdownMenuItem>
-                <DropdownMenuItem className="rounded-xl py-2 font-bold text-xs" onSelect={() => setTestGenOpen(true)}>
-                  <TestTube2 className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
-                  {t('topBar.actions.generateEvalQuestions')}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="rounded-xl py-2 font-bold text-xs"
-                  disabled={!canOpenSelectedChunkInChatPage}
-                  onSelect={() => {
-                    if (!canOpenSelectedChunkInChatPage) return
-                    const params = new URLSearchParams()
-                    params.set('doc', createdDocumentId)
-                    if (selectedDocumentChunkId) {
-                      params.set('chunk', selectedDocumentChunkId)
-                    }
-                    params.set('start', String(selectedChunkStart))
-                    params.set('end', String(selectedChunkEnd))
-                    router.push(`/?${params.toString()}`)
-                    toast.success(t('topBar.toasts.openedCurrentChunkInChat'))
-                  }}
-                >
-                  <ExternalLink className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
-                  {t('topBar.actions.openCurrentChunkInChat')}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="rounded-xl py-2 font-bold text-xs"
-                  onSelect={() => {
-                    router.push(`/?doc=${encodeURIComponent(createdDocumentId)}`)
-                    toast.success(t('topBar.toasts.openedDocumentInChat'))
-                  }}
-                >
-                  <ExternalLink className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
-                  {t('topBar.actions.openDocumentInChat')}
-                </DropdownMenuItem>
-              </>
-            ) : null}
-          </DropdownMenuContent>
+                      params.set('start', String(selectedChunkStart))
+                      params.set('end', String(selectedChunkEnd))
+                      router.push(`/?${params.toString()}`)
+                      toast.success(t('topBar.toasts.openedCurrentChunkInChat'))
+                    }}
+                  >
+                    <ExternalLink className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
+                    {t('topBar.actions.openCurrentChunkInChat')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="rounded-xl py-2 font-bold text-xs"
+                    onSelect={() => {
+                      router.push(`/?doc=${encodeURIComponent(createdDocumentId)}`)
+                      toast.success(t('topBar.toasts.openedDocumentInChat'))
+                    }}
+                  >
+                    <ExternalLink className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
+                    {t('topBar.actions.openDocumentInChat')}
+                  </DropdownMenuItem>
+                </>
+              ) : null}
+            </DropdownMenuContent>
           </DropdownMenu>
         </div>
 
@@ -1078,22 +991,17 @@ export function TopBar() {
             'h-9 px-6 text-xs font-black uppercase tracking-[0.1em] rounded-xl shadow-lg transition-all duration-300 motion-reduce:transition-none antialiased hover:scale-[1.02] active:scale-[0.98]',
             submitSuccess
               ? 'bg-success text-success-foreground hover:bg-success/90 shadow-success/20'
-              : 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_4px_16px_-4px_rgba(var(--primary-rgb),0.4)]'
+              : 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_4px_16px_-4px_rgba(var(--primary-rgb),0.4)]',
           )}
         >
           {isSubmitting ? (
-            <Loader2
-              className="w-4 h-4 mr-2 animate-spin motion-reduce:animate-none"
-              strokeWidth={3}
-            />
+            <Loader2 className="w-4 h-4 mr-2 animate-spin motion-reduce:animate-none" strokeWidth={3} />
           ) : submitSuccess ? (
             <Check className="w-4 h-4 mr-2" strokeWidth={3} />
           ) : (
             <Save className="w-4 h-4 mr-2" strokeWidth={3} />
           )}
-          {submitSuccess
-            ? t('topBar.actions.completed')
-            : t('topBar.actions.confirmIngest')}
+          {submitSuccess ? t('topBar.actions.completed') : t('topBar.actions.confirmIngest')}
         </Button>
       </div>
 

@@ -1,12 +1,6 @@
 'use client'
 
-import type {
-  Citation,
-  EvidenceItemStatus,
-  EvidenceRetrieveResponse,
-  JsonObject,
-  ReferenceSource,
-} from '@/types'
+import type { Citation, EvidenceItemStatus, EvidenceRetrieveResponse, JsonObject, ReferenceSource } from '@/types'
 
 export type RetrievalProfile = 'recall50' | 'coverage80' | 'recall20'
 
@@ -94,7 +88,9 @@ export function normalizeCitations(value: unknown): Citation[] {
   return citations.length ? citations : EMPTY_CITATIONS
 }
 
-export function normalizeRetrieveResult(value: EvidenceRetrieveResponse | null | undefined): EvidenceRetrieveResult | null {
+export function normalizeRetrieveResult(
+  value: EvidenceRetrieveResponse | null | undefined,
+): EvidenceRetrieveResult | null {
   if (!value) return null
   return {
     ...value,
@@ -156,7 +152,9 @@ export function downloadBlob(filename: string, blob: Blob) {
   }
 }
 
-export function evidenceStatusBadgeVariant(status: EvidenceItemStatus): 'outline' | 'secondary' | 'soft' | 'destructive' {
+export function evidenceStatusBadgeVariant(
+  status: EvidenceItemStatus,
+): 'outline' | 'secondary' | 'soft' | 'destructive' {
   if (status === 'approved') return 'soft'
   if (status === 'reviewed') return 'secondary'
   if (status === 'archived') return 'outline'

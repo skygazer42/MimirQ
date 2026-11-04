@@ -24,20 +24,10 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PageScaffold } from '@/components/ui/page-scaffold'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatApiError } from '@/lib/api-errors'
-import {
-  datasetApi,
-  industryRulesApi,
-  type IndustryRulesetDetail,
-} from '@/lib/api'
+import { datasetApi, industryRulesApi, type IndustryRulesetDetail } from '@/lib/api'
 import { queryKeys } from '@/lib/query-keys'
 import { randomBase36Id } from '@/lib/secure-random'
 import { cn, detachPromise } from '@/lib/utils'
@@ -80,8 +70,7 @@ type ResultSummary = {
 }
 
 function makeLocalId(prefix: string, seed?: string): string {
-  const suffix =
-    seed?.trim() || `${Date.now()}-${randomBase36Id(6)}`
+  const suffix = seed?.trim() || `${Date.now()}-${randomBase36Id(6)}`
   return `${prefix}-${suffix}`
 }
 
@@ -106,9 +95,7 @@ function splitCommaText(value: string): string[] {
     .filter(Boolean)
 }
 
-function glossaryEntriesFromDetail(
-  detail: IndustryRulesetDetail
-): GlossaryEntry[] {
+function glossaryEntriesFromDetail(detail: IndustryRulesetDetail): GlossaryEntry[] {
   return Object.entries(detail.glossary || {})
     .sort((a, b) => a[0].localeCompare(b[0], 'zh-CN'))
     .map(([term, aliases]) => ({
@@ -118,9 +105,7 @@ function glossaryEntriesFromDetail(
     }))
 }
 
-function patternEntriesFromDetail(
-  detail: IndustryRulesetDetail
-): PatternEntry[] {
+function patternEntriesFromDetail(detail: IndustryRulesetDetail): PatternEntry[] {
   return (detail.patterns || []).map((item, index) => {
     const record = asRecord(item)
     const markers = textList(record.markers ?? record.keywords)
@@ -145,9 +130,7 @@ function intentEntriesFromDetail(detail: IndustryRulesetDetail): IntentEntry[] {
   })
 }
 
-function buildGlossaryPayload(
-  entries: GlossaryEntry[]
-): Record<string, string[]> {
+function buildGlossaryPayload(entries: GlossaryEntry[]): Record<string, string[]> {
   const out: Record<string, string[]> = {}
   for (const entry of entries) {
     const term = entry.term.trim()
@@ -157,9 +140,7 @@ function buildGlossaryPayload(
   return out
 }
 
-function buildPatternsPayload(
-  entries: PatternEntry[]
-): Array<Record<string, unknown>> {
+function buildPatternsPayload(entries: PatternEntry[]): Array<Record<string, unknown>> {
   return entries
     .map((entry) => ({
       markers: splitCommaText(entry.markersText),
@@ -169,9 +150,7 @@ function buildPatternsPayload(
     .filter((entry) => Array.isArray(entry.markers) && entry.markers.length > 0)
 }
 
-function buildIntentsPayload(
-  entries: IntentEntry[]
-): Array<Record<string, unknown>> {
+function buildIntentsPayload(entries: IntentEntry[]): Array<Record<string, unknown>> {
   return entries
     .map((entry) => ({
       name: entry.name.trim(),
@@ -183,9 +162,7 @@ function buildIntentsPayload(
 
 function suggestionRowsFromPayload(payload: unknown): GlossarySuggestion[] {
   const record = asRecord(payload)
-  const rows = Array.isArray(record.glossary_suggestions)
-    ? record.glossary_suggestions
-    : []
+  const rows = Array.isArray(record.glossary_suggestions) ? record.glossary_suggestions : []
   return rows
     .map((row) => {
       const item = asRecord(row)
@@ -204,8 +181,7 @@ function selectedMapValues(selected: Record<string, boolean>): string[] {
     .map(([key]) => key)
 }
 
-const WORKBENCH_PANEL =
-  'rounded-[14px] border border-border/60 bg-card/90 shadow-[0_10px_28px_rgba(15,23,42,0.045)]'
+const WORKBENCH_PANEL = 'rounded-[14px] border border-border/60 bg-card/90 shadow-[0_10px_28px_rgba(15,23,42,0.045)]'
 const DENSE_FIELD =
   'h-9 rounded-lg border-border bg-card text-[13px] font-medium text-foreground shadow-none focus-visible:ring-primary/20'
 const DENSE_BUTTON =
@@ -225,15 +201,9 @@ export function IndustryRulesWorkbench() {
   const [glossaryEntries, setGlossaryEntries] = useState<GlossaryEntry[]>([])
   const [patternEntries, setPatternEntries] = useState<PatternEntry[]>([])
   const [intentEntries, setIntentEntries] = useState<IntentEntry[]>([])
-  const [glossarySuggestions, setGlossarySuggestions] = useState<
-    GlossarySuggestion[]
-  >([])
-  const [selectedSuggestionTokens, setSelectedSuggestionTokens] = useState<
-    Record<string, boolean>
-  >({})
-  const [dismissedSuggestionTokens, setDismissedSuggestionTokens] = useState<
-    Record<string, boolean>
-  >({})
+  const [glossarySuggestions, setGlossarySuggestions] = useState<GlossarySuggestion[]>([])
+  const [selectedSuggestionTokens, setSelectedSuggestionTokens] = useState<Record<string, boolean>>({})
+  const [dismissedSuggestionTokens, setDismissedSuggestionTokens] = useState<Record<string, boolean>>({})
   const [preview, setPreview] = useState<RewritePreviewState | null>(null)
   const [result, setResult] = useState<ResultSummary | null>(null)
 
@@ -251,11 +221,7 @@ export function IndustryRulesWorkbench() {
     queryFn: () => industryRulesApi.getRuleset(selectedRuleset.trim()),
   })
   const glossarySuggestionsQuery = useQuery({
-    queryKey: queryKeys.industryRules.glossarySuggestions(
-      selectedDatasetId,
-      selectedRuleset,
-      { limit: 20 }
-    ),
+    queryKey: queryKeys.industryRules.glossarySuggestions(selectedDatasetId, selectedRuleset, { limit: 20 }),
     enabled: Boolean(selectedDatasetId.trim() && selectedRuleset.trim()),
     queryFn: () =>
       datasetApi.getAnalysisRuleSuggestions(selectedDatasetId.trim(), {
@@ -264,14 +230,8 @@ export function IndustryRulesWorkbench() {
       }),
   })
 
-  const rulesets = useMemo(
-    () => rulesetsQuery.data?.rulesets || [],
-    [rulesetsQuery.data?.rulesets]
-  )
-  const datasets = useMemo(
-    () => datasetsQuery.data || [],
-    [datasetsQuery.data]
-  )
+  const rulesets = useMemo(() => rulesetsQuery.data?.rulesets || [], [rulesetsQuery.data?.rulesets])
+  const datasets = useMemo(() => datasetsQuery.data || [], [datasetsQuery.data])
   const loadingMeta = rulesetsQuery.isFetching || datasetsQuery.isFetching
   const metaError = rulesetsQuery.error || datasetsQuery.error
   const loadingRuleset = rulesetDetailQuery.isFetching
@@ -324,13 +284,11 @@ export function IndustryRulesWorkbench() {
   }, [glossarySuggestionsQuery.error])
 
   useEffect(() => {
-    if (!selectedRuleset && rulesets[0]?.name)
-      setSelectedRuleset(rulesets[0].name)
+    if (!selectedRuleset && rulesets[0]?.name) setSelectedRuleset(rulesets[0].name)
   }, [rulesets, selectedRuleset])
 
   useEffect(() => {
-    if (!selectedDatasetId && datasets[0]?.id)
-      setSelectedDatasetId(String(datasets[0].id))
+    if (!selectedDatasetId && datasets[0]?.id) setSelectedDatasetId(String(datasets[0].id))
   }, [datasets, selectedDatasetId])
 
   useEffect(() => {
@@ -360,12 +318,11 @@ export function IndustryRulesWorkbench() {
 
   const selectedRulesetSummary = useMemo(
     () => rulesets.find((item) => item.name === selectedRuleset) || null,
-    [rulesets, selectedRuleset]
+    [rulesets, selectedRuleset],
   )
   const selectedDataset = useMemo(
-    () =>
-      datasets.find((item) => String(item.id) === selectedDatasetId) || null,
-    [datasets, selectedDatasetId]
+    () => datasets.find((item) => String(item.id) === selectedDatasetId) || null,
+    [datasets, selectedDatasetId],
   )
   const visibleGlossaryEntries = useMemo(() => {
     const keyword = searchValue.trim().toLowerCase()
@@ -376,35 +333,23 @@ export function IndustryRulesWorkbench() {
     })
   }, [glossaryEntries, searchValue])
   const visibleGlossarySuggestions = useMemo(() => {
-    const existingTerms = new Set(
-      glossaryEntries.map((entry) => entry.term.trim()).filter(Boolean)
-    )
+    const existingTerms = new Set(glossaryEntries.map((entry) => entry.term.trim()).filter(Boolean))
     return glossarySuggestions.filter(
-      (entry) =>
-        !dismissedSuggestionTokens[entry.token] &&
-        !existingTerms.has(entry.token)
+      (entry) => !dismissedSuggestionTokens[entry.token] && !existingTerms.has(entry.token),
     )
   }, [dismissedSuggestionTokens, glossaryEntries, glossarySuggestions])
-  const selectedSuggestionCount = selectedMapValues(
-    selectedSuggestionTokens
-  ).length
+  const selectedSuggestionCount = selectedMapValues(selectedSuggestionTokens).length
 
   const setGlossaryEntry = (id: string, patch: Partial<GlossaryEntry>) => {
-    setGlossaryEntries((prev) =>
-      prev.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry))
-    )
+    setGlossaryEntries((prev) => prev.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)))
   }
 
   const setPatternEntry = (id: string, patch: Partial<PatternEntry>) => {
-    setPatternEntries((prev) =>
-      prev.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry))
-    )
+    setPatternEntries((prev) => prev.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)))
   }
 
   const setIntentEntry = (id: string, patch: Partial<IntentEntry>) => {
-    setIntentEntries((prev) =>
-      prev.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry))
-    )
+    setIntentEntries((prev) => prev.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)))
   }
 
   const addGlossarySuggestion = (token: string) => {
@@ -412,10 +357,7 @@ export function IndustryRulesWorkbench() {
     if (!term) return
     setGlossaryEntries((prev) => {
       if (prev.some((entry) => entry.term.trim() === term)) return prev
-      return [
-        ...prev,
-        { id: makeLocalId('glossary', term), term, aliasesText: '' },
-      ]
+      return [...prev, { id: makeLocalId('glossary', term), term, aliasesText: '' }]
     })
     setDismissedSuggestionTokens((prev) => ({ ...prev, [term]: true }))
   }
@@ -556,15 +498,8 @@ export function IndustryRulesWorkbench() {
                     onValueChange={setSelectedRuleset}
                     disabled={loadingMeta || loadingRuleset}
                   >
-                    <SelectTrigger
-                      id="industry-rules-ruleset"
-                      className={DENSE_FIELD}
-                    >
-                      <SelectValue
-                        placeholder={
-                          loadingMeta ? '加载规则集中...' : '选择规则集'
-                        }
-                      />
+                    <SelectTrigger id="industry-rules-ruleset" className={DENSE_FIELD}>
+                      <SelectValue placeholder={loadingMeta ? '加载规则集中...' : '选择规则集'} />
                     </SelectTrigger>
                     <SelectContent>
                       {rulesets.map((item) => (
@@ -579,20 +514,9 @@ export function IndustryRulesWorkbench() {
                   <Label htmlFor="industry-rules-dataset" className="text-[12px] font-semibold text-foreground/85">
                     候选来源数据集
                   </Label>
-                  <Select
-                    value={selectedDatasetId}
-                    onValueChange={setSelectedDatasetId}
-                    disabled={loadingMeta}
-                  >
-                    <SelectTrigger
-                      id="industry-rules-dataset"
-                      className={DENSE_FIELD}
-                    >
-                      <SelectValue
-                        placeholder={
-                          loadingMeta ? '加载数据集中...' : '选择数据集'
-                        }
-                      />
+                  <Select value={selectedDatasetId} onValueChange={setSelectedDatasetId} disabled={loadingMeta}>
+                    <SelectTrigger id="industry-rules-dataset" className={DENSE_FIELD}>
+                      <SelectValue placeholder={loadingMeta ? '加载数据集中...' : '选择数据集'} />
                     </SelectTrigger>
                     <SelectContent>
                       {datasets.map((item) => (
@@ -608,23 +532,16 @@ export function IndustryRulesWorkbench() {
               <div className="hidden bg-border/70 xl:block" />
 
               <div className="space-y-3">
-                <div className="text-[12px] font-semibold text-foreground">
-                  规则集概览
-                </div>
+                <div className="text-[12px] font-semibold text-foreground">规则集概览</div>
                 <div className="flex flex-wrap gap-2">
                   <Badge variant="outline" className="bg-card font-semibold">
-                    术语{' '}
-                    {selectedRulesetSummary?.glossary_count ??
-                      glossaryEntries.length}
+                    术语 {selectedRulesetSummary?.glossary_count ?? glossaryEntries.length}
                   </Badge>
                   <Badge variant="outline" className="bg-card font-semibold">
-                    模式{' '}
-                    {selectedRulesetSummary?.pattern_count ??
-                      patternEntries.length}
+                    模式 {selectedRulesetSummary?.pattern_count ?? patternEntries.length}
                   </Badge>
                   <Badge variant="outline" className="bg-card font-semibold">
-                    意图{' '}
-                    {selectedRulesetSummary?.intent_count ?? intentEntries.length}
+                    意图 {selectedRulesetSummary?.intent_count ?? intentEntries.length}
                   </Badge>
                   <Badge variant="outline" className="bg-card font-semibold">
                     候选 {visibleGlossarySuggestions.length}
@@ -642,11 +559,7 @@ export function IndustryRulesWorkbench() {
                     disabled={loadingMeta || loadingRuleset}
                     onClick={refreshMeta}
                   >
-                    {loadingMeta ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <RefreshCw className="h-4 w-4" />
-                    )}
+                    {loadingMeta ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                     刷新
                   </Button>
                   <Button
@@ -669,12 +582,7 @@ export function IndustryRulesWorkbench() {
       bodyClassName="pt-0"
     >
       <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <div
-          className={cn(
-            WORKBENCH_PANEL,
-            'flex min-h-[calc(100vh-410px)] min-w-0 flex-col overflow-hidden'
-          )}
-        >
+        <div className={cn(WORKBENCH_PANEL, 'flex min-h-[calc(100vh-410px)] min-w-0 flex-col overflow-hidden')}>
           <Tabs defaultValue="glossary" className="flex h-full flex-col">
             <div className="border-b border-border px-4">
               <TabsList className="h-11 gap-6 rounded-none bg-transparent p-0">
@@ -733,11 +641,7 @@ export function IndustryRulesWorkbench() {
                     disabled={savingGlossary}
                     onClick={() => detachPromise(saveGlossary())}
                   >
-                    {savingGlossary ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Save className="h-4 w-4" />
-                    )}
+                    {savingGlossary ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                     保存术语
                   </Button>
                 </div>
@@ -755,10 +659,7 @@ export function IndustryRulesWorkbench() {
                   </thead>
                   <tbody>
                     {visibleGlossaryEntries.map((entry) => (
-                      <tr
-                        key={entry.id}
-                        className="border-t border-border align-top"
-                      >
+                      <tr key={entry.id} className="border-t border-border align-top">
                         <td className="px-4 py-3">
                           <Input
                             value={entry.term}
@@ -783,20 +684,14 @@ export function IndustryRulesWorkbench() {
                             className={DENSE_FIELD}
                           />
                         </td>
-                        <td className="px-4 py-3 text-[12px] font-medium text-muted-foreground">
-                          规则库
-                        </td>
+                        <td className="px-4 py-3 text-[12px] font-medium text-muted-foreground">规则库</td>
                         <td className="px-4 py-3 text-right">
                           <Button
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
                             aria-label="删除术语"
-                            onClick={() =>
-                              setGlossaryEntries((prev) =>
-                                prev.filter((item) => item.id !== entry.id)
-                              )
-                            }
+                            onClick={() => setGlossaryEntries((prev) => prev.filter((item) => item.id !== entry.id))}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -805,10 +700,7 @@ export function IndustryRulesWorkbench() {
                     ))}
                     {visibleGlossaryEntries.length ? null : (
                       <tr>
-                        <td
-                          colSpan={4}
-                          className="px-4 py-10 text-center text-[13px] text-muted-foreground"
-                        >
+                        <td colSpan={4} className="px-4 py-10 text-center text-[13px] text-muted-foreground">
                           当前规则集还没有可展示的术语，或搜索条件为空。
                         </td>
                       </tr>
@@ -820,9 +712,7 @@ export function IndustryRulesWorkbench() {
 
             <TabsContent value="patterns" className="m-0 flex flex-1 flex-col p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <div className="text-[13px] font-medium text-muted-foreground">
-                  维护触发词、澄清话术与启用状态。
-                </div>
+                <div className="text-[13px] font-medium text-muted-foreground">维护触发词、澄清话术与启用状态。</div>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
@@ -847,11 +737,7 @@ export function IndustryRulesWorkbench() {
                     disabled={savingPatterns}
                     onClick={() => detachPromise(savePatterns())}
                   >
-                    {savingPatterns ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Save className="h-4 w-4" />
-                    )}
+                    {savingPatterns ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                     保存模式
                   </Button>
                 </div>
@@ -859,10 +745,7 @@ export function IndustryRulesWorkbench() {
 
               <div className="space-y-3">
                 {patternEntries.map((entry) => (
-                  <div
-                    key={entry.id}
-                    className="rounded-[12px] border border-border bg-card p-3"
-                  >
+                  <div key={entry.id} className="rounded-[12px] border border-border bg-card p-3">
                     <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_120px_56px]">
                       <Input
                         value={entry.markersText}
@@ -900,30 +783,24 @@ export function IndustryRulesWorkbench() {
                         size="icon"
                         className="h-9 w-9 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
                         aria-label="删除问题模式"
-                        onClick={() =>
-                          setPatternEntries((prev) =>
-                            prev.filter((item) => item.id !== entry.id)
-                          )
-                        }
+                        onClick={() => setPatternEntries((prev) => prev.filter((item) => item.id !== entry.id))}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
                 ))}
-                    {patternEntries.length ? null : (
-                      <div className="rounded-2xl border border-dashed border-border px-4 py-10 text-center text-[13px] text-muted-foreground">
-                        当前规则集没有问题模式。
-                      </div>
-                    )}
+                {patternEntries.length ? null : (
+                  <div className="rounded-2xl border border-dashed border-border px-4 py-10 text-center text-[13px] text-muted-foreground">
+                    当前规则集没有问题模式。
+                  </div>
+                )}
               </div>
             </TabsContent>
 
             <TabsContent value="intents" className="m-0 flex flex-1 flex-col p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <div className="text-[13px] font-medium text-muted-foreground">
-                  维护意图名称、关键词与路由策略。
-                </div>
+                <div className="text-[13px] font-medium text-muted-foreground">维护意图名称、关键词与路由策略。</div>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
@@ -948,11 +825,7 @@ export function IndustryRulesWorkbench() {
                     disabled={savingIntents}
                     onClick={() => detachPromise(saveIntents())}
                   >
-                    {savingIntents ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Save className="h-4 w-4" />
-                    )}
+                    {savingIntents ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                     保存意图
                   </Button>
                 </div>
@@ -960,16 +833,11 @@ export function IndustryRulesWorkbench() {
 
               <div className="space-y-3">
                 {intentEntries.map((entry) => (
-                  <div
-                    key={entry.id}
-                    className="rounded-[12px] border border-border bg-card p-3"
-                  >
+                  <div key={entry.id} className="rounded-[12px] border border-border bg-card p-3">
                     <div className="grid gap-3 lg:grid-cols-[180px_minmax(0,1fr)_180px_56px]">
                       <Input
                         value={entry.name}
-                        onChange={(event) =>
-                          setIntentEntry(entry.id, { name: event.target.value })
-                        }
+                        onChange={(event) => setIntentEntry(entry.id, { name: event.target.value })}
                         placeholder="意图名称"
                         className={DENSE_FIELD}
                       />
@@ -998,11 +866,7 @@ export function IndustryRulesWorkbench() {
                         size="icon"
                         className="h-9 w-9 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
                         aria-label="删除意图"
-                        onClick={() =>
-                          setIntentEntries((prev) =>
-                            prev.filter((item) => item.id !== entry.id)
-                          )
-                        }
+                        onClick={() => setIntentEntries((prev) => prev.filter((item) => item.id !== entry.id))}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -1052,9 +916,7 @@ export function IndustryRulesWorkbench() {
                     <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                       输入
                     </div>
-                    <div className="mt-1 font-medium text-foreground">
-                      {preview.originalQuery}
-                    </div>
+                    <div className="mt-1 font-medium text-foreground">{preview.originalQuery}</div>
                   </div>
                   <div>
                     <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
@@ -1070,20 +932,16 @@ export function IndustryRulesWorkbench() {
                       className={cn(
                         preview.changed
                           ? 'border-success/30 bg-success/10 text-success'
-                          : 'border-border bg-card text-muted-foreground'
+                          : 'border-border bg-card text-muted-foreground',
                       )}
                     >
                       {preview.changed ? '已命中规则并改写' : '未触发改写'}
                     </Badge>
-                    <Badge variant="outline">
-                      规则集 {selectedRuleset || '-'}
-                    </Badge>
+                    <Badge variant="outline">规则集 {selectedRuleset || '-'}</Badge>
                   </div>
                 </div>
               ) : (
-                <div className="text-[13px] font-medium text-muted-foreground">
-                  输入问题后这里会展示改写结果。
-                </div>
+                <div className="text-[13px] font-medium text-muted-foreground">输入问题后这里会展示改写结果。</div>
               )}
             </div>
           </div>
@@ -1097,16 +955,8 @@ export function IndustryRulesWorkbench() {
               <Button
                 variant="outline"
                 className={DENSE_BUTTON}
-                disabled={
-                  !selectedDatasetId.trim() ||
-                  !selectedRuleset.trim() ||
-                  loadingSuggestions
-                }
-                onClick={() =>
-                  detachPromise(
-                    glossarySuggestionsQuery.refetch()
-                  )
-                }
+                disabled={!selectedDatasetId.trim() || !selectedRuleset.trim() || loadingSuggestions}
+                onClick={() => detachPromise(glossarySuggestionsQuery.refetch())}
               >
                 {loadingSuggestions ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1121,17 +971,11 @@ export function IndustryRulesWorkbench() {
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Badge variant="outline">规则集 {selectedRuleset || '-'}</Badge>
-              <Badge variant="outline">
-                数据集 {selectedDataset?.name || selectedDataset?.id || '-'}
-              </Badge>
-              <Badge variant="outline">
-                候选 {visibleGlossarySuggestions.length}
-              </Badge>
+              <Badge variant="outline">数据集 {selectedDataset?.name || selectedDataset?.id || '-'}</Badge>
+              <Badge variant="outline">候选 {visibleGlossarySuggestions.length}</Badge>
             </div>
             <div className="mt-3 flex items-center justify-between gap-2">
-              <div className="text-[12px] font-medium text-muted-foreground">
-                已选 {selectedSuggestionCount} 条
-              </div>
+              <div className="text-[12px] font-medium text-muted-foreground">已选 {selectedSuggestionCount} 条</div>
               <Button
                 variant="outline"
                 className={DENSE_BUTTON}
@@ -1144,10 +988,7 @@ export function IndustryRulesWorkbench() {
             </div>
             <div className="mt-3 max-h-[520px] space-y-2 overflow-auto pr-1">
               {visibleGlossarySuggestions.map((entry) => (
-                <div
-                  key={entry.token}
-                  className="rounded-[12px] border border-border bg-card p-3"
-                >
+                <div key={entry.token} className="rounded-[12px] border border-border bg-card p-3">
                   <div className="flex items-start gap-2">
                     <Checkbox
                       checked={selectedSuggestionTokens[entry.token] === true}
@@ -1160,14 +1001,10 @@ export function IndustryRulesWorkbench() {
                     />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="truncate text-[13px] font-semibold text-foreground">
-                          {entry.token}
-                        </div>
+                        <div className="truncate text-[13px] font-semibold text-foreground">{entry.token}</div>
                         <Badge variant="outline">{entry.count} 次</Badge>
                       </div>
-                      <div className="mt-1 text-[11px] font-medium text-muted-foreground">
-                        来源：{entry.source}
-                      </div>
+                      <div className="mt-1 text-[11px] font-medium text-muted-foreground">来源：{entry.source}</div>
                     </div>
                   </div>
                   <div className="mt-3 flex gap-2">
@@ -1208,9 +1045,7 @@ export function IndustryRulesWorkbench() {
               <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                 最近操作
               </div>
-              <div className="mt-2 font-semibold text-foreground">
-                {result.title}
-              </div>
+              <div className="mt-2 font-semibold text-foreground">{result.title}</div>
               <div className="mt-1 font-medium text-muted-foreground">{result.detail}</div>
             </div>
           ) : null}

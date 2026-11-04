@@ -60,28 +60,27 @@ export function PipelineCapabilitiesProvider({ children }: Readonly<{ children: 
     return map
   }, [capabilities])
 
-  const value = useMemo<PipelineCapabilitiesContextValue>(() => ({
-    capabilities,
-    loading,
-    error,
-    refresh,
-    parserBackendAvailable: (name) => {
-      const key = normalizeParserBackendName(name)
-      if (!key) return undefined
-      return parserBackendMap.get(key)
-    },
-    chunkStrategyAvailable: (name) => {
-      const key = normalizeChunkStrategyName(name)
-      if (!key) return undefined
-      return chunkStrategyMap.get(key)
-    },
-  }), [capabilities, loading, error, refresh, parserBackendMap, chunkStrategyMap])
-
-  return (
-    <PipelineCapabilitiesContext.Provider value={value}>
-      {children}
-    </PipelineCapabilitiesContext.Provider>
+  const value = useMemo<PipelineCapabilitiesContextValue>(
+    () => ({
+      capabilities,
+      loading,
+      error,
+      refresh,
+      parserBackendAvailable: (name) => {
+        const key = normalizeParserBackendName(name)
+        if (!key) return undefined
+        return parserBackendMap.get(key)
+      },
+      chunkStrategyAvailable: (name) => {
+        const key = normalizeChunkStrategyName(name)
+        if (!key) return undefined
+        return chunkStrategyMap.get(key)
+      },
+    }),
+    [capabilities, loading, error, refresh, parserBackendMap, chunkStrategyMap],
   )
+
+  return <PipelineCapabilitiesContext.Provider value={value}>{children}</PipelineCapabilitiesContext.Provider>
 }
 
 export function usePipelineCapabilities() {

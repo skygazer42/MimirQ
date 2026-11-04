@@ -22,7 +22,6 @@ import { connectorApi } from '@/lib/api'
 import { coerceOneOf } from '@/lib/one-of'
 import { detachPromise } from '@/lib/utils'
 
-
 function parseStartUrls(raw: string): string[] {
   const parts = (raw || '')
     .split(/[\n,;]+/g)
@@ -347,17 +346,18 @@ export function KnowledgeWebCrawlDialog({
               />
             </div>
             <div className="space-y-2">
-	              <div className="text-sm font-medium text-foreground/80">Constraints</div>
-	              <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-	                <input
-	                  type="checkbox"
-	                  checked={sameHostOnly}
-	                  onChange={(e) => setSameHostOnly(e.target.checked)}
-	                  className="accent-primary h-4 w-4"
-	                /><span>Same host only</span>
-	              </label>
-	            </div>
-	          </div>
+              <div className="text-sm font-medium text-foreground/80">Constraints</div>
+              <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={sameHostOnly}
+                  onChange={(e) => setSameHostOnly(e.target.checked)}
+                  className="accent-primary h-4 w-4"
+                />
+                <span>Same host only</span>
+              </label>
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -385,34 +385,38 @@ export function KnowledgeWebCrawlDialog({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <div className="text-sm font-medium text-foreground/80">Discovery options</div>
-	              <div className="space-y-2">
-	                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-	                  <input
-	                    type="checkbox"
-	                    checked={useSitemaps}
-	                    onChange={(e) => setUseSitemaps(e.target.checked)}
-	                    className="accent-primary h-4 w-4"
-	                  /><span>Use sitemap.xml / robots Sitemap hints (faster)</span>
-	                </label>
-	                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-	                  <input
-	                    type="checkbox"
-	                    checked={respectRobots}
-	                    onChange={(e) => setRespectRobots(e.target.checked)}
-	                    className="accent-primary h-4 w-4"
-	                  /><span>Respect robots.txt (best-effort)</span>
-	                </label>
-	                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-	                  <input
-	                    type="checkbox"
-	                    checked={dedupCanonical}
-	                    onChange={(e) => setDedupCanonical(e.target.checked)}
-	                    className="accent-primary h-4 w-4"
-	                  /><span>Dedup by canonical link (best-effort)</span>
-	                </label>
-	              </div>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={useSitemaps}
+                    onChange={(e) => setUseSitemaps(e.target.checked)}
+                    className="accent-primary h-4 w-4"
+                  />
+                  <span>Use sitemap.xml / robots Sitemap hints (faster)</span>
+                </label>
+                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={respectRobots}
+                    onChange={(e) => setRespectRobots(e.target.checked)}
+                    className="accent-primary h-4 w-4"
+                  />
+                  <span>Respect robots.txt (best-effort)</span>
+                </label>
+                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={dedupCanonical}
+                    onChange={(e) => setDedupCanonical(e.target.checked)}
+                    className="accent-primary h-4 w-4"
+                  />
+                  <span>Dedup by canonical link (best-effort)</span>
+                </label>
+              </div>
               <div className="text-xs text-muted-foreground">
-                Tip: sitemap mode avoids fetching every page just to discover links; the connector still ingests each URL.
+                Tip: sitemap mode avoids fetching every page just to discover links; the connector still ingests each
+                URL.
               </div>
             </div>
 
@@ -436,7 +440,11 @@ export function KnowledgeWebCrawlDialog({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <div className="text-sm font-medium text-foreground/80">User-Agent (optional)</div>
-              <Input value={userAgent} onChange={(e) => setUserAgent(e.target.value)} placeholder="MimirQ/1.0 (+web-crawl)" />
+              <Input
+                value={userAgent}
+                onChange={(e) => setUserAgent(e.target.value)}
+                placeholder="MimirQ/1.0 (+web-crawl)"
+              />
             </div>
             <div className="space-y-2">
               <div className="text-sm font-medium text-foreground/80">Auth</div>

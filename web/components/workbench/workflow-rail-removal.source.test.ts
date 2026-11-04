@@ -20,8 +20,6 @@ describe('knowledge workbench navigation', () => {
       expect(source).not.toContain('PipelineRail')
     }
 
-    expect(readSource('components/workbench/index.ts')).not.toContain(
-      "export { PipelineRail }"
-    )
+    expect(readSource('components/workbench/index.ts')).not.toContain('export { PipelineRail }')
   })
 })

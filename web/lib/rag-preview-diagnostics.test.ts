@@ -54,26 +54,22 @@ describe('buildRagPreviewDiagnosticsSummary', () => {
       expect.arrayContaining([
         { label: 'vector', value: 'candidate_count=18 · returned_count=8' },
         { label: 'query_count', value: '2' },
-      ])
+      ]),
     )
-    expect(summary.filtering).toEqual(
-      expect.arrayContaining([{ label: 'score_threshold', value: '0.55' }])
-    )
+    expect(summary.filtering).toEqual(expect.arrayContaining([{ label: 'score_threshold', value: '0.55' }]))
     expect(summary.fusion).toEqual(
       expect.arrayContaining([
         { label: 'retrieval_mode', value: 'hybrid' },
         { label: 'fusion_strategy', value: 'weighted' },
-      ])
+      ]),
     )
     expect(summary.reranker).toEqual(
       expect.arrayContaining([
         { label: 'enable_reranker', value: 'true' },
         { label: 'used', value: 'true' },
-      ])
+      ]),
     )
-    expect(summary.fallback).toContain(
-      'selection_fallback: single_document'
-    )
+    expect(summary.fallback).toContain('selection_fallback: single_document')
   })
 
   it('maps real backend degraded and fallback fields instead of only legacy aliases', () => {
@@ -109,13 +105,10 @@ describe('buildRagPreviewDiagnosticsSummary', () => {
         'retrieval_degraded_reasons: main:sparse:timeout',
         'retrieval_degraded_reasons: hard_fallback:keyword:timeout',
         'fallback_reason: strict_span_empty',
-      ])
+      ]),
     )
     expect(summary.fallback).toEqual(
-      expect.arrayContaining([
-        'retrieval_fallback_reason: strict_span_empty',
-        'fallback_reason: strict_span_empty',
-      ])
+      expect.arrayContaining(['retrieval_fallback_reason: strict_span_empty', 'fallback_reason: strict_span_empty']),
     )
   })
 })

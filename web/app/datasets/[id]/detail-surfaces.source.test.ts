@@ -103,16 +103,16 @@ describe('dataset detail surface shells', () => {
     const dbCatalogSource = readWorkspaceFile('app/datasets/[id]/db-catalog/page.tsx')
 
     expect(precheckSource).not.toContain(
-      'className="h-full overflow-hidden border-border/60 bg-[linear-gradient(180deg,hsl(var(--card)/0.98),hsl(var(--background)/0.92))] p-0 shadow-[0_16px_45px_rgba(15,23,42,0.07)] ring-1 ring-border/50 dark:border-border/60 dark:bg-card/95 dark:ring-white/5"'
+      'className="h-full overflow-hidden border-border/60 bg-[linear-gradient(180deg,hsl(var(--card)/0.98),hsl(var(--background)/0.92))] p-0 shadow-[0_16px_45px_rgba(15,23,42,0.07)] ring-1 ring-border/50 dark:border-border/60 dark:bg-card/95 dark:ring-white/5"',
     )
     expect(precheckSource).not.toContain(
-      'className="h-full overflow-hidden border-border/60 bg-[linear-gradient(180deg,hsl(var(--card)/0.96),hsl(var(--background)/0.9))] p-0 shadow-[0_16px_45px_rgba(15,23,42,0.065)] ring-1 ring-border/50 dark:border-border/60 dark:bg-card/95 dark:ring-white/5"'
+      'className="h-full overflow-hidden border-border/60 bg-[linear-gradient(180deg,hsl(var(--card)/0.96),hsl(var(--background)/0.9))] p-0 shadow-[0_16px_45px_rgba(15,23,42,0.065)] ring-1 ring-border/50 dark:border-border/60 dark:bg-card/95 dark:ring-white/5"',
     )
     expect(workflowSource).not.toContain(
-      'className="h-10 min-w-[118px] gap-2 rounded-xl bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] text-[13px] text-primary-foreground shadow-[0_14px_30px_rgba(20,184,166,0.24)] hover:bg-[linear-gradient(90deg,hsl(var(--primary)/0.92),hsl(var(--info)/0.92))]"'
+      'className="h-10 min-w-[118px] gap-2 rounded-xl bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] text-[13px] text-primary-foreground shadow-[0_14px_30px_rgba(20,184,166,0.24)] hover:bg-[linear-gradient(90deg,hsl(var(--primary)/0.92),hsl(var(--info)/0.92))]"',
     )
     expect(dbCatalogSource).not.toContain(
-      'className="h-10 min-w-[118px] gap-2 rounded-xl bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] text-[13px] text-primary-foreground shadow-[0_14px_30px_hsl(var(--info)/0.24)] hover:bg-[linear-gradient(90deg,hsl(var(--primary)/0.92),hsl(var(--info)/0.92))]"'
+      'className="h-10 min-w-[118px] gap-2 rounded-xl bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] text-[13px] text-primary-foreground shadow-[0_14px_30px_hsl(var(--info)/0.24)] hover:bg-[linear-gradient(90deg,hsl(var(--primary)/0.92),hsl(var(--info)/0.92))]"',
     )
   })
 })

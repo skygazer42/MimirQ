@@ -11,16 +11,7 @@ import {
   Layers,
   ShieldCheck,
 } from 'lucide-react'
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Pie,
-  PieChart,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
+import { Bar, BarChart, CartesianGrid, Pie, PieChart, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -94,13 +85,7 @@ export function ReportMetricGrid({
 }>) {
   return (
     <div className={REPORT_METRIC_LEDGER_CLASS}>
-      <AuditMetricCard
-        icon={FileText}
-        label="文档总数"
-        value={String(totalDocs)}
-        sub="数据集画像统计"
-        tone="blue"
-      />
+      <AuditMetricCard icon={FileText} label="文档总数" value={String(totalDocs)} sub="数据集画像统计" tone="blue" />
       <AuditMetricCard
         icon={BarChart3}
         label="总大小"
@@ -129,13 +114,7 @@ export function ReportMetricGrid({
         sub={`过滤：${pipelineFilterLabel}`}
         tone="blue"
       />
-      <AuditMetricCard
-        icon={Clock3}
-        label="生成时间"
-        value={latestAuditTime}
-        sub="当前报告快照"
-        tone="slate"
-      />
+      <AuditMetricCard icon={Clock3} label="生成时间" value={latestAuditTime} sub="当前报告快照" tone="slate" />
     </div>
   )
 }
@@ -157,9 +136,7 @@ export function RiskMetricPanel({
 }>) {
   return (
     <div className={REPORT_PANEL_CLASS}>
-      <div className={cn('mb-2', REPORT_PANEL_TITLE_CLASS)}>
-        风险概览
-      </div>
+      <div className={cn('mb-2', REPORT_PANEL_TITLE_CLASS)}>风险概览</div>
       <div className="grid grid-cols-2 gap-1.5">
         <ReportSignalRow
           label="缺失字段"
@@ -199,7 +176,7 @@ export function RetrievalAuditPanel({
   const pluginRefs = retrievalAudit?.plugin_refs || []
   const gateCount = retrievalAudit?.gates?.length || 0
   const hasFailureCategories = Object.values(retrievalAudit?.failure_categories || {}).some(
-    (value) => Number(value) > 0
+    (value) => Number(value) > 0,
   )
   const statusToneClass = {
     green: 'border-success/30 bg-success/10 text-success',
@@ -235,17 +212,12 @@ export function RetrievalAuditPanel({
                   生产准入
                 </span>
               </div>
-              <div className={cn('mt-0.5 truncate', REPORT_SUBTEXT_CLASS)}>
-                评测、元数据、KG 与压缩证据集中校验。
-              </div>
+              <div className={cn('mt-0.5 truncate', REPORT_SUBTEXT_CLASS)}>评测、元数据、KG 与压缩证据集中校验。</div>
             </div>
           </div>
           <Badge
             variant="outline"
-            className={cn(
-              'gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold',
-              statusToneClass
-            )}
+            className={cn('gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold', statusToneClass)}
           >
             <span className={cn('rounded-full p-0.5', statusIconClass)}>
               <StatusIcon className="size-3" />
@@ -288,41 +260,20 @@ export function RetrievalAuditPanel({
 
       <div className="mt-2 overflow-hidden rounded-lg border border-border/50">
         <div className="flex items-center justify-between gap-2 border-b border-border/50 bg-muted/45 px-2.5 py-1.5">
-          <div className="text-[0.75rem] font-semibold tracking-[-0.01em] text-foreground/85">
-            门禁指标
-          </div>
-          <div className="text-[0.6875rem] text-muted-foreground">
-            最新回归门禁
-          </div>
+          <div className="text-[0.75rem] font-semibold tracking-[-0.01em] text-foreground/85">门禁指标</div>
+          <div className="text-[0.6875rem] text-muted-foreground">最新回归门禁</div>
         </div>
-        <div
-          className={cn(
-            'grid grid-cols-[1fr_104px] bg-background px-2.5 py-1.5',
-            REPORT_TABLE_HEADER_CLASS
-          )}
-        >
+        <div className={cn('grid grid-cols-[1fr_104px] bg-background px-2.5 py-1.5', REPORT_TABLE_HEADER_CLASS)}>
           <span>指标</span>
           <span className="text-right">数值</span>
         </div>
         {metricRows.length === 0 ? (
           <div className="border-t border-info/15 bg-info/[0.025] px-2.5 py-1.5">
             <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
-              <AuditMetricPlaceholder
-                label="Hit@K"
-                hint="召回命中门槛"
-              />
-              <AuditMetricPlaceholder
-                label="Metadata"
-                hint="元数据命中/召回"
-              />
-              <AuditMetricPlaceholder
-                label="Context"
-                hint="有效上下文占比"
-              />
-              <AuditMetricPlaceholder
-                label="Noise"
-                hint="噪声与 KG 噪声"
-              />
+              <AuditMetricPlaceholder label="Hit@K" hint="召回命中门槛" />
+              <AuditMetricPlaceholder label="Metadata" hint="元数据命中/召回" />
+              <AuditMetricPlaceholder label="Context" hint="有效上下文占比" />
+              <AuditMetricPlaceholder label="Noise" hint="噪声与 KG 噪声" />
             </div>
             <div className={cn('mt-2 text-center', REPORT_SUBTEXT_CLASS)}>
               运行 Golden / regression 后填充真实门禁数据。
@@ -334,15 +285,13 @@ export function RetrievalAuditPanel({
               key={row.key}
               className={cn(
                 'grid grid-cols-[1fr_104px] border-t border-border/50 px-2.5 py-1.5',
-                REPORT_TABLE_ROW_CLASS
+                REPORT_TABLE_ROW_CLASS,
               )}
             >
               <span className="truncate" title={row.key}>
                 {row.label}
               </span>
-              <span className="text-right font-medium tabular-nums text-foreground">
-                {row.value}
-              </span>
+              <span className="text-right font-medium tabular-nums text-foreground">{row.value}</span>
             </div>
           ))
         )}
@@ -368,12 +317,7 @@ export function FieldCoveragePanel({
       </div>
       <div className="space-y-2">
         {fieldCoverageRows.map((row) => (
-          <ProgressRow
-            key={row.label}
-            label={row.label}
-            value={row.value}
-            max={row.max}
-          />
+          <ProgressRow key={row.label} label={row.label} value={row.value} max={row.max} />
         ))}
       </div>
     </div>
@@ -393,28 +337,18 @@ export function TopDocumentPanel({
     <div className={REPORT_PANEL_CLASS}>
       <div className="mb-2.5 flex items-center justify-between gap-2">
         <div className={REPORT_PANEL_TITLE_CLASS}>文档分布 Top</div>
-        <Button
-          variant="link"
-          className="h-auto p-0 text-[0.71875rem]"
-          onClick={onClearFolderQuery}
-        >
+        <Button variant="link" className="h-auto p-0 text-[0.71875rem]" onClick={onClearFolderQuery}>
           查看全部
         </Button>
       </div>
       {topDocumentRows.length === 0 ? (
-        <ReportInlineEmpty
-          title="暂无分布数据"
-          description="当前报告没有目录或文件类型分布。"
-        />
+        <ReportInlineEmpty title="暂无分布数据" description="当前报告没有目录或文件类型分布。" />
       ) : (
         <div className="space-y-2">
           {topDocumentRows.map((row) => (
             <div
               key={row.name}
-              className={cn(
-                'grid grid-cols-[1fr_44px_84px] items-center gap-2',
-                REPORT_TABLE_ROW_CLASS
-              )}
+              className={cn('grid grid-cols-[1fr_44px_84px] items-center gap-2', REPORT_TABLE_ROW_CLASS)}
             >
               <div className="truncate font-medium text-foreground/85" title={row.name}>
                 {row.name}
@@ -459,9 +393,7 @@ export function ContentHealthPanel({
 }>) {
   return (
     <div className={REPORT_PANEL_CLASS}>
-      <div className={cn('mb-2', REPORT_PANEL_TITLE_CLASS)}>
-        内容健康
-      </div>
+      <div className={cn('mb-2', REPORT_PANEL_TITLE_CLASS)}>内容健康</div>
       <div className="grid grid-cols-2 gap-1.5">
         <ReportSignalRow
           label="可疑链接"
@@ -492,9 +424,7 @@ export function ContentHealthPanel({
   )
 }
 
-export function CategoryChartPanel({
-  categoryBarData,
-}: Readonly<{ categoryBarData: CategoryMetricDatum[] }>) {
+export function CategoryChartPanel({ categoryBarData }: Readonly<{ categoryBarData: CategoryMetricDatum[] }>) {
   return (
     <div className={REPORT_PANEL_CLASS}>
       <div className={cn('mb-2.5', REPORT_PANEL_TITLE_CLASS)}>知识分类</div>
@@ -505,15 +435,8 @@ export function CategoryChartPanel({
         />
       ) : (
         <SafeResponsiveChart className="h-[180px]" minHeight={180}>
-          <BarChart
-            data={categoryBarData.slice(0, 8)}
-            margin={{ left: 0, right: 8, top: 4, bottom: 4 }}
-          >
-            <CartesianGrid
-              strokeDasharray="3 3"
-              stroke="hsl(var(--border))"
-              opacity={0.55}
-            />
+          <BarChart data={categoryBarData.slice(0, 8)} margin={{ left: 0, right: 8, top: 4, bottom: 4 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.55} />
             <XAxis dataKey="name" />
             <YAxis allowDecimals={false} />
             <Tooltip
@@ -540,9 +463,7 @@ export function PipelineVersionsPanel({
 }>) {
   return (
     <div className={REPORT_PANEL_CLASS}>
-      <div className={cn('mb-2.5', REPORT_PANEL_TITLE_CLASS)}>
-        处理版本分布
-      </div>
+      <div className={cn('mb-2.5', REPORT_PANEL_TITLE_CLASS)}>处理版本分布</div>
       {pipelineVersions.length === 0 ? (
         <ReportInlineEmpty
           title="暂无版本快照"
@@ -570,20 +491,11 @@ export function PipelineVersionsPanel({
             {pipelineVersions.slice(0, 5).map((version, idx) => (
               <div
                 key={version.pipeline_hash}
-                className={cn(
-                  'flex items-center justify-between gap-2',
-                  REPORT_TABLE_ROW_CLASS
-                )}
+                className={cn('flex items-center justify-between gap-2', REPORT_TABLE_ROW_CLASS)}
               >
                 <span className="flex min-w-0 items-center gap-2">
-                  <span
-                    className="size-2 rounded-full"
-                    style={{ background: PIE_COLORS[idx % PIE_COLORS.length] }}
-                  />
-                  <span
-                    className="truncate font-mono"
-                    title={version.pipeline_hash}
-                  >
+                  <span className="size-2 rounded-full" style={{ background: PIE_COLORS[idx % PIE_COLORS.length] }} />
+                  <span className="truncate font-mono" title={version.pipeline_hash}>
                     {pipelineVersionLabel(version.pipeline_hash)}
                   </span>
                 </span>
@@ -617,8 +529,8 @@ export function IssueRowsPanel({ issueRows }: Readonly<{ issueRows: IssueRow[] }
         <div className="overflow-hidden rounded-xl border border-border/50">
           <div
             className={cn(
-            'grid grid-cols-[104px_64px_104px_1fr_56px] bg-muted/50 px-2.5 py-1.5',
-              REPORT_TABLE_HEADER_CLASS
+              'grid grid-cols-[104px_64px_104px_1fr_56px] bg-muted/50 px-2.5 py-1.5',
+              REPORT_TABLE_HEADER_CLASS,
             )}
           >
             <span>来源/时间</span>
@@ -632,13 +544,11 @@ export function IssueRowsPanel({ issueRows }: Readonly<{ issueRows: IssueRow[] }
               key={row.id}
               className={cn(
                 'grid grid-cols-[104px_64px_104px_1fr_56px] items-center border-t border-border/50 px-2.5 py-2',
-                REPORT_TABLE_ROW_CLASS
+                REPORT_TABLE_ROW_CLASS,
               )}
             >
               <span className="truncate">{row.time}</span>
-              <span className={cn('font-medium', issueLevelClass(row.level))}>
-                {row.level}
-              </span>
+              <span className={cn('font-medium', issueLevelClass(row.level))}>{row.level}</span>
               <span className="truncate">{row.type}</span>
               <span className="truncate" title={row.description}>
                 {row.description}
@@ -663,19 +573,12 @@ export function ReportSectionHeading({
 }>) {
   return (
     <div className="flex items-end gap-3 border-b border-info/15 pb-2">
-      <span className="pb-0.5 font-mono text-[11px] font-semibold tracking-[0.16em] text-info">
-        {index}
-      </span>
+      <span className="pb-0.5 font-mono text-[11px] font-semibold tracking-[0.16em] text-info">{index}</span>
       <div className="min-w-0 flex-1">
-        <h2 className="text-[0.9375rem] font-semibold tracking-[-0.015em] text-foreground">
-          {title}
-        </h2>
+        <h2 className="text-[0.9375rem] font-semibold tracking-[-0.015em] text-foreground">{title}</h2>
         <p className="mt-0.5 text-xs leading-4 text-muted-foreground">{description}</p>
       </div>
-      <span
-        className="mb-1 hidden h-px w-16 bg-info/30 sm:block"
-        aria-hidden="true"
-      />
+      <span className="mb-1 hidden h-px w-16 bg-info/30 sm:block" aria-hidden="true" />
     </div>
   )
 }

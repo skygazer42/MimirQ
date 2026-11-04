@@ -79,7 +79,9 @@ function extractRunParams(run: RegressionRun): Record<string, Scalar> {
   }
 
   return Object.fromEntries(
-    Object.entries(merged).filter(([key]) => !['dataset_id', 'case_ids', 'metrics', 'ablation_id', 'ablation_label_prefix'].includes(key)),
+    Object.entries(merged).filter(
+      ([key]) => !['dataset_id', 'case_ids', 'metrics', 'ablation_id', 'ablation_label_prefix'].includes(key),
+    ),
   )
 }
 
@@ -149,7 +151,8 @@ export function AblationParameterImpactPanel({
             参数影响排序
           </div>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            基于已完成 runs 的 rag_params / ablation_variant 做观测相关排序，只用于定位下一轮调参重点，不当作 Sobol 或因果结论。
+            基于已完成 runs 的 rag_params / ablation_variant 做观测相关排序，只用于定位下一轮调参重点，不当作 Sobol
+            或因果结论。
           </p>
         </div>
         <div className="rounded-full border border-warning/30 bg-warning/10 px-2.5 py-1 text-[11px] font-medium text-warning">
@@ -171,7 +174,8 @@ export function AblationParameterImpactPanel({
                     </div>
                   </div>
                   <div className={cn('font-mono text-xs', row.spread >= 0 ? 'text-success' : 'text-destructive')}>
-                    Δ {row.spread >= 0 ? '+' : ''}{row.spread.toFixed(4)}
+                    Δ {row.spread >= 0 ? '+' : ''}
+                    {row.spread.toFixed(4)}
                   </div>
                 </div>
                 <div className="mt-2 h-2 overflow-hidden rounded-full bg-background">
@@ -179,10 +183,12 @@ export function AblationParameterImpactPanel({
                 </div>
                 <div className="mt-2 grid gap-2 text-[11px] text-muted-foreground sm:grid-cols-2">
                   <div className="rounded-lg bg-background px-2 py-1">
-                    最好 <span className="font-mono text-foreground">{row.bestLabel}</span> · {row.bestMetric.toFixed(4)}
+                    最好 <span className="font-mono text-foreground">{row.bestLabel}</span> ·{' '}
+                    {row.bestMetric.toFixed(4)}
                   </div>
                   <div className="rounded-lg bg-background px-2 py-1">
-                    最弱 <span className="font-mono text-foreground">{row.worstLabel}</span> · {row.worstMetric.toFixed(4)}
+                    最弱 <span className="font-mono text-foreground">{row.worstLabel}</span> ·{' '}
+                    {row.worstMetric.toFixed(4)}
                   </div>
                 </div>
               </div>

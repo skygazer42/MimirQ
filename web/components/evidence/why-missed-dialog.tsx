@@ -83,7 +83,8 @@ export function WhyMissedDialog({
         <DialogHeader>
           <DialogTitle>Why missed?</DialogTitle>
           <DialogDescription className="text-pretty">
-            对比 <span className="font-mono">reference_sources</span>（Ground Truth）与“当前检索结果”，并附带 Drift Audit（引用指针是否已漂移）。
+            对比 <span className="font-mono">reference_sources</span>（Ground Truth）与“当前检索结果”，并附带 Drift
+            Audit（引用指针是否已漂移）。
           </DialogDescription>
         </DialogHeader>
 
@@ -93,7 +94,9 @@ export function WhyMissedDialog({
               <div className="mb-1 text-xs text-muted-foreground">Retrieval Profile</div>
               <Select
                 value={whyMissedProfile}
-                onValueChange={(value) => onWhyMissedProfileChange(coerceOneOf(RETRIEVAL_PROFILE_VALUES, value, 'recall50'))}
+                onValueChange={(value) =>
+                  onWhyMissedProfileChange(coerceOneOf(RETRIEVAL_PROFILE_VALUES, value, 'recall50'))
+                }
               >
                 <SelectTrigger className="h-9">
                   <SelectValue placeholder="选择 profile" />
@@ -106,7 +109,11 @@ export function WhyMissedDialog({
               </Select>
             </div>
 
-            <Button className="gap-2" onClick={onRunRetrieve} disabled={whyMissedRetrieving || !datasetId || !selectedItem?.query}>
+            <Button
+              className="gap-2"
+              onClick={onRunRetrieve}
+              disabled={whyMissedRetrieving || !datasetId || !selectedItem?.query}
+            >
               {whyMissedRetrieving ? (
                 <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
               ) : (
@@ -148,7 +155,9 @@ export function WhyMissedDialog({
           </div>
 
           {whyMissedError ? <div className="text-xs text-destructive text-pretty">{whyMissedError}</div> : null}
-          {whyMissedDriftError ? <div className="text-xs text-destructive text-pretty">{whyMissedDriftError}</div> : null}
+          {whyMissedDriftError ? (
+            <div className="text-xs text-destructive text-pretty">{whyMissedDriftError}</div>
+          ) : null}
 
           {whyMissedReport ? (
             <div className="flex flex-wrap gap-2 text-xs">
@@ -166,7 +175,9 @@ export function WhyMissedDialog({
               </Badge>
             </div>
           ) : (
-            <div className="text-xs text-muted-foreground text-pretty">先运行检索，再查看 “missed / drifted / retrieved” 解释。</div>
+            <div className="text-xs text-muted-foreground text-pretty">
+              先运行检索，再查看 “missed / drifted / retrieved” 解释。
+            </div>
           )}
 
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -185,16 +196,22 @@ export function WhyMissedDialog({
                                   {statusLabel(reference)}
                                 </Badge>
                                 <div className="truncate text-xs font-mono text-foreground">
-                                  {String(reference.document_id || '').slice(0, 8)}:{String(reference.chunk_id || '').slice(0, 8)}
+                                  {String(reference.document_id || '').slice(0, 8)}:
+                                  {String(reference.chunk_id || '').slice(0, 8)}
                                 </div>
                               </div>
                               {reference.label ? (
-                                <div className="mt-1 line-clamp-1 text-xs text-muted-foreground text-pretty">{reference.label}</div>
+                                <div className="mt-1 line-clamp-1 text-xs text-muted-foreground text-pretty">
+                                  {reference.label}
+                                </div>
                               ) : null}
                               {reference.retrieval ? (
                                 <div className="mt-1 text-[11px] text-muted-foreground font-mono tabular-nums">
-                                  {reference.retrieval.hit_type ? `${reference.retrieval.hit_type}` : 'hit'} · rank {reference.retrieval.rank}
-                                  {typeof reference.retrieval.score === 'number' ? ` · score ${reference.retrieval.score.toFixed(4)}` : null}
+                                  {reference.retrieval.hit_type ? `${reference.retrieval.hit_type}` : 'hit'} · rank{' '}
+                                  {reference.retrieval.rank}
+                                  {typeof reference.retrieval.score === 'number'
+                                    ? ` · score ${reference.retrieval.score.toFixed(4)}`
+                                    : null}
                                 </div>
                               ) : null}
                               {reference.hints?.document_hit_rank || reference.hints?.chunk_index_hit_rank ? (
@@ -213,7 +230,9 @@ export function WhyMissedDialog({
                               ) : null}
                             </div>
                             {typeof reference.chunk_index === 'number' ? (
-                              <div className="flex-shrink-0 text-[11px] text-muted-foreground font-mono tabular-nums">#{reference.chunk_index}</div>
+                              <div className="flex-shrink-0 text-[11px] text-muted-foreground font-mono tabular-nums">
+                                #{reference.chunk_index}
+                              </div>
                             ) : null}
                           </div>
                         </div>
@@ -250,7 +269,11 @@ export function WhyMissedDialog({
                             key={chunkId || `${docId}:${index}`}
                             className={cn(
                               'rounded-lg border p-2',
-                              isRefChunk ? 'border-primary/50 bg-primary/5' : isRefDoc ? 'border-border/60 bg-muted/20' : 'border-border/60',
+                              isRefChunk
+                                ? 'border-primary/50 bg-primary/5'
+                                : isRefDoc
+                                  ? 'border-border/60 bg-muted/20'
+                                  : 'border-border/60',
                             )}
                           >
                             <div className="flex items-start justify-between gap-3">
@@ -283,7 +306,9 @@ export function WhyMissedDialog({
                               ) : null}
                             </div>
                             {citation.chunk_content ? (
-                              <div className="mt-2 line-clamp-3 text-xs text-muted-foreground text-pretty">{citation.chunk_content}</div>
+                              <div className="mt-2 line-clamp-3 text-xs text-muted-foreground text-pretty">
+                                {citation.chunk_content}
+                              </div>
                             ) : null}
                           </div>
                         )
@@ -297,7 +322,9 @@ export function WhyMissedDialog({
                 </div>
               </ScrollArea>
               {whyMissedRanRetrieve && whyMissedCitations.length > 80 ? (
-                <div className="mt-2 text-xs text-muted-foreground font-mono">showing first 80 of {whyMissedCitations.length}</div>
+                <div className="mt-2 text-xs text-muted-foreground font-mono">
+                  showing first 80 of {whyMissedCitations.length}
+                </div>
               ) : null}
             </Panel>
           </div>

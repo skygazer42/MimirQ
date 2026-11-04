@@ -1,23 +1,23 @@
-"use client"
+'use client'
 
-import { useEffect, useMemo, useRef } from "react"
-import dynamic from "next/dynamic"
-import { useTheme } from "next-themes"
-import { useQuery } from "@tanstack/react-query"
-import { AlertCircle, Database, Loader2, RefreshCw } from "lucide-react"
-import * as THREE from "three"
-import type { ForceGraphMethods } from "react-force-graph-3d"
+import { useEffect, useMemo, useRef } from 'react'
+import dynamic from 'next/dynamic'
+import { useTheme } from 'next-themes'
+import { useQuery } from '@tanstack/react-query'
+import { AlertCircle, Database, Loader2, RefreshCw } from 'lucide-react'
+import * as THREE from 'three'
+import type { ForceGraphMethods } from 'react-force-graph-3d'
 
-import { Button } from "@/components/ui/button"
-import { formatApiError } from "@/lib/api-errors"
-import { documentApi } from "@/lib/api/documents"
-import { getCssHslColor } from "@/lib/css-vars"
-import { queryKeys } from "@/lib/query-keys"
+import { Button } from '@/components/ui/button'
+import { formatApiError } from '@/lib/api-errors'
+import { documentApi } from '@/lib/api/documents'
+import { getCssHslColor } from '@/lib/css-vars'
+import { queryKeys } from '@/lib/query-keys'
 
-const THREE_CLOCK_DEPRECATION_WARNING = "THREE.THREE.Clock"
+const THREE_CLOCK_DEPRECATION_WARNING = 'THREE.THREE.Clock'
 
 function isThreeClockDeprecationWarning(args: unknown[]): boolean {
-  return args.some((arg) => typeof arg === "string" && arg.includes(THREE_CLOCK_DEPRECATION_WARNING))
+  return args.some((arg) => typeof arg === 'string' && arg.includes(THREE_CLOCK_DEPRECATION_WARNING))
 }
 
 async function withSuppressedThreeClockWarning<T>(action: () => Promise<T>): Promise<T> {
@@ -33,7 +33,7 @@ async function withSuppressedThreeClockWarning<T>(action: () => Promise<T>): Pro
   }
 }
 
-const ForceGraph3D = dynamic(() => withSuppressedThreeClockWarning(() => import("react-force-graph-3d")), {
+const ForceGraph3D = dynamic(() => withSuppressedThreeClockWarning(() => import('react-force-graph-3d')), {
   ssr: false,
   loading: () => (
     <div className="flex h-full w-full items-center justify-center bg-background">
@@ -49,7 +49,7 @@ type ClusterVisualStyle = {
     scale: number
     opacity: number
   }
-  geometry: "sphere" | "icosahedron" | "octahedron" | "dodecahedron"
+  geometry: 'sphere' | 'icosahedron' | 'octahedron' | 'dodecahedron'
   densityLabel: string
   shapeLabel: string
 }
@@ -107,53 +107,53 @@ type DocumentChunkItem = {
 
 const EMPTY_NEBULA: NebulaData = { nodes: [], links: [], clusters: [] }
 
-const TYPE_STYLES: Record<string, Omit<ClusterDefinition, "count" | "chunkCount" | "center">> = {
+const TYPE_STYLES: Record<string, Omit<ClusterDefinition, 'count' | 'chunkCount' | 'center'>> = {
   pdf: {
-    label: "PDF 文档",
-    color: "#2563eb",
+    label: 'PDF 文档',
+    color: '#2563eb',
     style: {
       spread: 58,
       sizeRange: [0.8, 1.9],
       halo: { scale: 1.8, opacity: 0.22 },
-      geometry: "icosahedron",
-      densityLabel: "版面切片",
-      shapeLabel: "蓝色棱核",
+      geometry: 'icosahedron',
+      densityLabel: '版面切片',
+      shapeLabel: '蓝色棱核',
     },
   },
   xlsx: {
-    label: "表格文档",
-    color: "#10b981",
+    label: '表格文档',
+    color: '#10b981',
     style: {
       spread: 42,
       sizeRange: [0.9, 2.2],
       halo: { scale: 1.65, opacity: 0.2 },
-      geometry: "octahedron",
-      densityLabel: "结构切片",
-      shapeLabel: "绿色菱核",
+      geometry: 'octahedron',
+      densityLabel: '结构切片',
+      shapeLabel: '绿色菱核',
     },
   },
   html: {
-    label: "网页 / HTML",
-    color: "#f97316",
+    label: '网页 / HTML',
+    color: '#f97316',
     style: {
       spread: 46,
       sizeRange: [0.8, 1.7],
       halo: { scale: 1.7, opacity: 0.2 },
-      geometry: "dodecahedron",
-      densityLabel: "标记切片",
-      shapeLabel: "橙色面核",
+      geometry: 'dodecahedron',
+      densityLabel: '标记切片',
+      shapeLabel: '橙色面核',
     },
   },
   default: {
-    label: "其他文档",
-    color: "#8b5cf6",
+    label: '其他文档',
+    color: '#8b5cf6',
     style: {
       spread: 52,
       sizeRange: [0.75, 1.6],
       halo: { scale: 1.55, opacity: 0.18 },
-      geometry: "sphere",
-      densityLabel: "通用切片",
-      shapeLabel: "紫色云核",
+      geometry: 'sphere',
+      densityLabel: '通用切片',
+      shapeLabel: '紫色云核',
     },
   },
 }
@@ -172,17 +172,17 @@ function unitFromHash(value: string, salt: string): number {
 }
 
 function getDocumentType(document: DocumentListItem): string {
-  const rawType = String(document.file_type || document.filename?.split(".").pop() || "default").toLowerCase()
-  if (rawType.includes("pdf")) return "pdf"
-  if (rawType.includes("xls") || rawType.includes("csv")) return "xlsx"
-  if (rawType.includes("html") || rawType.includes("htm")) return "html"
-  return "default"
+  const rawType = String(document.file_type || document.filename?.split('.').pop() || 'default').toLowerCase()
+  if (rawType.includes('pdf')) return 'pdf'
+  if (rawType.includes('xls') || rawType.includes('csv')) return 'xlsx'
+  if (rawType.includes('html') || rawType.includes('htm')) return 'html'
+  return 'default'
 }
 
 function getChunkCount(document: DocumentListItem): number {
   const metadata = document.metadata || {}
   const stats = metadata.chunking_stats
-  if (stats && typeof stats === "object" && "count" in stats) {
+  if (stats && typeof stats === 'object' && 'count' in stats) {
     const count = Number((stats as { count?: unknown }).count)
     if (Number.isFinite(count)) return count
   }
@@ -199,10 +199,10 @@ function clusterCenter(index: number): { x: number; y: number; z: number } {
   }
 }
 
-function createClusterGeometry(geometry: ClusterVisualStyle["geometry"], size: number): THREE.BufferGeometry {
-  if (geometry === "icosahedron") return new THREE.IcosahedronGeometry(size, 0)
-  if (geometry === "octahedron") return new THREE.OctahedronGeometry(size, 0)
-  if (geometry === "dodecahedron") return new THREE.DodecahedronGeometry(size, 0)
+function createClusterGeometry(geometry: ClusterVisualStyle['geometry'], size: number): THREE.BufferGeometry {
+  if (geometry === 'icosahedron') return new THREE.IcosahedronGeometry(size, 0)
+  if (geometry === 'octahedron') return new THREE.OctahedronGeometry(size, 0)
+  if (geometry === 'dodecahedron') return new THREE.DodecahedronGeometry(size, 0)
   return new THREE.SphereGeometry(size, 10, 10)
 }
 
@@ -216,7 +216,10 @@ function buildNebula(documents: DocumentListItem[], chunksByDocument: Map<string
     clusterByKey.set(key, {
       ...style,
       count: docs.length,
-      chunkCount: docs.reduce((sum, document) => sum + (chunksByDocument.get(document.id)?.length || getChunkCount(document)), 0),
+      chunkCount: docs.reduce(
+        (sum, document) => sum + (chunksByDocument.get(document.id)?.length || getChunkCount(document)),
+        0,
+      ),
       center: clusterCenter(index),
     })
   })
@@ -235,26 +238,28 @@ function buildNebula(documents: DocumentListItem[], chunksByDocument: Map<string
     const chunks = chunksByDocument.get(document.id) || []
     const fallbackChunks: DocumentChunkItem[] = chunks.length
       ? chunks
-      : [{
-          id: `${document.id}:document`,
-          content: document.filename || document.id,
-          chunk_index: 0,
-        }]
+      : [
+          {
+            id: `${document.id}:document`,
+            content: document.filename || document.id,
+            chunk_index: 0,
+          },
+        ]
 
     fallbackChunks.forEach((chunk, index) => {
       const [minSize, maxSize] = cluster.style.sizeRange
       const id = String(chunk.id)
       const spread = cluster.style.spread
       const nodeId = `${document.id}:${id}`
-      const sizeByLength = Math.min(1, Math.max(0.15, (chunk.content || "").length / 1600))
+      const sizeByLength = Math.min(1, Math.max(0.15, (chunk.content || '').length / 1600))
       nodes.push({
         id: nodeId,
         group: cluster.label,
         color: cluster.color,
         val: minSize + sizeByLength * (maxSize - minSize),
-        x: cluster.center.x + (unitFromHash(nodeId, "x") - 0.5) * spread,
-        y: cluster.center.y + (unitFromHash(nodeId, "y") - 0.5) * spread,
-        z: cluster.center.z + (unitFromHash(nodeId, "z") - 0.5) * spread,
+        x: cluster.center.x + (unitFromHash(nodeId, 'x') - 0.5) * spread,
+        y: cluster.center.y + (unitFromHash(nodeId, 'y') - 0.5) * spread,
+        z: cluster.center.z + (unitFromHash(nodeId, 'z') - 0.5) * spread,
         content: chunk.content,
         documentId: document.id,
         documentName: document.filename || document.id,
@@ -281,7 +286,7 @@ function buildNebula(documents: DocumentListItem[], chunksByDocument: Map<string
 }
 
 async function loadVectorNebulaData(): Promise<NebulaData> {
-  const documentList = await documentApi.list({ limit: 24, status: "completed" })
+  const documentList = await documentApi.list({ limit: 24, status: 'completed' })
   const documents = (documentList.items || []) as DocumentListItem[]
   const chunksByDocument = new Map<string, DocumentChunkItem[]>()
 
@@ -293,7 +298,7 @@ async function loadVectorNebulaData(): Promise<NebulaData> {
       } catch {
         chunksByDocument.set(document.id, [])
       }
-    })
+    }),
   )
 
   return buildNebula(documents, chunksByDocument)
@@ -308,9 +313,7 @@ export function VectorNebula() {
   })
   const data = nebulaQuery.data ?? EMPTY_NEBULA
   const loading = nebulaQuery.isFetching
-  const error = nebulaQuery.error
-    ? formatApiError(nebulaQuery.error, "语义星云数据加载失败")
-    : null
+  const error = nebulaQuery.error ? formatApiError(nebulaQuery.error, '语义星云数据加载失败') : null
 
   useEffect(() => {
     const originalWarn = console.warn
@@ -327,9 +330,12 @@ export function VectorNebula() {
     }
   }, [])
 
-  const isDark = resolvedTheme === "dark"
-  const bgColor = getCssHslColor("--background", isDark ? "#020617" : "#ffffff")
-  const totalChunks = useMemo(() => data.clusters.reduce((sum, cluster) => sum + cluster.chunkCount, 0), [data.clusters])
+  const isDark = resolvedTheme === 'dark'
+  const bgColor = getCssHslColor('--background', isDark ? '#020617' : '#ffffff')
+  const totalChunks = useMemo(
+    () => data.clusters.reduce((sum, cluster) => sum + cluster.chunkCount, 0),
+    [data.clusters],
+  )
 
   return (
     <div className="relative h-full w-full">
@@ -340,7 +346,7 @@ export function VectorNebula() {
         showNavInfo={false}
         nodeLabel={(rawNode: unknown) => {
           const node = rawNode as NebulaNode
-          return `[${node.group}] ${node.documentName}\nChunk ${node.chunkIndex ?? "-"}\n${node.content.slice(0, 220)}`
+          return `[${node.group}] ${node.documentName}\nChunk ${node.chunkIndex ?? '-'}\n${node.content.slice(0, 220)}`
         }}
         nodeColor="color"
         nodeRelSize={1.2}
@@ -357,7 +363,7 @@ export function VectorNebula() {
           fgRef.current?.cameraPosition(
             { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
             node,
-            1200
+            1200,
           )
         }}
         nodeThreeObject={(rawNode: unknown) => {
@@ -431,7 +437,10 @@ export function VectorNebula() {
               <p className="mt-1 text-[11px] text-muted-foreground">来源：/documents 与 /documents/:id/chunks</p>
             </div>
             {data.clusters.map((cluster) => (
-              <div key={cluster.label} className="rounded-lg border border-border/60 bg-background/40 px-2 py-1.5 text-xs">
+              <div
+                key={cluster.label}
+                className="rounded-lg border border-border/60 bg-background/40 px-2 py-1.5 text-xs"
+              >
                 <div className="flex items-center justify-between gap-3">
                   <span className="flex items-center gap-2 font-medium">
                     <span className="h-3 w-3 rounded-full" style={{ backgroundColor: cluster.color }} />

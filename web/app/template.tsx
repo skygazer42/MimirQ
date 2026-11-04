@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation'
 
-import { PageTransition } from "@/components/page-transition"
+import { PageTransition } from '@/components/page-transition'
 import { PipelineProviders } from '@/components/providers/pipeline-providers'
 import { needsPipelineProvidersForPathname } from '@/lib/pipeline-route-scope'
 

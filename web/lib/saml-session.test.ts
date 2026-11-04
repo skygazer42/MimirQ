@@ -14,15 +14,7 @@ describe('consumeSamlBridgeState', () => {
   })
 
   it('does not echo arbitrary backend error detail', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
-        Response.json(
-          { detail: 'backend stack trace' },
-          { status: 500 }
-        )
-      )
-    )
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ detail: 'backend stack trace' }, { status: 500 })))
 
     await expect(consumeSamlBridgeState()).resolves.toEqual({
       kind: 'error',

@@ -1,6 +1,6 @@
-import { Skeleton } from "@/components/ui/skeleton"
+import { Skeleton } from '@/components/ui/skeleton'
 
-const CARD_KEYS = ["k-1", "k-2", "k-3", "k-4", "k-5", "k-6"]
+const CARD_KEYS = ['k-1', 'k-2', 'k-3', 'k-4', 'k-5', 'k-6']
 
 export default function KnowledgeLoading() {
   return (

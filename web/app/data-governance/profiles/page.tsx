@@ -9,14 +9,11 @@ import { KNOWLEDGE_OPS_BACKGROUND_CLASS } from '@/components/ui/knowledge-ops-he
 import { PageLoading } from '@/components/ui/page-loading'
 
 const GovernanceProfilesPage = dynamic(
-  () =>
-    import('@/components/governance-profiles/governance-profiles-page').then(
-      (mod) => mod.GovernanceProfilesPage
-    ),
+  () => import('@/components/governance-profiles/governance-profiles-page').then((mod) => mod.GovernanceProfilesPage),
   {
     ssr: false,
     loading: () => <GovernanceProfilesRouteLoading />,
-  }
+  },
 )
 
 export default function GovernanceProfilesRoutePage() {

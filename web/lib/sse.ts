@@ -15,9 +15,7 @@ export function createSseDataParser() {
       buffer = buffer.slice(sepIdx + 2)
 
       const lines = block.split('\n')
-      const dataLines = lines
-        .filter((line) => line.startsWith('data:'))
-        .map((line) => line.slice(5).trimStart())
+      const dataLines = lines.filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trimStart())
 
       if (dataLines.length) {
         out.push(dataLines.join('\n'))

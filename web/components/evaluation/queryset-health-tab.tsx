@@ -30,7 +30,7 @@ const QuerysetHealthTabClient = dynamic(
         </div>
       </Panel>
     ),
-  }
+  },
 )
 
 export function QuerysetHealthTab(props: QuerysetHealthTabProps) {

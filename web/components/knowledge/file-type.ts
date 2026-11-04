@@ -12,7 +12,9 @@ export type FileTypeMeta = {
 }
 
 export function getFileTypeMeta(doc: Pick<Document, 'filename' | 'file_type'>): FileTypeMeta {
-  const explicit = String(doc.file_type || '').trim().toLowerCase()
+  const explicit = String(doc.file_type || '')
+    .trim()
+    .toLowerCase()
   const fromName =
     String(doc.filename || '')
       .trim()

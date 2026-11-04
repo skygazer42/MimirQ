@@ -22,7 +22,7 @@ function getRequestHeaders(input: RequestInfo | URL, headers?: HeadersInit): Hea
 
 export async function authenticatedFetch(
   input: RequestInfo | URL,
-  init: AuthenticatedFetchOptions = {}
+  init: AuthenticatedFetchOptions = {},
 ): Promise<Response> {
   const { allowSessionLogoutOnUnauthorized = true, ...requestInit } = init
   let response = await fetch(input, requestInit)
@@ -38,9 +38,7 @@ export async function authenticatedFetch(
   if (canAttemptRefresh && token) {
     const refreshed = await getSharedOidcRefreshResult(token)
     const activeToken = getAccessToken()
-    const canReuseRefreshResult =
-      !!refreshed &&
-      (activeToken === token || activeToken === refreshed.access_token)
+    const canReuseRefreshResult = !!refreshed && (activeToken === token || activeToken === refreshed.access_token)
 
     if (refreshed && canReuseRefreshResult) {
       if (activeToken !== refreshed.access_token) {
@@ -71,9 +69,9 @@ export async function authenticatedFetch(
   return response
 }
 
-async function getSharedOidcRefreshResult(sessionToken: string): Promise<
-  Awaited<ReturnType<typeof tryRefreshOidcAccessToken>>
-> {
+async function getSharedOidcRefreshResult(
+  sessionToken: string,
+): Promise<Awaited<ReturnType<typeof tryRefreshOidcAccessToken>>> {
   if (!inflightOidcRefresh || inflightOidcRefresh.sessionToken !== sessionToken) {
     const promise = Promise.resolve(tryRefreshOidcAccessToken()).finally(() => {
       if (inflightOidcRefresh?.promise === promise) {

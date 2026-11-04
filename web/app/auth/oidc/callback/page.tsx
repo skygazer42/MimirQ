@@ -54,41 +54,48 @@ export default function OidcCallbackPage() {
       <div className="relative z-10 w-full max-w-md p-6">
         <div className="rounded-3xl border border-border bg-card p-8 shadow-strong">
           {(() => {
-    if (status === 'working') {
-        return (<div className="flex items-start gap-3">
-              <Loader2 className="mt-0.5 h-5 w-5 animate-spin motion-reduce:animate-none text-muted-foreground" aria-hidden="true"/>
-              <div className="min-w-0 flex-1">
-                <h1 className="text-base font-semibold text-foreground">Completing SSO sign-in</h1>
-                <p className="mt-2 text-sm text-muted-foreground">Exchanging authorization code for tokens...</p>
-              </div>
-            </div>);
-    }
-    else if (status === 'success') {
-            return (<div className="flex items-start gap-3">
-              <ShieldCheck className="mt-0.5 h-5 w-5 text-primary" aria-hidden="true"/>
-              <div className="min-w-0 flex-1">
-                <h1 className="text-base font-semibold text-foreground">Signed in</h1>
-                <p className="mt-2 text-sm text-muted-foreground">Redirecting...</p>
-              </div>
-            </div>);
-        }
-        else {
-            return (<div className="space-y-4">
-              <div className="flex items-start gap-3">
-                <ShieldAlert className="mt-0.5 h-5 w-5 text-destructive" aria-hidden="true"/>
-                <div className="min-w-0 flex-1">
-                  <h1 className="text-base font-semibold text-foreground">SSO sign-in failed</h1>
-                  <p className="mt-2 break-words text-sm text-muted-foreground">{error || 'Please try again.'}</p>
+            if (status === 'working') {
+              return (
+                <div className="flex items-start gap-3">
+                  <Loader2
+                    className="mt-0.5 h-5 w-5 animate-spin motion-reduce:animate-none text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <h1 className="text-base font-semibold text-foreground">Completing SSO sign-in</h1>
+                    <p className="mt-2 text-sm text-muted-foreground">Exchanging authorization code for tokens...</p>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button type="button" onClick={() => router.replace('/auth')}>
-                  Back to login
-                </Button>
-              </div>
-            </div>);
-        }
-})()}
+              )
+            } else if (status === 'success') {
+              return (
+                <div className="flex items-start gap-3">
+                  <ShieldCheck className="mt-0.5 h-5 w-5 text-primary" aria-hidden="true" />
+                  <div className="min-w-0 flex-1">
+                    <h1 className="text-base font-semibold text-foreground">Signed in</h1>
+                    <p className="mt-2 text-sm text-muted-foreground">Redirecting...</p>
+                  </div>
+                </div>
+              )
+            } else {
+              return (
+                <div className="space-y-4">
+                  <div className="flex items-start gap-3">
+                    <ShieldAlert className="mt-0.5 h-5 w-5 text-destructive" aria-hidden="true" />
+                    <div className="min-w-0 flex-1">
+                      <h1 className="text-base font-semibold text-foreground">SSO sign-in failed</h1>
+                      <p className="mt-2 break-words text-sm text-muted-foreground">{error || 'Please try again.'}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button type="button" onClick={() => router.replace('/auth')}>
+                      Back to login
+                    </Button>
+                  </div>
+                </div>
+              )
+            }
+          })()}
         </div>
       </div>
     </FullScreenFrame>

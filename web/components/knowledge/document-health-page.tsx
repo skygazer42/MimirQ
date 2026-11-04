@@ -107,9 +107,7 @@ function toneClassName(tone: HealthTone): string {
   }
 }
 
-function retrievalHitsStatusLabel(
-  retrievalHits: DocumentHealthCard['retrieval_hits'] | null | undefined,
-): string {
+function retrievalHitsStatusLabel(retrievalHits: DocumentHealthCard['retrieval_hits'] | null | undefined): string {
   if (retrievalHits?.enabled !== true) return '未启用'
   return retrievalHits.available ? '有样本' : '暂无命中'
 }
@@ -188,9 +186,7 @@ export default function DocumentHealthPage({ documentId }: Readonly<{ documentId
         bodyClassName="bg-[radial-gradient(circle_at_18%_0%,hsl(var(--info)/0.10),transparent_28%),linear-gradient(180deg,hsl(var(--background)/0.96),hsl(var(--surface-2)/0.68))] pb-3"
         description={
           <div className="space-y-1">
-            <div className="text-muted-foreground">
-              解析 → 分块 → KG → 检索命中（聚合，PII-safe）
-            </div>
+            <div className="text-muted-foreground">解析 → 分块 → KG → 检索命中（聚合，PII-safe）</div>
             <div className="font-mono text-xs text-muted-foreground break-all">{documentId}</div>
           </div>
         }
@@ -241,14 +237,20 @@ export default function DocumentHealthPage({ documentId }: Readonly<{ documentId
                         </h2>
                         <Badge
                           variant="secondary"
-                          className={cn('border px-2 py-0.5 text-[10px] font-semibold', toneClassName(documentStatusTone(data.status)))}
+                          className={cn(
+                            'border px-2 py-0.5 text-[10px] font-semibold',
+                            toneClassName(documentStatusTone(data.status)),
+                          )}
                         >
                           {documentStatusLabel(data.status)}
                         </Badge>
                         {qualityBadge ? (
                           <Badge
                             variant="secondary"
-                            className={cn('border px-2 py-0.5 text-[10px] font-semibold', qualityBadgeClassName(qualityBadge.tone))}
+                            className={cn(
+                              'border px-2 py-0.5 text-[10px] font-semibold',
+                              qualityBadgeClassName(qualityBadge.tone),
+                            )}
                           >
                             {qualityBadge.label}
                           </Badge>
@@ -265,7 +267,11 @@ export default function DocumentHealthPage({ documentId }: Readonly<{ documentId
                   <HeroMetric icon={FileText} label="类型" value={fmt(data.file_type)} />
                   <HeroMetric icon={Gauge} label="大小" value={data.file_size ? formatFileSize(data.file_size) : '—'} />
                   <HeroMetric icon={Clock3} label="创建" value={data.created_at ? formatDate(data.created_at) : '—'} />
-                  <HeroMetric icon={Clock3} label="生成" value={data.generated_at ? formatDate(data.generated_at) : '—'} />
+                  <HeroMetric
+                    icon={Clock3}
+                    label="生成"
+                    value={data.generated_at ? formatDate(data.generated_at) : '—'}
+                  />
                 </div>
               </div>
             </Panel>
@@ -337,7 +343,10 @@ export default function DocumentHealthPage({ documentId }: Readonly<{ documentId
                   <Fact label="Parse score" value={qualityScore === null ? '—' : qualityScore.toFixed(4)} />
                   <Fact label="扫描件" value={formatBoolean(data.parsing?.is_scanned)} />
                   <Fact label="页数" value={fmt(data.parsing?.page_count)} />
-                  <Fact label="处理时间" value={data.parsing?.processed_at ? formatDate(data.parsing.processed_at) : '—'} />
+                  <Fact
+                    label="处理时间"
+                    value={data.parsing?.processed_at ? formatDate(data.parsing.processed_at) : '—'}
+                  />
                 </DenseGrid>
               </HealthSection>
 
@@ -497,11 +506,14 @@ function ScoreTile({
           <div className="mt-1 truncate font-mono text-[17px] font-semibold tabular-nums tracking-[-0.02em] text-foreground">
             {value}
           </div>
-          <div className="mt-0.5 truncate text-[10px] text-muted-foreground/70">
-            {detail}
-          </div>
+          <div className="mt-0.5 truncate text-[10px] text-muted-foreground/70">{detail}</div>
         </div>
-        <span className={cn('inline-flex size-7 shrink-0 items-center justify-center rounded-full border', toneClassName(tone))}>
+        <span
+          className={cn(
+            'inline-flex size-7 shrink-0 items-center justify-center rounded-full border',
+            toneClassName(tone),
+          )}
+        >
           <ToneIcon className="size-3.5" />
         </span>
       </div>
@@ -536,15 +548,14 @@ function HealthSection({
               <Icon className="size-4" />
             </div>
             <div className="min-w-0">
-              <div className="text-[14px] font-semibold leading-none text-foreground">
-                {title}
-              </div>
-              <div className="mt-1 text-[11px] leading-4 text-muted-foreground/72">
-                {subtitle}
-              </div>
+              <div className="text-[14px] font-semibold leading-none text-foreground">{title}</div>
+              <div className="mt-1 text-[11px] leading-4 text-muted-foreground/72">{subtitle}</div>
             </div>
           </div>
-          <Badge variant="secondary" className={cn('shrink-0 border px-2 py-0.5 text-[10px] font-semibold', toneClassName(tone))}>
+          <Badge
+            variant="secondary"
+            className={cn('shrink-0 border px-2 py-0.5 text-[10px] font-semibold', toneClassName(tone))}
+          >
             {badge}
           </Badge>
         </div>
@@ -569,14 +580,12 @@ function Fact({
 }>) {
   return (
     <div className="min-w-0 rounded-[14px] border border-border/45 bg-background/58 px-2.5 py-2">
-      <div className="text-[10px] font-medium leading-none text-muted-foreground/62">
-        {label}
-      </div>
+      <div className="text-[10px] font-medium leading-none text-muted-foreground/62">{label}</div>
       <div
         className={cn(
           'mt-1.5 truncate font-mono text-[11px] font-semibold leading-none tabular-nums text-foreground/84',
           tone !== 'neutral' && 'inline-flex max-w-full rounded-md border px-1.5 py-0.5',
-          tone !== 'neutral' && toneClassName(tone)
+          tone !== 'neutral' && toneClassName(tone),
         )}
         title={value}
       >

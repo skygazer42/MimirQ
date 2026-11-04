@@ -26,17 +26,25 @@ export function TagInput({
   maxTagLen?: number
   className?: string
   inputClassName?: string
-  }>) {
-    const t = useTranslations('CommonUi')
-    const [draft, setDraft] = React.useState('')
+}>) {
+  const t = useTranslations('CommonUi')
+  const [draft, setDraft] = React.useState('')
 
-    const tags = React.useMemo(() => (Array.isArray(value) ? value : []), [value])
-    const resolvedPlaceholder = placeholder ?? t('tagInput.placeholder')
+  const tags = React.useMemo(() => (Array.isArray(value) ? value : []), [value])
+  const resolvedPlaceholder = placeholder ?? t('tagInput.placeholder')
 
   const addTags = React.useCallback(
     (incoming: string[]) => {
       const cap = Math.max(0, Math.min(200, Number(maxTags || 0)))
-      const seen = new Set(tags.map((t) => String(t || '').trim().toLowerCase()).filter(Boolean))
+      const seen = new Set(
+        tags
+          .map((t) =>
+            String(t || '')
+              .trim()
+              .toLowerCase(),
+          )
+          .filter(Boolean),
+      )
       const next = [...tags]
 
       for (const raw of incoming) {
@@ -51,16 +59,25 @@ export function TagInput({
 
       onValueChange(next)
     },
-    [maxTagLen, maxTags, onValueChange, tags]
+    [maxTagLen, maxTags, onValueChange, tags],
   )
 
   const removeTag = React.useCallback(
     (tag: string) => {
-      const key = String(tag || '').trim().toLowerCase()
+      const key = String(tag || '')
+        .trim()
+        .toLowerCase()
       if (!key) return
-      onValueChange(tags.filter((t) => String(t || '').trim().toLowerCase() !== key))
+      onValueChange(
+        tags.filter(
+          (t) =>
+            String(t || '')
+              .trim()
+              .toLowerCase() !== key,
+        ),
+      )
     },
-    [onValueChange, tags]
+    [onValueChange, tags],
   )
 
   const commitDraft = React.useCallback(() => {

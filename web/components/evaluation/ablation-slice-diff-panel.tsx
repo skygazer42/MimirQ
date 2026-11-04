@@ -57,7 +57,8 @@ export function AblationSliceDiffPanel({
             切片差异
           </div>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            直接读取 diff.slice_diffs，按文件类型、目录、语言、pipeline 等切片看 retrieval_recall / MRR 的局部退化，避免聚合指标掩盖问题。
+            直接读取 diff.slice_diffs，按文件类型、目录、语言、pipeline 等切片看 retrieval_recall / MRR
+            的局部退化，避免聚合指标掩盖问题。
           </p>
         </div>
         <div className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary">
@@ -72,7 +73,9 @@ export function AblationSliceDiffPanel({
               <div className="flex items-center justify-between gap-2">
                 <div className="font-mono text-xs font-semibold text-foreground">{entry.dimension}</div>
                 {entry.truncated ? (
-                  <div className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-medium text-warning">已截断</div>
+                  <div className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-medium text-warning">
+                    已截断
+                  </div>
                 ) : null}
               </div>
               <div className="mt-2 space-y-2">
@@ -87,7 +90,12 @@ export function AblationSliceDiffPanel({
                             before {bucket.items_before} · after {bucket.items_after}
                           </div>
                         </div>
-                        <div className={cn('font-mono font-semibold', delta === null ? 'text-muted-foreground' : delta >= 0 ? 'text-success' : 'text-destructive')}>
+                        <div
+                          className={cn(
+                            'font-mono font-semibold',
+                            delta === null ? 'text-muted-foreground' : delta >= 0 ? 'text-success' : 'text-destructive',
+                          )}
+                        >
                           {formatDelta(delta)}
                         </div>
                       </div>
@@ -97,7 +105,16 @@ export function AblationSliceDiffPanel({
                           return (
                             <div key={metric} className="rounded-lg bg-muted/50 px-2 py-1">
                               <div className="truncate">{metric}</div>
-                              <div className={cn('font-mono', metricValue === null ? 'text-muted-foreground/70' : metricValue >= 0 ? 'text-success' : 'text-destructive')}>
+                              <div
+                                className={cn(
+                                  'font-mono',
+                                  metricValue === null
+                                    ? 'text-muted-foreground/70'
+                                    : metricValue >= 0
+                                      ? 'text-success'
+                                      : 'text-destructive',
+                                )}
+                              >
                                 {formatDelta(metricValue)}
                               </div>
                             </div>

@@ -107,21 +107,24 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
     fileInputRef.current?.click()
   }, [])
 
-  const handleImportFile = useCallback(async (file: File | null) => {
-    if (!file) return
-    try {
-      const res = await pipelineApi.importGovernanceProfiles(file, true /* overwrite */)
-      toast.success(`导入成功：新增 ${res.created} / 更新 ${res.updated}`)
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.governance.profiles({ include_builtin: true, limit: 200 }),
-      })
-    } catch (e) {
-      reportClientError('Failed to import governance profiles', e)
-      toast.error(formatApiError(e, '导入失败（请检查脚本格式/正则是否安全）'))
-    } finally {
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    }
-  }, [queryClient])
+  const handleImportFile = useCallback(
+    async (file: File | null) => {
+      if (!file) return
+      try {
+        const res = await pipelineApi.importGovernanceProfiles(file, true /* overwrite */)
+        toast.success(`导入成功：新增 ${res.created} / 更新 ${res.updated}`)
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.governance.profiles({ include_builtin: true, limit: 200 }),
+        })
+      } catch (e) {
+        reportClientError('Failed to import governance profiles', e)
+        toast.error(formatApiError(e, '导入失败（请检查脚本格式/正则是否安全）'))
+      } finally {
+        if (fileInputRef.current) fileInputRef.current.value = ''
+      }
+    },
+    [queryClient],
+  )
 
   const handleExport = useCallback(async () => {
     if (!selectedRef || selectedRef === SELECT_NONE) {

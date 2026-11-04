@@ -11,10 +11,7 @@ type HeaderLookup = {
 function normalizeLanguageTag(value?: string | null): string | undefined {
   if (typeof value !== 'string') return undefined
 
-  const candidate = value
-    .trim()
-    .split(';', 1)[0]
-    ?.trim()
+  const candidate = value.trim().split(';', 1)[0]?.trim()
 
   if (!candidate || !LANGUAGE_TAG_PATTERN.test(candidate)) return undefined
   return candidate
@@ -22,7 +19,7 @@ function normalizeLanguageTag(value?: string | null): string | undefined {
 
 export function resolveRequestDocumentLanguage(
   requestHeaders?: HeaderLookup | null,
-  fallbackLanguage = DEFAULT_DOCUMENT_LANGUAGE
+  fallbackLanguage = DEFAULT_DOCUMENT_LANGUAGE,
 ): string {
   const headerCandidates = [
     requestHeaders?.get('x-mimirq-lang'),
@@ -40,7 +37,7 @@ export function resolveRequestDocumentLanguage(
 
 export function resolveRequestDocumentSettings(
   requestHeaders?: HeaderLookup | null,
-  fallbackLanguage = DEFAULT_DOCUMENT_LANGUAGE
+  fallbackLanguage = DEFAULT_DOCUMENT_LANGUAGE,
 ): { dir: ReturnType<typeof getDocumentDirection>; lang: string } {
   const lang = resolveRequestDocumentLanguage(requestHeaders, fallbackLanguage)
   return {

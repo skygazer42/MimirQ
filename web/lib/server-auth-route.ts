@@ -17,13 +17,15 @@ export function readEnv(name: string): string {
 }
 
 export function isFalsey(value: string): boolean {
-  const normalizedValue = String(value || '').trim().toLowerCase()
+  const normalizedValue = String(value || '')
+    .trim()
+    .toLowerCase()
   return (
-    normalizedValue === '0'
-    || normalizedValue === 'false'
-    || normalizedValue === 'no'
-    || normalizedValue === 'off'
-    || normalizedValue === 'disabled'
+    normalizedValue === '0' ||
+    normalizedValue === 'false' ||
+    normalizedValue === 'no' ||
+    normalizedValue === 'off' ||
+    normalizedValue === 'disabled'
   )
 }
 
@@ -35,8 +37,7 @@ function normalizeOrigin(value: string): string | null {
 
   try {
     return new URL(trimmedValue).origin
-  }
-  catch {
+  } catch {
     return null
   }
 }
@@ -50,9 +51,7 @@ export function requireSameOrigin(req: NextRequest): boolean {
   const forwardedProto = String(req.headers.get('x-forwarded-proto') || '').trim()
   const forwardedHost = String(req.headers.get('x-forwarded-host') || '').trim()
   const expectedOrigin = normalizeOrigin(
-    forwardedProto && forwardedHost
-      ? `${forwardedProto}://${forwardedHost}`
-      : req.nextUrl.origin,
+    forwardedProto && forwardedHost ? `${forwardedProto}://${forwardedHost}` : req.nextUrl.origin,
   )
 
   return expectedOrigin === origin

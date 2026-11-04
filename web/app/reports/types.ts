@@ -1,8 +1,5 @@
 import type { datasetApi } from '@/lib/api/datasets'
-import type {
-  DatasetReport,
-  DatasetReportPipelineVersion,
-} from '@/types'
+import type { DatasetReport, DatasetReportPipelineVersion } from '@/types'
 
 export type DataPillTone = 'blue' | 'green' | 'amber' | 'rose' | 'violet' | 'slate'
 export type ReportMetricDatum = { name: string; value: number }

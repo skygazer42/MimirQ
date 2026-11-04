@@ -31,9 +31,7 @@ function parseKnowledgeMap(raw: string): Record<string, string[]> {
       continue
     }
     if (Array.isArray(value)) {
-      map[knowledgeId] = value
-        .map((item) => (typeof item === 'string' ? item : ''))
-        .filter(Boolean)
+      map[knowledgeId] = value.map((item) => (typeof item === 'string' ? item : '')).filter(Boolean)
       continue
     }
     if (value && typeof value === 'object') {
@@ -42,9 +40,7 @@ function parseKnowledgeMap(raw: string): Record<string, string[]> {
       if (typeof ids === 'string') {
         map[knowledgeId] = [ids]
       } else if (Array.isArray(ids)) {
-        map[knowledgeId] = ids
-          .map((item) => (typeof item === 'string' ? item : ''))
-          .filter(Boolean)
+        map[knowledgeId] = ids.map((item) => (typeof item === 'string' ? item : '')).filter(Boolean)
       }
     }
   }
@@ -67,7 +63,7 @@ function shortId(value: string): string {
 
 function slugify(value: string): string {
   const chars = Array.from(value.toLowerCase())
-  const normalized = chars.map((char) => /[a-z0-9\u4e00-\u9fa5]/u.test(char) ? char : '_').join('')
+  const normalized = chars.map((char) => (/[a-z0-9\u4e00-\u9fa5]/u.test(char) ? char : '_')).join('')
   return normalized.split('_').filter(Boolean).join('_').slice(0, 36) || 'dataset'
 }
 
@@ -107,7 +103,7 @@ export function DifyIntegrationSection({
 
   const selectedDatasets = useMemo(
     () => datasets.filter((dataset) => selectedDatasetIds.includes(dataset.id)),
-    [datasets, selectedDatasetIds]
+    [datasets, selectedDatasetIds],
   )
 
   useEffect(() => {
@@ -142,7 +138,7 @@ export function DifyIntegrationSection({
 
   const toggleDataset = (datasetId: string) => {
     setSelectedDatasetIds((prev) =>
-      prev.includes(datasetId) ? prev.filter((id) => id !== datasetId) : [...prev, datasetId]
+      prev.includes(datasetId) ? prev.filter((id) => id !== datasetId) : [...prev, datasetId],
     )
   }
 
@@ -180,9 +176,7 @@ export function DifyIntegrationSection({
                 <PlugZap className="size-4" />
               </span>
               <div>
-                <h3 className="text-[13px] font-semibold tracking-[-0.01em] text-foreground">
-                  Dify 外部知识库
-                </h3>
+                <h3 className="text-[13px] font-semibold tracking-[-0.01em] text-foreground">Dify 外部知识库</h3>
                 <p className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
                   MimirQ 负责真实召回，Dify 只传 knowledge_id；这里把 knowledge_id 自动绑定到一个或多个数据集
                 </p>
@@ -193,9 +187,7 @@ export function DifyIntegrationSection({
             <span>{difyExternalKnowledge.enabled ? '已启用' : '未启用'}</span>
             <SettingsSwitch
               checked={Boolean(difyExternalKnowledge.enabled)}
-              onClick={() =>
-                updateDifyExternalKnowledge({ enabled: !difyExternalKnowledge.enabled })
-              }
+              onClick={() => updateDifyExternalKnowledge({ enabled: !difyExternalKnowledge.enabled })}
               aria-label="切换 Dify 外部知识库接入"
             />
           </div>
@@ -283,22 +275,20 @@ export function DifyIntegrationSection({
                     'flex items-center gap-2 rounded-[12px] border px-3 py-2 text-left transition-colors',
                     checked
                       ? 'border-info/30 bg-info/10 text-info'
-                      : 'border-info/15 bg-info/[0.025] text-foreground/78 hover:border-info/25 hover:bg-info/[0.055]'
+                      : 'border-info/15 bg-info/[0.025] text-foreground/78 hover:border-info/25 hover:bg-info/[0.055]',
                   )}
                 >
                   <span
                     className={cn(
                       'flex size-6 shrink-0 items-center justify-center rounded-[9px]',
-                      checked ? 'bg-info text-info-foreground' : 'bg-info/[0.06] text-muted-foreground'
+                      checked ? 'bg-info text-info-foreground' : 'bg-info/[0.06] text-muted-foreground',
                     )}
                   >
                     <Database className="size-3.5" />
                   </span>
                   <span className="min-w-0">
                     <span className="block truncate text-[12px] font-medium">{dataset.name}</span>
-                    <span className="block font-mono text-[10.5px] text-muted-foreground">
-                      {shortId(dataset.id)}
-                    </span>
+                    <span className="block font-mono text-[10.5px] text-muted-foreground">{shortId(dataset.id)}</span>
                   </span>
                 </button>
               )
@@ -350,10 +340,7 @@ export function DifyIntegrationSection({
               </div>
             ) : null}
             {Object.entries(knowledgeMap).map(([bindingId, datasetIds]) => (
-              <div
-                key={bindingId}
-                className="rounded-[13px] border border-border/60 bg-muted/30 px-3 py-2.5"
-              >
+              <div key={bindingId} className="rounded-[13px] border border-border/60 bg-muted/30 px-3 py-2.5">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="font-mono text-[12px] font-semibold text-foreground">{bindingId}</div>
@@ -363,7 +350,10 @@ export function DifyIntegrationSection({
                           key={datasetId}
                           className="rounded-full border border-info/20 bg-info/[0.035] px-2 py-0.5 text-[10.5px] text-muted-foreground"
                         >
-                          {datasetLabel(datasets.find((dataset) => dataset.id === datasetId), datasetId)}
+                          {datasetLabel(
+                            datasets.find((dataset) => dataset.id === datasetId),
+                            datasetId,
+                          )}
                         </span>
                       ))}
                     </div>

@@ -107,19 +107,20 @@ export function GraphLegend({ nodes, links = [], activeTypeFilters = [], onToggl
   return (
     <div className="absolute bottom-4 left-4 z-10 md:bottom-8 md:left-8">
       <div className="max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border/60 bg-card/95 shadow-md backdrop-blur-sm md:max-w-[340px]">
-          <button
-            type="button"
-            onClick={() => setCollapsed(prev => !prev)}
-            className="w-full flex items-center justify-between px-3.5 py-2.5 text-[11px] font-semibold uppercase text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <span>图例</span>
-            <span className="flex items-center gap-1.5">
-              <span className="text-[11px] font-normal normal-case opacity-70">
-                {entityTypes.length}{edgeKinds.length ? ` / ${edgeKinds.length}` : ''}
-              </span>
-              {collapsed ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+        <button
+          type="button"
+          onClick={() => setCollapsed((prev) => !prev)}
+          className="w-full flex items-center justify-between px-3.5 py-2.5 text-[11px] font-semibold uppercase text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <span>图例</span>
+          <span className="flex items-center gap-1.5">
+            <span className="text-[11px] font-normal normal-case opacity-70">
+              {entityTypes.length}
+              {edgeKinds.length ? ` / ${edgeKinds.length}` : ''}
             </span>
-          </button>
+            {collapsed ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </span>
+        </button>
         {!collapsed && (
           <div className="px-3.5 pb-3 pt-0.5 space-y-3 max-h-[180px] overflow-y-auto overscroll-contain no-scrollbar">
             {entityTypes.length > 0 && (
@@ -134,8 +135,8 @@ export function GraphLegend({ nodes, links = [], activeTypeFilters = [], onToggl
                         type="button"
                         onClick={() => onToggleTypeFilter?.(type)}
                         className={cn(
-                          "flex items-center gap-1.5 text-xs transition-opacity",
-                          isActive ? "opacity-100" : "opacity-40"
+                          'flex items-center gap-1.5 text-xs transition-opacity',
+                          isActive ? 'opacity-100' : 'opacity-40',
                         )}
                         title={`${type} (${count})`}
                       >
@@ -157,7 +158,10 @@ export function GraphLegend({ nodes, links = [], activeTypeFilters = [], onToggl
                 <div className="flex flex-wrap gap-x-4 gap-y-2">
                   {edgeKinds.map(({ kind, label, color, count }) => (
                     <div key={kind} className="flex items-center gap-1.5 text-xs" title={`${kind} (${count})`}>
-                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 ring-1 ring-black/5" style={{ backgroundColor: color }} />
+                      <span
+                        className="w-2.5 h-2.5 rounded-full flex-shrink-0 ring-1 ring-black/5"
+                        style={{ backgroundColor: color }}
+                      />
                       <span className="text-foreground/80 whitespace-nowrap">{label}</span>
                       <span className="text-muted-foreground text-[11px]">{count}</span>
                     </div>

@@ -4,7 +4,12 @@ import type { AuthResponse, AuthToken, UserProfile } from '@/types'
 import { setAuthSession } from '@/lib/auth-storage'
 import { readClientStorage, removeClientStorage, writeClientStorage } from '@/lib/client-storage'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
-import { generateOauthState, generatePkceCodeVerifier, pkceChallengeFromVerifier, tryDecodeJwtPayload } from '@/lib/oidc-pkce'
+import {
+  generateOauthState,
+  generatePkceCodeVerifier,
+  pkceChallengeFromVerifier,
+  tryDecodeJwtPayload,
+} from '@/lib/oidc-pkce'
 import { getOidcPublicProvidersFromEnv, resolveOidcPublicProvider } from '@/lib/oidc-providers'
 
 type OidcDiscovery = {
@@ -44,7 +49,9 @@ function readEnv(name: string): string {
 }
 
 function isFalsey(value: string): boolean {
-  const v = String(value || '').trim().toLowerCase()
+  const v = String(value || '')
+    .trim()
+    .toLowerCase()
   return v === '0' || v === 'false' || v === 'no' || v === 'off' || v === 'disabled'
 }
 
@@ -109,7 +116,7 @@ async function discover(issuer: string): Promise<OidcDiscovery> {
   if (!res.ok) {
     throw new Error(`oidc_discovery_failed_${res.status}`)
   }
-  const data = (await res.json().catch(() => null))
+  const data = await res.json().catch(() => null)
   if (!data || typeof data !== 'object') {
     throw new Error('oidc_discovery_invalid')
   }
@@ -226,7 +233,10 @@ export async function startOidcLogin(params: { providerId?: string; returnTo?: s
   globalThis.window.location.assign(url.toString())
 }
 
-export async function completeOidcLogin(params: { code: string; state: string }): Promise<{ session: AuthResponse; returnTo: string }> {
+export async function completeOidcLogin(params: {
+  code: string
+  state: string
+}): Promise<{ session: AuthResponse; returnTo: string }> {
   if (globalThis.window === undefined) {
     throw new Error('oidc_browser_only')
   }
@@ -292,8 +302,7 @@ export async function completeOidcLogin(params: { code: string; state: string })
     const serverData = (await serverRes.json().catch(() => null)) as OidcTokenResponse | null
     if (!serverRes.ok) {
       const msg = toTrimmedPrimitiveString(serverData?.error)
-      const originalMsg =
-        err instanceof Error ? err.message.trim() : toTrimmedPrimitiveString(err)
+      const originalMsg = err instanceof Error ? err.message.trim() : toTrimmedPrimitiveString(err)
       const originalLower = originalMsg.toLowerCase()
       const preferServer =
         Boolean(msg) &&

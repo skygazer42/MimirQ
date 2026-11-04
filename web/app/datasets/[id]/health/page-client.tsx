@@ -4,7 +4,20 @@ import { useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useParams } from 'next/navigation'
 import { toast } from 'sonner'
-import { Activity, ArrowLeft, BarChart3, Cloud, Database, Download, FileSearch, RefreshCw, Settings2, ShieldAlert, Sparkles, Table2 } from 'lucide-react'
+import {
+  Activity,
+  ArrowLeft,
+  BarChart3,
+  Cloud,
+  Database,
+  Download,
+  FileSearch,
+  RefreshCw,
+  Settings2,
+  ShieldAlert,
+  Sparkles,
+  Table2,
+} from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Pie, PieChart, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { AppFrame } from '@/components/app-frame'
@@ -27,13 +40,27 @@ import { useRouter } from '@/i18n/navigation'
 
 import type { Dataset, DatasetHealthResponse, DatasetProfileFindingSummary } from '@/types'
 
-const PIE_COLORS = ['hsl(var(--chart-5))', 'hsl(var(--chart-2))', 'hsl(var(--chart-4))', 'hsl(var(--chart-6))', 'hsl(var(--chart-3))', 'hsl(var(--chart-1))', 'hsl(var(--chart-8))']
-const healthHeroCard = 'relative overflow-hidden border-b border-border/60 bg-transparent px-1 py-2 shadow-none dark:border-border/70'
-const healthPanelClass = 'overflow-hidden border border-border/60 bg-card p-4 shadow-none dark:border-border/70 dark:bg-card'
-const healthToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-lg border border-border/60 bg-card p-1 shadow-none dark:border-border/70 dark:bg-card'
-const healthToolbarButtonClass = 'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-muted-foreground shadow-none hover:bg-card/95 hover:text-foreground hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
-const healthToolbarExportButtonClass = 'h-8 gap-1.5 rounded-md border border-border/60 bg-card px-2.5 text-[12px] font-medium text-foreground/85 shadow-none hover:bg-muted/40 hover:text-foreground dark:border-border/70 dark:bg-card dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
-const healthToolbarPrimaryButtonClass = 'h-8 gap-1.5 rounded-md border border-primary/20 bg-primary px-3 text-[12px] font-semibold text-primary-foreground shadow-none hover:bg-primary/90 dark:border-primary/30 [&_svg]:size-3.5'
+const PIE_COLORS = [
+  'hsl(var(--chart-5))',
+  'hsl(var(--chart-2))',
+  'hsl(var(--chart-4))',
+  'hsl(var(--chart-6))',
+  'hsl(var(--chart-3))',
+  'hsl(var(--chart-1))',
+  'hsl(var(--chart-8))',
+]
+const healthHeroCard =
+  'relative overflow-hidden border-b border-border/60 bg-transparent px-1 py-2 shadow-none dark:border-border/70'
+const healthPanelClass =
+  'overflow-hidden border border-border/60 bg-card p-4 shadow-none dark:border-border/70 dark:bg-card'
+const healthToolbarGroupClass =
+  'inline-flex flex-wrap items-center gap-1 rounded-lg border border-border/60 bg-card p-1 shadow-none dark:border-border/70 dark:bg-card'
+const healthToolbarButtonClass =
+  'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-muted-foreground shadow-none hover:bg-card/95 hover:text-foreground hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
+const healthToolbarExportButtonClass =
+  'h-8 gap-1.5 rounded-md border border-border/60 bg-card px-2.5 text-[12px] font-medium text-foreground/85 shadow-none hover:bg-muted/40 hover:text-foreground dark:border-border/70 dark:bg-card dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
+const healthToolbarPrimaryButtonClass =
+  'h-8 gap-1.5 rounded-md border border-primary/20 bg-primary px-3 text-[12px] font-semibold text-primary-foreground shadow-none hover:bg-primary/90 dark:border-primary/30 [&_svg]:size-3.5'
 
 function asDatasetId(raw: unknown): string {
   if (typeof raw === 'string' && raw.trim()) return raw
@@ -146,19 +173,15 @@ export default function DatasetHealthPage() {
       .sort((a, b) => Number(b.count || 0) - Number(a.count || 0))
       .slice(0, 8)
   }, [profile?.findings])
-  const totalSizeLabel = profile ? formatFileSize(profile.total_size_bytes || 0) : (isLoading ? '…' : '-')
+  const totalSizeLabel = profile ? formatFileSize(profile.total_size_bytes || 0) : isLoading ? '…' : '-'
   const documentCountLabel = profile?.total_documents ?? (isLoading ? '…' : 0)
-  const scannedPdfLabel = profile ? `${profile.pdf_scan?.scanned ?? 0}/${pdfScanTotal || 0}` : (isLoading ? '…' : '-')
-  const piiLabel = profile ? piiTotal : (isLoading ? '…' : 0)
-  const secretsLabel = profile ? secretsTotal : (isLoading ? '…' : 0)
+  const scannedPdfLabel = profile ? `${profile.pdf_scan?.scanned ?? 0}/${pdfScanTotal || 0}` : isLoading ? '…' : '-'
+  const piiLabel = profile ? piiTotal : isLoading ? '…' : 0
+  const secretsLabel = profile ? secretsTotal : isLoading ? '…' : 0
   const failedCount = Number(ingestion?.failed || 0)
   const quarantinedCount = Number(ingestion?.quarantined || 0)
   const generatedAtLabel = health?.generated_at ? formatDate(health.generated_at) : '--'
-  const healthStatusLabel = loadError
-    ? '加载失败'
-    : health
-      ? '后端快照已返回'
-      : '待加载'
+  const healthStatusLabel = loadError ? '加载失败' : health ? '后端快照已返回' : '待加载'
 
   return (
     <AppFrame>
@@ -182,35 +205,50 @@ export default function DatasetHealthPage() {
                     <h1 className="truncate text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground dark:text-foreground">
                       健康概览
                     </h1>
-                    <Badge variant="soft" className="h-5 border-info/30 bg-info/10 px-2 text-[10px] font-medium leading-none text-info">
+                    <Badge
+                      variant="soft"
+                      className="h-5 border-info/30 bg-info/10 px-2 text-[10px] font-medium leading-none text-info"
+                    >
                       HEALTH
                     </Badge>
                   </div>
                   <p className="max-w-4xl text-[12px] leading-5 text-muted-foreground">
-                    数据集：<span className="font-semibold text-foreground dark:text-foreground">{dataset?.name || datasetId || '未选择'}</span>
+                    数据集：
+                    <span className="font-semibold text-foreground dark:text-foreground">
+                      {dataset?.name || datasetId || '未选择'}
+                    </span>
                     <span className="mx-2 text-muted-foreground/60">·</span>
                     汇总数据画像、入库状态和下一步处理建议
                   </p>
                   <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] leading-none text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
                       <Database className="size-3.5 text-info" />
-                      文档 <strong className="font-mono text-foreground dark:text-foreground">{documentCountLabel}</strong>
+                      文档{' '}
+                      <strong className="font-mono text-foreground dark:text-foreground">{documentCountLabel}</strong>
                     </span>
                     <span className="inline-flex items-center gap-1.5">
                       <Cloud className="size-3.5 text-info" />
-                      总大小 <strong className="font-mono text-foreground dark:text-foreground">{totalSizeLabel}</strong>
+                      总大小{' '}
+                      <strong className="font-mono text-foreground dark:text-foreground">{totalSizeLabel}</strong>
                     </span>
                     <span className="inline-flex items-center gap-1.5">
                       <ShieldAlert className="size-3.5 text-destructive" />
-                      失败 <strong className="font-mono text-foreground dark:text-foreground">{ingestion ? failedCount : (isLoading ? '…' : 0)}</strong>
+                      失败{' '}
+                      <strong className="font-mono text-foreground dark:text-foreground">
+                        {ingestion ? failedCount : isLoading ? '…' : 0}
+                      </strong>
                     </span>
                     <span className="inline-flex items-center gap-1.5">
                       <FileSearch className="size-3.5 text-warning" />
-                      隔离 <strong className="font-mono text-foreground dark:text-foreground">{ingestion ? quarantinedCount : (isLoading ? '…' : 0)}</strong>
+                      隔离{' '}
+                      <strong className="font-mono text-foreground dark:text-foreground">
+                        {ingestion ? quarantinedCount : isLoading ? '…' : 0}
+                      </strong>
                     </span>
                     <span className="inline-flex items-center gap-1.5">
                       <Sparkles className="size-3.5 text-success" />
-                      更新时间 <strong className="font-mono text-foreground dark:text-foreground">{generatedAtLabel}</strong>
+                      更新时间{' '}
+                      <strong className="font-mono text-foreground dark:text-foreground">{generatedAtLabel}</strong>
                     </span>
                   </div>
                 </div>
@@ -223,12 +261,7 @@ export default function DatasetHealthPage() {
                     : 'border-info/30 bg-info/5 text-info',
                 )}
               >
-                <span
-                  className={cn(
-                    'size-2 rounded-full',
-                    loadError ? 'bg-destructive' : 'bg-info',
-                  )}
-                />
+                <span className={cn('size-2 rounded-full', loadError ? 'bg-destructive' : 'bg-info')} />
                 {healthStatusLabel}
               </div>
             </div>
@@ -237,30 +270,55 @@ export default function DatasetHealthPage() {
         toolbar={
           <div className="flex w-full flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
             <div className={healthToolbarGroupClass}>
-              <Button size="sm" variant="ghost" className={healthToolbarButtonClass} onClick={() => router.push('/datasets')}>
+              <Button
+                size="sm"
+                variant="ghost"
+                className={healthToolbarButtonClass}
+                onClick={() => router.push('/datasets')}
+              >
                 <ArrowLeft className="w-4 h-4" />
                 返回
               </Button>
               {datasetId ? (
-                <Button size="sm" variant="ghost" className={healthToolbarButtonClass} onClick={() => router.push(`/datasets/${datasetId}/profile`)}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className={healthToolbarButtonClass}
+                  onClick={() => router.push(`/datasets/${datasetId}/profile`)}
+                >
                   <BarChart3 className="w-4 h-4" />
                   数据画像
                 </Button>
               ) : null}
               {datasetId ? (
-                <Button size="sm" variant="ghost" className={healthToolbarButtonClass} onClick={() => router.push(`/datasets/${datasetId}/precheck`)}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className={healthToolbarButtonClass}
+                  onClick={() => router.push(`/datasets/${datasetId}/precheck`)}
+                >
                   <ShieldAlert className="w-4 h-4" />
                   预检
                 </Button>
               ) : null}
               {datasetId ? (
-                <Button size="sm" variant="ghost" className={healthToolbarButtonClass} onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className={healthToolbarButtonClass}
+                  onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}
+                >
                   <Settings2 className="w-4 h-4" />
                   入库策略
                 </Button>
               ) : null}
               {datasetId ? (
-                <Button size="sm" variant="ghost" className={healthToolbarButtonClass} onClick={() => router.push(`/datasets/${datasetId}/tables`)}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className={healthToolbarButtonClass}
+                  onClick={() => router.push(`/datasets/${datasetId}/tables`)}
+                >
                   <Table2 className="w-4 h-4" />
                   表格 / TAG
                 </Button>
@@ -270,9 +328,7 @@ export default function DatasetHealthPage() {
                 variant="ghost"
                 className={healthToolbarButtonClass}
                 onClick={() =>
-                  detachPromise(
-                    Promise.all([datasetQuery.refetch(), healthQuery.refetch()]).then(() => undefined)
-                  )
+                  detachPromise(Promise.all([datasetQuery.refetch(), healthQuery.refetch()]).then(() => undefined))
                 }
                 disabled={isLoading || !datasetId}
               >
@@ -289,7 +345,11 @@ export default function DatasetHealthPage() {
                 onClick={() => {
                   if (!exportPayload) return
                   const filenameBase = sanitizeFilename(dataset?.name || datasetId || 'dataset')
-                  downloadTextFile(`${filenameBase}.health.json`, JSON.stringify(exportPayload, null, 2), 'application/json;charset=utf-8')
+                  downloadTextFile(
+                    `${filenameBase}.health.json`,
+                    JSON.stringify(exportPayload, null, 2),
+                    'application/json;charset=utf-8',
+                  )
                   toast.success('已导出 health.json')
                 }}
               >
@@ -326,7 +386,10 @@ export default function DatasetHealthPage() {
       >
         <div className="space-y-3">
           <Panel className={cn(healthPanelClass, 'p-2.5')}>
-            <StatsGrid dense className="grid-cols-2 gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 xl:grid-cols-7">
+            <StatsGrid
+              dense
+              className="grid-cols-2 gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 xl:grid-cols-7"
+            >
               <StatCard
                 dense
                 variant="minimal"
@@ -414,7 +477,10 @@ export default function DatasetHealthPage() {
                   </SafeResponsiveChart>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {statusChartData.map((item) => (
-                      <span key={item.name} className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/60 px-3 py-1 text-xs shadow-sm dark:bg-muted/20">
+                      <span
+                        key={item.name}
+                        className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/60 px-3 py-1 text-xs shadow-sm dark:bg-muted/20"
+                      >
                         <span className="size-2 rounded-full bg-info" />
                         <span className="font-medium">{item.name}</span>
                         <span className="font-mono text-muted-foreground">{item.value}</span>
@@ -423,7 +489,12 @@ export default function DatasetHealthPage() {
                   </div>
                 </>
               ) : (
-                <EmptyState icon={Activity} title="暂无状态数据" description="后端未返回可用的状态分布。" className="min-h-[160px]" />
+                <EmptyState
+                  icon={Activity}
+                  title="暂无状态数据"
+                  description="后端未返回可用的状态分布。"
+                  className="min-h-[160px]"
+                />
               )}
             </Panel>
 
@@ -444,7 +515,10 @@ export default function DatasetHealthPage() {
                   </SafeResponsiveChart>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {fileTypeChartData.map((item) => (
-                      <span key={item.name} className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/60 px-3 py-1 text-xs shadow-sm dark:bg-muted/20">
+                      <span
+                        key={item.name}
+                        className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/60 px-3 py-1 text-xs shadow-sm dark:bg-muted/20"
+                      >
                         <span className="size-2 rounded-full bg-info" />
                         <span className="font-medium">{item.name}</span>
                         <span className="font-mono text-muted-foreground">{item.value}</span>
@@ -453,7 +527,12 @@ export default function DatasetHealthPage() {
                   </div>
                 </>
               ) : (
-                <EmptyState icon={BarChart3} title="暂无格式数据" description="后端未返回可用的格式统计。" className="min-h-[160px]" />
+                <EmptyState
+                  icon={BarChart3}
+                  title="暂无格式数据"
+                  description="后端未返回可用的格式统计。"
+                  className="min-h-[160px]"
+                />
               )}
             </Panel>
           </div>
@@ -475,14 +554,20 @@ export default function DatasetHealthPage() {
               <div className="rounded-xl border border-border/50 bg-card/45 p-3 dark:bg-card/40">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <div className="text-[13px] font-semibold text-foreground/85">入库状态计数</div>
-                  <Badge variant={statusChartData.length ? 'soft' : 'outline'} className="h-5 px-1.5 text-[10px] font-mono">
+                  <Badge
+                    variant={statusChartData.length ? 'soft' : 'outline'}
+                    className="h-5 px-1.5 text-[10px] font-mono"
+                  >
                     {statusChartData.length}
                   </Badge>
                 </div>
                 {statusChartData.length ? (
                   <div className="divide-y divide-border/45 overflow-hidden rounded-lg border border-border/45">
                     {statusChartData.map((item) => (
-                      <div key={item.name} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-2.5 py-2">
+                      <div
+                        key={item.name}
+                        className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-2.5 py-2"
+                      >
                         <div className="truncate text-[12px] font-semibold text-foreground/85">{item.name}</div>
                         <div className="font-mono text-[11px] text-muted-foreground">{item.value}</div>
                       </div>
@@ -499,7 +584,9 @@ export default function DatasetHealthPage() {
                 <div className="mb-2.5 flex items-center justify-between gap-2">
                   <div>
                     <div className="text-[13px] font-semibold text-foreground/85">画像发现</div>
-                    <div className="mt-0.5 text-[10px] leading-none text-muted-foreground/55">按影响度排序的可处理问题</div>
+                    <div className="mt-0.5 text-[10px] leading-none text-muted-foreground/55">
+                      按影响度排序的可处理问题
+                    </div>
                   </div>
                   <Badge variant={topFindings.length ? 'soft' : 'outline'} className="h-5 px-1.5 text-[10px] font-mono">
                     {topFindings.length}
@@ -539,10 +626,15 @@ export default function DatasetHealthPage() {
                               </span>
                             </div>
                             {f.description ? (
-                              <div className="mt-1 line-clamp-2 text-[11px] leading-4 text-muted-foreground/62">{f.description}</div>
+                              <div className="mt-1 line-clamp-2 text-[11px] leading-4 text-muted-foreground/62">
+                                {f.description}
+                              </div>
                             ) : null}
                           </div>
-                          <Badge variant={suggestionBadgeVariant(f.severity)} className="h-5 shrink-0 px-1.5 text-[10px] font-mono uppercase">
+                          <Badge
+                            variant={suggestionBadgeVariant(f.severity)}
+                            className="h-5 shrink-0 px-1.5 text-[10px] font-mono uppercase"
+                          >
                             {String(f.severity || '')}
                           </Badge>
                         </div>

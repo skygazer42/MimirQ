@@ -42,7 +42,7 @@ describe('SAML ACS route', () => {
         return_to: '/datasets/123',
         user: { id: 'user-1' },
         token: { access_token: 'jwt-token', token_type: 'bearer', expires_in: 3600 },
-      })
+      }),
     )
 
     const response = await POST(makeRequest())
@@ -54,7 +54,7 @@ describe('SAML ACS route', () => {
       expect.objectContaining({
         method: 'POST',
         body: expect.any(String),
-      })
+      }),
     )
     const [, requestInit] = mocks.fetch.mock.calls[0] as [string, RequestInit]
     expect(JSON.parse(String(requestInit.body))).toEqual({
@@ -71,18 +71,13 @@ describe('SAML ACS route', () => {
   })
 
   it('clears the bridge cookie and redirects with an opaque code when exchange fails', async () => {
-    mocks.fetch.mockResolvedValue(
-      Response.json(
-        { detail: 'Invalid SAML signature' },
-        { status: 401 }
-      )
-    )
+    mocks.fetch.mockResolvedValue(Response.json({ detail: 'Invalid SAML signature' }, { status: 401 }))
 
     const response = await POST(makeRequest())
 
     expect(response.status).toBe(303)
     expect(response.headers.get('location')).toBe(
-      'https://app.example.com/auth/saml/callback?error=saml_invalid_response'
+      'https://app.example.com/auth/saml/callback?error=saml_invalid_response',
     )
     expect(response.headers.get('location')).not.toContain('Invalid+SAML+signature')
     const cookie = response.headers.get('set-cookie')

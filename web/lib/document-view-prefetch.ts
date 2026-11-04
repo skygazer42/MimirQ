@@ -97,12 +97,16 @@ export function prefetchDocumentView({ documentId, chunkId, rawFileUrl }: Prefet
     const request = documentApi
       .getParsedContent(docId, { max_chars: 200_000 })
       .then(async (data) => {
-        if (!data?.available || !isDocCacheScopeGuardCurrent(scopeGuard) || documentKey !== documentCacheKey(docId)) return
-        await saveDocContentToCache({
-          id: docId,
-          markdownContent: data.markdown_content || '',
-          originalMarkdownContent: data.original_markdown_content || '',
-        }, scopeGuard)
+        if (!data?.available || !isDocCacheScopeGuardCurrent(scopeGuard) || documentKey !== documentCacheKey(docId))
+          return
+        await saveDocContentToCache(
+          {
+            id: docId,
+            markdownContent: data.markdown_content || '',
+            originalMarkdownContent: data.original_markdown_content || '',
+          },
+          scopeGuard,
+        )
       })
       .catch(() => undefined)
     parsedInflight.set(documentKey, request)

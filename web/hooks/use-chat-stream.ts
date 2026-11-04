@@ -144,7 +144,7 @@ export function useChatStream({
       setConversationId(nextConversationId)
       onConversationId?.(nextConversationId)
     },
-    [conversationId, onConversationId, setConversationId]
+    [conversationId, onConversationId, setConversationId],
   )
 
   const stopGeneration = useCallback(() => {
@@ -279,7 +279,7 @@ export function useChatStream({
                   updateConversation(openedConversationId)
                 }
               },
-            }
+            },
           )
 
           if (streamError) throw streamError
@@ -334,7 +334,9 @@ export function useChatStream({
       } catch (err) {
         const maybeError = err as { name?: string; code?: string; message?: string }
         const isAbort =
-          maybeError?.name === 'AbortError' || maybeError?.name === 'CanceledError' || maybeError?.code === 'ERR_CANCELED'
+          maybeError?.name === 'AbortError' ||
+          maybeError?.name === 'CanceledError' ||
+          maybeError?.code === 'ERR_CANCELED'
 
         if (isAbort) {
           if (didTimeout) {
@@ -398,7 +400,7 @@ export function useChatStream({
       structuredOutput,
       structuredPreset,
       updateConversation,
-    ]
+    ],
   )
 
   return {

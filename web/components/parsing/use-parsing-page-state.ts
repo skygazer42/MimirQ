@@ -102,23 +102,20 @@ export function useParsingPageState({ files, setFiles }: Readonly<UseParsingPage
     if (globalThis.window === undefined) return
     globalThis.window.localStorage.setItem(
       'mimirq_parsing_image_caption_enabled',
-      imageCaptionEnabled ? 'true' : 'false'
+      imageCaptionEnabled ? 'true' : 'false',
     )
   }, [imageCaptionEnabled])
 
   useEffect(() => {
     if (globalThis.window === undefined) return
-    globalThis.window.localStorage.setItem(
-      'mimirq_parsing_image_ocr_enabled',
-      imageOcrEnabled ? 'true' : 'false'
-    )
+    globalThis.window.localStorage.setItem('mimirq_parsing_image_ocr_enabled', imageOcrEnabled ? 'true' : 'false')
   }, [imageOcrEnabled])
 
   useEffect(() => {
     if (globalThis.window === undefined) return
     globalThis.window.localStorage.setItem(
       'mimirq_parsing_vlm_correction_enabled',
-      vlmCorrectionEnabled ? 'true' : 'false'
+      vlmCorrectionEnabled ? 'true' : 'false',
     )
   }, [vlmCorrectionEnabled])
 
@@ -130,12 +127,12 @@ export function useParsingPageState({ files, setFiles }: Readonly<UseParsingPage
 
       setFiles((prev) =>
         prev.map((file) =>
-          file.id === params.fileId ? { ...file, parserBackend: nextBackend, parserLabel: nextLabel } : file
-        )
+          file.id === params.fileId ? { ...file, parserBackend: nextBackend, parserLabel: nextLabel } : file,
+        ),
       )
       setParserBackend(params.backend)
     },
-    [setFiles, setParserBackend]
+    [setFiles, setParserBackend],
   )
 
   const consumeUploadTargetFolderId = useCallback(() => {

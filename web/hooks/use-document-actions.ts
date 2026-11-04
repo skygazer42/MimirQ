@@ -20,10 +20,7 @@ export function useDocumentActions({
   setActionError,
   updateCachedDocuments,
 }: UseDocumentActionsOptions) {
-  const {
-    mutateAsync: cancelDocumentMutation,
-    isPending: cancelDocumentPending,
-  } = useMutation({
+  const { mutateAsync: cancelDocumentMutation, isPending: cancelDocumentPending } = useMutation({
     mutationFn: async (documentId: string) => {
       cancelDocumentPolling(documentId)
       return documentApi.cancel(documentId)
@@ -46,10 +43,7 @@ export function useDocumentActions({
     },
   })
 
-  const {
-    mutateAsync: deleteDocumentMutation,
-    isPending: deleteDocumentPending,
-  } = useMutation({
+  const { mutateAsync: deleteDocumentMutation, isPending: deleteDocumentPending } = useMutation({
     mutationFn: (documentId: string) => documentApi.delete(documentId),
     onMutate: () => {
       setActionError(null)
@@ -72,12 +66,12 @@ export function useDocumentActions({
 
   const cancelDocument = useCallback(
     async (documentId: string) => cancelDocumentMutation(documentId),
-    [cancelDocumentMutation]
+    [cancelDocumentMutation],
   )
 
   const deleteDocument = useCallback(
     async (documentId: string) => deleteDocumentMutation(documentId),
-    [deleteDocumentMutation]
+    [deleteDocumentMutation],
   )
 
   return {

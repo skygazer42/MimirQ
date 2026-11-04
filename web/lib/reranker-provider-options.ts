@@ -29,16 +29,11 @@ export function normalizeRerankerProvider(value: unknown): string {
   if (provider === 'parent_child') return 'pc'
   if (provider === 'bge_v2_m3') return 'local_bge_v2_m3'
   if (provider === 'xgboost_ltr') return 'ltr'
-  if (
-    provider === 'sentence_transformers' ||
-    provider === 'sentence_transformer'
-  ) {
+  if (provider === 'sentence_transformers' || provider === 'sentence_transformer') {
     return 'cross_encoder'
   }
   if (provider === 'off' || provider === 'false' || provider === '0') {
     return 'none'
   }
-  return RERANKER_PROVIDER_OPTIONS.some((option) => option.key === provider)
-    ? provider
-    : 'llm'
+  return RERANKER_PROVIDER_OPTIONS.some((option) => option.key === provider) ? provider : 'llm'
 }

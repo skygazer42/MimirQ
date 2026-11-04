@@ -70,9 +70,8 @@ function toOptionalBoolean(value: unknown): boolean | undefined {
 
 function toMetricLabel(value: unknown): string {
   if (value == null) return '-'
-  const text = typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
-    ? String(value).trim()
-    : ''
+  const text =
+    typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? String(value).trim() : ''
   return text || '-'
 }
 
@@ -115,9 +114,7 @@ export function EvidenceWorkbench() {
   })
   const datasets = useMemo(() => datasetsQuery.data || [], [datasetsQuery.data])
   const datasetsLoading = datasetsQuery.isFetching
-  const datasetsError = datasetsQuery.error
-    ? formatApiError(datasetsQuery.error, t("errors.loadDatasetsFailed"))
-    : null
+  const datasetsError = datasetsQuery.error ? formatApiError(datasetsQuery.error, t('errors.loadDatasetsFailed')) : null
 
   const datasetOptions = useMemo(() => {
     const opts = (datasets || []).map((d) => ({ id: String(d.id), name: d.name || String(d.id) }))
@@ -162,14 +159,14 @@ export function EvidenceWorkbench() {
 
       setResult(res || null)
       if (res?.has_evidence) {
-        toast.success(t("toasts.foundEvidence"))
+        toast.success(t('toasts.foundEvidence'))
       } else if (res?.abstain_triggered) {
-        toast.warning(t("toasts.abstainTriggered", { reason: res.abstain_reason || 'unknown' }))
+        toast.warning(t('toasts.abstainTriggered', { reason: res.abstain_reason || 'unknown' }))
       } else {
-        toast.message(t("toasts.noEvidence"))
+        toast.message(t('toasts.noEvidence'))
       }
     } catch (error: unknown) {
-      setError(formatApiError(error, t("errors.retrieveFailed")))
+      setError(formatApiError(error, t('errors.retrieveFailed')))
     } finally {
       setRunning(false)
     }
@@ -198,7 +195,7 @@ export function EvidenceWorkbench() {
     }
 
     downloadJson(filename, payload)
-    toast.success(t("toasts.exportedPack"))
+    toast.success(t('toasts.exportedPack'))
   }, [datasetId, profile, query, result, t])
 
   const citations: Citation[] = useMemo(() => {
@@ -216,13 +213,13 @@ export function EvidenceWorkbench() {
         <div className="flex flex-col gap-3">
           <div className="flex flex-col md:flex-row gap-3 md:items-end">
             <div className="flex-1 min-w-0">
-              <div className="text-xs text-muted-foreground mb-1">{t("controls.datasetScope")}</div>
+              <div className="text-xs text-muted-foreground mb-1">{t('controls.datasetScope')}</div>
               <Select value={datasetScope} onValueChange={(v) => setDatasetScope(String(v))}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder={t("controls.datasetPlaceholder")} />
+                  <SelectValue placeholder={t('controls.datasetPlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={DATASET_ALL}>{t("controls.allDocuments")}</SelectItem>
+                  <SelectItem value={DATASET_ALL}>{t('controls.allDocuments')}</SelectItem>
                   {datasetOptions.map((d) => (
                     <SelectItem key={d.id} value={d.id}>
                       {d.name}
@@ -231,28 +228,26 @@ export function EvidenceWorkbench() {
                 </SelectContent>
               </Select>
               {(() => {
-    if (datasetsLoading) {
-        return (<div className="mt-1 text-[11px] text-muted-foreground">{t("controls.loadingDatasets")}</div>);
-    }
-    else if (datasetsError) {
-            return (<div className="mt-1 text-[11px] text-destructive">{datasetsError}</div>);
-        }
-        else {
-            return null;
-        }
-})()}
+                if (datasetsLoading) {
+                  return <div className="mt-1 text-[11px] text-muted-foreground">{t('controls.loadingDatasets')}</div>
+                } else if (datasetsError) {
+                  return <div className="mt-1 text-[11px] text-destructive">{datasetsError}</div>
+                } else {
+                  return null
+                }
+              })()}
             </div>
 
             <div className="w-full md:w-[220px]">
-              <div className="text-xs text-muted-foreground mb-1">{t("controls.profile")}</div>
+              <div className="text-xs text-muted-foreground mb-1">{t('controls.profile')}</div>
               <Select value={profile} onValueChange={(v) => setProfile(v as RetrievalProfile)}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder={t("controls.profilePlaceholder")} />
+                  <SelectValue placeholder={t('controls.profilePlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="recall50">{t("profiles.recall50")}</SelectItem>
-                  <SelectItem value="coverage80">{t("profiles.coverage80")}</SelectItem>
-                  <SelectItem value="recall20">{t("profiles.recall20")}</SelectItem>
+                  <SelectItem value="recall50">{t('profiles.recall50')}</SelectItem>
+                  <SelectItem value="coverage80">{t('profiles.coverage80')}</SelectItem>
+                  <SelectItem value="recall20">{t('profiles.recall20')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -260,11 +255,11 @@ export function EvidenceWorkbench() {
 
           <div className="flex flex-col md:flex-row gap-3 md:items-end">
             <div className="flex-1 min-w-0">
-              <div className="text-xs text-muted-foreground mb-1">{t("controls.query")}</div>
+              <div className="text-xs text-muted-foreground mb-1">{t('controls.query')}</div>
               <Textarea
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder={t("controls.queryPlaceholder")}
+                placeholder={t('controls.queryPlaceholder')}
                 className="min-h-[44px]"
               />
             </div>
@@ -274,12 +269,12 @@ export function EvidenceWorkbench() {
                 {running ? (
                   <span className="inline-flex items-center gap-2">
                     <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
-                    {t("actions.searching")}
+                    {t('actions.searching')}
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-2">
                     <Search className="size-4" />
-                    {t("actions.search")}
+                    {t('actions.search')}
                   </span>
                 )}
               </Button>
@@ -287,14 +282,14 @@ export function EvidenceWorkbench() {
               <Button type="button" variant="outline" onClick={reset} disabled={running && !result && !error}>
                 <span className="inline-flex items-center gap-2">
                   <X className="size-4" />
-                  {t("actions.reset")}
+                  {t('actions.reset')}
                 </span>
               </Button>
 
               <Button type="button" variant="outline" onClick={exportPack} disabled={!result || running}>
                 <span className="inline-flex items-center gap-2">
                   <Download className="size-4" />
-                  {t("actions.export")}
+                  {t('actions.export')}
                 </span>
               </Button>
             </div>
@@ -313,23 +308,21 @@ export function EvidenceWorkbench() {
           <Panel variant="glass" className="p-4 lg:col-span-1">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-sm font-semibold">{t("results.summary.title")}</div>
-                <div className="text-xs text-muted-foreground mt-1">{t("results.summary.description")}</div>
+                <div className="text-sm font-semibold">{t('results.summary.title')}</div>
+                <div className="text-xs text-muted-foreground mt-1">{t('results.summary.description')}</div>
               </div>
               <div
                 className={cn(
                   'px-2 py-1 rounded-md text-xs font-mono border',
                   (() => {
-    if (result.has_evidence) {
-        return 'bg-success/10 border-success/20 text-success';
-    }
-    else if (result.abstain_triggered) {
-            return 'bg-warning/10 border-warning/20 text-warning';
-        }
-        else {
-            return 'bg-sidebar/45 border-sidebar-border/70 text-muted-foreground';
-        }
-})()
+                    if (result.has_evidence) {
+                      return 'bg-success/10 border-success/20 text-success'
+                    } else if (result.abstain_triggered) {
+                      return 'bg-warning/10 border-warning/20 text-warning'
+                    } else {
+                      return 'bg-sidebar/45 border-sidebar-border/70 text-muted-foreground'
+                    }
+                  })(),
                 )}
                 title="has_evidence / abstain"
               >
@@ -339,29 +332,29 @@ export function EvidenceWorkbench() {
 
             <div className="mt-3 space-y-2 text-xs">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-muted-foreground">{t("results.summary.abstainTriggered")}</div>
+                <div className="text-muted-foreground">{t('results.summary.abstainTriggered')}</div>
                 <div className="font-mono">{String(Boolean(result.abstain_triggered))}</div>
               </div>
               <div className="flex items-center justify-between gap-2">
-                <div className="text-muted-foreground">{t("results.summary.abstainReason")}</div>
+                <div className="text-muted-foreground">{t('results.summary.abstainReason')}</div>
                 <div className="font-mono max-w-[220px] truncate" title={String(result.abstain_reason || '')}>
                   {result.abstain_reason || '-'}
                 </div>
               </div>
               <div className="flex items-center justify-between gap-2">
-                <div className="text-muted-foreground">{t("results.summary.topRelevanceScore")}</div>
+                <div className="text-muted-foreground">{t('results.summary.topRelevanceScore')}</div>
                 <div className="font-mono">{topRel}</div>
               </div>
               <div className="flex items-center justify-between gap-2">
-                <div className="text-muted-foreground">{t("results.summary.retrievalElapsed")}</div>
+                <div className="text-muted-foreground">{t('results.summary.retrievalElapsed')}</div>
                 <div className="font-mono">{elapsed}</div>
               </div>
               <div className="flex items-center justify-between gap-2">
-                <div className="text-muted-foreground">{t("results.summary.citations")}</div>
+                <div className="text-muted-foreground">{t('results.summary.citations')}</div>
                 <div className="font-mono">{citations.length}</div>
               </div>
               <div className="pt-2">
-                <div className="text-muted-foreground text-[11px]">{t("results.summary.queryForRetrieval")}</div>
+                <div className="text-muted-foreground text-[11px]">{t('results.summary.queryForRetrieval')}</div>
                 <Input
                   readOnly
                   value={result.query_for_retrieval || ''}
@@ -374,9 +367,9 @@ export function EvidenceWorkbench() {
           <Panel variant="glass" className="p-4 lg:col-span-2">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-sm font-semibold">{t("results.citations.title")}</div>
+                <div className="text-sm font-semibold">{t('results.citations.title')}</div>
                 <div className="text-xs text-muted-foreground mt-1">
-                  {citations.length ? t("results.citations.hitsHint") : t("results.citations.emptyHits")}
+                  {citations.length ? t('results.citations.hitsHint') : t('results.citations.emptyHits')}
                 </div>
               </div>
             </div>
@@ -386,13 +379,13 @@ export function EvidenceWorkbench() {
                 {citations.map((c) => {
                   const content = String(c.chunk_content || '')
                   const safeImgUrl = c.has_image && c.img_url ? resolveSafeCitationImageUrl(c.img_url) : null
-                  const citationTitle = titleForCitation(c, t("results.citations.fallbackTitle"))
+                  const citationTitle = titleForCitation(c, t('results.citations.fallbackTitle'))
                   return (
                     <div
                       key={`${String(c.document_id || '')}:${String(c.chunk_id || '')}:${String(c.page_number ?? '')}`}
                       className={cn(
                         'rounded-xl border border-sidebar-border/70 bg-sidebar/55 px-3 py-3 shadow-soft backdrop-blur-sm',
-                        'hover:border-primary/25 hover:bg-sidebar/70 transition-colors'
+                        'hover:border-primary/25 hover:bg-sidebar/70 transition-colors',
                       )}
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -424,7 +417,7 @@ export function EvidenceWorkbench() {
                               />
                             </AuthImageLink>
                           ) : null}
-                          <div className="text-[11px] text-muted-foreground">{t("results.citations.scoreLabel")}</div>
+                          <div className="text-[11px] text-muted-foreground">{t('results.citations.scoreLabel')}</div>
                           <div className="text-[11px] font-mono">{scoreLabel(c)}</div>
                         </div>
                       </div>
@@ -434,14 +427,16 @@ export function EvidenceWorkbench() {
                           {content}
                         </pre>
                       ) : (
-                        <div className="mt-2 text-[11px] text-muted-foreground">{t("results.citations.emptyContent")}</div>
+                        <div className="mt-2 text-[11px] text-muted-foreground">
+                          {t('results.citations.emptyContent')}
+                        </div>
                       )}
                     </div>
                   )
                 })}
               </div>
             ) : (
-              <div className="mt-4 text-sm text-muted-foreground">{t("results.citations.noCitations")}</div>
+              <div className="mt-4 text-sm text-muted-foreground">{t('results.citations.noCitations')}</div>
             )}
           </Panel>
         </div>

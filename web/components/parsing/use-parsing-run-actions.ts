@@ -57,10 +57,7 @@ function getMarkdownStats(markdownContent: string, apiStats: Record<string, unkn
     lineCount: markdownContent.split('\n').length,
     headingCount: 0,
     pageCount: typeof apiStats?.page_count === 'number' ? apiStats.page_count : undefined,
-    tableCount:
-      typeof apiStats?.table_count === 'number'
-        ? apiStats.table_count
-        : estimateTableCount(markdownContent),
+    tableCount: typeof apiStats?.table_count === 'number' ? apiStats.table_count : estimateTableCount(markdownContent),
     imageCount:
       typeof apiStats?.image_count === 'number'
         ? apiStats.image_count
@@ -110,7 +107,7 @@ export function useParsingRunActions({
 
       const resolvedRequested = resolveParserBackendForFilename(
         file.file.name,
-        backendOverride || file.parserBackend || parserBackend
+        backendOverride || file.parserBackend || parserBackend,
       )
       const requestedBackend = resolvedRequested.backend
       const requestedLabel = getParserLabel(requestedBackend)
@@ -129,8 +126,8 @@ export function useParsingRunActions({
                 parserLabel: requestedLabel,
                 parseDiagnostics: undefined,
               }
-            : item
-        )
+            : item,
+        ),
       )
 
       if (file.libraryId) {
@@ -196,8 +193,8 @@ export function useParsingRunActions({
             prev.map((item) =>
               item.id === fileId
                 ? { ...item, libraryId, datasetId: targetDatasetId, datasetName: targetDatasetName }
-                : item
-            )
+                : item,
+            ),
           )
         }
 
@@ -241,7 +238,11 @@ export function useParsingRunActions({
           ? Number(data.parse_duration_sec)
           : fallbackDurationSec
         const runId = `${resolvedBackend}-${Date.now()}`
-        const stats = getMarkdownStats(markdownContent, data.stats as Record<string, unknown> | undefined, blocks.length)
+        const stats = getMarkdownStats(
+          markdownContent,
+          data.stats as Record<string, unknown> | undefined,
+          blocks.length,
+        )
         stats.headingCount = countMarkdownHeadings(markdownContent)
         const responseExtras = data as unknown as { pdf_quality?: unknown; quality_gate?: unknown }
 
@@ -277,8 +278,8 @@ export function useParsingRunActions({
                   runs: [...(item.runs || []), run],
                   activeRunId: runId,
                 }
-              : item
-          )
+              : item,
+          ),
         )
 
         setActiveBlockId(null)
@@ -321,8 +322,8 @@ export function useParsingRunActions({
                   progress: 0,
                   parseDiagnostics: diagnostics,
                 }
-              : item
-          )
+              : item,
+          ),
         )
 
         if (libraryId) {
@@ -355,7 +356,7 @@ export function useParsingRunActions({
       updateParsedFile,
       upsertParsedFile,
       vlmCorrectionEnabled,
-    ]
+    ],
   )
 
   useEffect(() => {
@@ -367,7 +368,7 @@ export function useParsingRunActions({
 
   const parseAllPending = useCallback(async () => {
     const targets = visibleQueueFiles.filter(
-      (file) => file.librarySource !== 'knowledge_base' && (file.status === 'pending' || file.status === 'error')
+      (file) => file.librarySource !== 'knowledge_base' && (file.status === 'pending' || file.status === 'error'),
     )
     for (const file of targets) {
       await parseFile(file.id)
@@ -390,15 +391,15 @@ export function useParsingRunActions({
                 parserBackend: nextRun.parserBackend,
                 parserLabel: nextRun.parserLabel,
               }
-            : file
-        )
+            : file,
+        ),
       )
 
       setActiveBlockId(null)
       setHoveredBlockId(null)
       setRightPanelMode(nextRun.blocks.length ? 'blocks' : 'markdown')
     },
-    [activeFile, setActiveBlockId, setFiles, setHoveredBlockId, setRightPanelMode]
+    [activeFile, setActiveBlockId, setFiles, setHoveredBlockId, setRightPanelMode],
   )
 
   return {

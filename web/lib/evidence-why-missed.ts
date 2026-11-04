@@ -84,8 +84,7 @@ function statusWeight(status: WhyMissedReferenceStatus): number {
 }
 
 function citationNumericScore(c: Citation): number | undefined {
-  const raw: unknown =
-    c.retrieval_score ?? c.rerank_score ?? c.relevance_score ?? c.vector_score ?? c.bm25_score
+  const raw: unknown = c.retrieval_score ?? c.rerank_score ?? c.relevance_score ?? c.vector_score ?? c.bm25_score
   const n = Number(raw)
   return Number.isFinite(n) ? n : undefined
 }

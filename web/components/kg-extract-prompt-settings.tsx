@@ -8,24 +8,12 @@ import { ChevronDown, RefreshCw, Save } from 'lucide-react'
 import { settingsApi, type KGConfig, type PromptTemplate } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { queryKeys } from '@/lib/query-keys'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
 const DEFAULT_KG_CONFIG: KGConfig = {
@@ -39,9 +27,7 @@ const DEFAULT_KG_CONFIG: KGConfig = {
 
 const SELECT_DEFAULT_VALUE = '__mimirq_default__'
 
-export function KgExtractPromptSettings({
-  templates,
-}: Readonly<{ templates: PromptTemplate[] }>) {
+export function KgExtractPromptSettings({ templates }: Readonly<{ templates: PromptTemplate[] }>) {
   const queryClient = useQueryClient()
   const [showAdvanced, setShowAdvanced] = useState(false)
 
@@ -88,12 +74,8 @@ export function KgExtractPromptSettings({
       ...prev,
       extract_prompt_template_id: templateId,
       // If a template is pinned by id, clear other selectors to avoid confusion.
-      extract_prompt_template_key: templateId
-        ? ''
-        : prev.extract_prompt_template_key,
-      extract_prompt_ab_experiment_key: templateId
-        ? ''
-        : prev.extract_prompt_ab_experiment_key,
+      extract_prompt_template_key: templateId ? '' : prev.extract_prompt_template_key,
+      extract_prompt_ab_experiment_key: templateId ? '' : prev.extract_prompt_ab_experiment_key,
     }))
   }
 
@@ -105,24 +87,16 @@ export function KgExtractPromptSettings({
 
   const pinnedName = useMemo(() => {
     if (!draft.extract_prompt_template_id) return ''
-    return (
-      templatesById.get(draft.extract_prompt_template_id)?.name ||
-      draft.extract_prompt_template_id
-    )
+    return templatesById.get(draft.extract_prompt_template_id)?.name || draft.extract_prompt_template_id
   }, [draft.extract_prompt_template_id, templatesById])
 
   return (
     <Card
-      className={cn(
-        'overflow-hidden rounded-xl border-border/60 bg-card shadow-none',
-        loading ? 'opacity-60' : ''
-      )}
+      className={cn('overflow-hidden rounded-xl border-border/60 bg-card shadow-none', loading ? 'opacity-60' : '')}
     >
       <CardHeader className="space-y-1 border-b border-border/50 bg-muted/40 p-3">
         <div className="flex items-center justify-between gap-2">
-          <CardTitle className="text-[13px] font-semibold text-foreground">
-            KG 抽取绑定
-          </CardTitle>
+          <CardTitle className="text-[13px] font-semibold text-foreground">KG 抽取绑定</CardTitle>
           <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
             抽取策略
           </span>
@@ -135,26 +109,20 @@ export function KgExtractPromptSettings({
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-card px-3 py-2.5">
             <div className="min-w-0">
-              <div className="text-[12px] font-semibold text-foreground">
-                对话 KG 召回
-              </div>
+              <div className="text-[12px] font-semibold text-foreground">对话 KG 召回</div>
               <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
                 回答前补充事件摘要，提升跨文档线索覆盖。
               </div>
             </div>
             <Switch
               checked={draft.chat_enabled}
-              onCheckedChange={(checked) =>
-                updateDraft((prev) => ({ ...prev, chat_enabled: checked }))
-              }
+              onCheckedChange={(checked) => updateDraft((prev) => ({ ...prev, chat_enabled: checked }))}
             />
           </div>
 
           <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-card px-3 py-2.5">
             <div className="min-w-0">
-              <div className="text-[12px] font-semibold text-foreground">
-                重复抽取覆盖旧事件
-              </div>
+              <div className="text-[12px] font-semibold text-foreground">重复抽取覆盖旧事件</div>
               <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
                 同一文档重新处理时保持 KG 事件不重复。
               </div>
@@ -172,9 +140,7 @@ export function KgExtractPromptSettings({
 
           <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-card px-3 py-2.5">
             <div className="min-w-0">
-              <div className="text-[12px] font-semibold text-foreground">
-                自动清理孤立实体
-              </div>
+              <div className="text-[12px] font-semibold text-foreground">自动清理孤立实体</div>
               <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
                 事件变更后移除没有关联关系的实体。
               </div>
@@ -193,26 +159,18 @@ export function KgExtractPromptSettings({
 
         <div className="space-y-2 rounded-lg border border-border/60 bg-muted/40 p-3">
           <div>
-            <Label className="text-[11px] font-semibold text-muted-foreground">
-              抽取模板
-            </Label>
-            <div className="mt-0.5 text-[11px] text-muted-foreground">
-              固定一个已启用模板，或使用系统默认模板。
-            </div>
+            <Label className="text-[11px] font-semibold text-muted-foreground">抽取模板</Label>
+            <div className="mt-0.5 text-[11px] text-muted-foreground">固定一个已启用模板，或使用系统默认模板。</div>
           </div>
           <Select
             value={draft.extract_prompt_template_id || SELECT_DEFAULT_VALUE}
-            onValueChange={(v) =>
-              onPickTemplate(v === SELECT_DEFAULT_VALUE ? '' : v)
-            }
+            onValueChange={(v) => onPickTemplate(v === SELECT_DEFAULT_VALUE ? '' : v)}
           >
             <SelectTrigger className="h-9 rounded-lg border-border bg-card text-[12px]">
               <SelectValue placeholder="默认（内置提示词）" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={SELECT_DEFAULT_VALUE}>
-                默认（内置提示词）
-              </SelectItem>
+              <SelectItem value={SELECT_DEFAULT_VALUE}>默认（内置提示词）</SelectItem>
               {templates.map((t) => (
                 <SelectItem key={t.id} value={t.id} disabled={!t.is_active}>
                   {t.name}
@@ -221,11 +179,7 @@ export function KgExtractPromptSettings({
               ))}
             </SelectContent>
           </Select>
-          {pinnedName ? (
-            <div className="text-[11px] text-muted-foreground">
-              当前模板：{pinnedName}
-            </div>
-          ) : null}
+          {pinnedName ? <div className="text-[11px] text-muted-foreground">当前模板：{pinnedName}</div> : null}
         </div>
 
         <button
@@ -235,19 +189,14 @@ export function KgExtractPromptSettings({
         >
           <span>高级参数</span>
           <ChevronDown
-            className={cn(
-              'size-3.5 text-muted-foreground/70 transition-transform',
-              showAdvanced && 'rotate-180'
-            )}
+            className={cn('size-3.5 text-muted-foreground/70 transition-transform', showAdvanced && 'rotate-180')}
           />
         </button>
 
         {showAdvanced ? (
           <div className="grid grid-cols-1 gap-3 rounded-lg border border-border/60 bg-muted/40 p-3 md:grid-cols-2">
             <div className="space-y-1.5">
-              <Label className="text-[11px] font-medium text-muted-foreground">
-                模板 key
-              </Label>
+              <Label className="text-[11px] font-medium text-muted-foreground">模板 key</Label>
               <Input
                 value={draft.extract_prompt_template_key}
                 placeholder="例如：kg_extract_v1"
@@ -256,25 +205,17 @@ export function KgExtractPromptSettings({
                   updateDraft((prev) => ({
                     ...prev,
                     extract_prompt_template_key: value,
-                    extract_prompt_template_id: value
-                      ? ''
-                      : prev.extract_prompt_template_id,
-                    extract_prompt_ab_experiment_key: value
-                      ? ''
-                      : prev.extract_prompt_ab_experiment_key,
+                    extract_prompt_template_id: value ? '' : prev.extract_prompt_template_id,
+                    extract_prompt_ab_experiment_key: value ? '' : prev.extract_prompt_ab_experiment_key,
                   }))
                 }}
                 className="h-8 bg-card text-[12px]"
               />
-              <div className="text-[11px] text-muted-foreground">
-                按 key 自动选择最新启用版本。
-              </div>
+              <div className="text-[11px] text-muted-foreground">按 key 自动选择最新启用版本。</div>
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-[11px] font-medium text-muted-foreground">
-                A/B 实验 key
-              </Label>
+              <Label className="text-[11px] font-medium text-muted-foreground">A/B 实验 key</Label>
               <Input
                 value={draft.extract_prompt_ab_experiment_key}
                 placeholder="例如：exp_kg_extract_2025w01"
@@ -283,19 +224,13 @@ export function KgExtractPromptSettings({
                   updateDraft((prev) => ({
                     ...prev,
                     extract_prompt_ab_experiment_key: value,
-                    extract_prompt_template_id: value
-                      ? ''
-                      : prev.extract_prompt_template_id,
-                    extract_prompt_template_key: value
-                      ? ''
-                      : prev.extract_prompt_template_key,
+                    extract_prompt_template_id: value ? '' : prev.extract_prompt_template_id,
+                    extract_prompt_template_key: value ? '' : prev.extract_prompt_template_key,
                   }))
                 }}
                 className="h-8 bg-card text-[12px]"
               />
-              <div className="text-[11px] text-muted-foreground">
-                用于灰度或实验分流。
-              </div>
+              <div className="text-[11px] text-muted-foreground">用于灰度或实验分流。</div>
             </div>
           </div>
         ) : null}

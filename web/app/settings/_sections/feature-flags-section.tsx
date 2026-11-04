@@ -37,56 +37,49 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
   {
     key: 'deepdoc_enabled',
     name: 'DeepDoc 结构化解析',
-    description:
-      '启用视觉 + OCR 解析能力，适合扫描件/图文混排 PDF（自动选择时生效）',
+    description: '启用视觉 + OCR 解析能力，适合扫描件/图文混排 PDF（自动选择时生效）',
     icon: ScanLine,
     dependencies: [],
   },
   {
     key: 'docling_enabled',
     name: 'Docling 结构化解析',
-    description:
-      '启用 Docling 解析，对版面/表格结构抽取更友好（自动选择时生效）',
+    description: '启用 Docling 解析，对版面/表格结构抽取更友好（自动选择时生效）',
     icon: FileSearch,
     dependencies: [],
   },
   {
     key: 'etl4llm_enabled',
     name: 'ETL4LLM 版面解析',
-    description:
-      '启用 ETL4LLM 版面/表格/图片解析（需自建服务，自动选择时生效）',
+    description: '启用 ETL4LLM 版面/表格/图片解析（需自建服务，自动选择时生效）',
     icon: LayoutGrid,
     dependencies: ['ETL4LLM 服务地址（API URL）'],
   },
   {
     key: 'marker_enabled',
     name: 'Marker 启发式解析',
-    description:
-      '启用 Marker 启发式 PDF→Markdown 解析服务（可在解析器下拉中选择）',
+    description: '启用 Marker 启发式 PDF→Markdown 解析服务（可在解析器下拉中选择）',
     icon: LayoutGrid,
     dependencies: ['Marker 服务地址（API URL）'],
   },
   {
     key: 'paddle_vl_enabled',
     name: 'PaddleOCR-VL 外部解析',
-    description:
-      '启用 PaddleOCR-VL 外部 OCR/版面解析服务（适合扫描件 PDF，可在解析器下拉中选择）',
+    description: '启用 PaddleOCR-VL 外部 OCR/版面解析服务（适合扫描件 PDF，可在解析器下拉中选择）',
     icon: ScanLine,
     dependencies: ['PaddleOCR-VL 服务地址（API URL）'],
   },
   {
     key: 'textin_enabled',
     name: 'TextIn xParse 外部解析',
-    description:
-      '启用 TextIn 文档解析 API（可用于 PDF/Office/图片等文档转 Markdown）',
+    description: '启用 TextIn 文档解析 API（可用于 PDF/Office/图片等文档转 Markdown）',
     icon: CloudCog,
     dependencies: ['TextIn API 地址', 'TextIn APP ID', 'TextIn Secret Code'],
   },
   {
     key: 'markitdown_enabled',
     name: 'MarkItDown 文档解析',
-    description:
-      '启用多格式转 Markdown（Office/表格/PDF），自动选择与解析工作台会使用',
+    description: '启用多格式转 Markdown（Office/表格/PDF），自动选择与解析工作台会使用',
     icon: FileCode,
     dependencies: [],
   },
@@ -154,9 +147,7 @@ export function FeatureFlagsSection({
           const Icon = feature.icon
           const colors = FEATURE_FLAG_ACTIVE_STYLE
           const isEnabled = getFeatureValue(feature.key)
-          const isEdited = Boolean(
-            editedFeatureFlags && feature.key in editedFeatureFlags
-          )
+          const isEdited = Boolean(editedFeatureFlags && feature.key in editedFeatureFlags)
 
           return (
             <button
@@ -167,7 +158,7 @@ export function FeatureFlagsSection({
                 isEnabled
                   ? `${colors.border} ${colors.bg}`
                   : 'border-info/15 bg-info/[0.025] hover:border-info/25 hover:bg-info/[0.055]',
-                isEdited && 'ring-2 ring-info/45 ring-offset-1'
+                isEdited && 'ring-2 ring-info/45 ring-offset-1',
               )}
               aria-pressed={isEnabled}
               onClick={() => toggleFeature(feature.key)}
@@ -177,21 +168,16 @@ export function FeatureFlagsSection({
                   <div
                     className={cn(
                       'mt-0.5 flex size-[23px] shrink-0 items-center justify-center rounded-[9px] transition-colors',
-                      isEnabled ? colors.iconBg : 'bg-info/[0.06]'
+                      isEnabled ? colors.iconBg : 'bg-info/[0.06]',
                     )}
                   >
-                    <Icon
-                      className={cn(
-                        'h-3 w-3',
-                        isEnabled ? colors.text : 'text-muted-foreground'
-                      )}
-                    />
+                    <Icon className={cn('h-3 w-3', isEnabled ? colors.text : 'text-muted-foreground')} />
                   </div>
                   <div className="min-w-0">
                     <h3
                       className={cn(
                         'text-[12px] font-semibold leading-[15px] transition-colors',
-                        isEnabled ? 'text-foreground' : 'text-foreground/78'
+                        isEnabled ? 'text-foreground' : 'text-foreground/78',
                       )}
                     >
                       {feature.name}
@@ -199,7 +185,7 @@ export function FeatureFlagsSection({
                     <p
                       className={cn(
                         systemPageTokens.subtle,
-                        'mt-0.5 max-w-[62ch] truncate text-[10.5px] leading-[14px]'
+                        'mt-0.5 max-w-[62ch] truncate text-[10.5px] leading-[14px]',
                       )}
                     >
                       {feature.description}

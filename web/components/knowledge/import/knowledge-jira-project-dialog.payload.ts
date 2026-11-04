@@ -52,7 +52,7 @@ function parseAccessMembers(raw: string): string[] {
 }
 
 export function buildJiraProjectRunPayload(
-  input: JiraProjectRunPayloadInput
+  input: JiraProjectRunPayloadInput,
 ): Extract<ConnectorRunCreateRequest, { connector_id: 'jira_project' }> {
   const trimmedBaseUrl = trimTrailingSlashes(input.baseUrl)
   const trimmedProjectKey = input.projectKey.trim().toUpperCase()

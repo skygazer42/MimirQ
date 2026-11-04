@@ -9,12 +9,7 @@ export function sanitizeForwardedHeaders(headers, remoteAddress) {
   const rawAddress = String(remoteAddress || '').trim()
   const address = rawAddress.toLowerCase().startsWith('::ffff:') ? rawAddress.slice(7) : rawAddress
 
-  for (const name of [
-    'x-forwarded-host',
-    'x-forwarded-port',
-    'x-forwarded-proto',
-    'x-real-ip',
-  ]) {
+  for (const name of ['x-forwarded-host', 'x-forwarded-port', 'x-forwarded-proto', 'x-real-ip']) {
     delete headers[name]
   }
   if (address) {

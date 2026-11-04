@@ -40,7 +40,7 @@ export function QueryProvider({ children }: Readonly<{ children: React.ReactNode
             retry: 0,
           },
         },
-      })
+      }),
   )
 
   useEffect(() => {

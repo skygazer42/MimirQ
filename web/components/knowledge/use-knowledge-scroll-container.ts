@@ -25,4 +25,3 @@ export function useKnowledgeScrollContainer(): KnowledgeScrollContainer {
 
   return { sentinelRef, scrollEl }
 }
-

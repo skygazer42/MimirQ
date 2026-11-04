@@ -7,13 +7,7 @@
  * Tab 3: Queryset Health（检索基准集健康度）
  */
 
-import {
-  Suspense,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react'
+import { Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { AppFrame } from '@/components/app-frame'
@@ -25,17 +19,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AnalysisPageShell } from '@/components/ui/analysis-page-shell'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
-import {
-  MANAGEMENT_HERO_PANEL_CLASS,
-  KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS,
-} from '@/components/ui/knowledge-ops-hero'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { MANAGEMENT_HERO_PANEL_CLASS, KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS } from '@/components/ui/knowledge-ops-hero'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,12 +30,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { StatusBadge } from '@/components/ui/status-badge'
-import {
-  evaluationApi,
-  chatApi,
-  type RagasRun,
-  type RagasRunDetail,
-} from '@/lib/api'
+import { evaluationApi, chatApi, type RagasRun, type RagasRunDetail } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { useTenantAccess } from '@/hooks/use-tenant-access'
 import { Link } from '@/i18n/navigation'
@@ -81,10 +61,7 @@ import { reportClientError } from '@/lib/client-logging'
 import { queryKeys } from '@/lib/query-keys'
 import { RegressionTestTab } from '@/components/evaluation/regression-tab'
 import { QuerysetHealthTab } from '@/components/evaluation/queryset-health-tab'
-import {
-  RagasMetricSelector,
-  ragasMetricLabel,
-} from '@/components/evaluation/ragas-metric-selector'
+import { RagasMetricSelector, ragasMetricLabel } from '@/components/evaluation/ragas-metric-selector'
 
 type TabType = 'conversation' | 'regression' | 'queryset_health'
 type ConversationEvidenceFilter = 'ready' | 'missing' | 'all'
@@ -144,20 +121,13 @@ function metricLabel(key: string): string {
 function displayMetricsFor(summary: JsonObject, metricKeys: string[]) {
   return metricKeys.flatMap((key) => {
     const value = summary[key]
-    return typeof value === 'number' && Number.isFinite(value)
-      ? [{ key, value }]
-      : []
+    return typeof value === 'number' && Number.isFinite(value) ? [{ key, value }] : []
   })
 }
 
 function parseEvaluationTab(value: string | null | undefined): TabType | null {
   const tab = (value || '').trim().toLowerCase()
-  if (
-    tab === 'regression' ||
-    tab === 'conversation' ||
-    tab === 'queryset_health'
-  )
-    return tab
+  if (tab === 'regression' || tab === 'conversation' || tab === 'queryset_health') return tab
   return null
 }
 
@@ -178,10 +148,7 @@ function formatMoney(value: unknown): string {
   return `¥${n.toFixed(2)}`
 }
 
-function formatPercentValue(
-  value: number | null | undefined,
-  digits = 1
-): string {
+function formatPercentValue(value: number | null | undefined, digits = 1): string {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '-'
   return `${(value * 100).toFixed(digits)}%`
 }
@@ -196,20 +163,12 @@ function formatDateTime(value: string | undefined): string {
 function formatRunDuration(run: RagasRun): string {
   const started = new Date(run.started_at || run.created_at).getTime()
   const finished = new Date(run.finished_at || '').getTime()
-  if (
-    !Number.isFinite(started) ||
-    !Number.isFinite(finished) ||
-    finished < started
-  )
-    return '-'
+  if (!Number.isFinite(started) || !Number.isFinite(finished) || finished < started) return '-'
   const seconds = Math.max(1, Math.round((finished - started) / 1000))
   return `${seconds} 秒`
 }
 
-function shortConversationTitle(
-  conversation: Conversation | null,
-  fallbackId?: string
-): string {
+function shortConversationTitle(conversation: Conversation | null, fallbackId?: string): string {
   if (conversation?.title) return conversation.title
   if (fallbackId) return `对话 ${String(fallbackId).slice(0, 8)}…`
   return '未选择'
@@ -223,23 +182,16 @@ function runStatusLabel(status: string | undefined): string {
 }
 
 function isMissingEvidenceError(message: string | null | undefined): boolean {
-  return /missing contexts|missing.*citations|No evaluatable turns/i.test(
-    String(message || '')
-  )
+  return /missing contexts|missing.*citations|No evaluatable turns/i.test(String(message || ''))
 }
 
-function runStatusTone(
-  status: string | undefined
-): 'completed' | 'failed' | 'processing' {
+function runStatusTone(status: string | undefined): 'completed' | 'failed' | 'processing' {
   if (status === 'completed') return 'completed'
   if (status === 'failed') return 'failed'
   return 'processing'
 }
 
-function numericSummaryValue(
-  run: RagasRun | null | undefined,
-  key: string
-): number | null {
+function numericSummaryValue(run: RagasRun | null | undefined, key: string): number | null {
   const value = run?.summary?.[key]
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
@@ -247,17 +199,11 @@ function numericSummaryValue(
 function percentile(values: number[], percentileValue: number): number | null {
   if (!values.length) return null
   const sorted = [...values].sort((a, b) => a - b)
-  const index = Math.min(
-    sorted.length - 1,
-    Math.max(0, Math.ceil((percentileValue / 100) * sorted.length) - 1)
-  )
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((percentileValue / 100) * sorted.length) - 1))
   return sorted[index]
 }
 
-function scoreRowsFor(
-  detail: RagasRunDetail | null,
-  summary: JsonObject
-) {
+function scoreRowsFor(detail: RagasRunDetail | null, summary: JsonObject) {
   const metrics = detail?.run?.metrics?.length
     ? detail.run.metrics
     : Object.entries(summary)
@@ -265,46 +211,32 @@ function scoreRowsFor(
         .map(([key]) => key)
         .filter((key) => !['items', 'total_tokens', 'total_cost'].includes(key))
 
-  return metrics.map((key) => {
-    const itemValues = (detail?.items || [])
-      .map((item) => item.scores?.[key])
-      .filter(
-        (value): value is number =>
-          typeof value === 'number' && Number.isFinite(value)
-      )
-    const mean = itemValues.length
-      ? itemValues.reduce((sum, value) => sum + value, 0) / itemValues.length
-      : Number(summary[key])
-    const passCount = itemValues.filter((value) => value >= 0.8).length
+  return metrics
+    .map((key) => {
+      const itemValues = (detail?.items || [])
+        .map((item) => item.scores?.[key])
+        .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+      const mean = itemValues.length
+        ? itemValues.reduce((sum, value) => sum + value, 0) / itemValues.length
+        : Number(summary[key])
+      const passCount = itemValues.filter((value) => value >= 0.8).length
 
-    return {
-      key,
-      label: metricLabel(key),
-      mean: Number.isFinite(mean) ? mean : null,
-      p50: percentile(itemValues, 50),
-      p90: percentile(itemValues, 90),
-      passRate: itemValues.length ? passCount / itemValues.length : null,
-    }
-  }).filter(
-    (row) =>
-      row.mean !== null ||
-      row.p50 !== null ||
-      row.p90 !== null ||
-      row.passRate !== null
-  )
+      return {
+        key,
+        label: metricLabel(key),
+        mean: Number.isFinite(mean) ? mean : null,
+        p50: percentile(itemValues, 50),
+        p90: percentile(itemValues, 90),
+        passRate: itemValues.length ? passCount / itemValues.length : null,
+      }
+    })
+    .filter((row) => row.mean !== null || row.p50 !== null || row.p90 !== null || row.passRate !== null)
 }
 
 function summarizeConversationEvidence(messages: Message[]) {
-  const assistantMessages = messages.filter(
-    (message) => message.role === 'assistant'
-  )
-  const citationsCount = assistantMessages.reduce(
-    (sum, message) => sum + (message.citations?.length || 0),
-    0
-  )
-  const evaluableTurns = assistantMessages.filter(
-    (message) => (message.citations?.length || 0) > 0
-  ).length
+  const assistantMessages = messages.filter((message) => message.role === 'assistant')
+  const citationsCount = assistantMessages.reduce((sum, message) => sum + (message.citations?.length || 0), 0)
+  const evaluableTurns = assistantMessages.filter((message) => (message.citations?.length || 0) > 0).length
 
   return {
     assistantTurns: assistantMessages.length,
@@ -314,10 +246,7 @@ function summarizeConversationEvidence(messages: Message[]) {
   }
 }
 
-function itemHasLowScore(
-  item: RagasRunDetail['items'][number],
-  metricKeys: string[]
-): boolean {
+function itemHasLowScore(item: RagasRunDetail['items'][number], metricKeys: string[]): boolean {
   return metricKeys.some((key) => {
     const value = item.scores?.[key]
     return typeof value === 'number' && value < 0.8
@@ -338,12 +267,7 @@ function EvaluationConfigSection({
   icon?: typeof MessageSquare
 }>) {
   return (
-    <section
-      className={cn(
-        'border-b border-border/60 px-3 py-2.5 last:border-b-0',
-        className
-      )}
-    >
+    <section className={cn('border-b border-border/60 px-3 py-2.5 last:border-b-0', className)}>
       <div className="flex items-start gap-2.5">
         {Icon ? (
           <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-md border border-info/30 bg-info/10 text-info">
@@ -351,14 +275,8 @@ function EvaluationConfigSection({
           </span>
         ) : null}
         <div className="min-w-0">
-          <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-            {title}
-          </div>
-          {description ? (
-            <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
-              {description}
-            </p>
-          ) : null}
+          <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{title}</div>
+          {description ? <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{description}</p> : null}
         </div>
       </div>
       <div className="mt-2">{children}</div>
@@ -375,12 +293,8 @@ function EvaluationInlineStat({
 }>) {
   return (
     <div className="inline-flex items-center gap-2 rounded-full border border-info/15 bg-background/70 px-3 py-1.5 shadow-none">
-      <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-info/80">
-        {label}
-      </span>
-      <span className="font-mono text-[12px] font-bold tabular-nums text-foreground">
-        {value}
-      </span>
+      <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-info/80">{label}</span>
+      <span className="font-mono text-[12px] font-bold tabular-nums text-foreground">{value}</span>
     </div>
   )
 }
@@ -395,20 +309,15 @@ function buildEvidenceReadinessState({
   isMissingEvidenceFailure: boolean
 }>) {
   const tone = isChecking ? 'checking' : isEvaluable ? 'ready' : 'missing'
-  const label =
-    tone === 'checking' ? '检查中' : tone === 'ready' ? '可评测' : '缺证据'
+  const label = tone === 'checking' ? '检查中' : tone === 'ready' ? '可评测' : '缺证据'
   const title =
-    tone === 'ready'
-      ? '这条会话可以计算忠实度'
-      : tone === 'checking'
-        ? '正在检查会话证据'
-        : '这条会话不能计算忠实度'
+    tone === 'ready' ? '这条会话可以计算忠实度' : tone === 'checking' ? '正在检查会话证据' : '这条会话不能计算忠实度'
   const description =
     tone === 'ready'
       ? 'assistant 消息已写入 citations，Faithfulness 会基于这些证据判断答案是否忠于上下文。'
       : tone === 'checking'
-      ? '正在读取会话消息，确认是否有可用于评测的 citations / retrieved contexts。'
-      : '这类历史会话可以阅读答案，但没有写入 citations / retrieved contexts；忠实度评测没有输入，不代表答案一定错。'
+        ? '正在读取会话消息，确认是否有可用于评测的 citations / retrieved contexts。'
+        : '这类历史会话可以阅读答案，但没有写入 citations / retrieved contexts；忠实度评测没有输入，不代表答案一定错。'
 
   return {
     tone,
@@ -430,12 +339,8 @@ function EvaluationStageStat({
 }>) {
   return (
     <div className="rounded-2xl border border-info/15 bg-background/70 px-3.5 py-3 shadow-none">
-      <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-        {label}
-      </div>
-      <div className="mt-1.5 text-[18px] font-bold leading-tight tabular-nums text-foreground">
-        {value}
-      </div>
+      <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{label}</div>
+      <div className="mt-1.5 text-[18px] font-bold leading-tight tabular-nums text-foreground">{value}</div>
       <div className="mt-1 text-[11px] leading-4 text-muted-foreground">{helper}</div>
     </div>
   )
@@ -481,8 +386,7 @@ function EvaluationResultsStage({
       : readiness.tone === 'checking'
         ? 'bg-info/10 text-info'
         : 'bg-warning/10 text-warning'
-  const isDeterministicEvaluation =
-    String(summary.mode || '') === 'deterministic_conversation'
+  const isDeterministicEvaluation = String(summary.mode || '') === 'deterministic_conversation'
   const deterministicReason = String(summary.ragas_skipped_reason || '')
   const deterministicDescription =
     deterministicReason === 'ragas_wall_timeout'
@@ -495,7 +399,7 @@ function EvaluationResultsStage({
         'overflow-hidden rounded-[28px] border border-info/15 bg-background/78 shadow-none',
         'flex flex-col',
         fillAvailableHeight && 'min-h-0 flex-1',
-        className
+        className,
       )}
     >
       <div className="border-b border-info/15 bg-info/[0.025] px-4 py-4">
@@ -507,9 +411,7 @@ function EvaluationResultsStage({
         </div>
         <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
-            <div className="line-clamp-2 text-[18px] font-bold leading-tight text-foreground">
-              {selectedRunTitle}
-            </div>
+            <div className="line-clamp-2 text-[18px] font-bold leading-tight text-foreground">{selectedRunTitle}</div>
             <p className="mt-1.5 max-w-3xl text-[12.5px] leading-5 text-muted-foreground">
               把忠实度可评估性、当前 run 状态和结果输出收进同一个结果舞台，避免同一条线索被拆成多个孤立块。
             </p>
@@ -525,34 +427,20 @@ function EvaluationResultsStage({
       <div
         className={cn(
           'grid gap-5 px-4 py-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(240px,0.9fr)]',
-          fillAvailableHeight && 'min-h-[420px] flex-1'
+          fillAvailableHeight && 'min-h-[420px] flex-1',
         )}
       >
-        <div
-          className={cn(
-            'min-w-0 space-y-3',
-            fillAvailableHeight && 'flex h-full flex-col'
-          )}
-        >
+        <div className={cn('min-w-0 space-y-3', fillAvailableHeight && 'flex h-full flex-col')}>
           <div className="flex flex-wrap items-center gap-2.5">
             <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
               忠实度可评估性
             </div>
-            <span
-              className={cn(
-                'rounded-full px-3 py-1 text-[11px] font-bold shadow-sm',
-                readinessLabelClassName
-              )}
-            >
+            <span className={cn('rounded-full px-3 py-1 text-[11px] font-bold shadow-sm', readinessLabelClassName)}>
               {readiness.label}
             </span>
           </div>
-          <div className="text-[17px] font-semibold text-foreground">
-            {readiness.title}
-          </div>
-          <p className="max-w-3xl text-[12.5px] leading-5 text-muted-foreground">
-            {readiness.description}
-          </p>
+          <div className="text-[17px] font-semibold text-foreground">{readiness.title}</div>
+          <p className="max-w-3xl text-[12.5px] leading-5 text-muted-foreground">{readiness.description}</p>
           {isDeterministicEvaluation ? (
             <div className="rounded-xl border border-info/25 bg-info/[0.10] px-3 py-2.5 text-[11.5px] leading-5 text-foreground">
               <div className="flex flex-wrap items-center gap-2">
@@ -561,9 +449,7 @@ function EvaluationResultsStage({
                   确定性证据校验
                 </span>
               </div>
-              <p className="mt-1 text-foreground/80">
-                {deterministicDescription}
-              </p>
+              <p className="mt-1 text-foreground/80">{deterministicDescription}</p>
             </div>
           ) : null}
           {readiness.showMissingEvidenceFailure ? (
@@ -576,39 +462,25 @@ function EvaluationResultsStage({
             <div
               className={cn(
                 'rounded-2xl border border-dashed border-info/20 bg-info/[0.025] p-4',
-                fillAvailableHeight && 'flex flex-1 flex-col justify-between'
+                fillAvailableHeight && 'flex flex-1 flex-col justify-between',
               )}
             >
-              <div className="text-[14px] font-semibold text-foreground">
-                {emptyRunState.title}
-              </div>
+              <div className="text-[14px] font-semibold text-foreground">{emptyRunState.title}</div>
               <p className="mt-1.5 max-w-2xl text-[12px] leading-5 text-muted-foreground">
                 {emptyRunState.description}
               </p>
               <div className="mt-4 grid gap-2.5 sm:grid-cols-3">
                 <div className="rounded-xl border border-info/15 bg-background/70 px-3 py-2.5 shadow-none">
-                  <div className="text-[11px] font-bold text-info">
-                    1 选择会话来源
-                  </div>
-                  <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
-                    从已有会话或查询中选择
-                  </div>
+                  <div className="text-[11px] font-bold text-info">1 选择会话来源</div>
+                  <div className="mt-1 text-[11px] leading-4 text-muted-foreground">从已有会话或查询中选择</div>
                 </div>
                 <div className="rounded-xl border border-info/15 bg-background/70 px-3 py-2.5 shadow-none">
-                  <div className="text-[11px] font-bold text-info">
-                    2 配置评测参数
-                  </div>
-                  <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
-                    选择指标与过滤规则
-                  </div>
+                  <div className="text-[11px] font-bold text-info">2 配置评测参数</div>
+                  <div className="mt-1 text-[11px] leading-4 text-muted-foreground">选择指标与过滤规则</div>
                 </div>
                 <div className="rounded-xl border border-info/15 bg-background/70 px-3 py-2.5 shadow-none">
-                  <div className="text-[11px] font-bold text-info">
-                    3 开始评测
-                  </div>
-                  <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
-                    流程完成后查看结果
-                  </div>
+                  <div className="text-[11px] font-bold text-info">3 开始评测</div>
+                  <div className="mt-1 text-[11px] leading-4 text-muted-foreground">流程完成后查看结果</div>
                 </div>
               </div>
             </div>
@@ -683,7 +555,7 @@ function EvaluationHeroEmptyState({
         'flex rounded-xl border border-dashed border-info/15 bg-info/[0.025]',
         compact
           ? 'min-h-[148px] flex-row items-center justify-start gap-3 px-3 py-2.5 text-left'
-          : 'min-h-[188px] flex-col items-center justify-center px-6 py-8 text-center'
+          : 'min-h-[188px] flex-col items-center justify-center px-6 py-8 text-center',
       )}
     >
       {compact ? (
@@ -700,20 +572,8 @@ function EvaluationHeroEmptyState({
         </div>
       )}
       <div className={cn(compact && 'min-w-0')}>
-        <div
-          className={cn(
-            'font-semibold text-foreground',
-            compact ? 'text-[13px]' : 'text-[14px]'
-          )}
-        >
-          {title}
-        </div>
-        <p
-          className={cn(
-            'max-w-xl text-[12px] text-muted-foreground',
-            compact ? 'mt-1 leading-4' : 'mt-2 leading-5'
-          )}
-        >
+        <div className={cn('font-semibold text-foreground', compact ? 'text-[13px]' : 'text-[14px]')}>{title}</div>
+        <p className={cn('max-w-xl text-[12px] text-muted-foreground', compact ? 'mt-1 leading-4' : 'mt-2 leading-5')}>
           {description}
         </p>
       </div>
@@ -748,10 +608,7 @@ function EvaluationHeroCard({
 }>) {
   return (
     <section className={cn(MANAGEMENT_HERO_PANEL_CLASS, 'min-h-14')}>
-      <div
-        className="pointer-events-none absolute -bottom-px left-1 h-px w-12 bg-info/70"
-        aria-hidden="true"
-      />
+      <div className="pointer-events-none absolute -bottom-px left-1 h-px w-12 bg-info/70" aria-hidden="true" />
 
       <div className="relative flex min-w-0 flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex min-w-0 items-center gap-2.5">
@@ -761,18 +618,13 @@ function EvaluationHeroCard({
 
           <div className="min-w-0 sm:flex sm:items-center sm:gap-2.5">
             <div className="flex flex-wrap items-center gap-1.5">
-              <h1 className="text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground">
-                {title}
-              </h1>
+              <h1 className="text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground">{title}</h1>
               <span className="inline-flex items-center rounded-md border border-success/20 bg-success/5 px-1.5 py-0.5 text-[9px] font-medium text-success">
                 <Icon className="mr-1 size-2.5" aria-hidden="true" />
                 {label}
               </span>
             </div>
-            <p
-              className="truncate text-[12px] leading-5 text-muted-foreground/85"
-              title={description}
-            >
+            <p className="truncate text-[12px] leading-5 text-muted-foreground/85" title={description}>
               {description}
             </p>
           </div>
@@ -781,25 +633,16 @@ function EvaluationHeroCard({
         <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] xl:min-w-[520px]">
           <div className={cn(KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS, 'gap-2 text-[11px]')}>
             <span className="inline-flex items-center gap-2 font-medium text-foreground/85">
-              <span
-                className="size-1.5 rounded-full bg-info shadow-sm shadow-info/20"
-                aria-hidden="true"
-              />
+              <span className="size-1.5 rounded-full bg-info shadow-sm shadow-info/20" aria-hidden="true" />
               会话
             </span>
-            <span className="font-mono font-semibold tabular-nums text-foreground">
-              {conversationsCount}
-            </span>
+            <span className="font-mono font-semibold tabular-nums text-foreground">{conversationsCount}</span>
             <span className="h-4 w-px bg-info/15" />
             <span className="font-medium text-muted-foreground">运行</span>
-            <span className="font-mono font-semibold tabular-nums text-info">
-              {runsCount}
-            </span>
+            <span className="font-mono font-semibold tabular-nums text-info">{runsCount}</span>
             <span className="h-4 w-px bg-info/15" />
             <span className="font-medium text-muted-foreground">{focusLabel}</span>
-            <span className="font-mono font-semibold tabular-nums text-success">
-              {focusValue}
-            </span>
+            <span className="font-mono font-semibold tabular-nums text-success">{focusValue}</span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -815,23 +658,15 @@ function EvaluationHeroCard({
                   <ChevronDown className="ml-2 h-3.5 w-3.5 text-muted-foreground/70" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                className="w-72 rounded-xl border-info/30 bg-popover p-1.5 shadow-none"
-              >
+              <DropdownMenuContent align="end" className="w-72 rounded-xl border-info/30 bg-popover p-1.5 shadow-none">
                 <DropdownMenuLabel className="px-2.5 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-info">
                   召回与向量诊断
                 </DropdownMenuLabel>
-                <DropdownMenuItem
-                  asChild
-                  className={ADVANCED_DIAGNOSTIC_ITEM_CLASS}
-                >
+                <DropdownMenuItem asChild className={ADVANCED_DIAGNOSTIC_ITEM_CLASS}>
                   <Link href="/knowledge/similarity">
                     <Grid3X3 className="mt-0.5 h-4 w-4 shrink-0 text-info" />
                     <span className="min-w-0">
-                      <span className="block text-[13px] font-bold text-foreground">
-                        向量相似度诊断
-                      </span>
+                      <span className="block text-[13px] font-bold text-foreground">向量相似度诊断</span>
                       <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
                         用热力图检查问题、切片与数据集之间的语义重叠。
                       </span>
@@ -841,16 +676,11 @@ function EvaluationHeroCard({
                 {showAblationsEntry ? (
                   <>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      asChild
-                      className={ADVANCED_DIAGNOSTIC_ITEM_CLASS}
-                    >
+                    <DropdownMenuItem asChild className={ADVANCED_DIAGNOSTIC_ITEM_CLASS}>
                       <Link href="/evaluations/ablations">
                         <SlidersHorizontal className="mt-0.5 h-4 w-4 shrink-0 text-info" />
                         <span className="min-w-0">
-                          <span className="block text-[13px] font-bold text-foreground">
-                            检索调参对比
-                          </span>
+                          <span className="block text-[13px] font-bold text-foreground">检索调参对比</span>
                           <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
                             对比检索配置、消融结果和参数影响。
                           </span>
@@ -868,12 +698,7 @@ function EvaluationHeroCard({
               className="h-10 flex-1 rounded-xl border-info/30 bg-card px-4 text-[13px] font-bold text-info shadow-none hover:bg-info/10 sm:flex-none"
               onClick={onRefresh}
             >
-              <RefreshCw
-                className={cn(
-                  'mr-2 h-4 w-4',
-                  isLoading && 'animate-spin motion-reduce:animate-none'
-                )}
-              />
+              <RefreshCw className={cn('mr-2 h-4 w-4', isLoading && 'animate-spin motion-reduce:animate-none')} />
               刷新
             </Button>
           </div>
@@ -913,9 +738,7 @@ function CollapsedWorkspaceRail({
         <Icon className="h-4 w-4" aria-hidden="true" />
       </Button>
 
-      <div className="mt-3 text-center text-[10.5px] font-semibold leading-4 text-muted-foreground">
-        {title}
-      </div>
+      <div className="mt-3 text-center text-[10.5px] font-semibold leading-4 text-muted-foreground">{title}</div>
 
       <div className="mt-3 flex w-full flex-col gap-2">
         {badgeItems.map((item) => (
@@ -923,12 +746,8 @@ function CollapsedWorkspaceRail({
             key={item.label}
             className="rounded-xl border border-info/15 bg-background/70 px-1.5 py-2 text-center shadow-none"
           >
-            <div className="text-[11px] font-bold leading-none tabular-nums text-foreground">
-              {item.value}
-            </div>
-            <div className="mt-1 text-[9px] font-semibold leading-3 text-info">
-              {item.label}
-            </div>
+            <div className="text-[11px] font-bold leading-none tabular-nums text-foreground">{item.value}</div>
+            <div className="mt-1 text-[9px] font-semibold leading-3 text-info">{item.label}</div>
           </div>
         ))}
       </div>
@@ -960,13 +779,9 @@ function RunRecordCard({
   onClick: () => void
 }>) {
   const rawSamples = run.summary?.items ?? run.params?.max_turns
-  const samples =
-    typeof rawSamples === 'number' || typeof rawSamples === 'string'
-      ? rawSamples
-      : '-'
+  const samples = typeof rawSamples === 'number' || typeof rawSamples === 'string' ? rawSamples : '-'
   const metrics = run.metrics?.length || '-'
-  const progress =
-    run.status === 'running' || run.status === 'pending' ? 60 : null
+  const progress = run.status === 'running' || run.status === 'pending' ? 60 : null
   const missingEvidence = isMissingEvidenceError(run.error_message)
 
   return (
@@ -975,14 +790,12 @@ function RunRecordCard({
       onClick={onClick}
       className={cn(
         'w-full rounded-xl border bg-background/70 p-3 text-left shadow-none transition-all duration-200 hover:border-info/30 focus-ring',
-        active ? 'border-info/40 bg-info/5 ring-2 ring-info/20' : 'border-info/20'
+        active ? 'border-info/40 bg-info/5 ring-2 ring-info/20' : 'border-info/20',
       )}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 text-[13px] font-bold text-foreground">
-          <div className="truncate">
-            {shortConversationTitle(conversation, run.conversation_id)}
-          </div>
+          <div className="truncate">{shortConversationTitle(conversation, run.conversation_id)}</div>
         </div>
         <span className="shrink-0 whitespace-nowrap">
           <StatusBadge
@@ -1007,21 +820,15 @@ function RunRecordCard({
               style={{ width: `${progress}%` }}
             />
           </div>
-          <span className="text-[11px] font-semibold tabular-nums text-info">
-            {progress}%
-          </span>
+          <span className="text-[11px] font-semibold tabular-nums text-info">{progress}%</span>
         </div>
       )}
       {run.status === 'failed' && run.error_message ? (
         <div className="mt-2 line-clamp-2 rounded-lg bg-destructive/5 px-2 py-1 text-[11px] font-medium text-destructive">
-          {missingEvidence
-            ? '缺少 citations / retrieved contexts，无法计算忠实度。'
-            : `错误：${run.error_message}`}
+          {missingEvidence ? '缺少 citations / retrieved contexts，无法计算忠实度。' : `错误：${run.error_message}`}
         </div>
       ) : (
-        <div className="mt-2 text-right text-[10.5px] font-medium text-info">
-          耗时：{formatRunDuration(run)}
-        </div>
+        <div className="mt-2 text-right text-[10.5px] font-medium text-info">耗时：{formatRunDuration(run)}</div>
       )}
     </button>
   )
@@ -1053,9 +860,7 @@ function ScoreDetailsCard({
             <tbody className="divide-y divide-info/20">
               {rows.map((row) => (
                 <tr key={row.key} className="hover:bg-info/5 transition-colors">
-                  <td className="px-4 py-2.5 font-bold text-foreground">
-                    {row.label}
-                  </td>
+                  <td className="px-4 py-2.5 font-bold text-foreground">{row.label}</td>
                   <td className="px-4 py-2.5 font-semibold tabular-nums text-foreground">
                     {row.mean === null ? '-' : row.mean.toFixed(3)}
                   </td>
@@ -1099,26 +904,19 @@ function IterationDetailsCard({
   onOnlyFailuresChange: (checked: boolean) => void
   onExport: () => void
 }>) {
-  const visibleItems = onlyFailures
-    ? items.filter((item) => itemHasLowScore(item, metricKeys))
-    : items
+  const visibleItems = onlyFailures ? items.filter((item) => itemHasLowScore(item, metricKeys)) : items
 
   return (
     <section className="rounded-xl border border-border bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2">
         <div className="flex items-center gap-2">
-          <div className="text-[13px] font-semibold text-foreground">
-            逐轮明细
-          </div>
+          <div className="text-[13px] font-semibold text-foreground">逐轮明细</div>
           <Info className="h-3.5 w-3.5 text-muted-foreground/70" aria-hidden="true" />
         </div>
         <div className="flex items-center gap-2">
           <label className="inline-flex items-center gap-2 text-[12px] text-muted-foreground">
             仅看异常
-            <Checkbox
-              checked={onlyFailures}
-              onCheckedChange={(value) => onOnlyFailuresChange(value === true)}
-            />
+            <Checkbox checked={onlyFailures} onCheckedChange={(value) => onOnlyFailuresChange(value === true)} />
           </label>
           <Button
             variant="outline"
@@ -1132,17 +930,12 @@ function IterationDetailsCard({
       </div>
       {visibleItems.length ? (
         <div className="max-h-[276px] overflow-auto">
-          <table
-            aria-label="逐轮评分明细"
-            className="w-full min-w-[760px] text-left text-[12px]"
-          >
+          <table aria-label="逐轮评分明细" className="w-full min-w-[760px] text-left text-[12px]">
             <thead className="sticky top-0 z-10 bg-muted/50 text-muted-foreground">
               <tr>
                 <th className="w-16 px-3 py-1.5 font-medium">轮次</th>
                 <th className="min-w-[160px] px-3 py-1.5 font-medium">问题</th>
-                <th className="min-w-[180px] px-3 py-1.5 font-medium">
-                  答案摘要
-                </th>
+                <th className="min-w-[180px] px-3 py-1.5 font-medium">答案摘要</th>
                 {metricKeys.map((metricKey) => (
                   <th key={metricKey} className="w-28 px-3 py-1.5 font-medium">
                     {metricLabel(metricKey)}
@@ -1156,28 +949,18 @@ function IterationDetailsCard({
                 const anomaly = itemHasLowScore(item, metricKeys)
                 return (
                   <tr key={item.id} className="align-top hover:bg-muted/40">
-                    <td className="px-3 py-1.5 tabular-nums text-muted-foreground">
-                      {item.turn_index}
+                    <td className="px-3 py-1.5 tabular-nums text-muted-foreground">{item.turn_index}</td>
+                    <td className="px-3 py-1.5">
+                      <div className="line-clamp-2 text-foreground">{item.user_input}</div>
                     </td>
                     <td className="px-3 py-1.5">
-                      <div className="line-clamp-2 text-foreground">
-                        {item.user_input}
-                      </div>
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <div className="line-clamp-2 text-muted-foreground">
-                        {item.response}
-                      </div>
+                      <div className="line-clamp-2 text-muted-foreground">{item.response}</div>
                     </td>
                     {metricKeys.map((metricKey) => {
                       const value = item.scores?.[metricKey]
-                      const isNum =
-                        typeof value === 'number' && Number.isFinite(value)
+                      const isNum = typeof value === 'number' && Number.isFinite(value)
                       return (
-                        <td
-                          key={metricKey}
-                          className="px-3 py-1.5 tabular-nums text-foreground/85"
-                        >
+                        <td key={metricKey} className="px-3 py-1.5 tabular-nums text-foreground/85">
                           {isNum ? value.toFixed(3) : '-'}
                         </td>
                       )
@@ -1186,9 +969,7 @@ function IterationDetailsCard({
                       <span
                         className={cn(
                           'rounded-full px-2 py-0.5 text-[11px] font-medium',
-                          anomaly
-                            ? 'bg-destructive/10 text-destructive'
-                            : 'bg-success/10 text-success'
+                          anomaly ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success',
                         )}
                       >
                         {anomaly ? '异常' : '正常'}
@@ -1226,40 +1007,29 @@ export default function EvaluationsPage() {
 }
 
 function EvaluationsLoading() {
-  return (
-    <PageLoading
-      message="正在加载评测数据..."
-      srMessage="Loading evaluations"
-    />
-  )
+  return <PageLoading message="正在加载评测数据..." srMessage="Loading evaluations" />
 }
 
 function EvaluationsPageContent() {
   const searchParams = useSearchParams()
   const tenantAccess = useTenantAccess()
-  const deepLinkedConversationId =
-    searchParams.get('conversation_id')?.trim() || ''
+  const deepLinkedConversationId = searchParams.get('conversation_id')?.trim() || ''
   const [activeTab, setActiveTab] = useState<TabType>(
-    () => parseEvaluationTab(searchParams.get('tab')) || 'conversation'
+    () => parseEvaluationTab(searchParams.get('tab')) || 'conversation',
   )
   const isActiveTab = (tab: TabType) => activeTab === tab
-  const [selectedConversationId, setSelectedConversationId] =
-    useState<string>(() => deepLinkedConversationId)
+  const [selectedConversationId, setSelectedConversationId] = useState<string>(() => deepLinkedConversationId)
 
   const [selectedRunId, setSelectedRunId] = useState<string>('')
 
-  const [metricKeys, setMetricKeys] = useState<string[]>([
-    'faithfulness',
-    'response_relevancy',
-  ])
+  const [metricKeys, setMetricKeys] = useState<string[]>(['faithfulness', 'response_relevancy'])
   const [maxTurns, setMaxTurns] = useState(20)
   const [skipEmptyContexts, setSkipEmptyContexts] = useState(true)
   const [onlyFailureItems, setOnlyFailureItems] = useState(false)
   const [isRunRecordsCollapsed, setIsRunRecordsCollapsed] = useState(false)
   const [setupRailCollapsed, setSetupRailCollapsed] = useState(false)
   const [runsRailCollapsed, setRunsRailCollapsed] = useState(false)
-  const [conversationEvidenceFilter, setConversationEvidenceFilter] =
-    useState<ConversationEvidenceFilter>('ready')
+  const [conversationEvidenceFilter, setConversationEvidenceFilter] = useState<ConversationEvidenceFilter>('ready')
 
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isStarting, setIsStarting] = useState(false)
@@ -1267,11 +1037,9 @@ function EvaluationsPageContent() {
   const runListParams = useMemo(
     () => ({
       limit: 50,
-      ...(scopedConversationId
-        ? { conversation_id: scopedConversationId }
-        : {}),
+      ...(scopedConversationId ? { conversation_id: scopedConversationId } : {}),
     }),
-    [scopedConversationId]
+    [scopedConversationId],
   )
 
   const conversationsQuery = useQuery({
@@ -1284,16 +1052,10 @@ function EvaluationsPageContent() {
     enabled: Boolean(scopedConversationId),
     queryFn: () => chatApi.getMessages(scopedConversationId, { limit: 200 }),
   })
-  const readinessConversationIds = useMemo(
-    () => conversations.map((conversation) => conversation.id),
-    [conversations]
-  )
+  const readinessConversationIds = useMemo(() => conversations.map((conversation) => conversation.id), [conversations])
   const conversationReadinessQuery = useQuery({
-    queryKey: queryKeys.evaluations.ragasConversationReadiness(
-      readinessConversationIds
-    ),
-    enabled:
-      activeTab === 'conversation' && readinessConversationIds.length > 0,
+    queryKey: queryKeys.evaluations.ragasConversationReadiness(readinessConversationIds),
+    enabled: activeTab === 'conversation' && readinessConversationIds.length > 0,
     queryFn: () =>
       evaluationApi.getRagasConversationReadiness({
         conversation_ids: readinessConversationIds,
@@ -1326,7 +1088,7 @@ function EvaluationsPageContent() {
   const isLoading = conversationsQuery.isLoading || runsQuery.isLoading || isRefreshing
   const evidenceSummary = useMemo(
     () => summarizeConversationEvidence(messagesQuery.data?.messages || []),
-    [messagesQuery.data?.messages]
+    [messagesQuery.data?.messages],
   )
   const conversationEvidenceById = useMemo(() => {
     const items = conversationReadinessQuery.data?.items || []
@@ -1341,7 +1103,7 @@ function EvaluationsPageContent() {
           isChecking: false,
           isKnown: true,
         },
-      ])
+      ]),
     )
   }, [conversationReadinessQuery.data?.items])
   const conversationEvidenceCounts = useMemo(() => {
@@ -1367,19 +1129,12 @@ function EvaluationsPageContent() {
     return conversations.filter((conversation) => {
       const evidence = conversationEvidenceById.get(conversation.id)
       if (!evidence?.isKnown) return false
-      return conversationEvidenceFilter === 'ready'
-        ? evidence.isEvaluable
-        : !evidence.isEvaluable
+      return conversationEvidenceFilter === 'ready' ? evidence.isEvaluable : !evidence.isEvaluable
     })
   }, [conversationEvidenceById, conversationEvidenceFilter, conversations])
-  const isEvidenceChecking =
-    Boolean(scopedConversationId) &&
-    (messagesQuery.isLoading || messagesQuery.isFetching)
+  const isEvidenceChecking = Boolean(scopedConversationId) && (messagesQuery.isLoading || messagesQuery.isFetching)
   const isMissingEvidence =
-    Boolean(scopedConversationId) &&
-    !isEvidenceChecking &&
-    messagesQuery.isSuccess &&
-    !evidenceSummary.isEvaluable
+    Boolean(scopedConversationId) && !isEvidenceChecking && messagesQuery.isSuccess && !evidenceSummary.isEvaluable
 
   // Support deep-linking: /evaluations?conversation_id=...
   useEffect(() => {
@@ -1395,11 +1150,7 @@ function EvaluationsPageContent() {
   useEffect(() => {
     if (deepLinkedConversationId) return
     setSelectedConversationId((prev) => {
-      if (
-        prev &&
-        filteredConversations.some((conversation) => conversation.id === prev)
-      )
-        return prev
+      if (prev && filteredConversations.some((conversation) => conversation.id === prev)) return prev
       return filteredConversations[0]?.id || ''
     })
   }, [deepLinkedConversationId, filteredConversations])
@@ -1440,29 +1191,18 @@ function EvaluationsPageContent() {
     }
   }
 
-  const summary = useMemo<JsonObject>(
-    () => runDetail?.run?.summary || {},
-    [runDetail?.run?.summary]
-  )
+  const summary = useMemo<JsonObject>(() => runDetail?.run?.summary || {}, [runDetail?.run?.summary])
   const displayMetrics = useMemo(() => {
     return displayMetricsFor(summary, runDetail?.run?.metrics || [])
   }, [runDetail?.run?.metrics, summary])
 
-  const activeTabMeta =
-    TAB_META.find((item) => item.id === activeTab) || TAB_META[0]
+  const activeTabMeta = TAB_META.find((item) => item.id === activeTab) || TAB_META[0]
   const ActiveTabIcon = activeTabMeta.icon
   const showAblationsEntry =
-    !tenantAccess.isLoading &&
-    canShowAdminControlledNavigationModule(tenantAccess.data, 'ablations')
-  const selectedConversation =
-    conversations.find(
-      (conversation) => conversation.id === scopedConversationId
-    ) || null
+    !tenantAccess.isLoading && canShowAdminControlledNavigationModule(tenantAccess.data, 'ablations')
+  const selectedConversation = conversations.find((conversation) => conversation.id === scopedConversationId) || null
   const selectedConversationHiddenByFilter = Boolean(
-    scopedConversationId &&
-      !filteredConversations.some(
-        (conversation) => conversation.id === scopedConversationId
-      )
+    scopedConversationId && !filteredConversations.some((conversation) => conversation.id === scopedConversationId),
   )
   const runStatusCounts = useMemo(() => {
     return runs.reduce(
@@ -1472,41 +1212,24 @@ function EvaluationsPageContent() {
         else acc.running += 1
         return acc
       },
-      { completed: 0, failed: 0, running: 0 }
+      { completed: 0, failed: 0, running: 0 },
     )
   }, [runs])
-  const selectedRun =
-    runDetail?.run || runs.find((run) => run.id === selectedRunId) || null
-  const runErrorMessage = String(
-    runDetail?.run?.error_message || selectedRun?.error_message || ''
-  ).trim()
+  const selectedRun = runDetail?.run || runs.find((run) => run.id === selectedRunId) || null
+  const runErrorMessage = String(runDetail?.run?.error_message || selectedRun?.error_message || '').trim()
   const isMissingEvidenceFailure = isMissingEvidenceError(runErrorMessage)
 
   const runStatus = runDetail?.run?.status || selectedRun?.status
   const statusBadge = useMemo(() => {
     if (!runStatus) return null
 
-    const status =
-      runStatus === 'completed'
-        ? 'completed'
-        : runStatus === 'failed'
-          ? 'failed'
-          : 'processing'
-    const label =
-      runStatus === 'completed'
-        ? '已完成'
-        : runStatus === 'failed'
-          ? '失败'
-          : '运行中'
+    const status = runStatus === 'completed' ? 'completed' : runStatus === 'failed' ? 'failed' : 'processing'
+    const label = runStatus === 'completed' ? '已完成' : runStatus === 'failed' ? '失败' : '运行中'
     const badge = <StatusBadge status={status} label={label} dense />
 
     if (runStatus === 'failed' && runErrorMessage) {
       return (
-        <span
-          className="inline-flex cursor-help"
-          title={runErrorMessage}
-          aria-label="失败原因，悬停查看"
-        >
+        <span className="inline-flex cursor-help" title={runErrorMessage} aria-label="失败原因，悬停查看">
           {badge}
         </span>
       )
@@ -1523,9 +1246,7 @@ function EvaluationsPageContent() {
     }
     if (runStatus === 'failed') {
       return {
-        title: isMissingEvidenceFailure
-          ? '缺少证据，无法计算忠实度'
-          : '评测失败，暂无分数',
+        title: isMissingEvidenceFailure ? '缺少证据，无法计算忠实度' : '评测失败，暂无分数',
         description:
           (isMissingEvidenceFailure
             ? '这条会话没有可评估的 citations / retrieved contexts。请用 MimirQ 对话或 Dify HTTP 回写证据链后再评测。'
@@ -1544,26 +1265,19 @@ function EvaluationsPageContent() {
       description: '这条 run 已返回，但后端尚未生成 summary 分数或逐轮 scores。',
     }
   }, [isMissingEvidenceFailure, runErrorMessage, runStatus, selectedRunId])
-  const scoreRows = useMemo(
-    () => scoreRowsFor(runDetail, summary),
-    [runDetail, summary]
-  )
-  const detailMetricKeys = runDetail?.run?.metrics?.length
-    ? runDetail.run.metrics
-    : metricKeys
+  const scoreRows = useMemo(() => scoreRowsFor(runDetail, summary), [runDetail, summary])
+  const detailMetricKeys = runDetail?.run?.metrics?.length ? runDetail.run.metrics : metricKeys
   const detailItems = runDetail?.items || []
   const hasScoreBreakdown = scoreRows.length > 0
   const hasItemBreakdown = detailItems.length > 0
   const showBreakdownPanels = hasScoreBreakdown || hasItemBreakdown
   const visibleRuns = runs
   const selectedRunConversation = selectedRun?.conversation_id
-    ? conversations.find(
-        (conversation) => conversation.id === selectedRun.conversation_id
-      ) || null
+    ? conversations.find((conversation) => conversation.id === selectedRun.conversation_id) || null
     : selectedConversation
   const selectedRunTitle = shortConversationTitle(
     selectedRunConversation,
-    selectedRun?.conversation_id || scopedConversationId
+    selectedRun?.conversation_id || scopedConversationId,
   )
   const conversationDesktopGridClass =
     setupRailCollapsed && runsRailCollapsed
@@ -1600,12 +1314,8 @@ function EvaluationsPageContent() {
     globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
-  const heroFocusLabel =
-    activeTab === 'conversation' ? '缺证据' : '失败'
-  const heroFocusValue =
-    activeTab === 'conversation'
-      ? conversationEvidenceCounts.missing
-      : runStatusCounts.failed
+  const heroFocusLabel = activeTab === 'conversation' ? '缺证据' : '失败'
+  const heroFocusValue = activeTab === 'conversation' ? conversationEvidenceCounts.missing : runStatusCounts.failed
 
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden bg-info/[0.035]">
@@ -1650,7 +1360,7 @@ function EvaluationsPageContent() {
                       'relative inline-flex h-8 items-center gap-2 rounded-lg px-3.5 text-[12px] font-medium transition-all duration-200',
                       isActiveTab(tab.id)
                         ? 'bg-info text-primary-foreground shadow-none'
-                        : 'text-muted-foreground hover:bg-info/5 hover:text-info'
+                        : 'text-muted-foreground hover:bg-info/5 hover:text-info',
                     )}
                   >
                     <tab.icon className="h-4 w-4" aria-hidden="true" />
@@ -1671,12 +1381,11 @@ function EvaluationsPageContent() {
                     { label: '总数', value: conversations.length },
                     {
                       label: '证据',
-                      value:
-                        isEvidenceChecking
-                          ? '...'
-                          : evidenceSummary.isEvaluable
-                            ? evidenceSummary.citationsCount
-                            : 0,
+                      value: isEvidenceChecking
+                        ? '...'
+                        : evidenceSummary.isEvaluable
+                          ? evidenceSummary.citationsCount
+                          : 0,
                     },
                   ]}
                   onExpand={() => setSetupRailCollapsed(false)}
@@ -1686,10 +1395,7 @@ function EvaluationsPageContent() {
                 <aside className="flex min-h-[620px] flex-col rounded-2xl border border-info/15 bg-background/78 shadow-none xl:h-full xl:min-h-0">
                   <div className="flex items-center justify-between border-b border-info/15 bg-info/[0.025] px-4 py-3">
                     <div className="inline-flex items-center gap-2.5 text-[14px] font-bold text-foreground">
-                      <SlidersHorizontal
-                        className="h-4.5 w-4.5 text-info"
-                        aria-hidden="true"
-                      />
+                      <SlidersHorizontal className="h-4.5 w-4.5 text-info" aria-hidden="true" />
                       参数设置
                     </div>
                     <div className="flex items-center gap-1">
@@ -1727,22 +1433,14 @@ function EvaluationsPageContent() {
                       title="对话来源"
                       description="从已有会话里选一条对话，评测会按用户-助手轮次重建上下文。"
                     >
-                      <Select
-                        value={scopedConversationId}
-                        onValueChange={handleConversationChange}
-                      >
+                      <Select value={scopedConversationId} onValueChange={handleConversationChange}>
                         <SelectTrigger className="h-10 rounded-xl border-info/25 bg-info/[0.025] text-[13px] shadow-none">
                           <SelectValue placeholder="请选择会话或查询" />
                         </SelectTrigger>
                         <SelectContent>
-                          {scopedConversationId &&
-                          (!selectedConversation || selectedConversationHiddenByFilter) ? (
+                          {scopedConversationId && (!selectedConversation || selectedConversationHiddenByFilter) ? (
                             <SelectItem value={scopedConversationId}>
-                              {shortConversationTitle(
-                                selectedConversation,
-                                scopedConversationId
-                              )}{' '}
-                              · 当前
+                              {shortConversationTitle(selectedConversation, scopedConversationId)} · 当前
                             </SelectItem>
                           ) : null}
                           {!filteredConversations.length ? (
@@ -1751,37 +1449,30 @@ function EvaluationsPageContent() {
                             </SelectItem>
                           ) : null}
                           {filteredConversations.map((conversation) => {
-                            const evidence = conversationEvidenceById.get(
-                              conversation.id
-                            )
+                            const evidence = conversationEvidenceById.get(conversation.id)
                             const evidenceLabel = !evidence?.isKnown
                               ? '检查中'
                               : evidence.isEvaluable
                                 ? `${evidence.citationsCount} 条证据`
                                 : '缺证据'
                             return (
-                            <SelectItem
-                              key={conversation.id}
-                              value={conversation.id}
-                            >
-                              <span className="flex min-w-0 items-center justify-between gap-3">
-                                <span className="truncate">
-                                  {conversation.title || conversation.id}
+                              <SelectItem key={conversation.id} value={conversation.id}>
+                                <span className="flex min-w-0 items-center justify-between gap-3">
+                                  <span className="truncate">{conversation.title || conversation.id}</span>
+                                  <span
+                                    className={cn(
+                                      'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold',
+                                      !evidence?.isKnown
+                                        ? 'bg-muted text-muted-foreground'
+                                        : evidence.isEvaluable
+                                          ? 'bg-success/15 text-success'
+                                          : 'bg-warning/15 text-warning',
+                                    )}
+                                  >
+                                    {evidenceLabel}
+                                  </span>
                                 </span>
-                                <span
-                                  className={cn(
-                                    'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold',
-                                    !evidence?.isKnown
-                                      ? 'bg-muted text-muted-foreground'
-                                      : evidence.isEvaluable
-                                        ? 'bg-success/15 text-success'
-                                        : 'bg-warning/15 text-warning'
-                                  )}
-                                >
-                                  {evidenceLabel}
-                                </span>
-                              </span>
-                            </SelectItem>
+                              </SelectItem>
                             )
                           })}
                         </SelectContent>
@@ -1804,26 +1495,18 @@ function EvaluationsPageContent() {
                                 'rounded-lg px-2 py-1.5 text-[11.5px] font-bold transition-all duration-200',
                                 active
                                   ? 'bg-background/75 text-info shadow-none ring-1 ring-info/20'
-                                  : 'text-muted-foreground hover:bg-background/65 hover:text-foreground'
+                                  : 'text-muted-foreground hover:bg-background/65 hover:text-foreground',
                               )}
                             >
                               {filter.label}
-                              <span className="ml-1.5 font-mono tabular-nums">
-                                {count}
-                              </span>
+                              <span className="ml-1.5 font-mono tabular-nums">{count}</span>
                             </button>
                           )
                         })}
                       </div>
                       <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <EvaluationInlineStat
-                          label="已选"
-                          value={scopedConversationId ? '1' : '0'}
-                        />
-                        <EvaluationInlineStat
-                          label="总数"
-                          value={conversations.length}
-                        />
+                        <EvaluationInlineStat label="已选" value={scopedConversationId ? '1' : '0'} />
+                        <EvaluationInlineStat label="总数" value={conversations.length} />
                         <EvaluationInlineStat
                           label="证据"
                           value={
@@ -1834,15 +1517,9 @@ function EvaluationsPageContent() {
                                 : '缺失'
                           }
                         />
-                        <EvaluationInlineStat
-                          label="可评轮次"
-                          value={evidenceSummary.evaluableTurns}
-                        />
+                        <EvaluationInlineStat label="可评轮次" value={evidenceSummary.evaluableTurns} />
                         {conversationEvidenceCounts.checking ? (
-                          <EvaluationInlineStat
-                            label="检查中"
-                            value={conversationEvidenceCounts.checking}
-                          />
+                          <EvaluationInlineStat label="检查中" value={conversationEvidenceCounts.checking} />
                         ) : null}
                       </div>
                     </EvaluationConfigSection>
@@ -1871,10 +1548,7 @@ function EvaluationsPageContent() {
                     >
                       <div className="grid gap-3">
                         <div className="space-y-1.5">
-                          <Label
-                            htmlFor="max-turns"
-                            className="text-[12px] font-medium text-muted-foreground"
-                          >
+                          <Label htmlFor="max-turns" className="text-[12px] font-medium text-muted-foreground">
                             最近轮次
                           </Label>
                           <Input
@@ -1891,14 +1565,10 @@ function EvaluationsPageContent() {
                         <label className="flex items-start gap-2.5 rounded-lg border border-info/15 bg-background/70 px-2.5 py-2 shadow-none">
                           <Checkbox
                             checked={skipEmptyContexts}
-                            onCheckedChange={(value) =>
-                              setSkipEmptyContexts(value === true)
-                            }
+                            onCheckedChange={(value) => setSkipEmptyContexts(value === true)}
                           />
                           <span className="space-y-0.5">
-                            <span className="block text-[12px] font-medium text-foreground">
-                              跳过无引用轮次
-                            </span>
+                            <span className="block text-[12px] font-medium text-foreground">跳过无引用轮次</span>
                             <span className="block text-[11px] leading-4 text-muted-foreground">
                               减少空样本干扰，让结果更接近真实 RAG 场景。
                             </span>
@@ -1910,24 +1580,13 @@ function EvaluationsPageContent() {
 
                   <div className="shrink-0 border-t border-info/15 bg-info/[0.025] p-3">
                     <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <EvaluationInlineStat
-                        label="指标数"
-                        value={metricKeys.length}
-                      />
+                      <EvaluationInlineStat label="指标数" value={metricKeys.length} />
                       <EvaluationInlineStat label="轮次" value={maxTurns} />
-                      <EvaluationInlineStat
-                        label="过滤"
-                        value={skipEmptyContexts ? '已启用' : '关闭'}
-                      />
+                      <EvaluationInlineStat label="过滤" value={skipEmptyContexts ? '已启用' : '关闭'} />
                     </div>
                     <Button
                       className="h-10 w-full rounded-full bg-info text-[13px] font-bold text-primary-foreground shadow-none transition-all duration-200 hover:bg-info/90"
-                      disabled={
-                        isStarting ||
-                        !scopedConversationId ||
-                        isMissingEvidence ||
-                        !metricKeys.length
-                      }
+                      disabled={isStarting || !scopedConversationId || isMissingEvidence || !metricKeys.length}
                       onClick={handleStart}
                     >
                       {isStarting ? (
@@ -1943,10 +1602,7 @@ function EvaluationsPageContent() {
                       onClick={() => refreshEvaluationWorkspace()}
                     >
                       <RefreshCw
-                        className={cn(
-                          'mr-2 h-3.5 w-3.5',
-                          isLoading && 'animate-spin motion-reduce:animate-none'
-                        )}
+                        className={cn('mr-2 h-3.5 w-3.5', isLoading && 'animate-spin motion-reduce:animate-none')}
                       />
                       刷新会话与运行
                     </Button>
@@ -1974,14 +1630,10 @@ function EvaluationsPageContent() {
                   <div
                     className={cn(
                       'grid gap-3',
-                      hasScoreBreakdown && hasItemBreakdown
-                        ? 'xl:grid-cols-[0.85fr_1.25fr]'
-                        : 'xl:grid-cols-1'
+                      hasScoreBreakdown && hasItemBreakdown ? 'xl:grid-cols-[0.85fr_1.25fr]' : 'xl:grid-cols-1',
                     )}
                   >
-                    {hasScoreBreakdown ? (
-                      <ScoreDetailsCard rows={scoreRows} />
-                    ) : null}
+                    {hasScoreBreakdown ? <ScoreDetailsCard rows={scoreRows} /> : null}
                     {hasItemBreakdown ? (
                       <IterationDetailsCard
                         items={detailItems}
@@ -2016,10 +1668,7 @@ function EvaluationsPageContent() {
                       aria-expanded={!isRunRecordsCollapsed}
                       aria-controls="ragas-run-records-list"
                     >
-                      <ListChecks
-                        className="h-5 w-5 shrink-0 text-info"
-                        aria-hidden="true"
-                      />
+                      <ListChecks className="h-5 w-5 shrink-0 text-info" aria-hidden="true" />
                       <span className="truncate">运行记录</span>
                       <span className="rounded-full border border-info/30 bg-info/10 px-2 py-0.5 text-[11px] font-bold text-info">
                         {runs.length}
@@ -2027,7 +1676,7 @@ function EvaluationsPageContent() {
                       <ChevronDown
                         className={cn(
                           'h-4 w-4 text-muted-foreground/70 transition-transform duration-200',
-                          isRunRecordsCollapsed && '-rotate-90'
+                          isRunRecordsCollapsed && '-rotate-90',
                         )}
                         aria-hidden="true"
                       />
@@ -2058,9 +1707,7 @@ function EvaluationsPageContent() {
                     id="ragas-run-records-list"
                     className={cn(
                       'grid min-h-0 transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none',
-                      isRunRecordsCollapsed
-                        ? 'grid-rows-[0fr] opacity-0'
-                        : 'grid-rows-[1fr] opacity-100'
+                      isRunRecordsCollapsed ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100',
                     )}
                   >
                     <div className="min-h-0 overflow-hidden">
@@ -2073,10 +1720,8 @@ function EvaluationsPageContent() {
                               run={run}
                               conversation={
                                 run.conversation_id
-                                  ? conversations.find(
-                                      (conversation) =>
-                                        conversation.id === run.conversation_id
-                                    ) || null
+                                  ? conversations.find((conversation) => conversation.id === run.conversation_id) ||
+                                    null
                                   : null
                               }
                               onClick={() => setSelectedRunId(run.id)}
@@ -2094,8 +1739,7 @@ function EvaluationsPageContent() {
 
                   {isRunRecordsCollapsed ? (
                     <div className="rounded-xl border border-info/30 bg-info/5 px-3 py-2.5 text-[11px] font-medium text-muted-foreground">
-                      已收起 {runs.length}{' '}
-                      条运行记录，点击标题展开后在列表内上滑查看。
+                      已收起 {runs.length} 条运行记录，点击标题展开后在列表内上滑查看。
                     </div>
                   ) : null}
                 </aside>

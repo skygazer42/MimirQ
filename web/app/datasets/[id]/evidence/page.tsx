@@ -33,7 +33,11 @@ export default function DatasetEvidencePage() {
         badge="Ground Truth"
         icon={ShieldCheck}
         iconColor="text-success"
-        description={<span className="text-sm text-muted-foreground text-pretty">持久化证据资产（Suites/Items）+ 审核流 + 一键同步到回归用例库。</span>}
+        description={
+          <span className="text-sm text-muted-foreground text-pretty">
+            持久化证据资产（Suites/Items）+ 审核流 + 一键同步到回归用例库。
+          </span>
+        }
         actions={
           <div className="flex items-center gap-2">
             <Button variant="outline" className="gap-2" onClick={() => router.push('/datasets')}>
@@ -53,13 +57,21 @@ export default function DatasetEvidencePage() {
               </Button>
             ) : null}
             {datasetId ? (
-              <Button variant="outline" className="gap-2" onClick={() => router.push(`/datasets/${datasetId}/precheck`)}>
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={() => router.push(`/datasets/${datasetId}/precheck`)}
+              >
                 <FileSearch className="w-4 h-4" aria-hidden="true" />
                 预检扫描
               </Button>
             ) : null}
             {datasetId ? (
-              <Button variant="outline" className="gap-2" onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}>
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}
+              >
                 <Settings2 className="w-4 h-4" aria-hidden="true" />
                 入库策略
               </Button>

@@ -221,10 +221,10 @@ export function buildSimilarityDiagnostics({
   const safeColCount = safeRowCount > 0 ? Math.min(matrix[0]?.length || 0, xItems.length, xLabels.length) : 0
 
   const yStats = Array.from({ length: safeRowCount }, (_, rowIndex) =>
-    axisStats((matrix[rowIndex] ?? []).slice(0, safeColCount))
+    axisStats((matrix[rowIndex] ?? []).slice(0, safeColCount)),
   )
   const xStats = Array.from({ length: safeColCount }, (_, columnIndex) =>
-    axisStats(columnAt(matrix, columnIndex, safeRowCount))
+    axisStats(columnAt(matrix, columnIndex, safeRowCount)),
   )
 
   const outliers: SimilarityDiagnosticsOutlier[] = []
@@ -264,7 +264,7 @@ export function buildSimilarityDiagnostics({
           lexicalScore,
           xAxis.supportCount,
           yAxis.supportCount,
-          Math.max(xAxis.topGap, yAxis.topGap)
+          Math.max(xAxis.topGap, yAxis.topGap),
         ),
         reason: buildReason(lexicalScore, xAxis.supportCount, yAxis.supportCount, Math.max(xAxis.topGap, yAxis.topGap)),
         decision,
@@ -322,7 +322,7 @@ export function buildSimilarityDiagnostics({
     for (const neighbor of pickTopNeighbors(
       (matrix[rowIndex] ?? []).slice(0, safeColCount),
       linkTopK,
-      minLinkSimilarity
+      minLinkSimilarity,
     )) {
       addLink(rowIndex, neighbor.index)
     }

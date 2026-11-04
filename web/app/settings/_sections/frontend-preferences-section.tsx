@@ -21,10 +21,7 @@ export function FrontendPreferencesSection({
 }: Readonly<FrontendPreferencesSectionProps>) {
   return (
     <section>
-      <Panel
-        className="space-y-3 rounded-xl border-info/15 bg-info/[0.025] shadow-none"
-        padding="md"
-      >
+      <Panel className="space-y-3 rounded-xl border-info/15 bg-info/[0.025] shadow-none" padding="md">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div className="space-y-2">
             <div className="flex items-center gap-1.5 text-[12px] font-medium text-foreground/78">
@@ -42,21 +39,11 @@ export function FrontendPreferencesSection({
                 </span>
               </span>
             </div>
-            <ParserDropdown
-              value={parserBackend}
-              onChange={setParserBackend}
-              surface="ocean"
-            />
+            <ParserDropdown value={parserBackend} onChange={setParserBackend} surface="ocean" />
           </div>
           <div className="space-y-2">
-            <div className="text-[12px] font-medium text-foreground/78">
-              切块策略
-            </div>
-            <ChunkStrategyDropdown
-              value={chunkStrategy}
-              onChange={setChunkStrategy}
-              surface="ocean"
-            />
+            <div className="text-[12px] font-medium text-foreground/78">切块策略</div>
+            <ChunkStrategyDropdown value={chunkStrategy} onChange={setChunkStrategy} surface="ocean" />
           </div>
         </div>
 

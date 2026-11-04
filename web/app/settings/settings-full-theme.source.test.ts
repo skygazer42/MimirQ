@@ -29,9 +29,7 @@ const SETTINGS_THEME_FILES = [
 ] as const
 
 function readSettingsThemeSources(): string {
-  return SETTINGS_THEME_FILES
-    .map((file) => fs.readFileSync(path.resolve(__dirname, file), 'utf8'))
-    .join('\n')
+  return SETTINGS_THEME_FILES.map((file) => fs.readFileSync(path.resolve(__dirname, file), 'utf8')).join('\n')
 }
 
 describe('settings full-page Ocean theme contract', () => {
@@ -56,10 +54,7 @@ describe('settings full-page Ocean theme contract', () => {
   })
 
   it('keeps the settings switch on the Ocean accent without decorative shadows', () => {
-    const src = fs.readFileSync(
-      path.resolve(__dirname, '../../components/settings/settings-switch.tsx'),
-      'utf8'
-    )
+    const src = fs.readFileSync(path.resolve(__dirname, '../../components/settings/settings-switch.tsx'), 'utf8')
 
     expectSourceToContain(src, 'data-[switch-state=checked]:border-info/45')
     expectSourceToContain(src, 'data-[switch-state=checked]:[&>span]:bg-info')
@@ -68,12 +63,9 @@ describe('settings full-page Ocean theme contract', () => {
   })
 
   it('uses one active feature style instead of decorative warning and success colors', () => {
-    const src = fs.readFileSync(
-      path.resolve(__dirname, '_sections/feature-flags-section.tsx'),
-      'utf8'
-    )
+    const src = fs.readFileSync(path.resolve(__dirname, '_sections/feature-flags-section.tsx'), 'utf8')
 
-    expectSourceToContain(src, "const FEATURE_FLAG_ACTIVE_STYLE = {")
+    expectSourceToContain(src, 'const FEATURE_FLAG_ACTIVE_STYLE = {')
     expectSourceNotToContain(src, "color: 'orange'")
     expectSourceNotToContain(src, "color: 'green'")
     expectSourceNotToContain(src, 'bg-warning/10')
@@ -81,10 +73,7 @@ describe('settings full-page Ocean theme contract', () => {
   })
 
   it('keeps the Dify endpoint as an Ocean inset surface in both themes', () => {
-    const src = fs.readFileSync(
-      path.resolve(__dirname, '_sections/dify-integration-section.tsx'),
-      'utf8'
-    )
+    const src = fs.readFileSync(path.resolve(__dirname, '_sections/dify-integration-section.tsx'), 'utf8')
 
     expectSourceToContain(src, 'border-info/20 bg-info/[0.07]')
     expectSourceToContain(src, 'text-info')
@@ -98,9 +87,7 @@ describe('settings full-page Ocean theme contract', () => {
       '_sections/industry-rules-section.tsx',
       '_sections/ltr-model-registry-section.tsx',
     ]
-    const combined = files
-      .map((file) => fs.readFileSync(path.resolve(__dirname, file), 'utf8'))
-      .join('\n')
+    const combined = files.map((file) => fs.readFileSync(path.resolve(__dirname, file), 'utf8')).join('\n')
 
     expectSourceToContain(combined, "systemWorkbenchTokens.panel, 'border-info/15 bg-info/[0.025]")
     expectSourceNotToContain(combined, "systemWorkbenchTokens.panel, 'p-3.5'")
@@ -109,17 +96,11 @@ describe('settings full-page Ocean theme contract', () => {
   })
 
   it('opts both frontend preference dropdowns into their Ocean surfaces', () => {
-    const section = fs.readFileSync(
-      path.resolve(__dirname, '_sections/frontend-preferences-section.tsx'),
-      'utf8'
-    )
-    const parser = fs.readFileSync(
-      path.resolve(__dirname, '../../components/business/parser-dropdown.tsx'),
-      'utf8'
-    )
+    const section = fs.readFileSync(path.resolve(__dirname, '_sections/frontend-preferences-section.tsx'), 'utf8')
+    const parser = fs.readFileSync(path.resolve(__dirname, '../../components/business/parser-dropdown.tsx'), 'utf8')
     const chunk = fs.readFileSync(
       path.resolve(__dirname, '../../components/business/chunk-strategy-dropdown.tsx'),
-      'utf8'
+      'utf8',
     )
 
     expectSourceToContain(parser, "surface?: 'default' | 'ocean'")
@@ -128,11 +109,10 @@ describe('settings full-page Ocean theme contract', () => {
       'border-info/30 bg-[linear-gradient(hsl(var(--info)/0.10),hsl(var(--info)/0.10)),linear-gradient(hsl(var(--popover)),hsl(var(--popover)))] text-popover-foreground shadow-strong'
     expectSourceToContain(parser, oceanMenuSurface)
     expectSourceToContain(chunk, oceanMenuSurface)
-    expectSourceToContain(section,
-      '<ParserDropdown value={parserBackend} onChange={setParserBackend} surface="ocean"'
-    )
-    expectSourceToContain(section,
-      '<ChunkStrategyDropdown value={chunkStrategy} onChange={setChunkStrategy} surface="ocean"'
+    expectSourceToContain(section, '<ParserDropdown value={parserBackend} onChange={setParserBackend} surface="ocean"')
+    expectSourceToContain(
+      section,
+      '<ChunkStrategyDropdown value={chunkStrategy} onChange={setChunkStrategy} surface="ocean"',
     )
   })
 })

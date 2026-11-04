@@ -12,11 +12,7 @@ export const STATUS_LABELS: Record<string, string> = {
   cancelled: '已取消',
 }
 
-export const TYPO_EYEBROW =
-  'text-[0.68rem] font-medium uppercase tracking-[0.24em] text-muted-foreground/64'
-export const TYPO_SECTION_TITLE =
-  'text-[0.98rem] font-medium tracking-[-0.015em] leading-[1.2] text-foreground/90'
-export const TYPO_ITEM_TITLE =
-  'text-[0.88rem] font-medium tracking-[-0.005em] leading-[1.3] text-foreground/92'
-export const TYPO_META =
-  'font-code tabular-nums text-[0.7rem] font-normal tracking-[0.01em] text-muted-foreground/62'
+export const TYPO_EYEBROW = 'text-[0.68rem] font-medium uppercase tracking-[0.24em] text-muted-foreground/64'
+export const TYPO_SECTION_TITLE = 'text-[0.98rem] font-medium tracking-[-0.015em] leading-[1.2] text-foreground/90'
+export const TYPO_ITEM_TITLE = 'text-[0.88rem] font-medium tracking-[-0.005em] leading-[1.3] text-foreground/92'
+export const TYPO_META = 'font-code tabular-nums text-[0.7rem] font-normal tracking-[0.01em] text-muted-foreground/62'

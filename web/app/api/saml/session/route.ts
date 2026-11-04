@@ -41,5 +41,7 @@ export async function POST(req: NextRequest) {
   }
 
   const payload = await backendRes.json().catch(() => null)
-  return clearBridgeCookie(jsonNoStore(payload ?? { error: 'Invalid SAML bridge response' }, { status: backendRes.status }))
+  return clearBridgeCookie(
+    jsonNoStore(payload ?? { error: 'Invalid SAML bridge response' }, { status: backendRes.status }),
+  )
 }

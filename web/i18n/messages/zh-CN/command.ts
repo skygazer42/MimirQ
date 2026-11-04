@@ -1,5 +1,5 @@
 const commandMessages = {
-CommandMenu: {
+  CommandMenu: {
     header: {
       title: '命令中心',
       description: '搜索页面、数据与对话，或执行快捷动作',
@@ -180,17 +180,49 @@ CommandMenu: {
         reports: {
           label: '打开数据报告',
           description: '按数据集生成质量、治理和 RAG 审计报告，支持导出分享。',
-          keywords: ['reports', 'report', 'analytics', 'dashboard', '报表', '报告', '数据报告', '数据集报告', '质量报告', '审计'],
+          keywords: [
+            'reports',
+            'report',
+            'analytics',
+            'dashboard',
+            '报表',
+            '报告',
+            '数据报告',
+            '数据集报告',
+            '质量报告',
+            '审计',
+          ],
         },
         observability: {
           label: '打开可观测中心',
           description: '直达可观测页面，追踪指标、日志和诊断线索。',
-          keywords: ['observability', 'monitoring', 'metrics', 'logs', 'trace', '可观测', '监控', '指标', '日志', '链路'],
+          keywords: [
+            'observability',
+            'monitoring',
+            'metrics',
+            'logs',
+            'trace',
+            '可观测',
+            '监控',
+            '指标',
+            '日志',
+            '链路',
+          ],
         },
         governance: {
           label: '打开数据治理',
           description: '进入数据治理工作台，处理画像、规则与质量治理任务。',
-          keywords: ['governance', 'data governance', 'policy', 'compliance', '数据治理', '治理', '规则', '合规', '画像'],
+          keywords: [
+            'governance',
+            'data governance',
+            'policy',
+            'compliance',
+            '数据治理',
+            '治理',
+            '规则',
+            '合规',
+            '画像',
+          ],
         },
       },
     },
@@ -240,7 +272,18 @@ CommandMenu: {
       reports: {
         label: '数据报告',
         description: '生成数据集质量、治理和 RAG 审计交付物。',
-        keywords: ['reports', 'report', 'analytics', 'dashboard', '报表', '报告', '数据报告', '数据集报告', '质量报告', '审计'],
+        keywords: [
+          'reports',
+          'report',
+          'analytics',
+          'dashboard',
+          '报表',
+          '报告',
+          '数据报告',
+          '数据集报告',
+          '质量报告',
+          '审计',
+        ],
       },
       observability: {
         label: '可观测中心',
@@ -284,7 +327,7 @@ CommandMenu: {
       dark: '深色模式',
       system: '跟随系统',
     },
-  }
+  },
 } as const
 
 export default commandMessages

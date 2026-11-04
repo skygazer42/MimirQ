@@ -50,7 +50,7 @@ const CHECK_ITEM_CONFIGS = [
   icon: typeof FileText
 }>
 
-const UTF8_BOM_CODE_POINT = 0xFEFF
+const UTF8_BOM_CODE_POINT = 0xfeff
 
 function getLeadingCodePoint(value: string): number | undefined {
   return value.codePointAt(0)
@@ -131,7 +131,7 @@ function getBackendIssueType(severity: string | null | undefined): QualityIssue[
 async function getBackendQualityIssues(
   content: string,
   inputFormat: 'html' | 'markdown',
-  t: Translate
+  t: Translate,
 ): Promise<QualityIssue[]> {
   try {
     const response = await pipelineApi.governanceAnalyze({
@@ -141,9 +141,7 @@ async function getBackendQualityIssues(
 
     const detectedIssues = (response.issues || []).slice(0, 10).map((issue) => {
       const countSuffix =
-        typeof issue.count === 'number' && issue.count > 0
-          ? t('backendIssues.countSuffix', { count: issue.count })
-          : ''
+        typeof issue.count === 'number' && issue.count > 0 ? t('backendIssues.countSuffix', { count: issue.count }) : ''
 
       return {
         id: `backend:${issue.code}`,
@@ -201,7 +199,7 @@ export function QualityChecker({
         icon,
         label: t(`checkItems.${id}.label`),
       })),
-    [t]
+    [t],
   )
   const [isScanning, setIsScanning] = useState(false)
   const [score, setScore] = useState(initialScore)
@@ -281,7 +279,11 @@ export function QualityChecker({
 
     if (backendScanEnabled) {
       detectedIssues.push(
-        ...(await getBackendQualityIssues(content, formatInfo.format === t('format.types.html') ? 'html' : 'markdown', t))
+        ...(await getBackendQualityIssues(
+          content,
+          formatInfo.format === t('format.types.html') ? 'html' : 'markdown',
+          t,
+        )),
       )
     }
     setScanProgress(100)
@@ -313,13 +315,21 @@ export function QualityChecker({
 
   const scoreGrade = useMemo(() => {
     if (score >= 90) {
-      return { label: t('score.grades.excellent'), tone: 'success', badge: 'border border-success/20 bg-success/10 text-success' }
+      return {
+        label: t('score.grades.excellent'),
+        tone: 'success',
+        badge: 'border border-success/20 bg-success/10 text-success',
+      }
     }
     if (score >= 75) {
       return { label: t('score.grades.good'), tone: 'info', badge: 'border border-info/20 bg-info/10 text-info' }
     }
     if (score >= 60) {
-      return { label: t('score.grades.pass'), tone: 'warning', badge: 'border border-warning/20 bg-warning/10 text-warning' }
+      return {
+        label: t('score.grades.pass'),
+        tone: 'warning',
+        badge: 'border border-warning/20 bg-warning/10 text-warning',
+      }
     }
     return {
       label: t('score.grades.poor'),
@@ -338,7 +348,7 @@ export function QualityChecker({
     'h-7 rounded-lg px-2.5 text-[11px] shadow-none transition-colors motion-reduce:transition-none',
     backendScanEnabled
       ? 'border-success/25 bg-success/10 text-success hover:border-success/35 hover:bg-success/20 hover:text-success'
-      : 'border-border/60 bg-background/70 text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+      : 'border-border/60 bg-background/70 text-muted-foreground hover:bg-muted/50 hover:text-foreground',
   )
   const scanButtonClass =
     'h-7 gap-1.5 rounded-lg border-info/25 bg-info/10 text-info px-2.5 text-[11px] shadow-none hover:border-info/35 hover:bg-info/20 hover:text-info'
@@ -347,7 +357,7 @@ export function QualityChecker({
     scoreGrade.tone === 'success' && 'border-success/25 bg-success/8',
     scoreGrade.tone === 'info' && 'border-info/25 bg-info/8',
     scoreGrade.tone === 'warning' && 'border-warning/25 bg-warning/10',
-    scoreGrade.tone === 'destructive' && 'border-destructive/25 bg-destructive/10'
+    scoreGrade.tone === 'destructive' && 'border-destructive/25 bg-destructive/10',
   )
 
   return (
@@ -356,7 +366,7 @@ export function QualityChecker({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ScanLine className="size-4 text-info" />
-            <h3 className="text-[14px] font-medium tracking-[-0.01em] text-foreground/85">{t("header.title")}</h3>
+            <h3 className="text-[14px] font-medium tracking-[-0.01em] text-foreground/85">{t('header.title')}</h3>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -376,7 +386,7 @@ export function QualityChecker({
               ) : (
                 <>
                   <Play className="size-3.5" />
-                  {t("actions.scan")}
+                  {t('actions.scan')}
                 </>
               )}
             </Button>
@@ -391,7 +401,12 @@ export function QualityChecker({
                 <div className="flex items-baseline gap-1.5">
                   <span className="text-[28px] font-semibold leading-none text-foreground">{score}</span>
                   <span className="text-[12px] text-muted-foreground">{t('score.outOf')}</span>
-                  <span className={cn('rounded-full px-1.5 py-0.5 text-[10.5px] font-medium leading-none', scoreGrade.badge)}>
+                  <span
+                    className={cn(
+                      'rounded-full px-1.5 py-0.5 text-[10.5px] font-medium leading-none',
+                      scoreGrade.badge,
+                    )}
+                  >
                     {scoreGrade.label}
                   </span>
                 </div>
@@ -402,7 +417,7 @@ export function QualityChecker({
                   scoreGrade.tone === 'success' && 'border-success/30 bg-success/10',
                   scoreGrade.tone === 'info' && 'border-info/30 bg-info/10',
                   scoreGrade.tone === 'warning' && 'border-warning/30 bg-warning/10',
-                  scoreGrade.tone === 'destructive' && 'border-destructive/30 bg-destructive/10'
+                  scoreGrade.tone === 'destructive' && 'border-destructive/30 bg-destructive/10',
                 )}
               >
                 <span
@@ -411,7 +426,7 @@ export function QualityChecker({
                     scoreGrade.tone === 'success' && 'text-success',
                     scoreGrade.tone === 'info' && 'text-info',
                     scoreGrade.tone === 'warning' && 'text-warning',
-                    scoreGrade.tone === 'destructive' && 'text-destructive'
+                    scoreGrade.tone === 'destructive' && 'text-destructive',
                   )}
                 >
                   {score}
@@ -495,7 +510,10 @@ export function QualityChecker({
                       <StatRow label={t('format.documentFormat')} value={formatInfo.format} />
                       <StatRow label={t('format.headingCount')} value={formatInfo.hasHeaders} />
                       <StatRow label={t('format.listCount')} value={formatInfo.hasLists} />
-                      <StatRow label={t('format.hasTables')} value={formatInfo.hasTables ? t('shared.yes') : t('shared.no')} />
+                      <StatRow
+                        label={t('format.hasTables')}
+                        value={formatInfo.hasTables ? t('shared.yes') : t('shared.no')}
+                      />
                     </div>
                   )}
 
@@ -514,7 +532,7 @@ export function QualityChecker({
                               'flex items-start gap-2 rounded-lg p-3',
                               issue.type === 'error' && 'border border-destructive/20 bg-destructive/10',
                               issue.type === 'warning' && 'border border-warning/20 bg-warning/10',
-                              issue.type === 'info' && 'border border-info/20 bg-info/10'
+                              issue.type === 'info' && 'border border-info/20 bg-info/10',
                             )}
                           >
                             {issue.type === 'error' && (
@@ -529,7 +547,7 @@ export function QualityChecker({
                                 'text-sm',
                                 issue.type === 'error' && 'text-destructive',
                                 issue.type === 'warning' && 'text-warning',
-                                issue.type === 'info' && 'text-info'
+                                issue.type === 'info' && 'text-info',
                               )}
                             >
                               {issue.message}

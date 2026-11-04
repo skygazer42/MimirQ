@@ -40,7 +40,9 @@ export function EmptyState({
       </div>
       <div className="mx-auto max-w-4xl text-center">
         <p className="text-lg font-semibold text-foreground">还没有生成入库预检结果</p>
-        <p className="mt-2 text-sm text-muted-foreground">这个页面用于入库前摸底：先锁定目标数据集，抽样查看格式分布、文件布局、风险与待确认样本，再决定是否正式入库。</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          这个页面用于入库前摸底：先锁定目标数据集，抽样查看格式分布、文件布局、风险与待确认样本，再决定是否正式入库。
+        </p>
       </div>
       <div className="mx-auto mt-8 grid max-w-3xl gap-3 rounded-[1.5rem] border border-border/60 bg-card/70 p-4 md:grid-cols-3">
         {[
@@ -59,7 +61,9 @@ export function EmptyState({
         <div className="overflow-hidden rounded-[1.75rem] border border-border/60 bg-card/75 p-4 shadow-subtle">
           <div className="mb-3 flex items-center justify-between">
             <div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">处理效率线框预览</div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                处理效率线框预览
+              </div>
               <div className="mt-1 text-sm font-semibold text-foreground">入库预检后将在此展示处理效率曲线</div>
             </div>
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border/60 bg-background/80">
@@ -97,7 +101,9 @@ export function EmptyState({
           <div className="rounded-[1.75rem] border border-border/60 bg-card/75 p-4 shadow-subtle">
             <div className="mb-3 flex items-center justify-between">
               <div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">预检盘点入口</div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  预检盘点入口
+                </div>
                 <div className="mt-1 text-sm font-semibold text-foreground">先做盘点，再决定是否正式入库</div>
               </div>
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border/60 bg-background/80">
@@ -110,7 +116,9 @@ export function EmptyState({
                   <Sparkles className="h-4 w-4 text-foreground" />
                 </div>
                 <div>
-                  <div className="font-code text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Sample First</div>
+                  <div className="font-code text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                    Sample First
+                  </div>
                   <div className="mt-1 text-sm font-semibold text-foreground">确认 OCR 候选、异常格式和敏感线索</div>
                 </div>
               </div>
@@ -121,7 +129,9 @@ export function EmptyState({
           </div>
 
           <div className="rounded-[1.75rem] border border-border/60 bg-card/75 p-4 shadow-subtle">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">入库风险热力图预留区</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              入库风险热力图预留区
+            </div>
             <div className="mt-3 grid h-[124px] grid-cols-3 gap-2 rounded-[1.25rem] border border-dashed border-border/60 bg-background/70 p-3">
               <div className="rounded-2xl border border-destructive/10 bg-destructive/5" />
               <div className="rounded-2xl border border-destructive/10 bg-destructive/5" />

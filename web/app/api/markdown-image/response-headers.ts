@@ -5,10 +5,7 @@ function headerValue(headers: IncomingHttpHeaders, name: string): string {
   return String(Array.isArray(value) ? value[0] || '' : value || '').trim()
 }
 
-export function buildMarkdownImageResponseHeaders(
-  contentType: string,
-  upstreamHeaders: IncomingHttpHeaders,
-): Headers {
+export function buildMarkdownImageResponseHeaders(contentType: string, upstreamHeaders: IncomingHttpHeaders): Headers {
   const headers = new Headers()
   headers.set('Content-Type', contentType)
   headers.set('Cache-Control', 'private, no-store')

@@ -2,10 +2,7 @@
 
 import { formatDate } from '@/lib/utils'
 
-import type {
-  DatasetReport,
-  DatasetReportDataProvenance,
-} from '@/types'
+import type { DatasetReport, DatasetReportDataProvenance } from '@/types'
 
 import type {
   DataPillTone,
@@ -34,10 +31,7 @@ export function formatPct(numerator: number, denominator: number) {
 }
 
 export function sumRecordValues(value: Record<string, number> | null | undefined) {
-  return Object.values(value || {}).reduce(
-    (acc, item) => acc + safeNumber(item),
-    0
-  )
+  return Object.values(value || {}).reduce((acc, item) => acc + safeNumber(item), 0)
 }
 
 export function capCoverageValue(value: unknown, max: number) {
@@ -51,10 +45,7 @@ export function reportStatusLabel(isLoadingReport: boolean, report: DatasetRepor
   return '待生成'
 }
 
-export function reportStatusTone(
-  isLoadingReport: boolean,
-  report: DatasetReport | null | undefined
-): DataPillTone {
+export function reportStatusTone(isLoadingReport: boolean, report: DatasetReport | null | undefined): DataPillTone {
   if (isLoadingReport) return 'amber'
   if (report) return 'green'
   return 'slate'
@@ -108,16 +99,10 @@ export function reportPreviewEmptyDescription(datasetId: string, isLoadingReport
   return '点击“重新生成报告”拉取最新报告。'
 }
 
-export function filterReportFindings(
-  findings: ReportFinding[],
-  showOnlyIssues: boolean
-): ReportFinding[] {
+export function filterReportFindings(findings: ReportFinding[], showOnlyIssues: boolean): ReportFinding[] {
   if (!showOnlyIssues) return findings
   return findings.filter(
-    (item) =>
-      item.severity === 'warning' ||
-      item.severity === 'error' ||
-      safeNumber(item.count) > 0
+    (item) => item.severity === 'warning' || item.severity === 'error' || safeNumber(item.count) > 0,
   )
 }
 
@@ -129,7 +114,7 @@ export function countFindingsByPattern(rows: ReportFinding[], pattern: RegExp): 
 
 export function buildTopDocumentRows(
   folderBarData: ReportMetricDatum[],
-  byFileType: Record<string, number> | undefined
+  byFileType: Record<string, number> | undefined,
 ): ReportMetricDatum[] {
   const rows =
     folderBarData.length > 0
@@ -144,10 +129,7 @@ export function buildTopDocumentRows(
     .slice(0, 3)
 }
 
-export function buildIssueRows(
-  activeFindingRows: ReportFinding[],
-  connectorRuns: ReportConnectorRun[]
-): IssueRow[] {
+export function buildIssueRows(activeFindingRows: ReportFinding[], connectorRuns: ReportConnectorRun[]): IssueRow[] {
   return [
     ...activeFindingRows.map((item) => ({
       id: `finding-${item.key}`,
@@ -176,29 +158,25 @@ export function chunkStatsCoverage(report: DatasetReport | null, totalDocs: numb
       (report?.profile?.chunk_count_histogram || []).map((bin, index) => [
         `${bin.label || index}`,
         safeNumber(bin.count),
-      ])
-    )
+      ]),
+    ),
   )
   if (histogramCoverage) return histogramCoverage
-  if (
-    totalDocs > 0 &&
-    safeNumber(report?.profile?.chunk_count_percentiles?.p50) > 0
-  ) {
+  if (totalDocs > 0 && safeNumber(report?.profile?.chunk_count_percentiles?.p50) > 0) {
     return totalDocs
   }
   return 0
 }
 
-export function governanceAuditStatValue(
-  hasSamples: boolean,
-  value: number | undefined
-): string {
+export function governanceAuditStatValue(hasSamples: boolean, value: number | undefined): string {
   if (!hasSamples) return '待评估'
   return String(value || 0)
 }
 
 export function retrievalAuditStatusLabel(status: string | undefined): string {
-  const value = String(status || '').trim().toLowerCase()
+  const value = String(status || '')
+    .trim()
+    .toLowerCase()
   if (value === 'passed' || value === 'completed' || value === 'success') {
     return '通过'
   }
@@ -207,10 +185,10 @@ export function retrievalAuditStatusLabel(status: string | undefined): string {
   return '待评估'
 }
 
-export function retrievalAuditTone(
-  status: string | undefined
-): 'green' | 'amber' | 'rose' | 'slate' {
-  const value = String(status || '').trim().toLowerCase()
+export function retrievalAuditTone(status: string | undefined): 'green' | 'amber' | 'rose' | 'slate' {
+  const value = String(status || '')
+    .trim()
+    .toLowerCase()
   if (value === 'passed' || value === 'completed' || value === 'success') {
     return 'green'
   }
@@ -240,9 +218,7 @@ export function formatRetrievalAuditMetric(value: unknown): string {
   return '-'
 }
 
-export function retrievalAuditMetricRows(
-  retrievalAudit: RetrievalAudit | null | undefined
-): RetrievalAuditMetricRow[] {
+export function retrievalAuditMetricRows(retrievalAudit: RetrievalAudit | null | undefined): RetrievalAuditMetricRow[] {
   const fields = [
     ['hit_at_1', 'hit@1'],
     ['hit_at_3', 'hit@3'],
@@ -268,15 +244,11 @@ export function retrievalAuditMetricRows(
   return rows
 }
 
-export function retrievalAuditFailureText(
-  retrievalAudit: RetrievalAudit | null | undefined
-): string {
+export function retrievalAuditFailureText(retrievalAudit: RetrievalAudit | null | undefined): string {
   const categories = retrievalAudit?.failure_categories || {}
   const entries = Object.entries(categories).filter(([, value]) => Number(value) > 0)
   if (!entries.length) {
-    return retrievalAudit?.status === 'failed' || retrievalAudit?.status === 'error'
-      ? '待归因'
-      : '无异常'
+    return retrievalAudit?.status === 'failed' || retrievalAudit?.status === 'error' ? '待归因' : '无异常'
   }
   const labels: Record<string, string> = {
     scope: '范围',
@@ -289,17 +261,16 @@ export function retrievalAuditFailureText(
   return entries.map(([key, value]) => `${labels[key] || key} ${value}`).join(' / ')
 }
 
-export function retrievalAuditHashText(
-  retrievalAudit: RetrievalAudit | null | undefined
-): string {
+export function retrievalAuditHashText(retrievalAudit: RetrievalAudit | null | undefined): string {
   const hashes = retrievalAudit?.plugin_package_hashes || []
   if (!hashes.length) return '未绑定'
-  return hashes.map((hash) => shortPipelineHash(hash)).slice(0, 2).join(' / ')
+  return hashes
+    .map((hash) => shortPipelineHash(hash))
+    .slice(0, 2)
+    .join(' / ')
 }
 
-export function retrievalAuditKgRecommendationText(
-  retrievalAudit: RetrievalAudit | null | undefined
-): string {
+export function retrievalAuditKgRecommendationText(retrievalAudit: RetrievalAudit | null | undefined): string {
   const recommendation = retrievalAudit?.kg_recommendation || ''
   const labels: Record<string, string> = {
     full_kg_assist: '可启用完整 KG',

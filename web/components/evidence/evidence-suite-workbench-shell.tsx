@@ -3,7 +3,14 @@
 import { Loader2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { TagInput } from '@/components/ui/tag-input'
@@ -161,7 +168,8 @@ export function EvidenceSuiteWorkbenchShell({
             <div className="space-y-1">
               <div className="text-sm font-semibold text-foreground">导入待处理反馈</div>
               <div className="text-xs text-muted-foreground text-pretty">
-                当前链接携带了一个待处理的 <span className="font-mono">feedback_id</span>。确认目标 suite 后，可直接导入为 draft EvidenceItem。
+                当前链接携带了一个待处理的 <span className="font-mono">feedback_id</span>。确认目标 suite
+                后，可直接导入为 draft EvidenceItem。
               </div>
               <div className="text-[11px] font-mono text-foreground/80">feedback_id={pendingFeedbackId}</div>
             </div>
@@ -179,7 +187,7 @@ export function EvidenceSuiteWorkbenchShell({
                         source: 'chat_feedback_action',
                       })
                       if (createdId) setPendingFeedbackId('')
-                    })()
+                    })(),
                   )
                 }}
               >
@@ -310,7 +318,9 @@ export function EvidenceSuiteWorkbenchShell({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>新建 Evidence Suite</DialogTitle>
-            <DialogDescription className="text-pretty">Suite 用于组织证据 Items，并作为“同步到回归”的单位。</DialogDescription>
+            <DialogDescription className="text-pretty">
+              Suite 用于组织证据 Items，并作为“同步到回归”的单位。
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">
@@ -344,7 +354,9 @@ export function EvidenceSuiteWorkbenchShell({
               取消
             </Button>
             <Button onClick={() => detachPromise(handleCreateSuite())} disabled={creatingSuite || !suiteName.trim()}>
-              {creatingSuite ? <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}
+              {creatingSuite ? (
+                <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+              ) : null}
               创建
             </Button>
           </DialogFooter>

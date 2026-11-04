@@ -27,17 +27,15 @@ describe('chatApi.streamChat', () => {
           'X-Request-ID': 'req-stream-1',
           'X-Conversation-ID': 'conv-stream-1',
         },
-      })
+      }),
     ) as typeof fetch
 
     const onOpen = vi.fn()
     const events: string[] = []
 
-    const result = await chatApi.streamChat(
-      { message: 'hello', stream: true } as any,
-      (json) => events.push(json),
-      { onOpen }
-    )
+    const result = await chatApi.streamChat({ message: 'hello', stream: true } as any, (json) => events.push(json), {
+      onOpen,
+    })
 
     expect(onOpen).toHaveBeenCalledWith({
       requestId: 'req-stream-1',

@@ -39,8 +39,12 @@ describe('history route source', () => {
 
     expect(client).toContain('<time')
     expect(client).toContain('suppressHydrationWarning')
-    expect(client).toContain('dateTime={conversation.last_message_at || conversation.updated_at || conversation.created_at}')
-    expect(client).toContain("formatRelativeTime(conversation.last_message_at || conversation.updated_at, locale, t('justNow'))")
+    expect(client).toContain(
+      'dateTime={conversation.last_message_at || conversation.updated_at || conversation.created_at}',
+    )
+    expect(client).toContain(
+      "formatRelativeTime(conversation.last_message_at || conversation.updated_at, locale, t('justNow'))",
+    )
   })
 
   it('suppresses hydration drift for message-group date labels in the active conversation pane', () => {

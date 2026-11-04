@@ -38,11 +38,14 @@ function persistParserBackend(value: string) {
   writeClientStorage(PARSER_STORAGE_KEY, value)
 }
 
-export const DropZone = React.forwardRef<DropZoneHandle, {
-  datasetId: string | null
-  precheckOnly?: boolean
-  onUploadComplete: () => void
-}>(({ datasetId, precheckOnly: defaultPrecheckOnly = false, onUploadComplete }, ref) => {
+export const DropZone = React.forwardRef<
+  DropZoneHandle,
+  {
+    datasetId: string | null
+    precheckOnly?: boolean
+    onUploadComplete: () => void
+  }
+>(({ datasetId, precheckOnly: defaultPrecheckOnly = false, onUploadComplete }, ref) => {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const dragCounterRef = useRef(0)
   const uploadModeRef = useRef(defaultPrecheckOnly)
@@ -69,48 +72,52 @@ export const DropZone = React.forwardRef<DropZoneHandle, {
     setDialogPrecheckOnly(defaultPrecheckOnly)
   }, [defaultPrecheckOnly])
 
-  const uploadFiles = React.useCallback(async (
-    files: File[],
-    options?: { precheckOnly?: boolean }
-  ) => {
-    if (!files.length) return
-    const precheckOnly = options?.precheckOnly ?? uploadModeRef.current
-    const response = await documentApi.uploadBatch(files, {
-      dataset_id: datasetId || selectedDatasetId || undefined,
-      parser_backend: parserBackend,
-      chunk_strategy: 'langchain_recursive',
-      precheck_only: precheckOnly,
-      max_concurrent: 4,
-    })
-    persistParserBackend(parserBackend)
-    if (response.failed_count > 0) {
-      response.failed?.forEach((item) => toast.error(`${item.filename}: ${item.error || '上传失败'}`))
-    }
-    const successLabel = precheckOnly ? '评估完成' : '上传完成'
-    toast.success(`${successLabel}：成功 ${response.successful_count} / 失败 ${response.failed_count}`)
-    onUploadComplete()
-  }, [datasetId, onUploadComplete, parserBackend, selectedDatasetId])
-
-  React.useImperativeHandle(ref, () => ({
-    triggerFilePicker: (options?: { precheckOnly?: boolean }) => {
-      uploadModeRef.current = options?.precheckOnly ?? defaultPrecheckOnly
-      setDialogPrecheckOnly(uploadModeRef.current)
-      inputRef.current?.click()
+  const uploadFiles = React.useCallback(
+    async (files: File[], options?: { precheckOnly?: boolean }) => {
+      if (!files.length) return
+      const precheckOnly = options?.precheckOnly ?? uploadModeRef.current
+      const response = await documentApi.uploadBatch(files, {
+        dataset_id: datasetId || selectedDatasetId || undefined,
+        parser_backend: parserBackend,
+        chunk_strategy: 'langchain_recursive',
+        precheck_only: precheckOnly,
+        max_concurrent: 4,
+      })
+      persistParserBackend(parserBackend)
+      if (response.failed_count > 0) {
+        response.failed?.forEach((item) => toast.error(`${item.filename}: ${item.error || '上传失败'}`))
+      }
+      const successLabel = precheckOnly ? '评估完成' : '上传完成'
+      toast.success(`${successLabel}：成功 ${response.successful_count} / 失败 ${response.failed_count}`)
+      onUploadComplete()
     },
-    uploadFiles: async (files: File[]) => uploadFiles(files),
-  }), [defaultPrecheckOnly, uploadFiles])
+    [datasetId, onUploadComplete, parserBackend, selectedDatasetId],
+  )
+
+  React.useImperativeHandle(
+    ref,
+    () => ({
+      triggerFilePicker: (options?: { precheckOnly?: boolean }) => {
+        uploadModeRef.current = options?.precheckOnly ?? defaultPrecheckOnly
+        setDialogPrecheckOnly(uploadModeRef.current)
+        inputRef.current?.click()
+      },
+      uploadFiles: async (files: File[]) => uploadFiles(files),
+    }),
+    [defaultPrecheckOnly, uploadFiles],
+  )
 
   React.useEffect(() => {
     const handleDragEnter = (event: DragEvent) => {
       dragCounterRef.current += 1
       setOverlayVisible(true)
-      setInvalidDrop(!(event.dataTransfer?.types.includes('Files')))
+      setInvalidDrop(!event.dataTransfer?.types.includes('Files'))
     }
 
     const handleDragOver = (event: DragEvent) => {
       event.preventDefault()
       setOverlayVisible(true)
-      setInvalidDrop(!(event.dataTransfer?.types.includes('Files')))
+      setInvalidDrop(!event.dataTransfer?.types.includes('Files'))
     }
 
     const handleDragLeave = () => {
@@ -182,7 +189,9 @@ export const DropZone = React.forwardRef<DropZoneHandle, {
               {invalidDrop ? '仅支持文件' : defaultPrecheckOnly ? '拖入文件以开始评估' : '拖入文件以上传'}
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
-              {invalidDrop ? '请放下本地文件，而不是链接或其它拖拽内容。' : `拖入 ${fileCount || '若干'} 个文件后即可开始上传。`}
+              {invalidDrop
+                ? '请放下本地文件，而不是链接或其它拖拽内容。'
+                : `拖入 ${fileCount || '若干'} 个文件后即可开始上传。`}
             </p>
           </div>
         </div>

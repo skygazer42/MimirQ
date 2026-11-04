@@ -99,10 +99,7 @@ export function ParserDropdown({
   const selectedOption = getParserOption(value)
   const SelectedIcon = ICON_MAP[selectedOption.icon]
   const selectedColor = COLOR_MAP[selectedOption.icon]
-  const resolvedSelectedColor =
-    surface === 'ocean'
-      ? { bg: 'bg-info/[0.08]', text: 'text-info' }
-      : selectedColor
+  const resolvedSelectedColor = surface === 'ocean' ? { bg: 'bg-info/[0.08]', text: 'text-info' } : selectedColor
 
   const paddleVlVersionBadge = useMemo(() => {
     if (!isPaddleVlAvailable) return null
@@ -137,16 +134,14 @@ export function ParserDropdown({
         className={cn(
           'w-full flex items-center border transition-colors duration-150 motion-reduce:transition-none',
           compact ? 'gap-2 px-2.5 py-1.5 rounded-full' : 'gap-2.5 px-2.5 py-2 rounded-xl',
-          surface === 'ocean'
-            ? 'bg-info/[0.045] hover:bg-info/[0.075]'
-            : 'bg-card hover:bg-muted',
+          surface === 'ocean' ? 'bg-info/[0.045] hover:bg-info/[0.075]' : 'bg-card hover:bg-muted',
           isOpen
             ? surface === 'ocean'
               ? 'border-info/35 ring-2 ring-info/10'
               : 'border-primary/30 ring-2 ring-primary/10'
             : surface === 'ocean'
               ? 'border-info/20 hover:border-info/30'
-              : 'border-border hover:border-border'
+              : 'border-border hover:border-border',
         )}
       >
         <div className={cn(compact ? 'rounded-md p-1' : 'rounded-md p-1.5', resolvedSelectedColor.bg)}>
@@ -161,9 +156,7 @@ export function ParserDropdown({
               <span
                 className={cn(
                   'rounded px-1.5 py-px text-[9px] font-medium leading-4',
-                  surface === 'ocean'
-                    ? 'bg-info/[0.08] text-info'
-                    : 'bg-primary/10 text-primary'
+                  surface === 'ocean' ? 'bg-info/[0.08] text-info' : 'bg-primary/10 text-primary',
                 )}
               >
                 {selectedOption.badge}
@@ -180,10 +173,7 @@ export function ParserDropdown({
           )}
         </div>
         <ChevronDown
-          className={cn(
-            'size-3.5 text-muted-foreground transition-transform flex-shrink-0',
-            isOpen && 'rotate-180'
-          )}
+          className={cn('size-3.5 text-muted-foreground transition-transform flex-shrink-0', isOpen && 'rotate-180')}
         />
       </button>
 
@@ -195,7 +185,7 @@ export function ParserDropdown({
             surface === 'ocean'
               ? 'rounded-lg border-info/30 bg-[linear-gradient(hsl(var(--info)/0.10),hsl(var(--info)/0.10)),linear-gradient(hsl(var(--popover)),hsl(var(--popover)))] text-popover-foreground shadow-strong'
               : 'rounded-2xl border-border bg-card shadow-strong',
-            compact ? 'right-0 w-[min(420px,calc(100vw-2rem))]' : 'w-full min-w-[360px]'
+            compact ? 'right-0 w-[min(420px,calc(100vw-2rem))]' : 'w-full min-w-[360px]',
           )}
         >
           {(loading || error) && (
@@ -204,7 +194,7 @@ export function ParserDropdown({
                 'px-3 py-2 text-xs border-b',
                 error
                   ? 'bg-destructive/10 text-destructive border-destructive/25'
-                  : 'bg-muted text-muted-foreground border-border'
+                  : 'bg-muted text-muted-foreground border-border',
               )}
             >
               <div className="flex items-start justify-between gap-2">
@@ -234,22 +224,20 @@ export function ParserDropdown({
             {PARSER_BACKEND_OPTIONS.map((option) => {
               const Icon = ICON_MAP[option.icon]
               const color = COLOR_MAP[option.icon]
-              const resolvedColor =
-                surface === 'ocean'
-                  ? { bg: 'bg-info/[0.08]', text: 'text-info' }
-                  : color
+              const resolvedColor = surface === 'ocean' ? { bg: 'bg-info/[0.08]', text: 'text-info' } : color
               const isSelected = option.value === selectedOption.value
               const availability = parserBackendAvailable(option.value)
               const isDisabledByFile =
                 Boolean(filename) &&
                 option.value !== 'auto' &&
                 resolveParserBackendForFilename(filename || '', option.value).backend !== option.value
-              const isDisabledByCapabilities = option.value !== 'auto' && option.value !== 'basic' && availability !== true
+              const isDisabledByCapabilities =
+                option.value !== 'auto' && option.value !== 'basic' && availability !== true
               const isDisabled = isDisabledByFile || isDisabledByCapabilities
               const notes = parserNotesByName.get(normalizeParserBackendName(option.value))
               const disabledTitle = isDisabledByFile
                 ? '该文件类型不支持此解析器'
-                : (notes || '后端未启用该解析器（可到“设置”开启/配置）')
+                : notes || '后端未启用该解析器（可到“设置”开启/配置）'
               const disabledLabel = isDisabledByFile ? '不适用' : '未启用'
 
               return (
@@ -266,9 +254,13 @@ export function ParserDropdown({
                   className={cn(
                     'w-full flex items-center gap-3 px-3 py-2.5 transition-colors',
                     isSelected
-                      ? surface === 'ocean' ? 'bg-info/[0.10]' : 'bg-primary/10'
-                      : surface === 'ocean' ? 'hover:bg-info/[0.06]' : 'hover:bg-muted',
-                    isDisabled && 'opacity-50 cursor-not-allowed hover:bg-transparent'
+                      ? surface === 'ocean'
+                        ? 'bg-info/[0.10]'
+                        : 'bg-primary/10'
+                      : surface === 'ocean'
+                        ? 'hover:bg-info/[0.06]'
+                        : 'hover:bg-muted',
+                    isDisabled && 'opacity-50 cursor-not-allowed hover:bg-transparent',
                   )}
                 >
                   <div className={cn('p-1.5 rounded-lg', resolvedColor.bg)}>
@@ -279,9 +271,7 @@ export function ParserDropdown({
                       <span
                         className={cn(
                           'text-sm font-medium truncate',
-                          isSelected
-                            ? surface === 'ocean' ? 'text-info' : 'text-primary'
-                            : 'text-foreground'
+                          isSelected ? (surface === 'ocean' ? 'text-info' : 'text-primary') : 'text-foreground',
                         )}
                       >
                         {option.label}
@@ -296,7 +286,7 @@ export function ParserDropdown({
                                 : 'bg-primary/10 text-primary'
                               : surface === 'ocean'
                                 ? 'bg-info/[0.04] text-muted-foreground'
-                                : 'bg-muted text-muted-foreground'
+                                : 'bg-muted text-muted-foreground',
                           )}
                         >
                           {option.badge}
@@ -306,9 +296,7 @@ export function ParserDropdown({
                         <span
                           className={cn(
                             'text-[11px] font-medium px-1.5 py-0.5 rounded',
-                            isSelected
-                              ? 'bg-success/10 text-success'
-                              : 'bg-success/8 text-success'
+                            isSelected ? 'bg-success/10 text-success' : 'bg-success/8 text-success',
                           )}
                         >
                           {paddleVlVersionBadge}
@@ -323,12 +311,7 @@ export function ParserDropdown({
                     </span>
                   )}
                   {isSelected && (
-                    <Check
-                      className={cn(
-                        'size-4 flex-shrink-0',
-                        surface === 'ocean' ? 'text-info' : 'text-primary'
-                      )}
-                    />
+                    <Check className={cn('size-4 flex-shrink-0', surface === 'ocean' ? 'text-info' : 'text-primary')} />
                   )}
                 </button>
               )

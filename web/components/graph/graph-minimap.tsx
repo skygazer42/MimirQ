@@ -129,12 +129,7 @@ export function GraphMinimap({
     let zoom = 1
     try {
       const currentCenter = g.centerAt?.()
-      if (
-        currentCenter &&
-        typeof currentCenter === 'object' &&
-        'x' in currentCenter &&
-        'y' in currentCenter
-      ) {
+      if (currentCenter && typeof currentCenter === 'object' && 'x' in currentCenter && 'y' in currentCenter) {
         center = {
           x: safeNumber(currentCenter.x, center.x),
           y: safeNumber(currentCenter.y, center.y),
@@ -208,16 +203,11 @@ export function GraphMinimap({
         g.centerAt?.(tx, ty, 400)
       } catch {}
     },
-    [graphRef, nodePositions]
+    [graphRef, nodePositions],
   )
 
   return (
-    <div
-      className={cn(
-        'rounded-xl border border-border/50 bg-card/60 shadow-sm backdrop-blur-sm',
-        className
-      )}
-    >
+    <div className={cn('rounded-xl border border-border/50 bg-card/60 shadow-sm backdrop-blur-sm', className)}>
       <canvas
         ref={canvasRef}
         width={width}

@@ -31,7 +31,14 @@ type NodeMeta = {
   json?: unknown
 }
 
-function makeNode(id: string, label: string, configured: boolean, json: unknown, summary: string[] = [], color?: string): GraphNode {
+function makeNode(
+  id: string,
+  label: string,
+  configured: boolean,
+  json: unknown,
+  summary: string[] = [],
+  color?: string,
+): GraphNode {
   return {
     id,
     label,
@@ -93,7 +100,7 @@ export function buildDatasetConfigGraph(config: object): GraphData {
       default_parser_backend: cfg.default_parser_backend ?? null,
       default_chunk_strategy: cfg.default_chunk_strategy ?? null,
     },
-    withSummary([`parser_backend: ${formatInherit(parserBackend)}`, `chunk_strategy: ${formatInherit(chunkStrategy)}`])
+    withSummary([`parser_backend: ${formatInherit(parserBackend)}`, `chunk_strategy: ${formatInherit(chunkStrategy)}`]),
   )
 
   // Pipeline (and sub-blocks)
@@ -103,7 +110,9 @@ export function buildDatasetConfigGraph(config: object): GraphData {
     'Pipeline',
     isNonEmptyObject(pipeline),
     pipeline,
-    withSummary([pipeline ? `governance_enabled: ${String(!!pipeline.governance_enabled)}` : 'governance_enabled: (inherit)'])
+    withSummary([
+      pipeline ? `governance_enabled: ${String(!!pipeline.governance_enabled)}` : 'governance_enabled: (inherit)',
+    ]),
   )
 
   if (isNonEmptyObject(pipeline)) {
@@ -114,11 +123,16 @@ export function buildDatasetConfigGraph(config: object): GraphData {
         'Governance',
         true,
         Object.fromEntries(Object.entries(pipeline).filter(([k]) => k.startsWith('governance_'))),
-        withSummary([`rules: ${truthyCount(pipeline, 'governance_')}`])
+        withSummary([`rules: ${truthyCount(pipeline, 'governance_')}`]),
       )
     }
 
-    const chunkConfigured = ['chunk_size', 'chunk_overlap', 'chunk_merge_small_min_chars', 'chunk_strategy_params'].some((k) => pipeline[k] != null)
+    const chunkConfigured = [
+      'chunk_size',
+      'chunk_overlap',
+      'chunk_merge_small_min_chars',
+      'chunk_strategy_params',
+    ].some((k) => pipeline[k] != null)
     if (chunkConfigured) {
       addSub('pipeline_chunking', 'Chunking', true, {
         chunk_size: pipeline.chunk_size ?? null,
@@ -151,7 +165,7 @@ export function buildDatasetConfigGraph(config: object): GraphData {
         'pipeline_tables',
         'Tables / TAG',
         true,
-        Object.fromEntries(Object.entries(pipeline).filter(([k]) => k.startsWith('table_store_')))
+        Object.fromEntries(Object.entries(pipeline).filter(([k]) => k.startsWith('table_store_'))),
       )
     }
   }
@@ -165,7 +179,7 @@ export function buildDatasetConfigGraph(config: object): GraphData {
     'Ingestion Policy',
     isNonEmptyObject(ingestionPolicy),
     ingestionPolicy,
-    withSummary([typeof policyRuleCount === 'number' ? `rules: ${policyRuleCount}` : 'rules: (none)'])
+    withSummary([typeof policyRuleCount === 'number' ? `rules: ${policyRuleCount}` : 'rules: (none)']),
   )
 
   // RAG defaults
@@ -182,7 +196,7 @@ export function buildDatasetConfigGraph(config: object): GraphData {
     'prompt_defaults',
     'Prompt Defaults',
     Object.values(promptDefaults).some((v) => v != null && toTrimmedPrimitiveString(v)),
-    promptDefaults
+    promptDefaults,
   )
 
   // Optional nodes (backend may include these even if web TS types don't yet)

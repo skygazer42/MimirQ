@@ -32,12 +32,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { connectorApi, datasetApi, documentApi, settingsApi } from '@/lib/api'
@@ -277,10 +272,7 @@ function normalizeListText(value: string) {
     .filter(Boolean)
 }
 
-function getSelectOptionTitle<T extends string>(
-  options: Array<SelectOption<T>>,
-  value: T
-) {
+function getSelectOptionTitle<T extends string>(options: Array<SelectOption<T>>, value: T) {
   return options.find((option) => option.value === value)?.title ?? value
 }
 
@@ -296,18 +288,14 @@ function SelectOptionBody({
   return (
     <span className="flex min-w-0 flex-col gap-0.5">
       <span className="flex min-w-0 items-center gap-2">
-        <span className="truncate text-[13px] font-semibold leading-4 text-foreground">
-          {title}
-        </span>
+        <span className="truncate text-[13px] font-semibold leading-4 text-foreground">{title}</span>
         {badge ? (
           <span className="shrink-0 rounded-full border border-primary/18 bg-primary/[0.07] px-1.5 py-0.5 text-[9px] font-medium leading-none text-primary">
             {badge}
           </span>
         ) : null}
       </span>
-      <span className="line-clamp-2 text-[10px] leading-4 text-muted-foreground/68">
-        {description}
-      </span>
+      <span className="line-clamp-2 text-[10px] leading-4 text-muted-foreground/68">{description}</span>
     </span>
   )
 }
@@ -315,12 +303,8 @@ function SelectOptionBody({
 function DatasetOptionBody({ dataset }: Readonly<{ dataset: Dataset }>) {
   return (
     <span className="flex min-w-0 flex-col gap-0.5">
-      <span className="truncate text-[13px] font-semibold leading-4 text-foreground">
-        {dataset.name}
-      </span>
-      <span className="font-mono text-[10px] leading-4 text-muted-foreground/58">
-        ID {datasetShortId(dataset)}
-      </span>
+      <span className="truncate text-[13px] font-semibold leading-4 text-foreground">{dataset.name}</span>
+      <span className="font-mono text-[10px] leading-4 text-muted-foreground/58">ID {datasetShortId(dataset)}</span>
     </span>
   )
 }
@@ -363,7 +347,7 @@ function collectFolderPaths(root?: DocumentFolderNode | null): string[] {
 function collectCollectionOptions(
   root: DocumentFolderNode | null | undefined,
   files: File[],
-  currentCollection: string
+  currentCollection: string,
 ): string[] {
   const options = new Set<string>([DEFAULT_COLLECTION])
   for (const path of collectFolderPaths(root)) options.add(path)
@@ -508,7 +492,7 @@ export default function KnowledgeIngestionOperationPage() {
 
   const selectedDataset = useMemo(
     () => datasets.find((dataset) => dataset.id === draft.datasetId) ?? null,
-    [datasets, draft.datasetId]
+    [datasets, draft.datasetId],
   )
   const activeFileBucketKey = draft.datasetId || NO_DATASET_FILE_BUCKET
   const files = filesByDatasetId[activeFileBucketKey] ?? EMPTY_FILES
@@ -567,13 +551,10 @@ export default function KnowledgeIngestionOperationPage() {
     staleTime: 10_000,
   })
 
-  const tagOptions = useMemo(
-    () => collectTagOptions(documents, draft.tags),
-    [documents, draft.tags]
-  )
+  const tagOptions = useMemo(() => collectTagOptions(documents, draft.tags), [documents, draft.tags])
   const collectionOptions = useMemo(
     () => collectCollectionOptions(foldersQuery.data?.root, files, draft.collection),
-    [draft.collection, files, foldersQuery.data?.root]
+    [draft.collection, files, foldersQuery.data?.root],
   )
 
   const settingsQuery = useQuery({
@@ -584,10 +565,7 @@ export default function KnowledgeIngestionOperationPage() {
 
   const urlIngestEnabled = Boolean(settingsQuery.data?.url_ingest?.enabled)
 
-  const selectedTotalBytes = useMemo(
-    () => files.reduce((sum, file) => sum + file.size, 0),
-    [files]
-  )
+  const selectedTotalBytes = useMemo(() => files.reduce((sum, file) => sum + file.size, 0), [files])
 
   const parsedUrls = useMemo(() => parseUrlList(urlList), [urlList])
   const parsedObjectExtensions = useMemo(() => parseExtensions(objectExtensions), [objectExtensions])
@@ -600,14 +578,13 @@ export default function KnowledgeIngestionOperationPage() {
 
   const connectorSourceBlocked = (source === 'url' || source === 'object') && !urlIngestEnabled
   const canStartIngest =
-    Boolean(draft.datasetId) &&
-    status !== 'uploading' &&
-    pendingSourceCount > 0 &&
-    !connectorSourceBlocked
+    Boolean(draft.datasetId) && status !== 'uploading' && pendingSourceCount > 0 && !connectorSourceBlocked
 
   const totalDocuments = ingestionStats?.total_documents ?? documents.length
-  const totalChunks = ingestionStats?.total_chunks ?? documents.reduce((sum, item) => sum + Number(item.chunk_count || 0), 0)
-  const datasetTotalBytes = ingestionStats?.total_size ?? documents.reduce((sum, item) => sum + Number(item.file_size || 0), 0)
+  const totalChunks =
+    ingestionStats?.total_chunks ?? documents.reduce((sum, item) => sum + Number(item.chunk_count || 0), 0)
+  const datasetTotalBytes =
+    ingestionStats?.total_size ?? documents.reduce((sum, item) => sum + Number(item.file_size || 0), 0)
 
   const fileRows = useMemo(
     () =>
@@ -615,48 +592,54 @@ export default function KnowledgeIngestionOperationPage() {
         const Icon = getFileIcon(file)
         return { file, Icon, key: fileKey(file) }
       }),
-    [files]
+    [files],
   )
   const activeSource = SOURCE_OPTIONS.find((item) => item.value === source) ?? SOURCE_OPTIONS[0]
 
-  const updateDraft = useCallback(<K extends keyof DraftState>(key: K, value: DraftState[K]) => {
-    if ((key === 'tags' || key === 'collection') && draft.datasetId) {
-      setDatasetIngestContextById((current) => {
-        const previous = current[draft.datasetId] ?? {
-          tags: DEFAULT_DRAFT.tags,
-          collection: DEFAULT_COLLECTION,
-        }
+  const updateDraft = useCallback(
+    <K extends keyof DraftState>(key: K, value: DraftState[K]) => {
+      if ((key === 'tags' || key === 'collection') && draft.datasetId) {
+        setDatasetIngestContextById((current) => {
+          const previous = current[draft.datasetId] ?? {
+            tags: DEFAULT_DRAFT.tags,
+            collection: DEFAULT_COLLECTION,
+          }
+          return {
+            ...current,
+            [draft.datasetId]: {
+              ...previous,
+              [key]: String(value || ''),
+            },
+          }
+        })
+      }
+      setDraft((current) => ({ ...current, [key]: value }))
+    },
+    [draft.datasetId],
+  )
+
+  const addFiles = useCallback(
+    (incoming: File[]) => {
+      const supported = incoming.filter((file) => {
+        const lower = file.name.toLowerCase()
+        return ACCEPTED_EXTENSIONS.some((ext) => lower.endsWith(ext))
+      })
+      const rejected = incoming.length - supported.length
+      setFilesByDatasetId((current) => {
+        const activeFiles = current[activeFileBucketKey] ?? []
+        const byKey = new Map(activeFiles.map((file) => [fileKey(file), file]))
+        for (const file of supported) byKey.set(fileKey(file), file)
         return {
           ...current,
-          [draft.datasetId]: {
-            ...previous,
-            [key]: String(value || ''),
-          },
+          [activeFileBucketKey]: Array.from(byKey.values()),
         }
       })
-    }
-    setDraft((current) => ({ ...current, [key]: value }))
-  }, [draft.datasetId])
-
-  const addFiles = useCallback((incoming: File[]) => {
-    const supported = incoming.filter((file) => {
-      const lower = file.name.toLowerCase()
-      return ACCEPTED_EXTENSIONS.some((ext) => lower.endsWith(ext))
-    })
-    const rejected = incoming.length - supported.length
-    setFilesByDatasetId((current) => {
-      const activeFiles = current[activeFileBucketKey] ?? []
-      const byKey = new Map(activeFiles.map((file) => [fileKey(file), file]))
-      for (const file of supported) byKey.set(fileKey(file), file)
-      return {
-        ...current,
-        [activeFileBucketKey]: Array.from(byKey.values()),
+      if (rejected > 0) {
+        toast.warning(`${rejected} 个文件格式未在允许列表中，已跳过`)
       }
-    })
-    if (rejected > 0) {
-      toast.warning(`${rejected} 个文件格式未在允许列表中，已跳过`)
-    }
-  }, [activeFileBucketKey])
+    },
+    [activeFileBucketKey],
+  )
 
   const clearFiles = useCallback(() => {
     setFilesByDatasetId((current) => ({
@@ -667,12 +650,15 @@ export default function KnowledgeIngestionOperationPage() {
     setStatus('idle')
   }, [activeFileBucketKey])
 
-  const removeFile = useCallback((key: string) => {
-    setFilesByDatasetId((current) => ({
-      ...current,
-      [activeFileBucketKey]: (current[activeFileBucketKey] ?? []).filter((file) => fileKey(file) !== key),
-    }))
-  }, [activeFileBucketKey])
+  const removeFile = useCallback(
+    (key: string) => {
+      setFilesByDatasetId((current) => ({
+        ...current,
+        [activeFileBucketKey]: (current[activeFileBucketKey] ?? []).filter((file) => fileKey(file) !== key),
+      }))
+    },
+    [activeFileBucketKey],
+  )
 
   const submitConnectorRun = useCallback(async () => {
     if (!draft.datasetId) {
@@ -847,7 +833,7 @@ export default function KnowledgeIngestionOperationPage() {
                 ingest_mode: draft.ingestMode,
                 source,
               },
-            ])
+            ]),
           ),
         }
         const response = await documentApi.uploadBatch(files, uploadOptions)
@@ -857,7 +843,7 @@ export default function KnowledgeIngestionOperationPage() {
         toast.success(
           mode === 'upload_only'
             ? `已登记到知识库：成功 ${response.successful_count} / 失败 ${response.failed_count}`
-            : `入库任务已提交：成功 ${response.successful_count} / 失败 ${response.failed_count}`
+            : `入库任务已提交：成功 ${response.successful_count} / 失败 ${response.failed_count}`,
         )
         if (response.successful_count > 0 && shouldOpenExecutionMonitor(draft, mode)) {
           router.push('/knowledge/ingestion?mode=execution-monitor')
@@ -867,7 +853,19 @@ export default function KnowledgeIngestionOperationPage() {
         toast.error(formatApiError(error, '入库任务提交失败'))
       }
     },
-    [apiContent, apiFilename, documentsQuery, draft, files, foldersQuery, ingestionStatsQuery, parsedUrls.length, router, source, submitConnectorRun]
+    [
+      apiContent,
+      apiFilename,
+      documentsQuery,
+      draft,
+      files,
+      foldersQuery,
+      ingestionStatsQuery,
+      parsedUrls.length,
+      router,
+      source,
+      submitConnectorRun,
+    ],
   )
 
   const sourceConfigurationProps = {
@@ -895,15 +893,10 @@ export default function KnowledgeIngestionOperationPage() {
   }
 
   const activeStageCount =
-    draft.executionMode === 'upload_only'
-      ? 1
-      : draft.executionMode === 'parse_only'
-        ? 2
-        : OPERATION_STAGES.length
+    draft.executionMode === 'upload_only' ? 1 : draft.executionMode === 'parse_only' ? 2 : OPERATION_STAGES.length
   const ActiveSourceIcon = activeSource.icon
   const sourceExecutionBlocked =
-    draft.executionMode === 'upload_only' &&
-    (source === 'url' || source === 'object' || source === 'api')
+    draft.executionMode === 'upload_only' && (source === 'url' || source === 'object' || source === 'api')
   const operationReady = canStartIngest && !sourceExecutionBlocked
   const actionLabel =
     draft.executionMode === 'upload_only'
@@ -937,18 +930,10 @@ export default function KnowledgeIngestionOperationPage() {
   return (
     <div
       data-ingestion-operation-root="true"
-      className={cn(
-        'flex h-full min-h-0 overflow-y-auto px-3 py-2.5 text-foreground',
-        OPERATION_BACKGROUND_CLASS
-      )}
+      className={cn('flex h-full min-h-0 overflow-y-auto px-3 py-2.5 text-foreground', OPERATION_BACKGROUND_CLASS)}
     >
       <div className="mx-auto min-h-full w-full max-w-[1680px]">
-        <div
-          className={cn(
-            'grid min-h-14 min-w-0 xl:grid-cols-[minmax(0,1fr)_auto]',
-            OPERATION_HERO_PANEL_CLASS
-          )}
-        >
+        <div className={cn('grid min-h-14 min-w-0 xl:grid-cols-[minmax(0,1fr)_auto]', OPERATION_HERO_PANEL_CLASS)}>
           <span className="pointer-events-none absolute -bottom-px left-1 h-px w-12 bg-info/70" aria-hidden="true" />
           <div className="relative flex min-w-0 items-center gap-2.5">
             <div className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-md bg-info/10 text-info shadow-none">
@@ -958,9 +943,7 @@ export default function KnowledgeIngestionOperationPage() {
               <h1 className="shrink-0 whitespace-nowrap text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground">
                 入库管理
               </h1>
-              <p className="text-[12px] leading-5 text-muted-foreground/85">
-                选择目标和来源，确认执行路径后提交。
-              </p>
+              <p className="text-[12px] leading-5 text-muted-foreground/85">选择目标和来源，确认执行路径后提交。</p>
             </div>
           </div>
           <div className="flex min-w-[360px] items-center justify-end gap-2 border-t border-border/60 p-2 xl:border-t-0">
@@ -980,9 +963,7 @@ export default function KnowledgeIngestionOperationPage() {
 
         <div
           data-ingestion-operation-workspace="true"
-          className={cn(
-            'grid min-h-[calc(100vh-6.5rem)] xl:grid-cols-[300px_minmax(0,1fr)]'
-          )}
+          className={cn('grid min-h-[calc(100vh-6.5rem)] xl:grid-cols-[300px_minmax(0,1fr)]')}
         >
           <aside
             data-ingestion-context-panel="true"
@@ -991,8 +972,14 @@ export default function KnowledgeIngestionOperationPage() {
           >
             <section className="border-b border-border/70 px-5 py-4">
               <div className="flex items-center justify-between gap-3">
-                <label htmlFor="ingestion-dataset" className="text-[13px] font-semibold">目标数据集</label>
-                <Button variant="ghost" className="h-7 rounded-md px-2 text-[11px] text-muted-foreground" onClick={() => router.push('/datasets')}>
+                <label htmlFor="ingestion-dataset" className="text-[13px] font-semibold">
+                  目标数据集
+                </label>
+                <Button
+                  variant="ghost"
+                  className="h-7 rounded-md px-2 text-[11px] text-muted-foreground"
+                  onClick={() => router.push('/datasets')}
+                >
                   <Plus className="size-3.5" />
                   新建
                 </Button>
@@ -1005,7 +992,12 @@ export default function KnowledgeIngestionOperationPage() {
                 </SelectTrigger>
                 <SelectContent className={SELECT_MENU_CLASS}>
                   {datasets.map((dataset) => (
-                    <SelectItem key={dataset.id} value={dataset.id} textValue={dataset.name} className={SELECT_OPTION_CLASS}>
+                    <SelectItem
+                      key={dataset.id}
+                      value={dataset.id}
+                      textValue={dataset.name}
+                      className={SELECT_OPTION_CLASS}
+                    >
                       <DatasetOptionBody dataset={dataset} />
                     </SelectItem>
                   ))}
@@ -1019,7 +1011,9 @@ export default function KnowledgeIngestionOperationPage() {
             </section>
 
             <section className="border-b border-border/70 px-5 py-4">
-              <label htmlFor="ingestion-source" className="text-[13px] font-semibold">文件来源</label>
+              <label htmlFor="ingestion-source" className="text-[13px] font-semibold">
+                文件来源
+              </label>
               <Select value={source} onValueChange={(value) => setSource(value as UploadSource)}>
                 <SelectTrigger id="ingestion-source" className={cn('mt-2 h-10 pl-3 font-medium', SOFT_CONTROL_CLASS)}>
                   <span className="flex min-w-0 items-center gap-2">
@@ -1031,7 +1025,12 @@ export default function KnowledgeIngestionOperationPage() {
                   {SOURCE_OPTIONS.map((item) => {
                     const Icon = item.icon
                     return (
-                      <SelectItem key={item.value} value={item.value} textValue={item.label} className={SELECT_OPTION_CLASS}>
+                      <SelectItem
+                        key={item.value}
+                        value={item.value}
+                        textValue={item.label}
+                        className={SELECT_OPTION_CLASS}
+                      >
                         <span className="flex items-start gap-2">
                           <Icon className="mt-0.5 size-4 text-info" />
                           <span>
@@ -1053,7 +1052,13 @@ export default function KnowledgeIngestionOperationPage() {
                 {EXECUTION_MODE_OPTIONS.map((option) => {
                   const selected = draft.executionMode === option.value
                   return (
-                    <label key={option.value} className={cn('flex min-h-10 cursor-pointer items-center gap-3 rounded-md px-2 transition-colors hover:bg-muted/30', selected && 'bg-info/5')}>
+                    <label
+                      key={option.value}
+                      className={cn(
+                        'flex min-h-10 cursor-pointer items-center gap-3 rounded-md px-2 transition-colors hover:bg-muted/30',
+                        selected && 'bg-info/5',
+                      )}
+                    >
                       <input
                         type="radio"
                         name="ingestion-execution-mode"
@@ -1098,7 +1103,14 @@ export default function KnowledgeIngestionOperationPage() {
                   const Icon = stage.icon
                   const enabled = index < activeStageCount
                   return (
-                    <div key={stage.label} className={cn('relative min-h-20 border-b border-border/65 px-4 py-3 sm:border-r xl:border-b-0', enabled ? 'bg-info/[0.025]' : 'bg-muted/10 text-muted-foreground', index === OPERATION_STAGES.length - 1 && 'sm:border-r-0')}>
+                    <div
+                      key={stage.label}
+                      className={cn(
+                        'relative min-h-20 border-b border-border/65 px-4 py-3 sm:border-r xl:border-b-0',
+                        enabled ? 'bg-info/[0.025]' : 'bg-muted/10 text-muted-foreground',
+                        index === OPERATION_STAGES.length - 1 && 'sm:border-r-0',
+                      )}
+                    >
                       <span className={cn('absolute inset-x-0 top-0 h-0.5', enabled ? 'bg-info' : 'bg-border')} />
                       <div className="flex min-w-0 items-center gap-2">
                         <Icon className={cn('size-4', enabled ? 'text-info' : 'text-muted-foreground')} />
@@ -1108,23 +1120,41 @@ export default function KnowledgeIngestionOperationPage() {
                         </div>
                         <span className="font-mono text-[9px] text-muted-foreground">0{index + 1}</span>
                       </div>
-                      <div className={cn('mt-2 pl-6 text-[10px]', enabled ? 'text-success' : 'text-muted-foreground')}>{enabled ? '● 已启用' : '○ 跳过'}</div>
+                      <div className={cn('mt-2 pl-6 text-[10px]', enabled ? 'text-success' : 'text-muted-foreground')}>
+                        {enabled ? '● 已启用' : '○ 跳过'}
+                      </div>
                     </div>
                   )
                 })}
               </div>
             </section>
 
-            <section data-ingestion-file-stage="true" className="grid border-b border-border/70 lg:grid-cols-[minmax(0,1fr)_260px]">
+            <section
+              data-ingestion-file-stage="true"
+              className="grid border-b border-border/70 lg:grid-cols-[minmax(0,1fr)_260px]"
+            >
               <div className="min-w-0 border-b border-border/65 lg:border-b-0 lg:border-r">
                 <Tabs value={source} onValueChange={(value) => setSource(value as UploadSource)}>
                   <TabsContent value="local" className="m-0">
-                    <UploadDropArea dragging={dragging} onDragState={setDragging} onClick={() => inputRef.current?.click()} onFiles={addFiles} />
+                    <UploadDropArea
+                      dragging={dragging}
+                      onDragState={setDragging}
+                      onClick={() => inputRef.current?.click()}
+                      onFiles={addFiles}
+                    />
                   </TabsContent>
-                  <TabsContent value="folder" className="m-0"><SourceConfiguration source="folder" {...sourceConfigurationProps} /></TabsContent>
-                  <TabsContent value="url" className="m-0"><SourceConfiguration source="url" {...sourceConfigurationProps} /></TabsContent>
-                  <TabsContent value="object" className="m-0"><SourceConfiguration source="object" {...sourceConfigurationProps} /></TabsContent>
-                  <TabsContent value="api" className="m-0"><SourceConfiguration source="api" {...sourceConfigurationProps} /></TabsContent>
+                  <TabsContent value="folder" className="m-0">
+                    <SourceConfiguration source="folder" {...sourceConfigurationProps} />
+                  </TabsContent>
+                  <TabsContent value="url" className="m-0">
+                    <SourceConfiguration source="url" {...sourceConfigurationProps} />
+                  </TabsContent>
+                  <TabsContent value="object" className="m-0">
+                    <SourceConfiguration source="object" {...sourceConfigurationProps} />
+                  </TabsContent>
+                  <TabsContent value="api" className="m-0">
+                    <SourceConfiguration source="api" {...sourceConfigurationProps} />
+                  </TabsContent>
                 </Tabs>
                 <input
                   ref={inputRef}
@@ -1141,9 +1171,17 @@ export default function KnowledgeIngestionOperationPage() {
               <div className="flex min-h-24 items-center justify-between gap-3 px-5">
                 <div>
                   <div className="text-[10px] text-muted-foreground">预检结果</div>
-                  <div className={cn('mt-1 text-[12px] font-semibold', operationReady ? 'text-success' : 'text-warning')}>{preflightMessage}</div>
+                  <div
+                    className={cn('mt-1 text-[12px] font-semibold', operationReady ? 'text-success' : 'text-warning')}
+                  >
+                    {preflightMessage}
+                  </div>
                 </div>
-                {operationReady ? <CheckCircle2 className="size-5 text-success" /> : <CircleAlert className="size-5 text-warning" />}
+                {operationReady ? (
+                  <CheckCircle2 className="size-5 text-success" />
+                ) : (
+                  <CircleAlert className="size-5 text-warning" />
+                )}
               </div>
             </section>
 
@@ -1161,7 +1199,10 @@ export default function KnowledgeIngestionOperationPage() {
               />
             ) : null}
 
-            <footer data-ingestion-action-bar="true" className="sticky bottom-0 z-10 flex flex-col gap-3 border-t border-border/70 bg-background/95 px-5 py-3 backdrop-blur lg:flex-row lg:items-center lg:justify-between">
+            <footer
+              data-ingestion-action-bar="true"
+              className="sticky bottom-0 z-10 flex flex-col gap-3 border-t border-border/70 bg-background/95 px-5 py-3 backdrop-blur lg:flex-row lg:items-center lg:justify-between"
+            >
               <div className="flex min-h-10 flex-wrap items-center gap-x-5 gap-y-1 text-[12px] text-muted-foreground">
                 <span>{submissionSummary}</span>
                 <span className="text-[10px]">{getSelectOptionTitle(DEDUP_OPTIONS, draft.dedupStrategy)}</span>
@@ -1170,7 +1211,9 @@ export default function KnowledgeIngestionOperationPage() {
               <Button
                 variant="info"
                 className="h-10 min-w-36 rounded-lg px-5 text-[12px] font-semibold shadow-subtle active:scale-[0.98]"
-                onClick={() => detachPromise(uploadFiles(draft.executionMode === 'upload_only' ? 'upload_only' : 'ingest'))}
+                onClick={() =>
+                  detachPromise(uploadFiles(draft.executionMode === 'upload_only' ? 'upload_only' : 'ingest'))
+                }
                 disabled={!operationReady}
               >
                 {status === 'uploading' ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
@@ -1235,9 +1278,7 @@ function UploadDropArea({
       }}
       className={cn(
         'flex min-h-24 w-full items-center gap-4 border-0 bg-transparent px-5 py-4 text-left transition-colors',
-        dragging
-          ? 'bg-info/[0.08] ring-2 ring-inset ring-info/30'
-          : 'hover:bg-info/[0.035]'
+        dragging ? 'bg-info/[0.08] ring-2 ring-inset ring-info/30' : 'hover:bg-info/[0.035]',
       )}
     >
       <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-info/10 text-info">
@@ -1245,7 +1286,9 @@ function UploadDropArea({
       </span>
       <span>
         <span className="block text-[13px] font-semibold leading-5 text-foreground">添加文件到本次任务</span>
-        <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground/70">点击选择或拖入文件 · 单文件 ≤ 2GB</span>
+        <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground/70">
+          点击选择或拖入文件 · 单文件 ≤ 2GB
+        </span>
       </span>
     </button>
   )
@@ -1308,10 +1351,16 @@ function SourceConfiguration({
             </span>
             <div className="min-w-0">
               <div className="text-[14px] font-semibold leading-5 text-foreground">选择本地文件夹</div>
-              <div className="text-[11px] leading-4 text-muted-foreground/70">浏览器会保留相对路径，后端按文件夹内文件批量上传到当前数据集。</div>
+              <div className="text-[11px] leading-4 text-muted-foreground/70">
+                浏览器会保留相对路径，后端按文件夹内文件批量上传到当前数据集。
+              </div>
             </div>
           </div>
-          <Button variant="outline" className={cn(CONFIG_INPUT_CLASS, 'h-9 text-[13px] font-medium hover:bg-background/88')} onClick={() => folderInputRef.current?.click()}>
+          <Button
+            variant="outline"
+            className={cn(CONFIG_INPUT_CLASS, 'h-9 text-[13px] font-medium hover:bg-background/88')}
+            onClick={() => folderInputRef.current?.click()}
+          >
             <Folder className="mr-2 size-4" />
             选择文件夹
           </Button>
@@ -1390,7 +1439,9 @@ function SourceConfiguration({
             onChange={(event) => setObjectExtensions(event.target.value)}
             placeholder=".pdf, .md, .txt"
           />
-          <div className="mt-1 text-[11px] leading-4 text-muted-foreground/70">实际提交：{parsedObjectExtensions.join(', ')}</div>
+          <div className="mt-1 text-[11px] leading-4 text-muted-foreground/70">
+            实际提交：{parsedObjectExtensions.join(', ')}
+          </div>
         </FieldBlock>
         <FieldBlock label="最大对象数">
           <Input
@@ -1468,7 +1519,11 @@ function SelectedFilesTable({
           </span>
         </div>
         {hasRows ? (
-          <Button variant="ghost" className="h-8 rounded-md px-2 text-[10px] text-muted-foreground/72 hover:bg-muted/35" onClick={onClear}>
+          <Button
+            variant="ghost"
+            className="h-8 rounded-md px-2 text-[10px] text-muted-foreground/72 hover:bg-muted/35"
+            onClick={onClear}
+          >
             <Trash2 className="size-3.5" />
             清空
           </Button>
@@ -1504,10 +1559,14 @@ function SelectedFilesTable({
                         <span className="flex size-6 shrink-0 items-center justify-center rounded-[0.8rem] border border-border/60 bg-primary/10 text-primary">
                           <Icon className="size-3.5" />
                         </span>
-                        <span className="min-w-0 truncate font-medium text-foreground" title={file.name}>{file.name}</span>
+                        <span className="min-w-0 truncate font-medium text-foreground" title={file.name}>
+                          {file.name}
+                        </span>
                       </div>
                     </td>
-                    <td className="truncate px-2.5 py-1.5 font-mono text-muted-foreground">{formatFileSize(file.size)}</td>
+                    <td className="truncate px-2.5 py-1.5 font-mono text-muted-foreground">
+                      {formatFileSize(file.size)}
+                    </td>
                     <td className="truncate px-2.5 py-1.5 text-muted-foreground">{formatFileType(file)}</td>
                     <td className="px-2.5 py-1.5 text-muted-foreground">{sourceName}</td>
                     <td className="px-2.5 py-1.5">
@@ -1552,18 +1611,12 @@ function SelectedFilesTable({
           }}
           className={cn(
             'flex min-h-[20rem] flex-1 flex-col items-center justify-center px-6 py-10 text-center transition-colors focus-ring',
-            dragging
-              ? 'bg-info/[0.08] ring-2 ring-inset ring-info/30'
-              : 'bg-transparent hover:bg-info/[0.025]'
+            dragging ? 'bg-info/[0.08] ring-2 ring-inset ring-info/30' : 'bg-transparent hover:bg-info/[0.025]',
           )}
         >
           <UploadCloud className="size-7 text-info" />
-          <span className="mt-3 text-[14px] font-semibold text-foreground">
-            将文件拖到这里
-          </span>
-          <span className="mt-1 text-[11px] leading-5 text-muted-foreground">
-            点击选择文件，或直接拖放到当前暂存区
-          </span>
+          <span className="mt-3 text-[14px] font-semibold text-foreground">将文件拖到这里</span>
+          <span className="mt-1 text-[11px] leading-5 text-muted-foreground">点击选择文件，或直接拖放到当前暂存区</span>
           <span className="mt-3 text-[10px] leading-5 text-muted-foreground/75">
             支持 PDF、Word、Markdown、表格、文本与压缩包 · 单文件 ≤ 2GB
           </span>
@@ -1600,11 +1653,18 @@ function AdvancedIngestSettings({
         <FieldBlock label="入库模式">
           <Select value={draft.ingestMode} onValueChange={(value) => updateDraft('ingestMode', value as IngestMode)}>
             <SelectTrigger className={cn('h-9 font-medium', SOFT_CONTROL_CLASS)}>
-              <span className="truncate text-[12px] font-medium">{getSelectOptionTitle(INGEST_MODE_OPTIONS, draft.ingestMode)}</span>
+              <span className="truncate text-[12px] font-medium">
+                {getSelectOptionTitle(INGEST_MODE_OPTIONS, draft.ingestMode)}
+              </span>
             </SelectTrigger>
             <SelectContent className={SELECT_MENU_CLASS}>
               {INGEST_MODE_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value} textValue={option.title} className={SELECT_OPTION_CLASS}>
+                <SelectItem
+                  key={option.value}
+                  value={option.value}
+                  textValue={option.title}
+                  className={SELECT_OPTION_CLASS}
+                >
                   <SelectOptionBody {...option} />
                 </SelectItem>
               ))}
@@ -1619,7 +1679,11 @@ function AdvancedIngestSettings({
             onChange={(event) => updateDraft('tags', event.target.value)}
             placeholder="选择或输入标签"
           />
-          <datalist id={tagListId}>{tagOptions.map((tag) => <option key={tag} value={tag} />)}</datalist>
+          <datalist id={tagListId}>
+            {tagOptions.map((tag) => (
+              <option key={tag} value={tag} />
+            ))}
+          </datalist>
         </FieldBlock>
         <FieldBlock label="目标目录">
           <Input
@@ -1629,16 +1693,27 @@ function AdvancedIngestSettings({
             onChange={(event) => updateDraft('collection', event.target.value)}
             placeholder="default"
           />
-          <datalist id={collectionListId}>{collectionOptions.map((collection) => <option key={collection} value={collection} />)}</datalist>
+          <datalist id={collectionListId}>
+            {collectionOptions.map((collection) => (
+              <option key={collection} value={collection} />
+            ))}
+          </datalist>
         </FieldBlock>
         <FieldBlock label="重复处理">
           <Select value={draft.dedupStrategy} onValueChange={(value) => updateDraft('dedupStrategy', value)}>
             <SelectTrigger className={cn('h-9 font-medium', SOFT_CONTROL_CLASS)}>
-              <span className="truncate text-[12px] font-medium">{getSelectOptionTitle(DEDUP_OPTIONS, draft.dedupStrategy)}</span>
+              <span className="truncate text-[12px] font-medium">
+                {getSelectOptionTitle(DEDUP_OPTIONS, draft.dedupStrategy)}
+              </span>
             </SelectTrigger>
             <SelectContent className={SELECT_MENU_CLASS}>
               {DEDUP_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value} textValue={option.title} className={SELECT_OPTION_CLASS}>
+                <SelectItem
+                  key={option.value}
+                  value={option.value}
+                  textValue={option.title}
+                  className={SELECT_OPTION_CLASS}
+                >
                   <SelectOptionBody {...option} />
                 </SelectItem>
               ))}

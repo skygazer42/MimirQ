@@ -56,11 +56,7 @@ export function useDocuments(initialParams?: DocumentListParams) {
     updateCachedDocuments: listState.updateCachedDocuments,
   })
 
-  const isLoading =
-    listState.isListLoading ||
-    listState.isFetching ||
-    uploadState.isUploading ||
-    actionState.isActing
+  const isLoading = listState.isListLoading || listState.isFetching || uploadState.isUploading || actionState.isActing
   const error =
     actionError || (listState.listError ? formatApiError(listState.listError, 'Failed to load documents') : null)
 

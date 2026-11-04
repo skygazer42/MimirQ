@@ -1,10 +1,10 @@
 import { useTranslations } from 'next-intl'
 
-import { Skeleton } from "@/components/ui/skeleton"
-import { AppBackground } from "@/components/ui/app-background"
+import { Skeleton } from '@/components/ui/skeleton'
+import { AppBackground } from '@/components/ui/app-background'
 
-const NAV_SKELETON_KEYS = ["nav-1", "nav-2", "nav-3", "nav-4", "nav-5", "nav-6", "nav-7", "nav-8", "nav-9"]
-const CARD_SKELETON_KEYS = ["card-1", "card-2", "card-3", "card-4", "card-5", "card-6"]
+const NAV_SKELETON_KEYS = ['nav-1', 'nav-2', 'nav-3', 'nav-4', 'nav-5', 'nav-6', 'nav-7', 'nav-8', 'nav-9']
+const CARD_SKELETON_KEYS = ['card-1', 'card-2', 'card-3', 'card-4', 'card-5', 'card-6']
 
 export default function Loading() {
   const t = useTranslations('RouteBoundaries')
@@ -38,7 +38,11 @@ export default function Loading() {
         </aside>
 
         {/* Main content skeleton */}
-        <main id="main-content" tabIndex={-1} className="flex-1 min-h-0 overflow-y-auto overscroll-contain no-scrollbar p-6">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex-1 min-h-0 overflow-y-auto overscroll-contain no-scrollbar p-6"
+        >
           <div className="max-w-5xl space-y-6">
             <div className="space-y-3">
               <Skeleton className="h-7 w-56" />
@@ -57,7 +61,7 @@ export default function Loading() {
             </div>
           </div>
 
-          <span className="sr-only">{t("loading.pageSr")}</span>
+          <span className="sr-only">{t('loading.pageSr')}</span>
         </main>
       </div>
     </div>

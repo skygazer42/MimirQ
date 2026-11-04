@@ -23,7 +23,7 @@ export async function scanFiles(items: DataTransferItemList): Promise<File[]> {
     if (entry.isFile) {
       // 如果是文件，直接添加到结果
       const file = await new Promise<File>((resolve, reject) => {
-        (entry as FileSystemFileEntry).file(resolve, reject)
+        ;(entry as FileSystemFileEntry).file(resolve, reject)
       })
       files.push(file)
     } else if (entry.isDirectory) {

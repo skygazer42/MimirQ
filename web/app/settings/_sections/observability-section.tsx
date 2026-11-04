@@ -12,10 +12,7 @@ type ObservabilitySectionProps = {
   updateObservability: (patch: Partial<ObservabilityConfig>) => void
 }
 
-export function ObservabilitySection({
-  observability,
-  updateObservability,
-}: Readonly<ObservabilitySectionProps>) {
+export function ObservabilitySection({ observability, updateObservability }: Readonly<ObservabilitySectionProps>) {
   const isToolCallLogEnabled = observability.tool_call_log_enabled ?? false
   const isAgentLogEnabled = observability.agent_log_enabled ?? false
   const isMetricsLogEnabled = observability.metrics_log_enabled ?? false
@@ -66,9 +63,7 @@ export function ObservabilitySection({
                 <span className="text-[11px] font-semibold text-foreground/78">记录结果摘要</span>
                 <SettingsSwitch
                   checked={observability.tool_call_log_include_preview ?? false}
-                  onCheckedChange={(checked) =>
-                    updateObservability({ tool_call_log_include_preview: checked })
-                  }
+                  onCheckedChange={(checked) => updateObservability({ tool_call_log_include_preview: checked })}
                   aria-label="切换工具调用结果摘要记录"
                 />
               </div>
@@ -124,9 +119,7 @@ export function ObservabilitySection({
                 <span className="text-[11px] font-semibold text-foreground/78">记录步骤路径</span>
                 <SettingsSwitch
                   checked={observability.agent_log_include_execution_path ?? false}
-                  onCheckedChange={(checked) =>
-                    updateObservability({ agent_log_include_execution_path: checked })
-                  }
+                  onCheckedChange={(checked) => updateObservability({ agent_log_include_execution_path: checked })}
                   aria-label="切换工作流步骤路径记录"
                 />
               </div>

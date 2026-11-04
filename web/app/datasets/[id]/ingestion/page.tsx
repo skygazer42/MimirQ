@@ -4,7 +4,25 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { ArrowLeft, BarChart3, Cloud, Database, FileSearch, FileUp, Heart, Loader2, Plus, RefreshCw, Save, Scissors, Settings2, ShieldCheck, Sparkles, Table2, Trash2 } from 'lucide-react'
+import {
+  ArrowLeft,
+  BarChart3,
+  Cloud,
+  Database,
+  FileSearch,
+  FileUp,
+  Heart,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Save,
+  Scissors,
+  Settings2,
+  ShieldCheck,
+  Sparkles,
+  Table2,
+  Trash2,
+} from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -16,7 +34,14 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 import { datasetApi, pipelineApi } from '@/lib/api'
@@ -29,11 +54,7 @@ import { randomBase36Id } from '@/lib/secure-random'
 import { cn, detachPromise } from '@/lib/utils'
 import { useRouter } from '@/i18n/navigation'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
-import type {
-  IngestionPolicy,
-  IngestionRule,
-  IngestionPreviewResponse,
-} from '@/types'
+import type { IngestionPolicy, IngestionRule, IngestionPreviewResponse } from '@/types'
 
 const NONE = '__none__'
 const INGESTION_PROFILE_PARAMS = { include_builtin: true, limit: 200 } as const
@@ -46,11 +67,19 @@ const PREPROCESS_STEP_CATALOG: Array<{ id: string; label: string; desc: string }
   { id: 'text.trim_trailing_whitespace', label: '去掉行尾空格', desc: '减少 diff 抖动与无意义字符' },
   { id: 'text.remove_zero_width', label: '移除零宽字符/软连字符', desc: '修复网页/扫描/OCR/PDF 文本中常见的隐藏字符' },
   { id: 'text.remove_control_chars', label: '移除控制字符', desc: String.raw`去掉 \x00 等控制字符（保留 TAB/LF/CR）` },
-  { id: 'text.normalize_unicode_nfc', label: 'Unicode 规范化（NFC）', desc: '更保守的 Unicode 归一（比 NFKC 更少语义风险）' },
+  {
+    id: 'text.normalize_unicode_nfc',
+    label: 'Unicode 规范化（NFC）',
+    desc: '更保守的 Unicode 归一（比 NFKC 更少语义风险）',
+  },
   { id: 'text.normalize_unicode_nfkc', label: 'Unicode 规范化（NFKC）', desc: '全角/半角与兼容字符归一（谨慎启用）' },
   { id: 'html.strip_scripts_styles', label: 'HTML：移除 script/style', desc: '减少网页样板/脚本注入噪声' },
   { id: 'html.strip_comments', label: 'HTML：移除注释', desc: '减少抓取页面的注释噪声' },
-  { id: 'html.strip_boilerplate_tags', label: 'HTML：移除导航/页眉页脚', desc: '移除 nav/header/footer/aside/noscript 等常见样板区块' },
+  {
+    id: 'html.strip_boilerplate_tags',
+    label: 'HTML：移除导航/页眉页脚',
+    desc: '移除 nav/header/footer/aside/noscript 等常见样板区块',
+  },
 ]
 
 type IngestionPolicyTemplate = {
@@ -247,12 +276,30 @@ const INGESTION_POLICY_TEMPLATES: IngestionPolicyTemplate[] = [
         enabled: true,
         match: {
           extensions: [
-            '.md', '.txt',
-            '.py', '.js', '.ts', '.tsx',
-            '.java', '.go', '.rs',
-            '.c', '.cpp', '.h', '.hpp',
-            '.cs', '.php', '.rb', '.sh',
-            '.yml', '.yaml', '.toml', '.ini', '.cfg', '.conf', '.env',
+            '.md',
+            '.txt',
+            '.py',
+            '.js',
+            '.ts',
+            '.tsx',
+            '.java',
+            '.go',
+            '.rs',
+            '.c',
+            '.cpp',
+            '.h',
+            '.hpp',
+            '.cs',
+            '.php',
+            '.rb',
+            '.sh',
+            '.yml',
+            '.yaml',
+            '.toml',
+            '.ini',
+            '.cfg',
+            '.conf',
+            '.env',
             '.sql',
           ],
           filename_regex: null,
@@ -470,12 +517,12 @@ const INGESTION_POLICY_TEMPLATES: IngestionPolicyTemplate[] = [
         chunk_strategy: 'integrated_laws',
         governance_profile_ref: 'builtin:pdf_text',
         pipeline_patch: {
-          "governance_pii_anonymize": true,
-          "governance_pii_mode": "mask",
-          "governance_pii_mask": "[REDACTED]",
-          "governance_secrets_redact": true,
-          "governance_secrets_mode": "mask",
-          "governance_secrets_mask": "[SECRET]",
+          governance_pii_anonymize: true,
+          governance_pii_mode: 'mask',
+          governance_pii_mask: '[REDACTED]',
+          governance_secrets_redact: true,
+          governance_secrets_mode: 'mask',
+          governance_secrets_mask: '[SECRET]',
         },
       },
       {
@@ -487,12 +534,12 @@ const INGESTION_POLICY_TEMPLATES: IngestionPolicyTemplate[] = [
         chunk_strategy: 'integrated_laws',
         governance_profile_ref: 'builtin:kb_default',
         pipeline_patch: {
-          "governance_pii_anonymize": true,
-          "governance_pii_mode": "mask",
-          "governance_pii_mask": "[REDACTED]",
-          "governance_secrets_redact": true,
-          "governance_secrets_mode": "mask",
-          "governance_secrets_mask": "[SECRET]",
+          governance_pii_anonymize: true,
+          governance_pii_mode: 'mask',
+          governance_pii_mask: '[REDACTED]',
+          governance_secrets_redact: true,
+          governance_secrets_mode: 'mask',
+          governance_secrets_mask: '[SECRET]',
         },
       },
     ],
@@ -576,9 +623,7 @@ function draftToRule(d: RuleDraft): IngestionRule {
     },
     preprocess: {
       enabled: !!d.preprocessEnabled,
-      steps: d.preprocessEnabled
-        ? d.preprocessStepIds.map((id) => ({ id, params: {} }))
-        : [],
+      steps: d.preprocessEnabled ? d.preprocessStepIds.map((id) => ({ id, params: {} })) : [],
     },
     parser_backend: d.parserBackend.trim() ? d.parserBackend.trim() : null,
     chunk_strategy: d.chunkStrategy.trim() ? d.chunkStrategy.trim() : null,
@@ -627,10 +672,7 @@ export default function DatasetIngestionPolicyPage() {
     queryKey: queryKeys.governance.profiles(INGESTION_PROFILE_PARAMS),
     queryFn: () => pipelineApi.listGovernanceProfiles(INGESTION_PROFILE_PARAMS),
   })
-  const profiles = useMemo(
-    () => profilesQuery.data?.items || [],
-    [profilesQuery.data?.items]
-  )
+  const profiles = useMemo(() => profilesQuery.data?.items || [], [profilesQuery.data?.items])
 
   const datasetQuery = useQuery({
     queryKey: queryKeys.datasets.detail(datasetId),
@@ -682,11 +724,7 @@ export default function DatasetIngestionPolicyPage() {
   const { refetch: refetchIngestionStats } = ingestionStatsQuery
 
   const refreshIngestionPolicy = useCallback(async () => {
-    await Promise.all([
-      refetchDataset(),
-      refetchPolicy(),
-      refetchIngestionStats(),
-    ])
+    await Promise.all([refetchDataset(), refetchPolicy(), refetchIngestionStats()])
   }, [refetchDataset, refetchIngestionStats, refetchPolicy])
 
   const rules = useMemo(() => policy?.rules || [], [policy])
@@ -709,13 +747,16 @@ export default function DatasetIngestionPolicyPage() {
     setEditorOpen(true)
   }, [])
 
-  const openEdit = useCallback((idx: number) => {
-    const r = rules[idx]
-    if (!r) return
-    setEditingIndex(idx)
-    setDraft(ruleToDraft(r))
-    setEditorOpen(true)
-  }, [rules])
+  const openEdit = useCallback(
+    (idx: number) => {
+      const r = rules[idx]
+      if (!r) return
+      setEditingIndex(idx)
+      setDraft(ruleToDraft(r))
+      setEditorOpen(true)
+    },
+    [rules],
+  )
 
   const applyDraft = useCallback(() => {
     try {
@@ -731,53 +772,59 @@ export default function DatasetIngestionPolicyPage() {
     }
   }, [draft, editingIndex, policy])
 
-  const removeRule = useCallback((idx: number) => {
-    const next: IngestionPolicy = policy || { version: '1', rules: [] }
-    const newRules = [...(next.rules || [])]
-    newRules.splice(idx, 1)
-    setPolicy({ version: '1', rules: newRules })
-  }, [policy])
+  const removeRule = useCallback(
+    (idx: number) => {
+      const next: IngestionPolicy = policy || { version: '1', rules: [] }
+      const newRules = [...(next.rules || [])]
+      newRules.splice(idx, 1)
+      setPolicy({ version: '1', rules: newRules })
+    },
+    [policy],
+  )
 
-  const moveRule = useCallback((idx: number, dir: -1 | 1) => {
-    const next: IngestionPolicy = policy || { version: '1', rules: [] }
-    const newRules = [...(next.rules || [])]
-    const j = idx + dir
-    if (j < 0 || j >= newRules.length) return
-    const tmp = newRules[idx]
-    newRules[idx] = newRules[j]
-    newRules[j] = tmp
-    setPolicy({ version: '1', rules: newRules })
-  }, [policy])
+  const moveRule = useCallback(
+    (idx: number, dir: -1 | 1) => {
+      const next: IngestionPolicy = policy || { version: '1', rules: [] }
+      const newRules = [...(next.rules || [])]
+      const j = idx + dir
+      if (j < 0 || j >= newRules.length) return
+      const tmp = newRules[idx]
+      newRules[idx] = newRules[j]
+      newRules[j] = tmp
+      setPolicy({ version: '1', rules: newRules })
+    },
+    [policy],
+  )
 
-  const applyTemplate = useCallback((tpl: IngestionPolicyTemplate, mode: 'prepend' | 'append' | 'replace') => {
-    const next: IngestionPolicy = policy || { version: '1', rules: [] }
-    const existing = [...(next.rules || [])]
-    const ids = generateTemplateRuleIds(tpl.rules.length)
-    const newRules: IngestionRule[] = tpl.rules.map((r, i) => ({ ...r, id: ids[i] }))
+  const applyTemplate = useCallback(
+    (tpl: IngestionPolicyTemplate, mode: 'prepend' | 'append' | 'replace') => {
+      const next: IngestionPolicy = policy || { version: '1', rules: [] }
+      const existing = [...(next.rules || [])]
+      const ids = generateTemplateRuleIds(tpl.rules.length)
+      const newRules: IngestionRule[] = tpl.rules.map((r, i) => ({ ...r, id: ids[i] }))
 
-    const merged =
-      (() => {
-    if (mode === 'replace') {
-        return newRules;
-    }
-    else if (mode === 'append') {
-            return [...existing, ...newRules];
+      const merged = (() => {
+        if (mode === 'replace') {
+          return newRules
+        } else if (mode === 'append') {
+          return [...existing, ...newRules]
+        } else {
+          return [...newRules, ...existing]
         }
-        else {
-            return [...newRules, ...existing];
-        }
-})()
+      })()
 
-    setPolicy({ version: '1', rules: merged })
-    setTemplatesOpen(false)
-    toast.success(`已应用模板：${tpl.name}（${newRules.length} 条规则）`)
+      setPolicy({ version: '1', rules: merged })
+      setTemplatesOpen(false)
+      toast.success(`已应用模板：${tpl.name}（${newRules.length} 条规则）`)
 
-    // Bring the user back to the top to see the newly inserted rules.
-    globalThis.window.requestAnimationFrame(() => {
-      const sc = document.querySelector<HTMLElement>('[data-page-scroll-container="true"]')
-      sc?.scrollTo({ top: 0, left: 0, behavior: 'smooth' })
-    })
-  }, [policy])
+      // Bring the user back to the top to see the newly inserted rules.
+      globalThis.window.requestAnimationFrame(() => {
+        const sc = document.querySelector<HTMLElement>('[data-page-scroll-container="true"]')
+        sc?.scrollTo({ top: 0, left: 0, behavior: 'smooth' })
+      })
+    },
+    [policy],
+  )
 
   const savePolicy = useCallback(async () => {
     if (!datasetId || !policy) return
@@ -810,15 +857,22 @@ export default function DatasetIngestionPolicyPage() {
     }
   }, [previewFile, datasetId])
 
-  const ingestionHeroCard = 'relative overflow-hidden border-b border-border/60 bg-transparent px-1 py-2 shadow-none dark:border-border/70'
-  const ingestionToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-lg border border-border/60 bg-card p-1 shadow-none dark:border-border/70 dark:bg-card'
-  const ingestionToolbarButtonClass = 'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-semibold text-muted-foreground shadow-none hover:bg-card hover:text-foreground hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
-  const ingestionToolbarPrimaryButtonClass = 'h-8 min-w-[104px] gap-1.5 rounded-md border border-primary/20 bg-primary px-3.5 text-[12px] font-semibold text-primary-foreground shadow-none hover:bg-primary/90 dark:border-primary/30 dark:bg-primary dark:text-primary-foreground dark:hover:bg-primary/90 [&_svg]:size-3.5'
+  const ingestionHeroCard =
+    'relative overflow-hidden border-b border-border/60 bg-transparent px-1 py-2 shadow-none dark:border-border/70'
+  const ingestionToolbarGroupClass =
+    'inline-flex flex-wrap items-center gap-1 rounded-lg border border-border/60 bg-card p-1 shadow-none dark:border-border/70 dark:bg-card'
+  const ingestionToolbarButtonClass =
+    'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-semibold text-muted-foreground shadow-none hover:bg-card hover:text-foreground hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
+  const ingestionToolbarPrimaryButtonClass =
+    'h-8 min-w-[104px] gap-1.5 rounded-md border border-primary/20 bg-primary px-3.5 text-[12px] font-semibold text-primary-foreground shadow-none hover:bg-primary/90 dark:border-primary/30 dark:bg-primary dark:text-primary-foreground dark:hover:bg-primary/90 [&_svg]:size-3.5'
   const ingestionPanelClass = 'border border-border/60 bg-card shadow-none dark:border-border/70 dark:bg-card'
-  const ingestionPanelHeaderClass = 'shrink-0 border-b border-border/60 bg-card px-5 py-4 dark:border-border/70 dark:bg-card'
-  const ingestionIconPillClass = 'flex size-9 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/20 text-foreground/85 shadow-none dark:border-border/70 dark:bg-muted/30 dark:text-foreground'
+  const ingestionPanelHeaderClass =
+    'shrink-0 border-b border-border/60 bg-card px-5 py-4 dark:border-border/70 dark:bg-card'
+  const ingestionIconPillClass =
+    'flex size-9 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/20 text-foreground/85 shadow-none dark:border-border/70 dark:bg-muted/30 dark:text-foreground'
   const ingestionActionButtonClass = 'h-9 rounded-md px-3 text-[12px] font-semibold shadow-none [&_svg]:size-4'
-  const ingestionMetricCardClass = 'group relative overflow-hidden rounded-lg border border-border/60 bg-card px-4 py-3 shadow-none transition-colors hover:border-border dark:border-border/70 dark:bg-card'
+  const ingestionMetricCardClass =
+    'group relative overflow-hidden rounded-lg border border-border/60 bg-card px-4 py-3 shadow-none transition-colors hover:border-border dark:border-border/70 dark:bg-card'
   const activeRuleCount = rules.filter((rule) => rule.enabled !== false).length
   const parserBackendCount = new Set(rules.map((rule) => rule.parser_backend).filter(Boolean)).size
 
@@ -841,11 +895,16 @@ export default function DatasetIngestionPolicyPage() {
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="truncate text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground dark:text-foreground">入库策略工作台</h1>
+                    <h1 className="truncate text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground dark:text-foreground">
+                      入库策略工作台
+                    </h1>
                     <span className="inline-flex h-5 items-center rounded-full border border-border bg-card/82 px-2 text-[10px] font-bold uppercase leading-none tracking-[0.12em] text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-border/60 dark:bg-muted/30 dark:text-muted-foreground">
                       pipeline policy
                     </span>
-                    <Badge variant="soft" className="h-5 border-primary/20 bg-primary/10 px-2 font-mono text-[10px] leading-none text-primary">
+                    <Badge
+                      variant="soft"
+                      className="h-5 border-primary/20 bg-primary/10 px-2 font-mono text-[10px] leading-none text-primary"
+                    >
                       POLICY
                     </Badge>
                   </div>
@@ -902,7 +961,12 @@ export default function DatasetIngestionPolicyPage() {
         toolbar={
           <div className="flex w-full flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
             <div className={ingestionToolbarGroupClass}>
-              <Button size="sm" variant="ghost" onClick={() => router.push('/datasets')} className={ingestionToolbarButtonClass}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => router.push('/datasets')}
+                className={ingestionToolbarButtonClass}
+              >
                 <ArrowLeft className="size-3.5" />
                 返回
               </Button>
@@ -951,8 +1015,17 @@ export default function DatasetIngestionPolicyPage() {
                 </Button>
               ) : null}
             </div>
-            <Button size="sm" onClick={savePolicy} disabled={saving || !policy} className={ingestionToolbarPrimaryButtonClass}>
-              {saving ? <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" /> : <Save className="size-3.5" />}
+            <Button
+              size="sm"
+              onClick={savePolicy}
+              disabled={saving || !policy}
+              className={ingestionToolbarPrimaryButtonClass}
+            >
+              {saving ? (
+                <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
+              ) : (
+                <Save className="size-3.5" />
+              )}
               保存
             </Button>
           </div>
@@ -966,7 +1039,7 @@ export default function DatasetIngestionPolicyPage() {
                   icon: FileUp,
                   label: '文档数',
                   value: ingestionStats.total_documents,
-                  subValue: `completed ${(ingestionStats.by_status?.completed || 0)} · failed ${(ingestionStats.by_status?.failed || 0)}`,
+                  subValue: `completed ${ingestionStats.by_status?.completed || 0} · failed ${ingestionStats.by_status?.failed || 0}`,
                   tone: 'text-info bg-info/10 border-info/20',
                 },
                 {
@@ -986,7 +1059,9 @@ export default function DatasetIngestionPolicyPage() {
                 {
                   icon: RefreshCw,
                   label: '最近入库',
-                  value: ingestionStats.last_processed_at ? new Date(ingestionStats.last_processed_at).toLocaleString() : '—',
+                  value: ingestionStats.last_processed_at
+                    ? new Date(ingestionStats.last_processed_at).toLocaleString()
+                    : '—',
                   subValue: 'processed_at',
                   tone: 'text-success bg-success/10 border-success/20',
                 },
@@ -994,13 +1069,19 @@ export default function DatasetIngestionPolicyPage() {
                 <div key={item.label} className={ingestionMetricCardClass}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground/70 dark:text-muted-foreground">{item.label}</div>
+                      <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground/70 dark:text-muted-foreground">
+                        {item.label}
+                      </div>
                       <div className="mt-1 truncate font-mono text-[17px] font-black leading-none tracking-[-0.02em] text-foreground tabular-nums dark:text-foreground">
                         {item.value}
                       </div>
-                      <div className="mt-1.5 truncate text-[11px] font-medium text-muted-foreground dark:text-muted-foreground">{item.subValue}</div>
+                      <div className="mt-1.5 truncate text-[11px] font-medium text-muted-foreground dark:text-muted-foreground">
+                        {item.subValue}
+                      </div>
                     </div>
-                    <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-xl border', item.tone)}>
+                    <div
+                      className={cn('flex size-8 shrink-0 items-center justify-center rounded-xl border', item.tone)}
+                    >
                       <item.icon className="size-4" />
                     </div>
                   </div>
@@ -1010,243 +1091,399 @@ export default function DatasetIngestionPolicyPage() {
           ) : null}
 
           <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_440px]">
-          <Panel variant="default" className={cn(ingestionPanelClass, 'flex min-h-0 flex-col overflow-hidden')}>
-            <div className={cn(ingestionPanelHeaderClass, 'flex items-center justify-between gap-4')}>
-              <div className="flex min-w-0 items-start gap-3">
-                <div className={ingestionIconPillClass}>
-                  <Settings2 className="size-4" />
-                </div>
-                <div className="min-w-0">
-                  <div className="mb-1 font-mono text-[10px] font-black uppercase tracking-[0.18em] text-info">Policy routing</div>
-                  <div className="flex items-center gap-2">
-                    <div className="text-[15px] font-bold tracking-[-0.015em] text-foreground dark:text-foreground">规则列表</div>
-                    <Badge variant="outline" className="h-5 rounded-full px-2 font-mono text-[10px] uppercase text-muted-foreground">
-                      {rules.length} rules
-                    </Badge>
+            <Panel variant="default" className={cn(ingestionPanelClass, 'flex min-h-0 flex-col overflow-hidden')}>
+              <div className={cn(ingestionPanelHeaderClass, 'flex items-center justify-between gap-4')}>
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className={ingestionIconPillClass}>
+                    <Settings2 className="size-4" />
                   </div>
-                  <div className="mt-1 max-w-3xl text-[12px] leading-5 text-muted-foreground dark:text-muted-foreground">
-                    从上到下匹配，命中后应用：预处理步骤 / 解析后端 / chunk 策略 / 治理预设 / pipeline_patch
-                  </div>
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <Button variant="outline" onClick={() => setTemplatesOpen(true)} className={cn(ingestionActionButtonClass, 'border-border/60 bg-card hover:bg-muted/40')}>
-                  <Sparkles className="size-4" />
-                  从模板添加
-                </Button>
-                <Button onClick={openCreate} className={cn(ingestionActionButtonClass, 'border border-primary/20 bg-primary text-primary-foreground hover:bg-primary/90')}>
-                  <Plus className="size-4" />
-                  新增规则
-                </Button>
-              </div>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto bg-muted/15 p-4 no-scrollbar dark:bg-muted/10">
-              {(rules || []).length === 0 ? (
-                <div className="flex min-h-[260px] flex-col justify-center rounded-lg border border-dashed border-border px-6 py-8 text-muted-foreground shadow-none dark:border-border dark:bg-muted/20 dark:text-muted-foreground">
-                  <div className="flex items-start gap-4">
-                    <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-muted text-muted-foreground dark:bg-muted/40">
-                      <Sparkles className="size-5" />
+                  <div className="min-w-0">
+                    <div className="mb-1 font-mono text-[10px] font-black uppercase tracking-[0.18em] text-info">
+                      Policy routing
                     </div>
-                    <div className="min-w-0">
-                      <div className="text-[15px] font-bold tracking-[-0.01em] text-foreground dark:text-foreground">还没有入库规则</div>
-                      <div className="mt-1 max-w-xl text-[12px] leading-6">
-                        建议先从模板生成 PDF / HTML / 纯文本规则，再按数据集情况调整解析后端、治理预设和 chunk 策略。
+                    <div className="flex items-center gap-2">
+                      <div className="text-[15px] font-bold tracking-[-0.015em] text-foreground dark:text-foreground">
+                        规则列表
                       </div>
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        <Button variant="outline" size="sm" className="rounded-xl bg-card text-[12px] font-semibold" onClick={() => setTemplatesOpen(true)}>
-                          <Sparkles className="size-3.5" />
-                          从模板开始
-                        </Button>
-                        <Button size="sm" className="rounded-xl bg-primary text-[12px] font-semibold text-primary-foreground hover:bg-primary/90" onClick={openCreate}>
-                          <Plus className="size-3.5" />
-                          手动新增
-                        </Button>
-                      </div>
+                      <Badge
+                        variant="outline"
+                        className="h-5 rounded-full px-2 font-mono text-[10px] uppercase text-muted-foreground"
+                      >
+                        {rules.length} rules
+                      </Badge>
+                    </div>
+                    <div className="mt-1 max-w-3xl text-[12px] leading-5 text-muted-foreground dark:text-muted-foreground">
+                      从上到下匹配，命中后应用：预处理步骤 / 解析后端 / chunk 策略 / 治理预设 / pipeline_patch
                     </div>
                   </div>
                 </div>
-              ) : (
-                (rules || []).map((r, idx) => (
-                  <div key={r.id} className="group relative mb-3 overflow-hidden rounded-lg border border-border/60 border-l-2 border-l-info/35 bg-card p-4 transition-colors last:mb-0 hover:border-info/30 dark:border-border/70 dark:bg-card">
-                    <div className="min-w-0 flex-1 space-y-2">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="truncate text-[15px] font-bold tracking-[-0.01em] text-foreground dark:text-foreground">{r.name}</span>
-                            <Badge variant={r.enabled ? 'soft' : 'outline'} className="h-5 rounded-full px-2 text-[10px] font-mono uppercase">
-                              {r.enabled ? 'enabled' : 'disabled'}
-                            </Badge>
-                            <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-[10px] font-semibold text-muted-foreground dark:bg-muted/50 dark:text-muted-foreground">#{idx + 1}</span>
-                          </div>
-                          <div className="mt-1.5 text-[12px] font-medium text-muted-foreground dark:text-muted-foreground">
-                            ext: {(r.match?.extensions || []).join(', ') || '（任意）'}
-                            {r.match?.filename_regex ? ` · filename_regex: ${r.match.filename_regex}` : ''}
-                          </div>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-1.5">
-                          <Button variant="outline" size="sm" className="size-8 rounded-xl px-0 text-[12px]" onClick={() => moveRule(idx, -1)} disabled={idx === 0}>
-                            ↑
-                          </Button>
-                          <Button variant="outline" size="sm" className="size-8 rounded-xl px-0 text-[12px]" onClick={() => moveRule(idx, 1)} disabled={idx === rules.length - 1}>
-                            ↓
-                          </Button>
-                          <Button variant="outline" size="sm" className="h-8 rounded-xl px-3 text-[12px] font-semibold" onClick={() => openEdit(idx)}>
-                            编辑
-                          </Button>
-                          <Button variant="destructive" size="sm" className="h-8 gap-1.5 rounded-xl px-3 text-[12px] font-semibold" onClick={() => removeRule(idx)}>
-                            <Trash2 className="size-3.5" />
-                            删除
-                          </Button>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 gap-2 text-[11px] md:grid-cols-3">
-                        <div className="rounded-xl border border-border/60 bg-muted/40 px-3 py-2">
-                          <div className="font-mono text-[9px] font-black uppercase tracking-[0.15em] text-muted-foreground/70">match</div>
-                          <div className="mt-1 truncate font-semibold text-foreground/85">
-                            {(r.match?.extensions || []).join(', ') || 'any file'}
-                          </div>
-                        </div>
-                        <div className="rounded-xl border border-border/60 bg-muted/40 px-3 py-2">
-                          <div className="font-mono text-[9px] font-black uppercase tracking-[0.15em] text-muted-foreground/70">parse</div>
-                          <div className="mt-1 truncate font-semibold text-foreground/85">
-                            {r.parser_backend || 'default'} · pre {r.preprocess?.enabled ? (r.preprocess?.steps || []).length : 0}
-                          </div>
-                        </div>
-                        <div className="rounded-xl border border-border/60 bg-muted/40 px-3 py-2">
-                          <div className="font-mono text-[9px] font-black uppercase tracking-[0.15em] text-muted-foreground/70">chunk</div>
-                          <div className="mt-1 truncate font-semibold text-foreground/85">
-                            {r.chunk_strategy || r.governance_profile_ref || 'dataset default'}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                        <Badge variant="outline" className="rounded-lg border-border bg-muted/40 font-mono text-muted-foreground">
-                          preprocess: {r.preprocess?.enabled ? (r.preprocess?.steps || []).length : 0}
-                        </Badge>
-                        {r.parser_backend ? <Badge variant="outline" className="rounded-lg border-border bg-muted/40 font-mono text-muted-foreground">parser: {r.parser_backend}</Badge> : null}
-                        {r.chunk_strategy ? <Badge variant="outline" className="rounded-lg border-border bg-muted/40 font-mono text-muted-foreground">chunk: {r.chunk_strategy}</Badge> : null}
-                        {r.governance_profile_ref ? <Badge variant="outline" className="rounded-lg border-border bg-muted/40 font-mono text-muted-foreground">profile: {r.governance_profile_ref}</Badge> : null}
-                        {r.pipeline_patch && Object.keys(r.pipeline_patch || {}).length > 0 ? (
-                          <Badge variant="outline" className="rounded-lg border-border bg-muted/40 font-mono text-muted-foreground">patch: {Object.keys(r.pipeline_patch || {}).length}</Badge>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </Panel>
-
-          <Panel variant="default" className={cn(ingestionPanelClass, 'flex min-h-0 flex-col overflow-hidden')}>
-            <div className={cn(ingestionPanelHeaderClass, 'space-y-3')}>
-              <div className="flex items-start gap-3">
-                <div className={ingestionIconPillClass}>
-                  <Sparkles className="size-4 text-info" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[15px] font-bold tracking-[-0.015em] text-foreground dark:text-foreground">入库预览（样例文件）</div>
-                  <div className="mt-1 text-[12px] leading-5 text-muted-foreground dark:text-muted-foreground">
-                    上传样例文件，按当前策略执行：匹配规则 → 预处理 → 解析 → 治理 diff / 问题。
-                  </div>
-                </div>
-              </div>
-              <div className="rounded-lg border border-info/20 bg-card p-3 shadow-none dark:border-border/70 dark:bg-card">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground/70 dark:text-muted-foreground">sample file</span>
-                  {previewFile ? <span className="truncate font-mono text-[11px] text-muted-foreground dark:text-muted-foreground">{previewFile.name}</span> : null}
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Input
-                    type="file"
-                    className="h-10 w-full min-w-0 rounded-lg border-border bg-card text-[11px] shadow-none"
-                    onChange={(e) => setPreviewFile(e.target.files?.[0] || null)}
-                  />
-                  <Button onClick={runPreview} disabled={!previewFile || previewing} className="h-10 w-full shrink-0 gap-2 rounded-lg border border-primary/20 bg-primary px-3 text-xs font-bold text-primary-foreground shadow-none hover:bg-primary/90">
-                    {previewing ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <Sparkles className="size-4" />}
-                    生成预览
+                <div className="flex shrink-0 items-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setTemplatesOpen(true)}
+                    className={cn(ingestionActionButtonClass, 'border-border/60 bg-card hover:bg-muted/40')}
+                  >
+                    <Sparkles className="size-4" />
+                    从模板添加
+                  </Button>
+                  <Button
+                    onClick={openCreate}
+                    className={cn(
+                      ingestionActionButtonClass,
+                      'border border-primary/20 bg-primary text-primary-foreground hover:bg-primary/90',
+                    )}
+                  >
+                    <Plus className="size-4" />
+                    新增规则
                   </Button>
                 </div>
               </div>
-            </div>
 
-            {preview ? (
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-muted/15 p-4 no-scrollbar dark:bg-muted/10">
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <Badge variant={preview.rule?.matched ? 'soft' : 'outline'} className="rounded-lg font-mono">
-                    matched: {preview.rule?.matched ? 'true' : 'false'}
-                  </Badge>
-                  {preview.rule?.rule_name ? <Badge variant="outline" className="rounded-lg font-mono">{preview.rule.rule_name}</Badge> : null}
-                  <Badge variant="outline" className="rounded-lg font-mono">parser: {preview.rule?.parser_backend}</Badge>
-                  {preview.rule?.chunk_strategy ? <Badge variant="outline" className="rounded-lg font-mono">chunk: {preview.rule.chunk_strategy}</Badge> : null}
-                  {preview.rule?.governance_profile_ref ? <Badge variant="outline" className="rounded-lg font-mono">profile: {preview.rule.governance_profile_ref}</Badge> : null}
-                  <Badge variant="outline" className="rounded-lg font-mono">preprocess_changed: {String(preview.preprocess?.changed)}</Badge>
-                </div>
-
-                {Array.isArray(preview.clean?.issues) && preview.clean.issues.length > 0 ? (
-                  <Panel variant="muted" className="rounded-2xl border-warning/30 bg-warning/5 p-4 shadow-none">
-                    <div className="mb-2 text-sm font-bold text-foreground dark:text-foreground">后端检测到的问题（issues）</div>
-                    <div className="space-y-2">
-                      {preview.clean.issues.slice(0, 8).map((it) => (
-                        <div key={`${it.code}-${it.message}`} className="text-xs leading-5 text-foreground/85 dark:text-muted-foreground">
-                          <span className="font-mono text-muted-foreground">{it.severity}</span>{' '}
-                          <span className="font-mono">{it.code}</span> · {it.message}
-                          {it.count ? <span className="text-muted-foreground"> ×{it.count}</span> : null}
+              <div className="min-h-0 flex-1 overflow-y-auto bg-muted/15 p-4 no-scrollbar dark:bg-muted/10">
+                {(rules || []).length === 0 ? (
+                  <div className="flex min-h-[260px] flex-col justify-center rounded-lg border border-dashed border-border px-6 py-8 text-muted-foreground shadow-none dark:border-border dark:bg-muted/20 dark:text-muted-foreground">
+                    <div className="flex items-start gap-4">
+                      <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-muted text-muted-foreground dark:bg-muted/40">
+                        <Sparkles className="size-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[15px] font-bold tracking-[-0.01em] text-foreground dark:text-foreground">
+                          还没有入库规则
                         </div>
-                      ))}
-                      {preview.clean.issues.length > 8 ? (
-                        <div className="text-xs text-muted-foreground">… 还有 {preview.clean.issues.length - 8} 条</div>
-                      ) : null}
+                        <div className="mt-1 max-w-xl text-[12px] leading-6">
+                          建议先从模板生成 PDF / HTML / 纯文本规则，再按数据集情况调整解析后端、治理预设和 chunk 策略。
+                        </div>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="rounded-xl bg-card text-[12px] font-semibold"
+                            onClick={() => setTemplatesOpen(true)}
+                          >
+                            <Sparkles className="size-3.5" />
+                            从模板开始
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="rounded-xl bg-primary text-[12px] font-semibold text-primary-foreground hover:bg-primary/90"
+                            onClick={openCreate}
+                          >
+                            <Plus className="size-3.5" />
+                            手动新增
+                          </Button>
+                        </div>
+                      </div>
                     </div>
-                  </Panel>
-                ) : null}
+                  </div>
+                ) : (
+                  (rules || []).map((r, idx) => (
+                    <div
+                      key={r.id}
+                      className="group relative mb-3 overflow-hidden rounded-lg border border-border/60 border-l-2 border-l-info/35 bg-card p-4 transition-colors last:mb-0 hover:border-info/30 dark:border-border/70 dark:bg-card"
+                    >
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="truncate text-[15px] font-bold tracking-[-0.01em] text-foreground dark:text-foreground">
+                                {r.name}
+                              </span>
+                              <Badge
+                                variant={r.enabled ? 'soft' : 'outline'}
+                                className="h-5 rounded-full px-2 text-[10px] font-mono uppercase"
+                              >
+                                {r.enabled ? 'enabled' : 'disabled'}
+                              </Badge>
+                              <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-[10px] font-semibold text-muted-foreground dark:bg-muted/50 dark:text-muted-foreground">
+                                #{idx + 1}
+                              </span>
+                            </div>
+                            <div className="mt-1.5 text-[12px] font-medium text-muted-foreground dark:text-muted-foreground">
+                              ext: {(r.match?.extensions || []).join(', ') || '（任意）'}
+                              {r.match?.filename_regex ? ` · filename_regex: ${r.match.filename_regex}` : ''}
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="size-8 rounded-xl px-0 text-[12px]"
+                              onClick={() => moveRule(idx, -1)}
+                              disabled={idx === 0}
+                            >
+                              ↑
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="size-8 rounded-xl px-0 text-[12px]"
+                              onClick={() => moveRule(idx, 1)}
+                              disabled={idx === rules.length - 1}
+                            >
+                              ↓
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 rounded-xl px-3 text-[12px] font-semibold"
+                              onClick={() => openEdit(idx)}
+                            >
+                              编辑
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              className="h-8 gap-1.5 rounded-xl px-3 text-[12px] font-semibold"
+                              onClick={() => removeRule(idx)}
+                            >
+                              <Trash2 className="size-3.5" />
+                              删除
+                            </Button>
+                          </div>
+                        </div>
 
-                <div className="grid grid-cols-1 gap-3">
-                  <Panel variant="muted" className="overflow-hidden rounded-lg border-border/60 bg-card p-0 shadow-none dark:border-border/70 dark:bg-card">
-                    <div className="border-b border-border/60 px-4 py-3 text-sm font-bold">解析后 Markdown（raw）</div>
-                    <pre className="max-h-[260px] overflow-y-auto whitespace-pre-wrap p-4 text-xs leading-relaxed no-scrollbar">
-                      {preview.parse?.markdown || ''}
-                    </pre>
-                  </Panel>
-                  <Panel variant="muted" className="overflow-hidden rounded-lg border-border/60 bg-card p-0 shadow-none dark:border-border/70 dark:bg-card">
-                    <div className="border-b border-border/60 px-4 py-3 text-sm font-bold">治理后 Markdown（clean）</div>
-                    <pre className="max-h-[260px] overflow-y-auto whitespace-pre-wrap p-4 text-xs leading-relaxed no-scrollbar">
-                      {preview.clean?.markdown || ''}
-                    </pre>
-                  </Panel>
-                </div>
+                        <div className="grid grid-cols-1 gap-2 text-[11px] md:grid-cols-3">
+                          <div className="rounded-xl border border-border/60 bg-muted/40 px-3 py-2">
+                            <div className="font-mono text-[9px] font-black uppercase tracking-[0.15em] text-muted-foreground/70">
+                              match
+                            </div>
+                            <div className="mt-1 truncate font-semibold text-foreground/85">
+                              {(r.match?.extensions || []).join(', ') || 'any file'}
+                            </div>
+                          </div>
+                          <div className="rounded-xl border border-border/60 bg-muted/40 px-3 py-2">
+                            <div className="font-mono text-[9px] font-black uppercase tracking-[0.15em] text-muted-foreground/70">
+                              parse
+                            </div>
+                            <div className="mt-1 truncate font-semibold text-foreground/85">
+                              {r.parser_backend || 'default'} · pre{' '}
+                              {r.preprocess?.enabled ? (r.preprocess?.steps || []).length : 0}
+                            </div>
+                          </div>
+                          <div className="rounded-xl border border-border/60 bg-muted/40 px-3 py-2">
+                            <div className="font-mono text-[9px] font-black uppercase tracking-[0.15em] text-muted-foreground/70">
+                              chunk
+                            </div>
+                            <div className="mt-1 truncate font-semibold text-foreground/85">
+                              {r.chunk_strategy || r.governance_profile_ref || 'dataset default'}
+                            </div>
+                          </div>
+                        </div>
 
-                {preview.clean?.diff_unified ? (
-                  <Panel variant="muted" className="overflow-hidden rounded-2xl border-border/60 bg-foreground p-0 text-muted-foreground/30 shadow-none dark:border-border/60">
-                    <div className="border-b border-border/20 px-4 py-3 text-sm font-bold">Unified Diff（后端）</div>
-                    <pre className="max-h-[320px] overflow-y-auto whitespace-pre p-4 font-mono text-xs leading-relaxed no-scrollbar">
-                      {preview.clean.diff_unified}
-                    </pre>
-                  </Panel>
-                ) : null}
+                        <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                          <Badge
+                            variant="outline"
+                            className="rounded-lg border-border bg-muted/40 font-mono text-muted-foreground"
+                          >
+                            preprocess: {r.preprocess?.enabled ? (r.preprocess?.steps || []).length : 0}
+                          </Badge>
+                          {r.parser_backend ? (
+                            <Badge
+                              variant="outline"
+                              className="rounded-lg border-border bg-muted/40 font-mono text-muted-foreground"
+                            >
+                              parser: {r.parser_backend}
+                            </Badge>
+                          ) : null}
+                          {r.chunk_strategy ? (
+                            <Badge
+                              variant="outline"
+                              className="rounded-lg border-border bg-muted/40 font-mono text-muted-foreground"
+                            >
+                              chunk: {r.chunk_strategy}
+                            </Badge>
+                          ) : null}
+                          {r.governance_profile_ref ? (
+                            <Badge
+                              variant="outline"
+                              className="rounded-lg border-border bg-muted/40 font-mono text-muted-foreground"
+                            >
+                              profile: {r.governance_profile_ref}
+                            </Badge>
+                          ) : null}
+                          {r.pipeline_patch && Object.keys(r.pipeline_patch || {}).length > 0 ? (
+                            <Badge
+                              variant="outline"
+                              className="rounded-lg border-border bg-muted/40 font-mono text-muted-foreground"
+                            >
+                              patch: {Object.keys(r.pipeline_patch || {}).length}
+                            </Badge>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
-            ) : (
-              <div className="flex min-h-0 flex-1 flex-col justify-between bg-muted/15 p-4 dark:bg-muted/10">
-                <div className="rounded-lg border border-dashed border-border bg-card px-4 py-5 text-[12px] leading-6 text-muted-foreground dark:border-border dark:bg-muted/20 dark:text-muted-foreground">
-                  可选：选择 HTML / PDF / DOCX / CSV 样例后生成预览，用于检查策略命中和治理 diff。
+            </Panel>
+
+            <Panel variant="default" className={cn(ingestionPanelClass, 'flex min-h-0 flex-col overflow-hidden')}>
+              <div className={cn(ingestionPanelHeaderClass, 'space-y-3')}>
+                <div className="flex items-start gap-3">
+                  <div className={ingestionIconPillClass}>
+                    <Sparkles className="size-4 text-info" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[15px] font-bold tracking-[-0.015em] text-foreground dark:text-foreground">
+                      入库预览（样例文件）
+                    </div>
+                    <div className="mt-1 text-[12px] leading-5 text-muted-foreground dark:text-muted-foreground">
+                      上传样例文件，按当前策略执行：匹配规则 → 预处理 → 解析 → 治理 diff / 问题。
+                    </div>
+                  </div>
                 </div>
-                <div className="mt-4 grid gap-2 text-[11px] text-muted-foreground dark:text-muted-foreground">
-                  <div className="rounded-xl bg-muted/60 px-3 py-2 dark:bg-muted/30">1. 先确认命中规则是否符合预期</div>
-                  <div className="rounded-xl bg-muted/60 px-3 py-2 dark:bg-muted/30">2. 再看解析后 Markdown 和治理后 Markdown 差异</div>
-                  <div className="rounded-xl bg-muted/60 px-3 py-2 dark:bg-muted/30">3. 最后保存策略并重建相关索引</div>
+                <div className="rounded-lg border border-info/20 bg-card p-3 shadow-none dark:border-border/70 dark:bg-card">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground/70 dark:text-muted-foreground">
+                      sample file
+                    </span>
+                    {previewFile ? (
+                      <span className="truncate font-mono text-[11px] text-muted-foreground dark:text-muted-foreground">
+                        {previewFile.name}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Input
+                      type="file"
+                      className="h-10 w-full min-w-0 rounded-lg border-border bg-card text-[11px] shadow-none"
+                      onChange={(e) => setPreviewFile(e.target.files?.[0] || null)}
+                    />
+                    <Button
+                      onClick={runPreview}
+                      disabled={!previewFile || previewing}
+                      className="h-10 w-full shrink-0 gap-2 rounded-lg border border-primary/20 bg-primary px-3 text-xs font-bold text-primary-foreground shadow-none hover:bg-primary/90"
+                    >
+                      {previewing ? (
+                        <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+                      ) : (
+                        <Sparkles className="size-4" />
+                      )}
+                      生成预览
+                    </Button>
+                  </div>
                 </div>
               </div>
-            )}
-          </Panel>
+
+              {preview ? (
+                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-muted/15 p-4 no-scrollbar dark:bg-muted/10">
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <Badge variant={preview.rule?.matched ? 'soft' : 'outline'} className="rounded-lg font-mono">
+                      matched: {preview.rule?.matched ? 'true' : 'false'}
+                    </Badge>
+                    {preview.rule?.rule_name ? (
+                      <Badge variant="outline" className="rounded-lg font-mono">
+                        {preview.rule.rule_name}
+                      </Badge>
+                    ) : null}
+                    <Badge variant="outline" className="rounded-lg font-mono">
+                      parser: {preview.rule?.parser_backend}
+                    </Badge>
+                    {preview.rule?.chunk_strategy ? (
+                      <Badge variant="outline" className="rounded-lg font-mono">
+                        chunk: {preview.rule.chunk_strategy}
+                      </Badge>
+                    ) : null}
+                    {preview.rule?.governance_profile_ref ? (
+                      <Badge variant="outline" className="rounded-lg font-mono">
+                        profile: {preview.rule.governance_profile_ref}
+                      </Badge>
+                    ) : null}
+                    <Badge variant="outline" className="rounded-lg font-mono">
+                      preprocess_changed: {String(preview.preprocess?.changed)}
+                    </Badge>
+                  </div>
+
+                  {Array.isArray(preview.clean?.issues) && preview.clean.issues.length > 0 ? (
+                    <Panel variant="muted" className="rounded-2xl border-warning/30 bg-warning/5 p-4 shadow-none">
+                      <div className="mb-2 text-sm font-bold text-foreground dark:text-foreground">
+                        后端检测到的问题（issues）
+                      </div>
+                      <div className="space-y-2">
+                        {preview.clean.issues.slice(0, 8).map((it) => (
+                          <div
+                            key={`${it.code}-${it.message}`}
+                            className="text-xs leading-5 text-foreground/85 dark:text-muted-foreground"
+                          >
+                            <span className="font-mono text-muted-foreground">{it.severity}</span>{' '}
+                            <span className="font-mono">{it.code}</span> · {it.message}
+                            {it.count ? <span className="text-muted-foreground"> ×{it.count}</span> : null}
+                          </div>
+                        ))}
+                        {preview.clean.issues.length > 8 ? (
+                          <div className="text-xs text-muted-foreground">
+                            … 还有 {preview.clean.issues.length - 8} 条
+                          </div>
+                        ) : null}
+                      </div>
+                    </Panel>
+                  ) : null}
+
+                  <div className="grid grid-cols-1 gap-3">
+                    <Panel
+                      variant="muted"
+                      className="overflow-hidden rounded-lg border-border/60 bg-card p-0 shadow-none dark:border-border/70 dark:bg-card"
+                    >
+                      <div className="border-b border-border/60 px-4 py-3 text-sm font-bold">
+                        解析后 Markdown（raw）
+                      </div>
+                      <pre className="max-h-[260px] overflow-y-auto whitespace-pre-wrap p-4 text-xs leading-relaxed no-scrollbar">
+                        {preview.parse?.markdown || ''}
+                      </pre>
+                    </Panel>
+                    <Panel
+                      variant="muted"
+                      className="overflow-hidden rounded-lg border-border/60 bg-card p-0 shadow-none dark:border-border/70 dark:bg-card"
+                    >
+                      <div className="border-b border-border/60 px-4 py-3 text-sm font-bold">
+                        治理后 Markdown（clean）
+                      </div>
+                      <pre className="max-h-[260px] overflow-y-auto whitespace-pre-wrap p-4 text-xs leading-relaxed no-scrollbar">
+                        {preview.clean?.markdown || ''}
+                      </pre>
+                    </Panel>
+                  </div>
+
+                  {preview.clean?.diff_unified ? (
+                    <Panel
+                      variant="muted"
+                      className="overflow-hidden rounded-2xl border-border/60 bg-foreground p-0 text-muted-foreground/30 shadow-none dark:border-border/60"
+                    >
+                      <div className="border-b border-border/20 px-4 py-3 text-sm font-bold">Unified Diff（后端）</div>
+                      <pre className="max-h-[320px] overflow-y-auto whitespace-pre p-4 font-mono text-xs leading-relaxed no-scrollbar">
+                        {preview.clean.diff_unified}
+                      </pre>
+                    </Panel>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="flex min-h-0 flex-1 flex-col justify-between bg-muted/15 p-4 dark:bg-muted/10">
+                  <div className="rounded-lg border border-dashed border-border bg-card px-4 py-5 text-[12px] leading-6 text-muted-foreground dark:border-border dark:bg-muted/20 dark:text-muted-foreground">
+                    可选：选择 HTML / PDF / DOCX / CSV 样例后生成预览，用于检查策略命中和治理 diff。
+                  </div>
+                  <div className="mt-4 grid gap-2 text-[11px] text-muted-foreground dark:text-muted-foreground">
+                    <div className="rounded-xl bg-muted/60 px-3 py-2 dark:bg-muted/30">
+                      1. 先确认命中规则是否符合预期
+                    </div>
+                    <div className="rounded-xl bg-muted/60 px-3 py-2 dark:bg-muted/30">
+                      2. 再看解析后 Markdown 和治理后 Markdown 差异
+                    </div>
+                    <div className="rounded-xl bg-muted/60 px-3 py-2 dark:bg-muted/30">
+                      3. 最后保存策略并重建相关索引
+                    </div>
+                  </div>
+                </div>
+              )}
+            </Panel>
           </div>
         </div>
 
         <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
           <DialogContent className="max-w-3xl border-border bg-background/95 shadow-strong sm:rounded-2xl">
             <DialogHeader>
-              <DialogTitle className="text-xl font-bold text-foreground">{editingIndex == null ? '新增规则' : '编辑规则'}</DialogTitle>
+              <DialogTitle className="text-xl font-bold text-foreground">
+                {editingIndex == null ? '新增规则' : '编辑规则'}
+              </DialogTitle>
               <DialogDescription className="text-muted-foreground">
                 提示：规则从上到下匹配。扩展名支持 .pdf / pdf 两种写法；filename_regex 为可选。
               </DialogDescription>
@@ -1292,13 +1529,19 @@ export default function DatasetIngestionPolicyPage() {
                       <div className="text-sm font-semibold">解析前预处理</div>
                       <div className="text-xs text-muted-foreground">在解析前对原始文件做修复/清洗</div>
                     </div>
-                    <Switch checked={draft.preprocessEnabled} onCheckedChange={(v) => setDraft({ ...draft, preprocessEnabled: v })} />
+                    <Switch
+                      checked={draft.preprocessEnabled}
+                      onCheckedChange={(v) => setDraft({ ...draft, preprocessEnabled: v })}
+                    />
                   </div>
                   <div className={cn('mt-3 space-y-2', !draft.preprocessEnabled && 'opacity-50 pointer-events-none')}>
                     {PREPROCESS_STEP_CATALOG.map((s) => {
                       const checked = draft.preprocessStepIds.includes(s.id)
                       return (
-                        <div key={s.id} className="flex items-start gap-3 rounded-lg border border-border/60 p-3 hover:bg-muted/30 transition-colors cursor-pointer">
+                        <div
+                          key={s.id}
+                          className="flex items-start gap-3 rounded-lg border border-border/60 p-3 hover:bg-muted/30 transition-colors cursor-pointer"
+                        >
                           <Checkbox
                             checked={checked}
                             onCheckedChange={(v) => {
@@ -1323,7 +1566,10 @@ export default function DatasetIngestionPolicyPage() {
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label>解析后端（可选覆盖）</Label>
-                  <Select value={draft.parserBackend || NONE} onValueChange={(v) => setDraft({ ...draft, parserBackend: v === NONE ? '' : v })}>
+                  <Select
+                    value={draft.parserBackend || NONE}
+                    onValueChange={(v) => setDraft({ ...draft, parserBackend: v === NONE ? '' : v })}
+                  >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="不覆盖（使用默认/手动选择）" />
                     </SelectTrigger>
@@ -1343,7 +1589,10 @@ export default function DatasetIngestionPolicyPage() {
 
                 <div className="space-y-2">
                   <Label>Chunk 策略（可选覆盖）</Label>
-                  <Select value={draft.chunkStrategy || NONE} onValueChange={(v) => setDraft({ ...draft, chunkStrategy: v === NONE ? '' : v })}>
+                  <Select
+                    value={draft.chunkStrategy || NONE}
+                    onValueChange={(v) => setDraft({ ...draft, chunkStrategy: v === NONE ? '' : v })}
+                  >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="不覆盖" />
                     </SelectTrigger>
@@ -1360,7 +1609,10 @@ export default function DatasetIngestionPolicyPage() {
 
                 <div className="space-y-2">
                   <Label>治理预设（Profiles/脚本，可选）</Label>
-                  <Select value={draft.governanceProfileRef || NONE} onValueChange={(v) => setDraft({ ...draft, governanceProfileRef: v === NONE ? '' : v })}>
+                  <Select
+                    value={draft.governanceProfileRef || NONE}
+                    onValueChange={(v) => setDraft({ ...draft, governanceProfileRef: v === NONE ? '' : v })}
+                  >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="不使用预设" />
                     </SelectTrigger>
@@ -1380,12 +1632,12 @@ export default function DatasetIngestionPolicyPage() {
 
                 <div className="space-y-2">
                   <Label>高级：pipeline_patch（JSON，可选）</Label>
-	                  <Textarea
-	                    value={draft.pipelinePatchJson}
-	                    onChange={(e) => setDraft({ ...draft, pipelinePatchJson: e.target.value })}
-	                    placeholder={`{\n  "governance_enabled": true,\n  "governance_remove_boilerplate": true\n}`}
-	                    className="min-h-[220px] font-mono text-xs"
-	                  />
+                  <Textarea
+                    value={draft.pipelinePatchJson}
+                    onChange={(e) => setDraft({ ...draft, pipelinePatchJson: e.target.value })}
+                    placeholder={`{\n  "governance_enabled": true,\n  "governance_remove_boilerplate": true\n}`}
+                    className="min-h-[220px] font-mono text-xs"
+                  />
                   <div className="text-xs text-muted-foreground">
                     仅允许 DocumentPipelineOptions 的字段；未知字段会被后端拒绝。
                   </div>
@@ -1394,7 +1646,9 @@ export default function DatasetIngestionPolicyPage() {
             </div>
 
             <DialogFooter className="mt-4">
-              <Button variant="ghost" onClick={() => setEditorOpen(false)}>取消</Button>
+              <Button variant="ghost" onClick={() => setEditorOpen(false)}>
+                取消
+              </Button>
               <Button onClick={applyDraft}>保存规则</Button>
             </DialogFooter>
           </DialogContent>
@@ -1414,7 +1668,10 @@ export default function DatasetIngestionPolicyPage() {
 
             <div className="space-y-3">
               {INGESTION_POLICY_TEMPLATES.map((tpl) => (
-                <div key={tpl.key} className="rounded-xl border border-border/60 p-4 hover:bg-muted/20 transition-colors">
+                <div
+                  key={tpl.key}
+                  className="rounded-xl border border-border/60 p-4 hover:bg-muted/20 transition-colors"
+                >
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
                       <div className="font-semibold">{tpl.name}</div>
@@ -1453,7 +1710,6 @@ export default function DatasetIngestionPolicyPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-
       </PageScaffold>
     </AppFrame>
   )

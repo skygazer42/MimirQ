@@ -158,7 +158,10 @@ function resolveParentRange(chunk: ChunkPreviewItem, chunks: ChunkPreviewItem[])
   if (!parentId) return null
   const parent = chunks.find((it) => {
     const parentMeta = getChunkMetadata(it)
-    return getChunkRole(it) === 'parent' && (parentMeta.parent_id === parentId || parentMeta.node_id === parentId || parentMeta.id === parentId)
+    return (
+      getChunkRole(it) === 'parent' &&
+      (parentMeta.parent_id === parentId || parentMeta.node_id === parentId || parentMeta.id === parentId)
+    )
   })
   if (!parent) return null
   const start = Number(parent.start_index) || 0
@@ -167,17 +170,19 @@ function resolveParentRange(chunk: ChunkPreviewItem, chunks: ChunkPreviewItem[])
   return { start, end }
 }
 
-export function OriginalPreviewMonaco(props: Readonly<{
-  text: string
-  chunks: ChunkPreviewItem[]
-  activeChunkIndex: number | null
-  activeRange?: { start: number; end: number } | null
-  highlightParentRange?: boolean
-  initialScrollTop?: number
-  chunkOverrides?: Record<number, { disabled?: boolean }>
-  onScrollTopChange?: (scrollTop: number) => void
-  onSelectChunkIndex?: (index: number) => void
-}>) {
+export function OriginalPreviewMonaco(
+  props: Readonly<{
+    text: string
+    chunks: ChunkPreviewItem[]
+    activeChunkIndex: number | null
+    activeRange?: { start: number; end: number } | null
+    highlightParentRange?: boolean
+    initialScrollTop?: number
+    chunkOverrides?: Record<number, { disabled?: boolean }>
+    onScrollTopChange?: (scrollTop: number) => void
+    onSelectChunkIndex?: (index: number) => void
+  }>,
+) {
   const {
     text,
     chunks,
@@ -221,24 +226,20 @@ export function OriginalPreviewMonaco(props: Readonly<{
       const end = clampOffset(Math.max(start, Number(chunk.end_index) || start), 0, textLen)
       const startPos = offsetToPosition(lineStarts, start)
       const endPos = offsetToPosition(lineStarts, end)
-      const meta = (chunk.metadata || {})
+      const meta = chunk.metadata || {}
       const role = typeof meta.chunk_role === 'string' ? meta.chunk_role : ''
       const isChild = role === 'child'
       const disabled = Boolean(chunkOverrides?.[chunk.index]?.disabled)
 
       const color = (() => {
-    if (disabled) {
-        return 'rgba(148,163,184,0.35)';
-    }
-    else if (isChild) {
-            return 'rgba(59,130,246,0.65)' // child highlight
-            ;
+        if (disabled) {
+          return 'rgba(148,163,184,0.35)'
+        } else if (isChild) {
+          return 'rgba(59,130,246,0.65)' // child highlight
+        } else {
+          return 'rgba(148,163,184,0.45)' // parent/others
         }
-        else {
-            return 'rgba(148,163,184,0.45)' // parent/others
-            ;
-        }
-})() // parent/others
+      })() // parent/others
 
       return {
         range: new monaco.Range(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column),
@@ -399,7 +400,12 @@ export function OriginalPreviewMonaco(props: Readonly<{
           applyOverviewDecorations()
           applyActiveDecorations()
 
-          if (typeof initialScrollTop === 'number' && Number.isFinite(initialScrollTop) && activeChunkIndex == null && !activeRange) {
+          if (
+            typeof initialScrollTop === 'number' &&
+            Number.isFinite(initialScrollTop) &&
+            activeChunkIndex == null &&
+            !activeRange
+          ) {
             try {
               editor.setScrollTop(Math.max(0, initialScrollTop))
             } catch {

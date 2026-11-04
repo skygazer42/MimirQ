@@ -63,7 +63,8 @@ describe('authenticatedFetch', () => {
   })
 
   it('shares one refresh attempt across concurrent session-token 401 responses', async () => {
-    globalThis.fetch = vi.fn()
+    globalThis.fetch = vi
+      .fn()
       .mockResolvedValueOnce(new Response('denied', { status: 401 }))
       .mockResolvedValueOnce(new Response('denied', { status: 401 }))
       .mockResolvedValue(new Response('ok', { status: 200 })) as typeof fetch
@@ -72,7 +73,7 @@ describe('authenticatedFetch', () => {
     oidc.refresh.mockReturnValueOnce(
       new Promise((resolve) => {
         resolveRefresh = resolve
-      })
+      }),
     )
 
     const first = authenticatedFetch('/api/v1/documents/1/download', {
@@ -96,7 +97,8 @@ describe('authenticatedFetch', () => {
   })
 
   it('does not apply a stale refresh result after the session token changes', async () => {
-    globalThis.fetch = vi.fn()
+    globalThis.fetch = vi
+      .fn()
       .mockResolvedValueOnce(new Response('denied', { status: 401 }))
       .mockResolvedValue(new Response('ok', { status: 200 })) as typeof fetch
 
@@ -104,7 +106,7 @@ describe('authenticatedFetch', () => {
     oidc.refresh.mockReturnValueOnce(
       new Promise((resolve) => {
         resolveRefresh = resolve
-      })
+      }),
     )
 
     const pending = authenticatedFetch('/api/v1/documents/1/download', {

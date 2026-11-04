@@ -42,7 +42,7 @@ export function BulkActionBar({
   const [deleteConfirmValue, setDeleteConfirmValue] = useState('')
   const deleteEnabled = useMemo(
     () => canDelete && deleteConfirmValue === String(selectionCount),
-    [canDelete, deleteConfirmValue, selectionCount]
+    [canDelete, deleteConfirmValue, selectionCount],
   )
 
   return (
@@ -58,11 +58,20 @@ export function BulkActionBar({
               {selectionCount}
             </div>
             <div className="min-w-0">
-              <div className="text-[0.66rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground/72">批量操作</div>
-              <div className="mt-0.5 text-[0.92rem] font-medium tracking-[-0.01em] text-foreground">选中 {selectionCount} 项</div>
+              <div className="text-[0.66rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground/72">
+                批量操作
+              </div>
+              <div className="mt-0.5 text-[0.92rem] font-medium tracking-[-0.01em] text-foreground">
+                选中 {selectionCount} 项
+              </div>
             </div>
           </div>
-          <Button variant="ghost" size="sm" className="h-8 rounded-full px-3 text-xs text-muted-foreground hover:bg-black/5 hover:text-foreground dark:hover:bg-card/10" onClick={onClear}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 rounded-full px-3 text-xs text-muted-foreground hover:bg-black/5 hover:text-foreground dark:hover:bg-card/10"
+            onClick={onClear}
+          >
             清空
           </Button>
         </div>
@@ -70,7 +79,13 @@ export function BulkActionBar({
         <div className="mt-3 grid grid-cols-2 gap-2">
           <ActionTile icon={RotateCcw} label="Retry" tone="sky" disabled={!canRetry} onClick={onRetry} />
           <ActionTile icon={XCircle} label="Cancel" tone="amber" disabled={!canCancel} onClick={onCancel} />
-          <ActionTile icon={Trash2} label="Delete" tone="rose" disabled={!canDelete} onClick={() => setDeleteOpen(true)} />
+          <ActionTile
+            icon={Trash2}
+            label="Delete"
+            tone="rose"
+            disabled={!canDelete}
+            onClick={() => setDeleteOpen(true)}
+          />
           <ActionTile icon={Download} label="Export" tone="emerald" disabled={!canExport} onClick={onExport} />
         </div>
       </div>
@@ -79,9 +94,7 @@ export function BulkActionBar({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>确认删除选中的入库任务</DialogTitle>
-            <DialogDescription>
-              请输入数字 {selectionCount} 以确认删除。这会移除选中的任务记录。
-            </DialogDescription>
+            <DialogDescription>请输入数字 {selectionCount} 以确认删除。这会移除选中的任务记录。</DialogDescription>
           </DialogHeader>
           <Input
             value={deleteConfirmValue}
@@ -126,9 +139,11 @@ function ActionTile({
 }>) {
   const toneClass = {
     sky: 'border-info/18 bg-info/[0.07] text-info hover:border-info/28 hover:bg-info/[0.12]',
-    amber: 'border-info/16 bg-info/[0.05] text-foreground/85 hover:border-warning/26 hover:bg-warning/[0.10] hover:text-warning dark:hover:text-warning',
+    amber:
+      'border-info/16 bg-info/[0.05] text-foreground/85 hover:border-warning/26 hover:bg-warning/[0.10] hover:text-warning dark:hover:text-warning',
     rose: 'border-info/16 bg-info/[0.05] text-foreground/85 hover:border-destructive/26 hover:bg-destructive/[0.10] hover:text-destructive dark:hover:text-destructive',
-    emerald: 'border-info/18 bg-info/[0.07] text-info hover:border-success/26 hover:bg-success/[0.10] hover:text-success',
+    emerald:
+      'border-info/18 bg-info/[0.07] text-info hover:border-success/26 hover:bg-success/[0.10] hover:text-success',
   }[tone]
 
   return (
@@ -139,7 +154,7 @@ function ActionTile({
       onClick={onClick}
       className={cn(
         'h-10 justify-start gap-2 rounded-[0.95rem] border px-3 text-[0.78rem] font-medium tracking-[0.01em] shadow-[inset_0_1px_0_rgba(255,255,255,0.32)] transition-all hover:-translate-y-0.5 disabled:opacity-35',
-        toneClass
+        toneClass,
       )}
     >
       <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-card/88 ring-1 ring-info/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:bg-card/10 dark:ring-white/10">

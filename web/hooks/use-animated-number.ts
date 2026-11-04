@@ -1,7 +1,7 @@
-"use client"
+'use client'
 
-import { useMotionValue, useSpring, useReducedMotion } from "framer-motion"
-import { useEffect, useState } from "react"
+import { useMotionValue, useSpring, useReducedMotion } from 'framer-motion'
+import { useEffect, useState } from 'react'
 
 type UseAnimatedNumberOptions = {
   /** Spring stiffness (default 120) */
@@ -20,7 +20,7 @@ const defaultFormat = (value: number) => Math.round(value).toLocaleString()
  */
 export function useAnimatedNumber(
   target: number,
-  { stiffness = 120, damping = 20, format = defaultFormat }: UseAnimatedNumberOptions = {}
+  { stiffness = 120, damping = 20, format = defaultFormat }: UseAnimatedNumberOptions = {},
 ) {
   const shouldReduceMotion = useReducedMotion()
   const motionValue = useMotionValue(target)
@@ -41,7 +41,7 @@ export function useAnimatedNumber(
 
   useEffect(() => {
     if (shouldReduceMotion) return
-    const unsubscribe = spring.on("change", (v) => {
+    const unsubscribe = spring.on('change', (v) => {
       setDisplay(format(v))
     })
     return unsubscribe

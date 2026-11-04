@@ -10,11 +10,14 @@ type GraphStatsBarProps = {
 }
 
 export function GraphStatsBar({ nodeCount, linkCount, entityTypeCount }: GraphStatsBarProps) {
-  const items = useMemo(() => [
-    { icon: Waypoints, label: '节点', value: nodeCount },
-    { icon: GitCommitHorizontal, label: '关系', value: linkCount },
-    { icon: Shapes, label: '类型', value: entityTypeCount },
-  ], [nodeCount, linkCount, entityTypeCount])
+  const items = useMemo(
+    () => [
+      { icon: Waypoints, label: '节点', value: nodeCount },
+      { icon: GitCommitHorizontal, label: '关系', value: linkCount },
+      { icon: Shapes, label: '类型', value: entityTypeCount },
+    ],
+    [nodeCount, linkCount, entityTypeCount],
+  )
 
   if (nodeCount === 0 && linkCount === 0) return null
 

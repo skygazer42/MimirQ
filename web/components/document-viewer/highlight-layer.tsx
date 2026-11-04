@@ -29,12 +29,9 @@ export function HighlightLayer({ content, query }: Readonly<HighlightLayerProps>
 
     if (idx > lastIndex) out.push(content.slice(lastIndex, idx))
     out.push(
-      <mark
-        key={`${idx}-${matched}`}
-        className="rounded bg-warning/15 px-0.5 text-foreground"
-      >
+      <mark key={`${idx}-${matched}`} className="rounded bg-warning/15 px-0.5 text-foreground">
         {content.slice(idx, idx + matched.length)}
-      </mark>
+      </mark>,
     )
     lastIndex = idx + matched.length
     matchCount += 1

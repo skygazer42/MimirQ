@@ -18,8 +18,7 @@ describe('KgNetworkAnalysisPanel accessibility', () => {
   let root: ReturnType<typeof createRoot>
 
   beforeEach(() => {
-    ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
-      .IS_REACT_ACT_ENVIRONMENT = true
+    ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
       writable: true,
@@ -43,34 +42,28 @@ describe('KgNetworkAnalysisPanel accessibility', () => {
     act(() => {
       root.render(
         <KgNetworkAnalysisPanel
-          nodes={[
-            { id: 'node-a', label: 'Node A', type: 'doc' },
-            { id: 'node-b', label: 'Node B', type: 'doc' },
-          ] as never}
+          nodes={
+            [
+              { id: 'node-a', label: 'Node A', type: 'doc' },
+              { id: 'node-b', label: 'Node B', type: 'doc' },
+            ] as never
+          }
           links={[{ source: 'node-a', target: 'node-b', label: 'rel' }] as never}
           selectedNodeId="node-a"
-        />
+        />,
       )
     })
 
-    const panel = container.querySelector(
-      '#kg-network-analysis-panel'
-    ) as HTMLElement | null
-    const dragHandle = container.querySelector(
-      '[aria-label="拖动图谱统计栏"]'
-    ) as HTMLButtonElement | null
+    const panel = container.querySelector('#kg-network-analysis-panel') as HTMLElement | null
+    const dragHandle = container.querySelector('[aria-label="拖动图谱统计栏"]') as HTMLButtonElement | null
 
     act(() => {
-      dragHandle?.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })
-      )
+      dragHandle?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
     })
     expect(panel?.style.transform).toContain('24px')
 
     act(() => {
-      dragHandle?.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'Home', bubbles: true })
-      )
+      dragHandle?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
     })
     expect(panel?.style.transform).toBe('translate3d(0px, 0px, 0)')
   })

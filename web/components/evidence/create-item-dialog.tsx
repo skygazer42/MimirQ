@@ -10,7 +10,14 @@ import { coerceOneOf } from '@/lib/one-of'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Panel } from '@/components/ui/panel'
@@ -64,7 +71,12 @@ type CreateItemDialogProps = {
 
 function citationScoreLabel(citation: Citation): string {
   const raw =
-    citation.retrieval_score ?? citation.rerank_score ?? citation.relevance_score ?? citation.vector_score ?? citation.bm25_score ?? 0
+    citation.retrieval_score ??
+    citation.rerank_score ??
+    citation.relevance_score ??
+    citation.vector_score ??
+    citation.bm25_score ??
+    0
   const value = Number(raw)
   if (Number.isFinite(value)) return value.toFixed(4)
   return '0.0000'
@@ -112,9 +124,7 @@ export function CreateItemDialog({
       <div className="text-sm text-muted-foreground text-pretty">运行检索后在此勾选 Ground Truth 引用。</div>
     )
   } else if (retrieveRanked.length === 0) {
-    retrieveListContent = (
-      <div className="text-sm text-muted-foreground text-pretty">无 citations。</div>
-    )
+    retrieveListContent = <div className="text-sm text-muted-foreground text-pretty">无 citations。</div>
   } else {
     retrieveListContent = (
       <>
@@ -125,7 +135,10 @@ export function CreateItemDialog({
           const chunkId = String(citation.chunk_id || '')
           const checked = !!chunkId && selectedChunkIds.includes(chunkId)
           return (
-            <div key={chunkId || `${citation.document_id}:${citation.chunk_index}`} className="rounded-lg border border-border/60 p-2">
+            <div
+              key={chunkId || `${citation.document_id}:${citation.chunk_index}`}
+              className="rounded-lg border border-border/60 p-2"
+            >
               <div className="flex items-start gap-2">
                 <Checkbox
                   checked={checked}
@@ -162,7 +175,9 @@ export function CreateItemDialog({
                       )}
                     </div>
                   </div>
-                  <div className="mt-2 line-clamp-3 text-xs text-muted-foreground text-pretty">{citation.chunk_content}</div>
+                  <div className="mt-2 line-clamp-3 text-xs text-muted-foreground text-pretty">
+                    {citation.chunk_content}
+                  </div>
                   {hits.length ? (
                     <div className="mt-2 flex flex-wrap gap-1">
                       {hits.slice(0, 4).map((hit) => (
@@ -199,9 +214,7 @@ export function CreateItemDialog({
       <div className="text-sm text-muted-foreground text-pretty">导入后在此勾选 Ground Truth 引用。</div>
     )
   } else if (importCitations.length === 0) {
-    importListContent = (
-      <div className="text-sm text-muted-foreground text-pretty">pack 中没有 citations。</div>
-    )
+    importListContent = <div className="text-sm text-muted-foreground text-pretty">pack 中没有 citations。</div>
   } else {
     importListContent = (
       <>
@@ -209,7 +222,10 @@ export function CreateItemDialog({
           const chunkId = String(citation.chunk_id || '')
           const checked = !!chunkId && importSelectedChunkIds.includes(chunkId)
           return (
-            <div key={chunkId || `${citation.document_id}:${citation.chunk_index}`} className="rounded-lg border border-border/60 p-2">
+            <div
+              key={chunkId || `${citation.document_id}:${citation.chunk_index}`}
+              className="rounded-lg border border-border/60 p-2"
+            >
               <div className="flex items-start gap-2">
                 <Checkbox
                   checked={checked}
@@ -239,7 +255,9 @@ export function CreateItemDialog({
                       </Badge>
                     )}
                   </div>
-                  <div className="mt-2 line-clamp-3 text-xs text-muted-foreground text-pretty">{citation.chunk_content}</div>
+                  <div className="mt-2 line-clamp-3 text-xs text-muted-foreground text-pretty">
+                    {citation.chunk_content}
+                  </div>
                 </div>
               </div>
             </div>
@@ -305,7 +323,10 @@ export function CreateItemDialog({
               <div className="flex flex-col gap-3 md:flex-row md:items-end">
                 <div className="w-full md:w-[220px]">
                   <div className="mb-1 text-xs text-muted-foreground">Retrieval Profile</div>
-                  <Select value={profile} onValueChange={(value) => onProfileChange(coerceOneOf(RETRIEVAL_PROFILE_VALUES, value, 'recall50'))}>
+                  <Select
+                    value={profile}
+                    onValueChange={(value) => onProfileChange(coerceOneOf(RETRIEVAL_PROFILE_VALUES, value, 'recall50'))}
+                  >
                     <SelectTrigger className="h-9">
                       <SelectValue placeholder="选择 profile" />
                     </SelectTrigger>
@@ -317,7 +338,11 @@ export function CreateItemDialog({
                   </Select>
                 </div>
 
-                <Button className="gap-2" onClick={onRunRetrieve} disabled={retrieving || !newQuery.trim() || !datasetId}>
+                <Button
+                  className="gap-2"
+                  onClick={onRunRetrieve}
+                  disabled={retrieving || !newQuery.trim() || !datasetId}
+                >
                   {retrieving ? (
                     <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
                   ) : (
@@ -335,7 +360,9 @@ export function CreateItemDialog({
                   Suggest ({suggestedRetrieveChunkIds.length})
                 </Button>
 
-                <div className="ml-auto text-xs text-muted-foreground font-mono tabular-nums">已选 {selectedChunkIds.length}</div>
+                <div className="ml-auto text-xs text-muted-foreground font-mono tabular-nums">
+                  已选 {selectedChunkIds.length}
+                </div>
               </div>
 
               {retrieveError ? <div className="text-xs text-destructive text-pretty">{retrieveError}</div> : null}
@@ -353,9 +380,7 @@ export function CreateItemDialog({
 
               <Panel className="p-3">
                 <ScrollArea className="h-[320px] pr-2">
-                  <div className="space-y-2">
-                    {retrieveListContent}
-                  </div>
+                  <div className="space-y-2">{retrieveListContent}</div>
                 </ScrollArea>
               </Panel>
             </TabsContent>
@@ -378,16 +403,16 @@ export function CreateItemDialog({
                 </Button>
                 {importPackSummary}
 
-                <div className="ml-auto text-xs text-muted-foreground font-mono tabular-nums">已选 {importSelectedChunkIds.length}</div>
+                <div className="ml-auto text-xs text-muted-foreground font-mono tabular-nums">
+                  已选 {importSelectedChunkIds.length}
+                </div>
               </div>
 
               {importError ? <div className="text-xs text-destructive text-pretty">{importError}</div> : null}
 
               <Panel className="p-3">
                 <ScrollArea className="h-[320px] pr-2">
-                  <div className="space-y-2">
-                    {importListContent}
-                  </div>
+                  <div className="space-y-2">{importListContent}</div>
                 </ScrollArea>
               </Panel>
             </TabsContent>
@@ -399,7 +424,9 @@ export function CreateItemDialog({
             取消
           </Button>
           <Button onClick={onCreateItem} disabled={creatingItem || !selectedSuiteId || !newQuery.trim()}>
-            {creatingItem ? <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}
+            {creatingItem ? (
+              <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            ) : null}
             创建 Item（draft）
           </Button>
         </DialogFooter>

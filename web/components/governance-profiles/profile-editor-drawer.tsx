@@ -248,9 +248,7 @@ function validateRegexRuleBestEffort(pattern: string, flags: number): string | n
   // Try to make common Python patterns "compile-checkable" in JS.
   const stripped = stripLeadingInlineFlags(raw)
   const jsFlags = Array.from(new Set((pythonReFlagsToJs(flags) + stripped.inlineJsFlags).split(''))).join('')
-  const jsPattern = stripped.pattern
-    .replaceAll(String.raw`\A`, '^')
-    .replaceAll(String.raw`\Z`, '$')
+  const jsPattern = stripped.pattern.replaceAll(String.raw`\A`, '^').replaceAll(String.raw`\Z`, '$')
 
   try {
     new RegExp(jsPattern, jsFlags)
@@ -304,12 +302,12 @@ export function ProfileEditorDrawer({
       pipeline_patch: pipelinePatch,
       regex_rules: regexRules,
     }),
-    [inputFormats, pipelinePatch, regexRules]
+    [inputFormats, pipelinePatch, regexRules],
   )
 
   const selectedRulePacks = useMemo(
     () => (Array.isArray(pipelinePatch?.governance_rule_packs) ? pipelinePatch.governance_rule_packs : []),
-    [pipelinePatch]
+    [pipelinePatch],
   )
 
   const resetDraft = useCallback(() => {
@@ -357,28 +355,30 @@ export function ProfileEditorDrawer({
 
     let cancelled = false
     setLoadingProfile(true)
-    detachPromise((async () => {
-      try {
-        const prof = await pipelineApi.getGovernanceProfile(ref)
-        if (cancelled) return
-        setLoadedProfile(prof)
-        setName(String(prof.name || ''))
-        setKey(String(prof.key || ''))
-        setDescription(String(prof.description || ''))
-        setInputFormats(prof.payload?.input_formats || ['markdown'])
-        setPipelinePatch(prof.payload?.pipeline_patch ?? {})
-        setRegexRules(prof.payload?.regex_rules ?? [])
-        setPatchJson(JSON.stringify(prof.payload?.pipeline_patch ?? {}, null, 2))
-        setPatchJsonError(null)
-        setPatchJsonDirty(false)
-        setActiveTab('edit')
-        setTestResp(null)
-      } catch (err: unknown) {
-        toast.error(formatApiError(err, '加载 Profile 失败'))
-      } finally {
-        if (!cancelled) setLoadingProfile(false)
-      }
-    })())
+    detachPromise(
+      (async () => {
+        try {
+          const prof = await pipelineApi.getGovernanceProfile(ref)
+          if (cancelled) return
+          setLoadedProfile(prof)
+          setName(String(prof.name || ''))
+          setKey(String(prof.key || ''))
+          setDescription(String(prof.description || ''))
+          setInputFormats(prof.payload?.input_formats || ['markdown'])
+          setPipelinePatch(prof.payload?.pipeline_patch ?? {})
+          setRegexRules(prof.payload?.regex_rules ?? [])
+          setPatchJson(JSON.stringify(prof.payload?.pipeline_patch ?? {}, null, 2))
+          setPatchJsonError(null)
+          setPatchJsonDirty(false)
+          setActiveTab('edit')
+          setTestResp(null)
+        } catch (err: unknown) {
+          toast.error(formatApiError(err, '加载 Profile 失败'))
+        } finally {
+          if (!cancelled) setLoadingProfile(false)
+        }
+      })(),
+    )
 
     return () => {
       cancelled = true
@@ -390,18 +390,20 @@ export function ProfileEditorDrawer({
     if (!open) return
     let cancelled = false
     setLoadingRulePacks(true)
-    detachPromise((async () => {
-      try {
-        const resp = await governanceApi.listRulePacks()
-        if (cancelled) return
-        setAvailableRulePacks(Array.isArray(resp.items) ? resp.items : [])
-      } catch (err) {
-        reportClientWarning('Load governance rule packs failed', err)
-        if (!cancelled) setAvailableRulePacks([])
-      } finally {
-        if (!cancelled) setLoadingRulePacks(false)
-      }
-    })())
+    detachPromise(
+      (async () => {
+        try {
+          const resp = await governanceApi.listRulePacks()
+          if (cancelled) return
+          setAvailableRulePacks(Array.isArray(resp.items) ? resp.items : [])
+        } catch (err) {
+          reportClientWarning('Load governance rule packs failed', err)
+          if (!cancelled) setAvailableRulePacks([])
+        } finally {
+          if (!cancelled) setLoadingRulePacks(false)
+        }
+      })(),
+    )
     return () => {
       cancelled = true
     }
@@ -426,21 +428,12 @@ export function ProfileEditorDrawer({
     })
   }
 
-  const updatePatchValue = <K extends keyof DocumentPipelineOptions>(
-    key: K,
-    value: DocumentPipelineOptions[K],
-  ) => {
+  const updatePatchValue = <K extends keyof DocumentPipelineOptions>(key: K, value: DocumentPipelineOptions[K]) => {
     applyPipelinePatchUpdate(key, value, setPipelinePatch, setPatchJsonError, setPatchJsonDirty)
   }
 
   const updatePatchBoolean = (key: keyof DocumentPipelineOptions, value: boolean) => {
-    applyPipelinePatchUpdate(
-      key,
-      value,
-      setPipelinePatch,
-      setPatchJsonError,
-      setPatchJsonDirty
-    )
+    applyPipelinePatchUpdate(key, value, setPipelinePatch, setPatchJsonError, setPatchJsonDirty)
   }
 
   const toggleRulePack = (pack: string) => {
@@ -490,7 +483,7 @@ export function ProfileEditorDrawer({
 
   const canSave = !isReadOnly && !saving && !loadingProfile
   const enabledGovernanceSwitchCount = GOVERNANCE_SWITCHES.filter((item) =>
-    Boolean(pipelinePatch?.[item.key] ?? item.defaultChecked)
+    Boolean(pipelinePatch?.[item.key] ?? item.defaultChecked),
   ).length
   const imageRemovalMode = String(pipelinePatch?.governance_remove_images ?? 'none')
   const maxBlankLines = Number(pipelinePatch?.governance_max_blank_lines ?? 1)
@@ -572,7 +565,7 @@ export function ProfileEditorDrawer({
         className={cn(
           // Drawer layout: right-aligned, full height.
           'fixed right-0 top-0 left-auto bottom-0 h-dvh w-full max-w-3xl translate-x-0 translate-y-0 rounded-none',
-          'grid grid-rows-[auto,1fr] gap-0 p-0'
+          'grid grid-rows-[auto,1fr] gap-0 p-0',
         )}
       >
         <div className="border-b border-border bg-popover/80 backdrop-blur-md p-5">
@@ -580,29 +573,25 @@ export function ProfileEditorDrawer({
             <DialogTitle className="flex items-center gap-2">
               <Braces className="size-5 text-primary" />
               {(() => {
-    if (isCreate) {
-        return '新建治理模板';
-    }
-    else if (isReadOnly) {
-            return '查看治理模板';
-        }
-        else {
-            return '编辑治理模板';
-        }
-})()}
+                if (isCreate) {
+                  return '新建治理模板'
+                } else if (isReadOnly) {
+                  return '查看治理模板'
+                } else {
+                  return '编辑治理模板'
+                }
+              })()}
             </DialogTitle>
             <DialogDescription className="text-xs">
               {(() => {
-    if (isCreate) {
-        return '创建后可用于入库策略或手动选择应用。';
-    }
-    else if (loadedProfile?.is_system) {
-            return '内置模板只读；如需调整请复制为自定义模板。';
-        }
-        else {
-            return '修改后仅影响后续入库/重跑（不会自动回写历史版本）。';
-        }
-})()}
+                if (isCreate) {
+                  return '创建后可用于入库策略或手动选择应用。'
+                } else if (loadedProfile?.is_system) {
+                  return '内置模板只读；如需调整请复制为自定义模板。'
+                } else {
+                  return '修改后仅影响后续入库/重跑（不会自动回写历史版本）。'
+                }
+              })()}
             </DialogDescription>
           </DialogHeader>
 
@@ -741,7 +730,7 @@ export function ProfileEditorDrawer({
                                 selected
                                   ? 'border-primary/25 bg-primary/10 text-foreground'
                                   : 'border-border/55 bg-background/75 text-muted-foreground hover:border-primary/20 hover:bg-primary/5',
-                                isReadOnly && 'cursor-default'
+                                isReadOnly && 'cursor-default',
                               )}
                             >
                               <Checkbox
@@ -752,7 +741,9 @@ export function ProfileEditorDrawer({
                               />
                               <span className="min-w-0">
                                 <span className="block text-[12px] font-semibold">{copy.label}</span>
-                                <span className="block text-[10.5px] leading-4 text-muted-foreground">{copy.description}</span>
+                                <span className="block text-[10.5px] leading-4 text-muted-foreground">
+                                  {copy.description}
+                                </span>
                               </span>
                             </label>
                           )
@@ -784,7 +775,7 @@ export function ProfileEditorDrawer({
                               checked
                                 ? 'border-primary/25 bg-primary/10'
                                 : 'border-border/50 bg-background/70 hover:border-primary/20 hover:bg-primary/5',
-                              isReadOnly && 'cursor-default'
+                              isReadOnly && 'cursor-default',
                             )}
                           >
                             <Checkbox
@@ -895,7 +886,7 @@ export function ProfileEditorDrawer({
                                 selected
                                   ? 'border-primary/25 bg-primary/10'
                                   : 'border-border/50 bg-background/70 hover:border-primary/20 hover:bg-primary/5',
-                                isReadOnly && 'cursor-default'
+                                isReadOnly && 'cursor-default',
                               )}
                             >
                               <Checkbox
@@ -906,7 +897,9 @@ export function ProfileEditorDrawer({
                               />
                               <span className="min-w-0">
                                 <span className="block text-[12.5px] font-semibold text-foreground">{copy.label}</span>
-                                <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">{copy.description}</span>
+                                <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
+                                  {copy.description}
+                                </span>
                                 <code className="mt-1 block truncate text-[10px] text-muted-foreground/55">{pack}</code>
                               </span>
                             </label>
@@ -963,7 +956,10 @@ export function ProfileEditorDrawer({
                           setPatchJsonDirty(true)
                         }}
                         disabled={isReadOnly}
-                        className={cn('mt-3 min-h-[180px] font-mono text-[12px]', patchJsonError && 'aria-[invalid=true]')}
+                        className={cn(
+                          'mt-3 min-h-[180px] font-mono text-[12px]',
+                          patchJsonError && 'aria-[invalid=true]',
+                        )}
                         aria-invalid={patchJsonError ? 'true' : 'false'}
                       />
                       {patchJsonError ? (
@@ -1004,55 +1000,58 @@ export function ProfileEditorDrawer({
                       </div>
                       {regexRules.length ? (
                         <div className="mt-4 space-y-3">
-                        {regexRules.map((r, idx) => (
-                          <div key={[r.pattern || '', r.repl || '', String(r.flags ?? 0)].join('::')} className="rounded-xl border border-border bg-muted/30 p-3">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                              <div className="md:col-span-2 space-y-1">
-                                <Label className="text-[12px] text-muted-foreground">匹配表达式 pattern</Label>
-                                <Input
-                                  value={r.pattern || ''}
-                                  onChange={(e) => updateRule(idx, { pattern: e.target.value })}
-                                  disabled={isReadOnly}
-                                  placeholder="(?mi)^..."
-                                />
-                                {(() => {
-                                  const err = validateRegexRuleBestEffort(r.pattern || '', Number(r.flags ?? 0))
-                                  return err ? <div className="text-[11px] text-destructive">{err}</div> : null
-                                })()}
+                          {regexRules.map((r, idx) => (
+                            <div
+                              key={[r.pattern || '', r.repl || '', String(r.flags ?? 0)].join('::')}
+                              className="rounded-xl border border-border bg-muted/30 p-3"
+                            >
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div className="md:col-span-2 space-y-1">
+                                  <Label className="text-[12px] text-muted-foreground">匹配表达式 pattern</Label>
+                                  <Input
+                                    value={r.pattern || ''}
+                                    onChange={(e) => updateRule(idx, { pattern: e.target.value })}
+                                    disabled={isReadOnly}
+                                    placeholder="(?mi)^..."
+                                  />
+                                  {(() => {
+                                    const err = validateRegexRuleBestEffort(r.pattern || '', Number(r.flags ?? 0))
+                                    return err ? <div className="text-[11px] text-destructive">{err}</div> : null
+                                  })()}
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-[12px] text-muted-foreground">匹配选项 flags</Label>
+                                  <Input
+                                    type="number"
+                                    value={String(r.flags ?? 0)}
+                                    onChange={(e) => updateRule(idx, { flags: Number(e.target.value || 0) })}
+                                    disabled={isReadOnly}
+                                  />
+                                </div>
+                                <div className="md:col-span-3 space-y-1">
+                                  <Label className="text-[12px] text-muted-foreground">替换内容 repl</Label>
+                                  <Input
+                                    value={r.repl || ''}
+                                    onChange={(e) => updateRule(idx, { repl: e.target.value })}
+                                    disabled={isReadOnly}
+                                    placeholder=""
+                                  />
+                                </div>
                               </div>
-                              <div className="space-y-1">
-                                <Label className="text-[12px] text-muted-foreground">匹配选项 flags</Label>
-                                <Input
-                                  type="number"
-                                  value={String(r.flags ?? 0)}
-                                  onChange={(e) => updateRule(idx, { flags: Number(e.target.value || 0) })}
+                              <div className="mt-3 flex justify-end">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="rounded-xl"
+                                  onClick={() => removeRule(idx)}
                                   disabled={isReadOnly}
-                                />
-                              </div>
-                              <div className="md:col-span-3 space-y-1">
-                                <Label className="text-[12px] text-muted-foreground">替换内容 repl</Label>
-                                <Input
-                                  value={r.repl || ''}
-                                  onChange={(e) => updateRule(idx, { repl: e.target.value })}
-                                  disabled={isReadOnly}
-                                  placeholder=""
-                                />
+                                >
+                                  删除
+                                </Button>
                               </div>
                             </div>
-                            <div className="mt-3 flex justify-end">
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                className="rounded-xl"
-                                onClick={() => removeRule(idx)}
-                                disabled={isReadOnly}
-                              >
-                                删除
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
+                          ))}
                         </div>
                       ) : (
                         <div className="mt-3 rounded-xl border border-dashed border-border/60 bg-background/60 px-3 py-4 text-sm text-muted-foreground">
@@ -1072,7 +1071,9 @@ export function ProfileEditorDrawer({
                         <Label>测试输入类型</Label>
                         <Select
                           value={testInputFormat}
-                          onValueChange={(value) => setTestInputFormat(coerceOneOf(PROFILE_INPUT_FORMAT_VALUES, value, 'markdown'))}
+                          onValueChange={(value) =>
+                            setTestInputFormat(coerceOneOf(PROFILE_INPUT_FORMAT_VALUES, value, 'markdown'))
+                          }
                         >
                           <SelectTrigger className="h-10 rounded-xl">
                             <SelectValue placeholder="markdown" />
@@ -1094,7 +1095,11 @@ export function ProfileEditorDrawer({
                       </div>
                       <div className="md:col-span-2 space-y-1">
                         <Label>粘贴一段样例内容</Label>
-                        <Textarea value={testInput} onChange={(e) => setTestInput(e.target.value)} className="min-h-[180px] font-mono text-[12px]" />
+                        <Textarea
+                          value={testInput}
+                          onChange={(e) => setTestInput(e.target.value)}
+                          className="min-h-[180px] font-mono text-[12px]"
+                        />
                         <div className="text-[11px] text-muted-foreground">
                           用真实样例跑一次，可以看到清洗后的 Markdown、命中规则和 diff，不需要靠猜。
                         </div>

@@ -1,13 +1,13 @@
-"use client"
+'use client'
 
-import { useMemo, useState } from "react"
-import { FileText, Loader2 } from "lucide-react"
+import { useMemo, useState } from 'react'
+import { FileText, Loader2 } from 'lucide-react'
 
-import type { DocumentPreviewAnchor } from "@/lib/document-preview-anchor"
-import { buildDocumentPreviewBboxOverlay } from "@/lib/document-preview-anchor"
-import type { Document } from "@/types"
-import { Button } from "@/components/ui/button"
-import { PdfViewer } from "@/components/parsing/pdf-viewer"
+import type { DocumentPreviewAnchor } from '@/lib/document-preview-anchor'
+import { buildDocumentPreviewBboxOverlay } from '@/lib/document-preview-anchor'
+import type { Document } from '@/types'
+import { Button } from '@/components/ui/button'
+import { PdfViewer } from '@/components/parsing/pdf-viewer'
 
 type PreviewTabPanelProps = {
   isLoading: boolean
@@ -41,7 +41,7 @@ export function PreviewTabPanel({
   const previewPageIndex = useMemo(() => {
     if (bboxOverlay) return null
     const pageNumber = previewAnchor?.pageNumber
-    if (typeof pageNumber !== "number" || !Number.isFinite(pageNumber) || pageNumber <= 0) return null
+    if (typeof pageNumber !== 'number' || !Number.isFinite(pageNumber) || pageNumber <= 0) return null
     return Math.trunc(pageNumber) - 1
   }, [bboxOverlay, previewAnchor?.pageNumber])
 
@@ -55,11 +55,11 @@ export function PreviewTabPanel({
 
   if (canInlinePreview && fileUrl) {
     const hasAnchorContext = Boolean(previewAnchor || highlightChunkId || highlightRange)
-    const title = previewAnchor?.pageNumber ? "PDF 已跳转到引用页" : "已保留引用定位"
-    const searchText = previewAnchor?.searchText ? `，并尝试搜索“${previewAnchor.searchText}”` : ""
+    const title = previewAnchor?.pageNumber ? 'PDF 已跳转到引用页' : '已保留引用定位'
+    const searchText = previewAnchor?.searchText ? `，并尝试搜索“${previewAnchor.searchText}”` : ''
     const description = previewAnchor?.pageNumber
       ? `当前定位到 P.${previewAnchor.pageNumber}${searchText}。`
-      : "当前引用定位已保留，可切回文本定位查看高亮，或切到智能切片查看命中块。"
+      : '当前引用定位已保留，可切回文本定位查看高亮，或切到智能切片查看命中块。'
 
     return (
       <div className="relative h-full w-full">
@@ -112,7 +112,7 @@ export function PreviewTabPanel({
         ) : null}
         <div
           data-pdfjs-document-preview="true"
-          data-citation-bbox-preview={bboxOverlay ? "true" : undefined}
+          data-citation-bbox-preview={bboxOverlay ? 'true' : undefined}
           className="h-full w-full bg-muted/20"
         >
           <PdfViewer
@@ -146,7 +146,8 @@ export function PreviewTabPanel({
           <div className="flex-1">
             <h4 className="text-sm font-semibold">暂不支持内嵌预览</h4>
             <p className="mt-1 text-xs text-muted-foreground">
-              当前文件类型为 <span className="font-mono">{doc?.file_type || "-"}</span>。你可以下载原文件，或切换到「智能切片」查看内容。
+              当前文件类型为 <span className="font-mono">{doc?.file_type || '-'}</span>
+              。你可以下载原文件，或切换到「智能切片」查看内容。
             </p>
             <div className="mt-4 flex items-center gap-2">
               {downloadUrl ? (

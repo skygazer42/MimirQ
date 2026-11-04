@@ -14,9 +14,7 @@ export function useResizeObserver<T extends HTMLElement>(ref: RefObject<T | null
 
     const commit = (width: number, height: number) => {
       if (width <= 0 || height <= 0) return
-      setDimensions((prev) =>
-        prev.width === width && prev.height === height ? prev : { width, height }
-      )
+      setDimensions((prev) => (prev.width === width && prev.height === height ? prev : { width, height }))
     }
 
     const scheduleCommit = (width: number, height: number) => {

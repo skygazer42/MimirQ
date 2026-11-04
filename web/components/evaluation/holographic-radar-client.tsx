@@ -1,10 +1,10 @@
-"use client"
+'use client'
 
 import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Tooltip } from 'recharts'
 import { motion, useReducedMotion } from 'framer-motion'
 import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
-import { cn } from "@/lib/utils"
+import { cn } from '@/lib/utils'
 
 type HolographicRadarProps = {
   data: Array<{ subject: string; score: number; fullMark: number }>
@@ -23,8 +23,10 @@ const CustomTooltip = ({ active, payload, label }: RadarTooltipProps) => {
       <div className="rounded-lg border border-primary/30 bg-popover p-3 shadow-none">
         <p className="text-primary font-semibold text-xs uppercase mb-1">{toTrimmedPrimitiveString(label)}</p>
         <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-mono text-foreground font-bold">{toTrimmedPrimitiveString(payload[0].value)}</span>
-            <span className="text-xs text-muted-foreground">/ 100</span>
+          <span className="text-2xl font-mono text-foreground font-bold">
+            {toTrimmedPrimitiveString(payload[0].value)}
+          </span>
+          <span className="text-xs text-muted-foreground">/ 100</span>
         </div>
       </div>
     )
@@ -39,31 +41,25 @@ export function HolographicRadar({ data, className }: Readonly<HolographicRadarP
   const tickFill = 'hsl(var(--muted-foreground) / 0.8)'
 
   return (
-    <div className={cn("relative aspect-square w-full max-w-[400px] mx-auto", className)}>
+    <div className={cn('relative aspect-square w-full max-w-[400px] mx-auto', className)}>
       {/* Scanning Animation */}
       <div className="absolute inset-0 rounded-full border border-primary/10 overflow-hidden pointer-events-none">
-         {reduceMotion ? (
-            <div
-              className="w-full h-1/2 bg-primary/5 origin-bottom"
-              style={{ position: 'absolute', top: 0, left: 0 }}
-            />
-         ) : (
-            <motion.div 
-              className="w-full h-1/2 bg-primary/5 origin-bottom"
-              animate={{ rotate: 360 }}
-              transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-              style={{ position: 'absolute', top: 0, left: 0 }}
-            />
-         )}
+        {reduceMotion ? (
+          <div className="w-full h-1/2 bg-primary/5 origin-bottom" style={{ position: 'absolute', top: 0, left: 0 }} />
+        ) : (
+          <motion.div
+            className="w-full h-1/2 bg-primary/5 origin-bottom"
+            animate={{ rotate: 360 }}
+            transition={{ duration: 4, repeat: Infinity, ease: 'linear' }}
+            style={{ position: 'absolute', top: 0, left: 0 }}
+          />
+        )}
       </div>
 
       <SafeResponsiveChart className="h-full w-full" minHeight={320}>
         <RadarChart cx="50%" cy="50%" outerRadius="70%" data={data}>
           <PolarGrid stroke={gridStroke} strokeDasharray="4 4" />
-          <PolarAngleAxis 
-            dataKey="subject" 
-            tick={{ fill: tickFill, fontSize: 10, fontWeight: 600 }} 
-          />
+          <PolarAngleAxis dataKey="subject" tick={{ fill: tickFill, fontSize: 10, fontWeight: 600 }} />
           <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
           <Radar
             name="Score"
@@ -76,7 +72,7 @@ export function HolographicRadar({ data, className }: Readonly<HolographicRadarP
           <Tooltip content={<CustomTooltip />} cursor={{ stroke: primaryStroke, strokeWidth: 1 }} />
         </RadarChart>
       </SafeResponsiveChart>
-      
+
       {/* Decorative Corners */}
       <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-primary/30 rounded-tl-lg" />
       <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-primary/30 rounded-tr-lg" />

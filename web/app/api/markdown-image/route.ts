@@ -43,10 +43,7 @@ async function fetchPinnedImage(target: URL): Promise<PinnedImageResponse> {
   const started = Date.now()
   let dnsTimeout: ReturnType<typeof setTimeout> | undefined
   const timeout = new Promise<never>((_, reject) => {
-    dnsTimeout = setTimeout(
-      () => reject(new ImageFetchError('image_fetch_failed')),
-      IMAGE_FETCH_TIMEOUT_MS,
-    )
+    dnsTimeout = setTimeout(() => reject(new ImageFetchError('image_fetch_failed')), IMAGE_FETCH_TIMEOUT_MS)
   })
   let addresses: LookupAddress[]
   try {
@@ -185,9 +182,7 @@ export async function POST(req: NextRequest) {
   }
 
   const rawSrc =
-    body && typeof body === 'object' && 'src' in body && typeof body.src === 'string'
-      ? body.src.trim()
-      : ''
+    body && typeof body === 'object' && 'src' in body && typeof body.src === 'string' ? body.src.trim() : ''
   const target = parseMarkdownImageUrl(rawSrc)
   if (!target || isBlockedMarkdownImageTarget(target.toString())) {
     return jsonNoStore({ error: 'invalid_image_src' }, { status: 400 })

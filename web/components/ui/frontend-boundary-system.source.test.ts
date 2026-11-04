@@ -41,14 +41,10 @@ describe('frontend boundary system', () => {
     const card = readWorkspaceFile('components/ui/card.tsx')
     const panel = readWorkspaceFile('components/ui/panel.tsx')
 
-    expect(card).toContain(
-      'rounded-lg border border-foreground/10 bg-background text-card-foreground'
-    )
+    expect(card).toContain('rounded-lg border border-foreground/10 bg-background text-card-foreground')
     expect(card).not.toContain('shadow-soft')
     expect(card).not.toContain('hover:bg-card/90')
-    expect(panel).toContain(
-      'default: "rounded-lg border border-foreground/10 bg-background shadow-none"'
-    )
+    expect(panel).toContain('default: "rounded-lg border border-foreground/10 bg-background shadow-none"')
     expect(panel).toContain('glass: "rounded-xl border border-border/40 bg-card/50 shadow-soft backdrop-blur-xl"')
   })
 })

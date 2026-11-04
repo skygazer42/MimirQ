@@ -1,8 +1,8 @@
-"use client"
+'use client'
 
-import React, { useEffect, useRef, useState } from "react"
-import { motion, useMotionValue, useReducedMotion, useSpring, useTransform } from "framer-motion"
-import { cn } from "@/lib/utils"
+import React, { useEffect, useRef, useState } from 'react'
+import { motion, useMotionValue, useReducedMotion, useSpring, useTransform } from 'framer-motion'
+import { cn } from '@/lib/utils'
 
 type TiltCardProps = {
   children: React.ReactNode
@@ -16,11 +16,21 @@ type TiltCardProps = {
   ariaLabel?: string
 }
 
-export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLeave, onFocus, onBlur, selected = false, ariaLabel = "Select item" }: Readonly<TiltCardProps>) {
+export function TiltCard({
+  children,
+  className,
+  onClick,
+  onMouseEnter,
+  onMouseLeave,
+  onFocus,
+  onBlur,
+  selected = false,
+  ariaLabel = 'Select item',
+}: Readonly<TiltCardProps>) {
   const ref = useRef<HTMLDivElement>(null)
   const shouldReduceMotion = useReducedMotion()
   const [isFinePointer, setIsFinePointer] = useState(false)
-  const interactive = typeof onClick === "function"
+  const interactive = typeof onClick === 'function'
 
   const x = useMotionValue(0)
   const y = useMotionValue(0)
@@ -30,21 +40,21 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
   const mouseY = useSpring(y, { stiffness: 300, damping: 30 })
 
   // Transform mouse position to rotation degrees
-  const rotateX = useTransform(mouseY, [-0.5, 0.5], ["5deg", "-5deg"])
-  const rotateY = useTransform(mouseX, [-0.5, 0.5], ["-5deg", "5deg"])
+  const rotateX = useTransform(mouseY, [-0.5, 0.5], ['5deg', '-5deg'])
+  const rotateY = useTransform(mouseX, [-0.5, 0.5], ['-5deg', '5deg'])
 
   const enabled = !shouldReduceMotion && isFinePointer
 
   useEffect(() => {
     if (globalThis.window === undefined) return
 
-    const mq = globalThis.window.matchMedia("(pointer: fine)")
+    const mq = globalThis.window.matchMedia('(pointer: fine)')
     const update = () => setIsFinePointer(mq.matches)
     update()
 
     // Keep in sync on hybrid devices / pointer changes.
-    mq.addEventListener("change", update)
-    return () => mq.removeEventListener("change", update)
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
   }, [])
 
   const handlePointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -52,16 +62,16 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
     if (!ref.current) return
 
     const rect = ref.current.getBoundingClientRect()
-    
+
     // Normalize coordinates to -0.5 to 0.5
     const width = rect.width
     const height = rect.height
-    
+
     const mouseXPos = e.clientX - rect.left
     const mouseYPos = e.clientY - rect.top
-    
-    const xPct = (mouseXPos / width) - 0.5
-    const yPct = (mouseYPos / height) - 0.5
+
+    const xPct = mouseXPos / width - 0.5
+    const yPct = mouseYPos / height - 0.5
 
     x.set(xPct)
     y.set(yPct)
@@ -75,10 +85,7 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
 
   if (!interactive) {
     return (
-      <div
-        ref={ref}
-        className={cn("relative", className)}
-      >
+      <div ref={ref} className={cn('relative', className)}>
         {children}
       </div>
     )
@@ -86,10 +93,7 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
 
   if (!enabled) {
     return (
-      <div
-        ref={ref}
-        className={cn("relative", className)}
-      >
+      <div ref={ref} className={cn('relative', className)}>
         <button
           type="button"
           className="absolute inset-0 z-0 rounded-[inherit] text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
@@ -101,18 +105,13 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
           aria-label={ariaLabel}
           aria-pressed={selected}
         />
-        <div className="relative z-10 pointer-events-none">
-          {children}
-        </div>
+        <div className="relative z-10 pointer-events-none">{children}</div>
       </div>
     )
   }
 
   return (
-    <div
-      ref={ref}
-      className={cn("relative perspective-1000", className)}
-    >
+    <div ref={ref} className={cn('relative perspective-1000', className)}>
       <button
         type="button"
         className="absolute inset-0 z-0 rounded-[inherit] text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
@@ -129,14 +128,12 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
         style={{
           rotateX,
           rotateY,
-          transformStyle: "preserve-3d",
+          transformStyle: 'preserve-3d',
         }}
         className="h-full transition-transform duration-200 ease-out"
       >
         {/* Content */}
-        <div className="relative z-10 h-full pointer-events-none">
-          {children}
-        </div>
+        <div className="relative z-10 h-full pointer-events-none">{children}</div>
       </motion.div>
     </div>
   )

@@ -10,18 +10,12 @@ type SystemStatusSectionProps = {
   backendMeta: BackendMetaDetails | null
 }
 
-function StatusCard({
-  label,
-  connected,
-  message,
-}: Readonly<{ label: string; connected: boolean; message: string }>) {
+function StatusCard({ label, connected, message }: Readonly<{ label: string; connected: boolean; message: string }>) {
   return (
     <div
       className={cn(
         'rounded-lg border bg-info/[0.025] px-3 py-2.5 transition-colors',
-        connected
-          ? 'border-success/20'
-          : 'border-destructive/20'
+        connected ? 'border-success/20' : 'border-destructive/20',
       )}
     >
       <div className="mb-1.5 flex items-center justify-between">
@@ -32,12 +26,7 @@ function StatusCard({
           <XCircle className="h-4 w-4 text-destructive" />
         )}
       </div>
-      <p
-        className={cn(
-          'truncate text-[11px]',
-          connected ? 'text-success' : 'text-destructive'
-        )}
-      >
+      <p className={cn('truncate text-[11px]', connected ? 'text-success' : 'text-destructive')}>
         {message || (connected ? '已连接' : '未连接')}
       </p>
     </div>
@@ -65,30 +54,15 @@ function formatParserName(key: string): string {
   return labels[key] || key
 }
 
-export function SystemStatusSection({
-  status,
-  backendMeta,
-}: Readonly<SystemStatusSectionProps>) {
+export function SystemStatusSection({ status, backendMeta }: Readonly<SystemStatusSectionProps>) {
   const parserEntries = Object.entries(status.parsers || {})
 
   return (
     <section className="space-y-3">
       <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
-        <StatusCard
-          label="PostgreSQL"
-          connected={status.database.connected}
-          message={status.database.message}
-        />
-        <StatusCard
-          label="Milvus"
-          connected={status.milvus.connected}
-          message={status.milvus.message}
-        />
-        <StatusCard
-          label="大语言模型（LLM）"
-          connected={status.llm.configured}
-          message={status.llm.model}
-        />
+        <StatusCard label="PostgreSQL" connected={status.database.connected} message={status.database.message} />
+        <StatusCard label="Milvus" connected={status.milvus.connected} message={status.milvus.message} />
+        <StatusCard label="大语言模型（LLM）" connected={status.llm.configured} message={status.llm.model} />
         <StatusCard
           label="向量模型（Embedding）"
           connected={status.embedding.configured}
@@ -128,19 +102,14 @@ export function SystemStatusSection({
                   'inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold',
                   info.available
                     ? 'border-success/25 bg-success/10 text-success'
-                    : 'border-border/60 bg-muted/35 text-muted-foreground'
+                    : 'border-border/60 bg-muted/35 text-muted-foreground',
                 )}
               >
                 <span
-                  className={cn(
-                    'size-1.5 rounded-full',
-                    info.available ? 'bg-success' : 'bg-muted-foreground/45'
-                  )}
+                  className={cn('size-1.5 rounded-full', info.available ? 'bg-success' : 'bg-muted-foreground/45')}
                 />
                 {formatParserName(key)}
-                <span className="font-medium opacity-75">
-                  {info.available ? '可用' : '未启用'}
-                </span>
+                <span className="font-medium opacity-75">{info.available ? '可用' : '未启用'}</span>
               </span>
             ))}
           </div>

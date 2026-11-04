@@ -53,10 +53,10 @@ function parseJson<T>(raw: string, fallback: T): T {
 function isRewritePreview(payload: unknown): payload is IndustryRulesRewritePreviewResponse {
   return Boolean(
     payload &&
-      typeof payload === 'object' &&
-      'original_query' in payload &&
-      'expanded_query' in payload &&
-      'changed' in payload
+    typeof payload === 'object' &&
+    'original_query' in payload &&
+    'expanded_query' in payload &&
+    'changed' in payload,
   )
 }
 
@@ -89,7 +89,7 @@ export function IndustryRulesSection() {
     key: string,
     title: string,
     action: () => Promise<unknown>,
-    options?: { silentSuccess?: boolean }
+    options?: { silentSuccess?: boolean },
   ): Promise<void> {
     setRunningKey(key)
     try {
@@ -104,14 +104,19 @@ export function IndustryRulesSection() {
   }
 
   async function loadRulesets(options?: { silentSuccess?: boolean }): Promise<void> {
-    await runAction('list', '加载规则集', async () => {
-      const { data, error } = await rulesetsQuery.refetch()
-      if (error) throw error
-      const payload = data || { rulesets: [] }
-      const first = payload.rulesets?.[0]?.name
-      if (first && !rulesetName.trim()) setRulesetName(first)
-      return payload
-    }, options)
+    await runAction(
+      'list',
+      '加载规则集',
+      async () => {
+        const { data, error } = await rulesetsQuery.refetch()
+        if (error) throw error
+        const payload = data || { rulesets: [] }
+        const first = payload.rulesets?.[0]?.name
+        if (first && !rulesetName.trim()) setRulesetName(first)
+        return payload
+      },
+      options,
+    )
   }
 
   const actionDisabled = Boolean(runningKey) || !rulesetName.trim()
@@ -128,9 +133,7 @@ export function IndustryRulesSection() {
                   <WandSparkles className="h-4 w-4 text-info" />
                   查询改写规则
                 </div>
-                <div className={settingsTextTokens.sectionBadge}>
-                  后端规则接口
-                </div>
+                <div className={settingsTextTokens.sectionBadge}>后端规则接口</div>
                 <Button asChild variant="outline" className="h-7 gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold">
                   <Link href="/governance/industry-rules">
                     打开完整工作台
@@ -143,9 +146,18 @@ export function IndustryRulesSection() {
               </p>
             </div>
             <div className="grid grid-cols-3 gap-1.5 text-center sm:min-w-[270px]">
-              <RuleMetric label="术语" value={loadedRuleset?.glossary_count ?? selectedRulesetSummary?.glossary_count ?? '—'} />
-              <RuleMetric label="匹配" value={loadedRuleset?.pattern_count ?? selectedRulesetSummary?.pattern_count ?? '—'} />
-              <RuleMetric label="意图" value={loadedRuleset?.intent_count ?? selectedRulesetSummary?.intent_count ?? '—'} />
+              <RuleMetric
+                label="术语"
+                value={loadedRuleset?.glossary_count ?? selectedRulesetSummary?.glossary_count ?? '—'}
+              />
+              <RuleMetric
+                label="匹配"
+                value={loadedRuleset?.pattern_count ?? selectedRulesetSummary?.pattern_count ?? '—'}
+              />
+              <RuleMetric
+                label="意图"
+                value={loadedRuleset?.intent_count ?? selectedRulesetSummary?.intent_count ?? '—'}
+              />
             </div>
           </div>
         </div>
@@ -176,11 +188,15 @@ export function IndustryRulesSection() {
                       setPatternsJson(prettyJson(payload.ruleset.patterns || []))
                       setIntentsJson(prettyJson(payload.ruleset.intents || []))
                       return payload
-                    })
+                    }),
                   )
                 }
               >
-                {runningKey === 'detail' ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <FileText className="h-3.5 w-3.5" />}
+                {runningKey === 'detail' ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+                ) : (
+                  <FileText className="h-3.5 w-3.5" />
+                )}
                 载入
               </Button>
             </div>
@@ -194,7 +210,7 @@ export function IndustryRulesSection() {
                       'rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors',
                       item.name === trimmedRulesetName
                         ? 'border-info/25 bg-info/10 text-info'
-                        : 'border-info/15 bg-info/[0.025] text-muted-foreground hover:border-info/25 hover:text-info'
+                        : 'border-info/15 bg-info/[0.025] text-muted-foreground hover:border-info/25 hover:text-info',
                     )}
                     onClick={() => setRulesetName(item.name)}
                   >
@@ -209,7 +225,11 @@ export function IndustryRulesSection() {
                 disabled={Boolean(runningKey)}
                 onClick={() => detachPromise(loadRulesets())}
               >
-                {runningKey === 'list' ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                {runningKey === 'list' ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" />
+                )}
                 获取规则集
               </Button>
             )}
@@ -233,12 +253,16 @@ export function IndustryRulesSection() {
                 onClick={() =>
                   detachPromise(
                     runAction('preview', '改写预览', () =>
-                      industryRulesApi.previewRewrite({ ruleset: rulesetName.trim(), query: query.trim() })
-                    )
+                      industryRulesApi.previewRewrite({ ruleset: rulesetName.trim(), query: query.trim() }),
+                    ),
                   )
                 }
               >
-                {runningKey === 'preview' ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Sparkles className="h-3.5 w-3.5" />}
+                {runningKey === 'preview' ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5" />
+                )}
                 预览
               </Button>
             </div>
@@ -246,7 +270,9 @@ export function IndustryRulesSection() {
               <div className="rounded-lg border border-info/20 bg-info/[0.035] p-2.5">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground/78">
-                    <CheckCircle2 className={cn('h-3.5 w-3.5', previewResult.changed ? 'text-success' : 'text-muted-foreground')} />
+                    <CheckCircle2
+                      className={cn('h-3.5 w-3.5', previewResult.changed ? 'text-success' : 'text-muted-foreground')}
+                    />
                     {previewResult.changed ? '已命中行业术语' : '未产生改写'}
                   </div>
                   <span className="rounded-full border border-border/60 bg-muted/30 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
@@ -285,8 +311,8 @@ export function IndustryRulesSection() {
                         queryKey: queryKeys.industryRules.ruleset(trimmedRulesetName),
                       })
                       return payload
-                    })
-                )
+                    }),
+                ),
               )
             }
           />
@@ -311,8 +337,8 @@ export function IndustryRulesSection() {
                         queryKey: queryKeys.industryRules.ruleset(trimmedRulesetName),
                       })
                       return payload
-                    })
-                )
+                    }),
+                ),
               )
             }
           />
@@ -337,14 +363,18 @@ export function IndustryRulesSection() {
                         queryKey: queryKeys.industryRules.ruleset(trimmedRulesetName),
                       })
                       return payload
-                    })
-                )
+                    }),
+                ),
               )
             }
           />
         </div>
 
-        <OperationResultPanel title="执行结果" result={result} emptyMessage="载入规则、运行预览或保存后，这里会保留本次接口结果" />
+        <OperationResultPanel
+          title="执行结果"
+          result={result}
+          emptyMessage="载入规则、运行预览或保存后，这里会保留本次接口结果"
+        />
       </div>
     </section>
   )
@@ -369,7 +399,12 @@ function PreviewText({
   accent?: boolean
 }>) {
   return (
-    <div className={cn('rounded-md border px-2 py-1.5', accent ? 'border-info/20 bg-info/[0.07]' : 'border-info/15 bg-info/[0.025]')}>
+    <div
+      className={cn(
+        'rounded-md border px-2 py-1.5',
+        accent ? 'border-info/20 bg-info/[0.07]' : 'border-info/15 bg-info/[0.025]',
+      )}
+    >
       <div className="mb-0.5 text-[10px] font-semibold text-muted-foreground">{label}</div>
       <div className="break-words text-[11px] leading-4 text-foreground/82">{value}</div>
     </div>
@@ -416,11 +451,19 @@ function JsonField({
           disabled={disabled}
           onClick={onSave}
         >
-          {running ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Save className="h-3.5 w-3.5" />}
+          {running ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+          ) : (
+            <Save className="h-3.5 w-3.5" />
+          )}
           {actionLabel}
         </Button>
       </div>
-      <Textarea value={value} onChange={(event) => onChange(event.target.value)} className="min-h-[132px] font-mono text-xs" />
+      <Textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="min-h-[132px] font-mono text-xs"
+      />
     </div>
   )
 }

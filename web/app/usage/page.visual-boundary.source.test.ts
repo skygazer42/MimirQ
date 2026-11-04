@@ -9,12 +9,11 @@ describe('usage page visual boundary contract', () => {
   it('keeps the usage overview on the flat boundary baseline', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
 
-    expectSourceToContain(src,
-      "const USAGE_PANEL_CLASS = 'overflow-hidden rounded-xl border border-info/20 bg-background/78 shadow-none'"
+    expectSourceToContain(
+      src,
+      "const USAGE_PANEL_CLASS = 'overflow-hidden rounded-xl border border-info/20 bg-background/78 shadow-none'",
     )
-    expectSourceToContain(src,
-      "const USAGE_SURFACE_CLASS = 'rounded-xl border border-info/20 bg-background/70'"
-    )
+    expectSourceToContain(src, "const USAGE_SURFACE_CLASS = 'rounded-xl border border-info/20 bg-background/70'")
     expectSourceToContain(src, 'bodyClassName="bg-info/[0.035] !pb-3"')
     expectSourceToContain(src, "indigo: 'bg-info/60'")
     expectSourceToContain(src, "blue: 'border-info/25 bg-info/[0.09] text-info'")
@@ -57,7 +56,7 @@ describe('usage page visual boundary contract', () => {
     expectSourceToContain(src, 'bodyClassName="bg-info/[0.035] !pb-3"')
     expectSourceToContain(src, 'className="relative z-10 flex flex-col gap-4 pb-0"')
     expectSourceToContain(src, 'function UsageEmptyTableRow(')
-    expectSourceToContain(src, "className=\"h-40 px-5 text-center\"")
+    expectSourceToContain(src, 'className="h-40 px-5 text-center"')
     expectSourceToContain(src, 'title="暂无数据集用量记录"')
     expectSourceToContain(src, 'title="暂无成本归因记录"')
   })

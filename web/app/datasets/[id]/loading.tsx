@@ -1,6 +1,6 @@
-import { Skeleton } from "@/components/ui/skeleton"
+import { Skeleton } from '@/components/ui/skeleton'
 
-const ROW_KEYS = ["r-1", "r-2", "r-3", "r-4", "r-5"]
+const ROW_KEYS = ['r-1', 'r-2', 'r-3', 'r-4', 'r-5']
 
 export default function DatasetDetailLoading() {
   return (

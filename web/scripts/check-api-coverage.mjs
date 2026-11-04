@@ -1,7 +1,7 @@
 import { listFrontendSourceFiles, parseBackendRoutes, parseFrontendRoutes } from './api-contract-lib.mjs'
 
 const FRONTEND_CONTRACT_FILES = listFrontendSourceFiles().filter(
-  (rel) => rel === 'web/lib/api-client.ts' || rel.startsWith('web/lib/api/')
+  (rel) => rel === 'web/lib/api-client.ts' || rel.startsWith('web/lib/api/'),
 )
 
 // Service-to-service callbacks are intentionally not callable by the browser API layer.

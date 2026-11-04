@@ -78,7 +78,7 @@ export function DocumentOperationsPanel({
   }, [datasets, effectiveDatasetId])
   const targetDatasetOptions = useMemo(
     () => datasets.filter((dataset) => dataset.id && dataset.id !== effectiveDatasetId),
-    [datasets, effectiveDatasetId]
+    [datasets, effectiveDatasetId],
   )
   const targetDatasetValue = targetDatasetId.trim() || NO_TARGET_DATASET
   const selectedScopeLabel = ids.length ? `${ids.length} 个文档` : '未勾选文档'
@@ -110,7 +110,9 @@ export function DocumentOperationsPanel({
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <div className="text-[13px] font-semibold leading-none tracking-[-0.01em] text-foreground">文档高级操作</div>
+              <div className="text-[13px] font-semibold leading-none tracking-[-0.01em] text-foreground">
+                文档高级操作
+              </div>
               <span className="rounded-full border border-info/18 bg-info/[0.07] px-2 py-0.5 text-[10px] font-semibold leading-none text-info dark:border-info/25 dark:bg-info/10 dark:text-info">
                 使用当前知识库和勾选文档
               </span>
@@ -121,7 +123,11 @@ export function DocumentOperationsPanel({
           </div>
         </div>
         <div className="flex h-7 shrink-0 items-center gap-2 rounded-full border border-border/50 bg-background/72 px-2.5 text-[11px] text-muted-foreground shadow-[inset_0_1px_0_hsl(var(--card)/0.82)] dark:border-border/60 dark:bg-muted/20">
-          {busy ? <Loader2 className="size-3.5 animate-spin text-info motion-reduce:animate-none" /> : <span className="size-1.5 rounded-full bg-success" />}
+          {busy ? (
+            <Loader2 className="size-3.5 animate-spin text-info motion-reduce:animate-none" />
+          ) : (
+            <span className="size-1.5 rounded-full bg-success" />
+          )}
           <span>{busy ? '执行中' : '待操作'}</span>
         </div>
       </div>
@@ -130,13 +136,15 @@ export function DocumentOperationsPanel({
         <div className="rounded-[15px] border border-border/48 bg-card/66 p-2.5 shadow-[inset_0_1px_0_hsl(var(--card)/0.78)] dark:border-border/60 dark:bg-background/35">
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="text-[11px] font-semibold leading-none text-foreground/84">当前作用域</div>
-            <div className="rounded-full bg-muted/45 px-2 py-0.5 text-[10px] text-muted-foreground">
-              无需手填 ID
-            </div>
+            <div className="rounded-full bg-muted/45 px-2 py-0.5 text-[10px] text-muted-foreground">无需手填 ID</div>
           </div>
           <div className="grid gap-1.5 md:grid-cols-3">
             <ContextItem label="知识库" value={currentDatasetLabel} subValue={effectiveDatasetId || '全局范围'} />
-            <ContextItem label="文档范围" value={selectedScopeLabel} subValue={firstDocumentId ? `默认文档 ${firstDocumentId.slice(0, 8)}` : '先在列表勾选文档'} />
+            <ContextItem
+              label="文档范围"
+              value={selectedScopeLabel}
+              subValue={firstDocumentId ? `默认文档 ${firstDocumentId.slice(0, 8)}` : '先在列表勾选文档'}
+            />
             <ContextItem label="批量来源" value="当前勾选" subValue="无需手填文档 ID" />
           </div>
         </div>
@@ -177,13 +185,66 @@ export function DocumentOperationsPanel({
           </div>
           <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_minmax(260px,0.52fr)]">
             <ActionGroup icon={FileText} title="读取 / 诊断" description="只读操作，不改变文档。">
-              <ActionButton icon={FileJson} busy={busy === 'stats'} disabled={Boolean(busy)} label="文档统计" onClick={() => runAction('stats', '文档统计', () => documentApi.stats({ dataset_id: effectiveDatasetId || undefined }))} />
-              <ActionButton icon={FileJson} busy={busy === 'parsed'} disabled={Boolean(busy) || !firstDocumentId} label="查看解析内容" onClick={() => runAction('parsed', '解析内容', () => documentApi.getParsedContent(firstDocumentId, { max_chars: 20_000 }))} />
-              <ActionButton icon={FileJson} busy={busy === 'duplicates'} disabled={Boolean(busy) || !effectiveDatasetId} label="重复文档" onClick={() => runAction('duplicates', '重复文档', () => documentApi.listDuplicates({ dataset_id: effectiveDatasetId, min_count: 2, max_groups: 20, max_docs_per_group: 10 }))} />
-              <ActionButton icon={FileJson} busy={busy === 'lifecycle'} disabled={Boolean(busy) || !firstDocumentId} label="生命周期元数据" onClick={() => runAction('lifecycle', '生命周期元数据', () => documentApi.getLifecycleMetadata(firstDocumentId))} />
+              <ActionButton
+                icon={FileJson}
+                busy={busy === 'stats'}
+                disabled={Boolean(busy)}
+                label="文档统计"
+                onClick={() =>
+                  runAction('stats', '文档统计', () =>
+                    documentApi.stats({ dataset_id: effectiveDatasetId || undefined }),
+                  )
+                }
+              />
+              <ActionButton
+                icon={FileJson}
+                busy={busy === 'parsed'}
+                disabled={Boolean(busy) || !firstDocumentId}
+                label="查看解析内容"
+                onClick={() =>
+                  runAction('parsed', '解析内容', () =>
+                    documentApi.getParsedContent(firstDocumentId, { max_chars: 20_000 }),
+                  )
+                }
+              />
+              <ActionButton
+                icon={FileJson}
+                busy={busy === 'duplicates'}
+                disabled={Boolean(busy) || !effectiveDatasetId}
+                label="重复文档"
+                onClick={() =>
+                  runAction('duplicates', '重复文档', () =>
+                    documentApi.listDuplicates({
+                      dataset_id: effectiveDatasetId,
+                      min_count: 2,
+                      max_groups: 20,
+                      max_docs_per_group: 10,
+                    }),
+                  )
+                }
+              />
+              <ActionButton
+                icon={FileJson}
+                busy={busy === 'lifecycle'}
+                disabled={Boolean(busy) || !firstDocumentId}
+                label="生命周期元数据"
+                onClick={() =>
+                  runAction('lifecycle', '生命周期元数据', () => documentApi.getLifecycleMetadata(firstDocumentId))
+                }
+              />
             </ActionGroup>
             <ActionGroup icon={FolderInput} title="批量变更" description="仅使用当前勾选文档。">
-              <ActionButton icon={FolderInput} busy={busy === 'move'} disabled={Boolean(busy) || ids.length === 0 || !targetDatasetId.trim()} label="批量移动" onClick={() => runAction('move', '批量移动', () => documentApi.batchMove({ document_ids: ids, target_dataset_id: targetDatasetId.trim() }))} />
+              <ActionButton
+                icon={FolderInput}
+                busy={busy === 'move'}
+                disabled={Boolean(busy) || ids.length === 0 || !targetDatasetId.trim()}
+                label="批量移动"
+                onClick={() =>
+                  runAction('move', '批量移动', () =>
+                    documentApi.batchMove({ document_ids: ids, target_dataset_id: targetDatasetId.trim() }),
+                  )
+                }
+              />
             </ActionGroup>
           </div>
         </div>
@@ -216,7 +277,12 @@ export function DocumentOperationsPanel({
             </Button>
           </div>
           {resultDetailsOpen ? (
-            <pre className={cn('max-h-56 overflow-auto border-t border-success/16 bg-background/78 p-2.5 text-[11px] leading-5 dark:bg-background/80', 'whitespace-pre-wrap break-words')}>
+            <pre
+              className={cn(
+                'max-h-56 overflow-auto border-t border-success/16 bg-background/78 p-2.5 text-[11px] leading-5 dark:bg-background/80',
+                'whitespace-pre-wrap break-words',
+              )}
+            >
               {prettyJson(result.payload)}
             </pre>
           ) : null}
@@ -229,7 +295,9 @@ export function DocumentOperationsPanel({
 function Field({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
   return (
     <div className="space-y-1">
-      <Label className="text-[11px] font-semibold leading-none text-foreground/74 dark:text-muted-foreground">{label}</Label>
+      <Label className="text-[11px] font-semibold leading-none text-foreground/74 dark:text-muted-foreground">
+        {label}
+      </Label>
       {children}
     </div>
   )
@@ -298,8 +366,18 @@ function ActionButton({
   onClick: () => Promise<void>
 }>) {
   return (
-    <Button size="sm" variant="ghost" className="h-8 justify-start gap-1.5 rounded-xl border border-border/50 bg-background/74 px-2.5 text-[12px] font-medium text-foreground/78 shadow-[inset_0_1px_0_hsl(var(--card)/0.74)] hover:border-info/24 hover:bg-card/92 hover:text-foreground hover:shadow-sm disabled:border-border/35 disabled:bg-muted/25 disabled:text-muted-foreground/45 disabled:opacity-100 dark:border-border/60 dark:bg-background/45 dark:text-muted-foreground dark:hover:bg-muted/45 dark:hover:text-foreground" disabled={disabled} onClick={() => detachPromise(onClick())}>
-      {busy ? <Loader2 className="size-3.5 animate-spin text-info motion-reduce:animate-none" /> : <Icon className="size-3.5" />}
+    <Button
+      size="sm"
+      variant="ghost"
+      className="h-8 justify-start gap-1.5 rounded-xl border border-border/50 bg-background/74 px-2.5 text-[12px] font-medium text-foreground/78 shadow-[inset_0_1px_0_hsl(var(--card)/0.74)] hover:border-info/24 hover:bg-card/92 hover:text-foreground hover:shadow-sm disabled:border-border/35 disabled:bg-muted/25 disabled:text-muted-foreground/45 disabled:opacity-100 dark:border-border/60 dark:bg-background/45 dark:text-muted-foreground dark:hover:bg-muted/45 dark:hover:text-foreground"
+      disabled={disabled}
+      onClick={() => detachPromise(onClick())}
+    >
+      {busy ? (
+        <Loader2 className="size-3.5 animate-spin text-info motion-reduce:animate-none" />
+      ) : (
+        <Icon className="size-3.5" />
+      )}
       {label}
     </Button>
   )

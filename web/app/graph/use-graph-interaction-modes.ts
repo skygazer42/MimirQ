@@ -7,20 +7,10 @@ import type { LayoutMode } from '@/components/graph/graph-viewer'
 import { findShortestPath } from '@/lib/graph-algorithms'
 import type { GraphData } from '@/lib/graph-parser'
 import { detachPromise } from '@/lib/utils'
-import type {
-  KGEntityDetailResponse,
-  KGEventDetailResponse,
-  KGStatsResponse,
-  RagTrace,
-} from '@/types'
+import type { KGEntityDetailResponse, KGEventDetailResponse, KGStatsResponse, RagTrace } from '@/types'
 import { toast } from 'sonner'
 
-import {
-  buildGraphFromTrace,
-  getGraphLinkEndpointId,
-  type GraphLinkLike,
-  type GraphNodeLike,
-} from './graph-page-utils'
+import { buildGraphFromTrace, getGraphLinkEndpointId, type GraphLinkLike, type GraphNodeLike } from './graph-page-utils'
 
 type GraphViewportApi = {
   focusNode?: (nodeId: string) => void
@@ -40,7 +30,7 @@ type UseGraphInteractionModesParams = Readonly<{
   getActiveGraph: () => GraphViewportApi
   loadInitialData: (
     source?: 'live',
-    opts?: { includeEntityLinks?: boolean; includeRelationLinks?: boolean; minSharedEvents?: number }
+    opts?: { includeEntityLinks?: boolean; includeRelationLinks?: boolean; minSharedEvents?: number },
   ) => Promise<void>
   selectedNode: GraphNodeLike | null
   isDetailOpen: boolean
@@ -125,11 +115,7 @@ function buildHeuristicExplainSteps(data: GraphData): GraphExplainabilityStep[] 
   return trace.map((node, idx) => ({
     node: node.id,
     reason:
-      idx === 0
-        ? '初始查询匹配到的实体'
-        : idx === trace.length - 1
-          ? '最终推理得出的答案'
-          : '通过关系链召回的相关节点',
+      idx === 0 ? '初始查询匹配到的实体' : idx === trace.length - 1 ? '最终推理得出的答案' : '通过关系链召回的相关节点',
   }))
 }
 
@@ -216,8 +202,7 @@ export function useGraphInteractionModes({
             const linkIndex = link.index
             const idxInGraph = graph.links.indexOf(link)
             const linkId =
-              rawId ||
-              (linkIndex === undefined ? (idxInGraph >= 0 ? `link-${idxInGraph}` : null) : `link-${linkIndex}`)
+              rawId || (linkIndex === undefined ? (idxInGraph >= 0 ? `link-${idxInGraph}` : null) : `link-${linkIndex}`)
 
             if (linkId) {
               setHighlightedLinkIds((prev) => new Set([...Array.from(prev), String(linkId)]))
@@ -228,7 +213,7 @@ export function useGraphInteractionModes({
         await new Promise((resolve) => globalThis.window.setTimeout(resolve, 1500))
       }
     },
-    [getActiveGraph, graphData, setCurrentStepIndex, setHighlightedLinkIds, setHighlightedNodeIds]
+    [getActiveGraph, graphData, setCurrentStepIndex, setHighlightedLinkIds, setHighlightedNodeIds],
   )
 
   const calculatePath = useCallback(
@@ -244,7 +229,14 @@ export function useGraphInteractionModes({
         setPathEndNode(null)
       }
     },
-    [displayGraphData.nodes, getActiveGraph, linksWithIds, setHighlightedLinkIds, setHighlightedNodeIds, setPathEndNode]
+    [
+      displayGraphData.nodes,
+      getActiveGraph,
+      linksWithIds,
+      setHighlightedLinkIds,
+      setHighlightedNodeIds,
+      setPathEndNode,
+    ],
   )
 
   const finishConnection = useCallback(
@@ -259,7 +251,7 @@ export function useGraphInteractionModes({
       setConnectLabelDraft('related_to')
       setConnectLabelOpen(true)
     },
-    [connectSourceNode, setConnectLabelDraft, setConnectLabelOpen, setConnectTargetNode]
+    [connectSourceNode, setConnectLabelDraft, setConnectLabelOpen, setConnectTargetNode],
   )
 
   const handleNodeClick = useCallback(
@@ -313,7 +305,7 @@ export function useGraphInteractionModes({
       setPathStartNode,
       setSelectedLink,
       setSelectedNode,
-    ]
+    ],
   )
 
   const handleLinkClick = useCallback(
@@ -324,7 +316,7 @@ export function useGraphInteractionModes({
       setIsDetailOpen(false)
       setSelectedNode(null)
     },
-    [isConnectMode, isExplainMode, isPathMode, setIsDetailOpen, setIsLinkDetailOpen, setSelectedLink, setSelectedNode]
+    [isConnectMode, isExplainMode, isPathMode, setIsDetailOpen, setIsLinkDetailOpen, setSelectedLink, setSelectedNode],
   )
 
   useEffect(() => {
@@ -358,11 +350,7 @@ export function useGraphInteractionModes({
       }
 
       if (event.key === 'Delete' || event.key === 'Backspace') {
-        if (
-          selectedNode &&
-          isDetailOpen &&
-          !['INPUT', 'TEXTAREA'].includes((event.target as HTMLElement).tagName)
-        ) {
+        if (selectedNode && isDetailOpen && !['INPUT', 'TEXTAREA'].includes((event.target as HTMLElement).tagName)) {
           handleDeleteNode()
         }
       }
@@ -593,7 +581,7 @@ export function useGraphInteractionModes({
       setIsPathMode,
       setPathEndNode,
       setPathStartNode,
-    ]
+    ],
   )
 
   const handleStartConnectFromContextNode = useCallback(
@@ -604,7 +592,7 @@ export function useGraphInteractionModes({
       setIsConnectMode(true)
       toast(`连线模式：请选择终点节点（起点：${String(node.label || node.id || '')}）`)
     },
-    [resetExplainMode, resetPathMode, setConnectSourceNode, setIsConnectMode]
+    [resetExplainMode, resetPathMode, setConnectSourceNode, setIsConnectMode],
   )
 
   const handleOpenLinkDetailFromContextMenu = useCallback(
@@ -614,7 +602,7 @@ export function useGraphInteractionModes({
       setIsDetailOpen(false)
       setSelectedNode(null)
     },
-    [setIsDetailOpen, setIsLinkDetailOpen, setSelectedLink, setSelectedNode]
+    [setIsDetailOpen, setIsLinkDetailOpen, setSelectedLink, setSelectedNode],
   )
 
   const handleClearHighlightsFromContextMenu = useCallback(() => {
@@ -632,7 +620,7 @@ export function useGraphInteractionModes({
         resetConnectMode()
       }
     },
-    [resetConnectMode, setConnectLabelOpen, setConnectTargetNode]
+    [resetConnectMode, setConnectLabelOpen, setConnectTargetNode],
   )
 
   return {

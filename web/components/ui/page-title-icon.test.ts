@@ -9,9 +9,7 @@ describe('PageTitleIcon theme behavior', () => {
     const globals = fs.readFileSync(path.resolve(__dirname, '../../app/globals.css'), 'utf8')
 
     expect(component).toContain('data-theme-illustration="page-title"')
-    expect(globals).toContain(
-      'html:not(.dark)[data-surface-theme="neutral"] [data-theme-illustration="page-title"]'
-    )
+    expect(globals).toContain('html:not(.dark)[data-surface-theme="neutral"] [data-theme-illustration="page-title"]')
     expect(globals).toContain('filter: grayscale(1)')
   })
 })

@@ -82,10 +82,7 @@ type ConversationPagesCache = {
   pageParams?: unknown[]
 }
 
-export async function deleteConversationFromHistory(
-  conversationId: string,
-  queryClient: QueryClient
-) {
+export async function deleteConversationFromHistory(conversationId: string, queryClient: QueryClient) {
   await chatApi.deleteConversation(conversationId)
   queryClient.setQueriesData<ConversationPagesCache>(
     { queryKey: queryKeys.chat.conversationPagesAll },
@@ -94,22 +91,17 @@ export async function deleteConversationFromHistory(
         ? {
             ...current,
             pages: (current.pages || []).map((page) => {
-              const items = (page.items || []).filter(
-                (conversation) => conversation.id !== conversationId
-              )
+              const items = (page.items || []).filter((conversation) => conversation.id !== conversationId)
               const removed = (page.items || []).length - items.length
               return {
                 ...page,
                 items,
-                returned: Math.max(
-                  0,
-                  Number(page.returned ?? page.items?.length ?? 0) - removed
-                ),
+                returned: Math.max(0, Number(page.returned ?? page.items?.length ?? 0) - removed),
                 total: Math.max(0, Number(page.total || 0) - removed),
               }
             }),
           }
-        : current
+        : current,
   )
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: queryKeys.chat.conversationPagesAll }),
@@ -196,7 +188,7 @@ function HistoryPageContent({
       limit: CONVERSATION_PAGE_SIZE,
       ...(conversationSearchTerm ? { q: conversationSearchTerm } : {}),
     }),
-    [conversationSearchTerm]
+    [conversationSearchTerm],
   )
   const conversationsQuery = useInfiniteQuery({
     queryKey: queryKeys.chat.conversationPages(conversationListParams),
@@ -219,20 +211,21 @@ function HistoryPageContent({
       if (typeof lastPage.next_skip === 'number') return lastPage.next_skip
       return allPages.reduce((sum, page) => sum + Number(page.returned ?? page.items?.length ?? 0), 0)
     },
-    initialData: initialConversationsLoaded && !conversationSearchTerm
-      ? {
-          pages: [
-            {
-              items: initialConversations,
-              total: initialConversationTotal,
-              returned: initialConversations.length,
-              has_more: initialHasMoreConversations,
-              next_skip: initialConversationNextSkip,
-            },
-          ],
-          pageParams: [0],
-        }
-      : undefined,
+    initialData:
+      initialConversationsLoaded && !conversationSearchTerm
+        ? {
+            pages: [
+              {
+                items: initialConversations,
+                total: initialConversationTotal,
+                returned: initialConversations.length,
+                has_more: initialHasMoreConversations,
+                next_skip: initialConversationNextSkip,
+              },
+            ],
+            pageParams: [0],
+          }
+        : undefined,
   })
   const conversations = useMemo(() => {
     const seen = new Set<string>()
@@ -266,8 +259,7 @@ function HistoryPageContent({
         has_more: Boolean(result.has_more),
       }
     },
-    getPreviousPageParam: (firstPage) =>
-      firstPage.has_more ? firstPage.messages?.[0]?.id || undefined : undefined,
+    getPreviousPageParam: (firstPage) => (firstPage.has_more ? firstPage.messages?.[0]?.id || undefined : undefined),
     getNextPageParam: () => undefined,
     initialData:
       initialSelectedConversation?.id && initialSelectedConversation.id === selectedConversationId
@@ -286,17 +278,14 @@ function HistoryPageContent({
   })
   const messages = useMemo(
     () => messagesQuery.data?.pages.flatMap((page) => page.messages || []) ?? EMPTY_MESSAGES,
-    [messagesQuery.data]
+    [messagesQuery.data],
   )
   const displayConversation = useMemo<Conversation | null>(() => {
     if (selectedConversation) return selectedConversation
     if (!selectedConversationId || messagesQuery.isError) return null
     const firstMessage = messages[0]
     const lastMessage = messages[messages.length - 1]
-    const createdAt =
-      firstMessage?.created_at
-      || lastMessage?.created_at
-      || new Date().toISOString()
+    const createdAt = firstMessage?.created_at || lastMessage?.created_at || new Date().toISOString()
     const updatedAt = lastMessage?.created_at || createdAt
     return {
       id: selectedConversationId,
@@ -312,18 +301,21 @@ function HistoryPageContent({
   const isLoadingOlder = messagesQuery.isFetchingPreviousPage
   const isLoadingMessages = Boolean(selectedConversationId) && messagesQuery.isLoading
 
-  const handleSelectConversation = useCallback(async (conversation: Conversation) => {
-    if (selectedConversation?.id === conversation.id) return
+  const handleSelectConversation = useCallback(
+    async (conversation: Conversation) => {
+      if (selectedConversation?.id === conversation.id) return
 
-    shouldScrollToEndRef.current = true
-    setSelectedConversation(conversation)
-    if (globalThis.window.matchMedia('(max-width: 767px)').matches) {
-      setIsSidebarCollapsed(true)
-    }
+      shouldScrollToEndRef.current = true
+      setSelectedConversation(conversation)
+      if (globalThis.window.matchMedia('(max-width: 767px)').matches) {
+        setIsSidebarCollapsed(true)
+      }
 
-    // 更新 URL
-    router.push(`/history?id=${conversation.id}`, { scroll: false })
-  }, [router, selectedConversation?.id])
+      // 更新 URL
+      router.push(`/history?id=${conversation.id}`, { scroll: false })
+    },
+    [router, selectedConversation?.id],
+  )
 
   useEffect(() => {
     if (conversationId && globalThis.window.matchMedia('(max-width: 767px)').matches) {
@@ -368,7 +360,7 @@ function HistoryPageContent({
       {
         root,
         rootMargin: '240px 0px',
-      }
+      },
     )
     observer.observe(node)
     return () => observer.disconnect()
@@ -468,20 +460,15 @@ function HistoryPageContent({
       last30Days: t('groupLast30Days'),
       earlier: t('groupEarlier'),
     }),
-    [t]
+    [t],
   )
 
   // 按日期分组
   const groupedConversations = useMemo(
     () => groupConversationsByDate(filteredConversations, groupLabels),
-    [filteredConversations, groupLabels]
+    [filteredConversations, groupLabels],
   )
-  const groupOrder = [
-    groupLabels.today,
-    groupLabels.last7Days,
-    groupLabels.last30Days,
-    groupLabels.earlier,
-  ]
+  const groupOrder = [groupLabels.today, groupLabels.last7Days, groupLabels.last30Days, groupLabels.earlier]
   const oldestMessageId = messages[0]?.id
   const groupedMessages = useMemo(
     () =>
@@ -489,7 +476,7 @@ function HistoryPageContent({
         today: groupLabels.today,
         yesterday: groupLabels.yesterday,
       }),
-    [groupLabels.today, groupLabels.yesterday, locale, messages]
+    [groupLabels.today, groupLabels.yesterday, locale, messages],
   )
 
   const loadOlderMessages = useCallback(async () => {
@@ -523,19 +510,18 @@ function HistoryPageContent({
       >
         <div className="h-full overflow-hidden">
           <section data-history-shell="ruled" className="relative flex h-full min-h-0 overflow-hidden bg-background">
-
             {/* 侧边栏 - 对话列表 */}
-            <motion.aside 
+            <motion.aside
               data-history-sidebar="true"
               initial={false}
-              animate={{ 
+              animate={{
                 opacity: isSidebarCollapsed ? 0 : 1,
-                borderRightWidth: isSidebarCollapsed ? 0 : 1
+                borderRightWidth: isSidebarCollapsed ? 0 : 1,
               }}
               transition={{ type: 'spring', stiffness: 300, damping: 30, mass: 0.8 }}
               className={cn(
-                "relative z-10 flex shrink-0 flex-col overflow-hidden border-r border-foreground/15 bg-background transition-[width] duration-200",
-                isSidebarCollapsed ? "w-0" : "w-full md:w-[19.5rem] xl:w-[20.75rem]"
+                'relative z-10 flex shrink-0 flex-col overflow-hidden border-r border-foreground/15 bg-background transition-[width] duration-200',
+                isSidebarCollapsed ? 'w-0' : 'w-full md:w-[19.5rem] xl:w-[20.75rem]',
               )}
             >
               {/* 头部 - 已扁平化 */}
@@ -560,7 +546,7 @@ function HistoryPageContent({
                     </Button>
                   </div>
                 </div>
-                
+
                 <div className="relative group">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground/50 group-focus-within:text-primary transition-colors" />
                   <input
@@ -573,24 +559,26 @@ function HistoryPageContent({
                 </div>
 
                 <div className="flex items-center gap-1 px-0.5 pb-0.5">
-                  {([
-                    ['all', '全部'],
-                    ['recent', '最近'],
-                  ] as const).map(([value, label]) => (
+                  {(
+                    [
+                      ['all', '全部'],
+                      ['recent', '最近'],
+                    ] as const
+                  ).map(([value, label]) => (
                     <button
                       key={value}
                       type="button"
                       onClick={() => {
                         setHistoryView(value)
                         setRecentConversationCutoff(
-                          value === 'recent' ? Date.now() - RECENT_CONVERSATION_WINDOW_MS : null
+                          value === 'recent' ? Date.now() - RECENT_CONVERSATION_WINDOW_MS : null,
                         )
                       }}
                       className={cn(
                         'rounded-md border border-transparent px-3 py-1 text-[11px] font-medium transition-colors',
                         historyView === value
                           ? 'border-foreground/10 bg-background text-foreground'
-                          : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground'
+                          : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
                       )}
                     >
                       {label}
@@ -605,72 +593,96 @@ function HistoryPageContent({
                 className="flex-1 overflow-y-auto overscroll-contain no-scrollbar px-0 py-0.5"
               >
                 {(() => {
-    if (isLoadingList) {
-        return (<div className="flex items-center justify-center py-8">
-                      <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none text-muted-foreground"/>
-                    </div>);
-    }
-    else if (filteredConversations.length === 0) {
-            return <HistorySidebarEmptyState isSearching={Boolean(searchQuery.trim())} />;
-        }
-        else {
-            return (<>
-              {groupOrder.map((group) => {
-                const convs = groupedConversations[group];
-                if (!convs || convs.length === 0)
-                    return null;
-                const groupTone = getConversationGroupTone(group, groupLabels);
-                return (<div key={group} className="pb-0.5 last:pb-0">
-                          <div className="sticky top-0 z-10 px-0 pb-0 pt-0 bg-transparent">
-                            <div className="flex items-center gap-2">
-                              <div className={cn("h-px flex-1", groupTone.lineClass)} />
-                              <div className={cn("inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] shadow-sm", groupTone.chipClass)}>
-                                <span suppressHydrationWarning>{group}</span>
-                                <span className={cn("rounded-full px-1.5 py-0.5 text-[11px] font-semibold", groupTone.countClass)}>
-                                  {convs.length}
-                                </span>
-                              </div>
-                              <div className={cn("h-px flex-1", groupTone.lineClass)} />
-                            </div>
-                          </div>
-                          <div className="space-y-0 px-0 pb-0">
-                            {convs.map((conversation) => (<ConversationItem key={conversation.id} conversation={conversation} isSelected={selectedConversation?.id === conversation.id} onSelect={() => handleSelectConversation(conversation)} onDelete={() => setShowDeleteConfirm(conversation.id)} showDeleteConfirm={showDeleteConfirm === conversation.id} onConfirmDelete={() => handleDeleteConversation(conversation.id)} onCancelDelete={() => setShowDeleteConfirm(null)}/>))}
-                          </div>
-                        </div>);
-              })}
-              <div ref={conversationLoadMoreRef} className="px-3 py-3 text-center">
-                {hasMoreConversations ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={loadMoreConversations}
-                    disabled={isLoadingMoreConversations}
-                    className="h-8 rounded-md px-3 text-[11px] font-medium text-muted-foreground hover:bg-muted/40 hover:text-foreground"
-                  >
-                    {isLoadingMoreConversations ? (
+                  if (isLoadingList) {
+                    return (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
+                      </div>
+                    )
+                  } else if (filteredConversations.length === 0) {
+                    return <HistorySidebarEmptyState isSearching={Boolean(searchQuery.trim())} />
+                  } else {
+                    return (
                       <>
-                        <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
-                        加载中
+                        {groupOrder.map((group) => {
+                          const convs = groupedConversations[group]
+                          if (!convs || convs.length === 0) return null
+                          const groupTone = getConversationGroupTone(group, groupLabels)
+                          return (
+                            <div key={group} className="pb-0.5 last:pb-0">
+                              <div className="sticky top-0 z-10 px-0 pb-0 pt-0 bg-transparent">
+                                <div className="flex items-center gap-2">
+                                  <div className={cn('h-px flex-1', groupTone.lineClass)} />
+                                  <div
+                                    className={cn(
+                                      'inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] shadow-sm',
+                                      groupTone.chipClass,
+                                    )}
+                                  >
+                                    <span suppressHydrationWarning>{group}</span>
+                                    <span
+                                      className={cn(
+                                        'rounded-full px-1.5 py-0.5 text-[11px] font-semibold',
+                                        groupTone.countClass,
+                                      )}
+                                    >
+                                      {convs.length}
+                                    </span>
+                                  </div>
+                                  <div className={cn('h-px flex-1', groupTone.lineClass)} />
+                                </div>
+                              </div>
+                              <div className="space-y-0 px-0 pb-0">
+                                {convs.map((conversation) => (
+                                  <ConversationItem
+                                    key={conversation.id}
+                                    conversation={conversation}
+                                    isSelected={selectedConversation?.id === conversation.id}
+                                    onSelect={() => handleSelectConversation(conversation)}
+                                    onDelete={() => setShowDeleteConfirm(conversation.id)}
+                                    showDeleteConfirm={showDeleteConfirm === conversation.id}
+                                    onConfirmDelete={() => handleDeleteConversation(conversation.id)}
+                                    onCancelDelete={() => setShowDeleteConfirm(null)}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                          )
+                        })}
+                        <div ref={conversationLoadMoreRef} className="px-3 py-3 text-center">
+                          {hasMoreConversations ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={loadMoreConversations}
+                              disabled={isLoadingMoreConversations}
+                              className="h-8 rounded-md px-3 text-[11px] font-medium text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                            >
+                              {isLoadingMoreConversations ? (
+                                <>
+                                  <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
+                                  加载中
+                                </>
+                              ) : (
+                                '加载更早记录'
+                              )}
+                            </Button>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground/45">已显示全部历史</span>
+                          )}
+                        </div>
                       </>
-                    ) : (
-                      '加载更早记录'
-                    )}
-                  </Button>
-                ) : (
-                  <span className="text-[11px] text-muted-foreground/45">已显示全部历史</span>
-                )}
+                    )
+                  }
+                })()}
               </div>
-            </>);
-        }
-        })()}
-        </div>
-        </motion.aside>
+            </motion.aside>
             {/* 主区域 - 对话详情 */}
-            <motion.div 
+            <motion.div
               layout
               className={cn(
-                "relative min-w-0 flex-1 flex-col transition-colors duration-500",
-                isSidebarCollapsed ? "flex bg-background/40" : "hidden bg-background/65 md:flex"
+                'relative min-w-0 flex-1 flex-col transition-colors duration-500',
+                isSidebarCollapsed ? 'flex bg-background/40' : 'hidden bg-background/65 md:flex',
               )}
             >
               {/* 悬浮侧边栏展开按钮 - 仅在收起时显示，且固定在边缘 */}
@@ -700,12 +712,15 @@ function HistoryPageContent({
               {displayConversation ? (
                 <>
                   {/* 对话头部 - 极简重构版 */}
-                  <div data-history-detail-header="true" className="sticky top-0 z-20 border-b border-foreground/15 bg-background">
-                    <motion.div 
+                  <div
+                    data-history-detail-header="true"
+                    className="sticky top-0 z-20 border-b border-foreground/15 bg-background"
+                  >
+                    <motion.div
                       layout
                       className={cn(
-                        "mx-auto px-4 py-3 md:px-6 xl:px-8 transition-all duration-500",
-                        isSidebarCollapsed ? "max-w-6xl" : "max-w-5xl"
+                        'mx-auto px-4 py-3 md:px-6 xl:px-8 transition-all duration-500',
+                        isSidebarCollapsed ? 'max-w-6xl' : 'max-w-5xl',
                       )}
                     >
                       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
@@ -718,21 +733,26 @@ function HistoryPageContent({
                               <div className="mx-1 hidden h-6 w-px bg-foreground/10 md:block" />
                             </>
                           )}
-                          
+
                           {/* 如果收起，留出悬浮按钮的位移空间 */}
-                          <div className={cn(
-                            "min-w-0 flex flex-col justify-center transition-all duration-500",
-                            isSidebarCollapsed ? "ml-12" : "ml-0"
-                          )}>
+                          <div
+                            className={cn(
+                              'min-w-0 flex flex-col justify-center transition-all duration-500',
+                              isSidebarCollapsed ? 'ml-12' : 'ml-0',
+                            )}
+                          >
                             <h2 className="truncate text-base font-medium text-foreground/92  leading-tight md:text-lg">
-                              {displayConversation.title || t("untitledConversation")}
+                              {displayConversation.title || t('untitledConversation')}
                             </h2>
                             <div className="flex items-center gap-1 mt-0.5 tabular-nums">
                               <span className="inline-flex items-center rounded-md border border-foreground/10 bg-background/70 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-                                {t("messageCount", { count: displayConversation.message_count })}
+                                {t('messageCount', { count: displayConversation.message_count })}
                               </span>
                               <span className="text-muted-foreground/20 text-[11px] leading-none px-0.5">•</span>
-                              <span suppressHydrationWarning className="inline-flex items-center gap-1 rounded-md border border-foreground/10 bg-background/70 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                              <span
+                                suppressHydrationWarning
+                                className="inline-flex items-center gap-1 rounded-md border border-foreground/10 bg-background/70 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground"
+                              >
                                 {formatDate(displayConversation.created_at, locale)}
                               </span>
                             </div>
@@ -781,63 +801,82 @@ function HistoryPageContent({
                     className="flex-1 overflow-y-auto overscroll-contain no-scrollbar bg-background px-4 pb-6 pt-0 md:px-6 md:pb-8 xl:px-8"
                   >
                     {(() => {
-    if (isLoadingMessages) {
-        return (<div className="flex h-full items-center justify-center">
-                          <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-muted-foreground"/>
-                        </div>);
-    }
-    else if (messages.length === 0) {
-            return (<div className="flex h-full items-center justify-center">
-                          <div className="rounded-lg border border-dashed border-foreground/10 bg-background px-8 py-12 text-center text-muted-foreground">
-                            <MessageSquare className="mx-auto mb-4 h-12 w-12 opacity-10"/>
-                            <p>{t('noMessageRecords')}</p>
+                      if (isLoadingMessages) {
+                        return (
+                          <div className="flex h-full items-center justify-center">
+                            <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-muted-foreground" />
                           </div>
-                        </div>);
-        }
-                        else {
-            return (<AnimatePresence mode="wait">
-                        <motion.div 
-                          layout
-                          key={displayConversation.id}
-                          initial="hidden"
-                          animate="visible"
-                          variants={{
-                            hidden: { opacity: 0 },
-                            visible: { 
-                              opacity: 1,
-                              transition: {
-                                staggerChildren: 0.05
-                              }
-                            }
-                          }}
-                          className={cn(
-                            "mx-auto w-full space-y-6 pt-4 transition-all duration-500",
-                            isSidebarCollapsed ? "max-w-6xl" : "max-w-5xl"
-                          )}
-                        >
-                          <ConversationOpsPanel conversationId={displayConversation.id} />
-                          {hasMoreMessages ? (<div className="flex justify-center mb-4">
-                              <Button variant="ghost" size="sm" onClick={loadOlderMessages} disabled={isLoadingOlder} className="rounded-md text-[11px] font-bold uppercase text-muted-foreground/60 hover:bg-muted/40 hover:text-foreground">
-                                {isLoadingOlder ? t('loading') : t('loadOlderMessages')}
-                              </Button>
-                            </div>) : null}
-                          {groupedMessages.map((group) => (<div key={group.key} className="space-y-6">
-                              <div className="flex items-center gap-6 py-1">
-                                <div className="h-px flex-1 bg-foreground/10" />
-                                <div suppressHydrationWarning className="whitespace-nowrap text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground/60">
-                                  {group.label}
+                        )
+                      } else if (messages.length === 0) {
+                        return (
+                          <div className="flex h-full items-center justify-center">
+                            <div className="rounded-lg border border-dashed border-foreground/10 bg-background px-8 py-12 text-center text-muted-foreground">
+                              <MessageSquare className="mx-auto mb-4 h-12 w-12 opacity-10" />
+                              <p>{t('noMessageRecords')}</p>
+                            </div>
+                          </div>
+                        )
+                      } else {
+                        return (
+                          <AnimatePresence mode="wait">
+                            <motion.div
+                              layout
+                              key={displayConversation.id}
+                              initial="hidden"
+                              animate="visible"
+                              variants={{
+                                hidden: { opacity: 0 },
+                                visible: {
+                                  opacity: 1,
+                                  transition: {
+                                    staggerChildren: 0.05,
+                                  },
+                                },
+                              }}
+                              className={cn(
+                                'mx-auto w-full space-y-6 pt-4 transition-all duration-500',
+                                isSidebarCollapsed ? 'max-w-6xl' : 'max-w-5xl',
+                              )}
+                            >
+                              <ConversationOpsPanel conversationId={displayConversation.id} />
+                              {hasMoreMessages ? (
+                                <div className="flex justify-center mb-4">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={loadOlderMessages}
+                                    disabled={isLoadingOlder}
+                                    className="rounded-md text-[11px] font-bold uppercase text-muted-foreground/60 hover:bg-muted/40 hover:text-foreground"
+                                  >
+                                    {isLoadingOlder ? t('loading') : t('loadOlderMessages')}
+                                  </Button>
                                 </div>
-                                <div className="h-px flex-1 bg-foreground/10" />
-                              </div>
-                              <div className="space-y-6">
-                                {group.messages.map((message) => (<HistoryMessageEntry key={message.id} message={message} locale={locale} />))}
-                              </div>
-                            </div>))}
-                          <div ref={messagesEndRef} className="h-4"/>
-                        </motion.div>
-                      </AnimatePresence>);
-        }
-})()}
+                              ) : null}
+                              {groupedMessages.map((group) => (
+                                <div key={group.key} className="space-y-6">
+                                  <div className="flex items-center gap-6 py-1">
+                                    <div className="h-px flex-1 bg-foreground/10" />
+                                    <div
+                                      suppressHydrationWarning
+                                      className="whitespace-nowrap text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground/60"
+                                    >
+                                      {group.label}
+                                    </div>
+                                    <div className="h-px flex-1 bg-foreground/10" />
+                                  </div>
+                                  <div className="space-y-6">
+                                    {group.messages.map((message) => (
+                                      <HistoryMessageEntry key={message.id} message={message} locale={locale} />
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                              <div ref={messagesEndRef} className="h-4" />
+                            </motion.div>
+                          </AnimatePresence>
+                        )
+                      }
+                    })()}
                   </div>
                 </>
               ) : (
@@ -884,18 +923,15 @@ function HistoryMainEmptyState({
             loading="eager"
             className="mb-1.5 size-24 object-contain"
           />
-          <p className="text-[10px] font-semibold tracking-[0.2em] text-info/72">
-            {t('historyEmptyKicker')}
-          </p>
-          <h2 className="mt-2.5 text-lg font-semibold tracking-[-0.035em] text-foreground">
-            {title}
-          </h2>
-          <p className="mt-2 max-w-sm text-[13px] leading-6 text-muted-foreground/75">
-            {description}
-          </p>
+          <p className="text-[10px] font-semibold tracking-[0.2em] text-info/72">{t('historyEmptyKicker')}</p>
+          <h2 className="mt-2.5 text-lg font-semibold tracking-[-0.035em] text-foreground">{title}</h2>
+          <p className="mt-2 max-w-sm text-[13px] leading-6 text-muted-foreground/75">{description}</p>
 
           <div className="mt-5 flex items-center justify-center">
-            <Button asChild className="h-9 rounded-md bg-foreground px-4 text-[12px] font-semibold text-background hover:bg-foreground/92">
+            <Button
+              asChild
+              className="h-9 rounded-md bg-foreground px-4 text-[12px] font-semibold text-background hover:bg-foreground/92"
+            >
               <Link href="/">
                 <Plus className="size-3.5" />
                 {t('startNewConversation')}
@@ -940,9 +976,7 @@ function HistorySidebarEmptyState({
         loading="eager"
         className="mx-auto mb-1 size-16 object-contain"
       />
-      <h3 className="text-sm font-semibold tracking-[-0.025em] text-foreground">
-        {t('noConversationRecords')}
-      </h3>
+      <h3 className="text-sm font-semibold tracking-[-0.025em] text-foreground">{t('noConversationRecords')}</h3>
       <p className="mx-auto mt-1.5 max-w-[13rem] text-[11px] leading-[1.125rem] text-muted-foreground/70">
         {t('historyEmptyDescription')}
       </p>
@@ -980,24 +1014,23 @@ export function ConversationItem({
         whileTap={{ scale: 0.99 }}
         className={cn(
           'relative flex w-full flex-col gap-0.5 overflow-hidden rounded-md border border-transparent px-3 py-1.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
-          isSelected 
+          isSelected
             ? 'border-primary/20 bg-primary/[0.08] text-foreground'
-            : 'bg-transparent text-foreground/80 hover:bg-muted/40 hover:text-foreground'
+            : 'bg-transparent text-foreground/80 hover:bg-muted/40 hover:text-foreground',
         )}
       >
         {/* 选中时的左侧指示条 */}
         {isSelected && (
-          <motion.div 
-            layoutId="active-indicator"
-            className="absolute bottom-3 left-0 top-3 w-px bg-primary/50"
-          />
+          <motion.div layoutId="active-indicator" className="absolute bottom-3 left-0 top-3 w-px bg-primary/50" />
         )}
 
         <div className="flex items-start justify-between gap-3">
-          <span className={cn(
-            'flex-1 truncate text-[13.5px] font-normal leading-snug ',
-            isSelected ? 'text-primary' : 'text-foreground/88'
-          )}>
+          <span
+            className={cn(
+              'flex-1 truncate text-[13.5px] font-normal leading-snug ',
+              isSelected ? 'text-primary' : 'text-foreground/88',
+            )}
+          >
             {conversation.title || t('untitledConversation')}
           </span>
           <time
@@ -1017,17 +1050,22 @@ export function ConversationItem({
         </div>
       </motion.button>
 
-      <div className={cn(
-        "absolute right-3 top-1/2 -translate-y-1/2 transition-all duration-200 flex items-center",
-        showDeleteConfirm ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-      )}>
+      <div
+        className={cn(
+          'absolute right-3 top-1/2 -translate-y-1/2 transition-all duration-200 flex items-center',
+          showDeleteConfirm ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+        )}
+      >
         {showDeleteConfirm ? (
           <div className="flex items-center gap-1.5 animate-fade-in-up">
             <IconButton
               label={t('confirmDeleteConversation')}
               variant="ghost"
               className="size-8 rounded-md border border-transparent text-destructive transition-all hover:border-destructive/10 hover:bg-destructive/10 active:bg-destructive/20"
-              onClick={(e) => { e.stopPropagation(); onConfirmDelete() }}
+              onClick={(e) => {
+                e.stopPropagation()
+                onConfirmDelete()
+              }}
             >
               <Trash2 className="size-4" />
             </IconButton>
@@ -1035,7 +1073,10 @@ export function ConversationItem({
               label={t('cancelDelete')}
               variant="ghost"
               className="size-8 rounded-md text-muted-foreground/40 transition-all hover:bg-muted hover:text-foreground active:bg-muted"
-              onClick={(e) => { e.stopPropagation(); onCancelDelete() }}
+              onClick={(e) => {
+                e.stopPropagation()
+                onCancelDelete()
+              }}
             >
               <X className="size-4" />
             </IconButton>
@@ -1046,7 +1087,10 @@ export function ConversationItem({
               label={t('deleteConversation')}
               variant="ghost"
               className="size-8 rounded-md text-muted-foreground/30 transition-all hover:bg-destructive/10 hover:text-destructive active:bg-destructive/20"
-              onClick={(e) => { e.stopPropagation(); onDelete() }}
+              onClick={(e) => {
+                e.stopPropagation()
+                onDelete()
+              }}
             >
               <Trash2 className="size-4" />
             </IconButton>
@@ -1069,20 +1113,14 @@ function HistoryMessageEntry({
   const showAnswerLineage = Boolean(requestId && hasAnswerLineageEvidence(message))
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, y: 15 }}
       whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-20px" }}
+      viewport={{ once: true, margin: '-20px' }}
       transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-      className={cn(
-        "w-full py-4 transition-all duration-300",
-        isUser ? "flex justify-end" : "flex justify-start"
-      )}
+      className={cn('w-full py-4 transition-all duration-300', isUser ? 'flex justify-end' : 'flex justify-start')}
     >
-      <div className={cn(
-        "w-full max-w-4xl",
-        isUser ? "flex justify-end" : "flex justify-start"
-      )}>
+      <div className={cn('w-full max-w-4xl', isUser ? 'flex justify-end' : 'flex justify-start')}>
         <div className={cn('flex min-w-0 flex-col gap-1', isUser ? 'items-end' : 'items-start')}>
           <ChatMessageItem message={message} variant="minimal" />
           {showAnswerLineage ? <AnswerLineageAction requestId={requestId} /> : null}
@@ -1148,7 +1186,7 @@ function HistoryMessageRoleBadge({
         'inline-flex items-center gap-2 rounded-md border px-2.5 py-1 text-[11px] font-semibold',
         isUser
           ? 'border-primary/15 bg-primary/10 text-primary'
-          : 'border-foreground/10 bg-background text-foreground/80'
+          : 'border-foreground/10 bg-background text-foreground/80',
       )}
     >
       <span className={cn('h-1.5 w-1.5 rounded-sm', isUser ? 'bg-primary' : 'bg-info')} />
@@ -1165,7 +1203,7 @@ function getConversationGroupTone(
     last7Days: string
     today: string
     yesterday: string
-  }>
+  }>,
 ) {
   if (group === labels.today) {
     return {
@@ -1229,7 +1267,7 @@ function groupConversationsByDate(
     last7Days: string
     today: string
     yesterday: string
-  }>
+  }>,
 ) {
   const groups: Record<string, Conversation[]> = {}
   const now = new Date()
@@ -1269,7 +1307,7 @@ function groupMessagesByDay(
   labels: Readonly<{
     today: string
     yesterday: string
-  }>
+  }>,
 ) {
   const groups = new Map<string, { key: string; label: string; messages: Message[] }>()
 
@@ -1317,7 +1355,7 @@ function formatMessageGroupLabel(
   labels: Readonly<{
     today: string
     yesterday: string
-  }>
+  }>,
 ) {
   const now = new Date()
   const today = utcDayKey(now)

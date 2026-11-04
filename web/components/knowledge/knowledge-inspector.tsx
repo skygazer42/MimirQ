@@ -1,16 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import {
-  CalendarClock,
-  Database,
-  FileSearch,
-  FolderTree,
-  Hash,
-  Layers,
-  Route,
-  type LucideIcon,
-} from 'lucide-react'
+import { CalendarClock, Database, FileSearch, FolderTree, Hash, Layers, Route, type LucideIcon } from 'lucide-react'
 
 import type { Document } from '@/types'
 
@@ -63,26 +54,18 @@ export function KnowledgeInspector({
   const sourcePath = selected ? toTrimmedPrimitiveString(metadata?.source_path) : ''
   const sourceTrail = buildSourceTrail(sourcePath)
   const folderPath = sourceTrail.length > 1 ? sourceTrail.slice(0, -1).join(' / ') : ''
-  const parserLabel = selected
-    ? toTrimmedPrimitiveString(metadata?.parser_backend) || '自动'
-    : '—'
+  const parserLabel = selected ? toTrimmedPrimitiveString(metadata?.parser_backend) || '自动' : '—'
 
   const header = (
     <div
       className={cn(
         'flex items-center justify-between gap-3 border-b border-border/50',
-        embedded
-          ? 'bg-card/44 px-4 py-3 backdrop-blur-sm'
-          : 'bg-card/58 px-4 py-3'
+        embedded ? 'bg-card/44 px-4 py-3 backdrop-blur-sm' : 'bg-card/58 px-4 py-3',
       )}
     >
       <div className="min-w-0">
-        <div className="text-[13px] font-semibold leading-none tracking-[-0.01em] text-foreground">
-          审查面板
-        </div>
-        <div className="mt-1 text-[11px] leading-none text-muted-foreground/72">
-          单文档切片、来源和健康入口
-        </div>
+        <div className="text-[13px] font-semibold leading-none tracking-[-0.01em] text-foreground">审查面板</div>
+        <div className="mt-1 text-[11px] leading-none text-muted-foreground/72">单文档切片、来源和健康入口</div>
       </div>
       <div className="inline-flex h-7 items-center gap-1.5 rounded-full border border-border/50 bg-background/70 px-2.5 text-[11px] text-muted-foreground">
         <span className="size-1.5 rounded-full bg-info" />
@@ -104,7 +87,7 @@ export function KnowledgeInspector({
                     'shrink-0 rounded-[14px] border p-2.5 shadow-[inset_0_1px_0_hsl(var(--card)/0.72)]',
                     fileType.bg,
                     fileType.border,
-                    fileType.color
+                    fileType.color,
                   )}
                 >
                   <TypeIcon className="h-4 w-4" />
@@ -122,7 +105,7 @@ export function KnowledgeInspector({
                         'inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold',
                         fileType.bg,
                         fileType.border,
-                        fileType.color
+                        fileType.color,
                       )}
                       title={fileType.label}
                     >
@@ -148,21 +131,9 @@ export function KnowledgeInspector({
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
-            <MetricTile
-              icon={FileSearch}
-              label="文件大小"
-              value={formatFileSize(Number(selected.file_size || 0))}
-            />
-            <MetricTile
-              icon={Layers}
-              label="切片数"
-              value={String(selected.chunk_count ?? 0)}
-            />
-            <MetricTile
-              icon={CalendarClock}
-              label="创建时间"
-              value={formatDate(selected.created_at)}
-            />
+            <MetricTile icon={FileSearch} label="文件大小" value={formatFileSize(Number(selected.file_size || 0))} />
+            <MetricTile icon={Layers} label="切片数" value={String(selected.chunk_count ?? 0)} />
+            <MetricTile icon={CalendarClock} label="创建时间" value={formatDate(selected.created_at)} />
             <MetricTile
               icon={CalendarClock}
               label="更新时间"
@@ -226,11 +197,7 @@ export function KnowledgeInspector({
               size="sm"
               className="h-8 rounded-xl border-info/18 bg-info/[0.06] px-2.5 text-[11px] font-medium text-info hover:bg-info/[0.10] dark:text-info"
             >
-              <Link
-                href={buildChunkPreviewDocumentHref(selected.id)}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
+              <Link href={buildChunkPreviewDocumentHref(selected.id)} target="_blank" rel="noopener noreferrer">
                 <Layers className="mr-1.5 size-3.5" />
                 切片管理
               </Link>
@@ -254,7 +221,8 @@ export function KnowledgeInspector({
     if (selectedDocs.length > 1) {
       return (
         <div className="rounded-xl border border-dashed border-border/60 bg-transparent px-3 py-3 text-xs text-muted-foreground">
-          已选择 <span className="font-mono tabular-nums text-foreground">{selectedDocs.length}</span> 份文档。请收窄选择范围以查看单文档详情。
+          已选择 <span className="font-mono tabular-nums text-foreground">{selectedDocs.length}</span>{' '}
+          份文档。请收窄选择范围以查看单文档详情。
         </div>
       )
     }
@@ -272,17 +240,16 @@ export function KnowledgeInspector({
         {header}
         <div className="space-y-3 overflow-y-auto p-3.5 lg:p-4">
           {summary}
-          {children ? <div className="rounded-[16px] border border-border/50 bg-background/70 p-3">{children}</div> : null}
+          {children ? (
+            <div className="rounded-[16px] border border-border/50 bg-background/70 p-3">{children}</div>
+          ) : null}
         </div>
       </div>
     )
   }
 
   return (
-    <Panel
-      padding="none"
-      className={cn('min-h-0 overflow-hidden flex flex-col border-border/50 bg-card', className)}
-    >
+    <Panel padding="none" className={cn('min-h-0 overflow-hidden flex flex-col border-border/50 bg-card', className)}>
       {header}
 
       <div

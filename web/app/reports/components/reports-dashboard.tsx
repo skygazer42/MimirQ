@@ -122,10 +122,7 @@ export function ReportsDashboard({
           failed={failed}
           failedRate={failedRate}
         />
-        <FieldCoveragePanel
-          fieldCoverageRows={fieldCoverageRows}
-          fieldCoverageBadge={fieldCoverageBadge}
-        />
+        <FieldCoveragePanel fieldCoverageRows={fieldCoverageRows} fieldCoverageBadge={fieldCoverageBadge} />
         <TopDocumentPanel
           topDocumentRows={topDocumentRows}
           topDocumentMax={topDocumentMax}

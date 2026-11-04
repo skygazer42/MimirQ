@@ -18,10 +18,7 @@ import { useTranslations } from 'next-intl'
 import { Progress } from '@/components/ui/progress'
 
 // 文件类型配置 — 使用 token 色
-const FILE_TYPE_CONFIG: Record<
-  string,
-  { icon: typeof FileText; color: string; bg: string }
-> = {
+const FILE_TYPE_CONFIG: Record<string, { icon: typeof FileText; color: string; bg: string }> = {
   pdf: { icon: FileText, color: 'text-destructive', bg: 'bg-destructive/10' },
   pptx: { icon: Presentation, color: 'text-warning', bg: 'bg-warning/10' },
   ppt: { icon: Presentation, color: 'text-warning', bg: 'bg-warning/10' },
@@ -33,28 +30,20 @@ const FILE_TYPE_CONFIG: Record<
   md: { icon: FileText, color: 'text-accent', bg: 'bg-accent/10' },
 }
 
-function getFileQueueGovernanceStatusLabel(
-  governanceStatus?: FileQueueItemData['governanceStatus']
-): string {
+function getFileQueueGovernanceStatusLabel(governanceStatus?: FileQueueItemData['governanceStatus']): string {
   if (governanceStatus === 'ready') return '待提交'
   if (governanceStatus === 'submitted') return '已提交'
   return ''
 }
 
-function getFileQueueGovernanceStatusClass(
-  governanceStatus?: FileQueueItemData['governanceStatus']
-): string {
+function getFileQueueGovernanceStatusClass(governanceStatus?: FileQueueItemData['governanceStatus']): string {
   if (governanceStatus === 'ready') {
     return 'border-warning/25 bg-warning/[0.10] text-warning'
   }
   return 'border-success/25 bg-success/[0.08] text-success'
 }
 
-function getFileQueueParsingLabel(
-  progress: number | null | undefined,
-  progressPct: number,
-  label: string
-): string {
+function getFileQueueParsingLabel(progress: number | null | undefined, progressPct: number, label: string): string {
   if (progress == null) return label
   return `${label} ${progressPct}%`
 }
@@ -131,7 +120,7 @@ export function FileQueueItem({
         aria-label={getFileQueueSelectionLabel(isSelected)}
         className={cn(
           'mt-1 flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors focus-ring',
-          getFileQueueSelectionClass(isSelected)
+          getFileQueueSelectionClass(isSelected),
         )}
         onClick={(event) => {
           event.stopPropagation()
@@ -149,7 +138,7 @@ export function FileQueueItem({
         return (
           <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <Clock className="size-3" />
-            <span>{t("fileQueueItem.pending")}</span>
+            <span>{t('fileQueueItem.pending')}</span>
           </div>
         )
       case 'parsing':
@@ -157,11 +146,9 @@ export function FileQueueItem({
           <div className="space-y-1.5">
             <div className="flex items-center gap-1.5 text-[11px] text-info">
               <Loader2 className="size-3 animate-spin motion-reduce:animate-none" />
-              <span>{getFileQueueParsingLabel(file.progress, progressPct, t("fileQueueItem.parsing"))}</span>
+              <span>{getFileQueueParsingLabel(file.progress, progressPct, t('fileQueueItem.parsing'))}</span>
             </div>
-            {file.progress !== undefined && (
-              <Progress value={progressPct} className="h-1.5" />
-            )}
+            {file.progress !== undefined && <Progress value={progressPct} className="h-1.5" />}
           </div>
         )
       case 'parsed':
@@ -169,21 +156,17 @@ export function FileQueueItem({
           <div className="flex min-w-0 items-center gap-2 text-[11px]">
             <span className="inline-flex shrink-0 items-center gap-1 text-success">
               <CheckCircle className="size-3.5" />
-              {t("fileQueueItem.parsed")}
+              {t('fileQueueItem.parsed')}
             </span>
-            {parsedSummary ? (
-              <span className="min-w-0 truncate text-muted-foreground">
-                {parsedSummary}
-              </span>
-            ) : null}
+            {parsedSummary ? <span className="min-w-0 truncate text-muted-foreground">{parsedSummary}</span> : null}
             {governanceStatusLabel ? (
-                <span
-                  className={cn(
-                    'shrink-0 rounded-full border px-1.5 py-0.5 font-medium',
-                    getFileQueueGovernanceStatusClass(file.governanceStatus)
-                  )}
-                >
-                  {governanceStatusLabel}
+              <span
+                className={cn(
+                  'shrink-0 rounded-full border px-1.5 py-0.5 font-medium',
+                  getFileQueueGovernanceStatusClass(file.governanceStatus),
+                )}
+              >
+                {governanceStatusLabel}
               </span>
             ) : null}
             {typeof file.duration === 'number' && Number.isFinite(file.duration) ? (
@@ -197,11 +180,9 @@ export function FileQueueItem({
         return (
           <div className="flex items-center gap-1.5 text-[11px] text-destructive">
             <XCircle className="size-3.5" />
-            <span>{t("fileQueueItem.error")}</span>
+            <span>{t('fileQueueItem.error')}</span>
             {onRetry ? (
-              <span className="ml-auto shrink-0 font-medium text-destructive/80">
-                {t("fileQueueItem.retry")}
-              </span>
+              <span className="ml-auto shrink-0 font-medium text-destructive/80">{t('fileQueueItem.retry')}</span>
             ) : null}
           </div>
         )
@@ -215,17 +196,15 @@ export function FileQueueItem({
       </div>
 
       <div className="flex-1 min-w-0">
-        <p className="truncate text-[13px] font-medium text-foreground">
-          {file.name}
-        </p>
+        <p className="truncate text-[13px] font-medium text-foreground">{file.name}</p>
 
         {(file.folderPathLabel || file.sourcePath) && (
           <p
             className="mt-0.5 truncate text-[11px] text-muted-foreground"
             title={[file.folderPathLabel, file.sourcePath].filter(Boolean).join(' · ')}
           >
-            {file.folderPathLabel ? `${t("fileQueueItem.folderLabel")}${file.folderPathLabel}` : ''}
-            {file.sourcePath ? ` · ${t("fileQueueItem.sourcePathLabel")}${file.sourcePath}` : ''}
+            {file.folderPathLabel ? `${t('fileQueueItem.folderLabel')}${file.folderPathLabel}` : ''}
+            {file.sourcePath ? ` · ${t('fileQueueItem.sourcePathLabel')}${file.sourcePath}` : ''}
           </p>
         )}
 
@@ -234,7 +213,7 @@ export function FileQueueItem({
           {file.pageCount && (
             <>
               <span>·</span>
-              <span>{t("fileQueueItem.pages", { count: String(file.pageCount) })}</span>
+              <span>{t('fileQueueItem.pages', { count: String(file.pageCount) })}</span>
             </>
           )}
         </div>
@@ -248,9 +227,7 @@ export function FileQueueItem({
     <div
       className={cn(
         'group cursor-pointer rounded-md border border-transparent px-2.5 py-2 transition-colors duration-150 motion-reduce:transition-none',
-        isActive
-          ? 'bg-primary/[0.055] shadow-none'
-          : 'bg-background/60 hover:bg-muted/35'
+        isActive ? 'bg-primary/[0.055] shadow-none' : 'bg-background/60 hover:bg-muted/35',
       )}
     >
       <div className="flex items-start gap-2">
@@ -267,9 +244,7 @@ export function FileQueueItem({
             {fileContent}
           </button>
         ) : (
-          <div className="flex min-w-0 flex-1 items-start gap-2">
-            {fileContent}
-          </div>
+          <div className="flex min-w-0 flex-1 items-start gap-2">{fileContent}</div>
         )}
 
         {(onRetry || onRemove) && (
@@ -281,15 +256,15 @@ export function FileQueueItem({
                 className="flex items-center gap-1 text-xs text-info hover:text-info/90 focus-ring rounded px-1.5 py-1"
               >
                 <RotateCcw className="size-3" />
-                {t("fileQueueItem.retry")}
+                {t('fileQueueItem.retry')}
               </button>
             )}
             {onRemove && (
               <button
                 type="button"
                 onClick={onRemove}
-                aria-label={t("fileQueueItem.removeLabel")}
-                title={t("fileQueueItem.removeTitle")}
+                aria-label={t('fileQueueItem.removeLabel')}
+                title={t('fileQueueItem.removeTitle')}
                 className="rounded p-1 opacity-0 transition-opacity transition-colors duration-200 focus-ring motion-reduce:transition-none group-hover:opacity-100 hover:bg-destructive/10"
               >
                 <Trash2 className="size-3.5 text-muted-foreground transition-colors duration-200 motion-reduce:transition-none hover:text-destructive" />
@@ -300,9 +275,7 @@ export function FileQueueItem({
       </div>
 
       {file.status === 'error' && file.error && (
-        <p className="mt-2 rounded bg-destructive/10 px-2 py-1 text-[11px] text-destructive">
-          {file.error}
-        </p>
+        <p className="mt-2 rounded bg-destructive/10 px-2 py-1 text-[11px] text-destructive">{file.error}</p>
       )}
     </div>
   )
