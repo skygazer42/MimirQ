@@ -66,7 +66,7 @@ README_JA.md,inventory,preserved,preserved,"Documentation, static resource, data
 README_KO.md,inventory,preserved,preserved,"Documentation, static resource, data or non-source configuration; tracked for scope",inventory
 alembic.ini,inventory,preserved,preserved,"Documentation, static resource, data or non-source configuration; tracked for scope",inventory
 alembic/README.md,inventory,preserved,preserved,"Documentation, static resource, data or non-source configuration; tracked for scope",inventory
-alembic/env.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+alembic/env.py,7,adjusted,conforms,"Inline one-use root lookup and use actual Settings/env/INI/MetaData contracts; preserve database URL precedence, minimal-tool fallback, metadata registration and migration transactions","Full six-file / 336-line source and actual stdlib/SDK/caller review; entrypoint-contracts-source-proof.json; Ruff/format/AST3.11; no Python tests/imports, migrations or service execution"
 alembic/script.py.mako,inventory,preserved,preserved,"Documentation, static resource, data or non-source configuration; tracked for scope",inventory
 alembic/versions/0001_baseline_schema.py,inventory,preserved,preserved,Published historical migration; preserve migration identity,inventory
 alembic/versions/0002_add_kg_relations.py,inventory,preserved,preserved,Published historical migration; preserve migration identity,inventory
@@ -1588,7 +1588,7 @@ docker/magicpdf/server.py,7,pending,conforms,Awaiting file-level convention and 
 docker/marker/Dockerfile,inventory,preserved,preserved,"Documentation, static resource, data or non-source configuration; tracked for scope",inventory
 docker/mineru/Dockerfile,inventory,preserved,preserved,"Documentation, static resource, data or non-source configuration; tracked for scope",inventory
 docker/mineru/start_local_api.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-docker/mineru/start_vlm_server.py,7,pending,adjusted,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+docker/mineru/start_vlm_server.py,7,conforms,conforms,"Complete resource-launch entrypoint conforms; preserve mounted-model initialization, explicit exec arguments and existing blank/whitespace environment fallback","Full six-file / 336-line source and actual stdlib/SDK/caller review; entrypoint-contracts-source-proof.json; Ruff/format/AST3.11; no Python tests/imports, migrations or service execution"
 docker/olmocr/Dockerfile,inventory,preserved,preserved,"Documentation, static resource, data or non-source configuration; tracked for scope",inventory
 docker/olmocr/requirements.txt,inventory,preserved,preserved,"Documentation, static resource, data or non-source configuration; tracked for scope",inventory
 docker/olmocr/server.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
@@ -1598,7 +1598,7 @@ docker/paddlevl/server.py,7,pending,conforms,Awaiting file-level convention and 
 docker/qianfanocr/Dockerfile,inventory,preserved,preserved,"Documentation, static resource, data or non-source configuration; tracked for scope",inventory
 docker/qianfanocr/requirements.txt,inventory,preserved,preserved,"Documentation, static resource, data or non-source configuration; tracked for scope",inventory
 docker/qianfanocr/server.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
-docker/start_backend.sh,7,pending,pending,Awaiting file-level convention and contract review,
+docker/start_backend.sh,7,conforms,conforms,Complete container entrypoint conforms; quoted raw environment defaults flow directly to exec uvicorn with existing worker and forwarded-IP policy,"Full six-file / 336-line source and actual stdlib/SDK/caller review; entrypoint-contracts-source-proof.json; Ruff/format/AST3.11; no Python tests/imports, migrations or service execution"
 docs-site/.gitignore,inventory,preserved,preserved,"Documentation, static resource, data or non-source configuration; tracked for scope",inventory
 docs-site/README.md,inventory,preserved,preserved,"Documentation, static resource, data or non-source configuration; tracked for scope",inventory
 docs-site/docs/backend/_category_.json,inventory,preserved,preserved,"Documentation, static resource, data or non-source configuration; tracked for scope",inventory
@@ -1905,8 +1905,8 @@ docs/maintenance/style-unification/decisions/implemented/simplification/2026-11-
 docs/maintenance/style-unification/decisions/implemented/simplification/2026-11-02-dataset-service-functions.md,3,preserved,preserved,Dataset service decision record; documentation scope,task-3-dataset-final; Preview ownership and actual ingestion/chunk-operation owner facts synchronized;5 decision-note tree/format/archive gates pass
 docs/maintenance/style-unification/decisions/implemented/simplification/2026-11-02-permission-quota-contracts.md,3,preserved,preserved,Decision record for permission and quota simplification; source and validation limits documented,task-3-permission-quota; Agent Note tree/format/archive verification
 docs/maintenance/style-unification/verification.md,1,preserved,preserved,Migration plan or verification record,Task 1 inventory
-docs/migrations/20241210_multitenant.sql,7,pending,pending,Awaiting file-level convention and contract review,
-docs/migrations/20241211_dataset_permissions.sql,7,pending,pending,Awaiting file-level convention and contract review,
+docs/migrations/20241210_multitenant.sql,7,preserved,preserved,Historical documentation SQL migration retained as an existing schema/data contract; excluded from style rewriting and not executed,"Full six-file / 336-line source and actual stdlib/SDK/caller review; entrypoint-contracts-source-proof.json; Ruff/format/AST3.11; no Python tests/imports, migrations or service execution"
+docs/migrations/20241211_dataset_permissions.sql,7,preserved,preserved,Historical documentation SQL migration retained as an existing schema/data contract; excluded from style rewriting and not executed,"Full six-file / 336-line source and actual stdlib/SDK/caller review; entrypoint-contracts-source-proof.json; Ruff/format/AST3.11; no Python tests/imports, migrations or service execution"
 docs/minio_integration.md,inventory,preserved,preserved,"Documentation, static resource, data or non-source configuration; tracked for scope",inventory
 docs/operations.md,inventory,preserved,preserved,"Documentation, static resource, data or non-source configuration; tracked for scope",inventory
 docs/ops/templates/README.md,inventory,preserved,preserved,"Documentation, static resource, data or non-source configuration; tracked for scope",inventory
@@ -1921,7 +1921,7 @@ docs/standards/import-policy.md,inventory,preserved,preserved,"Documentation, st
 docs/superpowers/plans/2026-11-02-style-unification.md,1,preserved,preserved,Migration plan or verification record,Task 1 inventory
 docs/templates/retrieval_debt_audit_template.md,inventory,preserved,preserved,"Documentation, static resource, data or non-source configuration; tracked for scope",inventory
 docs/user_guide.md,inventory,preserved,preserved,"Documentation, static resource, data or non-source configuration; tracked for scope",inventory
-main.py,7,pending,conforms,Awaiting file-level convention and contract review,Ruff 0.15.9; full AST parity with 77b6adc1; semantic review pending
+main.py,7,adjusted,conforms,Environment parser accepts its actual os.getenv str-or-None input; remove unreachable bool/coercion fallbacks; preserve startup warnings and bounded watch-limit polling recovery,"Full six-file / 336-line source and actual stdlib/SDK/caller review; entrypoint-contracts-source-proof.json; Ruff/format/AST3.11; no Python tests/imports, migrations or service execution"
 plugins/pipelines/changzhou-gov-service-knowledge/.mimirq-plugin-test.json,inventory,preserved,preserved,"Documentation, static resource, data or non-source configuration; tracked for scope",inventory
 plugins/pipelines/changzhou-gov-service-knowledge/README.md,inventory,preserved,preserved,"Documentation, static resource, data or non-source configuration; tracked for scope",inventory
 plugins/pipelines/changzhou-gov-service-knowledge/changzhou-gov-service-knowledge.mk,inventory,preserved,preserved,"Documentation, static resource, data or non-source configuration; tracked for scope",inventory
