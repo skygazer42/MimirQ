@@ -12,7 +12,7 @@ Design goals:
 
 import json
 import time
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -154,7 +154,7 @@ def find_near_duplicate(
                 continue
             dist = hamming_distance64(target_int, cand_int)
             if dist <= threshold and (best is None or dist < best.distance):
-                best = NearDedupMatch(simhash64=cand_hex, distance=int(dist))
+                best = NearDedupMatch(simhash64=cand_hex, distance=dist)
                 if dist == 0:
                     return best
     return best
@@ -186,8 +186,8 @@ def add_simhashes(
 def with_near_dedup_index(
     *,
     path: Path,
-    fn,
-):
+    fn: Callable[[dict[str, list[str]]], dict[str, list[str]] | None],
+) -> dict[str, list[str]] | None:
     """
     Load-lock-update-save wrapper to keep the index file consistent.
 

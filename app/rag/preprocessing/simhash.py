@@ -34,7 +34,7 @@ def simhash64(text: str) -> int:
     for tok, w in weights.items():
         digest = hashlib.blake2b(tok.encode("utf-8", "ignore"), digest_size=8).digest()
         h = int.from_bytes(digest, "big", signed=False)
-        weight = int(w) if w else 1
+        weight = w
         for i in range(64):
             vec[i] += weight if (h >> i) & 1 else -weight
 
@@ -46,7 +46,7 @@ def simhash64(text: str) -> int:
 
 
 def hamming_distance64(a: int, b: int) -> int:
-    return int((int(a) ^ int(b)).bit_count())
+    return (int(a) ^ int(b)).bit_count()
 
 
 def simhash64_hex(value: int) -> str:

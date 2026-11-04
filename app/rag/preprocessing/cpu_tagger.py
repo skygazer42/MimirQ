@@ -85,7 +85,7 @@ def _append_doc_tag(
     value: str,
     confidence: float,
 ) -> None:
-    normalized = str(value or "").strip(_TRIM_PUNCTUATION_CHARS)
+    normalized = value.strip(_TRIM_PUNCTUATION_CHARS)
     if not normalized:
         return
     key = (tag_type, normalized.casefold())
@@ -110,7 +110,7 @@ def _append_span(
     label: str,
     confidence: float,
 ) -> None:
-    normalized = str(text or "").strip(_TRIM_PUNCTUATION_CHARS)
+    normalized = text.strip(_TRIM_PUNCTUATION_CHARS)
     if len(normalized) < 2:
         return
     key = (annotation_type, normalized.casefold(), label.casefold())
@@ -128,7 +128,7 @@ def _append_span(
 
 
 def _looks_sensitive_or_noise(token: str) -> bool:
-    text = str(token or "").strip()
+    text = token.strip()
     if not text:
         return True
     if text.casefold() in _NOISE_KEYWORDS:
@@ -147,10 +147,10 @@ def _looks_sensitive_or_noise(token: str) -> bool:
 
 
 def _trim_action_phrase(value: str) -> str:
-    text = str(value or "").strip(_TRIM_PUNCTUATION_CHARS)
+    text = value.strip(_TRIM_PUNCTUATION_CHARS)
     marker_start = None
     for match in _ACTION_MARKER_RE.finditer(text):
-        marker_start = int(match.start())
+        marker_start = match.start()
     if marker_start is not None:
         text = text[marker_start:]
     return text.strip(_TRIM_PUNCTUATION_CHARS)
@@ -185,9 +185,7 @@ def _apply_sensitivity_tags(
 ) -> set[str]:
     pii_hits = find_pii_matches(source, max_matches=5)
     secret_hits = find_secret_matches(source, max_matches=5)
-    sensitive_texts = {
-        str(match.text or "").casefold() for match in [*pii_hits, *secret_hits] if str(match.text or "").strip()
-    }
+    sensitive_texts = {match.text.casefold() for match in [*pii_hits, *secret_hits] if match.text.strip()}
     if pii_hits or secret_hits:
         _append_doc_tag(document_tags, tag_type="sensitivity", value="restricted", confidence=0.92)
         _append_doc_tag(document_tags, tag_type="quality", value="含敏感信息，建议人工复核", confidence=0.9)
@@ -228,7 +226,7 @@ def _append_keyword_tags(
     max_items: int,
 ) -> None:
     for keyword in keywords:
-        keyword_cf = str(keyword or "").casefold()
+        keyword_cf = keyword.casefold()
         if _looks_sensitive_or_noise(keyword) or keyword not in source:
             continue
         if any(keyword_cf in sensitive_text or sensitive_text in keyword_cf for sensitive_text in sensitive_texts):
@@ -252,7 +250,7 @@ def _append_action_and_risk_tags(
         break
 
     for match in _RISK_RE.finditer(source):
-        phrase = str(match.group(0) or "").strip(_TRIM_PUNCTUATION_CHARS)
+        phrase = match.group(0).strip(_TRIM_PUNCTUATION_CHARS)
         _append_doc_tag(document_tags, tag_type="quality", value=phrase, confidence=0.74)
         _append_span(spans, text=phrase, annotation_type="custom", label="风险线索", confidence=0.8)
         break

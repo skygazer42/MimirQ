@@ -9,9 +9,14 @@ This module never performs any network access.
 """
 
 from dataclasses import dataclass
+from types import ModuleType
+from typing import TYPE_CHECKING, Any
 
 from app.core.optional_deps import optional_import
 from app.rag.core.logging import get_logger
+
+if TYPE_CHECKING:
+    from lxml.html import HtmlElement
 
 logger = get_logger(__name__)
 
@@ -42,7 +47,7 @@ def _missing_lxml_result(raw: str) -> HtmlXPathExtractResult:
     )
 
 
-def _parse_root(raw: str, lxml_html: object) -> tuple[object | None, HtmlXPathExtractResult | None]:
+def _parse_root(raw: str, lxml_html: ModuleType) -> "tuple[HtmlElement | None, HtmlXPathExtractResult | None]":
     parser = lxml_html.HTMLParser(recover=True, remove_comments=False)
     try:
         return lxml_html.fromstring(raw, parser=parser), None
@@ -54,8 +59,8 @@ def _parse_root(raw: str, lxml_html: object) -> tuple[object | None, HtmlXPathEx
         )
 
 
-def _select_nodes(root: object | None, xpath: str | None) -> tuple[list[object] | None, str | None]:
-    nodes: list[object] | None = None
+def _select_nodes(root: "HtmlElement | None", xpath: str | None) -> tuple[list[Any] | None, str | None]:
+    nodes: list[Any] | None = None
     xpath_error: str | None = None
     if xpath and str(xpath).strip():
         try:
@@ -67,7 +72,7 @@ def _select_nodes(root: object | None, xpath: str | None) -> tuple[list[object] 
     return nodes, xpath_error
 
 
-def _serialize_nodes(raw: str, nodes: list[object] | None, lxml_etree: object) -> tuple[str, int]:
+def _serialize_nodes(raw: str, nodes: list[Any] | None, lxml_etree: ModuleType) -> tuple[str, int]:
     if not nodes:
         return raw, 0
 
@@ -95,10 +100,10 @@ def _extract_html_text(fragments_html: str) -> tuple[bool, str]:
 
 
 def _extract_with_lxml_fallback(
-    root: object | None,
-    nodes: list[object] | None,
+    root: "HtmlElement | None",
+    nodes: list[Any] | None,
     fragments_html: str,
-    lxml_etree: object,
+    lxml_etree: ModuleType,
 ) -> str:
     try:
         if not nodes:

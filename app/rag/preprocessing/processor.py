@@ -10,7 +10,7 @@ from langchain_core.documents import Document
 
 from app.core.config import settings
 from app.rag.core.logging import get_logger
-from app.rag.preprocessing.boilerplate import remove_markdown_boilerplate
+from app.rag.preprocessing.boilerplate import BoilerplateRemovalResult, remove_markdown_boilerplate
 from app.rag.preprocessing.cleaning import (
     RegexRule,
     build_common_line_signatures,
@@ -169,7 +169,7 @@ class _DocumentState:
     table_rows_changed: int = 0
     code_blocks_changed: int = 0
     code_lines_stripped: int = 0
-    boilerplate: Any | None = None
+    boilerplate: BoilerplateRemovalResult | None = None
     images_removed: int = 0
     pii_hits: dict[str, int] = field(default_factory=dict)
     secrets_hits: dict[str, int] = field(default_factory=dict)
@@ -241,12 +241,12 @@ def _extract_frontmatter(
         return
 
     state.frontmatter_present = True
-    state.frontmatter_end_char = int(getattr(frontmatter, "end_char", 0) or 0)
-    state.frontmatter_changed = bool(getattr(frontmatter, "changed", False))
+    state.frontmatter_end_char = frontmatter.end_char
+    state.frontmatter_changed = frontmatter.changed
     if options.strip_frontmatter:
-        state.text = getattr(frontmatter, "stripped_text", state.original_text) or ""
-    data = getattr(frontmatter, "data", None)
-    if isinstance(data, dict) and data:
+        state.text = frontmatter.stripped_text
+    data = frontmatter.data
+    if data:
         state.frontmatter_data = dict(data)
         raw_title = state.frontmatter_data.get("title")
         if isinstance(raw_title, str) and raw_title.strip():
@@ -285,7 +285,7 @@ def _apply_base_cleanup(
     result = clean_markdown(
         state.text or "",
         rules=active_rules,
-        regex_timeout_ms=int(getattr(settings, "GOVERNANCE_REGEX_TIMEOUT_MS", 100) or 100),
+        regex_timeout_ms=settings.GOVERNANCE_REGEX_TIMEOUT_MS or 100,
         common_lines=common_lines,
         remove_toc_lines=options.remove_toc_lines,
         remove_noise_lines=options.remove_noise_lines,
@@ -298,8 +298,8 @@ def _apply_base_cleanup(
         noise_ratio_threshold=options.noise_ratio_threshold,
     )
     state.text = result.markdown
-    state.applied_rules = int(result.applied_rules or 0)
-    state.changed = bool(result.changed) or state.frontmatter_changed
+    state.applied_rules = result.applied_rules
+    state.changed = result.changed or state.frontmatter_changed
     totals.applied_rules += state.applied_rules
 
 
@@ -311,37 +311,37 @@ def _apply_structural_transforms(
     if options.normalize_tables:
         table_result = normalize_markdown_tables(state.text)
         state.text = table_result.text
-        state.table_count = int(table_result.tables or 0)
-        state.table_rows_changed = int(table_result.rows_changed or 0)
-        state.changed = state.changed or bool(table_result.changed)
+        state.table_count = table_result.tables
+        state.table_rows_changed = table_result.rows_changed
+        state.changed = state.changed or table_result.changed
         totals.tables_normalized += state.table_count
         totals.table_rows_changed += state.table_rows_changed
     if options.strip_code_line_numbers:
         code_result = strip_fenced_code_line_numbers(state.text)
         state.text = code_result.text
-        state.code_blocks_changed = int(code_result.blocks_changed or 0)
-        state.code_lines_stripped = int(code_result.lines_stripped or 0)
-        state.changed = state.changed or bool(code_result.changed)
+        state.code_blocks_changed = code_result.blocks_changed
+        state.code_lines_stripped = code_result.lines_stripped
+        state.changed = state.changed or code_result.changed
         totals.code_blocks_changed += state.code_blocks_changed
         totals.code_lines_stripped += state.code_lines_stripped
     if options.remove_boilerplate:
         state.boilerplate = remove_markdown_boilerplate(state.text)
         state.text = state.boilerplate.text
-        state.changed = state.changed or bool(state.boilerplate.changed)
-        totals.boilerplate_removed_sections += int(getattr(state.boilerplate, "removed_sections", 0) or 0)
-        totals.boilerplate_removed_lines += int(getattr(state.boilerplate, "removed_lines", 0) or 0)
+        state.changed = state.changed or state.boilerplate.changed
+        totals.boilerplate_removed_sections += state.boilerplate.removed_sections
+        totals.boilerplate_removed_lines += state.boilerplate.removed_lines
     image_mode = str(options.remove_images or "none").strip().lower()
     if image_mode in {"decorative", "all"}:
         image_result = strip_images(state.text, mode=image_mode)  # type: ignore[arg-type]
         state.text = image_result.text
-        state.images_removed = int(image_result.removed or 0)
-        state.changed = state.changed or bool(image_result.changed)
+        state.images_removed = image_result.removed
+        state.changed = state.changed or image_result.changed
         totals.images_removed += state.images_removed
 
 
 def _merge_hit_counts(target: dict[str, int], additions: dict[str, int]) -> None:
     for key, value in additions.items():
-        target[key] = target.get(key, 0) + int(value)
+        target[key] = target.get(key, 0) + value
 
 
 def _apply_sensitive_transforms(
@@ -357,8 +357,8 @@ def _apply_sensitive_transforms(
             mask=str(options.pii_mask or "[REDACTED]"),
         )  # type: ignore[arg-type]
         state.text = pii_result.text
-        state.pii_hits = dict(pii_result.hits or {})
-        state.changed = state.changed or bool(pii_result.changed)
+        state.pii_hits = dict(pii_result.hits)
+        state.changed = state.changed or pii_result.changed
         _merge_hit_counts(totals.pii_hits, state.pii_hits)
     if options.secrets_redact:
         secret_result = redact_secrets(
@@ -368,8 +368,8 @@ def _apply_sensitive_transforms(
             mask=str(options.secrets_mask or "[SECRET]"),
         )  # type: ignore[arg-type]
         state.text = secret_result.text
-        state.secrets_hits = dict(secret_result.hits or {})
-        state.changed = state.changed or bool(secret_result.changed)
+        state.secrets_hits = dict(secret_result.hits)
+        state.changed = state.changed or secret_result.changed
         _merge_hit_counts(totals.secrets_hits, state.secrets_hits)
 
 
@@ -387,24 +387,24 @@ def _apply_best_effort_cleanup(
                 max_paragraph_chars=int(options.drop_duplicate_paragraphs_max_chars or 0),
             )
             state.text = result.text
-            state.paragraphs_dropped = int(getattr(result, "paragraphs_dropped", 0) or 0)
-            state.changed = state.changed or bool(getattr(result, "changed", False))
+            state.paragraphs_dropped = result.paragraphs_dropped
+            state.changed = state.changed or result.changed
         except Exception as exc:
             logger.debug(_MARKDOWN_GOVERNANCE_FALLBACK_LOG_MESSAGE, exc)
     if options.trim_references:
         try:
             result = trim_references_section_fn(state.text)
             state.text = result.text
-            state.references_removed_lines = int(getattr(result, "removed_lines", 0) or 0)
-            state.changed = state.changed or bool(getattr(result, "changed", False))
+            state.references_removed_lines = result.removed_lines
+            state.changed = state.changed or result.changed
         except Exception as exc:
             logger.debug(_MARKDOWN_GOVERNANCE_FALLBACK_LOG_MESSAGE, exc)
     if options.normalize_urls:
         try:
             result = normalize_urls_fn(state.text, strip_tracking=bool(options.normalize_urls_strip_tracking))
             state.text = result.text
-            state.urls_changed = int(getattr(result, "urls_changed", 0) or 0)
-            state.changed = state.changed or bool(getattr(result, "changed", False))
+            state.urls_changed = result.urls_changed
+            state.changed = state.changed or result.changed
         except Exception as exc:
             logger.debug(_MARKDOWN_GOVERNANCE_FALLBACK_LOG_MESSAGE, exc)
     totals.paragraphs_dropped += state.paragraphs_dropped
@@ -449,8 +449,8 @@ def _extract_language_and_keywords(state: _DocumentState, options: GovernanceCle
     if options.detect_language:
         try:
             result = detect_language_fn(state.text, min_chars=int(options.language_min_chars or 0))
-            state.language = str(getattr(result, "language", "") or "").strip() or None
-            state.language_confidence = float(getattr(result, "confidence", 0.0) or 0.0)
+            state.language = result.language.strip() or None
+            state.language_confidence = result.confidence
         except Exception:
             state.language = None
             state.language_confidence = None
@@ -500,7 +500,7 @@ def _add_enrichment_metadata(
     options: GovernanceCleanOptions,
 ) -> None:
     if state.title:
-        meta["document_title"] = str(state.title)
+        meta["document_title"] = state.title
     if state.tags:
         meta["document_tags"] = state.tags
     if state.language:
@@ -519,8 +519,8 @@ def _add_cleanup_metadata(meta: dict[str, Any], state: _DocumentState) -> None:
     if state.urls_changed:
         meta["governance_urls_changed"] = state.urls_changed
     if state.boilerplate is not None:
-        meta["governance_boilerplate_removed_sections"] = int(state.boilerplate.removed_sections or 0)
-        meta["governance_boilerplate_removed_lines"] = int(state.boilerplate.removed_lines or 0)
+        meta["governance_boilerplate_removed_sections"] = state.boilerplate.removed_sections
+        meta["governance_boilerplate_removed_lines"] = state.boilerplate.removed_lines
     if state.images_removed:
         meta["governance_images_removed"] = state.images_removed
 
@@ -573,7 +573,7 @@ def _build_clean_document(state: _DocumentState, options: GovernanceCleanOptions
     _add_cleanup_metadata(meta, state)
     _add_transform_metadata(meta, state)
     _add_quality_metadata(meta, state.text)
-    return Document(page_content=state.text, metadata=meta, id=getattr(state.source, "id", None))
+    return Document(page_content=state.text, metadata=meta, id=state.source.id)
 
 
 def _process_document(
@@ -615,8 +615,8 @@ def _gate_reasons(
 ) -> dict[str, int]:
     pii_gate = int(options.pii_max_hits) if isinstance(options.pii_max_hits, (int, float)) else -1
     secrets_gate = int(options.secrets_max_hits) if isinstance(options.secrets_max_hits, (int, float)) else -1
-    pii_hits = sum(int(value or 0) for value in totals.pii_hits.values())
-    secrets_hits = sum(int(value or 0) for value in totals.secrets_hits.values())
+    pii_hits = sum(totals.pii_hits.values())
+    secrets_hits = sum(totals.secrets_hits.values())
     reasons: dict[str, int] = {}
     if pii_gate >= 0 and pii_hits > pii_gate:
         reasons["pii_exceeded"] = document_count
