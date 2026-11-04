@@ -77,12 +77,12 @@ def _split_prefixed_field(line: str, *, prefixes: tuple[str, ...], require_value
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    s = str(line or "").lstrip()
+    s = line.lstrip()
     if not s:
         return None
 
     for prefix in prefixes:
-        p = str(prefix or "")
+        p = prefix
         if not p:
             continue
 
@@ -165,7 +165,7 @@ def _flush_current_pair(state: _QAPairParseState) -> None:
 
 
 def _llm_enabled() -> bool:
-    return bool((settings.LLM_API_KEY or "").strip())
+    return bool(settings.LLM_API_KEY.strip())
 
 
 def _generate_pairs(source_text: str, *, num_pairs: int, prefer_llm: bool) -> tuple[str, list[QAPair]]:
@@ -174,12 +174,12 @@ def _generate_pairs(source_text: str, *, num_pairs: int, prefer_llm: bool) -> tu
 
     Returns (mode, pairs) where mode is one of: llm | extract | none
     """
-    raw = (source_text or "").strip()
-    n = max(0, int(num_pairs or 0))
+    raw = source_text.strip()
+    n = max(0, num_pairs)
     if not raw or n <= 0:
         return "none", []
 
-    if bool(prefer_llm) and _llm_enabled():
+    if prefer_llm and _llm_enabled():
         try:
             pairs = generate_qa_pairs_with_llm(raw, num_pairs=n)
             if pairs:
@@ -243,7 +243,7 @@ Return JSON:
     prompt = PromptTemplate(template=prompt_text, input_variables=["text", "num_pairs"])
     chain = prompt | llm | parser
 
-    result = chain.invoke({"text": (text or "")[:12000], "num_pairs": int(num_pairs)})
+    result = chain.invoke({"text": text[:12000], "num_pairs": num_pairs})
     if not isinstance(result, dict):
         return []
     pairs_raw = result.get("pairs")
@@ -265,7 +265,7 @@ Return JSON:
 
 
 def _active_pipeline_hash(doc_meta: dict[str, Any]) -> str:
-    return str((doc_meta or {}).get("active_pipeline_hash") or (doc_meta or {}).get("pipeline_hash") or "").strip()
+    return str(doc_meta.get("active_pipeline_hash") or doc_meta.get("pipeline_hash") or "").strip()
 
 
 def _active_doc_pipeline_key(document_id: UUID, doc_meta: dict[str, Any]) -> str:
@@ -281,7 +281,7 @@ def _get_source_text(db: Session, *, tenant_id: UUID, document_id: UUID, max_cha
     - Persisted parsed markdown (cleaned)
     - Fallback: join active chunks
     """
-    max_chars_eff = max(0, int(max_chars or 0))
+    max_chars_eff = max(0, max_chars)
     if max_chars_eff <= 0:
         max_chars_eff = 12_000
 
@@ -353,7 +353,7 @@ def generate_and_index_document_qa(
         return DocumentQAGenerateResult(mode="none", deleted=deleted, created=0, chunk_ids=[], preview=[])
 
     # 3) Generate Q/A pairs.
-    mode, pairs = _generate_pairs(source_text, num_pairs=int(num_pairs), prefer_llm=bool(prefer_llm))
+    mode, pairs = _generate_pairs(source_text, num_pairs=num_pairs, prefer_llm=prefer_llm)
 
     if not pairs:
         return DocumentQAGenerateResult(mode=mode, deleted=deleted, created=0, chunk_ids=[], preview=[])
@@ -388,7 +388,7 @@ def generate_and_index_document_qa(
             tenant_id=tenant_id,
             document_id=document_id,
             default_source=source_label,
-            enable_bm25=bool(settings.BM25_INDEX_ENABLED),
+            enable_bm25=settings.BM25_INDEX_ENABLED,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning(
@@ -409,12 +409,12 @@ def generate_and_index_document_qa(
     )
 
     preview: list[dict[str, str]] = []
-    for pair in pairs[: max(0, min(int(preview_pairs or 0), 20))]:
+    for pair in pairs[: max(0, min(preview_pairs, 20))]:
         preview.append({"question": pair.question.strip(), "answer": pair.answer.strip()})
 
     return DocumentQAGenerateResult(
         mode=mode,
-        deleted=int(deleted),
+        deleted=deleted,
         created=len(chunk_ids),
         chunk_ids=list(chunk_ids),
         preview=preview,
@@ -583,7 +583,7 @@ def _log_delete_errors(
             str(settings.VECTOR_BACKEND or "vector_store"),
             "delete_failed",
             "check vector backend health/permissions; stale vectors may remain",
-            int(vector_delete_errors),
+            vector_delete_errors,
             vector_delete_first_error or "",
         )
 
@@ -595,7 +595,7 @@ def _log_delete_errors(
             "bm25",
             "delete_failed",
             "check BM25 index backend; stale keywords may remain",
-            int(bm25_delete_errors),
+            bm25_delete_errors,
             bm25_delete_first_error or "",
         )
 
@@ -671,7 +671,7 @@ def _build_qa_chunk_meta(
         "tenant_id": str(tenant_id),
         "document_id": str(document_id),
         "chunk_id": str(chunk_id),
-        "chunk_index": int(chunk_index),
+        "chunk_index": chunk_index,
         "file_type": "qa",
         "source": source_label,
         "chunk_role": "qa",
