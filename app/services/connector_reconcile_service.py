@@ -1,10 +1,22 @@
+from __future__ import annotations
+
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from app.services.connector_sync_state import normalize_source_manifest
 
+if TYPE_CHECKING:
+    from app.models.document import Document
+
 CONNECTOR_RECONCILE_SCHEMA_V1 = "mimirq.connector_reconcile.v1"
+
+
+class _ConnectorSourceIdentity(TypedDict):
+    connector_id: str | None
+    config_id: str | None
+    source_ref: str | None
+    source_id: str | None
 
 
 def _now_utc() -> datetime:
@@ -51,8 +63,8 @@ def resolve_connector_reconcile_source_refs(
     return []
 
 
-def extract_connector_source_identity(doc: Any) -> dict[str, str | None]:
-    meta = getattr(doc, "doc_metadata", None)
+def extract_connector_source_identity(doc: Document) -> _ConnectorSourceIdentity:
+    meta = doc.doc_metadata
     meta_map = meta if isinstance(meta, Mapping) else {}
     connector = meta_map.get("connector") if isinstance(meta_map.get("connector"), Mapping) else {}
 
@@ -83,22 +95,22 @@ def extract_connector_source_identity(doc: Any) -> dict[str, str | None]:
 
 def _collect_connector_reconcile_documents(
     *,
-    documents: Iterable[Any],
+    documents: Iterable[Document],
     connector_id: str,
     config_id: str | None,
-) -> tuple[dict[str, list[Any]], dict[str, list[Any]], int, int, int]:
-    active_by_ref: dict[str, list[Any]] = {}
-    disabled_by_ref: dict[str, list[Any]] = {}
+) -> tuple[dict[str, list[Document]], dict[str, list[Document]], int, int, int]:
+    active_by_ref: dict[str, list[Document]] = {}
+    disabled_by_ref: dict[str, list[Document]] = {}
     documents_scanned = 0
     documents_considered = 0
     documents_without_identity = 0
 
-    for doc in documents or []:
+    for doc in documents:
         documents_scanned += 1
         identity = extract_connector_source_identity(doc)
-        if identity.get("connector_id") != connector_id:
+        if identity["connector_id"] != connector_id:
             continue
-        doc_config_id = str(identity.get("config_id") or "").strip() or None
+        doc_config_id = identity["config_id"]
         if config_id and doc_config_id not in {config_id, None}:
             continue
         documents_considered += 1
@@ -106,11 +118,11 @@ def _collect_connector_reconcile_documents(
             documents_without_identity += 1
             continue
 
-        source_ref = str(identity.get("source_ref") or identity.get("source_id") or "").strip()
+        source_ref = identity["source_ref"] or identity["source_id"]
         if not source_ref:
             documents_without_identity += 1
             continue
-        bucket = disabled_by_ref if getattr(doc, "disabled_at", None) is not None else active_by_ref
+        bucket = disabled_by_ref if doc.disabled_at is not None else active_by_ref
         bucket.setdefault(source_ref, []).append(doc)
 
     return active_by_ref, disabled_by_ref, documents_scanned, documents_considered, documents_without_identity
@@ -120,8 +132,8 @@ def _apply_connector_reconcile_changes(
     *,
     apply: bool,
     now_dt: datetime,
-    active_by_ref: dict[str, list[Any]],
-    disabled_by_ref: dict[str, list[Any]],
+    active_by_ref: dict[str, list[Document]],
+    disabled_by_ref: dict[str, list[Document]],
     stale_refs: list[str],
     reenable_refs: list[str],
 ) -> tuple[int, int]:
@@ -132,12 +144,12 @@ def _apply_connector_reconcile_changes(
 
     for ref in stale_refs:
         for doc in active_by_ref.get(ref, []):
-            if getattr(doc, "disabled_at", None) is None:
+            if doc.disabled_at is None:
                 doc.disabled_at = now_dt
                 disabled_documents += 1
     for ref in reenable_refs:
         for doc in disabled_by_ref.get(ref, []):
-            if getattr(doc, "disabled_at", None) is not None:
+            if doc.disabled_at is not None:
                 doc.disabled_at = None
                 reenabled_documents += 1
     return disabled_documents, reenabled_documents
@@ -148,15 +160,15 @@ def plan_connector_reconcile(
     connector_id: str,
     config_id: str | None,
     dataset_id: str | None,
-    documents: Iterable[Any],
+    documents: Iterable[Document],
     desired_source_refs: list[str],
     apply: bool,
     now: datetime | None = None,
     sample_limit: int = 20,
 ) -> dict[str, Any]:
     now_dt = now or _now_utc()
-    normalized_connector_id = str(connector_id or "").strip()
-    normalized_config_id = str(config_id or "").strip() or None
+    normalized_connector_id = connector_id.strip()
+    normalized_config_id = (config_id or "").strip() or None
     desired_refs = _normalize_refs(desired_source_refs)
     desired_set = set(desired_refs)
     limit = max(1, int(sample_limit or 0))
@@ -187,22 +199,22 @@ def plan_connector_reconcile(
         "generated_at": now_dt.isoformat(),
         "connector_id": normalized_connector_id,
         "config_id": normalized_config_id,
-        "dataset_id": str(dataset_id or "").strip() or None,
-        "apply": bool(apply),
-        "documents_scanned": int(documents_scanned),
-        "documents_considered": int(documents_considered),
-        "documents_without_identity": int(documents_without_identity),
-        "desired_source_refs": int(len(desired_set)),
-        "active_source_refs": int(len(active_by_ref)),
-        "disabled_source_refs": int(len(disabled_by_ref)),
-        "stale_source_refs": int(len(stale_refs)),
-        "stale_source_refs_sample": list(stale_refs[:limit]),
-        "reenable_source_refs": int(len(reenable_refs)),
-        "reenable_source_refs_sample": list(reenable_refs[:limit]),
-        "missing_source_refs": int(len(missing_refs)),
-        "missing_source_refs_sample": list(missing_refs[:limit]),
-        "disabled_documents": int(disabled_documents),
-        "reenabled_documents": int(reenabled_documents),
+        "dataset_id": (dataset_id or "").strip() or None,
+        "apply": apply,
+        "documents_scanned": documents_scanned,
+        "documents_considered": documents_considered,
+        "documents_without_identity": documents_without_identity,
+        "desired_source_refs": len(desired_set),
+        "active_source_refs": len(active_by_ref),
+        "disabled_source_refs": len(disabled_by_ref),
+        "stale_source_refs": len(stale_refs),
+        "stale_source_refs_sample": stale_refs[:limit],
+        "reenable_source_refs": len(reenable_refs),
+        "reenable_source_refs_sample": reenable_refs[:limit],
+        "missing_source_refs": len(missing_refs),
+        "missing_source_refs_sample": missing_refs[:limit],
+        "disabled_documents": disabled_documents,
+        "reenabled_documents": reenabled_documents,
     }
 
 

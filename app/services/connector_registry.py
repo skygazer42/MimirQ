@@ -118,7 +118,7 @@ CONNECTOR_REGISTRY: dict[str, ConnectorDefinition] = {
 
 
 def get_connector_definition(connector_id: str) -> ConnectorDefinition | None:
-    return CONNECTOR_REGISTRY.get(str(connector_id or "").strip())
+    return CONNECTOR_REGISTRY.get(connector_id.strip())
 
 
 def list_connector_definitions() -> list[ConnectorDefinition]:

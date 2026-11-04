@@ -39,7 +39,7 @@ def _collect_mapped_group_ids(
 def _build_group_access_request(*, mapped: set[UUID], max_groups: int) -> DocumentAccessUpdateRequest:
     ordered = sorted(mapped, key=lambda value: str(value))
     if max_groups:
-        ordered = ordered[: max(0, int(max_groups))]
+        ordered = ordered[: max(0, max_groups)]
     return DocumentAccessUpdateRequest(mode="partial_members", partial_group_list=ordered)
 
 

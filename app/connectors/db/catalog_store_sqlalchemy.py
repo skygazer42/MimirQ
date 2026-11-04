@@ -7,6 +7,7 @@ It intentionally does not commit; callers manage transaction boundaries.
 
 from collections.abc import Sequence
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -17,7 +18,7 @@ from app.models.db_catalog import DbCatalogColumn, DbCatalogTable, DbProfileSnap
 
 
 class SqlAlchemyCatalogStore(CatalogStore):
-    def __init__(self, *, db: Session):
+    def __init__(self, *, db: Session) -> None:
         self._db = db
 
     def upsert_table(
@@ -34,7 +35,7 @@ class SqlAlchemyCatalogStore(CatalogStore):
             .filter(
                 DbCatalogTable.tenant_id == tenant_id,
                 DbCatalogTable.dataset_id == dataset_id,
-                DbCatalogTable.fingerprint == str(table.fingerprint),
+                DbCatalogTable.fingerprint == table.fingerprint,
             )
             .first()
         )
@@ -43,75 +44,59 @@ class SqlAlchemyCatalogStore(CatalogStore):
                 tenant_id=tenant_id,
                 dataset_id=dataset_id,
                 connector_config_id=connector_config_id,
-                engine=str(table.engine or "")[:32],
-                db_name=str(table.db_name or "")[:255],
-                schema_name=(str(table.schema_name)[:255] if table.schema_name is not None else None),
-                table_name=str(table.table_name or "")[:255],
-                table_type=str(table.table_type or "table")[:32],
-                comment=(str(table.comment) if table.comment is not None else None),
-                fingerprint=str(table.fingerprint)[:80],
-                last_seen_at=seen_at,
+                fingerprint=table.fingerprint[:80],
             )
             self._db.add(row)
-            self._db.flush()
-            return UUID(str(row.id))
-
-        # Update mutable fields (best-effort).
-        if connector_config_id is not None:
+        elif connector_config_id is not None:
             row.connector_config_id = connector_config_id
-        row.engine = str(table.engine or "")[:32]
-        row.db_name = str(table.db_name or "")[:255]
-        row.schema_name = str(table.schema_name)[:255] if table.schema_name is not None else None
-        row.table_name = str(table.table_name or "")[:255]
-        row.table_type = str(table.table_type or "table")[:32]
-        row.comment = str(table.comment) if table.comment is not None else None
+
+        row.engine = table.engine[:32]
+        row.db_name = table.db_name[:255]
+        row.schema_name = table.schema_name[:255] if table.schema_name is not None else None
+        row.table_name = table.table_name[:255]
+        row.table_type = (table.table_type or "table")[:32]
+        row.comment = table.comment
         row.last_seen_at = seen_at
         self._db.flush()
-        return UUID(str(row.id))
+        return row.id
 
     def replace_columns(self, *, table_id: UUID, columns: Sequence[CatalogColumnInput]) -> int:
         self._db.query(DbCatalogColumn).filter(DbCatalogColumn.table_id == table_id).delete(synchronize_session=False)
         out = 0
-        for c in columns or []:
-            name = str(getattr(c, "name", "") or "").strip()
+        for column in columns:
+            name = column.name.strip()
             if not name:
                 continue
-            try:
-                ordinal = int(getattr(c, "ordinal", 0) or 0)
-            except (TypeError, ValueError, OverflowError):
-                ordinal = 0
             row = DbCatalogColumn(
                 table_id=table_id,
-                ordinal=int(ordinal),
+                ordinal=column.ordinal,
                 name=name[:255],
-                data_type=(
-                    str(getattr(c, "data_type", "") or "")[:255] if getattr(c, "data_type", None) is not None else None
-                ),
-                nullable=(bool(c.nullable) if getattr(c, "nullable", None) is not None else None),
-                comment=(str(c.comment) if getattr(c, "comment", None) is not None else None),
+                data_type=column.data_type[:255] if column.data_type is not None else None,
+                nullable=column.nullable,
+                comment=column.comment,
             )
             self._db.add(row)
             out += 1
             if out >= 10_000:
                 break
         self._db.flush()
-        return int(out)
+        return out
 
     def insert_profile_snapshot(
         self,
         *,
         table_id: UUID,
         entitlement_hash: str,
-        profile: dict,
-        sample_meta: dict,
+        profile: dict[str, Any],
+        sample_meta: dict[str, Any],
     ) -> UUID:
         safe_profile = sanitize_db_profile_snapshot(profile)
         row = DbProfileSnapshot(
             table_id=table_id,
-            entitlement_hash=str(entitlement_hash or "")[:255],
-            profile=dict(safe_profile or {}),
-            sample_meta=dict(sample_meta or {}),
+            entitlement_hash=entitlement_hash[:255],
+            profile=safe_profile,
+            sample_meta=dict(sample_meta),
         )
         self._db.add(row)
         self._db.flush()
-        return UUID(str(row.id))
+        return row.id

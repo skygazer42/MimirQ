@@ -1,29 +1,26 @@
-"""
-DB catalog sync runner (stub).
+"""Sync database catalogs, safe aggregate profiles, and bounded row snapshots."""
 
-This module wires connector runs to catalog ingestion logic. The first iteration is
-intentionally dependency-light:
-- No real DB network calls yet (introspection is stubbed)
-- Provides deterministic control flow and a stable metrics structure
-"""
+from __future__ import annotations
 
 import contextlib
 import hashlib
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, TypedDict
 from uuid import UUID
 
 from app.rag.core.logging import get_logger
 
+if TYPE_CHECKING:
+    from sqlalchemy.engine import Connection
+
+logger = get_logger(__name__)
+
 
 def _now() -> datetime:
     return datetime.now(UTC)
-
-
-logger = get_logger(__name__)
 
 
 def _fingerprint(*, engine: str, db_name: str, schema_name: str | None, table_name: str) -> str:
@@ -77,6 +74,21 @@ class CatalogTableInput:
     columns: list[CatalogColumnInput] = field(default_factory=list)
 
 
+class _CatalogColumnPayload(TypedDict):
+    ordinal: int
+    name: str
+    data_type: str | None
+    nullable: bool | None
+    comment: str | None
+
+
+@dataclass(frozen=True)
+class _CatalogSyncItem:
+    table: CatalogTableInput
+    profile: dict[str, Any]
+    sample_meta: dict[str, Any]
+
+
 class CatalogStore(Protocol):
     def upsert_table(
         self,
@@ -101,7 +113,7 @@ class CatalogStore(Protocol):
 
 
 @contextlib.contextmanager
-def _connect_sqlserver(config: dict[str, Any]):  # noqa: ANN201
+def _connect_sqlserver(config: dict[str, Any]) -> Iterator[Connection]:
     """
     Connect to SQL Server using SQLAlchemy.
 
@@ -147,7 +159,7 @@ def _connect_sqlserver(config: dict[str, Any]):  # noqa: ANN201
 
 
 @contextlib.contextmanager
-def _connect_mysql(config: dict[str, Any]):  # noqa: ANN201
+def _connect_mysql(config: dict[str, Any]) -> Iterator[Connection]:
     """
     Connect to MySQL using SQLAlchemy.
 
@@ -194,7 +206,7 @@ def _bounded_positive_int(value: Any, *, default: int, upper: int) -> int:
     return max(1, min(parsed, upper))
 
 
-def _normalize_column_dict(raw: Any) -> dict[str, Any] | None:
+def _normalize_column_dict(raw: Any) -> _CatalogColumnPayload | None:
     if not isinstance(raw, dict):
         return None
     name = str(raw.get("name") or "").strip()
@@ -213,8 +225,8 @@ def _normalize_column_dict(raw: Any) -> dict[str, Any] | None:
     }
 
 
-def _extract_column_dicts(*, col_rows: Sequence[Any], limit: int = 5000) -> list[dict[str, Any]]:
-    columns: list[dict[str, Any]] = []
+def _extract_column_dicts(*, col_rows: Sequence[Any], limit: int = 5000) -> list[_CatalogColumnPayload]:
+    columns: list[_CatalogColumnPayload] = []
     for raw in col_rows or []:
         column = _normalize_column_dict(raw)
         if column is None:
@@ -270,20 +282,8 @@ def _sqlserver_table_included(
     return not include_names or table_name.lower() in include_names or fqn in include_fqn
 
 
-def _mysql_table_entry(*, row: dict[str, Any], database: str, columns: list[dict[str, Any]]) -> dict[str, Any]:
-    return {
-        "db_name": (str(row.get("db_name") or database).strip() or database),
-        "schema_name": None,
-        "table_name": str(row.get("table_name") or "").strip(),
-        "table_type": (str(row.get("table_type") or "table").strip().lower() or "table"),
-        "comment": (str(row.get("comment") or "").strip() or None),
-        "row_count_estimate": row.get("row_count_estimate"),
-        "columns": columns,
-    }
-
-
-def _sqlserver_table_entry(
-    *, row: dict[str, Any], database: str, schema_name: str, columns: list[dict[str, Any]]
+def _catalog_table_entry(
+    *, row: dict[str, Any], database: str, schema_name: str | None, columns: list[_CatalogColumnPayload]
 ) -> dict[str, Any]:
     return {
         "db_name": (str(row.get("db_name") or database).strip() or database),
@@ -297,11 +297,7 @@ def _sqlserver_table_entry(
 
 
 def _introspect_mysql(*, tenant_id: UUID, dataset_id: UUID, config: dict[str, Any]) -> list[dict[str, Any]]:
-    """
-    Stub: in a later iteration this will connect to MySQL and return table/column metadata.
-
-    Returns a list of table dicts, each optionally containing `columns: [...]`.
-    """
+    """Read bounded MySQL table metadata and its column definitions."""
     _ = (tenant_id, dataset_id)
     database = str(config.get("database") or "").strip()
     if not database:
@@ -331,18 +327,14 @@ def _introspect_mysql(*, tenant_id: UUID, dataset_id: UUID, config: dict[str, An
 
             col_rows = conn.execute(text(cols_sql), {"database": database, "table_name": table_name}).mappings().all()
             columns = _extract_column_dicts(col_rows=col_rows)
-            out.append(_mysql_table_entry(row=row, database=database, columns=columns))
+            out.append(_catalog_table_entry(row=row, database=database, schema_name=None, columns=columns))
             if len(out) >= max_tables:
                 break
     return out
 
 
 def _introspect_sqlserver(*, tenant_id: UUID, dataset_id: UUID, config: dict[str, Any]) -> list[dict[str, Any]]:
-    """
-    Stub: in a later iteration this will connect to SQL Server and return table/column metadata.
-
-    Returns a list of table dicts, each optionally containing `columns: [...]`.
-    """
+    """Read bounded SQL Server table metadata and its column definitions."""
     _ = (tenant_id, dataset_id)
     database = str(config.get("database") or "").strip()
     if not database:
@@ -381,7 +373,7 @@ def _introspect_sqlserver(*, tenant_id: UUID, dataset_id: UUID, config: dict[str
                 conn.execute(text(cols_sql), {"schema_name": schema_name, "table_name": table_name}).mappings().all()
             )
             columns = _extract_column_dicts(col_rows=col_rows)
-            out.append(_sqlserver_table_entry(row=row, database=database, schema_name=schema_name, columns=columns))
+            out.append(_catalog_table_entry(row=row, database=database, schema_name=schema_name, columns=columns))
             if len(out) >= max_tables:
                 break
     return out
@@ -410,8 +402,8 @@ def _normalize_catalog_columns(raw_columns: Any) -> list[CatalogColumnInput]:
             continue
         columns.append(
             CatalogColumnInput(
-                ordinal=int(column["ordinal"]),
-                name=str(column["name"]),
+                ordinal=column["ordinal"],
+                name=column["name"],
                 data_type=column["data_type"],
                 nullable=column["nullable"],
                 comment=column["comment"],
@@ -441,7 +433,7 @@ def _build_catalog_sync_item(
     config: dict[str, Any],
     engine: str,
     seen_at: datetime,
-) -> tuple[CatalogTableInput, dict[str, Any], dict[str, Any]] | None:
+) -> _CatalogSyncItem | None:
     if not isinstance(raw_table, dict):
         return None
     db_name = str(raw_table.get("db_name") or config.get("database") or "").strip()
@@ -453,8 +445,8 @@ def _build_catalog_sync_item(
     if table_type != "view":
         table_type = "table"
     profile, sample_meta = _normalize_profile_from_table(raw_table, seen_at=seen_at)
-    return (
-        CatalogTableInput(
+    return _CatalogSyncItem(
+        table=CatalogTableInput(
             engine=engine,
             db_name=db_name,
             schema_name=schema_name,
@@ -464,15 +456,15 @@ def _build_catalog_sync_item(
             fingerprint=_fingerprint(engine=engine, db_name=db_name, schema_name=schema_name, table_name=table_name),
             columns=_normalize_catalog_columns(raw_table.get("columns")),
         ),
-        profile,
-        sample_meta,
+        profile=profile,
+        sample_meta=sample_meta,
     )
 
 
 def _persist_catalog_sync_items(
     *,
     store: CatalogStore,
-    items: Sequence[tuple[CatalogTableInput, dict[str, Any], dict[str, Any]]],
+    items: Sequence[_CatalogSyncItem],
     tenant_id: UUID,
     dataset_id: UUID,
     connector_config_id: UUID | None,
@@ -483,7 +475,8 @@ def _persist_catalog_sync_items(
     tables_upserted = 0
     columns_upserted = 0
     profiles_written = 0
-    for table, profile, sample_meta in items:
+    for item in items:
+        table = item.table
         table_id = store.upsert_table(
             tenant_id=tenant_id,
             dataset_id=dataset_id,
@@ -492,14 +485,14 @@ def _persist_catalog_sync_items(
             seen_at=seen_at,
         )
         tables_upserted += 1
-        columns_upserted += int(store.replace_columns(table_id=table_id, columns=table.columns))
+        columns_upserted += store.replace_columns(table_id=table_id, columns=table.columns)
         if not profile_enabled:
             continue
         store.insert_profile_snapshot(
             table_id=table_id,
             entitlement_hash=entitlement_hash,
-            profile=dict(profile or {}),
-            sample_meta=dict(sample_meta or {}),
+            profile=dict(item.profile),
+            sample_meta=dict(item.sample_meta),
         )
         profiles_written += 1
     return tables_upserted, columns_upserted, profiles_written
@@ -514,11 +507,7 @@ def run_catalog_sync(
     store: CatalogStore | None = None,
     connector_config_id: UUID | None = None,
 ) -> dict[str, Any]:
-    """
-    Run a catalog sync for a dataset.
-
-    This is currently a stub used to validate wiring and permission gates.
-    """
+    """Read and optionally persist a dataset's bounded database catalog."""
     engine, raw_tables = _load_catalog_tables(
         connector_id=connector_id,
         tenant_id=tenant_id,
@@ -526,7 +515,7 @@ def run_catalog_sync(
         config=dict(config or {}),
     )
     seen_at = _now()
-    items: list[tuple[CatalogTableInput, dict[str, Any], dict[str, Any]]] = []
+    items: list[_CatalogSyncItem] = []
     max_tables = _bounded_positive_int(config.get("max_tables"), default=200, upper=2000)
     for raw_table in raw_tables or []:
         item = _build_catalog_sync_item(raw_table=raw_table, config=config, engine=engine, seen_at=seen_at)
@@ -555,11 +544,11 @@ def run_catalog_sync(
 
     return {
         "engine": engine,
-        "tables": int(len(items)),
-        "tables_upserted": int(tables_upserted),
-        "columns_upserted": int(columns_upserted),
-        "profiles_written": int(profiles_written),
-        "entitlement_hash": str(ent_hash or ""),
+        "tables": len(items),
+        "tables_upserted": tables_upserted,
+        "columns_upserted": columns_upserted,
+        "profiles_written": profiles_written,
+        "entitlement_hash": ent_hash,
     }
 
 
@@ -604,7 +593,7 @@ def _quote_sqlserver_ident(name: str) -> str:
     return f"[{str(name or '').replace(']', ']]')}]"
 
 
-def _snapshot_columns(rows_raw: Sequence[Any], table_columns: Any, *, max_cols: int) -> list[str]:
+def _snapshot_columns(rows_raw: Sequence[Mapping[str, Any]], table_columns: Any, *, max_cols: int) -> list[str]:
     if rows_raw:
         return [str(key) for key in list(rows_raw[0].keys())[:max_cols]]
     columns: list[str] = []
@@ -623,7 +612,9 @@ def _snapshot_columns(rows_raw: Sequence[Any], table_columns: Any, *, max_cols: 
     return columns
 
 
-def _snapshot_rows(rows_raw: Sequence[Any], *, columns: Sequence[str], max_rows: int) -> list[dict[str, Any]]:
+def _snapshot_rows(
+    rows_raw: Sequence[Mapping[str, Any]], *, columns: Sequence[str], max_rows: int
+) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for row in rows_raw:
         if len(rows) >= max_rows:
@@ -677,7 +668,7 @@ def _sqlserver_source_table(raw_table: dict[str, Any], config: dict[str, Any]) -
 def _extract_table_snapshot(
     *,
     raw_table: Any,
-    fetch_rows: callable,
+    fetch_rows: Callable[..., Sequence[Mapping[str, Any]]],
     source_table_data: tuple[str, str] | tuple[str, str, str],
     max_rows: int,
     max_cols: int,
@@ -712,7 +703,7 @@ def _extract_mysql_row_snapshots(
     with _connect_mysql(dict(config or {})) as conn:
         from sqlalchemy import text  # noqa: WPS433
 
-        def _fetch_mysql_rows(table_name: str) -> list[dict[str, Any]]:
+        def _fetch_mysql_rows(table_name: str) -> Sequence[Mapping[str, Any]]:
             sql = _mysql_snapshot_sql(table_name, max_rows)  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
             return conn.execute(text(sql)).mappings().all()
 
@@ -749,7 +740,7 @@ def _extract_sqlserver_row_snapshots(
     with _connect_sqlserver(dict(config or {})) as conn:
         from sqlalchemy import text  # noqa: WPS433
 
-        def _fetch_sqlserver_rows(schema_name: str, table_name: str) -> list[dict[str, Any]]:
+        def _fetch_sqlserver_rows(schema_name: str, table_name: str) -> Sequence[Mapping[str, Any]]:
             sql = _sqlserver_snapshot_sql(schema_name, table_name, max_rows)  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
             return conn.execute(text(sql)).mappings().all()
 
