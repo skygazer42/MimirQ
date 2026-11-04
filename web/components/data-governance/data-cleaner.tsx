@@ -38,6 +38,7 @@ const DATA_CLEANER_INPUT_FORMAT_VALUES = ['markdown', 'html'] as const
 type DataCleanerProps = {
   content: string
   cleanedContent?: string
+  resetRevision?: number
   onClean: (cleaned: string) => void
 }
 
@@ -51,7 +52,7 @@ function getSeverityBadgeClass(severity: string) {
   return 'bg-info/10 text-info'
 }
 
-export function DataCleaner({ content, cleanedContent = '', onClean }: Readonly<DataCleanerProps>) {
+export function DataCleaner({ content, cleanedContent = '', resetRevision = 0, onClean }: Readonly<DataCleanerProps>) {
   const t = useTranslations('DataCleaner')
   const { options, updateOption, setEnabled } = usePipelineOptions()
   const [previewDiff, setPreviewDiff] = useState(false)
@@ -83,7 +84,7 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: Readonly<
     return () => {
       activeApplyRef.current = null
     }
-  }, [content, discardPreview])
+  }, [content, discardPreview, resetRevision])
 
   useEffect(() => {
     const apply = activeApplyRef.current

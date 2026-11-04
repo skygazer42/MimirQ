@@ -62,7 +62,9 @@ import { QualityChecker } from '@/components/data-governance/quality-checker'
 import { DataCleaner } from '@/components/data-governance/data-cleaner'
 import { DataAnnotator } from '@/components/data-governance/data-annotator'
 import { DataClassifier } from '@/components/data-governance/data-classifier'
-import { datasetApi, documentApi, parsingApi } from '@/lib/api'
+import { datasetApi } from '@/lib/api/datasets'
+import { documentApi } from '@/lib/api/documents'
+import { parsingApi } from '@/lib/api/parsing'
 import { reportClientError, reportClientWarning } from '@/lib/client-logging'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
@@ -130,6 +132,21 @@ type DatasetOption = {
 
 type GovernanceDocument = Awaited<ReturnType<typeof documentApi.list>>['items'][number]
 type GovernanceParsingDocument = Awaited<ReturnType<typeof parsingApi.listDocuments>>['items'][number]
+
+async function listAllGovernanceDocuments<T>(
+  requestPage: (skip: number) => Promise<{ total: number; items: T[] }>,
+  signal: AbortSignal,
+): Promise<T[]> {
+  let page = await requestPage(0)
+  const documents = [...page.items]
+  const total = page.total
+  while (page.items.length > 0 && documents.length < total) {
+    signal.throwIfAborted()
+    page = await requestPage(documents.length)
+    documents.push(...page.items)
+  }
+  return documents
+}
 
 function getGovernanceNextChunkStatus(
   fileId: string,
@@ -233,12 +250,11 @@ function normalizeBackendCandidate(value: unknown): string {
 }
 
 function mapBackendStatusToGovernanceStatus(status: unknown): ParsedFileData['status'] {
-  const normalized = typeof status === 'string' ? status.toLowerCase() : ''
+  const normalized = typeof status === 'string' ? status.trim().toLowerCase() : ''
   if (['completed', 'complete', 'ready', 'parsed', 'done', 'success'].includes(normalized)) return 'parsed'
   if (['processing', 'parsing', 'running'].includes(normalized)) return 'parsing'
-  if (['failed', 'failure', 'error'].includes(normalized)) return 'error'
-  if (['pending', 'queued', 'waiting'].includes(normalized)) return 'pending'
-  return 'parsed'
+  if (['failed', 'failure', 'error', 'cancelled', 'quarantined'].includes(normalized)) return 'error'
+  return 'pending'
 }
 
 function isParsingWorkspaceDocument(doc: GovernanceDocument): boolean {
@@ -330,6 +346,7 @@ type FileGovernanceState = {
     position?: { start: number; end: number }
   }>
   isModified: boolean
+  resetRevision: number
 }
 
 export function DataGovernancePanel() {
@@ -351,6 +368,7 @@ export function DataGovernancePanel() {
   // UI 状态
   const [activeTab, setActiveTab] = useState<GovernanceTab>('quality')
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
+  const [fileSearchQuery, setFileSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState<'edit' | 'preview' | 'original'>('preview')
   const [previewFormat, setPreviewFormat] = useState<'rendered' | 'markdown'>('rendered')
   const [isDragging, setIsDragging] = useState(false)
@@ -435,14 +453,13 @@ export function DataGovernancePanel() {
   const documentSyncQuery = useQuery({
     queryKey: ['data-governance', 'library-documents', datasetNameSignature, selectedDatasetId],
     enabled: isLoaded,
-    queryFn: async (): Promise<ParsedFileData[]> => {
+    queryFn: async ({ signal }): Promise<ParsedFileData[]> => {
       const [parsingResult, knowledgeResult] = await Promise.allSettled([
-        parsingApi.listDocuments({ skip: 0, limit: 200 }),
-        documentApi.list({
-          skip: 0,
-          limit: 200,
-          dataset_id: selectedDatasetId,
-        }),
+        listAllGovernanceDocuments((skip) => parsingApi.listDocuments({ skip, limit: 200 }), signal),
+        listAllGovernanceDocuments(
+          (skip) => documentApi.list({ skip, limit: 200, dataset_id: selectedDatasetId }),
+          signal,
+        ),
       ])
 
       if (parsingResult.status === 'rejected') {
@@ -452,8 +469,8 @@ export function DataGovernancePanel() {
         reportClientWarning('Failed to sync knowledge documents for governance:', knowledgeResult.reason)
       }
 
-      const parsingItems = parsingResult.status === 'fulfilled' ? parsingResult.value.items || [] : []
-      const knowledgeItems = knowledgeResult.status === 'fulfilled' ? knowledgeResult.value.items || [] : []
+      const parsingItems = parsingResult.status === 'fulfilled' ? parsingResult.value : []
+      const knowledgeItems = knowledgeResult.status === 'fulfilled' ? knowledgeResult.value : []
       return [
         ...parsingItems.map(mapParsingDocumentToGovernanceFile),
         ...knowledgeItems
@@ -604,7 +621,9 @@ export function DataGovernancePanel() {
   const governanceState = selectedFileId ? governanceStates[selectedFileId] : null
 
   const visibleFiles = useMemo(() => {
-    if (!activeFolderId || activeFolderId === ROOT_FOLDER_ID) return scopedFiles
+    const query = fileSearchQuery.trim().toLowerCase()
+    const matchingFiles = scopedFiles.filter((file) => file.filename.toLowerCase().includes(query))
+    if (!activeFolderId || activeFolderId === ROOT_FOLDER_ID) return matchingFiles
 
     const childrenByParentId = new Map<string, string[]>()
     for (const folder of libraryFolders) {
@@ -625,8 +644,8 @@ export function DataGovernancePanel() {
       for (const childId of children) stack.push(childId)
     }
 
-    return scopedFiles.filter((f) => allowedFolderIds.has(f.folderId || ROOT_FOLDER_ID))
-  }, [scopedFiles, activeFolderId, libraryFolders])
+    return matchingFiles.filter((f) => allowedFolderIds.has(f.folderId || ROOT_FOLDER_ID))
+  }, [scopedFiles, activeFolderId, libraryFolders, fileSearchQuery])
 
   const readyChunkFiles = useMemo(() => visibleFiles.filter((file) => file.chunkStatus === 'ready'), [visibleFiles])
   const selectedReadyChunkFiles = useMemo(
@@ -688,6 +707,7 @@ export function DataGovernancePanel() {
             qualityScore: 0,
             issues: [],
             isModified: cleanedContent !== originalContent,
+            resetRevision: 0,
           },
         }
       })
@@ -861,6 +881,7 @@ export function DataGovernancePanel() {
             let skippedInZip = 0
             try {
               const extracted = await extractZipFiles(file)
+              if (controller.signal.aborted || uploadAbortRef.current !== controller) return
               extractedCount = extracted.length
               for (const item of extracted) {
                 const parts = item.path.split('/').filter(Boolean)
@@ -884,6 +905,7 @@ export function DataGovernancePanel() {
                 addedInZip += 1
               }
             } catch (e) {
+              if (controller.signal.aborted || uploadAbortRef.current !== controller) return
               reportClientError('Failed to extract governance ZIP upload', e)
               toast.error(t('toasts.zipExtractFailed', { filename: file.name }))
             }
@@ -1127,6 +1149,7 @@ export function DataGovernancePanel() {
         qualityScore: 0,
         issues: [],
         isModified: false,
+        resetRevision: governanceState.resetRevision + 1,
       },
     }))
   }, [selectedFileId, governanceState])
@@ -1152,7 +1175,7 @@ export function DataGovernancePanel() {
         if (shouldUpdateMarkdown || shouldSetOriginal || nextChunkStatus) {
           updateParsedFile(f.id, {
             ...(shouldUpdateMarkdown ? { markdownContent: state?.cleanedContent } : {}),
-            ...(shouldSetOriginal ? { originalMarkdownContent } : {}),
+            ...(shouldUpdateMarkdown || shouldSetOriginal ? { originalMarkdownContent } : {}),
             ...(nextChunkStatus ? { chunkStatus: nextChunkStatus } : {}),
           })
         }
@@ -1717,6 +1740,8 @@ export function DataGovernancePanel() {
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                     <input
                       type="text"
+                      value={fileSearchQuery}
+                      onChange={(event) => setFileSearchQuery(event.target.value)}
                       placeholder={t('sidebar.searchPlaceholder')}
                       className="w-full rounded-lg border border-border bg-muted py-1.5 pl-9 pr-3 text-xs text-foreground/80 placeholder:text-muted-foreground focus:bg-card focus:outline-none focus:border-primary/30 focus-ring transition-colors duration-200 motion-reduce:transition-none"
                     />
@@ -2222,6 +2247,7 @@ export function DataGovernancePanel() {
                           content={governanceState.originalContent}
                           initialScore={governanceState.qualityScore}
                           initialIssues={governanceState.issues}
+                          resetRevision={governanceState.resetRevision}
                           onComplete={handleQualityCheck}
                         />
                       )}
@@ -2230,6 +2256,7 @@ export function DataGovernancePanel() {
                           key={selectedFileId}
                           content={governanceState.originalContent}
                           cleanedContent={governanceState.cleanedContent}
+                          resetRevision={governanceState.resetRevision}
                           onClean={handleClean}
                         />
                       )}

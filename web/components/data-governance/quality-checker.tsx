@@ -34,6 +34,7 @@ type QualityCheckerProps = {
   content: string
   initialScore?: number
   initialIssues?: QualityIssue[]
+  resetRevision?: number
   onComplete: (result: { score: number; issues: QualityIssue[] }) => void
 }
 
@@ -188,6 +189,7 @@ export function QualityChecker({
   content,
   initialScore = 0,
   initialIssues = EMPTY_ISSUES,
+  resetRevision = 0,
   onComplete,
 }: Readonly<QualityCheckerProps>) {
   const t = useTranslations('QualityChecker')
@@ -225,7 +227,7 @@ export function QualityChecker({
     return () => {
       activeScanRef.current = null
     }
-  }, [content])
+  }, [content, resetRevision])
 
   const textStats = useMemo(() => {
     const text = content || ''
