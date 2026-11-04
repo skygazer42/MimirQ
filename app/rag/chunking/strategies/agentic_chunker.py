@@ -13,7 +13,7 @@ from app.rag.chunking.strategies.semantic import SemanticSentenceChunker
 
 
 class AgenticChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = max(1, int(chunk_size or 1))
         self.chunk_overlap = max(0, int(chunk_overlap or 0))
         self._semantic = SemanticSentenceChunker(
@@ -57,7 +57,7 @@ class AgenticChunker(BaseChunker):
                     Document(
                         page_content=chunk.page_content,
                         metadata=meta,
-                        id=getattr(chunk, "id", None),
+                        id=chunk.id,
                     )
                 )
         return out

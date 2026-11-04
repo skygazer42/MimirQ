@@ -19,10 +19,10 @@ _LLAMA_INDEX_CHUNKING_FALLBACK_LOG_MESSAGE = "Ignoring non-critical LlamaIndex c
 
 def _estimate_tokens_from_chars(chars: int, *, min_tokens: int = 0) -> int:
     # Rough heuristic: 1 token ~= 4 chars for mixed English/Chinese.
-    value = int(chars or 0)
+    value = chars or 0
     if value <= 0:
         return 0
-    return max(int(min_tokens or 0), value // 4)
+    return max(min_tokens or 0, value // 4)
 
 
 def _node_id(node: Any) -> str | None:
@@ -132,7 +132,7 @@ class LlamaIndexChunker(BaseChunker):
     Intelligent chunking based on sentence boundaries, maintaining semantic integrity.
     """
 
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         if not settings.LLAMA_INDEX_ENABLED:
             raise RuntimeError("LlamaIndexChunker is disabled. Set LLAMA_INDEX_ENABLED=true in your .env file.")
 
@@ -192,7 +192,7 @@ class LlamaIndexHierarchicalChunker(BaseChunker):
     Creates multi-level chunks with parent-child relationships.
     """
 
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         if not settings.LLAMA_INDEX_ENABLED:
             raise RuntimeError(
                 "LlamaIndexHierarchicalChunker is disabled. Set LLAMA_INDEX_ENABLED=true in your .env file."

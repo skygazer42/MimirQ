@@ -20,7 +20,7 @@ class StrategyFixture:
 
 def _fixture(filename: str, content: str, *, file_type: str | None = None) -> StrategyFixture:
     suffix = Path(filename).suffix.lstrip(".").lower()
-    resolved_type = str(file_type or suffix or "txt")
+    resolved_type = file_type or suffix or "txt"
     return StrategyFixture(
         filename=filename,
         content=content.strip() + "\n",
@@ -972,10 +972,8 @@ def run_chunk_strategy_matrix(
                     first_meta = dict((chunks or [{}])[0]) if chunk_count > 0 and isinstance(chunks[0], dict) else {}
             else:
                 restore_llama_flag = None
-                if strategy in {"llama_index", "llama_index_hierarchical"} and not bool(
-                    getattr(settings, "LLAMA_INDEX_ENABLED", False)
-                ):
-                    restore_llama_flag = bool(getattr(settings, "LLAMA_INDEX_ENABLED", False))
+                if strategy in {"llama_index", "llama_index_hierarchical"} and not settings.LLAMA_INDEX_ENABLED:
+                    restore_llama_flag = settings.LLAMA_INDEX_ENABLED
                     settings.LLAMA_INDEX_ENABLED = True
                 try:
                     chunker = chunker_factory.get_chunker(strategy, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
@@ -999,7 +997,7 @@ def run_chunk_strategy_matrix(
                     "chunk_count": chunk_count,
                     "elapsed_ms": elapsed_ms,
                     "metadata_keys": sorted(first_meta.keys())[:12],
-                    "runtime_flag_enabled": bool(getattr(settings, "LLAMA_INDEX_ENABLED", False))
+                    "runtime_flag_enabled": settings.LLAMA_INDEX_ENABLED
                     if strategy in {"llama_index", "llama_index_hierarchical"}
                     else None,
                 }

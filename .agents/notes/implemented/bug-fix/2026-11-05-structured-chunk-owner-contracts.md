@@ -14,6 +14,10 @@ TOML 和 KV 策略对每个没有条目的 section 已执行 fallback，循环�
 
 构造函数声明 `None` 返回，书籍标题回调使用两个真实数字解析函数的 `Callable` 契约，SmartCode 单元返回值声明实际三个字符串的 tuple。它们描述当前职责，不改变类、方法、导出或参数默认值。
 
+质量、上下文、角色、布局和 provider wrapper 的 12 个所有者沿用同一边界。Counter 直接消费已 strip 且非空的字符串 key，评分只删除长度、算术和本地分数的重复转换；两个 Jaccard 的后置空 union 分支由前置集合条件排除。角色分类仅删除已经被前面相同 TABLE 条件返回覆盖的末尾分支，其他优先级保持。
+
+SDK Document 的 `id`、semantic chunker 自己构造的 unit，以及 PDF 解析完成的坐标、偏移和长度直接使用实际字段。PDF 原始 tag 解析、坐标数值归一化和舍入、metadata hint 的异常边界继续保留。LlamaIndex 外部 node／relationship 反射、ID 和 offset 转换保持；矩阵只读取声明的 Settings bool 与本地 fixture 值，临时文件、外部结果形状、flag 恢复和计时政策不变。推荐标签与 Jina wrapper 完整源码保持。
+
 TOML 和 KV 只删除无用的条目标记与末尾第二次全文 fallback。没有标题时 section 覆盖全文；有标题时按递增偏移构建前言和各节，每个非空节仍走原有记录或 fallback 分支。表名／节名、offset、元数据和顺序仍由每节的原路径产生。Markdown Q/A 仅把两个量词写成双花括号，生成字面 `#{1,6}`；其他前缀、空白、匹配顺序和 chunk 元数据保持。
 
 ## Alternatives considered
