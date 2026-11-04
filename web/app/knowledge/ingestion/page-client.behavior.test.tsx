@@ -72,15 +72,13 @@ vi.mock('sonner', () => ({
 vi.mock('framer-motion', async () => {
   const React = await import('react')
   return {
-    AnimatePresence: ({
-      children,
-    }: {
-      children: React.ReactNode
-    }) => React.createElement(React.Fragment, null, children),
+    AnimatePresence: ({ children }: { children: React.ReactNode }) =>
+      React.createElement(React.Fragment, null, children),
     motion: new Proxy(
       {},
       {
-        get: (_target, tag: string) =>
+        get:
+          (_target, tag: string) =>
           ({
             children,
             drag: _drag,
@@ -93,55 +91,35 @@ vi.mock('framer-motion', async () => {
             dragConstraints?: unknown
             dragElastic?: unknown
             onDragEnd?: unknown
-          }) => React.createElement(tag, props, children),
-      }
+          }) =>
+            React.createElement(tag, props, children),
+      },
     ),
     useReducedMotion: () => false,
   }
 })
 
 vi.mock('@/components/ui/button', () => ({
-  Button: ({
-    children,
-    ...props
-  }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
+  Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
     React.createElement('button', props, children),
 }))
 
 vi.mock('@/components/ui/select', () => ({
-  Select: ({ children }: { children: React.ReactNode }) =>
-    React.createElement('div', null, children),
-  SelectContent: ({ children }: { children: React.ReactNode }) =>
-    React.createElement('div', null, children),
-  SelectItem: ({
-    children,
-    value,
-  }: {
-    children: React.ReactNode
-    value: string
-  }) => React.createElement('div', { 'data-value': value }, children),
-  SelectTrigger: ({
-    children,
-    ...props
-  }: React.HTMLAttributes<HTMLDivElement>) =>
+  Select: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
+  SelectContent: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
+  SelectItem: ({ children, value }: { children: React.ReactNode; value: string }) =>
+    React.createElement('div', { 'data-value': value }, children),
+  SelectTrigger: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) =>
     React.createElement('div', props, children),
   SelectValue: () => null,
 }))
 
 vi.mock('@/components/ui/sheet', () => ({
-  Sheet: ({
-    children,
-  }: {
-    children: React.ReactNode
-  }) => React.createElement(React.Fragment, null, children),
-  SheetContent: ({ children }: { children: React.ReactNode }) =>
-    React.createElement('div', null, children),
-  SheetDescription: ({ children }: { children: React.ReactNode }) =>
-    React.createElement('div', null, children),
-  SheetHeader: ({ children }: { children: React.ReactNode }) =>
-    React.createElement('div', null, children),
-  SheetTitle: ({ children }: { children: React.ReactNode }) =>
-    React.createElement('div', null, children),
+  Sheet: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+  SheetContent: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
+  SheetDescription: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
+  SheetHeader: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
+  SheetTitle: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
 }))
 
 vi.mock('@/components/ui/echart', () => ({
@@ -149,8 +127,7 @@ vi.mock('@/components/ui/echart', () => ({
 }))
 
 vi.mock('@/components/ui/page-title-icon', () => ({
-  PageTitleIcon: () =>
-    React.createElement('div', { 'data-page-title-icon': 'true' }),
+  PageTitleIcon: () => React.createElement('div', { 'data-page-title-icon': 'true' }),
 }))
 
 vi.mock('@/components/ingestion/drop-zone', async () => {
@@ -158,7 +135,7 @@ vi.mock('@/components/ingestion/drop-zone', async () => {
   return {
     DropZone: React.forwardRef(function DropZone(
       _props: Record<string, unknown>,
-      ref: React.ForwardedRef<{ triggerFilePicker: (args?: unknown) => void }>
+      ref: React.ForwardedRef<{ triggerFilePicker: (args?: unknown) => void }>,
     ) {
       React.useImperativeHandle(ref, () => ({
         triggerFilePicker: triggerFilePickerMock,
@@ -169,8 +146,7 @@ vi.mock('@/components/ingestion/drop-zone', async () => {
 })
 
 vi.mock('@/components/ingestion/empty-state', () => ({
-  EmptyState: ({ mode }: { mode: string }) =>
-    React.createElement('div', { 'data-empty-state': mode }, mode),
+  EmptyState: ({ mode }: { mode: string }) => React.createElement('div', { 'data-empty-state': mode }, mode),
 }))
 
 vi.mock('@/components/ingestion/ingestion-detail-dialog', () => ({
@@ -178,8 +154,7 @@ vi.mock('@/components/ingestion/ingestion-detail-dialog', () => ({
 }))
 
 vi.mock('./components/loading-wireframe', () => ({
-  LoadingWireframe: () =>
-    React.createElement('div', { 'data-loading-wireframe': 'true' }),
+  LoadingWireframe: () => React.createElement('div', { 'data-loading-wireframe': 'true' }),
 }))
 
 vi.mock('./components/sales-panel-header', () => ({
@@ -196,19 +171,12 @@ vi.mock('./components/sales-panel-header', () => ({
       'div',
       null,
       React.createElement('span', null, title),
-      actionLabel
-        ? React.createElement(
-            'button',
-            { onClick: onAction, type: 'button' },
-            actionLabel
-          )
-        : null
+      actionLabel ? React.createElement('button', { onClick: onAction, type: 'button' }, actionLabel) : null,
     ),
 }))
 
 vi.mock('./view-switch', () => ({
-  IngestionViewSwitch: () =>
-    React.createElement('div', { 'data-view-switch': 'true' }),
+  IngestionViewSwitch: () => React.createElement('div', { 'data-view-switch': 'true' }),
 }))
 
 import KnowledgeIngestionPageClient from './page-client'
@@ -257,14 +225,8 @@ function createWrapper() {
     },
   })
 
-  return function Wrapper({
-    children,
-  }: Readonly<{ children: React.ReactNode }>) {
-    return React.createElement(
-      QueryClientProvider,
-      { client: queryClient },
-      children
-    )
+  return function Wrapper({ children }: Readonly<{ children: React.ReactNode }>) {
+    return React.createElement(QueryClientProvider, { client: queryClient }, children)
   }
 }
 
@@ -275,22 +237,14 @@ function renderPage() {
   const Wrapper = createWrapper()
 
   act(() => {
-    root.render(
-      React.createElement(
-        Wrapper,
-        null,
-        React.createElement(KnowledgeIngestionPageClient)
-      )
-    )
+    root.render(React.createElement(Wrapper, null, React.createElement(KnowledgeIngestionPageClient)))
   })
 
   return { container, root }
 }
 
 beforeEach(() => {
-  ;(
-    globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
-  ).IS_REACT_ACT_ENVIRONMENT = true
+  ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   routeState.pathname = '/knowledge/ingestion'
   routeState.search = 'datasetId=ds-1'
   routerMock.push.mockReset()
@@ -336,9 +290,7 @@ beforeEach(() => {
     pairs: [],
   })
 
-  observabilityApiMock.getIngestionDashboardSummary.mockResolvedValue(
-    EMPTY_SUMMARY
-  )
+  observabilityApiMock.getIngestionDashboardSummary.mockResolvedValue(EMPTY_SUMMARY)
   observabilityApiMock.getTaskQueueSnapshot.mockResolvedValue(null)
 
   globalThis.window.matchMedia =
@@ -397,20 +349,12 @@ describe('knowledge ingestion page behavior', () => {
     const { container, root } = renderPage()
 
     await act(async () => {
-      await vi.waitFor(() =>
-        expect(container.textContent).toContain('预检发现 embedding 建议')
-      )
+      await vi.waitFor(() => expect(container.textContent).toContain('预检发现 embedding 建议'))
     })
 
-    expect(container.textContent).toContain(
-      '这只是 warning，不表示系统已经自动切换模型。'
-    )
-    expect(container.textContent).toContain(
-      'code=zh_or_mixed_corpus_uses_generic_embedding'
-    )
-    expect(container.textContent).toContain(
-      'current=text-embedding-3-small'
-    )
+    expect(container.textContent).toContain('这只是 warning，不表示系统已经自动切换模型。')
+    expect(container.textContent).toContain('code=zh_or_mixed_corpus_uses_generic_embedding')
+    expect(container.textContent).toContain('current=text-embedding-3-small')
     expect(container.textContent).toContain('recommended=text-embedding-v4')
     expect(container.textContent).toContain('recommended=bge-large-zh')
 
@@ -484,21 +428,19 @@ describe('knowledge ingestion page behavior', () => {
     const { container, root } = renderPage()
 
     await act(async () => {
-      await vi.waitFor(() =>
-        expect(container.textContent).toContain('高风险文件（示例）')
-      )
+      await vi.waitFor(() => expect(container.textContent).toContain('高风险文件（示例）'))
       await vi.waitFor(() =>
         expect(
           Array.from(container.querySelectorAll<HTMLButtonElement>('button')).some(
-            (button) => button.textContent === '查看'
-          )
-        ).toBe(true)
+            (button) => button.textContent === '查看',
+          ),
+        ).toBe(true),
       )
     })
 
-    const viewButton = Array.from(
-      container.querySelectorAll<HTMLButtonElement>('button')
-    ).find((button) => button.textContent === '查看')
+    const viewButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(
+      (button) => button.textContent === '查看',
+    )
     expect(viewButton).not.toBeUndefined()
 
     await act(async () => {
@@ -506,15 +448,9 @@ describe('knowledge ingestion page behavior', () => {
     })
 
     await act(async () => {
-      await vi.waitFor(() =>
-        expect(container.textContent).toContain('敏感信息待审核列表')
-      )
-      await vi.waitFor(() =>
-        expect(container.textContent).toContain('为何复杂')
-      )
-      await vi.waitFor(() =>
-        expect(container.textContent).toContain('a***@example.com')
-      )
+      await vi.waitFor(() => expect(container.textContent).toContain('敏感信息待审核列表'))
+      await vi.waitFor(() => expect(container.textContent).toContain('为何复杂'))
+      await vi.waitFor(() => expect(container.textContent).toContain('a***@example.com'))
     })
 
     act(() => root.unmount())
@@ -524,20 +460,12 @@ describe('knowledge ingestion page behavior', () => {
     const { container, root } = renderPage()
 
     await act(async () => {
-      await vi.waitFor(() =>
-        expect(container.textContent).toContain('入库预检工作台')
-      )
+      await vi.waitFor(() => expect(container.textContent).toContain('入库预检工作台'))
     })
 
-    const buttons = Array.from(
-      container.querySelectorAll<HTMLButtonElement>('button')
-    )
-    const sampleButton = buttons.find((button) =>
-      button.textContent?.includes('上传预检文件')
-    )
-    const formalButton = buttons.find((button) =>
-      button.textContent?.includes('正式入库')
-    )
+    const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+    const sampleButton = buttons.find((button) => button.textContent?.includes('上传预检文件'))
+    const formalButton = buttons.find((button) => button.textContent?.includes('正式入库'))
 
     expect(sampleButton).not.toBeUndefined()
     expect(formalButton).not.toBeUndefined()
@@ -564,23 +492,19 @@ describe('knowledge ingestion page behavior', () => {
     const { container, root } = renderPage()
 
     await act(async () => {
-      await vi.waitFor(() =>
-        expect(container.textContent).toContain('退出演示')
-      )
+      await vi.waitFor(() => expect(container.textContent).toContain('退出演示'))
     })
 
-    const exitButton = Array.from(
-      container.querySelectorAll<HTMLButtonElement>('button')
-    ).find((button) => button.textContent?.includes('退出演示'))
+    const exitButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find((button) =>
+      button.textContent?.includes('退出演示'),
+    )
     expect(exitButton).not.toBeUndefined()
 
     await act(async () => {
       exitButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
 
-    expect(routerMock.replace).toHaveBeenCalledWith(
-      '/demo/knowledge/ingestion?datasetId=ds-1'
-    )
+    expect(routerMock.replace).toHaveBeenCalledWith('/demo/knowledge/ingestion?datasetId=ds-1')
 
     act(() => root.unmount())
   })
@@ -649,14 +573,10 @@ describe('knowledge ingestion page behavior', () => {
     const { container, root } = renderPage()
 
     await act(async () => {
-      await vi.waitFor(() =>
-        expect(container.textContent).toContain('Run 1.pdf')
-      )
+      await vi.waitFor(() => expect(container.textContent).toContain('Run 1.pdf'))
     })
 
-    const checkbox = container.querySelector<HTMLInputElement>(
-      'input[aria-label="选择 Run 1.pdf"]'
-    )
+    const checkbox = container.querySelector<HTMLInputElement>('input[aria-label="选择 Run 1.pdf"]')
     expect(checkbox).not.toBeNull()
     expect(checkbox?.checked).toBe(false)
 
@@ -683,14 +603,12 @@ describe('knowledge ingestion page behavior', () => {
     const { container, root } = renderPage()
 
     await act(async () => {
-      await vi.waitFor(() =>
-        expect(container.textContent).toContain('supplier-contract.pdf')
-      )
+      await vi.waitFor(() => expect(container.textContent).toContain('supplier-contract.pdf'))
     })
 
-    const snapshotButton = Array.from(
-      container.querySelectorAll<HTMLButtonElement>('button')
-    ).find((button) => button.textContent === '快照')
+    const snapshotButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(
+      (button) => button.textContent === '快照',
+    )
     expect(snapshotButton).not.toBeUndefined()
 
     await act(async () => {
@@ -698,15 +616,9 @@ describe('knowledge ingestion page behavior', () => {
     })
 
     await act(async () => {
-      await vi.waitFor(() =>
-        expect(container.textContent).toContain('入库快照')
-      )
-      await vi.waitFor(() =>
-        expect(container.textContent).toContain('建议动作')
-      )
-      await vi.waitFor(() =>
-        expect(container.textContent).toContain('supplier-contract.pdf')
-      )
+      await vi.waitFor(() => expect(container.textContent).toContain('入库快照'))
+      await vi.waitFor(() => expect(container.textContent).toContain('建议动作'))
+      await vi.waitFor(() => expect(container.textContent).toContain('supplier-contract.pdf'))
     })
 
     act(() => root.unmount())
@@ -715,9 +627,7 @@ describe('knowledge ingestion page behavior', () => {
   it('renders execution monitor queue degradation and paginates runtime rows', async () => {
     routeState.search = 'datasetId=ds-1&mode=execution-monitor'
     documentApiMock.list.mockResolvedValueOnce({
-      items: Array.from({ length: 6 }, (_, index) =>
-        createExecutionDocument(index + 1)
-      ),
+      items: Array.from({ length: 6 }, (_, index) => createExecutionDocument(index + 1)),
     })
     observabilityApiMock.getTaskQueueSnapshot.mockResolvedValueOnce({
       enabled: true,
@@ -742,9 +652,9 @@ describe('knowledge ingestion page behavior', () => {
     expect(taskTable?.textContent).toContain('Run 6.pdf')
     expect(taskTable?.textContent).not.toContain('Run 1.pdf')
 
-    const nextButton = Array.from(
-      container.querySelectorAll<HTMLButtonElement>('button')
-    ).find((button) => button.textContent?.includes('下一页'))
+    const nextButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find((button) =>
+      button.textContent?.includes('下一页'),
+    )
     expect(nextButton).not.toBeUndefined()
 
     await act(async () => {
@@ -754,11 +664,7 @@ describe('knowledge ingestion page behavior', () => {
 
     await act(async () => {
       await vi.waitFor(() => expect(container.textContent).toContain('第 2 / 2 页'))
-      await vi.waitFor(() =>
-        expect(taskTables.item(taskTables.length - 1)?.textContent).toContain(
-          'Run 1.pdf'
-        )
-      )
+      await vi.waitFor(() => expect(taskTables.item(taskTables.length - 1)?.textContent).toContain('Run 1.pdf'))
     })
 
     act(() => root.unmount())

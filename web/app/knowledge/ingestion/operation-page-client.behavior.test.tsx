@@ -66,8 +66,7 @@ vi.mock('@/lib/api-errors', () => ({
 }))
 
 vi.mock('@/lib/utils', () => ({
-  cn: (...values: Array<string | false | null | undefined>) =>
-    values.filter(Boolean).join(' '),
+  cn: (...values: Array<string | false | null | undefined>) => values.filter(Boolean).join(' '),
   detachPromise: (promise: Promise<unknown>) => {
     promise.catch(() => undefined)
   },
@@ -82,32 +81,25 @@ vi.mock('@/lib/api', () => ({
 }))
 
 vi.mock('@/components/ui/button', () => ({
-  Button: ({
-    children,
-    ...props
-  }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
+  Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
     React.createElement('button', { type: 'button', ...props }, children),
 }))
 
 vi.mock('@/components/ui/input', () => ({
   Input: React.forwardRef(function Input(
     props: React.InputHTMLAttributes<HTMLInputElement>,
-    ref: React.ForwardedRef<HTMLInputElement>
+    ref: React.ForwardedRef<HTMLInputElement>,
   ) {
     return React.createElement('input', { ref, ...props })
   }),
 }))
 
 vi.mock('@/components/ui/textarea', () => ({
-  Textarea: ({
-    ...props
-  }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) =>
-    React.createElement('textarea', props),
+  Textarea: ({ ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => React.createElement('textarea', props),
 }))
 
 vi.mock('@/components/ui/page-title-icon', () => ({
-  PageTitleIcon: () =>
-    React.createElement('div', { 'data-page-title-icon': 'true' }),
+  PageTitleIcon: () => React.createElement('div', { 'data-page-title-icon': 'true' }),
 }))
 
 vi.mock('@/components/ui/select', async () => {
@@ -127,24 +119,14 @@ vi.mock('@/components/ui/select', async () => {
     value?: string
     onValueChange?: (value: string) => void
   }) {
-    return React.createElement(
-      SelectContext.Provider,
-      { value: { value, onValueChange } },
-      children
-    )
+    return React.createElement(SelectContext.Provider, { value: { value, onValueChange } }, children)
   }
 
-  function SelectTrigger({
-    children,
-    ...props
-  }: React.HTMLAttributes<HTMLDivElement>) {
+  function SelectTrigger({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
     return React.createElement('div', props, children)
   }
 
-  function SelectContent({
-    children,
-    ...props
-  }: React.HTMLAttributes<HTMLDivElement>) {
+  function SelectContent({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
     return React.createElement('div', props, children)
   }
 
@@ -167,7 +149,7 @@ vi.mock('@/components/ui/select', async () => {
         'data-selected': context?.value === value ? 'true' : 'false',
         onClick: () => context?.onValueChange?.(value),
       },
-      children
+      children,
     )
   }
 
@@ -196,20 +178,10 @@ vi.mock('@/components/ui/tabs', async () => {
     value?: string
     onValueChange?: (value: string) => void
   }) {
-    return React.createElement(
-      TabsContext.Provider,
-      { value: { value, onValueChange } },
-      children
-    )
+    return React.createElement(TabsContext.Provider, { value: { value, onValueChange } }, children)
   }
 
-  function TabsContent({
-    children,
-    value,
-  }: {
-    children: React.ReactNode
-    value: string
-  }) {
+  function TabsContent({ children, value }: { children: React.ReactNode; value: string }) {
     const context = React.useContext(TabsContext)
     if (context?.value !== value) return null
     return React.createElement('div', { 'data-tabs-content': value }, children)
@@ -222,8 +194,7 @@ vi.mock('@/components/ui/tabs', async () => {
 })
 
 vi.mock('./view-switch', () => ({
-  IngestionViewSwitch: () =>
-    React.createElement('div', { 'data-view-switch': 'true' }),
+  IngestionViewSwitch: () => React.createElement('div', { 'data-view-switch': 'true' }),
 }))
 
 import KnowledgeIngestionOperationPage from './operation-page-client'
@@ -237,14 +208,8 @@ function createWrapper() {
     },
   })
 
-  return function Wrapper({
-    children,
-  }: Readonly<{ children: React.ReactNode }>) {
-    return React.createElement(
-      QueryClientProvider,
-      { client: queryClient },
-      children
-    )
+  return function Wrapper({ children }: Readonly<{ children: React.ReactNode }>) {
+    return React.createElement(QueryClientProvider, { client: queryClient }, children)
   }
 }
 
@@ -255,28 +220,20 @@ function renderPage() {
   const Wrapper = createWrapper()
 
   act(() => {
-    root.render(
-      React.createElement(
-        Wrapper,
-        null,
-        React.createElement(KnowledgeIngestionOperationPage)
-      )
-    )
+    root.render(React.createElement(Wrapper, null, React.createElement(KnowledgeIngestionOperationPage)))
   })
 
   return { container, root }
 }
 
 function findButtonByText(container: HTMLElement, text: string) {
-  return Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(
-    (button) => button.textContent?.includes(text)
+  return Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find((button) =>
+    button.textContent?.includes(text),
   )
 }
 
 function getSubmitButton(container: HTMLElement) {
-  const button = container.querySelector<HTMLButtonElement>(
-    '[data-ingestion-action-bar="true"] button'
-  )
+  const button = container.querySelector<HTMLButtonElement>('[data-ingestion-action-bar="true"] button')
   if (!button) throw new Error('submit button not found')
   return button
 }
@@ -290,9 +247,7 @@ async function chooseSource(container: HTMLElement, label: string) {
 }
 
 async function chooseExecutionMode(container: HTMLElement, value: string) {
-  const input = container.querySelector<HTMLInputElement>(
-    `input[name="ingestion-execution-mode"][value="${value}"]`
-  )
+  const input = container.querySelector<HTMLInputElement>(`input[name="ingestion-execution-mode"][value="${value}"]`)
   if (!input) throw new Error(`execution mode not found: ${value}`)
   await act(async () => {
     input.dispatchEvent(new MouseEvent('click', { bubbles: true }))
@@ -300,17 +255,9 @@ async function chooseExecutionMode(container: HTMLElement, value: string) {
   })
 }
 
-async function setFileInputFiles(
-  container: HTMLElement,
-  files: File[],
-  options?: { folder?: boolean }
-) {
-  const input = Array.from(
-    container.querySelectorAll<HTMLInputElement>('input[type="file"]')
-  ).find((candidate) =>
-    options?.folder
-      ? candidate.hasAttribute('webkitdirectory')
-      : !candidate.hasAttribute('webkitdirectory')
+async function setFileInputFiles(container: HTMLElement, files: File[], options?: { folder?: boolean }) {
+  const input = Array.from(container.querySelectorAll<HTMLInputElement>('input[type="file"]')).find((candidate) =>
+    options?.folder ? candidate.hasAttribute('webkitdirectory') : !candidate.hasAttribute('webkitdirectory'),
   )
   if (!input) throw new Error('file input not found')
   Object.defineProperty(input, 'files', {
@@ -322,19 +269,12 @@ async function setFileInputFiles(
   })
 }
 
-async function setTextareaValue(
-  container: HTMLElement,
-  placeholder: string,
-  value: string
-) {
-  const input = Array.from(
-    container.querySelectorAll<HTMLTextAreaElement>('textarea')
-  ).find((node) => node.getAttribute('placeholder') === placeholder)
-  if (!input) throw new Error(`textarea not found: ${placeholder}`)
-  const descriptor = Object.getOwnPropertyDescriptor(
-    HTMLTextAreaElement.prototype,
-    'value'
+async function setTextareaValue(container: HTMLElement, placeholder: string, value: string) {
+  const input = Array.from(container.querySelectorAll<HTMLTextAreaElement>('textarea')).find(
+    (node) => node.getAttribute('placeholder') === placeholder,
   )
+  if (!input) throw new Error(`textarea not found: ${placeholder}`)
+  const descriptor = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')
   if (!descriptor?.set) throw new Error('textarea value setter not found')
   await act(async () => {
     descriptor.set?.call(input, value)
@@ -349,19 +289,12 @@ async function waitForDatasetBootstrap(container: HTMLElement) {
   })
 }
 
-async function setInputValue(
-  container: HTMLElement,
-  placeholder: string,
-  value: string
-) {
-  const input = Array.from(
-    container.querySelectorAll<HTMLInputElement>('input')
-  ).find((node) => node.getAttribute('placeholder') === placeholder)
-  if (!input) throw new Error(`input not found: ${placeholder}`)
-  const descriptor = Object.getOwnPropertyDescriptor(
-    HTMLInputElement.prototype,
-    'value'
+async function setInputValue(container: HTMLElement, placeholder: string, value: string) {
+  const input = Array.from(container.querySelectorAll<HTMLInputElement>('input')).find(
+    (node) => node.getAttribute('placeholder') === placeholder,
   )
+  if (!input) throw new Error(`input not found: ${placeholder}`)
+  const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
   if (!descriptor?.set) throw new Error('input value setter not found')
   await act(async () => {
     descriptor.set?.call(input, value)
@@ -371,9 +304,7 @@ async function setInputValue(
 }
 
 beforeEach(() => {
-  ;(
-    globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
-  ).IS_REACT_ACT_ENVIRONMENT = true
+  ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
   routeState.search = 'datasetId=ds-1'
   settingsState.urlIngestEnabled = false
@@ -386,9 +317,7 @@ beforeEach(() => {
   toastMock.error.mockReset()
   toastMock.warning.mockReset()
 
-  datasetApiMock.listAll.mockResolvedValue([
-    { id: 'ds-1', name: 'Dataset One' },
-  ])
+  datasetApiMock.listAll.mockResolvedValue([{ id: 'ds-1', name: 'Dataset One' }])
   datasetApiMock.getIngestionStats.mockResolvedValue({
     total_documents: 4,
     total_chunks: 12,
@@ -450,9 +379,7 @@ describe('knowledge ingestion operation page behavior', () => {
     const { container, root } = renderPage()
 
     await act(async () => {
-      await vi.waitFor(() =>
-        expect(container.textContent).toContain('添加文件到本次任务')
-      )
+      await vi.waitFor(() => expect(container.textContent).toContain('添加文件到本次任务'))
     })
 
     await chooseSource(container, '文件夹')
@@ -490,9 +417,7 @@ describe('knowledge ingestion operation page behavior', () => {
       await vi.waitFor(() => expect(getSubmitButton(container).disabled).toBe(false))
     })
 
-    const stagingWorkspace = container.querySelector(
-      '[data-ingestion-file-staging-workspace="true"]'
-    )
+    const stagingWorkspace = container.querySelector('[data-ingestion-file-staging-workspace="true"]')
     expect(stagingWorkspace?.textContent).toContain('本次任务文件')
     expect(stagingWorkspace?.textContent).toContain('1')
     expect(container.textContent).toContain('manual.pdf')
@@ -523,12 +448,8 @@ describe('knowledge ingestion operation page behavior', () => {
     expect(getSubmitButton(container).textContent).toContain('登记并解析')
 
     await act(async () => {
-      getSubmitButton(container).dispatchEvent(
-        new MouseEvent('click', { bubbles: true })
-      )
-      await vi.waitFor(() =>
-        expect(documentApiMock.uploadBatch).toHaveBeenCalledTimes(1)
-      )
+      getSubmitButton(container).dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      await vi.waitFor(() => expect(documentApiMock.uploadBatch).toHaveBeenCalledTimes(1))
     })
 
     expect(documentApiMock.uploadBatch).toHaveBeenCalledWith(
@@ -541,11 +462,9 @@ describe('knowledge ingestion operation page behavior', () => {
           chunk_vector_enabled: false,
           bm25_index_enabled: false,
         }),
-      })
+      }),
     )
-    expect(routerMock.push).toHaveBeenCalledWith(
-      '/knowledge/ingestion?mode=execution-monitor'
-    )
+    expect(routerMock.push).toHaveBeenCalledWith('/knowledge/ingestion?mode=execution-monitor')
 
     act(() => root.unmount())
   })
@@ -558,13 +477,11 @@ describe('knowledge ingestion operation page behavior', () => {
     await setTextareaValue(
       container,
       'https://example.com/manual.pdf\nhttps://example.com/guide.md',
-      'https://example.com/manual.pdf'
+      'https://example.com/manual.pdf',
     )
 
     await act(async () => {
-      await vi.waitFor(() =>
-        expect(container.textContent).toContain('当前环境未启用 URL/对象存储导入')
-      )
+      await vi.waitFor(() => expect(container.textContent).toContain('当前环境未启用 URL/对象存储导入'))
     })
 
     expect(getSubmitButton(container).disabled).toBe(true)
@@ -584,7 +501,7 @@ describe('knowledge ingestion operation page behavior', () => {
     await setTextareaValue(
       container,
       'https://example.com/manual.pdf\nhttps://example.com/guide.md',
-      'https://example.com/manual.pdf'
+      'https://example.com/manual.pdf',
     )
     await setInputValue(container, 'remote-documents.md', 'remote-documents.md')
 
@@ -593,12 +510,8 @@ describe('knowledge ingestion operation page behavior', () => {
     })
 
     await act(async () => {
-      getSubmitButton(container).dispatchEvent(
-        new MouseEvent('click', { bubbles: true })
-      )
-      await vi.waitFor(() =>
-        expect(connectorApiMock.createRun).toHaveBeenCalledTimes(1)
-      )
+      getSubmitButton(container).dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      await vi.waitFor(() => expect(connectorApiMock.createRun).toHaveBeenCalledTimes(1))
     })
 
     expect(connectorApiMock.createRun).toHaveBeenCalledWith(
@@ -613,11 +526,9 @@ describe('knowledge ingestion operation page behavior', () => {
             chunk_vector_enabled: false,
           }),
         }),
-      })
+      }),
     )
-    expect(routerMock.push).toHaveBeenCalledWith(
-      '/knowledge/ingestion?mode=execution-monitor'
-    )
+    expect(routerMock.push).toHaveBeenCalledWith('/knowledge/ingestion?mode=execution-monitor')
 
     act(() => root.unmount())
   })
@@ -632,7 +543,7 @@ describe('knowledge ingestion operation page behavior', () => {
     await setTextareaValue(
       container,
       '{"title":"产品说明","content":"这里粘贴接口推送内容"}',
-      '{"title":"FAQ","content":"answer"}'
+      '{"title":"FAQ","content":"answer"}',
     )
 
     await act(async () => {
@@ -640,12 +551,8 @@ describe('knowledge ingestion operation page behavior', () => {
     })
 
     await act(async () => {
-      getSubmitButton(container).dispatchEvent(
-        new MouseEvent('click', { bubbles: true })
-      )
-      await vi.waitFor(() =>
-        expect(documentApiMock.createFromChunks).toHaveBeenCalledTimes(1)
-      )
+      getSubmitButton(container).dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      await vi.waitFor(() => expect(documentApiMock.createFromChunks).toHaveBeenCalledTimes(1))
     })
 
     expect(documentApiMock.createFromChunks).toHaveBeenCalledWith(
@@ -660,7 +567,7 @@ describe('knowledge ingestion operation page behavior', () => {
           chunk_vector_enabled: true,
           bm25_index_enabled: true,
         }),
-      })
+      }),
     )
 
     act(() => root.unmount())
@@ -671,9 +578,7 @@ describe('knowledge ingestion operation page behavior', () => {
 
     await act(async () => {
       await vi.waitFor(() =>
-        expect(
-          container.querySelector('[data-ingestion-advanced-settings="true"]')
-        ).not.toBeNull()
+        expect(container.querySelector('[data-ingestion-advanced-settings="true"]')).not.toBeNull(),
       )
     })
 

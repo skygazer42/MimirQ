@@ -38,12 +38,8 @@ function createWrapper() {
     },
   })
 
-  return function Wrapper({
-    children,
-  }: Readonly<{ children: React.ReactNode }>) {
-    return (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    )
+  return function Wrapper({ children }: Readonly<{ children: React.ReactNode }>) {
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   }
 }
 
@@ -89,7 +85,7 @@ describe('useAuth', () => {
     authState.me.mockRejectedValue(
       Object.assign(new Error('unauthorized'), {
         response: { status: 401 },
-      })
+      }),
     )
 
     const hook = renderHook(() => useAuth(), { wrapper: createWrapper() })
