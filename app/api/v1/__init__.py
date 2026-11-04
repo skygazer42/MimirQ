@@ -3,6 +3,7 @@ API v1 routes.
 """
 
 from importlib import import_module
+from types import ModuleType
 
 from fastapi import APIRouter
 
@@ -116,7 +117,7 @@ def get_router() -> APIRouter:
     return _ROUTER
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> APIRouter | ModuleType:
     if name == "router":
         router = get_router()
         globals()["router"] = router
@@ -129,7 +130,7 @@ def __getattr__(name: str):
         mod = import_module(f"{__name__}.{name}")
     except ModuleNotFoundError as exc:
         # Only translate to AttributeError when the *submodule itself* is missing.
-        if str(getattr(exc, "name", "") or "") in {f"{__name__}.{name}", name}:
+        if (exc.name or "") in {f"{__name__}.{name}", name}:
             raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from exc
         raise
 
