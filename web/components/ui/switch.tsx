@@ -11,7 +11,7 @@ export type SwitchProps = Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'o
 }
 
 const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
-  ({ className, checked: checkedProp, defaultChecked, onCheckedChange, disabled, ...props }, ref) => {
+  ({ className, checked: checkedProp, defaultChecked, onCheckedChange, disabled, onClick, ...props }, ref) => {
     const [uncontrolledChecked, setUncontrolledChecked] = React.useState(defaultChecked ?? false)
 
     const isControlled = typeof checkedProp === 'boolean'
@@ -33,7 +33,7 @@ const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
         data-switch-state={checked ? 'checked' : 'unchecked'}
         disabled={disabled}
         onClick={(event) => {
-          props.onClick?.(event)
+          onClick?.(event)
           if (event.defaultPrevented) return
           toggle()
         }}

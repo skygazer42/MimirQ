@@ -48,13 +48,13 @@ export function TagInput({
       const next = [...tags]
 
       for (const raw of incoming) {
+        if (cap && next.length >= cap) break
         const norm = normalizeTag(raw, { maxLen: maxTagLen })
         if (!norm) continue
         const key = norm.trim().toLowerCase()
         if (!key || seen.has(key)) continue
         seen.add(key)
         next.push(norm)
-        if (cap && next.length >= cap) break
       }
 
       onValueChange(next)

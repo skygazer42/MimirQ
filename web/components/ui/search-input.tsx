@@ -20,7 +20,7 @@ export type SearchInputProps = Readonly<
 >
 
 export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(function SearchInput(
-  { value, onValueChange, containerClassName, inputClassName, onClear, placeholder, ...props },
+  { value, onValueChange, containerClassName, inputClassName, onClear, placeholder, disabled, readOnly, ...props },
   forwardedRef,
 ) {
   const t = useTranslations('CommonUi')
@@ -39,6 +39,8 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
         ref={setRefs}
         type="search"
         value={value}
+        disabled={disabled}
+        readOnly={readOnly}
         onChange={(e) => onValueChange(e.target.value)}
         placeholder={resolvedPlaceholder}
         className={cn('pl-9 pr-10', inputClassName)}
@@ -48,6 +50,7 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
         <IconButton
           label={t('searchInput.clearLabel')}
           type="button"
+          disabled={disabled || readOnly}
           variant="ghost"
           className="absolute right-1.5 top-1/2 size-7 -translate-y-1/2 text-muted-foreground hover:text-foreground hover:bg-muted/60"
           onClick={() => {

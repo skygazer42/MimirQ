@@ -23,8 +23,14 @@ export function IconButton({ label, className, children, asChild = false, type, 
       type={asChild ? undefined : (type ?? 'button')}
       className={cn('shrink-0', className)}
     >
-      {children}
-      <span className="sr-only">{label}</span>
+      {asChild ? (
+        children
+      ) : (
+        <>
+          {children}
+          <span className="sr-only">{label}</span>
+        </>
+      )}
     </Button>
   )
 }
