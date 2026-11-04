@@ -21,7 +21,7 @@ const defaultFormat = (value: number) => Math.round(value).toLocaleString()
 export function useAnimatedNumber(
   target: number,
   { stiffness = 120, damping = 20, format = defaultFormat }: UseAnimatedNumberOptions = {},
-) {
+): string {
   const shouldReduceMotion = useReducedMotion()
   const motionValue = useMotionValue(target)
   const spring = useSpring(motionValue, {
@@ -41,6 +41,7 @@ export function useAnimatedNumber(
 
   useEffect(() => {
     if (shouldReduceMotion) return
+    setDisplay(format(spring.get()))
     const unsubscribe = spring.on('change', (v) => {
       setDisplay(format(v))
     })
