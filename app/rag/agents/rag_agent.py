@@ -19,8 +19,8 @@ from app.rag.pipelines.langgraph import _build_context, _build_history_text, bui
 from app.rag.retrieval.decomposition_chain import build_chained_query, summarize_chain_step
 from app.rag.retrieval.orchestrator import run_retrieval
 from app.rag.workflows.crag_streaming import run_crag_streaming
-from app.rag.workflows.critic import run_critic_review
-from app.rag.workflows.self_rag import run_self_rag_reflection
+from app.rag.workflows.critic import CriticReview, run_critic_review
+from app.rag.workflows.self_rag import SelfRagReflection, run_self_rag_reflection
 from app.services.rag_runtime_limiter import run_blocking_retrieval_call_with_managed_session
 
 if TYPE_CHECKING:
@@ -159,8 +159,8 @@ class _AgenticGenerationState:
     answer_tokens: int = 0
     answer_chars: int = 0
     structured_data: dict[str, Any] | None = None
-    self_rag_reflection: dict[str, Any] | None = None
-    critic_review: dict[str, Any] | None = None
+    self_rag_reflection: SelfRagReflection | None = None
+    critic_review: CriticReview | None = None
 
 
 _AGENTIC_STREAM_REQUEST_KEYS = {

@@ -1,9 +1,30 @@
 import re
-from typing import Any
+from typing import Any, TypedDict
 
 from app.core.config import settings
 from app.rag.core.text import split_into_claims, verify_claim_with_fallback
 from app.rag.workflows.base import BaseWorkflow, WorkflowMode, WorkflowResult
+
+
+class _CriticClaim(TypedDict):
+    text: str
+    supported: bool
+    reason_code: str
+
+
+class CriticReview(TypedDict):
+    schema: str
+    verdict: str
+    faithfulness_score: float | None
+    supported_claims: int
+    total_claims: int
+    unsupported_claims: list[str]
+    claims: list[_CriticClaim]
+    citation_count: int
+    citation_missing: bool
+    style_issues: list[dict[str, str]]
+    reason_codes: list[str]
+
 
 _STYLE_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("prescriptive_language", re.compile(r"\bmust\b|必须|务必|应当", flags=re.IGNORECASE)),
@@ -48,17 +69,17 @@ def run_critic_review(
     max_claims: int | None = None,
     verifier_mode: str = "token_overlap",
     verifier_enable_contradiction_check: bool = True,
-) -> dict[str, Any]:
+) -> CriticReview:
     del question  # Reserved for future relevance-aware checks; keep the helper contract stable.
 
     raw_answer = str(answer or "").strip()
     evidence_raw = str(evidence_text or "").strip()
     claims = split_into_claims(
         raw_answer,
-        max_claims=int(max_claims or getattr(settings, "FAITHFULNESS_SCORE_MAX_CLAIMS", 24) or 24),
+        max_claims=int(max_claims or settings.FAITHFULNESS_SCORE_MAX_CLAIMS or 24),
     )
 
-    claim_results: list[dict[str, Any]] = []
+    claim_results: list[_CriticClaim] = []
     unsupported_claims: list[str] = []
     supported_claims = 0
     for claim in claims:
@@ -71,14 +92,14 @@ def run_critic_review(
             verifier_mode=verifier_mode,
             verifier_enable_contradiction_check=bool(verifier_enable_contradiction_check),
         )
-        if bool(verification.supported):
+        if verification.supported:
             supported_claims += 1
         elif len(unsupported_claims) < 16:
             unsupported_claims.append(text[:300])
         claim_results.append(
             {
                 "text": text[:300],
-                "supported": bool(verification.supported),
+                "supported": verification.supported,
                 "reason_code": str((verification.diagnostics or {}).get("reason_code") or "unsupported"),
             }
         )
@@ -104,12 +125,12 @@ def run_critic_review(
         "schema": "mimirq.critic_review.v1",
         "verdict": verdict,
         "faithfulness_score": faithfulness_score,
-        "supported_claims": int(supported_claims),
-        "total_claims": int(total_claims),
+        "supported_claims": supported_claims,
+        "total_claims": total_claims,
         "unsupported_claims": unsupported_claims,
         "claims": claim_results,
-        "citation_count": int(len(citations or [])),
-        "citation_missing": bool(citation_missing),
+        "citation_count": len(citations or []),
+        "citation_missing": citation_missing,
         "style_issues": style_issues,
         "reason_codes": reason_codes,
     }
@@ -140,8 +161,8 @@ class CriticWorkflow(BaseWorkflow):
             next_state,
             success=True,
             metadata={
-                "critic_verdict": critique.get("verdict"),
-                "critic_reason_codes": list(critique.get("reason_codes") or []),
+                "critic_verdict": critique["verdict"],
+                "critic_reason_codes": list(critique["reason_codes"]),
             },
         )
 

@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, TypedDict
 
 from app.rag.core.retrieval_profiles import LONG_CONTEXT_RETRIEVAL_PROFILE, PRODUCTION_RETRIEVAL_PROFILE
 from app.rag.policy.complexity_classifier import classify_query_complexity
@@ -7,11 +7,18 @@ from app.rag.workflows.base import BaseWorkflow, WorkflowMode, WorkflowResult
 _SCHEMA = "mimirq.self_route.v1"
 
 
+class SelfRouteResult(TypedDict):
+    schema: str
+    route: str
+    retrieval_profile: str
+    reason_codes: list[str]
+
+
 def route_self_query(
     *,
     question: str,
     decision_text: str | None = None,
-) -> dict[str, Any]:
+) -> SelfRouteResult:
     raw_question = str(question or "").strip()
     raw_decision = str(decision_text or "").strip().lower()
 
@@ -69,13 +76,13 @@ class SelfRouteWorkflow(BaseWorkflow):
         )
         next_state = dict(state)
         next_state["route_decision"] = route_decision
-        next_state["retrieval_profile"] = route_decision.get("retrieval_profile")
+        next_state["retrieval_profile"] = route_decision["retrieval_profile"]
         return self.create_result(
             next_state,
             success=True,
             metadata={
-                "route": route_decision.get("route"),
-                "retrieval_profile": route_decision.get("retrieval_profile"),
+                "route": route_decision["route"],
+                "retrieval_profile": route_decision["retrieval_profile"],
             },
         )
 

@@ -9,7 +9,7 @@ Pattern: Generate -> Evaluate -> (Score < threshold) -> Optimize -> Evaluate -> 
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, TypedDict
 
 from app.core.config import settings
 from app.core.optional_deps import require_dependency
@@ -23,8 +23,15 @@ from app.rag.workflows.base import (
 logger = get_logger("rag.workflows.evaluator_optimizer")
 
 # Configuration
-EVALUATOR_MAX_ITERATIONS = getattr(settings, "EVALUATOR_MAX_ITERATIONS", 3)
-EVALUATOR_THRESHOLD = getattr(settings, "EVALUATOR_THRESHOLD", 0.8)
+EVALUATOR_MAX_ITERATIONS = settings.EVALUATOR_MAX_ITERATIONS
+EVALUATOR_THRESHOLD = settings.EVALUATOR_THRESHOLD
+
+
+class _EvaluationSnapshot(TypedDict):
+    iteration: int
+    score: float
+    feedback: str
+    criteria: dict[str, float]
 
 
 class EvaluationResult:
@@ -35,7 +42,7 @@ class EvaluationResult:
         score: float,
         feedback: str = "",
         criteria_scores: dict[str, float] | None = None,
-    ):
+    ) -> None:
         self.score = score
         self.feedback = feedback
         self.criteria_scores = criteria_scores or {}
@@ -65,8 +72,8 @@ class EvaluatorOptimizerWorkflow(BaseWorkflow):
         llm: Any | None = None,
         threshold: float = EVALUATOR_THRESHOLD,
         max_iterations: int = EVALUATOR_MAX_ITERATIONS,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         """
         Initialize the evaluator-optimizer workflow.
 
@@ -285,7 +292,7 @@ Provide an improved answer that addresses the feedback:"""
         current_state = dict(state)
         execution_path: list[str] = []
         iterations = 0
-        evaluation_history: list[dict[str, Any]] = []
+        evaluation_history: list[_EvaluationSnapshot] = []
 
         # Get functions (use defaults if not set)
         generate = self._generator or self._default_generate
@@ -329,7 +336,7 @@ Provide an improved answer that addresses the feedback:"""
 
             except Exception as e:
                 logger.exception("Evaluation failed: %s", e)
-                # Continue with assumed pass
+                # Keep the current answer and use completed evaluations below.
                 break
 
             # Check if passed threshold

@@ -39,8 +39,8 @@ class ChainWorkflow(BaseWorkflow):
         self,
         steps: list[WorkflowStep] | None = None,
         stop_on_error: bool = True,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         """
         Initialize the chain workflow.
 
@@ -147,7 +147,7 @@ class ChainWorkflow(BaseWorkflow):
 def create_rag_chain(
     retrieve_func: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
     generate_func: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
-    **kwargs,
+    **kwargs: Any,
 ) -> ChainWorkflow:
     """
     Create a standard RAG chain workflow.

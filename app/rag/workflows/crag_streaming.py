@@ -49,8 +49,8 @@ async def run_crag_streaming(
     lang: str | None = None,
     region: str | None = None,
 ) -> dict[str, Any]:
-    min_citations = max(1, int(getattr(settings, "RAG_CRAG_STREAMING_MIN_CITATIONS", 1) or 1))
-    min_top_score = float(getattr(settings, "RAG_CRAG_STREAMING_MIN_TOP_SCORE", 0.35) or 0.35)
+    min_citations = max(1, settings.RAG_CRAG_STREAMING_MIN_CITATIONS or 1)
+    min_top_score = settings.RAG_CRAG_STREAMING_MIN_TOP_SCORE or 0.35
     evaluator = evaluate_retrieval_verdict(
         retrieval_result=retrieval_result,
         min_citations=min_citations,
@@ -58,7 +58,7 @@ async def run_crag_streaming(
     )
     verdict = str(evaluator.get("verdict") or "incorrect")
 
-    if not bool(getattr(settings, "RAG_CRAG_STREAMING_ENABLED", False)) or verdict != "incorrect":
+    if not settings.RAG_CRAG_STREAMING_ENABLED or verdict != "incorrect":
         return {
             "used": False,
             "verdict": verdict,
@@ -72,7 +72,7 @@ async def run_crag_streaming(
     search_query = str(query_for_retrieval or question or "").strip()
     search_result = await web_search(
         search_query,
-        max_results=max_results or int(getattr(settings, "RAG_CRAG_STREAMING_MAX_RESULTS", 5) or 5),
+        max_results=max_results or settings.RAG_CRAG_STREAMING_MAX_RESULTS or 5,
         site_filter=site_filter,
         freshness=freshness,
         lang=lang,

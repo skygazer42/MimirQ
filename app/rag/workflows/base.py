@@ -27,6 +27,12 @@ class WorkflowMode(str, Enum):
     EVALUATOR = "evaluator"
 
 
+class WorkflowPlanStep(TypedDict):
+    id: str
+    description: str
+    dependencies: list[str]
+
+
 class WorkflowState(TypedDict, total=False):
     """Standard workflow state structure."""
 
@@ -41,7 +47,7 @@ class WorkflowState(TypedDict, total=False):
     error: str | None
     # Workflow-specific fields
     route: str | None
-    plan: list[str] | None
+    plan: list[str] | list[WorkflowPlanStep] | None
     current_step: int
     iterations: int
     score: float
@@ -80,8 +86,8 @@ class BaseWorkflow(ABC):
         name: str | None = None,
         max_iterations: int = 10,
         timeout_sec: int = 120,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         """
         Initialize the workflow.
 
@@ -98,7 +104,7 @@ class BaseWorkflow(ABC):
         self._wrap_agent_middlewares()
 
     def _wrap_agent_middlewares(self) -> None:
-        enabled = bool(getattr(settings, "MIDDLEWARE_ENABLED", True))
+        enabled = settings.MIDDLEWARE_ENABLED
         if not enabled:
             return
 
@@ -184,7 +190,7 @@ class BaseWorkflow(ABC):
         state: dict[str, Any],
         success: bool = True,
         error: str | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> WorkflowResult:
         """
         Create a WorkflowResult from state.
@@ -221,7 +227,7 @@ class WorkflowStep:
         name: str,
         func: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
         condition: Callable[[dict[str, Any]], bool] | None = None,
-    ):
+    ) -> None:
         """
         Initialize a workflow step.
 

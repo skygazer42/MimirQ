@@ -28,7 +28,7 @@ class RouteHandler:
         name: str,
         handler: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
         description: str = "",
-    ):
+    ) -> None:
         self.name = name
         self.handler = handler
         self.description = description
@@ -56,8 +56,8 @@ class RoutingWorkflow(BaseWorkflow):
         self,
         classifier: Callable[[str], Awaitable[str]] | None = None,
         default_route: str = "default",
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         """
         Initialize the routing workflow.
 
