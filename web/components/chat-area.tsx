@@ -36,7 +36,9 @@ import { useChat } from '@/hooks/use-chat'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
-import { datasetApi, promptTemplateApi, settingsApi } from '@/lib/api'
+import { datasetApi } from '@/lib/api/datasets'
+import { promptTemplateApi } from '@/lib/api/prompts'
+import { settingsApi } from '@/lib/api/settings'
 import { ChatMessageItem } from '@/components/chat/message-item'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -156,7 +158,7 @@ export function ChatArea({
   const scrollEventRafRef = useRef<number | null>(null)
   const focusMessageTimerRef = useRef<number | null>(null)
   const pendingPrependScrollRef = useRef<{ top: number; height: number } | null>(null)
-  const autoSendPromptRef = useRef(false)
+  const autoSendPromptRef = useRef<string | null>(null)
   // Slash Menu State
   const [slashOpen, setSlashOpen] = useState(false)
   const [slashPos, setSlashPos] = useState({ top: 0, left: 0 })
@@ -212,6 +214,7 @@ export function ChatArea({
     if (!system || hasSystemRagDefaults) return
 
     setHasSystemRagDefaults(true)
+    if (ragConfigDirty) return
     setRagConfig((prev) => {
       const isDefault =
         prev.top_k === 5 && prev.score_threshold === 0.7 && prev.retrieval_mode === 'hybrid' && prev.use_graph === false
@@ -222,7 +225,7 @@ export function ChatArea({
         score_threshold: system.rag?.similarity_threshold ?? prev.score_threshold,
       }
     })
-  }, [hasSystemRagDefaults, settingsQuery.data])
+  }, [hasSystemRagDefaults, ragConfigDirty, settingsQuery.data])
 
   useEffect(() => {
     setSelectedDatasetId((current) => {
@@ -720,31 +723,30 @@ export function ChatArea({
   const submitMessage = useCallback(
     (nextMessage: string) => {
       if (!nextMessage.trim() || isLoading) return false
+      if (metadataFilterError) {
+        toast.error(metadataFilterError)
+        return false
+      }
       if (!hasChatScope) {
         toast.error(datasetsLoading ? t('datasetScopeLoading') : t('datasetScopeRequired'))
         return false
       }
       sendMessage(nextMessage)
+      setInputValue((current) => (current.trim() === nextMessage.trim() ? '' : current))
       return true
     },
-    [datasetsLoading, hasChatScope, isLoading, sendMessage, t],
+    [datasetsLoading, hasChatScope, isLoading, metadataFilterError, sendMessage, t],
   )
 
   const handleSend = useCallback(() => {
-    if (!submitMessage(inputValue)) return
-    setInputValue('')
-    if (textareaRef.current) textareaRef.current.style.height = 'auto'
+    submitMessage(inputValue)
   }, [inputValue, submitMessage])
 
   useEffect(() => {
     const unsubscribe = globalEventBus.on('chat:submit', (payload: string) => {
       const prompt = payload.trim()
       if (!prompt) return
-      if (submitMessage(prompt)) {
-        setInputValue('')
-        if (textareaRef.current) textareaRef.current.style.height = 'auto'
-        return
-      }
+      if (submitMessage(prompt)) return
       setInputValue(prompt)
     })
 
@@ -753,18 +755,17 @@ export function ChatArea({
 
   useEffect(() => {
     const p = (initialPrompt || '').trim()
-    if (!initialAutoSendPrompt || !p) return
-    if (autoSendPromptRef.current) return
+    if (!initialAutoSendPrompt || !p) {
+      autoSendPromptRef.current = null
+      return
+    }
+    if (autoSendPromptRef.current === p) return
     if (isLoading) return
     if (!datasetScopeReady || !hasChatScope) return
 
     if (!submitMessage(p)) return
-    autoSendPromptRef.current = true
-    setInputValue('')
+    autoSendPromptRef.current = p
     onPromptConsumed?.()
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
-    }
   }, [
     datasetScopeReady,
     hasChatScope,
@@ -777,6 +778,7 @@ export function ChatArea({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.nativeEvent.isComposing || e.keyCode === 229) return
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
         handleSend()
@@ -1381,7 +1383,7 @@ export function ChatArea({
                   <Button
                     size="icon"
                     onClick={handleSend}
-                    disabled={!inputValue.trim() || !hasChatScope}
+                    disabled={!inputValue.trim() || !hasChatScope || Boolean(metadataFilterError)}
                     className={cn(
                       'rounded-full shadow-sm transition-colors transition-shadow transition-transform duration-200 motion-reduce:transition-none',
                       isWelcomeState ? 'size-10' : 'size-9',

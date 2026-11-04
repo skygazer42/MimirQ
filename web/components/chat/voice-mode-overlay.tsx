@@ -33,6 +33,8 @@ type SpeechRecognitionLike = {
   interimResults: boolean
   lang: string
   onresult: ((event: SpeechRecognitionEventLike) => void) | null
+  onend: (() => void) | null
+  onerror: (() => void) | null
   start: () => void
   stop: () => void
 }
@@ -43,7 +45,13 @@ type WindowWithSpeechRecognition = Window & {
 
 export function VoiceModeOverlay({ isOpen, onClose, onSend }: Readonly<VoiceModeOverlayProps>) {
   const [isListening, setIsListening] = useState(false)
+  const [isStopping, setIsStopping] = useState(false)
+  const [recognitionAvailable, setRecognitionAvailable] = useState<boolean | null>(null)
+  const [recognitionError, setRecognitionError] = useState<string | null>(null)
   const [transcript, setTranscript] = useState('')
+  const transcriptRef = useRef('')
+  const sendRequestedRef = useRef(false)
+  const onSendRef = useRef(onSend)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const reduceMotion = useReducedMotion()
 
@@ -51,8 +59,23 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: Readonly<VoiceMode
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
 
   useEffect(() => {
+    onSendRef.current = onSend
+  }, [onSend])
+
+  useEffect(() => {
+    setIsListening(false)
+    setIsStopping(false)
+    setTranscript('')
+    setRecognitionError(null)
+    transcriptRef.current = ''
+    sendRequestedRef.current = false
+    if (!isOpen) {
+      setRecognitionAvailable(null)
+      return
+    }
+
     const windowWithSpeech = globalThis.window as WindowWithSpeechRecognition
-    if (globalThis.window !== undefined && windowWithSpeech.webkitSpeechRecognition) {
+    if (windowWithSpeech.webkitSpeechRecognition) {
       const SpeechRecognition = windowWithSpeech.webkitSpeechRecognition
       const recognition = new SpeechRecognition()
       recognition.continuous = true
@@ -60,22 +83,46 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: Readonly<VoiceMode
       recognition.lang = 'zh-CN'
 
       recognition.onresult = (event) => {
+        if (recognitionRef.current !== recognition) return
         let finalTranscript = ''
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
+        for (let i = 0; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
             finalTranscript += event.results[i][0].transcript
           }
         }
-        if (finalTranscript) {
-          setTranscript(finalTranscript)
-          // Auto send on final result (simple logic)
-          // onSend(finalTranscript)
-        }
+        transcriptRef.current = finalTranscript
+        setTranscript(finalTranscript)
       }
 
+      recognition.onend = () => {
+        if (recognitionRef.current !== recognition) return
+        setIsListening(false)
+        setIsStopping(false)
+        const shouldSend = sendRequestedRef.current
+        sendRequestedRef.current = false
+        const text = transcriptRef.current.trim()
+        if (shouldSend && text) onSendRef.current(text)
+      }
+      recognition.onerror = () => {
+        if (recognitionRef.current !== recognition) return
+        sendRequestedRef.current = false
+        setIsListening(false)
+        setIsStopping(false)
+        setRecognitionError('语音输入失败，请重试')
+      }
       recognitionRef.current = recognition
+      setRecognitionAvailable(true)
+      return () => {
+        recognitionRef.current = null
+        sendRequestedRef.current = false
+        recognition.onresult = null
+        recognition.onend = null
+        recognition.onerror = null
+        recognition.stop()
+      }
     }
-  }, [onSend])
+    setRecognitionAvailable(false)
+  }, [isOpen])
 
   // Canvas Animation
   useEffect(() => {
@@ -185,14 +232,22 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: Readonly<VoiceMode
   }, [isOpen, isListening, reduceMotion])
 
   const toggleListening = () => {
+    const recognition = recognitionRef.current
+    if (!recognition || isStopping) return
     if (isListening) {
-      recognitionRef.current?.stop()
-      setIsListening(false)
-      if (transcript) onSend(transcript)
+      sendRequestedRef.current = true
+      setIsStopping(true)
+      recognition.stop()
     } else {
-      recognitionRef.current?.start()
-      setIsListening(true)
+      transcriptRef.current = ''
       setTranscript('')
+      setRecognitionError(null)
+      try {
+        recognition.start()
+        setIsListening(true)
+      } catch {
+        setRecognitionError('无法启动语音输入，请重试')
+      }
     }
   }
 
@@ -221,11 +276,16 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: Readonly<VoiceMode
             )}
           </div>
 
+          {recognitionAvailable === false ? <p role="status">当前浏览器不支持语音输入</p> : null}
+          {recognitionError ? <p role="alert">{recognitionError}</p> : null}
+
           <div className="flex gap-4">
             <Button
               size="icon"
               className="h-16 w-16 rounded-full glass hover:bg-accent/30 hover:border-primary/30 transition-colors duration-200 motion-reduce:transition-none"
               onClick={toggleListening}
+              disabled={recognitionAvailable !== true || isStopping}
+              aria-busy={isStopping}
               aria-label={isListening ? '停止语音输入' : '开始语音输入'}
             >
               {isListening ? (
