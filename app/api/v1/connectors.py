@@ -8,12 +8,6 @@ from app.api.schemas.document_ingestion import LocalHtmlIngestRequest as LocalHt
 from app.api.v1 import connectors_catalog, connectors_validation
 from app.api.v1.connectors_common import _DEFAULT_HTTP_EXCEPTION_RESPONSES as _DEFAULT_HTTP_EXCEPTION_RESPONSES
 from app.api.v1.connectors_validation import validate_connector_config as validate_connector_config
-from app.api.v1.document_source_ingestion import (
-    _ingest_local_html_request as _ingest_local_html_request,
-)
-from app.api.v1.document_source_ingestion import (
-    _ingest_url_upload_request as _ingest_url_upload_request,
-)
 from app.core.config import settings as settings
 from app.core.database import SessionLocal as SessionLocal
 from app.core.secrets import (
@@ -23,6 +17,7 @@ from app.core.secrets import (
     encrypt_connector_config_secrets as encrypt_connector_config_secrets,
 )
 from app.services import connector_run_operations as connectors_state
+from app.services import document_ingestion
 from app.services.audit_log_service import audit_log_event as audit_log_event
 from app.services.connector_config_operations import (
     _DB_CONNECTOR_IDS as _DB_CONNECTOR_IDS,
@@ -133,6 +128,9 @@ from app.services.connector_sync_state import (
 )
 from app.tasks.queue import enqueue_connector_run as enqueue_connector_run
 from app.tasks.queue import get_queue as get_queue
+
+_ingest_local_html_request = document_ingestion.ingest_html
+_ingest_url_upload_request = document_ingestion.ingest_url
 
 _router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 

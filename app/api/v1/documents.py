@@ -4,10 +4,8 @@ Document management API.
 
 import importlib
 import os
-from dataclasses import dataclass
-from uuid import UUID
 
-from fastapi import APIRouter, Form
+from fastapi import APIRouter
 
 from app.api.schemas.document import (
     DocumentPipelineOptions as DocumentPipelineOptions,
@@ -17,6 +15,15 @@ from app.api.schemas.document import (
 )
 from app.api.schemas.document import (
     UrlUploadRequest as UrlUploadRequest,
+)
+from app.api.schemas.document_ingestion import (
+    PipelineOverridesFormFields as PipelineOverridesFormFields,
+)
+from app.api.schemas.document_ingestion import (
+    UploadDocumentFormFields as UploadDocumentFormFields,
+)
+from app.api.schemas.document_ingestion import (
+    UploadDocumentsBatchFormFields as UploadDocumentsBatchFormFields,
 )
 from app.api.utils.pipeline_options import (
     CHUNK_OVERLAP_LESS_THAN_SIZE_DETAIL as CHUNK_OVERLAP_LESS_THAN_SIZE_DETAIL,
@@ -173,33 +180,6 @@ from app.api.v1.document_processing import (
 from app.api.v1.document_processing import (
     retry_document_processing as retry_document_processing,
 )
-from app.api.v1.document_source_ingestion import (
-    HTML_FILE_EXTENSION as HTML_FILE_EXTENSION,
-)
-from app.api.v1.document_source_ingestion import (
-    LocalHtmlIngestFile as LocalHtmlIngestFile,
-)
-from app.api.v1.document_source_ingestion import (
-    PreparedDocumentIngestion as PreparedDocumentIngestion,
-)
-from app.api.v1.document_source_ingestion import (
-    ResolvedDocumentIngestionPolicy as ResolvedDocumentIngestionPolicy,
-)
-from app.api.v1.document_source_ingestion import (
-    ResolvedDocumentPipeline as ResolvedDocumentPipeline,
-)
-from app.api.v1.document_source_ingestion import (
-    UrlIngestFile as UrlIngestFile,
-)
-from app.api.v1.document_source_ingestion import (
-    UrlSourceMetadata as UrlSourceMetadata,
-)
-from app.api.v1.document_source_ingestion import (
-    _ingest_local_html_request as _ingest_local_html_request,
-)
-from app.api.v1.document_source_ingestion import (
-    _ingest_url_upload_request as _ingest_url_upload_request,
-)
 from app.api.v1.document_timeline import (
     get_document_timeline as get_document_timeline,
 )
@@ -215,7 +195,6 @@ from app.api.v1.document_versions import (
 from app.api.v1.document_versions import (
     list_document_versions as list_document_versions,
 )
-from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.parsing.artifact_stats import POSITION_TAG_RE as POSITION_TAG_RE
@@ -224,7 +203,7 @@ from app.rag.core.logging import get_logger
 from app.rag.kg.pipeline import extract_events
 from app.rag.preprocessing.processor import governance_processor
 from app.rag.preprocessing.rules import build_governance_rules
-from app.services import document_access_service
+from app.services import document_access_service, document_ingestion
 from app.services.dataset_precheck_ingestion_suggestion import apply_ingestion_policy_suggestion
 from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
 from app.services.document_dedup_service import (
@@ -239,6 +218,27 @@ from app.services.document_dedup_service import (
 from app.services.document_dedup_service import _find_duplicate_document_by_sha as _find_duplicate_document_by_sha
 from app.services.document_dedup_service import (
     _find_duplicate_document_for_persist_conflict as _find_duplicate_document_for_persist_conflict,
+)
+from app.services.document_ingestion_policy import (
+    PreparedDocumentIngestion as PreparedDocumentIngestion,
+)
+from app.services.document_ingestion_policy import (
+    ResolvedDocumentIngestionPolicy as ResolvedDocumentIngestionPolicy,
+)
+from app.services.document_ingestion_policy import (
+    ResolvedDocumentPipeline as ResolvedDocumentPipeline,
+)
+from app.services.document_ingestion_sources import (
+    HTML_FILE_EXTENSION as HTML_FILE_EXTENSION,
+)
+from app.services.document_ingestion_sources import (
+    LocalHtmlIngestFile as LocalHtmlIngestFile,
+)
+from app.services.document_ingestion_sources import (
+    UrlIngestFile as UrlIngestFile,
+)
+from app.services.document_ingestion_sources import (
+    UrlSourceMetadata as UrlSourceMetadata,
 )
 from app.services.document_preview_utils import (
     DATA_IMAGE_PREFIX as DATA_IMAGE_PREFIX,
@@ -279,6 +279,9 @@ from app.storage.object.runtime import (
 from app.storage.object.runtime import resolve_document_object_reference as resolve_document_object_reference
 
 logger = get_logger("api.documents")
+
+_ingest_local_html_request = document_ingestion.ingest_html
+_ingest_url_upload_request = document_ingestion.ingest_url
 
 NO_DOCUMENT_ACCESS_DETAIL = document_access_service.NO_DOCUMENT_ACCESS_DETAIL
 _assert_document_acl_readable = document_access_service.assert_document_acl_readable
@@ -347,47 +350,6 @@ MANUAL_FILE_PATH_PREFIX = "manual://"
 
 def _document_object_storage_enabled() -> bool:
     return document_object_storage_enabled()
-
-
-@dataclass
-class PipelineOverridesFormFields:
-    governance_enabled: bool | None = Form(None)
-    governance_remove_toc_lines: bool | None = Form(None)
-    governance_remove_noise_lines: bool | None = Form(None)
-    governance_unwrap_lines: bool | None = Form(None)
-    governance_remove_common_lines: bool | None = Form(None)
-    governance_unwrap_max_line_length: int | None = Form(None)
-    governance_noise_min_chars: int | None = Form(None)
-    governance_noise_ratio_threshold: float | None = Form(None)
-    governance_common_lines_min_docs: int | None = Form(None)
-    governance_common_lines_min_ratio: float | None = Form(None)
-    chunk_size: int | None = Form(None)
-    chunk_overlap: int | None = Form(None)
-    chunk_vector_enabled: bool | None = Form(None)
-    bm25_index_enabled: bool | None = Form(None)
-    kg_enabled: bool | None = Form(None)
-    event_vector_enabled: bool | None = Form(None)
-    entity_vector_enabled: bool | None = Form(None)
-
-
-@dataclass
-class UploadDocumentFormFields:
-    parser_backend: str = Form(settings.DEFAULT_PARSER_BACKEND)
-    chunk_strategy: str = Form(settings.DEFAULT_CHUNK_STRATEGY)
-    pipeline: str | None = Form(None)
-    dataset_id: UUID | None = Form(None)
-    user_metadata: str | None = Form(None)
-
-
-@dataclass
-class UploadDocumentsBatchFormFields:
-    parser_backend: str = Form(settings.DEFAULT_PARSER_BACKEND)
-    chunk_strategy: str = Form(settings.DEFAULT_CHUNK_STRATEGY)
-    pipeline: str | None = Form(None)
-    dataset_id: UUID | None = Form(None)
-    precheck_first: bool = Form(False)
-    user_metadata_map: str | None = Form(None)
-    max_concurrent: int = Form(5)
 
 
 document_upload = importlib.import_module("app.api.v1.document_upload")
