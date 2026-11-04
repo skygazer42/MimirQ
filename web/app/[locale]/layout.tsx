@@ -1,17 +1,19 @@
+import type { ReactNode } from 'react'
 import { notFound } from 'next/navigation'
+import { hasLocale } from 'next-intl'
 import { setRequestLocale } from 'next-intl/server'
 
-import { routing, type AppLocale } from '@/i18n/routing'
+import { routing } from '@/i18n/routing'
 
 type LocaleLayoutProps = {
-  children: React.ReactNode
+  children: ReactNode
   params: Promise<{ locale: string }>
 }
 
 export default async function LocaleLayout({ children, params }: Readonly<LocaleLayoutProps>) {
   const { locale } = await params
 
-  if (!routing.locales.includes(locale as AppLocale)) {
+  if (!hasLocale(routing.locales, locale)) {
     notFound()
   }
 
