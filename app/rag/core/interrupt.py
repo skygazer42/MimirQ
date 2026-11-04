@@ -69,7 +69,7 @@ class PendingInterrupt:
     resolved_at: datetime | None = None
     resolved_by: str | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.expires_at is None:
             self.expires_at = self.created_at + timedelta(seconds=INTERRUPT_TIMEOUT_SEC)
 
@@ -111,7 +111,7 @@ class InterruptRegistry:
     Thread-safe for concurrent access.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._pending: dict[str, PendingInterrupt] = {}
         self._by_session: dict[str, list[str]] = {}
         self._by_thread: dict[str, list[str]] = {}
@@ -170,30 +170,24 @@ class InterruptRegistry:
     async def get_by_session(self, session_id: str) -> list[PendingInterrupt]:
         """Get all pending interrupts for a session."""
         async with self._lock:
-            interrupt_ids = self._by_session.get(session_id, [])
-            result = []
-            for iid in interrupt_ids:
-                pending = self._pending.get(iid)
-                if pending:
-                    if pending.is_expired():
-                        pending.status = InterruptStatus.TIMEOUT
-                    if pending.is_pending():
-                        result.append(pending)
-            return result
+            return self._pending_interrupts(self._by_session.get(session_id, []))
 
     async def get_by_thread(self, thread_id: str) -> list[PendingInterrupt]:
         """Get all pending interrupts for a thread."""
         async with self._lock:
-            interrupt_ids = self._by_thread.get(thread_id, [])
-            result = []
-            for iid in interrupt_ids:
-                pending = self._pending.get(iid)
-                if pending:
-                    if pending.is_expired():
-                        pending.status = InterruptStatus.TIMEOUT
-                    if pending.is_pending():
-                        result.append(pending)
-            return result
+            return self._pending_interrupts(self._by_thread.get(thread_id, []))
+
+    def _pending_interrupts(self, interrupt_ids: list[str]) -> list[PendingInterrupt]:
+        """Select pending entries while the caller holds the registry lock."""
+        result: list[PendingInterrupt] = []
+        for iid in interrupt_ids:
+            pending = self._pending.get(iid)
+            if pending:
+                if pending.is_expired():
+                    pending.status = InterruptStatus.TIMEOUT
+                if pending.is_pending():
+                    result.append(pending)
+        return result
 
     async def resolve(
         self,
@@ -296,7 +290,7 @@ class InterruptHandler:
     from interrupts.
     """
 
-    def __init__(self, registry: InterruptRegistry | None = None):
+    def __init__(self, registry: InterruptRegistry | None = None) -> None:
         self.registry = registry or get_interrupt_registry()
 
     async def wait_for_approval(
@@ -375,7 +369,7 @@ def require_approval(
     value: Any,
     prompt: str = "Please approve this action",
     options: list[str] | None = None,
-    **metadata,
+    **metadata: Any,
 ) -> Interrupt:
     """
     Create an interrupt requiring approval.
@@ -403,7 +397,7 @@ def require_review(
     content: str,
     prompt: str = "Please review this content",
     allow_edit: bool = True,
-    **metadata,
+    **metadata: Any,
 ) -> Interrupt:
     """
     Create an interrupt for content review.
@@ -434,7 +428,7 @@ def require_input(
     prompt: str,
     input_type: str = "text",
     required: bool = True,
-    **metadata,
+    **metadata: Any,
 ) -> Interrupt:
     """
     Create an interrupt requiring user input.
@@ -461,7 +455,7 @@ def require_selection(
     prompt: str,
     options: list[str],
     allow_multiple: bool = False,
-    **metadata,
+    **metadata: Any,
 ) -> Interrupt:
     """
     Create an interrupt requiring selection from options.

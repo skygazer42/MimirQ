@@ -33,7 +33,7 @@ def compress_context_docs(
                 max_sentences=max(1, int(max_sentences or 0)),
                 min_sentence_chars=max(0, int(min_sentence_chars or 0)),
             )
-        content = str(content or "").strip()
+        content = content.strip()
         if not content:
             continue
 

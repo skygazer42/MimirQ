@@ -6,7 +6,7 @@ def compute_context_cliff_metrics(*, context_tokens: int, threshold_tokens: int)
     return {
         "context_cliff_threshold_tokens": threshold,
         "context_cliff_triggered": triggered,
-        "context_cliff_overflow_tokens": int(overflow),
+        "context_cliff_overflow_tokens": overflow,
     }
 
 

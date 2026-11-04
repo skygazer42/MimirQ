@@ -969,3 +969,9 @@
 
 - At `dd926f449`, Ruff lint passes the 1,905 tracked Python candidates under the configured third-party/history exclusions. Formatting passes with the committed blob of `app/api/schemas/document.py` checked separately; its preexisting unstaged leading blank line remains untouched in the working tree. No Python tests ran.
 - The commit was unchanged throughout the final seven-chunk lint/format run. Evidence: `.superpowers/sdd/2026-11-02-style-unification/integrated-full-ruff-2026-11-04.json`. Passing static checks does not close pending file-level semantic reviews or prove runtime integration.
+
+## Remaining RAG core utilities
+
+- Completed all 22 remaining core utility modules from `b44e32bab`: 12 adjusted, 4 conforming, 6 retained for intentional lifecycle/lazy/framework behavior. Existing JSON hashing owns rewrite/fingerprint serialization; pending-interrupt selection is shared while preserving lock, clock, status and order; normalized profiles use explicit record types; image payload construction uses one actual vision owner.
+- Independent review verifies hash encoding/width, query/profile budgets, vision MIME/base64/data URL behavior, safety evaluation and HTTP boundaries, temporal/filter ordering, async/resource scope and lazy exports. All 22 files pass integrated Ruff check, formatting and AST parsing; 340 structural checks preserve 171 other function/method bodies and bind 798 calls, with eleven forwarded mappings read directly.
+- No Python tests, application imports or model/network services ran. Static checks cannot establish live cancellation/provider behavior. Per-file evidence: `.superpowers/sdd/2026-11-02-style-unification/rag-core-utilities-report.json`.
