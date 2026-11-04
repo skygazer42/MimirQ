@@ -1,7 +1,7 @@
 import re
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field, replace
-from typing import Any, cast
+from typing import Any, TypedDict, cast
 
 from app.core.regex_runtime import RegexSubstitutionTimeoutError
 from app.core.regex_runtime import safe_subn as safe_regex_subn
@@ -43,6 +43,13 @@ class CleaningOptions:
     unwrap_max_line_length: int = 120
     noise_min_chars: int = 2
     noise_ratio_threshold: float = 0.2
+
+
+class _CommonLineCandidate(TypedDict):
+    signature: str
+    sample: str
+    docs: int
+    ratio: float
 
 
 _MID_WS_RE = re.compile(r"(?<=\S)[ \t]{2,}(?=\S)")
@@ -301,7 +308,7 @@ def clean_markdown(
                     text=text,
                     flags=rule.flags,
                     timeout_ms=regex_timeout_ms,
-                    rule_index=int(idx),
+                    rule_index=idx,
                 )
             except RegexSubstitutionTimeoutError as exc:
                 detail = exc.to_detail()
@@ -314,7 +321,7 @@ def clean_markdown(
                 )
                 rule_hits.append(0)
                 continue
-            rule_hits.append(int(n or 0))
+            rule_hits.append(n)
             if text2 != text:
                 applied += 1
                 text = text2
@@ -457,7 +464,7 @@ def learn_common_line_candidates(
     min_ratio: float = 0.35,
     max_line_length: int = 120,
     max_candidates: int = 50,
-) -> list[dict[str, object]]:
+) -> list[_CommonLineCandidate]:
     """
     Suggest "common lines" across multiple documents (dataset-level learning mode).
 
@@ -489,7 +496,7 @@ def learn_common_line_candidates(
     min_ratio_eff = float(min_ratio or 0.0)
     min_ratio_eff = max(0.0, min(1.0, min_ratio_eff))
 
-    out: list[dict[str, object]] = []
+    out: list[_CommonLineCandidate] = []
     for sig, count in line_docs.items():
         if count < min_docs_eff:
             continue
@@ -500,12 +507,12 @@ def learn_common_line_candidates(
             {
                 "signature": sig,
                 "sample": samples.get(sig, sig),
-                "docs": int(count),
+                "docs": count,
                 "ratio": ratio,
             }
         )
 
-    out.sort(key=lambda it: (int(it.get("docs", 0) or 0), float(it.get("ratio", 0.0) or 0.0)), reverse=True)
+    out.sort(key=lambda it: (it["docs"], it["ratio"]), reverse=True)
 
     cap = max(1, int(max_candidates or 0)) if int(max_candidates or 0) else 50
     cap = max(1, min(cap, 200))

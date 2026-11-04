@@ -76,8 +76,7 @@ def drop_duplicate_paragraphs(
 
     # Normalize to consistent line endings for splitting.
     norm = normalize_text(original, normalize_line_endings=True, remove_control_chars=True)
-    parts = re.split(r"\n{2,}", norm)
-    paragraphs = [p for p in parts if p is not None]
+    paragraphs = re.split(r"\n{2,}", norm)
     total = len(paragraphs)
     if total <= 1:
         return ParagraphDedupResult(text=norm, paragraphs_total=total, paragraphs_dropped=0, changed=(norm != original))
@@ -102,12 +101,12 @@ def drop_duplicate_paragraphs(
             continue
         kept.append(p)
 
-    out = "\n\n".join([k for k in kept if k is not None])
+    out = "\n\n".join(kept)
     return ParagraphDedupResult(
         text=out,
-        paragraphs_total=int(total),
-        paragraphs_dropped=int(dropped),
-        changed=bool(out != original),
+        paragraphs_total=total,
+        paragraphs_dropped=dropped,
+        changed=out != original,
     )
 
 

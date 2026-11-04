@@ -120,7 +120,7 @@ def trim_references_section(
     kept_lines = _trim_trailing_blank_lines(lines[:candidate_idx])
     out = "\n".join(kept_lines)
     removed = n - len(kept_lines)
-    return ReferencesTrimResult(text=out, removed_lines=int(removed), changed=(out != original))
+    return ReferencesTrimResult(text=out, removed_lines=removed, changed=(out != original))
 
 
 __all__ = [

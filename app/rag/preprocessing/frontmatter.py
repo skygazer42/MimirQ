@@ -218,7 +218,7 @@ def extract_markdown_frontmatter(
         data=data,
         raw=fm_raw,
         start_char=0,
-        end_char=int(end_char),
+        end_char=end_char,
         stripped_text=stripped_text,
         changed=bool(strip and stripped_text != raw),
     )

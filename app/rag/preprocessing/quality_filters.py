@@ -90,8 +90,8 @@ def drop_if_outline_only(
     metrics: dict[str, float | int] = {
         "lines_total": total,
         "lines_outline": outline,
-        "heading_ratio": float(heading_ratio),
-        "content_chars": int(content_chars),
+        "heading_ratio": heading_ratio,
+        "content_chars": content_chars,
     }
 
     if content_chars < max(0, int(min_content_chars)) and heading_ratio >= float(max_heading_ratio or 0.0):
@@ -116,9 +116,9 @@ def drop_if_low_density(text: str, *, threshold: float = 0.12) -> QualityDecisio
     density = (alnum / max(1, non_space)) if non_space else 0.0
 
     metrics: dict[str, float | int] = {
-        "chars_non_space": int(non_space),
-        "chars_alnum_cjk": int(alnum),
-        "density": float(density),
+        "chars_non_space": non_space,
+        "chars_alnum_cjk": alnum,
+        "density": density,
     }
 
     if density < float(threshold or 0.0):
@@ -148,7 +148,7 @@ def drop_if_high_perplexity_proxy(
             dropped=True, reason="empty_document", metrics={"perplexity_proxy": 0.0, "token_count": 0}
         )
 
-    tokens = [str(tok or "").strip().casefold() for tok in _TOKEN_RE.findall(raw) if str(tok or "").strip()]
+    tokens = [tok.strip().casefold() for tok in _TOKEN_RE.findall(raw) if tok.strip()]
     token_count = len(tokens)
     unique_ratio = (len(set(tokens)) / max(1, token_count)) if token_count else 0.0
     stopword_ratio = (sum(1 for tok in tokens if tok in STOPWORDS) / max(1, token_count)) if token_count else 0.0
@@ -168,16 +168,16 @@ def drop_if_high_perplexity_proxy(
     proxy += max(0.0, digit_token_ratio - 0.15) * 1.2
     if ascii_letters:
         proxy += max(0.0, 0.24 - vowel_ratio) * 1.3
-    proxy = max(0.0, min(1.0, float(proxy)))
+    proxy = max(0.0, min(1.0, proxy))
 
     metrics: dict[str, float | int] = {
-        "token_count": int(token_count),
-        "unique_ratio": float(unique_ratio),
-        "stopword_ratio": float(stopword_ratio),
-        "long_token_ratio": float(long_token_ratio),
-        "digit_token_ratio": float(digit_token_ratio),
-        "vowel_ratio": float(vowel_ratio),
-        "perplexity_proxy": float(proxy),
+        "token_count": token_count,
+        "unique_ratio": unique_ratio,
+        "stopword_ratio": stopword_ratio,
+        "long_token_ratio": long_token_ratio,
+        "digit_token_ratio": digit_token_ratio,
+        "vowel_ratio": vowel_ratio,
+        "perplexity_proxy": proxy,
     }
 
     if token_count < max(0, int(min_tokens or 0)):

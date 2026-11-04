@@ -108,7 +108,7 @@ def normalize_urls(text: str, *, strip_tracking: bool = True) -> UrlNormalizeRes
 
     out = _PLAIN_URL_RE.sub(_plain_repl, out)
 
-    return UrlNormalizeResult(text=out, urls_changed=int(changed), changed=(out != original))
+    return UrlNormalizeResult(text=out, urls_changed=changed, changed=(out != original))
 
 
 __all__ = [

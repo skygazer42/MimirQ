@@ -195,7 +195,7 @@ def _append_pattern_matches(
         raw = match.group(0) or ""
         if not raw:
             continue
-        start, end = int(match.start()), int(match.end())
+        start, end = match.start(), match.end()
         if start < 0 or end <= start:
             continue
         if _overlaps_taken(taken, start, end):

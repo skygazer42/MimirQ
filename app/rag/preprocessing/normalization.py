@@ -72,4 +72,4 @@ def normalize_text(
 def normalize_query(text: str) -> str:
     """Normalize query text for retrieval (strip + collapse whitespace)."""
     norm = normalize_text(text, normalize_line_endings=True, remove_control_chars=True)
-    return " ".join((norm or "").strip().split())
+    return " ".join(norm.strip().split())

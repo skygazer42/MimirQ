@@ -103,12 +103,12 @@ def extract_keywords(
 class JiebaKeywordTableHandler:
     """Handler for extracting keywords using Jieba TF-IDF."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         tfidf = self._load_tfidf_extractor()
         tfidf.stop_words = STOPWORDS
         self._tfidf = tfidf
 
-    def _load_tfidf_extractor(self):
+    def _load_tfidf_extractor(self) -> Any:
         """Load jieba TFIDF extractor with fallback strategy."""
         import jieba.analyse
 
@@ -133,16 +133,16 @@ class JiebaKeywordTableHandler:
         return self._build_fallback_tfidf()
 
     @staticmethod
-    def _build_fallback_tfidf():
+    def _build_fallback_tfidf() -> Any:
         """Fallback lightweight TFIDF for environments missing jieba's TFIDF."""
         import jieba
 
         class _SimpleTFIDF:
-            def __init__(self):
+            def __init__(self) -> None:
                 self.stop_words = STOPWORDS
                 self._lcut = getattr(jieba, "lcut", None)
 
-            def extract_tags(self, sentence: str, top_k: int | None = 20, **kwargs):
+            def extract_tags(self, sentence: str, top_k: int | None = 20, **kwargs: Any) -> list[Any]:
                 top_k = kwargs.pop("topK", top_k)
                 cut = getattr(jieba, "cut", None)
                 if self._lcut:
@@ -171,19 +171,19 @@ class JiebaKeywordTableHandler:
             topK=max_keywords_per_chunk,
         )
         keywords = cast(list[str], keywords)
-        return set(_expand_tokens_with_subtokens(set(keywords)))
+        return _expand_tokens_with_subtokens(set(keywords))
 
 
 class JiebaTextRankKeywordExtractor:
     """Keyword extractor backed by jieba TextRank."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         textrank = self._load_textrank_extractor()
         textrank.stop_words = STOPWORDS
         self._textrank = textrank
 
     @staticmethod
-    def _load_textrank_extractor():
+    def _load_textrank_extractor() -> Any:
         import jieba.analyse
 
         default = getattr(jieba.analyse, "default_textrank", None)
@@ -212,7 +212,7 @@ class JiebaTextRankKeywordExtractor:
             topK=max_keywords_per_chunk,
         )
         keywords = cast(list[str], keywords)
-        return set(_expand_tokens_with_subtokens(set(keywords)))
+        return _expand_tokens_with_subtokens(set(keywords))
 
 
 class SimpleKeywordExtractor:
@@ -239,7 +239,7 @@ class SimpleKeywordExtractor:
             return set()
 
         counts = Counter(tokens)
-        top_k = max_keywords_per_chunk if max_keywords_per_chunk is not None else None
+        top_k = max_keywords_per_chunk
         ranked = [w for w, _ in counts.most_common(cast(int, top_k))] if top_k else [w for w, _ in counts.most_common()]
         return set(ranked)
 
@@ -322,7 +322,7 @@ class HanLPKeywordExtractor:
         self._tokenizer: Any | None = None
         self._lock = Lock()
 
-    def _ensure_tokenizer(self):
+    def _ensure_tokenizer(self) -> Any:
         if self._tokenizer is not None:
             return self._tokenizer
 
@@ -380,13 +380,9 @@ class HanLPKeywordExtractor:
             return set()
 
         counts = Counter(tokens)
-        top_k = max_keywords_per_chunk if max_keywords_per_chunk is not None else None
+        top_k = max_keywords_per_chunk
         ranked = [w for w, _ in counts.most_common(cast(int, top_k))] if top_k else [w for w, _ in counts.most_common()]
-        return set(self._expand_tokens_with_subtokens(set(ranked)))
-
-    @staticmethod
-    def _expand_tokens_with_subtokens(tokens: set[str]) -> set[str]:
-        return _expand_tokens_with_subtokens(tokens)
+        return _expand_tokens_with_subtokens(set(ranked))
 
 
 __all__ = [

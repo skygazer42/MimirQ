@@ -135,7 +135,7 @@ def find_secret_matches(text: str, *, max_matches: int = 50) -> list[SecretMatch
             raw = m.group(0) or ""
             if not raw:
                 continue
-            start, end = int(m.start()), int(m.end())
+            start, end = m.start(), m.end()
             if start < 0 or end <= start:
                 continue
             if _overlaps_taken(start, end, taken):

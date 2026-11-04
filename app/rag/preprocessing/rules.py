@@ -1,3 +1,5 @@
+from typing import Any
+
 from app.rag.preprocessing.cleaning import RegexRule
 from app.rag.preprocessing.rule_packs import GOVERNANCE_RULE_PACKS
 
@@ -41,7 +43,7 @@ def _extend_rule_packs(out: list[RegexRule], rule_packs: list[str] | None) -> No
         seen.add(key)
         pack = GOVERNANCE_RULE_PACKS.get(key)
         if pack:
-            out.extend(list(pack))
+            out.extend(pack)
 
 
 def _coerce_extra_rule(item: object) -> RegexRule | None:
@@ -62,7 +64,7 @@ def _coerce_extra_rule(item: object) -> RegexRule | None:
 
 
 def build_governance_rules(
-    extra_rules: list[dict] | None = None,
+    extra_rules: list[dict[str, Any]] | None = None,
     *,
     rule_packs: list[str] | None = None,
 ) -> list[RegexRule]:

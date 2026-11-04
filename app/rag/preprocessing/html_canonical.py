@@ -46,7 +46,7 @@ def extract_canonical_url(html_text: str, *, base_url: str) -> str | None:
         tag = m.group(0) or ""
         rel_m = _CANONICAL_REL_RE.search(tag)
         rel_raw = (rel_m.group(1) or rel_m.group(2) or rel_m.group(3) or "") if rel_m else ""
-        rel = str(rel_raw).strip().lower()
+        rel = rel_raw.strip().lower()
         if not rel:
             continue
         # rel can contain multiple tokens, e.g. "canonical nofollow".
@@ -54,7 +54,7 @@ def extract_canonical_url(html_text: str, *, base_url: str) -> str | None:
             continue
         href_m = _CANONICAL_HREF_RE.search(tag)
         href_raw = (href_m.group(1) or href_m.group(2) or href_m.group(3) or "") if href_m else ""
-        href = str(href_raw).strip()
+        href = href_raw.strip()
         if not href:
             continue
         try:

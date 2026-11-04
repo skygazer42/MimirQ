@@ -20,15 +20,11 @@ def discover_pii_candidates(samples: list[str], *, max_candidates: int = 20) -> 
 
     for text in rows:
         analyzed = analyze_pii_text(text)
-        covered_spans = {
-            (int(item["start"]), int(item["end"]))
-            for item in analyzed.get("entities") or []
-            if isinstance(item, dict) and {"start", "end"} <= set(item.keys())
-        }
+        covered_spans = {(item["start"], item["end"]) for item in analyzed["entities"]}
 
         for label, pattern, _suggested_regex in _PATTERNS:
             for match in pattern.finditer(text):
-                span = (int(match.start()), int(match.end()))
+                span = (match.start(), match.end())
                 if span in covered_spans:
                     continue
                 counts[label] += 1
@@ -42,7 +38,7 @@ def discover_pii_candidates(samples: list[str], *, max_candidates: int = 20) -> 
         candidates.append(
             {
                 "label": label,
-                "count": int(count),
+                "count": count,
                 "example": examples.get(label),
                 "suggested_regex": suggested_regex,
             }
@@ -50,7 +46,7 @@ def discover_pii_candidates(samples: list[str], *, max_candidates: int = 20) -> 
 
     return {
         "schema": "mimirq.pii_llm_discover.v1",
-        "sample_count": int(len(rows)),
+        "sample_count": len(rows),
         "candidates": candidates,
     }
 

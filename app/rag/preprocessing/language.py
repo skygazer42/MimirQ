@@ -37,11 +37,11 @@ def detect_language(text: str, *, min_chars: int = 40) -> LanguageDetectResult:
     latin = len(_LATIN_RE.findall(raw))
     total = cjk + latin
     if total <= 0:
-        return LanguageDetectResult(language="unknown", cjk_chars=int(cjk), latin_chars=int(latin), confidence=0.0)
+        return LanguageDetectResult(language="unknown", cjk_chars=cjk, latin_chars=latin, confidence=0.0)
 
     if total < max(0, int(min_chars or 0)):
         # Too little signal: still report ratio, but call it unknown.
-        return LanguageDetectResult(language="unknown", cjk_chars=int(cjk), latin_chars=int(latin), confidence=0.0)
+        return LanguageDetectResult(language="unknown", cjk_chars=cjk, latin_chars=latin, confidence=0.0)
 
     ratio_cjk = cjk / total
     ratio_latin = latin / total
@@ -65,10 +65,10 @@ def detect_language(text: str, *, min_chars: int = 40) -> LanguageDetectResult:
         confidence = max(ratio_cjk, ratio_latin)
 
     return LanguageDetectResult(
-        language=str(lang),
-        cjk_chars=int(cjk),
-        latin_chars=int(latin),
-        confidence=float(max(0.0, min(1.0, confidence))),
+        language=lang,
+        cjk_chars=cjk,
+        latin_chars=latin,
+        confidence=max(0.0, min(1.0, confidence)),
     )
 
 

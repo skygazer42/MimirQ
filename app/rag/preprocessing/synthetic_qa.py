@@ -50,7 +50,7 @@ def build_synthetic_qa_side_index(
                 metadata={
                     **base_meta,
                     "side_index_kind": "question",
-                    "side_index_order": int(idx),
+                    "side_index_order": idx,
                 },
             )
         )
