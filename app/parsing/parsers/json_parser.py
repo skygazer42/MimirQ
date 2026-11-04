@@ -69,7 +69,7 @@ class JsonParser:
         metadata: dict[str, Any] = {
             "source": str(file_path.name),
             "file_type": "json",
-            "json_valid": bool(json_valid),
+            "json_valid": json_valid,
             "json_mode": json_mode,
             "encoding": decoded.encoding,
             "encoding_confidence": decoded.confidence,

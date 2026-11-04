@@ -16,7 +16,7 @@ from email.message import Message
 from email.parser import BytesParser
 from html import unescape
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from langchain_core.documents import Document
 
@@ -31,6 +31,20 @@ _RE_TAGS = re.compile(r"(?is)<[^>]+>")
 _RE_WS = re.compile(r"\s+")
 _MIME_TEXT_PLAIN = "text/plain"
 _MIME_TEXT_HTML = "text/html"
+
+
+class _EmailBodyMetadata(TypedDict):
+    body_content_type: str
+    warnings: list[str]
+
+
+class _ParsedEmail(_EmailBodyMetadata):
+    subject: str
+    sender: str
+    to: str
+    cc: str
+    date: str
+    body: str
 
 
 def _collapse_ws(text: str) -> str:
@@ -133,7 +147,7 @@ def _select_body_content(plain_parts: list[str], html_parts: list[str]) -> tuple
     return "", "none"
 
 
-def _parse_eml_message(file_path: Path) -> tuple[Message, dict[str, Any]]:
+def _parse_eml_message(file_path: Path) -> tuple[Message, _ParsedEmail]:
     raw = file_path.read_bytes()
     try:
         msg = BytesParser(policy=policy.default).parsebytes(raw)
@@ -148,8 +162,8 @@ def _parse_eml_message(file_path: Path) -> tuple[Message, dict[str, Any]]:
         "cc": _safe_header(msg, "Cc"),
         "date": _safe_header(msg, "Date"),
         "body": body,
-        "body_content_type": str(body_meta.get("body_content_type") or "none"),
-        "warnings": list(body_meta.get("warnings") or []),
+        "body_content_type": body_meta["body_content_type"],
+        "warnings": list(body_meta["warnings"]),
     }
 
 
@@ -164,7 +178,7 @@ def _extract_msg_body(msg: Any) -> tuple[str, str]:
     return "", "none"
 
 
-def _parse_msg_message(file_path: Path) -> dict[str, Any]:
+def _parse_msg_message(file_path: Path) -> _ParsedEmail:
     extract_msg = require_dependency(
         "extract_msg",
         feature="email_msg_parser",
@@ -232,11 +246,11 @@ def _build_email_metadata(
         "parser_backend": "email",
         "email_subject": subject[:200],
         "email_body_content_type": body_content_type,
-        "email_warnings": list(warnings or []),
+        "email_warnings": list(warnings),
     }
 
 
-def _extract_body(msg: Message) -> tuple[str, dict[str, Any]]:
+def _extract_body(msg: Message) -> tuple[str, _EmailBodyMetadata]:
     """
     Extract (body_text, meta).
 
@@ -246,7 +260,7 @@ def _extract_body(msg: Message) -> tuple[str, dict[str, Any]]:
     """
     plain_parts, html_parts, warnings = _collect_body_parts(msg)
     body, used = _select_body_content(plain_parts, html_parts)
-    meta = {"body_content_type": used, "warnings": warnings[:20]}
+    meta: _EmailBodyMetadata = {"body_content_type": used, "warnings": warnings[:20]}
     return body, meta
 
 
@@ -265,13 +279,13 @@ class EmailParser:
         else:
             parsed = _parse_msg_message(file_path)
 
-        subject = str(parsed["subject"])
-        sender = str(parsed["sender"])
-        to = str(parsed["to"])
-        cc = str(parsed["cc"])
-        date = str(parsed["date"])
-        body = str(parsed["body"])
-        body_content_type = str(parsed["body_content_type"])
+        subject = parsed["subject"]
+        sender = parsed["sender"]
+        to = parsed["to"]
+        cc = parsed["cc"]
+        date = parsed["date"]
+        body = parsed["body"]
+        body_content_type = parsed["body_content_type"]
         warnings = list(parsed["warnings"])
 
         if not body.strip():

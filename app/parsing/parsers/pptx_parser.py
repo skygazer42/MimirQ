@@ -74,8 +74,8 @@ def _paragraph_text(para: object) -> str:
     except Exception:
         level = 0
     level = max(0, min(level, 10))
-    prefix = ("  " * level) + "- " if text else ""
-    return f"{prefix}{text}" if prefix else text
+    prefix = ("  " * level) + "- "
+    return f"{prefix}{text}"
 
 
 def _extract_shape_text(shape: object) -> list[str]:
@@ -121,7 +121,7 @@ class PptxParser:
 
         for idx, slide in enumerate(prs.slides):
             parts = _extract_slide_parts(slide)
-            content = "\n".join([p for p in (parts or []) if p]).strip()
+            content = "\n".join([p for p in parts if p]).strip()
             if not content:
                 continue
 

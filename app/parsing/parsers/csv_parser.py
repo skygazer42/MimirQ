@@ -127,7 +127,7 @@ class CsvParser:
             "file_type": "csv",
             "csv_delimiter": delimiter,
             "csv_has_header": bool(has_header),
-            "csv_rows_emitted": int(row_count),
+            "csv_rows_emitted": row_count,
             "encoding": decoded.encoding,
             "encoding_confidence": decoded.confidence,
             "encoding_had_bom": decoded.had_bom,

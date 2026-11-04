@@ -194,7 +194,7 @@ class BaseAdvancedParser(ABC):
         if positions:
             meta["positions"] = positions
             first = positions[0]
-            meta["element_page"] = int(first[0]) + 1
+            meta["element_page"] = first[0] + 1
             meta["element_bbox"] = {
                 "x0": int(first[1]),
                 "x1": int(first[2]),

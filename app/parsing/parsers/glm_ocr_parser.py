@@ -34,6 +34,23 @@ def _sanitize_run_id(value: str) -> str:
     return text
 
 
+def _looks_like_zip(resp: requests.Response) -> bool:
+    ctype = str(resp.headers.get("content-type") or "").lower()
+    if "application/zip" in ctype or "application/x-zip" in ctype:
+        return True
+    body = getattr(resp, "content", b"") or b""
+    return len(body) >= 4 and body[:2] == b"PK"
+
+
+def _extract_markdown_from_json(data: Any) -> str:
+    if isinstance(data, dict):
+        for key in ("markdown", "md", "content", "text", "result"):
+            val = data.get(key)
+            if isinstance(val, str) and val.strip():
+                return val
+    return ""
+
+
 class GlmOCRParser:
     STANDARD_MARKDOWN_NAME = "result.md"
 
@@ -53,23 +70,6 @@ class GlmOCRParser:
     def _build_artifact_root(self, file_path: Path, document_id: str | None) -> Path:
         run_id = _sanitize_run_id(document_id or file_path.stem or "glmocr")
         return (file_path.parent / ".glmocr" / run_id).absolute()
-
-    @staticmethod
-    def _looks_like_zip(resp: requests.Response) -> bool:
-        ctype = str(resp.headers.get("content-type") or "").lower()
-        if "application/zip" in ctype or "application/x-zip" in ctype:
-            return True
-        body = getattr(resp, "content", b"") or b""
-        return len(body) >= 4 and body[:2] == b"PK"
-
-    @staticmethod
-    def _extract_markdown_from_json(data: Any) -> str:
-        if isinstance(data, dict):
-            for key in ("markdown", "md", "content", "text", "result"):
-                val = data.get(key)
-                if isinstance(val, str) and val.strip():
-                    return val
-        return ""
 
     def _post_multipart(self, *, file_path: Path) -> requests.Response:
         file_bytes = file_path.read_bytes()
@@ -93,15 +93,15 @@ class GlmOCRParser:
             output_markdown_name=self.STANDARD_MARKDOWN_NAME,
             output_image_dir="images",
         )
-        md_file = norm.get("markdown_file")
-        if not isinstance(md_file, Path) or not md_file.exists():
+        md_file: Path | None = norm["markdown_file"]
+        if md_file is None or not md_file.exists():
             raise RuntimeError("GLM-OCR ZIP payload contained no markdown output")
 
         markdown_text = md_file.read_text(encoding="utf-8", errors="ignore")
         meta = {
             "asset_base_dir": str(extract_root.resolve(strict=False)),
             "artifact_dir": str(artifact_root.resolve(strict=False)),
-            "zip_images": int(norm.get("image_count") or 0),
+            "zip_images": norm["image_count"],
         }
         return markdown_text, meta
 
@@ -124,7 +124,7 @@ class GlmOCRParser:
 
         markdown_text = ""
         extra_meta: dict[str, Any] = {}
-        if self._looks_like_zip(resp):
+        if _looks_like_zip(resp):
             artifact_root = self._build_artifact_root(file_path, document_id)
             markdown_text, extra_meta = self._parse_zip_payload(
                 artifact_root=artifact_root, zip_bytes=resp.content or b""
@@ -136,12 +136,10 @@ class GlmOCRParser:
                     data = resp.json()
                 except Exception:
                     data = None
-                markdown_text = self._extract_markdown_from_json(data)
+                markdown_text = _extract_markdown_from_json(data)
             if not markdown_text:
                 # Fallback: treat as text.
                 markdown_text = str(resp.text or "")
-
-        markdown_text = str(markdown_text or "")
 
         # If object storage is disabled, strip local image references to avoid dead links.
         if not settings.MINIO_ENABLED and markdown_text:

@@ -31,6 +31,15 @@ def _sanitize_run_id(value: str) -> str:
     return text
 
 
+def _extract_markdown_from_json(data: Any) -> str:
+    if isinstance(data, dict):
+        for key in ("markdown", "md", "content", "text", "result"):
+            val = data.get(key)
+            if isinstance(val, str) and val.strip():
+                return val
+    return ""
+
+
 class QianfanOCRParser:
     """
     Call a Qianfan-OCR-compatible HTTP API and return Markdown output.
@@ -72,15 +81,6 @@ class QianfanOCRParser:
         }
         return self._session.post(self._api_url, files=files, data=data, timeout=self._timeout_sec)
 
-    @staticmethod
-    def _extract_markdown_from_json(data: Any) -> str:
-        if isinstance(data, dict):
-            for key in ("markdown", "md", "content", "text", "result"):
-                val = data.get(key)
-                if isinstance(val, str) and val.strip():
-                    return val
-        return ""
-
     def parse(
         self,
         file_path: Path,
@@ -110,7 +110,7 @@ class QianfanOCRParser:
                 data = resp.json()
             except Exception:
                 data = json.loads((resp.text or "").strip() or "{}")
-            markdown_text = self._extract_markdown_from_json(data)
+            markdown_text = _extract_markdown_from_json(data)
         else:
             markdown_text = resp.text or ""
 
@@ -126,7 +126,7 @@ class QianfanOCRParser:
             "file_type": "pdf",
             "parser_backend": "qianfan_ocr",
             "artifact_dir": str(artifact_root),
-            "qianfan_ocr_layout_as_thought": bool(self._layout_as_thought),
+            "qianfan_ocr_layout_as_thought": self._layout_as_thought,
         }
         if dataset_id:
             metadata["dataset_id"] = str(dataset_id)

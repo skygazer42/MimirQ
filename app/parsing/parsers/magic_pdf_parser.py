@@ -111,6 +111,94 @@ def resolve_magicpdf_models_dir(configured: str | None = None) -> Path | None:
     return None
 
 
+def _decode_service_response(resp: requests.Response) -> tuple[Any, str]:
+    data: Any = {}
+    ctype = str(resp.headers.get("content-type") or "").lower()
+    if "application/json" in ctype:
+        try:
+            data = resp.json()
+        except Exception:
+            data = json.loads((resp.text or "").strip() or "{}")
+        return data, extract_markdown_response_text(data)
+    return data, resp.text or ""
+
+
+def _build_service_metadata(
+    *,
+    file_path: Path,
+    dataset_id: str | None,
+    method: str,
+    data: Any,
+) -> dict[str, Any]:
+    metadata: dict[str, Any] = {
+        "source": str(file_path.name),
+        "file_type": "pdf",
+        "parser_backend": "magicpdf",
+        "magicpdf_method": method,
+        "magicpdf_mode": "service",
+    }
+    if dataset_id:
+        metadata["dataset_id"] = str(dataset_id)
+    if not isinstance(data, dict):
+        return metadata
+    if data.get("asset_base_dir"):
+        metadata["asset_base_dir"] = str(data["asset_base_dir"])
+    if data.get("artifact_dir"):
+        metadata["artifact_dir"] = str(data["artifact_dir"])
+    if data.get("elapsed_sec") is not None:
+        try:
+            metadata["magicpdf_elapsed_sec"] = float(data["elapsed_sec"])
+        except (TypeError, ValueError):
+            metadata["magicpdf_elapsed_sec"] = data["elapsed_sec"]
+    return metadata
+
+
+def _build_local_cli_command(
+    *,
+    cli: str,
+    safe_pdf_path: Path,
+    artifact_root: Path,
+    method: str,
+    lang: str | None,
+    debug: bool,
+) -> list[str]:
+    cmd = [
+        cli,
+        "--path",
+        str(safe_pdf_path),
+        "--output-dir",
+        str(artifact_root),
+        "--method",
+        method,
+    ]
+    if lang:
+        cmd.extend(["--lang", lang])
+    if debug:
+        cmd.extend(["--debug", "true"])
+    return cmd
+
+
+def _build_local_metadata(
+    *,
+    file_path: Path,
+    md_path: Path,
+    artifact_root: Path,
+    method: str,
+    lang: str | None,
+) -> dict[str, Any]:
+    metadata = {
+        "source": str(file_path.name),
+        "file_type": "pdf",
+        "parser_backend": "magicpdf",
+        "asset_base_dir": str(md_path.parent),
+        "artifact_dir": str(artifact_root),
+        "magicpdf_method": method,
+    }
+    if lang:
+        metadata["magicpdf_lang"] = lang
+    return metadata
+
+
 class MagicPDFParser:
     def __init__(self) -> None:
         self._cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
@@ -187,77 +275,6 @@ class MagicPDFParser:
         raise RuntimeError("MagicPDF service parser requires MAGIC_PDF_API_URL.")
 
     @staticmethod
-    def _extract_service_markdown(data: Any) -> str:
-        return extract_markdown_response_text(data)
-
-    @staticmethod
-    def _decode_service_response(resp: requests.Response) -> tuple[Any, str]:
-        data: Any = {}
-        ctype = str(resp.headers.get("content-type") or "").lower()
-        if "application/json" in ctype:
-            try:
-                data = resp.json()
-            except Exception:
-                data = json.loads((resp.text or "").strip() or "{}")
-            return data, extract_markdown_response_text(data)
-        return data, resp.text or ""
-
-    def _build_service_metadata(
-        self,
-        *,
-        file_path: Path,
-        dataset_id: str | None,
-        method: str,
-        data: Any,
-    ) -> dict[str, Any]:
-        metadata: dict[str, Any] = {
-            "source": str(file_path.name),
-            "file_type": "pdf",
-            "parser_backend": "magicpdf",
-            "magicpdf_method": method,
-            "magicpdf_mode": "service",
-        }
-        if dataset_id:
-            metadata["dataset_id"] = str(dataset_id)
-        if not isinstance(data, dict):
-            return metadata
-        if data.get("asset_base_dir"):
-            metadata["asset_base_dir"] = str(data["asset_base_dir"])
-        if data.get("artifact_dir"):
-            metadata["artifact_dir"] = str(data["artifact_dir"])
-        if data.get("elapsed_sec") is not None:
-            try:
-                metadata["magicpdf_elapsed_sec"] = float(data["elapsed_sec"])
-            except (TypeError, ValueError):
-                metadata["magicpdf_elapsed_sec"] = data["elapsed_sec"]
-        return metadata
-
-    def _build_local_cli_command(
-        self,
-        *,
-        cli: str,
-        safe_pdf_path: Path,
-        artifact_root: Path,
-        method: str,
-        lang: str | None,
-        debug: bool,
-    ) -> list[str]:
-        cmd = [
-            cli,
-            "--path",
-            str(safe_pdf_path),
-            "--output-dir",
-            str(artifact_root),
-            "--method",
-            method,
-        ]
-        if lang:
-            cmd.extend(["--lang", lang])
-        if debug:
-            cmd.extend(["--debug", "true"])
-        return cmd
-
-    @staticmethod
     def _prepare_safe_pdf(file_path: Path, artifact_root: Path) -> Path:
         safe_stem = artifact_root.name
         safe_pdf_path = artifact_root / f"{safe_stem}.pdf"
@@ -326,27 +343,6 @@ class MagicPDFParser:
         markdown_text = re.sub(r"!\[[^\]]*\]\(\s*[^)\s]+?\s*\)\s*", "", markdown_text)
         return re.sub(r"<img[^>]*?>", "", markdown_text, flags=re.IGNORECASE)
 
-    @staticmethod
-    def _build_local_metadata(
-        *,
-        file_path: Path,
-        md_path: Path,
-        artifact_root: Path,
-        method: str,
-        lang: str | None,
-    ) -> dict[str, Any]:
-        metadata = {
-            "source": str(file_path.name),
-            "file_type": "pdf",
-            "parser_backend": "magicpdf",
-            "asset_base_dir": str(md_path.parent),
-            "artifact_dir": str(artifact_root),
-            "magicpdf_method": method,
-        }
-        if lang:
-            metadata["magicpdf_lang"] = lang
-        return metadata
-
     def _parse_service(
         self,
         file_path: Path,
@@ -362,15 +358,15 @@ class MagicPDFParser:
         if int(getattr(resp, "status_code", 0) or 0) != 200:
             raise RuntimeError(f"MagicPDF service API error {resp.status_code}: {(resp.text or '')[:500]}")
 
-        data, markdown_text = self._decode_service_response(resp)
-        if not str(markdown_text or "").strip():
+        data, markdown_text = _decode_service_response(resp)
+        if not markdown_text.strip():
             raise RuntimeError("MagicPDF service returned empty Markdown.")
 
         method = self._resolve_method()
         if isinstance(data, dict):
             method = str(data.get("method") or method)
 
-        metadata = self._build_service_metadata(
+        metadata = _build_service_metadata(
             file_path=file_path,
             dataset_id=dataset_id,
             method=method,
@@ -464,7 +460,7 @@ class MagicPDFParser:
 
         # Avoid spaces/unicode in the input filename (some parsers/tools are brittle).
         safe_pdf_path = self._prepare_safe_pdf(file_path, artifact_root)
-        cmd = self._build_local_cli_command(
+        cmd = _build_local_cli_command(
             cli=cli,
             safe_pdf_path=safe_pdf_path,
             artifact_root=artifact_root,
@@ -496,7 +492,7 @@ class MagicPDFParser:
 
         markdown_text = md_path.read_text(encoding="utf-8", errors="ignore")
         markdown_text = self._sanitize_markdown(markdown_text)
-        metadata = self._build_local_metadata(
+        metadata = _build_local_metadata(
             file_path=file_path,
             md_path=md_path,
             artifact_root=artifact_root,
