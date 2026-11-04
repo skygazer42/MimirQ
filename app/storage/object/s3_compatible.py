@@ -62,7 +62,7 @@ class S3CompatibleObjectStore(MinIOService):
         uri_scheme = "s3compat" if self._provider_name == "s3_compatible" else self._provider_name
         return f"{uri_scheme}://{b}/{o}"
 
-    def _get_client(self):
+    def _get_client(self) -> Minio:
         if not self._enabled:
             raise RuntimeError(f"{self._provider_name} object storage is disabled")
         if not self._endpoint:

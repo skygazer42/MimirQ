@@ -59,9 +59,9 @@ def build_minio_uri(bucket: str, object_name: str) -> str:
 class MinIOService:
     """MinIO object storage service."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._state_lock = threading.RLock()
-        self._client: Any | None = None
+        self._client: Minio | None = None
         self._bucket_name = settings.MINIO_BUCKET_NAME
         self._bucket_ready = False
         self._metrics_path = Path(settings.MINIO_METRICS_LOG_PATH)
@@ -86,7 +86,7 @@ class MinIOService:
     def build_object_uri(self, bucket: str, object_name: str) -> str:
         return build_minio_uri(bucket, object_name)
 
-    def _get_client(self):
+    def _get_client(self) -> Minio:
         """Lazily initialize the MinIO client."""
         with self._state_lock:
             if not bool(getattr(settings, "MINIO_ENABLED", False)):
@@ -135,7 +135,7 @@ class MinIOService:
                 "elapsed_ms": round((time.perf_counter() - t0) * 1000.0, 2),
             }
 
-    def _ensure_bucket(self):
+    def _ensure_bucket(self) -> None:
         """Ensure the bucket exists; create it if missing."""
         client = self._client
         if client is None:
@@ -326,14 +326,7 @@ class MinIOService:
         """
         t0 = time.perf_counter()
         try:
-            if ":" in img_id:
-                tenant_id, dataset_id, document_id, chunk_key = img_id.split(":", 3)
-                object_name = f"images/{tenant_id}/{dataset_id}/{document_id}/{chunk_key}.{extension}"
-            else:
-                # Backward compatible: "{dataset_id}-{chunk_id}"
-                dataset_id, chunk_id = img_id.split("-", 1)
-                object_name = f"images/{dataset_id}/{chunk_id}.{extension}"
-
+            object_name = self._image_object_name(img_id, extension=extension)
             client = self._get_client()
             # Presigned URLs do not check object existence; validate to avoid dead links.
             client.stat_object(bucket_name=self._bucket_name, object_name=object_name)
@@ -357,7 +350,7 @@ class MinIOService:
         dataset_id, chunk_id = img_id.split("-", 1)
         return f"images/{dataset_id}/{chunk_id}.{extension}"
 
-    def delete_image(self, img_id: str, extension: str = "jpg"):
+    def delete_image(self, img_id: str, extension: str = "jpg") -> None:
         """
         Delete an image.
 
@@ -628,7 +621,7 @@ class MinIOService:
                 with contextlib.suppress(Exception):
                     response.release_conn()
 
-    def delete_dataset_images(self, tenant_id: str, dataset_id: str):
+    def delete_dataset_images(self, tenant_id: str, dataset_id: str) -> None:
         """
         Delete all images for a dataset.
 
@@ -660,7 +653,7 @@ class MinIOService:
             logger.warning("MinIO delete dataset images failed: %s", e)
             self._log_metric("delete_dataset", False, time.perf_counter() - t0, prefix, error=str(e))
 
-    def _log_metric(self, op: str, success: bool, elapsed: float, object_name: str, error: str | None = None):
+    def _log_metric(self, op: str, success: bool, elapsed: float, object_name: str, error: str | None = None) -> None:
         """Simple JSONL metrics log for external collection/monitoring."""
         try:
             self._metrics_path.parent.mkdir(parents=True, exist_ok=True)
