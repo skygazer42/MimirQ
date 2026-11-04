@@ -14,12 +14,29 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from app.rag.policy.recall_obligation import (
     MUST_RECALL_PROOF_SCHEMA_V1,
     RECALL_OBLIGATION_LEDGER_SCHEMA_V1,
 )
+
+
+class _InvalidProof(TypedDict):
+    item: str
+    errors: list[str]
+    status: str
+    passed: bool
+
+
+class _ProofAuditReport(TypedDict):
+    schema: str
+    records_total: int
+    proofs_found: int
+    proofs_invalid: int
+    proofs_valid: int
+    ok: bool
+    invalid: list[_InvalidProof]
 
 
 def _extract_must_recall_proof(item: Any) -> dict[str, Any] | None:
@@ -102,10 +119,10 @@ def _validate_proof(label: str, proof: dict[str, Any]) -> list[str]:
     return errors
 
 
-def audit_must_recall_proofs(payload: Any) -> dict[str, Any]:
+def audit_must_recall_proofs(payload: Any) -> _ProofAuditReport:
     items = _collect_items(payload)
     proofs_found = 0
-    invalid: list[dict[str, Any]] = []
+    invalid: list[_InvalidProof] = []
 
     for label, item in items:
         proof = _extract_must_recall_proof(item)
@@ -125,11 +142,11 @@ def audit_must_recall_proofs(payload: Any) -> dict[str, Any]:
 
     return {
         "schema": "mimirq.must_recall_proof_audit.v1",
-        "records_total": int(len(items)),
-        "proofs_found": int(proofs_found),
-        "proofs_invalid": int(len(invalid)),
-        "proofs_valid": int(max(0, proofs_found - len(invalid))),
-        "ok": bool(proofs_found > 0 and len(invalid) == 0),
+        "records_total": len(items),
+        "proofs_found": proofs_found,
+        "proofs_invalid": len(invalid),
+        "proofs_valid": max(0, proofs_found - len(invalid)),
+        "ok": proofs_found > 0 and len(invalid) == 0,
         "invalid": invalid[:50],
     }
 
@@ -158,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(json.dumps(report, ensure_ascii=False, indent=2))
 
-    return 0 if bool(report.get("ok")) else 2
+    return 0 if report["ok"] else 2
 
 
 if __name__ == "__main__":

@@ -5,11 +5,34 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
+
+
+class _RankingProxySummary(TypedDict):
+    schema: str
+    retrieval_mrr: float | None
+    retrieval_ndcg_at_k: float | None
+    retrieval_hit_at_k: float | None
+
+
+class _RankingMetricCheck(TypedDict):
+    value: float | None
+    min: float | None
+    max: float | None
+    passed: bool
+    reason: str | None
+
+
+class _RankingGateReport(TypedDict):
+    schema: str
+    summary_path: str
+    thresholds: dict[str, dict[str, float]]
+    checks: dict[str, _RankingMetricCheck]
+    passed: bool
 
 
 def _load_json(path: Path) -> Any:
@@ -55,7 +78,7 @@ def _load_thresholds(path: Path) -> dict[str, dict[str, float]]:
     return out
 
 
-def build_retrieval_ranking_proxy_summary(benchmark_payload: Any) -> dict[str, Any]:
+def build_retrieval_ranking_proxy_summary(benchmark_payload: Any) -> _RankingProxySummary:
     summary = extract_benchmark_summary(benchmark_payload)
     return {
         "schema": "mimirq.retrieval_ranking_proxy_summary.v1",
@@ -72,7 +95,7 @@ def build_retrieval_ranking_proxy_gate_report(
     *,
     summary_path: str,
     thresholds: dict[str, dict[str, float]],
-) -> dict[str, Any]:
+) -> _RankingGateReport:
     if not isinstance(summary_payload, dict):
         summary_payload = {}
     values = {
@@ -80,7 +103,7 @@ def build_retrieval_ranking_proxy_gate_report(
         "retrieval_ndcg_at_k": _coerce_optional_float(summary_payload.get("retrieval_ndcg_at_k")),
         "retrieval_hit_at_k": _coerce_optional_float(summary_payload.get("retrieval_hit_at_k")),
     }
-    checks = {}
+    checks: dict[str, _RankingMetricCheck] = {}
     for name, value in values.items():
         cfg = thresholds.get(name) or {}
         minimum = cfg.get("min")
@@ -109,7 +132,7 @@ def build_retrieval_ranking_proxy_gate_report(
         "summary_path": str(summary_path),
         "thresholds": thresholds,
         "checks": checks,
-        "passed": bool(all(item["passed"] for item in checks.values())),
+        "passed": all(item["passed"] for item in checks.values()),
     }
 
 
@@ -160,7 +183,7 @@ def main(argv: list[str] | None = None) -> int:
     report_path.write_text(json.dumps(report_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"[retrieval-ranking-proxy] wrote {summary_path}")
     print(f"[retrieval-ranking-proxy] wrote {report_path}")
-    return 0 if bool(report_payload.get("passed")) else 2
+    return 0 if report_payload["passed"] else 2
 
 
 if __name__ == "__main__":
