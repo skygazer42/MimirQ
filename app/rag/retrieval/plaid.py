@@ -11,7 +11,7 @@ def _sq_l2(a: list[float], b: list[float]) -> float:
     n = min(len(a), len(b))
     total = 0.0
     for idx in range(n):
-        diff = float(a[idx]) - float(b[idx])
+        diff = a[idx] - b[idx]
         total += diff * diff
     return total
 
@@ -20,7 +20,7 @@ def _unique_vectors(vectors: list[list[float]]) -> list[list[float]]:
     seen: set[tuple[float, ...]] = set()
     out: list[list[float]] = []
     for vector in vectors:
-        key = tuple(float(v) for v in vector)
+        key = tuple(vector)
         if key in seen:
             continue
         seen.add(key)
@@ -32,7 +32,7 @@ def _choose_centroids(vectors: list[list[float]], num_centroids: int) -> list[li
     if not vectors:
         return []
     unique = _unique_vectors(vectors)
-    limit = max(1, min(int(num_centroids or 1), len(unique)))
+    limit = max(1, min(num_centroids or 1, len(unique)))
     if limit >= len(unique):
         return unique
 
@@ -72,16 +72,16 @@ def compress_plaid_vectors(
     for vector in vectors:
         distances = [(_sq_l2(vector, centroid), idx) for idx, centroid in enumerate(centroids)]
         best_idx = min(distances)[1]
-        assignments.append(int(best_idx))
+        assignments.append(best_idx)
         cluster_sizes[best_idx] += 1
 
     return {
         "schema": PLAID_COMPRESSION_SCHEMA,
         "dim": len(vectors[0]),
         "original_tokens": len(vectors),
-        "centroids": [[float(v) for v in row] for row in centroids],
+        "centroids": [list(row) for row in centroids],
         "assignments": assignments,
-        "cluster_sizes": [int(v) for v in cluster_sizes],
+        "cluster_sizes": list(cluster_sizes),
     }
 
 

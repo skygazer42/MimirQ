@@ -5,19 +5,20 @@ import json
 import threading
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from langchain_core.documents import Document
 
 from app.core.config import settings
 from app.rag.retrieval.hybrid.common import (
-    COLBERT_INDEX_DIR_FALLBACK,
     NON_CRITICAL_RETRIEVER_FALLBACK_LOG,
-    SPARSE_INDEX_DIR_FALLBACK,
     _log_retriever_fallback,
     logger,
 )
 from app.rag.retrieval.sparse import SparseVector
+
+if TYPE_CHECKING:
+    from app.rag.retrieval.colbert_ann import ColbertAnnIndex
 
 
 def corpus_document_fingerprint(docs: list[Document]) -> str:
@@ -65,11 +66,11 @@ class CorpusBuildLock:
         with self._state:
             return self._users > 0
 
-    def __enter__(self):
+    def __enter__(self) -> "CorpusBuildLock":
         self.acquire()
         return self
 
-    def __exit__(self, *_exc):
+    def __exit__(self, *_exc: object) -> None:
         self.release()
 
 
@@ -158,9 +159,7 @@ class SparseCorpusIndex:
         if not settings.SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED:
             return None
         try:
-            store = store_cls(
-                base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", SPARSE_INDEX_DIR_FALLBACK) or "")
-            )
+            store = store_cls(base_dir=str(settings.SPARSE_RETRIEVAL_INDEX_DIR or ""))
             store.save(
                 cache_key=cache_key,
                 provider_config=provider_config,
@@ -186,9 +185,7 @@ class SparseCorpusIndex:
         if not settings.SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED:
             return ({}, "skipped")
         try:
-            store = store_cls(
-                base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", SPARSE_INDEX_DIR_FALLBACK) or "")
-            )
+            store = store_cls(base_dir=str(settings.SPARSE_RETRIEVAL_INDEX_DIR or ""))
             loaded = store.load(
                 cache_key=cache_key,
                 provider_config=provider_config,
@@ -450,9 +447,7 @@ class SparseCorpusIndex:
         load_outcome = "miss"
         try:
             fp = self._sparse_corpus_fingerprint(docs)
-            store = store_cls(
-                base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", SPARSE_INDEX_DIR_FALLBACK) or "")
-            )
+            store = store_cls(base_dir=str(settings.SPARSE_RETRIEVAL_INDEX_DIR or ""))
             loaded = store.load(
                 cache_key=cache_key,
                 provider_config=provider_config,
@@ -530,7 +525,7 @@ class SparseCorpusIndex:
 
 class ColbertCorpusIndex:
     def __init__(self) -> None:
-        self._colbert_index_cache: dict[str, Any] = {}
+        self._colbert_index_cache: dict[str, ColbertAnnIndex] = {}
         self._colbert_build_locks: dict[str, CorpusBuildLock] = {}
 
     def _get_colbert_build_lock(self, cache_key: str) -> CorpusBuildLock:
@@ -596,9 +591,7 @@ class ColbertCorpusIndex:
         if not settings.COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED:
             return
         try:
-            store = store_cls(
-                base_dir=str(getattr(settings, "COLBERT_RETRIEVAL_INDEX_DIR", COLBERT_INDEX_DIR_FALLBACK) or "")
-            )
+            store = store_cls(base_dir=str(settings.COLBERT_RETRIEVAL_INDEX_DIR or ""))
             store.save(
                 cache_key=cache_key,
                 provider_config=provider_config,
@@ -655,13 +648,13 @@ class ColbertCorpusIndex:
 
     def _colbert_incremental_base_parts(
         self, *, cache_key: str, provider_config: dict[str, Any]
-    ) -> tuple[list[Any], Any | None]:
+    ) -> tuple[list[str], Any | None]:
         base = self._colbert_index_cache.get(cache_key)
         if base is None:
             return ([], None)
-        base_cfg = dict(getattr(base, "provider_config", {}) or {})
-        base_ids = list(getattr(base, "doc_ids", []) or [])
-        base_vecs = getattr(base, "vectors", None)
+        base_cfg = dict(base.provider_config or {})
+        base_ids = list(base.doc_ids or [])
+        base_vecs = base.vectors
         if not base_ids or base_vecs is None or base_cfg != dict(provider_config):
             return ([], None)
         return (base_ids, base_vecs)
@@ -686,7 +679,7 @@ class ColbertCorpusIndex:
         cache_key: str,
         corpus_docs: list[Document],
         upsert_docs: list[Document],
-        base_ids: list[Any],
+        base_ids: list[str],
         base_vecs: Any,
         embedder: Any,
     ) -> tuple[list[str], Any] | None:
@@ -801,8 +794,8 @@ class ColbertCorpusIndex:
                 idx = self._colbert_index_cache.get(scope_key)
                 if idx is None:
                     return
-                ids0 = list(getattr(idx, "doc_ids", []) or [])
-                vecs0 = getattr(idx, "vectors", None)
+                ids0 = list(idx.doc_ids or [])
+                vecs0 = idx.vectors
                 if not ids0 or vecs0 is None:
                     return
                 self._replace_colbert_index_without_deleted_chunks(
@@ -812,7 +805,14 @@ class ColbertCorpusIndex:
             logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
 
     def _replace_colbert_index_without_deleted_chunks(
-        self, *, scope_key: str, idx: Any, ids0: list[Any], vecs0: Any, removed_ids: set[str], filtered: list[Document]
+        self,
+        *,
+        scope_key: str,
+        idx: "ColbertAnnIndex",
+        ids0: list[str],
+        vecs0: Any,
+        removed_ids: set[str],
+        filtered: list[Document],
     ) -> None:
         try:
             import numpy as np
@@ -831,31 +831,31 @@ class ColbertCorpusIndex:
                 doc_ids=new_ids,
                 vectors=new_mat,
                 corpus_fingerprint=fp,
-                provider_config=dict(getattr(idx, "provider_config", {}) or {}),
+                provider_config=dict(idx.provider_config or {}),
             )
         except Exception as exc:
             logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
 
     @staticmethod
-    def _colbert_index_matches(index: Any, *, expected_fp: str, provider_config: dict[str, Any]) -> bool:
+    def _colbert_index_matches(
+        index: "ColbertAnnIndex | None", *, expected_fp: str, provider_config: dict[str, Any]
+    ) -> bool:
         try:
             return (
                 index is not None
-                and str(getattr(index, "corpus_fingerprint", "") or "") == str(expected_fp or "")
-                and (dict(getattr(index, "provider_config", {}) or {}) == dict(provider_config))
+                and str(index.corpus_fingerprint or "") == str(expected_fp or "")
+                and (dict(index.provider_config or {}) == dict(provider_config))
             )
         except (TypeError, ValueError, AttributeError):
             return False
 
     def _load_colbert_index_from_store(
         self, *, store_cls: Any, cache_key: str, provider_config: dict[str, Any], expected_fp: str
-    ) -> Any | None:
+    ) -> "ColbertAnnIndex | None":
         if not settings.COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED:
             return None
         try:
-            store = store_cls(
-                base_dir=str(getattr(settings, "COLBERT_RETRIEVAL_INDEX_DIR", COLBERT_INDEX_DIR_FALLBACK) or "")
-            )
+            store = store_cls(base_dir=str(settings.COLBERT_RETRIEVAL_INDEX_DIR or ""))
             loaded = store.load(cache_key=cache_key, provider_config=provider_config, expected_fingerprint=expected_fp)
             if loaded is not None:
                 self._colbert_index_cache[cache_key] = loaded
@@ -866,7 +866,7 @@ class ColbertCorpusIndex:
 
     def _ensure_colbert_search_index(
         self, *, cache_key: str, docs: list[Document], provider_config: dict[str, Any], expected_fp: str, store_cls: Any
-    ) -> Any | None:
+    ) -> "ColbertAnnIndex | None":
         index = self._colbert_index_cache.get(cache_key)
         if self._colbert_index_matches(index, expected_fp=expected_fp, provider_config=provider_config):
             return index

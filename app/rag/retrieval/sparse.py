@@ -95,9 +95,9 @@ def resolve_sparse_provider_capability(
         "requested_provider": requested_raw or "",
         "requested_provider_normalized": requested_norm,
         "effective_provider": effective_provider,
-        "provider_supported": bool(provider_supported),
-        "model_required": bool(model_required),
-        "model_configured": bool(model_configured),
+        "provider_supported": provider_supported,
+        "model_required": model_required,
+        "model_configured": model_configured,
         "status": status if status in _SPARSE_STATUS_VALUES else "fallback",
         "reason": reason if reason in _SPARSE_REASON_VALUES else "provider_invalid",
     }
@@ -533,7 +533,7 @@ class SparseIndexStore:
             "provider_config": dict(provider_config),
             "corpus_fingerprint": str(corpus_fingerprint or ""),
             "version_token": str(version_token or "").strip(),
-            "doc_count": int(len(vectors or {})),
+            "doc_count": len(vectors or {}),
             "vectors": {
                 k: (v.weights if isinstance(v, SparseVector) else _coerce_sparse_vector(v).weights)
                 for k, v in (vectors or {}).items()
@@ -559,7 +559,7 @@ def dot_product(query: SparseVector, doc: SparseVector) -> float:
         if dw is None:
             continue
         total += float(qw) * float(dw)
-    return float(total)
+    return total
 
 
 def topk_scores(
@@ -576,7 +576,7 @@ def topk_scores(
         s = dot_product(query_vec, dvec)
         if s <= 0.0:
             continue
-        scored.append((str(doc_id), float(s)))
+        scored.append((str(doc_id), s))
     scored.sort(key=lambda x: (-x[1], x[0]))
     return scored[:kk]
 

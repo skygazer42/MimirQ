@@ -24,3 +24,5 @@ Successful manual invalidation persists the new dataset revision. Missing datase
 ## Verification
 
 Ruff check, Ruff format --check, and `git diff --check` passed for the touched Python files. Call sites were inspected for commit/rollback ownership. Python tests and database/Redis runtime checks were not run per user instruction.
+
+[语料与索引内部值](../simplification/2026-11-05-retrieval-corpus-owned-values.md)保留本篇事务归属与缓存资源时序，仅收窄索引记录、配置字段和本地生成值的访问。

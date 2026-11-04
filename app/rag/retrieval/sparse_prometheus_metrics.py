@@ -74,7 +74,7 @@ SPARSE_INDEX_BUILD_DURATION_SECONDS = Histogram(
 
 
 def _enabled() -> bool:
-    return bool(getattr(settings, "PROMETHEUS_ENABLED", False))
+    return bool(settings.PROMETHEUS_ENABLED)
 
 
 def _norm_provider(value: str | None) -> str:

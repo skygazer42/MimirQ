@@ -18,6 +18,8 @@ chunk 质量追踪的可选分数也使用相同的标准转换异常列表，�
 
 [混合检索排名的内部记录](2026-11-05-hybrid-ranking-owned-values.md)沿用原始输入在边界解析的原则，仅清理已构造记录的重复转换；其既有数值失败区别保持。
 
+[语料与索引内部值](2026-11-05-retrieval-corpus-owned-values.md)保留可变 Settings、原始向量与持久化文件的转换，只收窄真实索引记录和本地生成值的访问。
+
 ## Alternatives considered
 
 - Keep both common helper pairs: this avoids caller edits, but leaves two implementations of the same defaulting and clamping rules.

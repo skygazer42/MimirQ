@@ -85,12 +85,12 @@ def update_hybrid_channel_diagnostics(
 
     counts = channel_metrics.get("counts")
     if isinstance(counts, dict):
-        counts["vector_candidates"] = int(len(vector_results or []))
+        counts["vector_candidates"] = len(vector_results or [])
         counts["colbert_candidates"] = int(colbert_candidates or 0)
-        counts["colpali_candidates"] = int(len(colpali_results or []))
-        counts["bm25_candidates"] = int(len(bm25_results or []))
-        counts["lexical_candidates"] = int(len(lexical_results or []))
-        counts["sparse_candidates"] = int(len(sparse_results or []))
+        counts["colpali_candidates"] = len(colpali_results or [])
+        counts["bm25_candidates"] = len(bm25_results or [])
+        counts["lexical_candidates"] = len(lexical_results or [])
+        counts["sparse_candidates"] = len(sparse_results or [])
 
     colbert_box = channel_metrics.get("colbert_ann")
     if not isinstance(colbert_box, dict):
@@ -173,9 +173,7 @@ def update_hybrid_channel_diagnostics(
             "sparse": {
                 "enabled": bool(want_sparse),
                 "candidates": len(sparse_results or []),
-                "provider": str(
-                    sparse_provider_snapshot.get("effective_provider") or sparse_provider or "deterministic"
-                ),
+                "provider": str(sparse_provider_snapshot["effective_provider"] or sparse_provider or "deterministic"),
                 "provider_status": sparse_provider_snapshot,
             },
         }

@@ -91,21 +91,21 @@ class CorpusIndex:
         return tuple(sorted(set(dataset_ids or ()), key=str))
 
     @staticmethod
-    def _collect_lexical_dataset_scope(metadata_filter):
+    def _collect_lexical_dataset_scope(metadata_filter: dict[str, Any] | None) -> list[UUID]:
         return collect_dataset_scope(metadata_filter)
 
     @staticmethod
-    def _match_metadata_filter(metadata, metadata_filter):
+    def _match_metadata_filter(metadata: dict[str, Any], metadata_filter: dict[str, Any] | None) -> bool:
         return match_metadata_filter(metadata, metadata_filter)
 
     @staticmethod
-    def _prepare_retrieval_document(document):
+    def _prepare_retrieval_document(document: Document) -> Document:
         return prepare_retrieval_document(document, log_fallback=_log_retriever_fallback)
 
     _result_content_from_doc = staticmethod(result_content_from_doc)
     _top_scored_results = staticmethod(top_scored_results)
 
-    def _question_channel_overlap_score(self, *, query_tokens, metadata):
+    def _question_channel_overlap_score(self, *, query_tokens: list[str], metadata: dict[str, Any]) -> float:
         return question_channel_overlap_score(
             query_tokens=query_tokens, metadata=metadata, tokenize=self._bm25_tokenize
         )
@@ -592,7 +592,7 @@ class CorpusIndex:
     def _extend_bm25_scope_for_missing_documents(
         self, db: Session, *, tenant_uuid: UUID, cache_key: str, missing: set[str], existing_count: int, max_chunks: int
     ) -> None:
-        remaining = max(0, int(max_chunks) - int(existing_count)) if max_chunks else 0
+        remaining = max(0, int(max_chunks) - existing_count) if max_chunks else 0
         if max_chunks and remaining <= 0:
             return
         missing_ids = [UUID(doc_id) for doc_id in missing]
@@ -749,7 +749,7 @@ class CorpusIndex:
         """Tokenize text for BM25 (shared)."""
         return tokenize_for_bm25(text)
 
-    def build_bm25_index(self, chunks: list[DocumentChunk], tenant_id: UUID | None = None):
+    def build_bm25_index(self, chunks: list[DocumentChunk], tenant_id: UUID | None = None) -> None:
         """Build/rebuild BM25 index."""
         if not chunks:
             return
@@ -778,17 +778,7 @@ class CorpusIndex:
             return
         key = str(cache_key) if cache_key is not None else self._tenant_key(tenant_id)
         retriever = BM25Retriever.from_documents(docs, preprocess_func=self._bm25_tokenize, k=10)
-        lookup: dict[str, str] = {}
-        for d in docs:
-            meta = d.metadata or {}
-            doc_id = meta.get("document_id")
-            doc_pipeline_key = meta.get("doc_pipeline_key")
-            chunk_index = meta.get("chunk_index")
-            if doc_id is None or chunk_index is None or d.id is None:
-                continue
-            if doc_pipeline_key is not None:
-                lookup[f"{doc_pipeline_key}:{chunk_index}"] = str(d.id)
-            lookup[f"{doc_id}:{chunk_index}"] = str(d.id)
+        lookup = self._build_chunk_id_lookup(docs)
         with self._bm25_cache_lock:
             self._bm25_deferred_scopes.discard(key)
             self._bm25_retrievers[key] = retriever
@@ -1009,7 +999,7 @@ class CorpusIndex:
         colbert_rebuilt = False
         if settings.COLBERT_RETRIEVAL_ENABLED and docs:
             self._corpus_artifacts.colbert._build_colbert_index(cache_key=cache_key, docs=docs)
-            colbert_rebuilt = bool(self._corpus_artifacts.colbert._colbert_index_cache.get(cache_key) is not None)
+            colbert_rebuilt = self._corpus_artifacts.colbert._colbert_index_cache.get(cache_key) is not None
         return {
             "tenant_id": str(tenant_id),
             "dataset_id": str(dataset_id) if dataset_id is not None else None,
@@ -1146,7 +1136,7 @@ class CorpusIndex:
                 "BM25 deferred scope retained for %s after upsert chunks=%s corpus_refresh=%s",
                 cache_key,
                 len(upsert_docs),
-                bool(merged_docs is not None),
+                merged_docs is not None,
             )
             return
         if merged_docs is not None and eager_limit > 0 and (len(merged_docs) > eager_limit):
@@ -1161,7 +1151,9 @@ class CorpusIndex:
         self._replace_bm25_scope_index(cache_key=cache_key, merged_docs=merged_docs or [])
         logger.info("BM25 index updated to %s chunks for scope %s", len(merged_docs or []), cache_key)
 
-    def upsert_bm25_documents(self, docs: list[Document], tenant_id: UUID | None = None, *, db: Session | None = None):
+    def upsert_bm25_documents(
+        self, docs: list[Document], tenant_id: UUID | None = None, *, db: Session | None = None
+    ) -> None:
         """
         Incrementally update BM25 index (avoids full DB scan each time).
         Note: BM25Retriever itself doesn't support incremental training, so we merge in-memory and rebuild.
@@ -1212,7 +1204,7 @@ class CorpusIndex:
                 cache_key=cache_key, merged_docs=merged_docs, upsert_docs=upsert_docs
             )
 
-    def remove_document_from_bm25_index(self, document_id: UUID, tenant_id: UUID | None = None):
+    def remove_document_from_bm25_index(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
         """Remove all chunks of a specified document from the BM25 index."""
         self.remove_from_bm25_index_by_metadata_filter(
             tenant_id=tenant_id, metadata_filter={"document_id": {"$eq": str(document_id)}}
@@ -1256,7 +1248,7 @@ class CorpusIndex:
                 before_ids = {str(d.id) for d in existing if d is not None and d.id is not None}
                 filtered = [d for d in existing if not self._match_metadata_filter(d.metadata or {}, metadata_filter)]
                 after_ids = {str(d.id) for d in filtered if d is not None and d.id is not None}
-                removed = int(len(existing) - len(filtered))
+                removed = len(existing) - len(filtered)
                 if removed <= 0:
                     continue
                 removed_ids = before_ids - after_ids

@@ -128,13 +128,13 @@ class LexicalDBMixin:
 
     @staticmethod
     def _lexical_search_config(top_k: int) -> tuple[str, int, bool, int]:
-        fts_config = str(getattr(settings, "LEXICAL_DB_FTS_CONFIG", "simple") or "simple").strip() or "simple"
-        fetch_mult = max(1, int(getattr(settings, "LEXICAL_DB_FETCH_MULTIPLIER", 4) or 4))
-        fetch_cap = max(10, int(getattr(settings, "LEXICAL_DB_MAX_CANDIDATES", 200) or 200))
+        fts_config = str(settings.LEXICAL_DB_FTS_CONFIG or "simple").strip() or "simple"
+        fetch_mult = max(1, int(settings.LEXICAL_DB_FETCH_MULTIPLIER or 4))
+        fetch_cap = max(10, int(settings.LEXICAL_DB_MAX_CANDIDATES or 200))
         limit = max(0, int(top_k or 0))
         fetch_k = min(fetch_cap, max(limit, limit * fetch_mult))
-        want_trgm = bool(getattr(settings, "LEXICAL_DB_TRGM_ENABLED", True))
-        trgm_min_chars = max(1, int(getattr(settings, "LEXICAL_DB_TRGM_MIN_QUERY_CHARS", 3) or 3))
+        want_trgm = bool(settings.LEXICAL_DB_TRGM_ENABLED)
+        trgm_min_chars = max(1, int(settings.LEXICAL_DB_TRGM_MIN_QUERY_CHARS or 3))
         return fts_config, fetch_k, want_trgm, trgm_min_chars
 
     @staticmethod
@@ -143,7 +143,7 @@ class LexicalDBMixin:
         if not text or not re.search(r"[\u3400-\u4dbf\u4e00-\u9fff]", text):
             return []
         try:
-            max_terms = max(1, min(16, int(getattr(settings, "LEXICAL_DB_CJK_TOKEN_MAX_TERMS", 6) or 6)))
+            max_terms = max(1, min(16, int(settings.LEXICAL_DB_CJK_TOKEN_MAX_TERMS or 6)))
         except (TypeError, ValueError):
             max_terms = 6
 
@@ -402,7 +402,7 @@ class LexicalDBMixin:
         metadata_filter: dict[str, Any] | None,
         results_by_id: dict[str, dict[str, Any]],
     ) -> None:
-        if not bool(getattr(settings, "LEXICAL_DB_CJK_TOKEN_CONTAINMENT_ENABLED", True)):
+        if not bool(settings.LEXICAL_DB_CJK_TOKEN_CONTAINMENT_ENABLED):
             return
         terms = self._lexical_cjk_token_terms(raw_query)
         if not terms:
@@ -423,7 +423,7 @@ class LexicalDBMixin:
             return
 
         try:
-            configured_min_hits = int(getattr(settings, "LEXICAL_DB_CJK_TOKEN_MIN_HITS", 0) or 0)
+            configured_min_hits = int(settings.LEXICAL_DB_CJK_TOKEN_MIN_HITS or 0)
         except (TypeError, ValueError):
             configured_min_hits = 0
         min_hits = configured_min_hits
@@ -563,7 +563,7 @@ class LexicalDBMixin:
         raw_query = str(query or "").strip()
         if not raw_query:
             return []
-        if not bool(getattr(settings, "LEXICAL_DB_ENABLED", True)):
+        if not bool(settings.LEXICAL_DB_ENABLED):
             return []
 
         tenant_uuid = self._resolve_tenant_uuid(tenant_id)
@@ -697,7 +697,7 @@ class LexicalDBMixin:
 
         dataset_uuid, dataset_str = self._lexical_dataset_scope(metadata_filter)
         limit = max(1, int(top_k or 1))
-        cap = max(1, int(getattr(settings, "RETRIEVAL_METADATA_EXACT_DB_MAX_CANDIDATES", 80) or 80))
+        cap = max(1, int(settings.RETRIEVAL_METADATA_EXACT_DB_MAX_CANDIDATES or 80))
         fetch_k = min(cap, max(limit, limit * 4))
         patterns = [f"%{self._escape_sql_like_term(term)}%" for term in self._metadata_exact_db_like_terms(raw_query)]
         if not patterns:
@@ -761,7 +761,7 @@ class LexicalDBMixin:
         if self.metadata_exact_db_fallback_enabled is not None:
             metadata_exact_db_enabled = bool(self.metadata_exact_db_fallback_enabled)
         else:
-            metadata_exact_db_enabled = bool(getattr(settings, "RETRIEVAL_METADATA_EXACT_DB_FALLBACK_ENABLED", True))
+            metadata_exact_db_enabled = bool(settings.RETRIEVAL_METADATA_EXACT_DB_FALLBACK_ENABLED)
         if not metadata_exact_db_enabled:
             return []
 

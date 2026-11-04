@@ -52,7 +52,7 @@ def _tokenize(text: str) -> list[str]:
         return []
     out: list[str] = []
     for m in _TOKEN_RE.finditer(raw):
-        t = str(m.group(0) or "").strip()
+        t = (m.group(0) or "").strip()
         if not t:
             continue
         out.append(t.casefold() if t.isascii() else t)
@@ -321,14 +321,14 @@ def resolve_colbert_ann_provider_capability(
         "requested_provider": requested_raw,
         "requested_provider_normalized": requested_norm,
         "effective_provider": effective_provider,
-        "provider_supported": bool(provider_supported),
+        "provider_supported": provider_supported,
         "status": status,
         "reason": reason,
-        "ready": bool(ready),
+        "ready": ready,
         "model_name_configured": bool(resolved_model_name),
         "device": resolved_device,
-        "docs_count": int(max(0, int(docs_count or 0))),
-        "max_docs": int(max(0, int(max_docs or 0))),
+        "docs_count": max(0, int(docs_count or 0)),
+        "max_docs": max(0, int(max_docs or 0)),
     }
 
 
@@ -411,7 +411,7 @@ class ColbertAnnIndexStore:
                 "schema": _INDEX_SCHEMA_V1,
                 "provider_config": dict(provider_config),
                 "corpus_fingerprint": str(corpus_fingerprint or ""),
-                "doc_count": int(len(ids)),
+                "doc_count": len(ids),
                 "dim": int(vecs.shape[1]) if vecs.ndim == 2 else 0,
             }
             meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

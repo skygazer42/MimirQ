@@ -1,7 +1,7 @@
 """Focused support types and helpers for ``app.rag.retriever``."""
 
 from dataclasses import asdict, dataclass, replace
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from app.core.config import settings
@@ -54,7 +54,7 @@ def _resolve_hybrid_search_options(
         return HybridSearchOptions(**legacy_overrides)
     if not legacy_overrides:
         return options
-    return cast(HybridSearchOptions, replace(options, **legacy_overrides))
+    return replace(options, **legacy_overrides)
 
 
 def _build_retrieval_cache_behavior_hash(

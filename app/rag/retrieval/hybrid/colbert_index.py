@@ -6,18 +6,20 @@ methods below run on the ``HybridRetriever`` instance via mixin inheritance.
 
 import hashlib
 import threading
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from langchain_core.documents import Document
 
 from app.core.config import settings
 from app.rag.retrieval.hybrid.common import (
-    COLBERT_INDEX_DIR_FALLBACK,
     NON_CRITICAL_RETRIEVER_FALLBACK_LOG,
     _log_retriever_fallback,
     logger,
 )
+
+if TYPE_CHECKING:
+    from app.rag.retrieval.colbert_ann import ColbertAnnIndex
 
 
 class ColbertIndexMixin:
@@ -50,7 +52,7 @@ class ColbertIndexMixin:
     @staticmethod
     def _resolve_colbert_max_docs() -> int:
         try:
-            return max(0, int(getattr(settings, "COLBERT_RETRIEVAL_MAX_DOCS", 0) or 0))
+            return max(0, int(settings.COLBERT_RETRIEVAL_MAX_DOCS or 0))
         except (TypeError, ValueError, AttributeError):
             return 0
 
@@ -64,17 +66,17 @@ class ColbertIndexMixin:
 
     @staticmethod
     def _colbert_provider_name() -> str:
-        return str(getattr(settings, "COLBERT_RETRIEVAL_PROVIDER", "deterministic") or "deterministic").strip().lower()
+        return str(settings.COLBERT_RETRIEVAL_PROVIDER or "deterministic").strip().lower()
 
     @staticmethod
     def _build_colbert_provider_config(build_colbert_provider_config: Any, *, provider: str) -> dict[str, Any]:
         return build_colbert_provider_config(
             provider=provider,
-            model_name=str(getattr(settings, "COLBERT_RETRIEVAL_MODEL_NAME", "") or ""),
-            device=str(getattr(settings, "COLBERT_RETRIEVAL_DEVICE", "cpu") or "cpu"),
-            batch_size=int(getattr(settings, "COLBERT_RETRIEVAL_BATCH_SIZE", 16) or 16),
-            max_length=int(getattr(settings, "COLBERT_RETRIEVAL_MAX_LENGTH", 256) or 256),
-            deterministic_dim=int(getattr(settings, "COLBERT_RETRIEVAL_EMBED_DIM", 64) or 64),
+            model_name=str(settings.COLBERT_RETRIEVAL_MODEL_NAME or ""),
+            device=str(settings.COLBERT_RETRIEVAL_DEVICE or "cpu"),
+            batch_size=int(settings.COLBERT_RETRIEVAL_BATCH_SIZE or 16),
+            max_length=int(settings.COLBERT_RETRIEVAL_MAX_LENGTH or 256),
+            deterministic_dim=int(settings.COLBERT_RETRIEVAL_EMBED_DIM or 64),
         )
 
     @staticmethod
@@ -108,13 +110,11 @@ class ColbertIndexMixin:
         doc_ids: list[str],
         vectors: Any,
     ) -> None:
-        if not bool(getattr(settings, "COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
+        if not bool(settings.COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED):
             return
 
         try:
-            store = store_cls(
-                base_dir=str(getattr(settings, "COLBERT_RETRIEVAL_INDEX_DIR", COLBERT_INDEX_DIR_FALLBACK) or "")
-            )
+            store = store_cls(base_dir=str(settings.COLBERT_RETRIEVAL_INDEX_DIR or ""))
             store.save(
                 cache_key=cache_key,
                 provider_config=provider_config,
@@ -148,11 +148,11 @@ class ColbertIndexMixin:
         provider_config = self._build_colbert_provider_config(build_colbert_provider_config, provider=provider)
         embedder = get_dense_embedder(
             provider=provider,
-            model_name=str(getattr(settings, "COLBERT_RETRIEVAL_MODEL_NAME", "") or ""),
-            device=str(getattr(settings, "COLBERT_RETRIEVAL_DEVICE", "cpu") or "cpu"),
-            batch_size=int(getattr(settings, "COLBERT_RETRIEVAL_BATCH_SIZE", 16) or 16),
-            max_length=int(getattr(settings, "COLBERT_RETRIEVAL_MAX_LENGTH", 256) or 256),
-            deterministic_dim=int(getattr(settings, "COLBERT_RETRIEVAL_EMBED_DIM", 64) or 64),
+            model_name=str(settings.COLBERT_RETRIEVAL_MODEL_NAME or ""),
+            device=str(settings.COLBERT_RETRIEVAL_DEVICE or "cpu"),
+            batch_size=int(settings.COLBERT_RETRIEVAL_BATCH_SIZE or 16),
+            max_length=int(settings.COLBERT_RETRIEVAL_MAX_LENGTH or 256),
+            deterministic_dim=int(settings.COLBERT_RETRIEVAL_EMBED_DIM or 64),
         )
 
         doc_ids, texts = self._collect_colbert_doc_text_pairs(docs)
@@ -180,13 +180,13 @@ class ColbertIndexMixin:
         *,
         cache_key: str,
         provider_config: dict[str, Any],
-    ) -> tuple[list[Any], Any | None]:
+    ) -> tuple[list[str], Any | None]:
         base = self._colbert_index_cache.get(cache_key)
         if base is None:
             return [], None
-        base_cfg = dict(getattr(base, "provider_config", {}) or {})
-        base_ids = list(getattr(base, "doc_ids", []) or [])
-        base_vecs = getattr(base, "vectors", None)
+        base_cfg = dict(base.provider_config or {})
+        base_ids = list(base.doc_ids or [])
+        base_vecs = base.vectors
         if not base_ids or base_vecs is None or base_cfg != dict(provider_config):
             return [], None
         return base_ids, base_vecs
@@ -211,7 +211,7 @@ class ColbertIndexMixin:
         cache_key: str,
         corpus_docs: list[Document],
         upsert_docs: list[Document],
-        base_ids: list[Any],
+        base_ids: list[str],
         base_vecs: Any,
         embedder: Any,
     ) -> tuple[list[str], Any] | None:
@@ -287,11 +287,11 @@ class ColbertIndexMixin:
 
         embedder = get_dense_embedder(
             provider=provider,
-            model_name=str(getattr(settings, "COLBERT_RETRIEVAL_MODEL_NAME", "") or ""),
-            device=str(getattr(settings, "COLBERT_RETRIEVAL_DEVICE", "cpu") or "cpu"),
-            batch_size=int(getattr(settings, "COLBERT_RETRIEVAL_BATCH_SIZE", 16) or 16),
-            max_length=int(getattr(settings, "COLBERT_RETRIEVAL_MAX_LENGTH", 256) or 256),
-            deterministic_dim=int(getattr(settings, "COLBERT_RETRIEVAL_EMBED_DIM", 64) or 64),
+            model_name=str(settings.COLBERT_RETRIEVAL_MODEL_NAME or ""),
+            device=str(settings.COLBERT_RETRIEVAL_DEVICE or "cpu"),
+            batch_size=int(settings.COLBERT_RETRIEVAL_BATCH_SIZE or 16),
+            max_length=int(settings.COLBERT_RETRIEVAL_MAX_LENGTH or 256),
+            deterministic_dim=int(settings.COLBERT_RETRIEVAL_EMBED_DIM or 64),
         )
         packed = self._colbert_incremental_vectors(
             cache_key=cache_key,
@@ -330,7 +330,7 @@ class ColbertIndexMixin:
         merged_docs: list[Document],
         upsert_docs: list[Document],
     ) -> None:
-        if not bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)):
+        if not bool(settings.COLBERT_RETRIEVAL_ENABLED):
             return
 
         try:
@@ -350,15 +350,15 @@ class ColbertIndexMixin:
         removed_ids: set[str],
         filtered: list[Document],
     ) -> None:
-        if not removed_ids or not bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)):
+        if not removed_ids or not bool(settings.COLBERT_RETRIEVAL_ENABLED):
             return
         try:
             with self._get_colbert_build_lock(scope_key):
                 idx = self._colbert_index_cache.get(scope_key)
                 if idx is None:
                     return
-                ids0 = list(getattr(idx, "doc_ids", []) or [])
-                vecs0 = getattr(idx, "vectors", None)
+                ids0 = list(idx.doc_ids or [])
+                vecs0 = idx.vectors
                 if not ids0 or vecs0 is None:
                     return
                 self._replace_colbert_index_without_deleted_chunks(
@@ -376,8 +376,8 @@ class ColbertIndexMixin:
         self,
         *,
         scope_key: str,
-        idx: Any,
-        ids0: list[Any],
+        idx: "ColbertAnnIndex",
+        ids0: list[str],
         vecs0: Any,
         removed_ids: set[str],
         filtered: list[Document],
@@ -399,7 +399,7 @@ class ColbertIndexMixin:
                 doc_ids=new_ids,
                 vectors=new_mat,
                 corpus_fingerprint=fp,
-                provider_config=dict(getattr(idx, "provider_config", {}) or {}),
+                provider_config=dict(idx.provider_config or {}),
             )
         except Exception as exc:
             logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
@@ -409,10 +409,10 @@ class ColbertIndexMixin:
     ) -> tuple[int, dict[str, Any]]:
         max_docs = self._resolve_colbert_max_docs()
         readiness = resolve_provider_capability(
-            colbert_enabled=bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)),
+            colbert_enabled=bool(settings.COLBERT_RETRIEVAL_ENABLED),
             requested_provider=self._colbert_provider_name(),
-            model_name=str(getattr(settings, "COLBERT_RETRIEVAL_MODEL_NAME", "") or ""),
-            device=str(getattr(settings, "COLBERT_RETRIEVAL_DEVICE", "cpu") or "cpu"),
+            model_name=str(settings.COLBERT_RETRIEVAL_MODEL_NAME or ""),
+            device=str(settings.COLBERT_RETRIEVAL_DEVICE or "cpu"),
             docs_count=int(len(docs or [])),
             max_docs=int(max_docs),
         )
@@ -440,12 +440,14 @@ class ColbertIndexMixin:
                 logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
 
     @staticmethod
-    def _colbert_index_matches(index: Any, *, expected_fp: str, provider_config: dict[str, Any]) -> bool:
+    def _colbert_index_matches(
+        index: "ColbertAnnIndex | None", *, expected_fp: str, provider_config: dict[str, Any]
+    ) -> bool:
         try:
             return (
                 index is not None
-                and str(getattr(index, "corpus_fingerprint", "") or "") == str(expected_fp or "")
-                and dict(getattr(index, "provider_config", {}) or {}) == dict(provider_config)
+                and str(index.corpus_fingerprint or "") == str(expected_fp or "")
+                and dict(index.provider_config or {}) == dict(provider_config)
             )
         except (TypeError, ValueError, AttributeError):
             return False
@@ -457,13 +459,11 @@ class ColbertIndexMixin:
         cache_key: str,
         provider_config: dict[str, Any],
         expected_fp: str,
-    ) -> Any | None:
-        if not bool(getattr(settings, "COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
+    ) -> "ColbertAnnIndex | None":
+        if not bool(settings.COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED):
             return None
         try:
-            store = store_cls(
-                base_dir=str(getattr(settings, "COLBERT_RETRIEVAL_INDEX_DIR", COLBERT_INDEX_DIR_FALLBACK) or "")
-            )
+            store = store_cls(base_dir=str(settings.COLBERT_RETRIEVAL_INDEX_DIR or ""))
             loaded = store.load(cache_key=cache_key, provider_config=provider_config, expected_fingerprint=expected_fp)
             if loaded is not None:
                 self._colbert_index_cache[cache_key] = loaded
@@ -480,7 +480,7 @@ class ColbertIndexMixin:
         provider_config: dict[str, Any],
         expected_fp: str,
         store_cls: Any,
-    ) -> Any | None:
+    ) -> "ColbertAnnIndex | None":
         index = self._colbert_index_cache.get(cache_key)
         if self._colbert_index_matches(index, expected_fp=expected_fp, provider_config=provider_config):
             return index
@@ -511,11 +511,11 @@ class ColbertIndexMixin:
     def _colbert_query_vector(get_dense_embedder: Any, *, provider: str, raw_query: str) -> Any | None:
         embedder = get_dense_embedder(
             provider=provider,
-            model_name=str(getattr(settings, "COLBERT_RETRIEVAL_MODEL_NAME", "") or ""),
-            device=str(getattr(settings, "COLBERT_RETRIEVAL_DEVICE", "cpu") or "cpu"),
-            batch_size=int(getattr(settings, "COLBERT_RETRIEVAL_BATCH_SIZE", 16) or 16),
-            max_length=int(getattr(settings, "COLBERT_RETRIEVAL_MAX_LENGTH", 256) or 256),
-            deterministic_dim=int(getattr(settings, "COLBERT_RETRIEVAL_EMBED_DIM", 64) or 64),
+            model_name=str(settings.COLBERT_RETRIEVAL_MODEL_NAME or ""),
+            device=str(settings.COLBERT_RETRIEVAL_DEVICE or "cpu"),
+            batch_size=int(settings.COLBERT_RETRIEVAL_BATCH_SIZE or 16),
+            max_length=int(settings.COLBERT_RETRIEVAL_MAX_LENGTH or 256),
+            deterministic_dim=int(settings.COLBERT_RETRIEVAL_EMBED_DIM or 64),
         )
         q_mat = embedder.encode_batch([raw_query])
         try:
@@ -611,8 +611,8 @@ class ColbertIndexMixin:
         if q_vec is None:
             return []
 
-        doc_vecs = getattr(index, "vectors", None)
-        doc_ids = list(getattr(index, "doc_ids", []) or [])
+        doc_vecs = index.vectors
+        doc_ids = list(index.doc_ids or [])
         if doc_vecs is None or not doc_ids:
             return []
 
@@ -647,7 +647,7 @@ class ColbertIndexMixin:
         raw_query = str(query or "").strip()
         if not raw_query:
             return []
-        if not bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)):
+        if not bool(settings.COLBERT_RETRIEVAL_ENABLED):
             return []
 
         _tenant_uuid, _dataset_scope_ids, cache_key, docs = self._bm25_scope_docs(

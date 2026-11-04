@@ -23,3 +23,5 @@ Status: implemented
 内部数据来源和排序依据更直接，调用者继续使用原参数、字典、顺序与失败策略。验证使用源码、生产者和调用约定、完整限定的 AST 对照与 Ruff；Python 测试、检索、模型、数据库、网络和服务运行时未执行。
 
 本次笔记检索中，[共享标量转换](2026-11-03-shared-scalar-coercion-owner.md) 与原始数值边界部分重叠，沿用其边界原则；本模块 `_float_or_default` 仅捕获 TypeError/ValueError 的既有区别保留。[重排 provider 回退](../bug-fix/2026-11-03-reranker-provider-fallback-boundary.md) 与工厂错误政策部分重叠，沿用其结论。KG 查询扩展所有者属于另一条查询构造链，与本次内部排名记录无关；这些决定均未被替代。
+
+[语料与索引内部值](2026-11-05-retrieval-corpus-owned-values.md)将相同的生产者边界原则用于索引记录和本地计数，保留旧参数与可变 Settings 的值转换；本篇排名决定保持。
