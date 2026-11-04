@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -12,6 +12,7 @@ import { SettingsSwitch } from '@/components/settings/settings-switch'
 import { settingsTextTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
 import { rbacApi, type TenantMember } from '@/lib/api/access'
 import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionRevision } from '@/lib/auth-storage'
 import { rtbfApi } from '@/lib/api/rtbf'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
@@ -237,6 +238,15 @@ function rtbfMemberLabel(member: TenantMember): { primary: string; secondary: st
   return { primary: id.length > 18 ? `${id.slice(0, 10)}...${id.slice(-6)}` : id, secondary: '账号 ID' }
 }
 
+function parseRtbfLimit(raw: string, label: string, minimum: number, maximum: number): number {
+  const trimmed = raw.trim()
+  const value = Number(trimmed)
+  if (!/^\d+$/.test(trimmed) || !Number.isInteger(value) || value < minimum || value > maximum) {
+    throw new Error(`${label}应为 ${minimum}-${maximum} 的整数`)
+  }
+  return value
+}
+
 function RtbfResultSummary({ value }: Readonly<{ value: unknown }>) {
   const result = buildRtbfResultView(value)
 
@@ -310,11 +320,20 @@ export function GovernanceSection({
   const [rtbfAccountId, setRtbfAccountId] = useState('')
   const [rtbfTicketId, setRtbfTicketId] = useState('')
   const [rtbfDryRun, setRtbfDryRun] = useState(true)
-  const [rtbfMaxDocs, setRtbfMaxDocs] = useState(100)
-  const [rtbfMaxRetries, setRtbfMaxRetries] = useState(1)
+  const [rtbfMaxDocs, setRtbfMaxDocs] = useState('100')
+  const [rtbfMaxRetries, setRtbfMaxRetries] = useState('1')
   const [rtbfRunningKey, setRtbfRunningKey] = useState<string | null>(null)
   const [rtbfResult, setRtbfResult] = useState<unknown>(null)
   const [rtbfSubjectSource, setRtbfSubjectSource] = useState<RtbfSubjectSource>('current')
+  const rtbfOwnerRef = useRef({ active: true, running: false })
+
+  useEffect(() => {
+    const owner = rtbfOwnerRef.current
+    owner.active = true
+    return () => {
+      owner.active = false
+    }
+  }, [])
 
   const currentAccessQuery = useQuery({
     queryKey: queryKeys.access.current,
@@ -363,20 +382,28 @@ export function GovernanceSection({
   }, [autoSubjectId, rtbfSubjectSource])
 
   async function runRtbfAction(key: string, title: string, action: () => Promise<unknown>) {
+    const owner = rtbfOwnerRef.current
+    if (!owner.active || owner.running) return
+    owner.running = true
+    const sessionRevision = getAuthSessionRevision()
+    const submittedTicket = rtbfTicketId
+    const isCurrent = () => owner.active && sessionRevision === getAuthSessionRevision()
     setRtbfRunningKey(key)
     try {
       const payload = await action()
+      if (!isCurrent()) return
       setRtbfResult(payload)
       const ticketId =
         typeof (payload as { ticket_id?: unknown })?.ticket_id === 'string'
           ? String((payload as { ticket_id: string }).ticket_id)
           : ''
-      if (ticketId) setRtbfTicketId(ticketId)
+      if (ticketId) setRtbfTicketId((current) => (current === submittedTicket ? ticketId : current))
       toast.success(`${title}完成`)
     } catch (error) {
-      toast.error(formatApiError(error, `${title}失败`))
+      if (isCurrent()) toast.error(formatApiError(error, `${title}失败`))
     } finally {
-      setRtbfRunningKey(null)
+      owner.running = false
+      if (owner.active) setRtbfRunningKey(null)
     }
   }
 
@@ -574,8 +601,8 @@ export function GovernanceSection({
               <div className="space-y-1.5">
                 <div className={FIELD_LABEL}>最多扫描文档</div>
                 <Input
-                  value={String(rtbfMaxDocs)}
-                  onChange={(event) => setRtbfMaxDocs(Number.parseInt(event.target.value || '0', 10) || 100)}
+                  value={rtbfMaxDocs}
+                  onChange={(event) => setRtbfMaxDocs(event.target.value)}
                   className="h-8 rounded-md border-info/15 bg-info/[0.025] text-[12px]"
                   inputMode="numeric"
                 />
@@ -584,8 +611,8 @@ export function GovernanceSection({
               <div className="space-y-1.5">
                 <div className={FIELD_LABEL}>失败重试</div>
                 <Input
-                  value={String(rtbfMaxRetries)}
-                  onChange={(event) => setRtbfMaxRetries(Number.parseInt(event.target.value || '0', 10) || 1)}
+                  value={rtbfMaxRetries}
+                  onChange={(event) => setRtbfMaxRetries(event.target.value)}
                   className="h-8 rounded-md border-info/15 bg-info/[0.025] text-[12px]"
                   inputMode="numeric"
                 />
@@ -621,8 +648,8 @@ export function GovernanceSection({
                           rtbfApi.request({
                             subject_account_id: rtbfAccountId.trim(),
                             dry_run: rtbfDryRun,
-                            max_docs: rtbfMaxDocs,
-                            max_retries: rtbfMaxRetries,
+                            max_docs: parseRtbfLimit(rtbfMaxDocs, '最多扫描文档', 1, 1000),
+                            max_retries: parseRtbfLimit(rtbfMaxRetries, '失败重试', 0, 10),
                           }),
                         ),
                       )

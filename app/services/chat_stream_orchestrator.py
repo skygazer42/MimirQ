@@ -326,10 +326,7 @@ def _build_langchain_stream_options(
     persist_options: ChatStreamPersistInput,
     http_request: Any,
 ) -> LangChainChatStreamSessionInput:
-    heartbeat_sec = max(
-        0.0,
-        float(settings.CHAT_STREAM_HEARTBEAT_SEC or 10.0),
-    )
+    heartbeat_sec = max(0.0, settings.CHAT_STREAM_HEARTBEAT_SEC)
     cancel_on_disconnect = bool(settings.CHAT_STREAM_CANCEL_ON_DISCONNECT)
     disconnect_check = http_request.is_disconnected if cancel_on_disconnect else None
     return LangChainChatStreamSessionInput(

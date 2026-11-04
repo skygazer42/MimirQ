@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -28,6 +28,7 @@ import { OperationResultPanel } from '@/components/ops/operation-result-panel'
 import { settingsTextTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
 import { industryRulesApi, type IndustryRulesRewritePreviewResponse } from '@/lib/api/industry-rules'
 import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionRevision } from '@/lib/auth-storage'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
 
@@ -76,6 +77,22 @@ export function IndustryRulesSection() {
   })
   const rulesets = rulesetsQuery.data?.rulesets || []
   const trimmedRulesetName = rulesetName.trim()
+  const view = useMemo(() => ({ ruleset: trimmedRulesetName }), [trimmedRulesetName])
+  const activeViewRef = useRef<typeof view | null>(view)
+  const actionOwnerRef = useRef({ active: true, running: false })
+  useLayoutEffect(() => {
+    activeViewRef.current = view
+    return () => {
+      activeViewRef.current = null
+    }
+  }, [view])
+  useEffect(() => {
+    const owner = actionOwnerRef.current
+    owner.active = true
+    return () => {
+      owner.active = false
+    }
+  }, [])
   const selectedRulesetSummary = rulesets.find((item) => item.name === trimmedRulesetName)
   const rulesetDetailQuery = useQuery({
     queryKey: queryKeys.industryRules.ruleset(trimmedRulesetName),
@@ -85,21 +102,39 @@ export function IndustryRulesSection() {
   const loadedRuleset = rulesetDetailQuery.data?.ruleset
   const previewResult = result && isRewritePreview(result.payload) ? result.payload : null
 
-  async function runAction(
+  async function runAction<T>(
     key: string,
     title: string,
-    action: () => Promise<unknown>,
-    options?: { silentSuccess?: boolean },
+    action: () => Promise<T>,
+    options?: { silentSuccess?: boolean; onSuccess?: (payload: T) => void; invalidateRuleset?: boolean },
   ): Promise<void> {
+    const owner = actionOwnerRef.current
+    if (!owner.active || owner.running) return
+    const queryKey =
+      key === 'list' ? queryKeys.industryRules.rulesets : queryKeys.industryRules.ruleset(trimmedRulesetName)
+    const originQuery = queryClient.getQueryCache().find({ queryKey, exact: true })
+    if (!originQuery) return
+    const sessionRevision = getAuthSessionRevision()
+    const isActive = () =>
+      owner.active &&
+      sessionRevision === getAuthSessionRevision() &&
+      queryClient.getQueryCache().find({ queryKey, exact: true }) === originQuery
+    const isCurrent = () => isActive() && activeViewRef.current === view
+    owner.running = true
     setRunningKey(key)
     try {
       const payload = await action()
+      if (!isActive()) return
+      if (options?.invalidateRuleset) queryClient.invalidateQueries({ queryKey })
+      if (!isCurrent()) return
+      options?.onSuccess?.(payload)
       setResult({ title, payload })
       if (!options?.silentSuccess) toast.success(`${title}完成`)
     } catch (error) {
-      toast.error(formatApiError(error, `${title}失败`))
+      if (isCurrent()) toast.error(formatApiError(error, `${title}失败`))
     } finally {
-      setRunningKey(null)
+      owner.running = false
+      if (owner.active) setRunningKey(null)
     }
   }
 
@@ -111,11 +146,15 @@ export function IndustryRulesSection() {
         const { data, error } = await rulesetsQuery.refetch()
         if (error) throw error
         const payload = data || { rulesets: [] }
-        const first = payload.rulesets?.[0]?.name
-        if (first && !rulesetName.trim()) setRulesetName(first)
         return payload
       },
-      options,
+      {
+        ...options,
+        onSuccess: (payload) => {
+          const first = payload.rulesets?.[0]?.name
+          if (first) setRulesetName((current) => (current.trim() ? current : first))
+        },
+      },
     )
   }
 
@@ -180,15 +219,29 @@ export function IndustryRulesSection() {
                 disabled={actionDisabled}
                 onClick={() =>
                   detachPromise(
-                    runAction('detail', '载入规则', async () => {
-                      const { data, error } = await rulesetDetailQuery.refetch()
-                      if (error) throw error
-                      const payload = data || { ruleset: { glossary: {}, patterns: [], intents: [] } }
-                      setGlossaryJson(prettyJson(payload.ruleset.glossary || {}))
-                      setPatternsJson(prettyJson(payload.ruleset.patterns || []))
-                      setIntentsJson(prettyJson(payload.ruleset.intents || []))
-                      return payload
-                    }),
+                    runAction(
+                      'detail',
+                      '载入规则',
+                      async () => {
+                        const { data, error } = await rulesetDetailQuery.refetch()
+                        if (error) throw error
+                        const payload = data || { ruleset: { glossary: {}, patterns: [], intents: [] } }
+                        return payload
+                      },
+                      {
+                        onSuccess: (payload) => {
+                          setGlossaryJson((current) =>
+                            current === glossaryJson ? prettyJson(payload.ruleset.glossary || {}) : current,
+                          )
+                          setPatternsJson((current) =>
+                            current === patternsJson ? prettyJson(payload.ruleset.patterns || []) : current,
+                          )
+                          setIntentsJson((current) =>
+                            current === intentsJson ? prettyJson(payload.ruleset.intents || []) : current,
+                          )
+                        },
+                      },
+                    ),
                   )
                 }
               >
@@ -301,17 +354,14 @@ export function IndustryRulesSection() {
             disabled={actionDisabled}
             onSave={() =>
               detachPromise(
-                runAction('glossary', '保存术语词库', () =>
-                  industryRulesApi
-                    .updateGlossary(trimmedRulesetName, {
+                runAction(
+                  'glossary',
+                  '保存术语词库',
+                  () =>
+                    industryRulesApi.updateGlossary(trimmedRulesetName, {
                       glossary: parseJson<Record<string, string[]>>(glossaryJson, {}),
-                    })
-                    .then((payload) => {
-                      queryClient.invalidateQueries({
-                        queryKey: queryKeys.industryRules.ruleset(trimmedRulesetName),
-                      })
-                      return payload
                     }),
+                  { invalidateRuleset: true },
                 ),
               )
             }
@@ -327,17 +377,14 @@ export function IndustryRulesSection() {
             disabled={actionDisabled}
             onSave={() =>
               detachPromise(
-                runAction('patterns', '保存匹配规则', () =>
-                  industryRulesApi
-                    .updatePatterns(trimmedRulesetName, {
+                runAction(
+                  'patterns',
+                  '保存匹配规则',
+                  () =>
+                    industryRulesApi.updatePatterns(trimmedRulesetName, {
                       patterns: parseJson<Array<Record<string, unknown>>>(patternsJson, []),
-                    })
-                    .then((payload) => {
-                      queryClient.invalidateQueries({
-                        queryKey: queryKeys.industryRules.ruleset(trimmedRulesetName),
-                      })
-                      return payload
                     }),
+                  { invalidateRuleset: true },
                 ),
               )
             }
@@ -353,17 +400,14 @@ export function IndustryRulesSection() {
             disabled={actionDisabled}
             onSave={() =>
               detachPromise(
-                runAction('intents', '保存意图规则', () =>
-                  industryRulesApi
-                    .updateIntents(trimmedRulesetName, {
+                runAction(
+                  'intents',
+                  '保存意图规则',
+                  () =>
+                    industryRulesApi.updateIntents(trimmedRulesetName, {
                       intents: parseJson<Array<Record<string, unknown>>>(intentsJson, []),
-                    })
-                    .then((payload) => {
-                      queryClient.invalidateQueries({
-                        queryKey: queryKeys.industryRules.ruleset(trimmedRulesetName),
-                      })
-                      return payload
                     }),
+                  { invalidateRuleset: true },
                 ),
               )
             }

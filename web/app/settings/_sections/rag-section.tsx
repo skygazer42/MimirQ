@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { SettingsSwitch } from '@/components/settings/settings-switch'
-import { RERANKER_PROVIDER_OPTIONS } from '@/lib/reranker-provider-options'
+import { normalizeRerankerProvider, RERANKER_PROVIDER_OPTIONS } from '@/lib/reranker-provider-options'
 import { HelpCircle, Sliders } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { systemPageTokens } from '@/components/ui/system-page-tokens'
@@ -46,7 +46,8 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
   const isBm25IndexEnabled = rag.bm25_index_enabled
   const isRerankerEnabled = rag.enable_reranker
   const showImageInAnswer = rag.show_image_in_answer
-  const rerankerProviderValue = rag.reranker_provider || DEFAULT_RERANKER_PROVIDER
+  const configuredRerankerProvider = rag.reranker_provider || DEFAULT_RERANKER_PROVIDER
+  const rerankerProviderValue = normalizeRerankerProvider(configuredRerankerProvider, configuredRerankerProvider)
   const rerankerProviderLabel = getRerankerProviderLabel(rerankerProviderValue)
 
   return (
@@ -180,7 +181,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
                 disabled={!showImageInAnswer}
                 onChange={(event) =>
                   updateRag({
-                    image_append_max: Math.max(0, Math.min(10, Number.parseInt(event.target.value || '0', 10))),
+                    image_append_max: Math.max(0, Math.min(10, Number(event.target.value || '0'))),
                   })
                 }
                 className="h-8 rounded-[11px] border-info/15 bg-info/[0.025] text-[12px] disabled:opacity-60"
@@ -227,7 +228,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               value={rag.reranker_top_n}
               onChange={(event) =>
                 updateRag({
-                  reranker_top_n: Math.max(1, Math.min(200, Number.parseInt(event.target.value || '1', 10))),
+                  reranker_top_n: Math.max(1, Math.min(200, Number(event.target.value || '1'))),
                 })
               }
               className="h-9 rounded-[12px] border-info/15 bg-info/[0.025] text-[12px]"
@@ -303,7 +304,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               value={rag.chunk_min_chars}
               onChange={(event) =>
                 updateRag({
-                  chunk_min_chars: Math.max(0, Number.parseInt(event.target.value || '0', 10)),
+                  chunk_min_chars: Math.max(0, Number(event.target.value || '0')),
                 })
               }
             />

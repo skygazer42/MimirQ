@@ -204,7 +204,7 @@ export function RuntimeControlsSection({
                   value={cache.chat_response_cache_ttl_sec ?? 300}
                   onChange={(event) =>
                     updateCache({
-                      chat_response_cache_ttl_sec: Number.parseInt(event.target.value || '0', 10),
+                      chat_response_cache_ttl_sec: Number(event.target.value || '0'),
                     })
                   }
                   className={RUNTIME_INPUT}
@@ -218,7 +218,7 @@ export function RuntimeControlsSection({
                   value={cache.chat_response_cache_max_value_bytes ?? 200000}
                   onChange={(event) =>
                     updateCache({
-                      chat_response_cache_max_value_bytes: Number.parseInt(event.target.value || '0', 10),
+                      chat_response_cache_max_value_bytes: Number(event.target.value || '0'),
                     })
                   }
                   className={RUNTIME_INPUT}
@@ -266,7 +266,7 @@ export function RuntimeControlsSection({
                   value={safety.pii_stream_holdback_chars ?? 128}
                   onChange={(event) =>
                     updateSafety({
-                      pii_stream_holdback_chars: Number.parseInt(event.target.value || '0', 10),
+                      pii_stream_holdback_chars: Number(event.target.value || '0'),
                     })
                   }
                   className={RUNTIME_INPUT}

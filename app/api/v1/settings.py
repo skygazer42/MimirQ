@@ -979,7 +979,7 @@ def get_settings(
             pii_stream_holdback_chars=settings.PII_STREAM_HOLDBACK_CHARS,
         ),
         chat=ChatConfig(
-            stream_heartbeat_sec=settings.CHAT_STREAM_HEARTBEAT_SEC or 10.0,
+            stream_heartbeat_sec=settings.CHAT_STREAM_HEARTBEAT_SEC,
             stream_cancel_on_disconnect=settings.CHAT_STREAM_CANCEL_ON_DISCONNECT,
         ),
         langgraph=LangGraphConfig(

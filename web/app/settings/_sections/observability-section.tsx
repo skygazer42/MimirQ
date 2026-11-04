@@ -77,7 +77,7 @@ export function ObservabilitySection({ observability, updateObservability }: Rea
                   className="h-8 border-info/15 bg-info/[0.025] text-[12px]"
                   onChange={(event) =>
                     updateObservability({
-                      tool_call_log_max_preview_chars: Number.parseInt(event.target.value || '0', 10),
+                      tool_call_log_max_preview_chars: Number(event.target.value || '0'),
                     })
                   }
                 />
@@ -133,7 +133,7 @@ export function ObservabilitySection({ observability, updateObservability }: Rea
                   className="h-8 border-info/15 bg-info/[0.025] text-[12px]"
                   onChange={(event) =>
                     updateObservability({
-                      agent_log_max_preview_chars: Number.parseInt(event.target.value || '0', 10),
+                      agent_log_max_preview_chars: Number(event.target.value || '0'),
                     })
                   }
                 />

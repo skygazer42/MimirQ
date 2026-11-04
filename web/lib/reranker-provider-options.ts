@@ -23,17 +23,19 @@ function primitiveProviderString(value: unknown): string {
   return ''
 }
 
-export function normalizeRerankerProvider(value: unknown): string {
+export function normalizeRerankerProvider(value: unknown, fallback = 'llm'): string {
   const provider = primitiveProviderString(value).trim().toLowerCase().replaceAll('-', '_')
   if (!provider) return 'llm'
   if (provider === 'parent_child') return 'pc'
   if (provider === 'bge_v2_m3') return 'local_bge_v2_m3'
   if (provider === 'xgboost_ltr') return 'ltr'
+  if (provider === 'aliyun') return 'dashscope'
+  if (provider === 'late_interaction') return 'colbert'
   if (provider === 'sentence_transformers' || provider === 'sentence_transformer') {
     return 'cross_encoder'
   }
   if (provider === 'off' || provider === 'false' || provider === '0') {
     return 'none'
   }
-  return RERANKER_PROVIDER_OPTIONS.some((option) => option.key === provider) ? provider : 'llm'
+  return RERANKER_PROVIDER_OPTIONS.some((option) => option.key === provider) ? provider : fallback
 }

@@ -117,6 +117,7 @@ export function LtrModelRegistrySection({
                   key={`ltr-model-${ltrUploadResetKey}`}
                   type="file"
                   accept=".json,application/json"
+                  disabled={ltrUploading}
                   onChange={(event) => onModelFileChange(event.target.files?.[0] || null)}
                   className="sr-only"
                 />
@@ -130,6 +131,7 @@ export function LtrModelRegistrySection({
                   key={`ltr-manifest-${ltrUploadResetKey}`}
                   type="file"
                   accept=".json,application/json"
+                  disabled={ltrUploading}
                   onChange={(event) => onManifestFileChange(event.target.files?.[0] || null)}
                   className="sr-only"
                 />
