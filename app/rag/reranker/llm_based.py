@@ -245,18 +245,18 @@ def _load_weight_mapping(raw: Any) -> dict[str, float]:
 
 
 def resolve_llm_reranker_weight(*, tenant_id: str | None, query_type: str | None) -> float:
-    tenant_map = _load_weight_mapping(getattr(settings, "RERANKER_LLM_WEIGHT_BY_TENANT", ""))
-    query_type_map = _load_weight_mapping(getattr(settings, "RERANKER_LLM_WEIGHT_BY_QUERY_TYPE", ""))
+    tenant_map = _load_weight_mapping(settings.RERANKER_LLM_WEIGHT_BY_TENANT)
+    query_type_map = _load_weight_mapping(settings.RERANKER_LLM_WEIGHT_BY_QUERY_TYPE)
 
     tenant_key = str(tenant_id or "").strip().casefold()
     if tenant_key and tenant_key in tenant_map:
-        return float(tenant_map[tenant_key])
+        return tenant_map[tenant_key]
 
     query_type_key = str(query_type or "").strip().casefold()
     if query_type_key and query_type_key in query_type_map:
-        return float(query_type_map[query_type_key])
+        return query_type_map[query_type_key]
 
-    return _clamp_score(getattr(settings, "RERANKER_LLM_WEIGHT", 0.7), default=0.7)
+    return _clamp_score(settings.RERANKER_LLM_WEIGHT, default=0.7)
 
 
 def _finalize_rerank_scores(
@@ -310,7 +310,7 @@ class LLMReranker(DocumentReranker):
 
         self.model_used = model_name
         self.llm_weight = resolve_llm_reranker_weight(tenant_id=None, query_type=None)
-        self.fallback_score = _clamp_score(getattr(settings, "RERANKER_LLM_FALLBACK_SCORE", 0.5), default=0.5)
+        self.fallback_score = _clamp_score(settings.RERANKER_LLM_FALLBACK_SCORE, default=0.5)
         self._llm = ChatOpenAI(
             model=model_name,
             api_key=settings.LLM_API_KEY,
@@ -447,9 +447,7 @@ candidates(JSON): {candidates}
         effective_fallback = (
             _clamp_score(fallback_score, default=0.5)
             if fallback_score is not None
-            else _clamp_score(
-                getattr(self, "fallback_score", getattr(settings, "RERANKER_LLM_FALLBACK_SCORE", 0.5)), default=0.5
-            )
+            else _clamp_score(getattr(self, "fallback_score", settings.RERANKER_LLM_FALLBACK_SCORE), default=0.5)
         )
         max_chars = int(settings.RERANKER_MAX_CHARS or 800)
         for c in candidates:

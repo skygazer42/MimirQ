@@ -68,9 +68,7 @@ class CrossEncoderReranker(BaseReranker):
         self.device = (str(device).strip() if device is not None else None) or None
         self._model = model
         self.load_timeout_sec = (
-            float(load_timeout_sec)
-            if load_timeout_sec is not None
-            else float(getattr(settings, "RERANKER_LOCAL_LOAD_TIMEOUT_SEC", 2.0) or 0.0)
+            float(load_timeout_sec) if load_timeout_sec is not None else settings.RERANKER_LOCAL_LOAD_TIMEOUT_SEC or 0.0
         )
         self._load_lock = threading.Lock()
         self._load_thread: threading.Thread | None = None
@@ -152,8 +150,8 @@ class CrossEncoderReranker(BaseReranker):
         ids: list[str] = []
         pairs: list[tuple[str, str]] = []
         for candidate in candidates:
-            cid = str(getattr(candidate, "id", "") or "").strip()
-            text = str(getattr(candidate, "text", "") or "").strip()
+            cid = str(candidate.id or "").strip()
+            text = str(candidate.text or "").strip()
             if not cid or not text:
                 continue
             if max_chars > 0 and len(text) > max_chars:
@@ -221,7 +219,7 @@ class CrossEncoderReranker(BaseReranker):
         ordered_ids = [ids[i] for i in ordered_idx if ids[i]]
 
         if top_n:
-            ordered_ids = ordered_ids[: int(top_n)]
+            ordered_ids = ordered_ids[:top_n]
             score_map = {cid: score_map[cid] for cid in ordered_ids if cid in score_map}
 
         elapsed = time.time() - start
@@ -229,7 +227,7 @@ class CrossEncoderReranker(BaseReranker):
             "provider": provider,
             "model": self.model_name,
             "docs": len(ids),
-            "batch_size": int(batch_size),
+            "batch_size": batch_size,
         }
 
         if settings.ENABLE_METRICS_LOG:
@@ -241,7 +239,7 @@ class CrossEncoderReranker(BaseReranker):
                     "query_chars": len(q),
                     "docs": len(ids),
                     "elapsed_sec": round(float(elapsed), 3),
-                    "batch_size": int(batch_size),
+                    "batch_size": batch_size,
                 }
             )
 

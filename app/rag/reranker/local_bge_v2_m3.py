@@ -1,3 +1,5 @@
+from typing import Any
+
 from app.rag.core.logging import get_logger
 from app.rag.reranker.cross_encoder import CrossEncoderReranker
 
@@ -18,7 +20,7 @@ def _resolve_device() -> str:
 
 
 class LocalBGEV2M3Reranker(CrossEncoderReranker):
-    def __init__(self, model_name: str | None = None, *, device: str | None = None, model=None) -> None:  # noqa: ANN001
+    def __init__(self, model_name: str | None = None, *, device: str | None = None, model: Any | None = None) -> None:
         resolved_device = (str(device).strip() if device is not None else "") or _resolve_device()
         super().__init__(
             model_name=model_name or "BAAI/bge-reranker-v2-m3",

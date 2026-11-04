@@ -11,7 +11,7 @@ from app.rag.reranker.types import RerankCandidate, RerankResult
 class KGReranker(BaseReranker):
     """Knowledge Graph Reranker: reranking based on graph algorithms (PageRank/RRF)"""
 
-    def __init__(self, strategy: RerankStrategy):
+    def __init__(self, strategy: RerankStrategy) -> None:
         self.strategy = strategy
         self._rrf = RerankRRFSearcher()
         self._pagerank = RerankPageRankSearcher()

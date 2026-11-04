@@ -396,7 +396,7 @@ class ColBERTReranker(BaseReranker):
         self,
         query: str,
         candidates: Sequence[RerankCandidate],
-        **kwargs,
+        **kwargs: Any,
     ) -> RerankResult:
         start = time.time()
         top_n_raw = kwargs.get("top_n")
@@ -416,8 +416,8 @@ class ColBERTReranker(BaseReranker):
                 stats={
                     "embedder_provider": self.provider_name,
                     "late_interaction": True,
-                    "batch_size": int(self.batch_size),
-                    "max_length": int(self.max_length),
+                    "batch_size": self.batch_size,
+                    "max_length": self.max_length,
                 },
                 elapsed_sec=0.0,
             )
@@ -433,13 +433,13 @@ class ColBERTReranker(BaseReranker):
             d_tokens = _tokenize(c.text or "")
             d_emb = self._embedder.encode(d_tokens)
             s = late_interaction_score(query_emb=q_emb, doc_emb=d_emb)
-            scores.append((cid, float(s)))
+            scores.append((cid, s))
 
         scores.sort(key=lambda x: (-x[1], x[0]))
         ordered_ids = [cid for cid, _s in scores]
-        score_map = {cid: float(s) for cid, s in scores}
+        score_map = {cid: s for cid, s in scores}
         if top_n:
-            ordered_ids = ordered_ids[: int(top_n)]
+            ordered_ids = ordered_ids[:top_n]
             score_map = {cid: score_map[cid] for cid in ordered_ids if cid in score_map}
         return RerankResult(
             ordered_ids=ordered_ids,
@@ -451,8 +451,8 @@ class ColBERTReranker(BaseReranker):
                 "late_interaction": True,
                 "query_tokens": len(q_tokens),
                 "docs": len(score_map),
-                "batch_size": int(self.batch_size),
-                "max_length": int(self.max_length),
+                "batch_size": self.batch_size,
+                "max_length": self.max_length,
             },
             elapsed_sec=float(time.time() - start),
         )

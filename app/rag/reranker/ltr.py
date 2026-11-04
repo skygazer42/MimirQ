@@ -143,9 +143,9 @@ def build_ltr_feature_spec_fingerprint(
 
     payload = {
         "schema": str(schema or _FEATURE_SPEC_FINGERPRINT_SCHEMA_V1),
-        "version": int(v),
-        "feature_schema": str(getattr(spec, "schema", "") or ""),
-        "feature_names": list(getattr(spec, "feature_names", ()) or ()),
+        "version": v,
+        "feature_schema": spec.schema or "",
+        "feature_names": list(spec.feature_names),
     }
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
     digest = stable_hash(raw, length=32)
@@ -270,24 +270,22 @@ def extract_ltr_features(*, spec: LTRFeatureSpec, query: str, candidate: RerankC
     field_signal_title = 1.0 if field_signal == "title" else 0.0
     field_signal_heading = 1.0 if field_signal == "heading" else 0.0
 
-    keyword_max_score = max(float(bm25_score), float(lexical_score), float(sparse_score))
-    vector_keyword_gap = float(vector_score) - float(keyword_max_score)
-    multi_channel_hits = float(
-        sum(1 for s in (vector_score, bm25_score, lexical_score, sparse_score) if float(s) > 0.0)
-    )
+    keyword_max_score = max(bm25_score, lexical_score, sparse_score)
+    vector_keyword_gap = vector_score - keyword_max_score
+    multi_channel_hits = float(sum(1 for s in (vector_score, bm25_score, lexical_score, sparse_score) if s > 0.0))
 
     f_map: dict[str, float] = {
-        "vector_score": float(vector_score),
-        "bm25_score": float(bm25_score),
-        "lexical_score": float(lexical_score),
-        "sparse_score": float(sparse_score),
+        "vector_score": vector_score,
+        "bm25_score": bm25_score,
+        "lexical_score": lexical_score,
+        "sparse_score": sparse_score,
         "base_score": base_score,
-        "field_aware_boost": float(field_aware_boost),
-        "field_signal_title": float(field_signal_title),
-        "field_signal_heading": float(field_signal_heading),
-        "keyword_max_score": float(keyword_max_score),
-        "vector_keyword_gap": float(vector_keyword_gap),
-        "multi_channel_hits": float(multi_channel_hits),
+        "field_aware_boost": field_aware_boost,
+        "field_signal_title": field_signal_title,
+        "field_signal_heading": field_signal_heading,
+        "keyword_max_score": keyword_max_score,
+        "vector_keyword_gap": vector_keyword_gap,
+        "multi_channel_hits": multi_channel_hits,
         # KG ranking signals (optional; present only for KG-linked candidates).
         "kg_pagerank": _as_float(meta.get("kg_pagerank")),
         "kg_shared_events": _as_float(meta.get("kg_shared_events")),
@@ -448,7 +446,7 @@ class LTRReranker(BaseReranker):
             scored = list(zip(ids, [float(p) for p in preds], strict=False))
             scored.sort(key=lambda x: (-x[1], x[0]))
             ordered_ids = [cid for cid, _s in scored]
-            score_map = {cid: float(s) for cid, s in scored}
+            score_map = {cid: s for cid, s in scored}
             return RerankResult(
                 ordered_ids=ordered_ids,
                 score_map=score_map,

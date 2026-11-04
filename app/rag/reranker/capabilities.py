@@ -1,6 +1,6 @@
 """Capability discovery for reranker providers."""
 
-from typing import Any
+from typing import Any, NotRequired, TypedDict
 
 from app.core.config import settings
 from app.rag.reranker.registry import (
@@ -9,7 +9,23 @@ from app.rag.reranker.registry import (
 )
 
 
-def describe_reranker_provider(provider: str | None, **kwargs: Any) -> dict[str, Any]:
+class RerankerDescription(TypedDict):
+    provider: str
+    tier: str
+    mode: NotRequired[str]
+
+
+class RerankerCapabilities(TypedDict):
+    requested_provider: NotRequired[str]
+    resolved_provider: str | None
+    aliases: list[str]
+    tier: str
+    category: str
+    lazy_modules: list[str]
+    mode: NotRequired[str]
+
+
+def describe_reranker_provider(provider: str | None, **kwargs: Any) -> RerankerDescription:
     normalized = str(provider or "").strip().lower() or "openai"
     provider_name = str(kwargs.get("provider_name") or "").strip().lower() or None
     family = get_reranker_provider_family(normalized)
@@ -20,31 +36,18 @@ def describe_reranker_provider(provider: str | None, **kwargs: Any) -> dict[str,
     if family.canonical_name == "none":
         return {"provider": "none", "tier": "disabled"}
 
-    if family.canonical_name == "cross_encoder":
-        return {"provider": "cross_encoder", "tier": family.tier}
-    if family.canonical_name == "ltr":
-        return {"provider": "ltr", "tier": family.tier}
-    if family.canonical_name == "local_bge_v2_m3":
-        return {"provider": "local_bge_v2_m3", "tier": family.tier}
+    if family.canonical_name in {"cross_encoder", "ltr", "local_bge_v2_m3", "long_context", "mmr"}:
+        return {"provider": family.canonical_name, "tier": family.tier}
     if family.canonical_name == "colbert":
-        mode = (
-            provider_name
-            or str(getattr(settings, "COLBERT_RERANK_PROVIDER", "deterministic") or "deterministic").strip().lower()
-        )
+        mode = provider_name or (settings.COLBERT_RERANK_PROVIDER or "deterministic").strip().lower()
         if mode == "deterministic":
             return {"provider": "colbert", "tier": "offline_only", "mode": "deterministic"}
         return {"provider": "colbert", "tier": family.tier, "mode": mode}
 
-    if family.canonical_name in {"long_context", "mmr"}:
-        return {"provider": family.canonical_name, "tier": family.tier}
-
-    if family.canonical_name in {"weighted", "parent_child", "kg_pagerank", "kg_rrf", "llm", "openai", "dashscope"}:
-        return {"provider": normalized, "tier": family.tier}
-
     return {"provider": normalized, "tier": family.tier}
 
 
-def get_reranker_capabilities(provider: str | None, **kwargs: Any) -> dict[str, Any]:
+def get_reranker_capabilities(provider: str | None, **kwargs: Any) -> RerankerCapabilities:
     normalized = str(provider or "").strip().lower() or "openai"
     family = get_reranker_provider_family(normalized)
     summary = describe_reranker_provider(normalized, **kwargs)
@@ -53,7 +56,7 @@ def get_reranker_capabilities(provider: str | None, **kwargs: Any) -> dict[str, 
             "requested_provider": normalized,
             "resolved_provider": None,
             "aliases": [],
-            "tier": str(summary.get("tier") or "experimental"),
+            "tier": summary["tier"],
             "category": "unknown",
             "lazy_modules": [],
         }
@@ -61,14 +64,14 @@ def get_reranker_capabilities(provider: str | None, **kwargs: Any) -> dict[str, 
         "requested_provider": normalized,
         "resolved_provider": family.canonical_name,
         "aliases": list(family.aliases),
-        "tier": str(summary.get("tier") or family.tier),
+        "tier": summary["tier"],
         "category": family.category,
         "lazy_modules": list(family.lazy_modules),
         **({"mode": summary["mode"]} if "mode" in summary else {}),
     }
 
 
-def list_reranker_capabilities() -> list[dict[str, Any]]:
+def list_reranker_capabilities() -> list[RerankerCapabilities]:
     return [
         {
             "resolved_provider": family.canonical_name,

@@ -46,7 +46,7 @@ def _default_long_context_scorer(query: str, docs: list[RerankCandidate]) -> dic
         doc_tokens[str(doc.id)] = tokens
         for token in query_tokens:
             if token in tokens:
-                df[token] = int(df.get(token, 0) or 0) + 1
+                df[token] += 1
 
     out: dict[str, float] = {}
     for idx, doc in enumerate(docs or []):
@@ -58,7 +58,7 @@ def _default_long_context_scorer(query: str, docs: list[RerankCandidate]) -> dic
 
         score = 0.0
         for token in overlap:
-            score += 1.0 / float(max(1, int(df.get(token, 1) or 1)))
+            score += 1.0 / max(1, df[token] or 1)
 
         chunk_index = (doc.metadata or {}).get("chunk_index")
         if chunk_index is not None:
@@ -67,7 +67,7 @@ def _default_long_context_scorer(query: str, docs: list[RerankCandidate]) -> dic
             except Exception as exc:
                 logger.debug("Ignoring long-context chunk index score adjustment failure: %s", exc)
         score += max(0.0, 0.01 - float(idx) * 0.0001)
-        out[doc_id] = round(float(score), 6)
+        out[doc_id] = round(score, 6)
     return out
 
 

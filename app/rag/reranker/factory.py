@@ -7,6 +7,7 @@ Provide a unified reranker creation interface.
 import hashlib
 import json
 import threading
+from collections.abc import Callable
 from importlib import import_module
 from typing import Any
 
@@ -66,7 +67,7 @@ def _get_or_create_cached_reranker(
     cache: dict[str, BaseReranker],
     lock: threading.Lock,
     cache_key: str,
-    build: Any,
+    build: Callable[[], BaseReranker],
 ) -> BaseReranker:
     with lock:
         cached = cache.get(cache_key)
@@ -191,35 +192,29 @@ def _build_colbert_reranker(
 
     embedder = kwargs.get("embedder")
     provider_name = (
-        str(
-            kwargs.get("provider_name")
-            or getattr(settings, "COLBERT_RERANK_PROVIDER", "deterministic")
-            or "deterministic"
-        )
-        .strip()
-        .lower()
+        str(kwargs.get("provider_name") or settings.COLBERT_RERANK_PROVIDER or "deterministic").strip().lower()
     )
     if provider_name not in {"deterministic", "hf"}:
         provider_name = "deterministic"
     resolved_model_name = str(
-        kwargs.get("colbert_model_name") or model_name or getattr(settings, "COLBERT_RERANK_MODEL_NAME", "") or ""
+        kwargs.get("colbert_model_name") or model_name or settings.COLBERT_RERANK_MODEL_NAME or ""
     ).strip()
-    device = str(kwargs.get("device") or getattr(settings, "COLBERT_RERANK_DEVICE", "cpu") or "cpu").strip() or "cpu"
-    batch_size = max(1, int(kwargs.get("batch_size") or getattr(settings, "COLBERT_RERANK_BATCH_SIZE", 16) or 16))
-    max_length = max(8, int(kwargs.get("max_length") or getattr(settings, "COLBERT_RERANK_MAX_LENGTH", 256) or 256))
+    device = str(kwargs.get("device") or settings.COLBERT_RERANK_DEVICE or "cpu").strip() or "cpu"
+    batch_size = max(1, int(kwargs.get("batch_size") or settings.COLBERT_RERANK_BATCH_SIZE or 16))
+    max_length = max(8, int(kwargs.get("max_length") or settings.COLBERT_RERANK_MAX_LENGTH or 256))
     deterministic_dim = max(
         2,
-        int(kwargs.get("deterministic_dim") or getattr(settings, "COLBERT_RERANK_EMBED_DIM", 64) or 64),
+        int(kwargs.get("deterministic_dim") or settings.COLBERT_RERANK_EMBED_DIM or 64),
     )
     strict_healthcheck = bool(
         kwargs.get("healthcheck_strict")
         if kwargs.get("healthcheck_strict") is not None
-        else getattr(settings, "COLBERT_RERANK_HEALTHCHECK_STRICT", False)
+        else settings.COLBERT_RERANK_HEALTHCHECK_STRICT
     )
     warmup_enabled = bool(
         kwargs.get("warmup_enabled")
         if kwargs.get("warmup_enabled") is not None
-        else getattr(settings, "COLBERT_RERANK_WARMUP_ENABLED", False)
+        else settings.COLBERT_RERANK_WARMUP_ENABLED
     )
 
     provider_health = check_colbert_provider_readiness(
@@ -307,9 +302,7 @@ def _build_ltr_reranker(_requested_provider: str, **kwargs: Any) -> BaseReranker
     ltr_feature_spec_cls = _load_attr("app.rag.reranker.ltr", "LTRFeatureSpec")
     ltr_reranker_cls = _load_attr("app.rag.reranker.ltr", "LTRReranker")
 
-    model_path = (
-        str(kwargs.get("model_path") or "").strip() or str(getattr(settings, "LTR_MODEL_PATH", "") or "").strip()
-    )
+    model_path = str(kwargs.get("model_path") or "").strip() or settings.LTR_MODEL_PATH.strip()
     if not model_path:
         try:
             from app.services.ltr_model_registry import resolve_active_model_paths  # noqa: WPS433
@@ -328,14 +321,11 @@ def _build_ltr_reranker(_requested_provider: str, **kwargs: Any) -> BaseReranker
     if not model_path:
         raise ValueError("LTR reranker requires model_path (pass model_path=... or set LTR_MODEL_PATH)")
 
-    manifest_path = (
-        str(kwargs.get("manifest_path") or "").strip()
-        or str(getattr(settings, "LTR_MODEL_MANIFEST_PATH", "") or "").strip()
-    )
+    manifest_path = str(kwargs.get("manifest_path") or "").strip() or settings.LTR_MODEL_MANIFEST_PATH.strip()
 
     spec_version = kwargs.get("feature_spec_version")
     if spec_version is None:
-        spec_version = getattr(settings, "LTR_FEATURE_SPEC_VERSION", 1)
+        spec_version = settings.LTR_FEATURE_SPEC_VERSION
 
     feature_names = kwargs.get("feature_names")
     if isinstance(feature_names, (list, tuple)) and feature_names:
@@ -351,8 +341,8 @@ def _build_ltr_reranker(_requested_provider: str, **kwargs: Any) -> BaseReranker
         [
             model_path,
             manifest_path,
-            getattr(spec, "schema", ""),
-            ",".join(getattr(spec, "feature_names", ()) or ()),
+            spec.schema,
+            ",".join(spec.feature_names),
         ],
     )
     return _get_or_create_cached_reranker(

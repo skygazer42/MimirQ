@@ -149,8 +149,8 @@ class APIReranker(BaseReranker):
         api_key: str,
         base_url: str,
         timeout: float = 30.0,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         self.url = base_url
         self.model = model_name
         self.api_key = api_key
@@ -670,22 +670,7 @@ class APIReranker(BaseReranker):
             response.raise_for_status()
             result: dict[str, Any] = await response.json()
 
-        scores = [0.0] * len(documents)
-        for entry in self._extract_results(result) or []:
-            if not isinstance(entry, dict):
-                continue
-            try:
-                idx = int(entry.get("index", -1))
-            except Exception:
-                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-                continue
-            if idx < 0 or idx >= len(documents):
-                continue
-            try:
-                scores[idx] = float(entry.get("relevance_score", 0.0) or 0.0)
-            except Exception:
-                scores[idx] = 0.0
-        return scores
+        return self._scores_from_result(result, document_count=len(documents))
 
     def compute_score(
         self,
@@ -710,7 +695,7 @@ class APIReranker(BaseReranker):
             raise RuntimeError("reranker circuit is open")
 
         batch_size = max(1, int(batch_size))
-        timeout_sec = float(settings.RERANKER_API_TIMEOUT_SEC or getattr(self.timeout, "total", None) or 30.0)
+        timeout_sec = float(settings.RERANKER_API_TIMEOUT_SEC or self.timeout.total or 30.0)
         max_retries = max(0, int(settings.RERANKER_API_MAX_RETRIES or 0))
         backoff = max(0.0, float(settings.RERANKER_API_RETRY_BACKOFF_SEC or 0.0))
         max_concurrency = max(1, int(settings.RERANKER_API_MAX_CONCURRENCY or 1))
