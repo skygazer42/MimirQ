@@ -16,13 +16,13 @@ TenantResolver = Callable[[Request], Awaitable[UUID | None]]
 
 def _parse_tenant_id(value: str) -> UUID:
     try:
-        return UUID(str(value))
+        return UUID(value)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid tenant id") from exc
 
 
 def _explicit_tenant_id(request: Request) -> UUID | None:
-    tenant_header = str(settings.TENANT_HEADER or "X-Tenant-ID").strip() or "X-Tenant-ID"
+    tenant_header = (settings.TENANT_HEADER or "X-Tenant-ID").strip() or "X-Tenant-ID"
     raw = (request.headers.get(tenant_header) or "").strip()
     if not raw and tenant_header.lower() != "x-tenant-id":
         raw = (request.headers.get("x-tenant-id") or "").strip()
@@ -64,7 +64,7 @@ async def _resolve_account_id_for_asset_request(
         return _asset_request_header_account(request, is_production=is_production_env())
 
     authorization = _asset_request_authorization(request)
-    tenant_value = str(tenant_id).strip() if tenant_id is not None else None
+    tenant_value = str(tenant_id) if tenant_id is not None else None
     try:
         resolve_account = authenticator or get_current_account_id_from_headers
         return await resolve_account(
@@ -99,7 +99,7 @@ async def _resolve_tenant_id_for_asset_request(
     if provided_tenant_id is not None:
         return provided_tenant_id
     if is_production_env():
-        tenant_header = str(settings.TENANT_HEADER or "X-Tenant-ID").strip() or "X-Tenant-ID"
+        tenant_header = (settings.TENANT_HEADER or "X-Tenant-ID").strip() or "X-Tenant-ID"
         raise HTTPException(status_code=400, detail=f"{tenant_header} header or tenant_id query param required")
     return _parse_tenant_id(settings.DEFAULT_TENANT_ID)
 
