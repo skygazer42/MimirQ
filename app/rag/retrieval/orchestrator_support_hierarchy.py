@@ -1,10 +1,15 @@
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from langchain_core.documents import Document
 from sqlalchemy import or_
 
 from app.rag.core.logging import get_logger
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+    from app.models.document import DocumentChunk
 
 logger = get_logger(__name__)
 _FALLBACK_LOG_MESSAGE = "Ignoring non-critical retrieval orchestrator fallback failure: %s"
@@ -114,19 +119,19 @@ def hierarchy_fetch_pairs_by_doc(
     return by_doc
 
 
-def chunk_document_from_row(ck: Any) -> Document | None:
-    meta = dict(getattr(ck, "doc_metadata", None) or {})
-    cid = str(getattr(ck, "id", "") or "")
-    meta.setdefault("tenant_id", str(getattr(ck, "tenant_id", "") or ""))
-    meta.setdefault("document_id", str(getattr(ck, "document_id", "") or ""))
+def chunk_document_from_row(ck: "DocumentChunk") -> Document | None:
+    meta = dict(ck.doc_metadata or {})
+    cid = str(ck.id or "")
+    meta.setdefault("tenant_id", str(ck.tenant_id or ""))
+    meta.setdefault("document_id", str(ck.document_id or ""))
     meta.setdefault("chunk_id", cid)
-    meta.setdefault("chunk_index", int(getattr(ck, "chunk_index", 0) or 0))
-    page_number = getattr(ck, "page_number", None)
+    meta.setdefault("chunk_index", int(ck.chunk_index or 0))
+    page_number = ck.page_number
     if page_number is not None:
         meta.setdefault("page", int(page_number))
         meta.setdefault("page_number", int(page_number))
-    start_char = getattr(ck, "start_char", None)
-    end_char = getattr(ck, "end_char", None)
+    start_char = ck.start_char
+    end_char = ck.end_char
     if start_char is not None:
         meta.setdefault("start_char", int(start_char))
     if end_char is not None:
@@ -138,7 +143,7 @@ def chunk_document_from_row(ck: Any) -> Document | None:
     if not node_key:
         return None
     return Document(
-        page_content=str(getattr(ck, "content", None) or ""),
+        page_content=str(ck.content or ""),
         metadata=meta,
         id=cid or meta.get("chunk_id"),
     )
@@ -146,13 +151,13 @@ def chunk_document_from_row(ck: Any) -> Document | None:
 
 def _matches_desired_pipeline(
     *,
-    chunk: Any,
+    chunk: "DocumentChunk",
     desired_pipeline_by_doc: dict[str, str],
 ) -> bool:
     desired = desired_pipeline_by_doc.get(str(chunk.document_id))
     if not desired:
         return True
-    meta = dict(getattr(chunk, "doc_metadata", None) or {})
+    meta = dict(chunk.doc_metadata or {})
     chunk_pipeline_key = str(meta.get("doc_pipeline_key") or "").strip()
     if not chunk_pipeline_key:
         pipeline_hash = str(meta.get("pipeline_hash") or "").strip()
@@ -163,11 +168,11 @@ def _matches_desired_pipeline(
 
 def _fetch_doc_hierarchy_chunks(
     *,
-    db: Any,
+    db: "Session",
     doc_uuid: UUID,
     tenant_uuid: UUID | None,
     keys_list: list[str],
-) -> list[Any]:
+) -> list["DocumentChunk"]:
     from app.models.document import DocumentChunk
 
     query = db.query(DocumentChunk).filter(DocumentChunk.document_id == doc_uuid)
@@ -184,7 +189,7 @@ def _fetch_doc_hierarchy_chunks(
 
 def _load_doc_hierarchy_docs(
     *,
-    db: Any,
+    db: "Session",
     doc_id_s: str,
     tenant_uuid: UUID | None,
     keys: set[str],

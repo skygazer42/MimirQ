@@ -32,6 +32,8 @@ PLAID 的公开压缩入口继续将原始向量转换为浮点数，并解析 c
 
 本次历史笔记审计中，[共享标量转换](2026-11-03-shared-scalar-coercion-owner.md)与原始数值边界部分重叠，[混合检索排名](2026-11-05-hybrid-ranking-owned-values.md)与内部值规则部分重叠，[语料缓存失效事务](../bug-fix/2026-11-03-corpus-cache-invalidation-transaction.md)与资源时序部分重叠；三者保持原决定并互链，没有被替代。检索命中的重排 provider 回退记录属于不同工厂错误政策，本次不修改。
 
+[检索编排内部记录](2026-11-05-retrieval-orchestration-owned-values.md)沿用可变 Settings 的值边界，并明确插件配置、后重排校准和层级 ORM 记录；本篇语料与双指纹决定保持。
+
 ## Verification
 
 19 个语料与混合渠道所有者完整审阅。Python 3.11 AST 对照保留 325 个函数的参数名、默认值和装饰器，保留数据库语句调用、with 上下文、异常类型及导出。Ruff 检查、格式检查与 diff 检查覆盖该组文件。验证限于静态源码和真实生产者、调用方契约；按任务限制不运行 Python 测试、应用、模型、检索、数据库、网络或服务。

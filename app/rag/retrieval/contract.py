@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, TypedDict
 
 _MODE_ALIASES = {
     "": "",
@@ -25,6 +25,21 @@ VALID_RETRIEVAL_CONTRACT_MODES = {
 }
 
 
+class _RetrievalContractPolicy(TypedDict):
+    mode: str
+    deterministic_recall: bool
+    must_recall_strict: bool
+    hard_fallback_enabled: bool
+    hard_fallback_mode: str
+    hard_fallback_top_k: int
+    force_visible_evidence_only: bool
+    require_evidence_spans: bool
+    claim_check_required: bool
+    enable_partial_miss_second_pass: bool
+    must_recall_required_source_key_match: bool
+    contract_fail_reason_taxonomy: str
+
+
 def normalize_retrieval_contract_mode(value: Any) -> str:
     raw = str(value or "").strip().lower()
     return _MODE_ALIASES.get(raw, raw)
@@ -39,7 +54,7 @@ def resolve_retrieval_contract_policy(
     hard_fallback_top_k_setting: int,
     visible_evidence_only_setting: bool,
     evidence_span_strict_setting: bool,
-) -> dict[str, Any]:
+) -> _RetrievalContractPolicy:
     normalized_mode = normalize_retrieval_contract_mode(mode)
     if normalized_mode not in VALID_RETRIEVAL_CONTRACT_MODES:
         normalized_mode = ""
@@ -61,16 +76,16 @@ def resolve_retrieval_contract_policy(
 
     return {
         "mode": normalized_mode or "",
-        "deterministic_recall": bool(deterministic_recall),
-        "must_recall_strict": bool(must_recall_strict),
-        "hard_fallback_enabled": bool(hard_fallback_enabled),
+        "deterministic_recall": deterministic_recall,
+        "must_recall_strict": must_recall_strict,
+        "hard_fallback_enabled": hard_fallback_enabled,
         "hard_fallback_mode": hard_fallback_mode,
-        "hard_fallback_top_k": int(hard_fallback_top_k),
-        "force_visible_evidence_only": bool(force_visible_evidence_only),
-        "require_evidence_spans": bool(require_evidence_spans),
-        "claim_check_required": bool(force_visible_evidence_only),
-        "enable_partial_miss_second_pass": bool(must_recall_strict),
-        "must_recall_required_source_key_match": bool(must_recall_strict),
+        "hard_fallback_top_k": hard_fallback_top_k,
+        "force_visible_evidence_only": force_visible_evidence_only,
+        "require_evidence_spans": require_evidence_spans,
+        "claim_check_required": force_visible_evidence_only,
+        "enable_partial_miss_second_pass": must_recall_strict,
+        "must_recall_required_source_key_match": must_recall_strict,
         "contract_fail_reason_taxonomy": "mimirq.contract_fail_reason.v1",
     }
 

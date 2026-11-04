@@ -21,6 +21,8 @@ Invalid provider configuration is now visible to retrieval callers. Disabled rer
 
 [混合检索排名整理](../simplification/2026-11-05-hybrid-ranking-owned-values.md)保持这里的工厂、禁用别名和 provider 失败归属，只调整排名内部记录与重复赋值。
 
+[检索编排内部记录](../simplification/2026-11-05-retrieval-orchestration-owned-values.md)保留这里的工厂与回调错误归属，原始 provider 分数继续转换，仅清理本地已归一化的记录和计数。
+
 ## Verification
 
 Ruff check, Ruff format --check, and `git diff --check` passed for the shim and its direct hybrid caller. Static inspection confirmed unknown providers raise in the real factory and disabled aliases are gated before the hybrid factory call. Python tests were not run.

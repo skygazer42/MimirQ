@@ -25,6 +25,8 @@ Retrieval config snapshot normalization treats malformed optional template versi
 
 Query preparation, routing and query expansion have one typed owner. The orchestrator retains request conversion and output mapping for trace/result fields, while retrieval behavior reads the plan directly without duplicating its query list. For malformed internal numeric overrides, failure occurs at request construction instead of silently substituting zero.
 
+[检索编排内部记录](../simplification/2026-11-05-retrieval-orchestration-owned-values.md)保留本篇查询计划与运行阶段顺序，只收窄已构造记录和声明字段的访问，注入回调继续保留原始值解析。
+
 ## Verification
 
 - Ruff check and format checks pass for the modified retrieval modules.

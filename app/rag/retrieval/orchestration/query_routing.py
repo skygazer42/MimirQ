@@ -309,9 +309,9 @@ def resolve_evidence_contract(options: dict[str, Any], *, query: str) -> dict[st
         visible_evidence_only_setting=settings.RAG_VISIBLE_EVIDENCE_ONLY_ENABLED,
         evidence_span_strict_setting=settings.RAG_EVIDENCE_REQUIRE_SPANS_ENABLED,
     )
-    retrieval_contract_mode = str(retrieval_contract_policy.get("mode") or "").strip().lower()
-    contract_deterministic_recall = bool(retrieval_contract_policy.get("deterministic_recall"))
-    contract_must_recall_strict = bool(retrieval_contract_policy.get("must_recall_strict"))
+    retrieval_contract_mode = retrieval_contract_policy["mode"]
+    contract_deterministic_recall = retrieval_contract_policy["deterministic_recall"]
+    contract_must_recall_strict = retrieval_contract_policy["must_recall_strict"]
     must_recall_requested, must_recall_enabled = _resolve_must_recall_enabled(
         state=state, retrieval_contract_policy=retrieval_contract_policy
     )

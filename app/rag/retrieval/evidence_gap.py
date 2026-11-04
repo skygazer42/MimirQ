@@ -22,7 +22,7 @@ def detect_evidence_gap(
     citations_norm = [c for c in (citations or []) if isinstance(c, dict)]
 
     reason_codes: list[str] = []
-    citations_total = int(len(citations_norm))
+    citations_total = len(citations_norm)
     if citations_total < max(0, int(min_citations or 0)):
         reason_codes.append("citations_below_min")
 

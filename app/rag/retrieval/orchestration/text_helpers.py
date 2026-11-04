@@ -5,6 +5,7 @@ orchestrator, but avoid importing the heavier claim-verification stack.
 """
 
 import re
+from collections.abc import Iterator
 from typing import Any
 
 from app.rag.core.json_text import parse_json_from_text as parse_json_from_text
@@ -78,7 +79,7 @@ def guess_retrieval_mode(query: str) -> str:
     return "hybrid"
 
 
-def _iter_citation_dicts(citations: list[dict[str, Any]] | None):
+def _iter_citation_dicts(citations: list[dict[str, Any]] | None) -> Iterator[dict[str, Any]]:
     for citation in (citations or []) if isinstance(citations, list) else []:
         if isinstance(citation, dict):
             yield citation
