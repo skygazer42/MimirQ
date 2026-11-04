@@ -18,7 +18,12 @@ export function useAuth() {
   const accessToken = getAccessToken()
   const initialUser = getStoredUser()
 
-  const { data: user, error, isFetching, refetch } = useQuery<UserProfile | null>({
+  const {
+    data: user,
+    error,
+    isFetching,
+    refetch,
+  } = useQuery<UserProfile | null>({
     queryKey: queryKeys.auth.profile,
     queryFn: async () => {
       const token = getAccessToken()
@@ -54,7 +59,9 @@ export function useAuth() {
 
   const logout = useCallback(() => {
     // Best-effort: clear server-side OIDC refresh token cookie if present.
-    void fetch('/api/oidc/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' } }).catch(() => undefined)
+    void fetch('/api/oidc/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' } }).catch(
+      () => undefined,
+    )
     clearAuthSession()
     queryClient.clear()
   }, [queryClient])

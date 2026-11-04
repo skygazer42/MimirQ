@@ -1,11 +1,6 @@
 import { diffLines } from 'diff'
 
-import type {
-  DiffCell,
-  DiffCellStatus,
-  JsonTokenKind,
-  SideBySideDiffRow,
-} from './types'
+import type { DiffCell, DiffCellStatus, JsonTokenKind, SideBySideDiffRow } from './types'
 
 export function splitCodeLines(value: string): string[] {
   const normalized = String(value ?? '').replaceAll('\r', '')
@@ -20,7 +15,7 @@ export function buildPairedRows(
   leftStatus: DiffCellStatus,
   rightStatus: DiffCellStatus,
   leftCounter: { value: number },
-  rightCounter: { value: number }
+  rightCounter: { value: number },
 ): SideBySideDiffRow[] {
   const maxLength = Math.max(leftLines.length, rightLines.length)
   return Array.from({ length: maxLength }, (_, index) => {
@@ -41,10 +36,7 @@ export function buildPairedRows(
   })
 }
 
-export function buildSideBySideDiffRows(
-  aText: string,
-  bText: string
-): SideBySideDiffRow[] {
+export function buildSideBySideDiffRows(aText: string, bText: string): SideBySideDiffRow[] {
   const changes = diffLines(aText, bText)
   const leftCounter = { value: 1 }
   const rightCounter = { value: 1 }
@@ -56,16 +48,7 @@ export function buildSideBySideDiffRows(
 
     if (!change.added && !change.removed) {
       const lines = splitCodeLines(change.value)
-      rows.push(
-        ...buildPairedRows(
-          lines,
-          lines,
-          'same',
-          'same',
-          leftCounter,
-          rightCounter
-        )
-      )
+      rows.push(...buildPairedRows(lines, lines, 'same', 'same', leftCounter, rightCounter))
       continue
     }
 
@@ -78,8 +61,8 @@ export function buildSideBySideDiffRows(
           'removed',
           'added',
           leftCounter,
-          rightCounter
-        )
+          rightCounter,
+        ),
       )
       index += 1
       continue
@@ -93,38 +76,20 @@ export function buildSideBySideDiffRows(
           'removed',
           'added',
           leftCounter,
-          rightCounter
-        )
+          rightCounter,
+        ),
       )
       index += 1
       continue
     }
 
     if (change.removed) {
-      rows.push(
-        ...buildPairedRows(
-          splitCodeLines(change.value),
-          [],
-          'removed',
-          'empty',
-          leftCounter,
-          rightCounter
-        )
-      )
+      rows.push(...buildPairedRows(splitCodeLines(change.value), [], 'removed', 'empty', leftCounter, rightCounter))
       continue
     }
 
     if (change.added) {
-      rows.push(
-        ...buildPairedRows(
-          [],
-          splitCodeLines(change.value),
-          'empty',
-          'added',
-          leftCounter,
-          rightCounter
-        )
-      )
+      rows.push(...buildPairedRows([], splitCodeLines(change.value), 'empty', 'added', leftCounter, rightCounter))
     }
   }
 
@@ -226,8 +191,7 @@ export function jsonLineSurfaceClass(status: DiffCellStatus | 'single', side: 'l
 export function cellSurfaceClass(status: DiffCellStatus, side: 'left' | 'right') {
   if (status === 'removed') return 'bg-destructive/5'
   if (status === 'added') return 'bg-success/5'
-  if (status === 'empty')
-    return side === 'left' ? 'bg-destructive/5' : 'bg-success/5'
+  if (status === 'empty') return side === 'left' ? 'bg-destructive/5' : 'bg-success/5'
   return 'bg-card'
 }
 

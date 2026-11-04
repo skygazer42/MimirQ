@@ -44,21 +44,14 @@ describe('useChatSession request ordering', () => {
   it('keeps the newest conversation when an older request finishes last', async () => {
     const first = deferred<{ conversation_id: string; messages: ReturnType<typeof message>[] }>()
     const second = deferred<{ conversation_id: string; messages: ReturnType<typeof message>[] }>()
-    chatApiMock.getMessages.mockImplementation((id: string) =>
-      id === 'first' ? first.promise : second.promise
-    )
+    chatApiMock.getMessages.mockImplementation((id: string) => (id === 'first' ? first.promise : second.promise))
 
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
-    const harness = renderHook(
-      () => useChatSession({}),
-      {
-        wrapper: ({ children }) => (
-          <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-        ),
-      }
-    )
+    const harness = renderHook(() => useChatSession({}), {
+      wrapper: ({ children }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
+    })
 
     let firstLoad!: Promise<void>
     let secondLoad!: Promise<void>

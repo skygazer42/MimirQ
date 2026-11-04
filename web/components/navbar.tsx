@@ -51,7 +51,10 @@ import { useBackendReady } from '@/hooks/use-backend-ready'
 import { useTenantAccess } from '@/hooks/use-tenant-access'
 import { useCommandMenuState } from '@/store/command-menu'
 import { TENANT_PERMISSIONS, tenantAccessAllows, type TenantPermission } from '@/lib/tenant-permissions'
-import { canShowAdminControlledNavigationModule, type AdminControlledNavigationModule } from '@/lib/navigation-visibility'
+import {
+  canShowAdminControlledNavigationModule,
+  type AdminControlledNavigationModule,
+} from '@/lib/navigation-visibility'
 
 type SectionId = 'core' | 'ingestion' | 'knowledge' | 'analysis' | 'system'
 
@@ -96,7 +99,12 @@ const menuSections: MenuSection[] = [
       { icon: Activity, labelKey: 'items.ingestion', href: '/knowledge/ingestion' },
       { icon: FileText, labelKey: 'items.parsing', href: '/parsing' },
       { icon: ShieldCheck, labelKey: 'items.dataGovernance', href: '/data-governance' },
-      { icon: Braces, labelKey: 'items.governanceProfiles', href: '/data-governance/profiles', visibilityKey: 'governanceProfiles' },
+      {
+        icon: Braces,
+        labelKey: 'items.governanceProfiles',
+        href: '/data-governance/profiles',
+        visibilityKey: 'governanceProfiles',
+      },
       { icon: Scissors, labelKey: 'items.chunkPreview', href: '/chunk-preview' },
     ],
   },
@@ -114,12 +122,32 @@ const menuSections: MenuSection[] = [
     id: 'system',
     titleKey: 'sections.system',
     items: [
-      { icon: Activity, labelKey: 'items.diagnostics', href: '/diagnostics', requiredPermission: TENANT_PERMISSIONS.OBSERVABILITY_READ },
+      {
+        icon: Activity,
+        labelKey: 'items.diagnostics',
+        href: '/diagnostics',
+        requiredPermission: TENANT_PERMISSIONS.OBSERVABILITY_READ,
+      },
       { icon: Coins, labelKey: 'items.usage', href: '/usage', requiredPermission: TENANT_PERMISSIONS.USAGE_READ },
       { icon: ShieldCheck, labelKey: 'items.audit', href: '/audit', requiredPermission: TENANT_PERMISSIONS.AUDIT_READ },
-      { icon: User, labelKey: 'items.members', href: '/settings/rbac', requiredPermission: TENANT_PERMISSIONS.SETTINGS_READ },
-      { icon: Users, labelKey: 'items.groups', href: '/settings/groups', requiredPermission: TENANT_PERMISSIONS.SETTINGS_READ },
-      { icon: Settings, labelKey: 'items.settings', href: '/settings', requiredPermission: TENANT_PERMISSIONS.SETTINGS_READ },
+      {
+        icon: User,
+        labelKey: 'items.members',
+        href: '/settings/rbac',
+        requiredPermission: TENANT_PERMISSIONS.SETTINGS_READ,
+      },
+      {
+        icon: Users,
+        labelKey: 'items.groups',
+        href: '/settings/groups',
+        requiredPermission: TENANT_PERMISSIONS.SETTINGS_READ,
+      },
+      {
+        icon: Settings,
+        labelKey: 'items.settings',
+        href: '/settings',
+        requiredPermission: TENANT_PERMISSIONS.SETTINGS_READ,
+      },
     ],
   },
 ]
@@ -183,7 +211,7 @@ function createInitialOpenSections(): Record<SectionId, boolean> {
       knowledge: false,
       analysis: false,
       system: false,
-    }
+    },
   )
 }
 
@@ -245,12 +273,12 @@ export function Navbar({
   const canAccessPermission = useCallback(
     (permission?: TenantPermission) =>
       !permission || allowDevNavigation || tenantAccessAllows(navigationTenantAccess, permission),
-    [allowDevNavigation, navigationTenantAccess]
+    [allowDevNavigation, navigationTenantAccess],
   )
   const canShowNavigationModule = useCallback(
     (moduleKey?: AdminControlledNavigationModule) =>
       !moduleKey || allowDevNavigation || canShowAdminControlledNavigationModule(navigationTenantAccess, moduleKey),
-    [allowDevNavigation, navigationTenantAccess]
+    [allowDevNavigation, navigationTenantAccess],
   )
   const visibleMenuSections = useMemo(
     () =>
@@ -258,28 +286,25 @@ export function Navbar({
         .map((section) => ({
           ...section,
           items: section.items.filter(
-            (item) => canAccessPermission(item.requiredPermission) && canShowNavigationModule(item.visibilityKey)
+            (item) => canAccessPermission(item.requiredPermission) && canShowNavigationModule(item.visibilityKey),
           ),
         }))
         .filter((section) => section.items.length > 0),
-    [canAccessPermission, canShowNavigationModule]
+    [canAccessPermission, canShowNavigationModule],
   )
   const visibleMenuItems = useMemo(() => visibleMenuSections.flatMap((section) => section.items), [visibleMenuSections])
   const activePathname = NAVIGATION_PARENT_ROUTES[pathname] || pathname
   const activeHref = getMostSpecificActiveHref(activePathname, visibleMenuItems)
   const readyDetails = backendReady.data ?? null
-  const backendOk =
-    (() => {
+  const backendOk = (() => {
     if (typeof readyDetails?.ok === 'boolean') {
-        return readyDetails.ok;
+      return readyDetails.ok
+    } else if (backendReady.isError) {
+      return false
+    } else {
+      return null
     }
-    else if (backendReady.isError) {
-            return false;
-        }
-        else {
-            return null;
-        }
-})()
+  })()
   const lastReadyAt = Math.max(backendReady.dataUpdatedAt || 0, backendReady.errorUpdatedAt || 0) || null
   const closeSidebarOnMobile = useCallback(() => {
     if (globalThis.window === undefined) return
@@ -435,7 +460,7 @@ export function Navbar({
     const w = globalThis.window as Window & {
       requestIdleCallback?: (
         callback: (deadline: { didTimeout: boolean; timeRemaining: () => number }) => void,
-        options?: { timeout?: number }
+        options?: { timeout?: number },
       ) => number
       cancelIdleCallback?: (id: number) => void
     }
@@ -449,9 +474,7 @@ export function Navbar({
   }, [router, pathname, visibleMenuItems])
 
   const authMode = String(backendMeta?.features?.auth_mode || '')
-  const vectorBackend = String(
-    backendMeta?.features?.vector_backend || readyDetails?.vector?.backend || ''
-  )
+  const vectorBackend = String(backendMeta?.features?.vector_backend || readyDetails?.vector?.backend || '')
   const buildSha = String(backendMeta?.build?.sha || '')
   const buildShaShort = buildSha ? buildSha.slice(0, 8) : ''
   const checkedAtLabel = lastReadyAt ? new Date(lastReadyAt).toLocaleTimeString() : '—'
@@ -505,9 +528,9 @@ export function Navbar({
     <>
       {/* Mobile Overlay */}
       {isSidebarOpen ? (
-      <button
-        type="button"
-        aria-label={t('toolbar.sidebarClose')}
+        <button
+          type="button"
+          aria-label={t('toolbar.sidebarClose')}
           className="fixed inset-0 z-40 bg-black/50 transition-opacity md:hidden border-0 p-0 focus:outline-none"
           onClick={() => {
             restoreToggleFocusOnCloseRef.current = false
@@ -524,7 +547,9 @@ export function Navbar({
         className={cn(
           'peer flex-shrink-0 border-r border-sidebar-border/80 bg-sidebar/96 text-sidebar-foreground backdrop-blur-xl supports-[backdrop-filter]:bg-sidebar/92 flex flex-col transition-transform duration-200 ease-out z-50',
           'fixed inset-y-0 left-0 md:relative', // Mobile: fixed, Desktop: relative
-          isSidebarOpen ? 'w-[264px] translate-x-0' : 'w-[264px] -translate-x-full md:w-0 md:translate-x-0 md:overflow-hidden'
+          isSidebarOpen
+            ? 'w-[264px] translate-x-0'
+            : 'w-[264px] -translate-x-full md:w-0 md:translate-x-0 md:overflow-hidden',
         )}
       >
         {/* Logo 区域 */}
@@ -565,9 +590,9 @@ export function Navbar({
             ref={firstActionRef}
             variant="ghost"
             className={cn(
-              "h-10 w-full justify-start gap-2.5 rounded-xl border border-info/12 bg-transparent px-3 font-medium text-sidebar-foreground transition-colors duration-150 shadow-none sm:h-10",
-              "hover:border-info/20 hover:bg-info/6",
-              "active:scale-[0.98]"
+              'h-10 w-full justify-start gap-2.5 rounded-xl border border-info/12 bg-transparent px-3 font-medium text-sidebar-foreground transition-colors duration-150 shadow-none sm:h-10',
+              'hover:border-info/20 hover:bg-info/6',
+              'active:scale-[0.98]',
             )}
             onClick={() => {
               router.push('/')
@@ -599,7 +624,9 @@ export function Navbar({
                 <p className="truncate text-[13px] font-medium text-sidebar-foreground">{t('command.triggerLabel')}</p>
               </div>
             </div>
-            <span className="shrink-0 rounded-md border border-info/10 bg-info/6 px-1.5 py-0.5 text-[10px] font-semibold text-info/75">⌘K</span>
+            <span className="shrink-0 rounded-md border border-info/10 bg-info/6 px-1.5 py-0.5 text-[10px] font-semibold text-info/75">
+              ⌘K
+            </span>
           </button>
         </div>
 
@@ -613,22 +640,21 @@ export function Navbar({
               const ToggleIcon = isOpen ? ChevronDown : ChevronRight
 
               return (
-                <section
-                  key={section.id}
-                className={cn('space-y-1', index > 0 ? 'border-t border-info/12 pt-2' : '')}
-                >
+                <section key={section.id} className={cn('space-y-1', index > 0 ? 'border-t border-info/12 pt-2' : '')}>
                   <button
                     type="button"
                     className={cn(
                       'flex w-full items-center justify-between gap-3 rounded-xl px-3 py-1.5 text-left transition-all duration-200 focus-ring',
-                      hasActiveItem ? 'text-info font-bold' : 'text-muted-foreground hover:bg-info/7 hover:text-info'
+                      hasActiveItem ? 'text-info font-bold' : 'text-muted-foreground hover:bg-info/7 hover:text-info',
                     )}
                     onClick={() => toggleSection(section.id)}
                     aria-expanded={isOpen}
                     aria-controls={`sidebar-section-${section.id}`}
                   >
                     <div className="min-w-0">
-                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-info/70">{t(section.titleKey)}</p>
+                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-info/70">
+                        {t(section.titleKey)}
+                      </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <ToggleIcon className="size-4 shrink-0" />
@@ -639,7 +665,7 @@ export function Navbar({
                     id={`sidebar-section-${section.id}`}
                     className={cn(
                       'grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out',
-                      isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+                      isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
                     )}
                   >
                     <div className="overflow-hidden">
@@ -660,13 +686,15 @@ export function Navbar({
                                   'before:pointer-events-none before:absolute before:left-1 before:top-2 before:bottom-2 before:w-[3px] before:rounded-full before:transition-all before:duration-200',
                                   isActive
                                     ? 'text-info font-bold bg-info/7 shadow-none before:bg-info'
-                                    : 'text-muted-foreground hover:bg-info/6 hover:text-info before:bg-transparent hover:before:bg-info/28'
+                                    : 'text-muted-foreground hover:bg-info/6 hover:text-info before:bg-transparent hover:before:bg-info/28',
                                 )}
                               >
                                 <Icon
                                   className={cn(
                                     'size-4 transition-all duration-200',
-                                    isActive ? 'text-info' : 'text-muted-foreground group-hover:text-info group-hover:scale-110'
+                                    isActive
+                                      ? 'text-info'
+                                      : 'text-muted-foreground group-hover:text-info group-hover:scale-110',
                                   )}
                                 />
                                 <span className="text-sm">{t(item.labelKey)}</span>
@@ -722,9 +750,7 @@ export function Navbar({
                 <p className="text-sm font-bold text-sidebar-foreground truncate group-hover:text-info transition-colors">
                   {userDisplayName}
                 </p>
-                <p className="text-[11px] font-medium text-info truncate leading-tight mt-0.5">
-                  {userStatusLine}
-                </p>
+                <p className="text-[11px] font-medium text-info truncate leading-tight mt-0.5">{userStatusLine}</p>
               </div>
             </button>
             <div className="flex flex-col gap-1">
@@ -742,11 +768,7 @@ export function Navbar({
                 title={isAuthenticated ? t('auth.logout') : t('auth.login')}
                 aria-label={isAuthenticated ? t('auth.logout') : t('auth.login')}
               >
-                {isAuthenticated ? (
-                  <LogOut className="size-4" />
-                ) : (
-                  <LogIn className="size-4" />
-                )}
+                {isAuthenticated ? <LogOut className="size-4" /> : <LogIn className="size-4" />}
               </Button>
               <ModeToggle />
             </div>
@@ -782,27 +804,23 @@ export function Navbar({
                 >
                   <StatusBadge
                     status={(() => {
-    if (backendOk === true) {
-        return "completed";
-    }
-    else if (backendOk === false) {
-            return "failed";
-        }
-        else {
-            return "processing";
-        }
-})()}
+                      if (backendOk === true) {
+                        return 'completed'
+                      } else if (backendOk === false) {
+                        return 'failed'
+                      } else {
+                        return 'processing'
+                      }
+                    })()}
                     label={`Deps：${(() => {
-    if (backendOk === true) {
-        return "OK";
-    }
-    else if (backendOk === false) {
-            return "Down";
-        }
-        else {
-            return "...";
-        }
-})()}`}
+                      if (backendOk === true) {
+                        return 'OK'
+                      } else if (backendOk === false) {
+                        return 'Down'
+                      } else {
+                        return '...'
+                      }
+                    })()}`}
                     dense
                   />
                 </button>
@@ -813,31 +831,27 @@ export function Navbar({
                     <p className="font-semibold">{t('deps.ready')}</p>
                     <span
                       className={cn(
-                        "font-medium",
+                        'font-medium',
                         (() => {
-    if (backendOk === true) {
-        return "text-success";
-    }
-    else if (backendOk === false) {
-            return "text-destructive";
-        }
-        else {
-            return "text-muted-foreground";
-        }
-})()
+                          if (backendOk === true) {
+                            return 'text-success'
+                          } else if (backendOk === false) {
+                            return 'text-destructive'
+                          } else {
+                            return 'text-muted-foreground'
+                          }
+                        })(),
                       )}
                     >
                       {(() => {
-    if (backendOk === true) {
-        return "OK";
-    }
-    else if (backendOk === false) {
-            return "Down";
-        }
-        else {
-            return "...";
-        }
-})()}
+                        if (backendOk === true) {
+                          return 'OK'
+                        } else if (backendOk === false) {
+                          return 'Down'
+                        } else {
+                          return '...'
+                        }
+                      })()}
                     </span>
                   </div>
 
@@ -870,7 +884,7 @@ export function Navbar({
                             <div key={row.key} className="space-y-0.5">
                               <div className="flex items-start justify-between gap-2">
                                 <span className="font-medium text-foreground">{row.key}</span>
-                                <span className={cn("font-medium", st.className)}>{st.label}</span>
+                                <span className={cn('font-medium', st.className)}>{st.label}</span>
                               </div>
                               {row.note ? <div className="text-[11px] text-muted-foreground">{row.note}</div> : null}
                               {errText ? (
@@ -919,7 +933,7 @@ export function Navbar({
           title={t('toolbar.collapse')}
           className={cn(
             'fixed z-50 border border-border bg-background/92 text-muted-foreground shadow-soft backdrop-blur transition-colors duration-200 ease-out hover:bg-muted',
-            'bottom-4 left-[264px] size-11 rounded-xl opacity-0 pointer-events-none hover:text-primary supports-[padding:env(safe-area-inset-bottom)]:bottom-[calc(env(safe-area-inset-bottom)+1rem)] md:peer-hover:opacity-100 md:peer-hover:pointer-events-auto md:peer-focus-within:opacity-100 md:peer-focus-within:pointer-events-auto md:hover:opacity-100 md:hover:pointer-events-auto md:focus-visible:opacity-100 md:focus-visible:pointer-events-auto sm:size-10'
+            'bottom-4 left-[264px] size-11 rounded-xl opacity-0 pointer-events-none hover:text-primary supports-[padding:env(safe-area-inset-bottom)]:bottom-[calc(env(safe-area-inset-bottom)+1rem)] md:peer-hover:opacity-100 md:peer-hover:pointer-events-auto md:peer-focus-within:opacity-100 md:peer-focus-within:pointer-events-auto md:hover:opacity-100 md:hover:pointer-events-auto md:focus-visible:opacity-100 md:focus-visible:pointer-events-auto sm:size-10',
           )}
           onPointerDown={handleSidebarTogglePointerDown}
           onKeyDown={handleSidebarToggleKeyDown}
@@ -944,7 +958,7 @@ export function Navbar({
                 'md:-translate-x-[110%] md:scale-95 md:opacity-0 md:pointer-events-none',
                 'md:group-hover/sidebar-toggle:translate-x-2 md:group-hover/sidebar-toggle:scale-100 md:group-hover/sidebar-toggle:opacity-100 md:group-hover/sidebar-toggle:pointer-events-auto',
                 'md:group-focus-within/sidebar-toggle:translate-x-2 md:group-focus-within/sidebar-toggle:scale-100 md:group-focus-within/sidebar-toggle:opacity-100 md:group-focus-within/sidebar-toggle:pointer-events-auto',
-                'focus-visible:translate-x-0 focus-visible:scale-100 focus-visible:opacity-100 focus-visible:pointer-events-auto md:focus-visible:translate-x-2'
+                'focus-visible:translate-x-0 focus-visible:scale-100 focus-visible:opacity-100 focus-visible:pointer-events-auto md:focus-visible:translate-x-2',
               )}
               onPointerDown={handleSidebarTogglePointerDown}
               onKeyDown={handleSidebarToggleKeyDown}

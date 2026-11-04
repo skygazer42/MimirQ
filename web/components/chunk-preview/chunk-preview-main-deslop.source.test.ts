@@ -3,10 +3,7 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-const workbench = fs.readFileSync(
-  path.resolve(__dirname, 'components/workbench/index.tsx'),
-  'utf8'
-)
+const workbench = fs.readFileSync(path.resolve(__dirname, 'components/workbench/index.tsx'), 'utf8')
 
 describe('chunk preview empty workbench cleanup', () => {
   it('preserves upload, drag, example and help behavior', () => {
@@ -21,20 +18,16 @@ describe('chunk preview empty workbench cleanup', () => {
 
   it('uses flat sections, restrained typography and linear icons', () => {
     expect(workbench).toContain('data-chunk-empty-intake-panel')
+    expect(workbench).toContain('className="border-b border-foreground/10 pb-5"')
     expect(workbench).toContain(
-      'className="border-b border-foreground/10 pb-5"'
+      'className="max-w-2xl text-xl font-medium tracking-[-0.02em] text-foreground md:text-[22px]"',
+    )
+    expect(workbench).toContain('className="divide-y divide-foreground/10 border-y border-foreground/10"')
+    expect(workbench).toContain(
+      'className="relative border-t border-foreground/10 pt-5 xl:border-l xl:border-t-0 xl:pl-5 xl:pt-0"',
     )
     expect(workbench).toContain(
-      'className="max-w-2xl text-xl font-medium tracking-[-0.02em] text-foreground md:text-[22px]"'
-    )
-    expect(workbench).toContain(
-      'className="divide-y divide-foreground/10 border-y border-foreground/10"'
-    )
-    expect(workbench).toContain(
-      'className="relative border-t border-foreground/10 pt-5 xl:border-l xl:border-t-0 xl:pl-5 xl:pt-0"'
-    )
-    expect(workbench).toContain(
-      'className="relative flex items-center gap-3 border-b border-foreground/10 py-3 last:border-b-0"'
+      'className="relative flex items-center gap-3 border-b border-foreground/10 py-3 last:border-b-0"',
     )
     expect(workbench).not.toContain('font-black')
     expect(workbench).not.toContain('group/card relative h-full space-y-3 rounded-2xl border')
@@ -46,12 +39,8 @@ describe('chunk preview empty workbench cleanup', () => {
   it('waits for xl before splitting narrow workbench containers', () => {
     expect(workbench).toContain('xl:flex-row xl:items-stretch xl:justify-between')
     expect(workbench).toContain('xl:w-[24rem]')
-    expect(workbench).toContain(
-      'xl:grid-cols-[minmax(0,0.82fr)_minmax(24rem,1fr)]'
-    )
-    expect(workbench).toContain(
-      'xl:grid-cols-[0.9fr_1.1fr] xl:items-stretch'
-    )
+    expect(workbench).toContain('xl:grid-cols-[minmax(0,0.82fr)_minmax(24rem,1fr)]')
+    expect(workbench).toContain('xl:grid-cols-[0.9fr_1.1fr] xl:items-stretch')
     expect(workbench).toContain('xl:border-r xl:border-foreground/10 xl:pr-4')
     expect(workbench).not.toContain('lg:flex-row lg:items-stretch lg:justify-between')
   })

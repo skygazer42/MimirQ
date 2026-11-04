@@ -13,11 +13,7 @@ import {
   CommandList,
   CommandShortcut,
 } from '@/components/ui/command'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
 type SlashMenuProps = {
   open: boolean
@@ -48,7 +44,7 @@ export function SlashMenu({ open, onOpenChange, onSelect, position }: Readonly<S
         description: t(`commands.${id}.description`),
         keywords: t.raw(`commands.${id}.keywords`) as string[],
       })),
-    [t]
+    [t],
   )
 
   return (

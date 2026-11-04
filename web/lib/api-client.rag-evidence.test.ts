@@ -32,7 +32,7 @@ describe('ragApi.retrieveEvidence', () => {
         method: 'post',
         body: request,
         responseSchemaName: 'EvidenceRetrieveResponse',
-      })
+      }),
     )
   })
 })
@@ -46,7 +46,7 @@ describe('retrievalApi payload routing', () => {
     expect(apiCoreMock.apiClient.post).toHaveBeenCalledWith(
       '/retrieval/explain',
       payload,
-      expect.objectContaining({ timeout: expect.any(Number) })
+      expect.objectContaining({ timeout: expect.any(Number) }),
     )
   })
 
@@ -62,9 +62,6 @@ describe('retrievalApi payload routing', () => {
     await expect(retrievalApi.configHash(payload)).resolves.toEqual({
       hash: 'cfg-123',
     })
-    expect(apiCoreMock.apiClient.post).toHaveBeenCalledWith(
-      '/retrieval/config-hash',
-      payload
-    )
+    expect(apiCoreMock.apiClient.post).toHaveBeenCalledWith('/retrieval/config-hash', payload)
   })
 })

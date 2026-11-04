@@ -73,9 +73,10 @@ const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
   { id: 'sec-runtime', label: '运行控制', hint: '聊天、缓存、安全和流程编排' },
 ] as const
 
-const SETTINGS_SECTION_BY_ID = Object.fromEntries(
-  SETTINGS_SECTIONS.map((section) => [section.id, section])
-) as Record<string, SettingsSectionDefinition>
+const SETTINGS_SECTION_BY_ID = Object.fromEntries(SETTINGS_SECTIONS.map((section) => [section.id, section])) as Record<
+  string,
+  SettingsSectionDefinition
+>
 const SETTINGS_CARD_CLASS = 'rounded-xl border border-info/20 bg-info/[0.025] shadow-none'
 const SETTINGS_OUTLINE_BUTTON =
   'h-8 rounded-lg border-info/15 bg-info/[0.025] px-3 text-[12px] font-medium text-foreground shadow-none hover:border-info/30 hover:bg-info/[0.07] hover:text-info'
@@ -113,10 +114,7 @@ const SETTINGS_METRIC_TONE_CLASS: Record<SettingsMetricTone, string> = {
   slate: 'text-muted-foreground',
 }
 
-function getSaveStatusLabel(
-  saving: boolean,
-  saveMessageType?: string
-): string {
+function getSaveStatusLabel(saving: boolean, saveMessageType?: string): string {
   if (saving) return '保存中'
   if (saveMessageType === 'success') return '最近成功'
   if (saveMessageType === 'error') return '最近失败'
@@ -128,19 +126,14 @@ function getSaveStatusTone(saveMessageType?: string): SettingsMetricTone {
   return 'indigo'
 }
 
-function getSaveStatusValueClassName(
-  saving: boolean,
-  saveMessageType?: string
-): string {
+function getSaveStatusValueClassName(saving: boolean, saveMessageType?: string): string {
   if (saveMessageType === 'error') return 'text-destructive'
   if (saving) return 'text-warning'
   if (saveMessageType === 'success') return 'text-success'
   return 'text-foreground/80'
 }
 
-function SettingsMetricStrip({
-  items,
-}: Readonly<{ items: readonly SettingsMetricItem[] }>) {
+function SettingsMetricStrip({ items }: Readonly<{ items: readonly SettingsMetricItem[] }>) {
   return (
     <div
       data-testid="settings-metric-strip"
@@ -156,21 +149,14 @@ function SettingsMetricStrip({
             <div
               className={cn(
                 'flex size-6 shrink-0 items-center justify-center rounded-md border border-info/15 bg-info/[0.06]',
-                SETTINGS_METRIC_TONE_CLASS[item.tone]
+                SETTINGS_METRIC_TONE_CLASS[item.tone],
               )}
             >
               <Icon className="size-3.5" />
             </div>
             <div className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
-              <p className="truncate text-[11px] font-semibold text-muted-foreground">
-                {item.label}
-              </p>
-              <p
-                className={cn(
-                  'shrink-0 text-[13px] font-semibold leading-none text-foreground',
-                  item.valueClassName
-                )}
-              >
+              <p className="truncate text-[11px] font-semibold text-muted-foreground">{item.label}</p>
+              <p className={cn('shrink-0 text-[13px] font-semibold leading-none text-foreground', item.valueClassName)}>
                 {item.value}
               </p>
             </div>
@@ -190,16 +176,11 @@ function SettingsSaveFeedback({
 }>) {
   if (message.type === 'error') {
     return (
-      <Alert
-        variant="destructive"
-        className="rounded-xl border-destructive/25 bg-destructive/10 shadow-none"
-      >
+      <Alert variant="destructive" className="rounded-xl border-destructive/25 bg-destructive/10 shadow-none">
         <XCircle className="size-4" />
         <div>
           <AlertTitle>保存失败</AlertTitle>
-          <AlertDescription className="text-foreground/80">
-            {message.text}
-          </AlertDescription>
+          <AlertDescription className="text-foreground/80">{message.text}</AlertDescription>
         </div>
       </Alert>
     )
@@ -216,9 +197,7 @@ function SettingsSaveFeedback({
         </div>
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[13px] font-semibold leading-none text-foreground">
-              已保存
-            </p>
+            <p className="text-[13px] font-semibold leading-none text-foreground">已保存</p>
             {message.detail ? (
               <span className="rounded-full border border-success/25 bg-success/[0.04] px-2 py-0.5 text-[10px] font-medium text-success">
                 少量配置需重启服务
@@ -227,15 +206,11 @@ function SettingsSaveFeedback({
           </div>
           <p className="text-[12px] leading-5 text-muted-foreground">{message.text}</p>
           {message.detail ? (
-            <p className="text-[11.5px] font-medium leading-[18px] text-muted-foreground">
-              {message.detail}
-            </p>
+            <p className="text-[11.5px] font-medium leading-[18px] text-muted-foreground">{message.detail}</p>
           ) : null}
           {updatedKeys.length > 0 ? (
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[10px] font-semibold text-muted-foreground">
-                本次更新
-              </span>
+              <span className="text-[10px] font-semibold text-muted-foreground">本次更新</span>
               {visibleKeys.map((key) => (
                 <span
                   key={key}
@@ -266,21 +241,10 @@ type EnhancementCardProps = {
   tags: string[]
 }
 
-function EnhancementCard({
-  title,
-  description,
-  icon: Icon,
-  checked,
-  onToggle,
-  tags,
-}: Readonly<EnhancementCardProps>) {
+function EnhancementCard({ title, description, icon: Icon, checked, onToggle, tags }: Readonly<EnhancementCardProps>) {
   const toneClass = {
-    card: checked
-      ? 'border-info/30 bg-info/10'
-      : 'border-info/15 bg-info/[0.025]',
-    icon: checked
-      ? 'bg-info/15 text-info'
-      : 'bg-info/[0.06] text-muted-foreground',
+    card: checked ? 'border-info/30 bg-info/10' : 'border-info/15 bg-info/[0.025]',
+    icon: checked ? 'bg-info/15 text-info' : 'bg-info/[0.06] text-muted-foreground',
   }
 
   return (
@@ -290,22 +254,15 @@ function EnhancementCard({
       onClick={onToggle}
       className={cn(
         'group flex min-h-[54px] w-full items-center justify-between gap-3 rounded-[13px] border px-3 py-2 text-left transition-[border-color,background-color] duration-150 focus-ring hover:border-info/30 motion-reduce:transition-none',
-        toneClass.card
+        toneClass.card,
       )}
     >
       <span className="flex min-w-0 items-center gap-2.5">
-        <span
-          className={cn(
-            'flex size-6 shrink-0 items-center justify-center rounded-[10px]',
-            toneClass.icon
-          )}
-        >
+        <span className={cn('flex size-6 shrink-0 items-center justify-center rounded-[10px]', toneClass.icon)}>
           <Icon className="size-3.5" />
         </span>
         <span className="min-w-0">
-          <span className="block text-[12px] font-semibold leading-4 text-foreground">
-            {title}
-          </span>
+          <span className="block text-[12px] font-semibold leading-4 text-foreground">{title}</span>
           <span className="mt-0.5 block truncate text-[10.5px] font-medium leading-4 text-muted-foreground">
             {description}
           </span>
@@ -335,9 +292,7 @@ function RetrievalEnhancementSection({ state }: Readonly<{ state: SettingsPageSt
   return (
     <section className="rounded-xl border border-info/15 bg-info/[0.025] p-3.5 shadow-none">
       <div className="mb-2.5">
-        <h2 className="text-[13px] font-semibold text-foreground">
-          关键词增强配置
-        </h2>
+        <h2 className="text-[13px] font-semibold text-foreground">关键词增强配置</h2>
         <p className="mt-0.5 text-[11.5px] font-medium leading-[18px] text-muted-foreground">
           绑定后端 RAG 与 KG 开关，控制关键词索引和图谱增强是否参与检索
         </p>
@@ -391,7 +346,7 @@ function useSettingsScrollSpy(sectionIds: readonly string[]) {
       {
         root: document.querySelector('[data-page-scroll-container]'),
         threshold: [0, 0.1, 0.25, 0.5],
-      }
+      },
     )
 
     for (const id of sectionIds) {
@@ -422,7 +377,7 @@ function SettingsSectionFrame({
       aria-labelledby={`${section.id}-title`}
       className={cn(
         'relative scroll-mt-24 overflow-visible rounded-xl border border-info/20 bg-info/[0.018] shadow-none',
-        className
+        className,
       )}
     >
       <div className="border-b border-border/60 bg-info/[0.025] px-4 py-3">
@@ -431,15 +386,10 @@ function SettingsSectionFrame({
             {String(index + 1).padStart(2, '0')}
           </span>
           <div className="min-w-0">
-            <h2
-              id={`${section.id}-title`}
-              className={cn(settingsTextTokens.sectionTitle, 'leading-tight')}
-            >
+            <h2 id={`${section.id}-title`} className={cn(settingsTextTokens.sectionTitle, 'leading-tight')}>
               {section.label}
             </h2>
-            <p className="mt-0.5 text-[11.5px] font-medium leading-[18px] text-muted-foreground">
-              {section.hint}
-            </p>
+            <p className="mt-0.5 text-[11.5px] font-medium leading-[18px] text-muted-foreground">{section.hint}</p>
           </div>
         </div>
       </div>
@@ -450,10 +400,7 @@ function SettingsSectionFrame({
 
 export default function SettingsPage() {
   return (
-    <TenantPermissionGate
-      permission={TENANT_PERMISSIONS.SETTINGS_READ}
-      pageName="系统设置"
-    >
+    <TenantPermissionGate permission={TENANT_PERMISSIONS.SETTINGS_READ} pageName="系统设置">
       <SettingsPageContent />
     </TenantPermissionGate>
   )
@@ -463,16 +410,10 @@ function SettingsPageContent() {
   const state = useSettingsPageState()
   const access = useTenantAccess()
   const isAdmin = tenantAccessIsAdmin(access.data)
-  const visibleSections = useMemo(
-    () => SETTINGS_SECTIONS.filter((section) => !section.adminOnly || isAdmin),
-    [isAdmin]
-  )
+  const visibleSections = useMemo(() => SETTINGS_SECTIONS.filter((section) => !section.adminOnly || isAdmin), [isAdmin])
   const visibleSectionIndex = useMemo(
-    () =>
-      Object.fromEntries(
-        visibleSections.map((section, index) => [section.id, index])
-      ) as Record<string, number>,
-    [visibleSections]
+    () => Object.fromEntries(visibleSections.map((section, index) => [section.id, index])) as Record<string, number>,
+    [visibleSections],
   )
   const { parserBackend, setParserBackend } = useParserBackendPreference()
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
@@ -495,16 +436,11 @@ function SettingsPageContent() {
       value: getSaveStatusLabel(state.saving, state.saveMessage?.type),
       icon: ShieldCheck,
       tone: getSaveStatusTone(state.saveMessage?.type),
-      valueClassName: getSaveStatusValueClassName(
-        state.saving,
-        state.saveMessage?.type
-      ),
+      valueClassName: getSaveStatusValueClassName(state.saving, state.saveMessage?.type),
     },
     {
       label: '最近更新',
-      value: state.lastUpdatedKeys.length
-        ? `${state.lastUpdatedKeys.length} 项`
-        : '0 秒前',
+      value: state.lastUpdatedKeys.length ? `${state.lastUpdatedKeys.length} 项` : '0 秒前',
       icon: Clock,
       tone: 'blue',
     },
@@ -527,24 +463,16 @@ function SettingsPageContent() {
           <div className="space-y-2">
             <SettingsMetricStrip items={statusMetricItems} />
             {state.loadError ? (
-              <Alert
-                variant="destructive"
-                className="rounded-xl border-destructive/25 bg-destructive/10 shadow-none"
-              >
+              <Alert variant="destructive" className="rounded-xl border-destructive/25 bg-destructive/10 shadow-none">
                 <XCircle className="size-4" />
                 <div>
                   <AlertTitle>加载失败</AlertTitle>
-                  <AlertDescription className="text-foreground/80">
-                    {state.loadError}
-                  </AlertDescription>
+                  <AlertDescription className="text-foreground/80">{state.loadError}</AlertDescription>
                 </div>
               </Alert>
             ) : null}
             {state.saveMessage ? (
-              <SettingsSaveFeedback
-                message={state.saveMessage}
-                updatedKeys={state.lastUpdatedKeys}
-              />
+              <SettingsSaveFeedback message={state.saveMessage} updatedKeys={state.lastUpdatedKeys} />
             ) : null}
           </div>
         }
@@ -556,12 +484,7 @@ function SettingsPageContent() {
               disabled={state.loading}
               className={SETTINGS_OUTLINE_BUTTON}
             >
-              <RefreshCw
-                className={cn(
-                  'size-4',
-                  state.loading && 'animate-spin motion-reduce:animate-none'
-                )}
-              />
+              <RefreshCw className={cn('size-4', state.loading && 'animate-spin motion-reduce:animate-none')} />
               刷新
             </Button>
             <Button
@@ -569,12 +492,7 @@ function SettingsPageContent() {
               disabled={!state.hasChanges || state.saving}
               className={SETTINGS_PRIMARY_BUTTON}
             >
-              <Save
-                className={cn(
-                  'size-4',
-                  state.saving && 'animate-pulse motion-reduce:animate-none'
-                )}
-              />
+              <Save className={cn('size-4', state.saving && 'animate-pulse motion-reduce:animate-none')} />
               {state.saving ? '保存中...' : '保存配置'}
             </Button>
           </>
@@ -643,12 +561,7 @@ function SettingsContent({
 
   return (
     <div className="grid gap-4 xl:grid-cols-[176px_minmax(0,1fr)]">
-      <nav
-        className={cn(
-          SETTINGS_CARD_CLASS,
-          'sticky top-4 hidden shrink-0 self-start p-1.5 xl:block'
-        )}
-      >
+      <nav className={cn(SETTINGS_CARD_CLASS, 'sticky top-4 hidden shrink-0 self-start p-1.5 xl:block')}>
         <ul className="space-y-0.5">
           {visibleSections.map((sec) => (
             <li key={sec.id}>
@@ -660,7 +573,7 @@ function SettingsContent({
                   'text-[12px] font-semibold leading-[18px]',
                   activeId === sec.id
                     ? 'border-info/25 bg-info/[0.08] text-info'
-                    : 'text-foreground/78 hover:bg-info/[0.05] hover:text-info'
+                    : 'text-foreground/78 hover:bg-info/[0.05] hover:text-info',
                 )}
               >
                 {sec.label}
@@ -671,26 +584,12 @@ function SettingsContent({
       </nav>
 
       <div className="min-w-0 space-y-6">
-        <SettingsSectionFrame
-          section={SETTINGS_SECTION_BY_ID['sec-status']}
-          index={visibleSectionIndex['sec-status']}
-        >
-          {state.status ? (
-            <SystemStatusSection
-              status={state.status}
-              backendMeta={state.backendMeta}
-            />
-          ) : null}
+        <SettingsSectionFrame section={SETTINGS_SECTION_BY_ID['sec-status']} index={visibleSectionIndex['sec-status']}>
+          {state.status ? <SystemStatusSection status={state.status} backendMeta={state.backendMeta} /> : null}
         </SettingsSectionFrame>
 
-        <SettingsSectionFrame
-          section={SETTINGS_SECTION_BY_ID['sec-models']}
-          index={visibleSectionIndex['sec-models']}
-        >
-          <ModelProvidersSection
-            groupedProviders={state.groupedProviders}
-            onConfigure={state.handleConfigure}
-          />
+        <SettingsSectionFrame section={SETTINGS_SECTION_BY_ID['sec-models']} index={visibleSectionIndex['sec-models']}>
+          <ModelProvidersSection groupedProviders={state.groupedProviders} onConfigure={state.handleConfigure} />
         </SettingsSectionFrame>
 
         <SettingsSectionFrame
@@ -758,24 +657,15 @@ function SettingsContent({
             section={SETTINGS_SECTION_BY_ID['sec-storage']}
             index={visibleSectionIndex['sec-storage']}
           >
-            <ObjectStorageSection
-              minio={state.minioMerged}
-              updateMinIO={state.updateMinIO}
-            />
+            <ObjectStorageSection minio={state.minioMerged} updateMinIO={state.updateMinIO} />
           </SettingsSectionFrame>
         ) : null}
 
-        <SettingsSectionFrame
-          section={SETTINGS_SECTION_BY_ID['sec-rag']}
-          index={visibleSectionIndex['sec-rag']}
-        >
+        <SettingsSectionFrame section={SETTINGS_SECTION_BY_ID['sec-rag']} index={visibleSectionIndex['sec-rag']}>
           <RagSection rag={state.ragMerged} updateRag={state.updateRag} />
         </SettingsSectionFrame>
 
-        <SettingsSectionFrame
-          section={SETTINGS_SECTION_BY_ID['sec-ltr']}
-          index={visibleSectionIndex['sec-ltr']}
-        >
+        <SettingsSectionFrame section={SETTINGS_SECTION_BY_ID['sec-ltr']} index={visibleSectionIndex['sec-ltr']}>
           <LtrModelRegistrySection
             ltrError={state.ltrError}
             ltrMessage={state.ltrMessage}
@@ -798,10 +688,7 @@ function SettingsContent({
         </SettingsSectionFrame>
 
         {isAdmin ? (
-          <SettingsSectionFrame
-            section={SETTINGS_SECTION_BY_ID['sec-dify']}
-            index={visibleSectionIndex['sec-dify']}
-          >
+          <SettingsSectionFrame section={SETTINGS_SECTION_BY_ID['sec-dify']} index={visibleSectionIndex['sec-dify']}>
             <DifyIntegrationSection
               difyExternalKnowledge={state.difyExternalKnowledgeMerged}
               updateDifyExternalKnowledge={state.updateDifyExternalKnowledge}
@@ -810,14 +697,8 @@ function SettingsContent({
         ) : null}
 
         {isAdmin ? (
-          <SettingsSectionFrame
-            section={SETTINGS_SECTION_BY_ID['sec-url']}
-            index={visibleSectionIndex['sec-url']}
-          >
-            <UrlIngestSection
-              urlIngest={state.urlIngestMerged}
-              updateUrlIngest={state.updateUrlIngest}
-            />
+          <SettingsSectionFrame section={SETTINGS_SECTION_BY_ID['sec-url']} index={visibleSectionIndex['sec-url']}>
+            <UrlIngestSection urlIngest={state.urlIngestMerged} updateUrlIngest={state.updateUrlIngest} />
           </SettingsSectionFrame>
         ) : null}
 

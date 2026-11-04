@@ -2,10 +2,10 @@ import { toTrimmedPrimitiveString } from './primitive-text'
 
 function escapeHtml(raw: string): string {
   return String(raw)
-    .replaceAll("&", '&amp;')
-    .replaceAll("<", '&lt;')
-    .replaceAll(">", '&gt;')
-    .replaceAll("\"", '&quot;')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;')
 }
 
@@ -33,7 +33,7 @@ function formatConfidence(value: unknown): string {
 function line(label: string, value: string): string {
   if (!value) return ''
   return `<div><span style="opacity:.72">${escapeHtml(label)}:</span> <span style="font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace">${escapeHtml(
-    value
+    value,
   )}</span></div>`
 }
 
@@ -78,24 +78,19 @@ export function buildGraphLinkProvenanceTooltipHtml(link: unknown): string {
   const sharedEvents = coerceTrimmedString(meta.shared_events)
   const contentHash = coerceTrimmedString(meta.content_hash)
 
-  const title =
-    (() => {
+  const title = (() => {
     if (kind === 'entity_relation') {
-        return 'Relation (triple)';
+      return 'Relation (triple)'
+    } else if (kind === 'event_entity') {
+      return 'Evidence (event → entity)'
+    } else if (kind === 'entity_entity') {
+      return 'Co-occurrence (entity ↔ entity)'
+    } else if (kind) {
+      return `Link (${kind})`
+    } else {
+      return 'Link'
     }
-    else if (kind === 'event_entity') {
-            return 'Evidence (event → entity)';
-        }
-        else if (kind === 'entity_entity') {
-                return 'Co-occurrence (entity ↔ entity)';
-            }
-            else if (kind) {
-                    return `Link (${kind})`;
-                }
-                else {
-                    return 'Link';
-                }
-})()
+  })()
 
   const bodyLines = [
     label ? line('label', label) : '',
@@ -114,11 +109,11 @@ export function buildGraphLinkProvenanceTooltipHtml(link: unknown): string {
 
   if (!bodyLines) {
     return `<div style="font-size:12px;line-height:1.2"><div style="font-weight:600;margin-bottom:4px">${escapeHtml(
-      title
+      title,
     )}</div></div>`
   }
 
   return `<div style="font-size:12px;line-height:1.25;max-width:360px"><div style="font-weight:600;margin-bottom:4px">${escapeHtml(
-    title
+    title,
   )}</div>${bodyLines}</div>`
 }

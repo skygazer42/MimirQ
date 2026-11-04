@@ -32,8 +32,7 @@ describe('RagvizSimilarityWorkbench accessibility', () => {
   let root: ReturnType<typeof createRoot>
 
   beforeEach(() => {
-    ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
-      .IS_REACT_ACT_ENVIRONMENT = true
+    ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     localStorage.clear()
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -51,19 +50,13 @@ describe('RagvizSimilarityWorkbench accessibility', () => {
       root.render(<RagvizSimilarityWorkbench />)
     })
 
-    const leftSidebar = container.querySelector(
-      '[role="separator"][aria-label="调整左侧栏宽度"]'
-    )?.parentElement as HTMLElement | null
-    const rightSidebar = container.querySelector(
-      '[role="separator"][aria-label="调整右侧栏宽度"]'
-    )?.parentElement as HTMLElement | null
+    const leftSidebar = container.querySelector('[role="separator"][aria-label="调整左侧栏宽度"]')
+      ?.parentElement as HTMLElement | null
+    const rightSidebar = container.querySelector('[role="separator"][aria-label="调整右侧栏宽度"]')
+      ?.parentElement as HTMLElement | null
 
-    const leftToggle = container.querySelector(
-      '[aria-label="收起左侧栏"]'
-    ) as HTMLButtonElement | null
-    const rightToggle = container.querySelector(
-      '[aria-label="收起右侧栏"]'
-    ) as HTMLButtonElement | null
+    const leftToggle = container.querySelector('[aria-label="收起左侧栏"]') as HTMLButtonElement | null
+    const rightToggle = container.querySelector('[aria-label="收起右侧栏"]') as HTMLButtonElement | null
     expect(leftToggle).not.toBeNull()
     expect(rightToggle).not.toBeNull()
 
@@ -87,15 +80,11 @@ describe('RagvizSimilarityWorkbench accessibility', () => {
       root.render(<RagvizSimilarityWorkbench />)
     })
 
-    const separator = container.querySelector(
-      '[role="separator"][aria-label="调整左侧栏宽度"]'
-    ) as HTMLElement | null
+    const separator = container.querySelector('[role="separator"][aria-label="调整左侧栏宽度"]') as HTMLElement | null
     expect(separator?.getAttribute('aria-valuenow')).toBe('312')
 
     act(() => {
-      separator?.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })
-      )
+      separator?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
     })
 
     expect(separator?.getAttribute('aria-valuenow')).toBe('336')

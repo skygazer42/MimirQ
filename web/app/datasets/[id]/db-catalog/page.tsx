@@ -9,7 +9,14 @@ import { ArrowLeft, BarChart3, Database, Play, Search, Settings2, Table2 } from 
 import { AppFrame } from '@/components/app-frame'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -36,9 +43,12 @@ import type {
 
 const ENGINE_OPTIONS: ReadonlyArray<'all' | 'mysql' | 'sqlserver'> = ['all', 'mysql', 'sqlserver']
 const DB_CATALOG_LIST_LIMIT = 200
-const dbCatalogHeroCard = 'relative overflow-hidden border-b border-border/60 bg-transparent px-1 py-2 shadow-none dark:border-border/70'
-const dbCatalogPanelClass = 'overflow-hidden border border-border/60 bg-card shadow-none dark:border-border/70 dark:bg-card'
-const dbCatalogActionButtonClass = 'h-9 gap-1.5 rounded-md border border-border/60 bg-card px-3 text-[13px] shadow-none dark:border-border/70 dark:bg-card'
+const dbCatalogHeroCard =
+  'relative overflow-hidden border-b border-border/60 bg-transparent px-1 py-2 shadow-none dark:border-border/70'
+const dbCatalogPanelClass =
+  'overflow-hidden border border-border/60 bg-card shadow-none dark:border-border/70 dark:bg-card'
+const dbCatalogActionButtonClass =
+  'h-9 gap-1.5 rounded-md border border-border/60 bg-card px-3 text-[13px] shadow-none dark:border-border/70 dark:bg-card'
 
 type DbCatalogSyncConfig = {
   host: string
@@ -139,7 +149,7 @@ export default function DatasetDbCatalogPage() {
       engine: engine === 'all' ? undefined : engine,
       q: query.trim() ? query.trim() : undefined,
     }),
-    [engine, query]
+    [engine, query],
   )
   const datasetQuery = useQuery({
     queryKey: queryKeys.datasets.detail(datasetId || ''),
@@ -150,10 +160,7 @@ export default function DatasetDbCatalogPage() {
     enabled: Boolean(datasetId),
   })
   const catalogTablesQuery = useQuery({
-    queryKey: queryKeys.datasets.dbCatalogTables(
-      datasetId || '',
-      catalogListParams
-    ),
+    queryKey: queryKeys.datasets.dbCatalogTables(datasetId || '', catalogListParams),
     queryFn: () => {
       if (!datasetId) throw new Error('缺少数据集 ID')
       return datasetApi.listDbCatalogTables(datasetId, catalogListParams)
@@ -175,24 +182,19 @@ export default function DatasetDbCatalogPage() {
   const dataset = (datasetQuery.data ?? null) as Dataset | null
   const items: DbCatalogTableSummary[] = useMemo(
     () => catalogTablesQuery.data?.items || [],
-    [catalogTablesQuery.data?.items]
+    [catalogTablesQuery.data?.items],
   )
   const latestRun = useMemo<ConnectorRunOut | null>(() => {
     const runs = latestRunQuery.data?.items || []
     const catalogRun = runs.find((run) =>
-      ['mysql_catalog', 'sqlserver_catalog'].includes(
-        String(run.connector_id || '').toLowerCase()
-      )
+      ['mysql_catalog', 'sqlserver_catalog'].includes(String(run.connector_id || '').toLowerCase()),
     )
     return catalogRun || null
   }, [latestRunQuery.data?.items])
   const latestRunLoading = latestRunQuery.isFetching
   const isLoading = datasetQuery.isFetching || catalogTablesQuery.isFetching
   const loadError = datasetQuery.error ?? catalogTablesQuery.error
-  const loadErrorUpdatedAt = Math.max(
-    datasetQuery.errorUpdatedAt,
-    catalogTablesQuery.errorUpdatedAt
-  )
+  const loadErrorUpdatedAt = Math.max(datasetQuery.errorUpdatedAt, catalogTablesQuery.errorUpdatedAt)
   const { refetch: refetchDataset } = datasetQuery
   const { refetch: refetchCatalogTables } = catalogTablesQuery
   const { refetch: refetchLatestRun } = latestRunQuery
@@ -201,15 +203,12 @@ export default function DatasetDbCatalogPage() {
     refetchCatalogTables()
   }, [refetchCatalogTables, refetchDataset])
   const entitlementHash = useMemo(() => {
-    const maybeHash = (latestRun?.stats as { result?: { entitlement_hash?: unknown } } | null | undefined)
-      ?.result?.entitlement_hash
+    const maybeHash = (latestRun?.stats as { result?: { entitlement_hash?: unknown } } | null | undefined)?.result
+      ?.entitlement_hash
     return typeof maybeHash === 'string' ? maybeHash : undefined
   }, [latestRun])
   const detailQuery = useQuery({
-    queryKey: queryKeys.datasets.dbCatalogTableDetail(
-      datasetId || '',
-      selectedId || ''
-    ),
+    queryKey: queryKeys.datasets.dbCatalogTableDetail(datasetId || '', selectedId || ''),
     queryFn: () => {
       if (!datasetId || !selectedId) throw new Error('缺少表 ID')
       return datasetApi.getDbCatalogTable(datasetId, selectedId)
@@ -234,12 +233,9 @@ export default function DatasetDbCatalogPage() {
     },
     enabled: Boolean(datasetId && selectedId),
   })
-  const selected = selectedId ? detailQuery.data ?? null : null
-  const latestProfile: DbProfileSnapshot | null =
-    selectedId ? latestProfileQuery.data?.items?.[0] || null : null
-  const detailLoading =
-    Boolean(selectedId) &&
-    (detailQuery.isFetching || latestProfileQuery.isFetching)
+  const selected = selectedId ? (detailQuery.data ?? null) : null
+  const latestProfile: DbProfileSnapshot | null = selectedId ? latestProfileQuery.data?.items?.[0] || null : null
+  const detailLoading = Boolean(selectedId) && (detailQuery.isFetching || latestProfileQuery.isFetching)
 
   useEffect(() => {
     setSyncPort(syncConnectorId === 'sqlserver_catalog' ? 1433 : 3306)
@@ -259,16 +255,14 @@ export default function DatasetDbCatalogPage() {
     const cfg: DbCatalogSyncConfig = {
       host,
       port: (() => {
-    if (Number.isFinite(syncPort)) {
-        return Math.trunc(syncPort);
-    }
-    else if (syncConnectorId === 'sqlserver_catalog') {
-            return 1433;
+        if (Number.isFinite(syncPort)) {
+          return Math.trunc(syncPort)
+        } else if (syncConnectorId === 'sqlserver_catalog') {
+          return 1433
+        } else {
+          return 3306
         }
-        else {
-            return 3306;
-        }
-})(),
+      })(),
       database,
       username,
       password,
@@ -285,21 +279,17 @@ export default function DatasetDbCatalogPage() {
     try {
       const run = await connectorApi.createRun({
         connector_id: syncConnectorId,
-      dataset_id: datasetId,
-      config: cfg,
+        dataset_id: datasetId,
+        config: cfg,
       })
-      queryClient.setQueryData<ConnectorRunListResponse | undefined>(
-        latestRunQueryKey,
-        (current) => {
-          const items = current?.items || []
-          const nextItems = [run, ...items.filter((item) => item.id !== run.id)]
-            .slice(0, 10)
-          return {
-            total: Math.max(current?.total || 0, nextItems.length),
-            items: nextItems,
-          }
+      queryClient.setQueryData<ConnectorRunListResponse | undefined>(latestRunQueryKey, (current) => {
+        const items = current?.items || []
+        const nextItems = [run, ...items.filter((item) => item.id !== run.id)].slice(0, 10)
+        return {
+          total: Math.max(current?.total || 0, nextItems.length),
+          items: nextItems,
         }
-      )
+      })
       toast.success(`已创建同步任务：${run.id.slice(0, 8)}`)
       setSyncOpen(false)
       setSyncPassword('')
@@ -417,13 +407,12 @@ export default function DatasetDbCatalogPage() {
     const diff = isRecord(schemaDoc.schema_diff) ? schemaDoc.schema_diff : {}
     const ageSecRaw = schemaDoc.catalog_age_sec
     const ageSec = typeof ageSecRaw === 'number' && Number.isFinite(ageSecRaw) ? ageSecRaw : null
-    const freshness =
-      (() => {
-        if (ageSec === null) return null
-        if (ageSec < 90) return `${Math.round(ageSec)}s`
-        if (ageSec < 3600) return `${Math.round(ageSec / 60)}m`
-        return `${Math.round(ageSec / 3600)}h`
-      })()
+    const freshness = (() => {
+      if (ageSec === null) return null
+      if (ageSec < 90) return `${Math.round(ageSec)}s`
+      if (ageSec < 3600) return `${Math.round(ageSec / 60)}m`
+      return `${Math.round(ageSec / 3600)}h`
+    })()
     const tables = Number(result.tables ?? schemaDoc.tables ?? 0)
     const columns = Number(result.columns_upserted ?? schemaDoc.columns ?? 0)
     const profiles = Number(result.profiles_written ?? schemaDoc.tables_with_profiles ?? 0)
@@ -479,11 +468,16 @@ export default function DatasetDbCatalogPage() {
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="truncate text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground dark:text-foreground">数据库目录</h1>
+                    <h1 className="truncate text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground dark:text-foreground">
+                      数据库目录
+                    </h1>
                     <span className="inline-flex h-5 items-center rounded-full border border-border/60 bg-card/70 px-2 text-[10px] font-medium leading-none text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-border/60 dark:bg-muted/30 dark:text-muted-foreground">
                       结构同步 / 安全画像
                     </span>
-                    <Badge variant="soft" className="h-5 border-info/30 bg-info/10 px-2 text-[10px] font-medium leading-none text-info">
+                    <Badge
+                      variant="soft"
+                      className="h-5 border-info/30 bg-info/10 px-2 text-[10px] font-medium leading-none text-info"
+                    >
                       DB CATALOG
                     </Badge>
                   </div>
@@ -518,7 +512,12 @@ export default function DatasetDbCatalogPage() {
               </div>
               <div className="flex shrink-0 items-center gap-2 lg:self-end">
                 <div className="inline-flex h-9 items-center gap-2 rounded-lg border border-info/30 bg-info/5 px-3 text-[13px] font-medium text-info shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:bg-info/10">
-                  <span className={cn('size-2 rounded-full', latestRunLoading ? 'animate-pulse bg-info' : latestRun ? 'bg-success' : 'bg-muted-foreground/50')} />
+                  <span
+                    className={cn(
+                      'size-2 rounded-full',
+                      latestRunLoading ? 'animate-pulse bg-info' : latestRun ? 'bg-success' : 'bg-muted-foreground/50',
+                    )}
+                  />
                   {latestRunSummary.status}
                 </div>
               </div>
@@ -533,25 +532,41 @@ export default function DatasetDbCatalogPage() {
                 返回
               </Button>
               {datasetId ? (
-                <Button variant="outline" onClick={() => router.push(`/datasets/${datasetId}/ingestion`)} className={dbCatalogActionButtonClass}>
+                <Button
+                  variant="outline"
+                  onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}
+                  className={dbCatalogActionButtonClass}
+                >
                   <Settings2 className="size-3.5" />
                   入库策略
                 </Button>
               ) : null}
               {datasetId ? (
-                <Button variant="outline" onClick={() => router.push(`/datasets/${datasetId}/profile`)} className={dbCatalogActionButtonClass}>
+                <Button
+                  variant="outline"
+                  onClick={() => router.push(`/datasets/${datasetId}/profile`)}
+                  className={dbCatalogActionButtonClass}
+                >
                   <BarChart3 className="size-3.5" />
                   数据画像
                 </Button>
               ) : null}
               {datasetId ? (
-                <Button variant="outline" onClick={() => router.push(`/datasets/${datasetId}/tables`)} className={dbCatalogActionButtonClass}>
+                <Button
+                  variant="outline"
+                  onClick={() => router.push(`/datasets/${datasetId}/tables`)}
+                  className={dbCatalogActionButtonClass}
+                >
                   <Table2 className="size-3.5" />
                   表格 / TAG
                 </Button>
               ) : null}
               {datasetId ? (
-                <Button variant="outline" onClick={() => router.push(`/knowledge?tab=settings&dataset=${encodeURIComponent(datasetId)}`)} className={dbCatalogActionButtonClass}>
+                <Button
+                  variant="outline"
+                  onClick={() => router.push(`/knowledge?tab=settings&dataset=${encodeURIComponent(datasetId)}`)}
+                  className={dbCatalogActionButtonClass}
+                >
                   <Settings2 className="size-3.5" />
                   导入任务
                 </Button>
@@ -602,7 +617,10 @@ export default function DatasetDbCatalogPage() {
                     type="button"
                     variant={engine === k ? 'secondary' : 'outline'}
                     size="sm"
-                    className={cn('h-7 rounded-lg px-2.5 font-mono text-[11px]', engine === k ? 'border-border bg-info/10 text-info' : 'bg-card/70')}
+                    className={cn(
+                      'h-7 rounded-lg px-2.5 font-mono text-[11px]',
+                      engine === k ? 'border-border bg-info/10 text-info' : 'bg-card/70',
+                    )}
                     onClick={() => setEngine(k)}
                   >
                     {k}
@@ -636,14 +654,18 @@ export default function DatasetDbCatalogPage() {
                               'w-full rounded-xl border px-3 py-2.5 text-left transition duration-150',
                               active
                                 ? 'border-info/40 bg-info/5 shadow-[inset_3px_0_0_hsl(var(--info)/0.72)]'
-                                : 'border-border/60 bg-card/55 hover:border-info/30 hover:bg-info/5 dark:border-border/60 dark:bg-muted/20'
+                                : 'border-border/60 bg-card/55 hover:border-info/30 hover:bg-info/5 dark:border-border/60 dark:bg-muted/20',
                             )}
                             onClick={() => setSelectedId(t.id)}
                           >
                             <div className="flex items-center justify-between gap-3">
                               <div className="min-w-0">
-                                <div className="truncate font-mono text-xs tabular-nums text-foreground dark:text-foreground">{formatQualifiedName(t)}</div>
-                                <div className="mt-1 truncate text-[11px] text-muted-foreground">{t.comment || '暂无备注'}</div>
+                                <div className="truncate font-mono text-xs tabular-nums text-foreground dark:text-foreground">
+                                  {formatQualifiedName(t)}
+                                </div>
+                                <div className="mt-1 truncate text-[11px] text-muted-foreground">
+                                  {t.comment || '暂无备注'}
+                                </div>
                               </div>
                               <Badge variant="outline" className="shrink-0 rounded-lg font-mono text-[10px]">
                                 {t.engine}
@@ -668,41 +690,58 @@ export default function DatasetDbCatalogPage() {
 
             <div className="shrink-0 border-t border-border/60 bg-card/65 p-3 dark:border-border/60 dark:bg-muted/20">
               <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                <Badge variant="outline" className="rounded-lg font-mono text-[10px]">{latestRunSummary.connector}</Badge>
-                <Badge variant="soft" className="rounded-lg font-mono text-[10px]">run {latestRunSummary.runId}</Badge>
-                <Badge variant="soft" className="rounded-lg font-mono text-[10px]">tables {latestRunSummary.tables}</Badge>
+                <Badge variant="outline" className="rounded-lg font-mono text-[10px]">
+                  {latestRunSummary.connector}
+                </Badge>
+                <Badge variant="soft" className="rounded-lg font-mono text-[10px]">
+                  run {latestRunSummary.runId}
+                </Badge>
+                <Badge variant="soft" className="rounded-lg font-mono text-[10px]">
+                  tables {latestRunSummary.tables}
+                </Badge>
                 {latestRunSummary.freshness ? (
-                  <Badge variant="soft" className="rounded-lg font-mono text-[10px]">fresh {latestRunSummary.freshness}</Badge>
+                  <Badge variant="soft" className="rounded-lg font-mono text-[10px]">
+                    fresh {latestRunSummary.freshness}
+                  </Badge>
                 ) : null}
               </div>
               {latestRunSummary.diffTotal > 0 ? (
                 <details className="mt-2 rounded-xl border border-border/60 bg-card/55 px-3 py-2 dark:border-border/60 dark:bg-muted/20">
                   <summary className="cursor-pointer select-none text-[11px] font-medium text-muted-foreground">
-                    schema diff：+表 {latestRunSummary.ta} / -表 {latestRunSummary.tr} / +列 {latestRunSummary.ca} / -列 {latestRunSummary.cr} / 变更 {latestRunSummary.cc}
+                    schema diff：+表 {latestRunSummary.ta} / -表 {latestRunSummary.tr} / +列 {latestRunSummary.ca} / -列{' '}
+                    {latestRunSummary.cr} / 变更 {latestRunSummary.cc}
                   </summary>
                   <div className="mt-2 max-h-40 space-y-2 overflow-y-auto text-[11px] no-scrollbar">
                     {latestRunSummary.taItems.length ? (
                       <div>
                         <div className="font-semibold text-foreground">新增表</div>
-                        <div className="mt-1 break-words font-mono text-muted-foreground">{latestRunSummary.taItems.join(', ')}</div>
+                        <div className="mt-1 break-words font-mono text-muted-foreground">
+                          {latestRunSummary.taItems.join(', ')}
+                        </div>
                       </div>
                     ) : null}
                     {latestRunSummary.trItems.length ? (
                       <div>
                         <div className="font-semibold text-foreground">删除表</div>
-                        <div className="mt-1 break-words font-mono text-muted-foreground">{latestRunSummary.trItems.join(', ')}</div>
+                        <div className="mt-1 break-words font-mono text-muted-foreground">
+                          {latestRunSummary.trItems.join(', ')}
+                        </div>
                       </div>
                     ) : null}
                     {latestRunSummary.caItems.length ? (
                       <div>
                         <div className="font-semibold text-foreground">新增列</div>
-                        <div className="mt-1 break-words font-mono text-muted-foreground">{latestRunSummary.caItems.join(', ')}</div>
+                        <div className="mt-1 break-words font-mono text-muted-foreground">
+                          {latestRunSummary.caItems.join(', ')}
+                        </div>
                       </div>
                     ) : null}
                     {latestRunSummary.crItems.length ? (
                       <div>
                         <div className="font-semibold text-foreground">删除列</div>
-                        <div className="mt-1 break-words font-mono text-muted-foreground">{latestRunSummary.crItems.join(', ')}</div>
+                        <div className="mt-1 break-words font-mono text-muted-foreground">
+                          {latestRunSummary.crItems.join(', ')}
+                        </div>
                       </div>
                     ) : null}
                     {latestRunSummary.ccItems.length ? (
@@ -713,7 +752,8 @@ export default function DatasetDbCatalogPage() {
                             const key = `${toTrimmedPrimitiveString(it?.table)}.${toTrimmedPrimitiveString(it?.column)}`
                             return (
                               <div key={key} className="break-words">
-                                {key} ({toTrimmedPrimitiveString(it?.old?.data_type)} → {toTrimmedPrimitiveString(it?.new?.data_type)})
+                                {key} ({toTrimmedPrimitiveString(it?.old?.data_type)} →{' '}
+                                {toTrimmedPrimitiveString(it?.new?.data_type)})
                               </div>
                             )
                           })}
@@ -758,8 +798,12 @@ export default function DatasetDbCatalogPage() {
                         <div className="divide-y divide-border/60 dark:divide-border/60">
                           {selected.columns.map((c) => (
                             <div key={c.id} className="grid grid-cols-12 gap-0 text-xs hover:bg-info/5">
-                              <div className="col-span-5 truncate px-3 py-2.5 font-mono text-foreground dark:text-foreground">{c.name}</div>
-                              <div className="col-span-4 truncate px-3 py-2.5 font-mono text-muted-foreground">{c.data_type || '—'}</div>
+                              <div className="col-span-5 truncate px-3 py-2.5 font-mono text-foreground dark:text-foreground">
+                                {c.name}
+                              </div>
+                              <div className="col-span-4 truncate px-3 py-2.5 font-mono text-muted-foreground">
+                                {c.data_type || '—'}
+                              </div>
                               <div className="col-span-3 px-3 py-2.5 font-mono text-muted-foreground">
                                 {(() => {
                                   if (c.nullable === null || c.nullable === undefined) return '—'
@@ -848,7 +892,11 @@ export default function DatasetDbCatalogPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Username</Label>
-                  <Input value={syncUsername} onChange={(e) => setSyncUsername(e.target.value)} placeholder="svc_reader" />
+                  <Input
+                    value={syncUsername}
+                    onChange={(e) => setSyncUsername(e.target.value)}
+                    placeholder="svc_reader"
+                  />
                 </div>
               </div>
 
@@ -902,7 +950,11 @@ export default function DatasetDbCatalogPage() {
                       记录 row_count_estimate 等聚合统计
                     </div>
                   </div>
-                  <Switch checked={syncProfileEnabled} onCheckedChange={setSyncProfileEnabled} aria-label="profile enabled" />
+                  <Switch
+                    checked={syncProfileEnabled}
+                    onCheckedChange={setSyncProfileEnabled}
+                    aria-label="profile enabled"
+                  />
                 </div>
               </div>
 

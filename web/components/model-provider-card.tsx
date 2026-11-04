@@ -20,9 +20,7 @@ export function ModelProviderCard({ provider, onConfigure }: Readonly<ModelProvi
       type="button"
       className={cn(
         'group relative flex h-full w-full flex-col rounded-lg border border-info/15 bg-info/[0.025] p-3.5 text-left text-[12px] leading-4 text-foreground/78 shadow-none transition-colors duration-150 hover:bg-info/[0.055] motion-reduce:transition-none focus-ring',
-        provider.isConfigured
-          ? 'border-info/30 ring-1 ring-info/10 hover:border-info/40'
-          : 'hover:border-info/25'
+        provider.isConfigured ? 'border-info/30 ring-1 ring-info/10 hover:border-info/40' : 'hover:border-info/25',
       )}
       onClick={() => onConfigure(provider)}
     >
@@ -34,9 +32,7 @@ export function ModelProviderCard({ provider, onConfigure }: Readonly<ModelProvi
           </div>
 
           <div className="min-w-0">
-            <h3 className="truncate text-[13px] font-semibold leading-5 text-foreground">
-              {provider.name}
-            </h3>
+            <h3 className="truncate text-[13px] font-semibold leading-5 text-foreground">{provider.name}</h3>
             <p className="mt-0.5 line-clamp-2 text-[11px] font-medium leading-4 text-muted-foreground">
               {provider.description}
             </p>
@@ -83,7 +79,7 @@ export function ModelProviderCard({ provider, onConfigure }: Readonly<ModelProvi
         <span
           className={cn(
             'flex items-center gap-1 font-semibold transition-colors motion-reduce:transition-none',
-            provider.isConfigured ? 'text-info' : 'text-muted-foreground group-hover:text-info'
+            provider.isConfigured ? 'text-info' : 'text-muted-foreground group-hover:text-info',
           )}
         >
           <Settings className="size-3.5" />

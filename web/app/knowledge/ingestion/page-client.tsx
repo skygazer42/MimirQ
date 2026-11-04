@@ -1,12 +1,6 @@
 'use client'
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -50,10 +44,7 @@ import { IngestionDetailSurface } from '@/components/knowledge/ingestion/ingesti
 import { IngestionHeroPanel } from '@/components/knowledge/ingestion/ingestion-hero-panel'
 import { PrecheckSignalsPanel } from '@/components/knowledge/ingestion/precheck-signals-panel'
 import { SalesAuditSummaryPanel } from '@/components/knowledge/ingestion/sales-audit-summary-panel'
-import {
-  AuditDispositionFilter,
-  DesktopAuditRail,
-} from '@/components/knowledge/ingestion/desktop-audit-rail'
+import { AuditDispositionFilter, DesktopAuditRail } from '@/components/knowledge/ingestion/desktop-audit-rail'
 import {
   buildEvidenceSlotReason,
   buildEvidenceSlotTags,
@@ -158,28 +149,18 @@ export default function KnowledgeIngestionPageClient() {
   const reduceMotion = useReducedMotion()
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const dropZoneRef = useRef<DropZoneHandle>(null)
-  const demoMode =
-    /(^|\/)demo(\/|$)/.test(pathname) && searchParams.get('demo') === '1'
-  const mode: IngestionMode =
-    searchParams.get('mode') === 'execution-monitor'
-      ? 'execution-monitor'
-      : 'sales-audit'
+  const demoMode = /(^|\/)demo(\/|$)/.test(pathname) && searchParams.get('demo') === '1'
+  const mode: IngestionMode = searchParams.get('mode') === 'execution-monitor' ? 'execution-monitor' : 'sales-audit'
   const showSalesPolicyBadge = mode === 'sales-audit'
-  const [datasetScope, setDatasetScope] = useState(
-    searchParams.get('datasetId') || DATASET_ALL
-  )
+  const [datasetScope, setDatasetScope] = useState(searchParams.get('datasetId') || DATASET_ALL)
   const [desktopScopeCollapsed, setDesktopScopeCollapsed] = useState(true)
   const [headerCollapsed, setHeaderCollapsed] = useState(false)
   const [selectedReason, setSelectedReason] = useState<string | null>(null)
-  const [auditDispositionFilter, setAuditDispositionFilter] =
-    useState<AuditDispositionFilter>('all')
+  const [auditDispositionFilter, setAuditDispositionFilter] = useState<AuditDispositionFilter>('all')
   const [selectedAuditIds, setSelectedAuditIds] = useState<string[]>([])
-  const [sampleDispositions, setSampleDispositions] = useState<
-    Record<string, SampleDisposition>
-  >({})
+  const [sampleDispositions, setSampleDispositions] = useState<Record<string, SampleDisposition>>({})
   const [activeDetailId, setActiveDetailId] = useState<string | null>(null)
-  const [selectedEvidenceFile, setSelectedEvidenceFile] =
-    useState<DatasetPrecheckFileOut | null>(null)
+  const [selectedEvidenceFile, setSelectedEvidenceFile] = useState<DatasetPrecheckFileOut | null>(null)
   const [successPulseVisible, setSuccessPulseVisible] = useState(false)
   const [executionTaskPage, setExecutionTaskPage] = useState(1)
   const [renderTimestamp] = useState(() => Date.now())
@@ -195,7 +176,7 @@ export default function KnowledgeIngestionPageClient() {
           limit: 200,
           dataset_id: selectedDatasetId ?? undefined,
         },
-        { signal }
+        { signal },
       )
       return response.items ?? []
     },
@@ -220,29 +201,25 @@ export default function KnowledgeIngestionPageClient() {
     refetchInterval: demoMode ? false : 25_000,
   })
 
-  const taskQueueQuery =
-    useQuery<TaskQueueObservabilitySnapshotResponse | null>({
-      queryKey: ['knowledge-ingestion-task-queue'],
-      queryFn: async () => {
-        try {
-          return await observabilityApi.getTaskQueueSnapshot()
-        } catch {
-          return null
-        }
-      },
-      enabled: mode === 'execution-monitor' && !demoMode,
-      staleTime: 10_000,
-      refetchInterval: demoMode ? false : 25_000,
-    })
+  const taskQueueQuery = useQuery<TaskQueueObservabilitySnapshotResponse | null>({
+    queryKey: ['knowledge-ingestion-task-queue'],
+    queryFn: async () => {
+      try {
+        return await observabilityApi.getTaskQueueSnapshot()
+      } catch {
+        return null
+      }
+    },
+    enabled: mode === 'execution-monitor' && !demoMode,
+    staleTime: 10_000,
+    refetchInterval: demoMode ? false : 25_000,
+  })
 
   const precheckRunsQuery = useQuery({
     queryKey: ['knowledge-ingestion-precheck-runs', selectedDatasetId],
     queryFn: async () => {
       if (!selectedDatasetId) return []
-      const response = await datasetApi.listPrecheckScanRuns(
-        selectedDatasetId,
-        { skip: 0, limit: 20 }
-      )
+      const response = await datasetApi.listPrecheckScanRuns(selectedDatasetId, { skip: 0, limit: 20 })
       return response.items ?? []
     },
     enabled: Boolean(selectedDatasetId) && !demoMode,
@@ -251,81 +228,51 @@ export default function KnowledgeIngestionPageClient() {
 
   const latestPrecheckRun = useMemo(
     () =>
-      (precheckRunsQuery.data ?? []).find(
-        (run) => String(run.status || '').toLowerCase() === 'completed'
-      ) ??
+      (precheckRunsQuery.data ?? []).find((run) => String(run.status || '').toLowerCase() === 'completed') ??
       (precheckRunsQuery.data ?? [])[0] ??
       null,
-    [precheckRunsQuery.data]
+    [precheckRunsQuery.data],
   )
 
   const precheckSummaryQuery = useQuery<DatasetPrecheckSummary | null>({
-    queryKey: [
-      'knowledge-ingestion-precheck-summary',
-      selectedDatasetId,
-      latestPrecheckRun?.id,
-    ],
+    queryKey: ['knowledge-ingestion-precheck-summary', selectedDatasetId, latestPrecheckRun?.id],
     queryFn: async () => {
       if (!selectedDatasetId || !latestPrecheckRun?.id) return null
-      return await datasetApi.getPrecheckSummary(
-        selectedDatasetId,
-        latestPrecheckRun.id
-      )
+      return await datasetApi.getPrecheckSummary(selectedDatasetId, latestPrecheckRun.id)
     },
     enabled: Boolean(selectedDatasetId && latestPrecheckRun?.id) && !demoMode,
     staleTime: 10_000,
   })
 
   const precheckSamplesQuery = useQuery<DatasetPrecheckSamplesResponse | null>({
-    queryKey: [
-      'knowledge-ingestion-precheck-samples',
-      selectedDatasetId,
-      latestPrecheckRun?.id,
-    ],
+    queryKey: ['knowledge-ingestion-precheck-samples', selectedDatasetId, latestPrecheckRun?.id],
     queryFn: async () => {
       if (!selectedDatasetId || !latestPrecheckRun?.id) return null
-      return await datasetApi.getPrecheckSamples(
-        selectedDatasetId,
-        latestPrecheckRun.id,
-        { prefer_artifact: true, size: 12 }
-      )
+      return await datasetApi.getPrecheckSamples(selectedDatasetId, latestPrecheckRun.id, {
+        prefer_artifact: true,
+        size: 12,
+      })
     },
     enabled: Boolean(selectedDatasetId && latestPrecheckRun?.id) && !demoMode,
     staleTime: 10_000,
   })
 
   const precheckNearDupQuery = useQuery<DatasetPrecheckNearDupResponse | null>({
-    queryKey: [
-      'knowledge-ingestion-precheck-near-dup',
-      selectedDatasetId,
-      latestPrecheckRun?.id,
-    ],
+    queryKey: ['knowledge-ingestion-precheck-near-dup', selectedDatasetId, latestPrecheckRun?.id],
     queryFn: async () => {
       if (!selectedDatasetId || !latestPrecheckRun?.id) return null
-      return await datasetApi.getPrecheckNearDups(
-        selectedDatasetId,
-        latestPrecheckRun.id
-      )
+      return await datasetApi.getPrecheckNearDups(selectedDatasetId, latestPrecheckRun.id)
     },
     enabled: Boolean(selectedDatasetId && latestPrecheckRun?.id) && !demoMode,
     staleTime: 10_000,
   })
 
   const documents = useMemo(
-    () =>
-      demoMode
-        ? buildDemoDocuments(documentsQuery.data ?? [])
-        : (documentsQuery.data ?? []),
-    [demoMode, documentsQuery.data]
+    () => (demoMode ? buildDemoDocuments(documentsQuery.data ?? []) : (documentsQuery.data ?? [])),
+    [demoMode, documentsQuery.data],
   )
-  const executionDocuments = useMemo(
-    () => documents.filter(isExecutionMonitorDocument),
-    [documents]
-  )
-  const summary = useMemo(
-    () => summaryQuery.data ?? EMPTY_INGESTION_SUMMARY,
-    [summaryQuery.data]
-  )
+  const executionDocuments = useMemo(() => documents.filter(isExecutionMonitorDocument), [documents])
+  const summary = useMemo(() => summaryQuery.data ?? EMPTY_INGESTION_SUMMARY, [summaryQuery.data])
   const taskQueueSnapshot = taskQueueQuery.data ?? null
   const taskQueueStatusLabel = useMemo(() => {
     if (demoMode) return 'Demo 运行态'
@@ -336,38 +283,26 @@ export default function KnowledgeIngestionPageClient() {
     return 'Broker 正常'
   }, [demoMode, taskQueueQuery.isFetching, taskQueueSnapshot])
   const taskQueueStatusTone = useMemo(() => {
-    if (demoMode || !taskQueueSnapshot)
-      return 'border-border/18 bg-muted/[0.08] text-foreground'
-    if (!taskQueueSnapshot.enabled)
-      return 'border-warning/18 bg-warning/[0.08] text-warning'
-    if (!taskQueueSnapshot.broker_up)
-      return 'border-rose/18 bg-rose/[0.08] text-rose'
+    if (demoMode || !taskQueueSnapshot) return 'border-border/18 bg-muted/[0.08] text-foreground'
+    if (!taskQueueSnapshot.enabled) return 'border-warning/18 bg-warning/[0.08] text-warning'
+    if (!taskQueueSnapshot.broker_up) return 'border-rose/18 bg-rose/[0.08] text-rose'
     return 'border-success/18 bg-success/[0.08] text-success'
   }, [demoMode, taskQueueSnapshot])
   const salesAuditSummary = useMemo(
-    () =>
-      demoMode
-        ? buildDemoPrecheckSummary(documents)
-        : (precheckSummaryQuery.data ?? null),
-    [demoMode, documents, precheckSummaryQuery.data]
+    () => (demoMode ? buildDemoPrecheckSummary(documents) : (precheckSummaryQuery.data ?? null)),
+    [demoMode, documents, precheckSummaryQuery.data],
   )
   const salesAuditSamples = useMemo(
-    () =>
-      demoMode
-        ? buildDemoPrecheckSamples(documents)
-        : (precheckSamplesQuery.data ?? null),
-    [demoMode, documents, precheckSamplesQuery.data]
+    () => (demoMode ? buildDemoPrecheckSamples(documents) : (precheckSamplesQuery.data ?? null)),
+    [demoMode, documents, precheckSamplesQuery.data],
   )
   const salesAuditNearDup = useMemo(
-    () =>
-      demoMode
-        ? buildDemoNearDupResponse()
-        : (precheckNearDupQuery.data ?? null),
-    [demoMode, precheckNearDupQuery.data]
+    () => (demoMode ? buildDemoNearDupResponse() : (precheckNearDupQuery.data ?? null)),
+    [demoMode, precheckNearDupQuery.data],
   )
   const salesAuditEmbeddingAdvisories = useMemo(
     () => normalizePrecheckEmbeddingAdvisories(salesAuditSummary?.embedding_advisories),
-    [salesAuditSummary?.embedding_advisories]
+    [salesAuditSummary?.embedding_advisories],
   )
 
   useEffect(() => {
@@ -403,10 +338,7 @@ export default function KnowledgeIngestionPageClient() {
 
   const selectedDatasetLabel = useMemo(() => {
     if (!selectedDatasetId) return '全部项目'
-    return (
-      datasets.find((dataset) => dataset.id === selectedDatasetId)?.name ||
-      selectedDatasetId
-    )
+    return datasets.find((dataset) => dataset.id === selectedDatasetId)?.name || selectedDatasetId
   }, [datasets, selectedDatasetId])
 
   const statusCounts = useMemo(
@@ -417,35 +349,29 @@ export default function KnowledgeIngestionPageClient() {
       failed: safeNumber(summary.by_status.failed),
       quarantined: safeNumber(summary.by_status.quarantined),
     }),
-    [summary.by_status]
+    [summary.by_status],
   )
 
-  const summaryThroughputRows = useMemo(
-    () => buildThroughputAreaRows(summary.timeseries),
-    [summary.timeseries]
-  )
+  const summaryThroughputRows = useMemo(() => buildThroughputAreaRows(summary.timeseries), [summary.timeseries])
   const documentThroughputRows = useMemo(
     () =>
       buildDocumentThroughputAreaRows(executionDocuments, {
         bucketMinutes: summary.bucket_minutes || 60,
         maxRows: 96,
       }),
-    [executionDocuments, summary.bucket_minutes]
+    [executionDocuments, summary.bucket_minutes],
   )
   const throughputRowsSource = useMemo(
     () =>
       resolveThroughputRowsSource(
         summaryThroughputRows.some((row) => row.total > 0),
-        documentThroughputRows.length
+        documentThroughputRows.length,
       ),
-    [documentThroughputRows.length, summaryThroughputRows]
+    [documentThroughputRows.length, summaryThroughputRows],
   )
   const throughputRows = useMemo(
-    () =>
-      throughputRowsSource === 'documents'
-        ? documentThroughputRows
-        : summaryThroughputRows,
-    [documentThroughputRows, summaryThroughputRows, throughputRowsSource]
+    () => (throughputRowsSource === 'documents' ? documentThroughputRows : summaryThroughputRows),
+    [documentThroughputRows, summaryThroughputRows, throughputRowsSource],
   )
   const docsPerMinute = useMemo(
     () =>
@@ -455,26 +381,17 @@ export default function KnowledgeIngestionPageClient() {
           completed: row.completed,
           failed: row.failed,
           quarantined: row.quarantined,
-        }))
-    ),
-    [throughputRows]
+        })),
+      ),
+    [throughputRows],
   )
-  const durationPercentiles = useMemo(
-    () => computeDurationPercentiles(executionDocuments),
-    [executionDocuments]
-  )
-  const pdfDisposition = useMemo(
-    () => buildPdfDispositionBreakdown(executionDocuments),
-    [executionDocuments]
-  )
+  const durationPercentiles = useMemo(() => computeDurationPercentiles(executionDocuments), [executionDocuments])
+  const pdfDisposition = useMemo(() => buildPdfDispositionBreakdown(executionDocuments), [executionDocuments])
   const salesAuditPersistedDispositions = useMemo(() => {
     const persisted = Object.fromEntries(
       collectSalesAuditSampleFiles(salesAuditSamples)
-        .map((file) => [
-          String(file.name),
-          getPersistedSalesAuditDisposition(file),
-        ] as const)
-        .filter((entry): entry is [string, SampleDisposition] => Boolean(entry[1]))
+        .map((file) => [String(file.name), getPersistedSalesAuditDisposition(file)] as const)
+        .filter((entry): entry is [string, SampleDisposition] => Boolean(entry[1])),
     )
 
     return persisted
@@ -482,11 +399,8 @@ export default function KnowledgeIngestionPageClient() {
   const resolvedSampleDispositions = useMemo(() => {
     const executionPersisted = Object.fromEntries(
       executionDocuments
-        .map((document) => [
-          document.id,
-          getPersistedSampleDisposition(document),
-        ] as const)
-        .filter((entry): entry is [string, SampleDisposition] => Boolean(entry[1]))
+        .map((document) => [document.id, getPersistedSampleDisposition(document)] as const)
+        .filter((entry): entry is [string, SampleDisposition] => Boolean(entry[1])),
     )
 
     return {
@@ -497,35 +411,25 @@ export default function KnowledgeIngestionPageClient() {
   }, [executionDocuments, salesAuditPersistedDispositions, sampleDispositions])
 
   const reviewQueue = statusCounts.failed + statusCounts.quarantined
-  const approvedCount = Object.values(resolvedSampleDispositions).filter(
-    (value) => value === 'approved'
-  ).length
-  const manualCount = Object.values(resolvedSampleDispositions).filter(
-    (value) => value === 'manual'
-  ).length
+  const approvedCount = Object.values(resolvedSampleDispositions).filter((value) => value === 'approved').length
+  const manualCount = Object.values(resolvedSampleDispositions).filter((value) => value === 'manual').length
   const readyRate = documents.length
-    ? Math.round(
-        ((statusCounts.completed + approvedCount) / documents.length) * 100
-      )
+    ? Math.round(((statusCounts.completed + approvedCount) / documents.length) * 100)
     : 0
 
   const auditSourceDocuments = mode === 'execution-monitor' ? executionDocuments : documents
   const auditCandidates = useMemo(() => {
     const prioritised = auditSourceDocuments.filter(
       (document) =>
-        ['failed', 'quarantined', 'processing', 'pending'].includes(
-          String(document.status)
-        ) || Boolean(document.error_message)
+        ['failed', 'quarantined', 'processing', 'pending'].includes(String(document.status)) ||
+        Boolean(document.error_message),
     )
     return (prioritised.length ? prioritised : auditSourceDocuments).slice(0, 10)
   }, [auditSourceDocuments])
 
   const reasonFilteredAuditSamples = useMemo(
-    () =>
-      auditCandidates.filter((document) =>
-        matchesReasonFilter(document, selectedReason)
-      ),
-    [auditCandidates, selectedReason]
+    () => auditCandidates.filter((document) => matchesReasonFilter(document, selectedReason)),
+    [auditCandidates, selectedReason],
   )
 
   const auditRailCounts = useMemo(() => {
@@ -551,24 +455,17 @@ export default function KnowledgeIngestionPageClient() {
       if (auditDispositionFilter === 'pending') return !disposition
       return disposition === auditDispositionFilter
     })
-  }, [
-    auditDispositionFilter,
-    reasonFilteredAuditSamples,
-    resolvedSampleDispositions,
-  ])
+  }, [auditDispositionFilter, reasonFilteredAuditSamples, resolvedSampleDispositions])
 
   const activeAuditDocument = useMemo(
     () => documents.find((document) => document.id === activeDetailId) || null,
-    [activeDetailId, documents]
+    [activeDetailId, documents],
   )
-  const activeAuditIsDemo = Boolean(
-    activeAuditDocument?.id?.startsWith('demo-')
-  )
+  const activeAuditIsDemo = Boolean(activeAuditDocument?.id?.startsWith('demo-'))
 
   const executionProcessedTotal = useMemo(
-    () =>
-      statusCounts.completed + statusCounts.failed + statusCounts.quarantined,
-    [statusCounts.completed, statusCounts.failed, statusCounts.quarantined]
+    () => statusCounts.completed + statusCounts.failed + statusCounts.quarantined,
+    [statusCounts.completed, statusCounts.failed, statusCounts.quarantined],
   )
 
   const executionSuccessRate = useMemo(() => {
@@ -578,11 +475,7 @@ export default function KnowledgeIngestionPageClient() {
 
   const executionRetryRate = useMemo(() => {
     if (!executionProcessedTotal) return 0
-    return Math.round(
-      ((statusCounts.failed + statusCounts.quarantined) /
-        executionProcessedTotal) *
-        100
-    )
+    return Math.round(((statusCounts.failed + statusCounts.quarantined) / executionProcessedTotal) * 100)
   }, [executionProcessedTotal, statusCounts.failed, statusCounts.quarantined])
 
   const executionOcrUsageRate = useMemo(() => {
@@ -621,162 +514,135 @@ export default function KnowledgeIngestionPageClient() {
     })
   }, [executionDocuments])
   const executionFileTypeDistributionTotal = useMemo(
-    () =>
-      executionFileTypeDistributionRows.reduce(
-        (sum, item) => sum + item.value,
-        0
-      ),
-    [executionFileTypeDistributionRows]
+    () => executionFileTypeDistributionRows.reduce((sum, item) => sum + item.value, 0),
+    [executionFileTypeDistributionRows],
   )
   const executionFileTypeDistributionOption = useMemo<EChartsOption>(
-    () =>
-      ({
-        tooltip: {
-          appendTo: 'body',
-          confine: true,
-          extraCssText:
-            'border-radius:10px;padding:6px 8px;box-shadow:0 12px 28px rgba(15,23,42,.14);',
-          formatter: (params: unknown) => {
-            const item = Array.isArray(params) ? params[0] : params
-            const payload =
-              item && typeof item === 'object'
-                ? (item as {
-                    marker?: unknown
-                    name?: unknown
-                    percent?: unknown
-                    value?: unknown
-                  })
-                : {}
-            const marker =
-              typeof payload.marker === 'string'
-                ? payload.marker.replace('margin-right:4px;', 'margin-left:2px;')
-                : ''
-            const name = escapeHtml(payload.name ?? '未知类型')
-            const value = Number(payload.value || 0).toLocaleString('zh-CN')
-            const percent = Number(payload.percent || 0).toFixed(1)
+    () => ({
+      tooltip: {
+        appendTo: 'body',
+        confine: true,
+        extraCssText: 'border-radius:10px;padding:6px 8px;box-shadow:0 12px 28px rgba(15,23,42,.14);',
+        formatter: (params: unknown) => {
+          const item = Array.isArray(params) ? params[0] : params
+          const payload =
+            item && typeof item === 'object'
+              ? (item as {
+                  marker?: unknown
+                  name?: unknown
+                  percent?: unknown
+                  value?: unknown
+                })
+              : {}
+          const marker =
+            typeof payload.marker === 'string' ? payload.marker.replace('margin-right:4px;', 'margin-left:2px;') : ''
+          const name = escapeHtml(payload.name ?? '未知类型')
+          const value = Number(payload.value || 0).toLocaleString('zh-CN')
+          const percent = Number(payload.percent || 0).toFixed(1)
 
-            return `<div style="display:flex;align-items:center;gap:7px;white-space:nowrap;font-size:11px;line-height:1.25;"><span>${name}</span><span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:600;">${value} 个 · ${percent}%</span>${marker}</div>`
-          },
-          position: (
-            point: number[],
-            _params: unknown,
-            _dom: unknown,
-            _rect: unknown,
-            size: { contentSize: number[]; viewSize: number[] }
-          ) => {
-            const [x, y] = point
-            const tooltipWidth = size.contentSize[0] || 120
-            const tooltipHeight = size.contentSize[1] || 34
-            const viewWidth = size.viewSize[0] || 0
-            const viewHeight = size.viewSize[1] || 0
-
-            return [
-              Math.min(Math.max(8, x + 14), Math.max(8, viewWidth - tooltipWidth - 8)),
-              Math.min(Math.max(8, y - tooltipHeight / 2), Math.max(8, viewHeight - tooltipHeight - 8)),
-            ]
-          },
-          renderMode: 'html',
-          trigger: 'item',
+          return `<div style="display:flex;align-items:center;gap:7px;white-space:nowrap;font-size:11px;line-height:1.25;"><span>${name}</span><span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:600;">${value} 个 · ${percent}%</span>${marker}</div>`
         },
-        series: [
-          {
-            avoidLabelOverlap: true,
-            center: ['50%', '50%'],
-            data: executionFileTypeDistributionRows.length
-              ? executionFileTypeDistributionRows.map((item) => ({
-                  itemStyle: { color: item.color },
-                  name: item.label,
-                  value: item.value,
-                }))
-              : [
-                  {
-                    itemStyle: { color: 'rgba(148,163,184,0.35)' },
-                    name: '暂无数据',
-                    value: 1,
-                  },
-                ],
-            itemStyle: {
-              borderColor: '#ffffff',
-              borderRadius: 4,
-              borderWidth: 2,
-            },
-            label: { show: false },
-            labelLine: { show: false },
-            name: '文件类型',
-            radius: ['52%', '76%'],
-            type: 'pie',
+        position: (
+          point: number[],
+          _params: unknown,
+          _dom: unknown,
+          _rect: unknown,
+          size: { contentSize: number[]; viewSize: number[] },
+        ) => {
+          const [x, y] = point
+          const tooltipWidth = size.contentSize[0] || 120
+          const tooltipHeight = size.contentSize[1] || 34
+          const viewWidth = size.viewSize[0] || 0
+          const viewHeight = size.viewSize[1] || 0
+
+          return [
+            Math.min(Math.max(8, x + 14), Math.max(8, viewWidth - tooltipWidth - 8)),
+            Math.min(Math.max(8, y - tooltipHeight / 2), Math.max(8, viewHeight - tooltipHeight - 8)),
+          ]
+        },
+        renderMode: 'html',
+        trigger: 'item',
+      },
+      series: [
+        {
+          avoidLabelOverlap: true,
+          center: ['50%', '50%'],
+          data: executionFileTypeDistributionRows.length
+            ? executionFileTypeDistributionRows.map((item) => ({
+                itemStyle: { color: item.color },
+                name: item.label,
+                value: item.value,
+              }))
+            : [
+                {
+                  itemStyle: { color: 'rgba(148,163,184,0.35)' },
+                  name: '暂无数据',
+                  value: 1,
+                },
+              ],
+          itemStyle: {
+            borderColor: '#ffffff',
+            borderRadius: 4,
+            borderWidth: 2,
           },
-        ],
-      }),
-    [executionFileTypeDistributionRows]
+          label: { show: false },
+          labelLine: { show: false },
+          name: '文件类型',
+          radius: ['52%', '76%'],
+          type: 'pie',
+        },
+      ],
+    }),
+    [executionFileTypeDistributionRows],
   )
 
   const executionPipelineState = useMemo(() => {
     const total = executionDocuments.length
     const safeTotal = Math.max(1, total)
     const executionStatusCounts = {
-      completed: executionDocuments.filter(
-        (document) => String(document.status || '').toLowerCase() === 'completed'
-      ).length,
-      failed: executionDocuments.filter(
-        (document) => String(document.status || '').toLowerCase() === 'failed'
-      ).length,
+      completed: executionDocuments.filter((document) => String(document.status || '').toLowerCase() === 'completed')
+        .length,
+      failed: executionDocuments.filter((document) => String(document.status || '').toLowerCase() === 'failed').length,
       quarantined: executionDocuments.filter(
-        (document) => String(document.status || '').toLowerCase() === 'quarantined'
+        (document) => String(document.status || '').toLowerCase() === 'quarantined',
       ).length,
     }
     const parserFailures = executionStatusCounts.failed + executionStatusCounts.quarantined
     const processingDocuments = executionDocuments.filter(
-      (document) => String(document.status || '').toLowerCase() === 'processing'
+      (document) => String(document.status || '').toLowerCase() === 'processing',
     )
-    const totalChunks = executionDocuments.reduce(
-      (sum, document) => sum + Number(document.chunk_count || 0),
-      0
-    )
+    const totalChunks = executionDocuments.reduce((sum, document) => sum + Number(document.chunk_count || 0), 0)
 
     const stageIncludes = (document: Document, keywords: string[]) => {
       const stage = String(document.current_stage || '').toLowerCase()
       return keywords.some((keyword) => stage.includes(keyword))
     }
-    const progressOf = (document: Document) =>
-      Math.max(0, Math.min(100, Number(document.processing_progress || 0)))
-    const isCompleted = (document: Document) =>
-      String(document.status || '').toLowerCase() === 'completed'
+    const progressOf = (document: Document) => Math.max(0, Math.min(100, Number(document.processing_progress || 0)))
+    const isCompleted = (document: Document) => String(document.status || '').toLowerCase() === 'completed'
     const isTerminal = (document: Document) =>
-      ['completed', 'failed', 'quarantined'].includes(
-        String(document.status || '').toLowerCase()
-      )
+      ['completed', 'failed', 'quarantined'].includes(String(document.status || '').toLowerCase())
 
     const parserDoneDocuments = executionDocuments.filter(
-      (document) => isTerminal(document) || progressOf(document) >= 45
+      (document) => isTerminal(document) || progressOf(document) >= 45,
     )
     const parserDoneDocumentIds = new Set(parserDoneDocuments.map((document) => document.id))
     const parserRunning = processingDocuments.filter(
       (document) =>
         !parserDoneDocumentIds.has(document.id) &&
-        (progressOf(document) < 45 ||
-          stageIncludes(document, ['parse', 'parser', 'extract', 'ocr', 'mineru']))
+        (progressOf(document) < 45 || stageIncludes(document, ['parse', 'parser', 'extract', 'ocr', 'mineru'])),
     ).length
     const parserDone = parserDoneDocuments.length
     const parserWaiting = Math.max(0, total - parserDone - parserRunning)
 
     const chunkerDoneDocuments = executionDocuments.filter(
-      (document) => isCompleted(document) || progressOf(document) >= 85
+      (document) => isCompleted(document) || progressOf(document) >= 85,
     )
     const chunkerDoneDocumentIds = new Set(chunkerDoneDocuments.map((document) => document.id))
     const chunkerRunning = processingDocuments.filter(
       (document) =>
         !chunkerDoneDocumentIds.has(document.id) &&
         (progressOf(document) >= 45 ||
-          stageIncludes(document, [
-            'chunk',
-            'split',
-            'segment',
-            'embed',
-            'index',
-            'vector',
-            'bm25',
-          ]))
+          stageIncludes(document, ['chunk', 'split', 'segment', 'embed', 'index', 'vector', 'bm25'])),
     ).length
     const chunkerDone = chunkerDoneDocuments.length
     const chunkerWaiting = Math.max(0, total - chunkerDone - chunkerRunning)
@@ -784,12 +650,9 @@ export default function KnowledgeIngestionPageClient() {
     const governanceQueue = reviewQueue + manualCount
     const governanceDone = Math.max(
       0,
-      Math.min(total, executionStatusCounts.completed + approvedCount - governanceQueue)
+      Math.min(total, executionStatusCounts.completed + approvedCount - governanceQueue),
     )
-    const governanceWaiting = Math.max(
-      0,
-      total - governanceDone - governanceQueue
-    )
+    const governanceWaiting = Math.max(0, total - governanceDone - governanceQueue)
     const exportReady = executionStatusCounts.completed
     const exportWaiting = Math.max(0, total - exportReady)
 
@@ -834,23 +697,14 @@ export default function KnowledgeIngestionPageClient() {
       waiting: exportWaiting,
     })
 
-    const parserProgress = total
-      ? Math.round((Math.min(total, parserDone) / safeTotal) * 100)
-      : 0
-    const chunkerProgress = total
-      ? Math.round((Math.min(total, chunkerDone) / safeTotal) * 100)
-      : 0
+    const parserProgress = total ? Math.round((Math.min(total, parserDone) / safeTotal) * 100) : 0
+    const chunkerProgress = total ? Math.round((Math.min(total, chunkerDone) / safeTotal) * 100) : 0
     const governanceProgress = total
       ? Math.round((Math.min(total, governanceDone + governanceQueue) / safeTotal) * 100)
       : 0
-    const exportProgress = total
-      ? Math.round((Math.min(total, exportReady) / safeTotal) * 100)
-      : 0
+    const exportProgress = total ? Math.round((Math.min(total, exportReady) / safeTotal) * 100) : 0
     const overallProgress = Math.round(
-      parserProgress * 0.3 +
-        chunkerProgress * 0.3 +
-        governanceProgress * 0.2 +
-        exportProgress * 0.2
+      parserProgress * 0.3 + chunkerProgress * 0.3 + governanceProgress * 0.2 + exportProgress * 0.2,
     )
 
     return {
@@ -907,14 +761,7 @@ export default function KnowledgeIngestionPageClient() {
         },
       ],
     }
-  }, [
-    approvedCount,
-    executionDocuments,
-    manualCount,
-    reviewQueue,
-    selectedDatasetId,
-    taskQueueSnapshot?.enabled,
-  ])
+  }, [approvedCount, executionDocuments, manualCount, reviewQueue, selectedDatasetId, taskQueueSnapshot?.enabled])
   const executionPipelineCards = executionPipelineState.cards
   const executionOverallProgress = executionPipelineState.overallProgress
 
@@ -963,15 +810,13 @@ export default function KnowledgeIngestionPageClient() {
       statusCounts.completed,
       statusCounts.failed,
       statusCounts.quarantined,
-    ]
+    ],
   )
 
   const recentQueueOutcomes = useMemo(() => {
     const outcomes = taskQueueSnapshot?.recent_job_outcomes ?? []
     return outcomes.slice(0, 5).map((item, index) => {
-      const jobName = String(
-        item.job_name || item.run_id || item.document_id || `job-${index + 1}`
-      )
+      const jobName = String(item.job_name || item.run_id || item.document_id || `job-${index + 1}`)
       const ok = item.ok === true
       const finishedAt = item.finished_at
         ? String(item.finished_at)
@@ -987,25 +832,15 @@ export default function KnowledgeIngestionPageClient() {
         tone: ok ? 'bg-success' : 'bg-rose',
       }
     })
-  }, [
-    renderTimestamp,
-    taskQueueSnapshot?.generated_at,
-    taskQueueSnapshot?.recent_job_outcomes,
-  ])
+  }, [renderTimestamp, taskQueueSnapshot?.generated_at, taskQueueSnapshot?.recent_job_outcomes])
 
   const executionRecentLogs = useMemo(() => {
     if (recentQueueOutcomes.length) return recentQueueOutcomes
 
     return [...executionDocuments]
       .sort((left, right) => {
-        const rightTs = new Date(
-          String(
-            right.updated_at || right.processed_at || right.created_at || ''
-          )
-        ).getTime()
-        const leftTs = new Date(
-          String(left.updated_at || left.processed_at || left.created_at || '')
-        ).getTime()
+        const rightTs = new Date(String(right.updated_at || right.processed_at || right.created_at || '')).getTime()
+        const leftTs = new Date(String(left.updated_at || left.processed_at || left.created_at || '')).getTime()
         return rightTs - leftTs
       })
       .slice(0, 5)
@@ -1014,10 +849,7 @@ export default function KnowledgeIngestionPageClient() {
         return {
           id: document.id,
           time: formatClockSecondsLabel(
-            document.updated_at ||
-              document.processed_at ||
-              document.created_at ||
-              renderTimestamp
+            document.updated_at || document.processed_at || document.created_at || renderTimestamp,
           ),
           stage: String(document.current_stage || '系统'),
           detail: getRecentLogDetail(status, document.filename),
@@ -1027,39 +859,23 @@ export default function KnowledgeIngestionPageClient() {
   }, [executionDocuments, recentQueueOutcomes, renderTimestamp])
 
   const executionTaskRows = useMemo(() => {
-    return [...executionDocuments]
-      .sort((left, right) => {
-        const rightTs = new Date(
-          String(
-            right.updated_at || right.processed_at || right.created_at || ''
-          )
-        ).getTime()
-        const leftTs = new Date(
-          String(left.updated_at || left.processed_at || left.created_at || '')
-        ).getTime()
-        return rightTs - leftTs
-      })
+    return [...executionDocuments].sort((left, right) => {
+      const rightTs = new Date(String(right.updated_at || right.processed_at || right.created_at || '')).getTime()
+      const leftTs = new Date(String(left.updated_at || left.processed_at || left.created_at || '')).getTime()
+      return rightTs - leftTs
+    })
   }, [executionDocuments])
   const executionTaskPageCount = useMemo(
-    () =>
-      Math.max(
-        1,
-        Math.ceil(executionTaskRows.length / EXECUTION_TASK_PAGE_SIZE)
-      ),
-    [executionTaskRows.length]
+    () => Math.max(1, Math.ceil(executionTaskRows.length / EXECUTION_TASK_PAGE_SIZE)),
+    [executionTaskRows.length],
   )
   const visibleExecutionTaskRows = useMemo(() => {
     const pageStart = (executionTaskPage - 1) * EXECUTION_TASK_PAGE_SIZE
-    return executionTaskRows.slice(
-      pageStart,
-      pageStart + EXECUTION_TASK_PAGE_SIZE
-    )
+    return executionTaskRows.slice(pageStart, pageStart + EXECUTION_TASK_PAGE_SIZE)
   }, [executionTaskPage, executionTaskRows])
 
   useEffect(() => {
-    setExecutionTaskPage((page) =>
-      Math.min(Math.max(page, 1), executionTaskPageCount)
-    )
+    setExecutionTaskPage((page) => Math.min(Math.max(page, 1), executionTaskPageCount))
   }, [executionTaskPageCount])
 
   const forecastPoints = useMemo(() => {
@@ -1070,9 +886,7 @@ export default function KnowledgeIngestionPageClient() {
     const stepMinutes = summary.bucket_minutes || 20
     return Array.from({ length: 3 }, (_, index) => ({
       ts: (last?.ts ?? renderTimestamp) + (index + 1) * stepMinutes * 60_000,
-      total: Number(
-        (base + ((rate * stepMinutes) / 60) * (index + 1)).toFixed(1)
-      ),
+      total: Number((base + ((rate * stepMinutes) / 60) * (index + 1)).toFixed(1)),
     }))
   }, [docsPerMinute, renderTimestamp, summary.bucket_minutes, throughputRows])
 
@@ -1081,13 +895,7 @@ export default function KnowledgeIngestionPageClient() {
     const hasActualSeries = actualSeries.length > 0
     const lastActualPoint = actualSeries.at(-1)
     const forecastSeries = lastActualPoint
-      ? [
-          [
-            lastActualPoint[0],
-            lastActualPoint[1],
-          ],
-          ...forecastPoints.map((row) => [row.ts, row.total]),
-        ]
+      ? [[lastActualPoint[0], lastActualPoint[1]], ...forecastPoints.map((row) => [row.ts, row.total])]
       : []
 
     return {
@@ -1136,10 +944,7 @@ export default function KnowledgeIngestionPageClient() {
       },
       series: [
         {
-          name:
-            throughputRowsSource === 'documents'
-              ? '文档完成数'
-              : '当前处理效率',
+          name: throughputRowsSource === 'documents' ? '文档完成数' : '当前处理效率',
           type: 'line',
           smooth: true,
           showSymbol: !hasActualSeries,
@@ -1150,9 +955,7 @@ export default function KnowledgeIngestionPageClient() {
             width: hasActualSeries ? 2.5 : 1.5,
           },
           areaStyle: {
-            color: hasActualSeries
-              ? 'rgba(2,132,199,0.14)'
-              : 'rgba(2,132,199,0.035)',
+            color: hasActualSeries ? 'rgba(2,132,199,0.14)' : 'rgba(2,132,199,0.035)',
           },
           data: hasActualSeries ? actualSeries : [0, 0, 0, 0, 0],
         },
@@ -1173,26 +976,24 @@ export default function KnowledgeIngestionPageClient() {
 
   const costRadarValues = useMemo(() => {
     const pdfCount = executionDocuments.filter(
-      (document) => String(document.file_type || '').toLowerCase() === 'pdf'
+      (document) => String(document.file_type || '').toLowerCase() === 'pdf',
     ).length
     const totalFiles = Math.max(1, executionDocuments.length)
     const precheckSampleFiles = collectSalesAuditSampleFiles(salesAuditSamples)
     const totalCharacters = executionDocuments.reduce(
       (sum, document) => sum + Number(document.total_characters || 0),
-      0
+      0,
     )
     const totalPdfPagesFromSamples = precheckSampleFiles.reduce(
-      (sum, file) =>
-        sum +
-        Number(file.pdf_pages?.page_count || 0),
-      0
+      (sum, file) => sum + Number(file.pdf_pages?.page_count || 0),
+      0,
     )
     const pdfDocuments = executionDocuments.filter(
-      (document) => String(document.file_type || '').toLowerCase() === 'pdf'
+      (document) => String(document.file_type || '').toLowerCase() === 'pdf',
     )
     const totalPdfPagesFromDocuments = pdfDocuments.reduce(
       (sum, document) => sum + getDocumentRuntimeStats(document).pageCount,
-      0
+      0,
     )
     const totalPdfPagesEstimated = pdfDocuments.reduce(
       (sum, document) =>
@@ -1201,19 +1002,15 @@ export default function KnowledgeIngestionPageClient() {
           characters: Number(document.total_characters || 0),
           fileSize: Number(document.file_size || 0),
         }),
-      0
+      0,
     )
-    const totalPdfPages =
-      totalPdfPagesFromSamples ||
-      totalPdfPagesFromDocuments ||
-      totalPdfPagesEstimated
+    const totalPdfPages = totalPdfPagesFromSamples || totalPdfPagesFromDocuments || totalPdfPagesEstimated
     const totalImageAssets = executionDocuments.reduce(
       (sum, document) => sum + getDocumentRuntimeStats(document).imageCount,
-      0
+      0,
     )
     const totalSizeMb =
-      executionDocuments.reduce((sum, document) => sum + Number(document.file_size || 0), 0) /
-      (1024 * 1024)
+      executionDocuments.reduce((sum, document) => sum + Number(document.file_size || 0), 0) / (1024 * 1024)
     const p90Duration = durationPercentiles.p90 || durationPercentiles.p50 || 0
 
     return [
@@ -1225,62 +1022,52 @@ export default function KnowledgeIngestionPageClient() {
       Math.min(100, Math.round((p90Duration / 20) * 100)),
       executionRetryRate,
     ]
-  }, [
-    durationPercentiles.p50,
-    durationPercentiles.p90,
-    executionDocuments,
-    executionRetryRate,
-    salesAuditSamples,
-  ])
+  }, [durationPercentiles.p50, durationPercentiles.p90, executionDocuments, executionRetryRate, salesAuditSamples])
 
   const radarOption = useMemo<EChartsOption>(
-    () =>
-      ({
-        tooltip: { trigger: 'item' },
-        radar: {
-          radius: '56%',
-          center: ['50%', '54%'],
-          splitNumber: 4,
-          axisName: { color: '#475569', fontSize: 9 },
-          splitLine: { lineStyle: { color: 'rgba(148,163,184,0.22)' } },
-          splitArea: {
-            areaStyle: {
-              color: ['rgba(148,163,184,0.08)', 'rgba(148,163,184,0.025)'],
-            },
+    () => ({
+      tooltip: { trigger: 'item' },
+      radar: {
+        radius: '56%',
+        center: ['50%', '54%'],
+        splitNumber: 4,
+        axisName: { color: '#475569', fontSize: 9 },
+        splitLine: { lineStyle: { color: 'rgba(148,163,184,0.22)' } },
+        splitArea: {
+          areaStyle: {
+            color: ['rgba(148,163,184,0.08)', 'rgba(148,163,184,0.025)'],
           },
-          indicator: [
-            { name: 'PDF 占比', max: 100 },
-            { name: '页数压力', max: 100 },
-            { name: '字数压力', max: 100 },
-            { name: '体积压力', max: 100 },
-            { name: '图片资源', max: 100 },
-            { name: '耗时压力', max: 100 },
-            { name: '失败重试', max: 100 },
+        },
+        indicator: [
+          { name: 'PDF 占比', max: 100 },
+          { name: '页数压力', max: 100 },
+          { name: '字数压力', max: 100 },
+          { name: '体积压力', max: 100 },
+          { name: '图片资源', max: 100 },
+          { name: '耗时压力', max: 100 },
+          { name: '失败重试', max: 100 },
+        ],
+      },
+      series: [
+        {
+          type: 'radar',
+          data: [
+            {
+              value: costRadarValues,
+              areaStyle: { color: 'hsl(var(--primary) / 0.12)' },
+              lineStyle: { color: 'hsl(var(--primary))', width: 2 },
+              itemStyle: { color: 'hsl(var(--primary))' },
+            },
           ],
         },
-        series: [
-          {
-            type: 'radar',
-            data: [
-              {
-                value: costRadarValues,
-                areaStyle: { color: 'hsl(var(--primary) / 0.12)' },
-                lineStyle: { color: 'hsl(var(--primary))', width: 2 },
-                itemStyle: { color: 'hsl(var(--primary))' },
-              },
-            ],
-          },
-        ],
-      }),
-    [costRadarValues]
+      ],
+    }),
+    [costRadarValues],
   )
 
   const salesAuditProfile = useMemo(
-    () =>
-      salesAuditSummary
-        ? buildSalesAuditProfile(salesAuditSummary, salesAuditNearDup)
-        : null,
-    [salesAuditNearDup, salesAuditSummary]
+    () => (salesAuditSummary ? buildSalesAuditProfile(salesAuditSummary, salesAuditNearDup) : null),
+    [salesAuditNearDup, salesAuditSummary],
   )
 
   const ingestionRecommendationLabel = useMemo(() => {
@@ -1308,68 +1095,50 @@ export default function KnowledgeIngestionPageClient() {
       executionDocuments.reduce((sum, document) => sum + Number(document.file_size || 0), 0)
     const precheckTypeCounts = Object.fromEntries(
       Object.entries(salesAuditSummary?.by_file_type ?? {})
-        .map(([fileType, count]) => [
-          String(fileType || '').toLowerCase(),
-          Number(count || 0),
-        ])
-        .filter(([fileType, count]) => Boolean(fileType) && Number(count) > 0)
+        .map(([fileType, count]) => [String(fileType || '').toLowerCase(), Number(count || 0)])
+        .filter(([fileType, count]) => Boolean(fileType) && Number(count) > 0),
     ) as Record<string, number>
-    const fallbackTypeCounts = executionDocuments.reduce<Record<string, number>>(
-      (acc, document) => {
-        const fileType =
-          String(document.file_type || '').trim().toLowerCase() || 'unknown'
-        acc[fileType] = (acc[fileType] ?? 0) + 1
-        return acc
-      },
-      {}
-    )
-    const presentFileTypeCounts = Object.keys(precheckTypeCounts).length
-      ? precheckTypeCounts
-      : fallbackTypeCounts
-    const presentTypeCount = Object.values(presentFileTypeCounts).filter(
-      (count) => Number(count || 0) > 0
-    ).length
+    const fallbackTypeCounts = executionDocuments.reduce<Record<string, number>>((acc, document) => {
+      const fileType =
+        String(document.file_type || '')
+          .trim()
+          .toLowerCase() || 'unknown'
+      acc[fileType] = (acc[fileType] ?? 0) + 1
+      return acc
+    }, {})
+    const presentFileTypeCounts = Object.keys(precheckTypeCounts).length ? precheckTypeCounts : fallbackTypeCounts
+    const presentTypeCount = Object.values(presentFileTypeCounts).filter((count) => Number(count || 0) > 0).length
     const precheckPdfTotal =
       Number(salesAuditSummary?.pdf_scan.scanned || 0) +
       Number(salesAuditSummary?.pdf_scan.not_scanned || 0) +
       Number(salesAuditSummary?.pdf_scan.unknown || 0)
     const fallbackPdfTotal = executionDocuments.filter(
-      (document) => String(document.file_type || '').toLowerCase() === 'pdf'
+      (document) => String(document.file_type || '').toLowerCase() === 'pdf',
     ).length
     const pdfTotal = precheckPdfTotal || fallbackPdfTotal
     const totalCharacters = executionDocuments.reduce(
       (sum, document) => sum + Number(document.total_characters || 0),
-      0
+      0,
     )
     const samplePool = collectSalesAuditSampleFiles(salesAuditSamples)
     const needsReviewCount = Object.values(salesAuditSamples?.needs_review ?? {}).flat().length
     const profileFiles = samplePool.length
       ? samplePool.map(buildPrecheckProfileFile)
       : executionDocuments.map(buildDocumentProfileFile)
-    const pdfProfileFiles = profileFiles.filter(
-      (file) => file.fileType.toLowerCase() === 'pdf'
-    )
+    const pdfProfileFiles = profileFiles.filter((file) => file.fileType.toLowerCase() === 'pdf')
     const avgPdfChars = average(pdfProfileFiles.map((file) => file.chars))
     const avgPdfPages = average(pdfProfileFiles.map((file) => file.pdfPages))
     const avgPdfImages = average(pdfProfileFiles.map((file) => file.imageCount))
     const avgPdfTables = average(pdfProfileFiles.map((file) => file.tableCount))
     const avgPdfBlocks = average(pdfProfileFiles.map((file) => file.blockCount))
     const hasPdfProfiles = pdfProfileFiles.length > 0
-    const hasEstimatedPdfPages = pdfProfileFiles.some(
-      (file) => file.pdfPages > 0 && file.pageCountEstimated
-    )
+    const hasEstimatedPdfPages = pdfProfileFiles.some((file) => file.pdfPages > 0 && file.pageCountEstimated)
     const avgSizeMb = average(profileFiles.map((file) => file.fileSize)) / (1024 * 1024)
     const proportionalSampleTarget = totalFiles
       ? Math.ceil((totalFiles * PRECHECK_SAMPLE_NUMERATOR) / PRECHECK_SAMPLE_DENOMINATOR)
       : 0
     const sampleTarget = totalFiles
-      ? Math.min(
-          totalFiles,
-          Math.min(
-            PRECHECK_SAMPLE_MAX,
-            Math.max(1, presentTypeCount, proportionalSampleTarget)
-          )
-        )
+      ? Math.min(totalFiles, Math.min(PRECHECK_SAMPLE_MAX, Math.max(1, presentTypeCount, proportionalSampleTarget)))
       : 0
     const sampleTargetDetail =
       totalFiles > 0
@@ -1418,9 +1187,7 @@ export default function KnowledgeIngestionPageClient() {
         },
         {
           color: '#64748b',
-          detail: avgPdfImages
-            ? '来自后端 image_count / elements 图片引用'
-            : '后端未检测到图片引用',
+          detail: avgPdfImages ? '来自后端 image_count / elements 图片引用' : '后端未检测到图片引用',
           label: 'PDF 图片数',
           score: clampScore((avgPdfImages / 120) * 100),
           value: hasPdfProfiles ? `${Math.round(avgPdfImages)} 个` : '无 PDF',
@@ -1473,48 +1240,47 @@ export default function KnowledgeIngestionPageClient() {
   ])
 
   const batchProfileBarOption = useMemo<EChartsOption>(
-    () =>
-      ({
-        grid: { bottom: 8, left: 86, right: 74, top: 8 },
-        tooltip: {
-          trigger: 'axis',
-          axisPointer: { type: 'shadow' },
-        },
-        xAxis: {
-          max: 100,
-          min: 0,
-          splitLine: { lineStyle: { color: 'rgba(148,163,184,0.14)' } },
-          type: 'value',
-        },
-        yAxis: {
-          axisLabel: { color: '#475569', fontSize: 10 },
-          axisLine: { show: false },
-          axisTick: { show: false },
-          data: executionBatchAnalysis.distributionBars.map((item) => item.label),
-          inverse: true,
-          type: 'category',
-        },
-        series: [
-          {
-            barWidth: 13,
-            data: executionBatchAnalysis.distributionBars.map((item) => ({
-              itemStyle: { color: item.color },
-              value: item.score,
-            })),
-            label: {
-              color: '#64748b',
-              fontSize: 10,
-              formatter: (params: { dataIndex: number }) =>
-                executionBatchAnalysis.distributionBars[params.dataIndex]?.value ?? '',
-              position: 'right',
-              show: true,
-            },
-            name: '批次画像',
-            type: 'bar',
+    () => ({
+      grid: { bottom: 8, left: 86, right: 74, top: 8 },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+      },
+      xAxis: {
+        max: 100,
+        min: 0,
+        splitLine: { lineStyle: { color: 'rgba(148,163,184,0.14)' } },
+        type: 'value',
+      },
+      yAxis: {
+        axisLabel: { color: '#475569', fontSize: 10 },
+        axisLine: { show: false },
+        axisTick: { show: false },
+        data: executionBatchAnalysis.distributionBars.map((item) => item.label),
+        inverse: true,
+        type: 'category',
+      },
+      series: [
+        {
+          barWidth: 13,
+          data: executionBatchAnalysis.distributionBars.map((item) => ({
+            itemStyle: { color: item.color },
+            value: item.score,
+          })),
+          label: {
+            color: '#64748b',
+            fontSize: 10,
+            formatter: (params: { dataIndex: number }) =>
+              executionBatchAnalysis.distributionBars[params.dataIndex]?.value ?? '',
+            position: 'right',
+            show: true,
           },
-        ],
-      }),
-    [executionBatchAnalysis.distributionBars]
+          name: '批次画像',
+          type: 'bar',
+        },
+      ],
+    }),
+    [executionBatchAnalysis.distributionBars],
   )
 
   const salesEvidenceItems = useMemo(() => {
@@ -1523,10 +1289,7 @@ export default function KnowledgeIngestionPageClient() {
 
   const salesHeatmapData = useMemo(() => {
     if (!salesAuditSummary?.findings?.length) return []
-    const peak = Math.max(
-      1,
-      ...salesAuditSummary.findings.map((item) => Number(item.count || 0))
-    )
+    const peak = Math.max(1, ...salesAuditSummary.findings.map((item) => Number(item.count || 0)))
     const labelMap: Record<string, string> = {
       pdf_scanned: '扫描件',
       parse_failed: '解析失败',
@@ -1550,29 +1313,18 @@ export default function KnowledgeIngestionPageClient() {
       })
   }, [salesAuditSummary])
 
-  const salesCoreSummary = useMemo<
-    Array<readonly [string, string, string]>
-  >(() => {
+  const salesCoreSummary = useMemo<Array<readonly [string, string, string]>>(() => {
     const totalFiles = Number(salesAuditSummary?.total_files || 0)
     const pdfScanned = Number(salesAuditSummary?.pdf_scan.scanned || 0)
     const pdfUnknown = Number(salesAuditSummary?.pdf_scan.unknown || 0)
-    const scanRatio = totalFiles
-      ? Math.round(((pdfScanned + pdfUnknown) / totalFiles) * 100)
-      : 0
+    const scanRatio = totalFiles ? Math.round(((pdfScanned + pdfUnknown) / totalFiles) * 100) : 0
 
     return [
       ['文档总数', totalFiles.toLocaleString(), '全量预检范围'],
-      [
-        '总体体量',
-        formatFileSize(salesAuditSummary?.total_size_bytes || 0),
-        '估算工时与算力',
-      ],
+      ['总体体量', formatFileSize(salesAuditSummary?.total_size_bytes || 0), '估算工时与算力'],
       [
         '阻断项',
-        String(
-          salesAuditProfile?.costDrivers.find((item) => item.key === 'blocking')
-            ?.count ?? 0
-        ),
+        String(salesAuditProfile?.costDrivers.find((item) => item.key === 'blocking')?.count ?? 0),
         '需人工介入处理',
       ],
       ['扫描 / 混排', `${scanRatio}%`, 'OCR 前置处理占比'],
@@ -1582,9 +1334,7 @@ export default function KnowledgeIngestionPageClient() {
   const salesProcessingLanes = useMemo<SalesProcessingLane[]>(() => {
     if (!salesAuditSummary) return []
     const countByFinding = (key: string) =>
-      Number(
-        salesAuditSummary.findings.find((item) => item.key === key)?.count || 0
-      )
+      Number(salesAuditSummary.findings.find((item) => item.key === key)?.count || 0)
     return [
       {
         key: 'ocr',
@@ -1604,10 +1354,7 @@ export default function KnowledgeIngestionPageClient() {
       {
         key: 'manual',
         label: '人工审核',
-        count:
-          countByFinding('pii') +
-          countByFinding('secrets') +
-          countByFinding('parse_failed'),
+        count: countByFinding('pii') + countByFinding('secrets') + countByFinding('parse_failed'),
         tone: 'text-rose bg-rose/8 border-rose/15',
       },
       {
@@ -1623,7 +1370,7 @@ export default function KnowledgeIngestionPageClient() {
               countByFinding('merged_heavy_spreadsheet') +
               countByFinding('pii') +
               countByFinding('secrets') +
-              countByFinding('parse_failed'))
+              countByFinding('parse_failed')),
         ),
         tone: 'text-success bg-success/8 border-success/15',
       },
@@ -1651,12 +1398,8 @@ export default function KnowledgeIngestionPageClient() {
   }, [salesEvidenceItems])
 
   const salesHighRiskFiles = useMemo<SalesEvidenceTableRow[]>(() => {
-    const reviewBuckets = Object.values(
-      salesAuditSamples?.needs_review ?? {}
-    ).flat()
-    const source = (
-      reviewBuckets.length ? reviewBuckets : salesEvidenceItems
-    ).slice(0, 5)
+    const reviewBuckets = Object.values(salesAuditSamples?.needs_review ?? {}).flat()
+    const source = (reviewBuckets.length ? reviewBuckets : salesEvidenceItems).slice(0, 5)
     return source.map((file) => {
       const tags = buildEvidenceSlotTags(file)
       const firstTag = tags[0] || 'STRAIGHT_THROUGH'
@@ -1677,22 +1420,16 @@ export default function KnowledgeIngestionPageClient() {
   }, [salesAuditSamples?.needs_review, salesEvidenceItems])
 
   const salesPdfSplitOption = useMemo<EChartsOption>(() => {
-    const pdfDetection = salesAuditSummary?.pdf_detection as
-      | Record<string, unknown>
-      | undefined
+    const pdfDetection = salesAuditSummary?.pdf_detection as Record<string, unknown> | undefined
     const rows = [
       {
         name: 'TEXT',
-        value: Number(
-          pdfDetection?.text || salesAuditSummary?.pdf_scan.not_scanned || 0
-        ),
+        value: Number(pdfDetection?.text || salesAuditSummary?.pdf_scan.not_scanned || 0),
       },
       { name: 'MIXED', value: Number(pdfDetection?.mixed || 0) },
       {
         name: 'SCAN',
-        value: Number(
-          pdfDetection?.scan || salesAuditSummary?.pdf_scan.scanned || 0
-        ),
+        value: Number(pdfDetection?.scan || salesAuditSummary?.pdf_scan.scanned || 0),
       },
     ].filter((row) => row.value > 0)
 
@@ -1744,17 +1481,13 @@ export default function KnowledgeIngestionPageClient() {
               {
                 name: 'P50',
                 xAxis: histogram.findIndex(
-                  (item) =>
-                    p50 >= Number(item.min || 0) &&
-                    p50 < Number(item.max || Number.POSITIVE_INFINITY)
+                  (item) => p50 >= Number(item.min || 0) && p50 < Number(item.max || Number.POSITIVE_INFINITY),
                 ),
               },
               {
                 name: 'P90',
                 xAxis: histogram.findIndex(
-                  (item) =>
-                    p90 >= Number(item.min || 0) &&
-                    p90 < Number(item.max || Number.POSITIVE_INFINITY)
+                  (item) => p90 >= Number(item.min || 0) && p90 < Number(item.max || Number.POSITIVE_INFINITY),
                 ),
               },
             ].filter((item) => Number(item.xAxis) >= 0),
@@ -1768,58 +1501,31 @@ export default function KnowledgeIngestionPageClient() {
     if (!salesAuditSummary) return { series: [] }
     const totalFiles = Math.max(1, Number(salesAuditSummary.total_files || 0))
     const ocrRatio =
-      (Number(salesAuditSummary.pdf_scan.scanned || 0) +
-        Number(salesAuditSummary.pdf_scan.unknown || 0)) /
+      (Number(salesAuditSummary.pdf_scan.scanned || 0) + Number(salesAuditSummary.pdf_scan.unknown || 0)) /
       Math.max(
         1,
         Number(salesAuditSummary.pdf_scan.scanned || 0) +
           Number(salesAuditSummary.pdf_scan.not_scanned || 0) +
-          Number(salesAuditSummary.pdf_scan.unknown || 0)
+          Number(salesAuditSummary.pdf_scan.unknown || 0),
       )
     const tableHeavyRatio =
-      (Number(
-        salesAuditSummary.findings.find(
-          (item) => item.key === 'large_spreadsheet'
-        )?.count || 0
-      ) +
-        Number(
-          salesAuditSummary.findings.find(
-            (item) => item.key === 'wide_spreadsheet'
-          )?.count || 0
-        ) +
-        Number(
-          salesAuditSummary.findings.find(
-            (item) => item.key === 'merged_heavy_spreadsheet'
-          )?.count || 0
-        )) /
+      (Number(salesAuditSummary.findings.find((item) => item.key === 'large_spreadsheet')?.count || 0) +
+        Number(salesAuditSummary.findings.find((item) => item.key === 'wide_spreadsheet')?.count || 0) +
+        Number(salesAuditSummary.findings.find((item) => item.key === 'merged_heavy_spreadsheet')?.count || 0)) /
       totalFiles
     const sensitiveRatio =
-      (Number(
-        salesAuditSummary.findings.find((item) => item.key === 'pii')?.count ||
-          0
-      ) +
-        Number(
-          salesAuditSummary.findings.find((item) => item.key === 'secrets')
-            ?.count || 0
-        )) /
+      (Number(salesAuditSummary.findings.find((item) => item.key === 'pii')?.count || 0) +
+        Number(salesAuditSummary.findings.find((item) => item.key === 'secrets')?.count || 0)) /
       totalFiles
     const successRatio =
-      1 -
-      Number(
-        salesAuditSummary.findings.find((item) => item.key === 'parse_failed')
-          ?.count || 0
-      ) /
-        totalFiles
+      1 - Number(salesAuditSummary.findings.find((item) => item.key === 'parse_failed')?.count || 0) / totalFiles
     const imageHeavyProxy = Math.max(
       0,
       Math.min(
         1,
         Number(salesAuditSummary.pdf_scan.scanned || 0) / totalFiles +
-          Number(
-            (salesAuditSummary.by_file_type as Record<string, number>).pptx || 0
-          ) /
-            totalFiles
-      )
+          Number((salesAuditSummary.by_file_type as Record<string, number>).pptx || 0) / totalFiles,
+      ),
     )
 
     return {
@@ -1891,7 +1597,7 @@ export default function KnowledgeIngestionPageClient() {
         toast.error('同步预检处置失败，请稍后重试')
       }
     },
-    [documentsQuery, resolvedSampleDispositions]
+    [documentsQuery, resolvedSampleDispositions],
   )
 
   const persistSalesAuditDisposition = useCallback(
@@ -1910,14 +1616,10 @@ export default function KnowledgeIngestionPageClient() {
       }
 
       try {
-        await datasetApi.patchPrecheckSampleReview(
-          selectedDatasetId,
-          latestPrecheckRun.id,
-          {
-            file_name: fileName,
-            disposition,
-          }
-        )
+        await datasetApi.patchPrecheckSampleReview(selectedDatasetId, latestPrecheckRun.id, {
+          file_name: fileName,
+          disposition,
+        })
         await precheckSamplesQuery.refetch()
         if (disposition === 'approved') setSuccessPulseVisible(true)
         toast.success('已同步入库处置结论')
@@ -1931,12 +1633,7 @@ export default function KnowledgeIngestionPageClient() {
         toast.error('同步入库处置失败，请稍后重试')
       }
     },
-    [
-      latestPrecheckRun?.id,
-      precheckSamplesQuery,
-      resolvedSampleDispositions,
-      selectedDatasetId,
-    ]
+    [latestPrecheckRun?.id, precheckSamplesQuery, resolvedSampleDispositions, selectedDatasetId],
   )
 
   const handleSampleDisposition = useCallback(
@@ -1957,23 +1654,14 @@ export default function KnowledgeIngestionPageClient() {
       }
 
       if (disposition === 'approved') setSuccessPulseVisible(true)
-      toast.success(
-        disposition === 'approved' ? '样本标记已更新' : '人工处理标记已更新'
-      )
+      toast.success(disposition === 'approved' ? '样本标记已更新' : '人工处理标记已更新')
     },
-    [
-      demoMode,
-      mode,
-      persistExecutionMonitorDisposition,
-      persistSalesAuditDisposition,
-    ]
+    [demoMode, mode, persistExecutionMonitorDisposition, persistSalesAuditDisposition],
   )
 
   const handleSelectAudit = useCallback((documentId: string) => {
     setSelectedAuditIds((previous) =>
-      previous.includes(documentId)
-        ? previous.filter((item) => item !== documentId)
-        : [...previous, documentId]
+      previous.includes(documentId) ? previous.filter((item) => item !== documentId) : [...previous, documentId],
     )
   }, [])
 
@@ -1998,10 +1686,7 @@ export default function KnowledgeIngestionPageClient() {
     })
 
     try {
-      await renderReportHtmlToJpeg(
-        html,
-        buildSafeReportFilename(selectedDatasetLabel, '.audit-report.jpg')
-      )
+      await renderReportHtmlToJpeg(html, buildSafeReportFilename(selectedDatasetLabel, '.audit-report.jpg'))
       toast.success('已导出 JPG 报告')
     } catch (error) {
       const previewUrl = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }))
@@ -2012,21 +1697,17 @@ export default function KnowledgeIngestionPageClient() {
         toast.error(
           error instanceof Error && error.message
             ? `JPG 生成失败，已回退到 HTML 预览：${error.message}`
-            : 'JPG 生成失败，已回退到 HTML 预览'
+            : 'JPG 生成失败，已回退到 HTML 预览',
         )
         return
       }
       URL.revokeObjectURL(previewUrl)
 
-      downloadTextFile(
-        'ingestion-audit-report.html',
-        html,
-        'text/html;charset=utf-8'
-      )
+      downloadTextFile('ingestion-audit-report.html', html, 'text/html;charset=utf-8')
       toast.error(
         error instanceof Error && error.message
           ? `JPG 生成失败，已回退到 HTML 文件：${error.message}`
-          : 'JPG 生成失败，已回退到 HTML 文件'
+          : 'JPG 生成失败，已回退到 HTML 文件',
       )
     }
   }, [
@@ -2051,32 +1732,19 @@ export default function KnowledgeIngestionPageClient() {
     }
 
     try {
-      const blob = await datasetApi.exportPrecheckHtml(
-        selectedDatasetId,
-        latestPrecheckRun.id,
-        { redact: true }
-      )
+      const blob = await datasetApi.exportPrecheckHtml(selectedDatasetId, latestPrecheckRun.id, { redact: true })
       const html = await blob.text()
-      await renderReportHtmlToJpeg(
-        html,
-        buildSafeReportFilename(selectedDatasetLabel, '.precheck.jpg')
-      )
+      await renderReportHtmlToJpeg(html, buildSafeReportFilename(selectedDatasetLabel, '.precheck.jpg'))
       toast.success('已导出脱敏 JPG 报告')
     } catch (error) {
       toast.error(
         error instanceof Error && error.message
           ? `导出脱敏 JPG 报告失败，已回退到当前页面报告：${error.message}`
-          : '导出脱敏 JPG 报告失败，已回退到当前页面报告'
+          : '导出脱敏 JPG 报告失败，已回退到当前页面报告',
       )
       await handleDownloadReport()
     }
-  }, [
-    demoMode,
-    handleDownloadReport,
-    latestPrecheckRun?.id,
-    selectedDatasetId,
-    selectedDatasetLabel,
-  ])
+  }, [demoMode, handleDownloadReport, latestPrecheckRun?.id, selectedDatasetId, selectedDatasetLabel])
 
   const handleUploadSampleAssessment = useCallback(() => {
     dropZoneRef.current?.triggerFilePicker({ precheckOnly: true })
@@ -2121,7 +1789,7 @@ export default function KnowledgeIngestionPageClient() {
       const query = params.toString()
       router.replace(query ? `${pathname}?${query}` : pathname)
     },
-    [mode, pathname, router, searchParams]
+    [mode, pathname, router, searchParams],
   )
 
   const handleOpenIngestionOperation = useCallback(() => {
@@ -2142,25 +1810,17 @@ export default function KnowledgeIngestionPageClient() {
 
   const showEmptyState =
     mode === 'sales-audit'
-      ? !demoMode &&
-        !documentsQuery.isLoading &&
-        !precheckSummaryQuery.isLoading &&
-        !salesAuditSummary
+      ? !demoMode && !documentsQuery.isLoading && !precheckSummaryQuery.isLoading && !salesAuditSummary
       : false
   const showExecutionMonitorEmptyShell =
-    mode === 'execution-monitor' &&
-    !documentsQuery.isLoading &&
-    executionTaskRows.length === 0
-  const showDesktopAuditRail =
-    mode === 'execution-monitor' && !showEmptyState && !desktopScopeCollapsed
+    mode === 'execution-monitor' && !documentsQuery.isLoading && executionTaskRows.length === 0
+  const showDesktopAuditRail = mode === 'execution-monitor' && !showEmptyState && !desktopScopeCollapsed
   const headerAnimation = getHeaderAnimation({
     headerCollapsed,
     mode,
     reduceMotion,
   })
-  const salesAuditPocSampleLabel = salesAuditProfile
-    ? `${salesAuditProfile.pocSampleCount} 份`
-    : '待预检'
+  const salesAuditPocSampleLabel = salesAuditProfile ? `${salesAuditProfile.pocSampleCount} 份` : '待预检'
 
   return (
     <div
@@ -2169,7 +1829,7 @@ export default function KnowledgeIngestionPageClient() {
       data-page-scroll-container="true"
       className={cn(
         'flex-1 h-full min-h-0 overflow-y-auto overscroll-contain no-scrollbar scroll-fade-bottom text-foreground',
-        mode === 'execution-monitor' ? 'bg-info/[0.025] dark:bg-background' : INGESTION_BACKGROUND_CLASS
+        mode === 'execution-monitor' ? 'bg-info/[0.025] dark:bg-background' : INGESTION_BACKGROUND_CLASS,
       )}
     >
       <DropZone
@@ -2187,16 +1847,11 @@ export default function KnowledgeIngestionPageClient() {
       <div
         className={cn(
           'flex w-full max-w-none gap-0',
-          mode === 'sales-audit'
-            ? 'px-3 pb-2 pt-3 md:px-5 lg:px-6 xl:px-7 2xl:px-8'
-            : 'px-2 pb-5 pt-1.5 md:px-3'
+          mode === 'sales-audit' ? 'px-3 pb-2 pt-3 md:px-5 lg:px-6 xl:px-7 2xl:px-8' : 'px-2 pb-5 pt-1.5 md:px-3',
         )}
       >
         <div
-          className={cn(
-            'relative flex w-full gap-0',
-            mode === 'sales-audit' ? 'min-h-0' : 'min-h-[calc(100dvh-2rem)]'
-          )}
+          className={cn('relative flex w-full gap-0', mode === 'sales-audit' ? 'min-h-0' : 'min-h-[calc(100dvh-2rem)]')}
         >
           <DesktopAuditRail
             auditDispositionFilter={auditDispositionFilter}
@@ -2221,10 +1876,7 @@ export default function KnowledgeIngestionPageClient() {
           <div className="min-w-0 flex-1">
             <div className={cn(mode === 'execution-monitor' ? 'relative z-20' : 'sticky top-3 z-30')}>
               <motion.div
-                className={cn(
-                  'relative overflow-hidden',
-                  INGESTION_HERO_PANEL_CLASS
-                )}
+                className={cn('relative overflow-hidden', INGESTION_HERO_PANEL_CLASS)}
                 animate={headerAnimation}
                 transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
               >
@@ -2235,20 +1887,13 @@ export default function KnowledgeIngestionPageClient() {
                 <IngestionHeroPanel
                   demoMode={demoMode}
                   desktopScopeCollapsed={desktopScopeCollapsed}
-                  headerBodyVisibilityClass={getHeaderBodyVisibilityClass(
-                    mode,
-                    headerCollapsed
-                  )}
+                  headerBodyVisibilityClass={getHeaderBodyVisibilityClass(mode, headerCollapsed)}
                   ingestionRecommendationLabel={ingestionRecommendationLabel}
                   mode={mode}
-                  salesAuditComplexity={
-                    salesAuditProfile?.complexity || '待预检'
-                  }
+                  salesAuditComplexity={salesAuditProfile?.complexity || '待预检'}
                   salesAuditPocSampleLabel={salesAuditPocSampleLabel}
                   selectedDatasetLabel={selectedDatasetLabel}
-                  showDesktopScopeControl={
-                    mode === 'execution-monitor' && !showEmptyState
-                  }
+                  showDesktopScopeControl={mode === 'execution-monitor' && !showEmptyState}
                   showSalesPolicyBadge={showSalesPolicyBadge}
                   summaryStripClassName={SALES_SUMMARY_STRIP_CLASS}
                   taskQueueStatusLabel={taskQueueStatusLabel}
@@ -2256,9 +1901,7 @@ export default function KnowledgeIngestionPageClient() {
                   onDownloadReport={handleDownloadReport}
                   onExitDemoMode={handleExitDemoMode}
                   onExportSalesAuditReport={handleExportSalesAuditReport}
-                  onToggleDesktopScope={() =>
-                    setDesktopScopeCollapsed((previous) => !previous)
-                  }
+                  onToggleDesktopScope={() => setDesktopScopeCollapsed((previous) => !previous)}
                   onUploadFormalIngest={handleUploadFormalIngest}
                   onUploadSampleAssessment={handleUploadSampleAssessment}
                 />
@@ -2273,20 +1916,18 @@ export default function KnowledgeIngestionPageClient() {
 
             <div className={cn(mode === 'sales-audit' ? 'mt-5' : 'mt-1.5')}>
               {mode === 'sales-audit' && showEmptyState && (
-                  <EmptyState
-                    mode="truly-empty"
-                    onUploadSample={handleUploadSampleAssessment}
-                    onUploadIngest={handleUploadFormalIngest}
-                  />
+                <EmptyState
+                  mode="truly-empty"
+                  onUploadSample={handleUploadSampleAssessment}
+                  onUploadIngest={handleUploadFormalIngest}
+                />
               )}
 
               {mode === 'sales-audit' && !showEmptyState && (
                 <SalesAuditSummaryPanel
                   batchProfileBarOption={batchProfileBarOption}
                   complexity={executionBatchAnalysis.complexity}
-                  coreSummary={
-                    salesCoreSummary
-                  }
+                  coreSummary={salesCoreSummary}
                   costDrivers={salesAuditProfile?.costDrivers || []}
                   heatmapData={salesHeatmapData}
                   highRiskFiles={salesHighRiskFiles}
@@ -2307,9 +1948,7 @@ export default function KnowledgeIngestionPageClient() {
                   onClearSelectedReason={() => setSelectedReason(null)}
                   onHeatmapSelect={handleHeatmapSelect}
                   onOpenEvidenceFile={(fileId) => {
-                    const file = salesEvidenceItems.find(
-                      (item) => String(item.name) === fileId
-                    )
+                    const file = salesEvidenceItems.find((item) => String(item.name) === fileId)
                     if (file) setSelectedEvidenceFile(file)
                   }}
                 />
@@ -2317,11 +1956,7 @@ export default function KnowledgeIngestionPageClient() {
 
               {mode !== 'sales-audit' && (
                 <>
-                  {documentsQuery.isLoading &&
-                  !documents.length &&
-                  !demoMode ? (
-                    <LoadingWireframe />
-                  ) : null}
+                  {documentsQuery.isLoading && !documents.length && !demoMode ? <LoadingWireframe /> : null}
                   {showEmptyState && (
                     <EmptyState
                       mode="truly-empty"
@@ -2355,19 +1990,11 @@ export default function KnowledgeIngestionPageClient() {
                       selectedDatasetId={selectedDatasetId}
                       showEmptyShell={showExecutionMonitorEmptyShell}
                       visibleExecutionTaskRows={visibleExecutionTaskRows}
-                      onNextPage={() =>
-                        setExecutionTaskPage((page) =>
-                          Math.min(executionTaskPageCount, page + 1)
-                        )
-                      }
+                      onNextPage={() => setExecutionTaskPage((page) => Math.min(executionTaskPageCount, page + 1))}
                       onOpenAuditSnapshot={handleOpenAuditSnapshot}
                       onOpenIngestionOperation={handleOpenIngestionOperation}
-                      onPrevPage={() =>
-                        setExecutionTaskPage((page) => Math.max(1, page - 1))
-                      }
-                      onScopeAllProjects={() =>
-                        handleDatasetScopeChange(DATASET_ALL)
-                      }
+                      onPrevPage={() => setExecutionTaskPage((page) => Math.max(1, page - 1))}
+                      onScopeAllProjects={() => handleDatasetScopeChange(DATASET_ALL)}
                     />
                   )}
                 </>

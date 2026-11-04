@@ -133,7 +133,7 @@ export function useGraphPageActions({
       y = Math.max(padding, Math.min(y, rect.height - menuHeight - padding))
       setContextMenu({ x, y, target })
     },
-    [graphViewportRef]
+    [graphViewportRef],
   )
 
   useEffect(() => {
@@ -189,7 +189,7 @@ export function useGraphPageActions({
       setIsLinkDetailOpen(false)
       openContextMenu(event, { type: 'node', node })
     },
-    [openContextMenu, setIsDetailOpen, setIsLinkDetailOpen, setSelectedLink, setSelectedNode]
+    [openContextMenu, setIsDetailOpen, setIsLinkDetailOpen, setSelectedLink, setSelectedNode],
   )
 
   const handleLinkRightClick = useCallback(
@@ -200,7 +200,7 @@ export function useGraphPageActions({
       setIsLinkDetailOpen(false)
       openContextMenu(event, { type: 'link', link })
     },
-    [openContextMenu, setIsDetailOpen, setIsLinkDetailOpen, setSelectedLink, setSelectedNode]
+    [openContextMenu, setIsDetailOpen, setIsLinkDetailOpen, setSelectedLink, setSelectedNode],
   )
 
   const handleBackgroundRightClick = useCallback(
@@ -209,7 +209,7 @@ export function useGraphPageActions({
       setIsLinkDetailOpen(false)
       openContextMenu(event, { type: 'background' })
     },
-    [openContextMenu, setIsDetailOpen, setIsLinkDetailOpen]
+    [openContextMenu, setIsDetailOpen, setIsLinkDetailOpen],
   )
 
   const copyToClipboard = useCallback(async (text: string, label: string) => {
@@ -235,14 +235,14 @@ export function useGraphPageActions({
     (nodeId: string) => {
       detachPromise(copyToClipboard(nodeId, '节点 ID'))
     },
-    [copyToClipboard]
+    [copyToClipboard],
   )
 
   const handleCopyLinkPredicate = useCallback(
     (predicate: string) => {
       detachPromise(copyToClipboard(predicate, 'Predicate'))
     },
-    [copyToClipboard]
+    [copyToClipboard],
   )
 
   const chatWithNode = useCallback(
@@ -256,7 +256,7 @@ export function useGraphPageActions({
       })
       router.push(`/?${params.toString()}`)
     },
-    [router, selectedNode]
+    [router, selectedNode],
   )
 
   const handleChatWithNode = useCallback(() => {
@@ -268,14 +268,13 @@ export function useGraphPageActions({
       const target = node ?? selectedNode
       const documentId = target?.meta?.document_id || target?.source
       if (documentId) {
-        const documentLabel =
-          typeof documentId === 'string' || typeof documentId === 'number' ? String(documentId) : ''
+        const documentLabel = typeof documentId === 'string' || typeof documentId === 'number' ? String(documentId) : ''
         toast(documentLabel ? `源文档：${documentLabel}` : '未找到源文档信息')
         return
       }
       toast('未找到源文档信息')
     },
-    [selectedNode]
+    [selectedNode],
   )
 
   const handleViewSource = useCallback(() => {
@@ -283,10 +282,7 @@ export function useGraphPageActions({
   }, [viewSourceForNode])
 
   const exportBaseName = useMemo(() => {
-    const base =
-      stripFilenameExtension(fileName || '') ||
-      (datasetId ? `dataset-${datasetId}` : '') ||
-      'mimirq-kg'
+    const base = stripFilenameExtension(fileName || '') || (datasetId ? `dataset-${datasetId}` : '') || 'mimirq-kg'
     return sanitizeFilename(`${base}-${viewMode}`)
   }, [datasetId, fileName, viewMode])
 
@@ -335,7 +331,7 @@ export function useGraphPageActions({
       globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
       toast.success('已导出 SVG')
     },
-    [copyToClipboard, exportBaseName, getActiveGraph]
+    [copyToClipboard, exportBaseName, getActiveGraph],
   )
 
   const handleExportPngDownload = useCallback(() => {
@@ -389,22 +385,14 @@ export function useGraphPageActions({
     } finally {
       setIsLoading(false)
     }
-  }, [
-    dataSource,
-    includeEntityLinks,
-    includeRelationLinks,
-    maxEntityLinks,
-    minSharedEvents,
-    scopeParams,
-    setIsLoading,
-  ])
+  }, [dataSource, includeEntityLinks, includeRelationLinks, maxEntityLinks, minSharedEvents, scopeParams, setIsLoading])
 
   const handleDeleteNodeOpenChange = useCallback(
     (open: boolean) => {
       setDeleteNodeOpen(open)
       if (!open) setDeleteNodeTarget(null)
     },
-    [setDeleteNodeOpen, setDeleteNodeTarget]
+    [setDeleteNodeOpen, setDeleteNodeTarget],
   )
 
   return {

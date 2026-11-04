@@ -9,7 +9,9 @@ function readEnv(name: string): string {
 }
 
 function isFalsey(value: string): boolean {
-  const v = String(value || '').trim().toLowerCase()
+  const v = String(value || '')
+    .trim()
+    .toLowerCase()
   return v === '0' || v === 'false' || v === 'no' || v === 'off' || v === 'disabled'
 }
 

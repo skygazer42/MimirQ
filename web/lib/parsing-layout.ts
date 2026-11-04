@@ -40,8 +40,7 @@ const PARSING_LAYOUT_META: Record<ParsingLayoutKind, ParsingLayoutMeta> = {
   list: {
     label: '列表',
     shortLabel: '列表',
-    chipClassName:
-      'border-info/30 bg-info/10 text-info dark:border-info/30 dark:bg-info/20 dark:text-info',
+    chipClassName: 'border-info/30 bg-info/10 text-info dark:border-info/30 dark:bg-info/20 dark:text-info',
     dotClassName: 'bg-info dark:bg-info/70',
     overlayClassName: 'border-info/60 bg-info/10',
   },
@@ -131,7 +130,8 @@ export function classifyParsingBlock(block: Pick<ParsingBlock, 'text'>): Parsing
   if (hasTabularRows(text)) return 'table'
   if (text.includes('$$') || EQUATION_MARKER_TOKENS.some((token) => text.includes(token))) return 'equation'
   if (trimmedLines.some((line) => ['-', '*', '+'].includes(line[0] || '') || /^\d+[.)]\s/.test(line))) return 'list'
-  if (trimmedLines.some((line) => line.startsWith('#') && line.length > 1 && line[1] !== '#') || looksLikeHeading(text)) return 'heading'
+  if (trimmedLines.some((line) => line.startsWith('#') && line.length > 1 && line[1] !== '#') || looksLikeHeading(text))
+    return 'heading'
 
   return 'paragraph'
 }

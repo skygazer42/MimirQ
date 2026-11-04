@@ -18,13 +18,7 @@ import {
   Sparkles,
   Trash2,
 } from 'lucide-react'
-import {
-  startTransition,
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react'
+import { startTransition, useDeferredValue, useEffect, useMemo, useState } from 'react'
 
 import { useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
@@ -52,12 +46,7 @@ import { SnapshotDiffView } from './components/snapshot-diff-view'
 import { SnapshotGraphCanvas } from './components/snapshot-graph-canvas'
 import { SnapshotNodeDetailsRail } from './components/snapshot-node-details-rail'
 import { SnapshotStudioToolbar } from './components/snapshot-studio-toolbar'
-import {
-  DiffEmptyState,
-  SnapshotInlineStat,
-  WorkspaceSection,
-  getHashPairIcon,
-} from './components/shared'
+import { DiffEmptyState, SnapshotInlineStat, WorkspaceSection, getHashPairIcon } from './components/shared'
 import {
   DIFF_KEYS,
   SNAPSHOT_HEADER_ACTION_CLASS,
@@ -119,8 +108,7 @@ export function KGSnapshotsPage() {
   const [liveGraphError, setLiveGraphError] = useState<string | null>(null)
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('studio')
   const [activeView, setActiveView] = useState<SnapshotView>('diff')
-  const [studioCanvasView, setStudioCanvasView] =
-    useState<StudioCanvasView>('graph')
+  const [studioCanvasView, setStudioCanvasView] = useState<StudioCanvasView>('graph')
   const [studioSearch, setStudioSearch] = useState('')
   const [studioNodeType, setStudioNodeType] = useState('all')
   const [studioRelationType, setStudioRelationType] = useState('all')
@@ -136,13 +124,10 @@ export function KGSnapshotsPage() {
   const [latencyMs, setLatencyMs] = useState<number | null>(null)
   const [isRunning, setIsRunning] = useState(false)
 
-  const documentIds = useMemo(
-    () => parseDocumentIds(documentIdsRaw),
-    [documentIdsRaw]
-  )
+  const documentIds = useMemo(() => parseDocumentIds(documentIdsRaw), [documentIdsRaw])
   const selectedDataset = useMemo(
     () => datasets.find((dataset) => dataset.id === selectedDatasetId) ?? null,
-    [datasets, selectedDatasetId]
+    [datasets, selectedDatasetId],
   )
   const scopeDatasetId = selectedDatasetId || undefined
   const scopeDocumentIds = documentIds.length > 0 ? documentIds : undefined
@@ -221,9 +206,7 @@ export function KGSnapshotsPage() {
           .catch(() => null)
 
         for (const document of documents?.items ?? []) {
-          const activeHash = firstDisplayString(
-            getDocumentMetaValue(document, 'active_pipeline_hash')
-          )
+          const activeHash = firstDisplayString(getDocumentMetaValue(document, 'active_pipeline_hash'))
           const currentHash = firstDisplayString(getDocumentMetaValue(document, 'pipeline_hash'))
           if (activeHash) {
             mergePipelineCandidate(candidateMap, {
@@ -246,12 +229,8 @@ export function KGSnapshotsPage() {
         if (!cancelled) {
           const next = sortPipelineCandidates(Array.from(candidateMap.values()))
           setPipelineCandidates(next)
-          setPipelineHashB((current) =>
-            current.trim() ? current : next[0]?.hash ?? ''
-          )
-          setPipelineHashA((current) =>
-            current.trim() ? current : next[1]?.hash ?? ''
-          )
+          setPipelineHashB((current) => (current.trim() ? current : (next[0]?.hash ?? '')))
+          setPipelineHashA((current) => (current.trim() ? current : (next[1]?.hash ?? '')))
         }
       } catch (err) {
         if (!cancelled) {
@@ -268,25 +247,13 @@ export function KGSnapshotsPage() {
     }
   }, [selectedDatasetId])
 
-  const snapAJson = useMemo(
-    () => prettyJson(snapA ?? { hint: '点击左侧“导出 A”生成快照。' }),
-    [snapA]
-  )
-  const snapBJson = useMemo(
-    () => prettyJson(snapB ?? { hint: '点击左侧“导出 B”生成快照。' }),
-    [snapB]
-  )
-  const diffJson = useMemo(
-    () => prettyJson(diff ?? { hint: '点击左侧“开始对比”生成 diff。' }),
-    [diff]
-  )
+  const snapAJson = useMemo(() => prettyJson(snapA ?? { hint: '点击左侧“导出 A”生成快照。' }), [snapA])
+  const snapBJson = useMemo(() => prettyJson(snapB ?? { hint: '点击左侧“导出 B”生成快照。' }), [snapB])
+  const diffJson = useMemo(() => prettyJson(diff ?? { hint: '点击左侧“开始对比”生成 diff。' }), [diff])
 
   const diffDelta = useMemo(() => {
-    const delta =
-      diff?.delta && typeof diff.delta === 'object' ? diff.delta : null
-    const entityTypesDelta = Array.isArray(diff?.entity_types_delta)
-      ? diff.entity_types_delta
-      : []
+    const delta = diff?.delta && typeof diff.delta === 'object' ? diff.delta : null
+    const entityTypesDelta = Array.isArray(diff?.entity_types_delta) ? diff.entity_types_delta : []
     return { delta, entityTypesDelta }
   }, [diff])
   const deferredEntityTypesDelta = useDeferredValue(diffDelta.entityTypesDelta)
@@ -412,19 +379,14 @@ export function KGSnapshotsPage() {
   const hashPairTitle = `A: ${hashAValue || '未填写'}\nB: ${hashBValue || '未填写'}`
   const hashPairTone = getHashPairTone(hasHashA, hasHashB)
   const hashPairIcon = getHashPairIcon(hasHashA, hasHashB)
-  const diffBaseName =
-    sanitizeFilename(
-      `kg_snapshot_${hashAValue || 'A'}_vs_${hashBValue || 'B'}`
-    ) || 'kg_snapshot'
+  const diffBaseName = sanitizeFilename(`kg_snapshot_${hashAValue || 'A'}_vs_${hashBValue || 'B'}`) || 'kg_snapshot'
   const snapshotScopeSubtitle = getSnapshotScopeSubtitle(
     scopeDocumentIds?.length ?? 0,
     scopeDatasetId,
-    selectedDatasetLabel
+    selectedDatasetLabel,
   )
-  const snapshotAFileName =
-    sanitizeFilename(`kg_snapshot_${hashAValue || 'A'}`) || 'kg_snapshot_A'
-  const snapshotBFileName =
-    sanitizeFilename(`kg_snapshot_${hashBValue || 'B'}`) || 'kg_snapshot_B'
+  const snapshotAFileName = sanitizeFilename(`kg_snapshot_${hashAValue || 'A'}`) || 'kg_snapshot_A'
+  const snapshotBFileName = sanitizeFilename(`kg_snapshot_${hashBValue || 'B'}`) || 'kg_snapshot_B'
   useEffect(() => {
     let cancelled = false
     setLiveGraphLoading(true)
@@ -435,9 +397,7 @@ export function KGSnapshotsPage() {
         if (meta?.features?.kg_enabled === false) {
           if (!cancelled) {
             setLiveGraph({ nodes: [], links: [] })
-            setLiveGraphError(
-              'KG 功能未启用，已按后端能力状态跳过实时图谱读取。请在设置中开启 KG 抽取后刷新。'
-            )
+            setLiveGraphError('KG 功能未启用，已按后端能力状态跳过实时图谱读取。请在设置中开启 KG 抽取后刷新。')
           }
           return
         }
@@ -468,32 +428,16 @@ export function KGSnapshotsPage() {
     return () => {
       cancelled = true
     }
-  }, [
-    liveGraphPipelineHash,
-    selectedDatasetId,
-    scopeDatasetId,
-    scopeDocumentIds,
-    scopeDocumentIdsKey,
-  ])
+  }, [liveGraphPipelineHash, selectedDatasetId, scopeDatasetId, scopeDocumentIds, scopeDocumentIdsKey])
 
-  const studioGraph = useMemo(
-    () => buildSnapshotStudioGraphFromKgGraph(liveGraph),
-    [liveGraph]
-  )
-  const nodeTypes = useMemo(
-    () => Array.from(new Set(studioGraph.nodes.map((node) => node.type))),
-    [studioGraph.nodes]
-  )
+  const studioGraph = useMemo(() => buildSnapshotStudioGraphFromKgGraph(liveGraph), [liveGraph])
+  const nodeTypes = useMemo(() => Array.from(new Set(studioGraph.nodes.map((node) => node.type))), [studioGraph.nodes])
   const relationTypes = useMemo(
     () => Array.from(new Set(studioGraph.links.map((link) => link.label))),
-    [studioGraph.links]
+    [studioGraph.links],
   )
   const selectedStudioNode = useMemo(() => {
-    return (
-      studioGraph.nodes.find((node) => node.id === selectedStudioNodeId) ??
-      studioGraph.nodes[0] ??
-      null
-    )
+    return studioGraph.nodes.find((node) => node.id === selectedStudioNodeId) ?? studioGraph.nodes[0] ?? null
   }, [selectedStudioNodeId, studioGraph.nodes])
   useEffect(() => {
     if (studioGraph.nodes.length === 0) {
@@ -519,22 +463,14 @@ export function KGSnapshotsPage() {
     })
   }, [diffDelta.delta, snapA, snapB])
   const driftScore = useMemo(() => {
-    const denominator = deltaRows.reduce(
-      (acc, row) => acc + Math.max(Math.max(row.a, row.b), 1),
-      0
-    )
+    const denominator = deltaRows.reduce((acc, row) => acc + Math.max(Math.max(row.a, row.b), 1), 0)
     if (denominator <= 0) return 0
-    const totalDelta = deltaRows.reduce(
-      (acc, row) => acc + Math.abs(row.delta),
-      0
-    )
+    const totalDelta = deltaRows.reduce((acc, row) => acc + Math.abs(row.delta), 0)
     return totalDelta / denominator
   }, [deltaRows])
   const auditSeverity = auditSeverityForDriftScore(driftScore)
   const auditDriftRows = useMemo(() => {
-    return [...deferredEntityTypesDelta].sort(
-      (a, b) => Math.abs(Number(b.delta ?? 0)) - Math.abs(Number(a.delta ?? 0))
-    )
+    return [...deferredEntityTypesDelta].sort((a, b) => Math.abs(Number(b.delta ?? 0)) - Math.abs(Number(a.delta ?? 0)))
   }, [deferredEntityTypesDelta])
   const diffOverview = useMemo(() => {
     const nodeAdded = exactDiffCount(diff?.node_diff, 'added_count')
@@ -558,8 +494,7 @@ export function KGSnapshotsPage() {
       },
     ]
   }, [diff, driftScore])
-  const formInputClassName =
-    'h-10 rounded-lg border-border/70 bg-card font-mono text-xs shadow-none'
+  const formInputClassName = 'h-10 rounded-lg border-border/70 bg-card font-mono text-xs shadow-none'
   const formTextareaClassName =
     'min-h-[108px] resize-none rounded-lg border-border/70 bg-card font-mono text-xs shadow-none'
 
@@ -583,18 +518,11 @@ export function KGSnapshotsPage() {
                   variant="outline"
                   size="sm"
                   className={cn(SNAPSHOT_HEADER_ACTION_CLASS, 'gap-1.5')}
-                  title={
-                    hashAValue && hashBValue
-                      ? '重新导出并刷新 A/B 对比结果'
-                      : '先填写快照 A / 快照 B'
-                  }
+                  title={hashAValue && hashBValue ? '重新导出并刷新 A/B 对比结果' : '先填写快照 A / 快照 B'}
                   disabled={isRunning || !hashAValue || !hashBValue}
                   onClick={() => detachPromise(runCompare())}
                 >
-                  <RefreshCcw
-                    className={cn('h-3.5 w-3.5', isRunning && 'animate-spin')}
-                    aria-hidden="true"
-                  />
+                  <RefreshCcw className={cn('h-3.5 w-3.5', isRunning && 'animate-spin')} aria-hidden="true" />
                   刷新对比
                 </Button>
 
@@ -624,9 +552,7 @@ export function KGSnapshotsPage() {
                   size="icon"
                   className={SNAPSHOT_ICON_ACTION_CLASS}
                   onClick={() => setLeftSidebarCollapsed((prev) => !prev)}
-                  aria-label={
-                    leftSidebarCollapsed ? '展开参数栏' : '折叠参数栏'
-                  }
+                  aria-label={leftSidebarCollapsed ? '展开参数栏' : '折叠参数栏'}
                   title={leftSidebarCollapsed ? '展开参数栏' : '折叠参数栏'}
                 >
                   {leftSidebarCollapsed ? (
@@ -644,10 +570,8 @@ export function KGSnapshotsPage() {
           <aside
             className={cn(
               'shrink-0 border-r border-border/70 bg-background transition-[width,opacity] duration-200',
-              leftSidebarCollapsed
-                ? 'w-0 overflow-hidden border-r-0 opacity-0'
-                : 'w-[288px] opacity-100',
-              'flex min-h-0 flex-col'
+              leftSidebarCollapsed ? 'w-0 overflow-hidden border-r-0 opacity-0' : 'w-[288px] opacity-100',
+              'flex min-h-0 flex-col',
             )}
           >
             <div className="flex h-full min-h-0 flex-col">
@@ -659,7 +583,7 @@ export function KGSnapshotsPage() {
                       'inline-flex h-8 items-center justify-center gap-1.5 rounded-lg text-[12px] font-medium transition-colors',
                       workspaceTab === 'studio'
                         ? 'bg-primary text-primary-foreground shadow-sm'
-                        : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground'
+                        : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
                     )}
                     onClick={() => {
                       startTransition(() => setWorkspaceTab('studio'))
@@ -674,7 +598,7 @@ export function KGSnapshotsPage() {
                       'inline-flex h-8 items-center justify-center gap-1.5 rounded-lg text-[12px] font-medium transition-colors',
                       workspaceTab === 'audit'
                         ? 'bg-primary text-primary-foreground shadow-sm'
-                        : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground'
+                        : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
                     )}
                     onClick={() => {
                       startTransition(() => setWorkspaceTab('audit'))
@@ -719,11 +643,10 @@ export function KGSnapshotsPage() {
                         <span className="text-muted-foreground">
                           {pipelineCandidatesLoading
                             ? '正在加载版本…'
-                            : pipelineCandidatesError || (
-                                pipelineCandidates.length > 0
-                                  ? `已发现 ${pipelineCandidates.length} 个版本`
-                                  : '当前数据集暂无可对比版本'
-                              )}
+                            : pipelineCandidatesError ||
+                              (pipelineCandidates.length > 0
+                                ? `已发现 ${pipelineCandidates.length} 个版本`
+                                : '当前数据集暂无可对比版本')}
                         </span>
                         <Button
                           type="button"
@@ -752,14 +675,9 @@ export function KGSnapshotsPage() {
                           onChange={(e) => setPipelineHashA(e.target.value)}
                           className="h-10 w-full rounded-lg border border-border/70 bg-card px-3 text-xs font-medium text-foreground shadow-none outline-none transition-colors hover:bg-muted/20 focus:ring-2 focus:ring-primary/20"
                         >
-                          <option value="">
-                            {pipelineCandidatesLoading ? '正在加载版本…' : '选择旧版本'}
-                          </option>
-                          {pipelineHashA &&
-                          !pipelineCandidates.some((item) => item.hash === pipelineHashA) ? (
-                            <option value={pipelineHashA}>
-                              手动版本 · {compactHashLabel(pipelineHashA)}
-                            </option>
+                          <option value="">{pipelineCandidatesLoading ? '正在加载版本…' : '选择旧版本'}</option>
+                          {pipelineHashA && !pipelineCandidates.some((item) => item.hash === pipelineHashA) ? (
+                            <option value={pipelineHashA}>手动版本 · {compactHashLabel(pipelineHashA)}</option>
                           ) : null}
                           {pipelineCandidates.map((item) => (
                             <option key={`a:${item.hash}`} value={item.hash}>
@@ -785,14 +703,9 @@ export function KGSnapshotsPage() {
                           onChange={(e) => setPipelineHashB(e.target.value)}
                           className="h-10 w-full rounded-lg border border-border/70 bg-card px-3 text-xs font-medium text-foreground shadow-none outline-none transition-colors hover:bg-muted/20 focus:ring-2 focus:ring-primary/20"
                         >
-                          <option value="">
-                            {pipelineCandidatesLoading ? '正在加载版本…' : '选择当前版本'}
-                          </option>
-                          {pipelineHashB &&
-                          !pipelineCandidates.some((item) => item.hash === pipelineHashB) ? (
-                            <option value={pipelineHashB}>
-                              手动版本 · {compactHashLabel(pipelineHashB)}
-                            </option>
+                          <option value="">{pipelineCandidatesLoading ? '正在加载版本…' : '选择当前版本'}</option>
+                          {pipelineHashB && !pipelineCandidates.some((item) => item.hash === pipelineHashB) ? (
+                            <option value={pipelineHashB}>手动版本 · {compactHashLabel(pipelineHashB)}</option>
                           ) : null}
                           {pipelineCandidates.map((item) => (
                             <option key={`b:${item.hash}`} value={item.hash}>
@@ -823,11 +736,7 @@ export function KGSnapshotsPage() {
                     </div>
                   </WorkspaceSection>
 
-                  <WorkspaceSection
-                    icon={<Layers className="h-3.5 w-3.5" />}
-                    label="作用范围"
-                    hint="数据集绑定"
-                  >
+                  <WorkspaceSection icon={<Layers className="h-3.5 w-3.5" />} label="作用范围" hint="数据集绑定">
                     <div className="space-y-1.5">
                       <Label
                         htmlFor="snapshot-dataset"
@@ -848,9 +757,7 @@ export function KGSnapshotsPage() {
                         }}
                         className="h-10 w-full rounded-lg border border-border/70 bg-card px-3 text-xs font-medium text-foreground shadow-none outline-none transition-colors hover:bg-muted/20 focus:ring-2 focus:ring-primary/20"
                       >
-                        <option value="">
-                          {datasetsLoading ? '正在加载数据集…' : '全部数据集'}
-                        </option>
+                        <option value="">{datasetsLoading ? '正在加载数据集…' : '全部数据集'}</option>
                         {datasets.map((dataset) => (
                           <option key={dataset.id} value={dataset.id}>
                             {getDatasetLabel(dataset)}
@@ -892,11 +799,7 @@ export function KGSnapshotsPage() {
                       <SnapshotInlineStat
                         icon={<FolderOpen className="h-3.5 w-3.5" />}
                         label="文档范围"
-                        value={
-                          documentIds.length
-                            ? `${documentIds.length} 覆盖`
-                            : scopeDocumentCountLabel
-                        }
+                        value={documentIds.length ? `${documentIds.length} 覆盖` : scopeDocumentCountLabel}
                         tone={scopeDocumentIds?.length ? 'neutral' : 'muted'}
                       />
                       <SnapshotInlineStat
@@ -927,10 +830,7 @@ export function KGSnapshotsPage() {
                     disabled={isRunning}
                   >
                     {isRunning ? (
-                      <RefreshCcw
-                        className="h-4 w-4 animate-spin"
-                        aria-hidden="true"
-                      />
+                      <RefreshCcw className="h-4 w-4 animate-spin" aria-hidden="true" />
                     ) : (
                       <GitCompare className="h-4 w-4" aria-hidden="true" />
                     )}
@@ -1045,9 +945,7 @@ export function KGSnapshotsPage() {
                     <Tabs
                       value={activeView}
                       onValueChange={(value) => {
-                        startTransition(() =>
-                          setActiveView(value as SnapshotView)
-                        )
+                        startTransition(() => setActiveView(value as SnapshotView))
                       }}
                       className="flex h-full min-h-0 flex-col"
                     >
@@ -1056,10 +954,7 @@ export function KGSnapshotsPage() {
                           <div className="flex flex-wrap items-center justify-between gap-3">
                             <div className="min-w-0">
                               <div className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                                <FileJson
-                                  className="h-3.5 w-3.5 text-primary/70"
-                                  aria-hidden="true"
-                                />
+                                <FileJson className="h-3.5 w-3.5 text-primary/70" aria-hidden="true" />
                                 快照工作台
                               </div>
                               <div className="mt-0.5 truncate text-[15px] font-semibold text-foreground">
@@ -1072,10 +967,7 @@ export function KGSnapshotsPage() {
                                 value="diff"
                                 className="inline-flex h-7 items-center gap-1.5 rounded-lg px-3 text-[12px] font-medium text-muted-foreground transition-colors data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm hover:text-foreground"
                               >
-                                <ArrowRightLeft
-                                  className="h-3.5 w-3.5"
-                                  aria-hidden="true"
-                                />
+                                <ArrowRightLeft className="h-3.5 w-3.5" aria-hidden="true" />
                                 Diff 对比
                               </TabsTrigger>
                               <TabsTrigger
@@ -1114,12 +1006,9 @@ export function KGSnapshotsPage() {
                               })
                             ) : (
                               <span className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-border/70 bg-card/60 px-2.5 py-1 text-[11px] text-muted-foreground">
-                                <CircleDashed
-                                  className="h-3.5 w-3.5 text-primary/60"
-                                  aria-hidden="true"
-                                />
-                                填写 A / B Hash 后点击「开始对比」即可查看 docs
-                                / events / entities / links / relations 增量
+                                <CircleDashed className="h-3.5 w-3.5 text-primary/60" aria-hidden="true" />
+                                填写 A / B Hash 后点击「开始对比」即可查看 docs / events / entities / links / relations
+                                增量
                               </span>
                             )}
                           </div>
@@ -1142,22 +1031,13 @@ export function KGSnapshotsPage() {
                               title="还没有对比结果"
                               description="填写左侧的快照 A / 快照 B，可以选择文档范围，然后点击「开始对比」生成左右差异与节点/边精确变更。"
                               hint={
-                                hasHashA && hasHashB
-                                  ? '已就绪：直接点击「开始对比」'
-                                  : '提示：A / B Hash 二者皆需填写'
+                                hasHashA && hasHashB ? '已就绪：直接点击「开始对比」' : '提示：A / B Hash 二者皆需填写'
                               }
                             />
                           }
-                          onCopy={() =>
-                            detachPromise(
-                              copyToClipboard(diffJson, 'diff JSON')
-                            )
-                          }
+                          onCopy={() => detachPromise(copyToClipboard(diffJson, 'diff JSON'))}
                           onDownload={() => {
-                            downloadJson(
-                              diff ?? {},
-                              `${diffBaseName}.diff.json`
-                            )
+                            downloadJson(diff ?? {}, `${diffBaseName}.diff.json`)
                             toast.success('已导出 diff.json')
                           }}
                         />
@@ -1167,32 +1047,19 @@ export function KGSnapshotsPage() {
                         <JsonCodePane
                           label="A 视图"
                           title="快照内容"
-                          subtitle={
-                            hashAValue ? `Hash · ${hashAValue}` : '尚未导出'
-                          }
+                          subtitle={hashAValue ? `Hash · ${hashAValue}` : '尚未导出'}
                           code={snapAJson}
                           isEmpty={!snapA}
                           emptyState={
                             <DiffEmptyState
                               title="A 视图为空"
                               description="先在左侧填写快照 A，然后点击「导出 A」即可在此查看明细快照 JSON。"
-                              hint={
-                                hasHashA
-                                  ? '已填写快照 A，可点击「导出 A」'
-                                  : '请先填写快照 A'
-                              }
+                              hint={hasHashA ? '已填写快照 A，可点击「导出 A」' : '请先填写快照 A'}
                             />
                           }
-                          onCopy={() =>
-                            detachPromise(
-                              copyToClipboard(snapAJson, 'snapshot A JSON')
-                            )
-                          }
+                          onCopy={() => detachPromise(copyToClipboard(snapAJson, 'snapshot A JSON'))}
                           onDownload={() => {
-                            downloadJson(
-                              snapA ?? {},
-                              `${snapshotAFileName}.json`
-                            )
+                            downloadJson(snapA ?? {}, `${snapshotAFileName}.json`)
                             toast.success('已导出 snapshot A')
                           }}
                         />
@@ -1202,32 +1069,19 @@ export function KGSnapshotsPage() {
                         <JsonCodePane
                           label="B 视图"
                           title="快照内容"
-                          subtitle={
-                            hashBValue ? `Hash · ${hashBValue}` : '尚未导出'
-                          }
+                          subtitle={hashBValue ? `Hash · ${hashBValue}` : '尚未导出'}
                           code={snapBJson}
                           isEmpty={!snapB}
                           emptyState={
                             <DiffEmptyState
                               title="B 视图为空"
                               description="先在左侧填写快照 B，然后点击「导出 B」即可在此查看明细快照 JSON。"
-                              hint={
-                                hasHashB
-                                  ? '已填写快照 B，可点击「导出 B」'
-                                  : '请先填写快照 B'
-                              }
+                              hint={hasHashB ? '已填写快照 B，可点击「导出 B」' : '请先填写快照 B'}
                             />
                           }
-                          onCopy={() =>
-                            detachPromise(
-                              copyToClipboard(snapBJson, 'snapshot B JSON')
-                            )
-                          }
+                          onCopy={() => detachPromise(copyToClipboard(snapBJson, 'snapshot B JSON'))}
                           onDownload={() => {
-                            downloadJson(
-                              snapB ?? {},
-                              `${snapshotBFileName}.json`
-                            )
+                            downloadJson(snapB ?? {}, `${snapshotBFileName}.json`)
                             toast.success('已导出 snapshot B')
                           }}
                         />

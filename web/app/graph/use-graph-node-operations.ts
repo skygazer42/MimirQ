@@ -7,15 +7,9 @@ import { kgApi } from '@/lib/api/graph'
 import type { GraphData } from '@/lib/graph-parser'
 import { GraphService } from '@/lib/graph-service'
 import { detachPromise } from '@/lib/utils'
-import type {
-  KGEntityDetailResponse,
-  KGEventDetailResponse,
-} from '@/types'
+import type { KGEntityDetailResponse, KGEventDetailResponse } from '@/types'
 
-import {
-  getGraphLinkEndpointId,
-  type GraphNodeLike,
-} from './graph-page-utils'
+import { getGraphLinkEndpointId, type GraphNodeLike } from './graph-page-utils'
 
 type DeleteNodeTarget = {
   id: string
@@ -110,14 +104,7 @@ export function useGraphNodeOperations({
     return () => {
       cancelled = true
     }
-  }, [
-    dataSource,
-    isDetailOpen,
-    scopeParams,
-    selectedNode,
-    setKgNodeDetail,
-    setKgNodeDetailLoading,
-  ])
+  }, [dataSource, isDetailOpen, scopeParams, selectedNode, setKgNodeDetail, setKgNodeDetailLoading])
 
   const expandNodeById = useCallback(
     async (nodeId: string) => {
@@ -131,10 +118,9 @@ export function useGraphNodeOperations({
           includeRelationLinks: includeRelationLinks && dataSource === 'live',
           minSharedEvents,
           maxEntityLinks,
-          documentIds:
-            dataSource === 'live' && scopedDocumentIds?.length ? scopedDocumentIds : undefined,
-          datasetId: dataSource === 'live' ? (scopeParams?.dataset_id || undefined) : undefined,
-          pipelineHash: dataSource === 'live' ? (pipelineHash || undefined) : undefined,
+          documentIds: dataSource === 'live' && scopedDocumentIds?.length ? scopedDocumentIds : undefined,
+          datasetId: dataSource === 'live' ? scopeParams?.dataset_id || undefined : undefined,
+          pipelineHash: dataSource === 'live' ? pipelineHash || undefined : undefined,
         })
 
         setGraphData((prev) => {
@@ -142,11 +128,9 @@ export function useGraphNodeOperations({
           const uniqueNewNodes = newData.nodes.filter((node) => !existingNodeIds.has(node.id))
 
           const existingLinks = new Set(
-            prev.links.map((link) => `${getGraphLinkEndpointId(link.source)}-${getGraphLinkEndpointId(link.target)}`)
+            prev.links.map((link) => `${getGraphLinkEndpointId(link.source)}-${getGraphLinkEndpointId(link.target)}`),
           )
-          const uniqueNewLinks = newData.links.filter(
-            (link) => !existingLinks.has(`${link.source}-${link.target}`)
-          )
+          const uniqueNewLinks = newData.links.filter((link) => !existingLinks.has(`${link.source}-${link.target}`))
 
           return {
             nodes: [...prev.nodes, ...uniqueNewNodes],
@@ -170,7 +154,7 @@ export function useGraphNodeOperations({
       scopedDocumentIds,
       setGraphData,
       setIsLoading,
-    ]
+    ],
   )
 
   const handleExpandNode = useCallback(() => {
@@ -182,7 +166,7 @@ export function useGraphNodeOperations({
     (nodeId: string) => {
       detachPromise(expandNodeById(nodeId))
     },
-    [expandNodeById]
+    [expandNodeById],
   )
 
   const handleDeleteNode = useCallback(
@@ -195,7 +179,7 @@ export function useGraphNodeOperations({
       })
       setDeleteNodeOpen(true)
     },
-    [selectedNode, setDeleteNodeOpen, setDeleteNodeTarget]
+    [selectedNode, setDeleteNodeOpen, setDeleteNodeTarget],
   )
 
   const confirmDeleteNode = useCallback(() => {

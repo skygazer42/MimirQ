@@ -83,12 +83,31 @@ export function GovernanceOpsPanel() {
           </Select>
         </Field>
         <Field label="到期窗口（天）">
-          <Input value={String(dueWithinDays)} onChange={(event) => setDueWithinDays(Number.parseInt(event.target.value || '0', 10) || 14)} className="h-8 text-xs" inputMode="numeric" />
+          <Input
+            value={String(dueWithinDays)}
+            onChange={(event) => setDueWithinDays(Number.parseInt(event.target.value || '0', 10) || 14)}
+            className="h-8 text-xs"
+            inputMode="numeric"
+          />
         </Field>
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <ActionButton icon={FileClock} busy={busy === 'stale'} disabled={Boolean(busy) || !datasetId.trim()} label="查询待复核文档" onClick={() => runAction('stale', '待复核文档', () => governanceApi.listStaleDocumentsByDataset(datasetId.trim(), { mode, due_within_days: dueWithinDays, limit: 50 }))} />
+        <ActionButton
+          icon={FileClock}
+          busy={busy === 'stale'}
+          disabled={Boolean(busy) || !datasetId.trim()}
+          label="查询待复核文档"
+          onClick={() =>
+            runAction('stale', '待复核文档', () =>
+              governanceApi.listStaleDocumentsByDataset(datasetId.trim(), {
+                mode,
+                due_within_days: dueWithinDays,
+                limit: 50,
+              }),
+            )
+          }
+        />
         <div className="text-[11px] leading-4 text-muted-foreground/85">
           当前接口：<span className="font-mono">/governance/datasets/{'{dataset_id}'}/stale-documents</span>
         </div>
@@ -108,26 +127,45 @@ export function GovernanceOpsPanel() {
         </p>
         <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
           <Field label="切块预设 ID">
-            <Input value={presetId} onChange={(event) => setPresetId(event.target.value)} className="h-8 font-mono text-xs" />
+            <Input
+              value={presetId}
+              onChange={(event) => setPresetId(event.target.value)}
+              className="h-8 font-mono text-xs"
+            />
           </Field>
           <ConfirmDialog
             title="删除切块预设？"
             description={`将删除切块预设 ID=${presetId.trim() || '-'}如果数据集仍引用该预设，后续策略可能需要重新配置`}
             confirmLabel="确认删除"
-            onConfirm={() => runAction('delete-preset', '删除切块预设', async () => {
-              await chunkPresetApi.delete(presetId.trim())
-              return { preset_id: presetId.trim(), deleted: true }
-            })}
+            onConfirm={() =>
+              runAction('delete-preset', '删除切块预设', async () => {
+                await chunkPresetApi.delete(presetId.trim())
+                return { preset_id: presetId.trim(), deleted: true }
+              })
+            }
           >
-            <Button variant="outline" className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold" disabled={Boolean(busy) || !presetId.trim()}>
-              {busy === 'delete-preset' ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Trash2 className="h-3.5 w-3.5" />}
+            <Button
+              variant="outline"
+              className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold"
+              disabled={Boolean(busy) || !presetId.trim()}
+            >
+              {busy === 'delete-preset' ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
               删除切块预设
             </Button>
           </ConfirmDialog>
         </div>
       </DangerZonePanel>
 
-      <OperationResultPanel className="mt-3" title="治理运维结果" result={result} emptyMessage="选择绑定数据集后查询待复核文档；原始响应默认收起" />
+      <OperationResultPanel
+        className="mt-3"
+        title="治理运维结果"
+        result={result}
+        emptyMessage="选择绑定数据集后查询待复核文档；原始响应默认收起"
+      />
     </Panel>
   )
 }
@@ -155,8 +193,17 @@ function ActionButton({
   onClick: () => Promise<void>
 }>) {
   return (
-    <Button variant="outline" className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold" disabled={disabled} onClick={() => detachPromise(onClick())}>
-      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Icon className="h-3.5 w-3.5" />}
+    <Button
+      variant="outline"
+      className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold"
+      disabled={disabled}
+      onClick={() => detachPromise(onClick())}
+    >
+      {busy ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+      ) : (
+        <Icon className="h-3.5 w-3.5" />
+      )}
       {label}
     </Button>
   )

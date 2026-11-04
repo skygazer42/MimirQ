@@ -62,15 +62,12 @@ describe('chatApi.streamChat auth retry', () => {
             'Content-Type': 'text/event-stream',
             'X-Request-ID': 'req-stream-401',
           },
-        })
+        }),
       )
     globalThis.fetch = fetchMock as typeof fetch
 
     const events: string[] = []
-    const result = await chatApi.streamChat(
-      { message: 'hello', stream: true } as never,
-      (json) => events.push(json)
-    )
+    const result = await chatApi.streamChat({ message: 'hello', stream: true } as never, (json) => events.push(json))
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get('Authorization')).toBe('Bearer old-token')

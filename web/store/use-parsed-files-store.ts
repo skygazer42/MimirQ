@@ -15,7 +15,6 @@ import { generateRequestId } from '@/lib/request-id'
 import { detachPromise } from '@/lib/utils'
 import type { ParsingElement } from '@/lib/api/parsing'
 
-
 export const ROOT_FOLDER_ID = 'root'
 const PARSED_FILES_STORAGE_KEY = 'mimirq_parsed_files'
 
@@ -123,8 +122,7 @@ function getUpdatedMarkdownFields(updates: ParsedFileUpdates): {
 } {
   return {
     nextMarkdown: typeof updates.markdownContent === 'string' ? updates.markdownContent : undefined,
-    nextOriginal:
-      typeof updates.originalMarkdownContent === 'string' ? updates.originalMarkdownContent : undefined,
+    nextOriginal: typeof updates.originalMarkdownContent === 'string' ? updates.originalMarkdownContent : undefined,
   }
 }
 
@@ -143,16 +141,19 @@ async function persistParsedMarkdownReliably(
   id: string,
   markdownContent: string,
   originalMarkdownContent: string,
-  scope: string
+  scope: string,
 ) {
   let lastError: unknown = null
   for (let attempt = 0; attempt < RELIABLE_SYNC_MAX_ATTEMPTS; attempt += 1) {
     try {
-      await saveDocContentToCache({
-        id,
-        markdownContent,
-        originalMarkdownContent,
-      }, scope)
+      await saveDocContentToCache(
+        {
+          id,
+          markdownContent,
+          originalMarkdownContent,
+        },
+        scope,
+      )
       return
     } catch (error) {
       lastError = error
@@ -313,9 +314,7 @@ export const useParsedFiles = create<ParsedFilesState>()(
         const updateVersion = registerParsedFileUpdate(updateScope, id)
         const applyUpdates = () =>
           set((state) => ({
-            files: state.files.map((f) =>
-              f.id === id ? { ...f, ...updates, id: f.id } : f
-            ),
+            files: state.files.map((f) => (f.id === id ? { ...f, ...updates, id: f.id } : f)),
           }))
 
         const { nextMarkdown, nextOriginal } = getUpdatedMarkdownFields(updates)
@@ -332,11 +331,16 @@ export const useParsedFiles = create<ParsedFilesState>()(
 
         if (!shouldAwaitPersistence) {
           applyUpdates()
-          detachPromise(saveDocContentToCache({
-            id,
-            markdownContent,
-            originalMarkdownContent,
-          }, updateScope))
+          detachPromise(
+            saveDocContentToCache(
+              {
+                id,
+                markdownContent,
+                originalMarkdownContent,
+              },
+              updateScope,
+            ),
+          )
           return
         }
 
@@ -366,7 +370,7 @@ export const useParsedFiles = create<ParsedFilesState>()(
           detachPromise(
             clearDocCachesForScope(scope).catch((error) => {
               console.warn('Failed to clear parsed file browser cache for auth scope', error)
-            })
+            }),
           )
         }
       },
@@ -399,15 +403,12 @@ export const useParsedFiles = create<ParsedFilesState>()(
         const folders = get().folders
         const idsToDelete = new Set([id, ...collectFolderDescendantIds(folders, id)])
         const fileIdsToDelete = get()
-          .files
-          .filter((file) => Boolean(file.folderId) && idsToDelete.has(String(file.folderId)))
+          .files.filter((file) => Boolean(file.folderId) && idsToDelete.has(String(file.folderId)))
           .map((file) => file.id)
 
         set((state) => ({
           folders: state.folders.filter((f) => !idsToDelete.has(f.id)),
-          files: state.files.filter((file) =>
-            !(file.folderId && idsToDelete.has(file.folderId))
-          ),
+          files: state.files.filter((file) => !(file.folderId && idsToDelete.has(file.folderId))),
           activeFolderId: idsToDelete.has(state.activeFolderId) ? ROOT_FOLDER_ID : state.activeFolderId,
         }))
 
@@ -492,12 +493,15 @@ export const useParsedFiles = create<ParsedFilesState>()(
           ...(normalized as Partial<ParsedFilesState>),
           files: normalizedFiles,
           folders: normalizedFolders,
-          activeFolderId: typeof normalized.activeFolderId === 'string' && normalized.activeFolderId ? normalized.activeFolderId : ROOT_FOLDER_ID,
+          activeFolderId:
+            typeof normalized.activeFolderId === 'string' && normalized.activeFolderId
+              ? normalized.activeFolderId
+              : ROOT_FOLDER_ID,
           isLoaded: true,
         }
-      }
-    }
-  )
+      },
+    },
+  ),
 )
 
 globalThis.window?.addEventListener(AUTH_SCOPE_CHANGED_EVENT, () => {
@@ -524,6 +528,6 @@ globalThis.window?.addEventListener(AUTH_SCOPE_CHANGED_EVENT, () => {
           isSwitchingParsedFilesScope = false
         }
       }
-    })()
+    })(),
   )
 })

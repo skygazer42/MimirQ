@@ -44,10 +44,7 @@ import {
   KnowledgeOpsHero,
   KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS,
 } from '@/components/ui/knowledge-ops-hero'
-import {
-  WorkbenchPanelDialog,
-  WorkbenchScaffold,
-} from '@/components/workbench'
+import { WorkbenchPanelDialog, WorkbenchScaffold } from '@/components/workbench'
 import { documentApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import type { ParsingElement } from '@/lib/api/parsing'
@@ -57,11 +54,7 @@ import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 import { UPLOAD_ACCEPT, UPLOAD_ACCEPT_WITH_ZIP } from '@/lib/upload-extensions'
 import { cn, detachPromise } from '@/lib/utils'
 import type { ParsingBlock } from '@/lib/parsing-positions'
-import {
-  type FolderNode,
-  ROOT_FOLDER_ID,
-  type ParsedFileData,
-} from '@/store/use-parsed-files-store'
+import { type FolderNode, ROOT_FOLDER_ID, type ParsedFileData } from '@/store/use-parsed-files-store'
 
 import { countMarkdownHeadings, getLibraryStatusBadge } from './parsing-page-utils'
 import type { ParsedFile, ParseRun } from './parsing-types'
@@ -95,25 +88,12 @@ type ParsingWorkbenchShellProps = {
   folders: FolderNode[]
   handleCancelEdit: () => void
   handleDeleteFolder: (folderIds: string[]) => void
-  handleFileDragStart: (
-    event: React.DragEvent<HTMLElement>,
-    fileId: string
-  ) => void
-  handleFileSelect: (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => Promise<void>
+  handleFileDragStart: (event: React.DragEvent<HTMLElement>, fileId: string) => void
+  handleFileSelect: (event: React.ChangeEvent<HTMLInputElement>) => Promise<void>
   handleFolderDragLeave: () => void
-  handleFolderDragOver: (
-    event: React.DragEvent<HTMLElement>,
-    folderId: string
-  ) => void
-  handleFolderDrop: (
-    event: React.DragEvent<HTMLElement>,
-    folderId: string
-  ) => void
-  handleRebindFileSelect: (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => Promise<void>
+  handleFolderDragOver: (event: React.DragEvent<HTMLElement>, folderId: string) => void
+  handleFolderDrop: (event: React.DragEvent<HTMLElement>, folderId: string) => void
+  handleRebindFileSelect: (event: React.ChangeEvent<HTMLInputElement>) => Promise<void>
   handleSaveEdit: () => Promise<void>
   handleSelectRun: (runId: string) => void
   handleStartEdit: () => void
@@ -140,10 +120,7 @@ type ParsingWorkbenchShellProps = {
   requestRebindForLibraryFile: (libraryId: string, autoParse: boolean) => void
   requestUploadFolder: (folderId: string) => void
   requestUploadToFolder: (folderId: string) => void
-  restoreLibraryFileFromCache: (
-    libraryId: string,
-    autoParse: boolean
-  ) => Promise<void>
+  restoreLibraryFileFromCache: (libraryId: string, autoParse: boolean) => Promise<void>
   rightPanelMode: 'blocks' | 'markdown'
   setActiveBlockId: (blockId: string | null) => void
   setActiveFileId: (fileId: string | null) => void
@@ -159,11 +136,7 @@ type ParsingWorkbenchShellProps = {
   setPdfPreviewResetToken: Dispatch<SetStateAction<number>>
   setPreviewMode: (mode: 'raw' | 'rendered') => void
   setQueueOpen: (open: boolean) => void
-  setQueueFileParserBackend: (params: {
-    fileId: string
-    filename: string
-    backend: string
-  }) => void
+  setQueueFileParserBackend: (params: { fileId: string; filename: string; backend: string }) => void
   setRightPanelMode: (mode: 'blocks' | 'markdown') => void
   selectedGovernanceFileIds: ReadonlySet<string>
   selectedDatasetId: string | null
@@ -172,10 +145,7 @@ type ParsingWorkbenchShellProps = {
   onToggleGovernanceFileSelection: (fileId: string) => void
   onDatasetScopeChange: (datasetId: string | null) => void
   tocEnabled: boolean
-  updateParsedFile: (
-    id: string,
-    updates: Partial<Omit<ParsedFileData, 'id'>>
-  ) => void
+  updateParsedFile: (id: string, updates: Partial<Omit<ParsedFileData, 'id'>>) => void
   visibleLibraryOnlyFiles: ParsedFileData[]
   visibleQueueFiles: ParsedFile[]
   vlmCorrectionEnabled: boolean
@@ -193,10 +163,7 @@ const MAX_PARSING_INSPECTOR_WIDTH = 560
 const COLLAPSED_PARSING_INSPECTOR_HOTZONE_WIDTH = 36
 
 function clampParsingInspectorWidth(width: number) {
-  return Math.min(
-    MAX_PARSING_INSPECTOR_WIDTH,
-    Math.max(MIN_PARSING_INSPECTOR_WIDTH, Math.round(width))
-  )
+  return Math.min(MAX_PARSING_INSPECTOR_WIDTH, Math.max(MIN_PARSING_INSPECTOR_WIDTH, Math.round(width)))
 }
 
 function readStoredParsingInspectorWidth() {
@@ -204,13 +171,8 @@ function readStoredParsingInspectorWidth() {
     return DEFAULT_PARSING_INSPECTOR_WIDTH
   }
 
-  const storedWidth = Number.parseInt(
-    readClientStorage(PARSING_INSPECTOR_WIDTH_KEY) || '',
-    10
-  )
-  return Number.isFinite(storedWidth)
-    ? clampParsingInspectorWidth(storedWidth)
-    : DEFAULT_PARSING_INSPECTOR_WIDTH
+  const storedWidth = Number.parseInt(readClientStorage(PARSING_INSPECTOR_WIDTH_KEY) || '', 10)
+  return Number.isFinite(storedWidth) ? clampParsingInspectorWidth(storedWidth) : DEFAULT_PARSING_INSPECTOR_WIDTH
 }
 
 function formatFileSize(bytes: number | null | undefined) {
@@ -222,7 +184,10 @@ function formatFileSize(bytes: number | null | undefined) {
 }
 
 function getFileExtension(filename: string | null | undefined) {
-  const ext = String(filename || '').split('.').pop()?.trim()
+  const ext = String(filename || '')
+    .split('.')
+    .pop()
+    ?.trim()
   return ext ? ext.toUpperCase() : '-'
 }
 
@@ -230,22 +195,18 @@ function countMarkdownParagraphs(markdown: string) {
   return markdown
     .split(/\n{2,}/)
     .map((item) => item.trim())
-    .filter((item) => item && !item.startsWith('#') && !item.startsWith('|'))
-    .length
+    .filter((item) => item && !item.startsWith('#') && !item.startsWith('|')).length
 }
 
 function countMarkdownLines(markdown: string, pattern: RegExp) {
-  return markdown
-    .split('\n')
-    .filter((line) => pattern.test(line.trim()))
-    .length
+  return markdown.split('\n').filter((line) => pattern.test(line.trim())).length
 }
 
 function parsingStatusLabel(
   activeFile: ParsedFile | null,
   selectedStatus: string | null,
   activeLibraryStatusBadge: ReturnType<typeof getLibraryStatusBadge> | null,
-  activeLibraryFile: ParsedFileData | null
+  activeLibraryFile: ParsedFileData | null,
 ) {
   if (activeFile) {
     if (selectedStatus === 'parsed') return '已解析'
@@ -264,11 +225,7 @@ function parsingStatusIcon(isError: boolean, isParsing: boolean) {
   return <CheckCircle2 className="size-3.5" />
 }
 
-function parsingStatusToneClass(
-  isError: boolean,
-  isPending: boolean,
-  isParsing: boolean
-) {
+function parsingStatusToneClass(isError: boolean, isPending: boolean, isParsing: boolean) {
   if (isError) return 'border-destructive/25 bg-destructive/[0.08] text-destructive'
   if (isPending) return 'border-warning/25 bg-warning/[0.10] text-warning'
   if (isParsing) return 'border-info/25 bg-info/[0.08] text-info'
@@ -352,9 +309,7 @@ function ParsingMetricGrid({
       {items.map((item) => (
         <div key={item.label} className="border-b border-r border-border/50 px-3 py-2 last:border-r-0">
           <div className="text-[11px] text-muted-foreground">{item.label}</div>
-          <div className="mt-0.5 font-mono text-[13px] font-semibold tabular-nums text-foreground">
-            {item.value}
-          </div>
+          <div className="mt-0.5 font-mono text-[13px] font-semibold tabular-nums text-foreground">{item.value}</div>
         </div>
       ))}
     </div>
@@ -363,10 +318,7 @@ function ParsingMetricGrid({
 
 type ParsingStatusMetricTone = 'success' | 'info' | 'warning' | 'muted'
 
-const PARSING_STATUS_METRIC_TONES: Record<
-  ParsingStatusMetricTone,
-  { card: string; dot: string; value: string }
-> = {
+const PARSING_STATUS_METRIC_TONES: Record<ParsingStatusMetricTone, { card: string; dot: string; value: string }> = {
   success: {
     card: 'border-success/25 bg-success/[0.07]',
     dot: 'bg-success',
@@ -405,22 +357,14 @@ function ParsingStatusMetricGrid({
         return (
           <div
             key={item.label}
-            className={cn(
-              'rounded-xl border px-3 py-2 shadow-[inset_0_1px_0_hsl(var(--background)/0.65)]',
-              tone.card
-            )}
+            className={cn('rounded-xl border px-3 py-2 shadow-[inset_0_1px_0_hsl(var(--background)/0.65)]', tone.card)}
           >
             <div className="flex items-center justify-between gap-2">
               <span className="inline-flex min-w-0 items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
                 <span className={cn('size-1.5 shrink-0 rounded-full', tone.dot)} />
                 <span className="truncate">{item.label}</span>
               </span>
-              <span
-                className={cn(
-                  'font-mono text-[15px] font-semibold tabular-nums leading-none',
-                  tone.value
-                )}
-              >
+              <span className={cn('font-mono text-[15px] font-semibold tabular-nums leading-none', tone.value)}>
                 {item.value}
               </span>
             </div>
@@ -480,17 +424,9 @@ function ParsingInspectorPanel({
 }>) {
   const selectedName = activeFile?.file.name || activeLibraryFile?.filename || ''
   const selectedSize = activeFile?.file.size ?? activeLibraryFile?.fileSize ?? null
-  const selectedParser =
-    activeFile?.parserLabel ||
-    activeLibraryFile?.parser ||
-    getParserLabel(parserBackend)
+  const selectedParser = activeFile?.parserLabel || activeLibraryFile?.parser || getParserLabel(parserBackend)
   const selectedStatus = activeFile?.status || activeLibraryFile?.status || null
-  const statusLabel = parsingStatusLabel(
-    activeFile,
-    selectedStatus,
-    activeLibraryStatusBadge,
-    activeLibraryFile
-  )
+  const statusLabel = parsingStatusLabel(activeFile, selectedStatus, activeLibraryStatusBadge, activeLibraryFile)
   const markdown = activeMarkdown || activeLibraryFile?.markdownContent || ''
   const overview = [
     {
@@ -599,7 +535,7 @@ function ParsingInspectorPanel({
         size="sm"
         className={cn(
           'col-span-2 h-8 gap-1.5 rounded-xl border text-[12px] font-semibold shadow-none disabled:opacity-100',
-          parsingGovernanceButtonClass(canSubmitToGovernance)
+          parsingGovernanceButtonClass(canSubmitToGovernance),
         )}
         disabled={!canSubmitToGovernance}
         onClick={onSubmitToGovernance}
@@ -622,7 +558,9 @@ function ParsingInspectorPanel({
               </div>
               <div className="rounded-xl border border-info/25 bg-info/[0.08] px-3 py-2">
                 <div className="text-[11px] text-muted-foreground">已选择</div>
-                <div className="mt-0.5 font-mono text-[16px] font-semibold text-info">{selectedReadyGovernanceCount}</div>
+                <div className="mt-0.5 font-mono text-[16px] font-semibold text-info">
+                  {selectedReadyGovernanceCount}
+                </div>
               </div>
             </div>
             <Button
@@ -658,7 +596,9 @@ function ParsingInspectorPanel({
                   </span>
                 </div>
               </div>
-              <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-semibold ${statusToneClass}`}>
+              <span
+                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-semibold ${statusToneClass}`}
+              >
                 {statusIcon}
                 {statusLabel}
               </span>
@@ -672,9 +612,7 @@ function ParsingInspectorPanel({
                 <span className="rounded-full border border-border/60 bg-background px-2 py-0.5">
                   {formatFileSize(selectedSize)}
                 </span>
-                <span className="rounded-full border border-border/60 bg-background px-2 py-0.5">
-                  {selectedParser}
-                </span>
+                <span className="rounded-full border border-border/60 bg-background px-2 py-0.5">{selectedParser}</span>
               </div>
 
               {selectedError || activeFile ? (
@@ -770,9 +708,7 @@ function ParsingInspectorPanel({
             <div className="space-y-2.5 text-[12px]">
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">当前范围</span>
-                <span className="font-medium text-foreground">
-                  {selectedDatasetId ? '数据集' : '全部来源'}
-                </span>
+                <span className="font-medium text-foreground">{selectedDatasetId ? '数据集' : '全部来源'}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">文档总数</span>
@@ -816,9 +752,7 @@ function ResizableParsingInspectorRail({
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  const [inspectorWidth, setInspectorWidth] = useState(
-    DEFAULT_PARSING_INSPECTOR_WIDTH
-  )
+  const [inspectorWidth, setInspectorWidth] = useState(DEFAULT_PARSING_INSPECTOR_WIDTH)
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false)
   const resizeStateRef = useRef<{
     currentWidth: number
@@ -835,10 +769,7 @@ function ResizableParsingInspectorRail({
       return
     }
 
-    writeClientStorage(
-      PARSING_INSPECTOR_WIDTH_KEY,
-      String(clampParsingInspectorWidth(width))
-    )
+    writeClientStorage(PARSING_INSPECTOR_WIDTH_KEY, String(clampParsingInspectorWidth(width)))
   }, [])
 
   const handleResizePointerDown = useCallback(
@@ -868,16 +799,13 @@ function ResizableParsingInspectorRail({
           return
         }
 
-        const nextWidth = clampParsingInspectorWidth(
-          resizeState.startWidth + resizeState.startX - moveEvent.clientX
-        )
+        const nextWidth = clampParsingInspectorWidth(resizeState.startWidth + resizeState.startX - moveEvent.clientX)
         resizeState.currentWidth = nextWidth
         setInspectorWidth(nextWidth)
       }
 
       const handlePointerUp = () => {
-        const nextWidth =
-          resizeStateRef.current?.currentWidth ?? inspectorWidth
+        const nextWidth = resizeStateRef.current?.currentWidth ?? inspectorWidth
         resizeStateRef.current = null
         persistInspectorWidth(nextWidth)
         restorePageInteraction()
@@ -895,7 +823,7 @@ function ResizableParsingInspectorRail({
         signal: controller.signal,
       })
     },
-    [inspectorWidth, persistInspectorWidth]
+    [inspectorWidth, persistInspectorWidth],
   )
 
   const handleResizeKeyDown = useCallback(
@@ -917,7 +845,7 @@ function ResizableParsingInspectorRail({
       setInspectorWidth(clampedWidth)
       persistInspectorWidth(clampedWidth)
     },
-    [inspectorWidth, persistInspectorWidth]
+    [inspectorWidth, persistInspectorWidth],
   )
 
   return (
@@ -935,7 +863,7 @@ function ResizableParsingInspectorRail({
         className={cn(
           'absolute top-3 z-30 size-8 rounded-xl border border-foreground/10 bg-background text-muted-foreground shadow-sm transition-[left,opacity,background-color,color,box-shadow] duration-200 hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-info/35',
           'opacity-0 hover:opacity-100 focus-visible:opacity-100',
-          inspectorCollapsed ? 'left-0' : 'left-[-0.875rem]'
+          inspectorCollapsed ? 'left-0' : 'left-[-0.875rem]',
         )}
         onClick={() => setInspectorCollapsed((collapsed) => !collapsed)}
       >
@@ -961,7 +889,7 @@ function ResizableParsingInspectorRail({
       <div
         className={cn(
           'h-full w-full min-w-0 transition-opacity duration-150 motion-reduce:transition-none',
-          inspectorCollapsed && 'pointer-events-none invisible opacity-0'
+          inspectorCollapsed && 'pointer-events-none invisible opacity-0',
         )}
       >
         {children}
@@ -1062,60 +990,35 @@ export function ParsingWorkbenchShell({
 }: Readonly<ParsingWorkbenchShellProps>) {
   const t = useTranslations('ParsingWorkbench')
   const bumpPdfPreviewResetToken = () => setPdfPreviewResetToken((prev) => prev + 1)
-  const pendingCount = visibleQueueFiles.filter(
-    (file) => file.status === 'pending'
-  ).length
-  const parsingCount = visibleQueueFiles.filter(
-    (file) => file.status === 'parsing'
-  ).length
-  const parsedCount = visibleQueueFiles.filter(
-    (file) => file.status === 'parsed'
-  ).length
+  const pendingCount = visibleQueueFiles.filter((file) => file.status === 'pending').length
+  const parsingCount = visibleQueueFiles.filter((file) => file.status === 'parsing').length
+  const parsedCount = visibleQueueFiles.filter((file) => file.status === 'parsed').length
   const parseableCount = visibleQueueFiles.filter(
-    (file) =>
-      file.librarySource !== 'knowledge_base' &&
-      (file.status === 'pending' || file.status === 'error')
+    (file) => file.librarySource !== 'knowledge_base' && (file.status === 'pending' || file.status === 'error'),
   ).length
-  const queueCountLabel =
-    visibleQueueFiles.length === 0
-      ? '0'
-      : `${parsedCount}/${visibleQueueFiles.length}`
-  const currentFolderFileCount =
-    visibleQueueFiles.length + visibleLibraryOnlyFiles.length
+  const queueCountLabel = visibleQueueFiles.length === 0 ? '0' : `${parsedCount}/${visibleQueueFiles.length}`
+  const currentFolderFileCount = visibleQueueFiles.length + visibleLibraryOnlyFiles.length
   const readyGovernanceFileIds = useMemo(
     () => [
-      ...visibleQueueFiles
-        .filter((file) => file.governanceStatus === 'ready')
-        .map((file) => file.id),
-      ...visibleLibraryOnlyFiles
-        .filter((file) => file.governanceStatus === 'ready')
-        .map((file) => file.id),
+      ...visibleQueueFiles.filter((file) => file.governanceStatus === 'ready').map((file) => file.id),
+      ...visibleLibraryOnlyFiles.filter((file) => file.governanceStatus === 'ready').map((file) => file.id),
     ],
-    [visibleLibraryOnlyFiles, visibleQueueFiles]
+    [visibleLibraryOnlyFiles, visibleQueueFiles],
   )
   const readyGovernanceCount = readyGovernanceFileIds.length
   const selectedReadyGovernanceCount = readyGovernanceFileIds.filter((fileId) =>
-    selectedGovernanceFileIds.has(fileId)
+    selectedGovernanceFileIds.has(fileId),
   ).length
 
-  const activeFolderPathLabel =
-    folderPathById[activeFolderId || ROOT_FOLDER_ID] || t('rootFolder')
+  const activeFolderPathLabel = folderPathById[activeFolderId || ROOT_FOLDER_ID] || t('rootFolder')
   const activeLibraryFolderId = activeLibraryFile?.folderId || ROOT_FOLDER_ID
-  const activeLibraryFolderPathLabel =
-    folderPathById[activeLibraryFolderId] || t('rootFolder')
+  const activeLibraryFolderPathLabel = folderPathById[activeLibraryFolderId] || t('rootFolder')
   const activeLibraryFolderName =
-    (activeLibraryFolderPathLabel.split('/').pop() || '').trim() ||
-    activeLibraryFolderPathLabel
-  const activeLibraryStatusBadge = activeLibraryFile?.status
-    ? getLibraryStatusBadge(t, activeLibraryFile.status)
-    : null
+    (activeLibraryFolderPathLabel.split('/').pop() || '').trim() || activeLibraryFolderPathLabel
+  const activeLibraryStatusBadge = activeLibraryFile?.status ? getLibraryStatusBadge(t, activeLibraryFile.status) : null
   const filename = String(activeLibraryFile?.filename || '')
   const activeLibraryMarkdownAvailable = Boolean(
-    (
-      activeLibraryFile?.markdownContent ||
-      activeLibraryFile?.originalMarkdownContent ||
-      ''
-    ).trim()
+    (activeLibraryFile?.markdownContent || activeLibraryFile?.originalMarkdownContent || '').trim(),
   )
   const shouldAutoRestoreLibraryPdf =
     !activeFile &&
@@ -1161,7 +1064,7 @@ export function ParsingWorkbenchShell({
         toast.error(message)
       }
     },
-    [activeLibraryFile, updateParsedFile]
+    [activeLibraryFile, updateParsedFile],
   )
 
   useEffect(() => {
@@ -1169,19 +1072,11 @@ export function ParsingWorkbenchShell({
     if (!shouldAutoRestoreLibraryPdf) return
 
     detachPromise(restoreLibraryFileFromCache(activeLibraryFile.id, false))
-  }, [
-    activeFile,
-    activeLibraryFile,
-    restoreLibraryFileFromCache,
-    shouldAutoRestoreLibraryPdf,
-  ])
+  }, [activeFile, activeLibraryFile, restoreLibraryFileFromCache, shouldAutoRestoreLibraryPdf])
   const datasetDocumentCounts = useMemo(() => {
     const counts = new Map<string, number>()
     for (const file of libraryFiles) {
-      if (
-        (file.source !== 'knowledge_base' && file.source !== 'parsing_workspace') ||
-        !file.datasetId
-      ) {
+      if ((file.source !== 'knowledge_base' && file.source !== 'parsing_workspace') || !file.datasetId) {
         continue
       }
       counts.set(file.datasetId, (counts.get(file.datasetId) || 0) + 1)
@@ -1194,23 +1089,19 @@ export function ParsingWorkbenchShell({
         ...dataset,
         count: datasetDocumentCounts.get(dataset.id) || 0,
       })),
-    [availableDatasets, datasetDocumentCounts]
+    [availableDatasets, datasetDocumentCounts],
   )
   const sidebarFileItems = useMemo<DocumentTreeFileItem[]>(() => {
-    const queueFiles = selectedDatasetId
-      ? files.filter((file) => file.datasetId === selectedDatasetId)
-      : files
+    const queueFiles = selectedDatasetId ? files.filter((file) => file.datasetId === selectedDatasetId) : files
     const libraryFilesForScope = selectedDatasetId
       ? libraryFiles.filter(
           (file) =>
             (file.source === 'knowledge_base' || file.source === 'parsing_workspace') &&
-            file.datasetId === selectedDatasetId
+            file.datasetId === selectedDatasetId,
         )
       : libraryFiles
     const queueLibraryIds = new Set(
-      queueFiles
-        .map((file) => file.libraryId)
-        .filter((value): value is string => Boolean(value))
+      queueFiles.map((file) => file.libraryId).filter((value): value is string => Boolean(value)),
     )
     const merged: DocumentTreeFileItem[] = queueFiles.map((file) => ({
       id: file.id,
@@ -1248,14 +1139,7 @@ export function ParsingWorkbenchShell({
     }
 
     return merged
-  }, [
-    activeFileId,
-    activeLibraryFileId,
-    files,
-    libraryFiles,
-    selectedGovernanceFileIds,
-    selectedDatasetId,
-  ])
+  }, [activeFileId, activeLibraryFileId, files, libraryFiles, selectedGovernanceFileIds, selectedDatasetId])
 
   return (
     <AppFrame mainClassName="bg-background">
@@ -1281,9 +1165,7 @@ export function ParsingWorkbenchShell({
                     </span>
                     <span className="h-3.5 w-px bg-border/70" />
                     <span>文件</span>
-                    <span className="font-mono tabular-nums text-foreground">
-                      {currentFolderFileCount}
-                    </span>
+                    <span className="font-mono tabular-nums text-foreground">{currentFolderFileCount}</span>
                   </div>
                   <KnowledgeOpsFlowCard
                     steps={[
@@ -1324,15 +1206,10 @@ export function ParsingWorkbenchShell({
         size="full"
         bodyClassName="pb-5"
         mainPanel={
-          <div
-            data-testid="parsing-workbench-grid"
-            className="flex h-full min-h-0 gap-3"
-          >
+          <div data-testid="parsing-workbench-grid" className="flex h-full min-h-0 gap-3">
             <ParsingSidebarPane
               collapsed={isSidebarCollapsed}
-              onToggleCollapsed={() =>
-                setIsSidebarCollapsed(!isSidebarCollapsed)
-              }
+              onToggleCollapsed={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
               className="hidden lg:flex"
               activeFolderId={activeFolderId || ROOT_FOLDER_ID}
               activeFolderPathLabel={activeFolderPathLabel}
@@ -1354,9 +1231,7 @@ export function ParsingWorkbenchShell({
               fileInputRef={fileInputRef}
               folderInputRef={folderInputRef}
               rebindInputRef={rebindInputRef}
-              onRequestUploadToCurrentFolder={() =>
-                requestUploadToFolder(currentFolderId)
-              }
+              onRequestUploadToCurrentFolder={() => requestUploadToFolder(currentFolderId)}
               onRequestUploadToFolder={requestUploadToFolder}
               onRequestUploadFolder={requestUploadFolder}
               onParseAllPending={() => detachPromise(parseAllPending())}
@@ -1368,9 +1243,7 @@ export function ParsingWorkbenchShell({
               onFolderDragLeave={handleFolderDragLeave}
               onFolderDrop={handleFolderDrop}
               onFolderTreeSelectFile={(fileId) => {
-                const directQueueMatch = files.find(
-                  (file) => file.id === fileId
-                )
+                const directQueueMatch = files.find((file) => file.id === fileId)
                 if (directQueueMatch) {
                   bumpPdfPreviewResetToken()
                   setActiveLibraryFileId(null)
@@ -1378,9 +1251,7 @@ export function ParsingWorkbenchShell({
                   return
                 }
 
-                const queueMatch = files.find(
-                  (file) => file.libraryId === fileId
-                )
+                const queueMatch = files.find((file) => file.libraryId === fileId)
                 if (queueMatch) {
                   bumpPdfPreviewResetToken()
                   if (queueMatch.status === 'parsed') {
@@ -1409,9 +1280,7 @@ export function ParsingWorkbenchShell({
               data-testid="parsing-main-panel"
               className={cn(
                 'relative overflow-hidden rounded-[24px] border bg-background shadow-none',
-                activeFile || activeLibraryFile
-                  ? 'border-foreground/10'
-                  : 'border-dashed border-info/20'
+                activeFile || activeLibraryFile ? 'border-foreground/10' : 'border-dashed border-info/20',
               )}
             >
               <div className="flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden bg-background">
@@ -1428,32 +1297,17 @@ export function ParsingWorkbenchShell({
                         statusBadge={activeLibraryStatusBadge}
                         onClose={() => setActiveLibraryFileId(null)}
                         onUpdateParser={(backend) => {
-                          const resolved = resolveParserBackendForFilename(
-                            activeLibraryFile.filename,
-                            backend
-                          )
+                          const resolved = resolveParserBackendForFilename(activeLibraryFile.filename, backend)
                           updateParsedFile(activeLibraryFile.id, {
                             parserBackend: resolved.backend,
                             parser: getParserLabel(resolved.backend),
                           })
                         }}
-                        onReprocessKnowledgeFile={(backend) =>
-                          detachPromise(handleReprocessKnowledgeFile(backend))
-                        }
+                        onReprocessKnowledgeFile={(backend) => detachPromise(handleReprocessKnowledgeFile(backend))}
                         onRestoreSource={(autoParse) => {
-                          detachPromise(
-                            restoreLibraryFileFromCache(
-                              activeLibraryFile.id,
-                              autoParse
-                            )
-                          )
+                          detachPromise(restoreLibraryFileFromCache(activeLibraryFile.id, autoParse))
                         }}
-                        onRequestRebind={(autoParse) =>
-                          requestRebindForLibraryFile(
-                            activeLibraryFile.id,
-                            autoParse
-                          )
-                        }
+                        onRequestRebind={(autoParse) => requestRebindForLibraryFile(activeLibraryFile.id, autoParse)}
                       />
                     ) : null}
 
@@ -1498,9 +1352,7 @@ export function ParsingWorkbenchShell({
                     type="button"
                     className="relative flex flex-1 items-center justify-center overflow-hidden bg-background"
                     onClick={() => requestUploadToFolder(currentFolderId)}
-                    onDragOver={(event) =>
-                      handleFolderDragOver(event, currentFolderId)
-                    }
+                    onDragOver={(event) => handleFolderDragOver(event, currentFolderId)}
                     onDragLeave={handleFolderDragLeave}
                     onDrop={(event) => handleFolderDrop(event, currentFolderId)}
                   >
@@ -1532,9 +1384,7 @@ export function ParsingWorkbenchShell({
                         <UploadCloud className="size-4" />
                         {t('sidebar.uploadFile')}
                       </span>
-                      <div className="mt-3 text-[12px] text-muted-foreground/75">
-                        或将文件拖拽到此区域
-                      </div>
+                      <div className="mt-3 text-[12px] text-muted-foreground/75">或将文件拖拽到此区域</div>
                     </div>
                   </button>
                 )}
@@ -1562,9 +1412,7 @@ export function ParsingWorkbenchShell({
                 onParseFile={(fileId) => parseFile(fileId)}
                 onRestoreLibraryFile={(autoParse) => {
                   if (!activeLibraryFile) return
-                  detachPromise(
-                    restoreLibraryFileFromCache(activeLibraryFile.id, autoParse)
-                  )
+                  detachPromise(restoreLibraryFileFromCache(activeLibraryFile.id, autoParse))
                 }}
                 onRequestRebindLibraryFile={(autoParse) => {
                   if (!activeLibraryFile) return
@@ -1578,11 +1426,7 @@ export function ParsingWorkbenchShell({
         }
       />
 
-      <WorkbenchPanelDialog
-        open={queueOpen}
-        onOpenChange={setQueueOpen}
-        title={t('queue')}
-      >
+      <WorkbenchPanelDialog open={queueOpen} onOpenChange={setQueueOpen} title={t('queue')}>
         <ParsingMobileQueueContent
           queueCountLabel={queueCountLabel}
           parseableCount={parseableCount}
@@ -1615,11 +1459,7 @@ export function ParsingWorkbenchShell({
         />
       </WorkbenchPanelDialog>
 
-      <WorkbenchPanelDialog
-        open={inspectorOpen}
-        onOpenChange={setInspectorOpen}
-        title={t('tools')}
-      >
+      <WorkbenchPanelDialog open={inspectorOpen} onOpenChange={setInspectorOpen} title={t('tools')}>
         {activeFile && activeMarkdown ? (
           <ParsingMobileInspectorContent
             documentId={activeFile.libraryId || null}
@@ -1653,9 +1493,7 @@ export function ParsingWorkbenchShell({
           />
         ) : (
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain bg-muted/10 p-4 no-scrollbar">
-            <div className="text-sm text-muted-foreground">
-              {t('inspectorEmpty')}
-            </div>
+            <div className="text-sm text-muted-foreground">{t('inspectorEmpty')}</div>
           </div>
         )}
       </WorkbenchPanelDialog>

@@ -21,11 +21,7 @@ import type {
   RagTrace,
 } from '@/types'
 
-import {
-  buildGraphFromTrace,
-  extractTraceFromPayload,
-  type GraphNodeLike,
-} from './graph-page-utils'
+import { buildGraphFromTrace, extractTraceFromPayload, type GraphNodeLike } from './graph-page-utils'
 
 type GraphScope = Readonly<{
   hasScope: boolean
@@ -70,7 +66,7 @@ type UseGraphDataLoadingParams = Readonly<{
 type UseGraphDataLoadingResult = Readonly<{
   loadInitialData: (
     source?: 'live',
-    opts?: { includeEntityLinks?: boolean; includeRelationLinks?: boolean; minSharedEvents?: number }
+    opts?: { includeEntityLinks?: boolean; includeRelationLinks?: boolean; minSharedEvents?: number },
   ) => Promise<void>
   handleTraceFileUpload: (event: ChangeEvent<HTMLInputElement>) => Promise<void>
   triggerTraceUpload: () => void
@@ -120,7 +116,7 @@ export function useGraphDataLoading({
   const loadInitialData = useCallback(
     async (
       source: 'live' = 'live',
-      opts?: { includeEntityLinks?: boolean; includeRelationLinks?: boolean; minSharedEvents?: number }
+      opts?: { includeEntityLinks?: boolean; includeRelationLinks?: boolean; minSharedEvents?: number },
     ) => {
       const requestToken = (loadTokenRef.current += 1)
       if (
@@ -161,13 +157,7 @@ export function useGraphDataLoading({
         setDataSource(source)
         setTraceReplay(null)
         setFileName(
-          scope.datasetId
-            ? '知识库图谱'
-            : scope.pipelineHash
-              ? '批次图谱'
-              : scopeParams
-                ? '范围图谱'
-                : '知识图谱'
+          scope.datasetId ? '知识库图谱' : scope.pipelineHash ? '批次图谱' : scopeParams ? '范围图谱' : '知识图谱',
         )
 
         try {
@@ -213,7 +203,7 @@ export function useGraphDataLoading({
       setKgStats,
       setTraceReplay,
       setViewMode,
-    ]
+    ],
   )
 
   useEffect(() => {
@@ -269,7 +259,7 @@ export function useGraphDataLoading({
       setKgStats,
       setTraceReplay,
       setViewMode,
-    ]
+    ],
   )
 
   const triggerTraceUpload = useCallback(() => {
@@ -282,7 +272,8 @@ export function useGraphDataLoading({
       throw new Error('empty manual KG file')
     }
 
-    const firstString = (...values: unknown[]) => values.find((value): value is string => typeof value === 'string') ?? ''
+    const firstString = (...values: unknown[]) =>
+      values.find((value): value is string => typeof value === 'string') ?? ''
     const coerceRows = (rows: unknown[]): KGManualImportRequest => {
       const entities: KGManualEntityInput[] = []
       const relations: KGManualRelationInput[] = []
@@ -364,7 +355,7 @@ export function useGraphDataLoading({
         event.target.value = ''
       }
     },
-    [loadInitialData, parseManualKgPayload, setIsLoading]
+    [loadInitialData, parseManualKgPayload, setIsLoading],
   )
 
   const triggerManualKgUpload = useCallback(() => {

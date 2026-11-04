@@ -29,21 +29,12 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { auditApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { queryKeys } from '@/lib/query-keys'
-import {
-  TENANT_PERMISSIONS,
-  tenantAccessAllows,
-} from '@/lib/tenant-permissions'
+import { TENANT_PERMISSIONS, tenantAccessAllows } from '@/lib/tenant-permissions'
 import type { AuditLogItem, AuditLogListResponse } from '@/types'
 import { cn } from '@/lib/utils'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -52,14 +43,11 @@ import { useTenantAccess } from '@/hooks/use-tenant-access'
 
 // --- Constants ---
 
-const FIELD_LABEL =
-  'mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground'
-const AUDIT_SURFACE_CLASS =
-  'border border-info/20 bg-background/72 text-foreground'
+const FIELD_LABEL = 'mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground'
+const AUDIT_SURFACE_CLASS = 'border border-info/20 bg-background/72 text-foreground'
 const AUDIT_PANEL_CLASS = `rounded-xl ${AUDIT_SURFACE_CLASS} shadow-none`
 const AUDIT_TABLE_HEAD_CLASS = 'border-b border-border/60 bg-info/[0.035] text-left'
-const AUDIT_TABLE_HEADER_CLASS =
-  'px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground'
+const AUDIT_TABLE_HEADER_CLASS = 'px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground'
 const AUDIT_MUTED_CHIP_CLASS =
   'inline-flex items-center rounded-full border border-border/60 bg-muted/45 px-2.5 py-1 text-[11px] font-medium text-muted-foreground'
 const FILTER_ALL_VALUE = '__all__'
@@ -96,12 +84,9 @@ function uniqueAuditValues(items: AuditLogItem[], key: keyof AuditLogItem) {
     new Set(
       items
         .map((item) => item[key])
-        .filter(
-          (value): value is string =>
-            typeof value === 'string' && value.trim().length > 0
-        )
-        .map((value) => value.trim())
-    )
+        .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+        .map((value) => value.trim()),
+    ),
   ).sort((a, b) => a.localeCompare(b))
 }
 
@@ -221,10 +206,8 @@ type AuditActionTone = keyof typeof AUDIT_ACTION_TONE_DOT_CLASSES
 function auditActionTone(action: string | null | undefined): AuditActionTone {
   const raw = String(action || '').toLowerCase()
   if (/delete|purge|remove|destroy|revoke/.test(raw)) return 'destructive'
-  if (/quarantine|block|deny|fail|drift|stale|violation/.test(raw))
-    return 'warning'
-  if (/create|add|import|upload|restore|approve|publish/.test(raw))
-    return 'success'
+  if (/quarantine|block|deny|fail|drift|stale|violation/.test(raw)) return 'warning'
+  if (/create|add|import|upload|restore|approve|publish/.test(raw)) return 'success'
   if (/export|download|snapshot|backup/.test(raw)) return 'accent'
   return 'neutral'
 }
@@ -272,22 +255,15 @@ function HUDTile({
 
   return (
     <div className="flex items-center gap-3 rounded-xl border border-border/70 bg-background/72 px-4 py-3 shadow-none transition-colors hover:border-info/25 hover:bg-info/[0.04]">
-      <div
-        className={cn(
-          'flex size-8 shrink-0 items-center justify-center rounded-xl border',
-          toneClasses
-        )}
-      >
+      <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-xl border', toneClasses)}>
         <Icon className="size-4" />
       </div>
       <div className="min-w-0">
-        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-          {label}
-        </p>
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{label}</p>
         <h4
           className={cn(
             'font-mono text-[18px] font-semibold leading-none tracking-[-0.04em]',
-            HUD_VALUE_TONE_CLASSES[tone]
+            HUD_VALUE_TONE_CLASSES[tone],
           )}
         >
           {value}
@@ -314,7 +290,7 @@ function PresetButton({
         'h-7 rounded-full px-3 text-[11px] font-semibold shadow-none transition-colors',
         active
           ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
-          : 'border-border/60 bg-background/65 text-muted-foreground hover:border-info/25 hover:bg-info/[0.06] hover:text-info'
+          : 'border-border/60 bg-background/65 text-muted-foreground hover:border-info/25 hover:bg-info/[0.06] hover:text-info',
       )}
       onClick={onClick}
     >
@@ -343,9 +319,7 @@ function BoundFilterSelect({
   onChange: (value: string) => void
 }>) {
   const emptyValue = `${FILTER_EMPTY_VALUE_PREFIX}-${id}`
-  const currentLabel = value
-    ? compactOption(formatOption ? formatOption(value) : value, 28)
-    : allLabel
+  const currentLabel = value ? compactOption(formatOption ? formatOption(value) : value, 28) : allLabel
 
   return (
     <div className="space-y-1">
@@ -371,15 +345,9 @@ function BoundFilterSelect({
             {allLabel}
           </SelectItem>
           {options.map((option) => (
-            <SelectItem
-              key={option}
-              value={option}
-              className="text-xs font-medium"
-            >
+            <SelectItem key={option} value={option} className="text-xs font-medium">
               <span className="flex min-w-0 flex-col gap-0.5">
-                <span className="truncate">
-                  {compactOption(formatOption ? formatOption(option) : option)}
-                </span>
+                <span className="truncate">{compactOption(formatOption ? formatOption(option) : option)}</span>
                 {formatOption && formatOption(option) !== option && (
                   <span className="truncate font-mono text-[10px] font-normal text-muted-foreground">
                     {compactOption(option, 56)}
@@ -389,11 +357,7 @@ function BoundFilterSelect({
             </SelectItem>
           ))}
           {!options.length && (
-            <SelectItem
-              value={emptyValue}
-              disabled
-              className="text-xs text-muted-foreground"
-            >
+            <SelectItem value={emptyValue} disabled className="text-xs text-muted-foreground">
               {loading ? '正在加载后端选项' : '暂无后端选项'}
             </SelectItem>
           )}
@@ -407,10 +371,7 @@ function BoundFilterSelect({
 
 export default function AuditLogsPage() {
   return (
-    <TenantPermissionGate
-      permission={TENANT_PERMISSIONS.AUDIT_READ}
-      pageName="审计日志"
-    >
+    <TenantPermissionGate permission={TENANT_PERMISSIONS.AUDIT_READ} pageName="审计日志">
       <AuditLogsPageContent />
     </TenantPermissionGate>
   )
@@ -419,8 +380,7 @@ export default function AuditLogsPage() {
 function AuditLogsPageContent() {
   const t = useTranslations('AuditPage')
   const [skip, setSkip] = useState(0)
-  const [limit, setLimit] =
-    useState<(typeof AUDIT_PAGE_SIZE_OPTIONS)[number]>(20)
+  const [limit, setLimit] = useState<(typeof AUDIT_PAGE_SIZE_OPTIONS)[number]>(20)
 
   const [filters, setFilters] = useState<AuditFilters>(EMPTY_AUDIT_FILTERS)
 
@@ -429,10 +389,7 @@ function AuditLogsPageContent() {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [deletingScope, setDeletingScope] = useState<string | null>(null)
   const tenantAccess = useTenantAccess()
-  const canManageAudit = tenantAccessAllows(
-    tenantAccess.data,
-    TENANT_PERMISSIONS.AUDIT_MANAGE
-  )
+  const canManageAudit = tenantAccessAllows(tenantAccess.data, TENANT_PERMISSIONS.AUDIT_MANAGE)
 
   const presets = useMemo(
     () => [
@@ -453,7 +410,7 @@ function AuditLogsPageContent() {
         action: 'compliance.access_graph.export',
       },
     ],
-    [t]
+    [t],
   )
 
   const auditQueryParams = useMemo(() => {
@@ -480,7 +437,7 @@ function AuditLogsPageContent() {
         const firstPage = await auditApi.listLogs({ skip: 0, limit: AUDIT_FILTER_OPTION_PAGE_SIZE })
         const pageCount = Math.min(
           Math.ceil((firstPage.total || 0) / AUDIT_FILTER_OPTION_PAGE_SIZE),
-          AUDIT_FILTER_OPTION_MAX_PAGES
+          AUDIT_FILTER_OPTION_MAX_PAGES,
         )
         const remainingPages = await Promise.all(
           Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) => {
@@ -489,12 +446,9 @@ function AuditLogsPageContent() {
               skip: pageIndex * AUDIT_FILTER_OPTION_PAGE_SIZE,
               limit: AUDIT_FILTER_OPTION_PAGE_SIZE,
             })
-          })
+          }),
         )
-        return [
-          ...(firstPage.items || []),
-          ...remainingPages.flatMap((page) => page.items || []),
-        ]
+        return [...(firstPage.items || []), ...remainingPages.flatMap((page) => page.items || [])]
       } catch {
         return []
       }
@@ -503,76 +457,40 @@ function AuditLogsPageContent() {
   })
 
   const resp = logsQuery.data ?? null
-  const filterSeedItems = useMemo(
-    () => filterOptionsQuery.data ?? [],
-    [filterOptionsQuery.data]
-  )
+  const filterSeedItems = useMemo(() => filterOptionsQuery.data ?? [], [filterOptionsQuery.data])
   const loading = logsQuery.isFetching
   const filterOptionsLoading = filterOptionsQuery.isFetching
-  const loadErrorMessage = logsQuery.error
-    ? formatApiError(logsQuery.error, t('errors.loadLogs'))
-    : ''
+  const loadErrorMessage = logsQuery.error ? formatApiError(logsQuery.error, t('errors.loadLogs')) : ''
 
   const total = resp?.total || 0
   const page = Math.floor(skip / limit) + 1
   const totalPages = Math.max(1, Math.ceil(total / limit))
   const displayPage = Math.min(page, totalPages)
-  const visibleLogIds = useMemo(
-    () => (resp?.items || []).map((item) => item.id),
-    [resp?.items]
-  )
+  const visibleLogIds = useMemo(() => (resp?.items || []).map((item) => item.id), [resp?.items])
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
-  const selectedVisibleCount = visibleLogIds.filter((id) =>
-    selectedSet.has(id)
-  ).length
-  const allVisibleSelected =
-    visibleLogIds.length > 0 && selectedVisibleCount === visibleLogIds.length
-  const activeFilterCount = Object.values(filters).filter((v) =>
-    toTrimmedPrimitiveString(v)
-  ).length
-  const optionSourceItems = useMemo(
-    () => [...filterSeedItems, ...(resp?.items || [])],
-    [filterSeedItems, resp?.items]
-  )
+  const selectedVisibleCount = visibleLogIds.filter((id) => selectedSet.has(id)).length
+  const allVisibleSelected = visibleLogIds.length > 0 && selectedVisibleCount === visibleLogIds.length
+  const activeFilterCount = Object.values(filters).filter((v) => toTrimmedPrimitiveString(v)).length
+  const optionSourceItems = useMemo(() => [...filterSeedItems, ...(resp?.items || [])], [filterSeedItems, resp?.items])
   const actionOptions = useMemo(
-    () =>
-      withCurrentOption(
-        uniqueAuditValues(optionSourceItems, 'action'),
-        filters.action
-      ),
-    [optionSourceItems, filters.action]
+    () => withCurrentOption(uniqueAuditValues(optionSourceItems, 'action'), filters.action),
+    [optionSourceItems, filters.action],
   )
   const actorOptions = useMemo(
-    () =>
-      withCurrentOption(
-        uniqueAuditValues(optionSourceItems, 'actor_id'),
-        filters.actor_id
-      ),
-    [optionSourceItems, filters.actor_id]
+    () => withCurrentOption(uniqueAuditValues(optionSourceItems, 'actor_id'), filters.actor_id),
+    [optionSourceItems, filters.actor_id],
   )
   const requestOptions = useMemo(
-    () =>
-      withCurrentOption(
-        uniqueAuditValues(optionSourceItems, 'request_id'),
-        filters.request_id
-      ),
-    [optionSourceItems, filters.request_id]
+    () => withCurrentOption(uniqueAuditValues(optionSourceItems, 'request_id'), filters.request_id),
+    [optionSourceItems, filters.request_id],
   )
   const resourceTypeOptions = useMemo(
-    () =>
-      withCurrentOption(
-        uniqueAuditValues(optionSourceItems, 'resource_type'),
-        filters.resource_type
-      ),
-    [optionSourceItems, filters.resource_type]
+    () => withCurrentOption(uniqueAuditValues(optionSourceItems, 'resource_type'), filters.resource_type),
+    [optionSourceItems, filters.resource_type],
   )
   const resourceIdOptions = useMemo(
-    () =>
-      withCurrentOption(
-        uniqueAuditValues(optionSourceItems, 'resource_id'),
-        filters.resource_id
-      ),
-    [optionSourceItems, filters.resource_id]
+    () => withCurrentOption(uniqueAuditValues(optionSourceItems, 'resource_id'), filters.resource_id),
+    [optionSourceItems, filters.resource_id],
   )
   const auditOperationFilters = useMemo(() => {
     const out: Record<string, string> = {}
@@ -599,9 +517,7 @@ function AuditLogsPageContent() {
 
   const handlePageSizeChange = (value: string) => {
     const next = Number(value)
-    const safeLimit = AUDIT_PAGE_SIZE_OPTIONS.includes(
-      next as (typeof AUDIT_PAGE_SIZE_OPTIONS)[number]
-    )
+    const safeLimit = AUDIT_PAGE_SIZE_OPTIONS.includes(next as (typeof AUDIT_PAGE_SIZE_OPTIONS)[number])
       ? (next as (typeof AUDIT_PAGE_SIZE_OPTIONS)[number])
       : 20
     setLimit(safeLimit)
@@ -683,9 +599,7 @@ function AuditLogsPageContent() {
                 filterOptionsQuery.refetch()
               }}
             >
-              <RefreshCw
-                className={cn('size-3.5', loading && 'animate-spin')}
-              />
+              <RefreshCw className={cn('size-3.5', loading && 'animate-spin')} />
               {t('actions.refresh')}
             </Button>
             <Button
@@ -706,34 +620,13 @@ function AuditLogsPageContent() {
         <div className="flex flex-col gap-4 pb-0">
           {/* Top HUD Cards */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
-            <HUDTile
-              icon={FileJson}
-              label={t('strip.total')}
-              value={total}
-              tone="blue"
-            />
-            <HUDTile
-              icon={LayoutGrid}
-              label={t('strip.currentPage')}
-              value={`${page}/${totalPages}`}
-              tone="green"
-            />
-            <HUDTile
-              icon={Filter}
-              label={t('strip.filters')}
-              value={activeFilterCount}
-              tone="purple"
-            />
+            <HUDTile icon={FileJson} label={t('strip.total')} value={total} tone="blue" />
+            <HUDTile icon={LayoutGrid} label={t('strip.currentPage')} value={`${page}/${totalPages}`} tone="green" />
+            <HUDTile icon={Filter} label={t('strip.filters')} value={activeFilterCount} tone="purple" />
             <HUDTile
               icon={CheckCircle2}
               label={t('strip.status')}
-              value={
-                loading
-                  ? t('strip.loading')
-                  : total > 0
-                    ? t('strip.ready')
-                    : t('strip.empty')
-              }
+              value={loading ? t('strip.loading') : total > 0 ? t('strip.ready') : t('strip.empty')}
               tone={loading ? 'slate' : 'green'}
             />
           </div>
@@ -759,15 +652,11 @@ function AuditLogsPageContent() {
               <Button
                 variant="ghost"
                 size="sm"
-              className="h-7 gap-1.5 self-start rounded-full border border-border/60 bg-background/65 px-2.5 text-[11px] font-medium text-muted-foreground hover:border-info/25 hover:bg-info/[0.06] hover:text-info lg:self-auto"
+                className="h-7 gap-1.5 self-start rounded-full border border-border/60 bg-background/65 px-2.5 text-[11px] font-medium text-muted-foreground hover:border-info/25 hover:bg-info/[0.06] hover:text-info lg:self-auto"
                 onClick={() => setShowAdvanced(!showAdvanced)}
               >
                 {showAdvanced ? t('filters.more') : '更多筛选'}
-                {showAdvanced ? (
-                  <ChevronUp className="size-3" />
-                ) : (
-                  <ChevronDown className="size-3" />
-                )}
+                {showAdvanced ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
               </Button>
             </div>
 
@@ -858,9 +747,7 @@ function AuditLogsPageContent() {
           <div className={cn(AUDIT_PANEL_CLASS, 'overflow-hidden')}>
             <div className="flex flex-col gap-3 border-b border-border/60 bg-info/[0.025] px-5 py-3.5 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-foreground">
-                  审计事件
-                </h2>
+                <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-foreground">审计事件</h2>
                 <p className="mt-1 text-[11px] text-muted-foreground">
                   按后端审计日志展示时间、操作者、事件名称与资源；展开单行可查看租户、请求 ID 与完整明细。
                 </p>
@@ -877,10 +764,7 @@ function AuditLogsPageContent() {
                     <span key={toneKey} className="inline-flex items-center gap-1">
                       <span
                         aria-hidden
-                        className={cn(
-                          'size-1.5 rounded-full',
-                          AUDIT_ACTION_TONE_DOT_CLASSES[toneKey]
-                        )}
+                        className={cn('size-1.5 rounded-full', AUDIT_ACTION_TONE_DOT_CLASSES[toneKey])}
                       />
                       {label}
                     </span>
@@ -908,9 +792,7 @@ function AuditLogsPageContent() {
                     </Button>
                   </ConfirmDialog>
                 )}
-                <div className={AUDIT_MUTED_CHIP_CLASS}>
-                  共 {total} 条
-                </div>
+                <div className={AUDIT_MUTED_CHIP_CLASS}>共 {total} 条</div>
               </div>
             </div>
             <div className="max-h-[640px] overflow-auto">
@@ -923,27 +805,15 @@ function AuditLogsPageContent() {
                         aria-label="选择当前页审计日志"
                         disabled={!canManageAudit || visibleLogIds.length === 0}
                         checked={allVisibleSelected}
-                        onChange={(event) =>
-                          toggleSelectAllVisible(event.currentTarget.checked)
-                        }
+                        onChange={(event) => toggleSelectAllVisible(event.currentTarget.checked)}
                         className="size-3.5 rounded border-border text-primary accent-[hsl(var(--primary))]"
                       />
                     </th>
-                    <th className={AUDIT_TABLE_HEADER_CLASS}>
-                      时间
-                    </th>
-                    <th className={AUDIT_TABLE_HEADER_CLASS}>
-                      操作者
-                    </th>
-                    <th className={AUDIT_TABLE_HEADER_CLASS}>
-                      事件名称
-                    </th>
-                    <th className={AUDIT_TABLE_HEADER_CLASS}>
-                      资源
-                    </th>
-                    <th className={cn(AUDIT_TABLE_HEADER_CLASS, 'text-right')}>
-                      操作
-                    </th>
+                    <th className={AUDIT_TABLE_HEADER_CLASS}>时间</th>
+                    <th className={AUDIT_TABLE_HEADER_CLASS}>操作者</th>
+                    <th className={AUDIT_TABLE_HEADER_CLASS}>事件名称</th>
+                    <th className={AUDIT_TABLE_HEADER_CLASS}>资源</th>
+                    <th className={cn(AUDIT_TABLE_HEADER_CLASS, 'text-right')}>操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/40">
@@ -957,12 +827,8 @@ function AuditLogsPageContent() {
                           selected={selectedSet.has(log.id)}
                           canDelete={canManageAudit}
                           deleting={deletingScope === log.id}
-                          onSelectChange={(checked) =>
-                            toggleSelectLog(log.id, checked)
-                          }
-                          onToggle={() =>
-                            setExpandedId(expandedId === log.id ? null : log.id)
-                          }
+                          onSelectChange={(checked) => toggleSelectLog(log.id, checked)}
+                          onToggle={() => setExpandedId(expandedId === log.id ? null : log.id)}
                           onCopy={handleCopy}
                           onDelete={() => handleDeleteLog(log.id)}
                         />
@@ -980,10 +846,7 @@ function AuditLogsPageContent() {
                     )
                   ) : (
                     <tr>
-                      <td
-                        colSpan={6}
-                        className="p-12 text-center text-xs text-muted-foreground font-medium"
-                      >
+                      <td colSpan={6} className="p-12 text-center text-xs text-muted-foreground font-medium">
                         {loading ? (
                           <RefreshCw className="size-5 animate-spin mx-auto mb-2" />
                         ) : (
@@ -1000,20 +863,13 @@ function AuditLogsPageContent() {
                 <span>共 {total} 条</span>
                 <span className="text-muted-foreground/45">/</span>
                 <span>每页</span>
-                <Select
-                  value={String(limit)}
-                  onValueChange={handlePageSizeChange}
-                >
+                <Select value={String(limit)} onValueChange={handlePageSizeChange}>
                   <SelectTrigger className="h-8 w-[88px] rounded-full border-border/60 bg-background/70 text-[12px] font-medium text-foreground shadow-none">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="rounded-xl border-border/60 bg-card">
                     {AUDIT_PAGE_SIZE_OPTIONS.map((size) => (
-                      <SelectItem
-                        key={size}
-                        value={String(size)}
-                        className="text-xs font-medium"
-                      >
+                      <SelectItem key={size} value={String(size)} className="text-xs font-medium">
                         {size} 条
                       </SelectItem>
                     ))}
@@ -1037,14 +893,7 @@ function AuditLogsPageContent() {
                   variant="outline"
                   size="sm"
                   className="h-8 gap-1 rounded-full border-border/60 bg-background/70 px-3 text-[11px] font-medium shadow-none hover:border-info/25 hover:bg-info/[0.07] hover:text-info"
-                  onClick={() =>
-                    setSkip(
-                      Math.min(
-                        Math.max(0, (totalPages - 1) * limit),
-                        skip + limit
-                      )
-                    )
-                  }
+                  onClick={() => setSkip(Math.min(Math.max(0, (totalPages - 1) * limit), skip + limit))}
                   disabled={skip + limit >= total}
                 >
                   下一页 <ChevronRight className="size-3.5" />
@@ -1058,9 +907,7 @@ function AuditLogsPageContent() {
             <summary className="flex cursor-pointer list-none items-center justify-between text-muted-foreground transition-colors hover:text-foreground">
               <div className="flex items-center gap-3">
                 <FileJson className="size-4" />
-                <span className="text-[11px] font-semibold uppercase tracking-[0.16em]">
-                  排障材料 (原始响应)
-                </span>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.16em]">排障材料 (原始响应)</span>
               </div>
               <ChevronDown className="size-4 transition-transform group-open:rotate-180" />
             </summary>
@@ -1097,9 +944,7 @@ function AuditRow({
   onCopy: (s: string) => void
   onDelete: () => void | Promise<void>
 }>) {
-  const resource = [log.resource_type, log.resource_id]
-    .filter(Boolean)
-    .join(': ')
+  const resource = [log.resource_type, log.resource_id].filter(Boolean).join(': ')
   const timestamp = formatAuditDateTime(log.created_at)
   const actionLabel = formatAuditAction(log.action)
   const resourceTypeLabel = formatAuditResourceType(log.resource_type)
@@ -1119,7 +964,7 @@ function AuditRow({
         className={cn(
           'group cursor-pointer transition-colors hover:bg-info/[0.035]',
           expanded && 'bg-info/[0.045]',
-          selected && 'bg-info/[0.065]'
+          selected && 'bg-info/[0.065]',
         )}
       >
         <td className="px-4 py-3 align-middle">
@@ -1133,12 +978,8 @@ function AuditRow({
           />
         </td>
         <td className="whitespace-nowrap px-4 py-3" onClick={onToggle}>
-          <span className="font-mono text-[12px] font-semibold text-foreground">
-            {timestamp.date}
-          </span>{' '}
-          <span className="font-mono text-[11px] font-medium text-muted-foreground">
-            {timestamp.time}
-          </span>
+          <span className="font-mono text-[12px] font-semibold text-foreground">{timestamp.date}</span>{' '}
+          <span className="font-mono text-[11px] font-medium text-muted-foreground">{timestamp.time}</span>
         </td>
         <td className="px-4 py-3" onClick={onToggle}>
           <div className="flex items-center gap-2">
@@ -1149,31 +990,17 @@ function AuditRow({
               <div className="max-w-[180px] truncate font-mono text-[12px] font-medium text-foreground">
                 {log.actor_id || 'system'}
               </div>
-              {log.ip && (
-                <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">
-                  {log.ip}
-                </div>
-              )}
+              {log.ip && <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">{log.ip}</div>}
             </div>
           </div>
         </td>
         <td className="px-4 py-3" onClick={onToggle}>
           <div className="max-w-[280px]">
             <div className="flex items-center gap-2">
-              <span
-                aria-hidden
-                className={cn(
-                  'size-1.5 shrink-0 rounded-full',
-                  AUDIT_ACTION_TONE_DOT_CLASSES[tone]
-                )}
-              />
-              <span className="truncate text-[13px] font-semibold text-foreground">
-                {actionLabel}
-              </span>
+              <span aria-hidden className={cn('size-1.5 shrink-0 rounded-full', AUDIT_ACTION_TONE_DOT_CLASSES[tone])} />
+              <span className="truncate text-[13px] font-semibold text-foreground">{actionLabel}</span>
             </div>
-            <div className="mt-1 truncate pl-3.5 font-mono text-[10px] text-muted-foreground">
-              {log.action}
-            </div>
+            <div className="mt-1 truncate pl-3.5 font-mono text-[10px] text-muted-foreground">{log.action}</div>
           </div>
         </td>
         <td className="px-4 py-3" onClick={onToggle}>
@@ -1198,12 +1025,7 @@ function AuditRow({
               className="size-7 rounded-full text-muted-foreground hover:bg-primary/10 hover:text-primary"
               onClick={onToggle}
             >
-              <ChevronDown
-                className={cn(
-                  'size-3.5 transition-transform',
-                  expanded && 'rotate-180'
-                )}
-              />
+              <ChevronDown className={cn('size-3.5 transition-transform', expanded && 'rotate-180')} />
             </Button>
             <Button
               variant="ghost"
@@ -1231,11 +1053,7 @@ function AuditRow({
                 title="删除"
                 className="size-7 rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
               >
-                {deleting ? (
-                  <RefreshCw className="size-3.5 animate-spin" />
-                ) : (
-                  <Trash2 className="size-3.5" />
-                )}
+                {deleting ? <RefreshCw className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
               </Button>
             </ConfirmDialog>
           </div>
@@ -1247,10 +1065,7 @@ function AuditRow({
             <div className="rounded-xl border border-info/20 bg-background/72 p-4 shadow-none">
               <div className="mb-3 flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-border/40 pb-3">
                 {detailFields.map(([key, value]) => (
-                  <div
-                    key={key}
-                    className="flex min-w-0 max-w-full items-center gap-1.5 text-[11px]"
-                  >
+                  <div key={key} className="flex min-w-0 max-w-full items-center gap-1.5 text-[11px]">
                     <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                       {key}
                     </span>

@@ -1,7 +1,7 @@
-import { cn } from "@/lib/utils"
-import { systemPageTokens } from "@/components/ui/system-page-tokens"
+import { cn } from '@/lib/utils'
+import { systemPageTokens } from '@/components/ui/system-page-tokens'
 
-type SystemDataStripTone = "default" | "success" | "warning" | "danger"
+type SystemDataStripTone = 'default' | 'success' | 'warning' | 'danger'
 
 export type SystemDataStripItem = {
   id?: string
@@ -19,17 +19,13 @@ type SystemDataStripProps = {
 }
 
 const TONE_CLASS: Record<SystemDataStripTone, string> = {
-  default: "text-foreground",
-  success: "text-success",
-  warning: "text-warning",
-  danger: "text-destructive",
+  default: 'text-foreground',
+  success: 'text-success',
+  warning: 'text-warning',
+  danger: 'text-destructive',
 }
 
-export function SystemDataStrip({
-  items,
-  className,
-  minColumnWidth = 176,
-}: Readonly<SystemDataStripProps>) {
+export function SystemDataStrip({ items, className, minColumnWidth = 176 }: Readonly<SystemDataStripProps>) {
   if (!items.length) return null
 
   const cellWidth = Math.max(140, Math.floor(minColumnWidth))
@@ -41,17 +37,17 @@ export function SystemDataStrip({
 
   return (
     <dl
-      className={cn(
-        "grid gap-px overflow-hidden rounded-lg border border-border/70 bg-border/60",
-        className
-      )}
+      className={cn('grid gap-px overflow-hidden rounded-lg border border-border/70 bg-border/60', className)}
       style={{ gridTemplateColumns: `repeat(auto-fit, minmax(${cellWidth}px, 1fr))` }}
     >
       {items.map((item, index) => {
         let hintContent = null
         if (item.hint) {
           hintContent = (
-            <p className={cn(systemPageTokens.subtle, "mt-0.5 truncate")} title={typeof item.hint === "string" ? item.hint : undefined}>
+            <p
+              className={cn(systemPageTokens.subtle, 'mt-0.5 truncate')}
+              title={typeof item.hint === 'string' ? item.hint : undefined}
+            >
               {item.hint}
             </p>
           )
@@ -59,14 +55,14 @@ export function SystemDataStrip({
 
         return (
           <div key={item.id || `${item.label}-${index}`} className="min-w-0 bg-background px-3 py-2.5">
-            <dt className={cn(systemPageTokens.microLabel, "truncate")}>{item.label}</dt>
+            <dt className={cn(systemPageTokens.microLabel, 'truncate')}>{item.label}</dt>
             <dd
               className={cn(
-                "mt-1 truncate text-[13px] font-semibold tracking-[-0.01em]",
-                item.mono && "font-mono tabular-nums",
-                resolveTone(item.tone)
+                'mt-1 truncate text-[13px] font-semibold tracking-[-0.01em]',
+                item.mono && 'font-mono tabular-nums',
+                resolveTone(item.tone),
               )}
-              title={typeof item.value === "string" ? item.value : undefined}
+              title={typeof item.value === 'string' ? item.value : undefined}
             >
               {item.value}
             </dd>

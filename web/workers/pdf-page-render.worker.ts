@@ -22,7 +22,11 @@ class WorkerCanvasFactory {
     }
   }
 
-  reset(canvasAndContext: { canvas: OffscreenCanvas | null; context: OffscreenCanvasRenderingContext2D | null }, width: number, height: number) {
+  reset(
+    canvasAndContext: { canvas: OffscreenCanvas | null; context: OffscreenCanvasRenderingContext2D | null },
+    width: number,
+    height: number,
+  ) {
     if (!canvasAndContext.canvas) {
       throw new Error('Canvas is not specified')
     }
@@ -87,7 +91,9 @@ async function cancelAllRenders() {
   }
 }
 
-async function initializeDocument(data: Uint8Array): Promise<{ pageCount: number; firstPageViewport: PageViewportSnapshot | null }> {
+async function initializeDocument(
+  data: Uint8Array,
+): Promise<{ pageCount: number; firstPageViewport: PageViewportSnapshot | null }> {
   await destroy()
 
   const offscreenCanvasSupported = Boolean(FeatureTest.isOffscreenCanvasSupported)

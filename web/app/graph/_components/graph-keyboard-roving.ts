@@ -1,8 +1,4 @@
-export function getNextKeyboardRovingIndex(
-  currentIndex: number,
-  itemCount: number,
-  direction: 1 | -1
-): number {
+export function getNextKeyboardRovingIndex(currentIndex: number, itemCount: number, direction: 1 | -1): number {
   if (!Number.isFinite(itemCount) || itemCount <= 0) return -1
 
   if (!Number.isFinite(currentIndex) || currentIndex < 0 || currentIndex >= itemCount) {

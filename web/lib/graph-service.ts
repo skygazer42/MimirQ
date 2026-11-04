@@ -4,8 +4,7 @@ import { kgApi, metaApi } from '@/lib/api'
 // Small delay for empty live graph loading so UI transitions remain stable.
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 function cloneGraphData(data: GraphData): GraphData {
   return structuredClone(data)
@@ -33,7 +32,7 @@ export class GraphService {
       documentIds?: string[]
       datasetId?: string
       pipelineHash?: string
-    } = {}
+    } = {},
   ): Promise<GraphData> {
     if (!(await isKgEnabled())) {
       return { nodes: [], links: [] }
@@ -77,7 +76,7 @@ export class GraphService {
       documentIds?: string[]
       datasetId?: string
       pipelineHash?: string
-    }
+    },
   ): Promise<GraphData> {
     // Live graph expansion must only use backend KG data; unsupported ids return an empty expansion.
     if (UUID_RE.test(String(nodeId || '').trim())) {

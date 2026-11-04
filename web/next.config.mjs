@@ -3,12 +3,16 @@ import { networkInterfaces } from 'node:os'
 import createNextIntlPlugin from 'next-intl/plugin'
 
 const sentryEnabled = Boolean(
-  process.env.NEXT_PUBLIC_SENTRY_DSN || process.env.SENTRY_DSN || process.env.SENTRY_AUTH_TOKEN
+  process.env.NEXT_PUBLIC_SENTRY_DSN || process.env.SENTRY_DSN || process.env.SENTRY_AUTH_TOKEN,
 )
 const localDevHostnames = new Set(['localhost', '127.0.0.1', '0.0.0.0', 'web', 'mimirq-api'])
 const hstsDisabled =
-  String(process.env.NEXT_DISABLE_HSTS || '').trim().toLowerCase() === '1' ||
-  String(process.env.NEXT_DISABLE_HSTS || '').trim().toLowerCase() === 'true'
+  String(process.env.NEXT_DISABLE_HSTS || '')
+    .trim()
+    .toLowerCase() === '1' ||
+  String(process.env.NEXT_DISABLE_HSTS || '')
+    .trim()
+    .toLowerCase() === 'true'
 
 function isLocalDevOrigin(value) {
   try {
@@ -20,9 +24,7 @@ function isLocalDevOrigin(value) {
 }
 
 const shouldSendHsts =
-  process.env.NODE_ENV === 'production' &&
-  !hstsDisabled &&
-  !isLocalDevOrigin(process.env.NEXT_PUBLIC_API_URL || '')
+  process.env.NODE_ENV === 'production' && !hstsDisabled && !isLocalDevOrigin(process.env.NEXT_PUBLIC_API_URL || '')
 const withNextIntl = createNextIntlPlugin('./i18n/request.ts')
 const sharedSecurityHeaders = [
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
@@ -68,7 +70,9 @@ function collectLanInterfaceOrigins(interfaces) {
 }
 
 function trimConfigUrl(value) {
-  return String(value || '').trim().replace(/\/+$/, '')
+  return String(value || '')
+    .trim()
+    .replace(/\/+$/, '')
 }
 
 function safeNetworkInterfaces() {
@@ -79,24 +83,13 @@ function safeNetworkInterfaces() {
   }
 }
 
-export function resolveAllowedDevOrigins(
-  env = process.env,
-  interfaces = safeNetworkInterfaces()
-) {
+export function resolveAllowedDevOrigins(env = process.env, interfaces = safeNetworkInterfaces()) {
   const extra = String(env.NEXT_ALLOWED_DEV_ORIGINS || '')
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean)
 
-  return Array.from(
-    new Set([
-      '127.0.0.1',
-      'localhost',
-      '0.0.0.0',
-      ...collectLanInterfaceOrigins(interfaces),
-      ...extra,
-    ])
-  )
+  return Array.from(new Set(['127.0.0.1', 'localhost', '0.0.0.0', ...collectLanInterfaceOrigins(interfaces), ...extra]))
 }
 
 export function resolveBackendProxyBase(env = process.env) {
@@ -121,9 +114,7 @@ const nextConfig = {
   poweredByHeader: false,
   skipTrailingSlashRedirect: true,
   allowedDevOrigins: resolveAllowedDevOrigins(),
-  distDir:
-    process.env.NEXT_DIST_DIR ||
-    (process.env.NODE_ENV === 'production' ? '.next_build' : '.next'),
+  distDir: process.env.NEXT_DIST_DIR || (process.env.NODE_ENV === 'production' ? '.next_build' : '.next'),
   webpack: (config, { webpack }) => {
     config.plugins.push({
       apply: (compiler) => {
@@ -143,7 +134,7 @@ const nextConfig = {
                   })
                 }
               }
-            }
+            },
           )
         })
       },

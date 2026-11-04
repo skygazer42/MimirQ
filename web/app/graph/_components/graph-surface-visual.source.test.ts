@@ -44,7 +44,7 @@ describe('graph surfaces stay crisp', () => {
     expect(canvasSrc).not.toContain('shadow-[12px_18px_46px_-28px_rgba(15,23,42,0.44)]')
     expect(canvasSrc).not.toContain('shadow-[12px_18px_42px_-24px_rgba(15,23,42,0.38)]')
     expect(canvasSrc).not.toContain(
-      'bg-[radial-gradient(circle_at_center,transparent_52%,hsl(var(--info)/0.025)_100%)]'
+      'bg-[radial-gradient(circle_at_center,transparent_52%,hsl(var(--info)/0.025)_100%)]',
     )
   })
 
@@ -62,38 +62,22 @@ describe('graph surfaces stay crisp', () => {
     expect(canvasSrc).not.toContain('rgba(139, 92, 246')
     expect(canvasSrc).not.toContain('radial-gradient(circle at')
     expect(canvasSrc).toContain('fill="hsl(var(--info) / 0.10)"')
-    expect(canvasSrc).toContain(
-      'h-9 gap-1.5 rounded-md bg-info px-3.5 text-[12px] font-medium'
-    )
-    expect(canvasSrc).toContain(
-      'text-info-foreground shadow-none hover:bg-info/90'
-    )
-    expect(canvasSrc).toContain(
-      'h-9 gap-1.5 rounded-md border-info/25 bg-background/75 px-3.5 text-[12px] font-medium'
-    )
+    expect(canvasSrc).toContain('h-9 gap-1.5 rounded-md bg-info px-3.5 text-[12px] font-medium')
+    expect(canvasSrc).toContain('text-info-foreground shadow-none hover:bg-info/90')
+    expect(canvasSrc).toContain('h-9 gap-1.5 rounded-md border-info/25 bg-background/75 px-3.5 text-[12px] font-medium')
     expect(canvasSrc).not.toContain('size="lg"')
-    expect(canvasSrc).toContain(
-      'text-foreground shadow-none hover:bg-info/[0.08] hover:text-info'
-    )
+    expect(canvasSrc).toContain('text-foreground shadow-none hover:bg-info/[0.08] hover:text-info')
 
     expect(analysisSrc).toContain('border-info/15 bg-background/88')
-    expect(analysisSrc).toContain(
-      'border border-info/20 bg-info/[0.08] text-info'
-    )
+    expect(analysisSrc).toContain('border border-info/20 bg-info/[0.08] text-info')
     expect(analysisSrc).toContain("matchMedia('(max-width: 1279px)')")
-    expect(analysisSrc).toContain(
-      "narrowViewport.addEventListener('change', collapseForNarrowViewport)"
-    )
+    expect(analysisSrc).toContain("narrowViewport.addEventListener('change', collapseForNarrowViewport)")
     expect(analysisSrc).not.toContain('bg-foreground text-info-foreground')
 
     expect(controlsSrc).toContain('border-info/15 bg-background/88')
-    expect(controlsSrc).toContain(
-      'bg-info/[0.08] text-info ring-1 ring-info/20'
-    )
+    expect(controlsSrc).toContain('bg-info/[0.08] text-info ring-1 ring-info/20')
 
-    expect(headerSrc).toContain(
-      'border-info/20 bg-info/[0.06] px-2 py-0.5 text-[10px] font-medium text-info'
-    )
+    expect(headerSrc).toContain('border-info/20 bg-info/[0.06] px-2 py-0.5 text-[10px] font-medium text-info')
     expect(headerSrc).toContain('data-[state=checked]:bg-info')
   })
 })

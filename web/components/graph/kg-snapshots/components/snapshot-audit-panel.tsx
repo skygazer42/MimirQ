@@ -1,47 +1,17 @@
 'use client'
 
-import {
-  ArrowRightLeft,
-  BarChart3,
-  Layers,
-  ShieldAlert,
-  ShieldCheck,
-  Sparkles,
-} from 'lucide-react'
+import { ArrowRightLeft, BarChart3, Layers, ShieldAlert, ShieldCheck, Sparkles } from 'lucide-react'
 import type { ReactNode } from 'react'
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
+import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { Badge } from '@/components/ui/badge'
 import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 
-import {
-  DELTA_BADGE_VARIANTS,
-  DELTA_LABELS,
-  DELTA_TEXT_CLASSES,
-  DELTA_TINT_CLASSES,
-} from '../constants'
-import type {
-  AuditSeverity,
-  SnapshotChartTooltipProps,
-  SnapshotDeltaRow,
-  SnapshotDiffEntityRow,
-} from '../types'
-import {
-  deltaDirection,
-  deltaFill,
-  deltaSign,
-  driftScoreToneForSeverity,
-  toneClassForDelta,
-} from '../utils'
+import { DELTA_BADGE_VARIANTS, DELTA_LABELS, DELTA_TEXT_CLASSES, DELTA_TINT_CLASSES } from '../constants'
+import type { AuditSeverity, SnapshotChartTooltipProps, SnapshotDeltaRow, SnapshotDiffEntityRow } from '../types'
+import { deltaDirection, deltaFill, deltaSign, driftScoreToneForSeverity, toneClassForDelta } from '../utils'
 import { SectionHeading, SnapshotInlineStat } from './shared'
 
 export function auditSeverityMeta(severity: AuditSeverity): {
@@ -70,25 +40,20 @@ export function auditSeverityMeta(severity: AuditSeverity): {
   }
 }
 
-export function SnapshotChartTooltip({
-  active,
-  payload,
-}: Readonly<SnapshotChartTooltipProps>) {
+export function SnapshotChartTooltip({ active, payload }: Readonly<SnapshotChartTooltipProps>) {
   const row = payload?.[0]?.payload
   if (!active || !row) return null
   const sign = row.delta > 0 ? '+' : ''
   return (
     <div className="rounded-lg border border-border/70 bg-card px-3 py-2 shadow-sm">
-      <div className="font-mono text-[11px] text-muted-foreground">
-        {row.key}
-      </div>
+      <div className="font-mono text-[11px] text-muted-foreground">{row.key}</div>
       <div className="mt-1 flex items-center gap-2 text-[11px]">
         <span className="font-mono text-muted-foreground">A {row.a}</span>
         <span className="font-mono text-muted-foreground">B {row.b}</span>
         <span
           className={cn(
             'font-mono font-semibold',
-            deltaDirection(row.delta) === 'flat' ? 'text-foreground' : toneClassForDelta(row.delta)
+            deltaDirection(row.delta) === 'flat' ? 'text-foreground' : toneClassForDelta(row.delta),
           )}
         >
           Δ {sign}
@@ -119,16 +84,12 @@ export function SnapshotAuditPanel({
   onCompactRowsChange: (value: boolean) => void
 }>) {
   const severityMeta = auditSeverityMeta(severity)
-  const chartRows = includeZeroDeltas
-    ? deltaRows
-    : deltaRows.filter((row) => row.delta !== 0)
+  const chartRows = includeZeroDeltas ? deltaRows : deltaRows.filter((row) => row.delta !== 0)
   const chartRowsWithFill = chartRows.map((row) => ({
     ...row,
     fill: deltaFill(row.delta),
   }))
-  const shownDriftRows = compactRows
-    ? typeDriftRows.slice(0, 14)
-    : typeDriftRows
+  const shownDriftRows = compactRows ? typeDriftRows.slice(0, 14) : typeDriftRows
   const driftScoreTone = driftScoreToneForSeverity(severity)
 
   return (
@@ -140,10 +101,7 @@ export function SnapshotAuditPanel({
           description="快速查看快照差异强度、类型漂移与整体风险等级。"
           icon={<BarChart3 className="h-5 w-5" aria-hidden="true" />}
           extra={
-            <Badge
-              variant={severityMeta.variant}
-              className="inline-flex items-center gap-1.5 font-mono text-[11px]"
-            >
+            <Badge variant={severityMeta.variant} className="inline-flex items-center gap-1.5 font-mono text-[11px]">
               {severityMeta.icon}
               {severityMeta.label}
             </Badge>
@@ -175,18 +133,12 @@ export function SnapshotAuditPanel({
         <div className="min-h-0 border-b border-border/70 xl:border-b-0 xl:border-r">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 px-4 py-2.5">
             <div className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              <BarChart3
-                className="h-3.5 w-3.5 text-primary/70"
-                aria-hidden="true"
-              />
+              <BarChart3 className="h-3.5 w-3.5 text-primary/70" aria-hidden="true" />
               Delta Distribution
             </div>
             <div className="flex items-center gap-4">
               <label className="inline-flex items-center gap-2 text-[11px] text-muted-foreground">
-                <Switch
-                  checked={includeZeroDeltas}
-                  onCheckedChange={onIncludeZeroDeltasChange}
-                />
+                <Switch checked={includeZeroDeltas} onCheckedChange={onIncludeZeroDeltasChange} />
                 显示 0 值
               </label>
             </div>
@@ -194,31 +146,16 @@ export function SnapshotAuditPanel({
 
           <div className="px-3 py-2">
             <SafeResponsiveChart className="h-[280px]" minHeight={280}>
-              <BarChart
-                data={chartRowsWithFill}
-                margin={{ top: 8, right: 10, left: -16, bottom: 0 }}
-              >
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  vertical={false}
-                  stroke="#e2e8f0"
-                />
-                <XAxis
-                  dataKey="key"
-                  tick={{ fontSize: 11, fill: '#64748b' }}
-                  axisLine={false}
-                  tickLine={false}
-                />
+              <BarChart data={chartRowsWithFill} margin={{ top: 8, right: 10, left: -16, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis dataKey="key" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
                 <YAxis
                   tick={{ fontSize: 11, fill: '#64748b' }}
                   axisLine={false}
                   tickLine={false}
                   allowDecimals={false}
                 />
-                <Tooltip
-                  cursor={{ fill: 'rgba(148, 163, 184, 0.08)' }}
-                  content={<SnapshotChartTooltip />}
-                />
+                <Tooltip cursor={{ fill: 'rgba(148, 163, 184, 0.08)' }} content={<SnapshotChartTooltip />} />
                 <Bar dataKey="delta" radius={[6, 6, 0, 0]} />
               </BarChart>
             </SafeResponsiveChart>
@@ -228,17 +165,11 @@ export function SnapshotAuditPanel({
         <div className="min-h-0 flex flex-col">
           <div className="flex items-center justify-between gap-2 border-b border-border/70 px-4 py-2.5">
             <div className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              <Layers
-                className="h-3.5 w-3.5 text-primary/70"
-                aria-hidden="true"
-              />
+              <Layers className="h-3.5 w-3.5 text-primary/70" aria-hidden="true" />
               Type Drift Rows
             </div>
             <label className="inline-flex items-center gap-2 text-[11px] text-muted-foreground">
-              <Switch
-                checked={compactRows}
-                onCheckedChange={onCompactRowsChange}
-              />
+              <Switch checked={compactRows} onCheckedChange={onCompactRowsChange} />
               紧凑模式
             </label>
           </div>
@@ -258,23 +189,18 @@ export function SnapshotAuditPanel({
                     className="grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 border-b border-border/60 px-4 py-2 text-left"
                     title={`${type} Δ ${sign}${delta}`}
                   >
-                    <span className="truncate font-mono text-[12px] text-foreground">
-                      {type}
-                    </span>
+                    <span className="truncate font-mono text-[12px] text-foreground">{type}</span>
                     <span
                       className={cn(
                         'inline-flex min-w-[52px] items-center justify-center rounded-md px-2 py-0.5 font-mono text-[11px] font-semibold tabular-nums ring-1',
                         tint,
-                        tone
+                        tone,
                       )}
                     >
                       Δ {sign}
                       {delta}
                     </span>
-                    <Badge
-                      variant={DELTA_BADGE_VARIANTS[direction]}
-                      className="font-mono text-[10.5px]"
-                    >
+                    <Badge variant={DELTA_BADGE_VARIANTS[direction]} className="font-mono text-[10.5px]">
                       {DELTA_LABELS[direction]}
                     </Badge>
                   </div>
@@ -286,9 +212,7 @@ export function SnapshotAuditPanel({
                   <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-card text-muted-foreground/70 shadow-sm">
                     <Layers className="h-5 w-5" aria-hidden="true" />
                   </div>
-                  <div className="mt-3 text-[13px] font-semibold text-foreground">
-                    暂无类型漂移
-                  </div>
+                  <div className="mt-3 text-[13px] font-semibold text-foreground">暂无类型漂移</div>
                   <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
                     entity_types_delta 为空：A / B 之间的实体类型构成保持一致。
                   </div>

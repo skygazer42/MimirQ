@@ -2,7 +2,17 @@
 
 import { Fragment, useCallback, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, CheckCircle2, GitCompare, Info, Loader2, Sparkles, TextCursorInput, Undo, Wrench } from 'lucide-react'
+import {
+  AlertTriangle,
+  CheckCircle2,
+  GitCompare,
+  Info,
+  Loader2,
+  Sparkles,
+  TextCursorInput,
+  Undo,
+  Wrench,
+} from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -18,13 +28,7 @@ import type {
   DocumentPipelineOptions,
   LLMCleanPreviewRequest,
 } from '@/types'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { GovernanceProfileSelector } from '@/components/governance-profile-selector'
@@ -50,11 +54,7 @@ function getSeverityBadgeClass(severity: string) {
   return 'bg-info/10 text-info'
 }
 
-export function DataCleaner({
-  content,
-  cleanedContent: _cleanedContent = '',
-  onClean,
-}: Readonly<DataCleanerProps>) {
+export function DataCleaner({ content, cleanedContent: _cleanedContent = '', onClean }: Readonly<DataCleanerProps>) {
   const t = useTranslations('DataCleaner')
   const { options, updateOption, setEnabled } = usePipelineOptions()
   const [previewDiff, setPreviewDiff] = useState(false)
@@ -82,8 +82,7 @@ export function DataCleaner({
     setBackendInfo(null)
 
     try {
-      const opt = <T,>(value: T | null | undefined): T | undefined =>
-        value ?? undefined
+      const opt = <T,>(value: T | null | undefined): T | undefined => value ?? undefined
 
       const request: CleanPreviewRequest = {
         markdown: content,
@@ -92,7 +91,7 @@ export function DataCleaner({
         include_diff: true,
         diff_max_lines: 2000,
         input_format: inputFormat,
-        html_xpath: inputFormat === 'html' ? (options.governance_html_xpath || undefined) : undefined,
+        html_xpath: inputFormat === 'html' ? options.governance_html_xpath || undefined : undefined,
         normalize_line_endings: true,
         trim_trailing_spaces: true,
         remove_toc_lines: opt(options.governance_remove_toc_lines),
@@ -108,9 +107,7 @@ export function DataCleaner({
         normalize_urls: opt(options.governance_normalize_urls),
         normalize_urls_strip_tracking: opt(options.governance_normalize_urls_strip_tracking),
         drop_duplicate_paragraphs: opt(options.governance_drop_duplicate_paragraphs),
-        drop_duplicate_paragraphs_min_occurrences: opt(
-          options.governance_drop_duplicate_paragraphs_min_occurrences
-        ),
+        drop_duplicate_paragraphs_min_occurrences: opt(options.governance_drop_duplicate_paragraphs_min_occurrences),
         drop_duplicate_paragraphs_min_chars: opt(options.governance_drop_duplicate_paragraphs_min_chars),
         drop_duplicate_paragraphs_max_chars: opt(options.governance_drop_duplicate_paragraphs_max_chars),
         trim_references: opt(options.governance_trim_references),
@@ -159,7 +156,7 @@ export function DataCleaner({
             changedLines,
             inputChars,
             outputChars,
-          })
+          }),
         )
       }
 
@@ -181,7 +178,10 @@ export function DataCleaner({
       if (response.language) {
         const confidence =
           typeof response.language_confidence === 'number'
-            ? t('info.languageWithConfidence', { value: response.language, confidence: response.language_confidence.toFixed(2) })
+            ? t('info.languageWithConfidence', {
+                value: response.language,
+                confidence: response.language_confidence.toFixed(2),
+              })
             : response.language
         info.push(t('info.language', { value: confidence }))
       }
@@ -215,7 +215,7 @@ export function DataCleaner({
         setBackendError(
           t('errors.filtered', {
             reason: response.drop_reason || t('errors.qualityFilterTriggered'),
-          })
+          }),
         )
         onClean(response.markdown || '')
         return
@@ -256,7 +256,7 @@ export function DataCleaner({
         updateOption(key, value)
       }
     },
-    [setEnabled, updateOption]
+    [setEnabled, updateOption],
   )
 
   const handleReset = useCallback(() => {
@@ -271,7 +271,7 @@ export function DataCleaner({
     'h-7 rounded-full px-3 text-[11px] font-semibold shadow-none transition-colors motion-reduce:transition-none',
     llmEnabled
       ? 'border-accent/28 bg-accent/[0.09] text-accent hover:border-accent/38 hover:bg-accent/[0.16] hover:text-accent'
-      : 'border-border/45 bg-background/48 text-muted-foreground hover:bg-background/70 hover:text-foreground'
+      : 'border-border/45 bg-background/48 text-muted-foreground hover:bg-background/70 hover:text-foreground',
   )
   const configShellClass =
     'overflow-hidden rounded-[1.35rem] border border-border/42 bg-[linear-gradient(180deg,hsl(var(--card)/0.82)_0%,hsl(var(--surface-2)/0.56)_100%)] p-2 shadow-[0_18px_46px_-40px_hsl(var(--foreground)/0.28),inset_0_1px_0_hsl(var(--card)/0.68)]'
@@ -283,22 +283,17 @@ export function DataCleaner({
     'mt-3 grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-1 rounded-full border border-border/32 bg-background/34 px-2 py-1.5'
   const configFlowStepClass =
     'flex min-w-0 items-center justify-center gap-1.5 truncate rounded-full px-2 py-1 text-[10.5px] font-medium leading-3 text-muted-foreground/72 first:bg-primary/[0.07] first:text-primary'
-  const configFlowDotClass =
-    'size-1.5 shrink-0 rounded-full bg-current opacity-55'
-  const configFlowConnectorClass =
-    'h-px w-4 rounded-full bg-border/46'
+  const configFlowDotClass = 'size-1.5 shrink-0 rounded-full bg-current opacity-55'
+  const configFlowConnectorClass = 'h-px w-4 rounded-full bg-border/46'
   const configSubpanelClass =
     'rounded-[1rem] border border-border/32 bg-background/30 p-2.5 shadow-[inset_0_1px_0_hsl(var(--card)/0.34)]'
-  const llmPanelClass =
-    'rounded-[1rem] border border-accent/18 bg-accent/[0.045] p-2.5'
+  const llmPanelClass = 'rounded-[1rem] border border-accent/18 bg-accent/[0.045] p-2.5'
   const diffPanelClass =
     'overflow-hidden rounded-[1rem] border border-border/45 bg-card/82 shadow-[0_8px_18px_rgba(15,23,42,0.02)]'
   const emptyStateClass =
     'flex items-start gap-2 rounded-[0.95rem] border border-dashed border-border/38 bg-background/34 px-3 py-2.5 text-[11px] leading-5 text-muted-foreground/72'
-  const cleanerLabelClass =
-    'text-[10px] font-semibold uppercase leading-3 tracking-[0.16em] text-muted-foreground/56'
-  const cleanerCaptionClass =
-    'text-[10.5px] leading-4 text-muted-foreground/62'
+  const cleanerLabelClass = 'text-[10px] font-semibold uppercase leading-3 tracking-[0.16em] text-muted-foreground/56'
+  const cleanerCaptionClass = 'text-[10.5px] leading-4 text-muted-foreground/62'
 
   return (
     <div className="space-y-3 p-4 md:p-5">
@@ -311,17 +306,19 @@ export function DataCleaner({
                 <Wrench className="size-4" />
               </span>
               <div className="min-w-0">
-                <h3 className="text-[15px] font-semibold leading-5 tracking-[-0.018em] text-foreground/92">{t("header.title")}</h3>
-                <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground/66">
-                  预设与治理规则集中配置
-                </p>
+                <h3 className="text-[15px] font-semibold leading-5 tracking-[-0.018em] text-foreground/92">
+                  {t('header.title')}
+                </h3>
+                <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground/66">预设与治理规则集中配置</p>
               </div>
             </div>
             <div className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border/38 bg-background/42 px-2 shadow-[inset_0_1px_0_hsl(var(--card)/0.55)]">
               <span className="text-[10px] font-medium tracking-[0.08em] text-muted-foreground/58">格式</span>
               <Select
                 value={inputFormat}
-                onValueChange={(value) => setInputFormat(coerceOneOf(DATA_CLEANER_INPUT_FORMAT_VALUES, value, 'markdown'))}
+                onValueChange={(value) =>
+                  setInputFormat(coerceOneOf(DATA_CLEANER_INPUT_FORMAT_VALUES, value, 'markdown'))
+                }
               >
                 <SelectTrigger className="focus-ring h-6 w-[92px] rounded-full border-0 bg-transparent px-1 text-[11px] font-semibold text-foreground/82 shadow-none">
                   <SelectValue />
@@ -410,7 +407,7 @@ export function DataCleaner({
           ) : (
             <Sparkles className="size-4" />
           )}
-          {isApplying ? t('actions.applying') : t("actions.apply")}
+          {isApplying ? t('actions.applying') : t('actions.apply')}
         </Button>
       </div>
 
@@ -425,7 +422,12 @@ export function DataCleaner({
               <p className="mt-0.5 truncate text-[10.5px] text-muted-foreground/68">可选二次清洗，默认只执行规则预览</p>
             </div>
           </div>
-          <Button variant="outline" size="sm" className={llmToggleClass} onClick={() => setLlmEnabled((value) => !value)}>
+          <Button
+            variant="outline"
+            size="sm"
+            className={llmToggleClass}
+            onClick={() => setLlmEnabled((value) => !value)}
+          >
             {llmEnabled ? t('llm.enabled') : t('llm.enable')}
           </Button>
         </div>
@@ -467,7 +469,9 @@ export function DataCleaner({
             </span>
             <span className="min-w-0">
               <span className="block text-[12px] font-semibold leading-4 text-foreground/78">{t('diff.title')}</span>
-              <span className="block text-[10.5px] leading-4 text-muted-foreground/62">执行清洗后查看规则命中、文本变化和统一 diff</span>
+              <span className="block text-[10.5px] leading-4 text-muted-foreground/62">
+                执行清洗后查看规则命中、文本变化和统一 diff
+              </span>
             </span>
           </span>
           <TextCursorInput className="size-4 text-muted-foreground/70" />
@@ -534,7 +538,7 @@ export function DataCleaner({
                       <span
                         className={cn(
                           'mr-2 inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium',
-                          getSeverityBadgeClass(issue.severity)
+                          getSeverityBadgeClass(issue.severity),
                         )}
                       >
                         {t(`severity.${issue.severity}`)}
@@ -567,7 +571,9 @@ export function DataCleaner({
                 <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-success" />
                 <div>
                   <div className="font-medium text-foreground/72">{t('diff.noIssueHint')}</div>
-                  <div className="text-muted-foreground/62">执行智能清洗后，如果规则命中或出现风险提示，会在这里汇总。</div>
+                  <div className="text-muted-foreground/62">
+                    执行智能清洗后，如果规则命中或出现风险提示，会在这里汇总。
+                  </div>
                 </div>
               </div>
             )}
@@ -585,7 +591,7 @@ export function DataCleaner({
                   ) : null}
                 </div>
                 <pre className="overflow-x-auto whitespace-pre p-3 font-mono text-[11px] leading-relaxed">
-{lastPreview.diff_unified}
+                  {lastPreview.diff_unified}
                 </pre>
               </div>
             ) : (
@@ -593,7 +599,9 @@ export function DataCleaner({
                 <TextCursorInput className="mt-0.5 size-3.5 shrink-0 text-info" />
                 <div>
                   <div className="font-medium text-foreground/72">{t('diff.noDiffHint')}</div>
-                  <div className="text-muted-foreground/62">当前还没有生成可比较的清洗结果，点击上方执行后会展示统一 diff。</div>
+                  <div className="text-muted-foreground/62">
+                    当前还没有生成可比较的清洗结果，点击上方执行后会展示统一 diff。
+                  </div>
                 </div>
               </div>
             )}

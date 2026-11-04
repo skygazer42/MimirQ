@@ -21,7 +21,7 @@ export function bumpParsingProgress(prev: ParsedFile[], fileId: string): ParsedF
   return prev.map((file) =>
     file.id === fileId && file.status === 'parsing'
       ? { ...file, progress: Math.min((file.progress || 0) + 5, 90) }
-      : file
+      : file,
   )
 }
 
@@ -35,17 +35,26 @@ export function mapBackendStatusToLibraryStatus(status?: string): FileStatus {
 
 export function getLibraryStatusBadge(
   t: ParsingWorkbenchTranslationGetter,
-  status: FileStatus = 'pending'
+  status: FileStatus = 'pending',
 ): LibraryStatusBadge {
   switch (status) {
     case 'parsed':
-      return { label: t('libraryStatus.parsed'), cls: 'bg-success/10 text-success dark:text-emerald-300 border-success/20' }
+      return {
+        label: t('libraryStatus.parsed'),
+        cls: 'bg-success/10 text-success dark:text-emerald-300 border-success/20',
+      }
     case 'parsing':
       return { label: t('libraryStatus.parsing'), cls: 'bg-info/10 text-info border-info/20' }
     case 'error':
-      return { label: t('libraryStatus.error'), cls: 'bg-destructive/10 text-destructive dark:text-red-300 border-destructive/20' }
+      return {
+        label: t('libraryStatus.error'),
+        cls: 'bg-destructive/10 text-destructive dark:text-red-300 border-destructive/20',
+      }
     case 'pending':
     default:
-      return { label: t('libraryStatus.pending'), cls: 'bg-warning/10 text-warning dark:text-amber-300 border-warning/20' }
+      return {
+        label: t('libraryStatus.pending'),
+        cls: 'bg-warning/10 text-warning dark:text-amber-300 border-warning/20',
+      }
   }
 }

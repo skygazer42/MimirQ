@@ -47,16 +47,15 @@ export function ParserBackendProvider({ children }: Readonly<{ children: React.R
     }
   }, [capabilities, parserBackend, parserBackendAvailable, persistParserBackend])
 
-  const contextValue = useMemo(() => ({
-    parserBackend,
-    setParserBackend: persistParserBackend,
-  }), [parserBackend, persistParserBackend])
-
-  return (
-    <ParserBackendContext.Provider value={contextValue}>
-      {children}
-    </ParserBackendContext.Provider>
+  const contextValue = useMemo(
+    () => ({
+      parserBackend,
+      setParserBackend: persistParserBackend,
+    }),
+    [parserBackend, persistParserBackend],
   )
+
+  return <ParserBackendContext.Provider value={contextValue}>{children}</ParserBackendContext.Provider>
 }
 
 export function useParserBackendPreference() {

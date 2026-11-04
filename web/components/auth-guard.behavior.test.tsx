@@ -26,9 +26,7 @@ vi.mock('@/lib/auth-storage', () => ({
 vi.mock('@/hooks/use-backend-meta', () => ({
   useBackendMeta: () => ({
     data:
-      typeof backendMetaMock.authMode === 'string'
-        ? { features: { auth_mode: backendMetaMock.authMode } }
-        : undefined,
+      typeof backendMetaMock.authMode === 'string' ? { features: { auth_mode: backendMetaMock.authMode } } : undefined,
     isPending: backendMetaMock.isPending,
     isError: backendMetaMock.isError,
   }),
@@ -64,7 +62,7 @@ describe('AuthGuard session changes', () => {
       root.render(
         <AuthGuard>
           <div>private</div>
-        </AuthGuard>
+        </AuthGuard>,
       )
     })
     expect(routerMock.replace).not.toHaveBeenCalled()
@@ -93,7 +91,7 @@ describe('AuthGuard session changes', () => {
       root.render(
         <AuthGuard>
           <PrivateState />
-        </AuthGuard>
+        </AuthGuard>,
       )
     })
     act(() => container.querySelector('button')?.click())
@@ -118,7 +116,7 @@ describe('AuthGuard session changes', () => {
       root.render(
         <AuthGuard>
           <div>private</div>
-        </AuthGuard>
+        </AuthGuard>,
       )
     })
 
@@ -139,7 +137,7 @@ describe('AuthGuard session changes', () => {
       root.render(
         <AuthGuard>
           <div>sign-in</div>
-        </AuthGuard>
+        </AuthGuard>,
       )
     })
 
@@ -160,7 +158,7 @@ describe('AuthGuard session changes', () => {
       root.render(
         <AuthGuard>
           <div>private</div>
-        </AuthGuard>
+        </AuthGuard>,
       )
     })
 

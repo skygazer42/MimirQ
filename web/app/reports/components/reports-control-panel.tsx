@@ -24,13 +24,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 
 import type { DatasetReport } from '@/types'
@@ -47,10 +41,7 @@ import {
 
 import type { DatasetOption, PipelineVersionOption } from '../types'
 
-export function LoadingButtonIcon({
-  loading,
-  icon: Icon,
-}: Readonly<{ loading: boolean; icon: LucideIcon }>) {
+export function LoadingButtonIcon({ loading, icon: Icon }: Readonly<{ loading: boolean; icon: LucideIcon }>) {
   if (loading) {
     return <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
   }
@@ -118,28 +109,16 @@ export function ReportsControlPanel({
     <section className="space-y-2 rounded-2xl border border-info/15 bg-background/72 p-2.5">
       <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[1.25fr_1.1fr_0.85fr_auto] xl:items-end">
         <div className="space-y-1">
-          <Label
-            htmlFor="dataset-select"
-            className={REPORT_FILTER_LABEL_CLASS}
-          >
+          <Label htmlFor="dataset-select" className={REPORT_FILTER_LABEL_CLASS}>
             数据集
           </Label>
           <Select value={datasetId} onValueChange={onDatasetChange}>
-            <SelectTrigger
-              id="dataset-select"
-              className={REPORT_SELECT_TRIGGER_CLASS}
-            >
-              <SelectValue
-                placeholder={isLoadingDatasets ? '加载中...' : '请选择数据集'}
-              />
+            <SelectTrigger id="dataset-select" className={REPORT_SELECT_TRIGGER_CLASS}>
+              <SelectValue placeholder={isLoadingDatasets ? '加载中...' : '请选择数据集'} />
             </SelectTrigger>
             <SelectContent>
               {datasets.map((ds) => (
-                <SelectItem
-                  key={ds.id}
-                  value={ds.id}
-                  className={REPORT_SELECT_ITEM_CLASS}
-                >
+                <SelectItem key={ds.id} value={ds.id} className={REPORT_SELECT_ITEM_CLASS}>
                   {ds.name}
                 </SelectItem>
               ))}
@@ -148,44 +127,24 @@ export function ReportsControlPanel({
         </div>
 
         <div className="space-y-1">
-          <Label
-            htmlFor="pipeline-hash"
-            className={REPORT_FILTER_LABEL_CLASS}
-          >
+          <Label htmlFor="pipeline-hash" className={REPORT_FILTER_LABEL_CLASS}>
             处理版本
           </Label>
-          <Select
-            value={pipelineVersionSelectValue}
-            onValueChange={onPipelineHashChange}
-          >
-            <SelectTrigger
-              id="pipeline-hash"
-              className={REPORT_SELECT_TRIGGER_CLASS}
-            >
+          <Select value={pipelineVersionSelectValue} onValueChange={onPipelineHashChange}>
+            <SelectTrigger id="pipeline-hash" className={REPORT_SELECT_TRIGGER_CLASS}>
               <SelectValue placeholder="选择处理版本" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem
-                value={DEFAULT_PIPELINE_VERSION_VALUE}
-                className={REPORT_SELECT_ITEM_CLASS}
-              >
+              <SelectItem value={DEFAULT_PIPELINE_VERSION_VALUE} className={REPORT_SELECT_ITEM_CLASS}>
                 当前版本（默认）
               </SelectItem>
               {pipelineVersionOptions.map((v) => (
-                <SelectItem
-                  key={v.pipeline_hash}
-                  value={v.pipeline_hash}
-                  className={REPORT_SELECT_ITEM_CLASS}
-                >
+                <SelectItem key={v.pipeline_hash} value={v.pipeline_hash} className={REPORT_SELECT_ITEM_CLASS}>
                   {shortPipelineHash(v.pipeline_hash)} · {v.documents} 个文档
                 </SelectItem>
               ))}
               {pipelineVersionOptions.length === 0 ? (
-                <SelectItem
-                  value="__mimirq_no_pipeline_versions__"
-                  disabled
-                  className={REPORT_SELECT_ITEM_CLASS}
-                >
+                <SelectItem value="__mimirq_no_pipeline_versions__" disabled className={REPORT_SELECT_ITEM_CLASS}>
                   暂无可选历史版本
                 </SelectItem>
               ) : null}
@@ -194,20 +153,14 @@ export function ReportsControlPanel({
         </div>
 
         <div className="space-y-1">
-          <Label
-            htmlFor="connector-limit"
-            className={REPORT_FILTER_LABEL_CLASS}
-          >
+          <Label htmlFor="connector-limit" className={REPORT_FILTER_LABEL_CLASS}>
             运行记录
           </Label>
           <Select
             value={String(connectorRunsLimit)}
             onValueChange={(value) => onConnectorRunsLimitChange(Number(value || 20))}
           >
-            <SelectTrigger
-              id="connector-limit"
-              className={REPORT_SELECT_TRIGGER_CLASS}
-            >
+            <SelectTrigger id="connector-limit" className={REPORT_SELECT_TRIGGER_CLASS}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -231,15 +184,8 @@ export function ReportsControlPanel({
         </div>
 
         <div className="flex h-8 items-center gap-2 rounded-lg border border-info/15 bg-info/[0.025] px-2.5">
-          <Switch
-            id="only-issues-switch"
-            checked={showOnlyIssues}
-            onCheckedChange={onShowOnlyIssuesChange}
-          />
-          <Label
-            htmlFor="only-issues-switch"
-            className="whitespace-nowrap text-xs font-medium text-muted-foreground"
-          >
+          <Switch id="only-issues-switch" checked={showOnlyIssues} onCheckedChange={onShowOnlyIssuesChange} />
+          <Label htmlFor="only-issues-switch" className="whitespace-nowrap text-xs font-medium text-muted-foreground">
             只看异常
           </Label>
         </div>
@@ -247,15 +193,8 @@ export function ReportsControlPanel({
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-info/15 pt-2">
         <div className="flex h-8 items-center gap-2 rounded-lg bg-info/[0.025] px-2.5 ring-1 ring-inset ring-info/15">
-          <Switch
-            id="redact-switch"
-            checked={redact}
-            onCheckedChange={onRedactChange}
-          />
-          <Label
-            htmlFor="redact-switch"
-            className="text-xs font-medium text-muted-foreground"
-          >
+          <Switch id="redact-switch" checked={redact} onCheckedChange={onRedactChange} />
+          <Label htmlFor="redact-switch" className="text-xs font-medium text-muted-foreground">
             导出脱敏
           </Label>
         </div>
@@ -270,22 +209,14 @@ export function ReportsControlPanel({
                 aria-label="打开报告导出菜单"
               >
                 <LoadingButtonIcon
-                  loading={
-                    isExportingJson ||
-                    isExportingHtml ||
-                    isExportingRagAuditHtml ||
-                    isExportingBundle
-                  }
+                  loading={isExportingJson || isExportingHtml || isExportingRagAuditHtml || isExportingBundle}
                   icon={Download}
                 />
                 <span>导出报告</span>
                 <ChevronDown className="size-3.5 text-muted-foreground/70" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="w-64 rounded-xl border-info/15 bg-popover/95 p-1.5 shadow-none"
-            >
+            <DropdownMenuContent align="end" className="w-64 rounded-xl border-info/15 bg-popover/95 p-1.5 shadow-none">
               <DropdownMenuLabel className="px-2.5 pb-1 pt-2 text-[11px] font-semibold tracking-[0.08em] text-muted-foreground/70">
                 基础与完整数据
               </DropdownMenuLabel>
@@ -329,10 +260,7 @@ export function ReportsControlPanel({
                   className="rounded-xl px-2.5 py-2 text-xs focus:bg-info/10 focus:text-info"
                   aria-label="导出 RAG 审计报告"
                 >
-                  <LoadingButtonIcon
-                    loading={isExportingRagAuditHtml}
-                    icon={ShieldCheck}
-                  />
+                  <LoadingButtonIcon loading={isExportingRagAuditHtml} icon={ShieldCheck} />
                   <span>RAG 审计报告</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem

@@ -59,10 +59,13 @@ export function useParsingQueueActions({
       }
 
       if (libraryId) {
-        queryClient.setQueriesData<ParsedFileData[] | null>({ queryKey: ['parsing', 'library-documents'] }, (current) => {
-          if (!Array.isArray(current)) return current
-          return current.filter((file) => file.id !== libraryId)
-        })
+        queryClient.setQueriesData<ParsedFileData[] | null>(
+          { queryKey: ['parsing', 'library-documents'] },
+          (current) => {
+            if (!Array.isArray(current)) return current
+            return current.filter((file) => file.id !== libraryId)
+          },
+        )
         queryClient.removeQueries({ queryKey: ['parsing', 'library-content', libraryId] })
 
         void (async () => {
@@ -92,7 +95,7 @@ export function useParsingQueueActions({
       setActiveLibraryFileId,
       setFiles,
       t,
-    ]
+    ],
   )
 
   const moveFileToFolder = useCallback(
@@ -104,7 +107,7 @@ export function useParsingQueueActions({
       const libraryId = queueMatch?.libraryId || (libraryFiles.some((file) => file.id === fileId) ? fileId : null)
       if (libraryId) updateParsedFile(libraryId, { folderId: targetId })
     },
-    [files, libraryFiles, setFiles, updateParsedFile]
+    [files, libraryFiles, setFiles, updateParsedFile],
   )
 
   const handleFileDragStart = useCallback((event: DragEvent<HTMLElement>, fileId: string) => {
@@ -117,7 +120,7 @@ export function useParsingQueueActions({
       event.preventDefault()
       setDragOverFolderId(folderId)
     },
-    [setDragOverFolderId]
+    [setDragOverFolderId],
   )
 
   const handleFolderDragLeave = useCallback(() => {
@@ -142,14 +145,14 @@ export function useParsingQueueActions({
       if (fileId) moveFileToFolder(fileId, targetId)
       setDragOverFolderId(null)
     },
-    [moveFileToFolder, moveFolder, setDragOverFolderId, t]
+    [moveFileToFolder, moveFolder, setDragOverFolderId, t],
   )
 
   const handleDeleteFolder = useCallback(
     (folderIds: string[]) => {
       setFiles((prev) => prev.filter((file) => !file.folderId || !folderIds.includes(file.folderId)))
     },
-    [setFiles]
+    [setFiles],
   )
 
   return {

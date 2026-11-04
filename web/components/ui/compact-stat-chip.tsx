@@ -1,9 +1,9 @@
-import { cn } from "@/lib/utils"
+import { cn } from '@/lib/utils'
 
 type CompactStatChipProps = {
   label: string
   value: React.ReactNode
-  tone?: "default" | "success" | "warning" | "danger"
+  tone?: 'default' | 'success' | 'warning' | 'danger'
   mono?: boolean
   className?: string
 }
@@ -26,17 +26,11 @@ export function CompactStatChip({
     <div
       className={cn(
         'inline-flex items-center gap-2 rounded-md border border-border/70 bg-background px-2.5 py-1',
-        className
+        className,
       )}
     >
       <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{label}</span>
-      <span
-        className={cn(
-          'text-[11px] font-semibold',
-          mono && 'font-mono tabular-nums',
-          toneClass[tone]
-        )}
-      >
+      <span className={cn('text-[11px] font-semibold', mono && 'font-mono tabular-nums', toneClass[tone])}>
         {value}
       </span>
     </div>

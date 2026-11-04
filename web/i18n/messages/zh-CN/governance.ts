@@ -1,23 +1,23 @@
 const governanceMessages = {
-DataGovernancePage: {
+  DataGovernancePage: {
     loading: {
       message: '正在加载数据治理面板...',
       srMessage: 'Loading data governance panel',
     },
   },
-GovernanceProfilesRoutePage: {
+  GovernanceProfilesRoutePage: {
     loading: {
       message: '正在加载治理 Profiles...',
       srMessage: 'Loading governance profiles page',
     },
   },
-GovernanceCommonLinesRoutePage: {
+  GovernanceCommonLinesRoutePage: {
     loading: {
       message: '正在加载重复内容治理...',
       srMessage: 'Loading common lines learning page',
     },
   },
-DataAnnotator: {
+  DataAnnotator: {
     header: {
       title: '数据标注',
     },
@@ -98,7 +98,7 @@ DataAnnotator: {
       deleteAnnotation: '删除 {label} 标注 {start}-{end}',
     },
   },
-DataClassifier: {
+  DataClassifier: {
     header: {
       title: '分类归档',
     },
@@ -182,7 +182,7 @@ DataClassifier: {
       addTagWithValue: '添加标签 {tag}',
     },
   },
-QualityChecker: {
+  QualityChecker: {
     header: {
       title: '质量检测',
     },
@@ -275,7 +275,7 @@ QualityChecker: {
       failed: '后端检测失败（可忽略）',
     },
   },
-DataCleaner: {
+  DataCleaner: {
     header: {
       title: '智能清洗配置',
     },
@@ -354,7 +354,7 @@ DataCleaner: {
       info: 'INFO',
     },
   },
-DataGovernancePanel: {
+  DataGovernancePanel: {
     header: {
       title: '数据治理',
       subtitle: '清洗、标注与结构修复',
@@ -523,7 +523,7 @@ DataGovernancePanel: {
       deleteFile: '删除文件：{filename}',
       toggleChunkFile: '选择待切块文档：{filename}',
     },
-  }
+  },
 } as const
 
 export default governanceMessages

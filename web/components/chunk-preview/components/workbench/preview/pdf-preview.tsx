@@ -15,10 +15,7 @@ import { useChunkPreview } from '@/components/chunk-preview/context'
 import { Button } from '@/components/ui/button'
 import { PageLoading } from '@/components/ui/page-loading'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  computePdfPreviewData,
-  type PdfPreviewComputationResult,
-} from '@/lib/pdf-preview-computation'
+import { computePdfPreviewData, type PdfPreviewComputationResult } from '@/lib/pdf-preview-computation'
 import { reportClientWarning } from '@/lib/client-logging'
 import { detachPromise } from '@/lib/utils'
 import type { PdfPreviewWorkerApi } from '@/workers/pdf-preview.worker'
@@ -124,28 +121,30 @@ export function PdfPreview() {
       }
     }
 
-    detachPromise((async () => {
-      try {
-        let api = pdfPreviewApiRef.current
-        if (!pdfPreviewWorkerRef.current || !api) {
-          const { wrap } = await import('comlink')
-          if (cancelled) return
-          pdfPreviewWorkerRef.current = new Worker(
-            new URL('../../../../../workers/pdf-preview.worker.ts', import.meta.url),
-            { type: 'module' }
-          )
-          api = wrap<PdfPreviewWorkerApi>(pdfPreviewWorkerRef.current)
-          pdfPreviewApiRef.current = api
-        }
+    detachPromise(
+      (async () => {
+        try {
+          let api = pdfPreviewApiRef.current
+          if (!pdfPreviewWorkerRef.current || !api) {
+            const { wrap } = await import('comlink')
+            if (cancelled) return
+            pdfPreviewWorkerRef.current = new Worker(
+              new URL('../../../../../workers/pdf-preview.worker.ts', import.meta.url),
+              { type: 'module' },
+            )
+            api = wrap<PdfPreviewWorkerApi>(pdfPreviewWorkerRef.current)
+            pdfPreviewApiRef.current = api
+          }
 
-        const result = await api.computePdfPreviewData({ rawOriginal, previewChunks })
-        applyResult(result)
-      } catch (error) {
-        reportClientWarning('PDF preview worker failed; falling back to main thread', error)
-        pdfPreviewWorkerDisabledRef.current = true
-        computeOnMainThread()
-      }
-    })())
+          const result = await api.computePdfPreviewData({ rawOriginal, previewChunks })
+          applyResult(result)
+        } catch (error) {
+          reportClientWarning('PDF preview worker failed; falling back to main thread', error)
+          pdfPreviewWorkerDisabledRef.current = true
+          computeOnMainThread()
+        }
+      })(),
+    )
 
     return () => {
       cancelled = true
@@ -162,32 +161,32 @@ export function PdfPreview() {
 
   const blocksWithPositions = useMemo(
     () => pdfComputation?.blocksWithPositions || [],
-    [pdfComputation?.blocksWithPositions]
+    [pdfComputation?.blocksWithPositions],
   )
   const blockIdToChunkIndex = useMemo(
     () => new Map(pdfComputation?.blockIdToChunkIndexEntries || []),
-    [pdfComputation?.blockIdToChunkIndexEntries]
+    [pdfComputation?.blockIdToChunkIndexEntries],
   )
   const blockIdToPageIndex = useMemo(
     () => new Map(pdfComputation?.blockIdToPageIndexEntries || []),
-    [pdfComputation?.blockIdToPageIndexEntries]
+    [pdfComputation?.blockIdToPageIndexEntries],
   )
   const blockIdsByChunkIndex = useMemo(
     () => new Map(pdfComputation?.chunkBlockIdsByIndexEntries || []),
-    [pdfComputation?.chunkBlockIdsByIndexEntries]
+    [pdfComputation?.chunkBlockIdsByIndexEntries],
   )
   const boxesByPage = useMemo(
     () => new Map(pdfComputation?.boxesByPageEntries || []),
-    [pdfComputation?.boxesByPageEntries]
+    [pdfComputation?.boxesByPageEntries],
   )
 
   const selectedBlockIds = useMemo(
     () => (selectedChunkIndex == null ? [] : blockIdsByChunkIndex.get(selectedChunkIndex) || []),
-    [blockIdsByChunkIndex, selectedChunkIndex]
+    [blockIdsByChunkIndex, selectedChunkIndex],
   )
   const hoveredBlockIds = useMemo(
     () => (hoveredChunkIndex == null ? [] : blockIdsByChunkIndex.get(hoveredChunkIndex) || []),
-    [blockIdsByChunkIndex, hoveredChunkIndex]
+    [blockIdsByChunkIndex, hoveredChunkIndex],
   )
 
   const activeBlockIds = selectedBlockIds.length ? selectedBlockIds : hoveredBlockIds
@@ -202,7 +201,7 @@ export function PdfPreview() {
       if (typeof idx !== 'number' || !Number.isFinite(idx)) return
       setHoveredChunkIndex(idx)
     },
-    [blockIdToChunkIndex, setHoveredChunkIndex]
+    [blockIdToChunkIndex, setHoveredChunkIndex],
   )
 
   const handleClickBlockId = useCallback(
@@ -212,7 +211,7 @@ export function PdfPreview() {
       if (typeof idx !== 'number' || !Number.isFinite(idx)) return
       setSelectedChunkIndex(idx)
     },
-    [blockIdToChunkIndex, setSelectedChunkIndex]
+    [blockIdToChunkIndex, setSelectedChunkIndex],
   )
 
   if (!isPdf) {
@@ -238,9 +237,7 @@ export function PdfPreview() {
           <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-warning/10 text-warning">
             <AlertCircle className="h-5 w-5" />
           </div>
-          <div className="text-sm font-semibold text-foreground">
-            {t('pdfPreview.states.cannotRenderTitle')}
-          </div>
+          <div className="text-sm font-semibold text-foreground">{t('pdfPreview.states.cannotRenderTitle')}</div>
           <div className="mt-1 text-xs text-muted-foreground">
             {includeOriginalText
               ? t('pdfPreview.states.originalTextMissing')
@@ -262,9 +259,7 @@ export function PdfPreview() {
           <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
             <AlertCircle className="h-5 w-5" />
           </div>
-          <div className="text-sm font-semibold text-foreground">
-            {t('pdfPreview.errors.preparationFailedTitle')}
-          </div>
+          <div className="text-sm font-semibold text-foreground">{t('pdfPreview.errors.preparationFailedTitle')}</div>
           <div className="mt-1 text-xs text-muted-foreground">{pdfPreparationError}</div>
         </div>
       </div>
@@ -278,12 +273,8 @@ export function PdfPreview() {
           <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-warning/10 text-warning">
             <AlertCircle className="h-5 w-5" />
           </div>
-          <div className="text-sm font-semibold text-foreground">
-            {t('pdfPreview.states.noPositionTagsTitle')}
-          </div>
-          <div className="mt-1 text-xs text-muted-foreground">
-            {t('pdfPreview.states.noPositionTagsDescription')}
-          </div>
+          <div className="text-sm font-semibold text-foreground">{t('pdfPreview.states.noPositionTagsTitle')}</div>
+          <div className="mt-1 text-xs text-muted-foreground">{t('pdfPreview.states.noPositionTagsDescription')}</div>
         </div>
       </div>
     )
@@ -299,9 +290,7 @@ export function PdfPreview() {
           className="h-8 rounded-full bg-background/70 px-3 backdrop-blur"
           onClick={() => setShowAllBoxes((prev) => !prev)}
         >
-          {showAllBoxes
-            ? t('pdfPreview.actions.highlightOnly')
-            : t('pdfPreview.actions.showAllBoxes')}
+          {showAllBoxes ? t('pdfPreview.actions.highlightOnly') : t('pdfPreview.actions.showAllBoxes')}
         </Button>
       </div>
       <PdfViewer

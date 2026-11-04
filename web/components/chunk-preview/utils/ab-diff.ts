@@ -115,7 +115,10 @@ function scoreEvidenceSimilarity(a: string, b: string): number {
   return (2 * overlap) / (aGrams.size + bGrams.size)
 }
 
-function buildEvidenceSegments(sourceExample: string, referenceExample: string | null): SemanticEvidenceHighlightSegment[] {
+function buildEvidenceSegments(
+  sourceExample: string,
+  referenceExample: string | null,
+): SemanticEvidenceHighlightSegment[] {
   const source = normalizeEvidenceText(sourceExample)
   const reference = normalizeEvidenceText(referenceExample)
 
@@ -159,7 +162,7 @@ function buildEvidenceSegments(sourceExample: string, referenceExample: string |
 
 function buildSemanticEvidenceItems(
   source: ChunkPreviewDiffSummary['examplesAdded'],
-  opposite: ChunkPreviewDiffSummary['examplesRemoved']
+  opposite: ChunkPreviewDiffSummary['examplesRemoved'],
 ): SemanticEvidenceHighlightItem[] {
   return source.map((item) => {
     let bestReference: string | null = null
@@ -287,7 +290,7 @@ export function computeChunkPreviewDiff(a: ChunkPreviewResponse, b: ChunkPreview
 }
 
 export function buildSemanticEvidenceHighlights(
-  summary: Pick<ChunkPreviewDiffSummary, 'examplesAdded' | 'examplesRemoved'>
+  summary: Pick<ChunkPreviewDiffSummary, 'examplesAdded' | 'examplesRemoved'>,
 ): SemanticEvidenceHighlights {
   return {
     added: buildSemanticEvidenceItems(summary.examplesAdded || [], summary.examplesRemoved || []),
@@ -298,7 +301,7 @@ export function buildSemanticEvidenceHighlights(
 export function chunkPreviewDiffToExport(
   baseline: ChunkPreviewResponse,
   current: ChunkPreviewResponse,
-  options?: { baseline_cache_key?: string; current_cache_key?: string }
+  options?: { baseline_cache_key?: string; current_cache_key?: string },
 ) {
   return {
     schema: 'mimirq.chunk_preview_diff.v1',

@@ -16,8 +16,7 @@ type ObjectStorageSectionProps = {
   updateMinIO: (patch: Partial<MinIOSettings>) => void
 }
 
-const STORAGE_CARD =
-  'rounded-xl border border-info/15 bg-info/[0.025] p-3.5 shadow-none'
+const STORAGE_CARD = 'rounded-xl border border-info/15 bg-info/[0.025] p-3.5 shadow-none'
 const STORAGE_INPUT = 'h-8 rounded-lg border-info/15 bg-info/[0.025] text-[12px]'
 
 function StorageCard({
@@ -43,12 +42,8 @@ function StorageCard({
             <Icon className="h-4 w-4" />
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-info/80">
-              {label}
-            </div>
-            <div className="mt-0.5 text-[13px] font-medium tracking-[-0.005em] text-foreground">
-              {title}
-            </div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-info/80">{label}</div>
+            <div className="mt-0.5 text-[13px] font-medium tracking-[-0.005em] text-foreground">{title}</div>
             <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>{description}</div>
           </div>
         </div>
@@ -59,11 +54,7 @@ function StorageCard({
   )
 }
 
-function Field({
-  label,
-  children,
-  hint,
-}: Readonly<{ label: string; children: ReactNode; hint?: string }>) {
+function Field({ label, children, hint }: Readonly<{ label: string; children: ReactNode; hint?: string }>) {
   return (
     <div className="space-y-1.5">
       <div className={settingsTextTokens.fieldLabel}>{label}</div>
@@ -90,27 +81,19 @@ function ToggleRow({
     <div
       className={cn(
         'flex items-start justify-between gap-3 rounded-xl border px-3 py-2.5 transition-colors',
-        checked ? 'border-info/25 bg-info/10' : 'border-border/60 bg-muted/28'
+        checked ? 'border-info/25 bg-info/10' : 'border-border/60 bg-muted/28',
       )}
     >
       <div className="min-w-0">
         <div className={settingsTextTokens.panelTitle}>{title}</div>
         <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>{description}</div>
       </div>
-      <SettingsSwitch
-        checked={checked}
-        onCheckedChange={() => onToggle()}
-        className="shrink-0"
-        aria-label={label}
-      />
+      <SettingsSwitch checked={checked} onCheckedChange={() => onToggle()} className="shrink-0" aria-label={label} />
     </div>
   )
 }
 
-export function ObjectStorageSection({
-  minio,
-  updateMinIO,
-}: Readonly<ObjectStorageSectionProps>) {
+export function ObjectStorageSection({ minio, updateMinIO }: Readonly<ObjectStorageSectionProps>) {
   const isEnabled = Boolean(minio.enabled)
   const isDocumentStorageEnabled = Boolean(minio.documents_enabled)
   const isSslEnabled = Boolean(minio.use_ssl)

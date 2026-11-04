@@ -140,8 +140,8 @@ export function ItemDetailPanel({
               <AlertDialogHeader>
                 <AlertDialogTitle>同步到回归用例库？</AlertDialogTitle>
                 <AlertDialogDescription className="text-pretty">
-                  将该 Suite 中 <span className="font-mono">approved</span> 状态的 Items upsert 到回归用例库（question + reference_sources）。
-                  如果已有绑定的 case，会更新它。
+                  将该 Suite 中 <span className="font-mono">approved</span> 状态的 Items upsert 到回归用例库（question +
+                  reference_sources）。 如果已有绑定的 case，会更新它。
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -196,7 +196,12 @@ export function ItemDetailPanel({
 
             <div className="flex flex-wrap items-center gap-2">
               {selectedItem.status === 'draft' ? (
-                <Button size="sm" variant="outline" className="gap-2" onClick={() => onReviewItem(String(selectedItem.id))}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => onReviewItem(String(selectedItem.id))}
+                >
                   <Search className="size-4" aria-hidden="true" />
                   Review
                 </Button>
@@ -213,7 +218,12 @@ export function ItemDetailPanel({
               </Button>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button size="sm" variant="destructive" className="gap-2" disabled={selectedItem.status === 'archived'}>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="gap-2"
+                    disabled={selectedItem.status === 'archived'}
+                  >
                     <X className="size-4" aria-hidden="true" />
                     归档
                   </Button>
@@ -275,14 +285,19 @@ export function ItemDetailPanel({
               <div className="space-y-2">
                 {(selectedItem.reference_sources || []).length ? (
                   (selectedItem.reference_sources || []).map((reference) => (
-                    <div key={`${String(reference.document_id)}:${String(reference.chunk_id)}`} className="rounded-md border border-border/60 p-2">
+                    <div
+                      key={`${String(reference.document_id)}:${String(reference.chunk_id)}`}
+                      className="rounded-md border border-border/60 p-2"
+                    >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <div className="truncate text-xs font-mono text-foreground">
                             {String(reference.document_id).slice(0, 8)}:{String(reference.chunk_id).slice(0, 8)}
                           </div>
                           {reference.label ? (
-                            <div className="mt-1 line-clamp-1 text-xs text-muted-foreground text-pretty">{reference.label}</div>
+                            <div className="mt-1 line-clamp-1 text-xs text-muted-foreground text-pretty">
+                              {reference.label}
+                            </div>
                           ) : null}
                         </div>
                         <div className="flex-shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
@@ -291,7 +306,9 @@ export function ItemDetailPanel({
                         </div>
                       </div>
                       {reference.quote ? (
-                        <div className="mt-2 line-clamp-3 text-xs text-muted-foreground text-pretty">{reference.quote}</div>
+                        <div className="mt-2 line-clamp-3 text-xs text-muted-foreground text-pretty">
+                          {reference.quote}
+                        </div>
                       ) : null}
                     </div>
                   ))

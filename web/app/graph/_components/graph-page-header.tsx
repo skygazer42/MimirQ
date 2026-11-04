@@ -2,7 +2,19 @@
 
 import type { ChangeEventHandler, ReactNode, RefObject } from 'react'
 
-import { BarChart3, FileCode, FileText, Filter, GitCompare, MoreHorizontal, Network, RefreshCw, Share2, Link as LinkIcon, Wrench } from 'lucide-react'
+import {
+  BarChart3,
+  FileCode,
+  FileText,
+  Filter,
+  GitCompare,
+  MoreHorizontal,
+  Network,
+  RefreshCw,
+  Share2,
+  Link as LinkIcon,
+  Wrench,
+} from 'lucide-react'
 
 import { Link } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
@@ -274,9 +286,7 @@ export function GraphPageHeader({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-sm font-semibold text-foreground">图谱工具</div>
-                <div className="mt-0.5 text-[11px] text-muted-foreground">
-                  KG JSON/JSONL 是唯一外部图谱导入方式
-                </div>
+                <div className="mt-0.5 text-[11px] text-muted-foreground">KG JSON/JSONL 是唯一外部图谱导入方式</div>
               </div>
               <div className="rounded-full border border-border/60 bg-muted/45 px-2.5 py-1 text-[11px] font-mono text-muted-foreground">
                 {graphNodeCount}N / {graphLinkCount}L

@@ -24,11 +24,13 @@ describe('settings domain visual boundary contract', () => {
 
     expectSourceNotToContain(dangerZone, 'shadow-[0_8px_24px_hsl(var(--foreground)/0.04)]')
     expectSourceNotToContain(dangerZone, 'shadow-[0_8px_24px_hsl(var(--destructive)/0.035)]')
-    expectSourceToContain(saml,
-      "const SAML_PANEL_CLASS = 'overflow-hidden rounded-xl border border-info/20 bg-background/70 shadow-none'"
+    expectSourceToContain(
+      saml,
+      "const SAML_PANEL_CLASS = 'overflow-hidden rounded-xl border border-info/20 bg-background/70 shadow-none'",
     )
-    expectSourceToContain(scim,
-      "const SCIM_PANEL_CLASS = 'overflow-hidden rounded-xl border border-info/20 bg-background/70 shadow-none'"
+    expectSourceToContain(
+      scim,
+      "const SCIM_PANEL_CLASS = 'overflow-hidden rounded-xl border border-info/20 bg-background/70 shadow-none'",
     )
     expectSourceToContain(saml, 'border border-info/20 bg-info/10 text-info')
     expectSourceToContain(scim, 'border border-info/20 bg-info/10 text-info')

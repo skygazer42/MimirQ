@@ -28,10 +28,7 @@ import { AppFrame } from '@/components/app-frame'
 import { QuarantineAuditCanvas } from '@/components/knowledge/quarantine/quarantine-audit-canvas'
 import { QuarantineTuneDialog } from '@/components/knowledge/quarantine/quarantine-tune-dialog'
 import { PageScaffold } from '@/components/ui/page-scaffold'
-import {
-  KNOWLEDGE_OPS_HERO_PANEL_CLASS,
-  KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS,
-} from '@/components/ui/knowledge-ops-hero'
+import { KNOWLEDGE_OPS_HERO_PANEL_CLASS, KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS } from '@/components/ui/knowledge-ops-hero'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
@@ -45,20 +42,10 @@ import { useDocumentView } from '@/store/document-view'
 import { usePathname, useRouter } from '@/i18n/navigation'
 import { DocumentViewerPanel } from '@/components/document-viewer-panel'
 import { IngestionDetailDialog } from '@/components/ingestion/ingestion-detail-dialog'
-import {
-  Dialog,
-} from '@/components/ui/dialog'
+import { Dialog } from '@/components/ui/dialog'
 import { QuarantineReviewDrawer } from './components/quarantine-review-drawer'
-import {
-  DonutSummaryCard,
-  QuickActionCard,
-  SummaryStatCard,
-} from './components/summary-cards'
-import {
-  QUARANTINE_BACKGROUND_CLASS,
-  QUARANTINE_GRID_OVERLAY_CLASS,
-  QUARANTINE_PAGE_SIZE,
-} from './constants'
+import { DonutSummaryCard, QuickActionCard, SummaryStatCard } from './components/summary-cards'
+import { QUARANTINE_BACKGROUND_CLASS, QUARANTINE_GRID_OVERLAY_CLASS, QUARANTINE_PAGE_SIZE } from './constants'
 import { buildDemoQuarantineDocuments } from './demo-quarantine'
 import {
   createReviewMetadataPatch,
@@ -72,13 +59,7 @@ import {
   isReviewed,
   reasonLabel,
 } from './quarantine-signals'
-import type {
-  ActingState,
-  JsonRecord,
-  QuarantineSeverity,
-  QueueSyncStatus,
-  ReviewState,
-} from './types'
+import type { ActingState, JsonRecord, QuarantineSeverity, QueueSyncStatus, ReviewState } from './types'
 
 function getQuarantineFooterMessage({
   hasActiveFilters,
@@ -102,22 +83,17 @@ export default function QuarantineQueuePage() {
   const searchParams = useSearchParams()
   const pathname = usePathname()
   const router = useRouter()
-  const demoMode =
-    /(^|\/)demo(\/|$)/.test(pathname) && searchParams.get('demo') === '1'
+  const demoMode = /(^|\/)demo(\/|$)/.test(pathname) && searchParams.get('demo') === '1'
   const { openDocument } = useDocumentView()
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [search, setSearch] = useState('')
   const [selectedReason, setSelectedReason] = useState('all')
-  const [selectedDataset, setSelectedDataset] = useState(
-    searchParams.get('datasetId') || 'all'
-  )
+  const [selectedDataset, setSelectedDataset] = useState(searchParams.get('datasetId') || 'all')
   const [selectedSource, setSelectedSource] = useState('all')
   const [selectedSeverity, setSelectedSeverity] = useState('all')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
-  const [reviewState, setReviewState] = useState<
-    'all' | 'pending' | 'reviewed'
-  >('all')
+  const [reviewState, setReviewState] = useState<'all' | 'pending' | 'reviewed'>('all')
   const [page, setPage] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [reviewDrawerOpen, setReviewDrawerOpen] = useState(false)
@@ -132,7 +108,12 @@ export default function QuarantineQueuePage() {
   const { datasets, isLoading: datasetsLoading } = useDatasets()
   const selectedDatasetId = selectedDataset === 'all' ? null : selectedDataset
 
-  const { data, error: queueError, isFetching, refetch } = useQuery({
+  const {
+    data,
+    error: queueError,
+    isFetching,
+    refetch,
+  } = useQuery({
     queryKey: ['quarantine-documents', 'quarantined', selectedDatasetId],
     queryFn: ({ signal }) =>
       documentApi.list(
@@ -141,7 +122,7 @@ export default function QuarantineQueuePage() {
           status: 'quarantined',
           dataset_id: selectedDatasetId ?? undefined,
         },
-        { signal }
+        { signal },
       ),
     staleTime: 3_000,
     enabled: !demoMode,
@@ -162,7 +143,7 @@ export default function QuarantineQueuePage() {
           status: 'failed',
           dataset_id: selectedDatasetId ?? undefined,
         },
-        { signal }
+        { signal },
       ),
     staleTime: 3_000,
     enabled: !demoMode,
@@ -170,11 +151,8 @@ export default function QuarantineQueuePage() {
   })
 
   const documents = useMemo(
-    () =>
-      demoMode
-        ? buildDemoQuarantineDocuments()
-        : [...(data?.items || []), ...(failedData?.items || [])],
-    [data, demoMode, failedData]
+    () => (demoMode ? buildDemoQuarantineDocuments() : [...(data?.items || []), ...(failedData?.items || [])]),
+    [data, demoMode, failedData],
   )
   const queueFetching = isFetching || isFetchingFailed
   const queueErrorMessage = useMemo(() => {
@@ -184,10 +162,7 @@ export default function QuarantineQueuePage() {
   const refreshQueue = useCallback(
     async ({ notify = false }: { notify?: boolean } = {}) => {
       try {
-        const [quarantineResult, failedResult] = await Promise.all([
-          refetch(),
-          refetchFailed(),
-        ])
+        const [quarantineResult, failedResult] = await Promise.all([refetch(), refetchFailed()])
         const err = quarantineResult.error || failedResult.error
         if (err) {
           const info = captureApiError(err, '隔离队列同步失败', {
@@ -230,7 +205,7 @@ export default function QuarantineQueuePage() {
         return false
       }
     },
-    [data?.total, failedData?.total, refetch, refetchFailed]
+    [data?.total, failedData?.total, refetch, refetchFailed],
   )
 
   useEffect(() => {
@@ -249,7 +224,7 @@ export default function QuarantineQueuePage() {
       const query = params.toString()
       router.replace(query ? `${pathname}?${query}` : pathname)
     },
-    [pathname, router, searchParams]
+    [pathname, router, searchParams],
   )
 
   const reasonCounts = useMemo(() => {
@@ -292,11 +267,8 @@ export default function QuarantineQueuePage() {
   }, [datasets, documents])
 
   const sourceOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(documents.map((doc) => getQuarantineSource(doc)))
-      ).sort((a, b) => a.localeCompare(b)),
-    [documents]
+    () => Array.from(new Set(documents.map((doc) => getQuarantineSource(doc)))).sort((a, b) => a.localeCompare(b)),
+    [documents],
   )
 
   const severityCounts = useMemo(() => {
@@ -306,7 +278,7 @@ export default function QuarantineQueuePage() {
         acc[severity] += 1
         return acc
       },
-      { 高: 0, 中: 0, 低: 0 }
+      { 高: 0, 中: 0, 低: 0 },
     )
   }, [documents])
 
@@ -321,9 +293,7 @@ export default function QuarantineQueuePage() {
   const stats = useMemo(() => {
     const total = documents.length
     const reviewed = documents.filter(isReviewed).length
-    const highRisk = documents.filter(
-      (doc) => getQuarantineSeverity(doc) === '高'
-    ).length
+    const highRisk = documents.filter((doc) => getQuarantineSeverity(doc) === '高').length
     return {
       total,
       reviewed,
@@ -340,11 +310,9 @@ export default function QuarantineQueuePage() {
         .map(([reason, count]) => ({
           label: `R${Math.max(1, sortedReasons.indexOf(reason) + 1)} ${reasonLabel(reason)}`,
           value: count,
-          hint: documents.length
-            ? `(${((count / documents.length) * 100).toFixed(1)}%)`
-            : '(0%)',
+          hint: documents.length ? `(${((count / documents.length) * 100).toFixed(1)}%)` : '(0%)',
         })),
-    [documents.length, reasonCounts, sortedReasons]
+    [documents.length, reasonCounts, sortedReasons],
   )
 
   const severityItems = useMemo(
@@ -353,7 +321,7 @@ export default function QuarantineQueuePage() {
       { label: '中', value: severityCounts['中'] },
       { label: '低', value: severityCounts['低'] },
     ],
-    [severityCounts]
+    [severityCounts],
   )
 
   const sourceItems = useMemo(
@@ -361,32 +329,26 @@ export default function QuarantineQueuePage() {
       Object.entries(sourceCounts)
         .sort((a, b) => b[1] - a[1])
         .map(([label, value]) => ({ label, value })),
-    [sourceCounts]
+    [sourceCounts],
   )
 
   const filtered = useMemo(() => {
     let out = documents
     if (reviewState === 'pending') out = out.filter((d) => !isReviewed(d))
     if (reviewState === 'reviewed') out = out.filter((d) => isReviewed(d))
-    if (selectedReason !== 'all')
-      out = out.filter((d) => getDropReasons(d).includes(selectedReason))
-    if (selectedDataset !== 'all')
-      out = out.filter((d) => d.dataset_id === selectedDataset)
-    if (selectedSource !== 'all')
-      out = out.filter((d) => getQuarantineSource(d) === selectedSource)
-    if (selectedSeverity !== 'all')
-      out = out.filter((d) => getQuarantineSeverity(d) === selectedSeverity)
+    if (selectedReason !== 'all') out = out.filter((d) => getDropReasons(d).includes(selectedReason))
+    if (selectedDataset !== 'all') out = out.filter((d) => d.dataset_id === selectedDataset)
+    if (selectedSource !== 'all') out = out.filter((d) => getQuarantineSource(d) === selectedSource)
+    if (selectedSeverity !== 'all') out = out.filter((d) => getQuarantineSeverity(d) === selectedSeverity)
     if (dateFrom)
       out = out.filter(
         (d) =>
-          new Date(String(d.updated_at || d.created_at || '')).getTime() >=
-          new Date(`${dateFrom}T00:00:00`).getTime()
+          new Date(String(d.updated_at || d.created_at || '')).getTime() >= new Date(`${dateFrom}T00:00:00`).getTime(),
       )
     if (dateTo)
       out = out.filter(
         (d) =>
-          new Date(String(d.updated_at || d.created_at || '')).getTime() <=
-          new Date(`${dateTo}T23:59:59`).getTime()
+          new Date(String(d.updated_at || d.created_at || '')).getTime() <= new Date(`${dateTo}T23:59:59`).getTime(),
       )
 
     const q = search.trim().toLowerCase()
@@ -472,20 +434,13 @@ export default function QuarantineQueuePage() {
     reviewState !== 'all' ||
     Boolean(dateFrom || dateTo)
 
-  const totalPages = useMemo(
-    () => Math.max(1, Math.ceil(filtered.length / QUARANTINE_PAGE_SIZE)),
-    [filtered.length]
-  )
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(filtered.length / QUARANTINE_PAGE_SIZE)), [filtered.length])
   // Clamp during render instead of via an effect: when filters shrink the
   // result set, safePage stays in range without an extra render pass.
   const safePage = Math.min(page, totalPages)
   const paginated = useMemo(
-    () =>
-      filtered.slice(
-        (safePage - 1) * QUARANTINE_PAGE_SIZE,
-        safePage * QUARANTINE_PAGE_SIZE
-      ),
-    [filtered, safePage]
+    () => filtered.slice((safePage - 1) * QUARANTINE_PAGE_SIZE, safePage * QUARANTINE_PAGE_SIZE),
+    [filtered, safePage],
   )
 
   const selected = useMemo(() => {
@@ -509,16 +464,7 @@ export default function QuarantineQueuePage() {
 
   useEffect(() => {
     setPage(1)
-  }, [
-    search,
-    selectedReason,
-    selectedDataset,
-    selectedSource,
-    selectedSeverity,
-    dateFrom,
-    dateTo,
-    reviewState,
-  ])
+  }, [search, selectedReason, selectedDataset, selectedSource, selectedSeverity, dateFrom, dateTo, reviewState])
 
   const resetFilters = useCallback(() => {
     setSearch('')
@@ -531,25 +477,18 @@ export default function QuarantineQueuePage() {
     setReviewState('all')
   }, [handleDatasetScopeChange])
 
-  const markReviewed = useCallback(
-    async (docId: string, extra?: JsonRecord) => {
-      const patch = createReviewMetadataPatch(extra)
-      await documentApi.patchUserMetadata(docId, { patch, replace: false })
-    },
-    []
-  )
+  const markReviewed = useCallback(async (docId: string, extra?: JsonRecord) => {
+    const patch = createReviewMetadataPatch(extra)
+    await documentApi.patchUserMetadata(docId, { patch, replace: false })
+  }, [])
 
-  const buildRecommendedPatch = useCallback(
-    (doc: Document): DocumentPipelineOptions => {
-      const reasons = new Set(getDropReasons(doc))
-      const patch: DocumentPipelineOptions = {}
-      if (reasons.has('outline_only'))
-        patch.governance_drop_outline_only = false
-      if (reasons.has('low_density')) patch.governance_drop_low_density = false
-      return patch
-    },
-    []
-  )
+  const buildRecommendedPatch = useCallback((doc: Document): DocumentPipelineOptions => {
+    const reasons = new Set(getDropReasons(doc))
+    const patch: DocumentPipelineOptions = {}
+    if (reasons.has('outline_only')) patch.governance_drop_outline_only = false
+    if (reasons.has('low_density')) patch.governance_drop_low_density = false
+    return patch
+  }, [])
 
   const handleRetry = useCallback(
     async (doc: Document) => {
@@ -569,7 +508,7 @@ export default function QuarantineQueuePage() {
         setActing(null)
       }
     },
-    [demoMode, markReviewed, refreshQueue]
+    [demoMode, markReviewed, refreshQueue],
   )
 
   const handleRelease = useCallback(
@@ -597,7 +536,7 @@ export default function QuarantineQueuePage() {
         setActing(null)
       }
     },
-    [buildRecommendedPatch, demoMode, markReviewed, refreshQueue]
+    [buildRecommendedPatch, demoMode, markReviewed, refreshQueue],
   )
 
   const handleDelete = useCallback(
@@ -621,7 +560,7 @@ export default function QuarantineQueuePage() {
         setActing(null)
       }
     },
-    [demoMode, refreshQueue, selectedId]
+    [demoMode, refreshQueue, selectedId],
   )
 
   const handleMarkReviewedOnly = useCallback(
@@ -641,7 +580,7 @@ export default function QuarantineQueuePage() {
         setActing(null)
       }
     },
-    [demoMode, markReviewed, refreshQueue]
+    [demoMode, markReviewed, refreshQueue],
   )
 
   const openTuneDialog = useCallback(
@@ -652,7 +591,7 @@ export default function QuarantineQueuePage() {
       setTunePatch({ ...current, ...recommended })
       setTuneOpen(true)
     },
-    [buildRecommendedPatch]
+    [buildRecommendedPatch],
   )
 
   const saveTune = useCallback(
@@ -685,7 +624,7 @@ export default function QuarantineQueuePage() {
         setActing(null)
       }
     },
-    [demoMode, markReviewed, refreshQueue, tunePatch, tuneTarget]
+    [demoMode, markReviewed, refreshQueue, tunePatch, tuneTarget],
   )
 
   const handleExportFiltered = useCallback(() => {
@@ -702,7 +641,7 @@ export default function QuarantineQueuePage() {
     downloadTextFile(
       'quarantine-review-samples.json',
       JSON.stringify(payload, null, 2),
-      'application/json;charset=utf-8'
+      'application/json;charset=utf-8',
     )
     toast.success('已导出隔离样本')
   }, [filtered])
@@ -746,10 +685,7 @@ export default function QuarantineQueuePage() {
     <AppFrame rightPanel={<DocumentViewerPanel />} withDocumentViewerPadding>
       <div
         data-quarantine-page-root="true"
-        className={cn(
-          'relative flex h-full min-h-0 flex-col overflow-hidden',
-          QUARANTINE_BACKGROUND_CLASS
-        )}
+        className={cn('relative flex h-full min-h-0 flex-col overflow-hidden', QUARANTINE_BACKGROUND_CLASS)}
       >
         <div className={QUARANTINE_GRID_OVERLAY_CLASS} aria-hidden="true" />
         <PageScaffold
@@ -760,312 +696,282 @@ export default function QuarantineQueuePage() {
           // max-w-[1520px]
           topClassName="relative z-10 w-full max-w-none px-4 pt-4 pb-2.5 md:px-5 lg:px-6"
           top={
-          <div className="space-y-2.5">
-            <div
-              className={cn(
-                'flex min-h-14 min-w-0 flex-col gap-2 lg:flex-row lg:items-center lg:justify-between',
-                KNOWLEDGE_OPS_HERO_PANEL_CLASS
-              )}
-            >
-              <span className="pointer-events-none absolute -bottom-px left-1 h-px w-12 bg-info/70" aria-hidden="true" />
-              <div className="relative flex min-w-0 items-center gap-2.5">
-                <div
-                  data-quarantine-title-mark="true"
-                  className="relative flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-md border-0 bg-info/10 text-info shadow-none dark:bg-info/[0.14]"
-                >
-                  <Image
-                    src="/brand/mimirq-quarantine-mark.png"
-                    alt="MimirQ 隔离审核标记"
-                    width={160}
-                    height={160}
-                    loading="eager"
-                    className="size-6 scale-110 object-contain"
-                  />
-                </div>
-                <div className="min-w-0 sm:flex sm:items-center sm:gap-2.5">
-                  <h1 className="text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground">
-                    隔离审核中心
-                  </h1>
-                  <p className="text-[12px] leading-5 text-muted-foreground/85">
-                    集中复核隔离样本，支持原文预览、规则调参与回放。
-                  </p>
-                </div>
-              </div>
-              <div className="relative flex min-w-0 flex-col gap-1.5 xl:min-w-[700px] xl:flex-row xl:items-center xl:justify-end">
-                <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
-                  <div className={cn(KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS, 'py-1.5')}>
-                    <span className="inline-flex items-center gap-1.5">
-                      <span
-                        className="size-1 rounded-full bg-info/70"
-                        aria-hidden
-                      />
-                      队列
-                    </span>
-                    <span className="min-w-0 truncate font-medium text-foreground">
-                      {stats.total} 条样本
-                    </span>
-                    <span className="h-3.5 w-px bg-border/70" />
-                    <span>待审核</span>
-                    <span className="font-mono tabular-nums text-foreground">
-                      {stats.unreviewed}
-                    </span>
+            <div className="space-y-2.5">
+              <div
+                className={cn(
+                  'flex min-h-14 min-w-0 flex-col gap-2 lg:flex-row lg:items-center lg:justify-between',
+                  KNOWLEDGE_OPS_HERO_PANEL_CLASS,
+                )}
+              >
+                <span
+                  className="pointer-events-none absolute -bottom-px left-1 h-px w-12 bg-info/70"
+                  aria-hidden="true"
+                />
+                <div className="relative flex min-w-0 items-center gap-2.5">
+                  <div
+                    data-quarantine-title-mark="true"
+                    className="relative flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-md border-0 bg-info/10 text-info shadow-none dark:bg-info/[0.14]"
+                  >
+                    <Image
+                      src="/brand/mimirq-quarantine-mark.png"
+                      alt="MimirQ 隔离审核标记"
+                      width={160}
+                      height={160}
+                      loading="eager"
+                      className="size-6 scale-110 object-contain"
+                    />
                   </div>
-                  <div className={cn(KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS, 'justify-between py-1.5')}>
-                    <span className="inline-flex items-center gap-1.5">
-                      <LayoutList className="size-3 text-info" />
-                      发现
-                    </span>
-                    <ArrowRight className="size-3 shrink-0 text-muted-foreground/45" />
-                    <span className="inline-flex items-center gap-1.5">
-                      <Eye className="size-3 text-info" />
-                      复核
-                    </span>
-                    <ArrowRight className="size-3 shrink-0 text-muted-foreground/45" />
-                    <span className="inline-flex items-center gap-1.5">
-                      <RotateCcw className="size-3 text-info" />
-                      回放
-                    </span>
+                  <div className="min-w-0 sm:flex sm:items-center sm:gap-2.5">
+                    <h1 className="text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground">
+                      隔离审核中心
+                    </h1>
+                    <p className="text-[12px] leading-5 text-muted-foreground/85">
+                      集中复核隔离样本，支持原文预览、规则调参与回放。
+                    </p>
                   </div>
                 </div>
-                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                  {demoMode ? (
+                <div className="relative flex min-w-0 flex-col gap-1.5 xl:min-w-[700px] xl:flex-row xl:items-center xl:justify-end">
+                  <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
+                    <div className={cn(KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS, 'py-1.5')}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="size-1 rounded-full bg-info/70" aria-hidden />
+                        队列
+                      </span>
+                      <span className="min-w-0 truncate font-medium text-foreground">{stats.total} 条样本</span>
+                      <span className="h-3.5 w-px bg-border/70" />
+                      <span>待审核</span>
+                      <span className="font-mono tabular-nums text-foreground">{stats.unreviewed}</span>
+                    </div>
+                    <div className={cn(KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS, 'justify-between py-1.5')}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <LayoutList className="size-3 text-info" />
+                        发现
+                      </span>
+                      <ArrowRight className="size-3 shrink-0 text-muted-foreground/45" />
+                      <span className="inline-flex items-center gap-1.5">
+                        <Eye className="size-3 text-info" />
+                        复核
+                      </span>
+                      <ArrowRight className="size-3 shrink-0 text-muted-foreground/45" />
+                      <span className="inline-flex items-center gap-1.5">
+                        <RotateCcw className="size-3 text-info" />
+                        回放
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                    {demoMode ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-2 rounded-lg border border-foreground/10 bg-background px-4 text-[12px] font-medium text-primary shadow-none hover:bg-primary/10"
+                        onClick={handleExitDemoMode}
+                      >
+                        <Play className="size-4 fill-current" />
+                        退出 Demo
+                      </Button>
+                    ) : null}
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-8 gap-2 rounded-lg border border-foreground/10 bg-background px-4 text-[12px] font-medium text-primary shadow-none hover:bg-primary/10"
-                      onClick={handleExitDemoMode}
+                      className="h-8 gap-2 rounded-lg border border-foreground/10 bg-background px-3.5 text-[12px] font-medium text-info shadow-none hover:bg-info/[0.08]"
+                      onClick={() => {
+                        if (demoMode) {
+                          toast.success('Demo 数据已刷新')
+                          return
+                        }
+                        detachPromise(refreshQueue({ notify: true }))
+                      }}
                     >
-                      <Play className="size-4 fill-current" />
-                      退出 Demo
+                      <RefreshCw
+                        className={cn('h-4 w-4', queueFetching ? 'animate-spin motion-reduce:animate-none' : '')}
+                      />
+                      同步数据
                     </Button>
-                  ) : null}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 gap-2 rounded-lg border border-foreground/10 bg-background px-3.5 text-[12px] font-medium text-info shadow-none hover:bg-info/[0.08]"
-                    onClick={() => {
-                      if (demoMode) {
-                        toast.success('Demo 数据已刷新')
-                        return
-                      }
-                      detachPromise(refreshQueue({ notify: true }))
-                    }}
-                  >
-                    <RefreshCw
-                      className={cn(
-                        'h-4 w-4',
-                        queueFetching
-                          ? 'animate-spin motion-reduce:animate-none'
-                          : ''
-                      )}
-                    />
-                    同步数据
-                  </Button>
 
-                  <div className="flex h-8 items-center gap-2 rounded-md border border-foreground/10 bg-background/70 px-2.5">
-                    <span className="text-[11px] font-medium text-muted-foreground">
-                      自动刷新
-                    </span>
-                    <Switch
-                      checked={autoRefresh}
-                      onCheckedChange={setAutoRefresh}
-                      className="data-[state=checked]:bg-primary"
-                    />
+                    <div className="flex h-8 items-center gap-2 rounded-md border border-foreground/10 bg-background/70 px-2.5">
+                      <span className="text-[11px] font-medium text-muted-foreground">自动刷新</span>
+                      <Switch
+                        checked={autoRefresh}
+                        onCheckedChange={setAutoRefresh}
+                        className="data-[state=checked]:bg-primary"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            {queueErrorMessage ? (
-              <div className="flex items-start gap-2 rounded-xl border border-destructive/20 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
-                <AlertCircle className="mt-0.5 size-4 shrink-0" />
-                <div className="min-w-0">
-                  <div className="font-medium">隔离队列同步异常</div>
-                  <div className="mt-0.5 break-words text-[11px] opacity-85">
-                    {queueErrorMessage}
+              {queueErrorMessage ? (
+                <div className="flex items-start gap-2 rounded-xl border border-destructive/20 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
+                  <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                  <div className="min-w-0">
+                    <div className="font-medium">隔离队列同步异常</div>
+                    <div className="mt-0.5 break-words text-[11px] opacity-85">{queueErrorMessage}</div>
                   </div>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
 
-            {lastQueueSync ? (
-              <div
-                className={cn(
-                  'flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 text-[11px]',
-                  lastQueueSync.type === 'success'
-                    ? 'border-success/20 bg-success/10 text-success'
-                    : 'border-destructive/20 bg-destructive/10 text-destructive'
-                )}
-              >
-                {lastQueueSync.type === 'success' ? (
-                  <CheckCircle2 className="size-4 shrink-0" />
-                ) : (
-                  <AlertCircle className="size-4 shrink-0" />
-                )}
-                <span className="font-medium">
-                  {lastQueueSync.type === 'success' ? '上次同步成功' : '上次同步异常'}
-                </span>
-                <span className="min-w-0 flex-1 truncate">{lastQueueSync.message}</span>
-                <span className="font-mono text-[10px] opacity-70">
-                  {formatDate(lastQueueSync.at)}
-                </span>
-              </div>
-            ) : null}
+              {lastQueueSync ? (
+                <div
+                  className={cn(
+                    'flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 text-[11px]',
+                    lastQueueSync.type === 'success'
+                      ? 'border-success/20 bg-success/10 text-success'
+                      : 'border-destructive/20 bg-destructive/10 text-destructive',
+                  )}
+                >
+                  {lastQueueSync.type === 'success' ? (
+                    <CheckCircle2 className="size-4 shrink-0" />
+                  ) : (
+                    <AlertCircle className="size-4 shrink-0" />
+                  )}
+                  <span className="font-medium">
+                    {lastQueueSync.type === 'success' ? '上次同步成功' : '上次同步异常'}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">{lastQueueSync.message}</span>
+                  <span className="font-mono text-[10px] opacity-70">{formatDate(lastQueueSync.at)}</span>
+                </div>
+              ) : null}
 
-            <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-              <SummaryStatCard
-                label="总隔离记录"
-                value={stats.total}
-                hint="较昨日 0"
-                icon={LayoutList}
-                tone="neutral"
-              />
-              <SummaryStatCard
-                label="待审核"
-                value={stats.unreviewed}
-                hint="较昨日 0"
-                icon={AlertCircle}
-                tone="warning"
-              />
-              <SummaryStatCard
-                label="已解决"
-                value={stats.reviewed}
-                hint="较昨日 0"
-                icon={CheckCircle2}
-                tone="success"
-              />
-              <SummaryStatCard
-                label="规则集中率"
-                value={stats.highRisk}
-                hint={
-                  stats.total
-                    ? `占比 ${((stats.highRisk / Math.max(stats.total, 1)) * 100).toFixed(1)}%`
-                    : '占比 0%'
-                }
-                icon={BarChart3}
-                tone="info"
-              />
+              <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
+                <SummaryStatCard
+                  label="总隔离记录"
+                  value={stats.total}
+                  hint="较昨日 0"
+                  icon={LayoutList}
+                  tone="neutral"
+                />
+                <SummaryStatCard
+                  label="待审核"
+                  value={stats.unreviewed}
+                  hint="较昨日 0"
+                  icon={AlertCircle}
+                  tone="warning"
+                />
+                <SummaryStatCard
+                  label="已解决"
+                  value={stats.reviewed}
+                  hint="较昨日 0"
+                  icon={CheckCircle2}
+                  tone="success"
+                />
+                <SummaryStatCard
+                  label="规则集中率"
+                  value={stats.highRisk}
+                  hint={
+                    stats.total ? `占比 ${((stats.highRisk / Math.max(stats.total, 1)) * 100).toFixed(1)}%` : '占比 0%'
+                  }
+                  icon={BarChart3}
+                  tone="info"
+                />
+              </div>
             </div>
-          </div>
-        }
+          }
           bodyClassName="relative z-10 flex w-full max-w-none flex-1 flex-col px-2 pb-4 md:px-3 xl:px-4"
           bodyContainerClassName="flex min-h-0 max-w-none flex-1 flex-col"
         >
-        <div className="flex min-h-0 flex-1 flex-col gap-4">
-          <QuarantineAuditCanvas
-            className="min-h-[25.5rem] flex-1"
-            autoRefresh={autoRefresh}
-            dateFrom={dateFrom}
-            dateTo={dateTo}
-            datasetLabelById={datasetLabelById}
-            datasetOptions={datasetOptions}
-            datasets={datasetOptions.filter((option) =>
-              datasets.some((dataset) => dataset.id === option.id)
-            )}
-            datasetsLoading={datasetsLoading}
-            documentsCount={documents.length}
-            filtered={filtered}
-            footerMessage={getQuarantineFooterMessage({
-              hasActiveFilters,
-              filteredCount: filtered.length,
-              documentCount: documents.length,
-              autoRefresh,
-            })}
-            hasActiveFilters={hasActiveFilters}
-            listSummary={listSummary}
-            paginated={paginated}
-            queueFetching={queueFetching}
-            reviewState={reviewState}
-            safePage={safePage}
-            search={search}
-            selectedDataset={selectedDataset}
-            selectedId={selectedId}
-            selectedReason={selectedReason}
-            selectedSeverity={selectedSeverity}
-            selectedSource={selectedSource}
-            sortedReasons={sortedReasons}
-            sourceOptions={sourceOptions}
-            totalPages={totalPages}
-            reasonCounts={reasonCounts}
-            onDateFromChange={setDateFrom}
-            onDateToChange={setDateTo}
-            onDatasetChange={handleDatasetScopeChange}
-            onOpenDocument={openDocument}
-            onOpenReview={(docId) => {
-              setSelectedId(docId)
-              setReviewDrawerOpen(true)
-            }}
-            onPageChange={setPage}
-            onReasonChange={setSelectedReason}
-            onRefresh={() => refreshQueue({ notify: true })}
-            onResetFilters={resetFilters}
-            onReviewStateChange={setReviewState}
-            onSearchChange={setSearch}
-            onSeverityChange={setSelectedSeverity}
-            onSourceChange={setSelectedSource}
-          />
-
-          <div className="grid shrink-0 gap-4 xl:grid-cols-[1fr_1fr_1fr_1.05fr] xl:items-stretch">
-            <DonutSummaryCard
-              title="规则命中分布 TOP5"
-              items={reasonTopItems}
-              colors={[
-                'hsl(var(--primary))',
-                'hsl(var(--info))',
-                'hsl(var(--success))',
-                'hsl(var(--warning))',
-                'hsl(var(--muted-foreground))',
-              ]}
-            />
-            <DonutSummaryCard
-              title="疑似度分布"
-              items={severityItems}
-              colors={['#ef4444', '#f59e0b', '#34d399']}
-            />
-            <DonutSummaryCard
-              title="来源分布"
-              items={sourceItems}
-              colors={[
-                'hsl(var(--primary))',
-                'hsl(var(--success))',
-                'hsl(var(--warning))',
-                'hsl(var(--info))',
-              ]}
+          <div className="flex min-h-0 flex-1 flex-col gap-4">
+            <QuarantineAuditCanvas
+              className="min-h-[25.5rem] flex-1"
+              autoRefresh={autoRefresh}
+              dateFrom={dateFrom}
+              dateTo={dateTo}
+              datasetLabelById={datasetLabelById}
+              datasetOptions={datasetOptions}
+              datasets={datasetOptions.filter((option) => datasets.some((dataset) => dataset.id === option.id))}
+              datasetsLoading={datasetsLoading}
+              documentsCount={documents.length}
+              filtered={filtered}
+              footerMessage={getQuarantineFooterMessage({
+                hasActiveFilters,
+                filteredCount: filtered.length,
+                documentCount: documents.length,
+                autoRefresh,
+              })}
+              hasActiveFilters={hasActiveFilters}
+              listSummary={listSummary}
+              paginated={paginated}
+              queueFetching={queueFetching}
+              reviewState={reviewState}
+              safePage={safePage}
+              search={search}
+              selectedDataset={selectedDataset}
+              selectedId={selectedId}
+              selectedReason={selectedReason}
+              selectedSeverity={selectedSeverity}
+              selectedSource={selectedSource}
+              sortedReasons={sortedReasons}
+              sourceOptions={sourceOptions}
+              totalPages={totalPages}
+              reasonCounts={reasonCounts}
+              onDateFromChange={setDateFrom}
+              onDateToChange={setDateTo}
+              onDatasetChange={handleDatasetScopeChange}
+              onOpenDocument={openDocument}
+              onOpenReview={(docId) => {
+                setSelectedId(docId)
+                setReviewDrawerOpen(true)
+              }}
+              onPageChange={setPage}
+              onReasonChange={setSelectedReason}
+              onRefresh={() => refreshQueue({ notify: true })}
+              onResetFilters={resetFilters}
+              onReviewStateChange={setReviewState}
+              onSearchChange={setSearch}
+              onSeverityChange={setSelectedSeverity}
+              onSourceChange={setSelectedSource}
             />
 
-            <div className="flex h-full flex-col rounded-lg border border-foreground/10 bg-background p-4 shadow-none">
-              <div className="text-[0.95rem] font-medium text-foreground">
-                快捷操作
-              </div>
-              <div className="mt-3.5 grid flex-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-2">
-                <QuickActionCard
-                  title="批量审核"
-                  description="选择多条待审样本后进行批量处置"
-                  icon={ShieldCheck}
-                  onClick={handleOpenFirstForReview}
-                />
-                <QuickActionCard
-                  title="导出隔离样本"
-                  description="导出当前筛选结果用于离线审阅"
-                  icon={Download}
-                  onClick={handleExportFiltered}
-                />
-                <QuickActionCard
-                  title="规则管理"
-                  description="查看并快速调整当前规则阈值"
-                  icon={Settings2}
-                  onClick={handleOpenRuleManager}
-                />
-                <QuickActionCard
-                  title="回放记录"
-                  description="查看最近样本的明细和回放信息"
-                  icon={Layers}
-                  onClick={handleOpenReplayLog}
-                />
+            <div className="grid shrink-0 gap-4 xl:grid-cols-[1fr_1fr_1fr_1.05fr] xl:items-stretch">
+              <DonutSummaryCard
+                title="规则命中分布 TOP5"
+                items={reasonTopItems}
+                colors={[
+                  'hsl(var(--primary))',
+                  'hsl(var(--info))',
+                  'hsl(var(--success))',
+                  'hsl(var(--warning))',
+                  'hsl(var(--muted-foreground))',
+                ]}
+              />
+              <DonutSummaryCard title="疑似度分布" items={severityItems} colors={['#ef4444', '#f59e0b', '#34d399']} />
+              <DonutSummaryCard
+                title="来源分布"
+                items={sourceItems}
+                colors={['hsl(var(--primary))', 'hsl(var(--success))', 'hsl(var(--warning))', 'hsl(var(--info))']}
+              />
+
+              <div className="flex h-full flex-col rounded-lg border border-foreground/10 bg-background p-4 shadow-none">
+                <div className="text-[0.95rem] font-medium text-foreground">快捷操作</div>
+                <div className="mt-3.5 grid flex-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-2">
+                  <QuickActionCard
+                    title="批量审核"
+                    description="选择多条待审样本后进行批量处置"
+                    icon={ShieldCheck}
+                    onClick={handleOpenFirstForReview}
+                  />
+                  <QuickActionCard
+                    title="导出隔离样本"
+                    description="导出当前筛选结果用于离线审阅"
+                    icon={Download}
+                    onClick={handleExportFiltered}
+                  />
+                  <QuickActionCard
+                    title="规则管理"
+                    description="查看并快速调整当前规则阈值"
+                    icon={Settings2}
+                    onClick={handleOpenRuleManager}
+                  />
+                  <QuickActionCard
+                    title="回放记录"
+                    description="查看最近样本的明细和回放信息"
+                    icon={Layers}
+                    onClick={handleOpenReplayLog}
+                  />
+                </div>
               </div>
             </div>
           </div>
-        </div>
         </PageScaffold>
       </div>
 
@@ -1089,11 +995,7 @@ export default function QuarantineQueuePage() {
         onDelete={handleDelete}
       />
 
-      <IngestionDetailDialog
-        open={detailOpen}
-        onOpenChange={setDetailOpen}
-        documentId={detailDocumentId}
-      />
+      <IngestionDetailDialog open={detailOpen} onOpenChange={setDetailOpen} documentId={detailDocumentId} />
 
       <Dialog open={tuneOpen} onOpenChange={(v) => setTuneOpen(v)}>
         <QuarantineTuneDialog

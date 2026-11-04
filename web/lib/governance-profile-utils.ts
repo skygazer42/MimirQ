@@ -46,12 +46,11 @@ export function buildIngestionPolicyExportFilename(profileKey: string): string {
 export function buildCleanPreviewRequestFromGovernanceProfile(
   payload: GovernanceProfilePayload,
   markdown: string,
-  options: BuildCleanPreviewOptions = {}
+  options: BuildCleanPreviewOptions = {},
 ): CleanPreviewRequest {
   const patch = payload.pipeline_patch
 
-  const inputFormat =
-    options.inputFormat ?? payload.input_formats[0] ?? 'markdown'
+  const inputFormat = options.inputFormat ?? payload.input_formats[0] ?? 'markdown'
 
   const rules: RegexRuleModel[] = [
     ...normalizeRegexRules(patch.governance_regex_rules),

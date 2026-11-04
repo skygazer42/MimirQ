@@ -61,9 +61,7 @@ export function DriftCounterCluster({
   )
 }
 
-export function SnapshotExactDriftPanel({
-  diff,
-}: Readonly<{ diff: SnapshotDiffPayload | null }>) {
+export function SnapshotExactDriftPanel({ diff }: Readonly<{ diff: SnapshotDiffPayload | null }>) {
   const nodeSummary = diff?.node_diff
   const edgeSummary = diff?.edge_diff
   const hasExactDiff = Boolean(nodeSummary || edgeSummary)
@@ -117,10 +115,7 @@ export function SnapshotExactDriftPanel({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            <Sparkles
-              className="h-3.5 w-3.5 text-primary/70"
-              aria-hidden="true"
-            />
+            <Sparkles className="h-3.5 w-3.5 text-primary/70" aria-hidden="true" />
             精确节点/边 Diff
           </div>
           <div className="mt-1 max-w-[560px] text-[11px] leading-5 text-muted-foreground">
@@ -162,23 +157,12 @@ export function SnapshotExactDriftPanel({
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-                    <span
-                      className={cn(
-                        'flex h-5 w-5 items-center justify-center rounded-md',
-                        row.tint,
-                        row.tone
-                      )}
-                    >
+                    <span className={cn('flex h-5 w-5 items-center justify-center rounded-md', row.tint, row.tone)}>
                       {row.icon}
                     </span>
                     {row.label}
                   </span>
-                  <span
-                    className={cn(
-                      'font-mono text-[11px] font-semibold tabular-nums',
-                      row.tone
-                    )}
-                  >
+                  <span className={cn('font-mono text-[11px] font-semibold tabular-nums', row.tone)}>
                     {items.length}
                   </span>
                 </div>

@@ -63,7 +63,7 @@ describe('API runtime contracts', () => {
               text: '| A | B |',
             },
           ],
-        }).success
+        }).success,
       ).toBe(true)
       expect(requestArgs?.responseSchema.safeParse({ document_id: 42 }).success).toBe(false)
     }
@@ -107,7 +107,7 @@ describe('API runtime contracts', () => {
             ],
           },
         },
-      }).success
+      }).success,
     ).toBe(true)
   })
 
@@ -128,7 +128,7 @@ describe('API runtime contracts', () => {
         markdown_truncated: false,
         original_markdown_truncated: false,
         max_chars: 1000,
-      }).success
+      }).success,
     ).toBe(true)
     expect(requestArgs?.responseSchema.safeParse({ document_id: null }).success).toBe(false)
   })
@@ -160,9 +160,11 @@ describe('API runtime contracts', () => {
           },
         ],
         metrics: { latency_ms: 12 },
-      }).success
+      }).success,
     ).toBe(true)
-    expect(requestArgs?.responseSchema.safeParse({ conversation_id: SAMPLE_UUID, content: 'missing fields' }).success).toBe(false)
+    expect(
+      requestArgs?.responseSchema.safeParse({ conversation_id: SAMPLE_UUID, content: 'missing fields' }).success,
+    ).toBe(false)
   })
 
   it('passes a runtime response schema for rag evidence responses', async () => {
@@ -181,7 +183,7 @@ describe('API runtime contracts', () => {
         citations: [{ document_id: SAMPLE_UUID }],
         metrics: { top_k: 5 },
         has_evidence: true,
-      }).success
+      }).success,
     ).toBe(true)
     expect(requestArgs?.responseSchema.safeParse({ query_for_retrieval: 1, citations: 'nope' }).success).toBe(false)
   })

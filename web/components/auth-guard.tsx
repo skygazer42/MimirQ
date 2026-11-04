@@ -11,19 +11,17 @@ export function AuthGuard({ children }: Readonly<{ children: React.ReactNode }>)
   const pathname = usePathname()
   const { data: meta, isPending, isError } = useBackendMeta()
   const [authRevision, setAuthRevision] = useState(0)
-  const authMode = String(meta?.features?.auth_mode || '').trim().toLowerCase()
+  const authMode = String(meta?.features?.auth_mode || '')
+    .trim()
+    .toLowerCase()
   const isAuthRoute = pathname.startsWith('/auth')
   const authModeResolved = authMode === 'jwt' || authMode === 'header'
   const authRequired = authModeResolved && authMode === 'jwt'
   const hasAccessToken = Boolean(getAccessToken())
-  const shouldBlockProtectedRoute =
-    !isAuthRoute && (!authModeResolved || isError || (authRequired && !hasAccessToken))
+  const shouldBlockProtectedRoute = !isAuthRoute && (!authModeResolved || isError || (authRequired && !hasAccessToken))
   const shouldRedirectToAuth =
-    !isAuthRoute && (
-      isError ||
-      (authModeResolved && authRequired && !hasAccessToken) ||
-      (!authModeResolved && !isPending)
-    )
+    !isAuthRoute &&
+    (isError || (authModeResolved && authRequired && !hasAccessToken) || (!authModeResolved && !isPending))
 
   useEffect(() => {
     const recheckAuth = () => setAuthRevision((revision) => revision + 1)

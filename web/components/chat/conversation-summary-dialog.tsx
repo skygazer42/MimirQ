@@ -28,12 +28,13 @@ import { chatApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { queryKeys } from '@/lib/query-keys'
 
-
-export function ConversationSummaryDialog(props: Readonly<{
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  conversationId?: string
-}>) {
+export function ConversationSummaryDialog(
+  props: Readonly<{
+    open: boolean
+    onOpenChange: (open: boolean) => void
+    conversationId?: string
+  }>,
+) {
   const { open, onOpenChange, conversationId } = props
   const queryClient = useQueryClient()
   const conversationIdForQuery = (conversationId || '').trim()
@@ -102,17 +103,13 @@ export function ConversationSummaryDialog(props: Readonly<{
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>摘要记忆</DialogTitle>
-          <DialogDescription>
-            持久化的会话摘要（用于压缩历史上下文）。更新操作可能触发一次 LLM 调用。
-          </DialogDescription>
+          <DialogDescription>持久化的会话摘要（用于压缩历史上下文）。更新操作可能触发一次 LLM 调用。</DialogDescription>
         </DialogHeader>
 
         {hasConversation ? (
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3">
-              <div className="text-xs text-muted-foreground">
-                状态：{statusText}
-              </div>
+              <div className="text-xs text-muted-foreground">状态：{statusText}</div>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"

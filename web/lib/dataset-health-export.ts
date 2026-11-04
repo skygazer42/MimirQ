@@ -28,19 +28,24 @@ function oneLine(value: unknown): string {
 export function datasetHealthToMarkdown(input: DatasetHealthExportInput): string {
   const lines: string[] = []
 
-    lines.push('# Dataset Health', '', `- dataset_id: ${oneLine(input.datasetId)}`)
+  lines.push('# Dataset Health', '', `- dataset_id: ${oneLine(input.datasetId)}`)
   if (input.datasetName) lines.push(`- dataset_name: ${oneLine(input.datasetName)}`)
   if (input.exportedAt) lines.push(`- exported_at: ${oneLine(input.exportedAt)}`)
   if (input.generatedAt) lines.push(`- generated_at: ${oneLine(input.generatedAt)}`)
   lines.push('')
 
   const profile = input.profile || {}
-    lines.push('## Profile', `- total_documents: ${asInt(profile.total_documents)}`)
+  lines.push('## Profile', `- total_documents: ${asInt(profile.total_documents)}`)
   if (profile.total_size_bytes != null) lines.push(`- total_size_bytes: ${asInt(profile.total_size_bytes)}`)
   lines.push('')
 
   const ingestion = input.ingestion || {}
-    lines.push('## Ingestion', `- total_documents: ${asInt(ingestion.total_documents)}`, `- failed: ${asInt(ingestion.failed)}`, `- quarantined: ${asInt(ingestion.quarantined)}`)
+  lines.push(
+    '## Ingestion',
+    `- total_documents: ${asInt(ingestion.total_documents)}`,
+    `- failed: ${asInt(ingestion.failed)}`,
+    `- quarantined: ${asInt(ingestion.quarantined)}`,
+  )
 
   const byStatus = ingestion.by_status && typeof ingestion.by_status === 'object' ? ingestion.by_status : null
   if (byStatus) {

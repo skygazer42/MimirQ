@@ -15,7 +15,15 @@ import { TenantPermissionGate } from '@/components/auth/tenant-permission-gate'
 import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -157,9 +165,15 @@ function SettingsGroupDetailPageContent() {
   }, [nameDraft, externalIdDraft])
 
   const filteredMembers = useMemo(() => {
-    const q = String(memberQuery || '').trim().toLowerCase()
+    const q = String(memberQuery || '')
+      .trim()
+      .toLowerCase()
     if (!q) return members
-    return (members || []).filter((m) => String(m.user_id || '').toLowerCase().includes(q))
+    return (members || []).filter((m) =>
+      String(m.user_id || '')
+        .toLowerCase()
+        .includes(q),
+    )
   }, [members, memberQuery])
 
   const saveGroupMutation = useMutation({
@@ -286,7 +300,12 @@ function SettingsGroupDetailPageContent() {
         size="6xl"
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-2 rounded-xl" onClick={() => router.push('/settings/groups')}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 rounded-xl"
+              onClick={() => router.push('/settings/groups')}
+            >
               <ArrowLeft className="size-4" />
               返回列表
             </Button>
@@ -300,11 +319,17 @@ function SettingsGroupDetailPageContent() {
                 membersQuery.refetch()
               }}
             >
-              <RefreshCw className={cn('size-4', (loadingGroup || loadingMembers) && 'animate-spin motion-reduce:animate-none')} />
+              <RefreshCw
+                className={cn('size-4', (loadingGroup || loadingMembers) && 'animate-spin motion-reduce:animate-none')}
+              />
               刷新
             </Button>
             <Button size="sm" className="gap-2 rounded-xl" disabled={!canSaveGroup || savingGroup} onClick={saveGroup}>
-              {savingGroup ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <Save className="size-4" />}
+              {savingGroup ? (
+                <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+              ) : (
+                <Save className="size-4" />
+              )}
               保存
             </Button>
           </div>
@@ -352,10 +377,12 @@ function SettingsGroupDetailPageContent() {
                   组 ID（id）：<span className="font-mono">{group?.id || '-'}</span>
                 </div>
                 <div>
-                  创建时间（created_at）：<span className="font-mono">{group?.created_at ? formatDate(group.created_at) : '-'}</span>
+                  创建时间（created_at）：
+                  <span className="font-mono">{group?.created_at ? formatDate(group.created_at) : '-'}</span>
                 </div>
                 <div>
-                  更新时间（updated_at）：<span className="font-mono">{group?.updated_at ? formatDate(group.updated_at) : '-'}</span>
+                  更新时间（updated_at）：
+                  <span className="font-mono">{group?.updated_at ? formatDate(group.updated_at) : '-'}</span>
                 </div>
               </div>
             </CardContent>
@@ -398,7 +425,8 @@ function SettingsGroupDetailPageContent() {
                       <DialogHeader>
                         <DialogTitle>添加成员</DialogTitle>
                         <DialogDescription className="text-sm">
-                          输入成员 ID（user_id，每行一个或逗号分隔）后端会失败关闭（fail-closed）：仅允许添加当前租户（tenant）已存在的成员
+                          输入成员
+                          ID（user_id，每行一个或逗号分隔）后端会失败关闭（fail-closed）：仅允许添加当前租户（tenant）已存在的成员
                         </DialogDescription>
                       </DialogHeader>
 
@@ -411,7 +439,9 @@ function SettingsGroupDetailPageContent() {
                           placeholder="alice\nbob\ncharlie"
                           className="font-mono text-sm"
                         />
-                        <div className="text-xs text-muted-foreground">最多 200 个；单个成员 ID 最长 255 字符；重复会自动去重</div>
+                        <div className="text-xs text-muted-foreground">
+                          最多 200 个；单个成员 ID 最长 255 字符；重复会自动去重
+                        </div>
                       </div>
 
                       <DialogFooter className="mt-4">
@@ -442,27 +472,30 @@ function SettingsGroupDetailPageContent() {
                     const uid = String(m.user_id || '').trim()
                     const removing = Boolean(removingUserId && removingUserId === uid)
                     return (
-                      <div key={uid} className="grid grid-cols-12 px-3 py-2 text-sm border-t border-border items-center gap-2">
+                      <div
+                        key={uid}
+                        className="grid grid-cols-12 px-3 py-2 text-sm border-t border-border items-center gap-2"
+                      >
                         <div className="col-span-7 font-mono text-xs truncate">{uid}</div>
                         <div className="col-span-4 font-mono text-xs text-muted-foreground truncate">
                           {m.created_at ? formatDate(m.created_at) : '-'}
                         </div>
                         <div className="col-span-1 flex justify-end">
-                            <AlertDialog>
+                          <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <Button
                                 variant="ghost"
                                 size="icon"
                                 className="h-9 w-9"
-                                 disabled={!uid || removing}
-                                 aria-label={removing ? `正在移除成员 ${uid}` : `移除成员 ${uid}`}
-                               >
-                                 {removing ? (
-                                   <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
-                                 ) : (
-                                   <Trash2 className="h-4 w-4" />
-                                 )}
-                               </Button>
+                                disabled={!uid || removing}
+                                aria-label={removing ? `正在移除成员 ${uid}` : `移除成员 ${uid}`}
+                              >
+                                {removing ? (
+                                  <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                              </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader>

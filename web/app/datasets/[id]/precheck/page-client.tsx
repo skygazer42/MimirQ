@@ -33,16 +33,7 @@ import {
   Timer,
   Wand2,
 } from 'lucide-react'
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Pie,
-  PieChart,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
+import { Bar, BarChart, CartesianGrid, Pie, PieChart, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -174,7 +165,7 @@ export function isCurrentPrecheckSseStream(
   controller: AbortController,
   activeController: AbortController | null,
   runId: string,
-  activeRunId: string | null
+  activeRunId: string | null,
 ): boolean {
   return activeController === controller && activeRunId === runId
 }
@@ -184,7 +175,7 @@ export function shouldFallbackToPrecheckPolling(
   controller: AbortController,
   activeController: AbortController | null,
   runId: string,
-  activeRunId: string | null
+  activeRunId: string | null,
 ): boolean {
   return isCurrentPrecheckSseStream(controller, activeController, runId, activeRunId) && !isPrecheckSseAbortError(error)
 }
@@ -311,35 +302,26 @@ export default function DatasetPrecheckPage() {
     queryKey: queryKeys.datasets.precheckIngestionPolicySuggestion(
       datasetId || '',
       selectedRunId,
-      PRECHECK_POLICY_SUGGESTION_PARAMS
+      PRECHECK_POLICY_SUGGESTION_PARAMS,
     ),
     enabled: false,
     queryFn: () => {
       if (!datasetId || !selectedRunId) throw new Error('缺少预检扫描 ID')
-      return datasetApi.suggestPrecheckIngestionPolicy(
-        datasetId,
-        selectedRunId,
-        PRECHECK_POLICY_SUGGESTION_PARAMS
-      )
+      return datasetApi.suggestPrecheckIngestionPolicy(datasetId, selectedRunId, PRECHECK_POLICY_SUGGESTION_PARAMS)
     },
   })
   const findingItemsQuery = useInfiniteQuery({
-    queryKey: queryKeys.datasets.precheckFindingFiles(
-      datasetId || '',
-      selectedRunId,
-      selectedFindingKey,
-      { limit: PRECHECK_FINDING_PAGE_SIZE }
-    ),
+    queryKey: queryKeys.datasets.precheckFindingFiles(datasetId || '', selectedRunId, selectedFindingKey, {
+      limit: PRECHECK_FINDING_PAGE_SIZE,
+    }),
     enabled: Boolean(datasetId && selectedRunId && selectedFindingKey && findingOpen),
     initialPageParam: 0,
     queryFn: ({ pageParam }) => {
       if (!datasetId || !selectedRunId || !selectedFindingKey) throw new Error('缺少预检清单 ID')
-      return datasetApi.listPrecheckFinding(
-        datasetId,
-        selectedRunId,
-        selectedFindingKey,
-        { skip: Number(pageParam) || 0, limit: PRECHECK_FINDING_PAGE_SIZE }
-      )
+      return datasetApi.listPrecheckFinding(datasetId, selectedRunId, selectedFindingKey, {
+        skip: Number(pageParam) || 0,
+        limit: PRECHECK_FINDING_PAGE_SIZE,
+      })
     },
     getNextPageParam: (lastPage, allPages) => {
       const loaded = allPages.reduce((acc, page) => acc + (page.items?.length || 0), 0)
@@ -388,17 +370,13 @@ export default function DatasetPrecheckPage() {
   }, [refetchRunsQuery])
 
   const refetchPrecheckQuery = useCallback(
-    async (
-      action: () => Promise<{ error: unknown }>,
-      errorMessage: string,
-      logLabel: string
-    ) => {
+    async (action: () => Promise<{ error: unknown }>, errorMessage: string, logLabel: string) => {
       const { error } = await action()
       if (!error) return
       reportClientError(logLabel, error)
       toast.error(formatApiError(error, errorMessage))
     },
-    []
+    [],
   )
 
   useEffect(() => {
@@ -421,7 +399,10 @@ export default function DatasetPrecheckPage() {
         setSelectedRun(next)
         const st = String(next.status || '').toLowerCase()
         if (st === 'pending' || st === 'running') {
-          pollTimerRef.current = globalThis.window.setTimeout(() => detachPromise(pollRunRef.current(datasetIdValue, runId)), 2000)
+          pollTimerRef.current = globalThis.window.setTimeout(
+            () => detachPromise(pollRunRef.current(datasetIdValue, runId)),
+            2000,
+          )
           return
         }
         setScanRunning(false)
@@ -439,7 +420,7 @@ export default function DatasetPrecheckPage() {
         stopPolling()
       }
     },
-    [refreshPrecheckRuns, stopPolling]
+    [refreshPrecheckRuns, stopPolling],
   )
 
   useEffect(() => {
@@ -456,52 +437,53 @@ export default function DatasetPrecheckPage() {
       const ctrl = new AbortController()
       sseAbortRef.current = ctrl
       sseRunIdRef.current = runId
-      const isCurrentStream = () =>
-        isCurrentPrecheckSseStream(ctrl, sseAbortRef.current, runId, sseRunIdRef.current)
+      const isCurrentStream = () => isCurrentPrecheckSseStream(ctrl, sseAbortRef.current, runId, sseRunIdRef.current)
 
-      detachPromise(sseApi
-        .streamPrecheckScanEvents(
-          datasetIdValue,
-          runId,
-          (jsonStr) => {
-            if (!isCurrentStream()) return
-            try {
-              const obj = JSON.parse(String(jsonStr || '') || '{}')
-              if (obj?.id) setSelectedRun(obj)
-              const st = String(obj?.status || '').toLowerCase()
-              if (st && st !== 'pending' && st !== 'running') {
-                if (!isCurrentStream()) return
-                setScanRunning(false)
-                stopSse()
-                stopPolling()
-                detachPromise(refreshPrecheckRuns())
+      detachPromise(
+        sseApi
+          .streamPrecheckScanEvents(
+            datasetIdValue,
+            runId,
+            (jsonStr) => {
+              if (!isCurrentStream()) return
+              try {
+                const obj = JSON.parse(String(jsonStr || '') || '{}')
+                if (obj?.id) setSelectedRun(obj)
+                const st = String(obj?.status || '').toLowerCase()
+                if (st && st !== 'pending' && st !== 'running') {
+                  if (!isCurrentStream()) return
+                  setScanRunning(false)
+                  stopSse()
+                  stopPolling()
+                  detachPromise(refreshPrecheckRuns())
+                }
+              } catch {
+                // ignore
               }
-            } catch {
-              // ignore
-            }
-          },
-          {
-            onError: (err) => {
-              if (!isCurrentStream() || isPrecheckSseAbortError(err)) return
-              reportClientError('Precheck SSE error', err)
             },
-            signal: ctrl.signal,
-          }
-        )
-        .catch((e) => {
-          if (!shouldFallbackToPrecheckPolling(e, ctrl, sseAbortRef.current, runId, sseRunIdRef.current)) {
-            return
-          }
-          reportClientWarning('Precheck SSE unavailable; fallback to polling', e)
-          if (isCurrentStream()) {
-            stopSse()
-          }
-          pollTimerRef.current = globalThis.window.setTimeout(() => {
-            detachPromise(pollRun(datasetIdValue, runId))
-          }, 800)
-        }))
+            {
+              onError: (err) => {
+                if (!isCurrentStream() || isPrecheckSseAbortError(err)) return
+                reportClientError('Precheck SSE error', err)
+              },
+              signal: ctrl.signal,
+            },
+          )
+          .catch((e) => {
+            if (!shouldFallbackToPrecheckPolling(e, ctrl, sseAbortRef.current, runId, sseRunIdRef.current)) {
+              return
+            }
+            reportClientWarning('Precheck SSE unavailable; fallback to polling', e)
+            if (isCurrentStream()) {
+              stopSse()
+            }
+            pollTimerRef.current = globalThis.window.setTimeout(() => {
+              detachPromise(pollRun(datasetIdValue, runId))
+            }, 800)
+          }),
+      )
     },
-    [pollRun, refreshPrecheckRuns, stopPolling, stopSse]
+    [pollRun, refreshPrecheckRuns, stopPolling, stopSse],
   )
 
   // When selectedRun changes, load summary (if available) and resume polling (if running).
@@ -517,10 +499,12 @@ export default function DatasetPrecheckPage() {
     stopPolling()
     stopSse()
     if (st === 'completed') {
-      detachPromise(datasetApi
-        .getPrecheckSummary(datasetId, selectedRun.id)
-        .then(setSummary)
-        .catch(() => setSummary(null)))
+      detachPromise(
+        datasetApi
+          .getPrecheckSummary(datasetId, selectedRun.id)
+          .then(setSummary)
+          .catch(() => setSummary(null)),
+      )
       return
     }
     setSummary(null)
@@ -580,9 +564,13 @@ export default function DatasetPrecheckPage() {
     if (!datasetId || !selectedRun?.id) return
     setPolicyApplying(true)
     try {
-      const res: IngestionPolicyImportResponse = await datasetApi.applyPrecheckIngestionPolicy(datasetId, selectedRun.id, {
-        replace: !!policyApplyReplace,
-      })
+      const res: IngestionPolicyImportResponse = await datasetApi.applyPrecheckIngestionPolicy(
+        datasetId,
+        selectedRun.id,
+        {
+          replace: !!policyApplyReplace,
+        },
+      )
       toast.success(`已应用入库策略（rules=${res.rule_count}）`)
     } catch (e: unknown) {
       reportClientError('Failed to apply ingestion policy', e)
@@ -597,7 +585,9 @@ export default function DatasetPrecheckPage() {
     setIsExporting(true)
     try {
       const blob = await datasetApi.exportPrecheckSummary(datasetId, selectedRun.id)
-      const safe = String(dataset?.name || 'dataset').replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
+      const safe = String(dataset?.name || 'dataset')
+        .replaceAll(/[^a-zA-Z0-9_.-]+/g, '_')
+        .slice(0, 64)
       downloadBlob(blob, `${safe}.precheck.json`)
       toast.success('已导出 JSON 报告')
     } catch (e: unknown) {
@@ -613,7 +603,9 @@ export default function DatasetPrecheckPage() {
     setIsExporting(true)
     try {
       const blob = await datasetApi.exportPrecheckHtml(datasetId, selectedRun.id, { redact: true })
-      const safe = String(dataset?.name || 'dataset').replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
+      const safe = String(dataset?.name || 'dataset')
+        .replaceAll(/[^a-zA-Z0-9_.-]+/g, '_')
+        .slice(0, 64)
       downloadBlob(blob, `${safe}.precheck.html`)
       toast.success('已导出 HTML 报告')
     } catch (e: unknown) {
@@ -690,7 +682,7 @@ export default function DatasetPrecheckPage() {
       setFileDetailOpen(false)
       setFileDetail(null)
     },
-    [datasetId, selectedRunId]
+    [datasetId, selectedRunId],
   )
 
   const loadMoreFindingPage = useCallback(async () => {
@@ -702,12 +694,18 @@ export default function DatasetPrecheckPage() {
   const latestRunProgress = selectedRun?.progress ?? 0
   const hasPrecheckRuns = runs.length > 0
   const showPrecheckEmptyState = !loading && !hasPrecheckRuns
-  const precheckHeroCard = 'precheckHeroCard relative overflow-hidden border-b border-border/60 bg-transparent px-1 py-2 shadow-none dark:border-border/70'
-  const precheckToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-lg border border-border/60 bg-card p-1 shadow-none dark:border-border/70 dark:bg-card'
-  const precheckToolbarButtonClass = 'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-muted-foreground shadow-none hover:bg-card/95 hover:text-foreground hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
-  const precheckToolbarExportButtonClass = 'h-8 gap-1.5 rounded-md border border-border/60 bg-card px-2.5 text-[12px] font-medium text-foreground/85 shadow-none hover:bg-muted/40 hover:text-foreground dark:border-border/70 dark:bg-card dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
-  const precheckToolbarPrimaryButtonClass = 'h-8 min-w-[96px] gap-1.5 rounded-md border border-primary/20 bg-primary px-3 text-[12px] font-semibold text-primary-foreground shadow-none hover:bg-primary/90 dark:border-primary/30 [&_svg]:size-3.5'
-  const precheckPanelClass = 'h-full overflow-hidden border border-border/60 bg-card p-0 shadow-none dark:border-border/70 dark:bg-card'
+  const precheckHeroCard =
+    'precheckHeroCard relative overflow-hidden border-b border-border/60 bg-transparent px-1 py-2 shadow-none dark:border-border/70'
+  const precheckToolbarGroupClass =
+    'inline-flex flex-wrap items-center gap-1 rounded-lg border border-border/60 bg-card p-1 shadow-none dark:border-border/70 dark:bg-card'
+  const precheckToolbarButtonClass =
+    'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-muted-foreground shadow-none hover:bg-card/95 hover:text-foreground hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
+  const precheckToolbarExportButtonClass =
+    'h-8 gap-1.5 rounded-md border border-border/60 bg-card px-2.5 text-[12px] font-medium text-foreground/85 shadow-none hover:bg-muted/40 hover:text-foreground dark:border-border/70 dark:bg-card dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
+  const precheckToolbarPrimaryButtonClass =
+    'h-8 min-w-[96px] gap-1.5 rounded-md border border-primary/20 bg-primary px-3 text-[12px] font-semibold text-primary-foreground shadow-none hover:bg-primary/90 dark:border-primary/30 [&_svg]:size-3.5'
+  const precheckPanelClass =
+    'h-full overflow-hidden border border-border/60 bg-card p-0 shadow-none dark:border-border/70 dark:bg-card'
   const runRootPath =
     readStringField(selectedRun?.config, 'root_path') ||
     readStringField(selectedRun?.artifacts, 'root_path') ||
@@ -725,7 +723,7 @@ export default function DatasetPrecheckPage() {
   const hasRunOutput = Boolean(selectedRun?.id && summary)
   const embeddingAdvisories = useMemo(
     () => normalizePrecheckEmbeddingAdvisories(summary?.embedding_advisories),
-    [summary?.embedding_advisories]
+    [summary?.embedding_advisories],
   )
 
   return (
@@ -747,11 +745,19 @@ export default function DatasetPrecheckPage() {
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="truncate text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground">预检扫描</h1>
-                    <Badge variant="outline" className="h-5 border-border bg-card/70 px-2 text-[10px] font-semibold leading-none text-muted-foreground">
+                    <h1 className="truncate text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground">
+                      预检扫描
+                    </h1>
+                    <Badge
+                      variant="outline"
+                      className="h-5 border-border bg-card/70 px-2 text-[10px] font-semibold leading-none text-muted-foreground"
+                    >
                       未入库
                     </Badge>
-                    <Badge variant="soft" className="h-5 border-primary/20 bg-primary/10 px-2 font-mono text-[10px] leading-none text-primary">
+                    <Badge
+                      variant="soft"
+                      className="h-5 border-primary/20 bg-primary/10 px-2 font-mono text-[10px] leading-none text-primary"
+                    >
                       PRECHECK
                     </Badge>
                   </div>
@@ -774,12 +780,16 @@ export default function DatasetPrecheckPage() {
                     <span className="inline-flex items-center gap-1.5">
                       <Cloud className="size-3.5 text-muted-foreground/80" />
                       <span>范围</span>
-                      <span className="font-semibold text-foreground">伪根目录 / {runRootPath.replace(/^\/+/, '') || 'uploads'}</span>
+                      <span className="font-semibold text-foreground">
+                        伪根目录 / {runRootPath.replace(/^\/+/, '') || 'uploads'}
+                      </span>
                     </span>
                     <span className="inline-flex items-center gap-1.5">
                       <Clock3 className="size-3.5 text-muted-foreground/80" />
                       <span>最近更新</span>
-                      <span className="font-mono font-semibold text-foreground">{formatPrecheckTimestamp(runUpdatedAt)}</span>
+                      <span className="font-mono font-semibold text-foreground">
+                        {formatPrecheckTimestamp(runUpdatedAt)}
+                      </span>
                     </span>
                   </div>
                 </div>
@@ -791,7 +801,12 @@ export default function DatasetPrecheckPage() {
                   数据良好
                 </div>
                 {datasetId ? (
-                  <Button size="sm" variant="ghost" className={precheckToolbarButtonClass} onClick={() => router.push(`/datasets/${datasetId}`)}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={precheckToolbarButtonClass}
+                    onClick={() => router.push(`/datasets/${datasetId}`)}
+                  >
                     查看数据集
                   </Button>
                 ) : null}
@@ -803,51 +818,104 @@ export default function DatasetPrecheckPage() {
           <div className="flex w-full flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex min-w-0 flex-wrap items-center gap-1.5">
               <div className={precheckToolbarGroupClass}>
-              <Button size="sm" variant="ghost" className={precheckToolbarButtonClass} onClick={() => router.push('/datasets')}>
-                <ArrowLeft className="size-3.5" />
-                返回
-              </Button>
-              {datasetId ? (
-                <Button size="sm" variant="ghost" className={precheckToolbarButtonClass} onClick={() => router.push(`/datasets/${datasetId}/health`)}>
-                  <Heart className="size-3.5" />
-                  健康
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className={precheckToolbarButtonClass}
+                  onClick={() => router.push('/datasets')}
+                >
+                  <ArrowLeft className="size-3.5" />
+                  返回
                 </Button>
-              ) : null}
-              {datasetId ? (
-                <Button size="sm" variant="ghost" className={precheckToolbarButtonClass} onClick={() => router.push(`/datasets/${datasetId}/profile`)}>
-                  <BarChart3 className="size-3.5" />
-                  数据画像
-                </Button>
-              ) : null}
-              {datasetId ? (
-                <Button size="sm" variant="ghost" className={precheckToolbarButtonClass} onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}>
-                  <Settings2 className="size-3.5" />
-                  入库策略
-                </Button>
-              ) : null}
-              {datasetId ? (
-                <Button size="sm" variant="ghost" className={precheckToolbarButtonClass} onClick={() => router.push(`/datasets/${datasetId}/tables`)}>
-                  <Table2 className="size-3.5" />
-                  表格 / TAG
-                </Button>
-              ) : null}
+                {datasetId ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={precheckToolbarButtonClass}
+                    onClick={() => router.push(`/datasets/${datasetId}/health`)}
+                  >
+                    <Heart className="size-3.5" />
+                    健康
+                  </Button>
+                ) : null}
+                {datasetId ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={precheckToolbarButtonClass}
+                    onClick={() => router.push(`/datasets/${datasetId}/profile`)}
+                  >
+                    <BarChart3 className="size-3.5" />
+                    数据画像
+                  </Button>
+                ) : null}
+                {datasetId ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={precheckToolbarButtonClass}
+                    onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}
+                  >
+                    <Settings2 className="size-3.5" />
+                    入库策略
+                  </Button>
+                ) : null}
+                {datasetId ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={precheckToolbarButtonClass}
+                    onClick={() => router.push(`/datasets/${datasetId}/tables`)}
+                  >
+                    <Table2 className="size-3.5" />
+                    表格 / TAG
+                  </Button>
+                ) : null}
               </div>
               <div className={precheckToolbarGroupClass}>
-              <Button size="sm" variant="ghost" className={precheckToolbarButtonClass} onClick={() => setAdvancedOpen(true)}>
-                <Settings2 className="size-3.5" />
-                高级
-              </Button>
-              <Button size="sm" variant="ghost" className={precheckToolbarButtonClass} onClick={() => detachPromise(openPolicy())} disabled={!selectedRun?.id}>
-                <Wand2 className="size-3.5" />
-                生成策略
-              </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className={precheckToolbarButtonClass}
+                  onClick={() => setAdvancedOpen(true)}
+                >
+                  <Settings2 className="size-3.5" />
+                  高级
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className={precheckToolbarButtonClass}
+                  onClick={() => detachPromise(openPolicy())}
+                  disabled={!selectedRun?.id}
+                >
+                  <Wand2 className="size-3.5" />
+                  生成策略
+                </Button>
               </div>
               <div className="flex overflow-hidden rounded-lg border border-border/60 bg-card shadow-none dark:border-border/70 dark:bg-card">
-                <Button size="sm" variant="ghost" className={cn(precheckToolbarExportButtonClass, 'rounded-none border-0 shadow-none')} onClick={() => detachPromise(exportJson())} disabled={isExporting || !selectedRun?.id || !summary}>
-                  {isExporting ? <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" /> : <Download className="size-3.5" />}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className={cn(precheckToolbarExportButtonClass, 'rounded-none border-0 shadow-none')}
+                  onClick={() => detachPromise(exportJson())}
+                  disabled={isExporting || !selectedRun?.id || !summary}
+                >
+                  {isExporting ? (
+                    <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
+                  ) : (
+                    <Download className="size-3.5" />
+                  )}
                   导出
                 </Button>
-                <Button size="sm" variant="ghost" className="h-8 rounded-none border-l border-border/60 px-2 text-muted-foreground hover:bg-card/95 hover:text-foreground dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground" onClick={() => detachPromise(exportHtml())} disabled={isExporting || !selectedRun?.id || !summary} aria-label="导出 HTML">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 rounded-none border-l border-border/60 px-2 text-muted-foreground hover:bg-card/95 hover:text-foreground dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground"
+                  onClick={() => detachPromise(exportHtml())}
+                  disabled={isExporting || !selectedRun?.id || !summary}
+                  aria-label="导出 HTML"
+                >
                   <ChevronDown className="size-3.5" />
                 </Button>
               </div>
@@ -855,13 +923,27 @@ export default function DatasetPrecheckPage() {
 
             <div className="flex shrink-0 items-center gap-1.5">
               {scanRunning && selectedRun?.id ? (
-                <Button size="sm" variant="outline" className={precheckToolbarExportButtonClass} onClick={() => detachPromise(cancelScan())}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={precheckToolbarExportButtonClass}
+                  onClick={() => detachPromise(cancelScan())}
+                >
                   <StopCircle className="size-3.5" />
                   取消
                 </Button>
               ) : null}
-              <Button size="sm" className={precheckToolbarPrimaryButtonClass} onClick={() => detachPromise(startScan())} disabled={scanRunning}>
-                {scanRunning ? <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" /> : <Play className="size-3.5" />}
+              <Button
+                size="sm"
+                className={precheckToolbarPrimaryButtonClass}
+                onClick={() => detachPromise(startScan())}
+                disabled={scanRunning}
+              >
+                {scanRunning ? (
+                  <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
+                ) : (
+                  <Play className="size-3.5" />
+                )}
                 启动
               </Button>
             </div>
@@ -873,10 +955,7 @@ export default function DatasetPrecheckPage() {
             className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_420px] min-h-0"
             style={{ height: 790, minHeight: 560 }}
           >
-            <Panel
-              className={precheckPanelClass}
-              style={{ height: 790, minHeight: 560 }}
-            >
+            <Panel className={precheckPanelClass} style={{ height: 790, minHeight: 560 }}>
               <div className="space-y-3.5 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
@@ -885,7 +964,9 @@ export default function DatasetPrecheckPage() {
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <h2 className="text-[15px] font-semibold leading-none tracking-[-0.02em] text-foreground">扫描配置</h2>
+                        <h2 className="text-[15px] font-semibold leading-none tracking-[-0.02em] text-foreground">
+                          扫描配置
+                        </h2>
                         <Badge variant="outline" className="h-5 font-mono text-[10px] leading-none">
                           {latestRunStatus ? String(latestRunStatus) : 'no run'}
                         </Badge>
@@ -909,18 +990,23 @@ export default function DatasetPrecheckPage() {
                     role="note"
                     className="rounded-xl border border-info/25 bg-info/[0.06] px-3 py-2 text-[11px] leading-5 text-muted-foreground"
                   >
-                    root_path 必须是 API 或 Worker 可访问的目录；首次扫描建议限制最大文件数并开启 PDF 质量与文本抽样，确认结果后再启用 PII、Secrets 和增量复用。
+                    root_path 必须是 API 或 Worker 可访问的目录；首次扫描建议限制最大文件数并开启 PDF
+                    质量与文本抽样，确认结果后再启用 PII、Secrets 和增量复用。
                   </div>
                 ) : null}
 
                 <div className="flex items-start gap-2 rounded-lg border border-info/30 bg-info/5 px-3 py-2 text-[11px] leading-4 text-info/70 shadow-none dark:bg-info/10">
                   <Info className="mt-0.5 size-3.5 shrink-0" />
-                  <span>当前数据源为 LOCAL_SCAN_ENABLED，允许远程根目录 / uploads，仅生成质量画像，不入库、不切片。</span>
+                  <span>
+                    当前数据源为 LOCAL_SCAN_ENABLED，允许远程根目录 / uploads，仅生成质量画像，不入库、不切片。
+                  </span>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-[245px_minmax(0,1fr)]">
                   <div className="space-y-1">
-                    <Label className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">历史扫描</Label>
+                    <Label className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                      历史扫描
+                    </Label>
                     <Select
                       value={selectedRun?.id || ''}
                       onValueChange={(v) => {
@@ -937,7 +1023,8 @@ export default function DatasetPrecheckPage() {
                       <SelectContent>
                         {(runs || []).map((r) => (
                           <SelectItem key={r.id} value={r.id}>
-                            {String(r.created_at || '').slice(0, 19) || r.id} · {String(r.status || '')} · {r.progress ?? 0}%
+                            {String(r.created_at || '').slice(0, 19) || r.id} · {String(r.status || '')} ·{' '}
+                            {r.progress ?? 0}%
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -946,7 +1033,9 @@ export default function DatasetPrecheckPage() {
                   </div>
 
                   <div className="space-y-1">
-                    <Label className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">root_path（文件夹路径）</Label>
+                    <Label className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                      root_path（文件夹路径）
+                    </Label>
                     <Input
                       placeholder="例如：/data/docs 或 C:\\\\docs（需容器/进程可访问）"
                       value={scanConfig.root_path || ''}
@@ -961,7 +1050,9 @@ export default function DatasetPrecheckPage() {
                   </div>
 
                   <div className="space-y-1">
-                    <Label className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">最大文件数</Label>
+                    <Label className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                      最大文件数
+                    </Label>
                     <Input
                       placeholder="不限"
                       value={scanConfig.max_files ?? ''}
@@ -972,7 +1063,10 @@ export default function DatasetPrecheckPage() {
                           return
                         }
                         const n = Number(raw)
-                        setScanConfig((prev) => ({ ...prev, max_files: Number.isFinite(n) ? Math.max(0, Math.floor(n)) : null }))
+                        setScanConfig((prev) => ({
+                          ...prev,
+                          max_files: Number.isFinite(n) ? Math.max(0, Math.floor(n)) : null,
+                        }))
                       }}
                       className="h-9 rounded-xl bg-card/78 font-mono text-[13px] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] dark:bg-background/60"
                     />
@@ -990,16 +1084,26 @@ export default function DatasetPrecheckPage() {
                       <div className="flex min-h-9 items-center justify-between gap-3 py-1.5">
                         <div className="flex min-w-0 items-center gap-2">
                           <Label className="text-[13px] font-medium">PDF 质量</Label>
-                          <Badge variant="soft" className="text-[10px]">默认</Badge>
+                          <Badge variant="soft" className="text-[10px]">
+                            默认
+                          </Badge>
                         </div>
-                        <Switch checked={!!scanConfig.enable_pdf_quality} onCheckedChange={(v) => setScanConfig((p) => ({ ...p, enable_pdf_quality: !!v }))} />
+                        <Switch
+                          checked={!!scanConfig.enable_pdf_quality}
+                          onCheckedChange={(v) => setScanConfig((p) => ({ ...p, enable_pdf_quality: !!v }))}
+                        />
                       </div>
                       <div className="flex min-h-9 items-center justify-between gap-3 py-1.5">
                         <div className="flex min-w-0 items-center gap-2">
                           <Label className="text-[13px] font-medium">文本抽样</Label>
-                          <Badge variant="soft" className="text-[10px]">推荐</Badge>
+                          <Badge variant="soft" className="text-[10px]">
+                            推荐
+                          </Badge>
                         </div>
-                        <Switch checked={!!scanConfig.enable_text_extract} onCheckedChange={(v) => setScanConfig((p) => ({ ...p, enable_text_extract: !!v }))} />
+                        <Switch
+                          checked={!!scanConfig.enable_text_extract}
+                          onCheckedChange={(v) => setScanConfig((p) => ({ ...p, enable_text_extract: !!v }))}
+                        />
                       </div>
                     </div>
                   </div>
@@ -1013,23 +1117,36 @@ export default function DatasetPrecheckPage() {
                       <div className="flex min-h-9 items-center justify-between gap-3 py-1.5">
                         <div className="flex min-w-0 items-center gap-2">
                           <Label className="text-[13px] font-medium">PII 检测</Label>
-                          <Badge variant="soft" className="text-[10px]">推荐</Badge>
+                          <Badge variant="soft" className="text-[10px]">
+                            推荐
+                          </Badge>
                         </div>
-                        <Switch checked={!!scanConfig.enable_pii} onCheckedChange={(v) => setScanConfig((p) => ({ ...p, enable_pii: !!v }))} />
+                        <Switch
+                          checked={!!scanConfig.enable_pii}
+                          onCheckedChange={(v) => setScanConfig((p) => ({ ...p, enable_pii: !!v }))}
+                        />
                       </div>
                       <div className="flex min-h-9 items-center justify-between gap-3 py-1.5">
                         <div className="flex min-w-0 items-center gap-2">
                           <Label className="text-[13px] font-medium">Secrets 检测</Label>
-                          <Badge variant="soft" className="text-[10px]">推荐</Badge>
+                          <Badge variant="soft" className="text-[10px]">
+                            推荐
+                          </Badge>
                         </div>
-                        <Switch checked={!!scanConfig.enable_secrets} onCheckedChange={(v) => setScanConfig((p) => ({ ...p, enable_secrets: !!v }))} />
+                        <Switch
+                          checked={!!scanConfig.enable_secrets}
+                          onCheckedChange={(v) => setScanConfig((p) => ({ ...p, enable_secrets: !!v }))}
+                        />
                       </div>
                       <div className="flex min-h-9 items-center justify-between gap-3 py-1.5">
                         <div className="min-w-0">
                           <Label className="text-[13px] font-medium">脱敏路径</Label>
                           <div className="truncate text-[11px] text-muted-foreground">导出报告时隐藏本机路径</div>
                         </div>
-                        <Switch checked={!!scanConfig.redact_paths} onCheckedChange={(v) => setScanConfig((p) => ({ ...p, redact_paths: !!v }))} />
+                        <Switch
+                          checked={!!scanConfig.redact_paths}
+                          onCheckedChange={(v) => setScanConfig((p) => ({ ...p, redact_paths: !!v }))}
+                        />
                       </div>
                     </div>
                   </div>
@@ -1043,16 +1160,26 @@ export default function DatasetPrecheckPage() {
                       <div className="flex min-h-9 items-center justify-between gap-3 py-1.5">
                         <div className="flex min-w-0 items-center gap-2">
                           <Label className="text-[13px] font-medium">file_sha256</Label>
-                          <Badge variant="outline" className="text-[10px]">默认</Badge>
+                          <Badge variant="outline" className="text-[10px]">
+                            默认
+                          </Badge>
                         </div>
-                        <Switch checked={!!scanConfig.compute_file_hash} onCheckedChange={(v) => setScanConfig((p) => ({ ...p, compute_file_hash: !!v }))} />
+                        <Switch
+                          checked={!!scanConfig.compute_file_hash}
+                          onCheckedChange={(v) => setScanConfig((p) => ({ ...p, compute_file_hash: !!v }))}
+                        />
                       </div>
                       <div className="flex min-h-9 items-center justify-between gap-3 py-1.5">
                         <div className="flex min-w-0 items-center gap-2">
                           <Label className="text-[13px] font-medium">增量复用</Label>
-                          <Badge variant="outline" className="text-[10px]">可选</Badge>
+                          <Badge variant="outline" className="text-[10px]">
+                            可选
+                          </Badge>
                         </div>
-                        <Switch checked={!!scanConfig.reuse_unchanged_files} onCheckedChange={(v) => setScanConfig((p) => ({ ...p, reuse_unchanged_files: !!v }))} />
+                        <Switch
+                          checked={!!scanConfig.reuse_unchanged_files}
+                          onCheckedChange={(v) => setScanConfig((p) => ({ ...p, reuse_unchanged_files: !!v }))}
+                        />
                       </div>
                     </div>
                   </div>
@@ -1062,28 +1189,38 @@ export default function DatasetPrecheckPage() {
                   <div className="flex min-h-14 gap-2 border-b border-border/50 p-2.5 sm:border-b-0 sm:border-r">
                     <Archive className="mt-0.5 size-3.5 text-muted-foreground/70" />
                     <div className="min-w-0">
-                      <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">预估样本量</div>
+                      <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">
+                        预估样本量
+                      </div>
                       <div className="mt-1 font-mono text-xs text-foreground/80">{scanConfig.sample_size || '--'}</div>
                     </div>
                   </div>
                   <div className="flex min-h-14 gap-2 border-b border-border/50 p-2.5 sm:border-b-0 sm:border-r">
                     <FileSearch className="mt-0.5 size-3.5 text-muted-foreground/70" />
                     <div className="min-w-0">
-                      <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">扫描范围</div>
-                      <div className="mt-1 truncate font-mono text-xs text-foreground/80">根目录 / {runRootPath.replace(/^\/+/, '') || 'uploads'}</div>
+                      <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">
+                        扫描范围
+                      </div>
+                      <div className="mt-1 truncate font-mono text-xs text-foreground/80">
+                        根目录 / {runRootPath.replace(/^\/+/, '') || 'uploads'}
+                      </div>
                     </div>
                   </div>
                   <div className="flex min-h-14 gap-2 border-b border-border/50 p-2.5 sm:border-b-0 sm:border-r">
                     <FileText className="mt-0.5 size-3.5 text-muted-foreground/70" />
                     <div className="min-w-0">
-                      <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">支持格式</div>
+                      <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">
+                        支持格式
+                      </div>
                       <div className="mt-1 text-xs text-foreground/80">PDF / DOCX / TXT / MD / 图片 等</div>
                     </div>
                   </div>
                   <div className="flex min-h-14 gap-2 p-2.5">
                     <Settings2 className="mt-0.5 size-3.5 text-muted-foreground/70" />
                     <div className="min-w-0">
-                      <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">输出类型</div>
+                      <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">
+                        输出类型
+                      </div>
                       <div className="mt-1 text-xs text-foreground/80">质量画像报告（不入库）</div>
                     </div>
                   </div>
@@ -1091,10 +1228,7 @@ export default function DatasetPrecheckPage() {
               </div>
             </Panel>
 
-            <Panel
-              className={precheckPanelClass}
-              style={{ height: 790, minHeight: 560 }}
-            >
+            <Panel className={precheckPanelClass} style={{ height: 790, minHeight: 560 }}>
               <div className="flex items-center justify-between border-b border-border/50 px-4 py-3.5">
                 <div>
                   <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-foreground/85">RUN STATE</div>
@@ -1123,8 +1257,15 @@ export default function DatasetPrecheckPage() {
                       </div>
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <div className="text-[15px] font-semibold leading-none tracking-[-0.02em] text-foreground">等待扫描配置</div>
-                          <div className={cn('rounded-full border px-2.5 py-0.5 text-[11px] font-medium', getRunStatusTone(latestRunStatus))}>
+                          <div className="text-[15px] font-semibold leading-none tracking-[-0.02em] text-foreground">
+                            等待扫描配置
+                          </div>
+                          <div
+                            className={cn(
+                              'rounded-full border px-2.5 py-0.5 text-[11px] font-medium',
+                              getRunStatusTone(latestRunStatus),
+                            )}
+                          >
                             {runStatusLabel}
                           </div>
                         </div>
@@ -1163,7 +1304,12 @@ export default function DatasetPrecheckPage() {
                       状态
                     </div>
                     <div />
-                    <div className={cn('rounded-full border px-3 py-1 text-xs font-semibold', getRunStatusTone(latestRunStatus))}>
+                    <div
+                      className={cn(
+                        'rounded-full border px-3 py-1 text-xs font-semibold',
+                        getRunStatusTone(latestRunStatus),
+                      )}
+                    >
                       {runStatusLabel}
                     </div>
                   </div>
@@ -1174,9 +1320,14 @@ export default function DatasetPrecheckPage() {
                       进度
                     </div>
                     <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                      <div className="h-full rounded-full bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)/0.68))] transition-all" style={{ width: `${runProgress}%` }} />
+                      <div
+                        className="h-full rounded-full bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)/0.68))] transition-all"
+                        style={{ width: `${runProgress}%` }}
+                      />
                     </div>
-                    <div className="font-mono text-xs text-muted-foreground">{runProgress}% · {runTotalFiles || 0} / {runTotalFiles || 0}</div>
+                    <div className="font-mono text-xs text-muted-foreground">
+                      {runProgress}% · {runTotalFiles || 0} / {runTotalFiles || 0}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-[76px_minmax(0,1fr)_auto] items-center gap-3 border-b border-border/60 py-3.5 text-xs">
@@ -1203,19 +1354,29 @@ export default function DatasetPrecheckPage() {
                       <History className="size-3.5 text-muted-foreground" />
                       <div>
                         <div className="text-[11px] text-muted-foreground">上次运行</div>
-                        <div className="font-mono text-xs text-foreground/80">{selectedRun?.finished_at ? formatPrecheckTimestamp(selectedRun.finished_at) : '--'}</div>
+                        <div className="font-mono text-xs text-foreground/80">
+                          {selectedRun?.finished_at ? formatPrecheckTimestamp(selectedRun.finished_at) : '--'}
+                        </div>
                       </div>
                     </div>
                   </div>
 
                   <div className="border-b border-border/60 py-3.5">
-                    <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">输出内容</div>
-                    <div className="mt-1 text-[11px] leading-4 text-foreground/60">格式分布、长度分布、扫描件占比、PII/Secrets 命中、代表样本、近重复候选等画像指标。</div>
+                    <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">
+                      输出内容
+                    </div>
+                    <div className="mt-1 text-[11px] leading-4 text-foreground/60">
+                      格式分布、长度分布、扫描件占比、PII/Secrets 命中、代表样本、近重复候选等画像指标。
+                    </div>
                   </div>
 
                   <div className="py-3.5">
-                    <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">结果条目</div>
-                    <div className="mt-1 font-mono text-xs text-foreground/70">{hasRunOutput ? `${runTotalFiles} files` : '--'}</div>
+                    <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">
+                      结果条目
+                    </div>
+                    <div className="mt-1 font-mono text-xs text-foreground/70">
+                      {hasRunOutput ? `${runTotalFiles} files` : '--'}
+                    </div>
                   </div>
 
                   {selectedRun?.error_message ? (
@@ -1228,7 +1389,10 @@ export default function DatasetPrecheckPage() {
             </Panel>
           </div>
 
-          <Panel data-precheck-bottom-strip="true" className="overflow-hidden border border-border/50 bg-card p-0 shadow-none dark:border-border/60 dark:bg-card">
+          <Panel
+            data-precheck-bottom-strip="true"
+            className="overflow-hidden border border-border/50 bg-card p-0 shadow-none dark:border-border/60 dark:bg-card"
+          >
             <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1.5 px-4 py-2.5 text-[11px] leading-none text-muted-foreground">
               <span className="inline-flex items-center gap-2 text-foreground/75">
                 <Clock3 className="size-3 text-primary" />
@@ -1249,207 +1413,243 @@ export default function DatasetPrecheckPage() {
           </Panel>
 
           <div hidden={showPrecheckEmptyState} className="space-y-6">
-          <Panel className="p-5">
-            <div className="flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <div className="font-semibold">对比扫描结果（Diff）</div>
-                <div className="mt-1 text-[11px] leading-4 text-muted-foreground/65">用于复盘治理成效：格式分布、问题清单、扫描件占比等的变化</div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Select value={diffBaseRunId} onValueChange={(v) => setDiffBaseRunId(v)}>
-                  <SelectTrigger className="w-[320px]">
-                    <SelectValue placeholder="选择 base scan run" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(runs || [])
-                      .filter((r) => r.id !== selectedRun?.id)
-                      .map((r) => (
-                        <SelectItem key={`base-${r.id}`} value={r.id}>
-                          {String(r.created_at || '').slice(0, 19) || r.id} · {String(r.status || '')} · {r.progress ?? 0}%
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant="outline"
-                  className="gap-2"
-                  onClick={() =>
-                    detachPromise(
-                      refetchPrecheckQuery(
-                        () => diffQuery.refetch(),
-                        '对比失败',
-                        'Failed to diff precheck runs'
-                      )
-                    )
-                  }
-                  disabled={!diffBaseRunId || diffLoading || !selectedRun?.id}
-                >
-                  {diffLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : null}
-                  计算
-                </Button>
-              </div>
-            </div>
-
-            {diffRes ? (
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="rounded-xl border border-border/60 bg-muted/10 p-3 text-sm">
-                  <div className="font-mono text-xs text-muted-foreground">total_files</div>
-                  <div className="mt-1 font-mono text-lg">{diffRes.total_files.before} → {diffRes.total_files.after} (Δ {diffRes.total_files.delta})</div>
-                  <div className="mt-2 font-mono text-xs text-muted-foreground">pdf_scanned</div>
-                  <div className="mt-1 font-mono">{diffRes.pdf_scanned.before} → {diffRes.pdf_scanned.after} (Δ {diffRes.pdf_scanned.delta})</div>
-                  <div className="mt-2 font-mono text-xs text-muted-foreground">pdf_unknown</div>
-                  <div className="mt-1 font-mono">{diffRes.pdf_unknown.before} → {diffRes.pdf_unknown.after} (Δ {diffRes.pdf_unknown.delta})</div>
-                </div>
-
-                <div className="rounded-xl border border-border/60 overflow-hidden">
-                  <div className="px-3 py-2 text-sm font-medium bg-muted/40">Top Findings Δ</div>
-                  <div className="max-h-[220px] overflow-auto">
-                    <table aria-label="预检 Top Findings 差异" className="w-full text-sm text-left">
-                      <thead className="bg-muted/20 text-muted-foreground">
-                        <tr>
-                          <th className="px-3 py-2 font-medium">key</th>
-                          <th className="px-3 py-2 font-medium">before</th>
-                          <th className="px-3 py-2 font-medium">after</th>
-                          <th className="px-3 py-2 font-medium">delta</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(diffRes.findings || []).slice(0, 12).map((it) => (
-                          <tr key={`diff-${it.key}`} className="border-t border-border/60">
-                            <td className="px-3 py-2 font-mono text-xs">{it.key}</td>
-                            <td className="px-3 py-2 font-mono text-xs">{it.before}</td>
-                            <td className="px-3 py-2 font-mono text-xs">{it.after}</td>
-                            <td className={cn('px-3 py-2 font-mono text-xs', (() => {
-    if (it.delta > 0) {
-        return 'text-warning';
-    }
-    else if (it.delta < 0) {
-            return 'text-success';
-        }
-        else {
-            return '';
-        }
-})())}>
-                              {it.delta}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+            <Panel className="p-5">
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="font-semibold">对比扫描结果（Diff）</div>
+                  <div className="mt-1 text-[11px] leading-4 text-muted-foreground/65">
+                    用于复盘治理成效：格式分布、问题清单、扫描件占比等的变化
                   </div>
                 </div>
-              </div>
-            ) : (
-              <div className="mt-4 text-[11px] text-muted-foreground/65">未计算</div>
-            )}
-          </Panel>
-
-          <Panel className="p-5">
-            <StatsGrid>
-              <StatCard icon={FileSearch} label="文件总数" value={summary?.total_files ?? (loading ? '…' : 0)} color="cyan" />
-              <StatCard icon={FileSearch} label="总大小" value={(() => {
-    if (summary) {
-        return formatFileSize(summary.total_size_bytes || 0);
-    }
-    else if (loading) {
-            return '…';
-        }
-        else {
-            return '-';
-        }
-})()} color="teal" />
-              <StatCard icon={Sparkles} label="P50 长度" value={summary?.length_percentiles?.p50 ?? (loading ? '…' : 0)} subValue="chars" color="blue" />
-              <StatCard icon={Sparkles} label="P90 长度" value={summary?.length_percentiles?.p90 ?? (loading ? '…' : 0)} subValue="chars" color="blue" />
-              <StatCard icon={Sparkles} label="扫描 PDF" value={(() => {
-    if (summary) {
-        return `${summary.pdf_scan.scanned}/${summary.pdf_scan.scanned + summary.pdf_scan.not_scanned + summary.pdf_scan.unknown}`;
-    }
-    else if (loading) {
-            return '…';
-        }
-        else {
-            return '-';
-        }
-})()} color="orange" />
-            </StatsGrid>
-          </Panel>
-
-          {embeddingAdvisories.length > 0 ? (
-            <Panel className="border-warning/25 bg-[linear-gradient(135deg,hsl(var(--warning)/0.10),hsl(var(--card)/0.96))] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]">
-              <div className="flex items-start gap-3">
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-2xl border border-warning/30 bg-warning/10 text-warning">
-                  <AlertCircle className="size-4" />
+                <div className="flex items-center gap-2">
+                  <Select value={diffBaseRunId} onValueChange={(v) => setDiffBaseRunId(v)}>
+                    <SelectTrigger className="w-[320px]">
+                      <SelectValue placeholder="选择 base scan run" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(runs || [])
+                        .filter((r) => r.id !== selectedRun?.id)
+                        .map((r) => (
+                          <SelectItem key={`base-${r.id}`} value={r.id}>
+                            {String(r.created_at || '').slice(0, 19) || r.id} · {String(r.status || '')} ·{' '}
+                            {r.progress ?? 0}%
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() =>
+                      detachPromise(
+                        refetchPrecheckQuery(() => diffQuery.refetch(), '对比失败', 'Failed to diff precheck runs'),
+                      )
+                    }
+                    disabled={!diffBaseRunId || diffLoading || !selectedRun?.id}
+                  >
+                    {diffLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : null}
+                    计算
+                  </Button>
                 </div>
-                <div className="min-w-0 flex-1 space-y-3">
-                  <div>
-                    <div className="text-sm font-semibold text-foreground">Embedding 建议</div>
-                    <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
-                      来自当前预检 summary 的后端 advisory。这里只做风险提示，不表示系统已经自动切换了向量模型。
+              </div>
+
+              {diffRes ? (
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-xl border border-border/60 bg-muted/10 p-3 text-sm">
+                    <div className="font-mono text-xs text-muted-foreground">total_files</div>
+                    <div className="mt-1 font-mono text-lg">
+                      {diffRes.total_files.before} → {diffRes.total_files.after} (Δ {diffRes.total_files.delta})
+                    </div>
+                    <div className="mt-2 font-mono text-xs text-muted-foreground">pdf_scanned</div>
+                    <div className="mt-1 font-mono">
+                      {diffRes.pdf_scanned.before} → {diffRes.pdf_scanned.after} (Δ {diffRes.pdf_scanned.delta})
+                    </div>
+                    <div className="mt-2 font-mono text-xs text-muted-foreground">pdf_unknown</div>
+                    <div className="mt-1 font-mono">
+                      {diffRes.pdf_unknown.before} → {diffRes.pdf_unknown.after} (Δ {diffRes.pdf_unknown.delta})
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    {embeddingAdvisories.map((advisory) => (
-                      <div
-                        key={`${advisory.code}-${advisory.effectiveEmbedding || 'none'}`}
-                        className="rounded-xl border border-warning/20 bg-card/80 px-3 py-2.5"
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="soft" className="border-warning/20 bg-warning/10 text-warning">
-                            warning
-                          </Badge>
-                          <div className="text-[13px] font-semibold text-foreground">
-                            {advisory.title}
-                          </div>
-                          <div className="font-mono text-[11px] text-muted-foreground">
-                            code={advisory.code}
-                          </div>
-                        </div>
-                        <div className="mt-2 grid gap-2 text-[12px] leading-5 text-muted-foreground md:grid-cols-2">
-                          <div>
-                            <span className="font-medium text-foreground">当前模型：</span>
-                            {advisory.effectiveEmbedding || '未返回'}
-                          </div>
-                          <div>
-                            <span className="font-medium text-foreground">建议动作：</span>
-                            {advisory.recommendedAction || '未返回'}
-                          </div>
-                        </div>
-                        {advisory.recommendedModelIds.length > 0 ? (
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {advisory.recommendedModelIds.map((modelId) => (
-                              <Badge key={modelId} variant="outline" className="font-mono text-[11px]">
-                                {modelId}
-                              </Badge>
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
-                    ))}
+
+                  <div className="rounded-xl border border-border/60 overflow-hidden">
+                    <div className="px-3 py-2 text-sm font-medium bg-muted/40">Top Findings Δ</div>
+                    <div className="max-h-[220px] overflow-auto">
+                      <table aria-label="预检 Top Findings 差异" className="w-full text-sm text-left">
+                        <thead className="bg-muted/20 text-muted-foreground">
+                          <tr>
+                            <th className="px-3 py-2 font-medium">key</th>
+                            <th className="px-3 py-2 font-medium">before</th>
+                            <th className="px-3 py-2 font-medium">after</th>
+                            <th className="px-3 py-2 font-medium">delta</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(diffRes.findings || []).slice(0, 12).map((it) => (
+                            <tr key={`diff-${it.key}`} className="border-t border-border/60">
+                              <td className="px-3 py-2 font-mono text-xs">{it.key}</td>
+                              <td className="px-3 py-2 font-mono text-xs">{it.before}</td>
+                              <td className="px-3 py-2 font-mono text-xs">{it.after}</td>
+                              <td
+                                className={cn(
+                                  'px-3 py-2 font-mono text-xs',
+                                  (() => {
+                                    if (it.delta > 0) {
+                                      return 'text-warning'
+                                    } else if (it.delta < 0) {
+                                      return 'text-success'
+                                    } else {
+                                      return ''
+                                    }
+                                  })(),
+                                )}
+                              >
+                                {it.delta}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="mt-4 text-[11px] text-muted-foreground/65">未计算</div>
+              )}
             </Panel>
-          ) : null}
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Panel className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="font-semibold">格式分布</div>
-                <div className="text-xs text-muted-foreground font-mono">{summary?.generated_at ? `updated ${formatDate(summary.generated_at)}` : ''}</div>
-              </div>
-              <SafeResponsiveChart>
+              <StatsGrid>
+                <StatCard
+                  icon={FileSearch}
+                  label="文件总数"
+                  value={summary?.total_files ?? (loading ? '…' : 0)}
+                  color="cyan"
+                />
+                <StatCard
+                  icon={FileSearch}
+                  label="总大小"
+                  value={(() => {
+                    if (summary) {
+                      return formatFileSize(summary.total_size_bytes || 0)
+                    } else if (loading) {
+                      return '…'
+                    } else {
+                      return '-'
+                    }
+                  })()}
+                  color="teal"
+                />
+                <StatCard
+                  icon={Sparkles}
+                  label="P50 长度"
+                  value={summary?.length_percentiles?.p50 ?? (loading ? '…' : 0)}
+                  subValue="chars"
+                  color="blue"
+                />
+                <StatCard
+                  icon={Sparkles}
+                  label="P90 长度"
+                  value={summary?.length_percentiles?.p90 ?? (loading ? '…' : 0)}
+                  subValue="chars"
+                  color="blue"
+                />
+                <StatCard
+                  icon={Sparkles}
+                  label="扫描 PDF"
+                  value={(() => {
+                    if (summary) {
+                      return `${summary.pdf_scan.scanned}/${summary.pdf_scan.scanned + summary.pdf_scan.not_scanned + summary.pdf_scan.unknown}`
+                    } else if (loading) {
+                      return '…'
+                    } else {
+                      return '-'
+                    }
+                  })()}
+                  color="orange"
+                />
+              </StatsGrid>
+            </Panel>
+
+            {embeddingAdvisories.length > 0 ? (
+              <Panel className="border-warning/25 bg-[linear-gradient(135deg,hsl(var(--warning)/0.10),hsl(var(--card)/0.96))] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]">
+                <div className="flex items-start gap-3">
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-2xl border border-warning/30 bg-warning/10 text-warning">
+                    <AlertCircle className="size-4" />
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-3">
+                    <div>
+                      <div className="text-sm font-semibold text-foreground">Embedding 建议</div>
+                      <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
+                        来自当前预检 summary 的后端 advisory。这里只做风险提示，不表示系统已经自动切换了向量模型。
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {embeddingAdvisories.map((advisory) => (
+                        <div
+                          key={`${advisory.code}-${advisory.effectiveEmbedding || 'none'}`}
+                          className="rounded-xl border border-warning/20 bg-card/80 px-3 py-2.5"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="soft" className="border-warning/20 bg-warning/10 text-warning">
+                              warning
+                            </Badge>
+                            <div className="text-[13px] font-semibold text-foreground">{advisory.title}</div>
+                            <div className="font-mono text-[11px] text-muted-foreground">code={advisory.code}</div>
+                          </div>
+                          <div className="mt-2 grid gap-2 text-[12px] leading-5 text-muted-foreground md:grid-cols-2">
+                            <div>
+                              <span className="font-medium text-foreground">当前模型：</span>
+                              {advisory.effectiveEmbedding || '未返回'}
+                            </div>
+                            <div>
+                              <span className="font-medium text-foreground">建议动作：</span>
+                              {advisory.recommendedAction || '未返回'}
+                            </div>
+                          </div>
+                          {advisory.recommendedModelIds.length > 0 ? (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {advisory.recommendedModelIds.map((modelId) => (
+                                <Badge key={modelId} variant="outline" className="font-mono text-[11px]">
+                                  {modelId}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </Panel>
+            ) : null}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <Panel className="p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="font-semibold">格式分布</div>
+                  <div className="text-xs text-muted-foreground font-mono">
+                    {summary?.generated_at ? `updated ${formatDate(summary.generated_at)}` : ''}
+                  </div>
+                </div>
+                <SafeResponsiveChart>
                   <PieChart>
                     <Tooltip />
-                    <Pie data={fileTypeChartData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2} />
+                    <Pie
+                      data={fileTypeChartData}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={55}
+                      outerRadius={95}
+                      paddingAngle={2}
+                    />
                   </PieChart>
                 </SafeResponsiveChart>
-            </Panel>
+              </Panel>
 
-            <Panel className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="font-semibold">长度分布（chars）</div>
-              </div>
-              <SafeResponsiveChart>
+              <Panel className="p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="font-semibold">长度分布（chars）</div>
+                </div>
+                <SafeResponsiveChart>
                   <BarChart data={lengthHistogramData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" fontSize={12} />
@@ -1458,25 +1658,32 @@ export default function DatasetPrecheckPage() {
                     <Bar dataKey="value" fill="hsl(var(--chart-2))" radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </SafeResponsiveChart>
-            </Panel>
+              </Panel>
 
-            <Panel className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="font-semibold">PDF 扫描占比</div>
-              </div>
-              <SafeResponsiveChart>
+              <Panel className="p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="font-semibold">PDF 扫描占比</div>
+                </div>
+                <SafeResponsiveChart>
                   <PieChart>
                     <Tooltip />
-                    <Pie data={pdfScanData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2} />
+                    <Pie
+                      data={pdfScanData}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={55}
+                      outerRadius={95}
+                      paddingAngle={2}
+                    />
                   </PieChart>
                 </SafeResponsiveChart>
-            </Panel>
+              </Panel>
 
-            <Panel className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="font-semibold">文件大小分布</div>
-              </div>
-              <SafeResponsiveChart>
+              <Panel className="p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="font-semibold">文件大小分布</div>
+                </div>
+                <SafeResponsiveChart>
                   <BarChart data={fileSizeHistogramData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" fontSize={12} />
@@ -1485,14 +1692,14 @@ export default function DatasetPrecheckPage() {
                     <Bar dataKey="value" fill="hsl(var(--chart-3))" radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </SafeResponsiveChart>
-            </Panel>
+              </Panel>
 
-            <Panel className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="font-semibold">PII 命中（次数）</div>
-              </div>
-              {piiChartData.length ? (
-                <SafeResponsiveChart>
+              <Panel className="p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="font-semibold">PII 命中（次数）</div>
+                </div>
+                {piiChartData.length ? (
+                  <SafeResponsiveChart>
                     <BarChart data={piiChartData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" fontSize={12} />
@@ -1501,17 +1708,19 @@ export default function DatasetPrecheckPage() {
                       <Bar dataKey="value" fill="hsl(var(--chart-4))" radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </SafeResponsiveChart>
-              ) : (
-                <div className="h-[280px] flex items-center justify-center text-[11px] text-muted-foreground/60">暂无数据</div>
-              )}
-            </Panel>
+                ) : (
+                  <div className="h-[280px] flex items-center justify-center text-[11px] text-muted-foreground/60">
+                    暂无数据
+                  </div>
+                )}
+              </Panel>
 
-            <Panel className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="font-semibold">Secrets/Token 命中（次数）</div>
-              </div>
-              {secretsChartData.length ? (
-                <SafeResponsiveChart>
+              <Panel className="p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="font-semibold">Secrets/Token 命中（次数）</div>
+                </div>
+                {secretsChartData.length ? (
+                  <SafeResponsiveChart>
                     <BarChart data={secretsChartData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" fontSize={12} />
@@ -1520,174 +1729,210 @@ export default function DatasetPrecheckPage() {
                       <Bar dataKey="value" fill="hsl(var(--chart-6))" radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </SafeResponsiveChart>
+                ) : (
+                  <div className="h-[280px] flex items-center justify-center text-[11px] text-muted-foreground/60">
+                    暂无数据
+                  </div>
+                )}
+              </Panel>
+            </div>
+
+            <Panel className="p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold">代表性样本（抽样）</div>
+                  <div className="mt-1 text-[11px] leading-4 text-muted-foreground/65">
+                    用于售前/交付对齐范围：分层代表性 + 问题分桶样本（不会做删留决策）
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() =>
+                      detachPromise(
+                        refetchPrecheckQuery(
+                          () => samplesQuery.refetch(),
+                          '加载样本失败',
+                          'Failed to load precheck samples',
+                        ),
+                      )
+                    }
+                    disabled={!selectedRun?.id || samplesLoading}
+                  >
+                    {samplesLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                    ) : (
+                      <FileSearch className="w-4 h-4" />
+                    )}
+                    加载
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() =>
+                      downloadJsonObject(
+                        samplesRes,
+                        `${String(dataset?.name || 'dataset')
+                          .replaceAll(/[^a-zA-Z0-9_.-]+/g, '_')
+                          .slice(0, 64)}.precheck.samples.json`,
+                      )
+                    }
+                    disabled={!samplesRes}
+                  >
+                    <Download className="w-4 h-4" />
+                    下载
+                  </Button>
+                </div>
+              </div>
+
+              {samplesRes ? (
+                <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div className="rounded-xl border border-border/60 overflow-hidden">
+                    <div className="px-3 py-2 text-sm font-medium bg-muted/40">
+                      代表性样本（{samplesRes.representative?.length || 0}）
+                    </div>
+                    <div className="max-h-[260px] overflow-auto">
+                      <table aria-label="预检代表性样本" className="w-full text-sm text-left">
+                        <thead className="bg-muted/20 text-muted-foreground">
+                          <tr>
+                            <th className="px-3 py-2 font-medium">文件</th>
+                            <th className="px-3 py-2 font-medium">类型</th>
+                            <th className="px-3 py-2 font-medium">大小</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(samplesRes.representative || []).map((d) => (
+                            <tr
+                              key={`rep-${d.name}-${d.file_size}`}
+                              className="border-t border-border/60 hover:bg-muted/20 transition-colors"
+                            >
+                              <td className="px-3 py-2 font-mono text-xs">{d.name}</td>
+                              <td className="px-3 py-2 font-mono text-xs">{d.file_type}</td>
+                              <td className="px-3 py-2 font-mono text-xs">{formatFileSize(d.file_size || 0)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-border/60 overflow-hidden">
+                    <div className="px-3 py-2 text-sm font-medium bg-muted/40">问题分桶样本</div>
+                    <div className="max-h-[260px] overflow-auto">
+                      <table aria-label="预检问题分桶样本" className="w-full text-sm text-left">
+                        <thead className="bg-muted/20 text-muted-foreground">
+                          <tr>
+                            <th className="px-3 py-2 font-medium">bucket</th>
+                            <th className="px-3 py-2 font-medium">count</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Object.entries(samplesRes.needs_review || {}).map(([k, v]) => (
+                            <tr key={`need-${k}`} className="border-t border-border/60">
+                              <td className="px-3 py-2 font-mono text-xs">{k}</td>
+                              <td className="px-3 py-2 font-mono text-xs">{(v || []).length}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
               ) : (
-                <div className="h-[280px] flex items-center justify-center text-[11px] text-muted-foreground/60">暂无数据</div>
+                <div className="mt-4 text-[11px] text-muted-foreground/65">未加载</div>
               )}
             </Panel>
-          </div>
 
-          <Panel className="p-5">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="font-semibold">代表性样本（抽样）</div>
-                <div className="mt-1 text-[11px] leading-4 text-muted-foreground/65">用于售前/交付对齐范围：分层代表性 + 问题分桶样本（不会做删留决策）</div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  className="gap-2"
-                  onClick={() =>
-                    detachPromise(
-                      refetchPrecheckQuery(
-                        () => samplesQuery.refetch(),
-                        '加载样本失败',
-                        'Failed to load precheck samples'
-                      )
-                    )
-                  }
-                  disabled={!selectedRun?.id || samplesLoading}
-                >
-                  {samplesLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <FileSearch className="w-4 h-4" />}
-                  加载
-                </Button>
-                <Button
-                  variant="outline"
-                  className="gap-2"
-                  onClick={() => downloadJsonObject(samplesRes, `${String(dataset?.name || 'dataset').replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)}.precheck.samples.json`)}
-                  disabled={!samplesRes}
-                >
-                  <Download className="w-4 h-4" />
-                  下载
-                </Button>
-              </div>
-            </div>
-
-            {samplesRes ? (
-              <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="rounded-xl border border-border/60 overflow-hidden">
-                  <div className="px-3 py-2 text-sm font-medium bg-muted/40">代表性样本（{samplesRes.representative?.length || 0}）</div>
-                  <div className="max-h-[260px] overflow-auto">
-                    <table aria-label="预检代表性样本" className="w-full text-sm text-left">
-                      <thead className="bg-muted/20 text-muted-foreground">
-                        <tr>
-                          <th className="px-3 py-2 font-medium">文件</th>
-                          <th className="px-3 py-2 font-medium">类型</th>
-                          <th className="px-3 py-2 font-medium">大小</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(samplesRes.representative || []).map((d) => (
-                          <tr key={`rep-${d.name}-${d.file_size}`} className="border-t border-border/60 hover:bg-muted/20 transition-colors">
-                            <td className="px-3 py-2 font-mono text-xs">{d.name}</td>
-                            <td className="px-3 py-2 font-mono text-xs">{d.file_type}</td>
-                            <td className="px-3 py-2 font-mono text-xs">{formatFileSize(d.file_size || 0)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+            <Panel className="p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold">近重复候选（版本冲突）</div>
+                  <div className="mt-1 text-[11px] leading-4 text-muted-foreground/65">
+                    基于抽样文本 SimHash；只输出待确认列表（不做删留决策）
                   </div>
                 </div>
-
-                <div className="rounded-xl border border-border/60 overflow-hidden">
-                  <div className="px-3 py-2 text-sm font-medium bg-muted/40">问题分桶样本</div>
-                  <div className="max-h-[260px] overflow-auto">
-                    <table aria-label="预检问题分桶样本" className="w-full text-sm text-left">
-                      <thead className="bg-muted/20 text-muted-foreground">
-                        <tr>
-                          <th className="px-3 py-2 font-medium">bucket</th>
-                          <th className="px-3 py-2 font-medium">count</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {Object.entries(samplesRes.needs_review || {}).map(([k, v]) => (
-                          <tr key={`need-${k}`} className="border-t border-border/60">
-                            <td className="px-3 py-2 font-mono text-xs">{k}</td>
-                            <td className="px-3 py-2 font-mono text-xs">{(v || []).length}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() =>
+                      detachPromise(
+                        refetchPrecheckQuery(
+                          () => nearDupQuery.refetch(),
+                          '加载近重复失败（可能未开启）',
+                          'Failed to load precheck near-dups',
+                        ),
+                      )
+                    }
+                    disabled={!selectedRun?.id || nearDupLoading}
+                  >
+                    {nearDupLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                    ) : (
+                      <FileSearch className="w-4 h-4" />
+                    )}
+                    加载
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() =>
+                      downloadJsonObject(
+                        nearDupRes,
+                        `${String(dataset?.name || 'dataset')
+                          .replaceAll(/[^a-zA-Z0-9_.-]+/g, '_')
+                          .slice(0, 64)}.precheck.near_dups.json`,
+                      )
+                    }
+                    disabled={!nearDupRes}
+                  >
+                    <Download className="w-4 h-4" />
+                    下载
+                  </Button>
                 </div>
               </div>
-            ) : (
-              <div className="mt-4 text-[11px] text-muted-foreground/65">未加载</div>
-            )}
-          </Panel>
 
-          <Panel className="p-5">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="font-semibold">近重复候选（版本冲突）</div>
-                <div className="mt-1 text-[11px] leading-4 text-muted-foreground/65">基于抽样文本 SimHash；只输出待确认列表（不做删留决策）</div>
+              {nearDupRes ? (
+                <div className="mt-4 text-[11px] text-muted-foreground/65">
+                  clusters={nearDupRes.clusters_returned} · pairs={nearDupRes.pairs_returned} · threshold=
+                  {nearDupRes.threshold}
+                </div>
+              ) : (
+                <div className="mt-4 text-[11px] text-muted-foreground/65">未加载（需要在扫描时开启“近重复”）</div>
+              )}
+            </Panel>
+
+            <Panel className="p-5">
+              <div className="flex items-center justify-between gap-4 mb-4">
+                <div className="font-semibold">问题清单（可操作）</div>
+                <div className="text-[11px] text-muted-foreground/65">点击卡片查看文件列表（分页）</div>
               </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  className="gap-2"
-                  onClick={() =>
-                    detachPromise(
-                      refetchPrecheckQuery(
-                        () => nearDupQuery.refetch(),
-                        '加载近重复失败（可能未开启）',
-                        'Failed to load precheck near-dups'
-                      )
-                    )
-                  }
-                  disabled={!selectedRun?.id || nearDupLoading}
-                >
-                  {nearDupLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <FileSearch className="w-4 h-4" />}
-                  加载
-                </Button>
-                <Button
-                  variant="outline"
-                  className="gap-2"
-                  onClick={() => downloadJsonObject(nearDupRes, `${String(dataset?.name || 'dataset').replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)}.precheck.near_dups.json`)}
-                  disabled={!nearDupRes}
-                >
-                  <Download className="w-4 h-4" />
-                  下载
-                </Button>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {(summary?.findings || []).map((f) => (
+                  <button
+                    key={f.key}
+                    type="button"
+                    className={cn(
+                      'text-left px-4 py-3 rounded-xl border border-border/60 bg-card/40 hover:bg-card/70 transition-colors',
+                      'focus:outline-none focus:ring-2 focus:ring-primary/30',
+                    )}
+                    onClick={() => detachPromise(openFinding(f))}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-medium truncate">{f.label}</div>
+                      <Badge variant={findingBadgeVariant(f.severity)} className="font-mono text-xs">
+                        {f.count}
+                      </Badge>
+                    </div>
+                    {f.description ? (
+                      <div className="mt-1 text-xs text-muted-foreground line-clamp-2">{f.description}</div>
+                    ) : null}
+                  </button>
+                ))}
               </div>
-            </div>
-
-            {nearDupRes ? (
-              <div className="mt-4 text-[11px] text-muted-foreground/65">
-                clusters={nearDupRes.clusters_returned} · pairs={nearDupRes.pairs_returned} · threshold={nearDupRes.threshold}
-              </div>
-            ) : (
-              <div className="mt-4 text-[11px] text-muted-foreground/65">未加载（需要在扫描时开启“近重复”）</div>
-            )}
-          </Panel>
-
-          <Panel className="p-5">
-            <div className="flex items-center justify-between gap-4 mb-4">
-              <div className="font-semibold">问题清单（可操作）</div>
-              <div className="text-[11px] text-muted-foreground/65">点击卡片查看文件列表（分页）</div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {(summary?.findings || []).map((f) => (
-                <button
-                  key={f.key}
-                  type="button"
-                  className={cn(
-                    'text-left px-4 py-3 rounded-xl border border-border/60 bg-card/40 hover:bg-card/70 transition-colors',
-                    'focus:outline-none focus:ring-2 focus:ring-primary/30'
-                  )}
-                  onClick={() => detachPromise(openFinding(f))}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="font-medium truncate">{f.label}</div>
-                    <Badge variant={findingBadgeVariant(f.severity)} className="font-mono text-xs">
-                      {f.count}
-                    </Badge>
-                  </div>
-                  {f.description ? <div className="mt-1 text-xs text-muted-foreground line-clamp-2">{f.description}</div> : null}
-                </button>
-              ))}
-            </div>
-          </Panel>
+            </Panel>
           </div>
         </div>
 
@@ -1717,76 +1962,93 @@ export default function DatasetPrecheckPage() {
 
             <div className="mt-2">
               {(() => {
-    if (findingLoading && !findingRes) {
-        return (<div className="py-10 flex items-center justify-center text-muted-foreground">
-                  <Loader2 className="w-5 h-5 animate-spin motion-reduce:animate-none mr-2"/>
-                  加载中…
-                </div>);
-    }
-    else if (findingRes) {
-            return (<div className="space-y-3">
-                  <div className="text-xs text-muted-foreground font-mono">
-                    showing {findingRes.items.length}/{findingRes.total}
-                  </div>
-                  <div className="rounded-xl border border-border/60 overflow-hidden">
-                    <table aria-label="预检入库建议列表" className="w-full text-sm text-left">
-                      <thead className="bg-muted/40 text-muted-foreground">
-                        <tr>
-                          <th className="px-3 py-2 font-medium">文件</th>
-                          <th className="px-3 py-2 font-medium">类型</th>
-                          <th className="px-3 py-2 font-medium">大小</th>
-                          <th className="px-3 py-2 font-medium">长度</th>
-                          <th className="px-3 py-2 font-medium">PDF</th>
-                          <th className="px-3 py-2 font-medium">表格</th>
-                          <th className="px-3 py-2 font-medium">估算</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {findingRes.items.map((d) => (<tr key={`${d.name}-${d.file_type}-${d.file_size}`} className="border-t border-border/60 hover:bg-muted/20 transition-colors cursor-pointer" onClick={() => {
-                        setFileDetail(d);
-                        setFileDetailOpen(true);
-                    }}>
-                            <td className="px-3 py-2 font-mono text-xs">{d.name}</td>
-                            <td className="px-3 py-2 font-mono text-xs">{d.file_type}</td>
-                            <td className="px-3 py-2 font-mono text-xs">{formatFileSize(d.file_size || 0)}</td>
-                            <td className="px-3 py-2 font-mono text-xs">{d.text_characters}</td>
-                            <td className="px-3 py-2 font-mono text-xs">
-                              {d.file_type === 'pdf' ? ((() => {
-                    if (d.pdf_scanned === true) {
-                        return 'scan';
-                    }
-                    else if (d.pdf_scanned === false) {
-                            return 'text';
-                        }
-                        else {
-                            return 'unknown';
-                        }
-                })()) : ''}
-                            </td>
-                            <td className="px-3 py-2 font-mono text-xs">
-                              {d.spreadsheet ? `${d.spreadsheet.row_count || 0}x${d.spreadsheet.col_count || 0}` : ''}
-                            </td>
-                            <td className="px-3 py-2 font-mono text-xs">{d.estimated_text ? 'yes' : ''}</td>
-                          </tr>))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div className="text-xs text-muted-foreground">
-                      {findingRes.items.length >= findingRes.total ? '已加载全部' : ''}
+                if (findingLoading && !findingRes) {
+                  return (
+                    <div className="py-10 flex items-center justify-center text-muted-foreground">
+                      <Loader2 className="w-5 h-5 animate-spin motion-reduce:animate-none mr-2" />
+                      加载中…
                     </div>
-                    <Button variant="outline" className="gap-2" onClick={() => detachPromise(loadMoreFindingPage())} disabled={findingLoading || !findingItemsQuery.hasNextPage}>
-                      {findingLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none"/> : null}
-                      加载更多
-                    </Button>
-                  </div>
-                </div>);
-        }
-        else {
-            return (<div className="py-10 text-center text-muted-foreground">暂无数据</div>);
-        }
-})()}
+                  )
+                } else if (findingRes) {
+                  return (
+                    <div className="space-y-3">
+                      <div className="text-xs text-muted-foreground font-mono">
+                        showing {findingRes.items.length}/{findingRes.total}
+                      </div>
+                      <div className="rounded-xl border border-border/60 overflow-hidden">
+                        <table aria-label="预检入库建议列表" className="w-full text-sm text-left">
+                          <thead className="bg-muted/40 text-muted-foreground">
+                            <tr>
+                              <th className="px-3 py-2 font-medium">文件</th>
+                              <th className="px-3 py-2 font-medium">类型</th>
+                              <th className="px-3 py-2 font-medium">大小</th>
+                              <th className="px-3 py-2 font-medium">长度</th>
+                              <th className="px-3 py-2 font-medium">PDF</th>
+                              <th className="px-3 py-2 font-medium">表格</th>
+                              <th className="px-3 py-2 font-medium">估算</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {findingRes.items.map((d) => (
+                              <tr
+                                key={`${d.name}-${d.file_type}-${d.file_size}`}
+                                className="border-t border-border/60 hover:bg-muted/20 transition-colors cursor-pointer"
+                                onClick={() => {
+                                  setFileDetail(d)
+                                  setFileDetailOpen(true)
+                                }}
+                              >
+                                <td className="px-3 py-2 font-mono text-xs">{d.name}</td>
+                                <td className="px-3 py-2 font-mono text-xs">{d.file_type}</td>
+                                <td className="px-3 py-2 font-mono text-xs">{formatFileSize(d.file_size || 0)}</td>
+                                <td className="px-3 py-2 font-mono text-xs">{d.text_characters}</td>
+                                <td className="px-3 py-2 font-mono text-xs">
+                                  {d.file_type === 'pdf'
+                                    ? (() => {
+                                        if (d.pdf_scanned === true) {
+                                          return 'scan'
+                                        } else if (d.pdf_scanned === false) {
+                                          return 'text'
+                                        } else {
+                                          return 'unknown'
+                                        }
+                                      })()
+                                    : ''}
+                                </td>
+                                <td className="px-3 py-2 font-mono text-xs">
+                                  {d.spreadsheet
+                                    ? `${d.spreadsheet.row_count || 0}x${d.spreadsheet.col_count || 0}`
+                                    : ''}
+                                </td>
+                                <td className="px-3 py-2 font-mono text-xs">{d.estimated_text ? 'yes' : ''}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs text-muted-foreground">
+                          {findingRes.items.length >= findingRes.total ? '已加载全部' : ''}
+                        </div>
+                        <Button
+                          variant="outline"
+                          className="gap-2"
+                          onClick={() => detachPromise(loadMoreFindingPage())}
+                          disabled={findingLoading || !findingItemsQuery.hasNextPage}
+                        >
+                          {findingLoading ? (
+                            <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                          ) : null}
+                          加载更多
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                } else {
+                  return <div className="py-10 text-center text-muted-foreground">暂无数据</div>
+                }
+              })()}
             </div>
           </DialogContent>
         </Dialog>
@@ -1809,17 +2071,21 @@ export default function DatasetPrecheckPage() {
                 <div className="rounded-xl border border-border/60 bg-muted/10 p-3 text-sm">
                   <div className="font-mono text-xs text-muted-foreground">meta</div>
                   <div className="mt-1 font-mono text-xs">
-                    type={fileDetail.file_type} · size={formatFileSize(fileDetail.file_size)} · chars={fileDetail.text_characters}{' '}
-                    {fileDetail.estimated_text ? '(estimated)' : ''}
+                    type={fileDetail.file_type} · size={formatFileSize(fileDetail.file_size)} · chars=
+                    {fileDetail.text_characters} {fileDetail.estimated_text ? '(estimated)' : ''}
                   </div>
-                  {fileDetail.error_message ? <div className="mt-2 text-xs text-destructive">{fileDetail.error_message}</div> : null}
+                  {fileDetail.error_message ? (
+                    <div className="mt-2 text-xs text-destructive">{fileDetail.error_message}</div>
+                  ) : null}
                 </div>
 
                 {fileDetail.pdf_pages ? (
                   <div className="rounded-xl border border-border/60 bg-muted/10 p-3 text-sm">
                     <div className="font-mono text-xs text-muted-foreground">pdf_pages</div>
                     <div className="mt-1 font-mono text-xs">
-                      pages={fileDetail.pdf_pages.page_count} · sampled={fileDetail.pdf_pages.sampled_pages} · scanned={fileDetail.pdf_pages.scanned_pages} · text={fileDetail.pdf_pages.text_pages} · low_density={fileDetail.pdf_pages.low_density_pages} · unknown={fileDetail.pdf_pages.unknown_pages}
+                      pages={fileDetail.pdf_pages.page_count} · sampled={fileDetail.pdf_pages.sampled_pages} · scanned=
+                      {fileDetail.pdf_pages.scanned_pages} · text={fileDetail.pdf_pages.text_pages} · low_density=
+                      {fileDetail.pdf_pages.low_density_pages} · unknown={fileDetail.pdf_pages.unknown_pages}
                     </div>
                   </div>
                 ) : null}
@@ -1828,8 +2094,11 @@ export default function DatasetPrecheckPage() {
                   <div className="rounded-xl border border-border/60 bg-muted/10 p-3 text-sm">
                     <div className="font-mono text-xs text-muted-foreground">spreadsheet</div>
                     <div className="mt-1 font-mono text-xs">
-                      rows={fileDetail.spreadsheet.row_count} · cols={fileDetail.spreadsheet.col_count || 0} · sheets={fileDetail.spreadsheet.sheet_count} · merged_ratio={fileDetail.spreadsheet.merged_cell_ratio}
-                      {(fileDetail.spreadsheet.estimated_rows || fileDetail.spreadsheet.estimated_cols) ? ' (estimated)' : ''}
+                      rows={fileDetail.spreadsheet.row_count} · cols={fileDetail.spreadsheet.col_count || 0} · sheets=
+                      {fileDetail.spreadsheet.sheet_count} · merged_ratio={fileDetail.spreadsheet.merged_cell_ratio}
+                      {fileDetail.spreadsheet.estimated_rows || fileDetail.spreadsheet.estimated_cols
+                        ? ' (estimated)'
+                        : ''}
                     </div>
                   </div>
                 ) : null}
@@ -1842,14 +2111,18 @@ export default function DatasetPrecheckPage() {
                 {(fileDetail.pii_samples || []).length ? (
                   <div className="rounded-xl border border-border/60 overflow-hidden">
                     <div className="px-3 py-2 text-sm font-medium bg-muted/40">PII samples</div>
-                    <pre className="p-3 text-xs overflow-auto max-h-[220px] bg-background font-mono">{JSON.stringify(fileDetail.pii_samples, null, 2)}</pre>
+                    <pre className="p-3 text-xs overflow-auto max-h-[220px] bg-background font-mono">
+                      {JSON.stringify(fileDetail.pii_samples, null, 2)}
+                    </pre>
                   </div>
                 ) : null}
 
                 {(fileDetail.secrets_samples || []).length ? (
                   <div className="rounded-xl border border-border/60 overflow-hidden">
                     <div className="px-3 py-2 text-sm font-medium bg-muted/40">Secrets samples</div>
-                    <pre className="p-3 text-xs overflow-auto max-h-[220px] bg-background font-mono">{JSON.stringify(fileDetail.secrets_samples, null, 2)}</pre>
+                    <pre className="p-3 text-xs overflow-auto max-h-[220px] bg-background font-mono">
+                      {JSON.stringify(fileDetail.secrets_samples, null, 2)}
+                    </pre>
                   </div>
                 ) : null}
               </div>
@@ -1864,13 +2137,16 @@ export default function DatasetPrecheckPage() {
             <DialogHeader className="space-y-1.5">
               <DialogTitle className="text-[15px] font-semibold text-foreground">预检扫描 · 高级配置</DialogTitle>
               <DialogDescription className="rounded-lg border border-info/20 bg-info/5 px-2.5 py-1.5 text-[11px] leading-4 text-muted-foreground/70">
-                提示：<span className="font-mono">redact_paths</span> 会禁用 PII/Secrets 上下文样本；<span className="font-mono">reuse_unchanged_files</span> 仅在非脱敏且 root_path 相同时生效。
+                提示：<span className="font-mono">redact_paths</span> 会禁用 PII/Secrets 上下文样本；
+                <span className="font-mono">reuse_unchanged_files</span> 仅在非脱敏且 root_path 相同时生效。
               </DialogDescription>
             </DialogHeader>
 
             <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
               <div className="space-y-1.5">
-                <Label className="text-[11px] font-medium text-foreground/75">PDF 抽样页数 <span className="font-mono text-muted-foreground/55">pdf_sample_pages</span></Label>
+                <Label className="text-[11px] font-medium text-foreground/75">
+                  PDF 抽样页数 <span className="font-mono text-muted-foreground/55">pdf_sample_pages</span>
+                </Label>
                 <Input
                   placeholder="默认 3"
                   value={scanConfig.pdf_sample_pages ?? ''}
@@ -1882,7 +2158,9 @@ export default function DatasetPrecheckPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-[11px] font-medium text-foreground/75">文本抽样最大字节 <span className="font-mono text-muted-foreground/55">text_extract_max_bytes</span></Label>
+                <Label className="text-[11px] font-medium text-foreground/75">
+                  文本抽样最大字节 <span className="font-mono text-muted-foreground/55">text_extract_max_bytes</span>
+                </Label>
                 <Input
                   placeholder="默认 2000000"
                   value={scanConfig.text_extract_max_bytes ?? ''}
@@ -1897,18 +2175,30 @@ export default function DatasetPrecheckPage() {
 
             <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
               <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-card/45 px-2.5 py-2 dark:bg-card/40">
-                <Label className="text-[11px] font-medium text-foreground/75">近重复候选 <span className="font-mono text-muted-foreground/55">enable_near_dup</span></Label>
-                <Switch checked={!!scanConfig.enable_near_dup} onCheckedChange={(v) => setScanConfig((p) => ({ ...p, enable_near_dup: !!v }))} />
+                <Label className="text-[11px] font-medium text-foreground/75">
+                  近重复候选 <span className="font-mono text-muted-foreground/55">enable_near_dup</span>
+                </Label>
+                <Switch
+                  checked={!!scanConfig.enable_near_dup}
+                  onCheckedChange={(v) => setScanConfig((p) => ({ ...p, enable_near_dup: !!v }))}
+                />
               </div>
               <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-card/45 px-2.5 py-2 dark:bg-card/40">
-                <Label className="text-[11px] font-medium text-foreground/75">抽样清单 <span className="font-mono text-muted-foreground/55">enable_sampling</span></Label>
-                <Switch checked={!!scanConfig.enable_sampling} onCheckedChange={(v) => setScanConfig((p) => ({ ...p, enable_sampling: !!v }))} />
+                <Label className="text-[11px] font-medium text-foreground/75">
+                  抽样清单 <span className="font-mono text-muted-foreground/55">enable_sampling</span>
+                </Label>
+                <Switch
+                  checked={!!scanConfig.enable_sampling}
+                  onCheckedChange={(v) => setScanConfig((p) => ({ ...p, enable_sampling: !!v }))}
+                />
               </div>
             </div>
 
             <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
               <div className="space-y-1.5">
-                <Label className="text-[11px] font-medium text-foreground/75">抽样数量 <span className="font-mono text-muted-foreground/55">sample_size</span></Label>
+                <Label className="text-[11px] font-medium text-foreground/75">
+                  抽样数量 <span className="font-mono text-muted-foreground/55">sample_size</span>
+                </Label>
                 <Input
                   placeholder="默认 60"
                   value={scanConfig.sample_size ?? ''}
@@ -1920,7 +2210,9 @@ export default function DatasetPrecheckPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-[11px] font-medium text-foreground/75">近重复阈值 <span className="font-mono text-muted-foreground/55">near_dup_hamming_threshold</span></Label>
+                <Label className="text-[11px] font-medium text-foreground/75">
+                  近重复阈值 <span className="font-mono text-muted-foreground/55">near_dup_hamming_threshold</span>
+                </Label>
                 <Input
                   placeholder="默认 5"
                   value={scanConfig.near_dup_hamming_threshold ?? ''}
@@ -1937,12 +2229,12 @@ export default function DatasetPrecheckPage() {
 
         <Dialog
           open={policyOpen}
-           onOpenChange={(open) => {
-             setPolicyOpen(open)
-             if (!open) {
-               setPolicyApplyReplace(false)
-             }
-           }}
+          onOpenChange={(open) => {
+            setPolicyOpen(open)
+            if (!open) {
+              setPolicyApplyReplace(false)
+            }
+          }}
         >
           <DialogContent className="max-w-4xl border-border bg-background/95 shadow-strong sm:rounded-2xl">
             <DialogHeader>
@@ -1955,70 +2247,100 @@ export default function DatasetPrecheckPage() {
                 ) : null}
               </DialogTitle>
               <DialogDescription className="text-muted-foreground">
-                把预检统计转成可导入的 ingestion policy（保守规则 + 待人工复核清单；表格默认启用 TAG 自动分流：大表→SQL，小表→RAG）
+                把预检统计转成可导入的 ingestion policy（保守规则 + 待人工复核清单；表格默认启用 TAG
+                自动分流：大表→SQL，小表→RAG）
               </DialogDescription>
             </DialogHeader>
 
             {(() => {
-    if (policyLoading) {
-        return (<div className="py-10 flex items-center justify-center text-muted-foreground">
-                <Loader2 className="w-5 h-5 animate-spin motion-reduce:animate-none mr-2"/>
-                生成中…
-              </div>);
-    }
-    else if (policyRes) {
-            return (<div className="space-y-4">
-                {policyRes.notes?.length ? (<div className="rounded-xl border border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground space-y-1">
-                    {policyRes.notes.map((n) => (<div key={n}>- {n}</div>))}
-                  </div>) : null}
-
-                <div className="rounded-xl border border-border/60 overflow-hidden">
-                  <div className="px-3 py-2 text-sm font-medium bg-muted/40">待人工复核</div>
-                  <table aria-label="预检人工复核列表" className="w-full text-sm text-left">
-                    <thead className="bg-muted/20 text-muted-foreground">
-                      <tr>
-                        <th className="px-3 py-2 font-medium">bucket</th>
-                        <th className="px-3 py-2 font-medium">total</th>
-                        <th className="px-3 py-2 font-medium">sample_names</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(policyRes.manual_review || []).map((b) => (<tr key={b.key} className="border-t border-border/60">
-                          <td className="px-3 py-2 font-mono text-xs">{b.key}</td>
-                          <td className="px-3 py-2 font-mono text-xs">{b.total}</td>
-                          <td className="px-3 py-2 font-mono text-xs truncate">{(b.sample_names || []).slice(0, 5).join(', ')}</td>
-                        </tr>))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="rounded-xl border border-border/60 overflow-hidden">
-                  <div className="px-3 py-2 text-sm font-medium bg-muted/40">Policy（JSON）</div>
-                  <pre className="p-3 text-xs overflow-auto max-h-[280px] bg-background font-mono">{JSON.stringify(policyRes.policy, null, 2)}</pre>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Checkbox checked={policyApplyReplace} onCheckedChange={(v) => setPolicyApplyReplace(!!v)}/>
-                    <div className="text-sm text-muted-foreground">覆盖已有 ingestion_policy（replace=true）</div>
+              if (policyLoading) {
+                return (
+                  <div className="py-10 flex items-center justify-center text-muted-foreground">
+                    <Loader2 className="w-5 h-5 animate-spin motion-reduce:animate-none mr-2" />
+                    生成中…
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" className="gap-2" onClick={() => downloadJsonObject(policyRes.policy, `${String(dataset?.name || 'dataset').replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)}.ingestion_policy.suggested.json`)}>
-                      <Download className="w-4 h-4"/>
-                      下载
-                    </Button>
-                    <Button className="gap-2" onClick={() => detachPromise(applyPolicy())} disabled={policyApplying}>
-                      {policyApplying ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none"/> : null}
-                      应用到数据集
-                    </Button>
+                )
+              } else if (policyRes) {
+                return (
+                  <div className="space-y-4">
+                    {policyRes.notes?.length ? (
+                      <div className="rounded-xl border border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground space-y-1">
+                        {policyRes.notes.map((n) => (
+                          <div key={n}>- {n}</div>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <div className="rounded-xl border border-border/60 overflow-hidden">
+                      <div className="px-3 py-2 text-sm font-medium bg-muted/40">待人工复核</div>
+                      <table aria-label="预检人工复核列表" className="w-full text-sm text-left">
+                        <thead className="bg-muted/20 text-muted-foreground">
+                          <tr>
+                            <th className="px-3 py-2 font-medium">bucket</th>
+                            <th className="px-3 py-2 font-medium">total</th>
+                            <th className="px-3 py-2 font-medium">sample_names</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(policyRes.manual_review || []).map((b) => (
+                            <tr key={b.key} className="border-t border-border/60">
+                              <td className="px-3 py-2 font-mono text-xs">{b.key}</td>
+                              <td className="px-3 py-2 font-mono text-xs">{b.total}</td>
+                              <td className="px-3 py-2 font-mono text-xs truncate">
+                                {(b.sample_names || []).slice(0, 5).join(', ')}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="rounded-xl border border-border/60 overflow-hidden">
+                      <div className="px-3 py-2 text-sm font-medium bg-muted/40">Policy（JSON）</div>
+                      <pre className="p-3 text-xs overflow-auto max-h-[280px] bg-background font-mono">
+                        {JSON.stringify(policyRes.policy, null, 2)}
+                      </pre>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Checkbox checked={policyApplyReplace} onCheckedChange={(v) => setPolicyApplyReplace(!!v)} />
+                        <div className="text-sm text-muted-foreground">覆盖已有 ingestion_policy（replace=true）</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          className="gap-2"
+                          onClick={() =>
+                            downloadJsonObject(
+                              policyRes.policy,
+                              `${String(dataset?.name || 'dataset')
+                                .replaceAll(/[^a-zA-Z0-9_.-]+/g, '_')
+                                .slice(0, 64)}.ingestion_policy.suggested.json`,
+                            )
+                          }
+                        >
+                          <Download className="w-4 h-4" />
+                          下载
+                        </Button>
+                        <Button
+                          className="gap-2"
+                          onClick={() => detachPromise(applyPolicy())}
+                          disabled={policyApplying}
+                        >
+                          {policyApplying ? (
+                            <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                          ) : null}
+                          应用到数据集
+                        </Button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>);
-        }
-        else {
-            return (<div className="py-10 text-center text-muted-foreground">暂无数据</div>);
-        }
-})()}
+                )
+              } else {
+                return <div className="py-10 text-center text-muted-foreground">暂无数据</div>
+              }
+            })()}
           </DialogContent>
         </Dialog>
       </PageScaffold>

@@ -95,7 +95,9 @@ describe('execution monitor visual contracts', () => {
     const page = read('app/knowledge/ingestion/page-client.tsx')
 
     expect(page).toContain("mode === 'execution-monitor' ? 'relative z-20' : 'sticky top-3 z-30'")
-    expect(page).toContain("mode === 'execution-monitor' ? 'bg-info/[0.025] dark:bg-background' : INGESTION_BACKGROUND_CLASS")
+    expect(page).toContain(
+      "mode === 'execution-monitor' ? 'bg-info/[0.025] dark:bg-background' : INGESTION_BACKGROUND_CLASS",
+    )
     expect(panel).toContain('data-monitor-flat-canvas="true"')
     expect(panel).toContain('data-monitor-boundary-system="ruled"')
     expect(panel).toContain('data-monitor-visual-tone="enterprise"')
@@ -114,7 +116,7 @@ describe('execution monitor visual contracts', () => {
     const page = read('app/knowledge/ingestion/page-client.tsx')
 
     expect(panel).not.toContain('bg-card/86')
-    expect(page).not.toContain("rgba(248,250,252,0.82)")
-    expect(page).not.toContain("rgba(241,245,249,0.46)")
+    expect(page).not.toContain('rgba(248,250,252,0.82)')
+    expect(page).not.toContain('rgba(241,245,249,0.46)')
   })
 })

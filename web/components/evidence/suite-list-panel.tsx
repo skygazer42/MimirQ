@@ -63,9 +63,7 @@ export function SuiteListPanel({
                   </Badge>
                 ))}
                 {overflowCount > 0 ? (
-                  <span className="text-[11px] font-mono text-muted-foreground">
-                    +{overflowCount}
-                  </span>
+                  <span className="text-[11px] font-mono text-muted-foreground">+{overflowCount}</span>
                 ) : null}
               </div>
             )
@@ -77,7 +75,7 @@ export function SuiteListPanel({
               type="button"
               className={cn(
                 'w-full rounded-lg border px-3 py-2 text-left transition-colors',
-                active ? 'border-primary/40 bg-primary/5' : 'border-border hover:bg-muted/30'
+                active ? 'border-primary/40 bg-primary/5' : 'border-border hover:bg-muted/30',
               )}
               onClick={() => onSelectSuite(String(suite.id))}
             >
@@ -109,9 +107,7 @@ export function SuiteListPanel({
     )
   } else {
     suitesContent = (
-      <div className="text-xs text-muted-foreground text-pretty">
-        暂无 Suite。点击「新建」创建一个 Evidence Suite。
-      </div>
+      <div className="text-xs text-muted-foreground text-pretty">暂无 Suite。点击「新建」创建一个 Evidence Suite。</div>
     )
   }
 
@@ -123,9 +119,7 @@ export function SuiteListPanel({
             <ShieldCheck className="size-4 text-muted-foreground" aria-hidden="true" />
             Evidence Suites
           </div>
-          <div className="mt-1 text-xs text-muted-foreground text-pretty">
-            数据集：{datasetLabel}
-          </div>
+          <div className="mt-1 text-xs text-muted-foreground text-pretty">数据集：{datasetLabel}</div>
         </div>
         <Button size="sm" className="gap-2" onClick={onCreateSuite}>
           <Plus className="size-4" aria-hidden="true" />
@@ -143,7 +137,10 @@ export function SuiteListPanel({
           onClick={onRefresh}
           disabled={suitesLoading}
         >
-          <RefreshCw className={cn('size-4', suitesLoading ? 'animate-spin motion-reduce:animate-none' : '')} aria-hidden="true" />
+          <RefreshCw
+            className={cn('size-4', suitesLoading ? 'animate-spin motion-reduce:animate-none' : '')}
+            aria-hidden="true"
+          />
         </Button>
       </div>
 
@@ -159,15 +156,11 @@ export function SuiteListPanel({
         <span className="font-mono tabular-nums">{filteredSuites.length}</span>
       </div>
 
-      {suitesError ? (
-        <div className="mt-3 text-xs text-destructive text-pretty">{suitesError}</div>
-      ) : null}
+      {suitesError ? <div className="mt-3 text-xs text-destructive text-pretty">{suitesError}</div> : null}
 
       <div className="mt-3">
         <ScrollArea className="h-[420px] pr-2">
-          <div className="space-y-2">
-            {suitesContent}
-          </div>
+          <div className="space-y-2">{suitesContent}</div>
         </ScrollArea>
       </div>
     </Panel>

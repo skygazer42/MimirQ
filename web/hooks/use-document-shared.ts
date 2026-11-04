@@ -1,12 +1,7 @@
 'use client'
 
 import { documentApi } from '@/lib/api/documents'
-import type {
-  Document,
-  DocumentBatchUploadFailure,
-  DocumentBatchUploadSuccess,
-  DocumentPipelineOptions,
-} from '@/types'
+import type { Document, DocumentBatchUploadFailure, DocumentBatchUploadSuccess, DocumentPipelineOptions } from '@/types'
 
 export type DocumentListParams = {
   skip?: number
@@ -36,7 +31,7 @@ export type DocumentStatusSnapshot = Pick<
 export type DocumentListResponse = Awaited<ReturnType<typeof documentApi.list>>
 
 export type UpdateCachedDocuments = (
-  updater: (current: DocumentListResponse | undefined) => DocumentListResponse | undefined
+  updater: (current: DocumentListResponse | undefined) => DocumentListResponse | undefined,
 ) => void
 
 const TERMINAL_DOCUMENT_STATUSES = new Set(['completed', 'failed', 'cancelled', 'quarantined'])
@@ -50,7 +45,9 @@ function getDocumentSourcePath(doc: Document): string {
 }
 
 export function matchesStatusFilter(doc: Document, statusFilter: string | undefined): boolean {
-  const status = String(statusFilter || '').trim().toLowerCase()
+  const status = String(statusFilter || '')
+    .trim()
+    .toLowerCase()
   if (!status || status === 'all') return true
   if (status === 'processing') {
     return doc.status === 'pending' || doc.status === 'processing'
@@ -59,7 +56,9 @@ export function matchesStatusFilter(doc: Document, statusFilter: string | undefi
 }
 
 export function matchesLifecycleFilter(doc: Document, lifecycleFilter: string | undefined): boolean {
-  const lifecycle = String(lifecycleFilter || '').trim().toLowerCase()
+  const lifecycle = String(lifecycleFilter || '')
+    .trim()
+    .toLowerCase()
   if (!lifecycle || lifecycle === 'all') return true
 
   const isArchived = Boolean(doc.archived_at)
@@ -83,8 +82,16 @@ export function matchesDocumentListParams(doc: Document, params: DocumentListPar
 
   if (!matchesLifecycleFilter(doc, params.lifecycle)) return false
 
-  const query = String(params.q || '').trim().toLowerCase()
-  if (query && !String(doc.filename || '').toLowerCase().includes(query)) return false
+  const query = String(params.q || '')
+    .trim()
+    .toLowerCase()
+  if (
+    query &&
+    !String(doc.filename || '')
+      .toLowerCase()
+      .includes(query)
+  )
+    return false
 
   return true
 }
@@ -93,11 +100,7 @@ export function isTerminalDocumentStatus(status: string | undefined): boolean {
   return TERMINAL_DOCUMENT_STATUSES.has(String(status || '').toLowerCase())
 }
 
-export function mergePolledDocument(
-  doc: Document,
-  documentId: string,
-  status: DocumentStatusSnapshot
-): Document {
+export function mergePolledDocument(doc: Document, documentId: string, status: DocumentStatusSnapshot): Document {
   if (doc.id !== documentId) return doc
 
   return {
@@ -116,7 +119,7 @@ export function replacePolledDocument(doc: Document, documentId: string, nextDoc
 export function mergePolledDocumentList(
   documents: Document[],
   documentId: string,
-  status: DocumentStatusSnapshot
+  status: DocumentStatusSnapshot,
 ): Document[] {
   return documents.map((doc) => mergePolledDocument(doc, documentId, status))
 }
@@ -124,22 +127,17 @@ export function mergePolledDocumentList(
 export function replacePolledDocumentList(
   documents: Document[],
   documentId: string,
-  nextDocument: Document
+  nextDocument: Document,
 ): Document[] {
   return documents.map((doc) => replacePolledDocument(doc, documentId, nextDocument))
 }
 
-export function clampUploadOption(
-  value: number | undefined,
-  fallback: number,
-  min: number,
-  max: number
-): number {
+export function clampUploadOption(value: number | undefined, fallback: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, Number(value ?? fallback)))
 }
 
 export function getUploadFileKey(
-  file: Pick<File, 'name'> & { webkitRelativePath?: string } | DocumentBatchUploadFailure
+  file: (Pick<File, 'name'> & { webkitRelativePath?: string }) | DocumentBatchUploadFailure,
 ): string {
   if ('source_path' in file || 'filename' in file) {
     return String(file.source_path || file.filename || '').trim()
@@ -147,10 +145,7 @@ export function getUploadFileKey(
   return String(file.webkitRelativePath || file.name || '').trim()
 }
 
-export function collectRetryFiles(
-  failed: DocumentBatchUploadFailure[],
-  fileByKey: Map<string, File>
-): File[] {
+export function collectRetryFiles(failed: DocumentBatchUploadFailure[], fileByKey: Map<string, File>): File[] {
   const nextRemaining: File[] = []
   for (const item of failed) {
     const retryFile = fileByKey.get(getUploadFileKey(item))
@@ -162,7 +157,7 @@ export function collectRetryFiles(
 export async function uploadBatchRound(
   files: File[],
   options: UploadBatchRequestOptions,
-  fileByKey: Map<string, File>
+  fileByKey: Map<string, File>,
 ): Promise<{
   successful: DocumentBatchUploadSuccess[]
   failed: DocumentBatchUploadFailure[]

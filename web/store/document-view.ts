@@ -2,11 +2,7 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
 import { getClientStorage } from '@/lib/client-storage'
-import {
-  AUTH_SCOPE_CHANGED_EVENT,
-  DOCUMENT_VIEW_STORAGE_KEY,
-  getAuthCacheScope,
-} from '@/lib/auth-storage'
+import { AUTH_SCOPE_CHANGED_EVENT, DOCUMENT_VIEW_STORAGE_KEY, getAuthCacheScope } from '@/lib/auth-storage'
 import type { DocumentPreviewAnchor } from '@/lib/document-preview-anchor'
 import { sanitizeDocumentPreviewAnchor } from '@/lib/document-preview-anchor'
 
@@ -61,7 +57,7 @@ type DocumentViewState = {
       previewAnchor?: Partial<DocumentPreviewAnchor> | null
       activeTab?: DocumentViewTab
       sourceContext?: DocumentViewSourceContext | null
-    }
+    },
   ) => void
   closeDocument: () => void
   reopenLastDocument: () => void
@@ -99,7 +95,9 @@ function sanitizePanelWidthPx(value: unknown): number | undefined {
   return width >= 360 && width <= 1800 ? width : undefined
 }
 
-function sanitizeHighlightRange(range: Partial<HighlightRange> | HighlightRange | null | undefined): HighlightRange | null {
+function sanitizeHighlightRange(
+  range: Partial<HighlightRange> | HighlightRange | null | undefined,
+): HighlightRange | null {
   const startRaw = range?.start
   const endRaw = range?.end
   const start = typeof startRaw === 'number' && Number.isFinite(startRaw) ? Math.trunc(startRaw) : null
@@ -112,7 +110,10 @@ function normalizeChunkId(chunkId: string | null | undefined): string | null {
   return normalized || null
 }
 
-function normalizeOptionalText(value: string | null | undefined, maxChars = MAX_SOURCE_CONTEXT_TEXT_CHARS): string | null {
+function normalizeOptionalText(
+  value: string | null | undefined,
+  maxChars = MAX_SOURCE_CONTEXT_TEXT_CHARS,
+): string | null {
   const normalized = String(value || '').trim()
   if (!normalized) return null
   return normalized.length > maxChars ? normalized.slice(0, maxChars) : normalized
@@ -130,7 +131,9 @@ function sanitizeDocumentViewTab(tab: unknown): DocumentViewTab | undefined {
   return isDocumentViewTab(tab) ? tab : undefined
 }
 
-function sanitizeSourceContext(sourceContext: DocumentViewSourceContext | null | undefined): DocumentViewSourceContext | null {
+function sanitizeSourceContext(
+  sourceContext: DocumentViewSourceContext | null | undefined,
+): DocumentViewSourceContext | null {
   if (sourceContext?.kind !== 'chat-citation') return null
 
   const messageId = String(sourceContext.messageId || '').trim()
@@ -155,7 +158,7 @@ function buildResumeTarget(
   rawChunkId?: string | null,
   range?: Partial<HighlightRange> | HighlightRange | null,
   previewAnchor?: Partial<DocumentPreviewAnchor> | DocumentPreviewAnchor | null,
-  sourceContext?: DocumentViewSourceContext | null
+  sourceContext?: DocumentViewSourceContext | null,
 ): DocumentViewResumeTarget | null {
   const documentId = normalizeDocumentId(rawDocumentId)
   if (!documentId) return null
@@ -211,7 +214,7 @@ function sanitizeDocumentLayoutPatch(patch: Partial<DocumentViewLayout>): Partia
 
 function mergeDocumentLayout(
   current: DocumentViewLayout | undefined,
-  patch: Partial<DocumentViewLayout>
+  patch: Partial<DocumentViewLayout>,
 ): DocumentViewLayout | null {
   const sanitizedPatch = sanitizeDocumentLayoutPatch(patch)
   const next = current ? { ...current, ...sanitizedPatch } : { ...sanitizedPatch }
@@ -222,7 +225,7 @@ function mergeDocumentLayout(
 function persistActiveTabForDocument(
   documentId: string | null,
   documentLayouts: Record<string, DocumentViewLayout>,
-  activeTab: DocumentViewTab
+  activeTab: DocumentViewTab,
 ) {
   if (!documentId) return documentLayouts
 
@@ -265,7 +268,7 @@ export const useDocumentView = create<DocumentViewState>()(
             chunkId || null,
             highlightRange,
             previewAnchor,
-            sourceContext
+            sourceContext,
           )
 
           return {
@@ -297,8 +300,7 @@ export const useDocumentView = create<DocumentViewState>()(
           if (!lastOpenedTarget) return state
 
           const savedLayout = state.documentLayouts[lastOpenedTarget.documentId]
-          const activeTab =
-            lastOpenedTarget.activeTab || savedLayout?.activeTab || DEFAULT_ACTIVE_TAB
+          const activeTab = lastOpenedTarget.activeTab || savedLayout?.activeTab || DEFAULT_ACTIVE_TAB
 
           return {
             isOpen: true,
@@ -308,11 +310,7 @@ export const useDocumentView = create<DocumentViewState>()(
             previewAnchor: lastOpenedTarget.previewAnchor || null,
             sourceContext: lastOpenedTarget.sourceContext || null,
             activeTab,
-            documentLayouts: persistActiveTabForDocument(
-              lastOpenedTarget.documentId,
-              state.documentLayouts,
-              activeTab
-            ),
+            documentLayouts: persistActiveTabForDocument(lastOpenedTarget.documentId, state.documentLayouts, activeTab),
             lastOpenedTarget: {
               ...lastOpenedTarget,
               activeTab,
@@ -325,8 +323,14 @@ export const useDocumentView = create<DocumentViewState>()(
           highlightChunkId: chunkId,
           highlightRange: null,
           lastOpenedTarget:
-            buildResumeTarget(state.documentId, state.activeTab, chunkId, null, state.previewAnchor, state.sourceContext) ||
-            state.lastOpenedTarget,
+            buildResumeTarget(
+              state.documentId,
+              state.activeTab,
+              chunkId,
+              null,
+              state.previewAnchor,
+              state.sourceContext,
+            ) || state.lastOpenedTarget,
         })),
 
       setHighlightRange: (range) =>
@@ -339,9 +343,8 @@ export const useDocumentView = create<DocumentViewState>()(
               state.highlightChunkId,
               range,
               state.previewAnchor,
-              state.sourceContext
-            ) ||
-            state.lastOpenedTarget,
+              state.sourceContext,
+            ) || state.lastOpenedTarget,
         })),
 
       setActiveTab: (tab) =>
@@ -355,9 +358,8 @@ export const useDocumentView = create<DocumentViewState>()(
               state.highlightChunkId,
               state.highlightRange,
               state.previewAnchor,
-              state.sourceContext
-            ) ||
-            state.lastOpenedTarget,
+              state.sourceContext,
+            ) || state.lastOpenedTarget,
         })),
 
       getDocumentLayout: (documentId) => {
@@ -398,8 +400,8 @@ export const useDocumentView = create<DocumentViewState>()(
         const saved = persisted as Partial<DocumentViewState>
         return saved.authScope === getAuthCacheScope() ? { ...current, ...saved } : current
       },
-    }
-  )
+    },
+  ),
 )
 
 globalThis.window?.addEventListener(AUTH_SCOPE_CHANGED_EVENT, () => {

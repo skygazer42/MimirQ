@@ -1,19 +1,18 @@
-"use client"
+'use client'
 
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import dynamic from 'next/dynamic'
-import { startTransition, useEffect, useMemo, useRef, useState, type ComponentPropsWithoutRef } from "react"
-import ReactMarkdown from "react-markdown"
-import remarkGfm from "remark-gfm"
+import { startTransition, useEffect, useMemo, useRef, useState, type ComponentPropsWithoutRef } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { AuthImage } from '@/components/auth-image'
 import { resolveMarkdownImageSrc, sanitizeMarkdownHref } from '@/components/markdown/markdown-safety'
 import { randomIntInclusive } from '@/lib/secure-random'
-import { cn } from "@/lib/utils"
+import { cn } from '@/lib/utils'
 
-const CinematicCodeBlock = dynamic(
-  () => import('./cinematic-code-block').then((mod) => mod.CinematicCodeBlock),
-  { ssr: false }
-)
+const CinematicCodeBlock = dynamic(() => import('./cinematic-code-block').then((mod) => mod.CinematicCodeBlock), {
+  ssr: false,
+})
 
 // Typing configuration (ms).
 // Keep it deterministic and relatively low-frequency to reduce layout jitter while streaming.
@@ -35,11 +34,7 @@ type MarkdownLinkProps = Readonly<{ href?: string; children?: React.ReactNode }>
 type MarkdownImageProps = Readonly<{ src?: string | Blob; alt?: string }>
 
 function CinematicMarkdownParagraph({ children }: MarkdownChildrenProps) {
-  return (
-    <p className="mb-3 last:mb-0 leading-relaxed motion-safe:animate-fade-in">
-      {children}
-    </p>
-  )
+  return <p className="mb-3 last:mb-0 leading-relaxed motion-safe:animate-fade-in">{children}</p>
 }
 
 function CinematicMarkdownList({ children }: MarkdownChildrenProps) {
@@ -95,12 +90,7 @@ function CinematicMarkdownImage({ src, alt }: MarkdownImageProps) {
 function CinematicMarkdownCode({ className, children, ...props }: ComponentPropsWithoutRef<'code'>) {
   const match = /language-(\w+)/.exec(className || '')
   if (match) {
-    return (
-      <CinematicCodeBlock
-        language={match[1]}
-        code={String(children).replace(/\n$/, '')}
-      />
-    )
+    return <CinematicCodeBlock language={match[1]} code={String(children).replace(/\n$/, '')} />
   }
 
   return (
@@ -178,8 +168,8 @@ export function CinematicTypewriter({
   className,
 }: Readonly<CinematicTypewriterProps>) {
   const reduceMotion = useReducedMotion()
-  const [displayedContent, setDisplayedContent] = useState("")
-  const [pendingToken, setPendingToken] = useState("")
+  const [displayedContent, setDisplayedContent] = useState('')
+  const [pendingToken, setPendingToken] = useState('')
   const [pendingTokenKey, setPendingTokenKey] = useState(0)
   const [isTyping, setIsTyping] = useState(false)
 
@@ -320,16 +310,12 @@ export function CinematicTypewriter({
       duration: reduceMotion ? 0 : 0.18,
       ease: [0.16, 1, 0.3, 1] as const,
     }),
-    [reduceMotion]
+    [reduceMotion],
   )
 
   return (
-    <div className={cn("relative leading-relaxed", className)}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        skipHtml
-        components={CINEMATIC_MARKDOWN_COMPONENTS}
-      >
+    <div className={cn('relative leading-relaxed', className)}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={CINEMATIC_MARKDOWN_COMPONENTS}>
         {displayedContent}
       </ReactMarkdown>
       <AnimatePresence initial={false} mode="popLayout">

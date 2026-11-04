@@ -45,7 +45,7 @@ export function LiveVelocity({
       onClick={onToggle}
       className={cn(
         'inline-flex items-center gap-2 rounded-lg border border-info/20 bg-info/5 px-2 py-1 text-[11px] font-bold uppercase  text-info transition-colors hover:bg-info/10 motion-reduce:transition-none',
-        'dark:text-info'
+        'dark:text-info',
       )}
       title="点击切换 docs/min 与 MB/s"
     >

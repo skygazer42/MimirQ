@@ -34,33 +34,14 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useBackendHealth } from '@/hooks/use-backend-health'
 import { useBackendMetaDetails } from '@/hooks/use-backend-meta'
 import { formatApiError } from '@/lib/api-errors'
-import {
-  datasetApi,
-  documentApi,
-  observabilityApi,
-  ragApi,
-  retrievalApi,
-} from '@/lib/api'
-import {
-  buildRetrievalConfigHashRequest,
-  hasDatasetRagContract,
-} from '@/lib/dataset-rag-contract'
+import { datasetApi, documentApi, observabilityApi, ragApi, retrievalApi } from '@/lib/api'
+import { buildRetrievalConfigHashRequest, hasDatasetRagContract } from '@/lib/dataset-rag-contract'
 import { API_V1_BASE_URL } from '@/lib/env'
 import { queryKeys } from '@/lib/query-keys'
 import { buildRagPreviewDiagnosticsSummary } from '@/lib/rag-preview-diagnostics'
@@ -77,10 +58,8 @@ import type {
 
 // --- Constants & Styles ---
 
-const CARD_BASE =
-  'rounded-2xl border border-info/20 bg-background/78 p-4 shadow-none'
-const SECTION_TITLE =
-  'text-[14px] font-semibold text-foreground flex items-center gap-2 mb-4'
+const CARD_BASE = 'rounded-2xl border border-info/20 bg-background/78 p-4 shadow-none'
+const SECTION_TITLE = 'text-[14px] font-semibold text-foreground flex items-center gap-2 mb-4'
 const FIELD_LABEL = 'text-[12px] font-medium text-muted-foreground mb-1.5 block'
 const ALL_DOCUMENTS_VALUE = '__all_documents__'
 const EMPTY_DATASETS: Dataset[] = []
@@ -162,9 +141,7 @@ function diagnosticField(source: unknown, key: string): unknown {
 }
 
 function stringList(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === 'string')
-    : []
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 }
 
 function pickMetricNumber(source: unknown, keys: string[]): number | null {
@@ -207,21 +184,12 @@ function fmtExecutedMetric(v: number | null, d = 2, suffix = '') {
   return `${v.toFixed(d)}${suffix}`
 }
 
-function fmtMetricOrMissing(
-  hasResult: boolean,
-  value: number | null,
-  d = 2,
-  suffix = ''
-) {
+function fmtMetricOrMissing(hasResult: boolean, value: number | null, d = 2, suffix = '') {
   if (value !== null) return `${value.toFixed(d)}${suffix}`
   return hasResult ? MISSING_RESULT_LABEL : PENDING_RUN_LABEL
 }
 
-function fmtCountOrMissing(
-  hasResult: boolean,
-  value: number | null,
-  suffix = ''
-) {
+function fmtCountOrMissing(hasResult: boolean, value: number | null, suffix = '') {
   if (value !== null) return `${value.toLocaleString()}${suffix}`
   return hasResult ? MISSING_RESULT_LABEL : PENDING_RUN_LABEL
 }
@@ -267,10 +235,7 @@ function documentLabel(document: KnowledgeDocument) {
   return document.filename || shortId(document.id)
 }
 
-function getListItems<T>(
-  source: { items?: T[] } | T[] | null | undefined,
-  fallback: T[]
-): T[] {
+function getListItems<T>(source: { items?: T[] } | T[] | null | undefined, fallback: T[]): T[] {
   if (Array.isArray(source)) return source
   if (source && typeof source === 'object' && Array.isArray(source.items)) {
     return source.items
@@ -284,20 +249,13 @@ function metricSource(hasResult: boolean, source: string) {
 
 function diagnosticString(value: unknown): string {
   if (typeof value === 'string') return value.trim()
-  if (
-    typeof value === 'number' ||
-    typeof value === 'boolean' ||
-    typeof value === 'bigint'
-  ) {
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
     return String(value)
   }
   return ''
 }
 
-function diagnosticRecordString(
-  value: Record<string, unknown>,
-  keys: string[]
-): string {
+function diagnosticRecordString(value: Record<string, unknown>, keys: string[]): string {
   for (const key of keys) {
     const label = diagnosticString(value[key])
     if (label) return label
@@ -316,22 +274,14 @@ function firstDiagnosticString(...values: unknown[]): string {
 function dependencyStatus(value: unknown): string {
   if (!value || typeof value !== 'object') return 'unknown'
   const record = value as Record<string, unknown>
-  const status = diagnosticRecordString(record, [
-    'status',
-    'state',
-    'value',
-    'label',
-  ]).toLowerCase()
+  const status = diagnosticRecordString(record, ['status', 'state', 'value', 'label']).toLowerCase()
   if (status) return status
   if (record.ok === true) return 'connected'
   if (record.ok === false) return 'disconnected'
   return 'unknown'
 }
 
-function driftResultLabel(
-  snapshot: JsonObject | null,
-  metric: number | null
-) {
+function driftResultLabel(snapshot: JsonObject | null, metric: number | null) {
   if (!snapshot) return PENDING_RUN_LABEL
   if (metric === null) return MISSING_RESULT_LABEL
   return `${metric.toFixed(3)} 漂移率`
@@ -339,16 +289,10 @@ function driftResultLabel(
 
 function perfGateResultStatus(result: JsonObject | null) {
   if (!result) return PENDING_RUN_LABEL
-  return (
-    diagnosticRecordString(result, ['status', 'gate_status', 'result']) ||
-    '已运行'
-  )
+  return diagnosticRecordString(result, ['status', 'gate_status', 'result']) || '已运行'
 }
 
-function perfGateResultTone(
-  result: JsonObject | null,
-  status: string
-): MetricTone {
+function perfGateResultTone(result: JsonObject | null, status: string): MetricTone {
   if (/pass|passed|ok|success|通过|已运行/i.test(status)) return 'green'
   if (result) return 'amber'
   return 'slate'
@@ -357,7 +301,7 @@ function perfGateResultTone(
 function okTone(
   ok: boolean,
   successTone: BinaryStatusTone = 'green',
-  failureTone: BinaryStatusTone = 'red'
+  failureTone: BinaryStatusTone = 'red',
 ): BinaryStatusTone {
   return ok ? successTone : failureTone
 }
@@ -366,21 +310,14 @@ function serviceDependencyStatus(ok: boolean) {
   return ok ? 'connected' : 'disconnected'
 }
 
-function systemStatusSummary(
-  healthOk: boolean,
-  readyOk: boolean
-): { label: string; tone: BinaryStatusTone } {
+function systemStatusSummary(healthOk: boolean, readyOk: boolean): { label: string; tone: BinaryStatusTone } {
   if (healthOk && readyOk) {
     return { label: '正常', tone: 'green' }
   }
   return { label: '需要排查', tone: 'red' }
 }
 
-function selectedDocumentScopeLabel(
-  selectedCount: number,
-  loading: boolean,
-  hasDataset: boolean
-) {
+function selectedDocumentScopeLabel(selectedCount: number, loading: boolean, hasDataset: boolean) {
   if (selectedCount > 0) return `已选 ${selectedCount} 个文档`
   if (loading) return '正在加载文档...'
   if (hasDataset) return '当前数据集全部文档'
@@ -403,7 +340,7 @@ function executionPerfValue(
   latencyMs: number | null,
   perfStatus: string,
   hasPerfResult: boolean,
-  hasProbeResult: boolean
+  hasProbeResult: boolean,
 ) {
   if (latencyMs === null) {
     if (hasPerfResult) return perfStatus
@@ -420,10 +357,7 @@ function executionPerfSource(latencyMs: number | null, hasPerfResult: boolean) {
   return 'metrics'
 }
 
-function executionPerfTone(
-  latencyMs: number | null,
-  fallbackTone: MetricTone
-): MetricTone {
+function executionPerfTone(latencyMs: number | null, fallbackTone: MetricTone): MetricTone {
   if (latencyMs === null) return fallbackTone
   if (latencyMs <= 1000) return 'green'
   if (latencyMs <= 3000) return 'amber'
@@ -436,10 +370,7 @@ function diagnosticsRunState(hasResult: boolean) {
     : { status: 'not_run', message: '诊断尚未执行，请配置后运行' }
 }
 
-function manualDiagnosticsStatus(
-  running: boolean,
-  hasDiagnostics: boolean
-) {
+function manualDiagnosticsStatus(running: boolean, hasDiagnostics: boolean) {
   if (running) return '执行中'
   if (hasDiagnostics) return '已生成'
   return PENDING_RUN_LABEL
@@ -463,7 +394,7 @@ function readyStatusLabel(
   snapshot: JsonObject | null | undefined,
   ready: boolean,
   readyLabel: string,
-  errorLabel: string
+  errorLabel: string,
 ) {
   if (loading && snapshot === null) return '检查中'
   return ready ? readyLabel : errorLabel
@@ -474,10 +405,7 @@ function onlineQualityStatusLabel(loading: boolean, enabled?: boolean) {
   return enabled ? '已启用' : '未启用'
 }
 
-function datasetSelectLabel(
-  loading: boolean,
-  selectedDataset: Dataset | null
-) {
+function datasetSelectLabel(loading: boolean, selectedDataset: Dataset | null) {
   if (loading) return '正在加载数据集...'
   if (!selectedDataset) return '暂无可用数据集'
   return `${datasetLabel(selectedDataset)} [${shortId(selectedDataset.id)}]`
@@ -485,32 +413,21 @@ function datasetSelectLabel(
 
 function vectorBackendLabel(
   readySnapshot: JsonObject | null,
-  healthPayload: Record<string, unknown> | null | undefined
+  healthPayload: Record<string, unknown> | null | undefined,
 ) {
   const vector = diagnosticField(readySnapshot, 'vector')
   const vectorBackend = diagnosticField(vector, 'backend')
-  return (
-    firstDiagnosticString(
-      vectorBackend,
-      healthPayload?.vector_backend
-    ) || 'milvus'
-  )
+  return firstDiagnosticString(vectorBackend, healthPayload?.vector_backend) || 'milvus'
 }
 
-function driftMetricCardValue(
-  running: boolean,
-  snapshot: JsonObject | null,
-  metric: number | null
-) {
+function driftMetricCardValue(running: boolean, snapshot: JsonObject | null, metric: number | null) {
   if (running) return '检查中'
   if (snapshot) return fmtExecutedMetric(metric, 3)
   return PENDING_RUN_LABEL
 }
 
 function diagnosticSummaryDetail(hasDiagnostics: boolean) {
-  return hasDiagnostics
-    ? '已有 RAG / Drift / Perf 结果'
-    : '需手动运行左侧诊断'
+  return hasDiagnostics ? '已有 RAG / Drift / Perf 结果' : '需手动运行左侧诊断'
 }
 
 function stableTextKey(text: string) {
@@ -622,7 +539,7 @@ function DiagnosticStatusPill({
       className={cn(
         'inline-flex h-6 max-w-full items-center justify-center truncate rounded-full border px-2 text-center text-[11px] font-semibold tracking-[-0.01em] tabular-nums',
         STATUS_PILL_TONE_CLASSES[resolvedTone],
-        className
+        className,
       )}
       title={value}
     >
@@ -649,26 +566,13 @@ function TopHUDTile({
 
   return (
     <div className="flex min-h-[76px] items-center gap-3 rounded-xl border border-border/70 bg-background/82 px-3 py-3 shadow-none">
-      <div
-        className={cn(
-          'flex size-9 shrink-0 items-center justify-center rounded-xl border',
-          toneClasses
-        )}
-      >
+      <div className={cn('flex size-9 shrink-0 items-center justify-center rounded-xl border', toneClasses)}>
         <Icon className="size-4" />
       </div>
       <div className="min-w-0">
-        <span className="block truncate text-[11px] font-medium text-muted-foreground">
-          {label}
-        </span>
-        <DiagnosticStatusPill
-          value={value}
-          tone={valueTone}
-          className="mt-1 h-6 max-w-full"
-        />
-        <p className="mt-1 truncate text-[10px] font-medium text-muted-foreground/80">
-          {detail}
-        </p>
+        <span className="block truncate text-[11px] font-medium text-muted-foreground">{label}</span>
+        <DiagnosticStatusPill value={value} tone={valueTone} className="mt-1 h-6 max-w-full" />
+        <p className="mt-1 truncate text-[10px] font-medium text-muted-foreground/80">{detail}</p>
       </div>
     </div>
   )
@@ -712,13 +616,13 @@ function DimensionMatrixItem({
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25',
         selected
           ? 'border-info/30 bg-info/[0.075]'
-          : 'border-border/70 bg-background/58 hover:border-info/25 hover:bg-info/[0.045]'
+          : 'border-border/70 bg-background/58 hover:border-info/25 hover:bg-info/[0.045]',
       )}
     >
       <div
         className={cn(
           'size-8 shrink-0 rounded-xl flex items-center justify-center border transition-all',
-          colorMap[tone]
+          colorMap[tone],
         )}
       >
         <Icon className="size-4" />
@@ -738,7 +642,7 @@ function DimensionMatrixItem({
               'shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold',
               selected
                 ? 'border-info/25 bg-background/80 text-info'
-                : 'border-border/50 bg-muted/50 text-muted-foreground/80'
+                : 'border-border/50 bg-muted/50 text-muted-foreground/80',
             )}
           >
             {selected ? '已选' : '未选'}
@@ -788,19 +692,15 @@ function MainMetricCard({
       <div
         className={cn(
           'flex size-7 shrink-0 items-center justify-center rounded-lg border transition-colors',
-          toneClass
+          toneClass,
         )}
       >
         <Icon className="size-3.5" />
       </div>
       <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-1.5">
-          <p className="truncate text-[10.5px] font-medium leading-none text-muted-foreground">
-            {label}
-          </p>
-          {help ? (
-            <MetricInfoTooltip label={`${label}说明`}>{help}</MetricInfoTooltip>
-          ) : null}
+          <p className="truncate text-[10.5px] font-medium leading-none text-muted-foreground">{label}</p>
+          {help ? <MetricInfoTooltip label={`${label}说明`}>{help}</MetricInfoTooltip> : null}
         </div>
         <div className="shrink-0">
           {loading ? (
@@ -894,9 +794,7 @@ function DiagnosticUseStep({
       </div>
       <div className="min-w-0">
         <p className="text-[12px] font-semibold text-foreground">{title}</p>
-        <p className="mt-0.5 text-[10px] font-medium text-info">
-          {action}
-        </p>
+        <p className="mt-0.5 text-[10px] font-medium text-info">{action}</p>
         <p className="mt-1 text-[11px] leading-5 text-muted-foreground">{text}</p>
       </div>
     </div>
@@ -913,18 +811,13 @@ export default function DiagnosticsPage() {
   const [probeDatasetId, setProbeDatasetId] = useState('')
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([])
   const [probeQuery, setProbeQuery] = useState('')
-  const [probeResult, setProbeResult] = useState<PromptPreviewResponse | null>(
-    null
-  )
-  const [probeExplainResult, setProbeExplainResult] = useState<JsonObject | null>(
-    null
-  )
-  const [probeConfigHashResult, setProbeConfigHashResult] =
-    useState<JsonObject | null>(null)
+  const [probeResult, setProbeResult] = useState<PromptPreviewResponse | null>(null)
+  const [probeExplainResult, setProbeExplainResult] = useState<JsonObject | null>(null)
+  const [probeConfigHashResult, setProbeConfigHashResult] = useState<JsonObject | null>(null)
   const [probeRunning, setProbeRunning] = useState(false)
-  const [selectedDimensions, setSelectedDimensions] = useState<
-    DiagnosticDimensionId[]
-  >(DIAGNOSTIC_DIMENSIONS.map((dimension) => dimension.id))
+  const [selectedDimensions, setSelectedDimensions] = useState<DiagnosticDimensionId[]>(
+    DIAGNOSTIC_DIMENSIONS.map((dimension) => dimension.id),
+  )
 
   // Param States
   const [driftSampleN, setDriftSampleN] = useState(200)
@@ -934,9 +827,7 @@ export default function DiagnosticsPage() {
 
   const [perfSuiteIterations, setPerfSuiteIterations] = useState(10)
   const [perfSuiteTimeoutSec, setPerfSuiteTimeoutSec] = useState(2)
-  const [perfSuiteResult, setPerfSuiteResult] = useState<JsonObject | null>(
-    null
-  )
+  const [perfSuiteResult, setPerfSuiteResult] = useState<JsonObject | null>(null)
   const [perfSuiteRunning, setPerfSuiteRunning] = useState(false)
 
   const datasetsQuery = useQuery({
@@ -979,11 +870,8 @@ export default function DiagnosticsPage() {
       }),
     staleTime: 15_000,
   })
-  const documents =
-    getListItems<KnowledgeDocument>(documentsQuery.data, EMPTY_DOCUMENTS)
-  const documentsLoading =
-    Boolean(activeDatasetId) &&
-    (documentsQuery.isPending || documentsQuery.isFetching)
+  const documents = getListItems<KnowledgeDocument>(documentsQuery.data, EMPTY_DOCUMENTS)
+  const documentsLoading = Boolean(activeDatasetId) && (documentsQuery.isPending || documentsQuery.isFetching)
   const validSelectedDocumentIds = useMemo(() => {
     if (selectedDocumentIds.length === 0) return []
     const idSet = new Set(documents.map((document) => document.id))
@@ -1008,8 +896,7 @@ export default function DiagnosticsPage() {
     staleTime: 30_000,
   })
   const onlineQuality = onlineQualityQuery.data ?? null
-  const onlineQualityLoading =
-    onlineQualityQuery.isPending || onlineQualityQuery.isFetching
+  const onlineQualityLoading = onlineQualityQuery.isPending || onlineQualityQuery.isFetching
 
   const readySnapshotQuery = useQuery({
     queryKey: queryKeys.diagnostics.ready,
@@ -1028,8 +915,7 @@ export default function DiagnosticsPage() {
     staleTime: 10_000,
   })
   const readySnapshot = readySnapshotQuery.data ?? null
-  const readyLoading =
-    readySnapshotQuery.isPending || readySnapshotQuery.isFetching
+  const readyLoading = readySnapshotQuery.isPending || readySnapshotQuery.isFetching
 
   const depsSnapshotQuery = useQuery({
     queryKey: queryKeys.diagnostics.deps,
@@ -1061,39 +947,26 @@ export default function DiagnosticsPage() {
         document_ids: validSelectedDocumentIds,
         structured_output: false,
       }
-      const configHashRequest = buildRetrievalConfigHashRequest(
-        activeDataset?.rag_defaults
-      )
+      const configHashRequest = buildRetrievalConfigHashRequest(activeDataset?.rag_defaults)
 
-      const [previewResponse, explainResponse, hashResponse] =
-        await Promise.all([
-          ragApi.promptPreview(promptPreviewRequest),
-          canExplainProbe && configHashRequest
-            ? retrievalApi.explain({
-                query: probeQuery.trim(),
-                dataset_id: activeDatasetId || undefined,
-                document_ids: validSelectedDocumentIds,
-                rag_config: configHashRequest.rag_config,
-                retrieval_only: true,
-                top_citations_limit: 8,
-              })
-            : Promise.resolve(null),
-          canExplainProbe && configHashRequest
-            ? retrievalApi.configHash(configHashRequest)
-            : Promise.resolve(null),
-        ])
+      const [previewResponse, explainResponse, hashResponse] = await Promise.all([
+        ragApi.promptPreview(promptPreviewRequest),
+        canExplainProbe && configHashRequest
+          ? retrievalApi.explain({
+              query: probeQuery.trim(),
+              dataset_id: activeDatasetId || undefined,
+              document_ids: validSelectedDocumentIds,
+              rag_config: configHashRequest.rag_config,
+              retrieval_only: true,
+              top_citations_limit: 8,
+            })
+          : Promise.resolve(null),
+        canExplainProbe && configHashRequest ? retrievalApi.configHash(configHashRequest) : Promise.resolve(null),
+      ])
 
       setProbeResult(previewResponse)
-      setProbeExplainResult(
-        explainResponse && isDiagnosticRecord(explainResponse)
-          ? explainResponse
-          : null
-      )
-      setProbeConfigHashResult(
-        hashResponse && isDiagnosticRecord(hashResponse)
-          ? hashResponse
-          : null
-      )
+      setProbeExplainResult(explainResponse && isDiagnosticRecord(explainResponse) ? explainResponse : null)
+      setProbeConfigHashResult(hashResponse && isDiagnosticRecord(hashResponse) ? hashResponse : null)
       toast.success('RAG 预览完成')
     } catch (err) {
       toast.error(formatApiError(err, 'RAG 预览失败'))
@@ -1141,10 +1014,7 @@ export default function DiagnosticsPage() {
   const readyOk = Boolean(readySnapshot?.ok)
   const systemStatus = systemStatusSummary(healthOk, readyOk)
   const serviceTime = fmtDateTime(meta.data?.time || health.data?.payload?.time)
-  const currentVectorBackend = vectorBackendLabel(
-    readySnapshot,
-    health.data?.payload
-  )
+  const currentVectorBackend = vectorBackendLabel(readySnapshot, health.data?.payload)
   const driftMetric = pickMetricNumberByPath(driftSnapshot, [
     'above_threshold.ratio',
     'above_threshold_ratio',
@@ -1165,9 +1035,7 @@ export default function DiagnosticsPage() {
   const dependencyItems = [
     {
       label: '检索库',
-      status: dependencyStatus(
-        depsSnapshot?.postgres || readySnapshot?.database
-      ),
+      status: dependencyStatus(depsSnapshot?.postgres || readySnapshot?.database),
     },
     {
       label: '向量后端',
@@ -1183,15 +1051,12 @@ export default function DiagnosticsPage() {
     },
     { label: '服务 API', status: serviceDependencyStatus(healthOk) },
   ]
-  const selectedDataset =
-    activeDataset || datasets.find((dataset) => dataset.id === activeDatasetId) || null
-  const selectedDocuments = documents.filter((document) =>
-    validSelectedDocumentIds.includes(document.id)
-  )
+  const selectedDataset = activeDataset || datasets.find((dataset) => dataset.id === activeDatasetId) || null
+  const selectedDocuments = documents.filter((document) => validSelectedDocumentIds.includes(document.id))
   const selectedDocumentLabel = selectedDocumentScopeLabel(
     validSelectedDocumentIds.length,
     documentsLoading,
-    Boolean(activeDatasetId)
+    Boolean(activeDatasetId),
   )
 
   const toggleDocument = useCallback((documentId: string) => {
@@ -1200,24 +1065,17 @@ export default function DiagnosticsPage() {
       return
     }
     setSelectedDocumentIds((current) =>
-      current.includes(documentId)
-        ? current.filter((id) => id !== documentId)
-        : [...current, documentId]
+      current.includes(documentId) ? current.filter((id) => id !== documentId) : [...current, documentId],
     )
   }, [])
 
   const toggleDimension = useCallback((dimensionId: DiagnosticDimensionId) => {
     setSelectedDimensions((current) =>
-      current.includes(dimensionId)
-        ? current.filter((id) => id !== dimensionId)
-        : [...current, dimensionId]
+      current.includes(dimensionId) ? current.filter((id) => id !== dimensionId) : [...current, dimensionId],
     )
   }, [])
 
-  const selectedDimensionSet = useMemo(
-    () => new Set(selectedDimensions),
-    [selectedDimensions]
-  )
+  const selectedDimensionSet = useMemo(() => new Set(selectedDimensions), [selectedDimensions])
 
   const promptMetrics = probeResult?.metrics ?? null
   const retrievalScore = pickMetricNumber(promptMetrics, [
@@ -1267,16 +1125,11 @@ export default function DiagnosticsPage() {
     'total_ms',
     'retrieval_ms',
   ])
-  const citationCount = Array.isArray(probeResult?.citations)
-    ? probeResult.citations.length
-    : null
+  const citationCount = Array.isArray(probeResult?.citations) ? probeResult.citations.length : null
   const hasProbeResult = Boolean(probeResult)
   const ragPreviewStatusLabel = citationStatusLabel(hasProbeResult, citationCount)
   const hasPerfSuiteResult = Boolean(perfSuiteResult)
-  const dimensionStatuses: Record<
-    DiagnosticDimensionId,
-    { value: string; source: string; tone: MetricTone }
-  > = {
+  const dimensionStatuses: Record<DiagnosticDimensionId, { value: string; source: string; tone: MetricTone }> = {
     retrieval_accuracy: {
       value: fmtMetricOrMissing(hasProbeResult, retrievalScore),
       source: metricSource(hasProbeResult, 'metrics'),
@@ -1313,81 +1166,61 @@ export default function DiagnosticsPage() {
       tone: promptTokenCount === null ? 'slate' : 'amber',
     },
     execution_perf: {
-      value: executionPerfValue(
-        latencyMs,
-        perfGateStatus,
-        hasPerfSuiteResult,
-        hasProbeResult
-      ),
+      value: executionPerfValue(latencyMs, perfGateStatus, hasPerfSuiteResult, hasProbeResult),
       source: executionPerfSource(latencyMs, hasPerfSuiteResult),
       tone: executionPerfTone(latencyMs, perfGateTone),
     },
   }
 
-  const backendSummaryJson = useMemo(
-    () => {
-      const runState = diagnosticsRunState(
-        Boolean(
-          probeResult ||
-            probeExplainResult ||
-            probeConfigHashResult ||
-            driftSnapshot ||
-            perfSuiteResult
-        )
-      )
-      return prettyJson({
-        status: runState.status,
-        code: 0,
-        message: runState.message,
-        data: {
-          dataset_id: activeDatasetId || null,
-          document_ids: validSelectedDocumentIds,
-          selected_dimensions: selectedDimensions,
-          rag_preview: probeResult ?? null,
-          retrieval_explain: probeExplainResult ?? null,
-          retrieval_config_hash: probeConfigHashResult ?? null,
-          embedding_drift: driftSnapshot ?? null,
-          perf_suite: perfSuiteResult ?? null,
-          deps: depsSnapshot ?? null,
-        },
-        metrics: {
-          ...probeResult?.metrics,
-          drift_rate: driftMetric,
-          perf_gate: perfGateStatus,
-        },
-        timestamp: health.data?.payload?.time ?? null,
-      })
-    },
-    [
-      activeDatasetId,
-      validSelectedDocumentIds,
-      selectedDimensions,
-      probeResult,
-      probeExplainResult,
-      probeConfigHashResult,
-      driftSnapshot,
-      perfSuiteResult,
-      depsSnapshot,
-      driftMetric,
-      perfGateStatus,
-      health.data,
-    ]
-  )
+  const backendSummaryJson = useMemo(() => {
+    const runState = diagnosticsRunState(
+      Boolean(probeResult || probeExplainResult || probeConfigHashResult || driftSnapshot || perfSuiteResult),
+    )
+    return prettyJson({
+      status: runState.status,
+      code: 0,
+      message: runState.message,
+      data: {
+        dataset_id: activeDatasetId || null,
+        document_ids: validSelectedDocumentIds,
+        selected_dimensions: selectedDimensions,
+        rag_preview: probeResult ?? null,
+        retrieval_explain: probeExplainResult ?? null,
+        retrieval_config_hash: probeConfigHashResult ?? null,
+        embedding_drift: driftSnapshot ?? null,
+        perf_suite: perfSuiteResult ?? null,
+        deps: depsSnapshot ?? null,
+      },
+      metrics: {
+        ...probeResult?.metrics,
+        drift_rate: driftMetric,
+        perf_gate: perfGateStatus,
+      },
+      timestamp: health.data?.payload?.time ?? null,
+    })
+  }, [
+    activeDatasetId,
+    validSelectedDocumentIds,
+    selectedDimensions,
+    probeResult,
+    probeExplainResult,
+    probeConfigHashResult,
+    driftSnapshot,
+    perfSuiteResult,
+    depsSnapshot,
+    driftMetric,
+    perfGateStatus,
+    health.data,
+  ])
   const hasManualDiagnostics = Boolean(
-    probeResult ||
-      probeExplainResult ||
-      probeConfigHashResult ||
-      driftSnapshot ||
-      perfSuiteResult
+    probeResult || probeExplainResult || probeConfigHashResult || driftSnapshot || perfSuiteResult,
   )
   const manualDiagnosticsStatusLabel = manualDiagnosticsStatus(
     probeRunning || driftRunning || perfSuiteRunning,
-    hasManualDiagnostics
+    hasManualDiagnostics,
   )
 
-  const backendRecommendations = stringList(
-    diagnosticField(onlineQuality, 'recommendations')
-  )
+  const backendRecommendations = stringList(diagnosticField(onlineQuality, 'recommendations'))
   const backendRecommendationItems = recommendationItems(backendRecommendations)
   const ragPreviewSummary = useMemo(
     () =>
@@ -1398,13 +1231,7 @@ export default function DiagnosticsPage() {
         explainEnabled: canExplainProbe,
         contractReason: explainContractReason,
       }),
-    [
-      probeResult,
-      probeExplainResult,
-      probeConfigHashResult,
-      canExplainProbe,
-      explainContractReason,
-    ]
+    [probeResult, probeExplainResult, probeConfigHashResult, canExplainProbe, explainContractReason],
   )
 
   return (
@@ -1453,629 +1280,518 @@ export default function DiagnosticsPage() {
           </div>
         }
       >
-          <TooltipProvider delayDuration={120}>
-            <div className="flex flex-col gap-3">
-          {/* Top HUD Cards Row */}
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-6">
-            <TopHUDTile
-              icon={ShieldCheck}
-              label="系统健康"
-              value={healthStatusLabel(health.isPending, healthOk)}
-              detail="健康探针"
-              tone={okTone(healthOk)}
-            />
-            <TopHUDTile
-              icon={Clock}
-              label="服务时间 / API 版本"
-              value={serviceTime}
-              detail={meta.data?.api_version || 'v1'}
-              tone="green"
-            />
-            <TopHUDTile
-              icon={Database}
-              label="依赖就绪"
-              value={readyStatusLabel(
-                readyLoading,
-                readySnapshot,
-                readyOk,
-                '全部就绪',
-                '异常'
-              )}
-              detail="就绪检查"
-              tone={okTone(readyOk, 'blue')}
-            />
-            <TopHUDTile
-              icon={Activity}
-              label="在线评估"
-              value={onlineQualityStatusLabel(
-                onlineQualityLoading,
-                onlineQuality?.enabled
-              )}
-              detail="在线指标"
-              tone="purple"
-            />
-            <TopHUDTile
-              icon={Gauge}
-              label="性能门禁"
-              value={perfGateStatus}
-              detail="门禁探针"
-              tone={perfGateTone}
-            />
-            <TopHUDTile
-              icon={Timer}
-              label="向量后端"
-              value={currentVectorBackend}
-              detail="向量服务"
-              tone="green"
-            />
+        <TooltipProvider delayDuration={120}>
+          <div className="flex flex-col gap-3">
+            {/* Top HUD Cards Row */}
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-6">
+              <TopHUDTile
+                icon={ShieldCheck}
+                label="系统健康"
+                value={healthStatusLabel(health.isPending, healthOk)}
+                detail="健康探针"
+                tone={okTone(healthOk)}
+              />
+              <TopHUDTile
+                icon={Clock}
+                label="服务时间 / API 版本"
+                value={serviceTime}
+                detail={meta.data?.api_version || 'v1'}
+                tone="green"
+              />
+              <TopHUDTile
+                icon={Database}
+                label="依赖就绪"
+                value={readyStatusLabel(readyLoading, readySnapshot, readyOk, '全部就绪', '异常')}
+                detail="就绪检查"
+                tone={okTone(readyOk, 'blue')}
+              />
+              <TopHUDTile
+                icon={Activity}
+                label="在线评估"
+                value={onlineQualityStatusLabel(onlineQualityLoading, onlineQuality?.enabled)}
+                detail="在线指标"
+                tone="purple"
+              />
+              <TopHUDTile icon={Gauge} label="性能门禁" value={perfGateStatus} detail="门禁探针" tone={perfGateTone} />
+              <TopHUDTile icon={Timer} label="向量后端" value={currentVectorBackend} detail="向量服务" tone="green" />
             </div>
 
             <DiagnosticUseGuide />
 
             {/* Main Config Section */}
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
-            {/* 1. 诊断配置 */}
-            <div className={cn(CARD_BASE, 'xl:col-span-4')}>
-              <h3 className={SECTION_TITLE}>
-                <FileJson className="size-4 text-primary" /> 诊断配置
-              </h3>
-              <div className="space-y-3">
-                <div>
-                  <Label className={FIELD_LABEL}>数据集</Label>
-                  <Select
-                    value={activeDatasetId}
-                    onValueChange={(value) => {
-                      setProbeDatasetId(value)
-                      setSelectedDocumentIds([])
-                    }}
-                    disabled={datasetsLoading || datasets.length === 0}
-                  >
-                    <SelectTrigger
-                      id="diagnostics-dataset"
-                      className="h-9 rounded-lg border-border/70 bg-muted/65 text-[13px]"
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
+              {/* 1. 诊断配置 */}
+              <div className={cn(CARD_BASE, 'xl:col-span-4')}>
+                <h3 className={SECTION_TITLE}>
+                  <FileJson className="size-4 text-primary" /> 诊断配置
+                </h3>
+                <div className="space-y-3">
+                  <div>
+                    <Label className={FIELD_LABEL}>数据集</Label>
+                    <Select
+                      value={activeDatasetId}
+                      onValueChange={(value) => {
+                        setProbeDatasetId(value)
+                        setSelectedDocumentIds([])
+                      }}
+                      disabled={datasetsLoading || datasets.length === 0}
                     >
-                      <span className="truncate">
-                        {datasetSelectLabel(datasetsLoading, selectedDataset)}
-                      </span>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {datasets.map((dataset) => (
-                        <SelectItem key={dataset.id} value={dataset.id}>
-                          <span className="flex min-w-0 flex-col">
-                            <span className="truncate text-[13px] font-medium">
-                              {datasetLabel(dataset)}
-                            </span>
-                            <span className="truncate text-[10px] text-muted-foreground/80">
-                              {shortId(dataset.id, 12)}
-                            </span>
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className={FIELD_LABEL}>文档范围</Label>
-                  <Select
-                    value={validSelectedDocumentIds[0] || ALL_DOCUMENTS_VALUE}
-                    onValueChange={toggleDocument}
-                    disabled={
-                      !activeDatasetId ||
-                      documentsLoading ||
-                      documents.length === 0
-                    }
-                  >
-                    <SelectTrigger
-                      id="diagnostics-documents"
-                      className="h-9 rounded-lg border-border/70 bg-muted/65 text-[13px]"
-                    >
-                      <span className="truncate">{selectedDocumentLabel}</span>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={ALL_DOCUMENTS_VALUE}>
-                        当前数据集全部文档
-                      </SelectItem>
-                      {documents.map((document) => {
-                        const selected = validSelectedDocumentIds.includes(
-                          document.id
-                        )
-                        return (
-                          <SelectItem key={document.id} value={document.id}>
-                            <span className="flex min-w-0 items-center gap-2">
-                              <span
-                                className={cn(
-                                  'flex size-4 shrink-0 items-center justify-center rounded border text-[10px]',
-                                  selected
-                                    ? 'border-primary/30 bg-primary/10 text-primary'
-                                    : 'border-border bg-card text-transparent'
-                                )}
-                              >
-                                {selected ? '✓' : ''}
-                              </span>
-                              <span className="flex min-w-0 flex-col">
-                                <span className="truncate text-[13px] font-medium">
-                                  {documentLabel(document)}
-                                </span>
-                                <span className="truncate text-[10px] text-muted-foreground/80">
-                                  {shortId(document.id, 12)}
-                                </span>
+                      <SelectTrigger
+                        id="diagnostics-dataset"
+                        className="h-9 rounded-lg border-border/70 bg-muted/65 text-[13px]"
+                      >
+                        <span className="truncate">{datasetSelectLabel(datasetsLoading, selectedDataset)}</span>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {datasets.map((dataset) => (
+                          <SelectItem key={dataset.id} value={dataset.id}>
+                            <span className="flex min-w-0 flex-col">
+                              <span className="truncate text-[13px] font-medium">{datasetLabel(dataset)}</span>
+                              <span className="truncate text-[10px] text-muted-foreground/80">
+                                {shortId(dataset.id, 12)}
                               </span>
                             </span>
                           </SelectItem>
-                        )
-                      })}
-                    </SelectContent>
-                  </Select>
-                  {selectedDocuments.length > 0 ? (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {selectedDocuments.slice(0, 3).map((document) => (
-                        <span
-                          key={document.id}
-                          className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary"
-                        >
-                          {documentLabel(document)}
-                        </span>
-                      ))}
-                      {selectedDocuments.length > 3 ? (
-                        <span className="rounded-full border border-border/50 bg-muted/50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground/80">
-                          +{selectedDocuments.length - 3}
-                        </span>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <p className="mt-1 text-[10px] font-medium text-muted-foreground/80">
-                      不选择文档时，诊断当前数据集的全部可检索内容。
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <Label className={FIELD_LABEL}>查询提示 / 问题</Label>
-                  <Textarea
-                    value={probeQuery}
-                    onChange={(e) => setProbeQuery(e.target.value)}
-                    placeholder="请输入要检索的问题或说明诊断目标..."
-                    className="min-h-[72px] resize-none border-border/70 bg-muted/65 text-[13px]"
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    data-rag-preview-action="true"
-                    className="h-9 flex-1 bg-primary text-primary-foreground hover:bg-primary/90 text-[13px] font-semibold shadow-none disabled:bg-muted disabled:text-muted-foreground"
-                    onClick={runPromptPreviewProbe}
-                    disabled={probeRunning || !activeDatasetId}
-                  >
-                    运行 RAG 预览
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-9 flex-none gap-2 border-border/70 bg-background/55 text-[13px] font-medium hover:border-info/30 hover:bg-info/[0.06]"
-                    onClick={() => {
-                      setProbeDatasetId(datasets[0]?.id || '')
-                      setSelectedDocumentIds([])
-                      setProbeQuery('')
-                    }}
-                  >
-                    <Eraser className="size-4" /> 清空配置
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            {/* 2. 诊断维度矩阵 */}
-            <div className={cn(CARD_BASE, 'xl:col-span-5')}>
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <h3 className="m-0 flex items-center gap-2 text-[14px] font-semibold text-foreground">
-                  <LayoutGrid className="size-4 text-primary" /> 诊断维度
-                </h3>
-                <span className="rounded-full border border-border/50 bg-muted/50 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                  已选 {selectedDimensions.length}
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-2.5">
-                {DIAGNOSTIC_DIMENSIONS.map((dimension) => {
-                  const status = dimensionStatuses[dimension.id]
-                  return (
-                    <DimensionMatrixItem
-                      key={dimension.id}
-                      icon={dimension.icon}
-                      title={dimension.title}
-                      subtitle={dimension.subtitle}
-                      selected={selectedDimensionSet.has(dimension.id)}
-                      value={status.value}
-                      source={status.source}
-                      tone={status.tone}
-                      onToggle={() => toggleDimension(dimension.id)}
-                    />
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* 3. 参数配置 */}
-            <div className={cn(CARD_BASE, 'xl:col-span-3')}>
-              <h3 className={SECTION_TITLE}>
-                <Settings2 className="size-4 text-primary" /> 参数配置
-              </h3>
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className={FIELD_LABEL}>相似度阈值</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={driftThreshold}
-                      onChange={(e) =>
-                        setDriftThreshold(Number(e.target.value))
-                      }
-                      className="h-9 border-border/70 bg-muted/65 text-[13px]"
-                    />
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
-                    <Label className={FIELD_LABEL}>采样数量</Label>
-                    <Input
-                      type="number"
-                      value={driftSampleN}
-                      onChange={(e) => setDriftSampleN(Number(e.target.value))}
-                      className="h-9 border-border/70 bg-muted/65 text-[13px]"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className={FIELD_LABEL}>迭代次数</Label>
-                    <Input
-                      type="number"
-                      value={perfSuiteIterations}
-                      onChange={(e) =>
-                        setPerfSuiteIterations(Number(e.target.value))
-                      }
-                      className="h-9 border-border/70 bg-muted/65 text-[13px]"
-                    />
-                  </div>
-                  <div>
-                    <Label className={FIELD_LABEL}>超时 (秒)</Label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      value={perfSuiteTimeoutSec}
-                      onChange={(e) =>
-                        setPerfSuiteTimeoutSec(Number(e.target.value))
-                      }
-                      className="h-9 border-border/70 bg-muted/65 text-[13px]"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2 pt-2">
-                  <Button
-                    variant="outline"
-                    className="h-9 w-full gap-2 border-border/70 bg-background/55 text-[13px] font-medium hover:border-info/30 hover:bg-info/[0.06]"
-                    onClick={runEmbeddingDriftProbe}
-                    disabled={driftRunning}
-                  >
-                    <BarChart3
-                      className={cn('size-4', driftRunning && 'animate-pulse')}
-                    />{' '}
-                    漂移检查
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-9 w-full gap-2 border-border/70 bg-background/55 text-[13px] font-medium hover:border-info/30 hover:bg-info/[0.06]"
-                    onClick={runPerfSuiteProbe}
-                    disabled={perfSuiteRunning}
-                  >
-                    <ShieldCheck
-                      className={cn(
-                        'size-4',
-                        perfSuiteRunning && 'animate-pulse'
-                      )}
-                    />{' '}
-                    性能门禁
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* 4. 核心指标横条 */}
-          <div>
-            <div className="mb-2 flex items-center justify-between gap-3 px-2">
-              <h3 className="m-0 flex items-center gap-2 text-[14px] font-semibold text-foreground">
-                <BarChart3 className="size-4 text-primary" /> 核心指标
-                <MetricInfoTooltip label="核心指标说明" side="right">
-                  这里不是自动生成的总报告。RAG
-                  预览、漂移检查、性能门禁是三个独立探针，分别点击后只更新自己负责的指标。
-                </MetricInfoTooltip>
-              </h3>
-              <p className="text-[11px] font-medium text-muted-foreground/80">
-                先跑左侧按钮，再看对应指标
-              </p>
-            </div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[repeat(5,minmax(190px,1fr))]">
-              <MainMetricCard
-                icon={Search}
-                label="检索相关性"
-                value={fmtMetricOrMissing(hasProbeResult, retrievalScore)}
-                help="点击“运行 RAG 预览”后生成。用于判断当前问题召回的片段和问题是否相关，低分通常要检查切块、embedding、Top K 或 reranker。"
-                loading={probeRunning}
-                tone={metricTone(retrievalScore)}
-              />
-              <MainMetricCard
-                icon={CheckCircle2}
-                label="召回引用"
-                value={fmtCountOrMissing(hasProbeResult, citationCount)}
-                help="点击“运行 RAG 预览”后生成。表示这次回答拿到了多少条可引用证据；为 0 时通常说明检索没找到可用上下文。"
-                loading={probeRunning}
-                tone={citationTone(citationCount)}
-              />
-              <MainMetricCard
-                icon={Hash}
-                label="提示词 token"
-                value={fmtCountOrMissing(hasProbeResult, promptTokenCount)}
-                help="点击“运行 RAG 预览”后生成。用于估算本次检索上下文和问题进入模型的 token 成本，过高会影响费用和响应速度。"
-                loading={probeRunning}
-                tone={promptTokenCount === null ? 'slate' : 'amber'}
-              />
-              <MainMetricCard
-                icon={Timer}
-                label="漂移率"
-                value={driftMetricCardValue(
-                  driftRunning,
-                  driftSnapshot,
-                  driftMetric
-                )}
-                help="点击“漂移检查”后生成。后端抽样比较当前 embedding 配置与已存向量；0 表示样本未发现漂移，比例升高说明可能需要重新嵌入。"
-                loading={driftRunning}
-                tone={metricTone(driftMetric)}
-              />
-              <MainMetricCard
-                icon={ShieldCheck}
-                label="性能门禁"
-                value={runningStatusLabel(perfSuiteRunning, perfGateStatus)}
-                help="点击“性能门禁”后生成。用于快速判断后端诊断接口在当前迭代次数和超时设置下是否稳定通过。"
-                loading={perfSuiteRunning}
-                tone={perfGateTone}
-              />
-            </div>
-          </div>
-
-          <div className={CARD_BASE}>
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div>
-                <h3 className="m-0 flex items-center gap-2 text-[14px] font-semibold text-foreground">
-                  <Search className="size-4 text-primary" /> 主预览
-                </h3>
-                <p className="mt-1 text-[11px] text-muted-foreground/80">
-                  这里基于真实后端返回值显示 prompt-preview、retrieval explain 与 config hash。
-                </p>
-              </div>
-              <DiagnosticStatusPill
-                value={
-                  canExplainProbe
-                    ? probeRunning
-                      ? 'explain 运行中'
-                      : 'explain 已接入'
-                    : 'explain 已禁用'
-                }
-                tone={canExplainProbe ? 'green' : 'amber'}
-              />
-            </div>
-
-            {!probeResult && !probeRunning ? (
-              <div className="rounded-xl border border-dashed border-info/20 bg-info/[0.025] px-4 py-5 text-[12px] text-muted-foreground">
-                运行一次 RAG 预览后，这里会展示 profile、config hash、通道候选、过滤/融合/reranker/耗时，以及 degraded/fallback 信号。
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-                  <PreviewInfoCard
-                    label="query_for_retrieval"
-                    mono={false}
-                    value={
-                      ragPreviewSummary.queryForRetrieval || MISSING_RESULT_LABEL
-                    }
-                  />
-                  <PreviewInfoCard
-                    label="retrieval_profile"
-                    value={ragPreviewSummary.profile || MISSING_RESULT_LABEL}
-                  />
-                  <PreviewInfoCard
-                    label="config_hash"
-                    value={ragPreviewSummary.configHash || MISSING_RESULT_LABEL}
-                  />
-                  <PreviewInfoCard
-                    label="contract"
-                    mono={false}
-                    value={
-                      ragPreviewSummary.explainEnabled
-                        ? 'dataset rag_defaults'
-                        : ragPreviewSummary.contractReason || 'disabled'
-                    }
-                  />
-                </div>
-
-                {!ragPreviewSummary.explainEnabled &&
-                ragPreviewSummary.contractReason ? (
-                  <div className="rounded-xl border border-warning/20 bg-warning/10 px-3 py-2 text-[12px] text-warning">
-                    {ragPreviewSummary.contractReason}
-                  </div>
-                ) : null}
-
-                <div className="grid gap-3 xl:grid-cols-4">
-                  <PreviewListCard
-                    title="通道候选"
-                    emptyLabel="后端未返回 channel 数据"
-                    items={ragPreviewSummary.channelCandidates}
-                  />
-                  <PreviewListCard
-                    title="过滤"
-                    emptyLabel="后端未返回 filtering/contract 字段"
-                    items={ragPreviewSummary.filtering}
-                  />
-                  <PreviewListCard
-                    title="融合"
-                    emptyLabel="后端未返回 fusion 字段"
-                    items={ragPreviewSummary.fusion}
-                  />
-                  <PreviewListCard
-                    title="Reranker / 耗时"
-                    emptyLabel="后端未返回 reranker/timing 字段"
-                    items={[
-                      ...ragPreviewSummary.reranker,
-                      ...ragPreviewSummary.timings,
-                    ]}
-                  />
-                </div>
-
-                {ragPreviewSummary.degraded.length > 0 ? (
-                  <PreviewMessageCard
-                    title="Degraded"
-                    tone="amber"
-                    items={ragPreviewSummary.degraded}
-                  />
-                ) : null}
-                {ragPreviewSummary.fallback.length > 0 ? (
-                  <PreviewMessageCard
-                    title="Fallback"
-                    tone="red"
-                    items={ragPreviewSummary.fallback}
-                  />
-                ) : null}
-              </div>
-            )}
-          </div>
-
-          {/* 5. 底层分析网格 */}
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
-            {/* 执行结果 */}
-            <div className={cn(CARD_BASE, 'xl:col-span-3')}>
-              <h3 className={SECTION_TITLE}>
-                <LayoutGrid className="size-4 text-primary" /> 执行结果
-                <MetricInfoTooltip label="执行结果说明" side="right">
-                  每一行对应一个按钮。只点“漂移检查”时，RAG
-                  预览和性能门禁保持待执行是正常的。
-                </MetricInfoTooltip>
-              </h3>
-              <div className="space-y-2 pt-1">
-                <ConclusionItem
-                  label="RAG 预览"
-                  status={runningStatusLabel(probeRunning, ragPreviewStatusLabel)}
-                />
-                <ConclusionItem
-                  label="漂移检查"
-                  status={runningStatusLabel(driftRunning, driftStatusLabel)}
-                />
-                <ConclusionItem label="性能门禁" status={perfGateStatus} />
-                <ConclusionItem
-                  label="报告时间"
-                  status={fmtDateTime(health.data?.payload?.time)}
-                />
-                </div>
-              </div>
-
-            {/* 依赖资源 */}
-            <div
-              id="diagnostics-dependency-card"
-              className={cn(CARD_BASE, 'xl:col-span-3 scroll-mt-24')}
-            >
-              <h3 className={SECTION_TITLE}>
-                <Database className="size-4 text-primary" /> 依赖资源
-              </h3>
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                {dependencyItems.map((item) => (
-                  <ResourceItem
-                    key={item.label}
-                    label={item.label}
-                    status={
-                      item.status === 'unknown' && (depsLoading || readyLoading)
-                        ? 'checking'
-                        : item.status
-                    }
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* 排障摘要 */}
-            <div className={cn(CARD_BASE, 'xl:col-span-3 flex flex-col')}>
-              <div className="mb-3 flex items-start justify-between gap-3">
-                <h3 className="m-0 flex items-center gap-2 text-[14px] font-semibold text-foreground">
-                  <Terminal className="size-4 text-primary" /> 排障摘要
-                </h3>
-                <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                  原始响应已收起
-                </span>
-              </div>
-              <div className="space-y-2">
-                <DiagnosticsSummaryItem
-                  label="系统健康"
-                  value={healthSummaryStatusLabel(
-                    health.isPending,
-                    systemStatus.label
-                  )}
-                  detail={serviceTime}
-                  tone={systemStatus.tone}
-                />
-                <DiagnosticsSummaryItem
-                  label="依赖就绪"
-                  value={readyStatusLabel(
-                    readyLoading,
-                    readySnapshot,
-                    readyOk,
-                    '已就绪',
-                    '需排查'
-                  )}
-                  detail={readySnapshot ? '/health/ready 已返回' : '等待就绪响应'}
-                  tone={okTone(readyOk, 'blue')}
-                />
-                <DiagnosticsSummaryItem
-                  label="诊断任务"
-                  value={manualDiagnosticsStatusLabel}
-                  detail={diagnosticSummaryDetail(hasManualDiagnostics)}
-                  tone={hasManualDiagnostics ? 'green' : 'slate'}
-                />
-              </div>
-              <RawDiagnosticsDetails
-                json={backendSummaryJson}
-                onCopy={() => copyToClipboard(backendSummaryJson)}
-              />
-            </div>
-
-            {/* 后端建议 */}
-            <div className={cn(CARD_BASE, 'xl:col-span-3')}>
-              <h3 className={SECTION_TITLE}>
-                <Zap className="size-4 text-primary" /> 后端建议
-              </h3>
-              {backendRecommendationItems.length > 0 ? (
-                <div className="space-y-2">
-                  {backendRecommendationItems.map((recommendation) => (
-                    <p
-                      key={recommendation.key}
-                      className="rounded-lg border border-border/50 bg-muted/40 px-3 py-2 text-[12px] leading-relaxed text-muted-foreground"
+                    <Label className={FIELD_LABEL}>文档范围</Label>
+                    <Select
+                      value={validSelectedDocumentIds[0] || ALL_DOCUMENTS_VALUE}
+                      onValueChange={toggleDocument}
+                      disabled={!activeDatasetId || documentsLoading || documents.length === 0}
                     >
-                      {recommendation.text}
-                    </p>
-                  ))}
+                      <SelectTrigger
+                        id="diagnostics-documents"
+                        className="h-9 rounded-lg border-border/70 bg-muted/65 text-[13px]"
+                      >
+                        <span className="truncate">{selectedDocumentLabel}</span>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={ALL_DOCUMENTS_VALUE}>当前数据集全部文档</SelectItem>
+                        {documents.map((document) => {
+                          const selected = validSelectedDocumentIds.includes(document.id)
+                          return (
+                            <SelectItem key={document.id} value={document.id}>
+                              <span className="flex min-w-0 items-center gap-2">
+                                <span
+                                  className={cn(
+                                    'flex size-4 shrink-0 items-center justify-center rounded border text-[10px]',
+                                    selected
+                                      ? 'border-primary/30 bg-primary/10 text-primary'
+                                      : 'border-border bg-card text-transparent',
+                                  )}
+                                >
+                                  {selected ? '✓' : ''}
+                                </span>
+                                <span className="flex min-w-0 flex-col">
+                                  <span className="truncate text-[13px] font-medium">{documentLabel(document)}</span>
+                                  <span className="truncate text-[10px] text-muted-foreground/80">
+                                    {shortId(document.id, 12)}
+                                  </span>
+                                </span>
+                              </span>
+                            </SelectItem>
+                          )
+                        })}
+                      </SelectContent>
+                    </Select>
+                    {selectedDocuments.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {selectedDocuments.slice(0, 3).map((document) => (
+                          <span
+                            key={document.id}
+                            className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary"
+                          >
+                            {documentLabel(document)}
+                          </span>
+                        ))}
+                        {selectedDocuments.length > 3 ? (
+                          <span className="rounded-full border border-border/50 bg-muted/50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground/80">
+                            +{selectedDocuments.length - 3}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <p className="mt-1 text-[10px] font-medium text-muted-foreground/80">
+                        不选择文档时，诊断当前数据集的全部可检索内容。
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <Label className={FIELD_LABEL}>查询提示 / 问题</Label>
+                    <Textarea
+                      value={probeQuery}
+                      onChange={(e) => setProbeQuery(e.target.value)}
+                      placeholder="请输入要检索的问题或说明诊断目标..."
+                      className="min-h-[72px] resize-none border-border/70 bg-muted/65 text-[13px]"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      data-rag-preview-action="true"
+                      className="h-9 flex-1 bg-primary text-primary-foreground hover:bg-primary/90 text-[13px] font-semibold shadow-none disabled:bg-muted disabled:text-muted-foreground"
+                      onClick={runPromptPreviewProbe}
+                      disabled={probeRunning || !activeDatasetId}
+                    >
+                      运行 RAG 预览
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="h-9 flex-none gap-2 border-border/70 bg-background/55 text-[13px] font-medium hover:border-info/30 hover:bg-info/[0.06]"
+                      onClick={() => {
+                        setProbeDatasetId(datasets[0]?.id || '')
+                        setSelectedDocumentIds([])
+                        setProbeQuery('')
+                      }}
+                    >
+                      <Eraser className="size-4" /> 清空配置
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. 诊断维度矩阵 */}
+              <div className={cn(CARD_BASE, 'xl:col-span-5')}>
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <h3 className="m-0 flex items-center gap-2 text-[14px] font-semibold text-foreground">
+                    <LayoutGrid className="size-4 text-primary" /> 诊断维度
+                  </h3>
+                  <span className="rounded-full border border-border/50 bg-muted/50 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                    已选 {selectedDimensions.length}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  {DIAGNOSTIC_DIMENSIONS.map((dimension) => {
+                    const status = dimensionStatuses[dimension.id]
+                    return (
+                      <DimensionMatrixItem
+                        key={dimension.id}
+                        icon={dimension.icon}
+                        title={dimension.title}
+                        subtitle={dimension.subtitle}
+                        selected={selectedDimensionSet.has(dimension.id)}
+                        value={status.value}
+                        source={status.source}
+                        tone={status.tone}
+                        onToggle={() => toggleDimension(dimension.id)}
+                      />
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* 3. 参数配置 */}
+              <div className={cn(CARD_BASE, 'xl:col-span-3')}>
+                <h3 className={SECTION_TITLE}>
+                  <Settings2 className="size-4 text-primary" /> 参数配置
+                </h3>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className={FIELD_LABEL}>相似度阈值</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={driftThreshold}
+                        onChange={(e) => setDriftThreshold(Number(e.target.value))}
+                        className="h-9 border-border/70 bg-muted/65 text-[13px]"
+                      />
+                    </div>
+                    <div>
+                      <Label className={FIELD_LABEL}>采样数量</Label>
+                      <Input
+                        type="number"
+                        value={driftSampleN}
+                        onChange={(e) => setDriftSampleN(Number(e.target.value))}
+                        className="h-9 border-border/70 bg-muted/65 text-[13px]"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className={FIELD_LABEL}>迭代次数</Label>
+                      <Input
+                        type="number"
+                        value={perfSuiteIterations}
+                        onChange={(e) => setPerfSuiteIterations(Number(e.target.value))}
+                        className="h-9 border-border/70 bg-muted/65 text-[13px]"
+                      />
+                    </div>
+                    <div>
+                      <Label className={FIELD_LABEL}>超时 (秒)</Label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={perfSuiteTimeoutSec}
+                        onChange={(e) => setPerfSuiteTimeoutSec(Number(e.target.value))}
+                        className="h-9 border-border/70 bg-muted/65 text-[13px]"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-2">
+                    <Button
+                      variant="outline"
+                      className="h-9 w-full gap-2 border-border/70 bg-background/55 text-[13px] font-medium hover:border-info/30 hover:bg-info/[0.06]"
+                      onClick={runEmbeddingDriftProbe}
+                      disabled={driftRunning}
+                    >
+                      <BarChart3 className={cn('size-4', driftRunning && 'animate-pulse')} /> 漂移检查
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="h-9 w-full gap-2 border-border/70 bg-background/55 text-[13px] font-medium hover:border-info/30 hover:bg-info/[0.06]"
+                      onClick={runPerfSuiteProbe}
+                      disabled={perfSuiteRunning}
+                    >
+                      <ShieldCheck className={cn('size-4', perfSuiteRunning && 'animate-pulse')} /> 性能门禁
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 4. 核心指标横条 */}
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-3 px-2">
+                <h3 className="m-0 flex items-center gap-2 text-[14px] font-semibold text-foreground">
+                  <BarChart3 className="size-4 text-primary" /> 核心指标
+                  <MetricInfoTooltip label="核心指标说明" side="right">
+                    这里不是自动生成的总报告。RAG
+                    预览、漂移检查、性能门禁是三个独立探针，分别点击后只更新自己负责的指标。
+                  </MetricInfoTooltip>
+                </h3>
+                <p className="text-[11px] font-medium text-muted-foreground/80">先跑左侧按钮，再看对应指标</p>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[repeat(5,minmax(190px,1fr))]">
+                <MainMetricCard
+                  icon={Search}
+                  label="检索相关性"
+                  value={fmtMetricOrMissing(hasProbeResult, retrievalScore)}
+                  help="点击“运行 RAG 预览”后生成。用于判断当前问题召回的片段和问题是否相关，低分通常要检查切块、embedding、Top K 或 reranker。"
+                  loading={probeRunning}
+                  tone={metricTone(retrievalScore)}
+                />
+                <MainMetricCard
+                  icon={CheckCircle2}
+                  label="召回引用"
+                  value={fmtCountOrMissing(hasProbeResult, citationCount)}
+                  help="点击“运行 RAG 预览”后生成。表示这次回答拿到了多少条可引用证据；为 0 时通常说明检索没找到可用上下文。"
+                  loading={probeRunning}
+                  tone={citationTone(citationCount)}
+                />
+                <MainMetricCard
+                  icon={Hash}
+                  label="提示词 token"
+                  value={fmtCountOrMissing(hasProbeResult, promptTokenCount)}
+                  help="点击“运行 RAG 预览”后生成。用于估算本次检索上下文和问题进入模型的 token 成本，过高会影响费用和响应速度。"
+                  loading={probeRunning}
+                  tone={promptTokenCount === null ? 'slate' : 'amber'}
+                />
+                <MainMetricCard
+                  icon={Timer}
+                  label="漂移率"
+                  value={driftMetricCardValue(driftRunning, driftSnapshot, driftMetric)}
+                  help="点击“漂移检查”后生成。后端抽样比较当前 embedding 配置与已存向量；0 表示样本未发现漂移，比例升高说明可能需要重新嵌入。"
+                  loading={driftRunning}
+                  tone={metricTone(driftMetric)}
+                />
+                <MainMetricCard
+                  icon={ShieldCheck}
+                  label="性能门禁"
+                  value={runningStatusLabel(perfSuiteRunning, perfGateStatus)}
+                  help="点击“性能门禁”后生成。用于快速判断后端诊断接口在当前迭代次数和超时设置下是否稳定通过。"
+                  loading={perfSuiteRunning}
+                  tone={perfGateTone}
+                />
+              </div>
+            </div>
+
+            <div className={CARD_BASE}>
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="m-0 flex items-center gap-2 text-[14px] font-semibold text-foreground">
+                    <Search className="size-4 text-primary" /> 主预览
+                  </h3>
+                  <p className="mt-1 text-[11px] text-muted-foreground/80">
+                    这里基于真实后端返回值显示 prompt-preview、retrieval explain 与 config hash。
+                  </p>
+                </div>
+                <DiagnosticStatusPill
+                  value={canExplainProbe ? (probeRunning ? 'explain 运行中' : 'explain 已接入') : 'explain 已禁用'}
+                  tone={canExplainProbe ? 'green' : 'amber'}
+                />
+              </div>
+
+              {!probeResult && !probeRunning ? (
+                <div className="rounded-xl border border-dashed border-info/20 bg-info/[0.025] px-4 py-5 text-[12px] text-muted-foreground">
+                  运行一次 RAG 预览后，这里会展示 profile、config hash、通道候选、过滤/融合/reranker/耗时，以及
+                  degraded/fallback 信号。
                 </div>
               ) : (
-                <div className="flex min-h-[170px] flex-col items-center justify-center">
-                  <div className="mb-4 flex size-14 items-center justify-center rounded-full border border-dashed border-border bg-muted/50">
-                    <Activity className="size-6 text-muted-foreground/40" />
+                <div className="space-y-3">
+                  <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                    <PreviewInfoCard
+                      label="query_for_retrieval"
+                      mono={false}
+                      value={ragPreviewSummary.queryForRetrieval || MISSING_RESULT_LABEL}
+                    />
+                    <PreviewInfoCard
+                      label="retrieval_profile"
+                      value={ragPreviewSummary.profile || MISSING_RESULT_LABEL}
+                    />
+                    <PreviewInfoCard label="config_hash" value={ragPreviewSummary.configHash || MISSING_RESULT_LABEL} />
+                    <PreviewInfoCard
+                      label="contract"
+                      mono={false}
+                      value={
+                        ragPreviewSummary.explainEnabled
+                          ? 'dataset rag_defaults'
+                          : ragPreviewSummary.contractReason || 'disabled'
+                      }
+                    />
                   </div>
-                  <DiagnosticStatusPill
-                    value="待生成建议"
-                    tone="slate"
-                    className="h-6 px-2.5"
-                  />
-                  <p className="mt-2 text-[11px] text-muted-foreground/80">
-                    运行 RAG 预览、漂移检查或性能门禁后生成建议
-                  </p>
+
+                  {!ragPreviewSummary.explainEnabled && ragPreviewSummary.contractReason ? (
+                    <div className="rounded-xl border border-warning/20 bg-warning/10 px-3 py-2 text-[12px] text-warning">
+                      {ragPreviewSummary.contractReason}
+                    </div>
+                  ) : null}
+
+                  <div className="grid gap-3 xl:grid-cols-4">
+                    <PreviewListCard
+                      title="通道候选"
+                      emptyLabel="后端未返回 channel 数据"
+                      items={ragPreviewSummary.channelCandidates}
+                    />
+                    <PreviewListCard
+                      title="过滤"
+                      emptyLabel="后端未返回 filtering/contract 字段"
+                      items={ragPreviewSummary.filtering}
+                    />
+                    <PreviewListCard
+                      title="融合"
+                      emptyLabel="后端未返回 fusion 字段"
+                      items={ragPreviewSummary.fusion}
+                    />
+                    <PreviewListCard
+                      title="Reranker / 耗时"
+                      emptyLabel="后端未返回 reranker/timing 字段"
+                      items={[...ragPreviewSummary.reranker, ...ragPreviewSummary.timings]}
+                    />
+                  </div>
+
+                  {ragPreviewSummary.degraded.length > 0 ? (
+                    <PreviewMessageCard title="Degraded" tone="amber" items={ragPreviewSummary.degraded} />
+                  ) : null}
+                  {ragPreviewSummary.fallback.length > 0 ? (
+                    <PreviewMessageCard title="Fallback" tone="red" items={ragPreviewSummary.fallback} />
+                  ) : null}
                 </div>
               )}
             </div>
+
+            {/* 5. 底层分析网格 */}
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
+              {/* 执行结果 */}
+              <div className={cn(CARD_BASE, 'xl:col-span-3')}>
+                <h3 className={SECTION_TITLE}>
+                  <LayoutGrid className="size-4 text-primary" /> 执行结果
+                  <MetricInfoTooltip label="执行结果说明" side="right">
+                    每一行对应一个按钮。只点“漂移检查”时，RAG 预览和性能门禁保持待执行是正常的。
+                  </MetricInfoTooltip>
+                </h3>
+                <div className="space-y-2 pt-1">
+                  <ConclusionItem label="RAG 预览" status={runningStatusLabel(probeRunning, ragPreviewStatusLabel)} />
+                  <ConclusionItem label="漂移检查" status={runningStatusLabel(driftRunning, driftStatusLabel)} />
+                  <ConclusionItem label="性能门禁" status={perfGateStatus} />
+                  <ConclusionItem label="报告时间" status={fmtDateTime(health.data?.payload?.time)} />
+                </div>
+              </div>
+
+              {/* 依赖资源 */}
+              <div id="diagnostics-dependency-card" className={cn(CARD_BASE, 'xl:col-span-3 scroll-mt-24')}>
+                <h3 className={SECTION_TITLE}>
+                  <Database className="size-4 text-primary" /> 依赖资源
+                </h3>
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  {dependencyItems.map((item) => (
+                    <ResourceItem
+                      key={item.label}
+                      label={item.label}
+                      status={item.status === 'unknown' && (depsLoading || readyLoading) ? 'checking' : item.status}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* 排障摘要 */}
+              <div className={cn(CARD_BASE, 'xl:col-span-3 flex flex-col')}>
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <h3 className="m-0 flex items-center gap-2 text-[14px] font-semibold text-foreground">
+                    <Terminal className="size-4 text-primary" /> 排障摘要
+                  </h3>
+                  <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                    原始响应已收起
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  <DiagnosticsSummaryItem
+                    label="系统健康"
+                    value={healthSummaryStatusLabel(health.isPending, systemStatus.label)}
+                    detail={serviceTime}
+                    tone={systemStatus.tone}
+                  />
+                  <DiagnosticsSummaryItem
+                    label="依赖就绪"
+                    value={readyStatusLabel(readyLoading, readySnapshot, readyOk, '已就绪', '需排查')}
+                    detail={readySnapshot ? '/health/ready 已返回' : '等待就绪响应'}
+                    tone={okTone(readyOk, 'blue')}
+                  />
+                  <DiagnosticsSummaryItem
+                    label="诊断任务"
+                    value={manualDiagnosticsStatusLabel}
+                    detail={diagnosticSummaryDetail(hasManualDiagnostics)}
+                    tone={hasManualDiagnostics ? 'green' : 'slate'}
+                  />
+                </div>
+                <RawDiagnosticsDetails json={backendSummaryJson} onCopy={() => copyToClipboard(backendSummaryJson)} />
+              </div>
+
+              {/* 后端建议 */}
+              <div className={cn(CARD_BASE, 'xl:col-span-3')}>
+                <h3 className={SECTION_TITLE}>
+                  <Zap className="size-4 text-primary" /> 后端建议
+                </h3>
+                {backendRecommendationItems.length > 0 ? (
+                  <div className="space-y-2">
+                    {backendRecommendationItems.map((recommendation) => (
+                      <p
+                        key={recommendation.key}
+                        className="rounded-lg border border-border/50 bg-muted/40 px-3 py-2 text-[12px] leading-relaxed text-muted-foreground"
+                      >
+                        {recommendation.text}
+                      </p>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex min-h-[170px] flex-col items-center justify-center">
+                    <div className="mb-4 flex size-14 items-center justify-center rounded-full border border-dashed border-border bg-muted/50">
+                      <Activity className="size-6 text-muted-foreground/40" />
+                    </div>
+                    <DiagnosticStatusPill value="待生成建议" tone="slate" className="h-6 px-2.5" />
+                    <p className="mt-2 text-[11px] text-muted-foreground/80">
+                      运行 RAG 预览、漂移检查或性能门禁后生成建议
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </TooltipProvider>
-        </PageScaffold>
+      </PageScaffold>
     </AppFrame>
   )
 }
@@ -2106,10 +1822,7 @@ function ResourceItem({ label, status }: Readonly<{ label: string; status: strin
     <div className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-muted/35 px-2.5 py-2">
       <span className="text-[12px] font-medium text-muted-foreground">{label}</span>
       <span
-        className={cn(
-          'rounded border px-2 py-0.5 text-[9px] font-bold uppercase',
-          resourceStatusClass(normalized)
-        )}
+        className={cn('rounded border px-2 py-0.5 text-[9px] font-bold uppercase', resourceStatusClass(normalized))}
       >
         {displayLabel}
       </span>
@@ -2140,17 +1853,10 @@ function DiagnosticsSummaryItem({
   return (
     <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-muted/35 px-3 py-2">
       <div className="min-w-0">
-        <p className="truncate text-[11px] font-medium text-muted-foreground">
-          {label}
-        </p>
+        <p className="truncate text-[11px] font-medium text-muted-foreground">{label}</p>
         <p className="mt-0.5 truncate text-[10px] text-muted-foreground/80">{detail}</p>
       </div>
-      <span
-        className={cn(
-          'shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold',
-          toneClass
-        )}
-      >
+      <span className={cn('shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold', toneClass)}>
         {value}
       </span>
     </div>
@@ -2175,9 +1881,7 @@ function RawDiagnosticsDetails({
       </summary>
       <div className="border-t border-border/50 p-3">
         <div className="mb-2 flex items-center justify-between gap-3">
-          <p className="text-[11px] font-medium text-muted-foreground/80">
-            仅用于排障复制，不默认占用诊断主视图。
-          </p>
+          <p className="text-[11px] font-medium text-muted-foreground/80">仅用于排障复制，不默认占用诊断主视图。</p>
           <Button
             variant="outline"
             size="sm"
@@ -2207,16 +1911,8 @@ function PreviewInfoCard({
 }>) {
   return (
     <div className="rounded-xl border border-border/60 bg-muted/35 px-3 py-2.5">
-      <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/80">
-        {label}
-      </div>
-      <div
-        className={cn(
-          'mt-1 truncate text-[12px] font-semibold text-foreground',
-          mono && 'font-mono'
-        )}
-        title={value}
-      >
+      <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/80">{label}</div>
+      <div className={cn('mt-1 truncate text-[12px] font-semibold text-foreground', mono && 'font-mono')} title={value}>
         {value}
       </div>
     </div>
@@ -2242,19 +1938,13 @@ function PreviewListCard({
               key={`${title}-${item.label}-${item.value}`}
               className="rounded-lg border border-border/60 bg-background/65 px-2.5 py-2"
             >
-              <div className="text-[10px] uppercase tracking-[0.1em] text-muted-foreground/75">
-                {item.label}
-              </div>
-              <div className="mt-1 break-words font-mono text-[11px] text-foreground/90">
-                {item.value}
-              </div>
+              <div className="text-[10px] uppercase tracking-[0.1em] text-muted-foreground/75">{item.label}</div>
+              <div className="mt-1 break-words font-mono text-[11px] text-foreground/90">{item.value}</div>
             </div>
           ))}
         </div>
       ) : (
-        <div className="mt-2 text-[11px] text-muted-foreground/75">
-          {emptyLabel}
-        </div>
+        <div className="mt-2 text-[11px] text-muted-foreground/75">{emptyLabel}</div>
       )}
     </div>
   )
@@ -2273,17 +1963,10 @@ function PreviewMessageCard({
     <div
       className={cn(
         'rounded-xl border px-3 py-3',
-        tone === 'amber'
-          ? 'border-warning/20 bg-warning/10'
-          : 'border-destructive/20 bg-destructive/10'
+        tone === 'amber' ? 'border-warning/20 bg-warning/10' : 'border-destructive/20 bg-destructive/10',
       )}
     >
-      <div
-        className={cn(
-          'text-[12px] font-semibold',
-          tone === 'amber' ? 'text-warning' : 'text-destructive'
-        )}
-      >
+      <div className={cn('text-[12px] font-semibold', tone === 'amber' ? 'text-warning' : 'text-destructive')}>
         {title}
       </div>
       <div className="mt-2 space-y-1.5">

@@ -25,10 +25,7 @@ type UrlIngestSectionProps = {
   updateUrlIngest: (patch: Partial<UrlIngestSettings>) => void
 }
 
-export function UrlIngestSection({
-  urlIngest,
-  updateUrlIngest,
-}: Readonly<UrlIngestSectionProps>) {
+export function UrlIngestSection({ urlIngest, updateUrlIngest }: Readonly<UrlIngestSectionProps>) {
   const isUrlIngestEnabled = urlIngest.enabled
   const allowsPrivateIps = urlIngest.allow_private_ips
   const followsRedirects = urlIngest.follow_redirects
@@ -61,11 +58,7 @@ export function UrlIngestSection({
             ) : (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <SettingsSwitch
-                    checked={false}
-                    className="shrink-0"
-                    aria-label="切换网页采集开关"
-                  />
+                  <SettingsSwitch checked={false} className="shrink-0" aria-label="切换网页采集开关" />
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
@@ -76,9 +69,7 @@ export function UrlIngestSection({
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>取消</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => updateUrlIngest({ enabled: true })}>
-                      启用
-                    </AlertDialogAction>
+                    <AlertDialogAction onClick={() => updateUrlIngest({ enabled: true })}>启用</AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
@@ -87,9 +78,7 @@ export function UrlIngestSection({
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div>
-              <div className={cn(settingsTextTokens.fieldLabel, 'mb-1')}>
-                最大下载大小（字节）
-              </div>
+              <div className={cn(settingsTextTokens.fieldLabel, 'mb-1')}>最大下载大小（字节）</div>
               <Input
                 type="number"
                 min={0}
@@ -103,9 +92,7 @@ export function UrlIngestSection({
               />
             </div>
             <div>
-              <div className={cn(settingsTextTokens.fieldLabel, 'mb-1')}>
-                下载超时（秒）
-              </div>
+              <div className={cn(settingsTextTokens.fieldLabel, 'mb-1')}>下载超时（秒）</div>
               <Input
                 type="number"
                 min={0}
@@ -139,11 +126,7 @@ export function UrlIngestSection({
               ) : (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <SettingsSwitch
-                      checked={false}
-                      className="shrink-0"
-                      aria-label="切换允许私网 IP 访问"
-                    />
+                    <SettingsSwitch checked={false} className="shrink-0" aria-label="切换允许私网 IP 访问" />
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
@@ -166,9 +149,7 @@ export function UrlIngestSection({
             <div className="flex items-start justify-between gap-3 rounded-lg border border-info/15 bg-info/[0.025] px-3 py-2.5">
               <div>
                 <div className={settingsTextTokens.panelTitle}>跟随重定向</div>
-                <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
-                  可能重定向到内网/大文件；建议保持关闭
-                </div>
+                <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>可能重定向到内网/大文件；建议保持关闭</div>
               </div>
               {followsRedirects ? (
                 <SettingsSwitch
@@ -180,11 +161,7 @@ export function UrlIngestSection({
               ) : (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <SettingsSwitch
-                      checked={false}
-                      className="shrink-0"
-                      aria-label="切换跟随重定向"
-                    />
+                    <SettingsSwitch checked={false} className="shrink-0" aria-label="切换跟随重定向" />
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>

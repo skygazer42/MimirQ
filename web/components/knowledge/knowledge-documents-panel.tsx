@@ -26,27 +26,12 @@ import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { SearchInput } from '@/components/ui/search-input'
 import { Panel } from '@/components/ui/panel'
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
-import {
-  StatusBadge,
-  type StatusBadgeStatus,
-} from '@/components/ui/status-badge'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
 import { DocumentOperationsPanel } from '@/components/documents/document-operations-panel'
 import { DocumentTags } from '@/components/documents/document-tags'
 import { KnowledgeInspector } from '@/components/knowledge/knowledge-inspector'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -62,13 +47,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Link } from '@/i18n/navigation'
 import { formatApiError } from '@/lib/api-errors'
 import { buildChunkPreviewDocumentHref } from '@/lib/chunk-preview-links'
@@ -145,9 +124,7 @@ type KnowledgeDocumentsPanelProps = {
   batchLifecycleWorking: boolean
   batchReingestWorking: boolean
   runBatchReingest: () => void | Promise<void>
-  runBatchLifecycle: (
-    action: 'disable' | 'enable' | 'archive' | 'unarchive'
-  ) => void | Promise<void>
+  runBatchLifecycle: (action: 'disable' | 'enable' | 'archive' | 'unarchive') => void | Promise<void>
 
   anySelectedDisabled: boolean
   anySelectedEnabled: boolean
@@ -181,10 +158,7 @@ function getQualityColor(qualityPercent: number | null): string {
   return 'text-rose'
 }
 
-function getStatusBadge(
-  status: string,
-  t: TranslateFn
-): { status: StatusBadgeStatus; label: string } {
+function getStatusBadge(status: string, t: TranslateFn): { status: StatusBadgeStatus; label: string } {
   switch (status) {
     case 'completed':
       return { status: 'completed', label: t('status.completed') }
@@ -217,16 +191,9 @@ function getDocumentLifecycleLabel(doc: Document) {
 
 function getDocumentSourceLabel(doc: Document) {
   const metadata = (doc.metadata || {}) as Record<string, unknown>
-  const source =
-    typeof metadata.source === 'string' ? metadata.source.toLowerCase() : ''
-  const sourcePath =
-    typeof metadata.source_path === 'string' ? metadata.source_path : ''
-  if (
-    source.includes('connector') ||
-    source.includes('crawl') ||
-    source.includes('jira')
-  )
-    return '连接器'
+  const source = typeof metadata.source === 'string' ? metadata.source.toLowerCase() : ''
+  const sourcePath = typeof metadata.source_path === 'string' ? metadata.source_path : ''
+  if (source.includes('connector') || source.includes('crawl') || source.includes('jira')) return '连接器'
   if (source.includes('url')) return 'URL 导入'
   if (sourcePath) return '目录上传'
   return '手动导入'
@@ -323,9 +290,7 @@ export function KnowledgeDocumentsPanel({
   const [activeDrawerDoc, setActiveDrawerDoc] = useState<Document | null>(null)
   const [singleDeleteDoc, setSingleDeleteDoc] = useState<Document | null>(null)
   const [singleDeleteWorking, setSingleDeleteWorking] = useState(false)
-  const [singleDeleteError, setSingleDeleteError] = useState<string | null>(
-    null
-  )
+  const [singleDeleteError, setSingleDeleteError] = useState<string | null>(null)
   const [opsOpen, setOpsOpen] = useState(false)
 
   const docsGridColsClassName = getDocsGridColsClassName(docGridColumns)
@@ -337,19 +302,14 @@ export function KnowledgeDocumentsPanel({
     : '2.25rem minmax(18rem,1.8fr) minmax(5.5rem,.55fr) minmax(5rem,.5fr) 3.75rem 5rem 5.5rem 8.5rem'
   const peekChunksLabel = (() => {
     const resolved = t('actions.peekChunks')
-    return resolved === 'KnowledgeDocumentsPanel.actions.peekChunks'
-      ? '切片管理'
-      : resolved
+    return resolved === 'KnowledgeDocumentsPanel.actions.peekChunks' ? '切片管理' : resolved
   })()
 
   const docsGridVirtualRows = docsGridVirtualizer.getVirtualItems()
   const docsTableVirtualRows = docsTableVirtualizer.getVirtualItems()
-  const docsTablePaddingTop = docsTableVirtualRows.length
-    ? docsTableVirtualRows[0].start
-    : 0
+  const docsTablePaddingTop = docsTableVirtualRows.length ? docsTableVirtualRows[0].start : 0
   const docsTablePaddingBottom = docsTableVirtualRows.length
-    ? docsTableVirtualizer.getTotalSize() -
-      (docsTableVirtualRows.at(-1)?.end ?? 0)
+    ? docsTableVirtualizer.getTotalSize() - (docsTableVirtualRows.at(-1)?.end ?? 0)
     : 0
   const sectionInsetClassName = embedded ? 'px-4 py-4' : ''
 
@@ -386,7 +346,7 @@ export function KnowledgeDocumentsPanel({
       event?.stopPropagation()
       setActiveDrawerDoc(doc)
     },
-    []
+    [],
   )
 
   const copyText = useCallback(
@@ -398,7 +358,7 @@ export function KnowledgeDocumentsPanel({
         toast.error(t('toasts.copyFailed'))
       }
     },
-    [t]
+    [t],
   )
 
   const renderGridDocCard = (doc: Document) => {
@@ -421,16 +381,13 @@ export function KnowledgeDocumentsPanel({
   }
 
   const visibleDocumentsCount = totalDocumentsCount
-  const pageStart = visibleDocumentsCount
-    ? (page - 1) * pageSize + 1
-    : 0
+  const pageStart = visibleDocumentsCount ? (page - 1) * pageSize + 1 : 0
   const pageEnd = Math.min(page * pageSize, visibleDocumentsCount)
   const canGoPrevious = page > 1
   const canGoNext = page < pageCount
   const isDatasetEmpty = documents.length === 0
   const showEmptyState = visibleDocumentsCount === 0
-  const iconShellClassName =
-    'relative overflow-hidden shadow-none'
+  const iconShellClassName = 'relative overflow-hidden shadow-none'
   const inventoryStatCardClassName =
     'group relative overflow-hidden rounded-none border-0 border-l border-border/45 bg-transparent px-3 py-1.5 shadow-none transition-colors hover:bg-muted/40 dark:border-border/60 dark:bg-transparent dark:hover:bg-muted/10'
   const checkboxCellClassName =
@@ -444,18 +401,11 @@ export function KnowledgeDocumentsPanel({
         onValueChange={setDocFilter}
         containerClassName="min-w-0 w-full xl:max-w-[480px]"
         inputClassName="h-8 rounded-xl border-border/55 bg-background/82 pr-4 text-[12px] shadow-none dark:border-border/65 dark:bg-background/68"
-        placeholder={
-          showDatasetColumn
-            ? '搜索文件名 / 文档 ID / 数据集'
-            : '搜索文件名 / 文档 ID'
-        }
+        placeholder={showDatasetColumn ? '搜索文件名 / 文档 ID / 数据集' : '搜索文件名 / 文档 ID'}
       />
 
       <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap lg:justify-end">
-        <Select
-          value={sortKey}
-          onValueChange={(value) => setSortKey(value as DocSortKey)}
-        >
+        <Select value={sortKey} onValueChange={(value) => setSortKey(value as DocSortKey)}>
           <SelectTrigger className="h-8 min-w-[138px] rounded-xl border-border/55 bg-background/82 text-[11px] font-medium shadow-none dark:border-border/65 dark:bg-background/68">
             <SelectValue placeholder={t('table.columns.name')} />
           </SelectTrigger>
@@ -508,7 +458,7 @@ export function KnowledgeDocumentsPanel({
     <div
       className={cn(
         'animate-in fade-in slide-in-from-bottom-4 duration-300 motion-reduce:animate-none motion-reduce:transition-none',
-        embedded && 'flex h-full min-h-0 flex-col'
+        embedded && 'flex h-full min-h-0 flex-col',
       )}
     >
       <AlertDialog
@@ -523,9 +473,7 @@ export function KnowledgeDocumentsPanel({
         <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {singleDeleteDoc
-                ? t('singleDelete.title')
-                : t('singleDelete.titleDefault')}
+              {singleDeleteDoc ? t('singleDelete.title') : t('singleDelete.titleDefault')}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {singleDeleteDoc && (
@@ -535,9 +483,7 @@ export function KnowledgeDocumentsPanel({
                       filename: singleDeleteDoc.filename,
                     })}
                   </div>
-                  <div className="text-xs text-muted-foreground font-mono break-all">
-                    {singleDeleteDoc.id}
-                  </div>
+                  <div className="text-xs text-muted-foreground font-mono break-all">{singleDeleteDoc.id}</div>
                 </div>
               )}
               {singleDeleteError ? (
@@ -562,9 +508,7 @@ export function KnowledgeDocumentsPanel({
               onClick={() => detachPromise(confirmSingleDelete())}
               disabled={singleDeleteWorking || !singleDeleteDoc}
             >
-              {singleDeleteWorking
-                ? t('actions.deleting')
-                : t('actions.confirmDelete')}
+              {singleDeleteWorking ? t('actions.deleting') : t('actions.confirmDelete')}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -578,7 +522,7 @@ export function KnowledgeDocumentsPanel({
             exit={{ opacity: 0, y: 40, scale: 0.95 }}
             transition={{ type: 'spring', damping: 20, stiffness: 300 }}
             className={cn(
-              'fixed bottom-8 left-1/2 z-50 -translate-x-1/2 overflow-hidden rounded-[2.25rem] border border-border/50 bg-background/70 px-4 py-3 shadow-[0_30px_90px_-32px_rgba(15,23,42,0.88),0_18px_36px_-24px_rgba(15,23,42,0.55),inset_0_1px_0_rgba(255,255,255,0.16)] backdrop-blur-2xl supports-[backdrop-filter]:bg-background/58'
+              'fixed bottom-8 left-1/2 z-50 -translate-x-1/2 overflow-hidden rounded-[2.25rem] border border-border/50 bg-background/70 px-4 py-3 shadow-[0_30px_90px_-32px_rgba(15,23,42,0.88),0_18px_36px_-24px_rgba(15,23,42,0.55),inset_0_1px_0_rgba(255,255,255,0.16)] backdrop-blur-2xl supports-[backdrop-filter]:bg-background/58',
             )}
           >
             <div className="pointer-events-none absolute inset-0 bg-background/90" />
@@ -606,9 +550,7 @@ export function KnowledgeDocumentsPanel({
                   className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60"
                   onClick={toggleSelectAllVisible}
                 >
-                  {allVisibleSelected
-                    ? t('selection.clearSelectAll')
-                    : t('selection.selectAllVisible')}
+                  {allVisibleSelected ? t('selection.clearSelectAll') : t('selection.selectAllVisible')}
                 </Button>
                 <Button
                   type="button"
@@ -626,20 +568,14 @@ export function KnowledgeDocumentsPanel({
                   size="sm"
                   className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60 text-primary"
                   onClick={() => detachPromise(runBatchReingest())}
-                  disabled={
-                    batchDeleting ||
-                    batchLifecycleWorking ||
-                    batchReingestWorking
-                  }
+                  disabled={batchDeleting || batchLifecycleWorking || batchReingestWorking}
                 >
                   {batchReingestWorking ? (
                     <Loader2 className="size-3 animate-spin mr-1.5" />
                   ) : (
                     <RefreshCw className="size-3 mr-1.5" />
                   )}
-                  {batchReingestWorking
-                    ? t('actions.reingesting')
-                    : t('actions.reingest')}
+                  {batchReingestWorking ? t('actions.reingesting') : t('actions.reingest')}
                 </Button>
                 <Button
                   type="button"
@@ -647,11 +583,7 @@ export function KnowledgeDocumentsPanel({
                   size="sm"
                   className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60"
                   onClick={() => detachPromise(runBatchLifecycle('disable'))}
-                  disabled={
-                    batchDeleting ||
-                    batchLifecycleWorking ||
-                    !anySelectedEnabled
-                  }
+                  disabled={batchDeleting || batchLifecycleWorking || !anySelectedEnabled}
                 >
                   {t('actions.disable')}
                 </Button>
@@ -661,11 +593,7 @@ export function KnowledgeDocumentsPanel({
                   size="sm"
                   className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60"
                   onClick={() => detachPromise(runBatchLifecycle('enable'))}
-                  disabled={
-                    batchDeleting ||
-                    batchLifecycleWorking ||
-                    !anySelectedDisabled
-                  }
+                  disabled={batchDeleting || batchLifecycleWorking || !anySelectedDisabled}
                 >
                   {t('actions.enable')}
                 </Button>
@@ -675,11 +603,7 @@ export function KnowledgeDocumentsPanel({
                   size="sm"
                   className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60"
                   onClick={() => detachPromise(runBatchLifecycle('archive'))}
-                  disabled={
-                    batchDeleting ||
-                    batchLifecycleWorking ||
-                    !anySelectedNotArchived
-                  }
+                  disabled={batchDeleting || batchLifecycleWorking || !anySelectedNotArchived}
                 >
                   {t('actions.archive')}
                 </Button>
@@ -689,11 +613,7 @@ export function KnowledgeDocumentsPanel({
                   size="sm"
                   className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60"
                   onClick={() => detachPromise(runBatchLifecycle('unarchive'))}
-                  disabled={
-                    batchDeleting ||
-                    batchLifecycleWorking ||
-                    !anySelectedArchived
-                  }
+                  disabled={batchDeleting || batchLifecycleWorking || !anySelectedArchived}
                 >
                   {t('actions.unarchive')}
                 </Button>
@@ -723,12 +643,7 @@ export function KnowledgeDocumentsPanel({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setBatchDeleteOpen(false)}
-              disabled={batchDeleting}
-            >
+            <Button type="button" variant="outline" onClick={() => setBatchDeleteOpen(false)} disabled={batchDeleting}>
               {t('actions.cancel')}
             </Button>
             <Button
@@ -737,18 +652,13 @@ export function KnowledgeDocumentsPanel({
               onClick={() => detachPromise(confirmBatchDelete())}
               disabled={batchDeleting || selectedDocIds.length === 0}
             >
-              {batchDeleting
-                ? t('actions.deleting')
-                : t('actions.confirmDelete')}
+              {batchDeleting ? t('actions.deleting') : t('actions.confirmDelete')}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <Dialog
-        open={Boolean(activeDrawerDoc)}
-        onOpenChange={handleDrawerOpenChange}
-      >
+      <Dialog open={Boolean(activeDrawerDoc)} onOpenChange={handleDrawerOpenChange}>
         <DialogContent className="left-auto right-0 top-0 flex h-dvh w-[min(540px,100vw)] max-w-[540px] translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-l border-border/55 bg-[linear-gradient(180deg,hsl(var(--background)/0.98),hsl(var(--surface-2)/0.92))] p-0 shadow-[0_24px_70px_rgba(15,23,42,0.16)]">
           <DialogHeader className="border-b border-border/50 px-4 py-3 text-left">
             <DialogTitle className="text-[14px] font-semibold leading-none tracking-[-0.01em] text-foreground">
@@ -759,10 +669,7 @@ export function KnowledgeDocumentsPanel({
             </DialogDescription>
           </DialogHeader>
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <KnowledgeInspector
-              embedded
-              selectedDocs={activeDrawerDoc ? [activeDrawerDoc] : []}
-            />
+            <KnowledgeInspector embedded selectedDocs={activeDrawerDoc ? [activeDrawerDoc] : []} />
           </div>
         </DialogContent>
       </Dialog>
@@ -795,7 +702,7 @@ export function KnowledgeDocumentsPanel({
         className={cn(
           'flex min-h-0 flex-col overflow-hidden rounded-none border-0 bg-background shadow-none dark:bg-background',
           embedded && 'h-full flex-1',
-          embedded ? 'h-full' : 'min-h-[560px]'
+          embedded ? 'h-full' : 'min-h-[560px]',
         )}
       >
         <div className="relative overflow-hidden border-b border-border/45 bg-background px-4 pb-2.5 pt-3.5 dark:border-border/60 dark:bg-background">
@@ -805,7 +712,7 @@ export function KnowledgeDocumentsPanel({
                 <div
                   className={cn(
                     'flex size-6 items-center justify-center rounded-lg border border-border/50 bg-card/64 text-primary/80 dark:border-border/65 dark:bg-muted/30',
-                    iconShellClassName
+                    iconShellClassName,
                   )}
                 >
                   <Database className="size-3.5" />
@@ -827,15 +734,11 @@ export function KnowledgeDocumentsPanel({
                 transition={{ type: 'spring', stiffness: 340, damping: 24 }}
                 className={inventoryStatCardClassName}
               >
-                <div className="text-[10px] font-medium leading-none text-muted-foreground/68">
-                  当前可见
-                </div>
+                <div className="text-[10px] font-medium leading-none text-muted-foreground/68">当前可见</div>
                 <div className="mt-1 font-mono text-[14px] tabular-nums text-foreground transition-transform duration-200 group-hover:scale-[1.02]">
                   {visibleDocumentsCount}
                 </div>
-                <div className="mt-0.5 text-[10px] text-muted-foreground/72">
-                  当前列表结果
-                </div>
+                <div className="mt-0.5 text-[10px] text-muted-foreground/72">当前列表结果</div>
               </motion.div>
               <motion.div
                 whileHover={{ y: -1, scale: 1.003 }}
@@ -843,15 +746,11 @@ export function KnowledgeDocumentsPanel({
                 transition={{ type: 'spring', stiffness: 340, damping: 24 }}
                 className={inventoryStatCardClassName}
               >
-                <div className="text-[10px] font-medium leading-none text-muted-foreground/68">
-                  已选择
-                </div>
+                <div className="text-[10px] font-medium leading-none text-muted-foreground/68">已选择</div>
                 <div className="mt-1 font-mono text-[14px] tabular-nums text-foreground transition-transform duration-200 group-hover:scale-[1.02]">
                   {selectedDocIds.length}
                 </div>
-                <div className="mt-0.5 text-[10px] text-muted-foreground/72">
-                  批量操作范围
-                </div>
+                <div className="mt-0.5 text-[10px] text-muted-foreground/72">批量操作范围</div>
               </motion.div>
               <motion.div
                 whileHover={{ y: -1, scale: 1.003 }}
@@ -859,9 +758,7 @@ export function KnowledgeDocumentsPanel({
                 transition={{ type: 'spring', stiffness: 340, damping: 24 }}
                 className={inventoryStatCardClassName}
               >
-                <div className="text-[10px] font-medium leading-none text-muted-foreground/68">
-                  展示模式
-                </div>
+                <div className="text-[10px] font-medium leading-none text-muted-foreground/68">展示模式</div>
                 <div className="mt-1 text-[11px] font-medium text-foreground/88">
                   {viewMode === 'list' ? '列表模式' : '网格模式'}
                 </div>
@@ -875,12 +772,7 @@ export function KnowledgeDocumentsPanel({
           {scopeSummary ? <div className="mt-2.5">{scopeSummary}</div> : null}
         </div>
 
-        <div
-          className={cn(
-            'flex min-h-0 flex-1 flex-col',
-            embedded && 'bg-transparent p-0 dark:bg-transparent'
-          )}
-        >
+        <div className={cn('flex min-h-0 flex-1 flex-col', embedded && 'bg-transparent p-0 dark:bg-transparent')}>
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 bg-transparent shadow-none">
             <div className="border-b border-border/45 bg-background px-3 py-2 dark:border-border/60 dark:bg-background">
               {inventoryToolbar}
@@ -891,611 +783,543 @@ export function KnowledgeDocumentsPanel({
               className="h-full min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar [scrollbar-gutter:stable]"
             >
               {(() => {
-            if (isLoading && isDatasetEmpty) {
-              return (
-                <div className="flex h-full min-h-[360px] items-center justify-center px-6 py-10 text-muted-foreground">
-                  <div className="flex flex-col items-center gap-3">
-                    <Loader2 className="size-8 animate-spin motion-reduce:animate-none" />
-                    <p className="text-sm">{t('loading')}</p>
-                  </div>
-                </div>
-              )
-            }
-
-            if (showEmptyState) {
-              const emptyTitle = getEmptyTitle(isDatasetEmpty, docFilter)
-              const emptyDescription = isDatasetEmpty
-                ? '使用右上角「导入/新增」上传文档或创建连接器后，资产列表会在这里形成可检索的文档货架。'
-                : '当前筛选条件没有命中文档，可以放宽范围、清空搜索，或切回全部数据集重新查看。'
-
-              return (
-                <div
-                  data-knowledge-empty-shelf-dock="integrated-canvas"
-                  className="flex h-full min-h-0 flex-1"
-                >
-                  <div
-                    data-knowledge-empty-shelf="true"
-                    className="relative flex h-full min-h-[360px] w-full flex-1 overflow-hidden bg-background/40"
-                  >
-                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(hsl(var(--border)/0.24)_1px,transparent_1px),linear-gradient(90deg,hsl(var(--border)/0.24)_1px,transparent_1px)] bg-[size:48px_48px] opacity-60" />
-                    <div className="absolute right-4 top-4 z-10">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-8 rounded-md border-border/55 bg-background/80 px-2.5 text-[11px] font-medium text-foreground/80 shadow-none hover:border-border hover:bg-background"
-                            aria-label="查看入库指引"
-                          >
-                            入库指引
-                            <ChevronDown className="ml-1.5 size-3.5 text-muted-foreground/65" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent
-                          align="end"
-                          sideOffset={10}
-                          className="w-[330px] rounded-[18px] border-border/60 bg-card/95 p-2 shadow-[0_24px_64px_-34px_hsl(var(--foreground)/0.28)] backdrop-blur-xl dark:border-border/70 dark:bg-background/95"
-                        >
-                          <div className="rounded-[14px] border border-border/60 bg-muted/30 px-3 py-2.5 dark:border-border/70 dark:bg-muted/20">
-                            <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-info/70">
-                              Empty Shelf Guide
-                            </div>
-                            <div className="mt-1 text-[12px] font-medium text-foreground">
-                              空数据集下一步
-                            </div>
-                          </div>
-                          <div className="mt-2 space-y-1.5">
-                            <div className="rounded-[14px] px-3 py-2.5 text-left transition-colors hover:bg-muted/40 dark:hover:bg-muted/30">
-                              <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
-                                <Database className="size-4 text-info" />
-                                导入路径
-                              </div>
-                              <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground/74">
-                                从右上角「导入/新增」上传文件、批量 URL
-                                或连接器任务，文档会自动绑定当前数据集。
-                              </p>
-                            </div>
-                            <div className="rounded-[14px] px-3 py-2.5 text-left transition-colors hover:bg-muted/40 dark:hover:bg-muted/30">
-                              <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
-                                <Filter className="size-4 text-info" />
-                                筛选路径
-                              </div>
-                              <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground/74">
-                                当前左侧范围会影响列表结果；如果误选生命周期或状态，可以先清空筛选。
-                              </p>
-                            </div>
-                            <div className="rounded-[14px] px-3 py-2.5 text-left transition-colors hover:bg-muted/40 dark:hover:bg-muted/30">
-                              <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
-                                <Layers className="size-4 text-info" />
-                                质量路径
-                              </div>
-                              <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground/74">
-                                文档入库后可在这里查看切片数量、解析状态、健康卡和后续检索测试入口。
-                              </p>
-                            </div>
-                          </div>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                    <div className="relative mx-auto flex h-full max-w-5xl flex-col items-center justify-center px-4 py-8 text-center">
-                      {isDatasetEmpty ? (
-                        <div
-                          data-knowledge-empty-shelf-mark="true"
-                          className="relative mb-5 flex h-14 w-20 items-end justify-center"
-                          aria-hidden="true"
-                        >
-                          <span className="absolute bottom-1.5 left-2 right-2 h-0.5 bg-border/80" />
-                          <span className="absolute bottom-0 left-3 h-1.5 w-px bg-border/80" />
-                          <span className="absolute bottom-0 right-3 h-1.5 w-px bg-border/80" />
-                          <span className="mb-2 flex h-7 w-2.5 items-start justify-center rounded-sm border border-info/40 bg-info/[0.10] pt-1.5">
-                            <span className="h-px w-1 bg-info/45" />
-                          </span>
-                          <span className="mb-2 ml-1 flex h-9 w-3 items-start justify-center rounded-sm border border-info/45 bg-info/[0.15] pt-2">
-                            <span className="h-px w-1.5 bg-info/50" />
-                          </span>
-                          <span className="mb-2 ml-1 flex h-6 w-2.5 items-start justify-center rounded-sm border border-border bg-muted/35 pt-1.5">
-                            <span className="h-px w-1 bg-muted-foreground/35" />
-                          </span>
-                          <span className="mb-2 ml-1 flex h-8 w-2.5 rotate-6 items-start justify-center rounded-sm border border-primary/35 bg-primary/[0.08] pt-1.5">
-                            <span className="h-px w-1 bg-primary/40" />
-                          </span>
-                          <span className="absolute right-0 top-0 flex size-6 items-center justify-center rounded-full border border-info/35 bg-background text-info">
-                            <Plus className="size-3.5" />
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="mb-4 flex size-12 items-center justify-center rounded-xl border border-border/55 bg-background text-info shadow-none">
-                          <Filter className="size-5" />
-                        </div>
-                      )}
-
-                      <h3 className="text-[19px] font-semibold text-foreground">
-                        {emptyTitle}
-                      </h3>
-                      <p className="mt-1.5 max-w-2xl text-[13px] leading-5 text-muted-foreground/78">
-                        {emptyDescription}
-                      </p>
-
-                      {isDatasetEmpty ? (
-                        <div className="mt-4 flex items-center gap-2 text-[10px] font-medium text-muted-foreground/72">
-                          <span>导入文档</span>
-                          <ChevronRight className="size-3 text-muted-foreground/40" />
-                          <span>自动解析</span>
-                          <ChevronRight className="size-3 text-muted-foreground/40" />
-                          <span>建立索引</span>
-                        </div>
-                      ) : null}
-
-                      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                        {isDatasetEmpty ? null : (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-10 rounded-[14px] border-border/70 bg-background px-4"
-                            onClick={onClearFilters}
-                          >
-                            <RotateCcw className="mr-2 size-3.5" />
-                            清空所有筛选
-                          </Button>
-                        )}
-
-                        {selectedDatasetId && onSwitchToAllDatasets ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-10 rounded-[14px] px-4 text-[12px] font-medium"
-                            onClick={onSwitchToAllDatasets}
-                          >
-                            回到全部数据集
-                          </Button>
-                        ) : null}
-
-                        {!selectedDatasetId && hasActiveFilters ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-10 rounded-[14px] px-4 text-[12px] font-medium"
-                            onClick={onSwitchToAllDatasets}
-                          >
-                            回到全部数据集
-                          </Button>
-                        ) : null}
+                if (isLoading && isDatasetEmpty) {
+                  return (
+                    <div className="flex h-full min-h-[360px] items-center justify-center px-6 py-10 text-muted-foreground">
+                      <div className="flex flex-col items-center gap-3">
+                        <Loader2 className="size-8 animate-spin motion-reduce:animate-none" />
+                        <p className="text-sm">{t('loading')}</p>
                       </div>
                     </div>
-                  </div>
-                </div>
-              )
-            }
+                  )
+                }
 
-            if (viewMode === 'grid') {
-              return (
-                <div className={sectionInsetClassName}>
-                  <div
-                    aria-label={t('grid.ariaLabel')}
-                    style={{
-                      height: `${docsGridVirtualizer.getTotalSize()}px`,
-                      width: '100%',
-                      position: 'relative',
-                    }}
-                  >
-                    {docsGridVirtualRows.map((virtualRow) => {
-                      const cols = Math.max(1, docGridColumns)
-                      const startIndex = virtualRow.index * cols
-                      const rowDocs = filteredDocuments.slice(
-                        startIndex,
-                        startIndex + cols
-                      )
-                      const isLastRow = virtualRow.index === docGridRowCount - 1
+                if (showEmptyState) {
+                  const emptyTitle = getEmptyTitle(isDatasetEmpty, docFilter)
+                  const emptyDescription = isDatasetEmpty
+                    ? '使用右上角「导入/新增」上传文档或创建连接器后，资产列表会在这里形成可检索的文档货架。'
+                    : '当前筛选条件没有命中文档，可以放宽范围、清空搜索，或切回全部数据集重新查看。'
 
-                      return (
-                        <div
-                          key={virtualRow.key}
-                          data-index={virtualRow.index}
-                          ref={docsGridVirtualizer.measureElement}
-                          style={{
-                            position: 'absolute',
-                            top: 0,
-                            left: 0,
-                            width: '100%',
-                            transform: `translateY(${virtualRow.start}px)`,
-                          }}
-                          className={isLastRow ? undefined : 'pb-5'}
-                        >
-                          <div
-                            className={cn(
-                              'grid items-stretch gap-5',
-                              docsGridColsClassName
+                  return (
+                    <div data-knowledge-empty-shelf-dock="integrated-canvas" className="flex h-full min-h-0 flex-1">
+                      <div
+                        data-knowledge-empty-shelf="true"
+                        className="relative flex h-full min-h-[360px] w-full flex-1 overflow-hidden bg-background/40"
+                      >
+                        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(hsl(var(--border)/0.24)_1px,transparent_1px),linear-gradient(90deg,hsl(var(--border)/0.24)_1px,transparent_1px)] bg-[size:48px_48px] opacity-60" />
+                        <div className="absolute right-4 top-4 z-10">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8 rounded-md border-border/55 bg-background/80 px-2.5 text-[11px] font-medium text-foreground/80 shadow-none hover:border-border hover:bg-background"
+                                aria-label="查看入库指引"
+                              >
+                                入库指引
+                                <ChevronDown className="ml-1.5 size-3.5 text-muted-foreground/65" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              align="end"
+                              sideOffset={10}
+                              className="w-[330px] rounded-[18px] border-border/60 bg-card/95 p-2 shadow-[0_24px_64px_-34px_hsl(var(--foreground)/0.28)] backdrop-blur-xl dark:border-border/70 dark:bg-background/95"
+                            >
+                              <div className="rounded-[14px] border border-border/60 bg-muted/30 px-3 py-2.5 dark:border-border/70 dark:bg-muted/20">
+                                <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-info/70">
+                                  Empty Shelf Guide
+                                </div>
+                                <div className="mt-1 text-[12px] font-medium text-foreground">空数据集下一步</div>
+                              </div>
+                              <div className="mt-2 space-y-1.5">
+                                <div className="rounded-[14px] px-3 py-2.5 text-left transition-colors hover:bg-muted/40 dark:hover:bg-muted/30">
+                                  <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
+                                    <Database className="size-4 text-info" />
+                                    导入路径
+                                  </div>
+                                  <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground/74">
+                                    从右上角「导入/新增」上传文件、批量 URL 或连接器任务，文档会自动绑定当前数据集。
+                                  </p>
+                                </div>
+                                <div className="rounded-[14px] px-3 py-2.5 text-left transition-colors hover:bg-muted/40 dark:hover:bg-muted/30">
+                                  <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
+                                    <Filter className="size-4 text-info" />
+                                    筛选路径
+                                  </div>
+                                  <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground/74">
+                                    当前左侧范围会影响列表结果；如果误选生命周期或状态，可以先清空筛选。
+                                  </p>
+                                </div>
+                                <div className="rounded-[14px] px-3 py-2.5 text-left transition-colors hover:bg-muted/40 dark:hover:bg-muted/30">
+                                  <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
+                                    <Layers className="size-4 text-info" />
+                                    质量路径
+                                  </div>
+                                  <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground/74">
+                                    文档入库后可在这里查看切片数量、解析状态、健康卡和后续检索测试入口。
+                                  </p>
+                                </div>
+                              </div>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                        <div className="relative mx-auto flex h-full max-w-5xl flex-col items-center justify-center px-4 py-8 text-center">
+                          {isDatasetEmpty ? (
+                            <div
+                              data-knowledge-empty-shelf-mark="true"
+                              className="relative mb-5 flex h-14 w-20 items-end justify-center"
+                              aria-hidden="true"
+                            >
+                              <span className="absolute bottom-1.5 left-2 right-2 h-0.5 bg-border/80" />
+                              <span className="absolute bottom-0 left-3 h-1.5 w-px bg-border/80" />
+                              <span className="absolute bottom-0 right-3 h-1.5 w-px bg-border/80" />
+                              <span className="mb-2 flex h-7 w-2.5 items-start justify-center rounded-sm border border-info/40 bg-info/[0.10] pt-1.5">
+                                <span className="h-px w-1 bg-info/45" />
+                              </span>
+                              <span className="mb-2 ml-1 flex h-9 w-3 items-start justify-center rounded-sm border border-info/45 bg-info/[0.15] pt-2">
+                                <span className="h-px w-1.5 bg-info/50" />
+                              </span>
+                              <span className="mb-2 ml-1 flex h-6 w-2.5 items-start justify-center rounded-sm border border-border bg-muted/35 pt-1.5">
+                                <span className="h-px w-1 bg-muted-foreground/35" />
+                              </span>
+                              <span className="mb-2 ml-1 flex h-8 w-2.5 rotate-6 items-start justify-center rounded-sm border border-primary/35 bg-primary/[0.08] pt-1.5">
+                                <span className="h-px w-1 bg-primary/40" />
+                              </span>
+                              <span className="absolute right-0 top-0 flex size-6 items-center justify-center rounded-full border border-info/35 bg-background text-info">
+                                <Plus className="size-3.5" />
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="mb-4 flex size-12 items-center justify-center rounded-xl border border-border/55 bg-background text-info shadow-none">
+                              <Filter className="size-5" />
+                            </div>
+                          )}
+
+                          <h3 className="text-[19px] font-semibold text-foreground">{emptyTitle}</h3>
+                          <p className="mt-1.5 max-w-2xl text-[13px] leading-5 text-muted-foreground/78">
+                            {emptyDescription}
+                          </p>
+
+                          {isDatasetEmpty ? (
+                            <div className="mt-4 flex items-center gap-2 text-[10px] font-medium text-muted-foreground/72">
+                              <span>导入文档</span>
+                              <ChevronRight className="size-3 text-muted-foreground/40" />
+                              <span>自动解析</span>
+                              <ChevronRight className="size-3 text-muted-foreground/40" />
+                              <span>建立索引</span>
+                            </div>
+                          ) : null}
+
+                          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                            {isDatasetEmpty ? null : (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-10 rounded-[14px] border-border/70 bg-background px-4"
+                                onClick={onClearFilters}
+                              >
+                                <RotateCcw className="mr-2 size-3.5" />
+                                清空所有筛选
+                              </Button>
                             )}
-                          >
-                            {rowDocs.map(renderGridDocCard)}
+
+                            {selectedDatasetId && onSwitchToAllDatasets ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-10 rounded-[14px] px-4 text-[12px] font-medium"
+                                onClick={onSwitchToAllDatasets}
+                              >
+                                回到全部数据集
+                              </Button>
+                            ) : null}
+
+                            {!selectedDatasetId && hasActiveFilters ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-10 rounded-[14px] px-4 text-[12px] font-medium"
+                                onClick={onSwitchToAllDatasets}
+                              >
+                                回到全部数据集
+                              </Button>
+                            ) : null}
                           </div>
                         </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )
-            }
+                      </div>
+                    </div>
+                  )
+                }
 
-            return (
-              <>
-                {/* className="group hover:bg-muted/20 transition-colors" */}
-                <div className="min-w-full">
-                    <table
-                      aria-label={t('table.ariaLabel')}
-                      className="w-full table-fixed text-left text-sm"
-                    >
-                      <colgroup>
-                        <col className="w-9" />
-                        <col />
-                        {showDatasetColumn ? (
-                          <col className="w-[10rem]" />
-                        ) : null}
-                        <col className="w-[6.5rem]" />
-                        <col className="w-[6rem]" />
-                        <col className="w-[4.5rem]" />
-                        <col className="w-[6rem]" />
-                        <col className="w-[6.5rem]" />
-                        <col className="w-[8.5rem]" />
-                      </colgroup>
-                      {/* sticky top-0 z-10 bg-card/92 px-3 py-2 font-medium dark:bg-background/90 */}
-                      <thead className="border-b border-border/50 bg-background text-[11px] text-muted-foreground/74 dark:border-border/60 dark:bg-background">
-                        <tr>
-                          <th
-                            colSpan={tableColumnCount}
-                            className="sticky top-0 z-10 bg-background px-3 py-2 font-medium dark:bg-background"
-                          >
-                            <div
-                              className="grid items-center gap-3"
-                              style={{
-                                gridTemplateColumns: documentListGridTemplate,
-                              }}
-                            >
-                              <div className={checkboxCellClassName}>
-                                <input
-                                  type="checkbox"
-                                  className={checkboxInputClassName}
-                                  checked={allVisibleSelected}
-                                  onChange={toggleSelectAllVisible}
-                                  aria-label={t('table.selectAllVisible')}
-                                />
-                              </div>
-                              <div>{t('table.columns.name')}</div>
-                              {showDatasetColumn ? (
-                                <div>{t('table.columns.dataset')}</div>
-                              ) : null}
-                              <div>{t('table.columns.tags')}</div>
-                              <div>{t('table.columns.status')}</div>
-                              <div className="text-right tabular-nums">
-                                {t('table.columns.chunks')}
-                              </div>
-                              <div className="text-right tabular-nums">
-                                {t('table.columns.size')}
-                              </div>
-                              <div>{t('table.columns.uploadedAt')}</div>
-                              <div className="text-right">
-                                {t('table.columns.actions')}
-                              </div>
-                            </div>
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-background dark:bg-background">
-                        {docsTablePaddingTop > 0 ? (
-                          <tr>
-                            <td
-                              colSpan={tableColumnCount}
-                              className="p-0"
-                              style={{ height: `${docsTablePaddingTop}px` }}
-                            />
-                          </tr>
-                        ) : null}
-
-                        {docsTableVirtualRows.map((virtualRow) => {
-                          const doc = filteredDocuments[virtualRow.index]
-                          if (!doc) return null
-                          const badge = getStatusBadge(doc.status, t)
-                          const tags = getUserTagsFromDocument(doc)
-                          const fileType = getFileTypeMeta(doc)
-                          const TypeIcon = fileType.icon
-                          const datasetLabel =
-                            datasetLabelById?.[doc.dataset_id || ''] || '-'
-                          const metadataItems = [
-                            { label: '数据集', value: datasetLabel },
-                            {
-                              label: '标签',
-                              value: getDocumentTagSummary(tags),
-                            },
-                            {
-                              label: '生命周期',
-                              value: getDocumentLifecycleLabel(doc),
-                            },
-                            {
-                              label: '来源',
-                              value: getDocumentSourceLabel(doc),
-                            },
-                            {
-                              label: '更新时间',
-                              value: formatDate(
-                                doc.updated_at || doc.created_at
-                              ),
-                            },
-                          ]
+                if (viewMode === 'grid') {
+                  return (
+                    <div className={sectionInsetClassName}>
+                      <div
+                        aria-label={t('grid.ariaLabel')}
+                        style={{
+                          height: `${docsGridVirtualizer.getTotalSize()}px`,
+                          width: '100%',
+                          position: 'relative',
+                        }}
+                      >
+                        {docsGridVirtualRows.map((virtualRow) => {
+                          const cols = Math.max(1, docGridColumns)
+                          const startIndex = virtualRow.index * cols
+                          const rowDocs = filteredDocuments.slice(startIndex, startIndex + cols)
+                          const isLastRow = virtualRow.index === docGridRowCount - 1
 
                           return (
-                            <tr
-                              key={doc.id}
+                            <div
+                              key={virtualRow.key}
                               data-index={virtualRow.index}
-                              ref={docsTableVirtualizer.measureElement}
-                              className="group/row"
+                              ref={docsGridVirtualizer.measureElement}
+                              style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: '100%',
+                                transform: `translateY(${virtualRow.start}px)`,
+                              }}
+                              className={isLastRow ? undefined : 'pb-5'}
                             >
-                              <td
-                                colSpan={tableColumnCount}
-                                className="border-b border-border/40 px-3 py-0"
-                              >
-                                <div className="rounded-none border-0 bg-transparent shadow-none transition-colors duration-150 group-hover/row:bg-muted/40 dark:group-hover/row:bg-muted/10">
-                                  <div
-                                    className="grid min-h-[54px] items-center gap-3 px-0 py-2"
-                                    style={{
-                                      gridTemplateColumns:
-                                        documentListGridTemplate,
-                                    }}
-                                  >
-                                    <div className={checkboxCellClassName}>
-                                      <input
-                                        type="checkbox"
-                                        className={checkboxInputClassName}
-                                        checked={selectedSet.has(doc.id)}
-                                        onChange={() =>
-                                          toggleDocSelection(doc.id)
-                                        }
-                                        aria-label={t('table.selectDocument', {
-                                          filename: doc.filename,
-                                        })}
-                                      />
-                                    </div>
-
-                                    <div className="min-w-0">
-                                      <div className="flex min-w-0 items-center gap-3">
-                                        <div
-                                          className={cn(
-                                            'flex size-8 shrink-0 items-center justify-center rounded-[10px] border transition-transform duration-150 group-hover/row:scale-[1.03]',
-                                            iconShellClassName,
-                                            fileType.bg,
-                                            fileType.border,
-                                            fileType.color
-                                          )}
-                                        >
-                                          <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,rgba(255,255,255,0.28),transparent_52%)] opacity-75" />
-                                          <TypeIcon className="size-4.5" />
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                          <div
-                                            className="mb-1 max-w-[360px] truncate text-[13px] font-semibold leading-none text-foreground/92 xl:max-w-[440px]"
-                                            title={doc.filename}
-                                          >
-                                            {doc.filename}
-                                          </div>
-                                          <div className="max-w-[360px] truncate font-mono text-[10px] text-muted-foreground/48 xl:max-w-[440px]">
-                                            {doc.id}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    {showDatasetColumn ? (
-                                      <div className="min-w-0 text-[12px] leading-5 text-muted-foreground/78">
-                                        <span className="line-clamp-2">
-                                          {datasetLabel}
-                                        </span>
-                                      </div>
-                                    ) : null}
-
-                                    <div className="min-w-0">
-                                      {tags.length ? (
-                                        <DocumentTags
-                                          tags={tags}
-                                          max={2}
-                                          dense
-                                        />
-                                      ) : (
-                                        <span className="text-[12px] text-muted-foreground/32">
-                                          —
-                                        </span>
-                                      )}
-                                    </div>
-
-                                    <div className="min-w-0">
-                                      <StatusBadge
-                                        status={badge.status}
-                                        label={badge.label}
-                                        dense
-                                        className="rounded-full bg-muted/50"
-                                      />
-                                    </div>
-
-                                    <div className="text-right font-mono text-[11px] tabular-nums text-foreground/70">
-                                      {doc.chunk_count ?? '0'}
-                                    </div>
-                                    <div className="text-right font-mono text-[11px] tabular-nums text-muted-foreground">
-                                      {formatFileSize(doc.file_size)}
-                                    </div>
-                                    <div className="whitespace-nowrap font-mono text-[11px] tabular-nums text-muted-foreground">
-                                      {formatDate(doc.created_at)}
-                                    </div>
-                                    <div className="flex items-center justify-end gap-1">
-                                      <IconButton
-                                        label="查看详情"
-                                        variant="ghost"
-                                        className="h-7 w-7 rounded-full text-muted-foreground transition-[transform,background-color,color,box-shadow] hover:scale-[1.04] hover:text-primary hover:bg-primary/8 hover:shadow-[0_8px_18px_-12px_hsl(var(--primary)/0.45)]"
-                                        onClick={buildOpenInspectorHandler(doc)}
-                                      >
-                                        <Eye className="h-3.5 w-3.5" />
-                                      </IconButton>
-
-                                      <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-7 rounded-full px-2.5 text-[10px] font-medium text-primary hover:bg-primary/10"
-                                        onClick={(event) => {
-                                          event.stopPropagation()
-                                          if (onPeek) onPeek(doc.id)
-                                          else
-                                            globalThis.window.open(
-                                              buildChunkPreviewDocumentHref(doc.id),
-                                              '_blank',
-                                              'noopener,noreferrer'
-                                            )
-                                        }}
-                                      >
-                                        <Layers className="mr-1 size-3" />
-                                        {peekChunksLabel}
-                                      </Button>
-
-                                      <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                          <IconButton
-                                            label={t('actions.moreActions')}
-                                            variant="ghost"
-                                            className="h-7 w-7 rounded-full text-muted-foreground transition-[transform,background-color,color] hover:scale-[1.04] hover:text-foreground hover:bg-muted/70"
-                                          >
-                                            <MoreVertical className="h-3.5 w-3.5" />
-                                          </IconButton>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent
-                                          align="end"
-                                          className="w-56 rounded-xl border-border/60 shadow-strong/10"
-                                        >
-                                          <DropdownMenuItem
-                                            onSelect={() =>
-                                              detachPromise(
-                                                copyText(
-                                                  doc.id,
-                                                  t('toasts.copyDocumentId')
-                                                )
-                                              )
-                                            }
-                                          >
-                                            {t('actions.copyDocumentId')}
-                                          </DropdownMenuItem>
-                                          <DropdownMenuItem
-                                            onSelect={() =>
-                                              detachPromise(
-                                                copyText(
-                                                  doc.filename,
-                                                  t('toasts.copyFilename')
-                                                )
-                                              )
-                                            }
-                                          >
-                                            {t('actions.copyFilename')}
-                                          </DropdownMenuItem>
-                                          <DropdownMenuItem asChild>
-                                            <Link
-                                              href={`/knowledge/${doc.id}/health`}
-                                              className="flex items-center"
-                                            >
-                                              <Activity className="mr-2 h-4 w-4" />
-                                              {t('actions.healthCard')}
-                                            </Link>
-                                          </DropdownMenuItem>
-                                          <DropdownMenuSeparator />
-                                          <DropdownMenuItem
-                                            className="text-destructive focus:text-destructive"
-                                            onSelect={() =>
-                                              requestSingleDelete(doc)
-                                            }
-                                          >
-                                            <Trash2 className="mr-2 h-4 w-4" />
-                                            {t('actions.deleteDocument')}
-                                          </DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                      </DropdownMenu>
-                                    </div>
-                                  </div>
-
-                                  <div className="mx-0 mb-1 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 px-12 pb-1 text-[10px] text-muted-foreground/72">
-                                    {metadataItems.map((item, index) => (
-                                      <div
-                                        key={item.label}
-                                        className={cn(
-                                          'flex min-w-0 items-center gap-1.5',
-                                          index > 0 &&
-                                            'border-l border-border/45 pl-2.5'
-                                        )}
-                                      >
-                                        <span className="shrink-0 text-muted-foreground/56">
-                                          {item.label}
-                                        </span>
-                                        <span className="min-w-0 truncate text-foreground/66">
-                                          {item.value}
-                                        </span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              </td>
-                            </tr>
+                              <div className={cn('grid items-stretch gap-5', docsGridColsClassName)}>
+                                {rowDocs.map(renderGridDocCard)}
+                              </div>
+                            </div>
                           )
                         })}
-
-                        {docsTablePaddingBottom > 0 ? (
-                          <tr>
-                            <td
-                              colSpan={tableColumnCount}
-                              className="p-0"
-                              style={{ height: `${docsTablePaddingBottom}px` }}
-                            />
-                          </tr>
-                        ) : null}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="mt-auto flex items-center justify-end gap-2.5 border-t border-border/50 bg-card/45 px-4 py-2.5">
-                    <span className="text-[11px] text-muted-foreground/74">
-                      显示 {pageStart}-{pageEnd} / 共 {visibleDocumentsCount} 条
-                    </span>
-                    <span
-                      className="inline-flex h-8 items-center rounded-xl border border-border/55 bg-background/78 px-2.5 text-[11px] text-muted-foreground shadow-none"
-                    >
-                      {pageSize} 条/页
-                    </span>
-                    <div className="inline-flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-border/55 bg-background/78 text-muted-foreground transition-colors hover:border-primary/20 hover:bg-primary/5 disabled:cursor-not-allowed disabled:text-muted-foreground/35"
-                        disabled={!canGoPrevious}
-                        aria-label="上一页"
-                        onClick={() => onPageChange(page - 1)}
-                      >
-                        ‹
-                      </button>
-                      <span className="inline-flex h-8 min-w-[5.25rem] items-center justify-center rounded-xl border border-primary/18 bg-primary/[0.09] px-3 text-[11px] font-semibold text-primary">
-                        第 {page} / {pageCount} 页
-                      </span>
-                      <button
-                        type="button"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-border/55 bg-background/78 text-muted-foreground transition-colors hover:border-primary/20 hover:bg-primary/5 disabled:cursor-not-allowed disabled:text-muted-foreground/35"
-                        disabled={!canGoNext}
-                        aria-label="下一页"
-                        onClick={() => onPageChange(page + 1)}
-                      >
-                        ›
-                      </button>
+                      </div>
                     </div>
-                  </div>
-                </>
-            )
-          })()}
+                  )
+                }
+
+                return (
+                  <>
+                    {/* className="group hover:bg-muted/20 transition-colors" */}
+                    <div className="min-w-full">
+                      <table aria-label={t('table.ariaLabel')} className="w-full table-fixed text-left text-sm">
+                        <colgroup>
+                          <col className="w-9" />
+                          <col />
+                          {showDatasetColumn ? <col className="w-[10rem]" /> : null}
+                          <col className="w-[6.5rem]" />
+                          <col className="w-[6rem]" />
+                          <col className="w-[4.5rem]" />
+                          <col className="w-[6rem]" />
+                          <col className="w-[6.5rem]" />
+                          <col className="w-[8.5rem]" />
+                        </colgroup>
+                        {/* sticky top-0 z-10 bg-card/92 px-3 py-2 font-medium dark:bg-background/90 */}
+                        <thead className="border-b border-border/50 bg-background text-[11px] text-muted-foreground/74 dark:border-border/60 dark:bg-background">
+                          <tr>
+                            <th
+                              colSpan={tableColumnCount}
+                              className="sticky top-0 z-10 bg-background px-3 py-2 font-medium dark:bg-background"
+                            >
+                              <div
+                                className="grid items-center gap-3"
+                                style={{
+                                  gridTemplateColumns: documentListGridTemplate,
+                                }}
+                              >
+                                <div className={checkboxCellClassName}>
+                                  <input
+                                    type="checkbox"
+                                    className={checkboxInputClassName}
+                                    checked={allVisibleSelected}
+                                    onChange={toggleSelectAllVisible}
+                                    aria-label={t('table.selectAllVisible')}
+                                  />
+                                </div>
+                                <div>{t('table.columns.name')}</div>
+                                {showDatasetColumn ? <div>{t('table.columns.dataset')}</div> : null}
+                                <div>{t('table.columns.tags')}</div>
+                                <div>{t('table.columns.status')}</div>
+                                <div className="text-right tabular-nums">{t('table.columns.chunks')}</div>
+                                <div className="text-right tabular-nums">{t('table.columns.size')}</div>
+                                <div>{t('table.columns.uploadedAt')}</div>
+                                <div className="text-right">{t('table.columns.actions')}</div>
+                              </div>
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-background dark:bg-background">
+                          {docsTablePaddingTop > 0 ? (
+                            <tr>
+                              <td
+                                colSpan={tableColumnCount}
+                                className="p-0"
+                                style={{ height: `${docsTablePaddingTop}px` }}
+                              />
+                            </tr>
+                          ) : null}
+
+                          {docsTableVirtualRows.map((virtualRow) => {
+                            const doc = filteredDocuments[virtualRow.index]
+                            if (!doc) return null
+                            const badge = getStatusBadge(doc.status, t)
+                            const tags = getUserTagsFromDocument(doc)
+                            const fileType = getFileTypeMeta(doc)
+                            const TypeIcon = fileType.icon
+                            const datasetLabel = datasetLabelById?.[doc.dataset_id || ''] || '-'
+                            const metadataItems = [
+                              { label: '数据集', value: datasetLabel },
+                              {
+                                label: '标签',
+                                value: getDocumentTagSummary(tags),
+                              },
+                              {
+                                label: '生命周期',
+                                value: getDocumentLifecycleLabel(doc),
+                              },
+                              {
+                                label: '来源',
+                                value: getDocumentSourceLabel(doc),
+                              },
+                              {
+                                label: '更新时间',
+                                value: formatDate(doc.updated_at || doc.created_at),
+                              },
+                            ]
+
+                            return (
+                              <tr
+                                key={doc.id}
+                                data-index={virtualRow.index}
+                                ref={docsTableVirtualizer.measureElement}
+                                className="group/row"
+                              >
+                                <td colSpan={tableColumnCount} className="border-b border-border/40 px-3 py-0">
+                                  <div className="rounded-none border-0 bg-transparent shadow-none transition-colors duration-150 group-hover/row:bg-muted/40 dark:group-hover/row:bg-muted/10">
+                                    <div
+                                      className="grid min-h-[54px] items-center gap-3 px-0 py-2"
+                                      style={{
+                                        gridTemplateColumns: documentListGridTemplate,
+                                      }}
+                                    >
+                                      <div className={checkboxCellClassName}>
+                                        <input
+                                          type="checkbox"
+                                          className={checkboxInputClassName}
+                                          checked={selectedSet.has(doc.id)}
+                                          onChange={() => toggleDocSelection(doc.id)}
+                                          aria-label={t('table.selectDocument', {
+                                            filename: doc.filename,
+                                          })}
+                                        />
+                                      </div>
+
+                                      <div className="min-w-0">
+                                        <div className="flex min-w-0 items-center gap-3">
+                                          <div
+                                            className={cn(
+                                              'flex size-8 shrink-0 items-center justify-center rounded-[10px] border transition-transform duration-150 group-hover/row:scale-[1.03]',
+                                              iconShellClassName,
+                                              fileType.bg,
+                                              fileType.border,
+                                              fileType.color,
+                                            )}
+                                          >
+                                            <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,rgba(255,255,255,0.28),transparent_52%)] opacity-75" />
+                                            <TypeIcon className="size-4.5" />
+                                          </div>
+                                          <div className="min-w-0 flex-1">
+                                            <div
+                                              className="mb-1 max-w-[360px] truncate text-[13px] font-semibold leading-none text-foreground/92 xl:max-w-[440px]"
+                                              title={doc.filename}
+                                            >
+                                              {doc.filename}
+                                            </div>
+                                            <div className="max-w-[360px] truncate font-mono text-[10px] text-muted-foreground/48 xl:max-w-[440px]">
+                                              {doc.id}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {showDatasetColumn ? (
+                                        <div className="min-w-0 text-[12px] leading-5 text-muted-foreground/78">
+                                          <span className="line-clamp-2">{datasetLabel}</span>
+                                        </div>
+                                      ) : null}
+
+                                      <div className="min-w-0">
+                                        {tags.length ? (
+                                          <DocumentTags tags={tags} max={2} dense />
+                                        ) : (
+                                          <span className="text-[12px] text-muted-foreground/32">—</span>
+                                        )}
+                                      </div>
+
+                                      <div className="min-w-0">
+                                        <StatusBadge
+                                          status={badge.status}
+                                          label={badge.label}
+                                          dense
+                                          className="rounded-full bg-muted/50"
+                                        />
+                                      </div>
+
+                                      <div className="text-right font-mono text-[11px] tabular-nums text-foreground/70">
+                                        {doc.chunk_count ?? '0'}
+                                      </div>
+                                      <div className="text-right font-mono text-[11px] tabular-nums text-muted-foreground">
+                                        {formatFileSize(doc.file_size)}
+                                      </div>
+                                      <div className="whitespace-nowrap font-mono text-[11px] tabular-nums text-muted-foreground">
+                                        {formatDate(doc.created_at)}
+                                      </div>
+                                      <div className="flex items-center justify-end gap-1">
+                                        <IconButton
+                                          label="查看详情"
+                                          variant="ghost"
+                                          className="h-7 w-7 rounded-full text-muted-foreground transition-[transform,background-color,color,box-shadow] hover:scale-[1.04] hover:text-primary hover:bg-primary/8 hover:shadow-[0_8px_18px_-12px_hsl(var(--primary)/0.45)]"
+                                          onClick={buildOpenInspectorHandler(doc)}
+                                        >
+                                          <Eye className="h-3.5 w-3.5" />
+                                        </IconButton>
+
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-7 rounded-full px-2.5 text-[10px] font-medium text-primary hover:bg-primary/10"
+                                          onClick={(event) => {
+                                            event.stopPropagation()
+                                            if (onPeek) onPeek(doc.id)
+                                            else
+                                              globalThis.window.open(
+                                                buildChunkPreviewDocumentHref(doc.id),
+                                                '_blank',
+                                                'noopener,noreferrer',
+                                              )
+                                          }}
+                                        >
+                                          <Layers className="mr-1 size-3" />
+                                          {peekChunksLabel}
+                                        </Button>
+
+                                        <DropdownMenu>
+                                          <DropdownMenuTrigger asChild>
+                                            <IconButton
+                                              label={t('actions.moreActions')}
+                                              variant="ghost"
+                                              className="h-7 w-7 rounded-full text-muted-foreground transition-[transform,background-color,color] hover:scale-[1.04] hover:text-foreground hover:bg-muted/70"
+                                            >
+                                              <MoreVertical className="h-3.5 w-3.5" />
+                                            </IconButton>
+                                          </DropdownMenuTrigger>
+                                          <DropdownMenuContent
+                                            align="end"
+                                            className="w-56 rounded-xl border-border/60 shadow-strong/10"
+                                          >
+                                            <DropdownMenuItem
+                                              onSelect={() =>
+                                                detachPromise(copyText(doc.id, t('toasts.copyDocumentId')))
+                                              }
+                                            >
+                                              {t('actions.copyDocumentId')}
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem
+                                              onSelect={() =>
+                                                detachPromise(copyText(doc.filename, t('toasts.copyFilename')))
+                                              }
+                                            >
+                                              {t('actions.copyFilename')}
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem asChild>
+                                              <Link href={`/knowledge/${doc.id}/health`} className="flex items-center">
+                                                <Activity className="mr-2 h-4 w-4" />
+                                                {t('actions.healthCard')}
+                                              </Link>
+                                            </DropdownMenuItem>
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem
+                                              className="text-destructive focus:text-destructive"
+                                              onSelect={() => requestSingleDelete(doc)}
+                                            >
+                                              <Trash2 className="mr-2 h-4 w-4" />
+                                              {t('actions.deleteDocument')}
+                                            </DropdownMenuItem>
+                                          </DropdownMenuContent>
+                                        </DropdownMenu>
+                                      </div>
+                                    </div>
+
+                                    <div className="mx-0 mb-1 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 px-12 pb-1 text-[10px] text-muted-foreground/72">
+                                      {metadataItems.map((item, index) => (
+                                        <div
+                                          key={item.label}
+                                          className={cn(
+                                            'flex min-w-0 items-center gap-1.5',
+                                            index > 0 && 'border-l border-border/45 pl-2.5',
+                                          )}
+                                        >
+                                          <span className="shrink-0 text-muted-foreground/56">{item.label}</span>
+                                          <span className="min-w-0 truncate text-foreground/66">{item.value}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })}
+
+                          {docsTablePaddingBottom > 0 ? (
+                            <tr>
+                              <td
+                                colSpan={tableColumnCount}
+                                className="p-0"
+                                style={{ height: `${docsTablePaddingBottom}px` }}
+                              />
+                            </tr>
+                          ) : null}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="mt-auto flex items-center justify-end gap-2.5 border-t border-border/50 bg-card/45 px-4 py-2.5">
+                      <span className="text-[11px] text-muted-foreground/74">
+                        显示 {pageStart}-{pageEnd} / 共 {visibleDocumentsCount} 条
+                      </span>
+                      <span className="inline-flex h-8 items-center rounded-xl border border-border/55 bg-background/78 px-2.5 text-[11px] text-muted-foreground shadow-none">
+                        {pageSize} 条/页
+                      </span>
+                      <div className="inline-flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-border/55 bg-background/78 text-muted-foreground transition-colors hover:border-primary/20 hover:bg-primary/5 disabled:cursor-not-allowed disabled:text-muted-foreground/35"
+                          disabled={!canGoPrevious}
+                          aria-label="上一页"
+                          onClick={() => onPageChange(page - 1)}
+                        >
+                          ‹
+                        </button>
+                        <span className="inline-flex h-8 min-w-[5.25rem] items-center justify-center rounded-xl border border-primary/18 bg-primary/[0.09] px-3 text-[11px] font-semibold text-primary">
+                          第 {page} / {pageCount} 页
+                        </span>
+                        <button
+                          type="button"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-border/55 bg-background/78 text-muted-foreground transition-colors hover:border-primary/20 hover:bg-primary/5 disabled:cursor-not-allowed disabled:text-muted-foreground/35"
+                          disabled={!canGoNext}
+                          aria-label="下一页"
+                          onClick={() => onPageChange(page + 1)}
+                        >
+                          ›
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )
+              })()}
+            </div>
+          </div>
         </div>
       </div>
-    </div>
-    </div>
     </div>
   )
 }
@@ -1523,27 +1347,19 @@ function DocumentCard({
 }>) {
   const peekChunksLabel = (() => {
     const resolved = t('actions.peekChunks')
-    return resolved === 'KnowledgeDocumentsPanel.actions.peekChunks'
-      ? '切片管理'
-      : resolved
+    return resolved === 'KnowledgeDocumentsPanel.actions.peekChunks' ? '切片管理' : resolved
   })()
-  const parserLabel = doc.metadata?.parser_backend
-    ? getParserLabel(doc.metadata.parser_backend as string)
-    : null
+  const parserLabel = doc.metadata?.parser_backend ? getParserLabel(doc.metadata.parser_backend as string) : null
   const userTags = getUserTagsFromDocument(doc)
   const fileType = getFileTypeMeta(doc)
   const TypeIcon = fileType.icon
   const metadata = isRecord(doc.metadata) ? doc.metadata : {}
   const parseQuality = isRecord(metadata.parse_quality) ? metadata.parse_quality : {}
   const parseScoreRaw = parseQuality.score
-  const parseScore =
-    typeof parseScoreRaw === 'number' && Number.isFinite(parseScoreRaw)
-      ? parseScoreRaw
-      : null
+  const parseScore = typeof parseScoreRaw === 'number' && Number.isFinite(parseScoreRaw) ? parseScoreRaw : null
 
   // 计算质量百分比和颜色
-  const qualityPercent =
-    parseScore === null ? null : Math.round(parseScore * 100)
+  const qualityPercent = parseScore === null ? null : Math.round(parseScore * 100)
   const qualityColor = getQualityColor(qualityPercent)
 
   return (
@@ -1553,7 +1369,7 @@ function DocumentCard({
         'group relative flex h-full flex-col rounded-2xl overflow-hidden transition-all duration-300 motion-reduce:transition-none border-border/50 bg-card/40 backdrop-blur-sm',
         selected
           ? 'ring-2 ring-primary ring-offset-2 ring-offset-background border-primary/40 bg-primary/[0.03]'
-          : 'hover:border-primary/30 hover:shadow-strong/10 hover:-translate-y-1'
+          : 'hover:border-primary/30 hover:shadow-strong/10 hover:-translate-y-1',
       )}
     >
       <div className={cn('h-1 w-full', statusBarClassName)} />
@@ -1562,9 +1378,7 @@ function DocumentCard({
       <div
         className={cn(
           'absolute top-4 left-4 z-10 rounded-lg border border-border/60 bg-background/80 backdrop-blur-md p-1.5 transition-all duration-300',
-          selected
-            ? 'opacity-100 border-primary bg-primary/10'
-            : contextualRevealClassName
+          selected ? 'opacity-100 border-primary bg-primary/10' : contextualRevealClassName,
         )}
       >
         <input
@@ -1584,7 +1398,7 @@ function DocumentCard({
                 'size-14 rounded-2xl flex items-center justify-center border shadow-sm transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3',
                 fileType.bg,
                 fileType.border,
-                fileType.color
+                fileType.color,
               )}
             >
               <TypeIcon className="size-7" />
@@ -1595,29 +1409,20 @@ function DocumentCard({
                 className="absolute -bottom-1 -right-1 size-6 rounded-full bg-background border border-border/60 flex items-center justify-center shadow-sm"
                 title={`解析质量: ${qualityPercent}%`}
               >
-                <div
-                  className={cn(
-                    'text-[8px] font-medium font-mono tabular-nums',
-                    qualityColor
-                  )}
-                >
+                <div className={cn('text-[8px] font-medium font-mono tabular-nums', qualityColor)}>
                   {qualityPercent}
                 </div>
               </div>
             )}
           </div>
           <div className="flex flex-col items-end gap-1.5">
-            <StatusBadge
-              status={statusBadge.status}
-              label={statusBadge.label}
-              dense
-            />
+            <StatusBadge status={statusBadge.status} label={statusBadge.label} dense />
             <div
               className={cn(
                 'px-2 py-0.5 rounded-full text-[11px] font-medium uppercase border ',
                 fileType.bg,
                 fileType.color,
-                fileType.border
+                fileType.border,
               )}
             >
               {fileType.label}
@@ -1632,26 +1437,18 @@ function DocumentCard({
           {doc.filename}
         </h3>
 
-        {userTags.length ? (
-          <DocumentTags tags={userTags} max={3} dense className="mb-4" />
-        ) : null}
+        {userTags.length ? <DocumentTags tags={userTags} max={3} dense className="mb-4" /> : null}
 
         <div className="grid grid-cols-2 gap-3 mt-auto pt-4 border-t border-border/40">
           <div className="space-y-0.5">
-            <p className="text-[11px] font-medium uppercase text-muted-foreground/50">
-              {t('row.size')}
-            </p>
+            <p className="text-[11px] font-medium uppercase text-muted-foreground/50">{t('row.size')}</p>
             <p className="text-xs font-medium font-mono tabular-nums text-foreground/80">
               {formatFileSize(doc.file_size)}
             </p>
           </div>
           <div className="space-y-0.5">
-            <p className="text-[11px] font-medium uppercase text-muted-foreground/50">
-              {t('row.chunks')}
-            </p>
-            <p className="text-xs font-medium font-mono tabular-nums text-foreground/80">
-              {doc.chunk_count ?? '-'}
-            </p>
+            <p className="text-[11px] font-medium uppercase text-muted-foreground/50">{t('row.chunks')}</p>
+            <p className="text-xs font-medium font-mono tabular-nums text-foreground/80">{doc.chunk_count ?? '-'}</p>
           </div>
         </div>
       </div>
@@ -1659,7 +1456,7 @@ function DocumentCard({
       <div
         className={cn(
           'px-6 py-3.5 bg-muted/30 border-t border-border/40 flex items-center justify-between transition-all duration-300',
-          contextualRevealClassName
+          contextualRevealClassName,
         )}
       >
         <span className="text-[11px] text-muted-foreground/60 font-medium uppercase truncate max-w-[100px]">
@@ -1674,12 +1471,7 @@ function DocumentCard({
             onClick={(e) => {
               e.stopPropagation()
               if (onPeek) onPeek(doc.id)
-              else
-                globalThis.window.open(
-                  buildChunkPreviewDocumentHref(doc.id),
-                  '_blank',
-                  'noopener,noreferrer'
-                )
+              else globalThis.window.open(buildChunkPreviewDocumentHref(doc.id), '_blank', 'noopener,noreferrer')
             }}
           >
             <Layers className="size-3 mr-1.5" />
@@ -1697,31 +1489,15 @@ function DocumentCard({
                 <MoreVertical className="w-4 h-4" />
               </IconButton>
             </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="w-56 rounded-xl border-border/60 shadow-strong/10"
-            >
-              <DropdownMenuItem
-                onSelect={() =>
-                  detachPromise(copyText(doc.id, t('toasts.copyDocumentId')))
-                }
-              >
+            <DropdownMenuContent align="end" className="w-56 rounded-xl border-border/60 shadow-strong/10">
+              <DropdownMenuItem onSelect={() => detachPromise(copyText(doc.id, t('toasts.copyDocumentId')))}>
                 {t('actions.copyDocumentId')}
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() =>
-                  detachPromise(
-                    copyText(doc.filename, t('toasts.copyFilename'))
-                  )
-                }
-              >
+              <DropdownMenuItem onSelect={() => detachPromise(copyText(doc.filename, t('toasts.copyFilename')))}>
                 {t('actions.copyFilename')}
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <Link
-                  href={`/knowledge/${doc.id}/health`}
-                  className="flex items-center"
-                >
+                <Link href={`/knowledge/${doc.id}/health`} className="flex items-center">
                   <Activity className="mr-2 h-4 w-4" />
                   {t('actions.healthCard')}
                 </Link>

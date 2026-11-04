@@ -22,7 +22,7 @@ const DEFAULT_DATASET_ALL = '__all__'
 
 export function parseKnowledgeQueryState(
   searchParams: URLSearchParams,
-  opts?: { datasetAllValue?: string }
+  opts?: { datasetAllValue?: string },
 ): KnowledgeQueryState {
   const DATASET_ALL = opts?.datasetAllValue ?? DEFAULT_DATASET_ALL
 
@@ -50,7 +50,13 @@ export function parseKnowledgeQueryState(
   if (typeof q === 'string' && q.trim()) state.docFilter = q
 
   const status = searchParams.get('status')
-  if (status === 'all' || status === 'completed' || status === 'processing' || status === 'failed' || status === 'quarantined') {
+  if (
+    status === 'all' ||
+    status === 'completed' ||
+    status === 'processing' ||
+    status === 'failed' ||
+    status === 'quarantined'
+  ) {
     state.statusFilter = status
   }
 
@@ -80,10 +86,7 @@ export function parseKnowledgeQueryState(
   return state
 }
 
-export function serializeKnowledgeQueryState(
-  state: KnowledgeQueryState,
-  opts?: { datasetAllValue?: string }
-): string {
+export function serializeKnowledgeQueryState(state: KnowledgeQueryState, opts?: { datasetAllValue?: string }): string {
   const DATASET_ALL = opts?.datasetAllValue ?? DEFAULT_DATASET_ALL
 
   const params = new URLSearchParams()

@@ -39,9 +39,7 @@ type RetrievePreviewPanelProps = {
 
 type JsonRecord = Record<string, unknown>
 
-type RetrievePreviewCitation = Partial<
-  Omit<Citation, 'matched_terms' | 'policy_clause_number' | 'policy_path_str'>
-> & {
+type RetrievePreviewCitation = Partial<Omit<Citation, 'matched_terms' | 'policy_clause_number' | 'policy_path_str'>> & {
   document_id?: string
   document_name?: string
   chunk_id?: string
@@ -74,14 +72,12 @@ function isRecord(value: unknown): value is JsonRecord {
 
 export function buildRetrieveDatasetScope(
   selectedDatasetId: string | null | undefined,
-  availableDatasetIds: readonly string[]
+  availableDatasetIds: readonly string[],
 ): Pick<EvidenceRetrieveRequest, 'dataset_id' | 'dataset_ids'> {
   const selected = String(selectedDatasetId || '').trim()
   if (selected) return { dataset_id: selected }
 
-  const datasetIds = Array.from(
-    new Set(availableDatasetIds.map((id) => String(id || '').trim()).filter(Boolean))
-  )
+  const datasetIds = Array.from(new Set(availableDatasetIds.map((id) => String(id || '').trim()).filter(Boolean)))
   return datasetIds.length ? { dataset_ids: datasetIds } : {}
 }
 
@@ -113,7 +109,9 @@ function toHitKey(hit: Pick<RetrievePreviewCitation, 'document_id' | 'chunk_id' 
 }
 
 function previewChunkContent(value: string | undefined, maxLen = 360): string {
-  const text = String(value || '').trim().replaceAll(/\s+/g, ' ')
+  const text = String(value || '')
+    .trim()
+    .replaceAll(/\s+/g, ' ')
   if (!text) return '该命中未返回可预览的 chunk 内容。'
   if (text.length <= maxLen) return text
   return `${text.slice(0, maxLen).trimEnd()}…`
@@ -204,11 +202,9 @@ export function RetrievePreviewPanel({
   const alphaPercent = Math.round(alpha * 100)
   const retrievalScope = useMemo(
     () => buildRetrieveDatasetScope(selectedDatasetId, availableDatasetIds),
-    [availableDatasetIds, selectedDatasetId]
+    [availableDatasetIds, selectedDatasetId],
   )
-  const hasRetrievalScope = Boolean(
-    retrievalScope.dataset_id || retrievalScope.dataset_ids?.length
-  )
+  const hasRetrievalScope = Boolean(retrievalScope.dataset_id || retrievalScope.dataset_ids?.length)
 
   const handlePrefetchHitDocument = useCallback((hit: RetrievePreviewCitation) => {
     const documentId = String(hit.document_id || '').trim()
@@ -237,7 +233,7 @@ export function RetrievePreviewPanel({
         previewAnchor: getDocumentPreviewAnchorFromCitation(hit),
       })
     },
-    [openDocument]
+    [openDocument],
   )
 
   const handleSearch = useCallback(async () => {
@@ -279,10 +275,9 @@ export function RetrievePreviewPanel({
       setSearchQueryForRetrieval(String(response.query_for_retrieval || query))
       setActiveHit(citations[0] ?? null)
       setHasSearched(true)
-      setRecentQueries((prev) => [
-        { query, timestampLabel: formatRelativeNow() },
-        ...prev.filter((item) => item.query !== query),
-      ].slice(0, 12))
+      setRecentQueries((prev) =>
+        [{ query, timestampLabel: formatRelativeNow() }, ...prev.filter((item) => item.query !== query)].slice(0, 12),
+      )
     } catch (error) {
       setSearchError(formatApiError(error, '检索失败'))
       setHasSearched(true)
@@ -335,11 +330,7 @@ export function RetrievePreviewPanel({
 
   const renderComposer = (compact = false) => (
     <div
-      className={cn(
-        'rounded-xl border',
-        RETRIEVAL_PANEL_SURFACE_CLASS,
-        compact ? 'sticky top-0 z-20 rounded-xl' : ''
-      )}
+      className={cn('rounded-xl border', RETRIEVAL_PANEL_SURFACE_CLASS, compact ? 'sticky top-0 z-20 rounded-xl' : '')}
     >
       <div className={cn('flex flex-col gap-3.5', compact ? 'p-3.5' : 'p-4')}>
         {compact ? (
@@ -348,9 +339,7 @@ export function RetrievePreviewPanel({
               <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground/68">
                 Retrieval Workbench
               </div>
-              <div className="mt-1 text-[15px] font-semibold tracking-[-0.03em] text-foreground">
-                语义检索测试
-              </div>
+              <div className="mt-1 text-[15px] font-semibold tracking-[-0.03em] text-foreground">语义检索测试</div>
             </div>
             <Button
               type="button"
@@ -366,9 +355,7 @@ export function RetrievePreviewPanel({
         ) : (
           <div className="flex flex-col items-center text-center">
             <SemanticRetrievalMark />
-            <div className="mt-2.5 text-[24px] font-semibold tracking-[-0.045em] text-foreground">
-              语义检索测试
-            </div>
+            <div className="mt-2.5 text-[24px] font-semibold tracking-[-0.045em] text-foreground">语义检索测试</div>
             <p className="mt-1.5 max-w-2xl text-[12px] leading-5 text-muted-foreground/74">
               输入复杂问题或长 Prompt，验证 RAG 的召回质量和测试指标。
             </p>
@@ -391,7 +378,7 @@ export function RetrievePreviewPanel({
               placeholder="例如：请按第十二条说明例外条件，并指出适用范围与例外条款"
               className={cn(
                 'w-full resize-none border-0 bg-transparent p-0 text-[13px] leading-6 text-foreground outline-none placeholder:text-muted-foreground/35',
-                compact ? 'min-h-[56px]' : 'min-h-[72px]'
+                compact ? 'min-h-[56px]' : 'min-h-[72px]',
               )}
             />
           </div>
@@ -401,9 +388,7 @@ export function RetrievePreviewPanel({
               <span className="inline-flex h-8 items-center rounded-md border border-foreground/10 bg-background/70 px-3 dark:border-foreground/10 dark:bg-background/70">
                 <Database className="mr-2 size-3.5 text-primary" />
                 {selectedDatasetId ||
-                  (availableDatasetIds.length
-                    ? `全部数据集 · ${availableDatasetIds.length} 库`
-                    : '暂无可用数据集')}
+                  (availableDatasetIds.length ? `全部数据集 · ${availableDatasetIds.length} 库` : '暂无可用数据集')}
               </span>
               <span className="font-mono text-[11px] opacity-70">Enter 发送</span>
               <span className="font-mono text-[11px] opacity-70">Shift + Enter 换行</span>
@@ -509,7 +494,7 @@ export function RetrievePreviewPanel({
                   <ChevronRight
                     className={cn(
                       'ml-1 size-3 text-primary/90 transition-transform',
-                      advancedParamsOpen && 'rotate-90'
+                      advancedParamsOpen && 'rotate-90',
                     )}
                   />
                 </button>
@@ -575,7 +560,7 @@ export function RetrievePreviewPanel({
                           'mt-5 h-8 rounded-[12px] border px-3 text-[11px] font-medium transition-colors',
                           enableWeightRerank
                             ? 'border-success/25 bg-success/10 text-success'
-                            : 'border-foreground/10 bg-background/70 text-muted-foreground dark:border-foreground/10 dark:bg-background/70'
+                            : 'border-foreground/10 bg-background/70 text-muted-foreground dark:border-foreground/10 dark:bg-background/70',
                         )}
                       >
                         权重重排 {enableWeightRerank ? '开启' : '关闭'}
@@ -635,10 +620,7 @@ export function RetrievePreviewPanel({
               >
                 {fullHistoryOpen ? '收起全部历史' : '查看全部历史'}
                 <ChevronRight
-                  className={cn(
-                    'ml-1 size-3 text-primary/90 transition-transform',
-                    fullHistoryOpen && 'rotate-90'
-                  )}
+                  className={cn('ml-1 size-3 text-primary/90 transition-transform', fullHistoryOpen && 'rotate-90')}
                 />
               </button>
             </div>
@@ -683,7 +665,9 @@ export function RetrievePreviewPanel({
       <div className="p-6">
         <div className="text-[20px] font-semibold tracking-[-0.03em] text-foreground">Top-K 排序为空</div>
         <div className="mt-3 text-[14px] leading-6 text-muted-foreground/76">
-          当前检索词为 <span className="font-medium text-foreground">{searchQueryForRetrieval || searchQuery.trim()}</span>，没有返回可用候选。
+          当前检索词为{' '}
+          <span className="font-medium text-foreground">{searchQueryForRetrieval || searchQuery.trim()}</span>
+          ，没有返回可用候选。
         </div>
 
         <div className="mt-6">
@@ -709,7 +693,10 @@ export function RetrievePreviewPanel({
           <div className="text-[13px] font-medium text-foreground">排查方向</div>
           <div className="mt-3 grid gap-3 md:grid-cols-3">
             {noResultDiagnosticTips.map((item) => (
-              <div key={item.title} className="rounded-lg border border-foreground/10 bg-background/70 px-4 py-4 dark:border-foreground/10 dark:bg-background/70">
+              <div
+                key={item.title}
+                className="rounded-lg border border-foreground/10 bg-background/70 px-4 py-4 dark:border-foreground/10 dark:bg-background/70"
+              >
                 <div className="text-[13px] font-medium text-foreground">{item.title}</div>
                 <div className="mt-2 text-[12px] leading-5 text-muted-foreground/72">{item.description}</div>
               </div>
@@ -789,7 +776,10 @@ export function RetrievePreviewPanel({
             <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/62">Matched Terms</div>
             <div className="mt-3 flex flex-wrap gap-2">
               {terms.map((term) => (
-                <span key={term} className="rounded-full border border-foreground/10 bg-background/70 px-2.5 py-1 text-[11px] text-foreground/82 dark:border-foreground/10 dark:bg-background/70">
+                <span
+                  key={term}
+                  className="rounded-full border border-foreground/10 bg-background/70 px-2.5 py-1 text-[11px] text-foreground/82 dark:border-foreground/10 dark:bg-background/70"
+                >
                   {term}
                 </span>
               ))}
@@ -847,13 +837,20 @@ export function RetrievePreviewPanel({
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2 text-[12px] text-muted-foreground/72">
-                  <span className="rounded-full border border-foreground/10 bg-background/70 px-3 py-1 dark:border-foreground/10 dark:bg-background/70">Family {resultStats.familyHits}</span>
-                  <span className="rounded-full border border-foreground/10 bg-background/70 px-3 py-1 dark:border-foreground/10 dark:bg-background/70">Hierarchy {resultStats.hierarchyHits}</span>
+                  <span className="rounded-full border border-foreground/10 bg-background/70 px-3 py-1 dark:border-foreground/10 dark:bg-background/70">
+                    Family {resultStats.familyHits}
+                  </span>
+                  <span className="rounded-full border border-foreground/10 bg-background/70 px-3 py-1 dark:border-foreground/10 dark:bg-background/70">
+                    Hierarchy {resultStats.hierarchyHits}
+                  </span>
                 </div>
               </div>
             </div>
 
-            <div aria-label="检索结果排名列表" className="min-h-0 divide-y divide-foreground/10 dark:divide-foreground/10">
+            <div
+              aria-label="检索结果排名列表"
+              className="min-h-0 divide-y divide-foreground/10 dark:divide-foreground/10"
+            >
               {searchResults.map((hit, idx) => {
                 const key = toHitKey(hit)
                 const expandedHit = Boolean(expanded[key])
@@ -871,7 +868,7 @@ export function RetrievePreviewPanel({
                     style={{ animationDelay: `${staggerDelayMs}ms` }}
                     className={cn(
                       'animate-in fade-in-0 slide-in-from-bottom-1 duration-300 motion-reduce:animate-none flex w-full items-start gap-4 px-5 py-4 text-left transition-colors hover:bg-primary/[0.03]',
-                      activeResult === hit && 'bg-primary/[0.04]'
+                      activeResult === hit && 'bg-primary/[0.04]',
                     )}
                   >
                     <button
@@ -920,14 +917,16 @@ export function RetrievePreviewPanel({
                         {expandedHit && terms.length ? (
                           <div className="mt-3 flex flex-wrap gap-2">
                             {terms.map((term) => (
-                               <span key={term} className="rounded-full border border-foreground/10 bg-background/70 px-2.5 py-1 text-[11px] text-foreground/82 dark:border-foreground/10 dark:bg-background/70">
+                              <span
+                                key={term}
+                                className="rounded-full border border-foreground/10 bg-background/70 px-2.5 py-1 text-[11px] text-foreground/82 dark:border-foreground/10 dark:bg-background/70"
+                              >
                                 {term}
                               </span>
                             ))}
                           </div>
                         ) : null}
                       </div>
-
                     </button>
 
                     <div className="flex shrink-0 items-center gap-2">
@@ -960,9 +959,7 @@ export function RetrievePreviewPanel({
               <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground/62">命中细节</div>
               <div className="mt-1 text-[16px] font-semibold text-foreground">Active Hit</div>
             </div>
-            <div className="p-5">
-              {activeResult ? renderHitSummary(activeResult) : null}
-            </div>
+            <div className="p-5">{activeResult ? renderHitSummary(activeResult) : null}</div>
           </div>
         </div>
       ) : null}

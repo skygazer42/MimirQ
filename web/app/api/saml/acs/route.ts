@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { API_V1_BASE_URL } from '@/lib/env'
-import {
-  SAML_CALLBACK_ERROR_FALLBACK,
-  SAML_BRIDGE_COOKIE_NAME,
-  SAML_BRIDGE_COOKIE_PATH,
-} from '@/lib/saml-session'
+import { SAML_CALLBACK_ERROR_FALLBACK, SAML_BRIDGE_COOKIE_NAME, SAML_BRIDGE_COOKIE_PATH } from '@/lib/saml-session'
 
 export const runtime = 'nodejs'
 
@@ -31,7 +27,9 @@ function readEnv(name: string): string {
 }
 
 function isFalsey(value: string): boolean {
-  const v = String(value || '').trim().toLowerCase()
+  const v = String(value || '')
+    .trim()
+    .toLowerCase()
   return v === '0' || v === 'false' || v === 'no' || v === 'off' || v === 'disabled'
 }
 
@@ -103,7 +101,8 @@ export async function POST(req: NextRequest) {
 
   const relayState = getFormString(form, 'RelayState') || undefined
   const requestUrl = new URL(req.url)
-  const providerId = getFormString(form, 'provider_id') || requestUrl.searchParams.get('provider_id')?.trim() || undefined
+  const providerId =
+    getFormString(form, 'provider_id') || requestUrl.searchParams.get('provider_id')?.trim() || undefined
 
   const backendRes = await fetch(`${API_V1_BASE_URL}/auth/saml/exchange`, {
     method: 'POST',

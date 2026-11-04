@@ -77,7 +77,8 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
       const payload = await action()
       setResult({ title, payload })
       setResultDetailsOpen(false)
-      const createdId = typeof (payload as { id?: unknown })?.id === 'string' ? String((payload as { id: string }).id) : ''
+      const createdId =
+        typeof (payload as { id?: unknown })?.id === 'string' ? String((payload as { id: string }).id) : ''
       if (createdId) setManualConversationId(createdId)
       toast.success(`${title}完成`)
     } catch (error) {
@@ -94,7 +95,7 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
       padding="md"
       className={cn(
         'relative border border-foreground/15 bg-background transition-all duration-200 motion-reduce:transition-none',
-        panelOpen ? 'rounded-lg' : 'rounded-lg py-3'
+        panelOpen ? 'rounded-lg' : 'rounded-lg py-3',
       )}
     >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -109,7 +110,7 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
               'flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background text-foreground transition-colors',
               panelOpen
                 ? 'text-foreground'
-                : 'text-muted-foreground group-hover:border-foreground/15 group-hover:text-foreground'
+                : 'text-muted-foreground group-hover:border-foreground/15 group-hover:text-foreground',
             )}
           >
             <ChevronDown className={cn('h-4 w-4 transition-transform', panelOpen ? 'rotate-0' : '-rotate-90')} />
@@ -146,7 +147,7 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
               'w-fit rounded-md border px-2.5 py-1 text-[11px] font-semibold',
               hasConversation
                 ? 'border-success/20 bg-success/[0.08] text-success'
-                : 'border-foreground/10 bg-background/70 text-muted-foreground'
+                : 'border-foreground/10 bg-background/70 text-muted-foreground',
             )}
           >
             {hasConversation ? '已绑定' : '未选择'}
@@ -159,7 +160,7 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
               'h-8 rounded-md border-foreground/10 px-3 text-xs font-semibold transition',
               panelOpen
                 ? 'bg-background hover:border-foreground/15 hover:bg-muted/30'
-                : 'bg-foreground text-background hover:border-foreground hover:bg-foreground/86'
+                : 'bg-foreground text-background hover:border-foreground hover:bg-foreground/86',
             )}
             onClick={() => setPanelOpen((open) => !open)}
           >
@@ -201,7 +202,7 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
                     })
                     downloadBlob(blob, 'conversation.md')
                     return { bytes: blob.size, type: blob.type }
-                  })
+                  }),
                 )
               }
             >
@@ -221,7 +222,7 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
                     })
                     downloadBlob(blob, 'conversation.json')
                     return { bytes: blob.size, type: blob.type }
-                  })
+                  }),
                 )
               }
             >
@@ -235,7 +236,7 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
               label="检查点列表"
               onClick={() =>
                 runAction('checkpoints', '检查点列表', () =>
-                  chatApi.listCheckpoints(effectiveConversationId, { limit: 20, include_values: false })
+                  chatApi.listCheckpoints(effectiveConversationId, { limit: 20, include_values: false }),
                 )
               }
             />
@@ -287,7 +288,7 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
             <pre
               className={cn(
                 'mt-2 max-h-48 overflow-auto rounded-md border border-border/60 bg-background p-2 text-xs',
-                'whitespace-pre-wrap break-words'
+                'whitespace-pre-wrap break-words',
               )}
             >
               {prettyJson(result.payload)}
@@ -313,8 +314,17 @@ function ActionButton({
   onClick: () => Promise<void>
 }>) {
   return (
-    <Button variant="outline" className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold" disabled={disabled} onClick={() => detachPromise(onClick())}>
-      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Icon className="h-3.5 w-3.5" />}
+    <Button
+      variant="outline"
+      className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold"
+      disabled={disabled}
+      onClick={() => detachPromise(onClick())}
+    >
+      {busy ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+      ) : (
+        <Icon className="h-3.5 w-3.5" />
+      )}
       {label}
     </Button>
   )

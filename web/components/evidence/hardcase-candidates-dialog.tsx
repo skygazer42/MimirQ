@@ -97,9 +97,7 @@ export function HardcaseCandidatesDialog({
       </div>
     )
   } else if (!hardcaseRes) {
-    discoveryContent = (
-      <div className="py-4 text-sm text-muted-foreground">点击 refresh 加载候选。</div>
-    )
+    discoveryContent = <div className="py-4 text-sm text-muted-foreground">点击 refresh 加载候选。</div>
   } else if (!hardcaseRes.enabled) {
     discoveryContent = (
       <div className="space-y-3 py-1">
@@ -110,7 +108,8 @@ export function HardcaseCandidatesDialog({
           </div>
         </Panel>
         <div className="text-[11px] text-muted-foreground font-mono tabular-nums">
-          window {hardcaseRes.window_minutes}m · max_bytes {hardcaseRes.max_bytes} · trace_index {hardcaseRes.trace_index_size}
+          window {hardcaseRes.window_minutes}m · max_bytes {hardcaseRes.max_bytes} · trace_index{' '}
+          {hardcaseRes.trace_index_size}
         </div>
       </div>
     )
@@ -124,7 +123,8 @@ export function HardcaseCandidatesDialog({
           </div>
         </Panel>
         <div className="text-[11px] text-muted-foreground font-mono tabular-nums">
-          window {hardcaseRes.window_minutes}m · max_bytes {hardcaseRes.max_bytes} · trace_index {hardcaseRes.trace_index_size}
+          window {hardcaseRes.window_minutes}m · max_bytes {hardcaseRes.max_bytes} · trace_index{' '}
+          {hardcaseRes.trace_index_size}
         </div>
       </div>
     )
@@ -139,7 +139,8 @@ export function HardcaseCandidatesDialog({
           const errBadges = buildErrBadges(errKinds)
           const template = candidate.rag_config_template ?? null
           const templateKey = template && typeof template.template_key === 'string' ? template.template_key.trim() : ''
-          const templateVersion = template && Number.isFinite(Number(template.version)) ? Number(template.version) : null
+          const templateVersion =
+            template && Number.isFinite(Number(template.version)) ? Number(template.version) : null
           const templatePatch = template && typeof template.patch_hash === 'string' ? template.patch_hash.trim() : ''
           const templateVersionLabel = templateVersion === null ? '' : `@${templateVersion}`
           const templateLabel = templateKey ? `${templateKey}${templateVersionLabel}` : ''
@@ -297,7 +298,8 @@ export function HardcaseCandidatesDialog({
         })}
 
         <div className="text-[11px] text-muted-foreground font-mono tabular-nums">
-          window {hardcaseRes.window_minutes}m · max_bytes {hardcaseRes.max_bytes} · trace_index {hardcaseRes.trace_index_size}
+          window {hardcaseRes.window_minutes}m · max_bytes {hardcaseRes.max_bytes} · trace_index{' '}
+          {hardcaseRes.trace_index_size}
         </div>
       </div>
     )
@@ -309,7 +311,8 @@ export function HardcaseCandidatesDialog({
         <DialogHeader>
           <DialogTitle>Hardcase Candidates</DialogTitle>
           <DialogDescription className="text-pretty">
-            从低分反馈 + rag_trace 聚类得到的候选（PII-safe）。选择一个 <span className="font-mono">feedback_id</span> 转为 draft EvidenceItem。
+            从低分反馈 + rag_trace 聚类得到的候选（PII-safe）。选择一个 <span className="font-mono">feedback_id</span>{' '}
+            转为 draft EvidenceItem。
           </DialogDescription>
         </DialogHeader>
 
@@ -355,8 +358,17 @@ export function HardcaseCandidatesDialog({
           <div className="flex items-center gap-2 sm:ml-auto">
             {hardcaseSummary}
 
-            <Button variant="outline" size="sm" className="gap-2" onClick={onRefresh} disabled={!selectedSuiteId || loading}>
-              <RefreshCw className={cn('size-4', loading ? 'animate-spin motion-reduce:animate-none' : '')} aria-hidden="true" />
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={onRefresh}
+              disabled={!selectedSuiteId || loading}
+            >
+              <RefreshCw
+                className={cn('size-4', loading ? 'animate-spin motion-reduce:animate-none' : '')}
+                aria-hidden="true"
+              />
               refresh
             </Button>
           </div>
@@ -369,9 +381,7 @@ export function HardcaseCandidatesDialog({
 
         {error ? <div className="text-xs text-destructive text-pretty">{error}</div> : null}
 
-        <ScrollArea className="max-h-[70vh] pr-3">
-          {discoveryContent}
-        </ScrollArea>
+        <ScrollArea className="max-h-[70vh] pr-3">{discoveryContent}</ScrollArea>
       </DialogContent>
     </Dialog>
   )

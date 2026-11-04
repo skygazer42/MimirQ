@@ -27,22 +27,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PageHeader } from '@/components/ui/page-header'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { formatApiError } from '@/lib/api-errors'
 import {
   datasetApi,
@@ -60,14 +49,10 @@ import { cn } from '@/lib/utils'
 import type { JsonObject } from '@/types'
 
 const KG_EXTRACT_MODE_VALUES = ['auto', 'on', 'off'] as const
-const DIAGNOSTICS_SECTION_TITLE_CLASS =
-  'text-[14px] font-medium leading-5 text-foreground/85'
-const DIAGNOSTICS_SECTION_DESCRIPTION_CLASS =
-  'text-[12px] font-normal leading-5 text-muted-foreground'
-const DIAGNOSTICS_FIELD_LABEL_CLASS =
-  'text-[12px] font-normal leading-5 text-muted-foreground'
-const DIAGNOSTICS_FIELD_VALUE_CLASS =
-  'text-[14px] font-normal text-foreground/90'
+const DIAGNOSTICS_SECTION_TITLE_CLASS = 'text-[14px] font-medium leading-5 text-foreground/85'
+const DIAGNOSTICS_SECTION_DESCRIPTION_CLASS = 'text-[12px] font-normal leading-5 text-muted-foreground'
+const DIAGNOSTICS_FIELD_LABEL_CLASS = 'text-[12px] font-normal leading-5 text-muted-foreground'
+const DIAGNOSTICS_FIELD_VALUE_CLASS = 'text-[14px] font-normal text-foreground/90'
 const DIAGNOSTICS_HEADER_ACTION_DOCK_CLASS =
   'flex min-w-0 flex-wrap items-center justify-end gap-1.5 rounded-full border border-border/44 bg-card/54 p-1 shadow-[inset_0_1px_0_hsl(var(--card)/0.72)]'
 const DIAGNOSTICS_HEADER_ACTION_BUTTON_CLASS =
@@ -153,10 +138,7 @@ type DiagnosticsRunDiffRow = {
   delta_mrr: number | null
 }
 
-const DIAGNOSTICS_ACCENT_CLASSES: Record<
-  DiagnosticsAccent,
-  DiagnosticsAccentClasses
-> = {
+const DIAGNOSTICS_ACCENT_CLASSES: Record<DiagnosticsAccent, DiagnosticsAccentClasses> = {
   neutral: {
     surface: 'border-border/70 bg-background',
     label: 'text-muted-foreground',
@@ -247,11 +229,7 @@ function toNumber(value: unknown): number | null {
 
 function formatMetricValue(value: unknown): string {
   if (value === null || value === undefined) return '-'
-  if (
-    typeof value === 'number' ||
-    typeof value === 'string' ||
-    typeof value === 'boolean'
-  ) {
+  if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') {
     return String(value)
   }
   return prettyJson(value)
@@ -298,10 +276,7 @@ function diagnosticsInlineToneClass(tone: DiagnosticsTone): string {
   return 'text-muted-foreground'
 }
 
-function diagnosticsMetricValueClass(
-  tone: DiagnosticsTone,
-  fallback: string
-): string {
+function diagnosticsMetricValueClass(tone: DiagnosticsTone, fallback: string): string {
   if (tone === 'positive') return 'text-success'
   if (tone === 'negative') return 'text-destructive'
   if (tone === 'muted') return 'text-muted-foreground'
@@ -329,10 +304,7 @@ function diagnosticsMetricDelta(aValue: number | null, bValue: number | null) {
   return Number((bValue - aValue).toFixed(4))
 }
 
-function buildDiagnosticsSummaryDelta(
-  aSummary: JsonObject,
-  bSummary: JsonObject
-) {
+function buildDiagnosticsSummaryDelta(aSummary: JsonObject, bSummary: JsonObject) {
   const summaryDelta: JsonObject = {}
   for (const key of DIAGNOSTICS_DIFF_METRIC_KEYS) {
     const aValue = toNumber(aSummary[key])
@@ -347,9 +319,7 @@ function buildDiagnosticsSummaryDelta(
   return summaryDelta
 }
 
-function buildDiagnosticsCaseMap(
-  items: JsonObject[] | undefined
-): Map<string, DiagnosticsRunCaseMapValue> {
+function buildDiagnosticsCaseMap(items: JsonObject[] | undefined): Map<string, DiagnosticsRunCaseMapValue> {
   const byCase = new Map<string, DiagnosticsRunCaseMapValue>()
   for (const item of items || []) {
     const key = caseKey(item)
@@ -365,7 +335,7 @@ function buildDiagnosticsCaseMap(
 function buildDiagnosticsDiffRow(
   key: string,
   byCaseA: Map<string, DiagnosticsRunCaseMapValue>,
-  byCaseB: Map<string, DiagnosticsRunCaseMapValue>
+  byCaseB: Map<string, DiagnosticsRunCaseMapValue>,
 ): DiagnosticsRunDiffRow {
   const runCaseA = byCaseA.get(key)
   const runCaseB = byCaseB.get(key)
@@ -398,47 +368,32 @@ function isChangedDiagnosticsDiffRow(row: DiagnosticsRunDiffRow): boolean {
   )
 }
 
-function compareDiagnosticsDiffRows(
-  left: DiagnosticsRunDiffRow,
-  right: DiagnosticsRunDiffRow
-) {
+function compareDiagnosticsDiffRows(left: DiagnosticsRunDiffRow, right: DiagnosticsRunDiffRow) {
   return Math.abs(right.delta_recall ?? 0) - Math.abs(left.delta_recall ?? 0)
 }
 
 function countDiagnosticsHitFlips(rows: DiagnosticsRunDiffRow[]) {
-  const flips = rows.filter(
-    (row) =>
-      row.a_hit !== null && row.b_hit !== null && row.a_hit !== row.b_hit
-  )
-  const improved = flips.filter(
-    (row) => row.a_hit === false && row.b_hit === true
-  ).length
-  const regressed = flips.filter(
-    (row) => row.a_hit === true && row.b_hit === false
-  ).length
+  const flips = rows.filter((row) => row.a_hit !== null && row.b_hit !== null && row.a_hit !== row.b_hit)
+  const improved = flips.filter((row) => row.a_hit === false && row.b_hit === true).length
+  const regressed = flips.filter((row) => row.a_hit === true && row.b_hit === false).length
   return { flips, improved, regressed }
 }
 
 function buildKgDiagnosticsDiff(
   detailA: KGSearchDiagnosticsRunDetail | null,
-  detailB: KGSearchDiagnosticsRunDetail | null
+  detailB: KGSearchDiagnosticsRunDetail | null,
 ) {
   if (!detailA?.run || !detailB?.run) return null
 
   const summaryDelta = buildDiagnosticsSummaryDelta(
     diagnosticsRunSummary(detailA.run),
-    diagnosticsRunSummary(detailB.run)
+    diagnosticsRunSummary(detailB.run),
   )
   const byCaseA = buildDiagnosticsCaseMap(detailA.items)
   const byCaseB = buildDiagnosticsCaseMap(detailB.items)
   const allKeys = new Set<string>([...byCaseA.keys(), ...byCaseB.keys()])
-  const rows = Array.from(allKeys, (key) =>
-    buildDiagnosticsDiffRow(key, byCaseA, byCaseB)
-  )
-  const changed = rows
-    .filter(isChangedDiagnosticsDiffRow)
-    .sort(compareDiagnosticsDiffRows)
-    .slice(0, 20)
+  const rows = Array.from(allKeys, (key) => buildDiagnosticsDiffRow(key, byCaseA, byCaseB))
+  const changed = rows.filter(isChangedDiagnosticsDiffRow).sort(compareDiagnosticsDiffRows).slice(0, 20)
   const { flips, improved, regressed } = countDiagnosticsHitFlips(rows)
 
   return {
@@ -450,10 +405,7 @@ function buildKgDiagnosticsDiff(
   }
 }
 
-function resolveInitialDiagnosticsDatasetId(
-  current: string,
-  datasets: DiagnosticsDatasetOption[]
-): string {
+function resolveInitialDiagnosticsDatasetId(current: string, datasets: DiagnosticsDatasetOption[]): string {
   if (current.trim()) return current
   const firstDatasetId = String(datasets[0]?.id || '').trim()
   return firstDatasetId || current
@@ -463,18 +415,12 @@ function diagnosticsRecordOrNull(value: unknown): JsonObject | null {
   return isDiagnosticsRecord(value) ? value : null
 }
 
-function diagnosticsDatasetPlaceholder(
-  datasetsLoading: boolean,
-  t: (key: string) => string
-): string {
+function diagnosticsDatasetPlaceholder(datasetsLoading: boolean, t: (key: string) => string): string {
   if (datasetsLoading) return '加载中...'
   return t('runConfig.datasetPlaceholder')
 }
 
-function diagnosticsEnabledLabel(
-  enabled: boolean,
-  t: (key: string) => string
-): string {
+function diagnosticsEnabledLabel(enabled: boolean, t: (key: string) => string): string {
   if (enabled) return t('workspace.enabled')
   return t('workspace.disabled')
 }
@@ -489,10 +435,7 @@ function diagnosticsPersistValue(persistRun: boolean): string {
   return '关闭'
 }
 
-function diagnosticsRunButtonLabel(
-  running: boolean,
-  t: (key: string) => string
-): string {
+function diagnosticsRunButtonLabel(running: boolean, t: (key: string) => string): string {
   const label = t('page.actions.run')
   if (running) return `${label}…`
   return label
@@ -509,17 +452,8 @@ function DiagnosticsInlineStat({
 }>) {
   return (
     <div className="flex items-center gap-2 rounded-full border border-border/70 bg-card/90 px-2.5 py-1">
-      <span className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-        {label}
-      </span>
-      <span
-        className={cn(
-          'font-mono text-[11px] tabular-nums',
-          diagnosticsInlineToneClass(tone)
-        )}
-      >
-        {value}
-      </span>
+      <span className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{label}</span>
+      <span className={cn('font-mono text-[11px] tabular-nums', diagnosticsInlineToneClass(tone))}>{value}</span>
     </div>
   )
 }
@@ -545,11 +479,7 @@ function DiagnosticsInfoTooltip({
             <Info className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
         </TooltipTrigger>
-        <TooltipContent
-          side={side}
-          align="center"
-          className="max-w-[260px] text-[11px] leading-5"
-        >
+        <TooltipContent side={side} align="center" className="max-w-[260px] text-[11px] leading-5">
           {children}
         </TooltipContent>
       </Tooltip>
@@ -574,23 +504,13 @@ function DiagnosticsHeaderPill({
     <div
       className={cn(
         'inline-flex h-8 items-center gap-2.5 rounded-full border border-border/40 bg-background/58 px-3 shadow-none',
-        className
+        className,
       )}
     >
-      {icon ? (
-        <span className="flex h-5 w-5 items-center justify-center text-muted-foreground">
-          {icon}
-        </span>
-      ) : null}
-      <span className="text-[10.5px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-        {label}
-      </span>
+      {icon ? <span className="flex h-5 w-5 items-center justify-center text-muted-foreground">{icon}</span> : null}
+      <span className="text-[10.5px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{label}</span>
       <div className="min-w-0 flex-1">
-        {children ?? (
-          <span className={cn('block truncate', DIAGNOSTICS_FIELD_VALUE_CLASS)}>
-            {value}
-          </span>
-        )}
+        {children ?? <span className={cn('block truncate', DIAGNOSTICS_FIELD_VALUE_CLASS)}>{value}</span>}
       </div>
     </div>
   )
@@ -648,17 +568,10 @@ function DiagnosticsSection({
   className?: string
 }>) {
   return (
-    <section
-      className={cn(
-        'space-y-2.5 rounded-lg border border-border/70 bg-card px-3.5 py-3',
-        className
-      )}
-    >
+    <section className={cn('space-y-2.5 rounded-lg border border-border/70 bg-card px-3.5 py-3', className)}>
       <div className="space-y-1">
         <div className={DIAGNOSTICS_SECTION_TITLE_CLASS}>{label}</div>
-        {description ? (
-          <p className={DIAGNOSTICS_SECTION_DESCRIPTION_CLASS}>{description}</p>
-        ) : null}
+        {description ? <p className={DIAGNOSTICS_SECTION_DESCRIPTION_CLASS}>{description}</p> : null}
       </div>
       {children}
     </section>
@@ -688,33 +601,18 @@ function DiagnosticsMetricTile({
     <div
       className={cn(
         'flex min-h-[86px] flex-col items-center justify-center rounded-xl border px-3 py-2.5 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]',
-        accentClasses.surface
+        accentClasses.surface,
       )}
     >
-      <div
-        className={cn(
-          'flex items-center justify-center gap-1.5 text-[11.5px] font-semibold ',
-          accentClasses.label
-        )}
-      >
+      <div className={cn('flex items-center justify-center gap-1.5 text-[11.5px] font-semibold ', accentClasses.label)}>
         {icon ? (
-          <span className="flex h-3.5 w-3.5 items-center justify-center">
-            {icon}
-          </span>
+          <span className="flex h-3.5 w-3.5 items-center justify-center">{icon}</span>
         ) : (
-          <span
-            className={cn('h-1.5 w-1.5 rounded-full', accentClasses.dot)}
-            aria-hidden="true"
-          />
+          <span className={cn('h-1.5 w-1.5 rounded-full', accentClasses.dot)} aria-hidden="true" />
         )}
         <span>{label}</span>
       </div>
-      <div
-        className={cn(
-          'mt-2 text-[15px] font-semibold tabular-nums',
-          valueClass
-        )}
-      >
+      <div className={cn('mt-2 text-[15px] font-semibold tabular-nums', valueClass)}>
         {isPending ? (
           <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-medium text-muted-foreground">
             待评测
@@ -724,9 +622,7 @@ function DiagnosticsMetricTile({
         )}
       </div>
       {caption ? (
-        <div
-          className={cn('mt-1 text-[10.5px] leading-4', accentClasses.caption)}
-        >
+        <div className={cn('mt-1 text-[10.5px] leading-4', accentClasses.caption)}>
           {isPending ? '运行后显示' : caption}
         </div>
       ) : null}
@@ -768,27 +664,18 @@ function DiagnosticsToggleCard({
     <div
       className={cn(
         'block cursor-pointer select-none rounded-lg border px-3 py-1.5 transition-colors',
-        toneClasses.surface
+        toneClasses.surface,
       )}
     >
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <div
-                className={cn(
-                  'flex items-center gap-1.5 text-[10.5px] font-normal ',
-                  toneClasses.badge
-                )}
-              >
-                <span
-                  className={cn('h-1.5 w-1.5 rounded-full', toneClasses.dot)}
-                />
+              <div className={cn('flex items-center gap-1.5 text-[10.5px] font-normal ', toneClasses.badge)}>
+                <span className={cn('h-1.5 w-1.5 rounded-full', toneClasses.dot)} />
                 <span>{badge}</span>
               </div>
-              <div className="mt-0.5 text-[13px] font-medium leading-4 text-foreground/90">
-                {title}
-              </div>
+              <div className="mt-0.5 text-[13px] font-medium leading-4 text-foreground/90">{title}</div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <span className="inline-flex items-center rounded-full border border-border/70 bg-card/90 px-2 py-0.5 text-[11px] font-normal text-muted-foreground">
@@ -798,9 +685,7 @@ function DiagnosticsToggleCard({
             </div>
           </div>
           {description ? (
-            <p className="mt-0.5 truncate text-[11px] font-normal leading-5 text-muted-foreground">
-              {description}
-            </p>
+            <p className="mt-0.5 truncate text-[11px] font-normal leading-5 text-muted-foreground">{description}</p>
           ) : null}
         </div>
       </div>
@@ -821,10 +706,7 @@ function DiagnosticsEmptyState({
 }>) {
   return (
     <div
-      className={cn(
-        'rounded-lg border border-dashed border-border/70 bg-background px-4 py-4 text-center',
-        className
-      )}
+      className={cn('rounded-lg border border-dashed border-border/70 bg-background px-4 py-4 text-center', className)}
     >
       {icon ? (
         <div className="mb-2 flex justify-center text-info">
@@ -834,9 +716,7 @@ function DiagnosticsEmptyState({
         </div>
       ) : null}
       <div className="text-[13px] font-medium text-foreground">{title}</div>
-      <p className="mx-auto mt-1.5 max-w-xl text-[11px] leading-5 text-muted-foreground">
-        {description}
-      </p>
+      <p className="mx-auto mt-1.5 max-w-xl text-[11px] leading-5 text-muted-foreground">{description}</p>
     </div>
   )
 }
@@ -855,12 +735,8 @@ function DiagnosticsRunHeroPanel({
       <div className="min-h-[118px] rounded-xl border border-border/70 bg-background px-4 py-3.5 shadow-sm">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-[11px] font-medium tracking-[0.12em] text-info">
-              最新结果
-            </div>
-            <h3 className="mt-1 text-[18px] font-semibold tracking-[-0.03em] text-foreground">
-              本轮评测已完成
-            </h3>
+            <div className="text-[11px] font-medium tracking-[0.12em] text-info">最新结果</div>
+            <h3 className="mt-1 text-[18px] font-semibold tracking-[-0.03em] text-foreground">本轮评测已完成</h3>
             <p className="mt-1.5 text-[12px] leading-5 text-muted-foreground">
               优先查看上方核心指标，再结合下方失败样本和运行记录判断这次检索质量是否稳定。
             </p>
@@ -904,24 +780,16 @@ function DiagnosticsRunHeroPanel({
           <div className="inline-flex rounded-full border border-info/20 bg-info/10 px-2 py-0.5 text-[10.5px] font-medium text-info">
             运行后会自动填充
           </div>
-          <h3 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-foreground">
-            {emptyTitle}
-          </h3>
-          <p className="mt-1 max-w-[420px] text-[11.5px] leading-5 text-muted-foreground">
-            {emptyDescription}
-          </p>
+          <h3 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-foreground">{emptyTitle}</h3>
+          <p className="mt-1 max-w-[420px] text-[11.5px] leading-5 text-muted-foreground">{emptyDescription}</p>
         </div>
       </div>
 
       <div className="rounded-[18px] border border-border/70 bg-card/86 p-2.5 shadow-[inset_0_1px_0_hsl(var(--background)/0.86)]">
         <div className="flex items-center justify-between gap-3 px-1 pb-2">
           <div>
-            <div className="text-[11.5px] font-semibold text-foreground">
-              结果工作台
-            </div>
-            <p className="mt-0.5 text-[10.5px] text-muted-foreground">
-              一次评测完成后，关键证据会按下面三个区域落位。
-            </p>
+            <div className="text-[11.5px] font-semibold text-foreground">结果工作台</div>
+            <p className="mt-0.5 text-[10.5px] text-muted-foreground">一次评测完成后，关键证据会按下面三个区域落位。</p>
           </div>
           <div className="hidden rounded-full border border-border/70 bg-background px-2.5 py-1 text-[10.5px] font-medium text-muted-foreground sm:block">
             KG Eval
@@ -938,12 +806,8 @@ function DiagnosticsRunHeroPanel({
                 {item.icon}
               </div>
               <div className="min-w-0">
-                <div className="text-[11.5px] font-semibold text-foreground">
-                  {item.title}
-                </div>
-                <p className="mt-0.5 line-clamp-2 text-[10.5px] leading-4 text-muted-foreground">
-                  {item.description}
-                </p>
+                <div className="text-[11.5px] font-semibold text-foreground">{item.title}</div>
+                <p className="mt-0.5 line-clamp-2 text-[10.5px] leading-4 text-muted-foreground">{item.description}</p>
               </div>
             </div>
           ))}
@@ -976,7 +840,7 @@ function DiagnosticsFailuresPanel({
             type="button"
             className={cn(
               'inline-flex h-5 items-center rounded-full px-2.5 text-[11px] font-medium transition-colors',
-              diagnosticsTabClass(activeTab === 'failures')
+              diagnosticsTabClass(activeTab === 'failures'),
             )}
             onClick={() => onTabChange('failures')}
           >
@@ -986,7 +850,7 @@ function DiagnosticsFailuresPanel({
             type="button"
             className={cn(
               'inline-flex h-5 items-center rounded-full px-2.5 text-[11px] font-medium transition-colors',
-              diagnosticsTabClass(activeTab === 'distribution')
+              diagnosticsTabClass(activeTab === 'distribution'),
             )}
             onClick={() => onTabChange('distribution')}
           >
@@ -996,10 +860,7 @@ function DiagnosticsFailuresPanel({
       </div>
 
       <div className="px-4 py-3">
-        <DiagnosticsFailuresPanelBody
-          activeTab={activeTab}
-          failedCases={failedCases}
-        />
+        <DiagnosticsFailuresPanelBody activeTab={activeTab} failedCases={failedCases} />
       </div>
     </div>
   )
@@ -1017,12 +878,8 @@ function DiagnosticsFailureCaseList({
           key={`${item.case_id}:${item.question}`}
           className="rounded-xl border border-border/70 bg-card/90 px-3 py-2.5"
         >
-          <div className="text-[11px] font-mono text-muted-foreground">
-            {item.case_id || '--------'}
-          </div>
-          <div className="mt-1 text-[12.5px] leading-5 text-foreground">
-            {item.question || '（无问题文本）'}
-          </div>
+          <div className="text-[11px] font-mono text-muted-foreground">{item.case_id || '--------'}</div>
+          <div className="mt-1 text-[12.5px] leading-5 text-foreground">{item.question || '（无问题文本）'}</div>
           <div className="mt-1.5 text-[10.5px] tabular-nums text-muted-foreground">
             Recall {String(item.recall)} · MRR {String(item.mrr)}
           </div>
@@ -1090,9 +947,7 @@ function DiagnosticsRunRecordsPanel({
                 <th className="px-2 py-1.5 font-medium">数据集</th>
                 <th className="px-2 py-1.5 font-medium">样本数</th>
                 <th className="px-2 py-1.5 font-medium">TOP-K</th>
-                <th className="px-2 py-1.5 font-medium">
-                  主要指标（MRR / Recall）
-                </th>
+                <th className="px-2 py-1.5 font-medium">主要指标（MRR / Recall）</th>
                 <th className="px-2 py-1.5 font-medium">状态</th>
                 <th className="px-2 py-1.5 font-medium">操作</th>
               </tr>
@@ -1102,44 +957,25 @@ function DiagnosticsRunRecordsPanel({
                 runs.slice(0, 8).map((run) => {
                   const summary = diagnosticsRecordOrNull(run.summary) ?? {}
                   const params = diagnosticsRecordOrNull(run.params)
-                  const maxCases =
-                    diagnosticsField(run, 'max_cases') ??
-                    diagnosticsField(params, 'max_cases') ??
-                    '-'
-                  const k =
-                    diagnosticsField(run, 'k') ??
-                    diagnosticsField(params, 'k') ??
-                    '-'
-                  const persisted =
-                    diagnosticsField(run, 'persisted') ??
-                    diagnosticsField(params, 'persist_run')
+                  const maxCases = diagnosticsField(run, 'max_cases') ?? diagnosticsField(params, 'max_cases') ?? '-'
+                  const k = diagnosticsField(run, 'k') ?? diagnosticsField(params, 'k') ?? '-'
+                  const persisted = diagnosticsField(run, 'persisted') ?? diagnosticsField(params, 'persist_run')
                   return (
-                    <tr
-                      key={String(run.id)}
-                      className="border-b border-border/60"
-                    >
-                      <td className="px-2 py-2 font-mono text-foreground">
-                        {String(run.id || '').slice(0, 8)}
-                      </td>
+                    <tr key={String(run.id)} className="border-b border-border/60">
+                      <td className="px-2 py-2 font-mono text-foreground">{String(run.id || '').slice(0, 8)}</td>
                       <td className="px-2 py-2 text-muted-foreground">
                         {String(run.created_at || '').slice(0, 16) || '-'}
                       </td>
                       <td className="px-2 py-2 text-muted-foreground">
                         {String(run.dataset_id || '').slice(0, 8) || '-'}
                       </td>
-                      <td className="px-2 py-2 text-muted-foreground">
-                        {toTrimmedPrimitiveString(maxCases)}
-                      </td>
-                      <td className="px-2 py-2 text-muted-foreground">
-                        {toTrimmedPrimitiveString(k)}
-                      </td>
+                      <td className="px-2 py-2 text-muted-foreground">{toTrimmedPrimitiveString(maxCases)}</td>
+                      <td className="px-2 py-2 text-muted-foreground">{toTrimmedPrimitiveString(k)}</td>
                       <td className="px-2 py-2 text-muted-foreground">
                         {toTrimmedPrimitiveString(summary?.baseline_mrr, '-')} /{' '}
                         {toTrimmedPrimitiveString(summary?.baseline_recall, '-')}
                       </td>
-                      <td className="px-2 py-2 text-muted-foreground">
-                        {persisted ? '已保存' : '临时'}
-                      </td>
+                      <td className="px-2 py-2 text-muted-foreground">{persisted ? '已保存' : '临时'}</td>
                       <td className="px-2 py-2 text-muted-foreground">-</td>
                     </tr>
                   )
@@ -1150,9 +986,7 @@ function DiagnosticsRunRecordsPanel({
                     <DiagnosticsEmptyState
                       title="暂无运行记录"
                       description="保存评测结果后，这里会列出历史运行记录，便于对比效果变化。"
-                      icon={
-                        <FileStack className="h-8 w-8" aria-hidden="true" />
-                      }
+                      icon={<FileStack className="h-8 w-8" aria-hidden="true" />}
                     />
                   </td>
                 </tr>
@@ -1189,9 +1023,7 @@ function DiagnosticsJsonPanel({
   return (
     <div className="rounded-lg border border-border/70 bg-card">
       <div className="border-b border-border/70 px-4 py-3">
-        <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-          {label}
-        </div>
+        <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{label}</div>
       </div>
       <details className="px-4 py-3">
         <summary className="cursor-pointer select-none text-xs font-medium text-muted-foreground transition-colors hover:text-foreground">
@@ -1226,65 +1058,38 @@ export function KGDiagnosticsPage() {
   const [qualityPipelineHash, setQualityPipelineHash] = useState('')
   const [qualityLoading, setQualityLoading] = useState(false)
   const [qualityReport, setQualityReport] = useState<unknown>(null)
-  const qualityJson = useMemo(
-    () => prettyJson(qualityReport ?? { hint: t('qualityReport.hint') }),
-    [qualityReport, t]
-  )
+  const qualityJson = useMemo(() => prettyJson(qualityReport ?? { hint: t('qualityReport.hint') }), [qualityReport, t])
 
   const [maxCases, setMaxCases] = useState(50)
   const [k, setK] = useState(10)
   const [autoExtractKg, setAutoExtractKg] = useState(true)
-  const [extractSkills, setExtractSkills] = useState<'auto' | 'on' | 'off'>(
-    'auto'
-  )
-  const [extractRelations, setExtractRelations] = useState<
-    'auto' | 'on' | 'off'
-  >('auto')
-  const [hardcaseMode, setHardcaseMode] =
-    useState<KGHardcaseMode>('deterministic')
+  const [extractSkills, setExtractSkills] = useState<'auto' | 'on' | 'off'>('auto')
+  const [extractRelations, setExtractRelations] = useState<'auto' | 'on' | 'off'>('auto')
+  const [hardcaseMode, setHardcaseMode] = useState<KGHardcaseMode>('deterministic')
   const [hardcasesPerFailed, setHardcasesPerFailed] = useState(4)
   const [maxFailedForHardcase, setMaxFailedForHardcase] = useState(20)
   const [llmTemperature, setLlmTemperature] = useState(0.2)
   const [persistRun, setPersistRun] = useState(true)
-  const [runAnalysisTab, setRunAnalysisTab] = useState<
-    'failures' | 'distribution'
-  >('failures')
+  const [runAnalysisTab, setRunAnalysisTab] = useState<'failures' | 'distribution'>('failures')
 
   const [running, setRunning] = useState(false)
-  const [runResp, setRunResp] = useState<KGSearchDiagnosticsResponse | null>(
-    null
-  )
-  const runRespJson = useMemo(
-    () => prettyJson(runResp ?? { hint: t('summary.runHint') }),
-    [runResp, t]
-  )
+  const [runResp, setRunResp] = useState<KGSearchDiagnosticsResponse | null>(null)
+  const runRespJson = useMemo(() => prettyJson(runResp ?? { hint: t('summary.runHint') }), [runResp, t])
 
   const [runsLoading, setRunsLoading] = useState(false)
   const [runs, setRuns] = useState<KGSearchDiagnosticsRunOut[]>([])
   const [selectedRunA, setSelectedRunA] = useState<string>('')
   const [selectedRunB, setSelectedRunB] = useState<string>('')
-  const [detailA, setDetailA] = useState<KGSearchDiagnosticsRunDetail | null>(
-    null
-  )
-  const [detailB, setDetailB] = useState<KGSearchDiagnosticsRunDetail | null>(
-    null
-  )
+  const [detailA, setDetailA] = useState<KGSearchDiagnosticsRunDetail | null>(null)
+  const [detailB, setDetailB] = useState<KGSearchDiagnosticsRunDetail | null>(null)
 
   useEffect(() => {
-    setDatasetId((current) =>
-      resolveInitialDiagnosticsDatasetId(current, datasets)
-    )
+    setDatasetId((current) => resolveInitialDiagnosticsDatasetId(current, datasets))
   }, [datasets])
 
-  const diff = useMemo(
-    () => buildKgDiagnosticsDiff(detailA, detailB),
-    [detailA, detailB]
-  )
+  const diff = useMemo(() => buildKgDiagnosticsDiff(detailA, detailB), [detailA, detailB])
 
-  const diffJson = useMemo(
-    () => prettyJson(diff ?? { hint: t('compare.diffHint') }),
-    [diff, t]
-  )
+  const diffJson = useMemo(() => prettyJson(diff ?? { hint: t('compare.diffHint') }), [diff, t])
 
   async function refreshRuns(): Promise<void> {
     const ds = datasetId.trim()
@@ -1302,8 +1107,7 @@ export function KGDiagnosticsPage() {
       setRuns(items)
       if (!selectedRunA && items?.[0]?.id) setSelectedRunA(items[0].id)
       if (!selectedRunB && items?.[1]?.id) setSelectedRunB(items[1].id)
-      if (!selectedRunB && !items?.[1]?.id && items?.[0]?.id)
-        setSelectedRunB(items[0].id)
+      if (!selectedRunB && !items?.[1]?.id && items?.[0]?.id) setSelectedRunB(items[0].id)
     } catch (err) {
       toast.error(formatApiError(err, t('toasts.runsLoadFailed')))
     } finally {
@@ -1319,9 +1123,7 @@ export function KGDiagnosticsPage() {
       if (which === 'a') setDetailA(detail)
       else setDetailB(detail)
     } catch (err) {
-      toast.error(
-        formatApiError(err, t('toasts.runLoadFailed', { id: id.slice(0, 8) }))
-      )
+      toast.error(formatApiError(err, t('toasts.runLoadFailed', { id: id.slice(0, 8) })))
     }
   }
 
@@ -1362,19 +1164,11 @@ export function KGDiagnosticsPage() {
         max_cases: Math.max(1, Math.min(maxCases, 200)),
         k: Math.max(1, Math.min(k, 50)),
         auto_extract_kg: Boolean(autoExtractKg),
-        extract_skills:
-          extractSkills === 'auto' ? null : extractSkills === 'on',
-        extract_relations:
-          extractRelations === 'auto' ? null : extractRelations === 'on',
+        extract_skills: extractSkills === 'auto' ? null : extractSkills === 'on',
+        extract_relations: extractRelations === 'auto' ? null : extractRelations === 'on',
         hardcase_mode: hardcaseMode,
-        hardcases_per_failed_case: Math.max(
-          0,
-          Math.min(hardcasesPerFailed, 20)
-        ),
-        max_failed_cases_for_hardcase: Math.max(
-          0,
-          Math.min(maxFailedForHardcase, 200)
-        ),
+        hardcases_per_failed_case: Math.max(0, Math.min(hardcasesPerFailed, 20)),
+        max_failed_cases_for_hardcase: Math.max(0, Math.min(maxFailedForHardcase, 200)),
         llm_temperature: Math.max(0, Math.min(llmTemperature, 2)),
         persist_run: Boolean(persistRun),
       })
@@ -1392,26 +1186,17 @@ export function KGDiagnosticsPage() {
   }
 
   const summary = diagnosticsRecordOrNull(runResp?.summary)
-  const runItems = useMemo(
-    () => (Array.isArray(runResp?.items) ? runResp.items : []),
-    [runResp?.items]
-  )
+  const runItems = useMemo(() => (Array.isArray(runResp?.items) ? runResp.items : []), [runResp?.items])
   const selectedDataset = useMemo(() => {
     const selectedId = datasetId.trim()
-    return (
-      datasets.find(
-        (dataset) => String(dataset.id || '').trim() === selectedId
-      ) ?? null
-    )
+    return datasets.find((dataset) => String(dataset.id || '').trim() === selectedId) ?? null
   }, [datasetId, datasets])
   const datasetLabel = selectedDataset?.name || datasetId.trim() || '未选择'
   const qualityObject = diagnosticsRecordOrNull(qualityReport)
   const qualityHighlights = useMemo(() => {
     if (!qualityObject) return []
     return Object.entries(qualityObject)
-      .filter(([, value]) =>
-        ['string', 'number', 'boolean'].includes(typeof value)
-      )
+      .filter(([, value]) => ['string', 'number', 'boolean'].includes(typeof value))
       .slice(0, 8)
   }, [qualityObject])
   const failedCases = useMemo(() => {
@@ -1434,10 +1219,7 @@ export function KGDiagnosticsPage() {
       mrr: number
     }>
   }, [runItems])
-  const diffSummaryEntries = useMemo(
-    () => Object.entries(diff?.summary_delta || {}),
-    [diff]
-  )
+  const diffSummaryEntries = useMemo(() => Object.entries(diff?.summary_delta || {}), [diff])
 
   function handleDatasetChange(nextDatasetId: string): void {
     setDatasetId(nextDatasetId)
@@ -1468,10 +1250,7 @@ export function KGDiagnosticsPage() {
               className="p-0"
             >
               <div className={DIAGNOSTICS_HEADER_ACTION_DOCK_CLASS}>
-                <DiagnosticsHeaderPill
-                  label={t('runConfig.datasetId')}
-                  className="min-w-[208px] max-w-[300px]"
-                >
+                <DiagnosticsHeaderPill label={t('runConfig.datasetId')} className="min-w-[208px] max-w-[300px]">
                   <Select
                     value={datasetId}
                     onValueChange={handleDatasetChange}
@@ -1481,12 +1260,7 @@ export function KGDiagnosticsPage() {
                       aria-label={t('runConfig.datasetId')}
                       className="h-auto min-h-0 border-0 bg-transparent px-0 py-0 text-right text-[12px] font-medium shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 [&>svg]:ml-2 [&>svg]:h-3.5 [&>svg]:w-3.5"
                     >
-                      <SelectValue
-                        placeholder={diagnosticsDatasetPlaceholder(
-                          datasetsLoading,
-                          t
-                        )}
-                      />
+                      <SelectValue placeholder={diagnosticsDatasetPlaceholder(datasetsLoading, t)} />
                     </SelectTrigger>
                     <SelectContent>
                       {datasets.map((dataset) => {
@@ -1501,10 +1275,7 @@ export function KGDiagnosticsPage() {
                     </SelectContent>
                   </Select>
                 </DiagnosticsHeaderPill>
-                <DiagnosticsHeaderPill
-                  label={t('runConfig.k')}
-                  className="min-w-[104px]"
-                >
+                <DiagnosticsHeaderPill label={t('runConfig.k')} className="min-w-[104px]">
                   <Input
                     type="number"
                     value={String(k)}
@@ -1535,59 +1306,34 @@ export function KGDiagnosticsPage() {
                 <div className="flex h-full min-h-0 flex-col">
                   <div className="min-h-0 flex-1 overflow-y-auto p-3">
                     <div className="space-y-2.5">
-                      <DiagnosticsSection
-                        label={t('runConfig.title')}
-                        className="rounded-xl px-3.5 py-2.5"
-                      >
+                      <DiagnosticsSection label={t('runConfig.title')} className="rounded-xl px-3.5 py-2.5">
                         <div className="space-y-2.5">
                           <div className="space-y-1">
-                            <div
-                              className={cn(
-                                'flex items-center gap-1',
-                                DIAGNOSTICS_FIELD_LABEL_CLASS
-                              )}
-                            >
+                            <div className={cn('flex items-center gap-1', DIAGNOSTICS_FIELD_LABEL_CLASS)}>
                               <span>阈值设置</span>
                               <DiagnosticsInfoTooltip label="查看阈值设置说明">
                                 控制本轮最多抽取多少条评测样本。数值越大覆盖越充分，但评测耗时也会更长。
                               </DiagnosticsInfoTooltip>
                             </div>
-                            <DiagnosticsStepper
-                              value={maxCases}
-                              min={1}
-                              max={200}
-                              onChange={setMaxCases}
-                            />
+                            <DiagnosticsStepper value={maxCases} min={1} max={200} onChange={setMaxCases} />
                           </div>
 
                           <div className="space-y-1">
-                            <Label className={DIAGNOSTICS_FIELD_LABEL_CLASS}>
-                              {t('runConfig.llmTemperature')}
-                            </Label>
+                            <Label className={DIAGNOSTICS_FIELD_LABEL_CLASS}>{t('runConfig.llmTemperature')}</Label>
                             <Select
                               value={String(llmTemperature)}
-                              onValueChange={(value) =>
-                                setLlmTemperature(Number(value))
-                              }
+                              onValueChange={(value) => setLlmTemperature(Number(value))}
                             >
                               <SelectTrigger
                                 className={cn(
                                   'h-9 rounded-lg border-border/70 bg-card/95 shadow-none',
-                                  DIAGNOSTICS_FIELD_VALUE_CLASS
+                                  DIAGNOSTICS_FIELD_VALUE_CLASS,
                                 )}
                               >
                                 <SelectValue placeholder="0.2" />
                               </SelectTrigger>
                               <SelectContent>
-                                {[
-                                  '0',
-                                  '0.1',
-                                  '0.2',
-                                  '0.3',
-                                  '0.5',
-                                  '0.7',
-                                  '1.0',
-                                ].map((value) => (
+                                {['0', '0.1', '0.2', '0.3', '0.5', '0.7', '1.0'].map((value) => (
                                   <SelectItem key={value} value={value}>
                                     {value}
                                   </SelectItem>
@@ -1597,35 +1343,22 @@ export function KGDiagnosticsPage() {
                           </div>
 
                           <div className="space-y-1">
-                            <Label
-                              title={t('runConfig.extractSkills')}
-                              className={DIAGNOSTICS_FIELD_LABEL_CLASS}
-                            >
+                            <Label title={t('runConfig.extractSkills')} className={DIAGNOSTICS_FIELD_LABEL_CLASS}>
                               智能裁度
                             </Label>
                             <Select
                               value={extractSkills}
                               onValueChange={(value) =>
-                                setExtractSkills(
-                                  coerceOneOf(
-                                    KG_EXTRACT_MODE_VALUES,
-                                    value,
-                                    'auto'
-                                  )
-                                )
+                                setExtractSkills(coerceOneOf(KG_EXTRACT_MODE_VALUES, value, 'auto'))
                               }
                             >
                               <SelectTrigger
                                 className={cn(
                                   'h-9 rounded-lg border-border/70 bg-card/95 shadow-none',
-                                  DIAGNOSTICS_FIELD_VALUE_CLASS
+                                  DIAGNOSTICS_FIELD_VALUE_CLASS,
                                 )}
                               >
-                                <SelectValue
-                                  placeholder={t(
-                                    'runConfig.extractModePlaceholder'
-                                  )}
-                                />
+                                <SelectValue placeholder={t('runConfig.extractModePlaceholder')} />
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="auto">自动</SelectItem>
@@ -1636,35 +1369,22 @@ export function KGDiagnosticsPage() {
                           </div>
 
                           <div className="space-y-1">
-                            <Label
-                              title={t('runConfig.extractRelations')}
-                              className={DIAGNOSTICS_FIELD_LABEL_CLASS}
-                            >
+                            <Label title={t('runConfig.extractRelations')} className={DIAGNOSTICS_FIELD_LABEL_CLASS}>
                               基线模式
                             </Label>
                             <Select
                               value={extractRelations}
                               onValueChange={(value) =>
-                                setExtractRelations(
-                                  coerceOneOf(
-                                    KG_EXTRACT_MODE_VALUES,
-                                    value,
-                                    'auto'
-                                  )
-                                )
+                                setExtractRelations(coerceOneOf(KG_EXTRACT_MODE_VALUES, value, 'auto'))
                               }
                             >
                               <SelectTrigger
                                 className={cn(
                                   'h-9 rounded-lg border-border/70 bg-card/95 shadow-none',
-                                  DIAGNOSTICS_FIELD_VALUE_CLASS
+                                  DIAGNOSTICS_FIELD_VALUE_CLASS,
                                 )}
                               >
-                                <SelectValue
-                                  placeholder={t(
-                                    'runConfig.extractModePlaceholder'
-                                  )}
-                                />
+                                <SelectValue placeholder={t('runConfig.extractModePlaceholder')} />
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="auto">自动</SelectItem>
@@ -1680,82 +1400,56 @@ export function KGDiagnosticsPage() {
                             </summary>
                             <div className="mt-3 space-y-3">
                               <div className="space-y-1">
-                                <Label
-                                  className={DIAGNOSTICS_FIELD_LABEL_CLASS}
-                                >
-                                  {t('runConfig.hardcaseMode')}
-                                </Label>
+                                <Label className={DIAGNOSTICS_FIELD_LABEL_CLASS}>{t('runConfig.hardcaseMode')}</Label>
                                 <Select
                                   value={hardcaseMode}
-                                  onValueChange={(v) =>
-                                    setHardcaseMode(v as KGHardcaseMode)
-                                  }
+                                  onValueChange={(v) => setHardcaseMode(v as KGHardcaseMode)}
                                 >
                                   <SelectTrigger
                                     className={cn(
                                       'h-9 rounded-lg border-border/70 bg-background shadow-none',
-                                      DIAGNOSTICS_FIELD_VALUE_CLASS
+                                      DIAGNOSTICS_FIELD_VALUE_CLASS,
                                     )}
                                   >
-                                    <SelectValue
-                                      placeholder={t(
-                                        'runConfig.hardcaseModePlaceholder'
-                                      )}
-                                    />
+                                    <SelectValue placeholder={t('runConfig.hardcaseModePlaceholder')} />
                                   </SelectTrigger>
                                   <SelectContent>
                                     <SelectItem value="off">关闭</SelectItem>
-                                    <SelectItem value="deterministic">
-                                      规则生成
-                                    </SelectItem>
-                                    <SelectItem value="llm">
-                                      LLM 生成
-                                    </SelectItem>
+                                    <SelectItem value="deterministic">规则生成</SelectItem>
+                                    <SelectItem value="llm">LLM 生成</SelectItem>
                                   </SelectContent>
                                 </Select>
                               </div>
                               <div className="grid gap-3 md:grid-cols-2">
                                 <div className="space-y-1">
-                                  <Label
-                                    className={DIAGNOSTICS_FIELD_LABEL_CLASS}
-                                  >
+                                  <Label className={DIAGNOSTICS_FIELD_LABEL_CLASS}>
                                     {t('runConfig.hardcasesPerFailedCase')}
                                   </Label>
                                   <Input
                                     type="number"
                                     value={String(hardcasesPerFailed)}
-                                    onChange={(e) =>
-                                      setHardcasesPerFailed(
-                                        Number(e.target.value || 0)
-                                      )
-                                    }
+                                    onChange={(e) => setHardcasesPerFailed(Number(e.target.value || 0))}
                                     min={0}
                                     max={20}
                                     className={cn(
                                       'h-9 rounded-lg border-border/70 bg-background shadow-none',
-                                      DIAGNOSTICS_FIELD_VALUE_CLASS
+                                      DIAGNOSTICS_FIELD_VALUE_CLASS,
                                     )}
                                   />
                                 </div>
                                 <div className="space-y-1">
-                                  <Label
-                                    className={DIAGNOSTICS_FIELD_LABEL_CLASS}
-                                  >
+                                  <Label className={DIAGNOSTICS_FIELD_LABEL_CLASS}>
                                     {t('runConfig.maxFailedCasesForHardcase')}
                                   </Label>
                                   <Input
                                     type="number"
                                     value={String(maxFailedForHardcase)}
-                                    onChange={(e) =>
-                                      setMaxFailedForHardcase(
-                                        Number(e.target.value || 0)
-                                      )
-                                    }
+                                    onChange={(e) => setMaxFailedForHardcase(Number(e.target.value || 0))}
                                     min={0}
                                     max={200}
                                     className={cn(
                                       'h-9 rounded-lg border-border/70 bg-background shadow-none',
-                                      DIAGNOSTICS_FIELD_VALUE_CLASS
+                                      DIAGNOSTICS_FIELD_VALUE_CLASS,
                                     )}
                                   />
                                 </div>
@@ -1838,9 +1532,7 @@ export function KGDiagnosticsPage() {
                           variant="outline"
                           className={DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS}
                           onClick={() => {
-                            const base = sanitizeFilename(
-                              `kg_diagnostics_${datasetId.trim() || 'dataset'}`
-                            )
+                            const base = sanitizeFilename(`kg_diagnostics_${datasetId.trim() || 'dataset'}`)
                             downloadJson(runResp ?? {}, `${base}.json`)
                             toast.success(t('toasts.runExported'))
                           }}
@@ -1851,9 +1543,7 @@ export function KGDiagnosticsPage() {
                         </Button>
                       </div>
 
-                      <p className="mt-2 px-1 text-[10.5px] leading-5 text-muted-foreground">
-                        {t('summary.runHint')}
-                      </p>
+                      <p className="mt-2 px-1 text-[10.5px] leading-5 text-muted-foreground">{t('summary.runHint')}</p>
                     </div>
                   </div>
                 </div>
@@ -1862,9 +1552,7 @@ export function KGDiagnosticsPage() {
               <section className="min-w-0 min-h-0 rounded-xl border border-border/70 bg-background shadow-sm">
                 <Tabs
                   value={activeView}
-                  onValueChange={(value) =>
-                    setActiveView(value as DiagnosticsView)
-                  }
+                  onValueChange={(value) => setActiveView(value as DiagnosticsView)}
                   className="flex h-full min-h-0 flex-col"
                 >
                   <div className="shrink-0 border-b border-border/70 px-4 pt-3">
@@ -1901,18 +1589,11 @@ export function KGDiagnosticsPage() {
                         value={maxCases}
                         className="min-w-[132px]"
                       />
-                      <DiagnosticsHeaderPill
-                        label={t('runConfig.k')}
-                        value={k}
-                        className="min-w-[112px]"
-                      />
+                      <DiagnosticsHeaderPill label={t('runConfig.k')} value={k} className="min-w-[112px]" />
                     </div>
                   </div>
 
-                  <TabsContent
-                    value="run"
-                    className="mt-0 min-h-0 flex-1 overflow-auto px-4 py-3"
-                  >
+                  <TabsContent value="run" className="mt-0 min-h-0 flex-1 overflow-auto px-4 py-3">
                     <div className="space-y-3">
                       <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-6">
                         <DiagnosticsMetricTile
@@ -1920,62 +1601,42 @@ export function KGDiagnosticsPage() {
                           value={formatMetricValue(summary?.baseline_hit_rate)}
                           caption="整体是否命中参考基础指标"
                           accent="sky"
-                          icon={
-                            <Target className="h-4 w-4" aria-hidden="true" />
-                          }
+                          icon={<Target className="h-4 w-4" aria-hidden="true" />}
                         />
                         <DiagnosticsMetricTile
                           label={t('summary.baselineMrr')}
                           value={formatMetricValue(summary?.baseline_mrr)}
                           caption="命中位置越靠前越好"
                           accent="violet"
-                          icon={
-                            <TrendingUp
-                              className="h-4 w-4"
-                              aria-hidden="true"
-                            />
-                          }
+                          icon={<TrendingUp className="h-4 w-4" aria-hidden="true" />}
                         />
                         <DiagnosticsMetricTile
                           label={t('summary.baselineRecall')}
                           value={formatMetricValue(summary?.baseline_recall)}
                           caption="召回覆盖越高越好"
                           accent="emerald"
-                          icon={
-                            <RefreshCcw
-                              className="h-4 w-4"
-                              aria-hidden="true"
-                            />
-                          }
+                          icon={<RefreshCcw className="h-4 w-4" aria-hidden="true" />}
                         />
                         <DiagnosticsMetricTile
                           label={t('summary.baselineNdcg')}
                           value={formatMetricValue(summary?.baseline_ndcg)}
                           caption="兼顾命中位置与排序质量"
                           accent="sky"
-                          icon={
-                            <Activity className="h-4 w-4" aria-hidden="true" />
-                          }
+                          icon={<Activity className="h-4 w-4" aria-hidden="true" />}
                         />
                         <DiagnosticsMetricTile
                           label={t('summary.baselineMap')}
                           value={formatMetricValue(summary?.baseline_map)}
                           caption="多位置平均精度"
                           accent="violet"
-                          icon={
-                            <Waypoints className="h-4 w-4" aria-hidden="true" />
-                          }
+                          icon={<Waypoints className="h-4 w-4" aria-hidden="true" />}
                         />
                         <DiagnosticsMetricTile
                           label={t('summary.hardcasesGenerated')}
-                          value={formatMetricValue(
-                            summary?.hardcases_generated
-                          )}
+                          value={formatMetricValue(summary?.hardcases_generated)}
                           caption="深挖样本生成的案例数量"
                           accent="amber"
-                          icon={
-                            <Sparkles className="h-4 w-4" aria-hidden="true" />
-                          }
+                          icon={<Sparkles className="h-4 w-4" aria-hidden="true" />}
                         />
                       </div>
 
@@ -1991,10 +1652,7 @@ export function KGDiagnosticsPage() {
                           activeTab={runAnalysisTab}
                           onTabChange={setRunAnalysisTab}
                         />
-                        <DiagnosticsRunRecordsPanel
-                          runs={runs}
-                          runRespJson={runRespJson}
-                        />
+                        <DiagnosticsRunRecordsPanel runs={runs} runRespJson={runRespJson} />
                       </div>
                     </div>
                   </TabsContent>
@@ -2010,9 +1668,7 @@ export function KGDiagnosticsPage() {
                             <Input
                               type="number"
                               value={String(qualityDocLimit)}
-                              onChange={(e) =>
-                                setQualityDocLimit(Number(e.target.value || 0))
-                              }
+                              onChange={(e) => setQualityDocLimit(Number(e.target.value || 0))}
                               min={1}
                               max={2000}
                               className="h-10 rounded-lg border-border/70 bg-card text-sm shadow-none"
@@ -2024,36 +1680,24 @@ export function KGDiagnosticsPage() {
                             </Label>
                             <Input
                               value={qualityPipelineHash}
-                              onChange={(e) =>
-                                setQualityPipelineHash(e.target.value)
-                              }
-                              placeholder={t(
-                                'qualityReport.pipelineHashPlaceholder'
-                              )}
+                              onChange={(e) => setQualityPipelineHash(e.target.value)}
+                              placeholder={t('qualityReport.pipelineHashPlaceholder')}
                               className="h-10 rounded-lg border-border/70 bg-card font-mono text-xs shadow-none"
                             />
                           </div>
                           <div className="flex items-end">
                             <Button
                               variant="outline"
-                              className={cn(
-                                DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS,
-                                'h-10 px-3'
-                              )}
+                              className={cn(DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS, 'h-10 px-3')}
                               onClick={loadQualityReport}
                               disabled={qualityLoading}
                             >
-                              <RefreshCcw
-                                className="h-4 w-4"
-                                aria-hidden="true"
-                              />
+                              <RefreshCcw className="h-4 w-4" aria-hidden="true" />
                               {t('qualityReport.pull')}
                             </Button>
                           </div>
                         </div>
-                        <p className="mt-3 text-[11px] leading-5 text-muted-foreground">
-                          {t('qualityReport.hint')}
-                        </p>
+                        <p className="mt-3 text-[11px] leading-5 text-muted-foreground">{t('qualityReport.hint')}</p>
                       </div>
 
                       <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
@@ -2075,10 +1719,7 @@ export function KGDiagnosticsPage() {
                                   <DiagnosticsMetricTile
                                     label={t('qualityReport.documentLimit')}
                                     value={qualityDocLimit}
-                                    caption={
-                                      qualityPipelineHash.trim() ||
-                                      t('workspace.currentPipelineLabel')
-                                    }
+                                    caption={qualityPipelineHash.trim() || t('workspace.currentPipelineLabel')}
                                   />
                                   {qualityHighlights.map(([key, value]) => (
                                     <DiagnosticsMetricTile
@@ -2098,11 +1739,7 @@ export function KGDiagnosticsPage() {
                             )}
                           </div>
 
-                          <DiagnosticsJsonPanel
-                            label={t('workspace.rawQualityJson')}
-                            value={qualityJson}
-                            rows={18}
-                          />
+                          <DiagnosticsJsonPanel label={t('workspace.rawQualityJson')} value={qualityJson} rows={18} />
                         </div>
                       </div>
                     </div>
@@ -2117,30 +1754,21 @@ export function KGDiagnosticsPage() {
                               {t('runs.runA')}
                             </Label>
                             <div className="flex gap-2">
-                              <Select
-                                value={selectedRunA}
-                                onValueChange={(v) => setSelectedRunA(v)}
-                              >
+                              <Select value={selectedRunA} onValueChange={(v) => setSelectedRunA(v)}>
                                 <SelectTrigger className="h-10 rounded-lg border-border/70 bg-card text-sm shadow-none">
-                                  <SelectValue
-                                    placeholder={t('runs.runAPlaceholder')}
-                                  />
+                                  <SelectValue placeholder={t('runs.runAPlaceholder')} />
                                 </SelectTrigger>
                                 <SelectContent>
                                   {runs.map((r) => (
                                     <SelectItem key={r.id} value={r.id}>
-                                      {String(r.created_at || '').slice(0, 19)}{' '}
-                                      · {String(r.id).slice(0, 8)}
+                                      {String(r.created_at || '').slice(0, 19)} · {String(r.id).slice(0, 8)}
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
                               <Button
                                 variant="outline"
-                                className={cn(
-                                  DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS,
-                                  'h-10 px-3'
-                                )}
+                                className={cn(DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS, 'h-10 px-3')}
                                 onClick={() => loadRun('a', selectedRunA)}
                                 disabled={!selectedRunA}
                               >
@@ -2154,30 +1782,21 @@ export function KGDiagnosticsPage() {
                               {t('runs.runB')}
                             </Label>
                             <div className="flex gap-2">
-                              <Select
-                                value={selectedRunB}
-                                onValueChange={(v) => setSelectedRunB(v)}
-                              >
+                              <Select value={selectedRunB} onValueChange={(v) => setSelectedRunB(v)}>
                                 <SelectTrigger className="h-10 rounded-lg border-border/70 bg-card text-sm shadow-none">
-                                  <SelectValue
-                                    placeholder={t('runs.runBPlaceholder')}
-                                  />
+                                  <SelectValue placeholder={t('runs.runBPlaceholder')} />
                                 </SelectTrigger>
                                 <SelectContent>
                                   {runs.map((r) => (
                                     <SelectItem key={r.id} value={r.id}>
-                                      {String(r.created_at || '').slice(0, 19)}{' '}
-                                      · {String(r.id).slice(0, 8)}
+                                      {String(r.created_at || '').slice(0, 19)} · {String(r.id).slice(0, 8)}
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
                               <Button
                                 variant="outline"
-                                className={cn(
-                                  DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS,
-                                  'h-10 px-3'
-                                )}
+                                className={cn(DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS, 'h-10 px-3')}
                                 onClick={() => loadRun('b', selectedRunB)}
                                 disabled={!selectedRunB}
                               >
@@ -2189,17 +1808,11 @@ export function KGDiagnosticsPage() {
                           <div className="flex items-end">
                             <Button
                               variant="outline"
-                              className={cn(
-                                DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS,
-                                'h-10 px-3'
-                              )}
+                              className={cn(DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS, 'h-10 px-3')}
                               onClick={refreshRuns}
                               disabled={runsLoading}
                             >
-                              <RefreshCcw
-                                className="h-4 w-4"
-                                aria-hidden="true"
-                              />
+                              <RefreshCcw className="h-4 w-4" aria-hidden="true" />
                               {t('runs.refresh')}
                             </Button>
                           </div>
@@ -2207,38 +1820,23 @@ export function KGDiagnosticsPage() {
                           <div className="flex items-end">
                             <Button
                               variant="outline"
-                              className={cn(
-                                DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS,
-                                'h-10 px-3'
-                              )}
+                              className={cn(DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS, 'h-10 px-3')}
                               onClick={() => {
-                                const a =
-                                  String(detailA?.run?.id || '').slice(0, 8) ||
-                                  'A'
-                                const b =
-                                  String(detailB?.run?.id || '').slice(0, 8) ||
-                                  'B'
+                                const a = String(detailA?.run?.id || '').slice(0, 8) || 'A'
+                                const b = String(detailB?.run?.id || '').slice(0, 8) || 'B'
                                 const diffName = sanitizeFilename(`kg_diagnostics_diff_${a}_vs_${b}`)
-                                downloadJson(
-                                  diff ?? {},
-                                  `${diffName}.json`
-                                )
+                                downloadJson(diff ?? {}, `${diffName}.json`)
                                 toast.success(t('compare.exported'))
                               }}
                               disabled={!diff}
                             >
-                              <Download
-                                className="h-4 w-4"
-                                aria-hidden="true"
-                              />
+                              <Download className="h-4 w-4" aria-hidden="true" />
                               {t('compare.export')}
                             </Button>
                           </div>
                         </div>
 
-                        <p className="mt-3 text-[11px] leading-5 text-muted-foreground">
-                          {t('runs.hint')}
-                        </p>
+                        <p className="mt-3 text-[11px] leading-5 text-muted-foreground">{t('runs.hint')}</p>
                       </div>
 
                       <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
@@ -2246,10 +1844,7 @@ export function KGDiagnosticsPage() {
                           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_420px]">
                             <div className="space-y-4">
                               <div className="grid gap-3 md:grid-cols-4">
-                                <DiagnosticsMetricTile
-                                  label={t('compare.hitFlips')}
-                                  value={diff.hit_flips.total}
-                                />
+                                <DiagnosticsMetricTile label={t('compare.hitFlips')} value={diff.hit_flips.total} />
                                 <DiagnosticsMetricTile
                                   label={t('workspace.compareImproved')}
                                   value={diff.hit_flips.improved}
@@ -2284,24 +1879,18 @@ export function KGDiagnosticsPage() {
                                             {String(r.case_id).slice(0, 8)}
                                           </div>
                                           <div className="mt-1 text-sm text-foreground">
-                                            {r.question ||
-                                              t('compare.noQuestion')}
+                                            {r.question || t('compare.noQuestion')}
                                           </div>
                                           <div className="mt-2 text-[11px] leading-5 tabular-nums text-muted-foreground">
-                                            命中 {String(r.a_hit)} →{' '}
-                                            {String(r.b_hit)} · Recall{' '}
-                                            {String(r.a_recall)} →{' '}
-                                            {String(r.b_recall)} · 变化{' '}
-                                            {String(r.delta_recall)}
+                                            命中 {String(r.a_hit)} → {String(r.b_hit)} · Recall {String(r.a_recall)} →{' '}
+                                            {String(r.b_recall)} · 变化 {String(r.delta_recall)}
                                           </div>
                                         </div>
                                       ))}
                                     </div>
                                   ) : (
                                     <DiagnosticsEmptyState
-                                      title={t(
-                                        'workspace.compareCasesEmptyTitle'
-                                      )}
+                                      title={t('workspace.compareCasesEmptyTitle')}
                                       description={t('compare.diffHint')}
                                     />
                                   )}
@@ -2319,57 +1908,46 @@ export function KGDiagnosticsPage() {
                                 <div className="px-4 py-4">
                                   {diffSummaryEntries.length ? (
                                     <div className="grid gap-2">
-                                      {diffSummaryEntries.map(
-                                        ([key, value]) => {
-                                          const row = value as {
-                                            a?: number | null
-                                            b?: number | null
-                                            delta?: number | null
-                                          }
-                                          const delta = Number(row.delta ?? 0)
-                                          return (
-                                            <div
-                                              key={key}
-                                              className="rounded-lg border border-border/70 bg-background px-3 py-3"
-                                            >
-                                              <div className="text-[11px] tracking-[0.08em] text-muted-foreground">
-                                                {formatDiagnosticsMetricLabel(
-                                                  key
-                                                )}
-                                              </div>
-                                              <div className="mt-1 text-sm font-medium tabular-nums text-foreground">
-                                                {String(row.a ?? '-')} →{' '}
-                                                {String(row.b ?? '-')}
-                                              </div>
-                                              <div
-                                                className={cn(
-                                                  'mt-1 text-[11px] tabular-nums',
-                                                  diagnosticsDeltaClass(delta)
-                                                )}
-                                              >
-                                                Δ {String(row.delta ?? '-')}
-                                              </div>
-                                            </div>
-                                          )
+                                      {diffSummaryEntries.map(([key, value]) => {
+                                        const row = value as {
+                                          a?: number | null
+                                          b?: number | null
+                                          delta?: number | null
                                         }
-                                      )}
+                                        const delta = Number(row.delta ?? 0)
+                                        return (
+                                          <div
+                                            key={key}
+                                            className="rounded-lg border border-border/70 bg-background px-3 py-3"
+                                          >
+                                            <div className="text-[11px] tracking-[0.08em] text-muted-foreground">
+                                              {formatDiagnosticsMetricLabel(key)}
+                                            </div>
+                                            <div className="mt-1 text-sm font-medium tabular-nums text-foreground">
+                                              {String(row.a ?? '-')} → {String(row.b ?? '-')}
+                                            </div>
+                                            <div
+                                              className={cn(
+                                                'mt-1 text-[11px] tabular-nums',
+                                                diagnosticsDeltaClass(delta),
+                                              )}
+                                            >
+                                              Δ {String(row.delta ?? '-')}
+                                            </div>
+                                          </div>
+                                        )
+                                      })}
                                     </div>
                                   ) : (
                                     <DiagnosticsEmptyState
-                                      title={t(
-                                        'workspace.compareSummaryEmptyTitle'
-                                      )}
+                                      title={t('workspace.compareSummaryEmptyTitle')}
                                       description={t('compare.diffHint')}
                                     />
                                   )}
                                 </div>
                               </div>
 
-                              <DiagnosticsJsonPanel
-                                label={t('compare.diffJson')}
-                                value={diffJson}
-                                rows={18}
-                              />
+                              <DiagnosticsJsonPanel label={t('compare.diffJson')} value={diffJson} rows={18} />
                             </div>
                           </div>
                         ) : (

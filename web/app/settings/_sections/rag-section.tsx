@@ -2,13 +2,7 @@
 
 import type { ReactNode } from 'react'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { SettingsSwitch } from '@/components/settings/settings-switch'
 import { RERANKER_PROVIDER_OPTIONS } from '@/lib/reranker-provider-options'
 import { HelpCircle, Sliders } from 'lucide-react'
@@ -31,10 +25,7 @@ function getRerankerProviderLabel(value: string): string {
   return RERANKER_PROVIDER_OPTIONS.find((option) => option.key === value)?.label ?? '大模型重排'
 }
 
-function InlineHelp({
-  label,
-  children,
-}: Readonly<{ label: string; children: ReactNode }>) {
+function InlineHelp({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
   return (
     <span className="group/help relative inline-flex align-middle">
       <button
@@ -60,12 +51,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
 
   return (
     <section>
-      <h2
-        className={cn(
-          'mb-2 flex items-center gap-2 text-[13px] font-medium',
-          systemPageTokens.heading
-        )}
-      >
+      <h2 className={cn('mb-2 flex items-center gap-2 text-[13px] font-medium', systemPageTokens.heading)}>
         <Sliders className="h-3.5 w-3.5 text-info" />
         检索增强生成参数（RAG）
       </h2>
@@ -74,14 +60,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
         <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2 lg:grid-cols-3">
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <div
-                className={cn(
-                  systemPageTokens.microLabel,
-                  'text-foreground/80'
-                )}
-              >
-                召回 Top K
-              </div>
+              <div className={cn(systemPageTokens.microLabel, 'text-foreground/80')}>召回 Top K</div>
               <span className="rounded bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
                 {rag.retrieval_top_k}
               </span>
@@ -98,21 +77,12 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               }
               className={RANGE_INPUT_CLASS}
             />
-            <p className="mt-1.5 text-[11px] text-muted-foreground">
-              每次检索返回的最相关文档片段数量
-            </p>
+            <p className="mt-1.5 text-[11px] text-muted-foreground">每次检索返回的最相关文档片段数量</p>
           </div>
 
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <div
-                className={cn(
-                  systemPageTokens.microLabel,
-                  'text-foreground/80'
-                )}
-              >
-                相似度阈值
-              </div>
+              <div className={cn(systemPageTokens.microLabel, 'text-foreground/80')}>相似度阈值</div>
               <span className="rounded bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
                 {rag.similarity_threshold.toFixed(1)}
               </span>
@@ -130,19 +100,13 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               }
               className={RANGE_INPUT_CLASS}
             />
-            <p className="mt-1.5 text-[11px] text-muted-foreground">
-              过滤掉相关性得分低于此值的片段
-            </p>
+            <p className="mt-1.5 text-[11px] text-muted-foreground">过滤掉相关性得分低于此值的片段</p>
           </div>
 
           <div className="rounded-[13px] border border-border bg-muted/25 p-3">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div
-                  className={cn(systemPageTokens.microLabel, 'text-foreground')}
-                >
-                  BM25 关键字检索
-                </div>
+                <div className={cn(systemPageTokens.microLabel, 'text-foreground')}>BM25 关键字检索</div>
                 <div className="mt-1 text-[11px] text-muted-foreground">
                   启用关键词通道，对精确词匹配召回更友好
                   <InlineHelp label="BM25 检索模式说明">
@@ -153,25 +117,19 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               <SettingsSwitch
                 aria-label="切换 BM25 检索"
                 checked={isBm25IndexEnabled}
-                onCheckedChange={(checked) =>
-                  updateRag({ bm25_index_enabled: checked })
-                }
+                onCheckedChange={(checked) => updateRag({ bm25_index_enabled: checked })}
               />
             </div>
             <p className="mt-2 text-[11px] text-muted-foreground">
               关闭后将不会使用或构建 BM25 索引
-              <InlineHelp label="关闭 BM25 的影响">
-                更省内存和 CPU，但可能降低关键词类问题的召回质量
-              </InlineHelp>
+              <InlineHelp label="关闭 BM25 的影响">更省内存和 CPU，但可能降低关键词类问题的召回质量</InlineHelp>
             </p>
           </div>
 
           <div className="rounded-[13px] border border-border bg-muted/25 p-3">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div
-                  className={cn(systemPageTokens.microLabel, 'text-foreground')}
-                >
+                <div className={cn(systemPageTokens.microLabel, 'text-foreground')}>
                   启用重排序
                   <InlineHelp label="Reranker 说明">
                     Reranker 会对候选片段二次排序，适合提升复杂问题的答案质量
@@ -179,17 +137,13 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
                 </div>
                 <div className="mt-1 text-[11px] text-muted-foreground">
                   用重排序模型对候选片段二次排序
-                  <InlineHelp label="重排序成本说明">
-                    通常可提升答案质量，但会增加检索链路延迟和模型调用成本
-                  </InlineHelp>
+                  <InlineHelp label="重排序成本说明">通常可提升答案质量，但会增加检索链路延迟和模型调用成本</InlineHelp>
                 </div>
               </div>
               <SettingsSwitch
                 aria-label="切换重排器"
                 checked={isRerankerEnabled}
-                onCheckedChange={(checked) =>
-                  updateRag({ enable_reranker: checked })
-                }
+                onCheckedChange={(checked) => updateRag({ enable_reranker: checked })}
               />
             </div>
             <p className="mt-2 text-[11px] text-muted-foreground">
@@ -213,15 +167,11 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               <SettingsSwitch
                 aria-label="切换回答附图"
                 checked={showImageInAnswer}
-                onCheckedChange={(checked) =>
-                  updateRag({ show_image_in_answer: checked })
-                }
+                onCheckedChange={(checked) => updateRag({ show_image_in_answer: checked })}
               />
             </div>
             <div className="mt-3 flex items-center gap-2">
-              <span className={cn(systemPageTokens.microLabel, 'shrink-0 text-foreground/75')}>
-                最多附图
-              </span>
+              <span className={cn(systemPageTokens.microLabel, 'shrink-0 text-foreground/75')}>最多附图</span>
               <Input
                 type="number"
                 min={0}
@@ -230,10 +180,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
                 disabled={!showImageInAnswer}
                 onChange={(event) =>
                   updateRag({
-                    image_append_max: Math.max(
-                      0,
-                      Math.min(10, Number.parseInt(event.target.value || '0', 10))
-                    ),
+                    image_append_max: Math.max(0, Math.min(10, Number.parseInt(event.target.value || '0', 10))),
                   })
                 }
                 className="h-8 rounded-[11px] border-info/15 bg-info/[0.025] text-[12px] disabled:opacity-60"
@@ -243,22 +190,12 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
 
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <div
-                className={cn(
-                  systemPageTokens.microLabel,
-                  'text-foreground/80'
-                )}
-              >
-                重排服务
-              </div>
+              <div className={cn(systemPageTokens.microLabel, 'text-foreground/80')}>重排服务</div>
               <span className="rounded bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
                 {rerankerProviderLabel}
               </span>
             </div>
-            <Select
-              value={rerankerProviderValue}
-              onValueChange={(value) => updateRag({ reranker_provider: value })}
-            >
+            <Select value={rerankerProviderValue} onValueChange={(value) => updateRag({ reranker_provider: value })}>
               <SelectTrigger className="h-9 rounded-[12px] border-info/15 bg-info/[0.025] text-[12px]">
                 <SelectValue placeholder="选择重排服务" />
               </SelectTrigger>
@@ -272,22 +209,13 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
             </Select>
             <p className="mt-1.5 text-[11px] text-muted-foreground">
               保存后作为默认重排服务，实验页只做临时覆盖
-              <InlineHelp label="重排服务后端字段">
-                对应后端 RERANKER_PROVIDER；主界面只显示中文服务名称
-              </InlineHelp>
+              <InlineHelp label="重排服务后端字段">对应后端 RERANKER_PROVIDER；主界面只显示中文服务名称</InlineHelp>
             </p>
           </div>
 
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <div
-                className={cn(
-                  systemPageTokens.microLabel,
-                  'text-foreground/80'
-                )}
-              >
-                重排数量
-              </div>
+              <div className={cn(systemPageTokens.microLabel, 'text-foreground/80')}>重排数量</div>
               <span className="rounded bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
                 {rag.reranker_top_n}
               </span>
@@ -299,32 +227,20 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               value={rag.reranker_top_n}
               onChange={(event) =>
                 updateRag({
-                  reranker_top_n: Math.max(
-                    1,
-                    Math.min(200, Number.parseInt(event.target.value || '1', 10))
-                  ),
+                  reranker_top_n: Math.max(1, Math.min(200, Number.parseInt(event.target.value || '1', 10))),
                 })
               }
               className="h-9 rounded-[12px] border-info/15 bg-info/[0.025] text-[12px]"
             />
             <p className="mt-1.5 text-[11px] text-muted-foreground">
               保存后作为默认重排数量，建议保持 10-50
-              <InlineHelp label="重排数量后端字段">
-                对应后端 RERANKER_TOP_N
-              </InlineHelp>
+              <InlineHelp label="重排数量后端字段">对应后端 RERANKER_TOP_N</InlineHelp>
             </p>
           </div>
 
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <div
-                className={cn(
-                  systemPageTokens.microLabel,
-                  'text-foreground/80'
-                )}
-              >
-                分块大小
-              </div>
+              <div className={cn(systemPageTokens.microLabel, 'text-foreground/80')}>分块大小</div>
               <span className="rounded bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
                 {rag.chunk_size}
               </span>
@@ -342,21 +258,12 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               }
               className={RANGE_INPUT_CLASS}
             />
-            <p className="mt-1.5 text-[11px] text-muted-foreground">
-              文档分块的目标字符数
-            </p>
+            <p className="mt-1.5 text-[11px] text-muted-foreground">文档分块的目标字符数</p>
           </div>
 
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <div
-                className={cn(
-                  systemPageTokens.microLabel,
-                  'text-foreground/80'
-                )}
-              >
-                分块重叠
-              </div>
+              <div className={cn(systemPageTokens.microLabel, 'text-foreground/80')}>分块重叠</div>
               <span className="rounded bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
                 {rag.chunk_overlap}
               </span>
@@ -384,14 +291,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
 
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <div
-                className={cn(
-                  systemPageTokens.microLabel,
-                  'text-foreground/80'
-                )}
-              >
-                最小分块长度
-              </div>
+              <div className={cn(systemPageTokens.microLabel, 'text-foreground/80')}>最小分块长度</div>
               <span className="rounded bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
                 {rag.chunk_min_chars}
               </span>
@@ -403,18 +303,13 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               value={rag.chunk_min_chars}
               onChange={(event) =>
                 updateRag({
-                  chunk_min_chars: Math.max(
-                    0,
-                    Number.parseInt(event.target.value || '0', 10)
-                  ),
+                  chunk_min_chars: Math.max(0, Number.parseInt(event.target.value || '0', 10)),
                 })
               }
             />
             <p className="mt-1.5 text-[11px] text-muted-foreground">
               入库时丢弃过短分块
-              <InlineHelp label="最小分块长度说明">
-                0 表示关闭；图片和表格分块会尽量保留，避免误删结构化内容
-              </InlineHelp>
+              <InlineHelp label="最小分块长度说明">0 表示关闭；图片和表格分块会尽量保留，避免误删结构化内容</InlineHelp>
             </p>
           </div>
         </div>

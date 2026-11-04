@@ -37,10 +37,7 @@ const PRESET_CATEGORY_CONFIGS: Array<{
 
 type CategoryTone = (typeof PRESET_CATEGORY_CONFIGS)[number]['tone']
 
-const CATEGORY_TONE_STYLES: Record<
-  CategoryTone,
-  { selected: string; iconWrap: string; icon: string; text: string }
-> = {
+const CATEGORY_TONE_STYLES: Record<CategoryTone, { selected: string; iconWrap: string; icon: string; text: string }> = {
   info: {
     selected: 'bg-info/10 border-info/30 ring-1 ring-info/20',
     iconWrap: 'bg-info/10',
@@ -135,7 +132,7 @@ export function DataClassifier({
         tone,
         label: t(`categories.${id}.label`),
       })),
-    [t]
+    [t],
   )
   const suggestedTagLabels = t.raw('suggestedTags') as string[]
   const [selectedCategory, setSelectedCategory] = useState<string | null>(initialCategory)
@@ -199,7 +196,7 @@ export function DataClassifier({
 
       setNewTag('')
     },
-    [onClassify, selectedCategory, tags]
+    [onClassify, selectedCategory, tags],
   )
 
   const handleRemoveTag = useCallback(
@@ -208,7 +205,7 @@ export function DataClassifier({
       setTags(updated)
       onClassify(selectedCategory || '', updated)
     },
-    [onClassify, selectedCategory, tags]
+    [onClassify, selectedCategory, tags],
   )
 
   const handleSelectCategory = useCallback(
@@ -218,7 +215,7 @@ export function DataClassifier({
       setSelectedCategory(category.label)
       onClassify(category.label, tags)
     },
-    [categories, onClassify, tags]
+    [categories, onClassify, tags],
   )
 
   const displayTags = showAllTags ? suggestedTagLabels : suggestedTagLabels.slice(0, 8)
@@ -266,7 +263,7 @@ export function DataClassifier({
                 onClick={() => handleSelectCategory(category.id)}
                 className={cn(
                   'focus-ring flex items-center gap-2 rounded-xl border p-3 text-left transition-colors duration-200 motion-reduce:transition-none',
-                  isSelected ? tone.selected : 'border-border bg-muted hover:bg-muted'
+                  isSelected ? tone.selected : 'border-border bg-muted hover:bg-muted',
                 )}
               >
                 <div className={cn('flex h-8 w-8 items-center justify-center rounded-lg', tone.iconWrap)}>
@@ -353,7 +350,7 @@ export function DataClassifier({
                     disabled={isAdded}
                     className={cn(
                       'inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs transition-colors duration-200 motion-reduce:transition-none',
-                      getSuggestionChipClassName(isAdded, isRecommended)
+                      getSuggestionChipClassName(isAdded, isRecommended),
                     )}
                   >
                     {isRecommended && !isAdded && <Sparkles className="size-3" />}

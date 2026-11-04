@@ -1,5 +1,5 @@
 const chunkPreviewMessages = {
-ChunkPreview: {
+  ChunkPreview: {
     emptyState: {
       badge: '切块预览',
       title: '上传文档，预览切片质量',
@@ -503,8 +503,7 @@ ChunkPreview: {
         originalTextMissing: '后端未返回 original_text（可能被 original_text_max_chars 限制）。',
         includeOriginalTextDisabled: '当前关闭了 include_original_text（预览性能设置）。',
         noPositionTagsTitle: '未检测到 PDF 位置标签',
-        noPositionTagsDescription:
-          String.raw`该解析结果不包含 @@page\tl\tr\tt\tb## 标签，无法做 PDF 框选高亮。你仍可使用“源码”面板做 offset 高亮。`,
+        noPositionTagsDescription: String.raw`该解析结果不包含 @@page\tl\tr\tt\tb## 标签，无法做 PDF 框选高亮。你仍可使用“源码”面板做 offset 高亮。`,
       },
       actions: {
         highlightOnly: '仅高亮',
@@ -549,8 +548,7 @@ ChunkPreview: {
       empty: {
         truncated: '原文已省略',
         missing: '原文未返回',
-        truncatedDetail:
-          '原文超过 {limit} 字符（当前 {total} 字符），后端已省略返回以避免传输过大。',
+        truncatedDetail: '原文超过 {limit} 字符（当前 {total} 字符），后端已省略返回以避免传输过大。',
         missingDetail: '原文内容较大（{total} 字符）时，后端可能会省略原文以避免传输过大。',
         fallbackHint: '你仍可使用右侧切片列表进行检查与入库。',
         readLocalLoading: '正在读取本地原文...',
@@ -1048,14 +1046,15 @@ ChunkPreview: {
         missingData: '后端未返回 explain 字段',
         exportJson: '导出 JSON',
         exportSuccess: '已导出 explain 快照',
-        description: '包含：命中规则、最终生效配置、pipeline_patch 与（可选）fallback 线索。建议作为入库前审计快照留存。',
+        description:
+          '包含：命中规则、最终生效配置、pipeline_patch 与（可选）fallback 线索。建议作为入库前审计快照留存。',
         payloadLabel: 'payload.explain',
       },
       states: {
         noPreviewData: '暂无预览数据',
       },
     },
-  }
+  },
 } as const
 
 export default chunkPreviewMessages

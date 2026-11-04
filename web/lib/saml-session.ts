@@ -20,8 +20,10 @@ export function getSamlCallbackErrorMessage(raw: string | null | undefined): str
   if (!value) {
     return SAML_CALLBACK_ERROR_MESSAGES[SAML_CALLBACK_ERROR_FALLBACK]
   }
-  return SAML_CALLBACK_ERROR_MESSAGES[value as keyof typeof SAML_CALLBACK_ERROR_MESSAGES]
-    || SAML_CALLBACK_ERROR_MESSAGES[SAML_CALLBACK_ERROR_FALLBACK]
+  return (
+    SAML_CALLBACK_ERROR_MESSAGES[value as keyof typeof SAML_CALLBACK_ERROR_MESSAGES] ||
+    SAML_CALLBACK_ERROR_MESSAGES[SAML_CALLBACK_ERROR_FALLBACK]
+  )
 }
 
 export type SamlBridgeState =

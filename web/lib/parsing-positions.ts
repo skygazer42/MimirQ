@@ -86,7 +86,7 @@ function upperBound(values: number[], target: number): number {
 
 export function createPositionTagIndexMapper(
   markdown: string,
-  ranges?: PositionTagRange[]
+  ranges?: PositionTagRange[],
 ): (rawIndex: number) => number {
   const raw = markdown || ''
   const tagRanges = (ranges || findPositionTagRanges(raw))

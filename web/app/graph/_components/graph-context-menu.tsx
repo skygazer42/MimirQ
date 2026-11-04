@@ -1,6 +1,18 @@
 'use client'
 
-import { Copy, FileText, Info, Layers, Maximize, MessageSquare, Route, Trash2, Type, X, Link as LinkIcon } from 'lucide-react'
+import {
+  Copy,
+  FileText,
+  Info,
+  Layers,
+  Maximize,
+  MessageSquare,
+  Route,
+  Trash2,
+  Type,
+  X,
+  Link as LinkIcon,
+} from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 
@@ -80,9 +92,7 @@ export function GraphContextMenu({
           <div className="truncate text-sm font-semibold text-foreground">
             {String(node?.label || node?.id || 'Node')}
           </div>
-          <div className="truncate font-mono text-[11px] text-muted-foreground">
-            {String(node?.id || '')}
-          </div>
+          <div className="truncate font-mono text-[11px] text-muted-foreground">{String(node?.id || '')}</div>
         </div>
         <div className="p-1">
           <Button
@@ -187,12 +197,8 @@ export function GraphContextMenu({
       <div>
         <div className="border-b border-border/60 bg-muted/30 px-3 py-2">
           <div className="text-[11px] font-medium uppercase text-muted-foreground">Link</div>
-          <div className="truncate text-sm font-semibold text-foreground">
-            {predicate || 'Relationship'}
-          </div>
-          <div className="truncate font-mono text-[11px] text-muted-foreground">
-            {getGraphContextLinkId(link)}
-          </div>
+          <div className="truncate text-sm font-semibold text-foreground">{predicate || 'Relationship'}</div>
+          <div className="truncate font-mono text-[11px] text-muted-foreground">{getGraphContextLinkId(link)}</div>
         </div>
         <div className="p-1">
           <Button
@@ -229,9 +235,7 @@ export function GraphContextMenu({
       <div>
         <div className="border-b border-border/60 bg-muted/30 px-3 py-2">
           <div className="text-[11px] font-medium uppercase text-muted-foreground">Graph</div>
-          <div className="truncate text-sm font-semibold text-foreground">
-            {getGraphViewLabel(viewMode)}
-          </div>
+          <div className="truncate text-sm font-semibold text-foreground">{getGraphViewLabel(viewMode)}</div>
         </div>
         <div className="p-1">
           <Button
@@ -288,9 +292,7 @@ export function GraphContextMenu({
       onMouseDown={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <div className="w-64 overflow-hidden rounded-xl border border-border/60 bg-card shadow-none">
-        {menuContent}
-      </div>
+      <div className="w-64 overflow-hidden rounded-xl border border-border/60 bg-card shadow-none">{menuContent}</div>
     </div>
   )
 }

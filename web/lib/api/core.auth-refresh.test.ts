@@ -80,9 +80,11 @@ describe('apiClient OIDC retry', () => {
       })
     })
 
-    await expect(apiClient.get('/scim/v2/Users', {
-      headers: { Authorization: 'Bearer scim-token', 'X-Tenant-ID': 'scim-tenant' },
-    })).rejects.toThrow('unauthorized')
+    await expect(
+      apiClient.get('/scim/v2/Users', {
+        headers: { Authorization: 'Bearer scim-token', 'X-Tenant-ID': 'scim-tenant' },
+      }),
+    ).rejects.toThrow('unauthorized')
     expect(tryRefreshOidcAccessToken).not.toHaveBeenCalled()
     expect(auth.clear).not.toHaveBeenCalled()
   })

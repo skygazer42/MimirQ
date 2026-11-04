@@ -101,7 +101,7 @@ export default function ParsingPage() {
 
       event.target.value = ''
     },
-    [addFiles, consumeUploadTargetFolderId]
+    [addFiles, consumeUploadTargetFolderId],
   )
 
   const toggleGovernanceFileSelection = useCallback((fileId: string) => {

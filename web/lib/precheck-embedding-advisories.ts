@@ -14,7 +14,7 @@ function toText(value: unknown): string | null {
 }
 
 export function normalizePrecheckEmbeddingAdvisories(
-  advisories: DatasetPrecheckEmbeddingAdvisory[] | null | undefined
+  advisories: DatasetPrecheckEmbeddingAdvisory[] | null | undefined,
 ): PrecheckEmbeddingAdvisoryView[] {
   if (!Array.isArray(advisories)) return []
 
@@ -35,9 +35,7 @@ export function normalizePrecheckEmbeddingAdvisories(
           ? '检测到中文或混合语料仍在使用通用向量模型'
           : `Embedding advisory: ${code}`
 
-      const description =
-        recommendedAction ||
-        '这是预检阶段给出的建议，不代表系统已经自动切换向量模型。'
+      const description = recommendedAction || '这是预检阶段给出的建议，不代表系统已经自动切换向量模型。'
 
       return {
         code,

@@ -1,43 +1,43 @@
-import Image from "next/image"
+import Image from 'next/image'
 
-import { cn } from "@/lib/utils"
+import { cn } from '@/lib/utils'
 
 export const PAGE_TITLE_ICON_NAMES = [
-  "access-review",
-  "audit-log",
-  "chat",
-  "chunk-preview",
-  "data-governance",
-  "dataset",
-  "diagnostics",
-  "feedback-quality",
-  "governance-config",
-  "group-management",
-  "ingestion-monitor",
-  "ingestion-operation",
-  "kg-retrieval-evaluation",
-  "kg-snapshot",
-  "knowledge-base",
-  "knowledge-graph",
-  "knowledge-management",
-  "members-rbac",
-  "parsing",
-  "profile-discovery",
-  "prompts",
-  "qa-history",
-  "quarantine-queue",
-  "rag-visualization",
-  "ragas-evaluation",
-  "report-export",
-  "retrieval-ablation",
-  "settings",
-  "usage-quota",
+  'access-review',
+  'audit-log',
+  'chat',
+  'chunk-preview',
+  'data-governance',
+  'dataset',
+  'diagnostics',
+  'feedback-quality',
+  'governance-config',
+  'group-management',
+  'ingestion-monitor',
+  'ingestion-operation',
+  'kg-retrieval-evaluation',
+  'kg-snapshot',
+  'knowledge-base',
+  'knowledge-graph',
+  'knowledge-management',
+  'members-rbac',
+  'parsing',
+  'profile-discovery',
+  'prompts',
+  'qa-history',
+  'quarantine-queue',
+  'rag-visualization',
+  'ragas-evaluation',
+  'report-export',
+  'retrieval-ablation',
+  'settings',
+  'usage-quota',
 ] as const
 
 export type PageTitleIconName = (typeof PAGE_TITLE_ICON_NAMES)[number]
 
 const PAGE_TITLE_ICON_SOURCES: Partial<Record<PageTitleIconName, string>> = {
-  "chunk-preview": "/page-title-icons/chunk-preview.svg",
+  'chunk-preview': '/page-title-icons/chunk-preview.svg',
 }
 
 type PageTitleIconProps = {
@@ -46,11 +46,7 @@ type PageTitleIconProps = {
   className?: string
 }
 
-export function PageTitleIcon({
-  name,
-  compact = true,
-  className,
-}: Readonly<PageTitleIconProps>) {
+export function PageTitleIcon({ name, compact = true, className }: Readonly<PageTitleIconProps>) {
   return (
     <Image
       src={PAGE_TITLE_ICON_SOURCES[name] ?? `/page-title-icons/${name}.png`}
@@ -62,11 +58,7 @@ export function PageTitleIcon({
       height={64}
       priority
       unoptimized
-      className={cn(
-        "pointer-events-none select-none object-contain",
-        compact ? "size-8" : "size-10",
-        className
-      )}
+      className={cn('pointer-events-none select-none object-contain', compact ? 'size-8' : 'size-10', className)}
     />
   )
 }

@@ -41,9 +41,7 @@ describe('global page title baseline', () => {
     ]
 
     for (const routeFile of routeFiles) {
-      expect(readWorkspaceFile(routeFile), routeFile).not.toContain(
-        'min-h-[95px]'
-      )
+      expect(readWorkspaceFile(routeFile), routeFile).not.toContain('min-h-[95px]')
     }
   })
 
@@ -61,7 +59,7 @@ describe('global page title baseline', () => {
     for (const routeFile of routeFiles) {
       const src = readWorkspaceFile(routeFile)
       expect(src, routeFile).not.toMatch(
-        /const \w+HeroCard = '[^']*(?:rounded-(?:2xl|\[26px\])|radial-gradient|shadow-\[0_)/
+        /const \w+HeroCard = '[^']*(?:rounded-(?:2xl|\[26px\])|radial-gradient|shadow-\[0_)/,
       )
     }
   })
@@ -81,11 +79,11 @@ describe('global page title baseline', () => {
       expect(src, routeFile).not.toContain('text-transparent')
     }
 
-    expect(
-      readWorkspaceFile('app/knowledge/ingestion/page-client.tsx')
-    ).not.toMatch(/const INGESTION_HERO_PANEL_CLASS =\s*'[^']*rounded-\[28px\]/)
-    expect(
-      readWorkspaceFile('app/knowledge/ingestion/operation-page-client.tsx')
-    ).not.toMatch(/const OPERATION_HERO_PANEL_CLASS =\s*'[^']*rounded-\[28px\]/)
+    expect(readWorkspaceFile('app/knowledge/ingestion/page-client.tsx')).not.toMatch(
+      /const INGESTION_HERO_PANEL_CLASS =\s*'[^']*rounded-\[28px\]/,
+    )
+    expect(readWorkspaceFile('app/knowledge/ingestion/operation-page-client.tsx')).not.toMatch(
+      /const OPERATION_HERO_PANEL_CLASS =\s*'[^']*rounded-\[28px\]/,
+    )
   })
 })

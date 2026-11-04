@@ -20,11 +20,7 @@ type NavigationVisibilityGateProps = {
   children: ReactNode
 }
 
-export function NavigationVisibilityGate({
-  moduleKey,
-  pageName,
-  children,
-}: Readonly<NavigationVisibilityGateProps>) {
+export function NavigationVisibilityGate({ moduleKey, pageName, children }: Readonly<NavigationVisibilityGateProps>) {
   const [hasHydrated, setHasHydrated] = useState(false)
   const { isDevMode } = useAuth()
   const access = useTenantAccess()

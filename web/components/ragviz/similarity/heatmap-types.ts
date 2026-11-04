@@ -19,9 +19,7 @@ function heatmapPointTuple(params: HeatmapClickParams): unknown[] | null {
   return null
 }
 
-export function resolveHeatmapPoint(
-  eventParams: unknown
-): SelectedHeatmapCell | null {
+export function resolveHeatmapPoint(eventParams: unknown): SelectedHeatmapCell | null {
   if (!isRecord(eventParams)) return null
   const params = eventParams as HeatmapClickParams
   if (params.seriesType !== undefined && params.seriesType !== 'heatmap') {

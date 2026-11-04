@@ -55,9 +55,7 @@ class DisjointSet {
   }
 }
 
-export function computeConnectedComponents(
-  graph: Readonly<Pick<GraphData, 'nodes' | 'links'>>
-): GraphClusterResult {
+export function computeConnectedComponents(graph: Readonly<Pick<GraphData, 'nodes' | 'links'>>): GraphClusterResult {
   const nodes: GraphNode[] = Array.isArray(graph.nodes) ? graph.nodes : []
   const links: GraphLink[] = Array.isArray(graph.links) ? graph.links : []
 

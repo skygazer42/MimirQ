@@ -104,10 +104,7 @@ describe('useParsedFiles auth scope persistence', () => {
   })
 
   it('resets and rehydrates from the new auth scope when the scope changes', async () => {
-    localStorage.setItem(
-      'mimirq_parsed_files:tenant-b:user-b',
-      makePersistedState('tenant-b-file.md')
-    )
+    localStorage.setItem('mimirq_parsed_files:tenant-b:user-b', makePersistedState('tenant-b-file.md'))
 
     useParsedFiles.getState().addParsedFile({
       filename: 'tenant-a-file.md',
@@ -128,9 +125,10 @@ describe('useParsedFiles auth scope persistence', () => {
   it('does not apply a pending update from the previous auth scope', async () => {
     let finishOldWrite: (() => void) | undefined
     cacheMock.saveDocContentToCache.mockImplementationOnce(
-      () => new Promise<void>((resolve) => {
-        finishOldWrite = resolve
-      })
+      () =>
+        new Promise<void>((resolve) => {
+          finishOldWrite = resolve
+        }),
     )
     useParsedFiles.setState({
       files: [
@@ -150,10 +148,7 @@ describe('useParsedFiles auth scope persistence', () => {
       markdownContent: 'tenant-a-secret',
       status: 'parsed',
     })
-    localStorage.setItem(
-      'mimirq_parsed_files:tenant-b:user-b',
-      makePersistedState('tenant-b.md', 'shared-document-id')
-    )
+    localStorage.setItem('mimirq_parsed_files:tenant-b:user-b', makePersistedState('tenant-b.md', 'shared-document-id'))
 
     authMock.scope = 'tenant-b:user-b'
     window.dispatchEvent(new Event('mimirq:auth-scope-changed'))
@@ -174,9 +169,9 @@ describe('useParsedFiles auth scope persistence', () => {
 
     expect(useParsedFiles.getState().files).toEqual([])
     expect(localStorage.getItem('mimirq_parsed_files')).toBeNull()
-    expect(
-      localStorage.getItem('mimirq_parsed_files:default:anonymous')?.includes('legacy-anon.md') ?? false
-    ).toBe(false)
+    expect(localStorage.getItem('mimirq_parsed_files:default:anonymous')?.includes('legacy-anon.md') ?? false).toBe(
+      false,
+    )
   })
 
   it('drops legacy unscoped state instead of exposing it in an authenticated scope', async () => {
@@ -187,9 +182,9 @@ describe('useParsedFiles auth scope persistence', () => {
 
     expect(useParsedFiles.getState().files).toEqual([])
     expect(localStorage.getItem('mimirq_parsed_files')).toBeNull()
-    expect(
-      localStorage.getItem('mimirq_parsed_files:tenant-a:user-a')?.includes('legacy-private.md') ?? false
-    ).toBe(false)
+    expect(localStorage.getItem('mimirq_parsed_files:tenant-a:user-a')?.includes('legacy-private.md') ?? false).toBe(
+      false,
+    )
   })
 
   it('removes the legacy unscoped key when scoped storage is cleared', () => {
@@ -220,7 +215,7 @@ describe('useParsedFiles auth scope persistence', () => {
       () =>
         new Promise<void>((resolve) => {
           resolveSave = resolve
-        })
+        }),
     )
 
     const updatePromise = useParsedFiles.getState().updateParsedFile(fileId, {
@@ -231,7 +226,7 @@ describe('useParsedFiles auth scope persistence', () => {
 
     expect(saveDocContentToCache).toHaveBeenCalledWith(
       expect.objectContaining({ id: fileId, markdownContent: '# new', originalMarkdownContent: '# old' }),
-      'tenant-a:user-a'
+      'tenant-a:user-a',
     )
 
     authMock.scope = 'tenant-b:user-b'
@@ -250,7 +245,7 @@ describe('useParsedFiles auth scope persistence', () => {
       () =>
         new Promise<void>((resolve) => {
           pendingRehydrates.push(resolve)
-        })
+        }),
     )
 
     try {
@@ -314,7 +309,7 @@ describe('useParsedFiles auth scope persistence', () => {
       () =>
         new Promise<void>((resolve) => {
           resolveSave = resolve
-        })
+        }),
     )
 
     const updatePromise = useParsedFiles.getState().updateParsedFile('shared-document-id', {
@@ -328,9 +323,9 @@ describe('useParsedFiles auth scope persistence', () => {
     expect(useParsedFiles.getState().files).toEqual([])
     expect(invalidateDocCacheScopeWrites).toHaveBeenCalledWith('tenant-a:user-a')
     expect(clearDocCachesForScope).toHaveBeenCalledWith('tenant-a:user-a')
-    expect(
-      vi.mocked(invalidateDocCacheScopeWrites).mock.invocationCallOrder[0]
-    ).toBeLessThan(vi.mocked(clearDocCachesForScope).mock.invocationCallOrder[0])
+    expect(vi.mocked(invalidateDocCacheScopeWrites).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(clearDocCachesForScope).mock.invocationCallOrder[0],
+    )
 
     ;(resolveSave as unknown as () => void)()
     await updatePromise
@@ -355,7 +350,7 @@ describe('useParsedFiles auth scope persistence', () => {
     await vi.waitFor(() => {
       expect(warnSpy).toHaveBeenCalledWith(
         'Failed to clear parsed file browser cache for auth scope',
-        expect.any(Error)
+        expect.any(Error),
       )
     })
 
@@ -388,13 +383,13 @@ describe('useParsedFiles auth scope persistence', () => {
         () =>
           new Promise<void>((resolve) => {
             resolveOldSave = resolve
-          })
+          }),
       )
       .mockImplementationOnce(
         () =>
           new Promise<void>((resolve) => {
             resolveNewSave = resolve
-          })
+          }),
       )
 
     const oldUpdatePromise = useParsedFiles.getState().updateParsedFile('shared-document-id', {

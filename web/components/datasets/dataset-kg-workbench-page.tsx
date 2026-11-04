@@ -5,16 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Remote } from 'comlink'
 import { useParams } from 'next/navigation'
 import { toast } from 'sonner'
-import {
-  ArrowLeft,
-  Loader2,
-  Network,
-  RefreshCw,
-  Search,
-  Settings2,
-  Sparkles,
-  Wrench,
-} from 'lucide-react'
+import { ArrowLeft, Loader2, Network, RefreshCw, Search, Settings2, Sparkles, Wrench } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
 import { GraphViewer, type GraphViewerRef } from '@/components/graph/graph-viewer'
@@ -66,7 +57,7 @@ function primitiveText(value: unknown, fallback = ''): string {
 async function runWithConcurrency<T>(
   items: T[],
   concurrency: number,
-  worker: (item: T, index: number) => Promise<void>
+  worker: (item: T, index: number) => Promise<void>,
 ): Promise<void> {
   const resolvedConcurrency = Math.max(1, Math.floor(concurrency))
   let nextIndex = 0
@@ -85,7 +76,12 @@ async function runWithConcurrency<T>(
 
 const DOCS_LOADING_SKELETON_KEYS = ['docs-loading-1', 'docs-loading-2', 'docs-loading-3', 'docs-loading-4']
 const SEARCH_RESULTS_SKELETON_KEYS = ['search-loading-1', 'search-loading-2', 'search-loading-3']
-const GRAPH_STATS_SKELETON_KEYS = ['graph-stat-loading-1', 'graph-stat-loading-2', 'graph-stat-loading-3', 'graph-stat-loading-4']
+const GRAPH_STATS_SKELETON_KEYS = [
+  'graph-stat-loading-1',
+  'graph-stat-loading-2',
+  'graph-stat-loading-3',
+  'graph-stat-loading-4',
+]
 const KG_WORKBENCH_DOCUMENT_PARAMS = {
   skip: 0,
   limit: 100,
@@ -190,7 +186,9 @@ export default function DatasetKGWorkbenchPage() {
   const [extractRunning, setExtractRunning] = useState(false)
   const [singleExtractingDocId, setSingleExtractingDocId] = useState<string | null>(null)
   const [extractProgress, setExtractProgress] = useState<{ done: number; total: number } | null>(null)
-  const [extractResults, setExtractResults] = useState<Record<string, { ok: true; res: KGExtractResponse } | { ok: false; error: string }>>({})
+  const [extractResults, setExtractResults] = useState<
+    Record<string, { ok: true; res: KGExtractResponse } | { ok: false; error: string }>
+  >({})
 
   // Step 3: Graph preview
   const [graphLoading, setGraphLoading] = useState(false)
@@ -263,12 +261,14 @@ export default function DatasetKGWorkbenchPage() {
 
     let degree = 0
     for (const link of graphData.links) {
-      const source = typeof link.source === 'object' && link.source
-        ? String((link.source as { id?: string }).id ?? '')
-        : String(link.source ?? '')
-      const target = typeof link.target === 'object' && link.target
-        ? String((link.target as { id?: string }).id ?? '')
-        : String(link.target ?? '')
+      const source =
+        typeof link.source === 'object' && link.source
+          ? String((link.source as { id?: string }).id ?? '')
+          : String(link.source ?? '')
+      const target =
+        typeof link.target === 'object' && link.target
+          ? String((link.target as { id?: string }).id ?? '')
+          : String(link.target ?? '')
       if (source === selectedGraphNodeId || target === selectedGraphNodeId) {
         degree += 1
       }
@@ -292,7 +292,7 @@ export default function DatasetKGWorkbenchPage() {
       { label: 'Preview', description: '图预览' },
       { label: 'Search', description: '快速检索' },
     ],
-    []
+    [],
   )
 
   const currentStep = useMemo(() => {
@@ -344,30 +344,32 @@ export default function DatasetKGWorkbenchPage() {
       }
     }
 
-    detachPromise((async () => {
-      try {
-        let api = graphClusteringApiRef.current
-        if (!graphClusteringWorkerRef.current || !api) {
-          const { wrap } = await import('comlink')
-          if (cancelled) return
-          graphClusteringWorkerRef.current = new Worker(
-            new URL('../../workers/graph-clustering.worker.ts', import.meta.url),
-            { type: 'module' }
-          )
-          api = wrap<GraphClusteringWorkerApi>(graphClusteringWorkerRef.current)
-          graphClusteringApiRef.current = api
-        }
+    detachPromise(
+      (async () => {
+        try {
+          let api = graphClusteringApiRef.current
+          if (!graphClusteringWorkerRef.current || !api) {
+            const { wrap } = await import('comlink')
+            if (cancelled) return
+            graphClusteringWorkerRef.current = new Worker(
+              new URL('../../workers/graph-clustering.worker.ts', import.meta.url),
+              { type: 'module' },
+            )
+            api = wrap<GraphClusteringWorkerApi>(graphClusteringWorkerRef.current)
+            graphClusteringApiRef.current = api
+          }
 
-        const result = await api.computeConnectedComponents({ nodes, links })
-        if (cancelled) return
-        if (graphClusteringSeqRef.current !== seq) return
-        setGraphClusterResult(result)
-      } catch (e) {
-        reportClientWarning('Dataset graph clustering worker failed; falling back to main thread', e)
-        graphClusteringDisabledRef.current = true
-        detachPromise(computeOnMainThread())
-      }
-    })())
+          const result = await api.computeConnectedComponents({ nodes, links })
+          if (cancelled) return
+          if (graphClusteringSeqRef.current !== seq) return
+          setGraphClusterResult(result)
+        } catch (e) {
+          reportClientWarning('Dataset graph clustering worker failed; falling back to main thread', e)
+          graphClusteringDisabledRef.current = true
+          detachPromise(computeOnMainThread())
+        }
+      })(),
+    )
 
     return () => {
       cancelled = true
@@ -417,29 +419,32 @@ export default function DatasetKGWorkbenchPage() {
 
   const clearSelection = useCallback(() => setSelectedDocIds(new Set()), [])
 
-  const extractOneDoc = useCallback(async (docId: string) => {
-    const id = String(docId || '').trim()
-    if (!id) return
-    if (singleExtractingDocId) return
+  const extractOneDoc = useCallback(
+    async (docId: string) => {
+      const id = String(docId || '').trim()
+      if (!id) return
+      if (singleExtractingDocId) return
 
-    setSingleExtractingDocId(id)
-    try {
-      const res = await kgApi.extract(id, {
-        async: false,
-        pipeline_hash: effectivePipelineHash,
-        replace_existing: replaceExisting,
-        prune_orphan_entities: pruneOrphans,
-      })
-      setExtractResults((prev) => ({ ...prev, [id]: { ok: true, res } }))
-      toast.success(`KG 抽取完成：events=${Number(res?.event_count || 0)}`)
-    } catch (e: unknown) {
-      const msg = formatApiError(e, 'KG 抽取失败')
-      setExtractResults((prev) => ({ ...prev, [id]: { ok: false, error: msg } }))
-      toast.error(msg)
-    } finally {
-      setSingleExtractingDocId(null)
-    }
-  }, [effectivePipelineHash, pruneOrphans, replaceExisting, singleExtractingDocId])
+      setSingleExtractingDocId(id)
+      try {
+        const res = await kgApi.extract(id, {
+          async: false,
+          pipeline_hash: effectivePipelineHash,
+          replace_existing: replaceExisting,
+          prune_orphan_entities: pruneOrphans,
+        })
+        setExtractResults((prev) => ({ ...prev, [id]: { ok: true, res } }))
+        toast.success(`KG 抽取完成：events=${Number(res?.event_count || 0)}`)
+      } catch (e: unknown) {
+        const msg = formatApiError(e, 'KG 抽取失败')
+        setExtractResults((prev) => ({ ...prev, [id]: { ok: false, error: msg } }))
+        toast.error(msg)
+      } finally {
+        setSingleExtractingDocId(null)
+      }
+    },
+    [effectivePipelineHash, pruneOrphans, replaceExisting, singleExtractingDocId],
+  )
 
   const extractSelected = useCallback(async () => {
     if (extractRunning) return
@@ -487,15 +492,7 @@ export default function DatasetKGWorkbenchPage() {
     } finally {
       setExtractRunning(false)
     }
-  }, [
-    bulkConcurrency,
-    bulkMaxDocs,
-    effectivePipelineHash,
-    extractRunning,
-    pruneOrphans,
-    replaceExisting,
-    scopedDocIds,
-  ])
+  }, [bulkConcurrency, bulkMaxDocs, effectivePipelineHash, extractRunning, pruneOrphans, replaceExisting, scopedDocIds])
 
   const loadGraphPreview = useCallback(async () => {
     if (!datasetId) return
@@ -550,15 +547,15 @@ export default function DatasetKGWorkbenchPage() {
     scopedDocIds,
   ])
 
-	  const scopedGraphUrl = useMemo(() => {
-	    const maxDocs = limitPositiveInt(graphMaxDocs, 50, { min: 1, max: 200 })
-	    const docIds = scopedDocIds.slice(0, maxDocs)
-	    const qs = new URLSearchParams()
-	    if (docIds.length) qs.set('document_ids', docIds.join(','))
-	    if (effectivePipelineHash) qs.set('pipeline_hash', effectivePipelineHash)
-	    const query = qs.toString()
-	    return query ? `/graph?${query}` : '/graph'
-	  }, [effectivePipelineHash, graphMaxDocs, scopedDocIds])
+  const scopedGraphUrl = useMemo(() => {
+    const maxDocs = limitPositiveInt(graphMaxDocs, 50, { min: 1, max: 200 })
+    const docIds = scopedDocIds.slice(0, maxDocs)
+    const qs = new URLSearchParams()
+    if (docIds.length) qs.set('document_ids', docIds.join(','))
+    if (effectivePipelineHash) qs.set('pipeline_hash', effectivePipelineHash)
+    const query = qs.toString()
+    return query ? `/graph?${query}` : '/graph'
+  }, [effectivePipelineHash, graphMaxDocs, scopedDocIds])
 
   const runQuickSearch = useCallback(async () => {
     const q = searchQuery.trim()
@@ -600,14 +597,14 @@ export default function DatasetKGWorkbenchPage() {
     </span>
   )
 
-	  return (
-	    <AppFrame>
-	      <PageScaffold
-	        title={dataset?.name ? `KG Workbench · ${dataset.name}` : 'KG Workbench'}
-	        badge="Dataset KG"
-	        icon={Network}
-	        iconColor="text-indigo"
-	        description={headerDescription}
+  return (
+    <AppFrame>
+      <PageScaffold
+        title={dataset?.name ? `KG Workbench · ${dataset.name}` : 'KG Workbench'}
+        badge="Dataset KG"
+        icon={Network}
+        iconColor="text-indigo"
+        description={headerDescription}
         actions={
           <div className="flex items-center gap-2">
             <Button variant="outline" className="gap-2" onClick={() => router.push('/datasets')}>
@@ -615,7 +612,11 @@ export default function DatasetKGWorkbenchPage() {
               返回
             </Button>
             {datasetId ? (
-              <Button variant="outline" className="gap-2" onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}>
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}
+              >
                 <Settings2 className="w-4 h-4" />
                 入库设置
               </Button>
@@ -628,7 +629,12 @@ export default function DatasetKGWorkbenchPage() {
               <Sparkles className="w-4 h-4" />
               Snapshots
             </Button>
-            <Button variant="outline" className="gap-2" onClick={() => router.push(scopedGraphUrl)} disabled={scopedDocIds.length === 0}>
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => router.push(scopedGraphUrl)}
+              disabled={scopedDocIds.length === 0}
+            >
               <Network className="w-4 h-4" />
               打开全图
             </Button>
@@ -701,7 +707,11 @@ export default function DatasetKGWorkbenchPage() {
                       onClick={() => setActiveDocQuery(docQuery.trim())}
                       disabled={docsLoading}
                     >
-                      {docsLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Search className="w-4 h-4" />}
+                      {docsLoading ? (
+                        <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                      ) : (
+                        <Search className="w-4 h-4" />
+                      )}
                       搜索
                     </Button>
                   </div>
@@ -725,7 +735,7 @@ export default function DatasetKGWorkbenchPage() {
                           key={id}
                           className={cn(
                             'flex items-start gap-2 rounded-lg border px-2 py-2 cursor-pointer transition-colors',
-                            checked ? 'border-primary/30 bg-primary/5' : 'border-border/60 hover:bg-muted/40'
+                            checked ? 'border-primary/30 bg-primary/5' : 'border-border/60 hover:bg-muted/40',
                           )}
                         >
                           <Checkbox
@@ -743,8 +753,8 @@ export default function DatasetKGWorkbenchPage() {
                                 </Badge>
                               ) : null}
                             </div>
-	                          </div>
-	                          <div className="flex-shrink-0">
+                          </div>
+                          <div className="flex-shrink-0">
                             <Button
                               variant="outline"
                               size="sm"
@@ -764,8 +774,8 @@ export default function DatasetKGWorkbenchPage() {
                               Extract
                             </Button>
                           </div>
-	                        </label>
-	                      )
+                        </label>
+                      )
                     })
                   )}
                 </div>
@@ -776,7 +786,12 @@ export default function DatasetKGWorkbenchPage() {
                 <div className="grid gap-3 grid-cols-2">
                   <div className="space-y-1">
                     <Label className="text-xs text-muted-foreground">pipeline_hash (optional)</Label>
-                    <Input value={pipelineHash} onChange={(e) => setPipelineHash(e.target.value)} placeholder="e.g. 9f8a…" className="h-9 font-mono text-xs" />
+                    <Input
+                      value={pipelineHash}
+                      onChange={(e) => setPipelineHash(e.target.value)}
+                      placeholder="e.g. 9f8a…"
+                      className="h-9 font-mono text-xs"
+                    />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs text-muted-foreground">max docs</Label>
@@ -790,7 +805,11 @@ export default function DatasetKGWorkbenchPage() {
                   <div className="flex items-center gap-2 col-span-2">
                     <Checkbox checked={replaceExisting} onCheckedChange={(v) => setReplaceExisting(Boolean(v))} />
                     <span className="text-xs">replace existing</span>
-                    <Checkbox checked={pruneOrphans} onCheckedChange={(v) => setPruneOrphans(Boolean(v))} className="ml-4" />
+                    <Checkbox
+                      checked={pruneOrphans}
+                      onCheckedChange={(v) => setPruneOrphans(Boolean(v))}
+                      className="ml-4"
+                    />
                     <span className="text-xs">prune orphans</span>
                   </div>
                   <div className="space-y-1 col-span-2">
@@ -810,7 +829,11 @@ export default function DatasetKGWorkbenchPage() {
                     onClick={() => detachPromise(extractSelected())}
                     disabled={extractRunning || scopedDocIds.length === 0}
                   >
-                    {extractRunning ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Sparkles className="w-4 h-4" />}
+                    {extractRunning ? (
+                      <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                    ) : (
+                      <Sparkles className="w-4 h-4" />
+                    )}
                     抽取选中文档
                   </Button>
                   {extractProgress ? (
@@ -827,7 +850,10 @@ export default function DatasetKGWorkbenchPage() {
                       {Object.entries(extractResults)
                         .slice(0, 50)
                         .map(([docId, r]) => (
-                          <div key={docId} className="flex items-center justify-between gap-2 rounded-md border border-border/60 px-2 py-1">
+                          <div
+                            key={docId}
+                            className="flex items-center justify-between gap-2 rounded-md border border-border/60 px-2 py-1"
+                          >
                             <span className="font-mono text-[11px] truncate">{docId}</span>
                             {r.ok ? (
                               <Badge variant="outline" className="font-mono text-[11px]">
@@ -857,8 +883,17 @@ export default function DatasetKGWorkbenchPage() {
                       if (e.key === 'Enter') detachPromise(runQuickSearch())
                     }}
                   />
-                  <Button variant="outline" className="gap-2" onClick={() => detachPromise(runQuickSearch())} disabled={searchLoading}>
-                    {searchLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Search className="w-4 h-4" />}
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() => detachPromise(runQuickSearch())}
+                    disabled={searchLoading}
+                  >
+                    {searchLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                    ) : (
+                      <Search className="w-4 h-4" />
+                    )}
                     搜索
                   </Button>
                 </div>
@@ -878,7 +913,11 @@ export default function DatasetKGWorkbenchPage() {
                   >
                     event
                   </Button>
-                  <Button variant={searchKind === 'all' ? 'secondary' : 'outline'} size="sm" onClick={() => setSearchKind('all')}>
+                  <Button
+                    variant={searchKind === 'all' ? 'secondary' : 'outline'}
+                    size="sm"
+                    onClick={() => setSearchKind('all')}
+                  >
                     all
                   </Button>
                 </div>
@@ -920,11 +959,27 @@ export default function DatasetKGWorkbenchPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <Button variant="outline" size="sm" className="gap-2" onClick={() => detachPromise(loadGraphPreview())} disabled={graphLoading}>
-                      {graphLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="w-4 h-4" />}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => detachPromise(loadGraphPreview())}
+                      disabled={graphLoading}
+                    >
+                      {graphLoading ? (
+                        <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                      ) : (
+                        <RefreshCw className="w-4 h-4" />
+                      )}
                       加载预览
                     </Button>
-                    <Button variant="outline" size="sm" className="gap-2" onClick={() => router.push(scopedGraphUrl)} disabled={scopedDocIds.length === 0}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => router.push(scopedGraphUrl)}
+                      disabled={scopedDocIds.length === 0}
+                    >
                       <Network className="w-4 h-4" />
                       全屏
                     </Button>
@@ -946,7 +1001,10 @@ export default function DatasetKGWorkbenchPage() {
                     <span className="text-xs">entity links</span>
                   </div>
                   <div className="flex items-center gap-2 pt-5">
-                    <Checkbox checked={includeRelationLinks} onCheckedChange={(v) => setIncludeRelationLinks(Boolean(v))} />
+                    <Checkbox
+                      checked={includeRelationLinks}
+                      onCheckedChange={(v) => setIncludeRelationLinks(Boolean(v))}
+                    />
                     <span className="text-xs">relation links</span>
                   </div>
                   <div className="space-y-1">

@@ -9,10 +9,7 @@ function stableKey(tag: string): string {
   return tag.trim().toLowerCase()
 }
 
-export function normalizeTag(
-  raw: unknown,
-  opts: { maxLen?: number } = {}
-): string | null {
+export function normalizeTag(raw: unknown, opts: { maxLen?: number } = {}): string | null {
   if (typeof raw !== 'string') return null
   const maxLen = Math.max(1, Math.min(256, Number(opts.maxLen ?? DEFAULT_MAX_TAG_LEN)))
 
@@ -27,10 +24,7 @@ export function normalizeTag(
   return s
 }
 
-export function normalizeTags(
-  raw: unknown,
-  opts: { maxTags?: number; maxLen?: number } = {}
-): string[] {
+export function normalizeTags(raw: unknown, opts: { maxTags?: number; maxLen?: number } = {}): string[] {
   const maxTags = Math.max(0, Math.min(200, Number(opts.maxTags ?? DEFAULT_MAX_TAGS)))
   const out: string[] = []
   const seen = new Set<string>()
@@ -49,10 +43,7 @@ export function normalizeTags(
   return out
 }
 
-export function parseTagsText(
-  text: string,
-  opts: { maxTags?: number; maxLen?: number } = {}
-): string[] {
+export function parseTagsText(text: string, opts: { maxTags?: number; maxLen?: number } = {}): string[] {
   const maxTags = Math.max(0, Math.min(200, Number(opts.maxTags ?? DEFAULT_MAX_TAGS)))
   const out: string[] = []
   const seen = new Set<string>()

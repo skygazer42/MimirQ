@@ -1,12 +1,6 @@
 'use client'
 
-import {
-  ArrowRightLeft,
-  BarChart3,
-  Network,
-  Search,
-  Table2,
-} from 'lucide-react'
+import { ArrowRightLeft, BarChart3, Network, Search, Table2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -140,11 +134,9 @@ export function SnapshotStudioToolbar({
                   'inline-flex items-center justify-center gap-1 rounded-full px-2 text-[11.5px] font-semibold transition-colors',
                   studioView === item.value
                     ? 'bg-info text-primary-foreground shadow-sm'
-                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
                 )}
-                onClick={() =>
-                  onStudioViewChange(item.value as StudioCanvasView)
-                }
+                onClick={() => onStudioViewChange(item.value as StudioCanvasView)}
               >
                 <span className="hidden 2xl:inline-flex">{item.icon}</span>
                 <span className="hidden 2xl:inline">{item.label}</span>
@@ -159,10 +151,7 @@ export function SnapshotStudioToolbar({
             onClick={onDiffClick}
             disabled={isRunning}
           >
-            <ArrowRightLeft
-              className={cn('h-3.5 w-3.5', isRunning && 'animate-spin')}
-              aria-hidden="true"
-            />
+            <ArrowRightLeft className={cn('h-3.5 w-3.5', isRunning && 'animate-spin')} aria-hidden="true" />
             <span className="hidden 2xl:inline">Diff 对比</span>
             <span className="2xl:hidden">Diff</span>
           </Button>
@@ -172,9 +161,7 @@ export function SnapshotStudioToolbar({
               type="button"
               className={cn(
                 'inline-flex items-center justify-center gap-1 rounded-full px-2 text-[11.5px] font-medium transition-colors',
-                activeSnapshotView === 'a'
-                  ? 'bg-success/10 text-success'
-                  : 'text-muted-foreground hover:bg-muted/50'
+                activeSnapshotView === 'a' ? 'bg-success/10 text-success' : 'text-muted-foreground hover:bg-muted/50',
               )}
               onClick={() => onSnapshotViewChange('a')}
             >
@@ -187,9 +174,7 @@ export function SnapshotStudioToolbar({
               type="button"
               className={cn(
                 'inline-flex items-center justify-center gap-1 rounded-full px-2 text-[11.5px] font-medium transition-colors',
-                activeSnapshotView === 'b'
-                  ? 'bg-info/10 text-info'
-                  : 'text-muted-foreground hover:bg-muted/50'
+                activeSnapshotView === 'b' ? 'bg-info/10 text-info' : 'text-muted-foreground hover:bg-muted/50',
               )}
               onClick={() => onSnapshotViewChange('b')}
             >

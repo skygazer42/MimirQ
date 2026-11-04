@@ -29,7 +29,9 @@ vi.mock('@/components/full-screen-frame', () => ({
   ),
 }))
 vi.mock('@/components/ui/button', () => ({
-  Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>,
+  Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
+    <button {...props}>{children}</button>
+  ),
 }))
 
 import SamlCallbackPage from './page'
@@ -67,7 +69,7 @@ describe('SAML callback page', () => {
     expect(mocks.setAuthSession).toHaveBeenCalledWith(
       expect.objectContaining({
         token: expect.objectContaining({ access_token: 'jwt-token' }),
-      })
+      }),
     )
     expect(mocks.replace).toHaveBeenCalledWith('/datasets/123')
 

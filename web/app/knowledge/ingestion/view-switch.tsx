@@ -26,8 +26,7 @@ export function IngestionViewSwitch({
   const searchParams = useSearchParams()
   const pathname = usePathname()
   const router = useRouter()
-  const activeView: IngestionView =
-    searchParams.get('mode') === 'execution-monitor' ? 'execution-monitor' : 'operation'
+  const activeView: IngestionView = searchParams.get('mode') === 'execution-monitor' ? 'execution-monitor' : 'operation'
 
   const handleChangeView = useCallback(
     (nextView: IngestionView) => {
@@ -40,7 +39,7 @@ export function IngestionViewSwitch({
       const query = params.toString()
       router.replace(query ? `${pathname}?${query}` : pathname)
     },
-    [pathname, router, searchParams]
+    [pathname, router, searchParams],
   )
 
   return (
@@ -49,7 +48,7 @@ export function IngestionViewSwitch({
         'inline-flex rounded-2xl border border-border/60 bg-card/72 p-1 shadow-[0_10px_28px_hsl(var(--primary)/0.06)] backdrop-blur-xl',
         tone === 'info' && 'border-info/20 bg-info/[0.04] shadow-none',
         compact && 'rounded-lg border-border/55 bg-background/60 p-0.5 shadow-none backdrop-blur-none',
-        className
+        className,
       )}
     >
       {VIEW_OPTIONS.map((option) => {
@@ -67,7 +66,7 @@ export function IngestionViewSwitch({
                 ? tone === 'info'
                   ? 'bg-info text-info-foreground shadow-none'
                   : 'bg-primary text-primary-foreground shadow-[0_8px_20px_hsl(var(--primary)/0.18)]'
-                : 'text-muted-foreground hover:bg-background/82 hover:text-foreground'
+                : 'text-muted-foreground hover:bg-background/82 hover:text-foreground',
             )}
           >
             {option.label}

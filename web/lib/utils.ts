@@ -1,5 +1,5 @@
-import { type ClassValue, clsx } from "clsx"
-import { extendTailwindMerge } from "tailwind-merge"
+import { type ClassValue, clsx } from 'clsx'
+import { extendTailwindMerge } from 'tailwind-merge'
 
 // Teach tailwind-merge about our custom font-size scale so it won't confuse
 // `text-caption` / `text-compact` / etc. with text-color utilities.
@@ -37,7 +37,7 @@ export function formatFileSize(bytes: number): string {
   const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
   const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1)
 
-  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
+  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
 }
 
 /**

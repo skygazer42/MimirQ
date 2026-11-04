@@ -5,19 +5,13 @@ import { formatFileSize } from '@/lib/utils'
 import type { Document } from '@/types'
 
 import { TYPO_EYEBROW } from '../constants'
-import {
-  buildReviewAdvice,
-  getDropReasons,
-  reasonLabel,
-} from '../quarantine-signals'
+import { buildReviewAdvice, getDropReasons, reasonLabel } from '../quarantine-signals'
 
 type QuarantineDetailPanelProps = {
   selected: Document | null
 }
 
-export function QuarantineDetailPanel({
-  selected,
-}: Readonly<QuarantineDetailPanelProps>) {
+export function QuarantineDetailPanel({ selected }: Readonly<QuarantineDetailPanelProps>) {
   if (!selected) return null
 
   return (
@@ -32,12 +26,8 @@ export function QuarantineDetailPanel({
             { label: '切片数量', value: String(selected.chunk_count ?? 0) },
           ].map((item) => (
             <div key={item.label} className="space-y-1">
-              <div className="text-[10px] font-medium uppercase text-muted-foreground/60">
-                {item.label}
-              </div>
-              <div className="break-words text-xs font-mono font-medium text-foreground/90">
-                {item.value}
-              </div>
+              <div className="text-[10px] font-medium uppercase text-muted-foreground/60">{item.label}</div>
+              <div className="break-words text-xs font-mono font-medium text-foreground/90">{item.value}</div>
             </div>
           ))}
         </div>
@@ -45,9 +35,7 @@ export function QuarantineDetailPanel({
 
       {selected.error_message && (
         <div className="rounded-lg border border-warning/30 bg-warning/5 p-4">
-          <div className="text-[10px] font-medium uppercase text-warning">
-            隔离原因 / RISKS
-          </div>
+          <div className="text-[10px] font-medium uppercase text-warning">隔离原因 / RISKS</div>
           <div className="mt-2 break-words text-xs font-mono leading-relaxed text-warning/80">
             {selected.error_message}
           </div>
@@ -71,9 +59,7 @@ export function QuarantineDetailPanel({
 
       {getDropReasons(selected).length > 0 ? (
         <div className="rounded-lg border border-foreground/10 bg-muted/30 p-4">
-          <div className="text-[10px] font-medium uppercase text-muted-foreground/60">
-            命中规则 / RULES
-          </div>
+          <div className="text-[10px] font-medium uppercase text-muted-foreground/60">命中规则 / RULES</div>
           <div className="mt-3 flex flex-wrap gap-1.5">
             {getDropReasons(selected).map((reason) => (
               <Badge

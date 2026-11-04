@@ -14,7 +14,6 @@ import { reportClientWarning } from '@/lib/client-logging'
 import { detachPromise } from '@/lib/utils'
 import { queryKeys } from '@/lib/query-keys'
 
-
 export type ConnectorRunsListParams = {
   datasetId?: string
   limit?: number
@@ -41,7 +40,7 @@ export function useConnectorRuns({ selectedDatasetId, limit = 20, loadDocuments 
       datasetId: scope.datasetId,
       limit: scope.limit,
     }),
-    [scope.datasetId, scope.limit]
+    [scope.datasetId, scope.limit],
   )
 
   const queryFn = useCallback(async () => {
@@ -88,7 +87,7 @@ export function useConnectorRuns({ selectedDatasetId, limit = 20, loadDocuments 
         reportClientWarning('Load connector runs failed', err)
       }
     },
-    [limit, queryClient, selectedDatasetId]
+    [limit, queryClient, selectedDatasetId],
   )
 
   const refreshSelectedDatasetRuns = useCallback(async () => {
@@ -106,7 +105,7 @@ export function useConnectorRuns({ selectedDatasetId, limit = 20, loadDocuments 
         toast.error(formatApiError(error, '取消导入任务失败'))
       }
     },
-    [refreshSelectedDatasetRuns]
+    [refreshSelectedDatasetRuns],
   )
 
   const retryFailedConnectorRun = useCallback(
@@ -121,7 +120,7 @@ export function useConnectorRuns({ selectedDatasetId, limit = 20, loadDocuments 
         toast.error(formatApiError(error, '重试失败项失败'))
       }
     },
-    [loadDocuments, refreshSelectedDatasetRuns]
+    [loadDocuments, refreshSelectedDatasetRuns],
   )
 
   const resumeConnectorRun = useCallback(
@@ -136,7 +135,7 @@ export function useConnectorRuns({ selectedDatasetId, limit = 20, loadDocuments 
         toast.error(formatApiError(error, '续跑失败'))
       }
     },
-    [loadDocuments, refreshSelectedDatasetRuns]
+    [loadDocuments, refreshSelectedDatasetRuns],
   )
 
   return {

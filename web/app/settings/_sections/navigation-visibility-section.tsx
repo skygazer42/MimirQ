@@ -1,13 +1,21 @@
 'use client'
 
 import type { ComponentType } from 'react'
-import { Eye, GitCompare, Hash, HelpCircle, LineChart, Network, ScrollText, SlidersHorizontal, Wand2, Braces } from 'lucide-react'
+import {
+  Eye,
+  GitCompare,
+  Hash,
+  HelpCircle,
+  LineChart,
+  Network,
+  ScrollText,
+  SlidersHorizontal,
+  Wand2,
+  Braces,
+} from 'lucide-react'
 
 import { SettingsSwitch } from '@/components/settings/settings-switch'
-import {
-  type AdminControlledNavigationModule,
-  normalizeNavigationModules,
-} from '@/lib/navigation-visibility'
+import { type AdminControlledNavigationModule, normalizeNavigationModules } from '@/lib/navigation-visibility'
 import { cn } from '@/lib/utils'
 import type { NavigationConfig } from '@/types/settings'
 
@@ -140,13 +148,12 @@ export function NavigationVisibilitySection({
       <div className="rounded-xl border border-info/15 bg-info/[0.025] p-3.5 shadow-none">
         <div className="grid gap-3 xl:grid-cols-3">
           {MODULE_GROUPS.map((group) => (
-            <div
-              key={group.title}
-              className="rounded-xl border border-info/15 bg-info/[0.035] p-3 shadow-none"
-            >
+            <div key={group.title} className="rounded-xl border border-info/15 bg-info/[0.035] p-3 shadow-none">
               <div className="mb-2.5">
                 <div className="text-[12px] font-semibold text-foreground">{group.title}</div>
-                <div className="mt-0.5 text-[10.5px] font-medium leading-4 text-muted-foreground">{group.description}</div>
+                <div className="mt-0.5 text-[10.5px] font-medium leading-4 text-muted-foreground">
+                  {group.description}
+                </div>
               </div>
               <div className="space-y-2">
                 {group.items.map((item) => {
@@ -159,14 +166,14 @@ export function NavigationVisibilitySection({
                         'flex items-center justify-between gap-3 rounded-[12px] border px-3 py-2 transition-colors',
                         checked
                           ? 'border-info/25 bg-info/10'
-                          : 'border-info/15 bg-info/[0.025] hover:border-info/25 hover:bg-info/[0.055]'
+                          : 'border-info/15 bg-info/[0.025] hover:border-info/25 hover:bg-info/[0.055]',
                       )}
                     >
                       <div className="flex min-w-0 items-center gap-2.5">
                         <span
                           className={cn(
                             'flex size-7 shrink-0 items-center justify-center rounded-[10px]',
-                            checked ? 'bg-info/12 text-info' : 'bg-info/[0.06] text-muted-foreground'
+                            checked ? 'bg-info/12 text-info' : 'bg-info/[0.06] text-muted-foreground',
                           )}
                         >
                           <Icon className="size-3.5" />

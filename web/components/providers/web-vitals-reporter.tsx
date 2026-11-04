@@ -45,7 +45,7 @@ export function normalizeWebVitalMetric(metric: WebVitalMetric): FrontendWebVita
 
 export function canReportWebVital(
   pathname: string | null | undefined,
-  authHeaders: Readonly<Record<string, string>>
+  authHeaders: Readonly<Record<string, string>>,
 ): boolean {
   if (typeof pathname === 'string' && pathname.startsWith('/auth')) {
     return false

@@ -38,35 +38,43 @@ export function StatCard({
   const deltaBad = deltaInverted ? delta !== null && delta > 0 : delta !== null && delta < 0
   const deltaGood = delta !== null && !deltaBad && delta !== 0
   const pulseActive = pulse && Number(value) > 0
-  const pathData = sparklineMode === 'placeholder'
-    ? buildSparklinePlaceholderPath()
-    : buildSparklinePath(sparklineValues)
+  const pathData =
+    sparklineMode === 'placeholder' ? buildSparklinePlaceholderPath() : buildSparklinePath(sparklineValues)
 
   return (
     <div
       className={cn(
         'group flex items-center gap-2.5 px-2.5 py-1.5 transition-all duration-200 motion-reduce:transition-none hover:bg-muted/50 rounded-lg',
-        border
+        border,
       )}
     >
-      <div className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/30 bg-background/50 shadow-sm', iconSurface)}>
-        {pulseActive && (
-          <span aria-hidden className={cn('pointer-events-none absolute h-5 w-5 rounded-md animate-pulse-ring motion-reduce:animate-none opacity-20', ringColor)} />
+      <div
+        className={cn(
+          'flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/30 bg-background/50 shadow-sm',
+          iconSurface,
         )}
-        <Icon className={cn('relative h-3.5 w-3.5', color, pulseActive && 'animate-heartbeat motion-reduce:animate-none')} />
+      >
+        {pulseActive && (
+          <span
+            aria-hidden
+            className={cn(
+              'pointer-events-none absolute h-5 w-5 rounded-md animate-pulse-ring motion-reduce:animate-none opacity-20',
+              ringColor,
+            )}
+          />
+        )}
+        <Icon
+          className={cn('relative h-3.5 w-3.5', color, pulseActive && 'animate-heartbeat motion-reduce:animate-none')}
+        />
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col leading-tight">
         <div className="flex items-center gap-1 text-[9px] font-bold uppercase  text-muted-foreground/60">
           <span className="truncate">{label}</span>
           {delta !== null && (
-            <span
-              className={cn(
-                'font-black',
-                deltaGood ? 'text-success/80' : 'text-destructive/80'
-              )}
-            >
-              {delta > 0 ? '+' : ''}{delta}%
+            <span className={cn('font-black', deltaGood ? 'text-success/80' : 'text-destructive/80')}>
+              {delta > 0 ? '+' : ''}
+              {delta}%
             </span>
           )}
         </div>

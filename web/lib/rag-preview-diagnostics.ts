@@ -65,25 +65,16 @@ function formatObject(value: unknown): string | null {
   if (!isRecord(value)) return null
   const entries = Object.entries(value)
   if (!entries.length) return null
-  return entries
-    .map(([key, item]) => `${key}=${toText(item) ?? JSON.stringify(item)}`)
-    .join(', ')
+  return entries.map(([key, item]) => `${key}=${toText(item) ?? JSON.stringify(item)}`).join(', ')
 }
 
-function pushKV(
-  target: PreviewKV[],
-  label: string,
-  value: unknown,
-  formatter?: (next: unknown) => string | null
-) {
+function pushKV(target: PreviewKV[], label: string, value: unknown, formatter?: (next: unknown) => string | null) {
   const text = formatter ? formatter(value) : toText(value)
   if (!text) return
   target.push({ label, value: text })
 }
 
-function channelCandidateItems(
-  explain: RetrievalExplainResponseLike | null
-): PreviewKV[] {
+function channelCandidateItems(explain: RetrievalExplainResponseLike | null): PreviewKV[] {
   if (!explain) return []
 
   const channels = asRecord(explain.channels)
@@ -141,10 +132,7 @@ function fusionItems(config: JsonRecord): PreviewKV[] {
   return items
 }
 
-function rerankerItems(
-  config: JsonRecord,
-  explain: RetrievalExplainResponseLike | null
-): PreviewKV[] {
+function rerankerItems(config: JsonRecord, explain: RetrievalExplainResponseLike | null): PreviewKV[] {
   const items: PreviewKV[] = []
   pushKV(items, 'enable_reranker', config.enable_reranker)
   pushKV(items, 'reranker_provider', config.reranker_provider)
@@ -155,15 +143,17 @@ function rerankerItems(
   pushKV(items, 'cache_hits', rerank.cache_hits)
   pushKV(items, 'cache_misses', rerank.cache_misses)
   pushKV(items, 'pipeline_stages', rerank.pipeline_stages, (value) =>
-    Array.isArray(value) ? value.map((item) => toText(item)).filter(Boolean).join(' -> ') : null
+    Array.isArray(value)
+      ? value
+          .map((item) => toText(item))
+          .filter(Boolean)
+          .join(' -> ')
+      : null,
   )
   return items
 }
 
-function timingItems(
-  explain: RetrievalExplainResponseLike | null,
-  preview: PromptPreviewResponse | null
-): PreviewKV[] {
+function timingItems(explain: RetrievalExplainResponseLike | null, preview: PromptPreviewResponse | null): PreviewKV[] {
   const items: PreviewKV[] = []
   const stageTimings = asRecord(explain?.stage_timings)
   for (const [label, value] of Object.entries(stageTimings)) {
@@ -188,10 +178,7 @@ function timingItems(
   return items
 }
 
-function collectFlagTexts(
-  source: JsonRecord,
-  keys: string[]
-): string[] {
+function collectFlagTexts(source: JsonRecord, keys: string[]): string[] {
   const out: string[] = []
   for (const key of keys) {
     const text = formatObject(source[key]) || toText(source[key])
@@ -200,10 +187,7 @@ function collectFlagTexts(
   return out
 }
 
-function collectListFlagTexts(
-  source: JsonRecord,
-  key: string
-): string[] {
+function collectListFlagTexts(source: JsonRecord, key: string): string[] {
   const raw = source[key]
   if (!Array.isArray(raw)) return []
   const out: string[] = []
@@ -221,16 +205,13 @@ export function buildRagPreviewDiagnosticsSummary(args: {
   explainEnabled: boolean
   contractReason?: string | null
 }): RagPreviewDiagnosticsSummary {
-  const { configHash, contractReason, explain, explainEnabled, promptPreview } =
-    args
+  const { configHash, contractReason, explain, explainEnabled, promptPreview } = args
   const effectiveConfig = asRecord(configHash?.effective_config)
   const metrics = asRecord(explain?.metrics)
   const retrievalTrace = asRecord(explain?.retrieval_trace)
 
   const configHashText =
-    toText(configHash?.hash) ||
-    toText(metrics.retrieval_config_hash) ||
-    toText(retrievalTrace.retrieval_config_hash)
+    toText(configHash?.hash) || toText(metrics.retrieval_config_hash) || toText(retrievalTrace.retrieval_config_hash)
 
   const profile =
     toText(effectiveConfig.retrieval_profile) ||
@@ -256,11 +237,7 @@ export function buildRagPreviewDiagnosticsSummary(args: {
       'generation_fallback_error',
       'retrieval_fallback_reason',
     ]),
-    ...collectFlagTexts(asRecord(explain?.query_debug), [
-      'fallback',
-      'fallback_reason',
-      'selection_fallback',
-    ]),
+    ...collectFlagTexts(asRecord(explain?.query_debug), ['fallback', 'fallback_reason', 'selection_fallback']),
   ]
 
   return {

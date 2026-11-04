@@ -30,10 +30,7 @@ type ModelProvidersSectionProps = {
   onConfigure: (provider: ModelProvider) => void
 }
 
-export function ModelProvidersSection({
-  groupedProviders,
-  onConfigure,
-}: Readonly<ModelProvidersSectionProps>) {
+export function ModelProvidersSection({ groupedProviders, onConfigure }: Readonly<ModelProvidersSectionProps>) {
   return (
     <section>
       <div className="space-y-4">
@@ -42,10 +39,7 @@ export function ModelProvidersSection({
           const InfoIcon = info.icon
 
           return (
-            <div
-              key={category}
-              className={cn(systemWorkbenchTokens.panel, 'border-info/15 bg-info/[0.025] p-3.5')}
-            >
+            <div key={category} className={cn(systemWorkbenchTokens.panel, 'border-info/15 bg-info/[0.025] p-3.5')}>
               <div className="mb-3 flex items-start gap-3">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/35">
                   <InfoIcon className="h-4 w-4 text-muted-foreground" />
@@ -58,11 +52,7 @@ export function ModelProvidersSection({
 
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {groupedProviders[category].map((provider) => (
-                  <ModelProviderCard
-                    key={provider.id}
-                    provider={provider}
-                    onConfigure={onConfigure}
-                  />
+                  <ModelProviderCard key={provider.id} provider={provider} onConfigure={onConfigure} />
                 ))}
               </div>
             </div>

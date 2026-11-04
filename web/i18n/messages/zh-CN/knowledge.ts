@@ -1,13 +1,13 @@
 const knowledgeMessages = {
-KnowledgeWorkbenchActions: {
+  KnowledgeWorkbenchActions: {
     importOrCreate: '导入/新增',
   },
-KnowledgeIngestionPage: {
+  KnowledgeIngestionPage: {
     loadingMessage: '正在加载知识库入库流程...',
     loadingSrMessage: 'Loading knowledge ingestion workspace',
     descriptionMarker: '实时追踪解析、切块、向量化与索引构建进度。',
   },
-KnowledgePage: {
+  KnowledgePage: {
     header: {
       title: '知识库管理',
       description: '管理您的文档资产，构建专属知识大脑',
@@ -88,7 +88,7 @@ KnowledgePage: {
       uploadFailed: '上传失败',
     },
   },
-KnowledgeScopePanel: {
+  KnowledgeScopePanel: {
     header: {
       title: '导航',
       subtitle: 'NAVIGATION',
@@ -133,7 +133,7 @@ KnowledgeScopePanel: {
       all: '全部',
     },
   },
-KnowledgeDocumentsPanel: {
+  KnowledgeDocumentsPanel: {
     status: {
       completed: '已就绪',
       failed: '失败',
@@ -252,7 +252,7 @@ KnowledgeDocumentsPanel: {
       parserAuto: 'Auto',
     },
   },
-KnowledgeRetrievalPanel: {
+  KnowledgeRetrievalPanel: {
     header: {
       badge: '索引审计',
       title: '索引审计',
@@ -284,7 +284,7 @@ KnowledgeRetrievalPanel: {
       waitingForDataset: '等待选择数据集',
     },
   },
-KnowledgeSettingsPanel: {
+  KnowledgeSettingsPanel: {
     header: {
       title: '知识库参数配置',
       description: '调整系统默认 Embedding、召回数量与阈值，并保留显式保存与风险确认。',
@@ -337,7 +337,8 @@ KnowledgeSettingsPanel: {
     },
     alerts: {
       embeddingWarningTitle: 'Embedding 变更不会自动重建历史向量',
-      embeddingWarningDescription: '保存后只会更新系统默认配置。已有文档如果要切换到新模型，需要在文档列表手动重新入库，或走 shadow migration 流程。',
+      embeddingWarningDescription:
+        '保存后只会更新系统默认配置。已有文档如果要切换到新模型，需要在文档列表手动重新入库，或走 shadow migration 流程。',
       loadFailedTitle: '配置加载失败',
     },
     runStatus: {
@@ -481,7 +482,8 @@ KnowledgeSettingsPanel: {
       embeddingChange: {
         title: '确认切换 Embedding 模型？',
         description: '这会更新系统默认 embedding 配置，但不会自动迁移历史向量索引。',
-        impact: '保存后，新导入内容会使用新的 embedding 模型；已有文档仍需手动重新入库或走蓝绿迁移流程，才能与新模型保持一致。',
+        impact:
+          '保存后，新导入内容会使用新的 embedding 模型；已有文档仍需手动重新入库或走蓝绿迁移流程，才能与新模型保持一致。',
         cancel: '返回',
         confirm: '继续保存',
       },
@@ -507,7 +509,7 @@ KnowledgeSettingsPanel: {
       copyTaskLink: '已复制任务链接',
       copyDocumentIds: '已复制文档 ID 列表',
     },
-  }
+  },
 } as const
 
 export default knowledgeMessages

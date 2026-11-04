@@ -31,15 +31,9 @@ describe('precheck SSE guards', () => {
     const abortError = new DOMException('The operation was aborted.', 'AbortError')
 
     expect(isCurrentPrecheckSseStream(staleController, activeController, 'run-old', 'run-new')).toBe(false)
-    expect(
-      shouldFallbackToPrecheckPolling(
-        abortError,
-        staleController,
-        activeController,
-        'run-old',
-        'run-new'
-      )
-    ).toBe(false)
+    expect(shouldFallbackToPrecheckPolling(abortError, staleController, activeController, 'run-old', 'run-new')).toBe(
+      false,
+    )
   })
 
   it('does not fallback or stay current after unmount abort clears the stream identity', () => {
@@ -55,14 +49,6 @@ describe('precheck SSE guards', () => {
     const networkError = new Error('network down')
 
     expect(isCurrentPrecheckSseStream(controller, controller, 'run-1', 'run-1')).toBe(true)
-    expect(
-      shouldFallbackToPrecheckPolling(
-        networkError,
-        controller,
-        controller,
-        'run-1',
-        'run-1'
-      )
-    ).toBe(true)
+    expect(shouldFallbackToPrecheckPolling(networkError, controller, controller, 'run-1', 'run-1')).toBe(true)
   })
 })

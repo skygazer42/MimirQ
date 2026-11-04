@@ -22,7 +22,7 @@ export type FrontendTraceReportOptions = Readonly<{
 
 export async function reportFrontendTrace(
   payload: FrontendTracePayload,
-  options: FrontendTraceReportOptions = {}
+  options: FrontendTraceReportOptions = {},
 ): Promise<void> {
   const authHeaders = getAuthHeaders()
   if (!authHeaders.Authorization && !authHeaders['X-User-ID']) return
@@ -44,7 +44,7 @@ export async function reportFrontendTrace(
     throw new Error(
       requestId
         ? `Frontend trace report failed (status=${response.status}, request_id=${requestId})`
-        : `Frontend trace report failed (status=${response.status})`
+        : `Frontend trace report failed (status=${response.status})`,
     )
   }
 }

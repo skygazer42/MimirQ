@@ -1,7 +1,5 @@
 import { toAbsoluteBackendUrl } from '@/lib/env'
-import {
-  isBlockedMarkdownImageTarget,
-} from '@/lib/markdown-image-proxy'
+import { isBlockedMarkdownImageTarget } from '@/lib/markdown-image-proxy'
 
 const SAFE_LINK_PROTOCOLS = new Set(['http', 'https', 'mailto', 'tel'])
 const SAFE_IMAGE_PROTOCOLS = new Set(['http', 'https', 'blob'])
@@ -19,12 +17,7 @@ function getMarkdownUrlScheme(value: string): string | null {
       return scheme ? scheme.toLowerCase() : null
     }
 
-    if (
-      char === '/' ||
-      char === '?' ||
-      char === '#' ||
-      char === '&'
-    ) {
+    if (char === '/' || char === '?' || char === '#' || char === '&') {
       return null
     }
 
@@ -57,11 +50,7 @@ function isSafeRelativeMarkdownHref(value: string): boolean {
 }
 
 function isSafeRelativeMarkdownImageSrc(value: string): boolean {
-  return (
-    value.startsWith('./') ||
-    value.startsWith('../') ||
-    (value.startsWith('/') && !value.startsWith('//'))
-  )
+  return value.startsWith('./') || value.startsWith('../') || (value.startsWith('/') && !value.startsWith('//'))
 }
 
 export function sanitizeMarkdownHref(value: string | null | undefined): string {

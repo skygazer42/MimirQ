@@ -29,7 +29,8 @@ export function EChart({
     void import('echarts').then((echarts) => {
       if (disposed || !hostRef.current) return
 
-      const chart = echarts.getInstanceByDom(hostRef.current) ?? echarts.init(hostRef.current, undefined, { renderer: 'svg' })
+      const chart =
+        echarts.getInstanceByDom(hostRef.current) ?? echarts.init(hostRef.current, undefined, { renderer: 'svg' })
       chart.setOption(option, true)
 
       for (const [eventName, handler] of Object.entries(onEvents ?? {})) {
@@ -37,11 +38,12 @@ export function EChart({
         chart.on(eventName, handler)
       }
 
-      const observer = typeof ResizeObserver === 'undefined'
-        ? null
-        : new ResizeObserver(() => {
-            chart.resize()
-          })
+      const observer =
+        typeof ResizeObserver === 'undefined'
+          ? null
+          : new ResizeObserver(() => {
+              chart.resize()
+            })
 
       observer?.observe(hostRef.current)
 

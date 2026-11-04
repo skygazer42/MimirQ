@@ -3,11 +3,7 @@
 import { useMemo } from 'react'
 import type { EChartsOption } from 'echarts'
 import { EChart, type EChartEventHandler } from '@/components/ui/echart'
-import {
-  DIFFERENCE_VISUALMAP_COLORS,
-  toEchartsVisualMapColors,
-  type ColorSchemeKey,
-} from './color-schemes'
+import { DIFFERENCE_VISUALMAP_COLORS, toEchartsVisualMapColors, type ColorSchemeKey } from './color-schemes'
 import { resolveHeatmapPoint, type SelectedHeatmapCell } from './heatmap-types'
 import { formatHeatmapValue } from './similarity-matrix-math'
 
@@ -54,9 +50,7 @@ export function EchartsHeatmap({
   const option = useMemo<EChartsOption>(() => {
     const min = isDifference ? -1 : 0
     const max = 1
-    const colors = isDifference
-      ? DIFFERENCE_VISUALMAP_COLORS
-      : toEchartsVisualMapColors(colorScheme)
+    const colors = isDifference ? DIFFERENCE_VISUALMAP_COLORS : toEchartsVisualMapColors(colorScheme)
 
     // Skip null / non-finite cells so masked entries render as gaps
     // (same as plotly heatmap behavior for null z values).
@@ -91,11 +85,9 @@ export function EchartsHeatmap({
           if (!resolved) return ''
           const xLabel = xLabels[resolved.cell.colIndex] || ''
           const yLabel = yLabels[resolved.cell.rowIndex] || ''
-          return [
-            `<b>${resolved.value.toFixed(3)}</b>`,
-            `X: ${escapeHtml(xLabel)}`,
-            `Y: ${escapeHtml(yLabel)}`,
-          ].join('<br>')
+          return [`<b>${resolved.value.toFixed(3)}</b>`, `X: ${escapeHtml(xLabel)}`, `Y: ${escapeHtml(yLabel)}`].join(
+            '<br>',
+          )
         },
       },
       visualMap: {
@@ -138,7 +130,7 @@ export function EchartsHeatmap({
         if (cell) onCellSelect?.(cell)
       },
     }),
-    [onCellSelect]
+    [onCellSelect],
   )
 
   return (

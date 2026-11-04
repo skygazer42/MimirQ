@@ -7,7 +7,7 @@ type ParserResolveResult = {
 export function normalizeParserBackendName(value?: string): string {
   const raw = (value || '').trim().toLowerCase()
   if (!raw) return 'auto'
-  const normalized = raw.replaceAll("_", '-')
+  const normalized = raw.replaceAll('_', '-')
 
   if (normalized === 'pymupdf' || normalized === 'fitz') return 'basic'
   if (normalized === 'magic-pdf') return 'magicpdf'
@@ -19,7 +19,8 @@ export function normalizeParserBackendName(value?: string): string {
   if (normalized === 'marker-pdf') return 'marker'
   if (normalized === 'paddle-vl' || normalized === 'paddleocr-vl' || normalized === 'paddleocrvl') return 'paddle_vl'
   if (normalized === 'olm-ocr' || normalized === 'olmocr-pdf') return 'olmocr'
-  if (normalized === 'bisheng-unstructured' || normalized === 'bishengunstructured' || normalized === 'bisheng') return 'etl4llm'
+  if (normalized === 'bisheng-unstructured' || normalized === 'bishengunstructured' || normalized === 'bisheng')
+    return 'etl4llm'
 
   return normalized
 }
@@ -113,7 +114,11 @@ export function resolveParserBackendForFilename(filename: string, requestedBacke
   if (ext === '.md') {
     const allowed = new Set(['auto'])
     if (allowed.has(backend)) return { backend, changed: false }
-    return { backend: 'auto', changed: backend !== 'auto', reason: `backend '${backend}' is not supported for markdown` }
+    return {
+      backend: 'auto',
+      changed: backend !== 'auto',
+      reason: `backend '${backend}' is not supported for markdown`,
+    }
   }
 
   if (ext === '.txt') {
@@ -137,5 +142,9 @@ export function resolveParserBackendForFiles(files: File[], requestedBackend?: s
     }
   }
   if (!changed) return { backend: normalized, changed: false }
-  return { backend: 'auto', changed: normalized !== 'auto', reason: 'batch upload contains mixed/unsupported file types' }
+  return {
+    backend: 'auto',
+    changed: normalized !== 'auto',
+    reason: 'batch upload contains mixed/unsupported file types',
+  }
 }

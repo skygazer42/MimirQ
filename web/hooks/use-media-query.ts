@@ -3,24 +3,15 @@
 import { useSyncExternalStore } from 'react'
 
 function getMediaQuerySnapshot(query: string): boolean {
-  if (
-    typeof globalThis.window === 'undefined' ||
-    typeof globalThis.window.matchMedia !== 'function'
-  ) {
+  if (typeof globalThis.window === 'undefined' || typeof globalThis.window.matchMedia !== 'function') {
     return false
   }
 
   return globalThis.window.matchMedia(query).matches
 }
 
-function subscribeToMediaQuery(
-  query: string,
-  onStoreChange: () => void
-): () => void {
-  if (
-    typeof globalThis.window === 'undefined' ||
-    typeof globalThis.window.matchMedia !== 'function'
-  ) {
+function subscribeToMediaQuery(query: string, onStoreChange: () => void): () => void {
+  if (typeof globalThis.window === 'undefined' || typeof globalThis.window.matchMedia !== 'function') {
     return () => {}
   }
 
@@ -44,7 +35,7 @@ export function useMediaQuery(query: string): boolean {
   return useSyncExternalStore(
     (onStoreChange) => subscribeToMediaQuery(query, onStoreChange),
     () => getMediaQuerySnapshot(query),
-    () => false
+    () => false,
   )
 }
 

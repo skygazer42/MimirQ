@@ -33,11 +33,7 @@ function GraphModeBanner({ toneClassName, dismissLabel, onDismiss, children }: G
       className={`pointer-events-auto absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-2 rounded-full px-4 py-2 shadow-lg animate-in fade-in slide-in-from-top-4 motion-reduce:animate-none ${toneClassName}`}
     >
       {children}
-      <IconButton
-        label={dismissLabel}
-        onClick={onDismiss}
-        className="ml-2 h-7 w-7 rounded-full hover:bg-current/10"
-      >
+      <IconButton label={dismissLabel} onClick={onDismiss} className="ml-2 h-7 w-7 rounded-full hover:bg-current/10">
         <X className="w-4 h-4" />
       </IconButton>
     </div>

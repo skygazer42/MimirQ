@@ -29,7 +29,7 @@ export function SummaryStatCard({
         tone === 'success' && 'border-foreground/10',
         tone === 'warning' && 'border-foreground/10',
         tone === 'danger' && 'border-foreground/10',
-        tone === 'info' && 'border-foreground/10'
+        tone === 'info' && 'border-foreground/10',
       )}
     >
       <div className="relative flex items-start justify-between gap-4">
@@ -37,22 +37,16 @@ export function SummaryStatCard({
           <div className="text-[10px] font-medium uppercase tracking-[0.14em] leading-none text-muted-foreground/80">
             {label}
           </div>
-          <div className="text-[1.55rem] font-semibold leading-none text-foreground">
-            {value}
-          </div>
+          <div className="text-[1.55rem] font-semibold leading-none text-foreground">{value}</div>
         </div>
         <div
           className={cn(
             'flex size-9 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-background/70 shadow-none',
-            tone === 'neutral' &&
-              'text-primary',
-            tone === 'success' &&
-              'text-success',
-            tone === 'warning' &&
-              'text-warning',
+            tone === 'neutral' && 'text-primary',
+            tone === 'success' && 'text-success',
+            tone === 'warning' && 'text-warning',
             tone === 'danger' && 'border-destructive/10 bg-destructive/10 text-destructive',
-            tone === 'info' &&
-              'text-accent'
+            tone === 'info' && 'text-accent',
           )}
         >
           <Icon className="size-4" />
@@ -61,16 +55,14 @@ export function SummaryStatCard({
 
       <div className="relative mt-2.5 flex items-end justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-[11px] font-medium text-muted-foreground">
-            {hint}
-          </div>
+          <div className="text-[11px] font-medium text-muted-foreground">{hint}</div>
           {delta ? (
             <div
               className={cn(
                 'mt-1 text-[12px] font-medium',
                 delta.tone === 'up' && 'text-destructive',
                 delta.tone === 'down' && 'text-success',
-                delta.tone === 'neutral' && 'text-muted-foreground'
+                delta.tone === 'neutral' && 'text-muted-foreground',
               )}
             >
               {delta.value}
@@ -87,7 +79,7 @@ export function SummaryStatCard({
                 tone === 'success' && 'bg-success',
                 tone === 'warning' && 'bg-warning/80',
                 tone === 'danger' && 'bg-destructive/70',
-                tone === 'info' && 'bg-accent/70'
+                tone === 'info' && 'bg-accent/70',
               )}
               style={{ height: `${5 + height * 16}px` }}
             />
@@ -116,9 +108,7 @@ export function DonutSummaryCard({
   return (
     <div className="h-full min-h-[178px] rounded-lg border border-foreground/10 bg-background p-3.5 shadow-none">
       <div className="text-[0.9rem] font-medium text-foreground">{title}</div>
-      {subtitle ? (
-        <div className="mt-1 text-[11px] text-muted-foreground">{subtitle}</div>
-      ) : null}
+      {subtitle ? <div className="mt-1 text-[11px] text-muted-foreground">{subtitle}</div> : null}
       <div className="mt-3.5 grid gap-3.5 md:grid-cols-[100px_minmax(0,1fr)] md:items-center">
         <div className="flex items-center justify-center">
           <div
@@ -127,47 +117,29 @@ export function DonutSummaryCard({
           >
             <div className="absolute inset-[16px] rounded-full bg-background shadow-[inset_0_0_0_1px_rgba(148,163,184,0.12)]" />
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-[1.2rem] font-semibold leading-none text-foreground">
-                {total}
-              </span>
-              <span className="mt-1 text-[10px] font-medium text-muted-foreground/85">
-                总量
-              </span>
+              <span className="text-[1.2rem] font-semibold leading-none text-foreground">{total}</span>
+              <span className="mt-1 text-[10px] font-medium text-muted-foreground/85">总量</span>
             </div>
           </div>
         </div>
         <div className="space-y-2">
           {items.length ? (
             items.map((item, index) => (
-              <div
-                key={item.label}
-                className="flex items-center justify-between gap-3 text-[11px]"
-              >
+              <div key={item.label} className="flex items-center justify-between gap-3 text-[11px]">
                 <div className="flex min-w-0 items-center gap-2.5 text-muted-foreground">
-                  <span
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: colors[index] }}
-                  />
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: colors[index] }} />
                   <span className="truncate">{item.label}</span>
                 </div>
                 <div className="shrink-0 text-right">
-                  <span className="text-[12px] tabular-nums text-foreground">
-                    {item.value}
-                  </span>
-                  {item.hint ? (
-                    <span className="ml-1.5 text-[10px] text-muted-foreground">
-                      {item.hint}
-                    </span>
-                  ) : null}
+                  <span className="text-[12px] tabular-nums text-foreground">{item.value}</span>
+                  {item.hint ? <span className="ml-1.5 text-[10px] text-muted-foreground">{item.hint}</span> : null}
                   {!item.hint && total > 0 ? (
                     <span className="ml-1.5 text-[10px] text-muted-foreground">
                       ({((item.value / total) * 100).toFixed(1)}%)
                     </span>
                   ) : null}
                   {!item.hint && total === 0 ? (
-                    <span className="ml-1.5 text-[10px] text-muted-foreground">
-                      (0%)
-                    </span>
+                    <span className="ml-1.5 text-[10px] text-muted-foreground">(0%)</span>
                   ) : null}
                 </div>
               </div>
@@ -204,12 +176,8 @@ export function QuickActionCard({
         <Icon className="size-3.5" />
       </span>
       <span className="min-w-0">
-        <span className="block text-[12px] font-medium text-foreground">
-          {title}
-        </span>
-        <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">
-          {description}
-        </span>
+        <span className="block text-[12px] font-medium text-foreground">{title}</span>
+        <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">{description}</span>
       </span>
     </button>
   )

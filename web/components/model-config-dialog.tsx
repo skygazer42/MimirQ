@@ -5,24 +5,12 @@
 
 import { useEffect, useId, useState } from 'react'
 import { Eye, EyeOff, AlertCircle, CheckCircle2, FlaskConical, Save, ChevronRight } from 'lucide-react'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ProviderIcon } from '@/components/provider-icon'
 import { cn } from '@/lib/utils'
 import { settingsApi } from '@/lib/api'
@@ -68,12 +56,7 @@ function getProviderModelOptions(provider: ModelProvider | null) {
   })
 }
 
-export function ModelConfigDialog({
-  provider,
-  open,
-  onClose,
-  onSave,
-}: Readonly<ModelConfigDialogProps>) {
+export function ModelConfigDialog({ provider, open, onClose, onSave }: Readonly<ModelConfigDialogProps>) {
   const idPrefix = useId()
   const [config, setConfig] = useState<ProviderConfig>({
     apiKey: '',
@@ -146,9 +129,7 @@ export function ModelConfigDialog({
       setCustomModelId(config.model || customModelId)
       setConfig((current) => ({
         ...current,
-        model: modelOptions.some((model) => model.name === current.model)
-          ? current.model
-          : modelOptions[0]?.name || '',
+        model: modelOptions.some((model) => model.name === current.model) ? current.model : modelOptions[0]?.name || '',
       }))
     }
     setModelEntryMode(nextMode)
@@ -216,12 +197,8 @@ export function ModelConfigDialog({
             <ProviderIcon providerId={provider.id} className="size-8 object-contain" />
           </div>
           <div>
-            <DialogTitle className="text-xl font-semibold text-foreground mb-1">
-              配置 {provider.name}
-            </DialogTitle>
-            <DialogDescription className="leading-tight">
-              {provider.description}
-            </DialogDescription>
+            <DialogTitle className="text-xl font-semibold text-foreground mb-1">配置 {provider.name}</DialogTitle>
+            <DialogDescription className="leading-tight">{provider.description}</DialogDescription>
           </div>
         </div>
 
@@ -300,7 +277,7 @@ export function ModelConfigDialog({
                   'h-9 rounded-md px-3 text-sm font-medium transition-[background-color,color,box-shadow] motion-reduce:transition-none focus-ring',
                   modelEntryMode === 'preset'
                     ? 'bg-card text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:bg-card/55 hover:text-foreground'
+                    : 'text-muted-foreground hover:bg-card/55 hover:text-foreground',
                 )}
               >
                 推荐模型
@@ -316,7 +293,7 @@ export function ModelConfigDialog({
                   'h-9 rounded-md px-3 text-sm font-medium transition-[background-color,color,box-shadow] motion-reduce:transition-none focus-ring',
                   modelEntryMode === 'custom'
                     ? 'bg-card text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:bg-card/55 hover:text-foreground'
+                    : 'text-muted-foreground hover:bg-card/55 hover:text-foreground',
                 )}
               >
                 自定义模型 ID
@@ -331,7 +308,9 @@ export function ModelConfigDialog({
             >
               {modelEntryMode === 'preset' ? (
                 <>
-                  <Label htmlFor={modelPresetId} className="sr-only">推荐模型</Label>
+                  <Label htmlFor={modelPresetId} className="sr-only">
+                    推荐模型
+                  </Label>
                   <Select
                     value={config.model || ''}
                     onValueChange={(value) => {
@@ -349,9 +328,7 @@ export function ModelConfigDialog({
                         <SelectItem key={model.id} value={model.name} className="py-2.5">
                           <span className="grid min-w-0 gap-0.5">
                             <span className="font-medium text-foreground">{model.displayName}</span>
-                            <span className="truncate font-mono text-[11px] text-muted-foreground">
-                              {model.name}
-                            </span>
+                            <span className="truncate font-mono text-[11px] text-muted-foreground">{model.name}</span>
                           </span>
                         </SelectItem>
                       ))}
@@ -360,13 +337,17 @@ export function ModelConfigDialog({
                 </>
               ) : (
                 <>
-                  <Label htmlFor={modelCustomId} className="sr-only">自定义模型 ID</Label>
+                  <Label htmlFor={modelCustomId} className="sr-only">
+                    自定义模型 ID
+                  </Label>
                   <Input
                     id={modelCustomId}
                     type="text"
                     value={config.model || ''}
                     onChange={(event) => handleCustomModelChange(event.target.value)}
-                    placeholder={provider.id === 'ark' ? '例如 doubao-seed-2-0-lite-260428' : '输入服务商控制台中的完整模型 ID'}
+                    placeholder={
+                      provider.id === 'ark' ? '例如 doubao-seed-2-0-lite-260428' : '输入服务商控制台中的完整模型 ID'
+                    }
                     aria-describedby={modelHintId}
                     autoComplete="off"
                     spellCheck={false}
@@ -398,10 +379,10 @@ export function ModelConfigDialog({
               onClick={() => setShowAdvanced(!showAdvanced)}
               className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none group"
             >
-              <ChevronRight className={cn("size-4 transition-transform", showAdvanced && "rotate-90")} />
+              <ChevronRight className={cn('size-4 transition-transform', showAdvanced && 'rotate-90')} />
               高级设置
             </button>
-            
+
             {showAdvanced && (
               <div className="mt-4 grid grid-cols-2 gap-4 motion-safe:animate-in motion-safe:slide-in-from-top-2 motion-safe:duration-200">
                 <div className="space-y-1.5">
@@ -438,18 +419,12 @@ export function ModelConfigDialog({
           {/* 测试结果 */}
           {testResult && (
             <Alert
-              variant={testResult.success ? "success" : "destructive"}
+              variant={testResult.success ? 'success' : 'destructive'}
               className="animate-in fade-in zoom-in-95 duration-200 motion-reduce:animate-none"
             >
-              {testResult.success ? (
-                <CheckCircle2 className="size-5" />
-              ) : (
-                <AlertCircle className="size-5" />
-              )}
+              {testResult.success ? <CheckCircle2 className="size-5" /> : <AlertCircle className="size-5" />}
               <div>
-                <AlertDescription className="text-foreground font-medium">
-                  {testResult.message}
-                </AlertDescription>
+                <AlertDescription className="text-foreground font-medium">{testResult.message}</AlertDescription>
               </div>
             </Alert>
           )}
@@ -472,11 +447,7 @@ export function ModelConfigDialog({
                 </>
               )}
             </Button>
-            <Button 
-              onClick={handleSave} 
-              disabled={!config.apiKey || !config.model}
-              className="flex-1 rounded-xl h-11"
-            >
+            <Button onClick={handleSave} disabled={!config.apiKey || !config.model} className="flex-1 rounded-xl h-11">
               <Save className="size-4 mr-2" />
               保存配置
             </Button>

@@ -1,16 +1,12 @@
 import type { Document } from '@/types'
 
-function createDemoGovernance(
-  dropReasons: Record<string, number>
-): NonNullable<Document['governance']> {
+function createDemoGovernance(dropReasons: Record<string, number>): NonNullable<Document['governance']> {
   return {
     enabled: true,
     documents: 1,
     changed_documents: 0,
     rules_applied: Object.keys(dropReasons).length,
-    dropped_documents: Object.values(dropReasons).some((count) => count > 0)
-      ? 1
-      : 0,
+    dropped_documents: Object.values(dropReasons).some((count) => count > 0) ? 1 : 0,
     drop_reasons: dropReasons,
   }
 }
@@ -27,14 +23,10 @@ function getDemoDocumentStatus(index: number): Document['status'] {
 
 export function makeDemoQuarantineDocument(
   id: number,
-  overrides: Partial<Document> & { filename: string; file_type: string }
+  overrides: Partial<Document> & { filename: string; file_type: string },
 ): Document {
-  const createdAt = new Date(
-    Date.UTC(2026, 2, 31, 3, 0, 0) - id * 36 * 60_000
-  ).toISOString()
-  const updatedAt = new Date(
-    Date.UTC(2026, 2, 31, 11, 45, 0) - id * 22 * 60_000
-  ).toISOString()
+  const createdAt = new Date(Date.UTC(2026, 2, 31, 3, 0, 0) - id * 36 * 60_000).toISOString()
+  const updatedAt = new Date(Date.UTC(2026, 2, 31, 11, 45, 0) - id * 22 * 60_000).toISOString()
   const { filename, file_type: fileType, ...restOverrides } = overrides
 
   return {

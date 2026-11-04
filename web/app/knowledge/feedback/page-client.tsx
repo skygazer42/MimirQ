@@ -25,25 +25,11 @@ import { toast } from 'sonner'
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
-import {
-  KNOWLEDGE_OPS_HERO_PANEL_CLASS,
-  KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS,
-} from '@/components/ui/knowledge-ops-hero'
+import { KNOWLEDGE_OPS_HERO_PANEL_CLASS, KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS } from '@/components/ui/knowledge-ops-hero'
 import { Button } from '@/components/ui/button'
 import { SearchInput } from '@/components/ui/search-input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -62,14 +48,7 @@ type RatingFilter = 'all' | '1' | '2' | '3' | '4' | '5'
 type FeedbackType = 'thumbs_up' | 'thumbs_down'
 type FeedbackTypeFilter = 'all' | FeedbackType
 type FeedbackBoardTab = 'all' | 'pending' | 'high-priority' | 'archived'
-type FeedbackSourceFilter =
-  | 'all'
-  | 'web'
-  | 'mobile'
-  | 'enterprise'
-  | 'api'
-  | 'benchmark'
-  | 'other'
+type FeedbackSourceFilter = 'all' | 'web' | 'mobile' | 'enterprise' | 'api' | 'benchmark' | 'other'
 type FeedbackTimeRange = '7d' | '30d' | '90d' | 'all'
 type FeedbackMetricKey = 'all' | FeedbackType | 'neutral'
 type FeedbackKind = FeedbackType | 'neutral'
@@ -213,11 +192,7 @@ function feedbackKindIcon(kind: FeedbackKind) {
   return <Star className="size-3.5" />
 }
 
-function feedbackStatusTone(
-  badge: string,
-  issue: string,
-  kind: FeedbackKind
-): FeedbackStatusTone {
+function feedbackStatusTone(badge: string, issue: string, kind: FeedbackKind): FeedbackStatusTone {
   if (badge === '高优先级') return 'priority'
   if (badge === '有帮助') return 'positive'
   if (badge === issue && kind === 'thumbs_down') return 'negative'
@@ -242,7 +217,7 @@ function buildActiveFeedbackFilterBadges(
   ratingFilter: RatingFilter,
   sourceFilter: FeedbackSourceFilter,
   timeRange: FeedbackTimeRange,
-  searchTerm: string
+  searchTerm: string,
 ): ActiveFeedbackFilterBadge[] {
   const badges: ActiveFeedbackFilterBadge[] = []
   if (filterType !== 'all') {
@@ -272,24 +247,14 @@ function demoMessageContentForRating(rating: number): string {
   return '回答结构清晰，给出了对比关系、适用场景和操作建议，整体可读性较好。'
 }
 
-function getFeedbackSource(
-  item: MessageFeedbackEnriched
-): FeedbackSourceFilter {
+function getFeedbackSource(item: MessageFeedbackEnriched): FeedbackSourceFilter {
   const raw =
     `${feedbackDisplayString(item.account_id)} ${firstFeedbackDisplayString(item.extra?.source, item.extra?.benchmark_source)} ${(item.tags || []).join(' ')}`.toLowerCase()
   if (raw.includes('benchmark') || raw.includes('评测')) return 'benchmark'
-  if (
-    raw.includes('mobile') ||
-    raw.includes('ios') ||
-    raw.includes('android') ||
-    raw.includes('app')
-  )
-    return 'mobile'
+  if (raw.includes('mobile') || raw.includes('ios') || raw.includes('android') || raw.includes('app')) return 'mobile'
   if (raw.includes('api')) return 'api'
-  if (raw.includes('wx') || raw.includes('wecom') || raw.includes('enterprise'))
-    return 'enterprise'
-  if (raw.includes('web') || raw.includes('console') || raw.includes('browser'))
-    return 'web'
+  if (raw.includes('wx') || raw.includes('wecom') || raw.includes('enterprise')) return 'enterprise'
+  if (raw.includes('web') || raw.includes('console') || raw.includes('browser')) return 'web'
   return 'other'
 }
 
@@ -321,32 +286,13 @@ function getFeedbackIssueLabel(item: MessageFeedbackEnriched): string {
     other: '其他问题',
   } as const
   if (item.category) return categoryLabels[item.category]
-  const explicitIssue = firstFeedbackDisplayString(
-    item.extra?.feedback_issue,
-    item.extra?.quality_label
-  )
+  const explicitIssue = firstFeedbackDisplayString(item.extra?.feedback_issue, item.extra?.quality_label)
   if (explicitIssue) return explicitIssue
-  const text =
-    `${item.reason || ''} ${(item.tags || []).join(' ')} ${item.message_content || ''}`.toLowerCase()
-  if (
-    text.includes('知识库') ||
-    text.includes('未命中') ||
-    text.includes('找不到')
-  )
-    return '未命中知识库'
+  const text = `${item.reason || ''} ${(item.tags || []).join(' ')} ${item.message_content || ''}`.toLowerCase()
+  if (text.includes('知识库') || text.includes('未命中') || text.includes('找不到')) return '未命中知识库'
   if (text.includes('引用') || text.includes('来源')) return '引用不足'
-  if (
-    text.includes('答非所问') ||
-    text.includes('偏题') ||
-    text.includes('错误')
-  )
-    return '表达模糊'
-  if (
-    text.includes('完整') ||
-    text.includes('过于简略') ||
-    text.includes('配置示例')
-  )
-    return '答案不完整'
+  if (text.includes('答非所问') || text.includes('偏题') || text.includes('错误')) return '表达模糊'
+  if (text.includes('完整') || text.includes('过于简略') || text.includes('配置示例')) return '答案不完整'
   return item.tags?.[0] || '答案不完整'
 }
 
@@ -355,10 +301,7 @@ function isHighPriority(item: MessageFeedbackEnriched): boolean {
   return rating > 0 && rating <= 2
 }
 
-function isWithinRange(
-  value: string | undefined,
-  range: FeedbackTimeRange
-): boolean {
+function isWithinRange(value: string | undefined, range: FeedbackTimeRange): boolean {
   if (range === 'all') return true
   const ts = new Date(String(value || '')).getTime()
   if (!Number.isFinite(ts)) return false
@@ -392,19 +335,13 @@ function buildConicGradient(values: number[], colors: string[]): string {
   return `conic-gradient(${stops.join(', ')})`
 }
 
-function getSummaryNumber(
-  summary: Record<string, unknown> | undefined,
-  key: string
-): number {
+function getSummaryNumber(summary: Record<string, unknown> | undefined, key: string): number {
   const value = summary?.[key]
   const numeric = Number(value)
   return Number.isFinite(numeric) ? numeric : 0
 }
 
-function buildLoopCandidateMetrics(
-  data: FeedbackLoopCandidatesResponse | undefined,
-  demoMode: boolean
-) {
+function buildLoopCandidateMetrics(data: FeedbackLoopCandidatesResponse | undefined, demoMode: boolean) {
   if (demoMode) {
     return {
       total: 128,
@@ -425,14 +362,12 @@ function buildLoopCandidateMetrics(
   const patterns = getSummaryNumber(summary, 'rules_pattern_candidates')
   const intents = getSummaryNumber(summary, 'rules_intent_candidates')
   const suggestions = (data?.rules_suggestions || {}) as Record<string, unknown>
-  const glossaryItems = Array.isArray(suggestions.glossary_suggestions)
-    ? suggestions.glossary_suggestions
-    : []
+  const glossaryItems = Array.isArray(suggestions.glossary_suggestions) ? suggestions.glossary_suggestions : []
   const tokens = glossaryItems
     .map((item) =>
       typeof item === 'object' && item !== null
         ? firstFeedbackDisplayString((item as Record<string, unknown>).token)
-        : ''
+        : '',
     )
     .filter(Boolean)
     .slice(0, 3)
@@ -442,8 +377,7 @@ function buildLoopCandidateMetrics(
     hardNeg,
     triples,
     ruleCandidates: glossary + patterns + intents,
-    conversionRate:
-      negative > 0 ? Number(((hardNeg / negative) * 100).toFixed(1)) : 0,
+    conversionRate: negative > 0 ? Number(((hardNeg / negative) * 100).toFixed(1)) : 0,
     tokens,
   }
 }
@@ -452,10 +386,7 @@ function isArchivedFeedback(item: MessageFeedbackEnriched): boolean {
   return Boolean(item.extra?.archived)
 }
 
-function isFeedbackMetricMatch(
-  item: MessageFeedbackEnriched,
-  metric: FeedbackMetricKey
-): boolean {
+function isFeedbackMetricMatch(item: MessageFeedbackEnriched, metric: FeedbackMetricKey): boolean {
   if (metric === 'all') return true
   return classifyFeedback(item.rating) === metric
 }
@@ -463,19 +394,15 @@ function isFeedbackMetricMatch(
 function countFeedbackMetricForDay(
   items: MessageFeedbackEnriched[],
   dayKey: string,
-  metric: FeedbackMetricKey
+  metric: FeedbackMetricKey,
 ): number {
-  return items.filter(
-    (item) =>
-      utcDayKey(item.created_at) === dayKey &&
-      isFeedbackMetricMatch(item, metric)
-  ).length
+  return items.filter((item) => utcDayKey(item.created_at) === dayKey && isFeedbackMetricMatch(item, metric)).length
 }
 
 function buildFeedbackDelta(
   items: MessageFeedbackEnriched[],
   metric: FeedbackMetricKey,
-  now = new Date()
+  now = new Date(),
 ): FeedbackDelta {
   const todayKey = utcDayKey(now)
   const yesterday = new Date(`${todayKey}T00:00:00.000Z`)
@@ -520,24 +447,14 @@ function FeedbackSummaryCard({
   return (
     <div className="min-h-[72px] rounded-[1.1rem] border border-border/60 bg-background/92 px-3.5 py-2.5 shadow-[0_14px_34px_-30px_rgba(15,23,42,0.25)]">
       <div className="flex h-full items-center gap-3">
-        <div
-          className={cn(
-            'flex size-9 shrink-0 items-center justify-center rounded-xl border',
-            iconClassName
-          )}
-        >
+        <div className={cn('flex size-9 shrink-0 items-center justify-center rounded-xl border', iconClassName)}>
           <Icon className="size-4" />
         </div>
         <div className="min-w-0">
           <div className="text-[10px] font-medium uppercase tracking-[0.12em] leading-none text-muted-foreground">
             {label}
           </div>
-          <div
-            className={cn(
-              'mt-1 text-[1.25rem] font-semibold leading-none tabular-nums',
-              valueClassName
-            )}
-          >
+          <div className={cn('mt-1 text-[1.25rem] font-semibold leading-none tabular-nums', valueClassName)}>
             {value}
           </div>
           <div className="mt-1 text-[9px] font-medium text-foreground/85 dark:text-muted-foreground">
@@ -573,9 +490,7 @@ function FeedbackDonutCard({
   return (
     <div className="rounded-[1.1rem] border border-border/60 bg-background/92 p-3 shadow-subtle">
       <div className="flex items-center justify-between gap-2.5">
-        <div className="text-[0.9rem] font-semibold text-foreground">
-          {title}
-        </div>
+        <div className="text-[0.9rem] font-semibold text-foreground">{title}</div>
         {actionLabel && onAction ? (
           <button
             type="button"
@@ -589,15 +504,10 @@ function FeedbackDonutCard({
       </div>
       <div className="mt-3 grid gap-3 md:grid-cols-[104px_minmax(0,1fr)] md:items-center">
         <div className="flex items-center justify-center">
-          <div
-            className="relative h-[96px] w-[96px] rounded-full"
-            style={{ backgroundImage: gradient }}
-          >
+          <div className="relative h-[96px] w-[96px] rounded-full" style={{ backgroundImage: gradient }}>
             <div className="absolute inset-[15px] flex items-center justify-center rounded-full bg-background text-center">
               <div>
-                <div className="text-[1.2rem] font-semibold text-foreground">
-                  {total}
-                </div>
+                <div className="text-[1.2rem] font-semibold text-foreground">{total}</div>
                 <div className="text-[10px] text-muted-foreground">总量</div>
               </div>
             </div>
@@ -606,22 +516,13 @@ function FeedbackDonutCard({
         <div className="space-y-1.5">
           {hasItems ? (
             items.map((item, index) => (
-              <div
-                key={item.label}
-                className="flex items-center justify-between gap-2 text-[11px]"
-              >
+              <div key={item.label} className="flex items-center justify-between gap-2 text-[11px]">
                 <div className="flex items-center gap-2 text-muted-foreground">
-                  <span
-                    className="h-2 w-2 rounded-full"
-                    style={{ backgroundColor: colors[index] }}
-                  />
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: colors[index] }} />
                   <span>{item.label}</span>
                 </div>
                 <div className="font-mono text-foreground">
-                  {item.value}{' '}
-                  {total > 0
-                    ? `(${((item.value / total) * 100).toFixed(1)}%)`
-                    : '(0%)'}
+                  {item.value} {total > 0 ? `(${((item.value / total) * 100).toFixed(1)}%)` : '(0%)'}
                 </div>
               </div>
             ))
@@ -658,9 +559,7 @@ function FeedbackTrendCard({
   return (
     <div className="rounded-[1.1rem] border border-border/60 bg-background/92 p-3 shadow-subtle">
       <div className="flex items-center justify-between gap-2.5">
-        <div className="text-[0.9rem] font-semibold text-foreground">
-          {title}
-        </div>
+        <div className="text-[0.9rem] font-semibold text-foreground">{title}</div>
         {actionLabel && onAction ? (
           <button
             type="button"
@@ -676,10 +575,7 @@ function FeedbackTrendCard({
         <div className="mb-2.5 flex flex-wrap items-center gap-3 text-[10px] text-muted-foreground">
           {series.map((item) => (
             <span key={item.label} className="inline-flex items-center gap-1.5">
-              <span
-                className="h-2 w-2 rounded-full"
-                style={{ backgroundColor: item.color }}
-              />
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
               <span>{item.label}</span>
             </span>
           ))}
@@ -706,9 +602,7 @@ function FeedbackTrendCard({
             {series.map((item) => {
               const path = item.values
                 .map((value, index) => {
-                  const x =
-                    (index / Math.max(1, item.values.length - 1)) * (width - 16) +
-                    8
+                  const x = (index / Math.max(1, item.values.length - 1)) * (width - 16) + 8
                   const y = 152 - (value / max) * 110
                   return `${index === 0 ? 'M' : 'L'} ${x} ${y}`
                 })
@@ -726,17 +620,9 @@ function FeedbackTrendCard({
               )
             })}
             {labels.map((label, index) => {
-              const x =
-                (index / Math.max(1, labels.length - 1)) * (width - 16) + 8
+              const x = (index / Math.max(1, labels.length - 1)) * (width - 16) + 8
               return (
-                <text
-                  key={label}
-                  x={x}
-                  y={181}
-                  textAnchor="middle"
-                  fontSize="11"
-                  fill="rgba(100,116,139,0.9)"
-                >
+                <text key={label} x={x} y={181} textAnchor="middle" fontSize="11" fill="rgba(100,116,139,0.9)">
                   {label}
                 </text>
               )
@@ -766,9 +652,8 @@ function FeedbackStatusBadge({
         'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium',
         tone === 'positive' && 'border-success/20 bg-success/10 text-success',
         tone === 'negative' && 'border-rose/20 bg-rose/10 text-rose',
-        tone === 'neutral' &&
-          'border-border/60 bg-muted/50 text-muted-foreground',
-        tone === 'priority' && 'border-orange/20 bg-orange/10 text-orange'
+        tone === 'neutral' && 'border-border/60 bg-muted/50 text-muted-foreground',
+        tone === 'priority' && 'border-orange/20 bg-orange/10 text-orange',
       )}
     >
       {label}
@@ -835,10 +720,7 @@ function buildDemoFeedbackItems(): MessageFeedbackEnriched[] {
       rating: seed.rating,
       reason: seed.reason,
       tags: [...seed.tags],
-      expected_answer:
-        index % 4 === 0
-          ? '需要给出更完整的步骤、配置样例和适用范围。'
-          : undefined,
+      expected_answer: index % 4 === 0 ? '需要给出更完整的步骤、配置样例和适用范围。' : undefined,
       extra: { source: seed.source },
       created_at: createdAt,
       updated_at: createdAt,
@@ -896,8 +778,7 @@ export default function FeedbackTriagePage() {
   const searchParams = useSearchParams()
   const pathname = usePathname()
   const router = useRouter()
-  const demoMode =
-    /(^|\/)demo(\/|$)/.test(pathname) && searchParams.get('demo') === '1'
+  const demoMode = /(^|\/)demo(\/|$)/.test(pathname) && searchParams.get('demo') === '1'
   const [ratingFilter, setRatingFilter] = useState<RatingFilter>('all')
   const [filterType, setFilterType] = useState<FeedbackTypeFilter>('all')
   const [boardTab, setBoardTab] = useState<FeedbackBoardTab>('all')
@@ -927,8 +808,7 @@ export default function FeedbackTriagePage() {
 
   const { data, isFetching, refetch } = useQuery({
     queryKey: ['feedback-enriched', params],
-    queryFn: ({ signal }) =>
-      feedbackApi.listEnriched({ limit: 100, ...params }, { signal }),
+    queryFn: ({ signal }) => feedbackApi.listEnriched({ limit: 100, ...params }, { signal }),
     enabled: !demoMode,
     staleTime: 5_000,
   })
@@ -940,22 +820,16 @@ export default function FeedbackTriagePage() {
   } = useQuery({
     queryKey: ['feedback-loop-candidates'],
     queryFn: ({ signal }) =>
-      feedbackApi.loopCandidates(
-        { max_rating: 2, limit: 200, ruleset: 'industrial_control' },
-        { signal }
-      ),
+      feedbackApi.loopCandidates({ max_rating: 2, limit: 200, ruleset: 'industrial_control' }, { signal }),
     enabled: !demoMode,
     staleTime: 15_000,
   })
 
-  const items = useMemo(
-    () => (demoMode ? buildDemoFeedbackItems() : data?.items || []),
-    [data, demoMode]
-  )
+  const items = useMemo(() => (demoMode ? buildDemoFeedbackItems() : data?.items || []), [data, demoMode])
   const demoMetrics = useMemo(() => buildDemoFeedbackMetrics(), [])
   const loopMetrics = useMemo(
     () => buildLoopCandidateMetrics(loopCandidateData, demoMode),
-    [demoMode, loopCandidateData]
+    [demoMode, loopCandidateData],
   )
 
   const stats = useMemo(() => {
@@ -1023,19 +897,8 @@ export default function FeedbackTriagePage() {
   }, [demoMetrics.sources, demoMode, items])
 
   const primarySourceFilter = useMemo(() => {
-    const sourceKeys: FeedbackSourceFilter[] = [
-      'web',
-      'mobile',
-      'enterprise',
-      'api',
-      'benchmark',
-      'other',
-    ]
-    return (
-      sourceKeys.find((source) =>
-        items.some((item) => getFeedbackSource(item) === source)
-      ) ?? 'all'
-    )
+    const sourceKeys: FeedbackSourceFilter[] = ['web', 'mobile', 'enterprise', 'api', 'benchmark', 'other']
+    return sourceKeys.find((source) => items.some((item) => getFeedbackSource(item) === source)) ?? 'all'
   }, [items])
 
   const trendStats = useMemo(() => {
@@ -1054,19 +917,9 @@ export default function FeedbackTriagePage() {
         const itemKey = utcDayKey(item.created_at)
         return itemKey === dayKey
       })
-      up.push(
-        dayItems.filter((item) => classifyFeedback(item.rating) === 'thumbs_up')
-          .length
-      )
-      down.push(
-        dayItems.filter(
-          (item) => classifyFeedback(item.rating) === 'thumbs_down'
-        ).length
-      )
-      neutral.push(
-        dayItems.filter((item) => classifyFeedback(item.rating) === 'neutral')
-          .length
-      )
+      up.push(dayItems.filter((item) => classifyFeedback(item.rating) === 'thumbs_up').length)
+      down.push(dayItems.filter((item) => classifyFeedback(item.rating) === 'thumbs_down').length)
+      neutral.push(dayItems.filter((item) => classifyFeedback(item.rating) === 'neutral').length)
     }
     return {
       labels,
@@ -1121,14 +974,7 @@ export default function FeedbackTriagePage() {
       })
     }
     return res
-  }, [
-    boardTab,
-    items,
-    searchTerm,
-    filterType,
-    sourceFilter,
-    timeRange,
-  ])
+  }, [boardTab, items, searchTerm, filterType, sourceFilter, timeRange])
 
   const copyDetail = async (it: MessageFeedbackEnriched) => {
     try {
@@ -1157,7 +1003,7 @@ export default function FeedbackTriagePage() {
         setArchivingId(null)
       }
     },
-    [demoMode, refetch]
+    [demoMode, refetch],
   )
 
   const createRegressionCase = useCallback(
@@ -1179,7 +1025,7 @@ export default function FeedbackTriagePage() {
         setCreatingCase(false)
       }
     },
-    [demoMode]
+    [demoMode],
   )
 
   const handleExitDemoMode = useCallback(() => {
@@ -1195,29 +1041,15 @@ export default function FeedbackTriagePage() {
     setCreatingCase(false)
   }, [detail?.id])
 
-  const hasActiveFilters =
-    searchTerm.trim().length > 0 ||
-    filterType !== 'all' ||
-    ratingFilter !== 'all'
-  const hasExtendedFilters =
-    hasActiveFilters ||
-    sourceFilter !== 'all' ||
-    timeRange !== 'all' ||
-    boardTab !== 'all'
-  const totalPages = useMemo(
-    () => Math.max(1, Math.ceil(filtered.length / FEEDBACK_PAGE_SIZE)),
-    [filtered.length]
-  )
+  const hasActiveFilters = searchTerm.trim().length > 0 || filterType !== 'all' || ratingFilter !== 'all'
+  const hasExtendedFilters = hasActiveFilters || sourceFilter !== 'all' || timeRange !== 'all' || boardTab !== 'all'
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(filtered.length / FEEDBACK_PAGE_SIZE)), [filtered.length])
   // Clamp during render instead of syncing via an effect: when filters shrink
   // the result set, safePage stays in range without an extra render pass.
   const safePage = Math.min(page, totalPages)
   const paginated = useMemo(
-    () =>
-      filtered.slice(
-        (safePage - 1) * FEEDBACK_PAGE_SIZE,
-        safePage * FEEDBACK_PAGE_SIZE
-      ),
-    [filtered, safePage]
+    () => filtered.slice((safePage - 1) * FEEDBACK_PAGE_SIZE, safePage * FEEDBACK_PAGE_SIZE),
+    [filtered, safePage],
   )
   const listSummary = useMemo(() => {
     if (!items.length) return null
@@ -1225,15 +1057,8 @@ export default function FeedbackTriagePage() {
     return `共 ${items.length} 条`
   }, [filtered.length, hasExtendedFilters, items.length])
   const activeFilterBadges = useMemo(
-    () =>
-      buildActiveFeedbackFilterBadges(
-        filterType,
-        ratingFilter,
-        sourceFilter,
-        timeRange,
-        searchTerm
-      ),
-    [filterType, ratingFilter, searchTerm, sourceFilter, timeRange]
+    () => buildActiveFeedbackFilterBadges(filterType, ratingFilter, sourceFilter, timeRange, searchTerm),
+    [filterType, ratingFilter, searchTerm, sourceFilter, timeRange],
   )
 
   useEffect(() => {
@@ -1271,7 +1096,7 @@ export default function FeedbackTriagePage() {
         tone: 'blue' as const,
       },
     ],
-    [items, stats.downvotes, stats.neutral, stats.total, stats.upvotes]
+    [items, stats.downvotes, stats.neutral, stats.total, stats.upvotes],
   )
 
   return (
@@ -1301,7 +1126,10 @@ export default function FeedbackTriagePage() {
         top={
           <div className="space-y-3">
             <div className={cn(KNOWLEDGE_OPS_HERO_PANEL_CLASS, 'min-h-14')}>
-              <span className="pointer-events-none absolute -bottom-px left-1 h-px w-12 bg-info/70" aria-hidden="true" />
+              <span
+                className="pointer-events-none absolute -bottom-px left-1 h-px w-12 bg-info/70"
+                aria-hidden="true"
+              />
               <div className="relative flex min-w-0 flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
                 <div className="flex min-w-0 items-center gap-2.5">
                   <div className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-md bg-info/10 text-info shadow-none">
@@ -1359,9 +1187,7 @@ export default function FeedbackTriagePage() {
                       <RefreshCw
                         className={cn(
                           'h-3.5 w-3.5',
-                          isFetching || isLoopFetching
-                            ? 'animate-spin motion-reduce:animate-none'
-                            : ''
+                          isFetching || isLoopFetching ? 'animate-spin motion-reduce:animate-none' : '',
                         )}
                       />
                       刷新数据
@@ -1388,15 +1214,16 @@ export default function FeedbackTriagePage() {
       >
         <div className="grid gap-3 xl:h-[calc(100vh-14.25rem)] xl:min-h-0 xl:grid-cols-[minmax(0,1.72fr)_minmax(320px,0.78fr)]">
           <div className="xl:flex xl:min-h-0 xl:flex-col">
-            <div data-feedback-list-board="true" className="overflow-hidden rounded-2xl border border-border/60 bg-background shadow-soft xl:flex xl:min-h-0 xl:flex-1 xl:flex-col">
+            <div
+              data-feedback-list-board="true"
+              className="overflow-hidden rounded-2xl border border-border/60 bg-background shadow-soft xl:flex xl:min-h-0 xl:flex-1 xl:flex-col"
+            >
               <div className="border-b border-border/60 px-5 py-3.5">
                 <div className="space-y-3">
                   <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-3">
-                        <div className="text-[1.22rem] font-semibold text-foreground">
-                          反馈列表
-                        </div>
+                        <div className="text-[1.22rem] font-semibold text-foreground">反馈列表</div>
                         <span className="rounded-full border border-border/60 bg-muted/40 px-3 py-1 text-[10px] font-medium text-muted-foreground">
                           {listSummary || '当前空列表'}
                         </span>
@@ -1420,7 +1247,10 @@ export default function FeedbackTriagePage() {
                       ) : null}
                     </div>
 
-                    <div data-feedback-board-tabs="true" className="flex w-full max-w-full flex-wrap items-center gap-1 rounded-2xl border border-border/60 bg-background/70 p-1 shadow-subtle xl:w-auto xl:justify-end">
+                    <div
+                      data-feedback-board-tabs="true"
+                      className="flex w-full max-w-full flex-wrap items-center gap-1 rounded-2xl border border-border/60 bg-background/70 p-1 shadow-subtle xl:w-auto xl:justify-end"
+                    >
                       {(
                         [
                           ['all', '全部'],
@@ -1437,7 +1267,7 @@ export default function FeedbackTriagePage() {
                             'rounded-xl border px-3.5 py-1.5 text-[12px] font-medium transition-colors',
                             boardTab === value
                               ? 'border-info/25 bg-info/[0.12] text-info shadow-[0_10px_22px_-18px_hsl(var(--info)/0.55)]'
-                              : 'border-transparent bg-transparent text-muted-foreground hover:bg-card/85 hover:text-foreground'
+                              : 'border-transparent bg-transparent text-muted-foreground hover:bg-card/85 hover:text-foreground',
                           )}
                         >
                           {label}
@@ -1455,14 +1285,15 @@ export default function FeedbackTriagePage() {
                       inputClassName="h-9 rounded-xl border-border/60 bg-background/75 text-[12px] shadow-none"
                     />
 
-                    <Select
-                      value={filterType}
-                      onValueChange={(v) =>
-                        setFilterType(v as FeedbackTypeFilter)
-                      }
-                    >
+                    <Select value={filterType} onValueChange={(v) => setFilterType(v as FeedbackTypeFilter)}>
                       <SelectTrigger
-                        title={filterType === 'all' ? '按类型筛选（当前：全部）' : filterType === 'thumbs_up' ? '按类型筛选：点赞反馈' : '按类型筛选：点踩反馈'}
+                        title={
+                          filterType === 'all'
+                            ? '按类型筛选（当前：全部）'
+                            : filterType === 'thumbs_up'
+                              ? '按类型筛选：点赞反馈'
+                              : '按类型筛选：点踩反馈'
+                        }
                         className="h-9 w-full rounded-xl border-border/60 bg-background/75 px-3 shadow-none [&>svg]:text-muted-foreground/65"
                       >
                         <span className="truncate pr-2 text-[12px] font-medium text-foreground">
@@ -1476,22 +1307,15 @@ export default function FeedbackTriagePage() {
                       </SelectContent>
                     </Select>
 
-                    <Select
-                      value={ratingFilter}
-                      onValueChange={(v) => setRatingFilter(v as RatingFilter)}
-                    >
+                    <Select value={ratingFilter} onValueChange={(v) => setRatingFilter(v as RatingFilter)}>
                       <SelectTrigger
                         title={
-                          ratingFilter === 'all'
-                            ? '按星级筛选（当前：全部）'
-                            : `按星级筛选：${ratingFilter} 星反馈`
+                          ratingFilter === 'all' ? '按星级筛选（当前：全部）' : `按星级筛选：${ratingFilter} 星反馈`
                         }
                         className="h-9 w-full rounded-xl border-border/60 bg-background/75 px-3 shadow-none [&>svg]:text-muted-foreground/65"
                       >
                         <span className="truncate pr-2 text-[12px] font-medium text-foreground">
-                          {ratingFilter === 'all'
-                            ? '星级'
-                            : `星级 · ${ratingFilter} 星`}
+                          {ratingFilter === 'all' ? '星级' : `星级 · ${ratingFilter} 星`}
                         </span>
                       </SelectTrigger>
                       <SelectContent className="rounded-lg border-border/60 bg-popover p-1 shadow-soft">
@@ -1504,12 +1328,7 @@ export default function FeedbackTriagePage() {
                       </SelectContent>
                     </Select>
 
-                    <Select
-                      value={sourceFilter}
-                      onValueChange={(v) =>
-                        setSourceFilter(v as FeedbackSourceFilter)
-                      }
-                    >
+                    <Select value={sourceFilter} onValueChange={(v) => setSourceFilter(v as FeedbackSourceFilter)}>
                       <SelectTrigger className="h-9 w-full rounded-xl border-border/60 bg-background/75 px-3 shadow-none">
                         <SelectValue placeholder="来源" />
                       </SelectTrigger>
@@ -1524,12 +1343,7 @@ export default function FeedbackTriagePage() {
                       </SelectContent>
                     </Select>
 
-                    <Select
-                      value={timeRange}
-                      onValueChange={(v) =>
-                        setTimeRange(v as FeedbackTimeRange)
-                      }
-                    >
+                    <Select value={timeRange} onValueChange={(v) => setTimeRange(v as FeedbackTimeRange)}>
                       <SelectTrigger className="h-9 w-full rounded-xl border-border/60 bg-background/75 px-3 shadow-none [&>svg]:text-muted-foreground/65">
                         <span className="truncate pr-2 text-[12px] font-medium text-foreground">
                           {TIME_RANGE_SHORT_LABELS[timeRange]}
@@ -1554,21 +1368,13 @@ export default function FeedbackTriagePage() {
                     const source = getFeedbackSource(item)
                     const ratingValue = Number(item.rating) || 0
                     const archived = isArchivedFeedback(item)
-                    const title =
-                      item.reason ||
-                      item.conversation_title ||
-                      `反馈 ${item.id.slice(0, 8)}`
+                    const title = item.reason || item.conversation_title || `反馈 ${item.id.slice(0, 8)}`
                     const sourceBadgeLabel = feedbackSourceBadgeLabel(source)
                     const resolutionLabel = RESOLUTION_LABELS[kind]
                     const badgeItems = Array.from(
                       new Set(
-                        [
-                          issue,
-                          sourceBadgeLabel,
-                          resolutionLabel,
-                          archived ? '已处理 / 归档' : null,
-                        ].filter(Boolean)
-                      )
+                        [issue, sourceBadgeLabel, resolutionLabel, archived ? '已处理 / 归档' : null].filter(Boolean),
+                      ),
                     ) as string[]
                     return (
                       <article
@@ -1579,7 +1385,7 @@ export default function FeedbackTriagePage() {
                           <div
                             className={cn(
                               'flex h-7.5 w-7.5 shrink-0 items-center justify-center rounded-lg border',
-                              FEEDBACK_KIND_BADGE_CLASSES[kind]
+                              FEEDBACK_KIND_BADGE_CLASSES[kind],
                             )}
                           >
                             {feedbackKindIcon(kind)}
@@ -1588,36 +1394,25 @@ export default function FeedbackTriagePage() {
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-col gap-1.5 xl:flex-row xl:items-start xl:justify-between">
                               <div className="min-w-0">
-                                <div className="truncate text-[0.9rem] font-medium text-foreground/88">
-                                  {title}
-                                </div>
+                                <div className="truncate text-[0.9rem] font-medium text-foreground/88">{title}</div>
                                 <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
                                   <span>
                                     用户反馈（
-                                    {FEEDBACK_KIND_LABELS[kind]}
-                                    ）
+                                    {FEEDBACK_KIND_LABELS[kind]}）
                                   </span>
-                                  <span className="text-muted-foreground/35">
-                                    ·
-                                  </span>
+                                  <span className="text-muted-foreground/35">·</span>
                                   <div className="flex items-center gap-0.5 text-warning">
-                                    {Array.from({ length: 5 }, (_, starIndex) => starIndex).map(
-                                      (starIndex) => (
-                                        <Star
-                                          key={`feedback-rating-star-${starIndex}`}
-                                          className={cn(
-                                            'size-2.5',
-                                            starIndex < ratingValue
-                                              ? 'fill-current'
-                                              : 'stroke-current opacity-35'
-                                          )}
-                                        />
-                                      )
-                                    )}
+                                    {Array.from({ length: 5 }, (_, starIndex) => starIndex).map((starIndex) => (
+                                      <Star
+                                        key={`feedback-rating-star-${starIndex}`}
+                                        className={cn(
+                                          'size-2.5',
+                                          starIndex < ratingValue ? 'fill-current' : 'stroke-current opacity-35',
+                                        )}
+                                      />
+                                    ))}
                                   </div>
-                                  <span className="font-normal text-foreground/70">
-                                    {ratingValue}/5
-                                  </span>
+                                  <span className="font-normal text-foreground/70">{ratingValue}/5</span>
                                 </div>
                               </div>
 
@@ -1635,26 +1430,20 @@ export default function FeedbackTriagePage() {
                                 <FeedbackStatusBadge
                                   key={badge}
                                   label={badge}
-                                  tone={
-                                    feedbackStatusTone(badge, issue, kind)
-                                  }
+                                  tone={feedbackStatusTone(badge, issue, kind)}
                                 />
                               ))}
                             </div>
 
                             <div className="mt-2.5 grid gap-2.5 xl:grid-cols-[minmax(0,0.42fr)_minmax(0,0.58fr)]">
                               <div className="rounded-lg border border-border/50 bg-muted/25 p-2.5">
-                                <div className="text-[10px] font-medium text-foreground/82">
-                                  用户反馈原因
-                                </div>
+                                <div className="text-[10px] font-medium text-foreground/82">用户反馈原因</div>
                                 <p className="mt-1 line-clamp-2 text-[11px] leading-4.5 text-foreground/78">
                                   {item.reason || '用户未填写反馈原因。'}
                                 </p>
                               </div>
                               <div className="rounded-lg border border-border/50 bg-muted/25 p-2.5">
-                                <div className="text-[10px] font-medium text-foreground/82">
-                                  模型回答摘要
-                                </div>
+                                <div className="text-[10px] font-medium text-foreground/82">模型回答摘要</div>
                                 <p className="mt-1 line-clamp-2 text-[11px] leading-4.5 text-muted-foreground">
                                   {item.message_content || '（无消息内容）'}
                                 </p>
@@ -1664,9 +1453,7 @@ export default function FeedbackTriagePage() {
                         </div>
 
                         <div className="flex flex-wrap items-center justify-between gap-2.5 border-t border-border/50 bg-muted/18 px-4 py-1.5">
-                          <div className="text-[9px] font-mono text-muted-foreground">
-                            {item.id.slice(0, 8)}
-                          </div>
+                          <div className="text-[9px] font-mono text-muted-foreground">{item.id.slice(0, 8)}</div>
                           <div className="flex flex-wrap items-center gap-1.5 rounded-full border border-border/60 bg-card px-2 py-1 shadow-subtle">
                             <Button
                               variant="ghost"
@@ -1710,28 +1497,17 @@ export default function FeedbackTriagePage() {
                                   <MoreHorizontal className="size-3" />
                                 </Button>
                               </DropdownMenuTrigger>
-                              <DropdownMenuContent
-                                align="end"
-                                className="w-44 rounded-xl"
-                              >
-                                <DropdownMenuItem
-                                  className="text-[12px]"
-                                  onSelect={() => setDetail(item)}
-                                >
+                              <DropdownMenuContent align="end" className="w-44 rounded-xl">
+                                <DropdownMenuItem className="text-[12px]" onSelect={() => setDetail(item)}>
                                   查看完整详情
                                 </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className="text-[12px]"
-                                  onSelect={() => copyDetail(item)}
-                                >
+                                <DropdownMenuItem className="text-[12px]" onSelect={() => copyDetail(item)}>
                                   复制反馈 JSON
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   className="text-[12px]"
                                   onSelect={() =>
-                                    router.push(
-                                      `/history?id=${encodeURIComponent(item.conversation_id)}`
-                                    )
+                                    router.push(`/history?id=${encodeURIComponent(item.conversation_id)}`)
                                   }
                                 >
                                   跳转对话上下文
@@ -1762,14 +1538,9 @@ export default function FeedbackTriagePage() {
               ) : (
                 <div className="flex min-h-[360px] flex-1 flex-col items-center justify-center px-6 py-20 text-center">
                   <div className="mb-5 flex size-24 items-center justify-center rounded-full bg-muted/50">
-                    <Search
-                      className="size-9 text-muted-foreground/55"
-                      aria-hidden="true"
-                    />
+                    <Search className="size-9 text-muted-foreground/55" aria-hidden="true" />
                   </div>
-                  <p className="text-[15px] font-semibold text-foreground">
-                    没有找到相关的反馈记录
-                  </p>
+                  <p className="text-[15px] font-semibold text-foreground">没有找到相关的反馈记录</p>
                   <p className="mt-2 max-w-lg text-[13px] leading-6 text-muted-foreground/85">
                     {hasExtendedFilters
                       ? '可以清除当前筛选条件，查看完整反馈流。'
@@ -1802,36 +1573,29 @@ export default function FeedbackTriagePage() {
                       type="button"
                       className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-background text-foreground disabled:opacity-35"
                       disabled={safePage <= 1}
-                      onClick={() =>
-                        setPage((previous) => Math.max(1, previous - 1))
-                      }
+                      onClick={() => setPage((previous) => Math.max(1, previous - 1))}
                     >
                       <ChevronLeft className="h-3.5 w-3.5" />
                     </button>
-                    {Array.from(
-                      { length: Math.min(totalPages, 5) },
-                      (_, index) => {
-                        const pageNumber = index + 1
-                        return (
-                          <button
-                            key={pageNumber}
-                            type="button"
-                            onClick={() => setPage(pageNumber)}
-                            className={cn(
-                              'inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-[11px] font-medium',
-                              safePage === pageNumber
-                                ? 'bg-info/[0.12] text-info'
-                                : 'text-muted-foreground hover:text-foreground'
-                            )}
-                          >
-                            {pageNumber}
-                          </button>
-                        )
-                      }
-                    )}
-                    {totalPages > 5 ? (
-                      <span className="px-1 text-[11px]">…</span>
-                    ) : null}
+                    {Array.from({ length: Math.min(totalPages, 5) }, (_, index) => {
+                      const pageNumber = index + 1
+                      return (
+                        <button
+                          key={pageNumber}
+                          type="button"
+                          onClick={() => setPage(pageNumber)}
+                          className={cn(
+                            'inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-[11px] font-medium',
+                            safePage === pageNumber
+                              ? 'bg-info/[0.12] text-info'
+                              : 'text-muted-foreground hover:text-foreground',
+                          )}
+                        >
+                          {pageNumber}
+                        </button>
+                      )
+                    })}
+                    {totalPages > 5 ? <span className="px-1 text-[11px]">…</span> : null}
                     {totalPages > 5 ? (
                       <button
                         type="button"
@@ -1840,7 +1604,7 @@ export default function FeedbackTriagePage() {
                           'inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-[11px] font-medium',
                           safePage === totalPages
                             ? 'bg-info/[0.12] text-info'
-                            : 'text-muted-foreground hover:text-foreground'
+                            : 'text-muted-foreground hover:text-foreground',
                         )}
                       >
                         {totalPages}
@@ -1850,11 +1614,7 @@ export default function FeedbackTriagePage() {
                       type="button"
                       className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-background text-foreground disabled:opacity-35"
                       disabled={safePage >= totalPages}
-                      onClick={() =>
-                        setPage((previous) =>
-                          Math.min(totalPages, previous + 1)
-                        )
-                      }
+                      onClick={() => setPage((previous) => Math.min(totalPages, previous + 1))}
                     >
                       <ChevronRight className="h-3.5 w-3.5" />
                     </button>
@@ -1872,9 +1632,7 @@ export default function FeedbackTriagePage() {
           <div className="min-w-0 space-y-3 xl:h-full xl:overflow-y-auto xl:overscroll-contain xl:no-scrollbar">
             <div className="rounded-[1.1rem] border border-border/60 bg-background/92 p-3.5 shadow-subtle">
               <div className="flex items-center justify-between gap-3">
-                <div className="text-[0.92rem] font-semibold leading-tight text-foreground">
-                  高频问题原因 TOP3
-                </div>
+                <div className="text-[0.92rem] font-semibold leading-tight text-foreground">高频问题原因 TOP3</div>
                 <button
                   type="button"
                   className="inline-flex items-center gap-1 text-[12px] font-medium text-muted-foreground hover:text-foreground"
@@ -1899,22 +1657,17 @@ export default function FeedbackTriagePage() {
                               'inline-flex h-5 w-5 items-center justify-center rounded-md text-[11px] font-medium tabular-nums',
                               index === 0
                                 ? 'bg-rose text-rose-foreground'
-                                : 'bg-muted text-muted-foreground border border-border/60'
+                                : 'bg-muted text-muted-foreground border border-border/60',
                             )}
                           >
                             {index + 1}
                           </span>
-                          <span className="font-medium text-foreground">
-                            {item.label}
-                          </span>
+                          <span className="font-medium text-foreground">{item.label}</span>
                         </div>
                         <span className="font-mono tabular-nums text-muted-foreground">
                           {item.value}{' '}
                           <span className="text-muted-foreground/65">
-                            (
-                            {stats.total > 0
-                              ? ((item.value / stats.total) * 100).toFixed(1)
-                              : '0.0'}
+                            ({stats.total > 0 ? ((item.value / stats.total) * 100).toFixed(1) : '0.0'}
                             %)
                           </span>
                         </span>
@@ -1923,7 +1676,7 @@ export default function FeedbackTriagePage() {
                         <div
                           className={cn(
                             'h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none',
-                            topReasonBarClass(index)
+                            topReasonBarClass(index),
                           )}
                           style={{
                             width: `${stats.total ? (item.value / stats.total) * 100 : 0}%`,
@@ -1937,9 +1690,7 @@ export default function FeedbackTriagePage() {
                     <div className="mx-auto mb-2 flex size-9 items-center justify-center rounded-2xl bg-rose/10 text-rose">
                       <ThumbsDown className="size-4" />
                     </div>
-                    <div className="text-[12px] font-semibold text-foreground">
-                      暂无高频原因
-                    </div>
+                    <div className="text-[12px] font-semibold text-foreground">暂无高频原因</div>
                     <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
                       暂无高频原因，收到低分反馈后自动聚合 TOP3。
                     </p>
@@ -1951,41 +1702,28 @@ export default function FeedbackTriagePage() {
             <div className="rounded-[1.1rem] border border-border/60 bg-background/92 p-3.5 shadow-subtle">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-[0.98rem] font-semibold text-foreground">
-                    反哺候选
-                  </div>
-                  <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
-                    只读预览，不自动上线
-                  </p>
+                  <div className="text-[0.98rem] font-semibold text-foreground">反哺候选</div>
+                  <p className="mt-1 text-[11px] leading-5 text-muted-foreground">只读预览，不自动上线</p>
                 </div>
-                <Badge
-                  variant="outline"
-                  className="rounded-full px-2.5 py-1 text-[10px] font-medium"
-                >
+                <Badge variant="outline" className="rounded-full px-2.5 py-1 text-[10px] font-medium">
                   {loopMetrics.negative} 条低分
                 </Badge>
               </div>
               <div className="mt-3 grid grid-cols-3 gap-2">
                 <div className="rounded-xl border border-border/50 bg-muted/25 p-2.5">
-                  <div className="text-[10px] font-medium text-muted-foreground">
-                    HardNeg
-                  </div>
+                  <div className="text-[10px] font-medium text-muted-foreground">HardNeg</div>
                   <div className="mt-1 font-mono text-[1.05rem] font-semibold text-foreground">
                     {loopMetrics.hardNeg}
                   </div>
                 </div>
                 <div className="rounded-xl border border-border/50 bg-muted/25 p-2.5">
-                  <div className="text-[10px] font-medium text-muted-foreground">
-                    训练三元组
-                  </div>
+                  <div className="text-[10px] font-medium text-muted-foreground">训练三元组</div>
                   <div className="mt-1 font-mono text-[1.05rem] font-semibold text-foreground">
                     {loopMetrics.triples}
                   </div>
                 </div>
                 <div className="rounded-xl border border-border/50 bg-muted/25 p-2.5">
-                  <div className="text-[10px] font-medium text-muted-foreground">
-                    规则候选
-                  </div>
+                  <div className="text-[10px] font-medium text-muted-foreground">规则候选</div>
                   <div className="mt-1 font-mono text-[1.05rem] font-semibold text-foreground">
                     {loopMetrics.ruleCandidates}
                   </div>
@@ -1993,9 +1731,7 @@ export default function FeedbackTriagePage() {
               </div>
               <div className="mt-3 rounded-xl border border-border/60 bg-background/70 p-3">
                 <div className="flex items-center justify-between text-[11px]">
-                  <span className="text-muted-foreground">
-                    负反馈转可用候选率
-                  </span>
+                  <span className="text-muted-foreground">负反馈转可用候选率</span>
                   <span className="font-mono font-semibold text-foreground">
                     {loopMetrics.conversionRate.toFixed(1)}%
                   </span>
@@ -2012,11 +1748,7 @@ export default function FeedbackTriagePage() {
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {loopMetrics.tokens.length ? (
                   loopMetrics.tokens.map((token) => (
-                    <Badge
-                      key={token}
-                      variant="secondary"
-                      className="rounded-full px-2.5 py-1 text-[10px] font-medium"
-                    >
+                    <Badge key={token} variant="secondary" className="rounded-full px-2.5 py-1 text-[10px] font-medium">
                       {token}
                     </Badge>
                   ))
@@ -2060,17 +1792,12 @@ export default function FeedbackTriagePage() {
         </div>
       </PageScaffold>
 
-      <Dialog
-        open={Boolean(detail)}
-        onOpenChange={(o) => (o ? null : setDetail(null))}
-      >
+      <Dialog open={Boolean(detail)} onOpenChange={(o) => (o ? null : setDetail(null))}>
         <DialogContent className="max-w-3xl p-0 overflow-hidden sm:rounded-2xl">
           <DialogHeader className="px-8 pt-8 pb-4 border-b border-border/60 bg-card relative z-10">
             <DialogTitle className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <span className="text-lg font-medium text-foreground">
-                  反馈详情报告
-                </span>
+                <span className="text-lg font-medium text-foreground">反馈详情报告</span>
               </div>
               {detail && (
                 <Button
@@ -2092,8 +1819,7 @@ export default function FeedbackTriagePage() {
               <div className="rounded-2xl border border-border bg-card p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
                 <div>
                   <div className="text-sm font-medium text-foreground mb-1">
-                    {detail.conversation_title ||
-                      `对话 ${detail.conversation_id}`}
+                    {detail.conversation_title || `对话 ${detail.conversation_id}`}
                   </div>
                   <div className="text-xs text-muted-foreground font-mono flex items-center gap-3">
                     <span>ID: {detail.id.slice(0, 8)}</span>
@@ -2189,20 +1915,13 @@ export default function FeedbackTriagePage() {
 
                 <Button
                   variant="outline"
-                  onClick={() =>
-                    router.push(
-                      `/history?id=${encodeURIComponent(detail.conversation_id)}`
-                    )
-                  }
+                  onClick={() => router.push(`/history?id=${encodeURIComponent(detail.conversation_id)}`)}
                   className="rounded-full border-info/25 bg-info/[0.06] text-info gap-2 hover:border-info/35 hover:bg-info/[0.10] hover:text-info"
                 >
                   跳转至对话上下文
                   <ArrowUpRight className="h-3.5 w-3.5" />
                 </Button>
-                <Button
-                  onClick={() => setDetail(null)}
-                  className="rounded-full"
-                >
+                <Button onClick={() => setDetail(null)} className="rounded-full">
                   关闭面板
                 </Button>
               </div>

@@ -1,24 +1,12 @@
 'use client'
 
-import {
-  Clock3,
-  Database,
-  FileSearch,
-  ShieldCheck,
-} from 'lucide-react'
+import { Clock3, Database, FileSearch, ShieldCheck } from 'lucide-react'
 
 import { KnowledgeOpsHero } from '@/components/ui/knowledge-ops-hero'
 
-import type {
-  DatasetReport,
-  DatasetReportDataProvenance,
-} from '@/types'
+import type { DatasetReport, DatasetReportDataProvenance } from '@/types'
 
-import {
-  reportStatusLabel,
-  reportStatusTone,
-  shortPipelineHash,
-} from '../report-format'
+import { reportStatusLabel, reportStatusTone, shortPipelineHash } from '../report-format'
 import { DataPill } from './report-atoms'
 
 export function ReportsHeaderPills({
@@ -51,13 +39,7 @@ export function ReportsHeaderPills({
         sub={datasetId ? `ID ${shortPipelineHash(datasetId)}` : '未选择'}
         tone="blue"
       />
-      <DataPill
-        icon={FileSearch}
-        label="文档"
-        value={`${totalDocs} 篇文档`}
-        sub="报告画像"
-        tone="blue"
-      />
+      <DataPill icon={FileSearch} label="文档" value={`${totalDocs} 篇文档`} sub="报告画像" tone="blue" />
       <DataPill
         icon={ShieldCheck}
         label="状态"

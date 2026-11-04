@@ -4,15 +4,7 @@
 'use client'
 
 import { useState } from 'react'
-import {
-  BookOpen,
-  Check,
-  Cpu,
-  FileUp,
-  HelpCircle,
-  Layers,
-  ScanLine,
-} from 'lucide-react'
+import { BookOpen, Check, Cpu, FileUp, HelpCircle, Layers, ScanLine } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { TopBar } from './top-bar'
@@ -27,11 +19,7 @@ import {
   KnowledgeOpsHero,
   KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS,
 } from '@/components/ui/knowledge-ops-hero'
-import {
-  WorkbenchPane,
-  WorkbenchPanelDialog,
-  WorkbenchScaffold,
-} from '@/components/workbench'
+import { WorkbenchPane, WorkbenchPanelDialog, WorkbenchScaffold } from '@/components/workbench'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { cn } from '@/lib/utils'
 
@@ -54,14 +42,10 @@ function ChunkPreviewWorkbenchHeader() {
                 <span className="size-1 rounded-full bg-info/70" aria-hidden />
                 范围
               </span>
-              <span className="min-w-0 truncate font-medium text-foreground">
-                {datasetId || '解析工作区'}
-              </span>
+              <span className="min-w-0 truncate font-medium text-foreground">{datasetId || '解析工作区'}</span>
               <span className="h-3.5 w-px bg-border/70" />
               <span>文件</span>
-              <span className="font-mono tabular-nums text-foreground">
-                {fileList.length}
-              </span>
+              <span className="font-mono tabular-nums text-foreground">{fileList.length}</span>
             </div>
             <KnowledgeOpsFlowCard
               steps={[
@@ -79,14 +63,7 @@ function ChunkPreviewWorkbenchHeader() {
 
 function ChunkPreviewEmptyCanvas() {
   const t = useTranslations('ChunkPreview')
-  const {
-    isDragging,
-    handleDragOver,
-    handleDragLeave,
-    handleDrop,
-    addFiles,
-    loadExample,
-  } = useChunkPreview()
+  const { isDragging, handleDragOver, handleDragLeave, handleDrop, addFiles, loadExample } = useChunkPreview()
   const [helpOpen, setHelpOpen] = useState(false)
 
   const processCards: Array<{
@@ -145,17 +122,14 @@ function ChunkPreviewEmptyCanvas() {
       data-chunk-preview-empty-canvas="true"
       className={cn(
         'relative flex h-full min-h-0 flex-1 items-start overflow-y-auto overscroll-contain bg-info/[0.035] transition-colors duration-500',
-        isDragging && 'bg-info/[0.08]'
+        isDragging && 'bg-info/[0.08]',
       )}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
       <div className="relative z-10 mx-auto flex w-full max-w-6xl flex-col px-6 py-6">
-        <div
-          data-chunk-empty-intake-panel
-          className="border-b border-foreground/10 pb-5"
-        >
+        <div data-chunk-empty-intake-panel className="border-b border-foreground/10 pb-5">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-stretch xl:justify-between">
             <div className="flex min-w-0 flex-1 flex-col justify-between gap-3">
               <div className="inline-flex w-fit items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-info">
@@ -166,9 +140,7 @@ function ChunkPreviewEmptyCanvas() {
                 <h2 className="max-w-2xl text-xl font-medium tracking-[-0.02em] text-foreground md:text-[22px]">
                   {t('emptyState.title')}
                 </h2>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-                  {t('emptyState.description')}
-                </p>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{t('emptyState.description')}</p>
               </div>
               <Button
                 type="button"
@@ -185,7 +157,7 @@ function ChunkPreviewEmptyCanvas() {
             <div
               className={cn(
                 'relative w-full overflow-hidden rounded-xl border border-dashed border-info/30 bg-background/60 transition-colors duration-200 xl:w-[24rem]',
-                isDragging ? 'border-info bg-info/[0.06]' : 'hover:border-info/50 hover:bg-background/80'
+                isDragging ? 'border-info bg-info/[0.06]' : 'hover:border-info/50 hover:bg-background/80',
               )}
             >
               <input
@@ -204,7 +176,7 @@ function ChunkPreviewEmptyCanvas() {
                 htmlFor="chunk-empty-file-input"
                 className={cn(
                   'group flex min-h-[9rem] cursor-pointer items-center gap-4 px-4 py-4 text-left focus-ring',
-                  isDragging && 'bg-info/[0.04]'
+                  isDragging && 'bg-info/[0.04]',
                 )}
               >
                 <FileUp className="size-5 shrink-0 text-info" strokeWidth={2.2} />
@@ -229,16 +201,10 @@ function ChunkPreviewEmptyCanvas() {
                 <div className="relative flex items-start gap-3 py-3 pr-6">
                   <Icon className={cn('mt-0.5 size-4 shrink-0', item.accent)} strokeWidth={2.2} />
                   <div className="min-w-0">
-                    <div className="text-xs font-semibold text-foreground">
-                      {item.title}
-                    </div>
-                    <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
-                      {item.description}
-                    </div>
+                    <div className="text-xs font-semibold text-foreground">{item.title}</div>
+                    <div className="mt-1 text-[11px] leading-5 text-muted-foreground">{item.description}</div>
                   </div>
-                  {item.action && (
-                    <Check className="absolute right-0 top-3.5 size-3.5 text-info" strokeWidth={2.4} />
-                  )}
+                  {item.action && <Check className="absolute right-0 top-3.5 size-3.5 text-info" strokeWidth={2.4} />}
                 </div>
               )
 
@@ -252,9 +218,7 @@ function ChunkPreviewEmptyCanvas() {
                   {content}
                 </button>
               ) : (
-                <div key={item.title}>
-                  {content}
-                </div>
+                <div key={item.title}>{content}</div>
               )
             })}
           </div>
@@ -281,9 +245,7 @@ function ChunkPreviewEmptyCanvas() {
                     <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">
                       Source
                     </span>
-                    <span className="text-[10px] font-medium text-info">
-                      TXT / PDF
-                    </span>
+                    <span className="text-[10px] font-medium text-info">TXT / PDF</span>
                   </div>
                   <div className="space-y-2.5">
                     <div className="h-3 w-3/4 rounded-full bg-foreground/18" />
@@ -308,9 +270,7 @@ function ChunkPreviewEmptyCanvas() {
                         >
                           <StepIcon className={cn('size-4 shrink-0', step.tone)} strokeWidth={2.2} />
                           <div className="min-w-0 flex-1">
-                            <div className="text-xs font-semibold tracking-[-0.01em] text-foreground">
-                              {step.label}
-                            </div>
+                            <div className="text-xs font-semibold tracking-[-0.01em] text-foreground">{step.label}</div>
                             <div className="mt-1 flex gap-1.5">
                               <span className="h-1.5 w-14 rounded-full bg-muted-foreground/18" />
                               <span className="h-1.5 w-8 rounded-full bg-muted-foreground/12" />
@@ -333,9 +293,7 @@ function ChunkPreviewEmptyCanvas() {
                   </div>
                   <div className="mt-1 flex items-end gap-2">
                     <span className="text-xl font-semibold text-foreground">12</span>
-                    <span className="pb-1 text-[10px] text-muted-foreground/80">
-                      preview
-                    </span>
+                    <span className="pb-1 text-[10px] text-muted-foreground/80">preview</span>
                   </div>
                 </div>
                 <div className="border-l border-foreground/10 pl-4">
@@ -359,13 +317,7 @@ function ChunkPreviewEmptyCanvas() {
 
 export function Workbench() {
   const t = useTranslations('ChunkPreview')
-  const {
-    currentFile,
-    currentFileItem,
-    showOriginalPanel,
-    showSettingsPanel,
-    toggleSettingsPanel,
-  } = useChunkPreview()
+  const { currentFile, currentFileItem, showOriginalPanel, showSettingsPanel, toggleSettingsPanel } = useChunkPreview()
   const toolbar = currentFile && currentFileItem ? <TopBar /> : null
 
   return (
@@ -386,10 +338,7 @@ export function Workbench() {
           </WorkbenchPane>
         }
         mainPanel={
-          <WorkbenchPane
-            className="flex-1 min-w-0"
-            bodyClassName="p-0 overflow-hidden"
-          >
+          <WorkbenchPane className="flex-1 min-w-0" bodyClassName="p-0 overflow-hidden">
             {currentFile && currentFileItem ? (
               <main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background lg:flex-row">
                 {showOriginalPanel ? <OriginalPreview /> : null}

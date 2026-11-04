@@ -8,18 +8,9 @@ import { sanitizeFilename } from '@/lib/sanitize'
 
 import type { DatasetReport } from '@/types'
 
-import type {
-  CategoryMetricDatum,
-  CoverageRow,
-  ReportExportParams,
-  ReportFinding,
-  ReportMetricDatum,
-} from './types'
+import type { CategoryMetricDatum, CoverageRow, ReportExportParams, ReportFinding, ReportMetricDatum } from './types'
 
-type ReportBlobExporter = (
-  datasetId: string,
-  params: ReportExportParams
-) => Promise<Blob>
+type ReportBlobExporter = (datasetId: string, params: ReportExportParams) => Promise<Blob>
 
 export function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -38,7 +29,7 @@ export function reportPipelineSuffix(pipelineHash: string) {
 export function reportExportParams(
   pipelineHash: string,
   connectorRunsLimit: number,
-  redact?: boolean
+  redact?: boolean,
 ): ReportExportParams {
   const params: ReportExportParams = {
     connector_runs_limit: connectorRunsLimit,
@@ -75,10 +66,7 @@ export async function exportReportBlobFile({
   if (!datasetId) return
   setLoading(true)
   try {
-    const blob = await getBlob(
-      datasetId,
-      reportExportParams(pipelineHash, connectorRunsLimit, redact)
-    )
+    const blob = await getBlob(datasetId, reportExportParams(pipelineHash, connectorRunsLimit, redact))
     const safe = sanitizeFilename(datasetName || 'dataset')
     downloadBlob(blob, `${safe}.${filenameStem}${reportPipelineSuffix(pipelineHash)}.${extension}`)
   } catch (e: unknown) {

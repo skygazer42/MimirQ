@@ -23,7 +23,9 @@ export function computeRerankSimScore(query: string, content: string): number {
   const q = String(query || '').trim()
   if (!q) return 0
 
-  const qTokens = tokenizeLoose(q).filter((t) => t.length >= 1).slice(0, 16)
+  const qTokens = tokenizeLoose(q)
+    .filter((t) => t.length >= 1)
+    .slice(0, 16)
   if (!qTokens.length) return 0
 
   const c = String(content || '')
@@ -48,7 +50,7 @@ export function rerankChunkSearchResults(
   results: ChunkSearchResult[],
   query: string,
   chunks: ChunkPreviewItem[],
-  options?: { alpha?: number }
+  options?: { alpha?: number },
 ): RerankedChunkSearchResult[] {
   const q = String(query || '').trim()
   const alpha = clamp01(Number(options?.alpha ?? 0.65))

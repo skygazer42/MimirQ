@@ -2,43 +2,16 @@
 
 import { useEffect, useState } from 'react'
 import type { RefObject } from 'react'
-import {
-  Database,
-  FileText,
-  FolderUp,
-  Loader2,
-  Paperclip,
-  Play,
-  Plus,
-  Settings2,
-} from 'lucide-react'
+import { Database, FileText, FolderUp, Loader2, Paperclip, Play, Plus, Settings2 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
-import {
-  DocumentFolderTree,
-  type DocumentTreeFileItem,
-} from '@/components/document-library/folder-tree'
+import { DocumentFolderTree, type DocumentTreeFileItem } from '@/components/document-library/folder-tree'
 import { ParsingLeftPanel } from '@/components/parsing/parsing-left-panel'
 import { ParserDropdown } from '@/components/business/parser-dropdown'
 import { Button } from '@/components/ui/button'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Switch } from '@/components/ui/switch'
 import { ROOT_FOLDER_ID } from '@/store/use-parsed-files-store'
 
@@ -73,10 +46,7 @@ type ParsingSidebarPaneProps = {
   onImageCaptionEnabledChange: (enabled: boolean) => void
   onImageOcrEnabledChange: (enabled: boolean) => void
   onVlmCorrectionEnabledChange: (enabled: boolean) => void
-  onFolderDragOver: (
-    event: React.DragEvent<HTMLElement>,
-    folderId: string
-  ) => void
+  onFolderDragOver: (event: React.DragEvent<HTMLElement>, folderId: string) => void
   onFolderDragLeave: () => void
   onFolderDrop: (event: React.DragEvent<HTMLElement>, folderId: string) => void
   onFolderTreeSelectFile: (fileId: string) => void
@@ -97,17 +67,7 @@ type DatasetScopeOption = {
 }
 
 const DATASET_ALL_VALUE = '__all__'
-const DOCUMENT_EXTENSIONS = new Set([
-  'pdf',
-  'md',
-  'markdown',
-  'doc',
-  'docx',
-  'txt',
-  'rtf',
-  'rst',
-  'adoc',
-])
+const DOCUMENT_EXTENSIONS = new Set(['pdf', 'md', 'markdown', 'doc', 'docx', 'txt', 'rtf', 'rst', 'adoc'])
 const SPREADSHEET_EXTENSIONS = new Set(['xls', 'xlsx', 'csv', 'tsv'])
 const DIRECTORY_INPUT_PROPS = { webkitdirectory: '' }
 
@@ -182,7 +142,7 @@ export function ParsingSidebarPane({
       }
       return acc
     },
-    { documents: 0, other: 0, spreadsheets: 0 }
+    { documents: 0, other: 0, spreadsheets: 0 },
   )
   const fileTypeSummary = [
     { label: '全部', value: sidebarFileItems.length, icon: Paperclip },
@@ -192,11 +152,7 @@ export function ParsingSidebarPane({
   ]
 
   return (
-    <ParsingLeftPanel
-      collapsed={collapsed}
-      onToggleCollapsed={onToggleCollapsed}
-      className={className}
-    >
+    <ParsingLeftPanel collapsed={collapsed} onToggleCollapsed={onToggleCollapsed} className={className}>
       <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-border/55 bg-background px-3 py-2">
         <button
           type="button"
@@ -211,12 +167,8 @@ export function ParsingSidebarPane({
           <div className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-info/20 bg-info/[0.08] text-info">
             <FileText className="size-3.5" />
           </div>
-          <span className="truncate text-[13px] font-semibold text-foreground">
-            {t('sidebar.documentList')}
-          </span>
-          <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70">
-            {currentFolderFileCount}
-          </span>
+          <span className="truncate text-[13px] font-semibold text-foreground">{t('sidebar.documentList')}</span>
+          <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70">{currentFolderFileCount}</span>
         </button>
 
         <div className="flex shrink-0 items-center gap-0.5">
@@ -248,23 +200,14 @@ export function ParsingSidebarPane({
               <div className="space-y-3">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <div className="text-sm font-medium">
-                      {t('sidebar.defaultParser')}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {t('sidebar.newUploadDefault')}
-                    </div>
+                    <div className="text-sm font-medium">{t('sidebar.defaultParser')}</div>
+                    <div className="text-xs text-muted-foreground">{t('sidebar.newUploadDefault')}</div>
                   </div>
-                  <ParserDropdown
-                    value={draftParserBackend}
-                    onChange={setDraftParserBackend}
-                  />
+                  <ParserDropdown value={draftParserBackend} onChange={setDraftParserBackend} />
                   <div className="rounded-xl border border-info/20 bg-info/[0.07] px-3 py-2 text-xs leading-snug text-info">
                     {t('sidebar.parserApplyHint')}
                   </div>
-                  <p className="text-xs leading-snug text-muted-foreground">
-                    {t('sidebar.defaultParserDescription')}
-                  </p>
+                  <p className="text-xs leading-snug text-muted-foreground">{t('sidebar.defaultParserDescription')}</p>
                   <div className="flex items-center justify-end gap-2 pt-1">
                     <Button
                       type="button"
@@ -298,47 +241,32 @@ export function ParsingSidebarPane({
 
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-sm font-medium">
-                      {t('sidebar.imageCaptionTitle')}
-                    </div>
+                    <div className="text-sm font-medium">{t('sidebar.imageCaptionTitle')}</div>
                     <div className="mt-1 text-xs leading-snug text-muted-foreground">
                       {t('sidebar.imageCaptionDescription')}
                     </div>
                   </div>
-                  <Switch
-                    checked={imageCaptionEnabled}
-                    onCheckedChange={onImageCaptionEnabledChange}
-                  />
+                  <Switch checked={imageCaptionEnabled} onCheckedChange={onImageCaptionEnabledChange} />
                 </div>
 
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-sm font-medium">
-                      {t('sidebar.imageOcrTitle')}
-                    </div>
+                    <div className="text-sm font-medium">{t('sidebar.imageOcrTitle')}</div>
                     <div className="mt-1 text-xs leading-snug text-muted-foreground">
                       {t('sidebar.imageOcrDescription')}
                     </div>
                   </div>
-                  <Switch
-                    checked={imageOcrEnabled}
-                    onCheckedChange={onImageOcrEnabledChange}
-                  />
+                  <Switch checked={imageOcrEnabled} onCheckedChange={onImageOcrEnabledChange} />
                 </div>
 
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-sm font-medium">
-                      {t('sidebar.vlmCorrectionTitle')}
-                    </div>
+                    <div className="text-sm font-medium">{t('sidebar.vlmCorrectionTitle')}</div>
                     <div className="mt-1 text-xs leading-snug text-muted-foreground">
                       {t('sidebar.vlmCorrectionDescription')}
                     </div>
                   </div>
-                  <Switch
-                    checked={vlmCorrectionEnabled}
-                    onCheckedChange={onVlmCorrectionEnabledChange}
-                  />
+                  <Switch checked={vlmCorrectionEnabled} onCheckedChange={onVlmCorrectionEnabledChange} />
                 </div>
               </div>
             </PopoverContent>
@@ -357,19 +285,11 @@ export function ParsingSidebarPane({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuItem
-                onClick={() =>
-                  onRequestUploadToFolder(activeFolderId || ROOT_FOLDER_ID)
-                }
-              >
+              <DropdownMenuItem onClick={() => onRequestUploadToFolder(activeFolderId || ROOT_FOLDER_ID)}>
                 <Paperclip className="mr-2 size-4 text-muted-foreground" />
                 {t('sidebar.uploadFile')}
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() =>
-                  onRequestUploadFolder(activeFolderId || ROOT_FOLDER_ID)
-                }
-              >
+              <DropdownMenuItem onClick={() => onRequestUploadFolder(activeFolderId || ROOT_FOLDER_ID)}>
                 <FolderUp className="mr-2 size-4 text-muted-foreground" />
                 {t('sidebar.uploadFolder')}
               </DropdownMenuItem>
@@ -380,15 +300,11 @@ export function ParsingSidebarPane({
 
       {collapsed ? null : (
         <div className="flex items-center gap-2 border-b border-border/55 bg-background px-3 py-2">
-          <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-            {t('sidebar.datasetScope')}
-          </span>
+          <span className="shrink-0 text-[11px] font-medium text-muted-foreground">{t('sidebar.datasetScope')}</span>
           <div className="min-w-0 flex-1">
             <Select
               value={selectedDatasetId || DATASET_ALL_VALUE}
-              onValueChange={(value) =>
-                onDatasetScopeChange(value === DATASET_ALL_VALUE ? null : value)
-              }
+              onValueChange={(value) => onDatasetScopeChange(value === DATASET_ALL_VALUE ? null : value)}
             >
               <SelectTrigger
                 aria-label={t('sidebar.datasetScope')}
@@ -404,24 +320,14 @@ export function ParsingSidebarPane({
               <SelectContent className="border-border/60 bg-popover text-foreground">
                 <SelectItem value={DATASET_ALL_VALUE} className="text-[12px]">
                   <span className="flex items-center gap-1.5">
-                    <span
-                      aria-hidden
-                      className="size-1.5 rounded-full bg-muted-foreground/50"
-                    />
+                    <span aria-hidden className="size-1.5 rounded-full bg-muted-foreground/50" />
                     {t('sidebar.allDatasetScope')}
                   </span>
                 </SelectItem>
                 {datasetOptions.map((dataset) => (
-                  <SelectItem
-                    key={dataset.id}
-                    value={dataset.id}
-                    className="text-[12px]"
-                  >
+                  <SelectItem key={dataset.id} value={dataset.id} className="text-[12px]">
                     <span className="flex items-center gap-1.5">
-                      <span
-                        aria-hidden
-                        className="size-1.5 rounded-full bg-info/70"
-                      />
+                      <span aria-hidden className="size-1.5 rounded-full bg-info/70" />
                       <span className="truncate">{dataset.name}</span>
                       {typeof dataset.count === 'number' ? (
                         <span className="ml-auto pl-2 text-[10px] tabular-nums text-muted-foreground/70">
@@ -468,14 +374,7 @@ export function ParsingSidebarPane({
         )}
       </div>
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept={fileAccept}
-        className="hidden"
-        onChange={onFileSelect}
-      />
+      <input ref={fileInputRef} type="file" multiple accept={fileAccept} className="hidden" onChange={onFileSelect} />
       <input
         ref={folderInputRef}
         type="file"
@@ -484,13 +383,7 @@ export function ParsingSidebarPane({
         className="hidden"
         onChange={onFileSelect}
       />
-      <input
-        ref={rebindInputRef}
-        type="file"
-        accept={rebindAccept}
-        className="hidden"
-        onChange={onRebindFileSelect}
-      />
+      <input ref={rebindInputRef} type="file" accept={rebindAccept} className="hidden" onChange={onRebindFileSelect} />
 
       {currentFolderFileCount > 0 ? (
         <div className="border-t border-border/60 bg-[linear-gradient(180deg,hsl(var(--background)/0.82),hsl(var(--muted)/0.28))] px-3.5 py-3 backdrop-blur-sm">

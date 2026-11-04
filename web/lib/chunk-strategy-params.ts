@@ -2,8 +2,7 @@ export type ChunkStrategyParamsPrimitive = null | boolean | number | string
 export type ChunkStrategyParams = Record<string, ChunkStrategyParamsPrimitive>
 
 export type ChunkStrategyParamsValidateResult =
-  | { ok: true; value: ChunkStrategyParams | undefined }
-  | { ok: false; error: string }
+  { ok: true; value: ChunkStrategyParams | undefined } | { ok: false; error: string }
 
 export function validateChunkStrategyParams(value: unknown): ChunkStrategyParamsValidateResult {
   if (value == null) return { ok: true, value: undefined }

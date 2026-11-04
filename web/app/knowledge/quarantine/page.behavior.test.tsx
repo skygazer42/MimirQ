@@ -45,31 +45,21 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))
 vi.mock('next/image', () => ({
-  default: (props: React.ImgHTMLAttributes<HTMLImageElement>) =>
-    React.createElement('img', props),
+  default: (props: React.ImgHTMLAttributes<HTMLImageElement>) => React.createElement('img', props),
 }))
 
 vi.mock('@/components/app-frame', () => ({
-  AppFrame: ({ children }: { children: React.ReactNode }) =>
-    React.createElement('div', null, children),
+  AppFrame: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
 }))
 vi.mock('@/components/ui/page-scaffold', () => ({
-  PageScaffold: ({
-    top,
-    children,
-  }: {
-    top?: React.ReactNode
-    children: React.ReactNode
-  }) => React.createElement('div', null, top, children),
+  PageScaffold: ({ top, children }: { top?: React.ReactNode; children: React.ReactNode }) =>
+    React.createElement('div', null, top, children),
 }))
 vi.mock('@/components/ui/page-title-icon', () => ({
   PageTitleIcon: () => React.createElement('div', null, 'icon'),
 }))
 vi.mock('@/components/ui/button', () => ({
-  Button: ({
-    children,
-    ...props
-  }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
+  Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
     React.createElement('button', props, children),
 }))
 vi.mock('@/components/ui/search-input', () => ({
@@ -85,16 +75,11 @@ vi.mock('@/components/ui/search-input', () => ({
     React.createElement('input', {
       value,
       placeholder,
-      onInput: (event: Event) =>
-        onValueChange((event.target as HTMLInputElement).value),
+      onInput: (event: Event) => onValueChange((event.target as HTMLInputElement).value),
     }),
 }))
 vi.mock('@/components/ui/input', () => ({
-  Input: ({
-    value,
-    onChange,
-    ...props
-  }: React.InputHTMLAttributes<HTMLInputElement>) =>
+  Input: ({ value, onChange, ...props }: React.InputHTMLAttributes<HTMLInputElement>) =>
     React.createElement('input', {
       value,
       onChange,
@@ -102,44 +87,25 @@ vi.mock('@/components/ui/input', () => ({
     }),
 }))
 vi.mock('@/components/ui/switch', () => ({
-  Switch: ({
-    checked,
-    onCheckedChange,
-  }: {
-    checked: boolean
-    onCheckedChange: (checked: boolean) => void
-  }) =>
+  Switch: ({ checked, onCheckedChange }: { checked: boolean; onCheckedChange: (checked: boolean) => void }) =>
     React.createElement('input', {
       type: 'checkbox',
       checked,
-      onChange: (event: Event) =>
-        onCheckedChange((event.target as HTMLInputElement).checked),
+      onChange: (event: Event) => onCheckedChange((event.target as HTMLInputElement).checked),
     }),
 }))
 vi.mock('@/components/ui/badge', () => ({
-  Badge: ({ children }: { children: React.ReactNode }) =>
-    React.createElement('span', null, children),
+  Badge: ({ children }: { children: React.ReactNode }) => React.createElement('span', null, children),
 }))
 vi.mock('@/components/ui/label', () => ({
-  Label: ({ children }: { children: React.ReactNode }) =>
-    React.createElement('label', null, children),
+  Label: ({ children }: { children: React.ReactNode }) => React.createElement('label', null, children),
 }))
 vi.mock('@/components/ui/select', () => ({
-  Select: ({ children }: { children: React.ReactNode }) =>
-    React.createElement('div', null, children),
-  SelectContent: ({ children }: { children: React.ReactNode }) =>
-    React.createElement('div', null, children),
-  SelectItem: ({
-    children,
-    value,
-  }: {
-    children: React.ReactNode
-    value: string
-  }) => React.createElement('div', { 'data-value': value }, children),
-  SelectTrigger: ({
-    children,
-    ...props
-  }: React.HTMLAttributes<HTMLDivElement>) =>
+  Select: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
+  SelectContent: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
+  SelectItem: ({ children, value }: { children: React.ReactNode; value: string }) =>
+    React.createElement('div', { 'data-value': value }, children),
+  SelectTrigger: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) =>
     React.createElement('div', props, children),
   SelectValue: () => null,
 }))
@@ -150,40 +116,21 @@ vi.mock('@/components/ingestion/ingestion-detail-dialog', () => ({
   IngestionDetailDialog: () => null,
 }))
 vi.mock('./components/quarantine-review-drawer', () => ({
-  QuarantineReviewDrawer: ({
-    open,
-    selected,
-  }: {
-    open: boolean
-    selected: { filename?: string } | null
-  }) =>
-    open && selected
-      ? React.createElement(
-          'div',
-          { 'data-review-drawer': 'true' },
-          selected.filename
-        )
-      : null,
+  QuarantineReviewDrawer: ({ open, selected }: { open: boolean; selected: { filename?: string } | null }) =>
+    open && selected ? React.createElement('div', { 'data-review-drawer': 'true' }, selected.filename) : null,
 }))
 vi.mock('@/components/knowledge/quarantine/summary-cards', () => ({
   SummaryStatCard: ({ label, value }: { label: string; value: number }) =>
     React.createElement('div', null, `${label}:${value}`),
-  DonutSummaryCard: ({ title }: { title: string }) =>
-    React.createElement('div', null, title),
-  QuickActionCard: ({
-    title,
-    onClick,
-  }: {
-    title: string
-    onClick: () => void
-  }) => React.createElement('button', { onClick }, title),
+  DonutSummaryCard: ({ title }: { title: string }) => React.createElement('div', null, title),
+  QuickActionCard: ({ title, onClick }: { title: string; onClick: () => void }) =>
+    React.createElement('button', { onClick }, title),
 }))
 vi.mock('@/app/knowledge/quarantine/components/quarantine-empty-state', () => ({
   QuarantineEmptyState: () => React.createElement('div', null, 'empty'),
 }))
 vi.mock('@/app/knowledge/quarantine/components/status-pill', () => ({
-  StatusPill: ({ status }: { status: string }) =>
-    React.createElement('span', null, status),
+  StatusPill: ({ status }: { status: string }) => React.createElement('span', null, status),
 }))
 vi.mock('@/app/knowledge/quarantine/components/file-kind-glyph', () => ({
   FileKindGlyph: () => React.createElement('div', null, 'glyph'),
@@ -192,25 +139,15 @@ vi.mock('@/components/ingestion/monitor-utils', () => ({
   getDocumentKind: () => 'pdf',
 }))
 vi.mock('@/components/ui/dialog', () => ({
-  Dialog: ({ children }: { children: React.ReactNode }) =>
-    React.createElement(React.Fragment, null, children),
-  DialogContent: ({ children }: { children: React.ReactNode }) =>
-    React.createElement('div', null, children),
-  DialogDescription: ({ children }: { children: React.ReactNode }) =>
-    React.createElement('div', null, children),
-  DialogFooter: ({ children }: { children: React.ReactNode }) =>
-    React.createElement('div', null, children),
-  DialogHeader: ({ children }: { children: React.ReactNode }) =>
-    React.createElement('div', null, children),
-  DialogTitle: ({ children }: { children: React.ReactNode }) =>
-    React.createElement('div', null, children),
+  Dialog: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+  DialogContent: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
+  DialogDescription: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
+  DialogFooter: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
+  DialogHeader: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
+  DialogTitle: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
 }))
 vi.mock('@/components/ui/confirm-dialog', () => ({
-  ConfirmDialog: ({
-    children,
-  }: {
-    children: React.ReactNode
-  }) => React.createElement(React.Fragment, null, children),
+  ConfirmDialog: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
 }))
 
 import QuarantineQueuePage from './page'
@@ -238,11 +175,7 @@ function renderPage() {
 
   act(() => {
     root.render(
-      React.createElement(
-        QueryClientProvider,
-        { client: queryClient },
-        React.createElement(QuarantineQueuePage)
-      )
+      React.createElement(QueryClientProvider, { client: queryClient }, React.createElement(QuarantineQueuePage)),
     )
   })
 
@@ -252,10 +185,7 @@ function renderPage() {
 describe('QuarantineQueuePage behavior', () => {
   it('uses the project quarantine raster mark instead of PageTitleIcon', () => {
     const pagePath = path.resolve(__dirname, 'page.tsx')
-    const assetPath = path.resolve(
-      __dirname,
-      '../../../public/brand/mimirq-quarantine-mark.png'
-    )
+    const assetPath = path.resolve(__dirname, '../../../public/brand/mimirq-quarantine-mark.png')
     const src = fs.readFileSync(pagePath, 'utf8')
 
     expect(fs.existsSync(assetPath)).toBe(true)
@@ -296,33 +226,27 @@ describe('QuarantineQueuePage behavior', () => {
     const { container, root } = renderPage()
 
     await act(async () => {
-      await vi.waitFor(() =>
-        expect(container.textContent).toContain('异常隔离审查表')
-      )
-      await vi.waitFor(() =>
-        expect(container.textContent).toContain('quarantine-1.pdf')
-      )
+      await vi.waitFor(() => expect(container.textContent).toContain('异常隔离审查表'))
+      await vi.waitFor(() => expect(container.textContent).toContain('quarantine-1.pdf'))
     })
 
-    const fileButton = Array.from(
-      container.querySelectorAll<HTMLButtonElement>('button')
-    ).find((button) => button.textContent?.includes('quarantine-1.pdf'))
+    const fileButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find((button) =>
+      button.textContent?.includes('quarantine-1.pdf'),
+    )
     expect(fileButton).not.toBeUndefined()
 
     await act(async () => {
       fileButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
 
-    expect(container.querySelector('[data-review-drawer="true"]')?.textContent).toContain(
-      'quarantine-1.pdf'
-    )
+    expect(container.querySelector('[data-review-drawer="true"]')?.textContent).toContain('quarantine-1.pdf')
 
     expect(container.textContent).toContain('quarantine-6.pdf')
     expect(container.textContent).not.toContain('quarantine-7.pdf')
 
-    const nextButton = Array.from(
-      container.querySelectorAll<HTMLButtonElement>('button')
-    ).find((button) => button.textContent === '2')
+    const nextButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(
+      (button) => button.textContent === '2',
+    )
     expect(nextButton).not.toBeUndefined()
 
     await act(async () => {
@@ -338,20 +262,16 @@ describe('QuarantineQueuePage behavior', () => {
     const { container, root } = renderPage()
 
     await act(async () => {
-      await vi.waitFor(() =>
-        expect(container.textContent).toContain('规则管理')
-      )
+      await vi.waitFor(() => expect(container.textContent).toContain('规则管理'))
     })
 
-    const ruleManagerButton = Array.from(
-      container.querySelectorAll<HTMLButtonElement>('button')
-    ).find((button) => button.textContent?.includes('规则管理'))
+    const ruleManagerButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find((button) =>
+      button.textContent?.includes('规则管理'),
+    )
     expect(ruleManagerButton).not.toBeUndefined()
 
     await act(async () => {
-      ruleManagerButton?.dispatchEvent(
-        new MouseEvent('click', { bubbles: true })
-      )
+      ruleManagerButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
 
     expect(container.textContent).toContain('调参回放')

@@ -14,11 +14,7 @@ type UseChatSessionOptions = {
   onError?: (error: string) => void
 }
 
-export function useChatSession({
-  initialConversationId,
-  onConversationId,
-  onError,
-}: UseChatSessionOptions) {
+export function useChatSession({ initialConversationId, onConversationId, onError }: UseChatSessionOptions) {
   const queryClient = useQueryClient()
   const [conversationId, setConversationId] = useState<string | undefined>(initialConversationId)
   const [messages, setMessages] = useState<Message[]>([])
@@ -34,7 +30,7 @@ export function useChatSession({
     () => () => {
       loadRequestIdRef.current += 1
     },
-    []
+    [],
   )
 
   const loadConversation = useCallback(
@@ -60,9 +56,7 @@ export function useChatSession({
           (err as { response?: { headers?: Record<string, string> } })?.response?.headers?.['x-request-id'] ||
           (payload as { request_id?: string } | undefined)?.request_id
         const message =
-          extractBackendMessage(payload) ||
-          (err as { message?: string })?.message ||
-          'Failed to load conversation'
+          extractBackendMessage(payload) || (err as { message?: string })?.message || 'Failed to load conversation'
         onError?.(withRequestId(message, requestId))
       } finally {
         if (loadRequestId === loadRequestIdRef.current) {
@@ -70,7 +64,7 @@ export function useChatSession({
         }
       }
     },
-    [onConversationId, onError, queryClient]
+    [onConversationId, onError, queryClient],
   )
 
   const resetConversationState = useCallback(() => {

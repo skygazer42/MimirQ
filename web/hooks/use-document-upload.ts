@@ -42,7 +42,7 @@ type UseDocumentUploadOptions = {
 function prependDocument(
   newDocument: Document,
   currentParams: DocumentListParams,
-  updateCachedDocuments: UpdateCachedDocuments
+  updateCachedDocuments: UpdateCachedDocuments,
 ) {
   if (!matchesDocumentListParams(newDocument, currentParams)) return
 
@@ -63,10 +63,7 @@ export function useDocumentUpload({
 }: UseDocumentUploadOptions) {
   const { parserBackend, chunkStrategy, pipelineOverridesEnabled, pipelineOptions } = preferences
 
-  const {
-    mutateAsync: uploadDocumentMutation,
-    isPending: uploadDocumentPending,
-  } = useMutation({
+  const { mutateAsync: uploadDocumentMutation, isPending: uploadDocumentPending } = useMutation({
     mutationFn: async (file: File) => {
       const datasetId = String(lastListParamsRef.current.dataset_id || '').trim()
       return documentApi.upload(file, {
@@ -89,10 +86,7 @@ export function useDocumentUpload({
     },
   })
 
-  const {
-    mutateAsync: uploadDocumentsMutation,
-    isPending: uploadDocumentsPending,
-  } = useMutation({
+  const { mutateAsync: uploadDocumentsMutation, isPending: uploadDocumentsPending } = useMutation({
     mutationFn: async ({
       files,
       options,
@@ -131,7 +125,7 @@ export function useDocumentUpload({
             pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
             max_concurrent: maxConcurrent,
           },
-          fileByKey
+          fileByKey,
         )
 
         successes.push(...round.successful)
@@ -166,10 +160,7 @@ export function useDocumentUpload({
     },
   })
 
-  const {
-    mutateAsync: uploadDocumentFromUrlMutation,
-    isPending: uploadDocumentFromUrlPending,
-  } = useMutation({
+  const { mutateAsync: uploadDocumentFromUrlMutation, isPending: uploadDocumentFromUrlPending } = useMutation({
     mutationFn: async (params: { url: string; filename?: string; dataset_id?: string }) => {
       return documentApi.uploadFromUrl({
         url: params.url,
@@ -193,24 +184,19 @@ export function useDocumentUpload({
     },
   })
 
-  const uploadDocument = useCallback(
-    async (file: File) => uploadDocumentMutation(file),
-    [uploadDocumentMutation]
-  )
+  const uploadDocument = useCallback(async (file: File) => uploadDocumentMutation(file), [uploadDocumentMutation])
 
   const uploadDocuments = useCallback(
-    async (
-      files: File[],
-      options: { maxRetries?: number; maxConcurrent?: number } = {}
-    ) => uploadDocumentsMutation({ files, options }),
-    [uploadDocumentsMutation]
+    async (files: File[], options: { maxRetries?: number; maxConcurrent?: number } = {}) =>
+      uploadDocumentsMutation({ files, options }),
+    [uploadDocumentsMutation],
   )
 
   const uploadDocumentFromUrl = useCallback(
     async (params: { url: string; filename?: string; dataset_id?: string }) => {
       return uploadDocumentFromUrlMutation(params)
     },
-    [uploadDocumentFromUrlMutation]
+    [uploadDocumentFromUrlMutation],
   )
 
   return {

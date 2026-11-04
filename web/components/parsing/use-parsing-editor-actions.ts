@@ -25,7 +25,7 @@ function applyEditedMarkdown(
   fileId: string,
   targetRunId: string | undefined,
   editedContent: string,
-  countMarkdownHeadings: (markdown: string) => number
+  countMarkdownHeadings: (markdown: string) => number,
 ): ParsedFile[] {
   return prev.map((file) => {
     if (file.id !== fileId) return file
@@ -40,7 +40,7 @@ function applyEditedMarkdown(
                   rawMarkdown: editedContent,
                   blocks: [],
                 }
-              : run
+              : run,
           )
         : file.runs
 
@@ -70,7 +70,7 @@ function getParsedMarkdown(file: ParsedFile): string {
 function buildGovernanceLibraryPayload(
   file: ParsedFile,
   markdown: string,
-  governanceStatus: 'ready' | 'submitted'
+  governanceStatus: 'ready' | 'submitted',
 ): Omit<ParsedFileData, 'id' | 'parsedAt'> {
   return {
     filename: file.file.name,
@@ -161,7 +161,7 @@ export function useParsingEditorActions({
     const blockEditTarget = buildParsingBlockEditTarget(
       activeMarkdown,
       buildParsingLayoutEntries(activeBlocksWithPositions),
-      activeBlockId
+      activeBlockId,
     )
 
     if (blockEditTarget) {
@@ -252,9 +252,7 @@ export function useParsingEditorActions({
     } else {
       const libraryId = addParsedFile(buildGovernanceLibraryPayload(activeFile, activeMarkdown, 'submitted'))
       setFiles((prev) =>
-        prev.map((file) =>
-          file.id === activeFile.id ? { ...file, governanceStatus: 'submitted', libraryId } : file
-        )
+        prev.map((file) => (file.id === activeFile.id ? { ...file, governanceStatus: 'submitted', libraryId } : file)),
       )
     }
 
@@ -320,8 +318,8 @@ export function useParsingEditorActions({
                 governanceStatus: 'submitted',
                 libraryId: newLibraryIdsByFileId.get(file.id) || file.libraryId,
               }
-            : file
-        )
+            : file,
+        ),
       )
       setSelectedGovernanceFileIds(new Set())
       toast.success(`已提交 ${submittedCount} 个文档到数据治理`)

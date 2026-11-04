@@ -39,7 +39,7 @@ export function ChatPageClient({
       if (id === (initialConversationId || '')) return
       router.replace(`/?conversation=${encodeURIComponent(id)}`)
     },
-    [router, initialConversationId]
+    [router, initialConversationId],
   )
 
   const handlePromptConsumed = useCallback(() => {
@@ -68,16 +68,12 @@ export function ChatPageClient({
     const chunkId = (initialChunkId || '').trim() || undefined
     const start = initialHighlightStart == null ? Number.NaN : Number.parseInt(String(initialHighlightStart), 10)
     const end = initialHighlightEnd == null ? Number.NaN : Number.parseInt(String(initialHighlightEnd), 10)
-    const range =
-      Number.isFinite(start) && Number.isFinite(end) && end > start ? { start, end } : undefined
+    const range = Number.isFinite(start) && Number.isFinite(end) && end > start ? { start, end } : undefined
     openDocument(docId, chunkId, range)
   }, [initialDocumentId, initialChunkId, initialHighlightStart, initialHighlightEnd, openDocument])
 
   return (
-    <AppFrame
-      rightPanel={<DocumentViewerPanel />}
-      withDocumentViewerPadding
-    >
+    <AppFrame rightPanel={<DocumentViewerPanel />} withDocumentViewerPadding>
       <ChatArea
         initialConversationId={initialConversationId}
         initialPrompt={initialPrompt}

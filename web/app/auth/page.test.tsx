@@ -20,8 +20,7 @@ vi.mock('next/image', () => ({
     priority: _priority,
     unoptimized: _unoptimized,
     ...props
-  }: React.ComponentProps<'img'> & { priority?: boolean; unoptimized?: boolean }) =>
-    React.createElement('img', props),
+  }: React.ComponentProps<'img'> & { priority?: boolean; unoptimized?: boolean }) => React.createElement('img', props),
 }))
 vi.mock('@/i18n/navigation', () => ({
   useRouter: () => routerMock,
@@ -52,7 +51,7 @@ function setInputValue(input: HTMLInputElement | null, value: string) {
 
 function findButtonByText(container: HTMLElement, text: string) {
   const button = Array.from(container.querySelectorAll('button')).find((candidate) =>
-    candidate.textContent?.includes(text)
+    candidate.textContent?.includes(text),
   )
   expect(button).not.toBeUndefined()
   return button as HTMLButtonElement
@@ -65,9 +64,7 @@ function clickButtonByText(container: HTMLElement, text: string) {
 
 async function submitForm(container: HTMLElement) {
   await act(async () => {
-    container
-      .querySelector('form')
-      ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
     await Promise.resolve()
   })
 }
@@ -117,7 +114,7 @@ describe('auth page registration', () => {
     })
 
     const contact = Array.from(container.querySelectorAll<HTMLAnchorElement>('a')).find((link) =>
-      link.textContent?.includes('联系管理员')
+      link.textContent?.includes('联系管理员'),
     )
     expect(contact?.href).toBe('https://github.com/skygazer42/MimirQ/issues')
 
@@ -153,7 +150,7 @@ describe('auth page registration', () => {
         username: 'owner',
         password: 'correct-horse-battery-staple',
         bootstrapToken: 'bootstrap-secret',
-      })
+      }),
     )
     expect(sessionMock.setAuthSession).toHaveBeenCalledWith({
       token: { access_token: 'token', token_type: 'bearer', expires_in: 3600 },
@@ -189,7 +186,9 @@ describe('auth page registration', () => {
     await submitForm(container)
 
     await vi.waitFor(() => {
-      expect(container.textContent).toContain('首次 owner 注册需要 bootstrap token。请填写部署时配置的 bootstrap token 后重试。')
+      expect(container.textContent).toContain(
+        '首次 owner 注册需要 bootstrap token。请填写部署时配置的 bootstrap token 后重试。',
+      )
     })
 
     act(() => root.unmount())

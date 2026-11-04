@@ -11,12 +11,12 @@ import { PageLoading } from '@/components/ui/page-loading'
 const GovernanceCommonLinesPage = dynamic(
   () =>
     import('@/components/governance-common-lines/governance-common-lines-page').then(
-      (mod) => mod.GovernanceCommonLinesPage
+      (mod) => mod.GovernanceCommonLinesPage,
     ),
   {
     ssr: false,
     loading: () => <GovernanceCommonLinesRouteLoading />,
-  }
+  },
 )
 
 export default function GovernanceCommonLinesRoutePage() {

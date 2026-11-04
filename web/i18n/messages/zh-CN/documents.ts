@@ -1,11 +1,11 @@
 const documentsMessages = {
-Documents: {
+  Documents: {
     loadingChunks: '正在加载切片数据...',
     loadingTimeline: '正在加载时间线...',
     emptyChunks: '暂无切片数据',
     emptyTimeline: '暂无时间线事件',
   },
-TaskCenter: {
+  TaskCenter: {
     title: '任务中心',
     activeBadge: '进行中',
     failedBadge: '失败',
@@ -35,7 +35,7 @@ TaskCenter: {
       processing: '处理中',
     },
   },
-DatasetFolderTree: {
+  DatasetFolderTree: {
     title: '目录',
     refresh: '刷新目录树',
     loading: '加载中…',
@@ -46,7 +46,7 @@ DatasetFolderTree: {
     unnamed: '(未命名目录)',
     allDirectories: '全部目录',
   },
-DocumentDetailDialog: {
+  DocumentDetailDialog: {
     toasts: {
       tagsUpdated: '已更新标签',
       copySuccess: '已复制到剪贴板',
@@ -229,7 +229,7 @@ DocumentDetailDialog: {
       },
     },
   },
-DocumentAccessDialog: {
+  DocumentAccessDialog: {
     trigger: '访问控制',
     title: '文档访问控制',
     description: '用于“安全裁剪（security trimming）”：在数据集权限基础上进一步限制该文档的可见范围。',
@@ -259,7 +259,7 @@ DocumentAccessDialog: {
       cancel: '取消',
     },
   },
-DocumentVersionsDialog: {
+  DocumentVersionsDialog: {
     trigger: '版本',
     title: '文档版本（pipeline）',
     description: '用于运维/回滚：不同 pipeline 配置会生成不同的 pipeline_hash 版本；激活版本会影响检索与引用。',
@@ -302,7 +302,7 @@ DocumentVersionsDialog: {
       description: '当前文档还没有可用的 pipeline 版本记录（或尚未生成切片）。',
     },
     hint: '提示：激活/删除版本需要对文档所属数据集有写权限；删除操作不可恢复。',
-  }
+  },
 } as const
 
 export default documentsMessages

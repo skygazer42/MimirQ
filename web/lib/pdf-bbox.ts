@@ -89,14 +89,7 @@ export function computePdfOverlayScrollTop(params: {
   overlayTop: number
   pageTop: number
 }): number {
-  const {
-    containerHeight,
-    containerScrollTop,
-    containerTop,
-    overlayHeight,
-    overlayTop,
-    pageTop,
-  } = params
+  const { containerHeight, containerScrollTop, containerTop, overlayHeight, overlayTop, pageTop } = params
 
   if (
     !isFiniteNumber(containerHeight) ||

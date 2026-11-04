@@ -69,7 +69,9 @@ async function detectAuthMode(request: APIRequestContext): Promise<AuthMode> {
       auth_mode?: string
     }
   }
-  const authMode = String(payload.features?.auth_mode || 'jwt').trim().toLowerCase()
+  const authMode = String(payload.features?.auth_mode || 'jwt')
+    .trim()
+    .toLowerCase()
   return authMode === 'header' ? 'header' : 'jwt'
 }
 
@@ -87,14 +89,14 @@ async function expectHealthEndpoints(page: Page) {
                 status: response.status,
                 contentType: response.headers.get('content-type') || '',
               }
-            })
+            }),
           )
         }),
       {
         timeout: 180_000,
         intervals: [1_000, 2_000, 5_000],
         message: 'expected proxied health endpoints to become ready',
-      }
+      },
     )
     .toEqual([
       expect.objectContaining({ path: '/api/v1/health', status: 200, contentType: expect.stringContaining('json') }),
@@ -109,9 +111,7 @@ async function expectHealthEndpoints(page: Page) {
 
 async function selectFullIndexExecutionMode(page: Page) {
   const executionGroup = page.getByRole('group', { name: '执行终点' })
-  const fullIndexMode = executionGroup.locator(
-    'input[name="ingestion-execution-mode"][value="full_index"]'
-  )
+  const fullIndexMode = executionGroup.locator('input[name="ingestion-execution-mode"][value="full_index"]')
 
   await expect(executionGroup).toBeVisible({ timeout: 60_000 })
   await expect(executionGroup.getByText('解析 + 索引', { exact: true })).toBeVisible()
@@ -129,16 +129,17 @@ async function selectChatDatasetScope(page: Page, datasetName: string) {
   }
   await expect(scopeTrigger).toBeVisible({ timeout: 60_000 })
   await scopeTrigger.click()
-  await page.getByRole('button', { name: new RegExp(datasetName) }).last().click()
+  await page
+    .getByRole('button', { name: new RegExp(datasetName) })
+    .last()
+    .click()
   await expect(scopeTrigger).toContainText(datasetName)
 }
 
 async function readAccessToken(page: Page) {
   const accessToken = await page.evaluate(() => {
     return (
-      window.sessionStorage.getItem('mimirq_access_token') ||
-      window.localStorage.getItem('mimirq_access_token') ||
-      ''
+      window.sessionStorage.getItem('mimirq_access_token') || window.localStorage.getItem('mimirq_access_token') || ''
     )
   })
   expect(accessToken).toBeTruthy()
@@ -151,7 +152,7 @@ async function authenticateThroughUi(page: Page): Promise<JwtAuthState> {
 
   if (!configuredIdentifier || !configuredPassword) {
     throw new Error(
-      'JWT live smoke requires PLAYWRIGHT_LIVE_IDENTIFIER and PLAYWRIGHT_LIVE_PASSWORD; refusing to bootstrap a persistent administrator'
+      'JWT live smoke requires PLAYWRIGHT_LIVE_IDENTIFIER and PLAYWRIGHT_LIVE_PASSWORD; refusing to bootstrap a persistent administrator',
     )
   }
 
@@ -186,11 +187,7 @@ async function createDataset(request: APIRequestContext, page: Page, auth: AuthS
   }
 }
 
-async function waitForDocumentCompletion(
-  request: APIRequestContext,
-  auth: AuthState,
-  documentId: string
-) {
+async function waitForDocumentCompletion(request: APIRequestContext, auth: AuthState, documentId: string) {
   const deadline = Date.now() + 180_000
   let lastStatus = ''
   let lastBody = ''
@@ -202,7 +199,7 @@ async function waitForDocumentCompletion(
     lastBody = await response.text()
     if (!response.ok()) {
       throw new Error(
-        `document status request failed for ${documentId}: http_status=${response.status()} body=${lastBody}`
+        `document status request failed for ${documentId}: http_status=${response.status()} body=${lastBody}`,
       )
     }
     const payload = JSON.parse(lastBody) as { status?: string }
@@ -273,9 +270,11 @@ test('browser reaches the live backend and completes upload-to-grounded-chat evi
     const uploadResponsePromise = page.waitForResponse(
       (response) => {
         const url = new URL(response.url())
-        return response.request().method() === 'POST' && url.pathname.replace(/\/$/, '') === '/api/v1/documents/upload-batch'
+        return (
+          response.request().method() === 'POST' && url.pathname.replace(/\/$/, '') === '/api/v1/documents/upload-batch'
+        )
       },
-      { timeout: 180_000 }
+      { timeout: 180_000 },
     )
     await page.locator('input[type="file"][multiple]').setInputFiles(FIXTURE_PATH)
 

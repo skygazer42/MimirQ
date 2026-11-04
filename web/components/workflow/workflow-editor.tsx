@@ -62,7 +62,7 @@ function buildEdgeId(source: string, target: string, index: number): string {
   return `edge:${source}:${target}:${index}`
 }
 
-function buildDefaultPositions(graph: GraphData): Map<string, { x: number, y: number }> {
+function buildDefaultPositions(graph: GraphData): Map<string, { x: number; y: number }> {
   const nodeIds = graph.nodes.map((node) => node.id)
   const indegree = new Map<string, number>(nodeIds.map((id) => [id, 0]))
   const children = new Map<string, string[]>()
@@ -76,9 +76,7 @@ function buildDefaultPositions(graph: GraphData): Map<string, { x: number, y: nu
   }
 
   const roots = nodeIds.filter((id) => (indegree.get(id) || 0) === 0)
-  const orderedRoots = roots.includes('bundle')
-    ? ['bundle', ...roots.filter((id) => id !== 'bundle')]
-    : roots
+  const orderedRoots = roots.includes('bundle') ? ['bundle', ...roots.filter((id) => id !== 'bundle')] : roots
 
   const depth = new Map<string, number>()
   const queue: Array<[string, number]> = orderedRoots.map((id) => [id, 0])
@@ -106,7 +104,7 @@ function buildDefaultPositions(graph: GraphData): Map<string, { x: number, y: nu
     rowsByDepth.set(level, [...(rowsByDepth.get(level) || []), node.id])
   }
 
-  const positions = new Map<string, { x: number, y: number }>()
+  const positions = new Map<string, { x: number; y: number }>()
   for (const [level, ids] of rowsByDepth.entries()) {
     ids.forEach((id, row) => {
       positions.set(id, {
@@ -124,9 +122,7 @@ function buildEditorNodes(graph: GraphData, workflowLayout: JsonRecord | null | 
   const layoutNodes = Array.isArray(layout.nodes) ? layout.nodes.filter(isRecord) : []
   const positions = buildDefaultPositions(graph)
   const storedNodeMap = new Map<string, JsonRecord>(
-    layoutNodes
-      .map((node) => [toTrimmedPrimitiveString(node.id), node] as const)
-      .filter(([id]) => !!id)
+    layoutNodes.map((node) => [toTrimmedPrimitiveString(node.id), node] as const).filter(([id]) => !!id),
   )
 
   return graph.nodes.map((graphNode, index) => {
@@ -169,7 +165,7 @@ function buildEditorNodes(graph: GraphData, workflowLayout: JsonRecord | null | 
 function buildEditorEdges(
   graph: GraphData,
   workflowLayout: JsonRecord | null | undefined,
-  nodeIds: Set<string>
+  nodeIds: Set<string>,
 ): WorkflowEditorEdge[] {
   const layout = getWorkflowLayout(workflowLayout)
   const hasStoredEdges = Array.isArray(layout.edges)
@@ -182,16 +178,18 @@ function buildEditorEdges(
     if (!source || !target || !nodeIds.has(source) || !nodeIds.has(target)) return []
 
     const label = typeof edgeLike.label === 'string' && edgeLike.label.trim() ? edgeLike.label.trim() : undefined
-    return [{
-      id: typeof edgeLike.id === 'string' && edgeLike.id.trim() ? edgeLike.id : buildEdgeId(source, target, index),
-      source,
-      target,
-      label,
-      type: 'smoothstep',
-      markerEnd: { type: MarkerType.ArrowClosed },
-      style: { strokeWidth: 1.5, stroke: '#64748b' },
-      labelStyle: { fill: '#475569', fontSize: 11, fontWeight: 600 },
-    }]
+    return [
+      {
+        id: typeof edgeLike.id === 'string' && edgeLike.id.trim() ? edgeLike.id : buildEdgeId(source, target, index),
+        source,
+        target,
+        label,
+        type: 'smoothstep',
+        markerEnd: { type: MarkerType.ArrowClosed },
+        style: { strokeWidth: 1.5, stroke: '#64748b' },
+        labelStyle: { fill: '#475569', fontSize: 11, fontWeight: 600 },
+      },
+    ]
   })
 }
 
@@ -231,33 +229,48 @@ export function WorkflowEditor({
   const nodes = useMemo(() => buildEditorNodes(graph, workflowLayout), [graph, workflowLayout])
   const edges = useMemo(() => buildEditorEdges(graph, workflowLayout, nodeIds), [graph, nodeIds, workflowLayout])
 
-  const publishWorkflowLayout = useCallback((nextNodes: WorkflowEditorNode[], nextEdges: WorkflowEditorEdge[]) => {
-    onWorkflowLayoutChange?.(serializeWorkflowLayout(nextNodes, nextEdges))
-  }, [onWorkflowLayoutChange])
+  const publishWorkflowLayout = useCallback(
+    (nextNodes: WorkflowEditorNode[], nextEdges: WorkflowEditorEdge[]) => {
+      onWorkflowLayoutChange?.(serializeWorkflowLayout(nextNodes, nextEdges))
+    },
+    [onWorkflowLayoutChange],
+  )
 
-  const onNodesChange = useCallback((changes: NodeChange<WorkflowEditorNode>[]) => {
-    publishWorkflowLayout(applyNodeChanges(changes, nodes), edges)
-  }, [edges, nodes, publishWorkflowLayout])
+  const onNodesChange = useCallback(
+    (changes: NodeChange<WorkflowEditorNode>[]) => {
+      publishWorkflowLayout(applyNodeChanges(changes, nodes), edges)
+    },
+    [edges, nodes, publishWorkflowLayout],
+  )
 
-  const onEdgesChange = useCallback((changes: EdgeChange<WorkflowEditorEdge>[]) => {
-    publishWorkflowLayout(nodes, applyEdgeChanges(changes, edges))
-  }, [edges, nodes, publishWorkflowLayout])
+  const onEdgesChange = useCallback(
+    (changes: EdgeChange<WorkflowEditorEdge>[]) => {
+      publishWorkflowLayout(nodes, applyEdgeChanges(changes, edges))
+    },
+    [edges, nodes, publishWorkflowLayout],
+  )
 
-  const onConnect = useCallback((connection: Connection) => {
-    if (!connection.source || !connection.target) return
-    const nextEdge: WorkflowEditorEdge = {
-      ...connection,
-      id: buildEdgeId(connection.source, connection.target, edges.length),
-      type: 'smoothstep',
-      markerEnd: { type: MarkerType.ArrowClosed },
-      style: { strokeWidth: 1.5, stroke: '#64748b' },
-    }
-    publishWorkflowLayout(nodes, addEdge(nextEdge, edges))
-  }, [edges, nodes, publishWorkflowLayout])
+  const onConnect = useCallback(
+    (connection: Connection) => {
+      if (!connection.source || !connection.target) return
+      const nextEdge: WorkflowEditorEdge = {
+        ...connection,
+        id: buildEdgeId(connection.source, connection.target, edges.length),
+        type: 'smoothstep',
+        markerEnd: { type: MarkerType.ArrowClosed },
+        style: { strokeWidth: 1.5, stroke: '#64748b' },
+      }
+      publishWorkflowLayout(nodes, addEdge(nextEdge, edges))
+    },
+    [edges, nodes, publishWorkflowLayout],
+  )
 
-  const handleNodeClick = useCallback((_event: React.MouseEvent, node: WorkflowEditorNode) => {
-    onNodeSelect?.(node.data.graphNode)
-  }, [onNodeSelect])
+  const handleNodeClick = useCallback(
+    (_event: React.MouseEvent, node: WorkflowEditorNode) => {
+      onNodeSelect?.(node.data.graphNode)
+    },
+    [onNodeSelect],
+  )
 
   const handlePaneClick = useCallback(() => {
     onNodeSelect?.(null)
@@ -280,7 +293,10 @@ export function WorkflowEditor({
         proOptions={{ hideAttribution: true }}
       >
         <Background gap={24} size={1} color="rgba(100, 116, 139, 0.25)" />
-        <Controls className="!bg-card/95 !border !border-border/70 !rounded-xl overflow-hidden shadow-sm" showInteractive={false} />
+        <Controls
+          className="!bg-card/95 !border !border-border/70 !rounded-xl overflow-hidden shadow-sm"
+          showInteractive={false}
+        />
       </ReactFlow>
     </div>
   )

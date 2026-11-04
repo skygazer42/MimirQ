@@ -9,12 +9,5 @@ export default function GraphError({
   error: Error & { digest?: string }
   reset: () => void
 }>) {
-  return (
-    <RouteError
-      error={error}
-      reset={reset}
-      title="图谱加载失败"
-      message="无法加载知识图谱，请重试或返回首页。"
-    />
-  )
+  return <RouteError error={error} reset={reset} title="图谱加载失败" message="无法加载知识图谱，请重试或返回首页。" />
 }

@@ -124,25 +124,22 @@ function DisconnectedCloudIllustration() {
         strokeLinejoin="round"
         strokeWidth="4"
       />
-      <path d="M237 225v12M221 217l-11 6M224 241l-11 6" stroke="hsl(var(--warning))" strokeLinecap="round" strokeWidth="5" />
+      <path
+        d="M237 225v12M221 217l-11 6M224 241l-11 6"
+        stroke="hsl(var(--warning))"
+        strokeLinecap="round"
+        strokeWidth="5"
+      />
     </svg>
   )
 }
 
-function RouteErrorScene({
-  error,
-  reset,
-  title,
-  message,
-  href = '/',
-  hrefLabel,
-  fullScreen = false,
-}: RouteErrorProps) {
+function RouteErrorScene({ error, reset, title, message, href = '/', hrefLabel, fullScreen = false }: RouteErrorProps) {
   const t = useTranslations('RouteBoundaries')
   const requestId = extractRequestIdFromError(error)
-  const resolvedTitle = title ?? t("error.title")
-  const resolvedMessage = message ?? t("error.message")
-  const resolvedHrefLabel = hrefLabel ?? t("error.home")
+  const resolvedTitle = title ?? t('error.title')
+  const resolvedMessage = message ?? t('error.message')
+  const resolvedHrefLabel = hrefLabel ?? t('error.home')
 
   useEffect(() => {
     if (reloadOnceForStaleChunk(error)) return
@@ -153,7 +150,7 @@ function RouteErrorScene({
     <section
       className={cn(
         'relative isolate flex w-full flex-1 items-center justify-center overflow-hidden bg-background px-6 py-14 text-foreground transition-colors duration-200',
-        fullScreen ? 'min-h-dvh' : 'min-h-[560px] rounded-[2rem]'
+        fullScreen ? 'min-h-dvh' : 'min-h-[560px] rounded-[2rem]',
       )}
       style={{
         background:
@@ -172,10 +169,7 @@ function RouteErrorScene({
         aria-hidden="true"
         className="absolute right-[7%] top-[18%] h-28 w-28 rotate-45 rounded-[1.6rem] border border-border/50"
       />
-      <div
-        aria-hidden="true"
-        className="absolute right-[5%] top-[24%] h-32 w-px -rotate-[28deg] bg-border/65"
-      />
+      <div aria-hidden="true" className="absolute right-[5%] top-[24%] h-32 w-px -rotate-[28deg] bg-border/65" />
       <div
         aria-hidden="true"
         className="absolute bottom-[5%] right-[3%] h-20 w-20 rounded-full bg-[radial-gradient(circle,hsl(var(--card))_0_16%,transparent_18%)] opacity-80 before:absolute before:left-1/2 before:top-0 before:h-full before:w-px before:-translate-x-1/2 before:bg-card after:absolute after:left-0 after:top-1/2 after:h-px after:w-full after:-translate-y-1/2 after:bg-card"
@@ -194,7 +188,7 @@ function RouteErrorScene({
             className="h-14 min-w-44 rounded-full border-0 bg-[linear-gradient(180deg,hsl(var(--primary)),hsl(var(--info)))] px-11 text-base font-semibold text-primary-foreground shadow-[0_18px_34px_-18px_hsl(var(--primary)/0.78)] transition-transform duration-200 hover:scale-[1.02] hover:brightness-105 active:scale-[0.98]"
             onClick={() => retryRouteAfterBoundaryError(reset)}
           >
-            {t("error.retry")}
+            {t('error.retry')}
           </Button>
           <Button
             variant="outline"
@@ -205,8 +199,8 @@ function RouteErrorScene({
           </Button>
         </div>
         <div className="mt-6 space-y-1 text-xs font-mono text-muted-foreground">
-          {requestId ? <p>{t("error.requestId", { requestId })}</p> : null}
-          {error?.digest ? <p>{t("error.errorId", { errorId: error.digest })}</p> : null}
+          {requestId ? <p>{t('error.requestId', { requestId })}</p> : null}
+          {error?.digest ? <p>{t('error.errorId', { errorId: error.digest })}</p> : null}
         </div>
       </div>
     </section>
@@ -216,11 +210,7 @@ function RouteErrorScene({
 export function RouteError(props: RouteErrorProps) {
   if (props.fullScreen) {
     return (
-      <FullScreenFrame
-        showBackground={false}
-        className="bg-background"
-        mainClassName="p-0"
-      >
+      <FullScreenFrame showBackground={false} className="bg-background" mainClassName="p-0">
         <RouteErrorScene {...props} fullScreen />
       </FullScreenFrame>
     )

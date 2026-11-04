@@ -30,7 +30,7 @@ export function mintMarkdownImageProxyToken(rawUrl: string): string | null {
       src: rawUrl,
       exp: Date.now() + TOKEN_TTL_MS,
     }),
-    'utf8'
+    'utf8',
   )
   const ciphertext = Buffer.concat([cipher.update(payload), cipher.final()])
   const authTag = cipher.getAuthTag()

@@ -1,5 +1,5 @@
 const parsingMessages = {
-ParsingWorkbench: {
+  ParsingWorkbench: {
     rootFolder: '根目录',
     title: '文档解析',
     description: '上传并转换为 Markdown，衔接后续治理流程',
@@ -61,7 +61,8 @@ ParsingWorkbench: {
       defaultParser: '默认解析方式',
       newUploadDefault: '新上传默认',
       defaultParserDescription: '选中文件后，也可以在文件顶部对单个文件单独修改解析器。',
-      parserApplyHint: '这里只设置新上传文件的默认解析器；点击“保存默认”不会启动解析。文件进入队列后，点击文件上的“解析”或右侧“用当前解析器开始解析”。',
+      parserApplyHint:
+        '这里只设置新上传文件的默认解析器；点击“保存默认”不会启动解析。文件进入队列后，点击文件上的“解析”或右侧“用当前解析器开始解析”。',
       cancelParserSelection: '取消',
       confirmParserSelection: '保存默认',
       imageCaptionTitle: '图片 caption（可选）',
@@ -99,7 +100,7 @@ ParsingWorkbench: {
       emptyTitle: '暂无可展示的解析内容',
       emptyDescription: '若该文件还未解析，或内容未缓存，请重新选择文件并解析。',
     },
-  }
+  },
 } as const
 
 export default parsingMessages

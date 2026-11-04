@@ -49,17 +49,13 @@ export function AxisConfigCard({
     <section className="border-b border-border/28 px-3.5 py-3.5 last:border-b-0">
       <div className="mb-2.5 flex items-start justify-between gap-2.5">
         <div className="min-w-0">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary/72">
-            {eyebrow}
-          </div>
-          <div className="mt-0.5 text-[13px] font-semibold leading-4 text-foreground/86">
-            {title}
-          </div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary/72">{eyebrow}</div>
+          <div className="mt-0.5 text-[13px] font-semibold leading-4 text-foreground/86">{title}</div>
         </div>
         <span
           className={cn(
             'inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-medium',
-            badgeClassName
+            badgeClassName,
           )}
         >
           {badge}
@@ -96,9 +92,7 @@ export function CollectionSelectorBlock({
   return (
     <div className="space-y-1.5">
       {showLabel ? (
-        <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-foreground/72">
-          {label}
-        </div>
+        <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-foreground/72">{label}</div>
       ) : null}
       <div className="space-y-1.5">
         {keyedSelections.map(({ value, key }, idx) => (
@@ -115,11 +109,7 @@ export function CollectionSelectorBlock({
               >
                 <option value="">请选择...</option>
                 {options.map((opt) => (
-                  <option
-                    key={opt.value}
-                    value={opt.value}
-                    disabled={isEmptyCollectionOption(opt)}
-                  >
+                  <option key={opt.value} value={opt.value} disabled={isEmptyCollectionOption(opt)}>
                     {collectionOptionLabel(opt)}
                   </option>
                 ))}
@@ -177,9 +167,7 @@ export function NumberField({
   return (
     <div className="space-y-1.5 block">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/60">
-          {label}
-        </div>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/60">{label}</div>
         <div className="text-[10.5px] font-medium text-muted-foreground/58">
           {min}-{max}
         </div>

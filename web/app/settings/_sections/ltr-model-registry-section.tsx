@@ -65,10 +65,7 @@ export function LtrModelRegistrySection({
     <section className="space-y-3">
       <div className="space-y-2">
         {ltrError ? (
-          <Alert
-            variant="destructive"
-            className="p-3 shadow-none [&>svg]:left-3 [&>svg]:top-3 [&>svg~*]:pl-6"
-          >
+          <Alert variant="destructive" className="p-3 shadow-none [&>svg]:left-3 [&>svg]:top-3 [&>svg~*]:pl-6">
             <XCircle className="h-3.5 w-3.5" />
             <div>
               <AlertTitle className="text-xs">LTR 注册表加载失败</AlertTitle>
@@ -89,7 +86,9 @@ export function LtrModelRegistrySection({
             )}
             <div>
               <AlertTitle className="text-xs">{ltrMessage.type === 'success' ? '操作成功' : '操作失败'}</AlertTitle>
-              <AlertDescription className="text-[11px] leading-4 text-foreground/80">{ltrMessage.text}</AlertDescription>
+              <AlertDescription className="text-[11px] leading-4 text-foreground/80">
+                {ltrMessage.text}
+              </AlertDescription>
             </div>
           </Alert>
         ) : null}
@@ -141,9 +140,7 @@ export function LtrModelRegistrySection({
               disabled={!ltrUploadReady || ltrUploading}
               className={cn(systemDenseControls.primaryButton, 'w-full gap-1.5')}
             >
-              <RefreshCw
-                className={cn('h-3.5 w-3.5', ltrUploading && 'animate-spin motion-reduce:animate-none')}
-              />
+              <RefreshCw className={cn('h-3.5 w-3.5', ltrUploading && 'animate-spin motion-reduce:animate-none')} />
               {ltrUploading ? '注册中...' : '注册模型'}
             </Button>
           </div>
@@ -156,9 +153,7 @@ export function LtrModelRegistrySection({
           <div className="flex items-start justify-between gap-2.5">
             <div>
               <div className={systemPageTokens.heading}>模型版本</div>
-              <div className={cn(systemPageTokens.subtle, 'mt-0.5')}>
-                激活后用于线上重排序；失败时关闭 LTR 流程
-              </div>
+              <div className={cn(systemPageTokens.subtle, 'mt-0.5')}>激活后用于线上重排序；失败时关闭 LTR 流程</div>
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -167,9 +162,7 @@ export function LtrModelRegistrySection({
                 disabled={ltrLoading || ltrBusyModelId !== null}
                 className={cn(systemDenseControls.outlineButton, 'gap-1.5')}
               >
-                <RefreshCw
-                  className={cn('h-3.5 w-3.5', ltrLoading && 'animate-spin motion-reduce:animate-none')}
-                />
+                <RefreshCw className={cn('h-3.5 w-3.5', ltrLoading && 'animate-spin motion-reduce:animate-none')} />
                 刷新列表
               </Button>
 
@@ -218,7 +211,9 @@ export function LtrModelRegistrySection({
                     <th className={cn(systemPageTokens.tableHead, 'px-2.5 py-1.5 whitespace-nowrap')}>模型 ID</th>
                     <th className={cn(systemPageTokens.tableHead, 'px-2.5 py-1.5 whitespace-nowrap')}>sha256 校验</th>
                     <th className={cn(systemPageTokens.tableHead, 'px-2.5 py-1.5 whitespace-nowrap')}>特征</th>
-                    <th className={cn(systemPageTokens.tableHead, 'px-2.5 py-1.5 whitespace-nowrap tabular-nums')}>大小</th>
+                    <th className={cn(systemPageTokens.tableHead, 'px-2.5 py-1.5 whitespace-nowrap tabular-nums')}>
+                      大小
+                    </th>
                     <th className={cn(systemPageTokens.tableHead, 'px-2.5 py-1.5 whitespace-nowrap')}>创建时间</th>
                     <th className={cn(systemPageTokens.tableHead, 'px-2.5 py-1.5 whitespace-nowrap')}>操作</th>
                   </tr>
@@ -233,7 +228,7 @@ export function LtrModelRegistrySection({
                         key={model.model_id}
                         className={cn(
                           'border-t border-border/70 align-top hover:bg-muted/20',
-                          isActive && 'bg-success/10'
+                          isActive && 'bg-success/10',
                         )}
                       >
                         <td className="px-2.5 py-1.5">
@@ -263,12 +258,8 @@ export function LtrModelRegistrySection({
                             {Array.isArray(model.feature_names) ? model.feature_names.length : 0} 维
                           </div>
                         </td>
-                        <td className="px-2.5 py-1.5 text-[11px] tabular-nums">
-                          {formatBytes(model.size_bytes)}
-                        </td>
-                        <td className="px-2.5 py-1.5 text-[11px] tabular-nums">
-                          {formatTime(model.created_at)}
-                        </td>
+                        <td className="px-2.5 py-1.5 text-[11px] tabular-nums">{formatBytes(model.size_bytes)}</td>
+                        <td className="px-2.5 py-1.5 text-[11px] tabular-nums">{formatTime(model.created_at)}</td>
                         <td className="px-2.5 py-1.5">
                           {isActive ? (
                             <Button
@@ -287,10 +278,7 @@ export function LtrModelRegistrySection({
                                   className={cn(systemDenseControls.inlineAction, 'h-7 gap-1.5 px-2.5 text-[11px]')}
                                 >
                                   <RefreshCw
-                                    className={cn(
-                                      'h-3 w-3',
-                                      isBusy && 'animate-spin motion-reduce:animate-none'
-                                    )}
+                                    className={cn('h-3 w-3', isBusy && 'animate-spin motion-reduce:animate-none')}
                                   />
                                   激活
                                 </Button>
@@ -308,9 +296,7 @@ export function LtrModelRegistrySection({
                                 </div>
                                 <AlertDialogFooter>
                                   <AlertDialogCancel>取消</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    onClick={() => onActivate(String(model.model_id || ''))}
-                                  >
+                                  <AlertDialogAction onClick={() => onActivate(String(model.model_id || ''))}>
                                     确认激活
                                   </AlertDialogAction>
                                 </AlertDialogFooter>

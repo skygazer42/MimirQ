@@ -7,14 +7,11 @@ import { describe, expect, it } from 'vitest'
 describe('knowledge route entry', () => {
   it('keeps app/knowledge/page.tsx as a thin wrapper (module boundary)', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
-    expect(src).toContain("@/components/knowledge/knowledge-page")
+    expect(src).toContain('@/components/knowledge/knowledge-page')
   })
 
   it('preserves knowledge header context while its presentation is unified', () => {
-    const src = fs.readFileSync(
-      path.resolve(__dirname, '../../components/knowledge/knowledge-page.tsx'),
-      'utf8'
-    )
+    const src = fs.readFileSync(path.resolve(__dirname, '../../components/knowledge/knowledge-page.tsx'), 'utf8')
 
     expect(src).toContain('data-knowledge-title-mark="true"')
     expect(src).toContain('src="/brand/mimirq-knowledge-mark.png"')
@@ -22,11 +19,7 @@ describe('knowledge route entry', () => {
     expect(src).toContain('className="size-6 scale-110 object-contain"')
     expect(src).not.toContain('PageTitleIcon')
     expect(src).not.toContain('LibraryBig')
-    expect(
-      fs.existsSync(
-        path.resolve(__dirname, '../../public/brand/mimirq-knowledge-mark.png')
-      )
-    ).toBe(true)
+    expect(fs.existsSync(path.resolve(__dirname, '../../public/brand/mimirq-knowledge-mark.png'))).toBe(true)
     expect(src).toContain("{t('header.title')}")
     expect(src).toContain("{t('header.description')}")
     expect(src).toContain("{selectedDatasetLabel || scopeT('dataset.all')}")
@@ -36,8 +29,10 @@ describe('knowledge route entry', () => {
     expect(src).toContain('验证')
     expect(src).toContain('data-testid="knowledge-page-toolbar"')
     expect(src).toContain('headerClassName="-mx-1 -mt-1 md:-mx-3 md:-mt-2"')
-    expect(src).toContain('className="relative flex min-h-14 flex-col gap-2 border-b border-foreground/15 px-1 py-2 sm:flex-row sm:items-center sm:justify-between"')
-    expect(src).toContain("const KNOWLEDGE_GLASS_CARD_CLASS =")
+    expect(src).toContain(
+      'className="relative flex min-h-14 flex-col gap-2 border-b border-foreground/15 px-1 py-2 sm:flex-row sm:items-center sm:justify-between"',
+    )
+    expect(src).toContain('const KNOWLEDGE_GLASS_CARD_CLASS =')
     expect(src).toContain('border-foreground/10 bg-background shadow-none backdrop-blur-none')
     expect(src).not.toContain('shadow-soft')
     expect(src).not.toContain('shadow-subtle')
@@ -48,10 +43,7 @@ describe('knowledge route entry', () => {
   })
 
   it('keeps document metrics in actionable panels when duplicate summaries are removed', () => {
-    const src = fs.readFileSync(
-      path.resolve(__dirname, '../../components/knowledge/knowledge-page.tsx'),
-      'utf8'
-    )
+    const src = fs.readFileSync(path.resolve(__dirname, '../../components/knowledge/knowledge-page.tsx'), 'utf8')
 
     expect(src).toContain('totalDocs={totalDocs}')
     expect(src).toContain('completedDocsValue={completedDocsValue}')
@@ -66,17 +58,14 @@ describe('knowledge route entry', () => {
   })
 
   it('preserves scope and empty-shelf behavior while the workbench surface is unified', () => {
-    const pageSrc = fs.readFileSync(
-      path.resolve(__dirname, '../../components/knowledge/knowledge-page.tsx'),
-      'utf8'
-    )
+    const pageSrc = fs.readFileSync(path.resolve(__dirname, '../../components/knowledge/knowledge-page.tsx'), 'utf8')
     const documentsSrc = fs.readFileSync(
       path.resolve(__dirname, '../../components/knowledge/knowledge-documents-panel.tsx'),
-      'utf8'
+      'utf8',
     )
     const scaffoldSrc = fs.readFileSync(
       path.resolve(__dirname, '../../components/workbench/workbench-scaffold.tsx'),
-      'utf8'
+      'utf8',
     )
 
     expect(pageSrc).toContain('<KnowledgeScopePanel')
@@ -101,7 +90,9 @@ describe('knowledge route entry', () => {
     expect(scaffoldSrc).toContain('paneGroupClassName?: string')
     expect(scaffoldSrc).toContain('data-workbench-pane-group="true"')
     expect(scaffoldSrc).toContain("className={cn('flex h-full min-h-0 gap-4', paneGroupClassName)}")
-    expect(pageSrc).toContain("'gap-0 overflow-hidden rounded-lg border border-foreground/10 bg-background shadow-none dark:border-foreground/10 dark:bg-background'")
+    expect(pageSrc).toContain(
+      "'gap-0 overflow-hidden rounded-lg border border-foreground/10 bg-background shadow-none dark:border-foreground/10 dark:bg-background'",
+    )
     expect(pageSrc).toContain("'flex h-full flex-col overflow-hidden rounded-none border-r border-y-0 border-l-0'")
     expect(pageSrc).toContain("'flex h-full flex-col overflow-hidden rounded-none border-l border-y-0 border-r-0'")
     expect(pageSrc).toContain("withDocumentViewerPadding={activeTab !== 'retrieval'}")
@@ -109,10 +100,7 @@ describe('knowledge route entry', () => {
   })
 
   it('preserves workbench actions while routine controls are visually flattened', () => {
-    const pageSrc = fs.readFileSync(
-      path.resolve(__dirname, '../../components/knowledge/knowledge-page.tsx'),
-      'utf8'
-    )
+    const pageSrc = fs.readFileSync(path.resolve(__dirname, '../../components/knowledge/knowledge-page.tsx'), 'utf8')
 
     expect(pageSrc).toContain("{ key: 'documents', label: t('tabs.documents.label'), icon: FileStack }")
     expect(pageSrc).toContain("{ key: 'retrieval', label: t('tabs.retrieval.label'), icon: Activity }")
@@ -132,7 +120,7 @@ describe('knowledge route entry', () => {
 
     const documentsSrc = fs.readFileSync(
       path.resolve(__dirname, '../../components/knowledge/knowledge-documents-panel.tsx'),
-      'utf8'
+      'utf8',
     )
     expect(documentsSrc).toContain('bg-[size:48px_48px] opacity-60')
     expect(documentsSrc).toContain('className="mb-4 flex size-12 items-center justify-center rounded-xl')
@@ -144,7 +132,7 @@ describe('knowledge route entry', () => {
   it('preserves settings scope, model selection, save and verification behavior', () => {
     const settingsSrc = fs.readFileSync(
       path.resolve(__dirname, '../../components/knowledge/knowledge-settings-panel.tsx'),
-      'utf8'
+      'utf8',
     )
 
     expect(settingsSrc).toContain('value={selectedScopeValue}')
@@ -160,7 +148,9 @@ describe('knowledge route entry', () => {
     expect(settingsSrc).toContain('setGuideExpanded')
     expect(settingsSrc).toContain('setCurrentConfigOpen')
     expect(settingsSrc).toContain("'rounded-xl border border-border/55 bg-background shadow-none backdrop-blur-none")
-    expect(settingsSrc).toContain("'rounded-none border-0 border-b border-border/50 bg-transparent shadow-none backdrop-blur-none")
+    expect(settingsSrc).toContain(
+      "'rounded-none border-0 border-b border-border/50 bg-transparent shadow-none backdrop-blur-none",
+    )
     expect(settingsSrc).toContain("'grid min-h-0 gap-0 lg:h-full'")
     expect(settingsSrc).toContain("'lg:grid-cols-[206px_minmax(0,1fr)]'")
     expect(settingsSrc).toContain('配置范围')

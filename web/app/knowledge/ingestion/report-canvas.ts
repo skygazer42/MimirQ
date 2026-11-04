@@ -23,11 +23,7 @@ export function waitForNextPaint(): Promise<void> {
   })
 }
 
-export function canvasToBlob(
-  canvas: HTMLCanvasElement,
-  type: string,
-  quality?: number
-): Promise<Blob> {
+export function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => {
@@ -35,7 +31,7 @@ export function canvasToBlob(
         else reject(new Error('Report image encode failed'))
       },
       type,
-      quality
+      quality,
     )
   })
 }
@@ -91,12 +87,8 @@ export async function renderReportHtmlToJpeg(html: string, filename: string) {
     await frameDocument.fonts?.ready.catch(() => undefined)
     await waitForNextPaint()
 
-    const getText = (
-      selector: string,
-      root: ParentNode = frameDocument
-    ): string =>
-      root.querySelector(selector)?.textContent?.replace(/\s+/g, ' ').trim() ??
-      ''
+    const getText = (selector: string, root: ParentNode = frameDocument): string =>
+      root.querySelector(selector)?.textContent?.replace(/\s+/g, ' ').trim() ?? ''
     const readCards = (selector: string): CanvasReportCard[] =>
       Array.from(frameDocument.querySelectorAll<HTMLElement>(selector))
         .map((card) => ({
@@ -107,20 +99,16 @@ export async function renderReportHtmlToJpeg(html: string, filename: string) {
     const readTable = (section: HTMLElement): CanvasReportTable | null => {
       const table = section.querySelector('table')
       if (!table) return null
-      const headers = Array.from(table.querySelectorAll('thead th')).map(
-        (cell) => cell.textContent?.trim() ?? ''
-      )
+      const headers = Array.from(table.querySelectorAll('thead th')).map((cell) => cell.textContent?.trim() ?? '')
       const rows = Array.from(table.querySelectorAll('tbody tr')).map((row) =>
-        Array.from(row.querySelectorAll('td')).map(
-          (cell) => cell.textContent?.replace(/\s+/g, ' ').trim() ?? ''
-        )
+        Array.from(row.querySelectorAll('td')).map((cell) => cell.textContent?.replace(/\s+/g, ' ').trim() ?? ''),
       )
       return headers.length || rows.length ? { headers, rows } : null
     }
     const readSection = (titlePart: string): CanvasReportSection | null => {
-      const section = Array.from(
-        frameDocument.querySelectorAll<HTMLElement>('.section-card, .section')
-      ).find((item) => getText('h2', item).includes(titlePart))
+      const section = Array.from(frameDocument.querySelectorAll<HTMLElement>('.section-card, .section')).find((item) =>
+        getText('h2', item).includes(titlePart),
+      )
       if (!section) return null
       return {
         note: getText('.section-note, .notes', section),
@@ -129,38 +117,23 @@ export async function renderReportHtmlToJpeg(html: string, filename: string) {
       }
     }
 
-    const title =
-      getText('.report-header h1') ||
-      getText('.title') ||
-      frameDocument.title ||
-      '入库预检报告'
+    const title = getText('.report-header h1') || getText('.title') || frameDocument.title || '入库预检报告'
     const subtitle = getText('.report-subtitle') || getText('.sub')
     const generatedAt = getText('.generated-at')
     const metricCards = readCards('.kpi-card')
     const fallbackCards = readCards('.grid .card')
-    const kpiCards = metricCards.length
-      ? metricCards
-      : fallbackCards.slice(0, 8)
-    const basisCards = readCards('.basis-card').length
-      ? readCards('.basis-card')
-      : fallbackCards.slice(8, 12)
+    const kpiCards = metricCards.length ? metricCards : fallbackCards.slice(0, 8)
+    const basisCards = readCards('.basis-card').length ? readCards('.basis-card') : fallbackCards.slice(8, 12)
     const riskSection = readSection('风险分布') ?? readSection('问题清单')
-    const pocSection =
-      readSection('入库抽样') ??
-      readSection('建议 POC') ??
-      readSection('代表性样本')
-    const highRiskSection =
-      readSection('高风险文件') ?? readSection('需复核样本')
+    const pocSection = readSection('入库抽样') ?? readSection('建议 POC') ?? readSection('代表性样本')
+    const highRiskSection = readSection('高风险文件') ?? readSection('需复核样本')
     const sampleSection = readSection('当前页面样本')
 
     const width = 1760
     const margin = 36
     const gap = 16
     const contentWidth = width - margin * 2
-    const pixelRatio = Math.min(
-      2,
-      Math.max(1, globalThis.window.devicePixelRatio || 1)
-    )
+    const pixelRatio = Math.min(2, Math.max(1, globalThis.window.devicePixelRatio || 1))
     const canvas = document.createElement('canvas')
     const context = canvas.getContext('2d')
     if (!context) throw new Error('Report image canvas unavailable')
@@ -168,37 +141,20 @@ export async function renderReportHtmlToJpeg(html: string, filename: string) {
     const setFont = (size: number, weight: number | string = 400) => {
       context.font = `${weight} ${size}px"PingFang SC","Microsoft YaHei","Inter", sans-serif`
     }
-    const roundRect = (
-      x: number,
-      y: number,
-      rectWidth: number,
-      rectHeight: number,
-      radius: number
-    ) => {
+    const roundRect = (x: number, y: number, rectWidth: number, rectHeight: number, radius: number) => {
       context.beginPath()
       context.moveTo(x + radius, y)
       context.lineTo(x + rectWidth - radius, y)
       context.quadraticCurveTo(x + rectWidth, y, x + rectWidth, y + radius)
       context.lineTo(x + rectWidth, y + rectHeight - radius)
-      context.quadraticCurveTo(
-        x + rectWidth,
-        y + rectHeight,
-        x + rectWidth - radius,
-        y + rectHeight
-      )
+      context.quadraticCurveTo(x + rectWidth, y + rectHeight, x + rectWidth - radius, y + rectHeight)
       context.lineTo(x + radius, y + rectHeight)
       context.quadraticCurveTo(x, y + rectHeight, x, y + rectHeight - radius)
       context.lineTo(x, y + radius)
       context.quadraticCurveTo(x, y, x + radius, y)
       context.closePath()
     }
-    const drawCardBase = (
-      x: number,
-      y: number,
-      rectWidth: number,
-      rectHeight: number,
-      radius = 14
-    ) => {
+    const drawCardBase = (x: number, y: number, rectWidth: number, rectHeight: number, radius = 14) => {
       context.save()
       context.shadowColor = 'rgba(15, 23, 42, 0.08)'
       context.shadowBlur = 26
@@ -218,7 +174,7 @@ export async function renderReportHtmlToJpeg(html: string, filename: string) {
       y: number,
       maxWidth: number,
       lineHeight: number,
-      maxLines = 2
+      maxLines = 2,
     ): number => {
       if (!text) return y
       const chars = Array.from(text)
@@ -236,11 +192,7 @@ export async function renderReportHtmlToJpeg(html: string, filename: string) {
       }
       if (current && lines.length < maxLines) lines.push(current)
       lines.forEach((line, index) => {
-        const suffix =
-          index === maxLines - 1 &&
-          chars.join('').length > lines.join('').length
-            ? '...'
-            : ''
+        const suffix = index === maxLines - 1 && chars.join('').length > lines.join('').length ? '...' : ''
         context.fillText(`${line}${suffix}`, x, y + index * lineHeight)
       })
       return y + Math.max(1, lines.length) * lineHeight
@@ -251,19 +203,10 @@ export async function renderReportHtmlToJpeg(html: string, filename: string) {
       x: number,
       y: number,
       rectWidth: number,
-      rectHeight: number
+      rectHeight: number,
     ) => {
       drawCardBase(x, y, rectWidth, rectHeight, 12)
-      const tones = [
-        '#1264e8',
-        '#1264e8',
-        '#334155',
-        '#6d47e8',
-        '#0ea5b7',
-        '#6d47e8',
-        '#1264e8',
-        '#0ea5b7',
-      ]
+      const tones = ['#1264e8', '#1264e8', '#334155', '#6d47e8', '#0ea5b7', '#6d47e8', '#1264e8', '#0ea5b7']
       const tone = tones[index % tones.length] ?? '#1264e8'
       context.fillStyle = `${tone}18`
       roundRect(x + 22, y + 24, 60, 60, 16)
@@ -287,17 +230,13 @@ export async function renderReportHtmlToJpeg(html: string, filename: string) {
       x: number,
       y: number,
       rectWidth: number,
-      options: { maxRows?: number } = {}
+      options: { maxRows?: number } = {},
     ): number => {
       const table = section.table
       const rows = table?.rows.slice(0, options.maxRows ?? 8) ?? []
-      const headers = table?.headers.length
-        ? table.headers
-        : (rows[0]?.map((_, index) => `列 ${index + 1}`) ?? [])
+      const headers = table?.headers.length ? table.headers : (rows[0]?.map((_, index) => `列 ${index + 1}`) ?? [])
       const rowHeight = 48
-      const tableHeight = headers.length
-        ? 44 + Math.max(1, rows.length) * rowHeight
-        : 58
+      const tableHeight = headers.length ? 44 + Math.max(1, rows.length) * rowHeight : 58
       const noteHeight = section.note ? 22 : 0
       const rectHeight = 70 + noteHeight + tableHeight
       drawCardBase(x, y, rectWidth, rectHeight, 12)
@@ -333,14 +272,7 @@ export async function renderReportHtmlToJpeg(html: string, filename: string) {
       setFont(12, 800)
       context.fillStyle = '#475569'
       headers.forEach((header, index) => {
-        drawTextLines(
-          header,
-          x + 34 + index * columnWidth,
-          tableY + 28,
-          columnWidth - 24,
-          14,
-          1
-        )
+        drawTextLines(header, x + 34 + index * columnWidth, tableY + 28, columnWidth - 24, 14, 1)
       })
       rows.forEach((row, rowIndex) => {
         const currentY = tableY + 44 + rowIndex * rowHeight
@@ -352,14 +284,7 @@ export async function renderReportHtmlToJpeg(html: string, filename: string) {
         setFont(13, rowIndex === 0 ? 650 : 500)
         context.fillStyle = '#0c1730'
         row.slice(0, headers.length).forEach((cell, index) => {
-          drawTextLines(
-            cell || '-',
-            x + 34 + index * columnWidth,
-            currentY + 22,
-            columnWidth - 24,
-            16,
-            2
-          )
+          drawTextLines(cell || '-', x + 34 + index * columnWidth, currentY + 22, columnWidth - 24, 16, 2)
         })
       })
       if (!rows.length) {
@@ -407,14 +332,7 @@ export async function renderReportHtmlToJpeg(html: string, filename: string) {
     kpiCards.slice(0, 8).forEach((card, index) => {
       const col = index % 4
       const row = Math.floor(index / 4)
-      drawMetricCard(
-        card,
-        index,
-        margin + col * (cardWidth + gap),
-        y + row * 124,
-        cardWidth,
-        108
-      )
+      drawMetricCard(card, index, margin + col * (cardWidth + gap), y + row * 124, cardWidth, 108)
     })
     y += kpiRows * 124 + 12
 
@@ -437,27 +355,16 @@ export async function renderReportHtmlToJpeg(html: string, filename: string) {
     })
     y += 190
 
-    if (riskSection)
-      y = drawSection(riskSection, margin, y, contentWidth, { maxRows: 8 }) + 12
+    if (riskSection) y = drawSection(riskSection, margin, y, contentWidth, { maxRows: 8 }) + 12
     if (pocSection || highRiskSection) {
       const splitWidth = (contentWidth - gap) / 2
-      const leftEnd = pocSection
-        ? drawSection(pocSection, margin, y, splitWidth, { maxRows: 5 })
-        : y
+      const leftEnd = pocSection ? drawSection(pocSection, margin, y, splitWidth, { maxRows: 5 }) : y
       const rightEnd = highRiskSection
-        ? drawSection(
-            highRiskSection,
-            margin + splitWidth + gap,
-            y,
-            splitWidth,
-            { maxRows: 5 }
-          )
+        ? drawSection(highRiskSection, margin + splitWidth + gap, y, splitWidth, { maxRows: 5 })
         : y
       y = Math.max(leftEnd, rightEnd) + 12
     }
-    if (sampleSection)
-      y =
-        drawSection(sampleSection, margin, y, contentWidth, { maxRows: 8 }) + 12
+    if (sampleSection) y = drawSection(sampleSection, margin, y, contentWidth, { maxRows: 8 }) + 12
 
     const jpeg = await canvasToBlob(canvas, 'image/jpeg', 0.94)
     downloadBlob(jpeg, filename)

@@ -2,15 +2,7 @@
 
 import { useMemo, type ComponentType } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import {
-  Copy,
-  Database,
-  FileText,
-  Gauge,
-  Loader2,
-  RefreshCw,
-  TextCursorInput,
-} from 'lucide-react'
+import { Copy, Database, FileText, Gauge, Loader2, RefreshCw, TextCursorInput } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -24,12 +16,9 @@ import type { TenantQuotaSummary } from '@/types'
 const TENANT_QUOTA_PANEL_CLASS = 'overflow-hidden rounded-xl border border-info/20 bg-background/72 shadow-none'
 const QUOTA_CARD_CLASS =
   'rounded-lg border border-border/70 bg-background/62 px-3 py-2.5 shadow-none transition-colors hover:border-info/25 hover:bg-info/[0.04]'
-const QUOTA_DISABLED_TONE =
-  'border-border/60 bg-muted/55 text-muted-foreground'
-const QUOTA_ENABLED_TONE =
-  'border-success/20 bg-success/10 text-success'
-const QUOTA_EXCEEDED_TONE =
-  'border-destructive/20 bg-destructive/10 text-destructive'
+const QUOTA_DISABLED_TONE = 'border-border/60 bg-muted/55 text-muted-foreground'
+const QUOTA_ENABLED_TONE = 'border-success/20 bg-success/10 text-success'
+const QUOTA_EXCEEDED_TONE = 'border-destructive/20 bg-destructive/10 text-destructive'
 
 const DISABLED_DOCUMENT_QUOTA: TenantQuotaSummary['documents'] = {
   enabled: false,
@@ -153,48 +142,27 @@ function QuotaCard({
             <Icon className="size-3.5" />
           </div>
           <div className="min-w-0">
-            <p className="truncate text-[12px] font-semibold text-foreground/90">
-              {title}
-            </p>
-            <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
-              {secondary}
-            </p>
+            <p className="truncate text-[12px] font-semibold text-foreground/90">{title}</p>
+            <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{secondary}</p>
           </div>
         </div>
-        <span
-          className={cn(
-            'shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold',
-            tone
-          )}
-        >
+        <span className={cn('shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold', tone)}>
           {getQuotaStatusLabel(enabled, exceeded)}
         </span>
       </div>
       <div className="mt-2 flex min-h-5 items-end justify-between gap-3">
         {enabled ? (
-          <p
-            className={cn(
-              'text-[15px] font-semibold tabular-nums',
-              exceeded ? 'text-destructive' : 'text-success'
-            )}
-          >
+          <p className={cn('text-[15px] font-semibold tabular-nums', exceeded ? 'text-destructive' : 'text-success')}>
             {primary}
           </p>
         ) : (
-          <p className="text-[10px] font-medium text-muted-foreground">
-            等待后端开启
-          </p>
+          <p className="text-[10px] font-medium text-muted-foreground">等待后端开启</p>
         )}
-        <p className="text-[9px] font-medium uppercase tracking-[0.12em] text-muted-foreground/55">
-          租户
-        </p>
+        <p className="text-[9px] font-medium uppercase tracking-[0.12em] text-muted-foreground/55">租户</p>
       </div>
       <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
         <div
-          className={cn(
-            'h-full rounded-full',
-            getQuotaProgressClass(enabled, exceeded)
-          )}
+          className={cn('h-full rounded-full', getQuotaProgressClass(enabled, exceeded))}
           style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
         />
       </div>
@@ -252,16 +220,11 @@ export function TenantQuotaPanel() {
   }
 
   return (
-    <Panel
-      padding="none"
-      className={TENANT_QUOTA_PANEL_CLASS}
-    >
+    <Panel padding="none" className={TENANT_QUOTA_PANEL_CLASS}>
       <div className="flex flex-col gap-3 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h2 className="text-[14px] font-semibold tracking-[-0.01em] text-foreground">
-              租户级配额状态
-            </h2>
+            <h2 className="text-[14px] font-semibold tracking-[-0.01em] text-foreground">租户级配额状态</h2>
             <span className="rounded-full border border-border/60 bg-muted/45 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
               quota
             </span>
@@ -296,11 +259,7 @@ export function TenantQuotaPanel() {
               exceeded={documentsQuota.exceeded}
               primary={documentQuotaText.primary}
               secondary={documentQuotaText.secondary}
-              progress={
-                documentsQuota.enabled
-                  ? (documentsQuota.used / Math.max(1, documentsQuota.limit)) * 100
-                  : 0
-              }
+              progress={documentsQuota.enabled ? (documentsQuota.used / Math.max(1, documentsQuota.limit)) * 100 : 0}
             />
             <QuotaCard
               icon={Database}
@@ -310,9 +269,7 @@ export function TenantQuotaPanel() {
               primary={storageQuotaText.primary}
               secondary={storageQuotaText.secondary}
               progress={
-                storageQuota.enabled
-                  ? (storageQuota.used_bytes / Math.max(1, storageQuota.limit_bytes)) * 100
-                  : 0
+                storageQuota.enabled ? (storageQuota.used_bytes / Math.max(1, storageQuota.limit_bytes)) * 100 : 0
               }
             />
             <QuotaCard
@@ -323,11 +280,7 @@ export function TenantQuotaPanel() {
               primary={embeddingQuotaText.primary}
               secondary={embeddingQuotaText.secondary}
               progress={
-                embeddingQuota.enabled
-                  ? (embeddingQuota.used_chars /
-                      Math.max(1, embeddingQuota.limit_chars)) *
-                    100
-                  : 0
+                embeddingQuota.enabled ? (embeddingQuota.used_chars / Math.max(1, embeddingQuota.limit_chars)) * 100 : 0
               }
             />
             <QuotaCard
@@ -341,49 +294,37 @@ export function TenantQuotaPanel() {
           </div>
         ) : (
           <div className="rounded-xl border border-dashed border-border/60 bg-muted/35 px-4 py-5 text-center text-[12px] text-muted-foreground">
-            {quotaQuery.isFetching
-              ? '正在读取租户配额...'
-              : '暂无配额数据，点击刷新重新读取。'}
+            {quotaQuery.isFetching ? '正在读取租户配额...' : '暂无配额数据，点击刷新重新读取。'}
           </div>
         )}
 
         <details className="mt-3 overflow-hidden rounded-xl border border-border/60 bg-muted/30">
           <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-2.5 text-[11px] font-semibold text-muted-foreground hover:bg-muted/55 [&::-webkit-details-marker]:hidden">
             <span>查看原始响应</span>
-            <span className="text-[10px] font-medium text-muted-foreground">
-              JSON
-            </span>
+            <span className="text-[10px] font-medium text-muted-foreground">JSON</span>
           </summary>
           <div className="relative border-t border-border/60">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute right-3 top-3 z-10 size-8 rounded-lg border border-border/60 bg-background/80 text-muted-foreground shadow-none hover:border-info/30 hover:bg-info/[0.07] hover:text-info"
-            onClick={() => detachPromise(copyText(json))}
-            aria-label="复制租户配额 JSON"
-          >
-            <Copy className="size-4" />
-          </Button>
-          <pre className="max-h-[200px] overflow-auto py-3 pr-12 text-[12px] leading-6">
-            {lines.map((line, index) => (
-              <div
-                key={`${index}-${line}`}
-                className="grid grid-cols-[44px_1fr]"
-              >
-                <span className="select-none border-r border-border/60 pr-3 text-right font-mono text-muted-foreground">
-                  {index + 1}
-                </span>
-                <code
-                  className={cn(
-                    'pl-4 font-mono text-foreground',
-                    line.includes('"message"') && 'text-info'
-                  )}
-                >
-                  {line || ' '}
-                </code>
-              </div>
-            ))}
-          </pre>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute right-3 top-3 z-10 size-8 rounded-lg border border-border/60 bg-background/80 text-muted-foreground shadow-none hover:border-info/30 hover:bg-info/[0.07] hover:text-info"
+              onClick={() => detachPromise(copyText(json))}
+              aria-label="复制租户配额 JSON"
+            >
+              <Copy className="size-4" />
+            </Button>
+            <pre className="max-h-[200px] overflow-auto py-3 pr-12 text-[12px] leading-6">
+              {lines.map((line, index) => (
+                <div key={`${index}-${line}`} className="grid grid-cols-[44px_1fr]">
+                  <span className="select-none border-r border-border/60 pr-3 text-right font-mono text-muted-foreground">
+                    {index + 1}
+                  </span>
+                  <code className={cn('pl-4 font-mono text-foreground', line.includes('"message"') && 'text-info')}>
+                    {line || ' '}
+                  </code>
+                </div>
+              ))}
+            </pre>
           </div>
         </details>
       </div>

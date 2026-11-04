@@ -21,7 +21,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 function asText(v: unknown): string {
   if (v == null) return ''
   if (typeof v === 'string') return v
-  if (typeof v === 'number' || typeof v === 'boolean' || typeof v === 'bigint' || typeof v === 'symbol') return toPrimitiveString(v)
+  if (typeof v === 'number' || typeof v === 'boolean' || typeof v === 'bigint' || typeof v === 'symbol')
+    return toPrimitiveString(v)
   try {
     return JSON.stringify(v)
   } catch {
@@ -37,9 +38,15 @@ function clampText(v: unknown, max = 240): string {
 
 function inferEvidenceKind(citation: Citation | null): 'image' | 'table' | 'text' {
   if (!citation) return 'text'
-  const hitType = String(citation.hit_type || '').trim().toLowerCase()
-  const chunkRole = String(citation.chunk_role || '').trim().toLowerCase()
-  const semanticRole = String(citation.chunk_semantic_role || '').trim().toLowerCase()
+  const hitType = String(citation.hit_type || '')
+    .trim()
+    .toLowerCase()
+  const chunkRole = String(citation.chunk_role || '')
+    .trim()
+    .toLowerCase()
+  const semanticRole = String(citation.chunk_semantic_role || '')
+    .trim()
+    .toLowerCase()
   const hasImage = Boolean(citation.has_image)
 
   if (hasImage || hitType === 'image') return 'image'
@@ -97,30 +104,24 @@ export function EvidenceViewerDialog({
 
   const onOpenInDoc = React.useCallback(() => {
     if (!citation?.document_id) return
-    const start =
-      (() => {
-    if (typeof citation.evidence_start_char === 'number') {
-        return citation.evidence_start_char;
-    }
-    else if (typeof citation.start_char === 'number') {
-            return citation.start_char;
-        }
-        else {
-            return null;
-        }
-})()
-    const end =
-      (() => {
-    if (typeof citation.evidence_end_char === 'number') {
-        return citation.evidence_end_char;
-    }
-    else if (typeof citation.end_char === 'number') {
-            return citation.end_char;
-        }
-        else {
-            return null;
-        }
-})()
+    const start = (() => {
+      if (typeof citation.evidence_start_char === 'number') {
+        return citation.evidence_start_char
+      } else if (typeof citation.start_char === 'number') {
+        return citation.start_char
+      } else {
+        return null
+      }
+    })()
+    const end = (() => {
+      if (typeof citation.evidence_end_char === 'number') {
+        return citation.evidence_end_char
+      } else if (typeof citation.end_char === 'number') {
+        return citation.end_char
+      } else {
+        return null
+      }
+    })()
     const range = start != null && end != null && end > start ? { start, end } : undefined
     openDocument(citation.document_id, citation.chunk_id, range, {
       previewAnchor: getDocumentPreviewAnchorFromCitation(citation),
@@ -148,18 +149,24 @@ export function EvidenceViewerDialog({
     push('chunk_id', citation.chunk_id)
     push('page_number', citation.page_number)
     push('chunk_index', citation.chunk_index)
-    push('span', (() => {
-      const s = citation.start_char
-      const e = citation.end_char
-      if (typeof s === 'number' && typeof e === 'number' && e >= s) return `${s}..${e}`
-      return ''
-    })())
-    push('evidence_span', (() => {
-      const s = citation.evidence_start_char
-      const e = citation.evidence_end_char
-      if (typeof s === 'number' && typeof e === 'number' && e >= s) return `${s}..${e}`
-      return ''
-    })())
+    push(
+      'span',
+      (() => {
+        const s = citation.start_char
+        const e = citation.end_char
+        if (typeof s === 'number' && typeof e === 'number' && e >= s) return `${s}..${e}`
+        return ''
+      })(),
+    )
+    push(
+      'evidence_span',
+      (() => {
+        const s = citation.evidence_start_char
+        const e = citation.evidence_end_char
+        if (typeof s === 'number' && typeof e === 'number' && e >= s) return `${s}..${e}`
+        return ''
+      })(),
+    )
     push('hit_type', citation.hit_type)
     push('retrieval_role', citation.retrieval_role)
     push('neighbor_of', citation.neighbor_of)
@@ -190,25 +197,29 @@ export function EvidenceViewerDialog({
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="soft" className="text-[11px]">
               {(() => {
-    if (kind === 'image') {
-        return (<span className="inline-flex items-center gap-1">
-                  <ImageIcon className="h-3 w-3"/>
-                  image
-                </span>);
-    }
-    else if (kind === 'table') {
-            return (<span className="inline-flex items-center gap-1">
-                  <Table2 className="h-3 w-3"/>
-                  table
-                </span>);
-        }
-        else {
-            return (<span className="inline-flex items-center gap-1">
-                  <FileText className="h-3 w-3"/>
-                  text
-                </span>);
-        }
-})()}
+                if (kind === 'image') {
+                  return (
+                    <span className="inline-flex items-center gap-1">
+                      <ImageIcon className="h-3 w-3" />
+                      image
+                    </span>
+                  )
+                } else if (kind === 'table') {
+                  return (
+                    <span className="inline-flex items-center gap-1">
+                      <Table2 className="h-3 w-3" />
+                      table
+                    </span>
+                  )
+                } else {
+                  return (
+                    <span className="inline-flex items-center gap-1">
+                      <FileText className="h-3 w-3" />
+                      text
+                    </span>
+                  )
+                }
+              })()}
             </Badge>
             {citation?.document_name ? (
               <Badge variant="soft" className="text-[11px]" title={String(citation.document_name)}>
@@ -223,13 +234,7 @@ export function EvidenceViewerDialog({
           </div>
 
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="rounded-xl gap-2"
-              onClick={onCopyJson}
-              disabled={!citation}
-            >
+            <Button variant="outline" size="sm" className="rounded-xl gap-2" onClick={onCopyJson} disabled={!citation}>
               <Copy className="h-4 w-4" />
               复制 JSON
             </Button>
@@ -262,9 +267,7 @@ export function EvidenceViewerDialog({
                       />
                     </div>
                   ) : (
-                    <div className="p-6 text-sm text-muted-foreground">
-                      无法加载图片预览（URL 不安全或缺失）。
-                    </div>
+                    <div className="p-6 text-sm text-muted-foreground">无法加载图片预览（URL 不安全或缺失）。</div>
                   )}
                 </div>
 
@@ -302,7 +305,7 @@ export function EvidenceViewerDialog({
                 <pre
                   className={cn(
                     'rounded-xl border border-border/60 bg-muted/20 p-3',
-                    'text-xs leading-relaxed overflow-auto whitespace-pre-wrap'
+                    'text-xs leading-relaxed overflow-auto whitespace-pre-wrap',
                   )}
                 >
                   {String(citation.chunk_content)}
@@ -315,16 +318,9 @@ export function EvidenceViewerDialog({
                 <div className="text-xs font-semibold text-foreground">Provenance</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {meta.map((row) => (
-                    <div
-                      key={row.k}
-                      className="rounded-xl border border-border/60 bg-card px-3 py-2"
-                    >
-                      <div className="text-[11px] font-bold text-muted-foreground uppercase">
-                        {row.k}
-                      </div>
-                      <div className="mt-1 text-xs font-mono text-foreground break-words">
-                        {row.v}
-                      </div>
+                    <div key={row.k} className="rounded-xl border border-border/60 bg-card px-3 py-2">
+                      <div className="text-[11px] font-bold text-muted-foreground uppercase">{row.k}</div>
+                      <div className="mt-1 text-xs font-mono text-foreground break-words">{row.v}</div>
                     </div>
                   ))}
                 </div>

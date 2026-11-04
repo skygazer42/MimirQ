@@ -51,7 +51,10 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
   const [includeArchivedSuites, setIncludeArchivedSuites] = useState(false)
 
   const [selectedSuiteId, setSelectedSuiteId] = useState<string>('')
-  const selectedSuite = useMemo(() => suites.find((suite) => suite.id === selectedSuiteId) || null, [selectedSuiteId, suites])
+  const selectedSuite = useMemo(
+    () => suites.find((suite) => suite.id === selectedSuiteId) || null,
+    [selectedSuiteId, suites],
+  )
 
   const [items, setItems] = useState<EvidenceItem[]>([])
   const [itemsLoading, setItemsLoading] = useState(false)
@@ -88,7 +91,9 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
   const [hardcaseTags, setHardcaseTags] = useState<string[]>(['hardcase'])
 
   const [convertingFeedbackId, setConvertingFeedbackId] = useState<string>('')
-  const [pendingFeedbackId, setPendingFeedbackId] = useState<string>(() => String(options?.initialFeedbackId || '').trim())
+  const [pendingFeedbackId, setPendingFeedbackId] = useState<string>(() =>
+    String(options?.initialFeedbackId || '').trim(),
+  )
 
   const [createSuiteOpen, setCreateSuiteOpen] = useState(false)
   const [suiteName, setSuiteName] = useState('')
@@ -124,7 +129,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
     const base = suites || []
     if (!query) return base
     return base.filter((suite) => {
-      const haystack = `${suite.name || ''} ${(suite.description || '')} ${(suite.tags || []).join(' ')}`.toLowerCase()
+      const haystack = `${suite.name || ''} ${suite.description || ''} ${(suite.tags || []).join(' ')}`.toLowerCase()
       return haystack.includes(query)
     })
   }, [suiteQuery, suites])
@@ -136,7 +141,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
       .filter((item) => (filter === '__all__' ? true : String(item.status || '').toLowerCase() === filter))
       .filter((item) => {
         if (!query) return true
-        const haystack = `${item.query || ''} ${(item.notes || '')}`.toLowerCase()
+        const haystack = `${item.query || ''} ${item.notes || ''}`.toLowerCase()
         return haystack.includes(query)
       })
   }, [items, itemQuery, statusFilter])
@@ -258,11 +263,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
   }, [])
 
   const handleConvertFeedbackToEvidence = useCallback(
-    async (
-      feedbackId: string,
-      questionHash?: string,
-      options?: { tags?: string[]; source?: string }
-    ) => {
+    async (feedbackId: string, questionHash?: string, options?: { tags?: string[]; source?: string }) => {
       if (!selectedSuiteId) return
       const id = String(feedbackId || '').trim()
       if (!id) return null
@@ -289,7 +290,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
         setConvertingFeedbackId('')
       }
     },
-    [hardcaseTags, loadHardcases, loadItems, selectedSuiteId]
+    [hardcaseTags, loadHardcases, loadItems, selectedSuiteId],
   )
 
   useEffect(() => {
@@ -549,7 +550,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
       try {
         const res = await evidenceApi.importItems(String(selectedSuite.id), file)
         toast.success(
-          `导入完成：parsed=${res.parsed} created=${res.created} skipped=${res.skipped} errors=${(res.errors || []).length}`
+          `导入完成：parsed=${res.parsed} created=${res.created} skipped=${res.skipped} errors=${(res.errors || []).length}`,
         )
         detachPromise(loadItems())
         detachPromise(loadSuites())
@@ -560,7 +561,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
         if (qaFaqInputRef.current) qaFaqInputRef.current.value = ''
       }
     },
-    [loadItems, loadSuites, selectedSuite]
+    [loadItems, loadSuites, selectedSuite],
   )
 
   const handleExportSuite = useCallback(async () => {
@@ -598,7 +599,9 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
       const res = await evidenceApi.syncSuiteToRegression(String(selectedSuite.id))
       const errors = Array.isArray(res?.errors) ? res.errors : []
       if (errors.length) {
-        toast.warning(`同步完成：created=${res.created} updated=${res.updated} skipped=${res.skipped} errors=${errors.length}`)
+        toast.warning(
+          `同步完成：created=${res.created} updated=${res.updated} skipped=${res.skipped} errors=${errors.length}`,
+        )
       } else {
         toast.success(`同步完成：created=${res.created} updated=${res.updated} skipped=${res.skipped}`)
       }
@@ -609,41 +612,50 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
     }
   }, [loadItems, loadSuites, selectedSuite])
 
-  const handleArchiveItem = useCallback(async (itemId: string) => {
-    if (!itemId) return
-    try {
-      const updated = await evidenceApi.archiveItem(itemId)
-      setItems((prev) => (prev || []).map((item) => (item.id === itemId ? updated : item)))
-      toast.success('已归档')
-      detachPromise(loadSuites())
-    } catch (error: unknown) {
-      toast.error(formatApiError(error, '归档失败'))
-    }
-  }, [loadSuites])
+  const handleArchiveItem = useCallback(
+    async (itemId: string) => {
+      if (!itemId) return
+      try {
+        const updated = await evidenceApi.archiveItem(itemId)
+        setItems((prev) => (prev || []).map((item) => (item.id === itemId ? updated : item)))
+        toast.success('已归档')
+        detachPromise(loadSuites())
+      } catch (error: unknown) {
+        toast.error(formatApiError(error, '归档失败'))
+      }
+    },
+    [loadSuites],
+  )
 
-  const handleReviewItem = useCallback(async (itemId: string) => {
-    if (!itemId) return
-    try {
-      const updated = await evidenceApi.reviewItem(itemId)
-      setItems((prev) => (prev || []).map((item) => (item.id === itemId ? updated : item)))
-      toast.success('已提交 Review')
-      detachPromise(loadSuites())
-    } catch (error: unknown) {
-      toast.error(formatApiError(error, '提交 Review 失败'))
-    }
-  }, [loadSuites])
+  const handleReviewItem = useCallback(
+    async (itemId: string) => {
+      if (!itemId) return
+      try {
+        const updated = await evidenceApi.reviewItem(itemId)
+        setItems((prev) => (prev || []).map((item) => (item.id === itemId ? updated : item)))
+        toast.success('已提交 Review')
+        detachPromise(loadSuites())
+      } catch (error: unknown) {
+        toast.error(formatApiError(error, '提交 Review 失败'))
+      }
+    },
+    [loadSuites],
+  )
 
-  const handleApproveItem = useCallback(async (itemId: string) => {
-    if (!itemId) return
-    try {
-      const updated = await evidenceApi.approveItem(itemId)
-      setItems((prev) => (prev || []).map((item) => (item.id === itemId ? updated : item)))
-      toast.success('已批准（approved）')
-      detachPromise(loadSuites())
-    } catch (error: unknown) {
-      toast.error(formatApiError(error, '批准失败'))
-    }
-  }, [loadSuites])
+  const handleApproveItem = useCallback(
+    async (itemId: string) => {
+      if (!itemId) return
+      try {
+        const updated = await evidenceApi.approveItem(itemId)
+        setItems((prev) => (prev || []).map((item) => (item.id === itemId ? updated : item)))
+        toast.success('已批准（approved）')
+        detachPromise(loadSuites())
+      } catch (error: unknown) {
+        toast.error(formatApiError(error, '批准失败'))
+      }
+    },
+    [loadSuites],
+  )
 
   const suiteCounts = useMemo(() => {
     const counts = selectedSuite?.item_counts || null
@@ -661,7 +673,10 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
   const importCitations = useMemo(() => importPack?.citations ?? EMPTY_CITATIONS, [importPack])
 
   const expectedNeedles = useMemo(() => extractEvidenceNeedles(newExpected), [newExpected])
-  const retrieveRanked = useMemo(() => rankEvidenceCitations(retrieveCitations, expectedNeedles), [expectedNeedles, retrieveCitations])
+  const retrieveRanked = useMemo(
+    () => rankEvidenceCitations(retrieveCitations, expectedNeedles),
+    [expectedNeedles, retrieveCitations],
+  )
   const suggestedRetrieveChunkIds = useMemo(() => {
     const out: string[] = []
     for (const ranked of retrieveRanked || []) {

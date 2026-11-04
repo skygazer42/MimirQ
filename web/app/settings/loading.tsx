@@ -1,6 +1,6 @@
-import { Skeleton } from "@/components/ui/skeleton"
+import { Skeleton } from '@/components/ui/skeleton'
 
-const SECTION_KEYS = ["s-1", "s-2", "s-3"]
+const SECTION_KEYS = ['s-1', 's-2', 's-3']
 
 export default function SettingsLoading() {
   return (

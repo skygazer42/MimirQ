@@ -53,7 +53,7 @@ async function discoverTokenEndpoint(issuer: string): Promise<OidcDiscovery> {
   if (!res.ok) {
     throw new Error(`oidc_discovery_failed_${res.status}`)
   }
-  const data = (await res.json().catch(() => null))
+  const data = await res.json().catch(() => null)
   const tokenEndpoint = typeof data?.token_endpoint === 'string' ? data.token_endpoint.trim() : ''
   if (!tokenEndpoint) {
     throw new Error('oidc_discovery_missing_endpoints')

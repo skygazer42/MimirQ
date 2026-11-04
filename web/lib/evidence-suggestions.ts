@@ -48,8 +48,7 @@ function needleWeight(needle: string): number {
 }
 
 function citationNumericScore(c: Citation): number {
-  const raw: unknown =
-    c.retrieval_score ?? c.rerank_score ?? c.relevance_score ?? c.vector_score ?? c.bm25_score ?? 0
+  const raw: unknown = c.retrieval_score ?? c.rerank_score ?? c.relevance_score ?? c.vector_score ?? c.bm25_score ?? 0
   const n = Number(raw)
   return Number.isFinite(n) ? n : 0
 }
@@ -67,7 +66,9 @@ export function extractEvidenceNeedles(expectedAnswer: string, opts?: { max_need
   const seen = new Set<string>()
 
   const push = (raw: string) => {
-    const s = String(raw || '').trim().toLowerCase()
+    const s = String(raw || '')
+      .trim()
+      .toLowerCase()
     if (!s) return
     if (seen.has(s)) return
     seen.add(s)
@@ -84,7 +85,13 @@ export function extractEvidenceNeedles(expectedAnswer: string, opts?: { max_need
 }
 
 export function rankEvidenceCitations(citations: Citation[], needles: string[]): RankedEvidenceCitation[] {
-  const ns = (needles || []).map((n) => String(n || '').trim().toLowerCase()).filter(Boolean)
+  const ns = (needles || [])
+    .map((n) =>
+      String(n || '')
+        .trim()
+        .toLowerCase(),
+    )
+    .filter(Boolean)
   const base = citations || []
   if (!ns.length) {
     return base.map((c) => ({ citation: c, score: 0, hits: [] }))

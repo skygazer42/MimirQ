@@ -1,10 +1,7 @@
 'use client'
 
 import { API_BASE_URL, toAbsoluteBackendUrl } from '@/lib/env'
-import {
-  AUTH_SCOPE_CHANGED_EVENT,
-  getAuthCacheScope,
-} from '@/lib/auth-storage'
+import { AUTH_SCOPE_CHANGED_EVENT, getAuthCacheScope } from '@/lib/auth-storage'
 import { getAuthHeaders } from '@/lib/auth-headers'
 import { authenticatedFetch } from '@/lib/authenticated-fetch'
 import { buildMarkdownImageProxyUrl } from '@/lib/markdown-image-proxy'
@@ -85,7 +82,7 @@ async function mintOpaqueRemoteImageUrl(rawUrl: string): Promise<string | null> 
       })
 
       if (response.ok) {
-        const payload = await response.json() as { src?: unknown }
+        const payload = (await response.json()) as { src?: unknown }
         const nextUrl = typeof payload?.src === 'string' ? payload.src.trim() : ''
         if (nextUrl) {
           if (key !== cacheKey(rawUrl)) return null

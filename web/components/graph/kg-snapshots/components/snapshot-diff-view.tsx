@@ -39,10 +39,7 @@ export function SnapshotDiffView({
   onCopy: () => void
   onDownload: () => void
 }>) {
-  const rows = useMemo(
-    () => buildSideBySideDiffRows(leftCode, rightCode),
-    [leftCode, rightCode]
-  )
+  const rows = useMemo(() => buildSideBySideDiffRows(leftCode, rightCode), [leftCode, rightCode])
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-card">
@@ -51,10 +48,7 @@ export function SnapshotDiffView({
           {typeDrift.length > 0 ? (
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                <Layers
-                  className="h-3.5 w-3.5 text-primary/70"
-                  aria-hidden="true"
-                />
+                <Layers className="h-3.5 w-3.5 text-primary/70" aria-hidden="true" />
                 Type Drift
               </span>
               {typeDrift.slice(0, 8).map((row) => {
@@ -68,19 +62,14 @@ export function SnapshotDiffView({
                     className="inline-flex items-center gap-1 font-mono text-[11px]"
                   >
                     <span className="text-muted-foreground">{type}</span>
-                    <span className={toneClassForDelta(delta)}>
-                      {sign + delta}
-                    </span>
+                    <span className={toneClassForDelta(delta)}>{sign + delta}</span>
                   </Badge>
                 )
               })}
             </div>
           ) : (
             <span className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              <Layers
-                className="h-3.5 w-3.5 text-muted-foreground/60"
-                aria-hidden="true"
-              />
+              <Layers className="h-3.5 w-3.5 text-muted-foreground/60" aria-hidden="true" />
               Type Drift · 暂无
             </span>
           )}
@@ -117,31 +106,15 @@ export function SnapshotDiffView({
         ) : (
           <div className="min-w-[980px]">
             <div className="sticky top-0 z-10 grid grid-cols-[52px_minmax(0,1fr)_52px_minmax(0,1fr)] border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.10))] text-[12px] backdrop-blur">
-              <div className="border-r border-border/70 px-3 py-2 text-right font-mono text-muted-foreground">
-                #
-              </div>
+              <div className="border-r border-border/70 px-3 py-2 text-right font-mono text-muted-foreground">#</div>
               <div className="border-r border-border/70 px-3 py-2">
-                <div className="text-[12px] font-semibold tracking-[-0.01em] text-foreground">
-                  {titleA}
-                </div>
-                {subtitleA ? (
-                  <div className="truncate text-[11px] text-muted-foreground">
-                    {subtitleA}
-                  </div>
-                ) : null}
+                <div className="text-[12px] font-semibold tracking-[-0.01em] text-foreground">{titleA}</div>
+                {subtitleA ? <div className="truncate text-[11px] text-muted-foreground">{subtitleA}</div> : null}
               </div>
-              <div className="border-r border-border/70 px-3 py-2 text-right font-mono text-muted-foreground">
-                #
-              </div>
+              <div className="border-r border-border/70 px-3 py-2 text-right font-mono text-muted-foreground">#</div>
               <div className="px-3 py-2">
-                <div className="text-[12px] font-semibold tracking-[-0.01em] text-foreground">
-                  {titleB}
-                </div>
-                {subtitleB ? (
-                  <div className="truncate text-[11px] text-muted-foreground">
-                    {subtitleB}
-                  </div>
-                ) : null}
+                <div className="text-[12px] font-semibold tracking-[-0.01em] text-foreground">{titleB}</div>
+                {subtitleB ? <div className="truncate text-[11px] text-muted-foreground">{subtitleB}</div> : null}
               </div>
             </div>
 
