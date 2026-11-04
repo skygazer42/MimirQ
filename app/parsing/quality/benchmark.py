@@ -40,7 +40,7 @@ def markdown_to_text(markdown: str) -> str:
         if in_fence:
             continue
 
-        s = str(line or "")
+        s = line
         s = _MD_IMAGE_RE.sub(" ", s)
         s = _HTML_TAG_RE.sub(" ", s)
         # Keep link label, drop URL.
@@ -71,7 +71,7 @@ def extract_markdown_images(markdown: str) -> list[dict[str, str]]:
         return out
 
     for src in _MD_IMAGE_RE.findall(raw):
-        out.append({"src": str(src or ""), "kind": "markdown"})
+        out.append({"src": src, "kind": "markdown"})
 
     for tag in _HTML_IMG_TAG_RE.findall(raw):
         src = ""
@@ -83,7 +83,7 @@ def extract_markdown_images(markdown: str) -> list[dict[str, str]]:
             elif k == "alt":
                 alt = val
         if src or alt:
-            out.append({"src": str(src or ""), "alt": str(alt or ""), "kind": "html"})
+            out.append({"src": src, "alt": alt, "kind": "html"})
 
     return out
 
@@ -195,20 +195,18 @@ def compute_parsing_proxy_metrics(
         image_recall = min(1.0, float(len(pred_imgs)) / float(gold_img_count))
 
     ro = score_reading_order(pred)
-    reading_order_score = None
-    if isinstance(ro, dict):
-        reading_order_score = ro.get("score")
+    reading_order_score = ro["score"]
 
     return {
-        "text_similarity": round(float(text_sim), 4),
-        "table_cell_f1": (None if table_sim is None else round(float(table_sim), 4)),
+        "text_similarity": round(text_sim, 4),
+        "table_cell_f1": (None if table_sim is None else round(table_sim, 4)),
         "table_grits_topology": table_grits["topology"],
         "table_grits_content": table_grits["content"],
         "table_grits_f1": table_grits["f1"],
-        "reading_order_score": (None if reading_order_score is None else round(float(reading_order_score), 4)),
-        "images_pred": int(len(pred_imgs)),
-        "images_gold": int(gold_img_count),
-        "image_recall": (None if image_recall is None else round(float(image_recall), 4)),
+        "reading_order_score": (None if reading_order_score is None else round(reading_order_score, 4)),
+        "images_pred": len(pred_imgs),
+        "images_gold": gold_img_count,
+        "image_recall": (None if image_recall is None else round(image_recall, 4)),
     }
 
 

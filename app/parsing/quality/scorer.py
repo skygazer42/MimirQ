@@ -64,13 +64,7 @@ def score_pdf_quality(file_path: Path, sample_pages: int = 3, use_ocr_validation
     table_quality_score = 0.0
     reading_order_score = 1.0
     is_scanned = False
-    preprocess_info: dict[str, Any] = {
-        "skew_angle": None,
-        "orientation": 0,
-        "watermark_detected": False,
-        "watermark_regions": [],
-        "geometric_distortion": None,
-    }
+    preprocess_info = _empty_preprocess_info()
 
     try:
         with pdfplumber.open(str(file_path)) as pdf:
@@ -88,7 +82,7 @@ def score_pdf_quality(file_path: Path, sample_pages: int = 3, use_ocr_validation
             table_quality_score = _score_table_quality(pages_data)
 
             # Dimension 4: reading-order consistency (15%).
-            reading_order_score = float((score_pdfplumber_reading_order(pages_data) or {}).get("score") or 1.0)
+            reading_order_score = score_pdfplumber_reading_order(pages_data)["score"] or 1.0
 
     except Exception as e:
         logger.warning("PDF quality scoring failed: %s", e)
@@ -146,13 +140,13 @@ def _detect_preprocess_info(file_path: Path, *, sample_pages: int) -> dict[str, 
         for i in range(k):
             page = doc.load_page(i)
             rot = int(getattr(page, "rotation", 0) or 0) % 360
-            rot_counts[int(rot)] = rot_counts.get(int(rot), 0) + 1
+            rot_counts[rot] = rot_counts.get(rot, 0) + 1
             watermark_annots += _count_watermark_annots(page)
         orientation = max(rot_counts.items(), key=lambda kv: kv[1])[0] if rot_counts else 0
-        info["orientation"] = int(orientation)
-        info["rotation_counts"] = {str(k): int(v) for k, v in sorted(rot_counts.items(), key=lambda kv: kv[0])}
-        info["watermark_annots"] = int(watermark_annots)
-        info["watermark_detected"] = bool(watermark_annots > 0)
+        info["orientation"] = orientation
+        info["rotation_counts"] = {str(k): v for k, v in sorted(rot_counts.items(), key=lambda kv: kv[0])}
+        info["watermark_annots"] = watermark_annots
+        info["watermark_detected"] = watermark_annots > 0
         return info
     except Exception:
         return info

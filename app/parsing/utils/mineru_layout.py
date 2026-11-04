@@ -23,7 +23,7 @@ def _as_float(value: Any) -> float | None:
         out = float(value)
         if out != out:
             return None
-        return float(out)
+        return out
     except Exception:
         return None
 
@@ -152,7 +152,7 @@ def _build_position_tag(
             top = (top / 1000.0) * page_height
             bottom = (bottom / 1000.0) * page_height
 
-    return f"@@{int(page_idx) + 1}\t{float(left):.1f}\t{float(right):.1f}\t{float(top):.1f}\t{float(bottom):.1f}##"
+    return f"@@{page_idx + 1}\t{left:.1f}\t{right:.1f}\t{top:.1f}\t{bottom:.1f}##"
 
 
 def _extract_block_text(item: dict[str, Any]) -> str:

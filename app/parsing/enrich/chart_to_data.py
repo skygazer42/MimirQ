@@ -308,7 +308,7 @@ def add_chart_data_blocks(
     from app.core.config import settings
 
     raw = str(markdown or "")
-    if not bool(getattr(settings, "CHART_TO_DATA_ENABLED", False)):
+    if not bool(settings.CHART_TO_DATA_ENABLED):
         return (
             raw,
             0,
@@ -324,7 +324,7 @@ def add_chart_data_blocks(
             ),
         )
 
-    api_url = str(getattr(settings, "CHART_TO_DATA_API_URL", "") or "").strip()
+    api_url = str(settings.CHART_TO_DATA_API_URL or "").strip()
     if not api_url:
         return (
             raw,
@@ -388,10 +388,10 @@ def add_chart_data_blocks(
 
     out = "\n".join(out_lines)
     audit = ChartToDataAudit(
-        applied=bool(charts_added > 0),
-        charts_added=int(charts_added),
-        images_attempted=int(images_attempted),
-        images_succeeded=int(images_succeeded),
+        applied=charts_added > 0,
+        charts_added=charts_added,
+        images_attempted=images_attempted,
+        images_succeeded=images_succeeded,
         elapsed_ms=int(round((time.perf_counter() - t0) * 1000)),
         backend="chart_to_data",
         chart_elements=chart_elements,

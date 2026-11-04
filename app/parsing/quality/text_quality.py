@@ -48,13 +48,13 @@ def score_parsed_text_quality(text: str) -> TextQualityScore:
     avg_line_len = (chars_non_space / max(1, line_count)) if line_count else 0.0
 
     return TextQualityScore(
-        content_chars=int(content_chars),
-        chars_non_space=int(chars_non_space),
-        density=float(density),
-        replacement_chars=int(replacement_chars),
-        replacement_ratio=float(replacement_ratio),
-        lines=int(line_count),
-        avg_line_len=float(avg_line_len),
+        content_chars=content_chars,
+        chars_non_space=chars_non_space,
+        density=density,
+        replacement_chars=replacement_chars,
+        replacement_ratio=replacement_ratio,
+        lines=line_count,
+        avg_line_len=avg_line_len,
     )
 
 

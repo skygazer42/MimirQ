@@ -221,8 +221,8 @@ def _run_local_cleanup(
         return False, "missing_model_path", info
     try:
         loaded = get_preprocess_model_loader().load_onnx(name="handwriting_cleanup", model_path=model_ref)
-        info["model_backend"] = str(loaded.backend or "")
-        info["model_name"] = str(loaded.name or "")
+        info["model_backend"] = loaded.backend
+        info["model_name"] = loaded.name
     except Exception as exc:  # noqa: BLE001
         return False, f"model_unavailable:{exc.__class__.__name__}", info
     try:

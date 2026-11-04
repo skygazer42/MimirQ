@@ -50,7 +50,7 @@ def _clamp01(value: Any) -> float:
         return 0.0
     if f >= 1.0:
         return 1.0
-    return float(f)
+    return f
 
 
 def _component_score(item: Mapping[str, Any], key: str) -> float:
@@ -78,13 +78,13 @@ def _normalize_weights(weights: Mapping[str, Any] | None) -> dict[str, float] | 
         weight = _coerce_float(weights.get(key))
         if weight <= 0.0:
             continue
-        out[key] = float(weight)
+        out[key] = weight
     if not out:
         return None
-    total = float(sum(out.values()))
+    total = sum(out.values())
     if total <= 0.0:
         return None
-    return {key: float(value) / total for key, value in out.items()}
+    return {key: value / total for key, value in out.items()}
 
 
 def compute_competition_matrix_score(attempt: Mapping[str, Any], *, weights: Mapping[str, Any]) -> float:
@@ -101,8 +101,8 @@ def compute_competition_matrix_score(attempt: Mapping[str, Any], *, weights: Map
 
     score = 0.0
     for key in ("text", "table", "image", "reading_order"):
-        score += float(normalized_weights.get(key, 0.0)) * _clamp01(_component_score(attempt, key))
-    return max(0.0, min(1.0, float(score)))
+        score += normalized_weights.get(key, 0.0) * _clamp01(_component_score(attempt, key))
+    return max(0.0, min(1.0, score))
 
 
 def _weighted_quality_score(item: Mapping[str, Any], weights: Mapping[str, Any] | None) -> float:

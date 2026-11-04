@@ -13,15 +13,22 @@ This helper normalizes an extracted directory into a stable layout:
 
 import re
 import shutil
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Any
+from typing import TypedDict
 
 from app.rag.core.logging import get_logger
 
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 logger = get_logger(__name__)
 _ARTIFACT_NORMALIZATION_FALLBACK_LOG_MESSAGE = "Ignoring non-critical artifact normalization fallback failure: %s"
+
+
+class _ArtifactNormalizationResult(TypedDict):
+    markdown_file: Path | None
+    image_dir: Path
+    image_count: int
+    mapping: dict[str, str]
 
 
 def _safe_direct_child(root: Path, name: str, *, field: str) -> Path:
@@ -134,11 +141,11 @@ def _find_img_src_span(tag: str) -> tuple[int, int, str] | None:
         if eq_at >= len(tag) or tag[eq_at] != "=":
             continue
         src_span = _read_quoted_attribute_value(tag, _skip_spaces(tag, eq_at + 1))
-        if src_span:
+        if src_span is not None:
             return src_span
 
 
-def rewrite_html_image_refs(text: str, resolver: Any) -> str:
+def rewrite_html_image_refs(text: str, resolver: Callable[[str], str | None]) -> str:
     """Rewrite quoted src values inside HTML img tags using a linear scan."""
     source = str(text or "")
     lower = source.lower()
@@ -156,7 +163,7 @@ def rewrite_html_image_refs(text: str, resolver: Any) -> str:
             break
         tag = source[start : end + 1]
         src_span = _find_img_src_span(tag)
-        if not src_span:
+        if src_span is None:
             out.append(tag)
             cursor = end + 1
             continue
@@ -170,7 +177,7 @@ def rewrite_html_image_refs(text: str, resolver: Any) -> str:
     return "".join(out)
 
 
-def _artifact_normalizer_empty_result(root_path: Path, *, output_image_dir: str) -> dict[str, Any]:
+def _artifact_normalizer_empty_result(root_path: Path, *, output_image_dir: str) -> _ArtifactNormalizationResult:
     return {
         "markdown_file": None,
         "image_dir": _safe_direct_child(root_path, output_image_dir, field="output_image_dir"),
@@ -236,7 +243,7 @@ def normalize_extracted_artifacts(
     *,
     output_markdown_name: str = "result.md",
     output_image_dir: str = "images",
-) -> dict[str, Any]:
+) -> _ArtifactNormalizationResult:
     """
     Normalize an extracted external-parser output directory in-place.
 

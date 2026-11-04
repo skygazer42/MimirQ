@@ -163,8 +163,8 @@ def classify_table_grid_type(image: PILImage.Image) -> TableGridTypeResult:
     gray = np.asarray(image.convert("L"), dtype="uint8")
     dark = gray < 90
     height, width = dark.shape[:2]
-    vertical_indices = [int(i) for i, value in enumerate(dark.mean(axis=0)) if float(value) >= 0.45]
-    horizontal_indices = [int(i) for i, value in enumerate(dark.mean(axis=1)) if float(value) >= 0.45]
+    vertical_indices = [i for i, value in enumerate(dark.mean(axis=0)) if float(value) >= 0.45]
+    horizontal_indices = [i for i, value in enumerate(dark.mean(axis=1)) if float(value) >= 0.45]
     vertical_lines = _line_groups(vertical_indices)
     horizontal_lines = _line_groups(horizontal_indices)
     density = float(dark.mean()) if dark.size else 0.0
@@ -306,7 +306,7 @@ def bind_ocr_lines_to_table_cells(
     metadata = dict(table.metadata or {})
     metadata["cell_ocr_binding"] = {
         "applied": bool(bound_cells),
-        "bound_cells": int(bound_cells),
+        "bound_cells": bound_cells,
         "ocr_lines": len(list(ocr_lines)),
         "avg_confidence": _average_bound_confidence(confidence_by_cell),
     }

@@ -92,13 +92,13 @@ def score_document_parse_quality(
     pen = 0.0
     if replacement_ratio is not None:
         # Replacement chars are a strong gibberish signal; cap penalty to keep score stable.
-        pen = min(0.5, max(0.0, float(replacement_ratio) * 5.0))
+        pen = min(0.5, max(0.0, replacement_ratio * 5.0))
     specialty_penalty = 0.0
     if seal_confidence is not None and (seal_expected is True or seal_detected is True):
-        specialty_penalty = min(0.3, max(0.0, (0.6 - float(seal_confidence)) * 0.6))
+        specialty_penalty = min(0.3, max(0.0, (0.6 - seal_confidence) * 0.6))
         pen = min(0.75, pen + specialty_penalty)
 
-    score = float(base) * (1.0 - float(pen))
+    score = base * (1.0 - pen)
     score = max(0.0, min(1.0, score))
 
     return {

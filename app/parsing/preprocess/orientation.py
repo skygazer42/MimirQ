@@ -34,7 +34,7 @@ def _sample_pdf_rotations(*, doc, sample_pages: int) -> tuple[int, list[int]]:  
 def _count_rotations(rotations: list[int]) -> dict[int, int]:
     counts: dict[int, int] = {}
     for rotation in rotations:
-        counts[int(rotation)] = counts.get(int(rotation), 0) + 1
+        counts[rotation] = counts.get(rotation, 0) + 1
     return counts
 
 
@@ -59,7 +59,7 @@ def fix_exif_orientation(*, input_path: Path, output_path: Path) -> tuple[bool, 
                 orientation = int(img.getexif().get(274) or 1)
             except Exception:
                 orientation = 1
-            meta["exif_orientation"] = int(orientation)
+            meta["exif_orientation"] = orientation
             if orientation == 1:
                 return False, "no_exif_rotation", meta
 
@@ -96,15 +96,15 @@ def normalize_pdf_rotation(
         page_count = int(doc.page_count)
         sample_count, rotations = _sample_pdf_rotations(doc=doc, sample_pages=sample_pages)
         counts = _count_rotations(rotations)
-        meta["rotation_counts"] = {str(k): int(v) for k, v in sorted(counts.items(), key=lambda kv: kv[0])}
+        meta["rotation_counts"] = {str(k): v for k, v in sorted(counts.items(), key=lambda kv: kv[0])}
 
         # Only normalize when all sampled pages share the same non-zero rotation.
         mode_rot = max(counts.items(), key=lambda kv: kv[1])[0] if counts else 0
-        meta["rotation_mode"] = int(mode_rot)
+        meta["rotation_mode"] = mode_rot
         if mode_rot == 0:
             meta["elapsed_ms"] = _elapsed_ms(t0)
             return False, "already_upright", meta
-        if counts.get(int(mode_rot), 0) != sample_count:
+        if counts.get(mode_rot, 0) != sample_count:
             meta["elapsed_ms"] = _elapsed_ms(t0)
             return False, "mixed_rotation_skipped", meta
 

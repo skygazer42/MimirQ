@@ -1,8 +1,18 @@
 import re
 from collections import Counter
-from typing import Any
+from collections.abc import Callable
+from typing import Any, TypedDict
 
 _SCHEMA = "mimirq.llm_noise_miner.v1"
+
+
+class _NoiseCandidate(TypedDict):
+    pattern_kind: str
+    pattern_name: str
+    pattern: str
+    count: int
+    examples: list[str]
+    review_required: bool
 
 
 def _is_attachment_download_meta(line: str) -> bool:
@@ -27,7 +37,7 @@ def _is_forum_reply_title(line: str) -> bool:
     return number.isdigit()
 
 
-_TEMPLATE_LIBRARY: list[tuple[str, Any, str]] = [
+_TEMPLATE_LIBRARY: list[tuple[str, Callable[[str], bool], str]] = [
     (
         "attachment_download_meta",
         _is_attachment_download_meta,
@@ -50,8 +60,8 @@ def _normalize_line(value: Any) -> str:
     return str(value or "").strip()
 
 
-def _collect_template_hits(normalized: list[str]) -> dict[str, dict[str, Any]]:
-    template_hits: dict[str, dict[str, Any]] = {}
+def _collect_template_hits(normalized: list[str]) -> dict[str, _NoiseCandidate]:
+    template_hits: dict[str, _NoiseCandidate] = {}
     for line in normalized:
         for key, matcher, pattern in _TEMPLATE_LIBRARY:
             if matcher(line):
@@ -66,7 +76,7 @@ def _collect_template_hits(normalized: list[str]) -> dict[str, dict[str, Any]]:
                         "review_required": True,
                     },
                 )
-                entry["count"] = int(entry["count"] or 0) + 1
+                entry["count"] += 1
                 examples = entry["examples"]
                 if len(examples) < 3 and line not in examples:
                     examples.append(line)
@@ -79,8 +89,8 @@ def _build_exact_candidates(
     exact_counts: Counter[str],
     existing: set[str],
     min_freq: int,
-) -> list[dict[str, Any]]:
-    candidates: list[dict[str, Any]] = []
+) -> list[_NoiseCandidate]:
+    candidates: list[_NoiseCandidate] = []
     for line, count in exact_counts.items():
         if count < min_freq:
             continue
@@ -92,7 +102,7 @@ def _build_exact_candidates(
                 "pattern_kind": "exact",
                 "pattern_name": "repeated_line",
                 "pattern": pattern,
-                "count": int(count),
+                "count": count,
                 "examples": [line],
                 "review_required": True,
             }
@@ -102,26 +112,26 @@ def _build_exact_candidates(
 
 def _build_template_candidates(
     *,
-    template_hits: dict[str, dict[str, Any]],
+    template_hits: dict[str, _NoiseCandidate],
     existing: set[str],
     min_freq: int,
-) -> list[dict[str, Any]]:
-    candidates: list[dict[str, Any]] = []
+) -> list[_NoiseCandidate]:
+    candidates: list[_NoiseCandidate] = []
     for item in template_hits.values():
-        if int(item["count"] or 0) < min_freq:
+        if item["count"] < min_freq:
             continue
-        if str(item["pattern"] or "") in existing:
+        if item["pattern"] in existing:
             continue
         candidates.append(dict(item))
     return candidates
 
 
-def _sort_and_limit_candidates(candidates: list[dict[str, Any]], *, top_k: int) -> list[dict[str, Any]]:
+def _sort_and_limit_candidates(candidates: list[_NoiseCandidate], *, top_k: int) -> list[_NoiseCandidate]:
     candidates.sort(
         key=lambda item: (
-            -int(item.get("count") or 0),
-            str(item.get("pattern_kind") or ""),
-            str(item.get("pattern") or ""),
+            -item["count"],
+            item["pattern_kind"],
+            item["pattern"],
         )
     )
     return candidates[: max(1, int(top_k or 1))]
