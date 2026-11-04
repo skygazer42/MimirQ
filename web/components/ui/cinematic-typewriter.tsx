@@ -181,8 +181,10 @@ export function CinematicTypewriter({
   const indexRef = useRef(0)
   const timeoutRef = useRef<number | null>(null)
   const completedRef = useRef(false)
+  const tickRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
+    if (contentRef.current !== content) completedRef.current = false
     contentRef.current = content
   }, [content])
 
@@ -204,25 +206,7 @@ export function CinematicTypewriter({
   }, [pendingToken])
 
   useEffect(() => {
-    if (reduceMotion) {
-      if (timeoutRef.current != null) {
-        globalThis.window.clearTimeout(timeoutRef.current)
-        timeoutRef.current = null
-      }
-
-      const full = contentRef.current
-      indexRef.current = full.length
-      completedRef.current = !streamingRef.current
-      displayedRef.current = full
-      pendingRef.current = ''
-
-      setDisplayedContent(full)
-      setPendingToken('')
-      setPendingTokenKey(0)
-      setIsTyping(false)
-      if (!streamingRef.current) onCompleteRef.current?.()
-      return
-    }
+    if (reduceMotion) return
 
     // Streaming-safe typing loop: always reads latest content via refs, so appends keep flowing.
     function resetIfReplaced() {
@@ -293,17 +277,39 @@ export function CinematicTypewriter({
       schedule(step.delayMs)
     }
 
+    tickRef.current = tick
     if (timeoutRef.current == null) {
       tick()
     }
 
     return () => {
+      tickRef.current = null
       if (timeoutRef.current != null) {
         globalThis.window.clearTimeout(timeoutRef.current)
         timeoutRef.current = null
       }
     }
   }, [reduceMotion])
+
+  useEffect(() => {
+    if (reduceMotion) {
+      indexRef.current = content.length
+      displayedRef.current = content
+      pendingRef.current = ''
+      setDisplayedContent(content)
+      setPendingToken('')
+      setPendingTokenKey(0)
+      setIsTyping(false)
+      if (!isStreaming && !completedRef.current) {
+        completedRef.current = true
+        onCompleteRef.current?.()
+      }
+      return
+    }
+
+    // Wake a completed loop without resetting an active token or punctuation timer.
+    if (timeoutRef.current == null) tickRef.current?.()
+  }, [content, isStreaming, reduceMotion])
 
   const tokenRevealTransition = useMemo(
     () => ({

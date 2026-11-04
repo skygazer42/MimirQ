@@ -7,7 +7,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { BarChart3, Check, ChevronDown, Copy, Database, Bot, Loader2, Star, TestTube2, User } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import { AuthImage } from '@/components/auth-image'
@@ -28,8 +28,10 @@ import { EvidenceViewerDialog } from '@/components/evidence/evidence-viewer-dial
 import { CinematicTypewriter } from '@/components/ui/cinematic-typewriter'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { documentApi, feedbackApi } from '@/lib/api'
+import { documentApi } from '@/lib/api/documents'
+import { feedbackApi } from '@/lib/api/feedback'
 import { formatApiError } from '@/lib/api-errors'
+import { AUTH_SCOPE_CHANGED_EVENT, getAuthSessionRevision } from '@/lib/auth-storage'
 import { reportClientError } from '@/lib/client-logging'
 import { toast } from 'sonner'
 
@@ -44,6 +46,10 @@ const InlineCitationHandlersContext = createContext<InlineCitationHandlers>({
   onClick: () => {},
   onPrefetch: () => {},
 })
+
+function isCurrentFeedbackRequest(owner: { active: boolean }, sessionRevision: number): boolean {
+  return owner.active && sessionRevision === getAuthSessionRevision()
+}
 
 type ConfidenceMeta = Readonly<{
   label: string
@@ -110,6 +116,10 @@ function parseInlineCitationHref(href?: string): { documentId?: string; chunkId?
   } catch {
     return null
   }
+}
+
+function transformMessageMarkdownUrl(url: string, key: string): string {
+  return key === 'href' && parseInlineCitationHref(url) ? url : defaultUrlTransform(url)
 }
 
 function buildChatCitationSourceContext(
@@ -353,6 +363,11 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   const [stepsOpen, setStepsOpen] = useState(() => isStreaming)
   const copyTimerRef = useRef<number | null>(null)
   const prefetchedCitationTargetsRef = useRef<Set<string>>(new Set())
+  const feedbackOwnerRef = useRef<{
+    active: boolean
+    ratingSending: boolean
+    expertAction: 'evidence' | 'regression' | null
+  }>({ active: true, ratingSending: false, expertAction: null })
   const { openDocument } = useDocumentView()
   const streamingLayoutTransition = reduceMotion
     ? { duration: 0 }
@@ -364,6 +379,25 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   useEffect(() => {
     setStepsOpen(isStreaming)
   }, [isStreaming, message.id])
+
+  useEffect(() => {
+    feedbackOwnerRef.current = { active: true, ratingSending: false, expertAction: null }
+
+    function resetFeedback() {
+      feedbackOwnerRef.current.active = false
+      feedbackOwnerRef.current = { active: true, ratingSending: false, expertAction: null }
+      setRating(null)
+      setRatingSending(false)
+      setFeedbackRecord(null)
+      setExpertAction(null)
+    }
+
+    globalThis.window.addEventListener(AUTH_SCOPE_CHANGED_EVENT, resetFeedback)
+    return () => {
+      feedbackOwnerRef.current.active = false
+      globalThis.window.removeEventListener(AUTH_SCOPE_CHANGED_EVENT, resetFeedback)
+    }
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -408,7 +442,12 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   const metrics = message.message_metadata || {}
   const confidenceScoreRaw = metrics.confidence_score
   const confidenceScore = (() => {
-    const value = typeof confidenceScoreRaw === 'number' ? confidenceScoreRaw : Number(confidenceScoreRaw)
+    const value =
+      typeof confidenceScoreRaw === 'number'
+        ? confidenceScoreRaw
+        : typeof confidenceScoreRaw === 'string' && confidenceScoreRaw.trim()
+          ? Number(confidenceScoreRaw)
+          : Number.NaN
     return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : null
   })()
   const confidenceMeta = getConfidenceMeta(confidenceScore)
@@ -580,7 +619,12 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   } else {
     renderedContent = (
       <InlineCitationHandlersContext.Provider value={inlineCitationHandlers}>
-        <ReactMarkdown remarkPlugins={markdownPlugins} skipHtml components={markdownBaseComponents}>
+        <ReactMarkdown
+          remarkPlugins={markdownPlugins}
+          skipHtml
+          components={markdownBaseComponents}
+          urlTransform={transformMessageMarkdownUrl}
+        >
           {message.content}
         </ReactMarkdown>
       </InlineCitationHandlersContext.Provider>
@@ -596,26 +640,41 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 
   const submitRating = useCallback(
     async (nextRating: number) => {
-      if (!canRate) return
-      if (ratingSending) return
+      const owner = feedbackOwnerRef.current
+      if (!canRate || !owner.active || owner.ratingSending) return
+      const sessionRevision = getAuthSessionRevision()
+      const previousRating = rating
+      owner.ratingSending = true
       setRating(nextRating)
       setRatingSending(true)
       try {
         const created = await feedbackApi.create({ message_id: message.id, rating: nextRating })
+        if (!isCurrentFeedbackRequest(owner, sessionRevision)) return
+        setRating(created.rating)
         setFeedbackRecord(created)
         toast.success('已提交反馈')
       } catch (err: unknown) {
-        toast.error(formatApiError(err, '反馈提交失败'))
+        if (isCurrentFeedbackRequest(owner, sessionRevision)) {
+          setRating(previousRating)
+          toast.error(formatApiError(err, '反馈提交失败'))
+        }
       } finally {
-        setRatingSending(false)
+        owner.ratingSending = false
+        if (owner.active) {
+          if (sessionRevision !== getAuthSessionRevision()) setRating(previousRating)
+          setRatingSending(false)
+        }
       }
     },
-    [canRate, message.id, ratingSending],
+    [canRate, message.id, rating],
   )
 
   const submitFeedbackCategory = useCallback(
     async (category: FeedbackCategory) => {
-      if (!canRate || rating == null || rating > 2 || ratingSending) return
+      const owner = feedbackOwnerRef.current
+      if (!canRate || rating == null || rating > 2 || !owner.active || owner.ratingSending) return
+      const sessionRevision = getAuthSessionRevision()
+      owner.ratingSending = true
       setRatingSending(true)
       try {
         const updated = await feedbackApi.create({
@@ -626,15 +685,17 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           tags: feedbackRecord?.tags,
           expected_answer: feedbackRecord?.expected_answer,
         })
+        if (!isCurrentFeedbackRequest(owner, sessionRevision)) return
         setFeedbackRecord(updated)
         toast.success('已记录问题分类')
       } catch (err: unknown) {
-        toast.error(formatApiError(err, '问题分类提交失败'))
+        if (isCurrentFeedbackRequest(owner, sessionRevision)) toast.error(formatApiError(err, '问题分类提交失败'))
       } finally {
-        setRatingSending(false)
+        owner.ratingSending = false
+        if (owner.active) setRatingSending(false)
       }
     },
-    [canRate, feedbackRecord, message.id, rating, ratingSending],
+    [canRate, feedbackRecord, message.id, rating],
   )
 
   const resolveFeedbackDatasetId = useCallback(async () => {
@@ -649,42 +710,50 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 
   const handleSendFeedbackToEvidence = useCallback(async () => {
     const feedbackId = String(feedbackRecord?.id || '').trim()
-    if (!feedbackId) return
-    if (expertAction) return
+    const owner = feedbackOwnerRef.current
+    if (!feedbackId || !owner.active || owner.expertAction) return
+    const sessionRevision = getAuthSessionRevision()
 
+    owner.expertAction = 'evidence'
     setExpertAction('evidence')
     try {
       const datasetId = await resolveFeedbackDatasetId()
+      if (!isCurrentFeedbackRequest(owner, sessionRevision)) return
       if (!datasetId) {
         toast.error('未解析到数据集，暂时无法打开证据库')
         return
       }
       router.push(`/datasets/${encodeURIComponent(datasetId)}/evidence?feedback_id=${encodeURIComponent(feedbackId)}`)
     } catch (error: unknown) {
-      toast.error(formatApiError(error, '打开证据库失败'))
+      if (isCurrentFeedbackRequest(owner, sessionRevision)) toast.error(formatApiError(error, '打开证据库失败'))
     } finally {
-      setExpertAction(null)
+      owner.expertAction = null
+      if (owner.active) setExpertAction(null)
     }
-  }, [expertAction, feedbackRecord?.id, resolveFeedbackDatasetId, router])
+  }, [feedbackRecord?.id, resolveFeedbackDatasetId, router])
 
   const handleCreateRegressionCase = useCallback(async () => {
     const feedbackId = String(feedbackRecord?.id || '').trim()
-    if (!feedbackId) return
-    if (expertAction) return
+    const owner = feedbackOwnerRef.current
+    if (!feedbackId || !owner.active || owner.expertAction) return
+    const sessionRevision = getAuthSessionRevision()
 
+    owner.expertAction = 'regression'
     setExpertAction('regression')
     try {
       await feedbackApi.toRegressionCase(feedbackId, {
         include_document_scope: true,
         extra: { source: 'chat_feedback_action' },
       })
+      if (!isCurrentFeedbackRequest(owner, sessionRevision)) return
       toast.success('已创建回归用例')
     } catch (error: unknown) {
-      toast.error(formatApiError(error, '转为回归用例失败'))
+      if (isCurrentFeedbackRequest(owner, sessionRevision)) toast.error(formatApiError(error, '转为回归用例失败'))
     } finally {
-      setExpertAction(null)
+      owner.expertAction = null
+      if (owner.active) setExpertAction(null)
     }
-  }, [expertAction, feedbackRecord?.id])
+  }, [feedbackRecord?.id])
 
   return (
     <motion.div
