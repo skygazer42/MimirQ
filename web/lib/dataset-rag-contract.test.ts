@@ -82,7 +82,7 @@ describe('dataset rag contract helpers', () => {
         retrieval_profile: 'grounded_strict',
         retrieval_mode: 'hybrid',
         top_k: 20,
-      })
+      }),
     ).toEqual({
       rag_config: {
         retrieval_profile: 'grounded_strict',

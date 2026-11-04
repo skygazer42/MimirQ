@@ -945,3 +945,8 @@
 - Completed 11 whole modules from `7f7d66098` and migrated the orchestration text helper's JSON parser ownership. Three duplicated JSON parser chains now share `json_text`; its JSON/blank-language fence selection reuses the equivalent existing code-fence scanner. Claim token/uncertainty rules, citation anchor normalization and sentence-reference field parsing each have one actual owner. Different citation/capsule hash payloads remain distinct.
 - Independent review confirms parser selection/error policies, claim thresholds, first-seen reference/span ordering, caps, hashes, malformed metadata containment and lightweight import boundaries. All 12 scoped files pass integrated Ruff check, formatting and AST parsing. The static audit preserves 148 other functions, checks 138 invariants and binds 339 actual calls, with six forwarded mappings reviewed directly.
 - No Python tests were modified or run, and no model/NLI/database services were invoked. The orchestration helper still awaits a full review of its non-JSON behavior; it receives a migration-only record. Per-file evidence: `.superpowers/sdd/2026-11-02-style-unification/rag-evidence-core-report.json`.
+
+## Frontend configuration category: formatting
+
+- Source category `1e369ea48` applies existing Prettier rules to the dataset RAG helper/test, knowledge settings panel and settings hook. This commit records formatting only; remaining page/hook semantic work is not closed by the reflow.
+- Fresh integrated Prettier passes all four files. Independent AST comparison, including text-bearing JSX leaves and normalized redundant parentheses, proves the formatting preserves runtime structure and visible text.

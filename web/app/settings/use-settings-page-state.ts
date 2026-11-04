@@ -28,12 +28,7 @@ import {
   type SystemStatus,
   type TextInConfig,
 } from '@/lib/api'
-import {
-  MODEL_PROVIDERS,
-  type ModelProvider,
-  type ProviderCategory,
-  type ProviderConfig,
-} from '@/types/models'
+import { MODEL_PROVIDERS, type ModelProvider, type ProviderCategory, type ProviderConfig } from '@/types/models'
 
 type SaveMessage = {
   type: 'success' | 'error'
@@ -69,7 +64,7 @@ function mergeConfig<T extends object>(current: T, patch: Partial<T>): T {
 function mergeWithDefaults<T extends object>(
   defaults: T,
   current: Partial<T> | null | undefined,
-  edited: Partial<T> | null | undefined
+  edited: Partial<T> | null | undefined,
 ): T {
   return {
     ...defaults,
@@ -287,27 +282,31 @@ function normalizeApiBase(value: unknown): string {
 }
 
 function providerHasModel(provider: ModelProvider, modelName: string): boolean {
-  const target = String(modelName || '').trim().toLowerCase()
+  const target = String(modelName || '')
+    .trim()
+    .toLowerCase()
   if (!target) return false
-  return provider.models.some((model) => String(model.name || '').trim().toLowerCase() === target)
+  return provider.models.some(
+    (model) =>
+      String(model.name || '')
+        .trim()
+        .toLowerCase() === target,
+  )
 }
 
 function findProviderIdByModel(
   providers: ModelProvider[],
   category: ProviderCategory,
-  modelName: string
+  modelName: string,
 ): string | null {
   return (
-    providers.find(
-      (provider) =>
-        provider.category === category && providerHasModel(provider, modelName)
-    )?.id ?? null
+    providers.find((provider) => provider.category === category && providerHasModel(provider, modelName))?.id ?? null
   )
 }
 
 function resolveLlmProviderId(
   providers: ModelProvider[],
-  llm: SystemSettings['llm'] | null | undefined
+  llm: SystemSettings['llm'] | null | undefined,
 ): string | null {
   if (!llm) return null
   const base = normalizeApiBase(llm.api_base)
@@ -332,7 +331,7 @@ function resolveLlmProviderId(
 
 function resolveEmbeddingProviderId(
   providers: ModelProvider[],
-  embedding: SystemSettings['embedding'] | null | undefined
+  embedding: SystemSettings['embedding'] | null | undefined,
 ): string | null {
   if (!embedding) return null
   const base = normalizeApiBase(embedding.api_base)
@@ -350,10 +349,7 @@ function resolveEmbeddingProviderId(
   return findProviderIdByModel(providers, 'embedding', model)
 }
 
-function hydrateProvidersFromSettings(
-  providers: ModelProvider[],
-  settings: SystemSettings | null
-): ModelProvider[] {
+function hydrateProvidersFromSettings(providers: ModelProvider[], settings: SystemSettings | null): ModelProvider[] {
   const next: ModelProvider[] = providers.map((provider) => ({
     ...provider,
     isConfigured: false,
@@ -387,9 +383,7 @@ function hydrateProvidersFromSettings(
     }
     const provider = next.find((item) => item.id === embeddingProviderId)
     if (provider) {
-      provider.isConfigured = Boolean(
-        embeddingConfig.model || embeddingConfig.apiBase || embeddingConfig.apiKey
-      )
+      provider.isConfigured = Boolean(embeddingConfig.model || embeddingConfig.apiBase || embeddingConfig.apiKey)
       provider.config = embeddingConfig
     }
   }
@@ -398,7 +392,9 @@ function hydrateProvidersFromSettings(
 }
 
 function resolveEmbeddingProvider(providerId: string): string {
-  const pid = String(providerId || '').trim().toLowerCase()
+  const pid = String(providerId || '')
+    .trim()
+    .toLowerCase()
   if (pid === 'qwen-embedding') return 'dashscope'
   if (pid === 'local-embedding') return 'local'
   return 'openai_compatible'
@@ -433,80 +429,80 @@ export function useSettingsPageState() {
 
   const ragMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_RAG, settings?.rag, editedSettings.rag),
-    [settings?.rag, editedSettings.rag]
+    [settings?.rag, editedSettings.rag],
   )
   const urlIngestMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_URL_INGEST, settings?.url_ingest, editedSettings.url_ingest),
-    [settings?.url_ingest, editedSettings.url_ingest]
+    [settings?.url_ingest, editedSettings.url_ingest],
   )
   const governanceMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_GOVERNANCE, settings?.governance, editedSettings.governance),
-    [settings?.governance, editedSettings.governance]
+    [settings?.governance, editedSettings.governance],
   )
   const observabilityMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_OBSERVABILITY, settings?.observability, editedSettings.observability),
-    [settings?.observability, editedSettings.observability]
+    [settings?.observability, editedSettings.observability],
   )
   const safetyMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_SAFETY, settings?.safety, editedSettings.safety),
-    [settings?.safety, editedSettings.safety]
+    [settings?.safety, editedSettings.safety],
   )
   const chatMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_CHAT, settings?.chat, editedSettings.chat),
-    [settings?.chat, editedSettings.chat]
+    [settings?.chat, editedSettings.chat],
   )
   const langGraphMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_LANGGRAPH, settings?.langgraph, editedSettings.langgraph),
-    [settings?.langgraph, editedSettings.langgraph]
+    [settings?.langgraph, editedSettings.langgraph],
   )
   const navigationMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_NAVIGATION, settings?.navigation, editedSettings.navigation),
-    [settings?.navigation, editedSettings.navigation]
+    [settings?.navigation, editedSettings.navigation],
   )
   const difyExternalKnowledgeMerged = useMemo(
     () =>
       mergeWithDefaults(
         DEFAULT_DIFY_EXTERNAL_KNOWLEDGE,
         settings?.dify_external_knowledge,
-        editedSettings.dify_external_knowledge
+        editedSettings.dify_external_knowledge,
       ),
-    [settings?.dify_external_knowledge, editedSettings.dify_external_knowledge]
+    [settings?.dify_external_knowledge, editedSettings.dify_external_knowledge],
   )
   const cacheMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_CACHE, settings?.cache, editedSettings.cache),
-    [settings?.cache, editedSettings.cache]
+    [settings?.cache, editedSettings.cache],
   )
   const minioMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_MINIO, settings?.minio, editedSettings.minio),
-    [settings?.minio, editedSettings.minio]
+    [settings?.minio, editedSettings.minio],
   )
   const etl4llmMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_ETL4LLM, settings?.etl4llm, editedSettings.etl4llm),
-    [settings?.etl4llm, editedSettings.etl4llm]
+    [settings?.etl4llm, editedSettings.etl4llm],
   )
   const markerMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_MARKER, settings?.marker, editedSettings.marker),
-    [settings?.marker, editedSettings.marker]
+    [settings?.marker, editedSettings.marker],
   )
   const doclingMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_DOCLING, settings?.docling, editedSettings.docling),
-    [settings?.docling, editedSettings.docling]
+    [settings?.docling, editedSettings.docling],
   )
   const paddleVlMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_PADDLE_VL, settings?.paddle_vl, editedSettings.paddle_vl),
-    [settings?.paddle_vl, editedSettings.paddle_vl]
+    [settings?.paddle_vl, editedSettings.paddle_vl],
   )
   const textInMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_TEXTIN, settings?.textin, editedSettings.textin),
-    [settings?.textin, editedSettings.textin]
+    [settings?.textin, editedSettings.textin],
   )
   const magicPdfMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_MAGICPDF, settings?.magicpdf, editedSettings.magicpdf),
-    [settings?.magicpdf, editedSettings.magicpdf]
+    [settings?.magicpdf, editedSettings.magicpdf],
   )
   const mineruMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_MINERU, settings?.mineru, editedSettings.mineru),
-    [settings?.mineru, editedSettings.mineru]
+    [settings?.mineru, editedSettings.mineru],
   )
 
   const isGovernanceEnabled = governanceMerged.enabled
@@ -629,11 +625,7 @@ export function useSettingsPageState() {
 
   const toggleFeature = (key: keyof FeatureFlags) => {
     setEditedSettings((prev) => {
-      const currentFlags = mergeWithDefaults(
-        DEFAULT_FEATURE_FLAGS,
-        settings?.feature_flags,
-        prev.feature_flags
-      )
+      const currentFlags = mergeWithDefaults(DEFAULT_FEATURE_FLAGS, settings?.feature_flags, prev.feature_flags)
       return {
         ...prev,
         feature_flags: {
@@ -656,7 +648,7 @@ export function useSettingsPageState() {
       ...prev,
       observability: mergeConfig(
         mergeWithDefaults(DEFAULT_OBSERVABILITY, settings?.observability, prev.observability),
-        patch
+        patch,
       ),
     }))
   }
@@ -664,30 +656,21 @@ export function useSettingsPageState() {
   const updateSafety = (patch: Partial<SafetyConfig>) => {
     setEditedSettings((prev) => ({
       ...prev,
-      safety: mergeConfig(
-        mergeWithDefaults(DEFAULT_SAFETY, settings?.safety, prev.safety),
-        patch
-      ),
+      safety: mergeConfig(mergeWithDefaults(DEFAULT_SAFETY, settings?.safety, prev.safety), patch),
     }))
   }
 
   const updateLangGraph = (patch: Partial<LangGraphConfig>) => {
     setEditedSettings((prev) => ({
       ...prev,
-      langgraph: mergeConfig(
-        mergeWithDefaults(DEFAULT_LANGGRAPH, settings?.langgraph, prev.langgraph),
-        patch
-      ),
+      langgraph: mergeConfig(mergeWithDefaults(DEFAULT_LANGGRAPH, settings?.langgraph, prev.langgraph), patch),
     }))
   }
 
   const updateNavigation = (patch: Partial<NavigationConfig>) => {
     setEditedSettings((prev) => ({
       ...prev,
-      navigation: mergeConfig(
-        mergeWithDefaults(DEFAULT_NAVIGATION, settings?.navigation, prev.navigation),
-        patch
-      ),
+      navigation: mergeConfig(mergeWithDefaults(DEFAULT_NAVIGATION, settings?.navigation, prev.navigation), patch),
     }))
   }
 
@@ -698,9 +681,9 @@ export function useSettingsPageState() {
         mergeWithDefaults(
           DEFAULT_DIFY_EXTERNAL_KNOWLEDGE,
           settings?.dify_external_knowledge,
-          prev.dify_external_knowledge
+          prev.dify_external_knowledge,
         ),
-        patch
+        patch,
       ),
     }))
   }
@@ -729,30 +712,21 @@ export function useSettingsPageState() {
   const updateMagicPDF = (patch: Partial<MagicPDFConfig>) => {
     setEditedSettings((prev) => ({
       ...prev,
-      magicpdf: mergeConfig(
-        mergeWithDefaults(DEFAULT_MAGICPDF, settings?.magicpdf, prev.magicpdf),
-        patch
-      ),
+      magicpdf: mergeConfig(mergeWithDefaults(DEFAULT_MAGICPDF, settings?.magicpdf, prev.magicpdf), patch),
     }))
   }
 
   const updateMinerU = (patch: Partial<MinerUConfig>) => {
     setEditedSettings((prev) => ({
       ...prev,
-      mineru: mergeConfig(
-        mergeWithDefaults(DEFAULT_MINERU, settings?.mineru, prev.mineru),
-        patch
-      ),
+      mineru: mergeConfig(mergeWithDefaults(DEFAULT_MINERU, settings?.mineru, prev.mineru), patch),
     }))
   }
 
   const updateEtl4Llm = (patch: Partial<Etl4LlmConfig>) => {
     setEditedSettings((prev) => ({
       ...prev,
-      etl4llm: mergeConfig(
-        mergeWithDefaults(DEFAULT_ETL4LLM, settings?.etl4llm, prev.etl4llm),
-        patch
-      ),
+      etl4llm: mergeConfig(mergeWithDefaults(DEFAULT_ETL4LLM, settings?.etl4llm, prev.etl4llm), patch),
     }))
   }
 
@@ -766,30 +740,21 @@ export function useSettingsPageState() {
   const updateDocling = (patch: Partial<DoclingConfig>) => {
     setEditedSettings((prev) => ({
       ...prev,
-      docling: mergeConfig(
-        mergeWithDefaults(DEFAULT_DOCLING, settings?.docling, prev.docling),
-        patch
-      ),
+      docling: mergeConfig(mergeWithDefaults(DEFAULT_DOCLING, settings?.docling, prev.docling), patch),
     }))
   }
 
   const updatePaddleVL = (patch: Partial<PaddleVLConfig>) => {
     setEditedSettings((prev) => ({
       ...prev,
-      paddle_vl: mergeConfig(
-        mergeWithDefaults(DEFAULT_PADDLE_VL, settings?.paddle_vl, prev.paddle_vl),
-        patch
-      ),
+      paddle_vl: mergeConfig(mergeWithDefaults(DEFAULT_PADDLE_VL, settings?.paddle_vl, prev.paddle_vl), patch),
     }))
   }
 
   const updateTextIn = (patch: Partial<TextInConfig>) => {
     setEditedSettings((prev) => ({
       ...prev,
-      textin: mergeConfig(
-        mergeWithDefaults(DEFAULT_TEXTIN, settings?.textin, prev.textin),
-        patch
-      ),
+      textin: mergeConfig(mergeWithDefaults(DEFAULT_TEXTIN, settings?.textin, prev.textin), patch),
     }))
   }
 
@@ -803,20 +768,14 @@ export function useSettingsPageState() {
   const updateUrlIngest = (patch: Partial<UrlIngestSettings>) => {
     setEditedSettings((prev) => ({
       ...prev,
-      url_ingest: mergeConfig(
-        mergeWithDefaults(DEFAULT_URL_INGEST, settings?.url_ingest, prev.url_ingest),
-        patch
-      ),
+      url_ingest: mergeConfig(mergeWithDefaults(DEFAULT_URL_INGEST, settings?.url_ingest, prev.url_ingest), patch),
     }))
   }
 
   const updateGovernance = (patch: Partial<GovernanceSettings>) => {
     setEditedSettings((prev) => ({
       ...prev,
-      governance: mergeConfig(
-        mergeWithDefaults(DEFAULT_GOVERNANCE, settings?.governance, prev.governance),
-        patch
-      ),
+      governance: mergeConfig(mergeWithDefaults(DEFAULT_GOVERNANCE, settings?.governance, prev.governance), patch),
     }))
   }
 

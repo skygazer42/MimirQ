@@ -3005,7 +3005,7 @@ web/app/settings/rbac/loading.tsx,6,pending,pending,Awaiting file-level conventi
 web/app/settings/rbac/page.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/app/settings/rbac/page.visual-boundary.source.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/app/settings/settings-full-theme.source.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/app/settings/use-settings-page-state.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/app/settings/use-settings-page-state.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; config category format 1e369ea48; runtime JSX/text AST equivalent
 web/app/template.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/app/usage/error.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/app/usage/loading.tsx,6,pending,pending,Awaiting file-level convention and contract review,
@@ -3218,7 +3218,7 @@ web/components/knowledge/knowledge-page.tsx,6,pending,pending,Awaiting file-leve
 web/components/knowledge/knowledge-retrieval-panel.test.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/knowledge/knowledge-retrieval-panel.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/knowledge/knowledge-scope-panel.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/knowledge/knowledge-settings-panel.tsx,6,pending,pending,Awaiting file-level convention and contract review,
+web/components/knowledge/knowledge-settings-panel.tsx,6,pending,adjusted,Awaiting file-level convention and contract review,; config category format 1e369ea48; runtime JSX/text AST equivalent
 web/components/knowledge/knowledge-sidebar.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/knowledge/knowledge-workbench-actions.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/knowledge/quarantine/quarantine-audit-canvas.tsx,6,pending,pending,Awaiting file-level convention and contract review,
@@ -3517,8 +3517,8 @@ web/lib/css-vars.ts,6,pending,pending,Awaiting file-level convention and contrac
 web/lib/dataset-categories.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/dataset-config-graph.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/dataset-health-export.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/dataset-rag-contract.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/dataset-rag-contract.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/lib/dataset-rag-contract.test.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; config category format 1e369ea48; runtime JSX/text AST equivalent
+web/lib/dataset-rag-contract.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; config category format 1e369ea48; runtime JSX/text AST equivalent
 web/lib/doc-content-cache.auth-scope.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/doc-content-cache.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/document-chunks.ts,6,pending,pending,Awaiting file-level convention and contract review,
