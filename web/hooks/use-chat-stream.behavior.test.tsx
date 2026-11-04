@@ -12,6 +12,7 @@ const chatApiMock = vi.hoisted(() => ({
   getMessages: vi.fn(),
   streamChat: vi.fn(),
 }))
+vi.hoisted(() => vi.stubGlobal('BroadcastChannel', undefined))
 
 const recoveryMock = vi.hoisted(() => ({
   recoverStreamedAssistantMessage: vi.fn(),
@@ -20,6 +21,7 @@ const recoveryMock = vi.hoisted(() => ({
 vi.mock('@/lib/api', () => ({
   chatApi: chatApiMock,
 }))
+vi.mock('@/lib/api/chat', () => ({ chatApi: chatApiMock }))
 
 vi.mock('@/lib/client-logging', () => ({
   reportClientError: vi.fn(),

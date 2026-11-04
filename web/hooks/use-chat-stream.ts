@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import type { Citation, Message, StreamEvent } from '@/types'
+import type { Message, StreamEvent } from '@/types/chat'
+import type { Citation } from '@/types/processing'
 import { API_LONG_TIMEOUT_MS, API_TIMEOUT_MS } from '@/lib/env'
-import { chatApi } from '@/lib/api'
+import { chatApi } from '@/lib/api/chat'
+import { AUTH_SCOPE_CHANGED_EVENT, getAuthCacheScope, getAuthSessionRevision } from '@/lib/auth-storage'
 import { reportClientError, reportClientWarning } from '@/lib/client-logging'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 
@@ -86,6 +88,7 @@ export function useChatStream({
   const rafIdRef = useRef<number | null>(null)
   const streamRequestIdRef = useRef<string | null>(null)
   const stopActiveRequestRef = useRef<(() => void) | null>(null)
+  const mountedRef = useRef(true)
 
   const clearRaf = useCallback(() => {
     if (rafIdRef.current != null) {
@@ -105,17 +108,35 @@ export function useChatStream({
     currentCitationsRef.current = []
   }, [clearRaf])
 
-  useEffect(() => {
-    activeConversationIdRef.current = conversationId
-  }, [conversationId])
+  const discardGeneration = useCallback(() => {
+    const controller = abortControllerRef.current
+    abortControllerRef.current = null
+    stopActiveRequestRef.current?.()
+    stopActiveRequestRef.current = null
+    controller?.abort()
+    setIsLoading(false)
+    resetTransientState()
+  }, [resetTransientState])
 
   useEffect(() => {
+    if (activeConversationIdRef.current !== conversationId) discardGeneration()
+    activeConversationIdRef.current = conversationId
+  }, [conversationId, discardGeneration])
+
+  useEffect(() => {
+    mountedRef.current = true
+    globalThis.window.addEventListener(AUTH_SCOPE_CHANGED_EVENT, discardGeneration)
     return () => {
+      mountedRef.current = false
+      globalThis.window.removeEventListener(AUTH_SCOPE_CHANGED_EVENT, discardGeneration)
+      const controller = abortControllerRef.current
+      abortControllerRef.current = null
       stopActiveRequestRef.current?.()
-      abortControllerRef.current?.abort()
+      stopActiveRequestRef.current = null
+      controller?.abort()
       clearRaf()
     }
-  }, [clearRaf])
+  }, [clearRaf, discardGeneration])
 
   const scheduleCurrentResponseUpdate = useCallback(() => {
     if (rafIdRef.current != null) return
@@ -139,12 +160,12 @@ export function useChatStream({
 
   const updateConversation = useCallback(
     (nextConversationId: string) => {
-      if (!nextConversationId || nextConversationId === (conversationId || '')) return
+      if (!nextConversationId || nextConversationId === (activeConversationIdRef.current || '')) return
       activeConversationIdRef.current = nextConversationId
       setConversationId(nextConversationId)
       onConversationId?.(nextConversationId)
     },
-    [conversationId, onConversationId, setConversationId],
+    [onConversationId, setConversationId],
   )
 
   const stopGeneration = useCallback(() => {
@@ -153,7 +174,7 @@ export function useChatStream({
 
   const sendMessage = useCallback(
     async (message: string) => {
-      if (!message.trim() || isLoading || abortControllerRef.current) return
+      if (!mountedRef.current || !message.trim() || abortControllerRef.current) return
 
       const userMessage: Message = {
         id: Date.now().toString(),
@@ -167,11 +188,20 @@ export function useChatStream({
       resetTransientState()
 
       const controller = new AbortController()
+      const recoveryController = new AbortController()
+      const authRevision = getAuthSessionRevision()
+      const authScope = getAuthCacheScope()
       abortControllerRef.current = controller
+      const isCurrent = () =>
+        mountedRef.current &&
+        abortControllerRef.current === controller &&
+        authRevision === getAuthSessionRevision() &&
+        authScope === getAuthCacheScope()
       let userStopped = false
       const stopActiveRequest = () => {
         userStopped = true
         controller.abort()
+        recoveryController.abort()
       }
       stopActiveRequestRef.current = stopActiveRequest
 
@@ -214,6 +244,7 @@ export function useChatStream({
           await chatApi.streamChat(
             chatRequest,
             (jsonStr) => {
+              if (!isCurrent() || controller.signal.aborted || sawDone) return
               sawFirstEvent = true
               armTimeout(API_LONG_TIMEOUT_MS)
 
@@ -271,34 +302,42 @@ export function useChatStream({
             {
               signal: controller.signal,
               onOpen: ({ requestId, conversationId: openedConversationId }) => {
+                if (!isCurrent() || controller.signal.aborted) return
                 streamAccepted = true
                 streamRequestIdRef.current = requestId
                 armTimeout(API_LONG_TIMEOUT_MS)
                 if (openedConversationId) {
-                  activeConversationIdRef.current = openedConversationId
                   updateConversation(openedConversationId)
                 }
               },
             },
           )
 
+          if (!isCurrent()) return
+          if (userStopped) throw new DOMException('Aborted', 'AbortError')
           if (streamError) throw streamError
           if (!sawFirstEvent || !sawDone) {
             throw new Error('SSE stream ended unexpectedly')
           }
         } catch (streamErr) {
+          if (!isCurrent()) return
+          if (userStopped) throw new DOMException('Aborted', 'AbortError')
           const streamWasAborted = (streamErr as { name?: string })?.name === 'AbortError'
           if (streamWasAborted && (!streamAccepted || userStopped)) throw streamErr
 
           if (sawDone) {
             reportClientWarning('SSE closed after done', streamErr)
-          } else if (streamAccepted && !streamError) {
+          } else if (streamAccepted) {
+            if (streamError) throw streamError
             const recoveredMessage = await recoverStreamedAssistantMessage({
               conversationId: String(activeConversationIdRef.current || ''),
               requestId: String(streamRequestIdRef.current || ''),
               getMessages: (nextConversationId, params) => chatApi.getMessages(nextConversationId, params),
+              signal: recoveryController.signal,
             })
 
+            if (!isCurrent()) return
+            if (userStopped) throw new DOMException('Aborted', 'AbortError')
             if (recoveredMessage) {
               setMessages((prev) => {
                 if (prev.some((item) => item.id === recoveredMessage.id)) return prev
@@ -315,6 +354,8 @@ export function useChatStream({
             armTimeout(API_LONG_TIMEOUT_MS)
 
             const response = await chatApi.chat(chatRequest, { signal: controller.signal })
+            if (!isCurrent()) return
+            if (userStopped) throw new DOMException('Aborted', 'AbortError')
             if (timeoutId !== undefined) globalThis.window.clearTimeout(timeoutId)
 
             updateConversation(getConversationId(response.conversation_id))
@@ -332,8 +373,10 @@ export function useChatStream({
 
         flushCurrentResponseUpdate()
       } catch (err) {
+        if (!isCurrent()) return
         const maybeError = err as { name?: string; code?: string; message?: string }
         const isAbort =
+          controller.signal.aborted ||
           maybeError?.name === 'AbortError' ||
           maybeError?.name === 'CanceledError' ||
           maybeError?.code === 'ERR_CANCELED'
@@ -370,8 +413,9 @@ export function useChatStream({
         }
       } finally {
         if (timeoutId !== undefined) globalThis.window.clearTimeout(timeoutId)
-        clearRaf()
+        recoveryController.abort()
         if (abortControllerRef.current === controller) {
+          clearRaf()
           setIsLoading(false)
           abortControllerRef.current = null
         }
@@ -389,7 +433,6 @@ export function useChatStream({
       enableLongTermMemory,
       enableSummaryMemory,
       flushCurrentResponseUpdate,
-      isLoading,
       messagesRef,
       onError,
       promptTemplateId,
@@ -411,5 +454,6 @@ export function useChatStream({
     sendMessage,
     stopGeneration,
     resetTransientState,
+    discardGeneration,
   }
 }

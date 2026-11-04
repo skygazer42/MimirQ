@@ -43,26 +43,26 @@ export function useChat({
     onConversationId,
     onError,
   })
+  const { loadConversation: loadSession, resetConversationState, clearMessages: clearSession } = session
+  const { discardGeneration } = stream
 
   const loadConversation = useCallback(
     async (id: string) => {
-      stream.stopGeneration()
-      stream.resetTransientState()
-      await session.loadConversation(id)
+      discardGeneration()
+      await loadSession(id)
     },
-    [session, stream],
+    [discardGeneration, loadSession],
   )
 
   const resetConversation = useCallback(() => {
-    stream.stopGeneration()
-    stream.resetTransientState()
-    session.resetConversationState()
-  }, [session, stream])
+    discardGeneration()
+    resetConversationState()
+  }, [discardGeneration, resetConversationState])
 
   const clearMessages = useCallback(() => {
-    session.clearMessages()
-    stream.resetTransientState()
-  }, [session, stream])
+    discardGeneration()
+    clearSession()
+  }, [clearSession, discardGeneration])
 
   const isLoading = session.isLoading || stream.isLoading
 

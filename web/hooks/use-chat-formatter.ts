@@ -1,6 +1,8 @@
 'use client'
 
-import type { ChatRequest, ChatResponse, Citation, JsonObject, Message } from '@/types'
+import type { ChatRequest, ChatResponse, Message } from '@/types/chat'
+import type { JsonObject } from '@/types/common'
+import type { Citation } from '@/types/processing'
 
 export type ChatRagConfig = Partial<Omit<NonNullable<ChatRequest['rag_config']>, 'metadata_filter'>> & {
   metadata_filter?: JsonObject | null
@@ -261,7 +263,8 @@ export function getStreamEventMessage(type: string, data: unknown): string | nul
 }
 
 export function getTokenContent(data: unknown): string {
-  return asTrimmedString(asRecord(data)?.content)
+  const content = asRecord(data)?.content
+  return typeof content === 'string' ? content : ''
 }
 
 export function getConversationId(value: unknown): string {
