@@ -14,7 +14,7 @@ if str(_REPO_ROOT) not in sys.path:
 def _parse_bool(raw: str | bool) -> bool:
     if isinstance(raw, bool):
         return raw
-    text = str(raw or "").strip().lower()
+    text = raw.strip().lower()
     if text in {"1", "true", "t", "yes", "y", "on"}:
         return True
     if text in {"0", "false", "f", "no", "n", "off"}:
@@ -29,14 +29,12 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Validate retrieval_profile + reranker compatibility before runtime.",
     )
     p.add_argument("--retrieval-profile", type=str, default="recall50")
-    p.add_argument("--top-k", type=int, default=int(getattr(settings, "RETRIEVAL_TOP_K", 10) or 10))
-    p.add_argument(
-        "--score-threshold", type=float, default=float(getattr(settings, "SIMILARITY_THRESHOLD", 0.0) or 0.0)
-    )
-    p.add_argument("--retrieval-mode", type=str, default=str(getattr(settings, "RETRIEVAL_MODE", "hybrid") or "hybrid"))
-    p.add_argument("--enable-reranker", type=_parse_bool, default=bool(getattr(settings, "ENABLE_RERANKER", False)))
-    p.add_argument("--reranker-provider", type=str, default=str(getattr(settings, "RERANKER_PROVIDER", "llm") or "llm"))
-    p.add_argument("--reranker-top-n", type=int, default=int(getattr(settings, "RERANKER_TOP_N", 20) or 20))
+    p.add_argument("--top-k", type=int, default=settings.RETRIEVAL_TOP_K or 10)
+    p.add_argument("--score-threshold", type=float, default=settings.SIMILARITY_THRESHOLD or 0.0)
+    p.add_argument("--retrieval-mode", type=str, default=settings.RETRIEVAL_MODE or "hybrid")
+    p.add_argument("--enable-reranker", type=_parse_bool, default=settings.ENABLE_RERANKER)
+    p.add_argument("--reranker-provider", type=str, default=settings.RERANKER_PROVIDER or "llm")
+    p.add_argument("--reranker-top-n", type=int, default=settings.RERANKER_TOP_N or 20)
     p.add_argument("--enable-weight-rerank", type=_parse_bool, default=True)
     p.add_argument("--json", action="store_true", help="print result as JSON")
     return p
@@ -55,28 +53,22 @@ def _collect_issues(args: argparse.Namespace) -> tuple[list[str], dict[str, Any]
         "sentence-transformers",
     }
 
+    profile_options = {
+        "top_k": int(args.top_k or 0),
+        "score_threshold": float(args.score_threshold or 0.0),
+        "retrieval_mode": str(args.retrieval_mode or "hybrid"),
+        "enable_reranker": bool(args.enable_reranker),
+        "reranker_provider": str(args.reranker_provider or ""),
+        "reranker_top_n": int(args.reranker_top_n or 0),
+        "enable_weight_rerank": bool(args.enable_weight_rerank),
+    }
     try:
-        effective = apply_retrieval_profile_overrides(
-            profile=profile,
-            top_k=int(args.top_k or 0),
-            score_threshold=float(args.score_threshold or 0.0),
-            retrieval_mode=str(args.retrieval_mode or "hybrid"),
-            enable_reranker=bool(args.enable_reranker),
-            reranker_provider=str(args.reranker_provider or ""),
-            reranker_top_n=int(args.reranker_top_n or 0),
-            enable_weight_rerank=bool(args.enable_weight_rerank),
-        )
+        effective = apply_retrieval_profile_overrides(profile=profile, **profile_options)
     except Exception as exc:  # noqa: BLE001
         issues.append(f"invalid retrieval profile configuration: {str(exc)}")
         effective = {
             "retrieval_profile": profile,
-            "top_k": int(args.top_k or 0),
-            "score_threshold": float(args.score_threshold or 0.0),
-            "retrieval_mode": str(args.retrieval_mode or "hybrid"),
-            "enable_reranker": bool(args.enable_reranker),
-            "reranker_provider": str(args.reranker_provider or ""),
-            "reranker_top_n": int(args.reranker_top_n or 0),
-            "enable_weight_rerank": bool(args.enable_weight_rerank),
+            **profile_options,
         }
 
     requested_provider = str(args.reranker_provider or "").strip().lower()
