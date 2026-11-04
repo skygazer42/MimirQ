@@ -10,17 +10,14 @@ from sqlalchemy import Select, and_, exists, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.schemas.connector import (
-    ConfluenceSpaceConnectorConfig,
+    CONNECTOR_CONFIG_MODELS as _CONNECTOR_CONFIG_MODELS,
+)
+from app.api.schemas.connector import (
+    ConnectorRunConfig,
     ConnectorRunCreateRequest,
     ConnectorRunOut,
-    DriveFilesConnectorConfig,
-    GitHubRepoConnectorConfig,
-    JiraProjectConnectorConfig,
-    MinioBucketConnectorConfig,
     MySQLCatalogConnectorConfig,
     SQLServerCatalogConnectorConfig,
-    UrlBatchConnectorConfig,
-    WebCrawlConnectorConfig,
 )
 from app.core.config import settings
 from app.core.secrets import encrypt_connector_config_secrets, redact_secrets
@@ -29,8 +26,9 @@ from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
 from app.models.group_permissions import DatasetGroupPermission, DocumentGroupPermission
-from app.models.tenant_group import TenantGroup, TenantGroupMember
+from app.models.tenant_group import TenantGroupMember
 from app.services import dataset_service
+from app.services.connector_document_access import _unknown_tenant_groups as _unknown_tenant_groups
 from app.services.connector_egress_policy import validate_db_connector_config
 from app.services.connector_execution.shared.runtime import _now
 from app.services.connector_registry import ConnectorDefinition, get_connector_definition
@@ -44,18 +42,6 @@ from app.tasks.queue import enqueue_connector_run, get_queue
 if TYPE_CHECKING:
     from arq.connections import ArqRedis
     from arq.jobs import Job
-
-ConnectorRunConfig = (
-    UrlBatchConnectorConfig
-    | WebCrawlConnectorConfig
-    | GitHubRepoConnectorConfig
-    | DriveFilesConnectorConfig
-    | MinioBucketConnectorConfig
-    | ConfluenceSpaceConnectorConfig
-    | JiraProjectConnectorConfig
-    | MySQLCatalogConnectorConfig
-    | SQLServerCatalogConnectorConfig
-)
 
 
 class PendingConnectorRunValues(TypedDict):
@@ -86,17 +72,6 @@ UNSUPPORTED_CONNECTOR_ID_DETAIL = "Unsupported connector_id"
 URL_INGEST_DISABLED_DETAIL = "URL ingestion is disabled"
 CONNECTOR_QUEUE_UNAVAILABLE_DETAIL = "Connector processing queue unavailable"
 CONNECTOR_QUEUE_HANDOFF_FAILED_ERROR = "connector_queue_handoff_failed"
-_CONNECTOR_CONFIG_MODELS: dict[str, type[ConnectorRunConfig]] = {
-    "url_batch": UrlBatchConnectorConfig,
-    "web_crawl": WebCrawlConnectorConfig,
-    "github_repo": GitHubRepoConnectorConfig,
-    "drive_files": DriveFilesConnectorConfig,
-    "minio_bucket": MinioBucketConnectorConfig,
-    "confluence_space": ConfluenceSpaceConnectorConfig,
-    "jira_project": JiraProjectConnectorConfig,
-    "mysql_catalog": MySQLCatalogConnectorConfig,
-    "sqlserver_catalog": SQLServerCatalogConnectorConfig,
-}
 _DB_CONNECTOR_PERMISSION_DETAIL = "No permission to run DB connectors"
 
 
@@ -477,15 +452,6 @@ def _build_resume_run_config(
         base_cfg=base_cfg,
         stats=stats,
     )
-
-
-def _unknown_tenant_groups(db: Session, *, tenant_id: UUID, group_ids: list[UUID]) -> list[str]:
-    ids = list(dict.fromkeys(group_ids))[:200]
-    if not ids:
-        return []
-    rows = db.query(TenantGroup.id).filter(TenantGroup.tenant_id == tenant_id, TenantGroup.id.in_(ids)).all()
-    found = {row[0] for row in rows if row and row[0]}
-    return [str(group_id) for group_id in ids if group_id not in found]
 
 
 def _normalize_doc_access_mode(value: object) -> str:

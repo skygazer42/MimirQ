@@ -464,7 +464,7 @@ def test_execute_graph_chat_once_collects_multimodal_state_and_structured_metric
 
 
 def test_execute_confluence_space_run_probes_completion_before_soft_delete(monkeypatch) -> None:
-    from app.api.v1 import connectors_confluence
+    import app.services.connector_execution.confluence as connectors_confluence
 
     tenant_id = uuid4()
     run_id = uuid4()
@@ -519,7 +519,8 @@ def test_execute_confluence_space_run_probes_completion_before_soft_delete(monke
         "_finalize_cancelled_confluence_space_run": lambda *_args, **_kwargs: pytest.fail("run should not cancel"),
     }
 
-    monkeypatch.setattr(connectors_confluence, "_resolve_connectors_helper", lambda name: helpers[name])
+    for helper_name, helper in helpers.items():
+        monkeypatch.setattr(connectors_confluence, helper_name, helper, raising=True)
     monkeypatch.setattr(
         connectors_confluence,
         "_build_confluence_space_run_settings",
@@ -541,7 +542,7 @@ def test_execute_confluence_space_run_probes_completion_before_soft_delete(monke
     monkeypatch.setattr(connectors_confluence, "_confluence_space_run_cancelled", lambda *_args, **_kwargs: False)
 
     asyncio.run(
-        connectors_confluence._execute_confluence_space_run(
+        connectors_confluence.execute(
             run_id=run_id,
             tenant_id=tenant_id,
             requested_by="owner",

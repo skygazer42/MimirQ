@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.api.schemas.connector_acl import ConnectorSourceAclConfig, SourceAcl, SourcePrincipal
 from app.models.connector import ConnectorRun, ConnectorRunDocument
 from app.models.document import Document as DBDocument
+from app.models.tenant_group import TenantGroup
 from app.rag.core.logging import get_logger
 from app.services.connector_source_acl_mapping import resolve_document_access_from_source_acl
 from app.services.document_permission_service import (
@@ -18,6 +19,15 @@ from app.services.document_permission_service import (
 )
 
 logger = get_logger(__name__)
+
+
+def _unknown_tenant_groups(db: Session, *, tenant_id: UUID, group_ids: list[UUID]) -> list[str]:
+    ids = list(dict.fromkeys(group_ids))[:200]
+    if not ids:
+        return []
+    rows = db.query(TenantGroup.id).filter(TenantGroup.tenant_id == tenant_id, TenantGroup.id.in_(ids)).all()
+    found = {row[0] for row in rows if row and row[0]}
+    return [str(group_id) for group_id in ids if group_id not in found]
 
 
 class ConnectorSourceAccessSettings(TypedDict):

@@ -356,7 +356,7 @@ def test_soft_disable_jira_issue_children_fallback_filters_seen_urls(
 def test_soft_disable_jira_documents_missing_from_full_sync_fallback_reconciles_issue_urls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.connectors_jira as connectors_jira
+    import app.services.connector_execution.jira as connectors_jira
 
     tenant_id = uuid4()
     dataset_id = uuid4()
@@ -392,12 +392,7 @@ def test_soft_disable_jira_documents_missing_from_full_sync_fallback_reconciles_
         ),
     ]
 
-    monkeypatch.setattr(
-        connectors_jira,
-        "_leader_module",
-        SimpleNamespace(_now=lambda: now),
-        raising=False,
-    )
+    monkeypatch.setattr(connectors_jira, "_now", lambda: now, raising=True)
 
     reconciled, disabled = connectors_jira._soft_disable_jira_documents_missing_from_full_sync(
         _FlakyDB(rows),
@@ -417,7 +412,7 @@ def test_soft_disable_jira_documents_missing_from_full_sync_fallback_reconciles_
 def test_process_jira_project_issues_tracks_progress_and_completion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.connectors_jira as connectors_jira
+    import app.services.connector_execution.jira as connectors_jira
 
     async def _fetch_page(*_args, **_kwargs):
         return 1, [{"key": "ABC-1"}]
@@ -427,16 +422,9 @@ def test_process_jira_project_issues_tracks_progress_and_completion(
         kwargs["observed_issue_urls"].add("https://jira.example.com/browse/ABC-1")
 
     monkeypatch.setattr(connectors_jira, "_jira_project_fetch_issue_page", _fetch_page, raising=True)
-    monkeypatch.setattr(
-        connectors_jira,
-        "_leader_module",
-        SimpleNamespace(
-            get_http_client_pool=lambda: object(),
-            _jira_project_run_cancelled=lambda *_a, **_k: False,
-            _process_jira_project_issue=_process_issue,
-        ),
-        raising=False,
-    )
+    monkeypatch.setattr(connectors_jira, "get_http_client_pool", lambda: object(), raising=True)
+    monkeypatch.setattr(connectors_jira, "_jira_project_run_cancelled", lambda *_a, **_k: False, raising=True)
+    monkeypatch.setattr(connectors_jira, "_process_jira_project_issue", _process_issue, raising=True)
 
     progress, observed_issue_urls, listing_complete = asyncio.run(
         connectors_jira._process_jira_project_issues(

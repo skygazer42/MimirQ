@@ -534,6 +534,31 @@ class SQLServerCatalogConnectorConfig(BaseModel):
         return self
 
 
+ConnectorRunConfig = (
+    UrlBatchConnectorConfig
+    | WebCrawlConnectorConfig
+    | GitHubRepoConnectorConfig
+    | DriveFilesConnectorConfig
+    | MinioBucketConnectorConfig
+    | ConfluenceSpaceConnectorConfig
+    | JiraProjectConnectorConfig
+    | MySQLCatalogConnectorConfig
+    | SQLServerCatalogConnectorConfig
+)
+
+CONNECTOR_CONFIG_MODELS: dict[str, type[ConnectorRunConfig]] = {
+    "url_batch": UrlBatchConnectorConfig,
+    "web_crawl": WebCrawlConnectorConfig,
+    "github_repo": GitHubRepoConnectorConfig,
+    "drive_files": DriveFilesConnectorConfig,
+    "minio_bucket": MinioBucketConnectorConfig,
+    "confluence_space": ConfluenceSpaceConnectorConfig,
+    "jira_project": JiraProjectConnectorConfig,
+    "mysql_catalog": MySQLCatalogConnectorConfig,
+    "sqlserver_catalog": SQLServerCatalogConnectorConfig,
+}
+
+
 class ConnectorRunCreateRequest(BaseModel):
     connector_id: ConnectorId = "url_batch"
     dataset_id: UUID | None = None
