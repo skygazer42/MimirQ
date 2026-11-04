@@ -1,4 +1,4 @@
-import type { DatasetReport } from '@/types'
+import type { DatasetReport } from '@/types/datasets'
 
 import { apiClient } from '@/lib/api/core'
 

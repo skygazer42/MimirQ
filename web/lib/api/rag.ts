@@ -1,16 +1,18 @@
 import type {
-  Citation,
   EvidenceRetrieveRequest,
   EvidenceRetrieveResponse,
-  JsonObject,
   PromptPreviewRequest,
   PromptPreviewResponse,
+  RetrievePreviewRequest,
+  RetrievePreviewResponse,
+} from '@/types/backend'
+import type { JsonObject } from '@/types/common'
+import type {
   RagvizSimilarityCalculateResponse,
   RagvizSimilarityCollectionsResponse,
   RagvizSimilarityRequest,
-  RetrievePreviewRequest,
-  RetrievePreviewResponse,
-} from '@/types'
+} from '@/types/evaluation'
+import type { Citation } from '@/types/processing'
 import { z } from 'zod'
 
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'

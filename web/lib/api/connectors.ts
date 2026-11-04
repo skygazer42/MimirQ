@@ -13,7 +13,7 @@ import type {
   IngestionRunCompareResponse,
   IngestionRunListResponse,
   IngestionRunOut,
-} from '@/types'
+} from '@/types/connectors'
 
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
 import { apiClient, openapiRequest } from '@/lib/api/core'

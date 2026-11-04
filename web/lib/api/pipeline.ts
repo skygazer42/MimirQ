@@ -1,3 +1,5 @@
+import type { BuiltinProcessingScriptListResponse, DocumentPipelineOptions, OpenApiSchema } from '@/types/backend'
+import type { OpenApiRequestBody } from '@/types/openapi-helpers'
 import type {
   AutoAnnotationRequest,
   AutoAnnotationResponse,
@@ -8,13 +10,12 @@ import type {
   GovernanceAnalyzeResponse,
   GovernanceCommonLinesLearnRequest,
   GovernanceCommonLinesLearnResponse,
-  DocumentPipelineOptions,
+  GovernanceProcessingScript,
   GovernanceProfileCreate,
   GovernanceProfileImportResponse,
   GovernanceProfileListResponse,
   GovernanceProfileOut,
   GovernanceProfileResolvedResponse,
-  GovernanceProcessingScript,
   GovernanceProfileUpdate,
   IngestionPreviewResponse,
   KeywordExtractRequest,
@@ -26,9 +27,7 @@ import type {
   PipelineChunkPreviewResponse,
   PipelineParsePreviewResponse,
   ZipWithImagesResponse,
-} from '@/types'
-import type { BuiltinProcessingScriptListResponse, OpenApiSchema } from '@/types/backend'
-import type { OpenApiRequestBody } from '@/types/openapi-helpers'
+} from '@/types/processing'
 
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'

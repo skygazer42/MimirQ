@@ -1,5 +1,5 @@
-import type { AuditLogListResponse } from '@/types'
 import type { OpenApiSchema } from '@/types/backend'
+import type { AuditLogListResponse } from '@/types/chat'
 
 import { apiClient } from '@/lib/api/core'
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'

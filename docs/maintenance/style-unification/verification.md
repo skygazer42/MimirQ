@@ -920,3 +920,9 @@
 
 - Applied source category `fe736f244` to 33 tracked API/type files, using the existing two-space/single-quote/no-semicolon/120-column Prettier rules. The coverage table records formatting only at this stage; semantic pending entries are not closed by formatting.
 - Fresh integrated Prettier check passes all 33 files. Independent source review confirms declaration structure and emitted JavaScript AST equivalence; routes, parameters, validators and runtime catalogs are unchanged. Type ownership and missing schema alias changes are kept in the separate semantic category.
+
+## Frontend API/type category: direct contracts
+
+- Completed all 51 owned API/type modules from semantic source category `15e7ec674`: 182 type-only imports now refer to actual owners, and the tenant-member update request aliases the existing generated schema. Runtime requests and compatibility barrels remain unchanged; ambient library declarations retain their required forms. Each file has an individual disposition in `frontend-contracts-report.json`.
+- Independent review verifies all 183 type-equality assertions and equivalent emitted JavaScript ASTs for 51 files, including variable-declaration kinds and operators. Fresh integrated ESLint, Prettier, API-route contract, API coverage and strict type-drift scripts pass; the type-drift baseline was not widened. The missing scoped ESLint log referenced by the initial report is now populated from the integrated rerun.
+- Full TypeScript remains incomplete: diagnostics fall from 24 to 23 with zero new errors. Remaining errors belong to the enriched dataset-RAG view being typed as the narrower system API schema, and incomplete MagicPDF/PaddleVL initial defaults in settings state. These are assigned to the subsequent configuration-contract category; they are not counted as a passing whole-project typecheck. No page rendering/state/interaction code changed in this category.

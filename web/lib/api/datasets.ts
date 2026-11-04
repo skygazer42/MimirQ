@@ -1,3 +1,4 @@
+import type { DatasetHealthResponse } from '@/types/backend'
 import type {
   Dataset,
   DatasetCategoryAssignmentRequest,
@@ -11,7 +12,6 @@ import type {
   DatasetConfigExport,
   DatasetConfigImportRequest,
   DatasetCreate,
-  DatasetHealthResponse,
   DatasetIngestionStats,
   DatasetListResponse,
   DatasetPrecheckDiffResponse,
@@ -37,16 +37,18 @@ import type {
   DbCatalogTableDetail,
   DbCatalogTablesListResponse,
   DbProfileSnapshotListResponse,
-  IngestionPolicy,
-  IngestionPolicyImportResponse,
-  IngestionPolicyRollbackRequest,
-  IngestionPolicyVersionListResponse,
   LotusSemFilterRequest,
   TableAskRequest,
   TableAskResponse,
   TableQueryRequest,
   TableQueryResponse,
-} from '@/types'
+} from '@/types/datasets'
+import type {
+  IngestionPolicy,
+  IngestionPolicyImportResponse,
+  IngestionPolicyRollbackRequest,
+  IngestionPolicyVersionListResponse,
+} from '@/types/processing'
 
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
 import { apiClient, openapiRequest } from '@/lib/api/core'

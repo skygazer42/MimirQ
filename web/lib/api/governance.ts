@@ -5,7 +5,7 @@ import type {
   ChunkPresetUpdateRequest,
   GovernanceRulePackListResponse,
   StaleDocumentsByDatasetResponse,
-} from '@/types'
+} from '@/types/processing'
 
 import { apiClient } from '@/lib/api/core'
 

@@ -2,10 +2,10 @@
  * Dataset, reporting, and analysis types re-exported by `@/types`.
  */
 
+import type { DocumentFolderTreeResponse, DocumentPipelineOptions } from './backend'
 import type { JsonObject, PermissionEnum } from './common'
-import type { DocumentFolderTreeResponse } from './documents'
 import type { components } from './openapi'
-import type { DocumentPipelineOptions, IngestionPolicy } from './processing'
+import type { IngestionPolicy } from './processing'
 
 // ==================== 数据集相关类型 ====================
 

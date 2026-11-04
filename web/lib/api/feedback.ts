@@ -1,4 +1,5 @@
-import type { EvidenceItem, RegressionCase } from '@/types/evaluation'
+import type { EvidenceItem } from '@/types/backend'
+import type { RegressionCase } from '@/types/evaluation'
 import type {
   FeedbackCategory,
   FeedbackLoopCandidatesResponse,
@@ -9,7 +10,8 @@ import type {
   MessageFeedbackListResponse,
 } from '@/types/feedback'
 
-import { apiClient, type ApiRequestOptions } from '@/lib/api/core'
+import { apiClient } from '@/lib/api/core'
+import type { ApiRequestOptions } from '@/lib/api/core'
 
 export const feedbackApi = {
   async create(params: MessageFeedbackCreate): Promise<MessageFeedback> {

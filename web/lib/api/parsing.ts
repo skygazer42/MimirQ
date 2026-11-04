@@ -1,4 +1,4 @@
-import type { Document } from '@/types'
+import type { Document } from '@/types/backend'
 import { z } from 'zod'
 
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'

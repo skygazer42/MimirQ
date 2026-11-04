@@ -1,6 +1,5 @@
+import type { DocumentAccessUpdateRequest, DocumentPipelineOptions } from './backend'
 import type { DocumentAccessMode, JsonObject } from './common'
-import type { DocumentPipelineOptions } from './backend'
-import type { DocumentAccessUpdateRequest } from './documents'
 
 // Backend may add connector ids over time; keep this open-ended.
 export type ConnectorId = string

@@ -2,8 +2,8 @@ import type {
   KGDeleteResponse,
   KGEntityAliasCreateRequest,
   KGEntityAliasItem,
-  KGEntityAliasesResponse,
   KGEntityAliasSuggestionsResponse,
+  KGEntityAliasesResponse,
   KGEntityDetailResponse,
   KGEntityMergePreviewResponse,
   KGEntityMergeRequest,
@@ -27,7 +27,7 @@ import type {
   KGSearchRequest,
   KGSearchResponse,
   KGStatsResponse,
-} from '@/types'
+} from '@/types/knowledge-graph'
 
 import { apiClient } from '@/lib/api/core'
 

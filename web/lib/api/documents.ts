@@ -38,27 +38,24 @@ import type {
   IngestDeadLetterReplayResponse,
   OpenApiSchema,
 } from '@/types/backend'
+import type { JsonObject } from '@/types/common'
+import type { DocumentHealthCard } from '@/types/documents'
 import type {
   ChunkPreviewResponse,
-  DocumentHealthCard,
   DocumentLifecycleMetadata,
   DocumentLifecycleMetadataUpdateRequest,
   DocumentPreview,
-  JsonObject,
   ManualChunk,
-} from '@/types'
+} from '@/types/processing'
 import { z } from 'zod'
 
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
 import { appendPipelineOptionsToFormData } from '@/lib/form-data'
 import { resolveParserBackendForFilename, resolveParserBackendForFiles } from '@/lib/parser-compat'
-import { apiClient, openapiRequest, type ApiRequestOptions } from '@/lib/api/core'
-import {
-  appendChunkPreviewFormFields,
-  buildChunkPreviewQueryParams,
-  type ChunkPreviewRequestParams,
-  type DocumentLifecycleFilter,
-} from '@/lib/api/document-helpers'
+import { apiClient, openapiRequest } from '@/lib/api/core'
+import type { ApiRequestOptions } from '@/lib/api/core'
+import { appendChunkPreviewFormFields, buildChunkPreviewQueryParams } from '@/lib/api/document-helpers'
+import type { ChunkPreviewRequestParams, DocumentLifecycleFilter } from '@/lib/api/document-helpers'
 
 type FileWithRelativePath = File & {
   webkitRelativePath?: string

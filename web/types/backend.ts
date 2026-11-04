@@ -23,6 +23,8 @@ export type LoginRequest = OpenApiSchema<'LoginRequest'>
 
 // ==================== Groups (Tenant Directory) ====================
 
+export type TenantMemberUpdateRequest = OpenApiSchema<'TenantMemberUpdateRequest'>
+
 export type TenantGroupOut = OpenApiSchema<'TenantGroupOut'>
 export type TenantGroupListResponse = OpenApiSchema<'TenantGroupListResponse'>
 export type TenantGroupCreateRequest = OpenApiSchema<'TenantGroupCreateRequest'>

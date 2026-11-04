@@ -18,7 +18,7 @@ import type {
   RagTraceBundleResponse,
   SloSnapshotResponse,
   TaskQueueObservabilitySnapshotResponse,
-} from '@/types'
+} from '@/types/observability'
 
 import { getAuthHeaders } from '@/lib/auth-headers'
 import { authenticatedFetch } from '@/lib/authenticated-fetch'

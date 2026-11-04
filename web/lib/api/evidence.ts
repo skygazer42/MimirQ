@@ -15,7 +15,7 @@ import type {
   EvidenceSuiteList,
   EvidenceSuitePatch,
   EvidenceSuiteSyncRegressionResponse,
-} from '@/types'
+} from '@/types/backend'
 
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
 import { apiClient, openapiRequest } from '@/lib/api/core'
