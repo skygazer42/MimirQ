@@ -6,7 +6,7 @@ import re
 import uuid
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 from urllib.parse import unquote, urlparse
 from uuid import UUID
 
@@ -44,6 +44,13 @@ IMAGE_FILE_EXT_WEBP = ".webp"
 LOCAL_PREVIEW_IMAGE_EXTS = {".png", ".jpg", IMAGE_FILE_EXT_JPEG, IMAGE_FILE_EXT_WEBP, ".gif", ".bmp"}
 PREVIEW_IMAGE_EXTENSIONS = [".png", ".jpg", IMAGE_FILE_EXT_JPEG, IMAGE_FILE_EXT_WEBP, ".gif", ".bmp"]
 REMOTE_PREVIEW_IMAGE_SCHEMES = {"http", "https", "data", "blob"}
+
+
+class _ChunkHistogramBin(TypedDict):
+    label: str
+    min: int
+    max: int
+    count: int
 
 
 def _rewrite_preview_images_to_minio(
@@ -121,7 +128,7 @@ def _preview_image_matches(text: str) -> list[re.Match[str]]:
     if "/api/v1/documents/image/" not in text:
         return []
     matches = list(PREVIEW_IMAGE_REF_RE.finditer(text))
-    max_inline_images = max(0, int(settings.MAX_INLINE_IMAGES or 0))
+    max_inline_images = max(0, settings.MAX_INLINE_IMAGES or 0)
     return matches[:max_inline_images] if max_inline_images and len(matches) > max_inline_images else matches
 
 
@@ -173,10 +180,10 @@ def _claim_preview_refs_without_minio(
             db=db,
             images_dir=images_dir,
             local_id=local_id,
-            tenant_id=str(tenant_id),
-            dataset_id=str(dataset_id),
-            document_id=str(document_id),
-            account_id=str(account_id),
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            document_id=document_id,
+            account_id=account_id,
         )
         if not promoted:
             raise HTTPException(status_code=403, detail="Preview image cannot be reused for this document")
@@ -220,7 +227,7 @@ def _persist_preview_refs_to_minio(
 
 
 def _preview_image_max_bytes() -> int:
-    max_bytes = int(settings.MAX_INLINE_IMAGE_BYTES or 10_000_000)
+    max_bytes = settings.MAX_INLINE_IMAGE_BYTES or 10_000_000
     return max(1_000_000, max_bytes)
 
 
@@ -252,14 +259,10 @@ def _read_preview_image_bytes(img_path: Path, max_bytes: int) -> bytes | None:
 
 
 def _convert_preview_image_to_jpeg(local_id: str, raw: bytes) -> bytes | None:
-    from io import BytesIO
-
-    from PIL import Image as PILImage  # type: ignore[import-untyped]
-
     img = None
     converted = None
     try:
-        img = PILImage.open(BytesIO(raw))
+        img = Image.open(BytesIO(raw))
         if img.mode in ("RGBA", "P"):
             converted = img.convert("RGB")
             out_img = converted
@@ -338,9 +341,9 @@ def _claim_preview_image_for_document(
     if binding_path.exists() or db is None:
         return False
     try:
-        tenant_uuid = UUID(str(tenant_id))
-        dataset_uuid = UUID(str(dataset_id))
-        document_uuid = UUID(str(document_id))
+        tenant_uuid = UUID(tenant_id)
+        dataset_uuid = UUID(dataset_id)
+        document_uuid = UUID(document_id)
     except ValueError:
         return False
     if not legacy_preview_ref_belongs_to_document(
@@ -424,7 +427,7 @@ def _ensure_preview_page_indices(documents: list[Document]) -> None:
     without a stable key, mapping by `page` can collide and misplace chunks.
     """
     for i, doc in enumerate(documents or []):
-        meta = dict(getattr(doc, "metadata", None) or {})
+        meta = dict(doc.metadata)
         # Keep existing value if present; otherwise assign a deterministic 1-based index.
         meta.setdefault("page_index", i + 1)
         doc.metadata = meta
@@ -441,7 +444,7 @@ def _preview_chunk_has_asset(meta: dict[str, Any], content: str | None = None) -
     if meta.get("img_id") or meta.get("image_id") or meta.get("image_url"):
         return True
     if content:
-        lower = str(content).lower()
+        lower = content.lower()
         if (DATA_IMAGE_PREFIX in lower) or PREVIEW_IMAGE_REF_RE.search(content) or MINIO_IMAGE_REF_RE.search(content):
             return True
     return False
@@ -450,17 +453,17 @@ def _preview_chunk_has_asset(meta: dict[str, Any], content: str | None = None) -
 def _preview_page_text_by_index(documents: list[Document]) -> dict[int, str]:
     page_text: dict[int, str] = {}
     for i, doc in enumerate(documents):
-        meta = dict(getattr(doc, "metadata", None) or {})
+        meta = dict(doc.metadata)
         try:
             page_index = int(meta.get("page_index") or (i + 1))
         except (OverflowError, TypeError, ValueError):
             page_index = i + 1
-        page_text[page_index] = str(doc.page_content or "")
+        page_text[page_index] = doc.page_content
     return page_text
 
 
 def _preview_page_index_of(chunk: Document) -> int | None:
-    meta = getattr(chunk, "metadata", None) or {}
+    meta = chunk.metadata
     raw = meta.get("page_index")
     try:
         return int(raw) if raw is not None else None
@@ -480,7 +483,7 @@ def _preview_local_range(meta: dict[str, Any]) -> tuple[int, int] | None:
 
 
 def _preview_chunk_mergeable(chunk: Document, *, page_index: int | None, page_text: dict[int, str]) -> bool:
-    meta = dict(getattr(chunk, "metadata", None) or {})
+    meta = dict(chunk.metadata)
     return (
         page_index is not None
         and page_index in page_text
@@ -497,8 +500,8 @@ def _merge_preview_chunks_on_page(
     if text is None:
         return None
 
-    meta_a = dict(getattr(a, "metadata", None) or {})
-    meta_b = dict(getattr(b, "metadata", None) or {})
+    meta_a = dict(a.metadata)
+    meta_b = dict(b.metadata)
     range_a = _preview_local_range(meta_a)
     range_b = _preview_local_range(meta_b)
     if range_a is None or range_b is None:
@@ -509,7 +512,7 @@ def _merge_preview_chunks_on_page(
     meta_a["start_char"] = start_local
     meta_a["end_char"] = end_local
     meta_a["merged_small_chunks"] = int(meta_a.get("merged_small_chunks") or 0) + 1
-    return Document(page_content=text[start_local:end_local], metadata=meta_a, id=getattr(a, "id", None))
+    return Document(page_content=text[start_local:end_local], metadata=meta_a, id=a.id)
 
 
 def _merge_preview_pair_or_append(
@@ -599,7 +602,7 @@ def _merge_small_chunks_preview(
     - Preserves assets and parent/child semantics (skips those chunks).
     - Keeps `start_char`/`end_char` in *local* coordinates; rebasing happens later.
     """
-    min_chars = max(0, int(min_chars or 0))
+    min_chars = max(0, min_chars or 0)
     if min_chars <= 0 or not documents or not chunks:
         return chunks
 
@@ -660,7 +663,7 @@ def _preview_owner_binding(
             "dataset_id": dataset_id,
             "document_id": document_id,
         }
-    owner_account_id = str(account_id or "").strip()
+    owner_account_id = (account_id or "").strip()
     if owner_account_id:
         return {"tenant_id": str(tenant_id), "account_id": owner_account_id}
     return None
@@ -681,7 +684,7 @@ def _write_preview_owner_binding(*, images_dir: Path, preview_id: str, binding: 
     return True
 
 
-def _load_preview_owner_binding(*, images_dir: Path, preview_id: str) -> dict[str, str] | None:
+def _load_preview_owner_binding(*, images_dir: Path, preview_id: str) -> dict[str, str | None] | None:
     sidecar_path = images_dir / f"{preview_id}.json"
     try:
         raw = json.loads(sidecar_path.read_text(encoding="utf-8"))
@@ -717,40 +720,27 @@ def _promote_preview_owner_binding(
     binding = _load_preview_owner_binding(images_dir=images_dir, preview_id=preview_id)
     if not binding:
         return False
-    if str(binding.get("tenant_id") or "").strip() != str(tenant_id or "").strip():
+    if (binding.get("tenant_id") or "").strip() != (tenant_id or "").strip():
         return False
-    bound_dataset_id = str(binding.get("dataset_id") or "").strip()
-    bound_document_id = str(binding.get("document_id") or "").strip()
+    bound_dataset_id = (binding.get("dataset_id") or "").strip()
+    bound_document_id = (binding.get("document_id") or "").strip()
     if bound_dataset_id and bound_document_id:
-        return bound_dataset_id == str(dataset_id or "").strip() and bound_document_id == str(document_id or "").strip()
-    if str(binding.get("account_id") or "").strip() != str(account_id or "").strip():
+        return bound_dataset_id == (dataset_id or "").strip() and bound_document_id == (document_id or "").strip()
+    if (binding.get("account_id") or "").strip() != (account_id or "").strip():
         return False
     return _write_preview_owner_binding(
         images_dir=images_dir,
         preview_id=preview_id,
         binding={
-            "tenant_id": str(tenant_id),
-            "dataset_id": str(dataset_id),
-            "document_id": str(document_id),
+            "tenant_id": tenant_id,
+            "dataset_id": dataset_id,
+            "document_id": document_id,
         },
     )
 
 
-def _load_preview_pillow_image_class() -> tuple[Any | None, bool]:
-    return Image, True
-
-
-def _drop_preview_image_objects(documents: list) -> list:
-    for doc in documents:
-        meta = getattr(doc, "metadata", None) or {}
-        if isinstance(meta, dict) and "image" in meta:
-            meta.pop("image", None)
-            doc.metadata = meta
-    return documents
-
-
-def _save_extracted_preview_image(image_obj: object, out_path: Path, pil_image: Any) -> None:
-    img = pil_image.open(BytesIO(bytes(image_obj))) if isinstance(image_obj, (bytes, bytearray)) else image_obj
+def _save_extracted_preview_image(image_obj: object, out_path: Path) -> None:
+    img = Image.open(BytesIO(bytes(image_obj))) if isinstance(image_obj, (bytes, bytearray)) else image_obj
     with contextlib.suppress(Exception):
         if getattr(img, "mode", None) != "RGB":
             img = img.convert("RGB")
@@ -765,16 +755,13 @@ def _close_preview_image_object(image_obj: object) -> None:
 
 
 def _materialize_extracted_preview_image_doc(
-    doc: Any,
+    doc: Document,
     *,
     tenant_id: UUID,
     account_id: str | None,
     images_dir: Path,
-    pil_image: Any,
 ) -> None:
-    meta = getattr(doc, "metadata", None) or {}
-    if not isinstance(meta, dict):
-        return
+    meta = doc.metadata or {}
 
     image_obj = meta.get("image")
     if image_obj is None:
@@ -792,7 +779,7 @@ def _materialize_extracted_preview_image_doc(
     owner_binding = _preview_owner_binding(tenant_id=tenant_id, meta=meta, account_id=account_id)
     persisted = False
     try:
-        _save_extracted_preview_image(image_obj, out_path, pil_image)
+        _save_extracted_preview_image(image_obj, out_path)
         persisted = _write_preview_owner_binding(
             images_dir=images_dir,
             preview_id=preview_id,
@@ -810,7 +797,7 @@ def _materialize_extracted_preview_image_doc(
     if not persisted:
         return
 
-    caption = (getattr(doc, "page_content", "") or "").strip()
+    caption = doc.page_content.strip()
     img_md = f"![image]({url})"
     doc.page_content = f"{img_md}\n\n{caption}" if caption else img_md
     meta["preview_image_id"] = preview_id
@@ -819,8 +806,8 @@ def _materialize_extracted_preview_image_doc(
 
 
 def _materialize_extracted_images_for_preview(
-    documents: list, *, tenant_id: UUID, account_id: str | None = None
-) -> list:
+    documents: list[Document], *, tenant_id: UUID, account_id: str | None = None
+) -> list[Document]:
     """
     Convert in-memory image objects (e.g., DeepDoc PIL.Image in metadata["image"])
     into preview-time Markdown refs that the frontend can render.
@@ -842,26 +829,20 @@ def _materialize_extracted_images_for_preview(
         return []
 
     images_dir = _preview_images_dir(tenant_id)
-    pil_image, pillow_ok = _load_preview_pillow_image_class()
-    if not pillow_ok:
-        logger.warning("Pillow not available; dropping preview image objects (hint: pip install Pillow)")
-        return _drop_preview_image_objects(documents)
-
     for doc in documents:
         _materialize_extracted_preview_image_doc(
             doc,
             tenant_id=tenant_id,
             account_id=account_id,
             images_dir=images_dir,
-            pil_image=pil_image,
         )
 
     return documents
 
 
 def _preview_local_image_limits() -> tuple[int, int]:
-    max_inline_images = max(0, int(settings.MAX_INLINE_IMAGES or 0))
-    max_image_bytes = int(settings.MAX_INLINE_IMAGE_BYTES or 10_000_000)
+    max_inline_images = max(0, settings.MAX_INLINE_IMAGES or 0)
+    max_image_bytes = settings.MAX_INLINE_IMAGE_BYTES or 10_000_000
     return max_inline_images, max(1_000_000, max_image_bytes)
 
 
@@ -878,10 +859,8 @@ def _preview_content_image_refs(content: str) -> list[str]:
     return found
 
 
-def _preview_doc_asset_base_dir(doc: Any) -> Path | None:
-    meta = getattr(doc, "metadata", None) or {}
-    if not isinstance(meta, dict):
-        return None
+def _preview_doc_asset_base_dir(doc: Document) -> Path | None:
+    meta = doc.metadata or {}
 
     base_dir_raw = meta.get("asset_base_dir")
     if not isinstance(base_dir_raw, str) or not base_dir_raw.strip():
@@ -947,16 +926,12 @@ def _read_preview_local_image(path: Path, *, max_image_bytes: int) -> tuple[byte
     return raw_bytes, path.suffix.lower()
 
 
-def _convert_preview_local_image_bytes(
-    raw_bytes: bytes, *, ext: str, pil_image: Any | None, pillow_ok: bool
-) -> tuple[bytes, str] | None:
+def _convert_preview_local_image_bytes(raw_bytes: bytes, *, ext: str) -> tuple[bytes, str] | None:
     if ext in LOCAL_PREVIEW_IMAGE_EXTS:
         return raw_bytes, ext
-    if not pillow_ok or pil_image is None:
-        return None
     try:
-        img = pil_image.open(BytesIO(raw_bytes))
-        if getattr(img, "mode", None) != "RGB":
+        img = Image.open(BytesIO(raw_bytes))
+        if img.mode != "RGB":
             img = img.convert("RGB")
         out = BytesIO()
         img.save(out, format="JPEG", quality=85, optimize=True)
@@ -1010,8 +985,6 @@ def _preview_local_image_replacements(
     owner_binding: dict[str, str] | None,
     base_dir_resolved: Path,
     max_image_bytes: int,
-    pil_image: Any | None,
-    pillow_ok: bool,
     digest_cache: dict[str, tuple[str, str]],
     images_dir: Path,
 ) -> dict[str, str]:
@@ -1023,7 +996,7 @@ def _preview_local_image_replacements(
         image = _read_preview_local_image(resolved_path, max_image_bytes=max_image_bytes)
         if image is None:
             continue
-        converted = _convert_preview_local_image_bytes(image[0], ext=image[1], pil_image=pil_image, pillow_ok=pillow_ok)
+        converted = _convert_preview_local_image_bytes(image[0], ext=image[1])
         if converted is None:
             continue
         url = _preview_cached_or_persisted_image_url(
@@ -1049,7 +1022,9 @@ def _rewrite_preview_local_image_refs(content: str, replacements: dict[str, str]
     return PREVIEW_HTML_IMAGE_REF_RE.sub(lambda m: _replace_preview_image_ref(m, replacements), content)
 
 
-def _materialize_local_images_for_preview(documents: list, *, tenant_id: UUID, account_id: str | None = None) -> list:
+def _materialize_local_images_for_preview(
+    documents: list[Document], *, tenant_id: UUID, account_id: str | None = None
+) -> list[Document]:
     """
     Rewrite local/relative image references in Markdown/HTML into preview-time
     `/api/v1/documents/image/{uuid}` URLs.
@@ -1069,11 +1044,10 @@ def _materialize_local_images_for_preview(documents: list, *, tenant_id: UUID, a
     images_dir = _preview_images_dir(tenant_id)
     max_inline_images, max_image_bytes = _preview_local_image_limits()
     digest_cache: dict[str, tuple[str, str]] = {}
-    pil_image, pillow_ok = _load_preview_pillow_image_class()
 
     for doc in documents:
-        content = getattr(doc, "page_content", "") or ""
-        if not isinstance(content, str) or not content:
+        content = doc.page_content
+        if not content:
             continue
 
         lowered = content.lower()
@@ -1085,7 +1059,7 @@ def _materialize_local_images_for_preview(documents: list, *, tenant_id: UUID, a
             continue
         owner_binding = _preview_owner_binding(
             tenant_id=tenant_id,
-            meta=doc.metadata if isinstance(getattr(doc, "metadata", None), dict) else {},
+            meta=doc.metadata,
             account_id=account_id,
         )
 
@@ -1100,8 +1074,6 @@ def _materialize_local_images_for_preview(documents: list, *, tenant_id: UUID, a
             owner_binding=owner_binding,
             base_dir_resolved=base_dir_resolved,
             max_image_bytes=max_image_bytes,
-            pil_image=pil_image,
-            pillow_ok=pillow_ok,
             digest_cache=digest_cache,
             images_dir=images_dir,
         )
@@ -1128,32 +1100,32 @@ def _compute_chunk_coverage_metrics_from_ranges(
 
 
 def _chunk_histogram_step(max_value: int, *, unit: Literal["chars", "tokens"], target_bins: int) -> int:
-    bins = max(3, min(12, int(target_bins or 8)))
+    bins = max(3, min(12, target_bins or 8))
     base = 25 if unit == "tokens" else 50
     if max_value <= 0:
         return base
-    step = int(math.ceil((max_value / bins) / base) * base)
+    step = math.ceil((max_value / bins) / base) * base
     return max(base, step) if step > 0 else base
 
 
-def _chunk_histogram_empty_bins(max_value: int, *, step: int) -> list[dict[str, object]]:
-    bin_count = max(1, int(math.ceil((max_value + 1) / step))) if step > 0 else 1
+def _chunk_histogram_empty_bins(max_value: int, *, step: int) -> list[_ChunkHistogramBin]:
+    bin_count = max(1, math.ceil((max_value + 1) / step)) if step > 0 else 1
     return [
         {
-            "label": f"{int(i * step)}-{int((i + 1) * step)}",
-            "min": int(i * step),
-            "max": int((i + 1) * step),
+            "label": f"{i * step}-{(i + 1) * step}",
+            "min": i * step,
+            "max": (i + 1) * step,
             "count": 0,
         }
         for i in range(bin_count)
     ]
 
 
-def _increment_chunk_histogram_bins(bins: list[dict[str, object]], values: list[int], *, step: int) -> None:
+def _increment_chunk_histogram_bins(bins: list[_ChunkHistogramBin], values: list[int], *, step: int) -> None:
     for value in values:
-        idx = int(value // step) if step > 0 else 0
+        idx = value // step if step > 0 else 0
         idx = max(0, min(idx, len(bins) - 1))
-        bins[idx]["count"] = int(bins[idx].get("count") or 0) + 1
+        bins[idx]["count"] += 1
 
 
 def _compute_chunk_length_histogram(
@@ -1161,7 +1133,7 @@ def _compute_chunk_length_histogram(
     *,
     unit: Literal["chars", "tokens"],
     target_bins: int = 8,
-) -> list[dict[str, object]]:
+) -> list[_ChunkHistogramBin]:
     """
     Compute a coarse histogram for chunk length distribution.
 
@@ -1183,33 +1155,18 @@ def _compute_chunk_length_histogram(
     return bins
 
 
-def _chunk_preview_int(value: object, *, default: int = 0) -> int:
-    try:
-        return int(value) if value is not None else default
-    except (OverflowError, TypeError, ValueError):
-        return default
-
-
 def _chunk_preview_item_key(chunk: ChunkPreviewItem) -> tuple[int, int, int]:
-    start = _chunk_preview_int(getattr(chunk, "start_index", 0))
-    end = _chunk_preview_int(getattr(chunk, "end_index", start), default=start)
-    index = _chunk_preview_int(getattr(chunk, "index", 0))
-    return start, end, index
+    return chunk.start_index, chunk.end_index, chunk.index
 
 
 def _chunk_preview_analysis_items(
     chunk_items: list[ChunkPreviewItem], *, strategy: str
 ) -> tuple[list[ChunkPreviewItem], Literal["all", "child"]]:
     analysis = list(chunk_items or [])
-    if str(strategy or "") != "parent_child":
+    if strategy != "parent_child":
         return analysis, "all"
 
-    filtered = [
-        chunk
-        for chunk in analysis
-        if not isinstance(getattr(chunk, "metadata", None), dict)
-        or getattr(chunk, "metadata", {}).get("chunk_role") != "parent"
-    ]
+    filtered = [chunk for chunk in analysis if chunk.metadata.get("chunk_role") != "parent"]
     return (filtered, "child") if filtered else (analysis, "all")
 
 
@@ -1223,20 +1180,20 @@ def _collect_chunk_gap_overlap_signals(
     covered_end = 0
 
     for chunk in sorted(analysis, key=_chunk_preview_item_key):
-        idx = _chunk_preview_int(getattr(chunk, "index", None), default=-1)
+        idx = chunk.index
         if idx < 0:
             continue
-        start = max(0, _chunk_preview_int(getattr(chunk, "start_index", 0)))
-        end = max(start, _chunk_preview_int(getattr(chunk, "end_index", start), default=start))
+        start = max(0, chunk.start_index)
+        end = max(start, chunk.end_index)
 
         if start > covered_end:
             gap = start - covered_end
             gap_indices.add(idx)
-            gap_before_by_index[idx] = int(gap)
+            gap_before_by_index[idx] = gap
         elif start < covered_end:
             overlap = covered_end - start
             chunk_len = max(1, end - start)
-            overlap_prev_by_index[idx] = int(overlap)
+            overlap_prev_by_index[idx] = overlap
             if strict_no_overlap or (overlap / chunk_len) >= 0.6 or overlap >= 800:
                 overlap_indices.add(idx)
 
@@ -1247,15 +1204,15 @@ def _collect_chunk_gap_overlap_signals(
 
 def _chunk_preview_length_for_short_signal(chunk: ChunkPreviewItem, *, unit: Literal["chars", "tokens"]) -> int:
     if unit == "tokens":
-        return _chunk_preview_int(getattr(chunk, "tokens_est", None))
-    return _chunk_preview_int(getattr(chunk, "length", 0))
+        return chunk.tokens_est or 0
+    return chunk.length
 
 
 def _collect_short_chunk_indices(chunk_items: list[ChunkPreviewItem], *, unit: Literal["chars", "tokens"]) -> set[int]:
     threshold = 40 if unit == "tokens" else 120
     out: set[int] = set()
     for chunk in chunk_items or []:
-        idx = _chunk_preview_int(getattr(chunk, "index", None), default=-1)
+        idx = chunk.index
         length = _chunk_preview_length_for_short_signal(chunk, unit=unit)
         if idx >= 0 and 0 < length < threshold:
             out.add(idx)
@@ -1266,10 +1223,10 @@ def _collect_duplicate_chunk_indices(chunk_items: list[ChunkPreviewItem]) -> set
     duplicate_indices: set[int] = set()
     seen: dict[str, int] = {}
     for chunk in chunk_items or []:
-        idx = _chunk_preview_int(getattr(chunk, "index", None), default=-1)
+        idx = chunk.index
         if idx < 0:
             continue
-        trimmed = str(getattr(chunk, "content", "") or "").strip()
+        trimmed = chunk.content.strip()
         if not trimmed:
             continue
         digest = hashlib.blake2b(trimmed.encode("utf-8"), digest_size=16).hexdigest()
@@ -1292,7 +1249,7 @@ def _compute_chunk_preview_review_signals(
 
     Designed to be close to frontend's review-signals.ts so results are explainable.
     """
-    strict_no_overlap = str(strategy or "") == "separator"
+    strict_no_overlap = strategy == "separator"
     analysis, basis = _chunk_preview_analysis_items(chunk_items, strategy=strategy)
     gap_indices, overlap_indices, gap_before_by_index, overlap_prev_by_index = _collect_chunk_gap_overlap_signals(
         analysis,
@@ -1314,13 +1271,13 @@ def _compute_chunk_preview_review_signals(
 
 def _chunk_preview_stats_dict(stats: ChunkPreviewStats) -> dict[str, float | int]:
     return {
-        "count": int(getattr(stats, "count", 0) or 0),
-        "short_count": int(getattr(stats, "short_count", 0) or 0),
-        "duplicate_count": int(getattr(stats, "duplicate_count", 0) or 0),
-        "covered_chars": int(getattr(stats, "covered_chars", 0) or 0),
-        "coverage_ratio": float(getattr(stats, "coverage_ratio", 0.0) or 0.0),
-        "overlap_waste_ratio": float(getattr(stats, "overlap_waste_ratio", 0.0) or 0.0),
-        "gap_count": int(getattr(stats, "gap_count", 0) or 0),
+        "count": stats.count,
+        "short_count": stats.short_count,
+        "duplicate_count": stats.duplicate_count,
+        "covered_chars": stats.covered_chars,
+        "coverage_ratio": stats.coverage_ratio,
+        "overlap_waste_ratio": stats.overlap_waste_ratio,
+        "gap_count": stats.gap_count,
     }
 
 
@@ -1397,13 +1354,13 @@ def _compute_chunk_preview_quality(
 
     gate_raw, recs, patches_raw = compute_chunk_quality_gate(
         stats=_chunk_preview_stats_dict(stats),
-        total_chunks=int(total_chunks or 0),
-        total_characters=int(total_characters or 0),
-        chunk_size=int(chunk_size or 0),
-        chunk_overlap=int(chunk_overlap or 0),
-        original_text_included=bool(original_text_included),
-        original_text_truncated=bool(original_text_truncated),
-        original_text_max_chars=int(original_text_max_chars or 0),
+        total_chunks=total_chunks,
+        total_characters=total_characters,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        original_text_included=original_text_included,
+        original_text_truncated=original_text_truncated,
+        original_text_max_chars=original_text_max_chars,
     )
 
     grade = str(gate_raw.get("grade") if isinstance(gate_raw, dict) else "pass") or "pass"

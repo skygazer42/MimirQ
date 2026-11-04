@@ -1,5 +1,6 @@
 """Tenant-scoped authorization and lookup for document assets."""
 
+from collections.abc import Mapping
 from pathlib import Path
 from uuid import UUID
 
@@ -178,8 +179,8 @@ def resolve_preview_binding(
     tenant_id: UUID,
     account_id: str | None,
     preview_id: str,
-) -> tuple[dict[str, str], bool]:
-    binding = _load_preview_owner_binding(images_dir=images_dir, preview_id=preview_id)
+) -> tuple[Mapping[str, str | None], bool]:
+    binding: Mapping[str, str | None] | None = _load_preview_owner_binding(images_dir=images_dir, preview_id=preview_id)
     legacy_authorized = False
     if binding is None:
         binding = _legacy_preview_binding(
@@ -234,7 +235,7 @@ def assert_preview_binding_access(
     db: Session,
     tenant_id: UUID,
     account_id: str | None,
-    binding: dict[str, str],
+    binding: Mapping[str, str | None],
     legacy_authorized: bool,
 ) -> None:
     bound_account_id = binding.get("account_id")

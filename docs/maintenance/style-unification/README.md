@@ -1,12 +1,12 @@
 # 代码风格统一重构记录
 
 基线：`codex/local-account-registration` 的 `77b6adc1bce523482f0509302a454ce20e01c41c`。
-实施分支：`codex/local-account-registration`；工作区：`E:/MimirQ`；更新日期：2026-11-02。
+实施分支：`codex/local-account-registration`；工作区：`E:/MimirQ`；更新日期：2026-11-05。
 
 本目录记录全项目迁移。**当前仍在实施，不代表全仓语义审核已完成。**
 
 - [实施计划](../../superpowers/plans/2026-11-02-style-unification.md)：统一约定、Skill 分工、业务批次与验收；数据集、权限配额、SCIM、配置、通用 API 及身份令牌类别已完成本轮静态核对，基础后端与后续业务链继续按清单推进。
-- `coverage.csv`：当前 3,754 个文件与逐文件处理状态（含本批新增决定记录），新增、删除和移动在所属批次同步。
+- `coverage.csv`：当前 3,755 个文件与逐文件处理状态（含本批新增决定记录），新增、删除和移动在所属批次同步。
 - `baseline-python-failures.txt`：原始 Python 基线失败和收集错误的用例名称。
 - `verification.md`：基线及各批真实检查结果；历史结果不代表当前版本通过。
 

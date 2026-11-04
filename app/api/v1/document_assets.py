@@ -1,5 +1,6 @@
 import mimetypes
 import uuid
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Annotated, Any
 from uuid import UUID
@@ -368,7 +369,7 @@ def _resolve_preview_binding_for_asset(
     tenant_id: UUID,
     account_id: str | None,
     preview_id: str,
-) -> tuple[dict[str, str], bool]:
+) -> tuple[Mapping[str, str | None], bool]:
     return document_asset_access.resolve_preview_binding(
         db=db,
         images_dir=images_dir,
@@ -383,7 +384,7 @@ def _assert_preview_binding_access(
     db: Session,
     tenant_id: UUID,
     account_id: str | None,
-    preview_binding: dict[str, str],
+    preview_binding: Mapping[str, str | None],
     legacy_binding_authorized: bool,
 ) -> None:
     document_asset_access.assert_preview_binding_access(
