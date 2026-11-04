@@ -3,14 +3,18 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import { expectSourceToContain } from '@/lib/source-test-utils'
+
 const pageSource = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
 
 describe('prompts Ocean theme', () => {
   it('uses one coherent surface and control system', () => {
-    expect(pageSource).toContain(
+    expectSourceToContain(
+      pageSource,
       "const PROMPT_SURFACE_CLASS =\n  'rounded-xl border border-info/15 bg-background/72 shadow-none'",
     )
-    expect(pageSource).toContain(
+    expectSourceToContain(
+      pageSource,
       "const PROMPT_CONTROL_CLASS =\n  'rounded-lg border-info/15 bg-info/[0.025] shadow-none'",
     )
     expect(pageSource).toContain('bodyClassName="bg-info/[0.035] !pb-0"')

@@ -10,6 +10,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import chroma from 'chroma-js'
+import postcss from 'postcss'
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
 const WEB_ROOT = path.resolve(SCRIPT_DIR, '..')
@@ -28,34 +29,29 @@ const CHECKS = [
   { id: 'destructive-control', fg: 'destructive-foreground', bg: 'destructive', min: 4.5 },
 ]
 
-function extractBlock(source, marker) {
-  const markerIndex = source.indexOf(marker)
-  if (markerIndex === -1) return null
+function normalizeSelector(selector) {
+  return selector
+    .trim()
+    .replace(
+      /\[\s*data-surface-theme\s*=\s*(?:"([a-z]+)"|'([a-z]+)'|([a-z]+))\s*\]/gu,
+      (_match, doubleQuoted, singleQuoted, unquoted) =>
+        `[data-surface-theme=${doubleQuoted ?? singleQuoted ?? unquoted}]`,
+    )
+}
 
-  const braceStart = source.indexOf('{', markerIndex)
-  if (braceStart === -1) return null
-
-  let depth = 0
-  for (let index = braceStart; index < source.length; index += 1) {
-    const ch = source[index]
-    if (ch === '{') depth += 1
-    if (ch === '}') {
-      depth -= 1
-      if (depth === 0) {
-        return source.slice(braceStart + 1, index)
-      }
-    }
-  }
-
-  return null
+function extractBlock(stylesheet, selector) {
+  const target = normalizeSelector(selector)
+  let block = null
+  stylesheet.walkRules((rule) => {
+    if (block === null && rule.selectors.some((value) => normalizeSelector(value) === target)) block = rule
+  })
+  return block
 }
 
 function parseCssVariables(block) {
   const vars = new Map()
-  const regex = /--([a-z0-9-]+)\s*:\s*([^;]+);/gi
-  let match
-  while ((match = regex.exec(block)) !== null) {
-    vars.set(match[1], match[2].trim())
+  for (const node of block.nodes) {
+    if (node.type === 'decl' && node.prop.startsWith('--')) vars.set(node.prop.slice(2), node.value.trim())
   }
   return vars
 }
@@ -84,8 +80,9 @@ function formatRatio(value) {
 
 async function main() {
   const source = await fs.readFile(GLOBALS_PATH, 'utf8')
-  const lightBlock = extractBlock(source, ':root')
-  const darkBlock = extractBlock(source, 'html.dark {')
+  const stylesheet = postcss.parse(source, { from: GLOBALS_PATH })
+  const lightBlock = extractBlock(stylesheet, ':root')
+  const darkBlock = extractBlock(stylesheet, 'html.dark')
 
   if (!lightBlock || !darkBlock) {
     throw new Error('Could not locate :root/default html.dark token blocks in app/globals.css')
@@ -96,16 +93,16 @@ async function main() {
 
   for (const surface of surfaceNames) {
     const lightSurfaceBlock =
-      surface === 'ocean' ? '' : extractBlock(source, `html:not(.dark)[data-surface-theme="${surface}"]`)
-    const darkSurfaceBlock = extractBlock(source, `html.dark[data-surface-theme="${surface}"]`)
+      surface === 'ocean' ? null : extractBlock(stylesheet, `html:not(.dark)[data-surface-theme="${surface}"]`)
+    const darkSurfaceBlock = extractBlock(stylesheet, `html.dark[data-surface-theme="${surface}"]`)
 
-    if (lightSurfaceBlock === null || darkSurfaceBlock === null) {
+    if ((surface !== 'ocean' && lightSurfaceBlock === null) || darkSurfaceBlock === null) {
       throw new Error(`Could not locate complete ${surface} surface token blocks in app/globals.css`)
     }
 
     themes.push({
       name: `light:${surface}`,
-      vars: mergeCssVariables(lightBlock, lightSurfaceBlock),
+      vars: mergeCssVariables(...(lightSurfaceBlock ? [lightBlock, lightSurfaceBlock] : [lightBlock])),
     })
     themes.push({
       name: `dark:${surface}`,

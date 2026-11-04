@@ -3,6 +3,8 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import { expectSourceToContain } from '@/lib/source-test-utils'
+
 const read = (file: string) => fs.readFileSync(path.resolve(__dirname, file), 'utf8')
 
 describe('chunk preview theme and compact icon', () => {
@@ -26,7 +28,7 @@ describe('chunk preview theme and compact icon', () => {
     expect(workbench).toContain('iconImage="chunk-preview"')
     expect(workbench).toContain('data-chunk-preview-empty-canvas="true"')
     expect(workbench).toContain('data-chunk-empty-visual-map')
-    expect(pageTitleIcon).toContain('"chunk-preview": "/page-title-icons/chunk-preview.svg"')
+    expectSourceToContain(pageTitleIcon, '"chunk-preview": "/page-title-icons/chunk-preview.svg"')
     expect(pageTitleIcon).toContain('src={PAGE_TITLE_ICON_SOURCES[name] ?? `/page-title-icons/${name}.png`}')
     expect(icon).toContain('<svg')
     expect(icon).toContain('data-chunk-boundary="true"')

@@ -3,6 +3,8 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import { expectSourceToContain } from '@/lib/source-test-utils'
+
 const sidebar = fs.readFileSync(path.resolve(__dirname, 'components/workbench/sidebar-client.tsx'), 'utf8')
 const strategyDropdown = fs.readFileSync(path.resolve(__dirname, '../business/chunk-strategy-dropdown.tsx'), 'utf8')
 const pipelineOptions = fs.readFileSync(path.resolve(__dirname, '../pipeline-options-panel.tsx'), 'utf8')
@@ -83,8 +85,8 @@ describe('chunk preview sidebar controls', () => {
     expect(strategyDropdown).toContain("const resolvedIconFrameSize = surface === 'ocean' ? 'size-6' : 'size-8'")
     expect(strategyDropdown).toContain("'grid shrink-0 place-items-center rounded-md'")
 
-    expect(pipelineOptions).toContain('compact ? "size-6" : "size-7"')
-    expect(pipelineOptions).toContain('compact ? "size-3.5" : "size-4"')
+    expectSourceToContain(pipelineOptions, 'compact ? "size-6" : "size-7"')
+    expectSourceToContain(pipelineOptions, 'compact ? "size-3.5" : "size-4"')
     expect(pipelineOptions).toContain('onCheckedChange={(value) => handleChecked(item.key, value)}')
 
     expect(chunkPreset).toContain('className="flex size-6 shrink-0 items-center justify-center rounded-lg border')

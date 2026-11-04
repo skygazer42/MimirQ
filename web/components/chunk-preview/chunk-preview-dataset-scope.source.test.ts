@@ -3,6 +3,8 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import { expectSourceToContain } from '@/lib/source-test-utils'
+
 const sidebar = fs.readFileSync(path.resolve(__dirname, 'components/workbench/sidebar-client.tsx'), 'utf8')
 const messages = fs.readFileSync(path.resolve(__dirname, '../../i18n/messages/zh-CN/chunk-preview.ts'), 'utf8')
 
@@ -20,7 +22,10 @@ describe('chunk preview dataset scope', () => {
     expect(sidebar).toContain('<SidebarPanel tone="sky" className="relative overflow-hidden p-0">')
     expect(sidebar).toContain('data-dataset-scope-header="true"')
     expect(sidebar).toContain('data-dataset-scope-selector="true"')
-    expect(sidebar).toContain('data-chunk-file-queue\n            className="border-t border-foreground/10 px-3 py-3"')
+    expectSourceToContain(
+      sidebar,
+      'data-chunk-file-queue\n            className="border-t border-foreground/10 px-3 py-3"',
+    )
     expect(sidebar).toContain(
       'className="mt-2 max-h-[216px] space-y-1 overflow-y-auto overscroll-contain no-scrollbar"',
     )

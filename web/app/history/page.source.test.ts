@@ -4,6 +4,8 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import { expectSourceToContain } from '@/lib/source-test-utils'
+
 describe('history route source', () => {
   it('keeps the server wrapper auth-agnostic and lets the client fetch authenticated history data', () => {
     const page = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
@@ -50,7 +52,7 @@ describe('history route source', () => {
   it('suppresses hydration drift for message-group date labels in the active conversation pane', () => {
     const client = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
 
-    expect(client).toContain('<div suppressHydrationWarning')
+    expectSourceToContain(client, '<div suppressHydrationWarning')
     expect(client).toContain('{group.label}')
   })
 
