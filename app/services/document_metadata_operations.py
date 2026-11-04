@@ -74,7 +74,7 @@ def patch_pipeline(
     account_id: str,
 ) -> DBDocument:
     document = _get_writable_document(db=db, document_id=document_id, tenant_id=tenant_id, account_id=account_id)
-    status = str(document.status or "").lower()
+    status = (document.status or "").lower()
     if status == "processing" or (status == "pending" and not is_reprocessable_pending_document(document)):
         raise HTTPException(status_code=409, detail=f"Cannot edit pipeline for a {status} document")
 
@@ -120,7 +120,7 @@ def patch_user_metadata(
     db.commit()
     db.refresh(document)
 
-    keys = sorted(str(key) for key in patch)
+    keys = sorted(patch)
     details: dict[str, object] = {"replace": payload.replace, "keys": keys[:50]}
     if isinstance(patch.get("quarantine_action"), str) and patch["quarantine_action"].strip():
         details["quarantine_action"] = patch["quarantine_action"].strip()[:200]

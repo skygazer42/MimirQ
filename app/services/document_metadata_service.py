@@ -9,13 +9,6 @@ MARKDOWN_IMAGE_RE = re.compile(r"!\[[^\]]*]\([^)]*\)")
 HTML_TABLE_RE = re.compile(r"<table\b", re.IGNORECASE)
 
 
-def apply_user_metadata_patch(*, current: dict[str, Any], patch: dict[str, Any], replace: bool) -> dict[str, Any]:
-    next_user = _merge_user_metadata_patch(current=current, patch=patch, replace=replace)
-    _normalize_user_metadata_tags(next_user, replace=replace)
-    _normalize_user_metadata_notes(next_user)
-    return next_user
-
-
 def attach_runtime_document_metadata(document: DBDocument) -> None:
     metadata = build_runtime_document_metadata(document)
     set_committed_value(document, "doc_metadata", metadata)
@@ -51,52 +44,6 @@ def build_runtime_document_metadata(document: DBDocument) -> dict[str, Any]:
             metadata["block_count_source"] = "elements"
 
     return metadata
-
-
-def _merge_user_metadata_patch(*, current: dict[str, Any], patch: dict[str, Any], replace: bool) -> dict[str, Any]:
-    if replace:
-        return dict(patch)
-
-    next_user = dict(current)
-    for key, value in patch.items():
-        if value is None:
-            next_user.pop(key, None)
-        else:
-            next_user[key] = value
-    return next_user
-
-
-def _normalize_user_metadata_tags(next_user: dict[str, Any], *, replace: bool) -> None:
-    tags = next_user.get("tags")
-    if isinstance(tags, str):
-        tags = [t.strip() for t in tags.split(",")]
-    if isinstance(tags, list):
-        cleaned: list[str] = []
-        seen: set[str] = set()
-        for raw in tags:
-            if not isinstance(raw, str):
-                continue
-            val = raw.strip()
-            if not val:
-                continue
-            key = val.lower()
-            if key in seen:
-                continue
-            seen.add(key)
-            cleaned.append(val[:64])
-        next_user["tags"] = cleaned[:50]
-    elif tags is None and "tags" in next_user and not replace:
-        next_user.pop("tags", None)
-
-
-def _normalize_user_metadata_notes(next_user: dict[str, Any]) -> None:
-    notes = next_user.get("notes")
-    if isinstance(notes, str):
-        val = notes.strip()
-        if not val:
-            next_user.pop("notes", None)
-        else:
-            next_user["notes"] = val[:20_000]
 
 
 def _safe_int(value: object) -> int:

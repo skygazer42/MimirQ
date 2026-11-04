@@ -27,10 +27,6 @@ _ALLOWED_RE_FLAG_BITS = int(re.IGNORECASE)
 DEFAULT_MASK = "[REDACTED]"
 
 
-def _is_suspicious_regex(pattern: str) -> bool:
-    return looks_like_nested_quantifier(pattern)
-
-
 def _normalize_sources(raw: object) -> list[str]:
     if raw is None:
         return []
@@ -115,7 +111,7 @@ def _normalize_column_name_regex(raw: object) -> str:
         raise ValueError("column_name_regex is required")
     if len(pat) > MAX_COLUMN_REGEX_LEN:
         raise ValueError(f"column_name_regex too long (max={MAX_COLUMN_REGEX_LEN})")
-    if _is_suspicious_regex(pat):
+    if looks_like_nested_quantifier(pat):
         raise ValueError("column_name_regex looks unsafe")
     try:
         re.compile(pat, flags=_ALLOWED_RE_FLAG_BITS)
@@ -134,40 +130,40 @@ def _coerce_rule(rule: FlsRule | Mapping[str, Any] | object, *, index: int) -> F
 
 
 def _normalize_fls_rule(rule: FlsRule, *, index: int, seen_ids: set[str]) -> FlsRule:
-    rid = str(rule.id or "").strip()
+    rid = (rule.id or "").strip()
     if not RULE_ID_RE.match(rid):
         raise ValueError(f"invalid rule.id format at index={index}")
     if rid in seen_ids:
         raise ValueError(f"duplicate rule.id: {rid}")
     seen_ids.add(rid)
 
-    name = str(rule.name or "").strip()
+    name = (rule.name or "").strip()
     if not name:
         raise ValueError(f"rule.name is required at index={index}")
 
-    sources = _normalize_sources(getattr(rule, "sources", None))
+    sources = _normalize_sources(rule.sources)
     if not sources:
         raise ValueError(f"rule.sources is required at index={index}")
 
-    allow_roles = _normalize_allow_roles(getattr(rule, "allow_roles", None))
-    allow_accounts = _normalize_allow_account_ids(getattr(rule, "allow_account_ids", None))
+    allow_roles = _normalize_allow_roles(rule.allow_roles)
+    allow_accounts = _normalize_allow_account_ids(rule.allow_account_ids)
     if not allow_roles and not allow_accounts:
         raise ValueError(f"rule allowlist is empty at index={index}")
 
     return FlsRule(
         id=rid,
         name=name[:200],
-        enabled=bool(rule.enabled),
+        enabled=rule.enabled,
         sources=sources,
-        column_name_regex=_normalize_column_name_regex(getattr(rule, "column_name_regex", None)),
+        column_name_regex=_normalize_column_name_regex(rule.column_name_regex),
         allow_roles=allow_roles,
         allow_account_ids=allow_accounts,
-        mask=_normalize_mask(getattr(rule, "mask", None)),
+        mask=_normalize_mask(rule.mask),
     )
 
 
 def validate_and_normalize_fls_policy(policy: FlsPolicy) -> FlsPolicy:
-    if str(policy.version or "").strip() not in {"1"}:
+    if (policy.version or "").strip() not in {"1"}:
         raise ValueError("unsupported FLS policy version")
 
     rules_in = policy.rules or []
@@ -196,7 +192,7 @@ def parse_fls_policy_from_metadata(metadata: dict[str, Any]) -> FlsPolicy | None
         return None
 
 
-def fls_policy_to_metadata(policy: FlsPolicy | None) -> dict | None:
+def fls_policy_to_metadata(policy: FlsPolicy | None) -> dict[str, Any] | None:
     if policy is None:
         return None
     return validate_and_normalize_fls_policy(policy).model_dump()
@@ -233,12 +229,12 @@ def resolve_fls_mask_for_column(
 
     name = str(column_name or "")
     for rule in policy.rules:
-        if not bool(getattr(rule, "enabled", True)):
+        if not rule.enabled:
             continue
-        sources = getattr(rule, "sources", None) or []
+        sources = rule.sources or []
         if src not in sources:
             continue
-        pat = str(getattr(rule, "column_name_regex", "") or "").strip()
+        pat = (rule.column_name_regex or "").strip()
         if not pat:
             continue
         try:
@@ -250,7 +246,7 @@ def resolve_fls_mask_for_column(
         if _is_allowed(rule, ctx):
             return None
 
-        mask = str(getattr(rule, "mask", "") or "").strip()
+        mask = (rule.mask or "").strip()
         return mask or default_mask
     return None
 
@@ -296,7 +292,7 @@ def redact_row_lists(rows: Iterable[object], *, columns: list[str], mask_map: Ma
     idx_mask: dict[int, str] = {}
     for i, col in enumerate(columns or []):
         if col in mask_map:
-            idx_mask[int(i)] = str(mask_map[col])
+            idx_mask[i] = str(mask_map[col])
     if not idx_mask:
         return [list(r) if isinstance(r, (list, tuple)) else [r] for r in rows or []]
 
