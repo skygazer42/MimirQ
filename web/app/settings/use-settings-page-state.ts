@@ -1,10 +1,13 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 import { formatApiError } from '@/lib/api-errors'
-import { ltrApi, metaApi, settingsApi } from '@/lib/api'
+import { ltrApi } from '@/lib/api/ltr'
+import { metaApi } from '@/lib/api/meta'
+import { settingsApi } from '@/lib/api/settings'
+import { AUTH_SCOPE_CHANGED_EVENT, getAuthSessionRevision } from '@/lib/auth-storage'
 import type { LTRModelInfo } from '@/lib/api/ltr'
 import type { BackendMetaDetails } from '@/lib/api/meta'
 import { MODEL_PROVIDERS } from '@/types/models'
@@ -70,6 +73,18 @@ function mergeWithDefaults<T extends object>(
     ...current,
     ...edited,
   }
+}
+
+function retireSubmittedSettings(current: Partial<SystemSettings>, submitted: Partial<SystemSettings>) {
+  const next = { ...current }
+  for (const key of Object.keys(submitted) as Array<keyof SystemSettings>) {
+    if (current[key] === submitted[key]) delete next[key]
+  }
+  return next
+}
+
+function isCurrentPageSession(owner: { active: boolean }, revision: number): boolean {
+  return owner.active && revision === getAuthSessionRevision()
 }
 
 const DEFAULT_OBSERVABILITY: ObservabilityConfig = {
@@ -430,6 +445,20 @@ export function useSettingsPageState() {
   const [ltrUploadManifestFile, setLtrUploadManifestFile] = useState<File | null>(null)
   const [ltrUploadResetKey, setLtrUploadResetKey] = useState(0)
   const [ltrBusyModelId, setLtrBusyModelId] = useState<string | null>(null)
+  const pageOwnerRef = useRef({ active: true })
+  const settingsLoadRef = useRef<symbol | null>(null)
+  const settingsWriteRef = useRef<symbol | null>(null)
+  const ltrLoadRef = useRef<symbol | null>(null)
+  const ltrRegistrationRef = useRef<symbol | null>(null)
+  const ltrMutationRef = useRef<symbol | null>(null)
+  const saveTimerRef = useRef<number | null>(null)
+
+  function clearSaveTimer() {
+    if (saveTimerRef.current != null) {
+      globalThis.window.clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
+  }
 
   const ragMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_RAG, settings?.rag, editedSettings.rag),
@@ -514,7 +543,13 @@ export function useSettingsPageState() {
   const isSecretsRedactEnabled = governanceMerged.secrets_redact
   const isQuarantineOnDropEnabled = governanceMerged.quarantine_on_drop
 
-  const loadSettings = async () => {
+  const loadSettings = async (submitted?: Partial<SystemSettings>) => {
+    const owner = pageOwnerRef.current
+    if (!owner.active) return
+    const revision = getAuthSessionRevision()
+    const load = Symbol()
+    settingsLoadRef.current = load
+    const isCurrent = () => settingsLoadRef.current === load && isCurrentPageSession(owner, revision)
     setLoading(true)
     setLoadError(null)
     try {
@@ -523,33 +558,82 @@ export function useSettingsPageState() {
         settingsApi.getStatus().catch(() => null),
         metaApi.details().catch(() => null),
       ])
+      if (!isCurrent()) return
       setSettings(settingsData)
       setStatus(statusData)
       setBackendMeta(metaData)
-      setEditedSettings({})
+      if (submitted) setEditedSettings((current) => retireSubmittedSettings(current, submitted))
     } catch (error) {
-      setLoadError(formatApiError(error, '加载失败'))
+      if (isCurrent()) setLoadError(formatApiError(error, '加载失败'))
     } finally {
-      setLoading(false)
+      if (owner.active && settingsLoadRef.current === load) {
+        settingsLoadRef.current = null
+        setLoading(false)
+      }
     }
   }
 
   const loadLtrModels = async () => {
+    const owner = pageOwnerRef.current
+    if (!owner.active) return
+    const revision = getAuthSessionRevision()
+    const load = Symbol()
+    ltrLoadRef.current = load
+    const isCurrent = () => ltrLoadRef.current === load && isCurrentPageSession(owner, revision)
     setLtrLoading(true)
     setLtrError(null)
     try {
       const res = await ltrApi.listModels()
+      if (!isCurrent()) return
       setLtrModels(Array.isArray(res.items) ? res.items : [])
     } catch (error) {
-      setLtrError(formatApiError(error, '加载失败'))
+      if (isCurrent()) setLtrError(formatApiError(error, '加载失败'))
     } finally {
-      setLtrLoading(false)
+      if (owner.active && ltrLoadRef.current === load) {
+        ltrLoadRef.current = null
+        setLtrLoading(false)
+      }
     }
   }
 
   useEffect(() => {
+    pageOwnerRef.current = { active: true }
     void loadSettings()
     void loadLtrModels()
+    const resetScope = () => {
+      pageOwnerRef.current.active = false
+      pageOwnerRef.current = { active: true }
+      settingsLoadRef.current = null
+      settingsWriteRef.current = null
+      ltrLoadRef.current = null
+      ltrRegistrationRef.current = null
+      ltrMutationRef.current = null
+      clearSaveTimer()
+      setSettings(null)
+      setStatus(null)
+      setBackendMeta(null)
+      setEditedSettings({})
+      setSaveMessage(null)
+      setLastUpdatedKeys([])
+      setSaving(false)
+      setSelectedProvider(null)
+      setDialogOpen(false)
+      setLtrModels([])
+      setLtrMessage(null)
+      setLtrUploading(false)
+      setLtrBusyModelId(null)
+      setLtrUploadModelFile(null)
+      setLtrUploadManifestFile(null)
+      setLtrUploadResetKey((key) => key + 1)
+      void loadSettings()
+      void loadLtrModels()
+    }
+    globalThis.window.addEventListener(AUTH_SCOPE_CHANGED_EVENT, resetScope)
+    return () => {
+      pageOwnerRef.current.active = false
+      clearSaveTimer()
+      globalThis.window.removeEventListener(AUTH_SCOPE_CHANGED_EVENT, resetScope)
+    }
   }, [])
 
   useEffect(() => {
@@ -558,6 +642,12 @@ export function useSettingsPageState() {
 
   const registerLtrModel = async () => {
     if (!ltrUploadModelFile || !ltrUploadManifestFile) return
+    const owner = pageOwnerRef.current
+    if (!owner.active || ltrRegistrationRef.current) return
+    const revision = getAuthSessionRevision()
+    const registration = Symbol()
+    ltrRegistrationRef.current = registration
+    const isCurrent = () => ltrRegistrationRef.current === registration && isCurrentPageSession(owner, revision)
     setLtrUploading(true)
     setLtrMessage(null)
     try {
@@ -565,65 +655,104 @@ export function useSettingsPageState() {
         modelFile: ltrUploadModelFile,
         manifestFile: ltrUploadManifestFile,
       })
+      if (!isCurrent()) return
       setLtrMessage({ type: 'success', text: '已注册 LTR 模型' })
       setLtrUploadModelFile(null)
       setLtrUploadManifestFile(null)
       setLtrUploadResetKey((key) => key + 1)
       await loadLtrModels()
     } catch (error) {
-      setLtrMessage({ type: 'error', text: formatApiError(error, '注册失败') })
+      if (isCurrent()) setLtrMessage({ type: 'error', text: formatApiError(error, '注册失败') })
     } finally {
-      setLtrUploading(false)
+      if (owner.active && ltrRegistrationRef.current === registration) {
+        ltrRegistrationRef.current = null
+        setLtrUploading(false)
+      }
     }
   }
 
   const activateLtrModel = async (modelId: string) => {
     const mid = String(modelId || '').trim()
     if (!mid) return
+    const owner = pageOwnerRef.current
+    if (!owner.active || ltrMutationRef.current) return
+    const revision = getAuthSessionRevision()
+    const mutation = Symbol()
+    ltrMutationRef.current = mutation
+    const isCurrent = () => ltrMutationRef.current === mutation && isCurrentPageSession(owner, revision)
     setLtrBusyModelId(mid)
     setLtrMessage(null)
     try {
       await ltrApi.activateModel(mid)
+      if (!isCurrent()) return
       setLtrMessage({ type: 'success', text: `已激活模型: ${shortId(mid, 12)}` })
       await loadLtrModels()
     } catch (error) {
-      setLtrMessage({ type: 'error', text: formatApiError(error, '激活失败') })
+      if (isCurrent()) setLtrMessage({ type: 'error', text: formatApiError(error, '激活失败') })
     } finally {
-      setLtrBusyModelId(null)
+      if (owner.active && ltrMutationRef.current === mutation) {
+        ltrMutationRef.current = null
+        setLtrBusyModelId(null)
+      }
     }
   }
 
   const rollbackLtrModel = async () => {
+    const owner = pageOwnerRef.current
+    if (!owner.active || ltrMutationRef.current) return
+    const revision = getAuthSessionRevision()
+    const mutation = Symbol()
+    ltrMutationRef.current = mutation
+    const isCurrent = () => ltrMutationRef.current === mutation && isCurrentPageSession(owner, revision)
     setLtrBusyModelId('__rollback__')
     setLtrMessage(null)
     try {
       await ltrApi.rollbackActiveModel()
+      if (!isCurrent()) return
       setLtrMessage({ type: 'success', text: '已回滚到上一版本' })
       await loadLtrModels()
     } catch (error) {
-      setLtrMessage({ type: 'error', text: formatApiError(error, '回滚失败') })
+      if (isCurrent()) setLtrMessage({ type: 'error', text: formatApiError(error, '回滚失败') })
     } finally {
-      setLtrBusyModelId(null)
+      if (owner.active && ltrMutationRef.current === mutation) {
+        ltrMutationRef.current = null
+        setLtrBusyModelId(null)
+      }
     }
   }
 
   const saveSettings = async () => {
     if (Object.keys(editedSettings).length === 0) return
-
+    const owner = pageOwnerRef.current
+    if (!owner.active || settingsWriteRef.current) return
+    const revision = getAuthSessionRevision()
+    const write = Symbol()
+    settingsWriteRef.current = write
+    const isCurrent = () => settingsWriteRef.current === write && isCurrentPageSession(owner, revision)
+    clearSaveTimer()
     setSaving(true)
     setSaveMessage(null)
     setLastUpdatedKeys([])
     try {
       const result = await settingsApi.update(editedSettings)
+      if (!isCurrent()) return
       setSaveMessage(createSettingsSaveSuccessMessage())
       setLastUpdatedKeys(result.updated_keys || [])
-      await loadSettings()
-      refreshCapabilities().catch(() => null)
+      await loadSettings(editedSettings)
+      if (isCurrent()) refreshCapabilities().catch(() => null)
     } catch (error) {
-      setSaveMessage({ type: 'error', text: formatApiError(error, '保存失败') })
+      if (isCurrent()) setSaveMessage({ type: 'error', text: formatApiError(error, '保存失败') })
     } finally {
-      setSaving(false)
-      setTimeout(() => setSaveMessage(null), 5000)
+      if (owner.active && settingsWriteRef.current === write) {
+        settingsWriteRef.current = null
+        setSaving(false)
+        if (isCurrentPageSession(owner, revision)) {
+          saveTimerRef.current = globalThis.window.setTimeout(() => {
+            saveTimerRef.current = null
+            setSaveMessage(null)
+          }, 5000)
+        }
+      }
     }
   }
 
@@ -797,6 +926,16 @@ export function useSettingsPageState() {
   }, [hasChanges])
 
   const handleConfigure = (provider: ModelProvider) => {
+    if (settingsWriteRef.current) {
+      setSaveMessage({ type: 'error', text: '配置正在保存，请完成后再修改模型配置。' })
+      return
+    }
+    if (provider.category === 'reranker') {
+      clearSaveTimer()
+      setSaveMessage({ type: 'error', text: '请在「RAG 配置」中选择重排服务与数量。' })
+      setDialogOpen(false)
+      return
+    }
     setSelectedProvider(provider)
     setDialogOpen(true)
   }
@@ -806,6 +945,13 @@ export function useSettingsPageState() {
     if (!provider) return
 
     if (provider.category === 'model' || provider.category === 'embedding') {
+      const owner = pageOwnerRef.current
+      if (!owner.active || settingsWriteRef.current) return
+      const revision = getAuthSessionRevision()
+      const write = Symbol()
+      settingsWriteRef.current = write
+      const isCurrent = () => settingsWriteRef.current === write && isCurrentPageSession(owner, revision)
+      clearSaveTimer()
       setSaving(true)
       setSaveMessage(null)
       try {
@@ -831,12 +977,16 @@ export function useSettingsPageState() {
               }
 
         await settingsApi.update(payload)
+        if (!isCurrent()) return
         setSaveMessage(createSettingsSaveSuccessMessage())
         await loadSettings()
       } catch (error) {
-        setSaveMessage({ type: 'error', text: formatApiError(error, '保存失败') })
+        if (isCurrent()) setSaveMessage({ type: 'error', text: formatApiError(error, '保存失败') })
       } finally {
-        setSaving(false)
+        if (owner.active && settingsWriteRef.current === write) {
+          settingsWriteRef.current = null
+          setSaving(false)
+        }
       }
     }
   }
@@ -854,7 +1004,7 @@ export function useSettingsPageState() {
   }, [providers])
 
   const refreshAll = () => {
-    void loadSettings()
+    void loadSettings(editedSettings)
     void loadLtrModels()
   }
 

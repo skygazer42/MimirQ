@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { TenantPermissionGate } from '@/components/auth/tenant-permission-gate'
 import { AppFrame } from '@/components/app-frame'
@@ -321,13 +321,9 @@ function RetrievalEnhancementSection({ state }: Readonly<{ state: SettingsPageSt
 
 function useSettingsScrollSpy(sectionIds: readonly string[]) {
   const [activeId, setActiveId] = useState(sectionIds[0])
-  const observerRef = useRef<IntersectionObserver | null>(null)
-
   useEffect(() => {
-    observerRef.current?.disconnect()
-
     const visibleMap = new Map<string, number>()
-    observerRef.current = new IntersectionObserver(
+    const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           visibleMap.set(entry.target.id, entry.intersectionRatio)
@@ -351,10 +347,10 @@ function useSettingsScrollSpy(sectionIds: readonly string[]) {
 
     for (const id of sectionIds) {
       const el = document.getElementById(id)
-      if (el) observerRef.current.observe(el)
+      if (el) observer.observe(el)
     }
 
-    return () => observerRef.current?.disconnect()
+    return () => observer.disconnect()
   }, [sectionIds])
 
   return activeId
@@ -536,7 +532,7 @@ function SettingsContent({
   chunkStrategy,
   setChunkStrategy,
 }: Readonly<SettingsContentProps>) {
-  const sectionIds = visibleSections.map((s) => s.id)
+  const sectionIds = useMemo(() => visibleSections.map((s) => s.id), [visibleSections])
   const activeId = useSettingsScrollSpy(sectionIds)
 
   const scrollTo = useCallback((id: string) => {
