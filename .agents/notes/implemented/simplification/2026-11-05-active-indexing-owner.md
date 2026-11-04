@@ -14,6 +14,8 @@ Status: implemented
 
 原始元数据、UUID、查询行形状、位置、可选证据和 provider 内容继续使用原校验。IndexingOptions 等 dataclass 不执行运行时校验，因此可空选项的布尔转换和原有证据数字解析保留。缺失、零和负值的既有默认与分支保持，不新增 Context 或协调器。
 
+[文档变更入口](../bug-fix/2026-11-05-document-mutation-contracts.md)直接使用保留的 `_update_bm25_for_chunks`，不为旧调用名重建包装；该调用迁移不改变本处的 BM25 和缓存所有权。
+
 ## Alternatives considered
 
 接入已有并行类能缩短 `Indexer`，但这些类采用不同的清理和运行配置政策，直接迁移会改变活动调用方的行为。保留两套实现可以避免删除文件，但没有实际入口的副本持续分叉，也会让后续修改选错所有者；因此保留现行入口并清理未使用副本。

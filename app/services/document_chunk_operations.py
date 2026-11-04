@@ -63,7 +63,7 @@ def create_chunk(
     if current_status in {"pending", "processing"}:
         raise HTTPException(status_code=409, detail=f"Cannot edit chunks for a {current_status} document")
 
-    doc_meta = dict(getattr(document, "doc_metadata", None) or {})
+    doc_meta = dict(document.doc_metadata or {})
     active_key = _resolve_active_doc_pipeline_key(document_id, doc_meta)
     active_hash = str(doc_meta.get("active_pipeline_hash") or doc_meta.get("pipeline_hash") or "").strip()
 
@@ -76,7 +76,7 @@ def create_chunk(
             DocumentChunk.doc_metadata["doc_pipeline_key"].astext == active_key  # type: ignore[attr-defined]
         )
     max_idx = query.scalar()
-    next_index = int(max_idx or -1) + 1
+    next_index = (int(max_idx) if max_idx is not None else -1) + 1
 
     chunk_uuid = uuid.uuid4()
     meta = dict(payload.metadata or {})
@@ -118,38 +118,27 @@ def create_chunk(
     db.refresh(chunk)
 
     try:
-        Indexer(db).sync_chunk_corpus(
+        Indexer(db)._update_bm25_for_chunks(
             db_chunks=[chunk],
             tenant_id=tenant_id,
             document_id=document_id,
-            default_source=str(getattr(document, "filename", "") or "unknown"),
-            enable_bm25=bool(getattr(settings, "BM25_INDEX_ENABLED", True)),
+            default_source=str(document.filename or "unknown"),
+            enable_bm25=settings.BM25_INDEX_ENABLED,
         )
     except Exception as exc:  # noqa: BLE001
         logger.debug(
             "BM25 upsert failed for chunk %s: %s",
-            str(getattr(chunk, "id", "") or "?"),
+            str(chunk.id or "?"),
             str(exc)[:200],
         )
 
-    try:
-        stat_q = db.query(
-            func.count(DocumentChunk.id),
-            func.sum(func.length(DocumentChunk.content)),
-        ).filter(
-            DocumentChunk.tenant_id == tenant_id,
-            DocumentChunk.document_id == document_id,
-        )
-        if active_key:
-            stat_q = stat_q.filter(
-                DocumentChunk.doc_metadata["doc_pipeline_key"].astext == active_key  # type: ignore[attr-defined]
-            )
-        cnt, total_chars = stat_q.first() or (None, None)
-        document.chunk_count = int(cnt or 0)
-        document.total_characters = int(total_chars or 0)
-        db.commit()
-    except Exception:
-        db.rollback()
+    _refresh_document_chunk_stats(
+        db=db,
+        tenant_id=tenant_id,
+        document_id=document_id,
+        document=document,
+        active_key=active_key,
+    )
 
     audit_log_event(
         db,
@@ -321,7 +310,7 @@ async def disable_chunk(
         document=document,
     )
 
-    current_status = str(getattr(document, "status", "") or "").lower()
+    current_status = str(document.status or "").lower()
     if current_status in {"pending", "processing"}:
         raise HTTPException(status_code=409, detail=f"Cannot edit chunks for a {current_status} document")
 
@@ -329,9 +318,9 @@ async def disable_chunk(
     if not chunk:
         raise HTTPException(status_code=404, detail=CHUNK_NOT_FOUND_DETAIL)
 
-    doc_meta = dict(getattr(document, "doc_metadata", None) or {})
+    doc_meta = dict(document.doc_metadata or {})
     active_key = _resolve_active_doc_pipeline_key(document_id, doc_meta)
-    chunk_key = str((getattr(chunk, "doc_metadata", None) or {}).get("doc_pipeline_key") or "").strip()
+    chunk_key = str((chunk.doc_metadata or {}).get("doc_pipeline_key") or "").strip()
     if active_key and chunk_key and chunk_key != active_key:
         raise HTTPException(status_code=409, detail=CHUNK_NOT_ACTIVE_PIPELINE_DETAIL)
 
@@ -373,7 +362,7 @@ async def disable_chunk(
             status_code=409, detail="Index consistency strict mode blocked disable; drift item recorded"
         )
 
-    if getattr(chunk, "disabled_at", None) is None:
+    if chunk.disabled_at is None:
         chunk.disabled_at = datetime.now(UTC)
     chunk.vector_id = None
     document.updated_at = datetime.now(UTC)
@@ -399,7 +388,7 @@ async def disable_chunk(
         resource_id=str(document_id),
         details={
             "chunk_id": str(chunk.id),
-            "chunk_index": int(getattr(chunk, "chunk_index", 0) or 0),
+            "chunk_index": int(chunk.chunk_index or 0),
             "index_operation_success": not bool(vector_error or bm25_error),
             "index_consistency_strictness": strictness,
         },
@@ -432,7 +421,7 @@ def enable_chunk(
         document=document,
     )
 
-    current_status = str(getattr(document, "status", "") or "").lower()
+    current_status = str(document.status or "").lower()
     if current_status in {"pending", "processing"}:
         raise HTTPException(status_code=409, detail=f"Cannot edit chunks for a {current_status} document")
 
@@ -440,13 +429,13 @@ def enable_chunk(
     if not chunk:
         raise HTTPException(status_code=404, detail=CHUNK_NOT_FOUND_DETAIL)
 
-    doc_meta = dict(getattr(document, "doc_metadata", None) or {})
+    doc_meta = dict(document.doc_metadata or {})
     active_key = _resolve_active_doc_pipeline_key(document_id, doc_meta)
-    chunk_key = str((getattr(chunk, "doc_metadata", None) or {}).get("doc_pipeline_key") or "").strip()
+    chunk_key = str((chunk.doc_metadata or {}).get("doc_pipeline_key") or "").strip()
     if active_key and chunk_key and chunk_key != active_key:
         raise HTTPException(status_code=409, detail=CHUNK_NOT_ACTIVE_PIPELINE_DETAIL)
 
-    if getattr(chunk, "disabled_at", None) is not None:
+    if chunk.disabled_at is not None:
         chunk.disabled_at = None
     document.updated_at = datetime.now(UTC)
 
@@ -457,7 +446,7 @@ def enable_chunk(
         action="document.chunk.enable",
         resource_type="document",
         resource_id=str(document_id),
-        details={"chunk_id": str(chunk.id), "chunk_index": int(getattr(chunk, "chunk_index", 0) or 0)},
+        details={"chunk_id": str(chunk.id), "chunk_index": int(chunk.chunk_index or 0)},
     )
     db.commit()
     with contextlib.suppress(Exception):
@@ -493,10 +482,10 @@ def reembed_chunks(
         if not chunk:
             not_found.append(chunk_id)
             continue
-        if getattr(chunk, "disabled_at", None) is not None and not bool(payload.include_disabled):
+        if chunk.disabled_at is not None and not payload.include_disabled:
             conflicts.append(chunk_id)
             continue
-        chunk_key = str((getattr(chunk, "doc_metadata", None) or {}).get("doc_pipeline_key") or "").strip()
+        chunk_key = str((chunk.doc_metadata or {}).get("doc_pipeline_key") or "").strip()
         if active_key and chunk_key and chunk_key != active_key:
             conflicts.append(chunk_id)
             continue
@@ -531,7 +520,7 @@ def _load_chunk_write_document(
     account_id: str,
     document_id: UUID,
     edit_verb: str,
-):
+) -> tuple[DBDocument, str]:
     dataset_service.ensure_member(db, tenant_id, account_id)
     document = _get_document_for_chunk_ops(db, tenant_id, document_id)
     if not document:
@@ -542,10 +531,10 @@ def _load_chunk_write_document(
         account_id=account_id,
         document=document,
     )
-    current_status = str(getattr(document, "status", "") or "").lower()
+    current_status = str(document.status or "").lower()
     if current_status in {"pending", "processing"}:
         raise HTTPException(status_code=409, detail=f"Cannot {edit_verb} for a {current_status} document")
-    doc_meta = dict(getattr(document, "doc_metadata", None) or {})
+    doc_meta = dict(document.doc_metadata or {})
     active_key = _resolve_active_doc_pipeline_key(document_id, doc_meta)
     return document, active_key
 
@@ -557,11 +546,11 @@ def _get_active_chunk_or_404(
     document_id: UUID,
     chunk_id: UUID,
     active_key: str | None,
-):
+) -> DocumentChunk:
     chunk = _get_chunk_for_chunk_ops(db, tenant_id, document_id, chunk_id)
     if not chunk:
         raise HTTPException(status_code=404, detail=CHUNK_NOT_FOUND_DETAIL)
-    chunk_key = str((getattr(chunk, "doc_metadata", None) or {}).get("doc_pipeline_key") or "").strip()
+    chunk_key = str((chunk.doc_metadata or {}).get("doc_pipeline_key") or "").strip()
     if active_key and chunk_key and chunk_key != active_key:
         raise HTTPException(status_code=409, detail=CHUNK_NOT_ACTIVE_PIPELINE_DETAIL)
     return chunk
@@ -569,7 +558,7 @@ def _get_active_chunk_or_404(
 
 def _apply_chunk_payload_updates(
     *,
-    chunk,
+    chunk: DocumentChunk,
     payload: DocumentChunkUpdateRequest,
     tenant_id: UUID,
     document_id: UUID,
@@ -594,13 +583,13 @@ def _apply_chunk_payload_updates(
 def _reindex_chunk_after_patch(
     *,
     db: Session,
-    document,
-    chunk,
+    document: DBDocument,
+    chunk: DocumentChunk,
     tenant_id: UUID,
     document_id: UUID,
 ) -> tuple[str, dict[str, Any], str | None, str | None]:
     strictness = _normalize_index_consistency_strictness(patch_mode=True)
-    emit_drift_markers = bool(getattr(settings, "INDEX_CONSISTENCY_EMIT_DRIFT_MARKERS", True))
+    emit_drift_markers = settings.INDEX_CONSISTENCY_EMIT_DRIFT_MARKERS
     drift_markers: list[dict[str, Any]] = []
     vector_error: str | None = None
     bm25_error: str | None = None
@@ -638,12 +627,12 @@ def _reindex_chunk_after_patch(
         vector_error = vector_error or f"vector add failed: {str(exc)[:160]}"
 
     try:
-        Indexer(db).sync_chunk_corpus(
+        Indexer(db)._update_bm25_for_chunks(
             db_chunks=[chunk],
             tenant_id=tenant_id,
             document_id=document_id,
-            default_source=str(getattr(document, "filename", "") or "unknown"),
-            enable_bm25=bool(getattr(settings, "BM25_INDEX_ENABLED", True)),
+            default_source=str(document.filename or "unknown"),
+            enable_bm25=settings.BM25_INDEX_ENABLED,
         )
     except Exception:
         bm25_error = "bm25 upsert failed"
@@ -702,8 +691,8 @@ def _reindex_chunk_after_patch(
 async def _delete_chunk_indexes(
     *,
     db: Session,
-    document,
-    chunk,
+    document: DBDocument,
+    chunk: DocumentChunk,
     tenant_id: UUID,
     account_id: str,
     document_id: UUID,
@@ -751,7 +740,7 @@ async def _delete_chunk_indexes(
 
 
 def _refresh_document_chunk_stats(
-    *, db: Session, tenant_id: UUID, document_id: UUID, document, active_key: str | None
+    *, db: Session, tenant_id: UUID, document_id: UUID, document: DBDocument, active_key: str | None
 ) -> None:
     try:
         stat_q = db.query(
@@ -797,20 +786,20 @@ def _cleanup_deleted_chunk_kg(*, db: Session, tenant_id: UUID, chunk_id: UUID) -
 def _reembed_single_chunk(
     *,
     db: Session,
-    document,
-    chunk,
+    document: DBDocument,
+    chunk: DocumentChunk,
     tenant_id: UUID,
     document_id: UUID,
     account_id: str,
-    indexer,
+    indexer: Indexer,
 ) -> bool:
     from app.rag.retriever import hybrid_retriever
 
-    meta_for_vector = dict(getattr(chunk, "doc_metadata", None) or {})
+    meta_for_vector = dict(chunk.doc_metadata or {})
     meta_for_vector.setdefault("tenant_id", str(tenant_id))
     meta_for_vector.setdefault("document_id", str(document_id))
     meta_for_vector.setdefault("chunk_id", str(chunk.id))
-    meta_for_vector.setdefault("chunk_index", int(getattr(chunk, "chunk_index", 0) or 0))
+    meta_for_vector.setdefault("chunk_index", int(chunk.chunk_index or 0))
 
     try:
         indexer.delete_document_chunk_vectors(
@@ -836,9 +825,9 @@ def _reembed_single_chunk(
 
     try:
         bm25_meta = dict(meta_for_vector)
-        bm25_meta.setdefault("source", bm25_meta.get("source", str(getattr(document, "filename", "") or "unknown")))
+        bm25_meta.setdefault("source", bm25_meta.get("source", str(document.filename or "unknown")))
         bm25_doc = Document(
-            page_content=str(getattr(chunk, "content", "") or ""),
+            page_content=str(chunk.content or ""),
             id=str(chunk.id),
             metadata=bm25_meta,
         )
@@ -853,7 +842,7 @@ def _reembed_single_chunk(
         action="document.chunk.reembed",
         resource_type="document",
         resource_id=str(document_id),
-        details={"chunk_id": str(chunk.id), "chunk_index": int(getattr(chunk, "chunk_index", 0) or 0)},
+        details={"chunk_id": str(chunk.id), "chunk_index": int(chunk.chunk_index or 0)},
     )
     return True
 
@@ -894,14 +883,14 @@ def _assert_document_writable_for_chunk_ops(
     )
 
 
-def _resolve_active_doc_pipeline_key(document_id: UUID, doc_metadata: dict) -> str:
+def _resolve_active_doc_pipeline_key(document_id: UUID, doc_metadata: dict[str, Any]) -> str:
     active_hash = str(
         (doc_metadata or {}).get("active_pipeline_hash") or (doc_metadata or {}).get("pipeline_hash") or ""
     ).strip()
     return f"{document_id}:{active_hash}" if active_hash else str(document_id)
 
 
-def _apply_chunk_metadata_patch(*, current: dict, patch: dict) -> dict:
+def _apply_chunk_metadata_patch(*, current: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
     next_meta = dict(current or {})
     for key, value in (patch or {}).items():
         if not isinstance(key, str) or not key.strip():

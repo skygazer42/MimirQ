@@ -1,0 +1,29 @@
+# Agent Note: 文档变更入口使用实际写入契约
+
+Status: implemented
+
+## Problem
+
+五个批量文档路由用位置参数传递 `payload`，但服务入口只接收关键字参数，请求会在成员校验和逐文档结果处理之前失败。手工创建和修改 chunk 调用了活动 `Indexer` 不存在的 `sync_chunk_corpus`，异常被原有降级分支吸收。追加位置使用 `max_idx or -1`，把合法的最大索引零也当成空查询。
+
+## Decision
+
+批量路由明确传递 `payload=payload`。创建和修改 chunk 在原位置调用活动 `Indexer._update_bm25_for_chunks`，使用原有参数、异常分支和后续事务顺序。追加位置只把 SQL 聚合的 `None` 当成无记录；已有最大索引零后追加一。创建后的统计刷新复用同文件现有 helper，其完整查询、活动 pipeline 过滤、commit 和 rollback 代码与原内联块相同。
+
+chunk 内部 helper 使用实际 ORM、Indexer 和元数据类型。索引 channel 服务直接读取模型字段，以及 `resolve_pipeline_effective` 通过 `_resolve_flag` 生成的五个布尔值。字段存在性属于这些生产者；nullable 值、原始 JSON、状态、错误和数字仍保留原有清理规则。SQLAlchemy PostgreSQL 语句使用实际 `Insert` 类型。
+
+chunk 写入权限包装继续动态调用 `document_access_service.assert_document_writable_for_lifecycle`。唯一涉及测试的修改仅把旧 monkeypatch 目标迁到该实际所有者；不恢复已退出别名，不增改断言、用例或 helper。
+
+## Alternatives considered
+
+为 `Indexer` 新增 `sync_chunk_corpus` 包装可以少改两个调用点，但会重新引入没有实现的接口归属。直接使用保留的活动方法能明确 BM25 所有者，也保留该方法既有的元数据和检索失效政策。
+
+把缺失字段继续转换成默认值可以容忍不符合内部 ORM 或完整 pipeline 结果契约的对象；实际查询和生产者已提供这些字段，因此只保留值本身的 nullable 与原始数据防护。资源能力探测仍保留，因为 Session 的 dialect、savepoint 和直接回滚降级分支承担不同职责。
+
+## Consequences
+
+批量操作可进入原有成员、ACL 和逐项结果逻辑；chunk 的 BM25 更新可到达现行实现，零索引追加计算正确。租户、dataset、文档、chunk、活动 pipeline、批次上限、重复输入和 mixed-outcome 规则保持。向量与 BM25 顺序、严格模式阻断时机、缓存与配额、channel 原子 SQL、计数和时间戳、savepoint、提交和回滚、错误清空与 summary 复制政策保持。
+
+活跃笔记检索中，[活动索引写入所有者](../simplification/2026-11-05-active-indexing-owner.md) 与 BM25 方法归属部分重叠，沿用其活动实现并互链；[共享标量转换](../simplification/2026-11-03-shared-scalar-coercion-owner.md) 和[语料缓存事务](2026-11-03-corpus-cache-invalidation-transaction.md) 的边界和事务决定保持。检索命中的质量评分、混合排名和预览笔记属于其他生产者，不被替代。没有过时提案或可完全吸收的笔记。
+
+验证使用固定 Git 源码、完整模块 AST、实际 DTO／ORM／Settings／pipeline／SDK 声明、静态调用绑定和 Ruff。测试文件仅做两项 patch 目标替换的完整 AST 与文本差异证明。按授权范围，Python 测试以及应用、ORM、索引、数据库、模型、网络和服务运行时均未执行，因此不声称运行时行为已验证。

@@ -48,7 +48,7 @@ def batch_patch_document_user_metadata(
     db: Annotated[Session, Depends(get_db)],
 ) -> DocumentBatchUserMetadataPatchResponse:
     return document_batch_operations.patch_user_metadata(
-        payload,
+        payload=payload,
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
@@ -65,7 +65,7 @@ async def batch_retry_documents(
     db: Annotated[Session, Depends(get_db)],
 ) -> DocumentBatchRetryResponse:
     return await document_batch_operations.retry_documents(
-        payload,
+        payload=payload,
         background_tasks=background_tasks,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -83,7 +83,7 @@ async def batch_reingest_documents(
     db: Annotated[Session, Depends(get_db)],
 ) -> DocumentBatchRetryResponse:
     return await document_batch_operations.reingest_documents(
-        payload,
+        payload=payload,
         background_tasks=background_tasks,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -104,7 +104,7 @@ async def batch_update_document_access(
     db: Annotated[Session, Depends(get_db)],
 ) -> DocumentBatchAccessUpdateResponse:
     return document_batch_operations.update_document_access(
-        payload,
+        payload=payload,
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
@@ -120,7 +120,7 @@ def batch_move_documents(
     db: Annotated[Session, Depends(get_db)],
 ) -> DocumentBatchMoveResponse:
     return document_batch_operations.move_documents(
-        payload,
+        payload=payload,
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,

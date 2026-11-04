@@ -546,8 +546,8 @@ def test_documents_chunk_write_helper_delegates_to_shared_policy(monkeypatch: py
     sentinel = HTTPException(status_code=403, detail="shared-write-policy")
 
     monkeypatch.setattr(
-        document_chunk_operations,
-        "_assert_document_writable_for_lifecycle",
+        document_chunk_operations.document_access_service,
+        "assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(sentinel),
         raising=True,
     )
