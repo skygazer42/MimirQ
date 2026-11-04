@@ -91,7 +91,7 @@ def _dedupe_member_ids(raw_members: list[str] | None) -> list[str] | None:
     seen: set[str] = set()
     normalized: list[str] = []
     for raw in raw_members:
-        member_id = str(raw or "").strip()
+        member_id = raw.strip()
         if not member_id or member_id in seen:
             continue
         if len(member_id) > 255:
@@ -108,11 +108,7 @@ def _dedupe_group_ids(raw_groups: list[UUID] | None) -> list[UUID] | None:
         return None
     seen: set[UUID] = set()
     normalized: list[UUID] = []
-    for raw in raw_groups:
-        try:
-            group_id = UUID(str(raw))
-        except Exception as exc:
-            raise ValueError("partial_group_list contains invalid UUID") from exc
+    for group_id in raw_groups:
         if group_id in seen:
             continue
         seen.add(group_id)
@@ -773,7 +769,7 @@ class DocumentChunkSchema(OrmModel):
     def _populate_index_operation(self) -> "DocumentChunkSchema":
         if self.index_operation is not None:
             return self
-        raw = self.metadata.get("index_operation_result") if isinstance(self.metadata, dict) else None
+        raw = self.metadata.get("index_operation_result")
         if not isinstance(raw, dict):
             return self
         self.index_operation = dict(raw)
@@ -1041,7 +1037,7 @@ class DocumentPipelineProvenance(BaseModel):
     def from_metadata(cls, meta: dict[str, Any] | None) -> "DocumentPipelineProvenance":
         m = meta if isinstance(meta, dict) else {}
         effective = _pipeline_effective_from_metadata(m)
-        governance_enabled = bool(m.get("governance_enabled") or getattr(effective, "governance_enabled", False))
+        governance_enabled = bool(m.get("governance_enabled") or effective.governance_enabled)
 
         return cls(
             active_pipeline_hash=_active_pipeline_hash_from_metadata(m),

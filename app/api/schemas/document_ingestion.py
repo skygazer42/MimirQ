@@ -4,9 +4,10 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from fastapi import Form
-from pydantic import BaseModel, ConfigDict, Field
 
-from app.api.schemas.document import DocumentPipelineOptions
+from app.api.schemas.document import DocumentPipelineOptions as DocumentPipelineOptions
+from app.api.schemas.document import LocalHtmlIngestRequest as LocalHtmlIngestRequest
+from app.api.schemas.document import UrlUploadRequest as UrlUploadRequest
 from app.core.config import settings
 
 
@@ -29,24 +30,6 @@ class PipelineOptionOverrides:
     kg_enabled: bool | None = None
     event_vector_enabled: bool | None = None
     entity_vector_enabled: bool | None = None
-
-
-class UrlUploadRequest(BaseModel):
-    """Upload a document by fetching a remote URL (connector skeleton)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    url: str = Field(..., max_length=2000)
-    dataset_id: UUID | None = None
-    filename: str | None = Field(
-        default=None, max_length=500, description="Optional override filename (used for extension + display)"
-    )
-    # Optional: authenticated fetch (cookie/bearer/basic) for private pages.
-    fetch_headers: dict[str, str] | None = None
-    user_agent: str | None = Field(default=None, max_length=200)
-    parser_backend: str = Field(default=settings.DEFAULT_PARSER_BACKEND)
-    chunk_strategy: str = Field(default=settings.DEFAULT_CHUNK_STRATEGY)
-    pipeline: DocumentPipelineOptions | None = None
 
 
 @dataclass
@@ -90,21 +73,3 @@ class UploadDocumentsBatchFormFields:
     upload_only: bool = Form(False)
     user_metadata_map: str | None = Form(None)
     max_concurrent: int = Form(5)
-
-
-class LocalHtmlIngestRequest(BaseModel):
-    """Ingest a local HTML payload as a document (internal connector helper)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    html: str = Field(..., description="HTML content (fragment or full document)")
-    source_url: str | None = Field(
-        default=None, max_length=2000, description="Best-effort source URL for citations/debug"
-    )
-    dataset_id: UUID | None = None
-    filename: str | None = Field(
-        default=None, max_length=500, description="Optional override filename (used for extension + display)"
-    )
-    parser_backend: str = Field(default=settings.DEFAULT_PARSER_BACKEND)
-    chunk_strategy: str = Field(default=settings.DEFAULT_CHUNK_STRATEGY)
-    pipeline: DocumentPipelineOptions | None = None

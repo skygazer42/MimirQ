@@ -12,7 +12,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.config import settings
-from app.rag.core.text import normalize_retrieval_mode
+from app.rag.core.retrieval_modes import normalize_retrieval_mode
 
 from .base import OrmModel
 
@@ -144,8 +144,8 @@ class RagasRegressionCasePatchRequest(BaseModel):
     extra: dict[str, Any] | None = None
 
     @model_validator(mode="after")
-    def _non_empty_patch(self):
-        if not (getattr(self, "model_fields_set", None) or set()):
+    def _non_empty_patch(self) -> "RagasRegressionCasePatchRequest":
+        if not self.model_fields_set:
             raise ValueError("No fields to patch")
         return self
 

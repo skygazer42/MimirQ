@@ -19,6 +19,13 @@ _REGISTERED_CHUNK_PLUGIN_REF_RE = re.compile(
 )
 
 
+def _normalize_registered_chunk_plugin_ref(value: str) -> str:
+    ref = value.strip()
+    if not _REGISTERED_CHUNK_PLUGIN_REF_RE.fullmatch(ref):
+        raise ValueError("plugin_ref must be a registered chunk plugin ref")
+    return ref
+
+
 class ImageInfo(BaseModel):
     id: str
     url: str
@@ -649,15 +656,12 @@ class PipelinePluginChunkReportRequest(BaseModel):
     @field_validator("plugin_ref")
     @classmethod
     def _validate_chunk_report_plugin_ref(cls, value: str) -> str:
-        ref = str(value or "").strip()
-        if not _REGISTERED_CHUNK_PLUGIN_REF_RE.fullmatch(ref):
-            raise ValueError("plugin_ref must be a registered chunk plugin ref")
-        return ref
+        return _normalize_registered_chunk_plugin_ref(value)
 
     @field_validator("input_path")
     @classmethod
     def _validate_input_path_text(cls, value: str) -> str:
-        text = str(value or "").strip()
+        text = value.strip()
         if not text:
             raise ValueError("input_path is required")
         return text
@@ -713,10 +717,7 @@ class PipelinePluginGoldenDraftRequest(BaseModel):
     @field_validator("plugin_ref")
     @classmethod
     def _validate_chunk_plugin_ref(cls, value: str) -> str:
-        ref = str(value or "").strip()
-        if not _REGISTERED_CHUNK_PLUGIN_REF_RE.fullmatch(ref):
-            raise ValueError("plugin_ref must be a registered chunk plugin ref")
-        return ref
+        return _normalize_registered_chunk_plugin_ref(value)
 
 
 class PipelinePluginGoldenDraftImportRequest(PipelinePluginGoldenDraftRequest):
