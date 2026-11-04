@@ -6,10 +6,10 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.api.schemas.chat import ChatRAGConfig
 from app.core.config import settings
 from app.rag.core.logging import get_logger
 from app.services.dify_integration import anchor_strength, common, request_preferences, scoring
-from app.types.rag_config import ChatRAGConfig
 
 logger = get_logger(__name__)
 
@@ -34,8 +34,7 @@ async def retrieve_dataset_citations(
     enable_reranker: bool | None = None,
     retrieval_mode: str = "hybrid",
 ) -> list[dict[str, Any]]:
-    from app.services import evidence_retrieval
-    from app.types.evidence_retrieval import EvidenceRetrieveRequest
+    from app.api.v1.rag import EvidenceRetrieveRequest, retrieve_evidence
 
     started = time.perf_counter()
     evidence_top_k = max(1, int(top_k or 1))
@@ -112,7 +111,7 @@ async def retrieve_dataset_citations(
     evidence_request_kwargs: dict[str, Any] = {"query": query, "rag_config": rag_config}
     evidence_request_kwargs["dataset_ids"] = scoped_dataset_ids
 
-    response = await evidence_retrieval.retrieve_evidence(
+    response = await retrieve_evidence(
         body=EvidenceRetrieveRequest(**evidence_request_kwargs),
         tenant_id=tenant_id,
         account_id=account_id,
