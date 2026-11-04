@@ -71,20 +71,20 @@ def compute_document_analytics(
     cjk: int | None = None
     latin: int | None = None
     if detect_language:
-        out = detect_language_fn(raw, min_chars=int(language_min_chars or 0))
-        lang_val = str(getattr(out, "language", "") or "").strip() or None
-        lang_conf = float(getattr(out, "confidence", 0.0) or 0.0)
-        cjk = int(getattr(out, "cjk_chars", 0) or 0)
-        latin = int(getattr(out, "latin_chars", 0) or 0)
+        out = detect_language_fn(raw, min_chars=language_min_chars)
+        lang_val = out.language.strip() or None
+        lang_conf = out.confidence
+        cjk = out.cjk_chars
+        latin = out.latin_chars
 
     return DocumentAnalytics(
         char_count=len(raw),
         line_count=_count_lines(raw),
         heading_count=len(_HEADING_RE.findall(raw)) if raw else 0,
-        page_count=int(artifact.get("page_count") or 0),
-        table_count=int(artifact.get("table_count") or 0),
-        image_count=int(artifact.get("image_count") or 0),
-        block_count=int(artifact.get("block_count") or 0),
+        page_count=artifact["page_count"],
+        table_count=artifact["table_count"],
+        image_count=artifact["image_count"],
+        block_count=artifact["block_count"],
         language=lang_val,
         language_confidence=lang_conf,
         cjk_chars=cjk,

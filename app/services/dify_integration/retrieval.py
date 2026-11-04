@@ -12,6 +12,11 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.api.schemas.dify import (
+    DifyExternalKnowledgeRecord,
+    DifyExternalKnowledgeRequest,
+    DifyExternalKnowledgeResponse,
+)
 from app.core.config import settings
 from app.rag.core.logging import get_logger
 from app.rag.retrieval.planner import DatasetScopePlan
@@ -36,11 +41,6 @@ from app.services.dify_integration import (
 )
 from app.services.dify_integration import records as record_values
 from app.types.dify_integration import DifyActor as _DifyActor
-from app.types.dify_integration import (
-    DifyExternalKnowledgeRecord,
-    DifyExternalKnowledgeRequest,
-    DifyExternalKnowledgeResponse,
-)
 from app.types.dify_integration import DifyKGFlags as _DifyKGFlags
 
 logger = get_logger(__name__)

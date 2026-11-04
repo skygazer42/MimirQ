@@ -5,12 +5,12 @@ from collections.abc import Mapping
 from typing import Any
 from uuid import UUID
 
+from app.api.schemas.dify import DifyExternalKnowledgeRecord, DifyExternalKnowledgeRequest
 from app.services.dify_integration import common
 from app.services.dify_integration.common import (
     _DIFY_TRACE_CITATION_METADATA_KEYS as _DIFY_TRACE_CITATION_METADATA_KEYS,
 )
 from app.services.metrics_logger import log_metrics
-from app.types.dify_integration import DifyExternalKnowledgeRecord, DifyExternalKnowledgeRequest
 
 _DIFY_TRACE_QUERY_PREVIEW_MAX_CHARS = 160
 

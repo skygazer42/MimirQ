@@ -16,6 +16,7 @@ from uuid import UUID
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from app.api.schemas.dify import DifyExternalKnowledgeRecord, DifyExternalKnowledgeRequest, DifyRetrievalSetting
 from app.core.config import settings
 from app.rag.core.logging import get_logger
 from app.rag.retrieval.planner import DatasetScopePlan
@@ -34,7 +35,6 @@ from app.services.chat_response_cache import resolve_inflight_chat_response as r
 from app.services.dify_integration import common
 from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError
 from app.types.dify_integration import DifyActor as _DifyActor
-from app.types.dify_integration import DifyExternalKnowledgeRecord, DifyExternalKnowledgeRequest, DifyRetrievalSetting
 
 
 @dataclass(frozen=True)

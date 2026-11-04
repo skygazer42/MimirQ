@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session
 
+from app.api.schemas.dify import DifyConversationTurnRequest, DifyConversationTurnResponse, DifyExternalKnowledgeRequest
 from app.core.config import settings
 from app.models.chat import Conversation, Message
 from app.rag.core.logging import get_logger
@@ -21,11 +22,6 @@ from app.services.dify_integration.common import _header_value as _header_value
 from app.services.dify_integration.common import _uuid_or_none as _uuid_or_none
 from app.services.external_conversation_ingest import _mimirq_citations_for_storage
 from app.services.metrics_logger import log_metrics
-from app.types.dify_integration import (
-    DifyConversationTurnRequest,
-    DifyConversationTurnResponse,
-    DifyExternalKnowledgeRequest,
-)
 
 logger = get_logger("app.services.dify_integration.conversation_turns")
 

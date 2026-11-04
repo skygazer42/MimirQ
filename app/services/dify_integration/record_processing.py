@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Any
 
+from app.api.schemas.dify import DifyExternalKnowledgeRecord
 from app.core.config import settings
 from app.rag.retrieval.planner import compact_high_confidence_items, retrieval_policy_response_compaction
 from app.rag.retrieval.plugin_policy import filter_records_by_retrieval_policy_alignment
@@ -32,7 +33,6 @@ from app.services.dify_integration.scoring import _clamp_hint_value as _clamp_hi
 from app.services.dify_integration.scoring import (
     _query_has_quoted_anchor_candidate as _query_has_quoted_anchor_candidate,
 )
-from app.types.dify_integration import DifyExternalKnowledgeRecord
 
 
 def _response_compaction_for_records(

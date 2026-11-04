@@ -2,11 +2,11 @@
 
 from fastapi import HTTPException
 
+from app.api.schemas.dify import DifyRetrievalSetting
 from app.core.config import settings
 from app.rag.retrieval.planner import resolve_internal_candidate_top_k
 from app.services.dify_integration import anchor_strength
 from app.types.dify_integration import DifyKGFlags as _DifyKGFlags
-from app.types.dify_integration import DifyRetrievalSetting
 
 
 def _resolve_internal_candidate_top_k(requested_top_k: int) -> int:
