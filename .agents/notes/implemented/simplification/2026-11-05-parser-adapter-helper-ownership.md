@@ -30,4 +30,6 @@ Converting entire parsers to functions would remove more classes, but factory co
 
 Resource ownership and the factory/parser contract remain explicit. Text, Markdown, encoding, metadata keys and copies, document ordering, coordinates, assets, fallback selection, exceptions and logging follow their existing paths. The capability projection has one maintenance location.
 
+[插件合同与内部结果](2026-11-05-plugin-contract-owned-results.md)在相邻插件链中保留实际 registry 导入和迭代执行上下文，只收敛已有等价 helper 与平台已构造结果；本篇 parser 决定保持。
+
 The source proof compares complete frozen and current ASTs with exact helper relocations and narrowly scoped expression replacements. Ruff and Python 3.11 source parsing validate the category. This static validation does not measure parsing quality on real documents. No Python tests, application imports, parser or SDK execution, model execution, network calls or services run. Closed producer and factory modules are partial read-only dependencies; their coverage is not reopened.

@@ -45,9 +45,9 @@ class OutputGuard:
         details = dict(sync_result.details or {})
         score = float(sync_result.score or 0.0)
 
-        if str(getattr(safety_result, "action", "allow") or "allow").strip().lower() != "allow":
+        if str(safety_result.action or "allow").strip().lower() != "allow":
             matched_rules.append("safety_guard_response")
-            details["safety_guard_action"] = str(getattr(safety_result, "action", "allow") or "allow")
+            details["safety_guard_action"] = str(safety_result.action or "allow")
             score = min(1.0, max(score, 0.9))
 
         matched_rules = sorted(set(matched_rules))
@@ -63,7 +63,7 @@ class OutputGuard:
         details: dict[str, Any] = {}
 
         def _record(name: str, score: float) -> None:
-            matched[name] = max(float(matched.get(name) or 0.0), float(score))
+            matched[name] = max(matched.get(name) or 0.0, float(score))
 
         if _PHONE_RE.search(text):
             _record("pii_phone", 0.72)

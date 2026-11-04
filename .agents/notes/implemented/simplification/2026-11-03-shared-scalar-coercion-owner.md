@@ -20,6 +20,8 @@ chunk 质量追踪的可选分数也使用相同的标准转换异常列表，�
 
 [语料与索引内部值](2026-11-05-retrieval-corpus-owned-values.md)保留可变 Settings、原始向量与持久化文件的转换，只收窄真实索引记录和本地生成值的访问。
 
+[安全、反馈与行业规则](2026-11-05-policy-feedback-owned-values.md)沿用归一化边界原则，保留空匹配结果分数和原始反馈、YAML、元数据的转换，只清理实际生产者已确定的内部值。
+
 ## Alternatives considered
 
 - Keep both common helper pairs: this avoids caller edits, but leaves two implementations of the same defaulting and clamping rules.

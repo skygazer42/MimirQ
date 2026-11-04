@@ -64,12 +64,10 @@ def dispatch_feedback_loop_batch(
         "trigger": trigger_name,
         "realtime_listener_enabled": False,
         "dry_run": bool(dry_run),
-        "candidates": dict(candidate_payload.get("summary") or {}) if isinstance(candidate_payload, dict) else {},
-        "eval_case_candidates": candidate_payload.get("eval_case_candidates")
-        if isinstance(candidate_payload, dict)
-        else [],
+        "candidates": dict(candidate_payload.get("summary") or {}),
+        "eval_case_candidates": candidate_payload.get("eval_case_candidates"),
         "hard_negative_export": hard_negative_export,
-        "rules_suggestions": candidate_payload.get("rules_suggestions") if isinstance(candidate_payload, dict) else {},
+        "rules_suggestions": candidate_payload.get("rules_suggestions"),
     }
 
 

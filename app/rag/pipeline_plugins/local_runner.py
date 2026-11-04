@@ -18,6 +18,7 @@ from app.rag.pipeline_plugins.contracts import (
 from app.rag.pipeline_plugins.golden_drafts import build_golden_draft_bundle_from_chunks
 from app.rag.pipeline_plugins.registry import (
     PLUGIN_TEST_REPORT_FILENAME,
+    PipelinePluginDescriptor,
     PipelinePluginRegistryError,
     describe_plugin_dir,
     load_descriptor_stage_callable,
@@ -62,7 +63,9 @@ def load_plugin_test_input(input_path: str | Path) -> list[Document]:
 
 
 class _LocalGoldenChunk:
-    def __init__(self, *, document_id: UUID, chunk_id: UUID, chunk_index: int, content: str, metadata: dict[str, Any]):
+    def __init__(
+        self, *, document_id: UUID, chunk_id: UUID, chunk_index: int, content: str, metadata: dict[str, Any]
+    ) -> None:
         self.document_id = document_id
         self.id = chunk_id
         self.chunk_index = chunk_index
@@ -90,7 +93,7 @@ def _local_golden_chunks(documents: list[Document], *, plugin_id: str, version: 
 
 def _build_golden_draft_report(
     *,
-    descriptor: Any,
+    descriptor: PipelinePluginDescriptor,
     output_documents: list[Document],
     max_sample_questions: int = 5,
 ) -> dict[str, Any]:
@@ -104,8 +107,7 @@ def _build_golden_draft_report(
         plugin_package_hash=descriptor.package_hash,
         max_items=50,
     )
-    items = bundle.get("items") if isinstance(bundle, dict) else []
-    items = items if isinstance(items, list) else []
+    items = bundle["items"]
     questions = []
     for item in items[: max(0, int(max_sample_questions or 0))]:
         if isinstance(item, dict) and str(item.get("question") or "").strip():
@@ -131,7 +133,7 @@ def _plugin_stage_failure_report(*, stage: str, input_count: int, reason: str) -
 
 def _invoke_stage_result(
     *,
-    descriptor: Any,
+    descriptor: PipelinePluginDescriptor,
     stage: str,
     current_documents: list[Document],
     params: dict[str, Any] | None,
@@ -150,7 +152,7 @@ def _invoke_stage_result(
 
 def _run_kg_stage(
     *,
-    descriptor: Any,
+    descriptor: PipelinePluginDescriptor,
     current_documents: list[Document],
     plugin_input_documents: list[Document],
     result: Any,
@@ -172,18 +174,18 @@ def _run_kg_stage(
             "errors": [{"reason": str(exc)}],
         }
     report = {
-        "passed": bool(kg_validation["ok"]),
+        "passed": kg_validation["ok"],
         "input_count": len(current_documents),
         "output_count": len(events),
         "output_chars": sum(len(event.content or "") for event in events),
         "kg_validation": kg_validation,
     }
-    return report, bool(kg_validation["ok"])
+    return report, kg_validation["ok"]
 
 
 def _run_document_stage(
     *,
-    descriptor: Any,
+    descriptor: PipelinePluginDescriptor,
     stage: str,
     current_documents: list[Document],
     result: Any,
@@ -201,7 +203,7 @@ def _run_document_stage(
     except (PipelinePluginContractError, PythonPipelinePluginError) as exc:
         metadata_validation = {"ok": False, "checked": len(output_documents), "errors": [{"reason": str(exc)}]}
 
-    stage_passed = bool(metadata_validation.get("ok"))
+    stage_passed = metadata_validation["ok"]
     if stage_passed:
         try:
             output_documents = apply_metadata_schema_views(
@@ -222,7 +224,7 @@ def _run_document_stage(
                 "errors": [{"reason": str(exc)}],
             }
     report = {
-        "passed": bool(metadata_validation.get("ok")),
+        "passed": metadata_validation["ok"],
         "input_count": len(current_documents),
         "output_count": len(output_documents),
         "output_chars": sum(len(doc.page_content or "") for doc in output_documents),
@@ -233,7 +235,7 @@ def _run_document_stage(
 
 def _run_plugin_stages(
     *,
-    descriptor: Any,
+    descriptor: PipelinePluginDescriptor,
     input_documents: list[Document],
     stages: list[str] | tuple[str, ...],
     params: dict[str, Any] | None = None,
@@ -308,7 +310,7 @@ def run_pipeline_plugin_test(
         stages=stages,
         params=params,
     )
-    report["passed"] = bool(stages_passed)
+    report["passed"] = stages_passed
     report["stages"] = stage_reports
 
     if descriptor.golden_rules and "chunk" in report["stages"]:

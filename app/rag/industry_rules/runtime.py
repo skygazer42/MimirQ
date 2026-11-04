@@ -41,7 +41,7 @@ def _hash_text(value: str) -> str:
 def _query_expansion_meta(original: str, *, enabled: bool, ruleset_names: list[str]) -> dict[str, Any]:
     return {
         "schema": _SCHEMA,
-        "enabled": bool(enabled),
+        "enabled": enabled,
         "used": False,
         "rulesets_requested": ruleset_names,
         "rulesets_used": [],
@@ -120,7 +120,7 @@ def apply_industry_rules_query_expansion(
 
     meta["alias_count"] = max(0, len([a for a in aliases[:max_aliases_i] if a]))
     meta["query_changed"] = expanded != original
-    meta["used"] = bool(meta["query_changed"])
+    meta["used"] = meta["query_changed"]
     meta["expanded_query_hash"] = _hash_text(expanded)
     return expanded, meta
 

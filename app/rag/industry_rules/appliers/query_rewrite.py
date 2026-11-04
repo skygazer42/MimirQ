@@ -1,4 +1,4 @@
-from typing import Mapping, Sequence
+from collections.abc import Mapping, Sequence
 
 
 def expand_query_terms(query: str, glossary: Mapping[str, Sequence[str]] | None) -> str:

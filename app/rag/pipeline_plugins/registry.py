@@ -207,7 +207,7 @@ def derive_registered_stage_plugin_ref(
 
 
 def default_plugin_directories() -> list[Path]:
-    raw = str(getattr(settings, "PYTHON_PIPELINE_PLUGIN_DIRS", "") or "").strip()
+    raw = str(settings.PYTHON_PIPELINE_PLUGIN_DIRS or "").strip()
     parts = [p.strip() for p in raw.split(",") if p.strip()]
     return [Path(p).expanduser() for p in parts]
 
@@ -650,22 +650,6 @@ def _literal_string_arg(node: ast.Call) -> str | None:
     return None
 
 
-def _is_importlib_import_module_getattr(node: ast.AST, importlib_module_names: set[str]) -> bool:
-    if not isinstance(node, ast.Call):
-        return False
-    if not isinstance(node.func, ast.Name) or node.func.id != "getattr":
-        return False
-    if len(node.args) < 2:
-        return False
-    target, attr = node.args[0], node.args[1]
-    return (
-        isinstance(target, ast.Name)
-        and target.id in importlib_module_names
-        and isinstance(attr, ast.Constant)
-        and attr.value == "import_module"
-    )
-
-
 def _is_importlib_import_module_attribute(node: ast.AST, importlib_module_names: set[str]) -> bool:
     return (
         isinstance(node, ast.Attribute)
@@ -817,7 +801,7 @@ def _assigns_dynamic_import(
             node.value,
             importlib_module_names,
         )
-        or _is_importlib_import_module_getattr(node.value, importlib_module_names)
+        or _is_module_string_getattr(node.value, importlib_module_names, "import_module")
     )
 
 
@@ -878,7 +862,7 @@ def _dynamic_import_name(
         return _literal_string_arg(node)
     if _is_importlib_import_module_attribute(node.func, importlib_module_names):
         return _literal_string_arg(node)
-    if _is_importlib_import_module_getattr(node.func, importlib_module_names):
+    if _is_module_string_getattr(node.func, importlib_module_names, "import_module"):
         return _literal_string_arg(node)
     return None
 
@@ -984,7 +968,7 @@ def _purge_plugin_bytecode(plugin_dir: Path) -> None:
 
 
 @contextmanager
-def _suppress_plugin_bytecode(plugin_dir: Path):
+def _suppress_plugin_bytecode(plugin_dir: Path) -> Iterator[None]:
     previous_dont_write_bytecode = sys.dont_write_bytecode
     sys.dont_write_bytecode = True
     try:
@@ -1266,7 +1250,7 @@ def describe_plugin_dir(plugin_dir: Path, *, require_test_report: bool | None = 
     report = _load_test_report(plugin_dir)
     published = str(manifest.get("status") or "draft").strip().lower() == "published"
     require_report = (
-        bool(getattr(settings, "PYTHON_PIPELINE_PLUGIN_REQUIRE_TEST_REPORT", True))
+        bool(settings.PYTHON_PIPELINE_PLUGIN_REQUIRE_TEST_REPORT)
         if require_test_report is None
         else require_test_report
     )
@@ -1401,7 +1385,7 @@ def _load_import_entry_callable(plugin_dir: Path, entry: PipelinePluginEntry) ->
 
 
 @contextmanager
-def _plugin_execution_context(plugin_dir: Path):
+def _plugin_execution_context(plugin_dir: Path) -> Iterator[None]:
     with _PLUGIN_IMPORT_LOCK:
         importlib.invalidate_caches()
         external_snapshot = _purge_plugin_modules(plugin_dir)

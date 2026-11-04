@@ -1,9 +1,10 @@
 import os
 import tempfile
 import threading
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterable, Iterator
+from typing import Any
 
 import yaml
 
@@ -94,7 +95,7 @@ def list_rulesets() -> list[str]:
 
 def ruleset_exists(name: str) -> bool:
     base = _ruleset_dir(name)
-    return bool(base is not None and base.is_dir())
+    return base is not None and base.is_dir()
 
 
 def write_glossary_candidates(name: str, candidates: Iterable[Any]) -> dict[str, Any]:
@@ -130,9 +131,9 @@ def write_glossary_candidates(name: str, candidates: Iterable[Any]) -> dict[str,
 
     return {
         "ruleset": ruleset_name,
-        "candidate_count": int(len(tokens)),
-        "added_count": int(len(added)),
-        "skipped_count": int(len(skipped)),
+        "candidate_count": len(tokens),
+        "added_count": len(added),
+        "skipped_count": len(skipped),
         "added_tokens": added,
         "skipped_tokens": skipped,
         "generated_path": str(generated_path),
@@ -147,7 +148,7 @@ def replace_ruleset_glossary(name: str, glossary: Any) -> dict[str, Any]:
     normalized = dict(sorted(_normalize_glossary(glossary).items()))
     with _ruleset_write_lock(base):
         _write_yaml(base / _GLOSSARY_FILENAME, normalized)
-    return {"ruleset": ruleset_name, "section": "glossary", "updated_count": int(len(normalized))}
+    return {"ruleset": ruleset_name, "section": "glossary", "updated_count": len(normalized)}
 
 
 def replace_ruleset_patterns(name: str, patterns: Any) -> dict[str, Any]:
@@ -158,7 +159,7 @@ def replace_ruleset_patterns(name: str, patterns: Any) -> dict[str, Any]:
     normalized = [dict(item) for item in (patterns or []) if isinstance(item, dict)]
     with _ruleset_write_lock(base):
         _write_yaml(base / "patterns.yaml", normalized)
-    return {"ruleset": ruleset_name, "section": "patterns", "updated_count": int(len(normalized))}
+    return {"ruleset": ruleset_name, "section": "patterns", "updated_count": len(normalized)}
 
 
 def replace_ruleset_intents(name: str, intents: Any) -> dict[str, Any]:
@@ -169,7 +170,7 @@ def replace_ruleset_intents(name: str, intents: Any) -> dict[str, Any]:
     normalized = [dict(item) for item in (intents or []) if isinstance(item, dict)]
     with _ruleset_write_lock(base):
         _write_yaml(base / "intents.yaml", normalized)
-    return {"ruleset": ruleset_name, "section": "intents", "updated_count": int(len(normalized))}
+    return {"ruleset": ruleset_name, "section": "intents", "updated_count": len(normalized)}
 
 
 def load_ruleset(name: str) -> IndustryRuleset:
