@@ -167,7 +167,16 @@ describe('RAG hook lifecycle behavior', () => {
       }),
     )
     const setTimeoutSpy = vi.spyOn(window, 'setTimeout')
-    const harness = renderHook(() => useDocumentPolling({ updateCachedDocuments: vi.fn() }))
+    const options = {
+      captureDocumentListOperation: () => ({
+        params: {},
+        isActive: () => true,
+        isCurrent: () => true,
+        updateCachedDocuments: vi.fn(),
+        refresh: async () => undefined,
+      }),
+    }
+    const harness = renderHook(() => useDocumentPolling(options))
 
     act(() => harness.current().pollDocumentStatus('doc-1'))
     setTimeoutSpy.mockClear()

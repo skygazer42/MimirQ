@@ -1,7 +1,14 @@
 'use client'
 
+import { CancelledError } from '@tanstack/react-query'
+
 import { documentApi } from '@/lib/api/documents'
-import type { Document, DocumentBatchUploadFailure, DocumentBatchUploadSuccess, DocumentPipelineOptions } from '@/types'
+import type {
+  Document,
+  DocumentBatchUploadFailure,
+  DocumentBatchUploadSuccess,
+  DocumentPipelineOptions,
+} from '@/types/backend'
 
 export type DocumentListParams = {
   skip?: number
@@ -33,6 +40,16 @@ export type DocumentListResponse = Awaited<ReturnType<typeof documentApi.list>>
 export type UpdateCachedDocuments = (
   updater: (current: DocumentListResponse | undefined) => DocumentListResponse | undefined,
 ) => void
+
+export type DocumentListOperation = {
+  params: DocumentListParams
+  isActive: () => boolean
+  isCurrent: () => boolean
+  updateCachedDocuments: UpdateCachedDocuments
+  refresh: () => Promise<void>
+}
+
+export type CaptureDocumentListOperation = () => DocumentListOperation
 
 const TERMINAL_DOCUMENT_STATUSES = new Set(['completed', 'failed', 'cancelled', 'quarantined'])
 
@@ -158,6 +175,7 @@ export async function uploadBatchRound(
   files: File[],
   options: UploadBatchRequestOptions,
   fileByKey: Map<string, File>,
+  isActive: () => boolean,
 ): Promise<{
   successful: DocumentBatchUploadSuccess[]
   failed: DocumentBatchUploadFailure[]
@@ -167,6 +185,7 @@ export async function uploadBatchRound(
   const failed: DocumentBatchUploadFailure[] = []
 
   for (let i = 0; i < files.length; i += 50) {
+    if (!isActive()) throw new CancelledError()
     const batch = files.slice(i, i + 50)
     const response = await documentApi.uploadBatch(batch, options)
     successful.push(...(response.successful || []))

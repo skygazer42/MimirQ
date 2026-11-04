@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import MiniSearch from 'minisearch'
 
 type SearchItem = {
@@ -19,7 +19,7 @@ export function useLocalSearch<T extends SearchItem>(data: T[], options: { field
 
   // Initialize MiniSearch
   const miniSearch = useMemo(() => {
-    return new MiniSearch({
+    const index = new MiniSearch({
       fields: parseFields(fieldsKey), // fields to index for full-text search
       storeFields: parseFields(storeFieldsKey), // fields to return with search results
       searchOptions: {
@@ -28,13 +28,9 @@ export function useLocalSearch<T extends SearchItem>(data: T[], options: { field
         prefix: true,
       },
     })
-  }, [fieldsKey, storeFieldsKey])
-
-  // Index data when it changes
-  useEffect(() => {
-    miniSearch.removeAll()
-    miniSearch.addAll(data)
-  }, [data, miniSearch])
+    index.addAll(data)
+    return index
+  }, [data, fieldsKey, storeFieldsKey])
 
   // Perform search
   const results = useMemo(() => {

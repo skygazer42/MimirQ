@@ -35,7 +35,7 @@ export function useDocuments(initialParams?: DocumentListParams) {
 
   const listState = useDocumentList({ setActionError, initialParams })
   const polling = useDocumentPolling({
-    updateCachedDocuments: listState.updateCachedDocuments,
+    captureDocumentListOperation: listState.captureDocumentListOperation,
   })
   const uploadState = useDocumentUpload({
     preferences: {
@@ -44,16 +44,14 @@ export function useDocuments(initialParams?: DocumentListParams) {
       pipelineOverridesEnabled,
       pipelineOptions,
     },
-    lastListParamsRef: listState.lastListParamsRef,
-    loadDocuments: listState.loadDocuments,
+    captureDocumentListOperation: listState.captureDocumentListOperation,
     pollDocumentStatus: polling.pollDocumentStatus,
     setActionError,
-    updateCachedDocuments: listState.updateCachedDocuments,
   })
   const actionState = useDocumentActions({
     cancelDocumentPolling: polling.cancelDocumentPolling,
     setActionError,
-    updateCachedDocuments: listState.updateCachedDocuments,
+    captureDocumentListOperation: listState.captureDocumentListOperation,
   })
 
   const isLoading = listState.isListLoading || listState.isFetching || uploadState.isUploading || actionState.isActing
