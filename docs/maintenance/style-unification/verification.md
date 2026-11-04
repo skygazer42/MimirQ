@@ -586,6 +586,11 @@
 - Task 6 branch `7f2ab3e3` passed independent review and merged. Governance, industry-rules, LTR registry, and observability sections only change type-import ownership; rendered JSX, state, callbacks, form submit/error paths and public component exports remain unchanged.
 - `web/node_modules` is absent and pnpm is version-incompatible; frontend ESLint/Prettier/TypeScript/browser checks did not run. No UI behavior changed and no screenshots were required.
 
+## Remaining Settings Control Type Imports
+
+- Task 6 branch `b32ff49f` passed independent review and merged. Navigation, RAG, runtime-controls and URL-ingest sections changed only type/API imports; layout, state, callbacks, forms and visible behavior are unchanged.
+- Frontend tooling/browser checks remain unavailable because `web/node_modules` is absent and pnpm is version-incompatible; no UI change or screenshot was required.
+
 ## Shared Common Frontend Types
 
 - Task 6 common-types branch commit `5aa80b6e` 经独立审查通过并合并。`PermissionEnum` now aliases the generated `DatasetPermissionEnum` schema; the literal union matches exactly. `DocumentAccessMode` retains `inherit`, while `LooseString` and `JsonObject` remain unchanged; direct consumers and the public barrel retain the same names.
@@ -726,3 +731,167 @@
 
 - Task 4 branch `1c76da483` passed independent review and merged. ACL provenance uses explicit `DBDocument`, and deletion-audit detail reads non-null ORM fields directly; external hash/serialized metadata validation stays at its boundary.
 - Tenant/ACL checks, tombstones, transactions, rollback, best-effort policy, direct error paths and callers were reviewed unchanged. Ruff/AST/caller/error-path scans passed; Python tests and DB/object-store/queue services were not run.
+
+## Governance Settings Type Imports
+
+- Task 6 branch `7f2ab3e3` passed independent review and merged as `acb0e767`. Four settings sections now import API/model contracts from their owners; JSX, state and submission/error behavior are unchanged.
+- Frontend tests, ESLint, Prettier, TypeScript and browser checks were not run because the web dependencies are unavailable and pnpm is mismatched.
+
+## Image Enrichment Contracts
+
+- Task 4 branch `b798e94a` passed independent review and merged as `9bea7b14`. Five enrichment modules consume validated string/page values directly while retaining raw metadata checks, image/path/network limits, provider handling, fallbacks and audit types.
+- Ruff check/format, AST, caller scan and `git diff --check` passed in the branch. Python tests and image/OCR/VLM runtimes were not run.
+
+## Watermark Helper Contracts
+
+- Task 4 branch `fc12d6f2` passed code and caller review and merged as `bf44f575`. Duplicate result/page/coordinate conversions were removed after validation; parser input coercion, thresholds, removal order and image handling remain.
+- Ruff check/format, AST, caller scan and `git diff --check` passed in the branch. Python tests and parser/image runtimes were not run.
+
+## Verified Wheel Downloader Import
+
+- Task 7 branch `bb9dfea8` passed independent review and merged as `28c60db0`. The change uses a direct `dataclass` import; pinned URLs/hashes, retries and security checks are unchanged.
+- `git diff --check` passed. No commit-specific Ruff/AST result was recorded; Python tests and downloader runtime were not run.
+
+## Chunk Statistics Contracts
+
+- Task 3 branch `codex/style-unify-task3-chunk-stats` commit `8c847727` passed independent review and merged. It removes redundant conversions of locally computed and typed integer values, and removes a duplicate histogram-bin copy. Invalid raw lengths are still skipped and duplicate counts remain clamped at zero.
+- Ruff check/format, AST, caller scan, and diff/show checks passed in the branch. Python tests were not run; implicit coercion of out-of-contract typed arguments is no longer preserved.
+
+## Doctor CLI Checks
+
+- Task 7 branch `codex/style-unify-task7-doctor-cli` commit `b1a332c6` passed independent review and merged. File existence is checked once per path, while required-file exit status, optional-file warnings, and Windows `mbcs` decoding fallback remain unchanged. `_decode_output` now catches codec lookup and Unicode decode errors only.
+- Python 3.14 AST, direct-reference scan, and diff/show checks passed. Ruff was unavailable; the doctor CLI and Python tests were not run.
+
+## Parsing Artifact Counts
+
+- Task 4 branch `codex/style-unify-task4-artifact-stats` commit `aee1e5b3` passed independent review and merged. Locally derived page/table/image/block counters now use their integer values directly; PDF page count still crosses the existing `_coerce_int` metadata boundary.
+- Caller and response field contracts plus `git diff --check` passed. Ruff and AST tooling were unavailable in that worktree; Python tests and parser runtime were not run.
+
+## Pre-POC Quality Gate
+
+- Task 3 branch `codex/style-unify-task3-ingest-quality` commit `ec1b0844` passed independent review and merged. The gate now uses declared Path/config/analyzer result types directly; mode fallback, UTF-8 partial-tail handling, GB18030/Latin-1 fallback, sample caps, thresholds and strict blocking remain unchanged.
+- Caller/config/analyzer type review and `git diff --check` passed. Ruff, AST, runtime and Python tests were not run in that worktree.
+
+## Chunk Quality Gate
+
+- Task 3 branch `codex/style-unify-task3-chunk-quality` commit `8a0e5e2b` passed independent review and merged. Persisted/`Any` statistics retain numeric validation; typed scalar inputs and internally constructed reason, patch and recommendation values no longer use redundant coercions or exception suppression. Thresholds and all 10-item caps remain.
+- Ruff check/format, AST, caller scan and diff/show checks passed. Python tests were not run.
+
+## Chunking Grid CLI
+
+- Task 7 branch `codex/style-unify-task7-chunking-grid` commit `80e989c1` passed independent review and merged. Declared chunker, document, token estimate and cliff output types replace redundant guards while JSON field casts, empty stats, encoding, ordering, output and exit behavior remain.
+- AST, direct-reference scan and diff/show checks passed. Ruff was unavailable; Python tests and CLI runtime were not run.
+
+## Ingestion Policy Diff
+
+- Task 3 branch `codex/style-unify-task3-policy-diff` commit `20d7e5c0` passed independent review and merged. Required string IDs and schema-owned rule lists are used directly; canonical JSON comparison, the conservative serialization-failure-to-changed policy, sorted IDs and response shape remain.
+- Schema/caller review and diff/show checks passed. Ruff and AST tooling were unavailable; Python tests were not run.
+
+## Chunk Coverage Metrics
+
+- Task 3 branch `codex/style-unify-task3-chunk-coverage` commit `92b0cee1` passed independent review and merged. Malformed range pairs still undergo conversion and skip handling; clipping, merge, gaps and empty-range behavior remain. Internal arithmetic no longer repeats integer conversions or nonnegative clamps already established by clipped integer ranges.
+- Ruff check/format, AST, caller/producer scan and diff/show checks passed. Python tests were not run.
+
+## Batch Preview CLI
+
+- Task 7 branch `codex/style-unify-task7-preview-batch` commit `868b26c6` passed independent review and merged. The script consumes declared `Document`/preview-helper results directly and catches only filesystem I/O errors when skipping candidate files. Offset fallback, JSON fields/defaults, caps, JSONL flushing/closing and exit behavior remain.
+- AST, direct-reference scan and diff/show checks passed. Ruff was unavailable; Python tests and CLI runtime were not run.
+
+## DB Profile Cache
+
+- Task 3 branch `codex/style-unify-task3-db-profile-cache` commit `b183a001` passed independent review and merged. Typed key/TTL/payload values are used directly; key format, TTL bypass, monotonic expiration, capacity check and top-level shallow copies remain.
+- Ruff check/format, AST, caller scan and diff/show checks passed. Python tests were not run. Existing limitations remain: capacity can reach 2049 before the next insertion clears it, and nested values are shallow-copied.
+
+## Document Version Diff
+
+- Task 4 branch `codex/style-unify-task4-version-diff` commit `1ce72a02` passed independent review and merged. External hash normalization remains; Counter multiplicities, sorted hash samples, integer sample-limit behavior and response fields are unchanged.
+- Caller/schema review and diff/show checks passed. Ruff and AST tooling were unavailable; Python tests were not run.
+
+## Retrieval Hit Frequency
+
+- Task 3 branch `codex/style-unify-task3-retrieval-hit-frequency` commit `daa50e70` passed independent review and merged. Typed settings, limits and aggregate counters no longer receive duplicate conversions. Untrusted JSONL parsing, `_to_int`, per-record containment, missing/invalid timestamp treatment, tenant/document matching and bounded reads remain.
+- AST, caller/settings/type scan and diff/show checks passed. Ruff was unavailable; Python tests and metrics-file runtime were not run.
+
+## Ingestion Metrics
+
+- Task 3 branch `codex/style-unify-task3-ingestion-metrics` commit `9284ad91` passed independent review and merged. `_enabled()` now returns the declared boolean setting directly; duration conversion/rejection, negative-value handling, bounded label normalization and caller best-effort wrappers remain.
+- Ruff check/format, AST, caller scan and diff/show checks passed. Python tests were not run.
+
+## Prompt Variant Weights
+
+- Task 3 branch `codex/style-unify-task3-prompt-resolver` commit `e24fe9d2` passed independent review and merged. The resolver reads the mapped nullable Float directly; null/zero handling, negative clamp, ordering, stable routing and equal-weight fallback remain.
+- Caller/model/schema review and diff/show checks passed. Ruff and AST tooling were unavailable; Python tests were not run.
+
+## Access Graph Diff
+
+- Task 3 branch `codex/style-unify-task3-access-graph-diff` commit `89cb9048` passed independent review and merged. External export normalization, stable-hash privacy fallback, kind filtering, sample caps and PII-safe fields remain; normalized internal tuple/Counter values are consumed directly.
+- AST, caller/type scan and diff/show checks passed. Ruff was unavailable; Python tests were not run. Existing set-based example and churn tie ordering is not deterministic across processes; this pre-existing behavior was not changed.
+
+## Connector ACL Metrics
+
+- Task 3 branch `codex/style-unify-task3-connector-metrics` commit `49e8fa55` passed independent review and merged. The bool setting and counts derived from sanitized membership lists are used directly. Label sanitation, finite mode/shape buckets, unknown handling and best-effort suppression remain.
+- AST, caller/settings scan and diff/show checks passed. Ruff was unavailable; Python tests were not run.
+
+## Retrieval Fixture CLI
+
+- Task 7 branch `codex/style-unify-task7-fixture-builder` commit `df66baec` passed independent review and merged. Only argparse-typed paths, `top_k` and retrieval mode stop receiving redundant conversions; raw JSON normalization, aliases, defaults, IDs, fixture shape and resolved output handling remain.
+- Caller scan and diff/show checks passed. Ruff/AST tooling was unavailable; Python tests and CLI runtime were not run.
+
+## Embedding Drift Metrics
+
+- Task 3 branch `codex/style-unify-task3-embedding-drift` commit `e20ddeae` passed independent review and merged. Locally derived integer/float metrics and the typed integer content cap no longer receive repeated casts. DB row filtering/coercion, vector shape checks, PII-safe output, sample cap, thresholds and error behavior remain.
+- Ruff check/format, AST, caller scan and diff/show checks passed; independent source-boundary review passed. Python tests were not run.
+
+## Evidence Import Normalization
+
+- Task 3 branch `codex/style-unify-task3-evidence-import` commit `e53388cf` passed independent review and merged. Two helpers now consume already normalized `str` and `dict` values directly; CSV/JSONL decoding, raw field coercion, malformed input responses, caps, row numbering, deduplication and output shape remain.
+- Ruff check/format, AST, caller scan and diff/show checks passed. Python tests were not run.
+
+## Prompt Defaults Boundary
+
+- `app/services/prompt_defaults.py` was reviewed and marked conforming without a code change. The explicit request-fields set preserves omitted-versus-null semantics, while dataset JSONB remains validated as a dict and string/UUID values retain their current normalization and malformed UUID reporting.
+- Caller/schema provenance review and `git diff --check` passed. Ruff/AST tooling and Python tests were not run.
+
+## Embedding Language Advisory
+
+- Task 3 branch `codex/style-unify-task3-embedding-advisory` commit `df7405a7` passed independent review and merged. A declared routing bool is used directly; normalized nonnegative counts and configured model keys drive equivalent routing predicates. Raw count/JSONB metadata normalization, generic-model matching, recommendation ordering/cap and non-mutating output remain.
+- AST, caller/config/schema scan, and diff/show checks passed. Ruff was unavailable; Python tests were not run.
+
+## Dataset Embedding Configuration
+
+- `app/services/dataset_embedding_config.py` was reviewed and marked conforming without a code change. Settings cleanup/defaults and JSONB dataset override normalization are required at distinct boundaries; dataset-scoped backend rejection, hash/collection semantics and embedding cache ownership remain clear.
+- Ruff check/format, AST, caller scan and `git diff --check` passed. Python tests were not run.
+
+## Connector Egress Policy
+
+- Task 3 branch `codex/style-unify-task3-egress-policy` commit `4a153a54` passed security review and merged. The private IP-literal helper consumes its already normalized string directly. Untrusted config/host normalization, CIDR parsing, DNS, IPv6 handling, metadata/private-address blocks, allowlist and failures remain unchanged.
+- Caller/security review and `git diff/show --check` passed. Ruff/AST tooling and Python tests were not run.
+
+## Encoding Conversion CLI
+
+- Task 7 branch `codex/style-unify-task7-encoding-cli` commit `00235535` passed independent review and merged. Argparse bool/extension values are consumed directly, and `is_dir()` replaces `exists()` plus `is_dir()` for target cleanup. Cleanup order, dry-run behavior, path overlap guard, file write failures and exit counts remain.
+- AST, direct-reference scan and diff/show checks passed. Ruff was unavailable; CLI runtime and Python tests were not run. Existing `--clean-target` behavior can remove the source when target is the source or one of its ancestors; this pre-existing behavior was not changed in the style slice.
+
+## Evidence Dashboard
+
+- Task 3 branch `codex/style-unify-task3-evidence-dashboard` commit `45cc966b` passed independent review and merged. Casts around locally derived counters and `timedelta.total_seconds()` values were removed; JSON/ORM validation, nullable timestamp and finite-number handling, top-N caps/order, None paths and response fields remain.
+- Caller/schema review and diff/show checks passed. Ruff and AST tooling were unavailable; Python tests were not run.
+
+## Fixture From File CLI
+
+- Task 7 branch `codex/style-unify-task7-fixture-from-file` commit `32494f99` passed independent review and merged. Redundant conversions of argparse-typed path, string and integer values were removed; parser backend defaults, document serialization, OCR fallback, query normalization and UTF-8 JSON output remain.
+- AST, direct-reference scan and diff/show checks passed. Ruff was unavailable; Python tests and live parser/OCR execution were not run.
+
+## Document QA
+
+- Task 3 branch `codex/style-unify-task3-document-qa` commit `3578327b` passed independent review and merged. Typed request/helper values and local counters use their declared values directly; source normalization, Q/A pattern behavior, LLM degradation fallback/logging, tenant ACLs, scoped queries/deletes, best-effort indexing and response shape remain.
+- Ruff check/format, AST, caller/schema scan and diff/show checks passed. Python tests and DB/vector/LLM runtime checks were not run.
+
+## Integrated validation and coverage reconciliation (2026-11-04)
+
+- Merged the reviewed fixture-from-file category `32494f99`; its source had remained outside the integration branch despite the preceding record. The integration now contains that source change.
+- Repaired 13 CSV records whose unquoted explanatory commas had created extra columns. Every row now has exactly six fields; all 3,758 paths are unique and exactly match `git ls-files -z`, including non-ASCII paths.
+- Registered 336 pending Python test files under `tests/` as preserved under the user's explicit deferral. This is a scope exclusion; no test semantics or runtime result is claimed. Production `app/rag/evaluation/test_generator.py` remains in scope.
+- Using the available `E:/MimirQ/.venv/Scripts/python.exe`, checked the 33 production Python files changed since `688af099f`: Ruff check and complete AST parsing passed. Ruff format initially identified two quality/advisory modules; both were formatted with unchanged normalized AST, after which all 33 passed format checking. Detailed command/file evidence is in `.superpowers/sdd/2026-11-02-style-unification/integrated-static-2026-11-04.json`.
+- Frontend dependencies are partially installed. Pinned Prettier 3.9.10 and eslint-config-prettier 10.1.8 were installed only in ignored `.superpowers/style-tooling`; application manifests, lockfiles and dependency versions were not changed. The frontend category uses the existing TypeScript/ESLint and these pinned tools. Earlier unavailable-tool entries are historical records, not the current environment status.
+- Subsequent source integrations group complete category changes and their evidence in one commit; pure formatting stays in its own category commit. Existing root source and untracked work outside each category remain intact.
