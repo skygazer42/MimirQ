@@ -86,7 +86,7 @@ def _has_leading_prose_before_table_rows(text: str) -> bool:
     if not lines:
         return False
     first_table_row = next((idx for idx, line in enumerate(lines) if _looks_like_table_row(line)), None)
-    return first_table_row is not None and int(first_table_row) > 0
+    return first_table_row is not None and first_table_row > 0
 
 
 def _can_merge_tables(prev: Document, cur: Document, *, max_page_gap: int) -> bool:
@@ -190,7 +190,7 @@ def _merge_metadata(prev_meta: dict[str, Any], cur_meta: dict[str, Any], *, kind
     merged["cross_page_merged"] = True
     merged["cross_page_merge_kind"] = kind
     merged["cross_page_merge_pages"] = pages
-    merged["cross_page_merge_count"] = int(max(2, len(pages)))
+    merged["cross_page_merge_count"] = max(2, len(pages))
     if kind == "table":
         merged["table_truncated"] = False
         merged["truncated"] = False
@@ -278,7 +278,7 @@ def _table_col_count(line: str) -> int:
     # We count non-empty column segments.
     parts = [p.strip() for p in s.strip("|").split("|")]
     parts = [p for p in parts if p != ""]
-    return int(len(parts))
+    return len(parts)
 
 
 def _extract_trailing_block(lines: list[str], pred: Callable[[str], bool]) -> tuple[int, int] | None:
@@ -300,7 +300,7 @@ def _extract_trailing_block(lines: list[str], pred: Callable[[str], bool]) -> tu
         return None
     while start > 0 and pred(lines[start - 1]):
         start -= 1
-    return int(start), int(end)
+    return start, end
 
 
 def _extract_leading_block(lines: list[str], pred: Callable[[str], bool]) -> tuple[int, int] | None:
@@ -324,13 +324,13 @@ def _extract_leading_block(lines: list[str], pred: Callable[[str], bool]) -> tup
         end = body_start + 1
         while end < len(lines) and pred(lines[end]):
             end += 1
-        return int(start), int(end)
+        return start, end
     if not pred(lines[start]):
         return None
     end = start + 1
     while end < len(lines) and pred(lines[end]):
         end += 1
-    return int(start), int(end)
+    return start, end
 
 
 def _extract_leading_table_block(lines: list[str]) -> tuple[int, int] | None:
@@ -357,7 +357,7 @@ def _extract_leading_table_block(lines: list[str]) -> tuple[int, int] | None:
     end = cursor + 1
     while end < len(lines) and _looks_like_table_row(lines[end]):
         end += 1
-    return int(start), int(end)
+    return start, end
 
 
 def _extract_ordered_num(line: str) -> int | None:
@@ -370,7 +370,7 @@ def _extract_ordered_num(line: str) -> int | None:
         return None
     if n <= 0:
         return None
-    return int(n)
+    return n
 
 
 def _merge_table_blocks(prev_block: list[str], next_block: list[str]) -> list[str] | None:
@@ -484,9 +484,9 @@ def merge_cross_page_markdown_pages(pages: list[str]) -> tuple[list[str], dict[s
             pages_changed.add(i + 1)
 
     return out, {
-        "tables_merged": int(tables_merged),
-        "lists_merged": int(lists_merged),
-        "pages_changed": int(len(pages_changed)),
+        "tables_merged": tables_merged,
+        "lists_merged": lists_merged,
+        "pages_changed": len(pages_changed),
     }
 
 

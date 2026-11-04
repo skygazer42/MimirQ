@@ -13,9 +13,9 @@ from app.parsing.processors.support import stages as stages_mod
 from app.parsing.processors.support.results import ChunkAssetOptions
 from app.parsing.processors.support.stages import (
     ChunkAssetStage,
-    ChunkingStage,
     InlineAssetStage,
     ParsingStage,
+    chunk_documents,
 )
 
 
@@ -164,7 +164,7 @@ def test_chunking_stage_prefers_plugin_over_built_in_chunker(monkeypatch: pytest
         raising=True,
     )
 
-    result = ChunkingStage().run(
+    result = chunk_documents(
         documents=[Document(page_content="alpha", metadata={})],
         chunk_strategy="separator",
         chunk_size=200,
@@ -207,7 +207,7 @@ def test_chunking_stage_normalizes_separator_parameters(monkeypatch: pytest.Monk
 
     monkeypatch.setattr(stages_mod, "SeparatorChunker", _FakeSeparatorChunker, raising=True)
 
-    result = ChunkingStage().run(
+    result = chunk_documents(
         documents=[Document(page_content="alpha\nbeta", metadata={})],
         chunk_strategy="separator",
         chunk_size=100,

@@ -183,7 +183,7 @@ def _coerce_float(value: Any, default: float = 0.0) -> float:
         f = float(value)
         if f != f:  # NaN
             return float(default)
-        return float(f)
+        return f
     except Exception:
         return float(default)
 
@@ -348,9 +348,9 @@ def maybe_correct_markdown_pages(
     return out, VLMCorrAudit(
         applied=True,
         changed=bool(changed > 0),
-        pages_attempted=int(attempted),
-        pages_changed=int(changed),
-        elapsed_ms=int(elapsed_ms),
+        pages_attempted=attempted,
+        pages_changed=changed,
+        elapsed_ms=elapsed_ms,
         error=None,
     )
 

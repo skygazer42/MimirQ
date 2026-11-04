@@ -66,7 +66,7 @@ def _low_confidence_span_count(meta: Mapping[str, Any]) -> int:
     ]
     for value in candidates:
         if isinstance(value, list):
-            return int(len(value))
+            return len(value)
     return 0
 
 
@@ -80,7 +80,7 @@ def _table_metrics(table: Mapping[str, Any]) -> tuple[int, int]:
     if isinstance(shape, Mapping):
         rows = rows if rows is not None else _coerce_int(shape.get("rows") or shape.get("row_count"))
         cols = cols if cols is not None else _coerce_int(shape.get("cols") or shape.get("col_count"))
-    return max(0, int(rows or 0)), max(0, int(cols or 0))
+    return max(0, rows or 0), max(0, cols or 0)
 
 
 def _large_tables(
@@ -99,15 +99,15 @@ def _large_tables(
         if not isinstance(raw, Mapping):
             continue
         rows, cols = _table_metrics(raw)
-        truncated = bool(_coerce_bool(raw.get("truncated")) is True)
+        truncated = _coerce_bool(raw.get("truncated")) is True
         if rows >= int(row_threshold) or cols >= int(col_threshold) or truncated:
             out.append(
                 {
-                    "index": int(index),
+                    "index": index,
                     "table_id": str(raw.get("table_id") or raw.get("source_element_id") or index),
-                    "row_count": int(rows),
-                    "col_count": int(cols),
-                    "truncated": bool(truncated),
+                    "row_count": rows,
+                    "col_count": cols,
+                    "truncated": truncated,
                 }
             )
     return out
@@ -179,14 +179,14 @@ def evaluate_parse_quality_gate(
     )
 
     flags = {
-        "parse_score_low": bool(parse_score is not None and float(parse_score) < float(min_parse_score)),
+        "parse_score_low": bool(parse_score is not None and parse_score < float(min_parse_score)),
         "ocr_low_confidence": bool(
-            (ocr_confidence is not None and float(ocr_confidence) < float(min_ocr_confidence))
+            (ocr_confidence is not None and ocr_confidence < float(min_ocr_confidence))
             or (ocr_confidence is None and low_confidence_spans > 0)
         ),
         "table_structure_low_confidence": bool(
             table_structure_confidence is not None
-            and float(table_structure_confidence) < float(min_table_structure_confidence)
+            and table_structure_confidence < float(min_table_structure_confidence)
         ),
         "reading_order_unstable": bool(
             reading_changed
@@ -206,7 +206,7 @@ def evaluate_parse_quality_gate(
     }
 
     hard_fail = bool(
-        (parse_score is not None and float(parse_score) < float(fail_parse_score))
+        (parse_score is not None and parse_score < float(fail_parse_score))
         or (flags["ocr_low_confidence"] and flags["parse_score_low"])
     )
     if hard_fail:
@@ -229,13 +229,13 @@ def evaluate_parse_quality_gate(
     evidence = {
         "parse_score": parse_score,
         "ocr_confidence_avg": ocr_confidence,
-        "low_confidence_spans": int(low_confidence_spans),
+        "low_confidence_spans": low_confidence_spans,
         "table_structure_confidence_avg": table_structure_confidence,
-        "watermark_removed_count": int(watermark_removed),
-        "watermark_removed_ratio": (round(float(watermark_ratio), 4) if watermark_ratio is not None else None),
-        "reading_order_changed": bool(reading_changed),
-        "reading_order_items": int(reading_items),
-        "reading_order_column_pages": int(reading_column_pages),
+        "watermark_removed_count": watermark_removed,
+        "watermark_removed_ratio": (round(watermark_ratio, 4) if watermark_ratio is not None else None),
+        "reading_order_changed": reading_changed,
+        "reading_order_items": reading_items,
+        "reading_order_column_pages": reading_column_pages,
         "large_tables": large_tables,
     }
     thresholds = {

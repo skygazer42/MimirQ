@@ -24,7 +24,7 @@ def _coerce_float(value: Any) -> float | None:
         number = float(value)
         if number != number:
             return None
-        return float(number)
+        return number
     except (TypeError, ValueError, AttributeError):
         return None
 
@@ -59,7 +59,7 @@ def _seal_segment_page(meta: dict[str, Any]) -> int | None:
 def _seal_segment_candidate_count(meta: dict[str, Any]) -> int:
     candidate_count = _coerce_int(meta.get("seal_candidate_count"))
     if candidate_count is not None:
-        return int(candidate_count)
+        return candidate_count
     raw_candidates = meta.get("seal_candidates")
     return len(raw_candidates) if isinstance(raw_candidates, list) else 1
 
@@ -76,9 +76,9 @@ def _seal_candidate_from_document(doc: Document) -> dict[str, Any] | None:
     page = _seal_segment_page(meta)
     return {
         "text": str(primary.get("text") or meta.get("seal_text") or doc.page_content or "").strip(),
-        "score": float(score) if score is not None else None,
+        "score": score if score is not None else None,
         "kind": str(primary.get("seal_kind") or meta.get("seal_kind") or "unknown").strip() or "unknown",
-        "page": int(page) if page is not None else None,
+        "page": page if page is not None else None,
         "candidate_count": _seal_segment_candidate_count(meta),
     }
 
@@ -137,7 +137,7 @@ def _ocr_confidence_from_metadata(meta: dict[str, Any]) -> float | None:
     confidence = _coerce_float(confidence_value)
     if confidence is None:
         return None
-    return max(0.0, min(1.0, float(confidence)))
+    return max(0.0, min(1.0, confidence))
 
 
 def _low_confidence_span(meta: dict[str, Any], *, text: str, confidence: float) -> dict[str, Any]:
@@ -201,11 +201,11 @@ def _build_ocr_quality_summary(
     avg = sum(confidences) / max(1, len(confidences))
     return {
         "schema": "mimirq.ocr_quality.v1",
-        "confidence_avg": round(float(avg), 4),
-        "confidence_min": round(float(min(confidences)), 4),
-        "span_count": int(len(confidences)),
+        "confidence_avg": round(avg, 4),
+        "confidence_min": round(min(confidences), 4),
+        "span_count": len(confidences),
         "low_confidence_threshold": float(low_confidence_threshold),
-        "low_confidence_count": int(len(low_spans)),
+        "low_confidence_count": len(low_spans),
         "low_confidence_spans": low_spans[:20],
     }
 
@@ -298,22 +298,22 @@ def _aggregate_governance_quality(source_items: list[Document]) -> dict[str, Any
 
 def _positive_governance_counts(stats: GovernanceStats) -> dict[str, int]:
     effects_map = {
-        "governance_frontmatter_docs": getattr(stats, "frontmatter_docs", 0),
-        "governance_frontmatter_stripped_docs": getattr(stats, "frontmatter_stripped_docs", 0),
-        "governance_paragraphs_dropped": getattr(stats, "paragraphs_dropped", 0),
-        "governance_references_removed_lines": getattr(stats, "references_removed_lines", 0),
-        "governance_urls_changed": getattr(stats, "urls_changed", 0),
-        "governance_boilerplate_removed_sections": getattr(stats, "boilerplate_removed_sections", 0),
-        "governance_boilerplate_removed_lines": getattr(stats, "boilerplate_removed_lines", 0),
-        "governance_images_removed": getattr(stats, "images_removed", 0),
-        "governance_tables_normalized": getattr(stats, "tables_normalized", 0),
-        "governance_table_rows_changed": getattr(stats, "table_rows_changed", 0),
-        "governance_code_blocks_changed": getattr(stats, "code_blocks_changed", 0),
-        "governance_code_lines_stripped": getattr(stats, "code_lines_stripped", 0),
-        "governance_keywords_docs": getattr(stats, "keywords_docs", 0),
-        "governance_keywords_total": getattr(stats, "keywords_total", 0),
-        "governance_titles_docs": getattr(stats, "titles_docs", 0),
-        "governance_tags_docs": getattr(stats, "tags_docs", 0),
+        "governance_frontmatter_docs": stats.frontmatter_docs,
+        "governance_frontmatter_stripped_docs": stats.frontmatter_stripped_docs,
+        "governance_paragraphs_dropped": stats.paragraphs_dropped,
+        "governance_references_removed_lines": stats.references_removed_lines,
+        "governance_urls_changed": stats.urls_changed,
+        "governance_boilerplate_removed_sections": stats.boilerplate_removed_sections,
+        "governance_boilerplate_removed_lines": stats.boilerplate_removed_lines,
+        "governance_images_removed": stats.images_removed,
+        "governance_tables_normalized": stats.tables_normalized,
+        "governance_table_rows_changed": stats.table_rows_changed,
+        "governance_code_blocks_changed": stats.code_blocks_changed,
+        "governance_code_lines_stripped": stats.code_lines_stripped,
+        "governance_keywords_docs": stats.keywords_docs,
+        "governance_keywords_total": stats.keywords_total,
+        "governance_titles_docs": stats.titles_docs,
+        "governance_tags_docs": stats.tags_docs,
     }
     return {key: value for key, raw in effects_map.items() if (value := _safe_governance_int(raw)) > 0}
 

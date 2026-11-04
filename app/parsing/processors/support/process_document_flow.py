@@ -8,6 +8,7 @@ import datetime as dt
 import re
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -67,7 +68,15 @@ from app.parsing.processors.support.recovery import (
 from app.parsing.processors.support.recovery import (
     run_post_completion_kg as _run_post_completion_kg,
 )
-from app.parsing.processors.support.results import ChunkAssetOptions, ChunkPostprocessStats, ParseResult
+from app.parsing.processors.support.results import (
+    ChunkAssetOptions,
+    ChunkDedupResult,
+    ChunkingResult,
+    ChunkPostprocessStats,
+    GovernanceResult,
+    IndexResult,
+    ParseResult,
+)
 from app.parsing.processors.vlm_correction import apply_vlm_correction_async, should_apply_vlm_correction
 from app.parsing.quality.document_quality import score_document_parse_quality
 from app.parsing.quality.reading_order import score_reading_order
@@ -1303,12 +1312,12 @@ async def run_process_document_body(
     runtime_state: dict[str, Any],
     parsing_stage_factory: Any,
     inline_asset_stage_factory: Any,
-    normalize_stage_factory: Any,
-    governance_stage_factory: Any,
-    chunking_stage_factory: Any,
-    chunk_dedup_stage_factory: Any,
+    normalize_stage: Callable[..., list[Document]],
+    governance_stage: Callable[..., GovernanceResult],
+    chunking_stage: Callable[..., ChunkingResult],
+    chunk_dedup_stage: Callable[..., ChunkDedupResult],
     chunk_asset_stage_factory: Any,
-    index_stage_factory: Any,
+    index_stage: Callable[..., IndexResult],
 ) -> dict[str, Any]:
     cancel_check = service._build_cancel_check(db=db, tenant_id=tenant_id, document_id=document_id)
     stage_durations_ms: dict[str, int] = {}
@@ -1378,12 +1387,12 @@ async def run_process_document_body(
         prepared_state=prepared_state,
         parse_state=parse_result["state"],
         inline_asset_stage=inline_asset_stage_factory(service),
-        normalize_stage=normalize_stage_factory(),
-        governance_stage=governance_stage_factory(),
-        chunking_stage=chunking_stage_factory(),
-        chunk_dedup_stage=chunk_dedup_stage_factory(),
+        normalize_stage=normalize_stage,
+        governance_stage=governance_stage,
+        chunking_stage=chunking_stage,
+        chunk_dedup_stage=chunk_dedup_stage,
         chunk_asset_stage=chunk_asset_stage_factory(service),
-        index_stage=index_stage_factory(),
+        index_stage=index_stage,
         add_stage_duration=add_stage_duration,
         with_stage_durations=with_stage_durations,
         raise_if_cancelled=raise_if_cancelled_cb,
@@ -2064,7 +2073,7 @@ def _governance_plugin_ref(pipeline_effective: PipelineEffective) -> str:
 
 
 def _run_governance_stage(
-    governance_stage: Any,
+    governance_stage: Callable[..., GovernanceResult],
     *,
     items: list[Document],
     file_path: Path,
@@ -2083,7 +2092,7 @@ def _run_governance_stage(
             "governance.enabled": bool(pipeline_effective.governance_enabled),
         },
     ):
-        gov = governance_stage.run(
+        gov = governance_stage(
             items=items,
             enabled=bool(pipeline_effective.governance_enabled),
             kwargs=governance_kwargs,
@@ -2321,14 +2330,14 @@ async def _run_chunk_governance_flow(
     document_id: UUID,
     prepared_state: PreparedProcessDocumentState,
     parse_state: ParseExecutionState,
-    normalize_stage: Any,
-    governance_stage: Any,
+    normalize_stage: Callable[..., list[Document]],
+    governance_stage: Callable[..., GovernanceResult],
     add_stage_duration: Any,
     with_stage_durations: Any,
 ) -> dict[str, Any]:
     t0 = time.perf_counter()
     with metrics_span("ingest.normalize"):
-        parsed_chunks = normalize_stage.run(items=parse_state.parsed.chunks)
+        parsed_chunks = normalize_stage(items=parse_state.parsed.chunks)
     add_stage_duration("normalize", (time.perf_counter() - t0) * 1000)
 
     pipeline_effective = prepared_state.pipeline_effective
@@ -2404,14 +2413,14 @@ async def _run_document_governance_flow(
     prepared_state: PreparedProcessDocumentState,
     parse_state: ParseExecutionState,
     parsed_documents: list[Document] | None,
-    normalize_stage: Any,
-    governance_stage: Any,
+    normalize_stage: Callable[..., list[Document]],
+    governance_stage: Callable[..., GovernanceResult],
     add_stage_duration: Any,
     with_stage_durations: Any,
 ) -> dict[str, Any]:
     t0 = time.perf_counter()
     with metrics_span("ingest.normalize"):
-        normalized_documents = normalize_stage.run(items=parsed_documents or [])
+        normalized_documents = normalize_stage(items=parsed_documents or [])
     add_stage_duration("normalize", (time.perf_counter() - t0) * 1000)
 
     pipeline_effective = prepared_state.pipeline_effective
@@ -2499,7 +2508,7 @@ async def _chunk_governed_documents(
     prepared_state: PreparedProcessDocumentState,
     resolved_chunk_strategy: str,
     parsed_documents: list[Document],
-    chunking_stage: Any,
+    chunking_stage: Callable[..., ChunkingResult],
     add_stage_duration: Any,
 ) -> dict[str, Any]:
     await service._update_status(db, tenant_id, document_id, "processing", 33, "chunking")
@@ -2517,7 +2526,7 @@ async def _chunk_governed_documents(
             "chunk.strategy": str(resolved_chunk_strategy or "").strip().lower() or "default",
         },
     ):
-        chunked = chunking_stage.run(
+        chunked = chunking_stage(
             documents=parsed_documents,
             chunk_strategy=resolved_chunk_strategy,
             chunk_size=int(pipeline_effective.chunk_size),
@@ -2598,7 +2607,7 @@ def _filter_short_chunks(chunks: list[Document], *, min_chars: int, document_id:
 
 
 def _run_chunk_dedup_stage(
-    chunk_dedup_stage: Any,
+    chunk_dedup_stage: Callable[..., ChunkDedupResult],
     *,
     chunks: list[Document],
     document_id: UUID,
@@ -2606,7 +2615,7 @@ def _run_chunk_dedup_stage(
 ) -> tuple[list[Document], int]:
     t0 = time.perf_counter()
     with metrics_span("ingest.chunk_dedup", enabled=True):
-        deduped = chunk_dedup_stage.run(chunks=chunks, enabled=True)
+        deduped = chunk_dedup_stage(chunks=chunks, enabled=True)
     add_stage_duration("chunk_dedup", (time.perf_counter() - t0) * 1000)
     duplicates_dropped = int(deduped.duplicates_dropped)
     if duplicates_dropped > 0:
@@ -2856,7 +2865,7 @@ def _apply_common_chunk_postprocess(
     prepared_state: PreparedProcessDocumentState,
     chunks: list[Document],
     pipeline_effective: PipelineEffective,
-    chunk_dedup_stage: Any,
+    chunk_dedup_stage: Callable[..., ChunkDedupResult],
     add_stage_duration: Any,
     table_sidecar_tables_imported: int,
     table_sidecar_routing_audit: dict[str, Any] | None,
@@ -3125,7 +3134,7 @@ def _apply_chunk_asset_stage_and_metadata(
 
 
 def _run_index_stage(
-    index_stage: Any,
+    index_stage: Callable[..., IndexResult],
     *,
     db: Session,
     db_document: DBDocument,
@@ -3149,7 +3158,7 @@ def _run_index_stage(
             "index.bm25_index_enabled": bool(getattr(prepared_state.index_options, "bm25_index_enabled", True)),
         },
     ):
-        indexed = index_stage.run(
+        indexed = index_stage(
             db=db,
             tenant_id=tenant_id,
             document_id=document_id,
@@ -3290,12 +3299,12 @@ async def continue_process_document_flow(
     prepared_state: PreparedProcessDocumentState,
     parse_state: ParseExecutionState,
     inline_asset_stage: Any,
-    normalize_stage: Any,
-    governance_stage: Any,
-    chunking_stage: Any,
-    chunk_dedup_stage: Any,
+    normalize_stage: Callable[..., list[Document]],
+    governance_stage: Callable[..., GovernanceResult],
+    chunking_stage: Callable[..., ChunkingResult],
+    chunk_dedup_stage: Callable[..., ChunkDedupResult],
     chunk_asset_stage: Any,
-    index_stage: Any,
+    index_stage: Callable[..., IndexResult],
     add_stage_duration: Any,
     with_stage_durations: Any,
     raise_if_cancelled: Any,

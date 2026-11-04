@@ -1,21 +1,24 @@
 """Parsed-document IO helpers: logical source metadata, markdown joins, parse-cache serialization."""
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from langchain_core.documents import Document
 
 from app.parsing.artifact_stats import POSITION_TAG_RE
 
+if TYPE_CHECKING:
+    from app.models.document import Document as DBDocument
 
-def _logical_source_from_db_document(db_document: Any, *, file_path: Path) -> str:
-    meta = getattr(db_document, "doc_metadata", None)
+
+def _logical_source_from_db_document(db_document: "DBDocument", *, file_path: Path) -> str:
+    meta = db_document.doc_metadata
     meta = dict(meta or {}) if isinstance(meta, dict) else {}
     user_meta = meta.get("user") if isinstance(meta.get("user"), dict) else {}
     for value in (
         meta.get("source_path"),
         user_meta.get("source_rel_path") if isinstance(user_meta, dict) else None,
-        getattr(db_document, "filename", None),
+        db_document.filename,
         file_path.name,
     ):
         text = str(value or "").strip()
@@ -27,13 +30,13 @@ def _logical_source_from_db_document(db_document: Any, *, file_path: Path) -> st
 def _attach_logical_source_metadata(
     documents: list[Document] | None,
     *,
-    db_document: Any,
+    db_document: "DBDocument",
     file_path: Path,
 ) -> list[Document]:
     if not documents:
         return []
     source = _logical_source_from_db_document(db_document, file_path=file_path)
-    filename = str(getattr(db_document, "filename", None) or file_path.name or "").strip()
+    filename = str(db_document.filename or file_path.name or "").strip()
     out: list[Document] = []
     for doc in documents:
         meta = dict(doc.metadata or {})
